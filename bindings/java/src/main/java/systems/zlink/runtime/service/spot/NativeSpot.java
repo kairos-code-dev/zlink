@@ -33,25 +33,15 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
-import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
-import java.lang.foreign.FunctionDescriptor;
-import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 /**
@@ -59,22 +49,13 @@ import java.util.function.BiConsumer;
  * service model.
  */
 public final class NativeSpot implements Spot {
-    private static final Linker LINKER = Linker.nativeLinker();
-    private static final FunctionDescriptor FD_SEND_READY_CALLBACK =
-      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
-    private static final Arena REQUEST_CALLBACK_ARENA = Arena.ofShared();
-
     private MemorySegment handle;
-    private SendReadyHandler sendReadyHandler;
-    private Arena sendReadyCallbackArena;
-    private MemorySegment sendReadyCallbackStub = MemorySegment.NULL;
-    private volatile ExecutorService callbackExecutor;
-    private volatile RuntimeException callbackFailure;
     private final SpotSendPlane sendPlane;
     private final SpotRequestPlane requestPlane;
     private final SpotRoutedSupport routedSupport;
     private final SpotSubscriptionSupport subscriptionSupport;
     private final SpotActorJoinSupport actorJoinSupport;
+    private final SpotSendReadySupport sendReadySupport;
     private final SpotNode ownerNode;
     private final SpotOptions options;
 
@@ -126,6 +107,7 @@ public final class NativeSpot implements Spot {
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.actorJoinSupport = new SpotActorJoinSupport(this);
+        this.sendReadySupport = new SpotSendReadySupport();
         this.options = new SpotOptions(this);
     }
 
@@ -141,6 +123,7 @@ public final class NativeSpot implements Spot {
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.actorJoinSupport = new SpotActorJoinSupport(this);
+        this.sendReadySupport = new SpotSendReadySupport();
         this.options = new SpotOptions(this);
     }
 
@@ -155,6 +138,7 @@ public final class NativeSpot implements Spot {
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.actorJoinSupport = new SpotActorJoinSupport(this);
+        this.sendReadySupport = new SpotSendReadySupport();
         this.options = new SpotOptions(this);
     }
 
@@ -573,38 +557,7 @@ public final class NativeSpot implements Spot {
     public void setSendReadyHandler(SendReadyHandler handler) {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
-        ensureNoCallbackFailure();
-        ExecutorService executor = callbackExecutor;
-        boolean createdExecutor = false;
-        if (executor == null) {
-            executor = newCallbackExecutor();
-            callbackExecutor = executor;
-            createdExecutor = true;
-        }
-        Arena arena = Arena.ofShared();
-        MemorySegment stub = LINKER.upcallStub(callbackHandle(
-          "handleSendReadyCallback", MethodType.methodType(void.class,
-            MemorySegment.class, MemorySegment.class)),
-          FD_SEND_READY_CALLBACK, arena);
-        boolean success = false;
-        try {
-            int rc = Native.sendReadyHandler(handle, stub, MemorySegment.NULL);
-            if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_send_ready_handler");
-            success = true;
-            RuntimeResources.closeArena(sendReadyCallbackArena);
-            sendReadyCallbackArena = arena;
-            sendReadyCallbackStub = stub;
-            sendReadyHandler = handler;
-        } finally {
-            if (!success) {
-                if (createdExecutor) {
-                    callbackExecutor = null;
-                    RuntimeResources.shutdownExecutor(executor);
-                }
-                RuntimeResources.closeArena(arena);
-            }
-        }
+        sendReadySupport.install(handle, handler);
     }
 
     public boolean subscribe(TopicMessage result, RecvFlags flags) {
@@ -767,25 +720,15 @@ public final class NativeSpot implements Spot {
         if (currentHandle == null || currentHandle.address() == 0) {
             return;
         }
-        ExecutorService executor = callbackExecutor;
-        Arena readyArena = sendReadyCallbackArena;
-        sendReadyHandler = null;
-        callbackFailure = null;
-        callbackExecutor = null;
-        sendReadyCallbackArena = null;
-        MemorySegment readyStub = sendReadyCallbackStub;
-        sendReadyCallbackStub = MemorySegment.NULL;
         handle = MemorySegment.NULL;
         Native.spotDestroy(currentHandle);
         sendPlane.close();
         routedSupport.close();
         subscriptionSupport.close();
+        sendReadySupport.close();
         if (ownerNode != null) {
             InternalAccess.spotNodeReleaseSpot(ownerNode, this);
         }
-        RuntimeResources.shutdownExecutor(executor);
-        RuntimeResources.closeArena(readyArena);
-        readyStub = MemorySegment.NULL;
     }
 
     private static int boundedCount(long value) {
@@ -803,45 +746,7 @@ public final class NativeSpot implements Spot {
     }
 
     private void ensureNoCallbackFailure() {
-        RuntimeException failure = callbackFailure;
-        if (failure != null)
-            throw failure;
-    }
-
-    private MethodHandle callbackHandle(String name, MethodType type) {
-        try {
-            return MethodHandles.lookup().findVirtual(NativeSpot.class, name, type)
-              .bindTo(this);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException("failed to bind callback " + name,
-              ex);
-        }
-    }
-
-    private void handleSendReadyCallback(MemorySegment subject,
-                                         MemorySegment userdata) {
-        SendReadyHandler handler = sendReadyHandler;
-        ExecutorService executor = callbackExecutor;
-        if (handler == null || executor == null)
-            return;
-        try {
-            executor.execute(() -> dispatchSendReady(handler));
-        } catch (RejectedExecutionException ex) {
-            recordCallbackFailure(ex);
-        } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
-        }
-    }
-
-    private void dispatchSendReady(SendReadyHandler handler) {
-        InternalAccess.enterCallback();
-        try {
-            handler.onReady();
-        } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
-        } finally {
-            InternalAccess.leaveCallback();
-        }
+        sendReadySupport.ensureNoCallbackFailure();
     }
 
     private static RoutingId readRoutingId(MemorySegment sourceRid) {
@@ -859,15 +764,6 @@ public final class NativeSpot implements Spot {
         return InternalAccess.routingIdFromTrusted(value);
     }
 
-    private void recordCallbackFailure(RuntimeException failure) {
-        callbackFailure = failure;
-        Thread current = Thread.currentThread();
-        Thread.UncaughtExceptionHandler uncaught =
-          current.getUncaughtExceptionHandler();
-        if (uncaught != null)
-            uncaught.uncaughtException(current, failure);
-    }
-
     static String requireChannelName(String channelName) {
         Objects.requireNonNull(channelName, "channelName");
         if (channelName.isEmpty()) {
@@ -876,8 +772,4 @@ public final class NativeSpot implements Spot {
         return channelName;
     }
 
-    private static ExecutorService newCallbackExecutor() {
-        return RuntimeResources.daemonSingleThreadExecutor(
-            "zlink-spot-callback");
-    }
 }

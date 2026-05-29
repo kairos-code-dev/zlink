@@ -54,20 +54,13 @@ import java.util.Set;
 
 /** Native-backed lifecycle and topology facade for the current unified spot node model. */
 public final class NativeSpotNode implements SpotNode {
-    private static final int OPT_SNDHWM = 23;
-    private static final int OPT_RCVHWM = 24;
-    private static final int OPT_ROUTER_HWM_PROFILE = 0x360E;
-    private static final int OPT_ROUTER_HWM = 0x360F;
-    private static final int OPT_PUBSUB_HWM_PROFILE = 0x3610;
-    private static final int OPT_PUBSUB_HWM = 0x3611;
-    private static final int OPT_DISPATCH_WORKERS_MIN = 0x3612;
-    private static final int OPT_DISPATCH_WORKERS_MAX = 0x3613;
     private final Object lifecycleLock = new Object();
     private final Set<Spot> liveSpots =
       Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<Long, Spot> liveSpotsByHandle = new LinkedHashMap<>();
     private MemorySegment handle;
-    private final SpotNodeSocketOptions socketOptions = new SpotNodeSocketOptions();
+    private final SpotNodeOptionsSupport optionsSupport =
+      new SpotNodeOptionsSupport(this);
     private final SpotNodeActorOperations actorOperations =
       new SpotNodeActorOperations(this);
 
@@ -521,65 +514,59 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     void sendHwm(int value) {
-        socketOptions.setPubIntOption(OPT_SNDHWM, value);
+        optionsSupport.sendHwm(value);
     }
 
     void recvHwm(int value) {
-        socketOptions.setSubIntOption(OPT_RCVHWM, value);
+        optionsSupport.recvHwm(value);
     }
 
     public AutoHwmProfile routerHwmProfile() {
-        return EnumCodecs.autoHwmProfileFromValue(
-          getIntOption(OPT_ROUTER_HWM_PROFILE));
+        return optionsSupport.routerHwmProfile();
     }
 
     public void routerHwmProfile(AutoHwmProfile profile) {
-        Objects.requireNonNull(profile, "profile");
-        setIntOption(OPT_ROUTER_HWM_PROFILE,
-          EnumCodecs.autoHwmProfileValue(profile));
+        optionsSupport.routerHwmProfile(profile);
     }
 
     public int routerHighWaterMark() {
-        return getIntOption(OPT_ROUTER_HWM);
+        return optionsSupport.routerHighWaterMark();
     }
 
     public void routerHighWaterMark(int value) {
-        setIntOption(OPT_ROUTER_HWM, value);
+        optionsSupport.routerHighWaterMark(value);
     }
 
     public AutoHwmProfile pubSubHwmProfile() {
-        return EnumCodecs.autoHwmProfileFromValue(
-          getIntOption(OPT_PUBSUB_HWM_PROFILE));
+        return optionsSupport.pubSubHwmProfile();
     }
 
     public void pubSubHwmProfile(AutoHwmProfile profile) {
-        Objects.requireNonNull(profile, "profile");
-        setIntOption(OPT_PUBSUB_HWM_PROFILE,
-          EnumCodecs.autoHwmProfileValue(profile));
+        optionsSupport.pubSubHwmProfile(profile);
     }
 
     public int pubSubHighWaterMark() {
-        return getIntOption(OPT_PUBSUB_HWM);
+        return optionsSupport.pubSubHighWaterMark();
     }
 
     public void pubSubHighWaterMark(int value) {
-        setIntOption(OPT_PUBSUB_HWM, value);
+        optionsSupport.pubSubHighWaterMark(value);
     }
 
     public int dispatchWorkersMin() {
-        return getIntOption(OPT_DISPATCH_WORKERS_MIN);
+        return optionsSupport.dispatchWorkersMin();
     }
 
     public void dispatchWorkersMin(int value) {
-        setIntOption(OPT_DISPATCH_WORKERS_MIN, value);
+        optionsSupport.dispatchWorkersMin(value);
     }
 
     public int dispatchWorkersMax() {
-        return getIntOption(OPT_DISPATCH_WORKERS_MAX);
+        return optionsSupport.dispatchWorkersMax();
     }
 
     public void dispatchWorkersMax(int value) {
-        setIntOption(OPT_DISPATCH_WORKERS_MAX, value);
+        optionsSupport.dispatchWorkersMax(value);
     }
 
     /** Returns the current node status snapshot. */
@@ -831,31 +818,6 @@ public final class NativeSpotNode implements SpotNode {
         }
     }
 
-    private int getIntOption(int option) {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            int rc = Native.getSpotNodeOption(handle, option, nativeValue, len);
-            if (rc != 0)
-                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-            return nativeValue.get(ValueLayout.JAVA_INT, 0);
-        }
-    }
-
-    private void setIntOption(int option, int value) {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setSpotNodeOption(handle, option, nativeValue,
-              ValueLayout.JAVA_INT.byteSize());
-            if (rc != 0)
-                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-        }
-    }
-
     private boolean isClosed() {
         return handle == null || handle.address() == 0;
     }
@@ -922,33 +884,4 @@ public final class NativeSpotNode implements SpotNode {
         return millis >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) millis;
     }
 
-    private final class SpotNodeSocketOptions {
-        void setPubIntOption(int optionId, int value) {
-            setIntOption(optionId, value, true);
-        }
-
-        void setSubIntOption(int optionId, int value) {
-            setIntOption(optionId, value, false);
-        }
-
-        private void setIntOption(int optionId,
-                                  int value,
-                                  boolean publishOption)
-        {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-                nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-                int rc = publishOption
-                  ? Native.setPubOption(handle, optionId, nativeValue,
-                      Integer.BYTES)
-                  : Native.setSubOption(handle, optionId, nativeValue,
-                      Integer.BYTES);
-                if (rc != 0) {
-                    throw InternalAccess.zlinkExceptionFromLastError(publishOption
-                      ? "zlink_set_pub_option"
-                      : "zlink_set_sub_option");
-                }
-            }
-        }
-    }
 }

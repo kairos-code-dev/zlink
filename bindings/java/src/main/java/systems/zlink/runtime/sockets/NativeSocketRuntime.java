@@ -47,6 +47,8 @@ final class NativeSocketRuntime implements AutoCloseable {
     static final int ERRNO_ENOTCONN_WIN = 10057;
     static final int ERRNO_EHOSTUNREACH = 113;
     static final int ERRNO_EHOSTUNREACH_WIN = 10065;
+    private static final int ERRNO_ENOENT = 2;
+    private static final int ERRNO_EINVAL = 22;
     static final int TOPIC_CAPACITY = 256;
     private static final int OPT_RCVMORE = 13;
 
@@ -1100,9 +1102,9 @@ final class NativeSocketRuntime implements AutoCloseable {
                     return out;
                 }
                 int errno = Native.errno();
-                if (errno == 2)
+                if (errno == ERRNO_ENOENT)
                     return null;
-                if (errno == 22) {
+                if (errno == ERRNO_EINVAL) {
                     capacity = toIntLength(lenInOut.get(ValueLayout.JAVA_LONG, 0));
                     continue;
                 }

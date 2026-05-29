@@ -1167,27 +1167,6 @@ zlink_submit_result_t send_actor_gateway_packet (
 
 #include "api/actor/spot/service_spot_actor_session_state.inc"
 
-void actor_session_state_t::erase_bindings_for_stream (void *stream_)
-{
-    if (!stream_)
-        return;
-    for (binding_map_t::iterator it = bindings.begin ();
-         it != bindings.end ();) {
-        if (it->second.stream != stream_) {
-            ++it;
-            continue;
-        }
-        for (std::map<std::string, session_binding_t::actor_entry_t>::iterator
-               actor_it = it->second.actors.begin ();
-             actor_it != it->second.actors.end (); ++actor_it) {
-            actor_handle_t *actor = actor_it->second.actor;
-            if (actor && actor->bound_stream == stream_)
-                clear_actor_bound_session_locked (actor, true);
-        }
-        it = bindings.erase (it);
-    }
-}
-
 actor_session_state_t::binding_map_t::iterator find_session_binding_locked (
   void *stream_, const zlink_routing_id_t *session_rid_)
 {

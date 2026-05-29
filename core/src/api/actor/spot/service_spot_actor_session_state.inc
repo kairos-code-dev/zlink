@@ -199,6 +199,27 @@ bool actor_session_state_t::has_binding_for_stream (void *stream_) const
     return false;
 }
 
+void actor_session_state_t::erase_bindings_for_stream (void *stream_)
+{
+    if (!stream_)
+        return;
+    for (binding_map_t::iterator it = bindings.begin ();
+         it != bindings.end ();) {
+        if (it->second.stream != stream_) {
+            ++it;
+            continue;
+        }
+        for (std::map<std::string, session_binding_t::actor_entry_t>::iterator
+               actor_it = it->second.actors.begin ();
+             actor_it != it->second.actors.end (); ++actor_it) {
+            actor_handle_t *actor = actor_it->second.actor;
+            if (actor && actor->bound_stream == stream_)
+                clear_actor_bound_session_locked (actor, true);
+        }
+        it = bindings.erase (it);
+    }
+}
+
 zlink::spot_node_t *actor_session_state_t::stream_owner (
   void *stream_, const actor_node_registry_t &nodes_)
 {

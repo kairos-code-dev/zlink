@@ -10,7 +10,6 @@ import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RequestCallback;
-import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -31,11 +30,9 @@ import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
-import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
-import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
@@ -51,14 +48,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 /**
@@ -66,8 +60,6 @@ import java.util.function.BiConsumer;
  * service model.
  */
 public final class NativeSpot implements Spot {
-    private static final long MSG_SIZE = NativeLayouts.MESSAGE_LAYOUT.byteSize();
-    private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_ENOTCONN = 107;
     private static final int ERRNO_ENOTCONN_WIN = 10057;
     private static final int ERRNO_EHOSTUNREACH = 113;
@@ -77,26 +69,7 @@ public final class NativeSpot implements Spot {
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_SEND_READY_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
-    private static final FunctionDescriptor FD_REPLY_CALLBACK =
-      FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
     private static final Arena REQUEST_CALLBACK_ARENA = Arena.ofShared();
-    private static final MemorySegment REPLY_CALLBACK;
-    private static final AtomicLong NEXT_REQUEST_ID = new AtomicLong(1L);
-    private static final ConcurrentMap<Long, CompletableFuture<Received>> PENDING =
-      new ConcurrentHashMap<>();
-
-    static {
-        try {
-            REPLY_CALLBACK = LINKER.upcallStub(MethodHandles.lookup().findStatic(
-              NativeSpot.class, "handleReplyCallback",
-              MethodType.methodType(void.class, int.class, MemorySegment.class,
-                long.class, MemorySegment.class)), FD_REPLY_CALLBACK,
-              REQUEST_CALLBACK_ARENA);
-        } catch (ReflectiveOperationException ex) {
-            throw new ExceptionInInitializerError(ex);
-        }
-    }
 
     private MemorySegment handle;
     private SendReadyHandler sendReadyHandler;
@@ -105,6 +78,7 @@ public final class NativeSpot implements Spot {
     private volatile ExecutorService callbackExecutor;
     private volatile RuntimeException callbackFailure;
     private final SpotSendPlane sendPlane;
+    private final SpotRequestPlane requestPlane;
     private final SpotRoutedSupport routedSupport;
     private final SpotSubscriptionSupport subscriptionSupport;
     private final SpotNode ownerNode;
@@ -154,6 +128,7 @@ public final class NativeSpot implements Spot {
         this.ownerNode = node;
         this.handle = nativeHandle;
         this.sendPlane = new SpotSendPlane(this);
+        this.requestPlane = new SpotRequestPlane(this);
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.options = new SpotOptions(this);
@@ -167,6 +142,7 @@ public final class NativeSpot implements Spot {
         this.ownerNode = node;
         this.handle = handle;
         this.sendPlane = new SpotSendPlane(this);
+        this.requestPlane = new SpotRequestPlane(this);
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.options = new SpotOptions(this);
@@ -179,6 +155,7 @@ public final class NativeSpot implements Spot {
         this.ownerNode = null;
         this.handle = handle;
         this.sendPlane = new SpotSendPlane(this);
+        this.requestPlane = new SpotRequestPlane(this);
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.options = new SpotOptions(this);
@@ -542,27 +519,7 @@ public final class NativeSpot implements Spot {
     private CompletableFuture<List<Message>> requestChannelInternal(
       String channelName, List<Message> parts, Duration timeout,
       SendFlags flags) {
-        long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
-        long requestId = NEXT_REQUEST_ID.getAndIncrement();
-        CompletableFuture<Received> future = registerPending(requestId,
-          timeoutMs);
-        startRequestProgress(future);
-        try {
-            submitSpotRequestChannel(channelName, parts, REPLY_CALLBACK,
-                MemorySegment.ofAddress(requestId),
-                Objects.requireNonNull(flags, "flags").value(),
-                RequestReplySupport.toTimeoutInt(timeoutMs));
-        } catch (RuntimeException ex) {
-            PENDING.remove(requestId);
-            future.cancel(false);
-            throw ex;
-        }
-        return future.thenApply(InternalAccess::receivedTakeParts);
-    }
-
-    private void startRequestProgress(CompletableFuture<?> future) {
-        RequestProgressPump.trackSpotRequest(future, handle,
-            "zlink-spot-request-progress");
+        return requestPlane.requestToChannel(channelName, parts, timeout, flags);
     }
 
     MemorySegment topicCString(String topic) {
@@ -1308,114 +1265,6 @@ public final class NativeSpot implements Spot {
           current.getUncaughtExceptionHandler();
         if (uncaught != null)
             uncaught.uncaughtException(current, failure);
-    }
-
-    private static void closeMsgVector(MemorySegment vec, int count) {
-        for (int i = 0; i < count; i++) {
-            MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
-            NativeMessage.messageClose(msg);
-        }
-    }
-
-    private static void closeReceived(Received received) {
-        if (received != null) {
-            try {
-                received.close();
-            } catch (RuntimeException ignored) {
-            }
-        }
-    }
-
-    private static CompletableFuture<Received> registerPending(long requestId,
-                                                               long timeoutMs) {
-        CompletableFuture<Received> future = new CompletableFuture<>();
-        PENDING.put(requestId, future);
-        RequestReplySupport.armTimeout(PENDING, requestId, future, timeoutMs);
-        return future;
-    }
-
-    private static void handleReplyCallback(int result, MemorySegment parts,
-                                           long partCount,
-                                           MemorySegment userdata) {
-        long requestId = userdata.address();
-        CompletableFuture<Received> future = PENDING.remove(requestId);
-        try {
-            if (result != RequestResult.OK.value()) {
-                if (future != null) {
-                    future.completeExceptionally(new ZlinkRequestException(
-                        RequestResult.fromValue(result), result));
-                }
-                return;
-            }
-            Message[] frames = InternalAccess.messageFromOwnedMessageVectorShared(
-              parts, partCount);
-            Received received = InternalAccess.received(null, null, frames, 0L,
-              false, null);
-            if (future == null || !future.complete(received)) {
-                received.close();
-            }
-        } catch (Throwable error) {
-            if (future != null) {
-                future.completeExceptionally(error);
-            }
-        } finally {
-            NativeMessage.multipartClose(parts, partCount);
-        }
-    }
-
-    private void submitSpotRequestChannel(String channelName,
-                                          List<Message> payload,
-                                          MemorySegment handler,
-                                          MemorySegment userData,
-                                          int flags,
-                                          int timeoutMs) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment service = NativeHelpers.toCString(arena,
-              requireChannelName(channelName));
-            for (int i = 0; i < payload.size(); i++) {
-                boolean last = i + 1 >= payload.size();
-                int partFlag = last ? Native.PART_FINAL : Native.PART_MORE;
-                while (true) {
-                    int rc = spotRequestChannelPartOnce(service, payload.get(i),
-                      last ? handler : MemorySegment.NULL,
-                      last ? userData : MemorySegment.NULL,
-                      flags, partFlag, last ? timeoutMs : 0, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
-                        continue;
-                    throw submitFailure("zlink_spot_request_channel_part");
-                }
-            }
-        }
-    }
-
-    private int spotRequestChannelPartOnce(String channelName, Message part,
-                                           MemorySegment handler,
-                                           MemorySegment userData,
-                                           int flags,
-                                           int partFlag,
-                                           int timeoutMs) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment service = NativeHelpers.toCString(arena,
-              requireChannelName(channelName));
-            return spotRequestChannelPartOnce(service, part, handler, userData,
-                flags, partFlag, timeoutMs, arena);
-        }
-    }
-
-    private int spotRequestChannelPartOnce(MemorySegment service, Message part,
-                                           MemorySegment handler,
-                                           MemorySegment userData,
-                                           int flags,
-                                           int partFlag,
-                                           int timeoutMs,
-                                           Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
-        InternalAccess.messageCopyTo(part, nativeMsg);
-        return Native.spotRequestChannelPart(handle, service,
-          nativeMsg, handler, userData, flags, partFlag, timeoutMs);
     }
 
     static String requireChannelName(String channelName) {

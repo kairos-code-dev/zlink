@@ -8,32 +8,16 @@ import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.PubSocket;
-import systems.zlink.contracts.errors.ZlinkRequestException;
-import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.errors.ZlinkSubmitException;
-import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.service.spot.Actor;
 import systems.zlink.contracts.service.spot.ActorDestroyOperation;
-import systems.zlink.contracts.service.spot.ActorJoinCallbackSubmitOperation;
-import systems.zlink.contracts.service.spot.ActorJoinCompletion;
-import systems.zlink.contracts.service.spot.ActorJoinEntrySpotCompletion;
-import systems.zlink.contracts.service.spot.ActorJoinEntrySpotHandler;
 import systems.zlink.contracts.service.spot.ActorJoinEntrySpotOperation;
-import systems.zlink.contracts.service.spot.ActorJoinHandler;
 import systems.zlink.contracts.service.spot.ActorJoinOperation;
-import systems.zlink.contracts.service.spot.ActorJoinSubmitOperation;
 import systems.zlink.contracts.service.spot.ActorLeaveOperation;
-import systems.zlink.contracts.service.spot.ActorLookupHandler;
 import systems.zlink.contracts.service.spot.ActorLookupOperation;
-import systems.zlink.contracts.service.spot.ActorLookupResult;
 import systems.zlink.contracts.service.spot.ActorRef;
-import systems.zlink.contracts.service.spot.ReplyHandler;
 import systems.zlink.contracts.service.spot.SendOperation;
-import systems.zlink.contracts.service.spot.SendSubmitOperation;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeActorEntry;
@@ -48,15 +32,12 @@ import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectFilter;
 import systems.zlink.runtime.nativeapi.ActorInterop;
-import systems.zlink.runtime.nativeapi.ActorRequestCallbacks;
 import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.InternalAccess;
-import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMonitorStatuses;
-import systems.zlink.runtime.nativeapi.NativeMessage;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -70,7 +51,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 
 /** Native-backed lifecycle and topology facade for the current unified spot node model. */
 public final class NativeSpotNode implements SpotNode {
@@ -88,6 +68,8 @@ public final class NativeSpotNode implements SpotNode {
     private final Map<Long, Spot> liveSpotsByHandle = new LinkedHashMap<>();
     private MemorySegment handle;
     private final SpotNodeSocketOptions socketOptions = new SpotNodeSocketOptions();
+    private final SpotNodeActorOperations actorOperations =
+      new SpotNodeActorOperations(this);
 
     static {
         InternalAccess.register(new InternalAccess.SpotNodeAccess() {
@@ -472,38 +454,16 @@ public final class NativeSpotNode implements SpotNode {
 
     /** Creates one local Actor owned by this node. */
     public Actor createActor(String actorId) {
-        return actor(actorId);
+        return actorOperations.createActor(actorId);
     }
 
     Actor actor(String actorId) {
-        Objects.requireNonNull(actorId, "actorId");
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment out = arena.allocate(NativeLayouts.ACTOR_REF_LAYOUT);
-            int rc = Native.spotNodeActorNew(handle,
-              NativeHelpers.toCString(arena, actorId), out);
-            if (rc != 0) {
-                throw new systems.zlink.contracts.errors.ZlinkConfigException(
-                  systems.zlink.contracts.errors.ConfigResult.fromValue(rc));
-            }
-            return new NativeActor(this, ActorInterop.actorRefFromNative(out));
-        }
+        return actorOperations.createActor(actorId);
     }
 
     /** Looks up a live local Actor ref by id. */
     public ActorRef actorLookup(String actorId) {
-        Objects.requireNonNull(actorId, "actorId");
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment out = arena.allocate(NativeLayouts.ACTOR_REF_LAYOUT);
-            int rc = Native.spotNodeActorLookup(handle,
-              NativeHelpers.toCString(arena, actorId), out);
-            if (rc != 0) {
-                throw new systems.zlink.contracts.errors.ZlinkConfigException(
-                  systems.zlink.contracts.errors.ConfigResult.fromValue(rc));
-            }
-            return ActorInterop.actorRefFromNative(out);
-        }
+        return actorOperations.lookupActor(actorId);
     }
 
     /** Builds an unchecked remote Actor ref for request APIs. */
@@ -514,19 +474,14 @@ public final class NativeSpotNode implements SpotNode {
      */
     public ActorLookupOperation remoteActorGetRef(RoutingId targetNodeRid,
                                            String actorId) {
-        Objects.requireNonNull(targetNodeRid, "targetNodeRid");
-        Objects.requireNonNull(actorId, "actorId");
-        ensureOpen();
-        return new ActorLookupBuilder(targetNodeRid, actorId);
+        return actorOperations.remoteActorGetRef(targetNodeRid, actorId);
     }
 
     /**
      * Async destroy. Succeeds only when the Actor is in the Entry Spot.
      */
     public ActorDestroyOperation destroyActor(ActorRef actor) {
-        Objects.requireNonNull(actor, "actor");
-        ensureOpen();
-        return new ActorDestroyBuilder(actor);
+        return actorOperations.destroyActor(actor);
     }
 
     /**
@@ -536,11 +491,7 @@ public final class NativeSpotNode implements SpotNode {
      */
     public ActorJoinOperation joinActor(ActorRef actor, RoutingId destNodeRid,
                                  RoutingId destSpotRid) {
-        Objects.requireNonNull(actor, "actor");
-        Objects.requireNonNull(destNodeRid, "destNodeRid");
-        Objects.requireNonNull(destSpotRid, "destSpotRid");
-        ensureOpen();
-        return new ActorJoinBuilder(actor, destNodeRid, destSpotRid);
+        return actorOperations.joinActor(actor, destNodeRid, destSpotRid);
     }
 
     /**
@@ -549,18 +500,12 @@ public final class NativeSpotNode implements SpotNode {
      */
     public ActorJoinEntrySpotOperation joinActorEntrySpot(ActorRef actor,
                                                    RoutingId destNodeRid) {
-        Objects.requireNonNull(actor, "actor");
-        Objects.requireNonNull(destNodeRid, "destNodeRid");
-        ensureOpen();
-        return new ActorJoinEntrySpotBuilder(actor, destNodeRid);
+        return actorOperations.joinActorEntrySpot(actor, destNodeRid);
     }
 
     /** Async leave to the same node's Entry Spot. */
     public ActorLeaveOperation leaveActor(ActorRef actor, RoutingId currentSpotRid) {
-        Objects.requireNonNull(actor, "actor");
-        Objects.requireNonNull(currentSpotRid, "currentSpotRid");
-        ensureOpen();
-        return new ActorLeaveBuilder(actor, currentSpotRid);
+        return actorOperations.leaveActor(actor, currentSpotRid);
     }
 
     /**
@@ -568,23 +513,11 @@ public final class NativeSpotNode implements SpotNode {
      * Actor's bound STREAM session.
      */
     public SendOperation sendActorBoundSession(ActorRef actor) {
-        Objects.requireNonNull(actor, "actor");
-        ensureOpen();
-        return new SendBoundSessionBuilder(actor);
+        return actorOperations.sendActorBoundSession(actor);
     }
 
     public void closeActorBoundSession(ActorRef actor, Duration timeout) {
-        Objects.requireNonNull(actor, "actor");
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeActorCloseBoundSession(handle,
-              ActorInterop.actorRefToNative(arena, actor),
-              timeoutMillis(timeout));
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_actor_close_bound_session");
-            }
-        }
+        actorOperations.closeActorBoundSession(actor, timeout);
     }
 
     void sendHwm(int value) {
@@ -927,7 +860,7 @@ public final class NativeSpotNode implements SpotNode {
         return handle == null || handle.address() == 0;
     }
 
-    private void ensureOpen() {
+    void ensureOpen() {
         if (isClosed()) {
             throw new IllegalStateException("spot node is closed");
         }
@@ -981,443 +914,12 @@ public final class NativeSpotNode implements SpotNode {
         return channelName;
     }
 
-    private static int timeoutMillis(Duration timeout) {
+    static int timeoutMillis(Duration timeout) {
         if (timeout == null || timeout.isZero()) {
             return 0;
         }
         long millis = Math.max(1L, timeout.toMillis());
         return millis >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) millis;
-    }
-
-    private final class ActorLookupBuilder implements ActorLookupOperation {
-        private final RoutingId targetNodeRid;
-        private final String actorId;
-        private Duration timeout = Duration.ofMillis(5_000L);
-        private boolean submitted;
-
-        ActorLookupBuilder(RoutingId targetNodeRid, String actorId) {
-            this.targetNodeRid = targetNodeRid;
-            this.actorId = actorId;
-        }
-
-        @Override
-        public ActorLookupOperation timeout(Duration value) {
-            ensureNotSubmitted();
-            timeout = Objects.requireNonNull(value, "timeout");
-            return this;
-        }
-
-        @Override
-        public CompletableFuture<ActorLookupResult> submitAsync() {
-            CompletableFuture<ActorLookupResult> future = new CompletableFuture<>();
-            submit(result -> {
-                if (result.result() == RequestResult.OK) {
-                    future.complete(result);
-                } else {
-                    future.completeExceptionally(new ZlinkRequestException(result.result()));
-                }
-            });
-            return future;
-        }
-
-        @Override
-        public boolean submit(ActorLookupHandler callback) {
-            Objects.requireNonNull(callback, "callback");
-            markSubmitted();
-            ActorRequestCallbacks.LookupPendingToken token =
-              ActorRequestCallbacks.registerLookup(callback);
-            try (Arena arena = Arena.ofConfined()) {
-                int rc = Native.remoteActorGetRef(handle,
-                  ActorInterop.nativeRoutingId(arena, targetNodeRid),
-                  NativeHelpers.toCString(arena, actorId),
-                  ActorRequestCallbacks.ACTOR_LOOKUP_CALLBACK,
-                  MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
-                if (rc != 0) {
-                    ActorRequestCallbacks.remove(token.id());
-                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
-                }
-            }
-            return true;
-        }
-
-        private void markSubmitted() {
-            ensureNotSubmitted();
-            submitted = true;
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
-    }
-
-    private final class ActorDestroyBuilder implements ActorDestroyOperation {
-        private final ActorRef actor;
-        private Duration timeout = Duration.ofMillis(5_000L);
-        private boolean submitted;
-
-        ActorDestroyBuilder(ActorRef actor) {
-            this.actor = actor;
-        }
-
-        @Override
-        public ActorDestroyOperation timeout(Duration value) {
-            ensureNotSubmitted();
-            timeout = Objects.requireNonNull(value, "timeout");
-            return this;
-        }
-
-        @Override
-        public CompletableFuture<List<Message>> submitAsync() {
-            CompletableFuture<List<Message>> future = new CompletableFuture<>();
-            submit((result, parts) -> {
-                if (result == RequestResult.OK) {
-                    future.complete(parts);
-                } else {
-                    future.completeExceptionally(new ZlinkRequestException(result));
-                }
-            });
-            return future;
-        }
-
-        @Override
-        public boolean submit(ReplyHandler callback) {
-            Objects.requireNonNull(callback, "callback");
-            markSubmitted();
-            ActorRequestCallbacks.PendingToken token =
-              ActorRequestCallbacks.register(callback::onReply);
-            try (Arena arena = Arena.ofConfined()) {
-                int rc = Native.spotNodeActorDestroy(handle,
-                  ActorInterop.actorRefToNative(arena, actor),
-                  ActorRequestCallbacks.REPLY_CALLBACK,
-                  MemorySegment.ofAddress(token.id()),
-                  timeoutMillis(timeout));
-                if (rc != 0) {
-                    ActorRequestCallbacks.remove(token.id());
-                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
-                }
-            }
-            return true;
-        }
-
-        private void markSubmitted() {
-            ensureNotSubmitted();
-            submitted = true;
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
-    }
-
-    private final class ActorLeaveBuilder implements ActorLeaveOperation {
-        private final ActorRef actor;
-        private final RoutingId currentSpotRid;
-        private Duration timeout = Duration.ofMillis(5_000L);
-        private boolean submitted;
-
-        ActorLeaveBuilder(ActorRef actor, RoutingId currentSpotRid) {
-            this.actor = actor;
-            this.currentSpotRid = currentSpotRid;
-        }
-
-        @Override
-        public ActorLeaveOperation timeout(Duration value) {
-            ensureNotSubmitted();
-            timeout = Objects.requireNonNull(value, "timeout");
-            return this;
-        }
-
-        @Override
-        public CompletableFuture<List<Message>> submitAsync() {
-            CompletableFuture<List<Message>> future = new CompletableFuture<>();
-            submit((result, parts) -> {
-                if (result == RequestResult.OK) {
-                    future.complete(parts);
-                } else {
-                    future.completeExceptionally(new ZlinkRequestException(result));
-                }
-            });
-            return future;
-        }
-
-        @Override
-        public boolean submit(ReplyHandler callback) {
-            Objects.requireNonNull(callback, "callback");
-            markSubmitted();
-            ActorRequestCallbacks.PendingToken token =
-              ActorRequestCallbacks.register(callback::onReply);
-            try (Arena arena = Arena.ofConfined()) {
-                int rc = Native.spotNodeActorLeaveSpot(handle,
-                  ActorInterop.actorRefToNative(arena, actor),
-                  ActorInterop.nativeRoutingId(arena, currentSpotRid),
-                  ActorRequestCallbacks.REPLY_CALLBACK,
-                  MemorySegment.ofAddress(token.id()),
-                  timeoutMillis(timeout));
-                if (rc != 0) {
-                    ActorRequestCallbacks.remove(token.id());
-                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
-                }
-            }
-            return true;
-        }
-
-        private void markSubmitted() {
-            ensureNotSubmitted();
-            submitted = true;
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
-    }
-
-    private final class ActorJoinBuilder
-      implements ActorJoinOperation, ActorJoinSubmitOperation {
-        private final ActorRef actor;
-        private final RoutingId destNodeRid;
-        private final RoutingId destSpotRid;
-        private final MessagePartsBuffer parts = new MessagePartsBuffer();
-        private Duration timeout = Duration.ofMillis(5_000L);
-        private SendFlags flags = SendFlags.NONE;
-        private boolean submitted;
-
-        ActorJoinBuilder(ActorRef actor, RoutingId destNodeRid,
-                         RoutingId destSpotRid) {
-            this.actor = actor;
-            this.destNodeRid = destNodeRid;
-            this.destSpotRid = destSpotRid;
-        }
-
-        @Override
-        public ActorJoinSubmitOperation message(Message part) {
-            ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
-            return this;
-        }
-
-        @Override
-        public ActorJoinSubmitOperation timeout(Duration value) {
-            ensureNotSubmitted();
-            timeout = Objects.requireNonNull(value, "timeout");
-            return this;
-        }
-
-        @Override
-        public ActorJoinCallbackSubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
-            return new ActorJoinCallbackStage(this);
-        }
-
-        @Override
-        public CompletableFuture<ActorJoinCompletion> submitAsync() {
-            CompletableFuture<ActorJoinCompletion> future = new CompletableFuture<>();
-            submit((result, replyParts) -> {
-                if (result.result() == RequestResult.OK) {
-                    future.complete(new ActorJoinCompletion(result, replyParts));
-                } else {
-                    future.completeExceptionally(new ZlinkRequestException(result.result()));
-                }
-            });
-            return future;
-        }
-
-        @Override
-        public boolean submit(ActorJoinHandler callback) {
-            Objects.requireNonNull(callback, "callback");
-            markSubmitted();
-            if (parts.isEmpty())
-                throw new IllegalArgumentException("at least one message required");
-            ActorRequestCallbacks.JoinPendingToken token =
-              ActorRequestCallbacks.registerJoin(callback);
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment partsArr = parts.copyToNativeArray(arena);
-                int rc = Native.spotNodeActorJoinSpot(handle,
-                  ActorInterop.actorRefToNative(arena, actor),
-                  ActorInterop.nativeRoutingId(arena, destNodeRid),
-                  ActorInterop.nativeRoutingId(arena, destSpotRid),
-                  partsArr, parts.size(),
-                  ActorRequestCallbacks.ACTOR_JOIN_CALLBACK,
-                  MemorySegment.ofAddress(token.id()), flags.value(),
-                  timeoutMillis(timeout));
-                if (rc != 0) {
-                    ActorRequestCallbacks.remove(token.id());
-                    MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
-                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
-                }
-            }
-            return true;
-        }
-
-        private void markSubmitted() {
-            ensureNotSubmitted();
-            submitted = true;
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
-    }
-
-    private final class ActorJoinCallbackStage
-      implements ActorJoinCallbackSubmitOperation {
-        private final ActorJoinBuilder builder;
-
-        ActorJoinCallbackStage(ActorJoinBuilder builder) {
-            this.builder = builder;
-        }
-
-        @Override
-        public ActorJoinCallbackSubmitOperation message(Message part) {
-            builder.message(part);
-            return this;
-        }
-
-        @Override
-        public ActorJoinCallbackSubmitOperation timeout(Duration timeout) {
-            builder.timeout(timeout);
-            return this;
-        }
-
-        @Override
-        public ActorJoinCallbackSubmitOperation flags(SendFlags flags) {
-            builder.flags(flags);
-            return this;
-        }
-
-        @Override
-        public boolean submit(ActorJoinHandler callback) {
-            return builder.submit(callback);
-        }
-    }
-
-    private final class ActorJoinEntrySpotBuilder
-      implements ActorJoinEntrySpotOperation {
-        private final ActorRef actor;
-        private final RoutingId destNodeRid;
-        private Duration timeout = Duration.ofMillis(5_000L);
-        private boolean submitted;
-
-        ActorJoinEntrySpotBuilder(ActorRef actor, RoutingId destNodeRid) {
-            this.actor = actor;
-            this.destNodeRid = destNodeRid;
-        }
-
-        @Override
-        public ActorJoinEntrySpotOperation timeout(Duration value) {
-            ensureNotSubmitted();
-            timeout = Objects.requireNonNull(value, "timeout");
-            return this;
-        }
-
-        @Override
-        public CompletableFuture<ActorJoinEntrySpotCompletion> submitAsync() {
-            CompletableFuture<ActorJoinEntrySpotCompletion> future =
-              new CompletableFuture<>();
-            submit(result -> {
-                if (result.result() == RequestResult.OK) {
-                    future.complete(new ActorJoinEntrySpotCompletion(result));
-                } else {
-                    future.completeExceptionally(
-                      new ZlinkRequestException(result.result()));
-                }
-            });
-            return future;
-        }
-
-        @Override
-        public boolean submit(ActorJoinEntrySpotHandler callback) {
-            Objects.requireNonNull(callback, "callback");
-            markSubmitted();
-            ActorRequestCallbacks.JoinEntrySpotPendingToken token =
-              ActorRequestCallbacks.registerJoinEntrySpot(callback);
-            try (Arena arena = Arena.ofConfined()) {
-                int rc = Native.spotNodeActorJoinEntrySpot(handle,
-                  ActorInterop.actorRefToNative(arena, actor),
-                  ActorInterop.nativeRoutingId(arena, destNodeRid),
-                  ActorRequestCallbacks.ACTOR_JOIN_ENTRY_SPOT_CALLBACK,
-                  MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
-                if (rc != 0) {
-                    ActorRequestCallbacks.remove(token.id());
-                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
-                }
-            }
-            return true;
-        }
-
-        private void markSubmitted() {
-            ensureNotSubmitted();
-            submitted = true;
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
-    }
-
-    private final class SendBoundSessionBuilder
-      implements SendOperation, SendSubmitOperation {
-        private final ActorRef actor;
-        private final MessagePartsBuffer parts = new MessagePartsBuffer();
-        private SendFlags flags = SendFlags.NONE;
-        private boolean submitted;
-
-        SendBoundSessionBuilder(ActorRef actor) {
-            this.actor = actor;
-        }
-
-        @Override
-        public SendSubmitOperation message(Message part) {
-            ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
-            return this;
-        }
-
-        @Override
-        public SendSubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
-            return this;
-        }
-
-        @Override
-        public boolean submit() {
-            ensureNotSubmitted();
-            if (parts.isEmpty())
-                throw new IllegalArgumentException("at least one message required");
-            submitted = true;
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment refSegment = ActorInterop.actorRefToNative(arena,
-                  actor);
-                for (int i = 0; i < parts.size(); i++) {
-                    Message part = parts.get(i);
-                    MemorySegment nativeMsg = arena.allocate(
-                      NativeLayouts.MESSAGE_LAYOUT);
-                    InternalAccess.messageCopyTo(part, nativeMsg);
-                    int rc = Native.spotNodeActorSendBoundSessionMessage(handle,
-                      refSegment, nativeMsg, flags.value());
-                    if (rc != 0) {
-                        NativeMessage.messageClose(nativeMsg);
-                        if (flags == SendFlags.DONT_WAIT
-                            && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
-                            return false;
-                        }
-                        throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
-                    }
-                }
-            }
-            return true;
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
     }
 
     private final class SpotNodeSocketOptions {

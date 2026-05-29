@@ -229,14 +229,11 @@ pub(crate) fn actor_bind_op_new(
     session_rid: RoutingId,
     actor: ffi::zlink_actor_ref_t,
 ) -> ActorBindOp<Empty> {
-    ActorBindOp {
-        inner: ActorReplyOpInner {
-            handle,
-            kind: ActorReplyOpKind::Bind { session_rid, actor },
-            timeout: Duration::ZERO,
-        },
-        _state: std::marker::PhantomData,
-    }
+    wrap_actor_reply_op(NativeActorReplyOp {
+        handle,
+        kind: NativeActorReplyOpKind::Bind { session_rid, actor },
+        timeout: Duration::ZERO,
+    })
 }
 
 pub(crate) fn actor_unbind_op_new(
@@ -244,17 +241,14 @@ pub(crate) fn actor_unbind_op_new(
     session_rid: RoutingId,
     actor_id: std::ffi::CString,
 ) -> ActorUnbindOp<Empty> {
-    ActorUnbindOp {
-        inner: ActorReplyOpInner {
-            handle,
-            kind: ActorReplyOpKind::Unbind {
-                session_rid,
-                actor_id,
-            },
-            timeout: Duration::ZERO,
+    wrap_actor_reply_op(NativeActorReplyOp {
+        handle,
+        kind: NativeActorReplyOpKind::Unbind {
+            session_rid,
+            actor_id,
         },
-        _state: std::marker::PhantomData,
-    }
+        timeout: Duration::ZERO,
+    })
 }
 
 pub(crate) fn stream_bound_actor_send_op(

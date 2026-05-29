@@ -68,8 +68,8 @@ use crate::spot_models::{
 use crate::spot_node_resource::{SpotNode, SpotNodeRuntime};
 use crate::spot_operations::{
     ActorBindOp, ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorJoinReplyOp, ActorLeaveOp,
-    ActorLookupOp, ActorReplyOpInner, ActorReplyOpKind, ActorUnbindOp, CallbackReady, Empty, Ready,
-    ReplyOp, ReplyOpRuntime, RequestOp, RequestOpRuntime, SendOp, SendOpRuntime,
+    ActorLookupOp, ActorUnbindOp, CallbackReady, Empty, Ready, ReplyOp, ReplyOpRuntime, RequestOp,
+    RequestOpRuntime, SendOp, SendOpRuntime,
 };
 use crate::spot_resource::{Spot, SpotRuntime};
 use crate::topic_message_contract::TopicMessage;
@@ -92,6 +92,11 @@ pub(crate) use registry_runtime::*;
 mod spot_node_runtime;
 pub(crate) use spot_node_runtime::*;
 mod actor_ops_runtime;
+use actor_ops_runtime::{
+    NativeActorJoinEntrySpotOp, NativeActorJoinOp, NativeActorJoinReplyOp, NativeActorLookupOp,
+    NativeActorReplyOp, NativeActorReplyOpKind, wrap_actor_join_entry_spot_op, wrap_actor_join_op,
+    wrap_actor_join_reply_op, wrap_actor_lookup_op, wrap_actor_reply_op,
+};
 mod actor_runtime;
 mod spot_runtime;
 pub(crate) use spot_runtime::*;

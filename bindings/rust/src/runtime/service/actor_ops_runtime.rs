@@ -1,7 +1,9 @@
 use super::*;
 use crate::spot_operations::{
-    ActorJoinEntrySpotOpRuntime, ActorJoinOpEmptyRuntime, ActorJoinOpReadyRuntime,
-    ActorJoinReplyOpRuntime, ActorLookupOpRuntime, ActorReplyOpRuntime, ActorReplyOpTimeoutRuntime,
+    ActorJoinEntrySpotOpInnerRuntime, ActorJoinEntrySpotOpRuntime, ActorJoinOpEmptyRuntime,
+    ActorJoinOpInnerRuntime, ActorJoinOpReadyRuntime, ActorJoinReplyOpInnerRuntime,
+    ActorJoinReplyOpRuntime, ActorLookupOpInnerRuntime, ActorLookupOpRuntime,
+    ActorReplyOpInnerRuntime, ActorReplyOpRuntime, ActorReplyOpTimeoutRuntime,
 };
 
 // ---------------------------------------------------------------------------
@@ -12,10 +14,240 @@ use crate::spot_operations::{
 // Actor operation builders
 // ---------------------------------------------------------------------------
 
-impl ActorJoinEntrySpotOpRuntime for ActorJoinEntrySpotOp<Empty> {
-    fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
+pub(super) struct NativeActorJoinOp {
+    pub(super) node_handle: *mut c_void,
+    pub(super) spot_handle: *mut c_void,
+    pub(super) actor: ffi::zlink_actor_ref_t,
+    pub(super) dest_node_rid: RoutingId,
+    pub(super) dest_spot_rid: RoutingId,
+    pub(super) parts: Vec<Message>,
+    pub(super) flags: SendFlags,
+    pub(super) timeout: Duration,
+}
+
+unsafe impl Send for NativeActorJoinOp {}
+
+impl ActorJoinOpInnerRuntime for NativeActorJoinOp {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
+}
+
+pub(super) fn wrap_actor_join_op<State>(inner: NativeActorJoinOp) -> ActorJoinOp<State> {
+    ActorJoinOp {
+        inner: Box::new(inner),
+        _state: std::marker::PhantomData,
+    }
+}
+
+fn take_actor_join_op<State>(op: ActorJoinOp<State>) -> NativeActorJoinOp {
+    *op.inner
+        .into_any()
+        .downcast::<NativeActorJoinOp>()
+        .expect("zlink native actor join op")
+}
+
+fn actor_join_op_mut<State>(op: &mut ActorJoinOp<State>) -> &mut NativeActorJoinOp {
+    op.inner
+        .as_mut()
+        .as_any_mut()
+        .downcast_mut::<NativeActorJoinOp>()
+        .expect("zlink native actor join op")
+}
+
+pub(super) struct NativeActorJoinEntrySpotOp {
+    pub(super) node_handle: *mut c_void,
+    pub(super) actor: ffi::zlink_actor_ref_t,
+    pub(super) dest_node_rid: RoutingId,
+    pub(super) timeout: Duration,
+}
+
+unsafe impl Send for NativeActorJoinEntrySpotOp {}
+
+impl ActorJoinEntrySpotOpInnerRuntime for NativeActorJoinEntrySpotOp {
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
+}
+
+pub(super) fn wrap_actor_join_entry_spot_op<State>(
+    inner: NativeActorJoinEntrySpotOp,
+) -> ActorJoinEntrySpotOp<State> {
+    ActorJoinEntrySpotOp {
+        inner: Box::new(inner),
+        _state: std::marker::PhantomData,
+    }
+}
+
+fn take_actor_join_entry_spot_op<State>(
+    op: ActorJoinEntrySpotOp<State>,
+) -> NativeActorJoinEntrySpotOp {
+    *op.inner
+        .into_any()
+        .downcast::<NativeActorJoinEntrySpotOp>()
+        .expect("zlink native actor join entry spot op")
+}
+
+pub(super) struct NativeActorJoinReplyOp {
+    pub(super) spot_handle: *mut c_void,
+    pub(super) info: ffi::zlink_actor_join_info_t,
+    pub(super) join_result_code: i32,
+    pub(super) parts: Vec<Message>,
+}
+
+unsafe impl Send for NativeActorJoinReplyOp {}
+
+impl ActorJoinReplyOpInnerRuntime for NativeActorJoinReplyOp {
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
+}
+
+pub(super) fn wrap_actor_join_reply_op<State>(
+    inner: NativeActorJoinReplyOp,
+) -> ActorJoinReplyOp<State> {
+    ActorJoinReplyOp {
+        inner: Box::new(inner),
+        _state: std::marker::PhantomData,
+    }
+}
+
+fn take_actor_join_reply_op<State>(op: ActorJoinReplyOp<State>) -> NativeActorJoinReplyOp {
+    *op.inner
+        .into_any()
+        .downcast::<NativeActorJoinReplyOp>()
+        .expect("zlink native actor join reply op")
+}
+
+pub(super) struct NativeActorReplyOp {
+    pub(super) handle: *mut c_void,
+    pub(super) kind: NativeActorReplyOpKind,
+    pub(super) timeout: Duration,
+}
+
+unsafe impl Send for NativeActorReplyOp {}
+
+impl ActorReplyOpInnerRuntime for NativeActorReplyOp {
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
+}
+
+pub(super) enum NativeActorReplyOpKind {
+    Leave {
+        actor: ffi::zlink_actor_ref_t,
+        current_spot_rid: RoutingId,
+    },
+    Destroy {
+        actor: ffi::zlink_actor_ref_t,
+    },
+    Bind {
+        session_rid: RoutingId,
+        actor: ffi::zlink_actor_ref_t,
+    },
+    Unbind {
+        session_rid: RoutingId,
+        actor_id: std::ffi::CString,
+    },
+}
+
+pub(super) fn wrap_actor_reply_op<T, State>(inner: NativeActorReplyOp) -> T
+where
+    T: FromActorReplyInner<State>,
+{
+    T::from_actor_reply_inner(inner)
+}
+
+pub(super) trait FromActorReplyInner<State> {
+    fn from_actor_reply_inner(inner: NativeActorReplyOp) -> Self;
+}
+
+macro_rules! impl_from_actor_reply_inner {
+    ($ty:ident) => {
+        impl<State> FromActorReplyInner<State> for $ty<State> {
+            fn from_actor_reply_inner(inner: NativeActorReplyOp) -> Self {
+                Self {
+                    inner: Box::new(inner),
+                    _state: std::marker::PhantomData,
+                }
+            }
+        }
+    };
+}
+
+impl_from_actor_reply_inner!(ActorLeaveOp);
+impl_from_actor_reply_inner!(ActorDestroyOp);
+impl_from_actor_reply_inner!(ActorBindOp);
+impl_from_actor_reply_inner!(ActorUnbindOp);
+
+fn take_actor_reply_op<State, T>(op: T) -> NativeActorReplyOp
+where
+    T: IntoActorReplyInner<State>,
+{
+    T::into_actor_reply_inner(op)
+}
+
+trait IntoActorReplyInner<State> {
+    fn into_actor_reply_inner(self) -> NativeActorReplyOp;
+}
+
+macro_rules! impl_into_actor_reply_inner {
+    ($ty:ident) => {
+        impl<State> IntoActorReplyInner<State> for $ty<State> {
+            fn into_actor_reply_inner(self) -> NativeActorReplyOp {
+                *self
+                    .inner
+                    .into_any()
+                    .downcast::<NativeActorReplyOp>()
+                    .expect("zlink native actor reply op")
+            }
+        }
+    };
+}
+
+impl_into_actor_reply_inner!(ActorLeaveOp);
+impl_into_actor_reply_inner!(ActorDestroyOp);
+impl_into_actor_reply_inner!(ActorBindOp);
+impl_into_actor_reply_inner!(ActorUnbindOp);
+
+pub(super) struct NativeActorLookupOp {
+    pub(super) node_handle: *mut c_void,
+    pub(super) target_node_rid: RoutingId,
+    pub(super) actor_id: std::ffi::CString,
+    pub(super) timeout: Duration,
+}
+
+unsafe impl Send for NativeActorLookupOp {}
+
+impl ActorLookupOpInnerRuntime for NativeActorLookupOp {
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
+}
+
+pub(super) fn wrap_actor_lookup_op<State>(inner: NativeActorLookupOp) -> ActorLookupOp<State> {
+    ActorLookupOp {
+        inner: Box::new(inner),
+        _state: std::marker::PhantomData,
+    }
+}
+
+fn take_actor_lookup_op<State>(op: ActorLookupOp<State>) -> NativeActorLookupOp {
+    *op.inner
+        .into_any()
+        .downcast::<NativeActorLookupOp>()
+        .expect("zlink native actor lookup op")
+}
+
+impl ActorJoinEntrySpotOpRuntime for ActorJoinEntrySpotOp<Empty> {
+    fn timeout(self, timeout: Duration) -> Self {
+        let mut op = take_actor_join_entry_spot_op(self);
+        op.timeout = timeout;
+        wrap_actor_join_entry_spot_op(op)
     }
 
     /// Submit and await completion (async).
@@ -43,12 +275,13 @@ impl ActorJoinEntrySpotOpRuntime for ActorJoinEntrySpotOp<Empty> {
         let state_ptr = Box::into_raw(Box::new(ActorJoinEntrySpotCallbackState {
             callback: Some(Box::new(callback)),
         }));
-        let timeout_ms = timeout_to_timeout_ms(self.timeout);
+        let op = take_actor_join_entry_spot_op(self);
+        let timeout_ms = timeout_to_timeout_ms(op.timeout);
         let rc = unsafe {
             ffi::zlink_spot_node_actor_join_entry_spot(
-                self.node_handle,
-                &self.actor,
-                self.dest_node_rid.as_raw(),
+                op.node_handle,
+                &op.actor,
+                op.dest_node_rid.as_raw(),
                 Some(actor_join_entry_spot_user_callback),
                 state_ptr.cast(),
                 timeout_ms,
@@ -65,34 +298,36 @@ impl ActorJoinEntrySpotOpRuntime for ActorJoinEntrySpotOp<Empty> {
 
 impl ActorJoinOpEmptyRuntime for ActorJoinOp<Empty> {
     fn message(self, message: Message) -> ActorJoinOp<Ready> {
-        ActorJoinOp {
-            node_handle: self.node_handle,
-            spot_handle: self.spot_handle,
-            actor: self.actor,
-            dest_node_rid: self.dest_node_rid,
-            dest_spot_rid: self.dest_spot_rid,
+        let op = take_actor_join_op(self);
+        wrap_actor_join_op(NativeActorJoinOp {
+            node_handle: op.node_handle,
+            spot_handle: op.spot_handle,
+            actor: op.actor,
+            dest_node_rid: op.dest_node_rid,
+            dest_spot_rid: op.dest_spot_rid,
             parts: vec![message],
-            flags: self.flags,
-            timeout: self.timeout,
-            _state: std::marker::PhantomData,
-        }
+            flags: op.flags,
+            timeout: op.timeout,
+        })
     }
 }
 
 impl ActorJoinOpReadyRuntime for ActorJoinOp<Ready> {
     fn message(mut self, message: Message) -> Self {
-        self.parts.push(message);
+        actor_join_op_mut(&mut self).parts.push(message);
         self
     }
 
-    fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
+    fn timeout(self, timeout: Duration) -> Self {
+        let mut op = take_actor_join_op(self);
+        op.timeout = timeout;
+        wrap_actor_join_op(op)
     }
 
-    fn flags(mut self, flags: SendFlags) -> Self {
-        self.flags = flags;
-        self
+    fn flags(self, flags: SendFlags) -> Self {
+        let mut op = take_actor_join_op(self);
+        op.flags = flags;
+        wrap_actor_join_op(op)
     }
 
     /// Submit and await completion (async). Returns `(ActorJoinResult, parts)`.
@@ -113,28 +348,29 @@ impl ActorJoinOpReadyRuntime for ActorJoinOp<Ready> {
 
     /// Submit with a completion callback.
     /// # Errors: SubmitError
-    fn submit<F>(mut self, callback: F) -> Result<(), SubmitError>
+    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(ActorJoinResult, Vec<Message>) + Send + 'static,
     {
-        let native = prepare_send_parts(&mut self.parts)?;
+        let mut op = take_actor_join_op(self);
+        let native = prepare_send_parts(&mut op.parts)?;
         let mut native = native;
         let state_ptr = Box::into_raw(Box::new(ActorJoinCallbackState {
             callback: Some(Box::new(callback)),
-            _progress: if self.spot_handle.is_null() {
+            _progress: if op.spot_handle.is_null() {
                 None
             } else {
-                Some(RequestProgressGuard::attach_spot(self.spot_handle))
+                Some(RequestProgressGuard::attach_spot(op.spot_handle))
             },
         }));
-        let timeout_ms = timeout_to_timeout_ms(self.timeout);
-        let flags_bits = self.flags.bits();
+        let timeout_ms = timeout_to_timeout_ms(op.timeout);
+        let flags_bits = op.flags.bits();
         let rc = unsafe {
             ffi::zlink_spot_node_actor_join_spot(
-                self.node_handle,
-                &self.actor,
-                self.dest_node_rid.as_raw(),
-                self.dest_spot_rid.as_raw(),
+                op.node_handle,
+                &op.actor,
+                op.dest_node_rid.as_raw(),
+                op.dest_spot_rid.as_raw(),
                 native.as_mut_ptr(),
                 native.len(),
                 Some(actor_join_user_callback),
@@ -158,17 +394,19 @@ impl ActorJoinOpReadyRuntime for ActorJoinOp<Ready> {
 }
 
 impl ActorJoinReplyOpRuntime for ActorJoinReplyOp<Empty> {
-    fn message(mut self, message: Message) -> ActorJoinReplyOp<Empty> {
-        self.parts.push(message);
-        self
+    fn message(self, message: Message) -> ActorJoinReplyOp<Empty> {
+        let mut op = take_actor_join_reply_op(self);
+        op.parts.push(message);
+        wrap_actor_join_reply_op(op)
     }
 
     /// # Errors: SubmitError
-    fn submit(mut self) -> Result<(), SubmitError> {
+    fn submit(self) -> Result<(), SubmitError> {
+        let mut op = take_actor_join_reply_op(self);
         // 0..N parts allowed.
-        let mut native: Vec<ffi::zlink_msg_t> = Vec::with_capacity(self.parts.len());
+        let mut native: Vec<ffi::zlink_msg_t> = Vec::with_capacity(op.parts.len());
         unsafe {
-            for part in self.parts.iter_mut() {
+            for part in op.parts.iter_mut() {
                 let mut dest = MaybeUninit::<ffi::zlink_msg_t>::uninit();
                 ffi::zlink_msg_init(dest.as_mut_ptr());
                 ffi::zlink_msg_move(dest.as_mut_ptr(), part.raw_mut());
@@ -177,9 +415,9 @@ impl ActorJoinReplyOpRuntime for ActorJoinReplyOp<Empty> {
         }
         let rc = unsafe {
             ffi::zlink_spot_actor_join_reply(
-                self.spot_handle,
-                &self.info,
-                self.join_result_code,
+                op.spot_handle,
+                &op.info,
+                op.join_result_code,
                 if native.is_empty() {
                     std::ptr::null_mut()
                 } else {
@@ -199,7 +437,7 @@ impl ActorJoinReplyOpRuntime for ActorJoinReplyOp<Empty> {
     }
 }
 
-impl ActorReplyOpInner {
+impl NativeActorReplyOp {
     fn submit_callback<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
@@ -210,7 +448,7 @@ impl ActorReplyOpInner {
         }));
         let timeout_ms = timeout_to_timeout_ms(self.timeout);
         let rc = match &self.kind {
-            ActorReplyOpKind::Leave {
+            NativeActorReplyOpKind::Leave {
                 actor,
                 current_spot_rid,
             } => unsafe {
@@ -223,7 +461,7 @@ impl ActorReplyOpInner {
                     timeout_ms,
                 )
             },
-            ActorReplyOpKind::Destroy { actor } => unsafe {
+            NativeActorReplyOpKind::Destroy { actor } => unsafe {
                 ffi::zlink_spot_node_actor_destroy(
                     self.handle,
                     actor,
@@ -232,7 +470,7 @@ impl ActorReplyOpInner {
                     timeout_ms,
                 )
             },
-            ActorReplyOpKind::Bind { session_rid, actor } => unsafe {
+            NativeActorReplyOpKind::Bind { session_rid, actor } => unsafe {
                 ffi::zlink_stream_bind_actor(
                     self.handle,
                     session_rid.as_raw(),
@@ -242,7 +480,7 @@ impl ActorReplyOpInner {
                     timeout_ms,
                 )
             },
-            ActorReplyOpKind::Unbind {
+            NativeActorReplyOpKind::Unbind {
                 session_rid,
                 actor_id,
             } => unsafe {
@@ -266,15 +504,16 @@ impl ActorReplyOpInner {
 }
 
 impl ActorReplyOpTimeoutRuntime for ActorLeaveOp<Empty> {
-    fn timeout(mut self, timeout: Duration) -> Self {
-        self.inner.timeout = timeout;
-        self
+    fn timeout(self, timeout: Duration) -> Self {
+        let mut op = take_actor_reply_op(self);
+        op.timeout = timeout;
+        wrap_actor_reply_op(op)
     }
 }
 
 impl ActorReplyOpRuntime for ActorLeaveOp<Empty> {
     async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-        actor_reply_op_submit_async(self.inner).await
+        actor_reply_op_submit_async(take_actor_reply_op(self)).await
     }
 
     /// # Errors: SubmitError
@@ -282,20 +521,21 @@ impl ActorReplyOpRuntime for ActorLeaveOp<Empty> {
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
-        self.inner.submit_callback(callback)
+        take_actor_reply_op(self).submit_callback(callback)
     }
 }
 
 impl ActorReplyOpTimeoutRuntime for ActorDestroyOp<Empty> {
-    fn timeout(mut self, timeout: Duration) -> Self {
-        self.inner.timeout = timeout;
-        self
+    fn timeout(self, timeout: Duration) -> Self {
+        let mut op = take_actor_reply_op(self);
+        op.timeout = timeout;
+        wrap_actor_reply_op(op)
     }
 }
 
 impl ActorReplyOpRuntime for ActorDestroyOp<Empty> {
     async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-        actor_reply_op_submit_async(self.inner).await
+        actor_reply_op_submit_async(take_actor_reply_op(self)).await
     }
 
     /// # Errors: SubmitError
@@ -303,20 +543,21 @@ impl ActorReplyOpRuntime for ActorDestroyOp<Empty> {
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
-        self.inner.submit_callback(callback)
+        take_actor_reply_op(self).submit_callback(callback)
     }
 }
 
 impl ActorReplyOpTimeoutRuntime for ActorBindOp<Empty> {
-    fn timeout(mut self, timeout: Duration) -> Self {
-        self.inner.timeout = timeout;
-        self
+    fn timeout(self, timeout: Duration) -> Self {
+        let mut op = take_actor_reply_op(self);
+        op.timeout = timeout;
+        wrap_actor_reply_op(op)
     }
 }
 
 impl ActorReplyOpRuntime for ActorBindOp<Empty> {
     async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-        actor_reply_op_submit_async(self.inner).await
+        actor_reply_op_submit_async(take_actor_reply_op(self)).await
     }
 
     /// # Errors: SubmitError
@@ -324,20 +565,21 @@ impl ActorReplyOpRuntime for ActorBindOp<Empty> {
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
-        self.inner.submit_callback(callback)
+        take_actor_reply_op(self).submit_callback(callback)
     }
 }
 
 impl ActorReplyOpTimeoutRuntime for ActorUnbindOp<Empty> {
-    fn timeout(mut self, timeout: Duration) -> Self {
-        self.inner.timeout = timeout;
-        self
+    fn timeout(self, timeout: Duration) -> Self {
+        let mut op = take_actor_reply_op(self);
+        op.timeout = timeout;
+        wrap_actor_reply_op(op)
     }
 }
 
 impl ActorReplyOpRuntime for ActorUnbindOp<Empty> {
     async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-        actor_reply_op_submit_async(self.inner).await
+        actor_reply_op_submit_async(take_actor_reply_op(self)).await
     }
 
     /// # Errors: SubmitError
@@ -345,11 +587,13 @@ impl ActorReplyOpRuntime for ActorUnbindOp<Empty> {
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
-        self.inner.submit_callback(callback)
+        take_actor_reply_op(self).submit_callback(callback)
     }
 }
 
-async fn actor_reply_op_submit_async(inner: ActorReplyOpInner) -> Result<Vec<Message>, ZlinkError> {
+async fn actor_reply_op_submit_async(
+    inner: NativeActorReplyOp,
+) -> Result<Vec<Message>, ZlinkError> {
     let (tx, rx) = mpsc::channel();
     inner
         .submit_callback(move |result| {
@@ -367,9 +611,10 @@ async fn actor_reply_op_submit_async(inner: ActorReplyOpInner) -> Result<Vec<Mes
 }
 
 impl ActorLookupOpRuntime for ActorLookupOp<Empty> {
-    fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
+    fn timeout(self, timeout: Duration) -> Self {
+        let mut op = take_actor_lookup_op(self);
+        op.timeout = timeout;
+        wrap_actor_lookup_op(op)
     }
 
     /// # Errors: ZlinkError
@@ -392,17 +637,18 @@ impl ActorLookupOpRuntime for ActorLookupOp<Empty> {
     where
         F: FnOnce(ActorLookupResult) + Send + 'static,
     {
+        let op = take_actor_lookup_op(self);
         let state_ptr = Box::into_raw(Box::new(ActorLookupCallbackState {
             callback: Some(Box::new(callback)),
         }));
         let rc = unsafe {
             ffi::zlink_remote_actor_get_ref(
-                self.node_handle,
-                self.target_node_rid.as_raw(),
-                self.actor_id.as_ptr(),
+                op.node_handle,
+                op.target_node_rid.as_raw(),
+                op.actor_id.as_ptr(),
                 actor_lookup_user_callback,
                 state_ptr.cast(),
-                timeout_to_timeout_ms(self.timeout),
+                timeout_to_timeout_ms(op.timeout),
             )
         };
         if rc != 0 {

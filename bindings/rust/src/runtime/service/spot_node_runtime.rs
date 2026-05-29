@@ -447,13 +447,12 @@ impl SpotNodePublicRuntime for SpotNode {
         actor_id: &str,
     ) -> ActorLookupOp<Empty> {
         let c_actor_id = fixed_cstring_or_panic(actor_id, "actor_id");
-        ActorLookupOp {
+        wrap_actor_lookup_op(NativeActorLookupOp {
             node_handle: spot_node_handle(self),
             target_node_rid: *target_node_rid,
             actor_id: c_actor_id,
             timeout: Duration::ZERO,
-            _state: std::marker::PhantomData,
-        }
+        })
     }
 
     /// Async destroy (operation builder).
@@ -466,14 +465,11 @@ impl SpotNodePublicRuntime for SpotNode {
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
             generation: 0,
         });
-        ActorDestroyOp {
-            inner: ActorReplyOpInner {
-                handle: spot_node_handle(self),
-                kind: ActorReplyOpKind::Destroy { actor: raw },
-                timeout: Duration::ZERO,
-            },
-            _state: std::marker::PhantomData,
-        }
+        wrap_actor_reply_op(NativeActorReplyOp {
+            handle: spot_node_handle(self),
+            kind: NativeActorReplyOpKind::Destroy { actor: raw },
+            timeout: Duration::ZERO,
+        })
     }
 
     /// Async user-Spot join (operation builder). Payload accumulates via `.message(...)`.
@@ -491,7 +487,7 @@ impl SpotNodePublicRuntime for SpotNode {
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
             generation: 0,
         });
-        ActorJoinOp {
+        wrap_actor_join_op(NativeActorJoinOp {
             node_handle: spot_node_handle(self),
             spot_handle: std::ptr::null_mut(),
             actor: raw,
@@ -500,8 +496,7 @@ impl SpotNodePublicRuntime for SpotNode {
             parts: Vec::new(),
             flags: SendFlags::NONE,
             timeout: Duration::ZERO,
-            _state: std::marker::PhantomData,
-        }
+        })
     }
 
     /// Async Entry Spot join (operation builder). The target is the Entry Spot
@@ -519,13 +514,12 @@ impl SpotNodePublicRuntime for SpotNode {
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
             generation: 0,
         });
-        ActorJoinEntrySpotOp {
+        wrap_actor_join_entry_spot_op(NativeActorJoinEntrySpotOp {
             node_handle: spot_node_handle(self),
             actor: raw,
             dest_node_rid: *dest_node_rid,
             timeout: Duration::ZERO,
-            _state: std::marker::PhantomData,
-        }
+        })
     }
 
     /// Async leave to the same node's Entry Spot (operation builder).
@@ -538,17 +532,14 @@ impl SpotNodePublicRuntime for SpotNode {
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
             generation: 0,
         });
-        ActorLeaveOp {
-            inner: ActorReplyOpInner {
-                handle: spot_node_handle(self),
-                kind: ActorReplyOpKind::Leave {
-                    actor: raw,
-                    current_spot_rid: *current_spot_rid,
-                },
-                timeout: Duration::ZERO,
+        wrap_actor_reply_op(NativeActorReplyOp {
+            handle: spot_node_handle(self),
+            kind: NativeActorReplyOpKind::Leave {
+                actor: raw,
+                current_spot_rid: *current_spot_rid,
             },
-            _state: std::marker::PhantomData,
-        }
+            timeout: Duration::ZERO,
+        })
     }
 
     /// Actor-to-session relay (operation builder).

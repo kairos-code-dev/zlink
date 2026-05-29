@@ -63,7 +63,7 @@ impl ActorPublicRuntime for Actor {
                 data: [0; 255],
             })
         });
-        ActorJoinOp {
+        wrap_actor_join_op(NativeActorJoinOp {
             node_handle: actor_native(self).node_handle,
             spot_handle: spot_handle(spot),
             actor: raw_actor,
@@ -72,8 +72,7 @@ impl ActorPublicRuntime for Actor {
             parts: Vec::new(),
             flags: SendFlags::NONE,
             timeout: Duration::ZERO,
-            _state: std::marker::PhantomData,
-        }
+        })
     }
 
     /// Async leave to the same node's Entry Spot (operation builder).
@@ -95,17 +94,14 @@ impl ActorPublicRuntime for Actor {
                 data: [0; 255],
             })
         });
-        ActorLeaveOp {
-            inner: ActorReplyOpInner {
-                handle: actor_native(self).node_handle,
-                kind: ActorReplyOpKind::Leave {
-                    actor: raw_actor,
-                    current_spot_rid: dest_spot_rid,
-                },
-                timeout: Duration::ZERO,
+        wrap_actor_reply_op(NativeActorReplyOp {
+            handle: actor_native(self).node_handle,
+            kind: NativeActorReplyOpKind::Leave {
+                actor: raw_actor,
+                current_spot_rid: dest_spot_rid,
             },
-            _state: std::marker::PhantomData,
-        }
+            timeout: Duration::ZERO,
+        })
     }
 
     fn recv(&self, out: &mut ActorReceived, flags: RecvFlags) -> Result<bool, RecvError> {

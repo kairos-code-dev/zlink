@@ -5,7 +5,6 @@ use crate::actor_models::{ActorJoinEntrySpotResult, ActorJoinResult, ActorLookup
 use crate::error::{RequestError, SubmitError, ZlinkError};
 use crate::flags::SendFlags;
 use crate::message::Message;
-use crate::{RoutingId, ffi};
 
 /// Typestate marker: no message has been set yet.
 pub struct Empty;
@@ -48,108 +47,72 @@ pub struct ReplyOp<State> {
 
 /// Async Actor join builder. Payload accumulates via `.message(...)`.
 pub struct ActorJoinOp<State> {
-    pub(crate) node_handle: *mut std::ffi::c_void,
-    pub(crate) spot_handle: *mut std::ffi::c_void,
-    pub(crate) actor: ffi::zlink_actor_ref_t,
-    pub(crate) dest_node_rid: RoutingId,
-    pub(crate) dest_spot_rid: RoutingId,
-    pub(crate) parts: Vec<Message>,
-    pub(crate) flags: SendFlags,
-    pub(crate) timeout: Duration,
+    pub(crate) inner: Box<dyn ActorJoinOpInnerRuntime>,
     pub(crate) _state: std::marker::PhantomData<State>,
 }
-
-unsafe impl<S> Send for ActorJoinOp<S> {}
 
 /// Async Actor Entry Spot join builder.
 pub struct ActorJoinEntrySpotOp<State> {
-    pub(crate) node_handle: *mut std::ffi::c_void,
-    pub(crate) actor: ffi::zlink_actor_ref_t,
-    pub(crate) dest_node_rid: RoutingId,
-    pub(crate) timeout: Duration,
+    pub(crate) inner: Box<dyn ActorJoinEntrySpotOpInnerRuntime>,
     pub(crate) _state: std::marker::PhantomData<State>,
 }
-
-unsafe impl<S> Send for ActorJoinEntrySpotOp<S> {}
 
 /// Builder for replying to an Actor join admission request. 0-part submit is allowed.
 pub struct ActorJoinReplyOp<State> {
-    pub(crate) spot_handle: *mut std::ffi::c_void,
-    pub(crate) info: ffi::zlink_actor_join_info_t,
-    pub(crate) join_result_code: i32,
-    pub(crate) parts: Vec<Message>,
+    pub(crate) inner: Box<dyn ActorJoinReplyOpInnerRuntime>,
     pub(crate) _state: std::marker::PhantomData<State>,
 }
 
-unsafe impl<S> Send for ActorJoinReplyOp<S> {}
-
-/// Payload-less builder shared by leave / destroy / bind / unbind.
-pub(crate) struct ActorReplyOpInner {
-    pub(crate) handle: *mut std::ffi::c_void,
-    pub(crate) kind: ActorReplyOpKind,
-    pub(crate) timeout: Duration,
+pub(crate) trait ActorJoinOpInnerRuntime: Any + Send {
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
-pub(crate) enum ActorReplyOpKind {
-    Leave {
-        actor: ffi::zlink_actor_ref_t,
-        current_spot_rid: RoutingId,
-    },
-    Destroy {
-        actor: ffi::zlink_actor_ref_t,
-    },
-    Bind {
-        session_rid: RoutingId,
-        actor: ffi::zlink_actor_ref_t,
-    },
-    Unbind {
-        session_rid: RoutingId,
-        actor_id: std::ffi::CString,
-    },
+pub(crate) trait ActorJoinEntrySpotOpInnerRuntime: Any + Send {
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+}
+
+pub(crate) trait ActorJoinReplyOpInnerRuntime: Any + Send {
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+}
+
+pub(crate) trait ActorReplyOpInnerRuntime: Any + Send {
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+}
+
+pub(crate) trait ActorLookupOpInnerRuntime: Any + Send {
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
 /// Async Actor leave builder (payload-less).
 pub struct ActorLeaveOp<State> {
-    pub(crate) inner: ActorReplyOpInner,
+    pub(crate) inner: Box<dyn ActorReplyOpInnerRuntime>,
     pub(crate) _state: std::marker::PhantomData<State>,
 }
-
-unsafe impl<S> Send for ActorLeaveOp<S> {}
 
 /// Async Actor destroy builder (payload-less).
 pub struct ActorDestroyOp<State> {
-    pub(crate) inner: ActorReplyOpInner,
+    pub(crate) inner: Box<dyn ActorReplyOpInnerRuntime>,
     pub(crate) _state: std::marker::PhantomData<State>,
 }
-
-unsafe impl<S> Send for ActorDestroyOp<S> {}
 
 /// Async Actor bind builder (payload-less).
 pub struct ActorBindOp<State> {
-    pub(crate) inner: ActorReplyOpInner,
+    pub(crate) inner: Box<dyn ActorReplyOpInnerRuntime>,
     pub(crate) _state: std::marker::PhantomData<State>,
 }
-
-unsafe impl<S> Send for ActorBindOp<S> {}
 
 /// Async Actor unbind builder (payload-less).
 pub struct ActorUnbindOp<State> {
-    pub(crate) inner: ActorReplyOpInner,
+    pub(crate) inner: Box<dyn ActorReplyOpInnerRuntime>,
     pub(crate) _state: std::marker::PhantomData<State>,
 }
-
-unsafe impl<S> Send for ActorUnbindOp<S> {}
 
 /// Async remote Actor lookup builder (payload-less).
 pub struct ActorLookupOp<State> {
-    pub(crate) node_handle: *mut std::ffi::c_void,
-    pub(crate) target_node_rid: RoutingId,
-    pub(crate) actor_id: std::ffi::CString,
-    pub(crate) timeout: Duration,
+    pub(crate) inner: Box<dyn ActorLookupOpInnerRuntime>,
     pub(crate) _state: std::marker::PhantomData<State>,
 }
-
-unsafe impl<S> Send for ActorLookupOp<S> {}
 
 pub(crate) trait SendOpEmptyRuntime {
     fn message(self, message: Message) -> SendOp<Ready>;

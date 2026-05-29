@@ -275,13 +275,12 @@ impl SpotPublicRuntime for Spot {
         request: &ActorJoinRequest,
         join_result_code: i32,
     ) -> ActorJoinReplyOp<Empty> {
-        ActorJoinReplyOp {
+        wrap_actor_join_reply_op(NativeActorJoinReplyOp {
             spot_handle: spot_handle(self),
             info: actor_join_info_to_raw(&request.info),
             join_result_code,
             parts: Vec::new(),
-            _state: std::marker::PhantomData,
-        }
+        })
     }
 
     fn actors(&self) -> Result<Vec<ActorRef>, ConfigError> {

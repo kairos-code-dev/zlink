@@ -19,6 +19,12 @@ static void define_core_exports(napi_env env, napi_value exports)
 {
     napi_property_descriptor descs[] = {
         ZLINK_METHOD("version", version),
+        ZLINK_METHOD("errno", errno_value),
+        ZLINK_METHOD("strerror", strerror_value),
+        ZLINK_METHOD("has", has),
+        ZLINK_METHOD("proxy", proxy),
+        ZLINK_METHOD("proxySteerable", proxy_steerable),
+        ZLINK_METHOD("sleep", sleep),
         ZLINK_METHOD("ctxNew", ctx_new),
         ZLINK_METHOD("ctxShutdown", ctx_shutdown),
         ZLINK_METHOD("ctxTerm", ctx_term),
@@ -58,6 +64,8 @@ static void define_core_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("streamBindActor", stream_bind_actor),
         ZLINK_METHOD("streamUnbindActor", stream_unbind_actor),
         ZLINK_METHOD("streamSendBoundActorPart", stream_send_bound_actor_part),
+        ZLINK_METHOD("streamBoundActors", stream_bound_actors),
+        ZLINK_METHOD("remoteActorGetRef", remote_actor_get_ref),
         ZLINK_METHOD("socketSetOpt", socket_setopt),
         ZLINK_METHOD("socketGetOpt", socket_getopt),
         ZLINK_METHOD("socketSetChannelName", socket_set_channel_name),

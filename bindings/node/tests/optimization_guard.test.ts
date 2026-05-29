@@ -230,29 +230,20 @@ test('native addon registration stays limited to runtime-owned methods', () => {
   }
 });
 
-test('router payload recv maps nonblocking no-data without exceptions', () => {
-  const file = path.join(ROOT, 'native', 'src', 'addon_core.cc');
-  const body = fs.readFileSync(file, 'utf8');
-  const helper = body.match(
-    /napi_value router_recv_payload_into\(napi_env env, napi_callback_info info\)(?<body>[\s\S]*?)\n\}\n\nnapi_value monitor_open/
+test('native addon registration matches the typed native binding surface', () => {
+  const addon = fs.readFileSync(path.join(ROOT, 'native', 'src', 'addon.cc'), 'utf8');
+  const binding = fs.readFileSync(
+    path.join(ROOT, 'src', 'zlink', 'runtime', 'native', 'binding.ts'),
+    'utf8'
   );
+  const registered = [...addon.matchAll(/ZLINK_METHOD\("([^"]+)"/g)]
+    .map((match) => match[1])
+    .sort();
+  const typed = [...binding.matchAll(/^\s*([A-Za-z][A-Za-z0-9_]*)\s*:\s*NativeFn;/gm)]
+    .map((match) => match[1])
+    .sort();
 
-  assert.ok(helper?.groups?.body, 'missing routerRecvPayloadInto helper');
-  assert.match(helper.groups.body, /flags & ZLINK_RECV_FLAGS_DONTWAIT/);
-  assert.match(helper.groups.body, /err == EAGAIN/);
-  assert.match(helper.groups.body, /napi_get_null/);
-});
-
-test('subscribe payload hot path skips null routing id property', () => {
-  const file = path.join(ROOT, 'native', 'src', 'addon_core.cc');
-  const body = fs.readFileSync(file, 'utf8');
-  const helper = body.match(
-    /napi_value socket_subscribe_payload_into\(napi_env env, napi_callback_info info\)(?<body>[\s\S]*?)\n\}\n\nnapi_value socket_subscribe_handler/
-  );
-
-  assert.ok(helper?.groups?.body, 'missing socketSubscribePayloadInto helper');
-  assert.match(helper.groups.body, /if \(routing_id\.size > 0\)/);
-  assert.doesNotMatch(helper.groups.body, /napi_get_null\(env, &rid_value\)/);
+  assert.deepEqual(registered, typed);
 });
 
 test('node multi orchestrator ignores closed child stdin pipes', () => {

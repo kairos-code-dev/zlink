@@ -43,6 +43,7 @@ interface SocketNativeBinding {
   socketGetOpt: NativeFn;
   socketNew: NativeFn;
   socketPublish: NativeFn;
+  socketRecv: NativeFn;
   socketRecvMessage: NativeFn;
   socketRecvMessageNoWait: NativeFn;
   socketSend: NativeFn;
@@ -103,6 +104,7 @@ interface EventingNativeBinding {
   pollerSize: NativeFn;
   pollerWait: NativeFn;
   pollerWaitInto: NativeFn;
+  poll: NativeFn;
   spotTimerNew: NativeFn;
   stopwatchIntermediate: NativeFn;
   stopwatchStart: NativeFn;

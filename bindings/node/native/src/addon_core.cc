@@ -2632,6 +2632,118 @@ napi_value version(napi_env env, napi_callback_info info)
     return arr;
 }
 
+napi_value errno_value(napi_env env, napi_callback_info info)
+{
+    napi_value out;
+    napi_create_int32(env, zlink_errno(), &out);
+    return out;
+}
+
+napi_value strerror_value(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    int32_t errnum = 0;
+    if (argc >= 1)
+        napi_get_value_int32(env, argv[0], &errnum);
+
+    const char *message = zlink_strerror(errnum);
+    napi_value out;
+    napi_create_string_utf8(env, message ? message : "", NAPI_AUTO_LENGTH, &out);
+    return out;
+}
+
+napi_value has(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 1) {
+        napi_throw_type_error(env, NULL, "has requires a capability string");
+        return NULL;
+    }
+
+    std::string capability = get_string(env, argv[0]);
+    napi_value out;
+    napi_get_boolean(env, zlink_has(capability.c_str()), &out);
+    return out;
+}
+
+napi_value proxy(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(env, NULL, "proxy requires frontend and backend");
+        return NULL;
+    }
+
+    void *frontend = NULL;
+    void *backend = NULL;
+    void *capture = NULL;
+    napi_get_value_external(env, argv[0], &frontend);
+    napi_get_value_external(env, argv[1], &backend);
+    if (argc >= 3) {
+        napi_valuetype capture_type = napi_undefined;
+        napi_typeof(env, argv[2], &capture_type);
+        if (capture_type != napi_undefined && capture_type != napi_null)
+            napi_get_value_external(env, argv[2], &capture);
+    }
+
+    if (zlink_proxy(frontend, backend, capture) != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "proxy failed");
+    napi_value out;
+    napi_get_undefined(env, &out);
+    return out;
+}
+
+napi_value proxy_steerable(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 4) {
+        napi_throw_type_error(
+          env, NULL, "proxySteerable requires frontend, backend, capture, control");
+        return NULL;
+    }
+
+    void *frontend = NULL;
+    void *backend = NULL;
+    void *capture = NULL;
+    void *control = NULL;
+    napi_get_value_external(env, argv[0], &frontend);
+    napi_get_value_external(env, argv[1], &backend);
+    napi_valuetype capture_type = napi_undefined;
+    napi_typeof(env, argv[2], &capture_type);
+    if (capture_type != napi_undefined && capture_type != napi_null)
+        napi_get_value_external(env, argv[2], &capture);
+    napi_get_value_external(env, argv[3], &control);
+
+    if (zlink_proxy_steerable(frontend, backend, capture, control) != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "proxySteerable failed");
+    napi_value out;
+    napi_get_undefined(env, &out);
+    return out;
+}
+
+napi_value sleep(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    int32_t seconds = 0;
+    if (argc >= 1)
+        napi_get_value_int32(env, argv[0], &seconds);
+
+    zlink_sleep(seconds);
+    napi_value out;
+    napi_get_undefined(env, &out);
+    return out;
+}
+
 napi_value ctx_new(napi_env env, napi_callback_info info)
 {
     void *ctx = zlink_ctx_new();

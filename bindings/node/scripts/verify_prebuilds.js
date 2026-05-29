@@ -73,13 +73,18 @@ function validateDarwin(dir, arch) {
 }
 
 function validateWindows(dir, arch) {
-  const addon = path.join(dir, 'zlink.node');
-  const description = fileDescription(addon);
-  if (arch === 'arm64' && !description.includes('Aarch64')) {
-    fail(`${addon} is not Aarch64: ${description}`);
+  const expected = arch === 'arm64' ? 'Aarch64' : arch === 'x64' ? 'x86-64' : null;
+  if (!expected) {
+    fail(`unsupported Windows prebuild arch: ${arch}`);
   }
-  if (arch === 'x64' && !description.includes('x86-64')) {
-    fail(`${addon} is not x86-64: ${description}`);
+
+  for (const name of fs.readdirSync(dir).sort()) {
+    if (!name.endsWith('.dll') && !name.endsWith('.node')) continue;
+    const target = path.join(dir, name);
+    const description = fileDescription(target);
+    if (!description.includes(expected)) {
+      fail(`${target} is not ${expected}: ${description}`);
+    }
   }
 }
 

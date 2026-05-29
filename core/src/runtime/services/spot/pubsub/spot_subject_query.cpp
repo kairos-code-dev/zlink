@@ -203,17 +203,17 @@ int recv_logical_spot_subscription (
 
     if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
         return -1;
-    for (size_t i = 0; i < message->parts.size (); ++i) {
+    for (zlink::spot_owned_msg_parts_t::iterator it = message->parts.begin ();
+         it != message->parts.end (); ++it) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
-        if (zlink_msg_init_size (&frame, message->parts[i].size ()) != 0) {
+        if (zlink_msg_copy (&frame, &(*it)) != 0) {
+            const int err = errno;
             zlink_msg_close (&frame);
             zlink::recv_tls_view::abort ();
+            errno = err;
             return -1;
         }
-        if (!message->parts[i].empty ())
-            memcpy (zlink_msg_data (&frame), message->parts[i].data (),
-                    message->parts[i].size ());
         if (zlink::recv_tls_view::push (&frame) != 0) {
             zlink_msg_close (&frame);
             zlink::recv_tls_view::abort ();
@@ -574,14 +574,6 @@ int spot_subject_subscription_at (void *handle_,
         return -1;
 
     std::sort (subjects.begin (), subjects.end (), spot_subject_less_t ());
-    subjects.erase (
-      std::unique (subjects.begin (), subjects.end (),
-                   [] (const zlink::spot_sub_t::subject_descriptor_t &lhs_,
-                       const zlink::spot_sub_t::subject_descriptor_t &rhs_) {
-                       return lhs_.subject == rhs_.subject
-                              && lhs_.subject_kind == rhs_.subject_kind;
-                   }),
-      subjects.end ());
     if (index_ >= subjects.size ()) {
         errno = ENOENT;
         return -1;

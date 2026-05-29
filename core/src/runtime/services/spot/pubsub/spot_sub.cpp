@@ -59,6 +59,26 @@ bool spot_sub_t::is_node_owned_default () const
     return _node_owned_default;
 }
 
+std::shared_ptr<part_helper_internal::handle_state_t>
+spot_sub_t::part_helper_state () const
+{
+    scoped_lock_t lock (_sync);
+    return _part_helper_state;
+}
+
+void spot_sub_t::set_part_helper_state (
+  const std::shared_ptr<part_helper_internal::handle_state_t> &state_)
+{
+    scoped_lock_t lock (_sync);
+    _part_helper_state = state_;
+}
+
+void spot_sub_t::clear_part_helper_state ()
+{
+    scoped_lock_t lock (_sync);
+    _part_helper_state.reset ();
+}
+
 socket_base_t *spot_sub_t::socket () const
 {
     return _socket;

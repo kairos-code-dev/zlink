@@ -35,20 +35,25 @@ bool spot_logical_topic_matches_local (
 int spot_copy_publish_parts_to_block_local (
   zlink_msg_t *parts_,
   size_t part_count_,
-  std::vector<std::string> *out_)
+  spot_owned_msg_parts_t *out_)
 {
     if (!out_ || (part_count_ > 0 && !parts_)) {
         errno = EINVAL;
         return -1;
     }
 
-    out_->clear ();
-    out_->reserve (part_count_);
+    spot_clear_msg_parts (out_);
     for (size_t i = 0; i < part_count_; ++i) {
-        const size_t size = zlink_msg_size (&parts_[i]);
-        const char *data =
-          static_cast<const char *> (zlink_msg_data (&parts_[i]));
-        out_->push_back (std::string (data ? data : "", size));
+        zlink_msg_t frame;
+        spot_init_msg_frame (&frame);
+        if (zlink_msg_copy (&frame, &parts_[i]) != 0) {
+            const int err = errno;
+            spot_close_msg_frame (&frame);
+            spot_clear_msg_parts (out_);
+            errno = err;
+            return -1;
+        }
+        out_->push_back (frame);
     }
     return 0;
 }

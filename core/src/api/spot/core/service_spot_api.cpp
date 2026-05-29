@@ -59,17 +59,15 @@ zlink_recv_result_t try_dequeue_logical_subscribe (
 
     if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
         return zlink::recv_result_internal::from_errno (errno);
-    for (size_t i = 0; i < message->parts.size (); ++i) {
+    for (zlink::spot_owned_msg_parts_t::iterator it = message->parts.begin ();
+         it != message->parts.end (); ++it) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
-        if (zlink_msg_init_size (&frame, message->parts[i].size ()) != 0) {
+        if (zlink_msg_copy (&frame, &(*it)) != 0) {
+            const int err = errno;
             zlink_msg_close (&frame);
             zlink::recv_tls_view::abort ();
-            return zlink::recv_result_internal::from_errno (errno);
-        }
-        if (!message->parts[i].empty ()) {
-            memcpy (zlink_msg_data (&frame), message->parts[i].data (),
-                    message->parts[i].size ());
+            return zlink::recv_result_internal::from_errno (err);
         }
         if (zlink::recv_tls_view::push (&frame) != 0) {
             zlink_msg_close (&frame);

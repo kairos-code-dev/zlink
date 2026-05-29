@@ -385,14 +385,6 @@ int spot_subject_get_sub_option (void *handle_,
                            return lhs_.subject < rhs_.subject;
                        return lhs_.subject_kind < rhs_.subject_kind;
                    });
-        subjects.erase (
-          std::unique (subjects.begin (), subjects.end (),
-                       [] (const zlink::spot_sub_t::subject_descriptor_t &lhs_,
-                           const zlink::spot_sub_t::subject_descriptor_t &rhs_) {
-                           return lhs_.subject == rhs_.subject
-                                  && lhs_.subject_kind == rhs_.subject_kind;
-                       }),
-          subjects.end ());
         *static_cast<int *> (optval_) = static_cast<int> (subjects.size ());
         *optvallen_ = sizeof (int);
         return 0;

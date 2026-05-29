@@ -20,6 +20,8 @@ namespace zlink
 {
 namespace socket_reqrep_internal
 {
+const size_t stack_request_reply_part_capacity = 8;
+
 bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
 {
     return zlink::valid_routing_id (peer_rid_);
@@ -540,7 +542,15 @@ int send_request_reply_message (void *socket_handle_,
     const bool routed = has_valid_routing_id (peer_rid_);
     const size_t total_part_count =
       zlink::request_reply::control_part_count + part_count_;
-    std::vector<zlink_msg_t> combined (total_part_count);
+    zlink_msg_t stack_combined[stack_request_reply_part_capacity];
+    std::vector<zlink_msg_t> heap_combined;
+    zlink_msg_t *combined =
+      total_part_count <= stack_request_reply_part_capacity ? stack_combined
+                                                            : NULL;
+    if (!combined) {
+        heap_combined.resize (total_part_count);
+        combined = &heap_combined[0];
+    }
     for (size_t i = 0; i < total_part_count; ++i)
         zlink_msg_init (&combined[i]);
 
@@ -560,7 +570,7 @@ int send_request_reply_message (void *socket_handle_,
                                                     sizeof (seq_buf))
              != 0) {
         const int saved_errno = errno;
-        zlink::request_reply::close_built_parts (&combined);
+        zlink::request_reply::close_built_parts (combined, total_part_count);
         zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
         errno = saved_errno;
         return -1;
@@ -572,7 +582,7 @@ int send_request_reply_message (void *socket_handle_,
                             &parts_[i])
             != 0) {
             const int saved_errno = errno;
-            zlink::request_reply::close_built_parts (&combined);
+            zlink::request_reply::close_built_parts (combined, total_part_count);
             zlink::request_reply::consume_send_frames_from (parts_, i,
                                                             part_count_);
             errno = saved_errno;
@@ -583,18 +593,17 @@ int send_request_reply_message (void *socket_handle_,
     router_mandatory_scope_t mandatory_scope;
     if (routed && mandatory_scope.arm (handle) != 0) {
         const int saved_errno = errno;
-        zlink::request_reply::close_built_parts (&combined);
+        zlink::request_reply::close_built_parts (combined, total_part_count);
         errno = saved_errno;
         return -1;
     }
 
     const int rc = routed
                      ? zlink::logical_multipart_send_routed (
-                         handle.socket, peer_rid_, &combined[0],
-                         total_part_count, flags_)
+                         handle.socket, peer_rid_, combined, total_part_count,
+                         flags_)
                      : zlink::logical_multipart_send (
-                         handle.socket, &combined[0], total_part_count,
-                         flags_);
+                         handle.socket, combined, total_part_count, flags_);
     if (rc != 0)
         return -1;
 

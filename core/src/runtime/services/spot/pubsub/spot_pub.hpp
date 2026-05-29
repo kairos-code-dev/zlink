@@ -9,6 +9,7 @@
 #include "utils/mutex.hpp"
 
 #include <atomic>
+#include <memory>
 #include <string>
 
 namespace zlink
@@ -16,6 +17,10 @@ namespace zlink
 class socket_base_t;
 class spot_node_t;
 struct spot_runtime_t;
+namespace part_helper_internal
+{
+struct handle_state_t;
+}
 
 class spot_pub_t
 {
@@ -43,6 +48,10 @@ class spot_pub_t
     socket_base_t *poller_socket () const { return socket (); }
     socket_base_t *snapshot_socket () const { return socket (); }
     bool owns_socket (const socket_base_t *socket_) const;
+    std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state () const;
+    void set_part_helper_state (
+      const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
+    void clear_part_helper_state ();
     void invoke_send_ready_handler ();
     spot_node_t *node () const { return _node; }
 
@@ -73,6 +82,7 @@ class spot_pub_t
     std::atomic<void *> _send_ready_subject;
     std::atomic<void *> _send_ready_userdata;
     std::atomic<bool> _destroying;
+    std::shared_ptr<part_helper_internal::handle_state_t> _part_helper_state;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_pub_t)
 };

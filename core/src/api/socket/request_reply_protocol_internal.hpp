@@ -231,6 +231,15 @@ inline void close_built_parts (std::vector<zlink_msg_t> *parts_)
         consume_send_frame (&(*parts_)[i]);
 }
 
+inline void close_built_parts (zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!parts_)
+        return;
+
+    for (size_t i = 0; i < part_count_; ++i)
+        consume_send_frame (&parts_[i]);
+}
+
 inline void close_request_reply_parts (zlink_msg_t *parts_, size_t part_count_)
 {
     if (!parts_)

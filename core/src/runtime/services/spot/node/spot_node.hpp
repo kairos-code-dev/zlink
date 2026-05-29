@@ -22,6 +22,7 @@
 #include <condition_variable>
 #include <map>
 #include <deque>
+#include <memory>
 #include <stddef.h>
 #include <set>
 #include <string>
@@ -37,6 +38,10 @@ class spot_sub_t;
 class spot_internal_receiver_t;
 struct spot_runtime_t;
 struct spot_node_access_t;
+namespace part_helper_internal
+{
+struct handle_state_t;
+}
 
 class spot_node_t : public discovery_observer_t
 {
@@ -208,6 +213,10 @@ class spot_node_t : public discovery_observer_t
     ctx_t *ctx () const;
     mutex_t &sync ();
     spot_runtime_t *runtime () const { return _runtime; }
+    std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state () const;
+    void set_part_helper_state (
+      const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
+    void clear_part_helper_state ();
     bool is_shutting_down () const;
     socket_base_t *create_socket (int socket_type_) const;
     void track_owned_socket (socket_base_t *socket_);
@@ -415,6 +424,7 @@ class spot_node_t : public discovery_observer_t
     handle_state_t _handle_state;
     actor_state_t _actor_state;
     service_attachment_state_t _service_attachment_state;
+    std::shared_ptr<part_helper_internal::handle_state_t> _part_helper_state;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_node_t)
 };

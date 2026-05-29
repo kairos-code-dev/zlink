@@ -354,7 +354,7 @@ bool spot_data_plane_pending_t::stage_publish_message (
     entry.need_mesh = need_mesh_;
     if (copy_msg_parts_to_owned (parts_, &entry.parts) != 0)
         return false;
-    queue_->push_back (entry);
+    queue_->push_back (std::move (entry));
     return true;
 }
 }

@@ -17,6 +17,8 @@ namespace reqrep = zlink::socket_reqrep_internal;
 
 namespace
 {
+const size_t stack_request_reply_part_capacity = 8;
+
 int init_reply_control_part (zlink_msg_t *part_,
                              const void *data_,
                              size_t size_,
@@ -47,7 +49,15 @@ int send_dealer_reply_to_target (
       helper_state_->send.buffered_parts.size () + 1;
     const size_t total_part_count =
       zlink::request_reply::control_part_count + payload_count;
-    std::vector<zlink_msg_t> combined (total_part_count);
+    zlink_msg_t stack_combined[stack_request_reply_part_capacity];
+    std::vector<zlink_msg_t> heap_combined;
+    zlink_msg_t *combined =
+      total_part_count <= stack_request_reply_part_capacity ? stack_combined
+                                                            : NULL;
+    if (!combined) {
+        heap_combined.resize (total_part_count);
+        combined = &heap_combined[0];
+    }
     for (size_t i = 0; i < total_part_count; ++i)
         zlink_msg_init (&combined[i]);
 
@@ -61,10 +71,10 @@ int send_dealer_reply_to_target (
         || init_reply_control_part (&combined[1], &version, 1, true) != 0
         || init_reply_control_part (&combined[2], &type, 1, true) != 0
         || init_reply_control_part (&combined[3], seq_buf, sizeof (seq_buf),
-                                    payload_count > 0)
+                                     payload_count > 0)
              != 0) {
         const int saved_errno = errno;
-        zlink::request_reply::close_built_parts (&combined);
+        zlink::request_reply::close_built_parts (combined, total_part_count);
         errno = saved_errno;
         return -1;
     }
@@ -76,14 +86,14 @@ int send_dealer_reply_to_target (
                             &helper_state_->send.buffered_parts[i])
             != 0) {
             const int saved_errno = errno;
-            zlink::request_reply::close_built_parts (&combined);
+            zlink::request_reply::close_built_parts (combined, total_part_count);
             errno = saved_errno;
             return -1;
         }
     }
     if (zlink_msg_move (&combined[out_index], final_part_) != 0) {
         const int saved_errno = errno;
-        zlink::request_reply::close_built_parts (&combined);
+        zlink::request_reply::close_built_parts (combined, total_part_count);
         errno = saved_errno;
         return -1;
     }
@@ -101,13 +111,13 @@ int send_dealer_reply_to_target (
         if (!written) {
             const int saved_errno = errno ? errno : EAGAIN;
             target_.pipe->rollback ();
-            zlink::request_reply::close_built_parts (&combined);
+            zlink::request_reply::close_built_parts (combined, total_part_count);
             errno = saved_errno;
             return -1;
         }
     }
 
-    zlink::request_reply::close_built_parts (&combined);
+    zlink::request_reply::close_built_parts (combined, total_part_count);
     errno = 0;
     return 0;
 }

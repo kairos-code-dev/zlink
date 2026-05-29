@@ -1047,6 +1047,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/node/spot_node_get_or_new.cpp
     src/runtime/services/spot/node/spot_node_handles.cpp
     src/runtime/services/spot/node/spot_node_lifecycle.cpp
+    src/runtime/services/spot/node/spot_node_peer.cpp
     src/runtime/services/spot/node/spot_node_shutdown.cpp
     src/runtime/services/spot/node/spot_node_service_attachment.cpp
     src/runtime/services/spot/node/spot_node_service_attachment_cache.cpp

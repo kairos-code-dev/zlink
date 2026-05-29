@@ -100,6 +100,7 @@ core/src/libzlink.pc
 # /core/tools
 ## Executable binaries are ignored
 core/tools/curve_keygen
+core/tools/**/logs/
 ## Executable source files must be tracked
 !core/tools/*.[ch]
 !core/tools/*.[ch]pp

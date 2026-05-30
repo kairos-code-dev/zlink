@@ -254,47 +254,83 @@ resolve_core_runtime_library() {
   return 1
 }
 
-print_core_runtime_binding() {
-  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
-  local core_build_dir=""
-  local runtime_lib=""
-  core_build_dir="$(resolve_configured_core_build_dir "${build_dir}")"
-  if runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"; then
-    echo "Perf core build dir: ${core_build_dir}"
-    echo "Perf runtime libzlink: ${runtime_lib}"
-    return 0
+build_core_runtime() {
+  local core_build_dir="${1:-${DEFAULT_CORE_BUILD_DIR}}"
+  local core_source_dir="${ROOT_DIR}/core"
+  local jobs
+  jobs="$(nproc 2>/dev/null || echo 4)"
+  echo "=== Auto-building core runtime (target: ${core_build_dir}) ==="
+  if [[ ! -f "${core_build_dir}/CMakeCache.txt" ]]; then
+    mkdir -p "${core_build_dir}"
+    local configure_args=(
+      -S "${core_source_dir}"
+      -B "${core_build_dir}"
+      -DCMAKE_BUILD_TYPE=Release
+      -DBUILD_TESTS=OFF
+      -DWITH_DOCS=OFF
+      -DWITH_TLS=ON
+      -DBUILD_BENCHMARKS=ON
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    )
+    if [[ -n "${MAKE_BIN}" ]]; then
+      configure_args+=(-DCMAKE_MAKE_PROGRAM="${MAKE_BIN}")
+    fi
+    cmake "${configure_args[@]}"
   fi
-  echo "Perf core build dir: ${core_build_dir}"
-  echo "Error: core runtime library not found under ${core_build_dir}." >&2
-  echo "Build core first so bindings/c/perf can link the intended runtime." >&2
-  return 1
+  if [[ -f "${NORMALIZE_TIMESTAMPS_SH}" ]]; then
+    bash "${NORMALIZE_TIMESTAMPS_SH}" "${core_build_dir}" || true
+  fi
+  cmake --build "${core_build_dir}" -j"${jobs}"
 }
 
-ensure_core_runtime_not_stale() {
+prepare_core_runtime() {
   local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
   local core_build_dir=""
   local runtime_lib=""
   local newer_source=""
+  local need_build=0
+  local reason=""
   core_build_dir="$(resolve_configured_core_build_dir "${build_dir}")"
+
   if ! runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"; then
-    echo "Error: core runtime library not found under ${core_build_dir}." >&2
-    echo "Build core first before running bindings/c/perf benchmarks." >&2
-    return 1
+    need_build=1
+    reason="core runtime library not found under ${core_build_dir}"
+  else
+    newer_source="$(
+      find \
+        "${ROOT_DIR}/core/src" \
+        "${ROOT_DIR}/core/include" \
+        -type f -newer "${runtime_lib}" -print -quit 2>/dev/null || true
+    )"
+    if [[ -n "${newer_source}" ]]; then
+      need_build=1
+      reason="stale core runtime (newer source: ${newer_source})"
+    fi
   fi
 
-  newer_source="$(
-    find \
-      "${ROOT_DIR}/core/src" \
-      "${ROOT_DIR}/core/include" \
-      -type f -newer "${runtime_lib}" -print -quit 2>/dev/null || true
-  )"
-  if [[ -n "${newer_source}" ]]; then
-    echo "Error: stale core runtime detected for bindings/c/perf." >&2
-    echo "  runtime: ${runtime_lib}" >&2
-    echo "  newer source: ${newer_source}" >&2
-    echo "Rebuild core/build before running run_benchmarks_multi.sh." >&2
-    return 1
+  if (( need_build == 1 )); then
+    echo "Note: ${reason}; rebuilding core/build automatically before perf run." >&2
+    build_core_runtime "${core_build_dir}"
+    if ! runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"; then
+      echo "Error: core runtime library still missing after auto-build under ${core_build_dir}." >&2
+      return 1
+    fi
+    newer_source="$(
+      find \
+        "${ROOT_DIR}/core/src" \
+        "${ROOT_DIR}/core/include" \
+        -type f -newer "${runtime_lib}" -print -quit 2>/dev/null || true
+    )"
+    if [[ -n "${newer_source}" ]]; then
+      echo "Error: core runtime still stale after auto-build for bindings/c/perf." >&2
+      echo "  runtime: ${runtime_lib}" >&2
+      echo "  newer source: ${newer_source}" >&2
+      return 1
+    fi
   fi
+
+  echo "Perf core build dir: ${core_build_dir}"
+  echo "Perf runtime libzlink: ${runtime_lib}"
   return 0
 }
 
@@ -380,8 +416,10 @@ Notes:
   - default build mode is incremental (configure/build without deleting build dir).
   - this runner links zlink core from core/build and prints the resolved
     libzlink runtime before execution.
-  - if core/src or core/include is newer than the resolved runtime library,
-    the runner fails fast and asks for a core/build rebuild.
+  - if core/build is missing or core/src or core/include is newer than the
+    resolved runtime library, the runner auto-rebuilds core/build before
+    proceeding (incremental cmake --build; configures with defaults if no
+    CMakeCache.txt is present).
 USAGE
 }
 
@@ -1177,8 +1215,7 @@ if [[ "${BUILD_MODE}" != "reuse" && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
 fi
 
 echo "Using CMake source directory: ${CMAKE_SOURCE_DIR}"
-print_core_runtime_binding "${BUILD_DIR}"
-ensure_core_runtime_not_stale "${BUILD_DIR}"
+prepare_core_runtime "${BUILD_DIR}"
 
 if [[ "${BUILD_MODE}" != "reuse" ]]; then
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then

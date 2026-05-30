@@ -4,69 +4,69 @@ using System;
 
 namespace Systems.Zlink;
 /// <summary>
-/// Represents zlink submit exception.
+/// Thrown when submitting a send or publish fails.
 /// </summary>
 public sealed class ZlinkSubmitException : ZlinkException
 {
     /// <summary>
-    /// Defines error code values.
+    /// The result codes this operation can fail with.
     /// </summary>
     public enum ErrorCode
     {
         /// <summary>
-        /// Indicates the successful error code.
+        /// The operation succeeded.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Indicates the backpressured error code.
+        /// The send was refused because the outbound queue was full.
         /// </summary>
         Backpressured = 1,
         /// <summary>
-        /// Indicates the not connected error code.
+        /// No connected peer was available for the operation.
         /// </summary>
         NotConnected = 2,
         /// <summary>
-        /// Indicates the not found error code.
+        /// The target was not found.
         /// </summary>
         NotFound = 3,
         /// <summary>
-        /// Indicates the terminated error code.
+        /// The context was terminated while the operation was in flight.
         /// </summary>
         Terminated = 4,
         /// <summary>
-        /// Indicates the invalid handle error code.
+        /// The target handle was invalid or already closed.
         /// </summary>
         InvalidHandle = 5,
         /// <summary>
-        /// Indicates the invalid argument error code.
+        /// An argument was invalid.
         /// </summary>
         InvalidArgument = 6,
         /// <summary>
-        /// Indicates the not supported error code.
+        /// The operation is not supported.
         /// </summary>
         NotSupported = 7,
         /// <summary>
-        /// Indicates the invalid state error code.
+        /// The target was in a state that does not allow the operation.
         /// </summary>
         InvalidState = 8,
         /// <summary>
-        /// Indicates the thread violation error code.
+        /// The handle was used from a thread that does not own it.
         /// </summary>
         ThreadViolation = 9,
         /// <summary>
-        /// Indicates the out of memory error code.
+        /// Memory could not be allocated for the operation.
         /// </summary>
         OutOfMemory = 10,
         /// <summary>
-        /// Indicates the seq exhausted error code.
+        /// The request sequence space was exhausted.
         /// </summary>
         SeqExhausted = 11,
         /// <summary>
-        /// Indicates the internal error error code.
+        /// An unexpected internal error occurred.
         /// </summary>
         InternalError = 12,
         /// <summary>
-        /// Indicates the not admitted error code.
+        /// The message was rejected by an admission policy before sending.
         /// </summary>
         NotAdmitted = 13
     }
@@ -99,71 +99,71 @@ public sealed class ZlinkSubmitException : ZlinkException
     }
 
     /// <summary>
-    /// Gets the result.
+    /// Gets the result code that classifies this failure.
     /// </summary>
     public ErrorCode Result { get; }
 }
 
 /// <summary>
-/// Represents zlink request exception.
+/// Thrown when a request fails or its reply reports an error.
 /// </summary>
 public sealed class ZlinkRequestException : ZlinkException
 {
     /// <summary>
-    /// Defines error code values.
+    /// The result codes this operation can fail with.
     /// </summary>
     public enum ErrorCode
     {
         /// <summary>
-        /// Indicates the successful error code.
+        /// The operation succeeded.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Indicates the timed out error code.
+        /// No reply arrived within the request timeout.
         /// </summary>
         TimedOut = 101,
         /// <summary>
-        /// Indicates the not found error code.
+        /// The target was not found.
         /// </summary>
         NotFound = 102,
         /// <summary>
-        /// Indicates the terminated error code.
+        /// The context was terminated while the operation was in flight.
         /// </summary>
         Terminated = 103,
         /// <summary>
-        /// Indicates the protocol error error code.
+        /// The reply violated the request/reply protocol.
         /// </summary>
         ProtocolError = 104,
         /// <summary>
-        /// Indicates the internal error error code.
+        /// An unexpected internal error occurred.
         /// </summary>
         InternalError = 105,
         /// <summary>
-        /// Indicates the rejected error code.
+        /// The responder rejected the request.
         /// </summary>
         Rejected = 106,
         /// <summary>
-        /// Indicates the conflict error code.
+        /// The operation conflicted with existing state.
         /// </summary>
         Conflict = 107,
         /// <summary>
-        /// Indicates the busy error code.
+        /// The resource was busy and could not service the request.
         /// </summary>
         Busy = 108,
         /// <summary>
-        /// Indicates the not connected error code.
+        /// No connected peer was available for the operation.
         /// </summary>
         NotConnected = 109,
         /// <summary>
-        /// Indicates the invalid argument error code.
+        /// An argument was invalid.
         /// </summary>
         InvalidArgument = 110,
         /// <summary>
-        /// Indicates the invalid state error code.
+        /// The target was in a state that does not allow the operation.
         /// </summary>
         InvalidState = 111,
         /// <summary>
-        /// Indicates the not supported error code.
+        /// The operation is not supported.
         /// </summary>
         NotSupported = 112
     }
@@ -196,47 +196,47 @@ public sealed class ZlinkRequestException : ZlinkException
     }
 
     /// <summary>
-    /// Gets the result.
+    /// Gets the result code that classifies this failure.
     /// </summary>
     public ErrorCode Result { get; }
 }
 
 /// <summary>
-/// Represents zlink receive exception.
+/// Thrown when receiving a message fails.
 /// </summary>
 public sealed class ZlinkRecvException : ZlinkException
 {
     /// <summary>
-    /// Defines error code values.
+    /// The result codes this operation can fail with.
     /// </summary>
     public enum ErrorCode
     {
         /// <summary>
-        /// Indicates the successful error code.
+        /// The operation succeeded.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Indicates the no data error code.
+        /// No message was available on a non-blocking receive.
         /// </summary>
         NoData = 201,
         /// <summary>
-        /// Indicates the busy error code.
+        /// The resource was busy and could not service the request.
         /// </summary>
         Busy = 202,
         /// <summary>
-        /// Indicates the terminated error code.
+        /// The context was terminated while the operation was in flight.
         /// </summary>
         Terminated = 203,
         /// <summary>
-        /// Indicates the invalid handle error code.
+        /// The target handle was invalid or already closed.
         /// </summary>
         InvalidHandle = 204,
         /// <summary>
-        /// Indicates the not supported error code.
+        /// The operation is not supported.
         /// </summary>
         NotSupported = 205,
         /// <summary>
-        /// Indicates the internal error error code.
+        /// An unexpected internal error occurred.
         /// </summary>
         InternalError = 206
     }
@@ -269,47 +269,47 @@ public sealed class ZlinkRecvException : ZlinkException
     }
 
     /// <summary>
-    /// Gets the result.
+    /// Gets the result code that classifies this failure.
     /// </summary>
     public ErrorCode Result { get; }
 }
 
 /// <summary>
-/// Represents zlink handler exception.
+/// Thrown when registering or running a callback handler fails.
 /// </summary>
 public sealed class ZlinkHandlerException : ZlinkException
 {
     /// <summary>
-    /// Defines error code values.
+    /// The result codes this operation can fail with.
     /// </summary>
     public enum ErrorCode
     {
         /// <summary>
-        /// Indicates the successful error code.
+        /// The operation succeeded.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Indicates the invalid argument error code.
+        /// An argument was invalid.
         /// </summary>
         InvalidArgument = 301,
         /// <summary>
-        /// Indicates the busy error code.
+        /// The resource was busy and could not service the request.
         /// </summary>
         Busy = 302,
         /// <summary>
-        /// Indicates the not supported error code.
+        /// The operation is not supported.
         /// </summary>
         NotSupported = 303,
         /// <summary>
-        /// Indicates the deadlock error code.
+        /// The call would deadlock, such as invoking it from its own callback.
         /// </summary>
         Deadlock = 304,
         /// <summary>
-        /// Indicates the invalid handle error code.
+        /// The target handle was invalid or already closed.
         /// </summary>
         InvalidHandle = 305,
         /// <summary>
-        /// Indicates the internal error error code.
+        /// An unexpected internal error occurred.
         /// </summary>
         InternalError = 306
     }
@@ -342,39 +342,39 @@ public sealed class ZlinkHandlerException : ZlinkException
     }
 
     /// <summary>
-    /// Gets the result.
+    /// Gets the result code that classifies this failure.
     /// </summary>
     public ErrorCode Result { get; }
 }
 
 /// <summary>
-/// Represents zlink close exception.
+/// Thrown when closing a socket or resource fails.
 /// </summary>
 public sealed class ZlinkCloseException : ZlinkException
 {
     /// <summary>
-    /// Defines error code values.
+    /// The result codes this operation can fail with.
     /// </summary>
     public enum ErrorCode
     {
         /// <summary>
-        /// Indicates the successful error code.
+        /// The operation succeeded.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Indicates the busy error code.
+        /// The resource was busy and could not service the request.
         /// </summary>
         Busy = 401,
         /// <summary>
-        /// Indicates the shutdown error code.
+        /// The context was already shutting down.
         /// </summary>
         Shutdown = 402,
         /// <summary>
-        /// Indicates the invalid handle error code.
+        /// The target handle was invalid or already closed.
         /// </summary>
         InvalidHandle = 403,
         /// <summary>
-        /// Indicates the internal error error code.
+        /// An unexpected internal error occurred.
         /// </summary>
         InternalError = 404
     }
@@ -407,43 +407,43 @@ public sealed class ZlinkCloseException : ZlinkException
     }
 
     /// <summary>
-    /// Gets the result.
+    /// Gets the result code that classifies this failure.
     /// </summary>
     public ErrorCode Result { get; }
 }
 
 /// <summary>
-/// Represents zlink bind exception.
+/// Thrown when binding a socket to an endpoint fails.
 /// </summary>
 public sealed class ZlinkBindException : ZlinkException
 {
     /// <summary>
-    /// Defines error code values.
+    /// The result codes this operation can fail with.
     /// </summary>
     public enum ErrorCode
     {
         /// <summary>
-        /// Indicates the successful error code.
+        /// The operation succeeded.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Indicates the invalid argument error code.
+        /// An argument was invalid.
         /// </summary>
         InvalidArgument = 501,
         /// <summary>
-        /// Indicates the addr in use error code.
+        /// The endpoint address was already in use.
         /// </summary>
         AddrInUse = 502,
         /// <summary>
-        /// Indicates the not supported error code.
+        /// The operation is not supported.
         /// </summary>
         NotSupported = 503,
         /// <summary>
-        /// Indicates the invalid handle error code.
+        /// The target handle was invalid or already closed.
         /// </summary>
         InvalidHandle = 504,
         /// <summary>
-        /// Indicates the internal error error code.
+        /// An unexpected internal error occurred.
         /// </summary>
         InternalError = 505
     }
@@ -476,51 +476,51 @@ public sealed class ZlinkBindException : ZlinkException
     }
 
     /// <summary>
-    /// Gets the result.
+    /// Gets the result code that classifies this failure.
     /// </summary>
     public ErrorCode Result { get; }
 }
 
 /// <summary>
-/// Represents zlink connect exception.
+/// Thrown when connecting a socket to an endpoint fails.
 /// </summary>
 public sealed class ZlinkConnectException : ZlinkException
 {
     /// <summary>
-    /// Defines error code values.
+    /// The result codes this operation can fail with.
     /// </summary>
     public enum ErrorCode
     {
         /// <summary>
-        /// Indicates the successful error code.
+        /// The operation succeeded.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Indicates the invalid argument error code.
+        /// An argument was invalid.
         /// </summary>
         InvalidArgument = 601,
         /// <summary>
-        /// Indicates the not supported error code.
+        /// The operation is not supported.
         /// </summary>
         NotSupported = 602,
         /// <summary>
-        /// Indicates the invalid handle error code.
+        /// The target handle was invalid or already closed.
         /// </summary>
         InvalidHandle = 603,
         /// <summary>
-        /// Indicates the internal error error code.
+        /// An unexpected internal error occurred.
         /// </summary>
         InternalError = 604,
         /// <summary>
-        /// Indicates the not found error code.
+        /// The target was not found.
         /// </summary>
         NotFound = 605,
         /// <summary>
-        /// Indicates the conflict error code.
+        /// The operation conflicted with existing state.
         /// </summary>
         Conflict = 606,
         /// <summary>
-        /// Indicates the busy error code.
+        /// The resource was busy and could not service the request.
         /// </summary>
         Busy = 607
     }
@@ -553,47 +553,47 @@ public sealed class ZlinkConnectException : ZlinkException
     }
 
     /// <summary>
-    /// Gets the result.
+    /// Gets the result code that classifies this failure.
     /// </summary>
     public ErrorCode Result { get; }
 }
 
 /// <summary>
-/// Represents zlink config exception.
+/// Thrown when reading or applying a configuration option fails.
 /// </summary>
 public sealed class ZlinkConfigException : ZlinkException
 {
     /// <summary>
-    /// Defines error code values.
+    /// The result codes this operation can fail with.
     /// </summary>
     public enum ErrorCode
     {
         /// <summary>
-        /// Indicates the successful error code.
+        /// The operation succeeded.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Indicates the invalid handle error code.
+        /// The target handle was invalid or already closed.
         /// </summary>
         InvalidHandle = 701,
         /// <summary>
-        /// Indicates the invalid argument error code.
+        /// An argument was invalid.
         /// </summary>
         InvalidArgument = 702,
         /// <summary>
-        /// Indicates the not supported error code.
+        /// The operation is not supported.
         /// </summary>
         NotSupported = 703,
         /// <summary>
-        /// Indicates the internal error error code.
+        /// An unexpected internal error occurred.
         /// </summary>
         InternalError = 704,
         /// <summary>
-        /// Indicates the invalid state error code.
+        /// The target was in a state that does not allow the operation.
         /// </summary>
         InvalidState = 705,
         /// <summary>
-        /// Indicates the not found error code.
+        /// The target was not found.
         /// </summary>
         NotFound = 706
     }
@@ -626,7 +626,7 @@ public sealed class ZlinkConfigException : ZlinkException
     }
 
     /// <summary>
-    /// Gets the result.
+    /// Gets the result code that classifies this failure.
     /// </summary>
     public ErrorCode Result { get; }
 }

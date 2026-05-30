@@ -7,7 +7,8 @@ using System.Threading;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Represents spot dispatch info.
+/// Describes a single spot dispatch event and the actor messages or channel
+/// reply it carries.
 /// </summary>
 public sealed class SpotDispatchInfo
 {
@@ -54,9 +55,9 @@ public sealed class SpotDispatchInfo
     public IReadOnlyList<ActorReceived> ActorMessages { get; }
 
     /// <summary>
-    /// Receives the next available item.
+    /// Pops the next actor message carried by this event, advancing an internal
+    /// cursor; returns null once all messages have been taken. Thread-safe.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public ActorReceived? RecvActor()
     {
         int index = Interlocked.Increment(ref _actorMessageIndex) - 1;

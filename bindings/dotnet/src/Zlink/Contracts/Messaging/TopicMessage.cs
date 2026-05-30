@@ -8,7 +8,8 @@ using System.Threading;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Represents topic message.
+/// A received publish: its topic, source routing id, and message parts. Owns
+/// its parts until disposed.
 /// </summary>
 public sealed class TopicMessage : IDisposable
 {
@@ -83,23 +84,22 @@ public sealed class TopicMessage : IDisposable
     public IReadOnlyList<Message> Parts => PartsCollection;
 
     /// <summary>
-    /// Gets whether the single part.
+    /// Gets whether this publish carries exactly one part.
     /// </summary>
     public bool IsSinglePart => _singlePart != null || PartsCollection.IsSinglePart;
 
     /// <summary>
-    /// Returns the first message part without transferring ownership.
+    /// Returns the first message part; it stays owned by this envelope.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public Message FirstPart()
     {
         return _singlePart ?? PartsCollection.First();
     }
 
     /// <summary>
-    /// Returns the only message part or throws when the envelope is multipart.
+    /// Returns the only message part, or throws when the publish is multipart;
+    /// the part stays owned by this envelope.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public Message SinglePartOrThrow()
     {
         return _singlePart ?? PartsCollection.Single();

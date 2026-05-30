@@ -7,9 +7,8 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-/// <summary>
-/// Represents message.
-/// </summary>
+// Continuation of Message; the type summary lives on the primary partial in
+// Message.cs.
 public sealed partial class Message : IDisposable, IAsyncDisposable
 {
     internal ref ZlinkMsg Handle
@@ -101,9 +100,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Creates a copy of this message payload.
+    /// Creates a new message holding an independent copy of this payload; the
+    /// caller owns and must dispose it.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public Message Copy()
     {
         EnsureValid();

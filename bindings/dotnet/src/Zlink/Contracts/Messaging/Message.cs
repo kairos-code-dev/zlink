@@ -48,6 +48,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     /// Create a message with writable payload storage of <paramref name="size"/> bytes.
     /// </summary>
     /// <param name="size">Payload size in bytes. The value must be non-negative.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="size"/> is negative.
+    /// </exception>
     public Message(int size)
     {
         if (size < 0)
@@ -131,6 +134,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     /// Allocate a message with writable payload storage.
     /// </summary>
     /// <param name="size">Payload size in bytes. The value must be non-negative.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="size"/> is negative.
+    /// </exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Message Allocate(int size)
     {
@@ -304,7 +310,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message containing a snapshot copy of <paramref name="data"/>.
+    /// Create a message holding an independent snapshot copy of
+    /// <paramref name="data"/>; see <see cref="From(byte[])"/> for copy
+    /// semantics.
     /// </summary>
     public static Message From(ReadOnlySpan<byte> data)
     {
@@ -314,7 +322,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message containing a snapshot copy of <paramref name="data"/>.
+    /// Create a message holding an independent snapshot copy of
+    /// <paramref name="data"/>; see <see cref="From(byte[])"/> for copy
+    /// semantics.
     /// </summary>
     public static Message From(ReadOnlyMemory<byte> data)
     {
@@ -324,7 +334,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message containing a snapshot copy of <paramref name="data"/>.
+    /// Create a message holding an independent snapshot copy of
+    /// <paramref name="data"/>; see <see cref="From(byte[])"/> for copy
+    /// semantics.
     /// </summary>
     public static Message From(ReadOnlySequence<byte> data)
     {
@@ -417,7 +429,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Releases the payload storage owned by this message.
+    /// Releases the payload storage owned by this message. Disposal is
+    /// synchronous; this returns an already-completed task for callers that
+    /// await disposal.
     /// </summary>
     public ValueTask DisposeAsync()
     {

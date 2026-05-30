@@ -5,67 +5,78 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines the poller contract.
+/// Multiplexes sockets, file descriptors, and timers, reporting which become
+/// ready on a single wait.
 /// </summary>
 public interface IPoller : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets the size.
+    /// Gets the number of registered sources.
     /// </summary>
     int Size { get; }
 
     /// <summary>
-    /// Adds the value.
+    /// Registers <paramref name="socket"/> to be watched for
+    /// <paramref name="events"/>; <paramref name="slot"/> is a caller token
+    /// echoed back in the matching <see cref="PollEvent"/>.
     /// </summary>
     void Add(IZlinkSocket socket, PollEventFlags events, nuint slot);
 
     /// <summary>
-    /// Adds the fd.
+    /// Registers raw file descriptor <paramref name="fd"/> to be watched for
+    /// <paramref name="events"/>; <paramref name="slot"/> is echoed back in the
+    /// matching <see cref="PollEvent"/>.
     /// </summary>
     void AddFd(int fd, PollEventFlags events, nuint slot);
 
     /// <summary>
-    /// Adds the value.
+    /// Registers <paramref name="timer"/>; its expirations surface as poll
+    /// events tagged with <paramref name="slot"/>.
     /// </summary>
     void Add(IZlinkTimer timer, nuint slot);
 
     /// <summary>
-    /// Modifies a registered poll source.
+    /// Changes the watched events for an already-registered socket.
     /// </summary>
     void Modify(IZlinkSocket socket, PollEventFlags events);
 
     /// <summary>
-    /// Modifies a registered file descriptor poll source.
+    /// Changes the watched events for an already-registered file descriptor.
     /// </summary>
     void ModifyFd(int fd, PollEventFlags events);
 
     /// <summary>
-    /// Removes the value.
+    /// Unregisters <paramref name="socket"/>.
     /// </summary>
+    /// <returns>true when it was registered; otherwise false.</returns>
     bool Remove(IZlinkSocket socket);
 
     /// <summary>
-    /// Removes the value.
+    /// Unregisters <paramref name="timer"/>.
     /// </summary>
+    /// <returns>true when it was registered; otherwise false.</returns>
     bool Remove(IZlinkTimer timer);
 
     /// <summary>
-    /// Removes the value.
+    /// Unregisters file descriptor <paramref name="fd"/>.
     /// </summary>
+    /// <returns>true when it was registered; otherwise false.</returns>
     bool Remove(int fd);
 
     /// <summary>
-    /// Clears the current state.
+    /// Unregisters every source.
     /// </summary>
     void Clear();
 
     /// <summary>
-    /// Closes the resource.
+    /// Closes the poller and releases its resources.
     /// </summary>
     void Close();
 
     /// <summary>
-    /// Waits for poll events.
+    /// Waits up to <paramref name="timeout"/> for sources to become ready,
+    /// writing up to <paramref name="destination"/>.Length results into it.
     /// </summary>
+    /// <returns>The number of ready sources written; 0 on timeout.</returns>
     int Wait(Span<PollEvent> destination, TimeSpan timeout);
 }

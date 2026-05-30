@@ -3,49 +3,50 @@
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines registry state values.
+/// The operational state of a registry.
 /// </summary>
 public enum RegistryState
 {
     /// <summary>
-    /// Indicates the idle registry state.
+    /// Not yet serving.
     /// </summary>
     Idle = 1,
     /// <summary>
-    /// Indicates the active registry state.
+    /// Serving normally.
     /// </summary>
     Active = 2,
     /// <summary>
-    /// Indicates the degraded registry state.
+    /// Serving with reduced capability.
     /// </summary>
     Degraded = 3,
     /// <summary>
-    /// Indicates the error registry state.
+    /// In an error state.
     /// </summary>
     Error = 4
 }
 
 /// <summary>
-/// Describes registry service summary filter data.
+/// Filter for <see cref="IRegistry.ServiceSummary"/>; null fields match
+/// anything.
 /// </summary>
-/// <param name="AutoConnectType">The auto connect type value.</param>
-/// <param name="ServiceRole">The service role value.</param>
-/// <param name="ChannelName">The channel name value.</param>
+/// <param name="AutoConnectType">Restrict to this auto-connect topology.</param>
+/// <param name="ServiceRole">Restrict to this service role.</param>
+/// <param name="ChannelName">Restrict to this logical channel name.</param>
 public sealed record RegistryServiceSummaryFilter(
     AutoConnectType? AutoConnectType = null,
     ServiceRole? ServiceRole = null,
     string? ChannelName = null);
 
 /// <summary>
-/// Describes registry topology filter data.
+/// Filter for a registry topology query; null fields match anything.
 /// </summary>
-/// <param name="AutoConnectType">The auto connect type value.</param>
-/// <param name="ServiceKind">The service kind value.</param>
-/// <param name="ServiceRole">The service role value.</param>
-/// <param name="ChannelName">The channel name value.</param>
-/// <param name="RoutingId">The routing id value.</param>
-/// <param name="State">The state value.</param>
-/// <param name="Source">The source value.</param>
+/// <param name="AutoConnectType">Restrict to this auto-connect topology.</param>
+/// <param name="ServiceKind">Restrict to this kind of service.</param>
+/// <param name="ServiceRole">Restrict to this service role.</param>
+/// <param name="ChannelName">Restrict to this logical channel name.</param>
+/// <param name="RoutingId">Restrict to this routing id.</param>
+/// <param name="State">Restrict to this topology state.</param>
+/// <param name="Source">Restrict to entries learned from this source.</param>
 public sealed record RegistryTopologyFilter(
     AutoConnectType? AutoConnectType = null,
     ServiceKind? ServiceKind = null,
@@ -56,17 +57,17 @@ public sealed record RegistryTopologyFilter(
     TopologySource? Source = null);
 
 /// <summary>
-/// Describes registry status data.
+/// A snapshot of a registry's status.
 /// </summary>
-/// <param name="RegistryId">The registry id value.</param>
-/// <param name="BindEndpoint">The bind endpoint value.</param>
-/// <param name="State">The state value.</param>
-/// <param name="TopologyEntryCount">The topology entry count value.</param>
-/// <param name="PeerRegistryCount">The peer registry count value.</param>
-/// <param name="ConnectedPeerRegistryCount">The connected peer registry count value.</param>
-/// <param name="ListSeq">The list sequence value.</param>
-/// <param name="LastError">The last error value.</param>
-/// <param name="LastChangedMs">The last changed milliseconds value.</param>
+/// <param name="RegistryId">The registry's identifier.</param>
+/// <param name="BindEndpoint">The endpoint the registry is bound to.</param>
+/// <param name="State">The registry's operational state.</param>
+/// <param name="TopologyEntryCount">The number of topology entries held.</param>
+/// <param name="PeerRegistryCount">The number of peer registries configured.</param>
+/// <param name="ConnectedPeerRegistryCount">The number of peer registries currently connected.</param>
+/// <param name="ListSeq">A monotonically increasing sequence number for the topology list.</param>
+/// <param name="LastError">The last native error code, or 0 for none.</param>
+/// <param name="LastChangedMs">When the status last changed, in milliseconds.</param>
 public sealed record RegistryStatus(
     uint RegistryId,
     string BindEndpoint,
@@ -79,17 +80,17 @@ public sealed record RegistryStatus(
     ulong LastChangedMs);
 
 /// <summary>
-/// Describes registry service summary entry data.
+/// A per-service rollup of registered endpoints grouped by connection state.
 /// </summary>
-/// <param name="AutoConnectType">The auto connect type value.</param>
-/// <param name="ServiceRole">The service role value.</param>
-/// <param name="ChannelName">The channel name value.</param>
-/// <param name="TotalCount">The total count value.</param>
-/// <param name="ConnectingCount">The connecting count value.</param>
-/// <param name="ReadyCount">The ready count value.</param>
-/// <param name="ErrorCount">The error count value.</param>
-/// <param name="StoppedCount">The stopped count value.</param>
-/// <param name="LastReportedMs">The last reported milliseconds value.</param>
+/// <param name="AutoConnectType">The auto-connect topology.</param>
+/// <param name="ServiceRole">The service's messaging role.</param>
+/// <param name="ChannelName">The logical channel name.</param>
+/// <param name="TotalCount">The total number of endpoints.</param>
+/// <param name="ConnectingCount">The number of endpoints currently connecting.</param>
+/// <param name="ReadyCount">The number of ready endpoints.</param>
+/// <param name="ErrorCount">The number of endpoints in error.</param>
+/// <param name="StoppedCount">The number of stopped endpoints.</param>
+/// <param name="LastReportedMs">When this summary was last reported, in milliseconds.</param>
 public sealed record RegistryServiceSummaryEntry(
     AutoConnectType AutoConnectType,
     ServiceRole ServiceRole,
@@ -102,21 +103,21 @@ public sealed record RegistryServiceSummaryEntry(
     ulong LastReportedMs);
 
 /// <summary>
-/// Describes registry topology entry data.
+/// One entry in a registry's topology: a service endpoint and its state.
 /// </summary>
-/// <param name="AutoConnectType">The auto connect type value.</param>
-/// <param name="RoutingId">The routing id value.</param>
-/// <param name="ServiceKind">The service kind value.</param>
-/// <param name="ServiceRole">The service role value.</param>
-/// <param name="ChannelName">The channel name value.</param>
-/// <param name="Endpoint">The endpoint value.</param>
-/// <param name="Source">The source value.</param>
-/// <param name="State">The state value.</param>
-/// <param name="DesiredCount">The desired count value.</param>
-/// <param name="ReadyCount">The ready count value.</param>
-/// <param name="ErrorCode">The error code value.</param>
-/// <param name="LastReportedMs">The last reported milliseconds value.</param>
-/// <param name="SpotKind">The spot kind value.</param>
+/// <param name="AutoConnectType">The auto-connect topology.</param>
+/// <param name="RoutingId">The endpoint's routing id, when known.</param>
+/// <param name="ServiceKind">The kind of service.</param>
+/// <param name="ServiceRole">The service's messaging role.</param>
+/// <param name="ChannelName">The logical channel name.</param>
+/// <param name="Endpoint">The transport endpoint.</param>
+/// <param name="Source">Where this entry was learned from.</param>
+/// <param name="State">The connection state of the entry.</param>
+/// <param name="DesiredCount">The desired number of connections.</param>
+/// <param name="ReadyCount">The number of ready connections.</param>
+/// <param name="ErrorCode">The last native error code, or 0 for none.</param>
+/// <param name="LastReportedMs">When this entry was last reported, in milliseconds.</param>
+/// <param name="SpotKind">The kind of spot, when the entry is a spot.</param>
 public sealed record RegistryTopologyEntry(
     AutoConnectType AutoConnectType,
     RoutingId? RoutingId,
@@ -133,15 +134,15 @@ public sealed record RegistryTopologyEntry(
     SpotKind SpotKind);
 
 /// <summary>
-/// Describes member peer entry data.
+/// One member peer registered on a channel.
 /// </summary>
-/// <param name="AutoConnectType">The auto connect type value.</param>
-/// <param name="ServiceRole">The service role value.</param>
-/// <param name="ChannelName">The channel name value.</param>
-/// <param name="Endpoint">The endpoint value.</param>
-/// <param name="RoutingId">The routing id value.</param>
-/// <param name="Value">The value value.</param>
-/// <param name="Weight">The weight value.</param>
+/// <param name="AutoConnectType">The auto-connect topology.</param>
+/// <param name="ServiceRole">The peer's messaging role.</param>
+/// <param name="ChannelName">The logical channel name.</param>
+/// <param name="Endpoint">The peer's transport endpoint.</param>
+/// <param name="RoutingId">The peer's routing id, when known.</param>
+/// <param name="Value">The application-defined value advertised by the peer.</param>
+/// <param name="Weight">The peer's load-balancing weight.</param>
 public sealed record MemberPeerEntry(
     AutoConnectType AutoConnectType,
     ServiceRole ServiceRole,

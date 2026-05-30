@@ -7,12 +7,12 @@ using Systems.Zlink.Native;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Represents zlink exception.
+/// Base class for all exceptions thrown by the zlink bindings.
 /// </summary>
 public abstract class ZlinkException : Exception
 {
     /// <summary>
-    /// Creates a new instance.
+    /// Creates an exception with the given zlink code and no underlying errno.
     /// </summary>
     protected ZlinkException(int code)
         : this(code, 0)
@@ -20,7 +20,8 @@ public abstract class ZlinkException : Exception
     }
 
     /// <summary>
-    /// Creates a new instance.
+    /// Creates an exception with the given zlink code and the native errno that
+    /// produced it.
     /// </summary>
     protected ZlinkException(int code, int internalErrno)
         : base(BuildMessage(code, internalErrno))
@@ -30,17 +31,17 @@ public abstract class ZlinkException : Exception
     }
 
     /// <summary>
-    /// Gets the code.
+    /// Gets the zlink result code that classifies this failure.
     /// </summary>
     public int Code { get; }
 
     /// <summary>
-    /// Gets the internal errno value.
+    /// Gets the native errno that produced this failure, or 0 when none.
     /// </summary>
     public int InternalErrno { get; }
 
     /// <summary>
-    /// Gets the message.
+    /// Gets the formatted error message.
     /// </summary>
     public override string Message => base.Message;
 

@@ -8,66 +8,67 @@ using System.Threading.Tasks;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Describes actor join result data.
+/// The outcome of an actor join.
 /// </summary>
-/// <param name="Result">The result value.</param>
-/// <param name="JoinResultCode">The join result code value.</param>
-/// <param name="Actor">The actor value.</param>
-/// <param name="JoinedSpotRid">The joined spot routing id value.</param>
-/// <param name="JoinEpoch">The join epoch value.</param>
-/// <param name="Flags">The flags value.</param>
+/// <param name="Result">The outcome of the join request.</param>
+/// <param name="JoinResultCode">The application-supplied join result code.</param>
+/// <param name="Actor">The joined actor.</param>
+/// <param name="JoinedSpotRid">The routing id of the spot that was joined.</param>
+/// <param name="JoinEpoch">The join epoch (generation) assigned.</param>
+/// <param name="Flags">Implementation-defined join flags.</param>
 public sealed record ActorJoinResult(RequestResult Result, int JoinResultCode,
     ActorRef Actor, RoutingId JoinedSpotRid, ulong JoinEpoch, uint Flags);
 
 /// <summary>
-/// Describes actor join entry spot result data.
+/// The outcome of an actor join routed through an entry spot.
 /// </summary>
-/// <param name="Result">The result value.</param>
-/// <param name="Actor">The actor value.</param>
-/// <param name="TargetNodeRid">The target node routing id value.</param>
-/// <param name="JoinEpoch">The join epoch value.</param>
-/// <param name="Flags">The flags value.</param>
+/// <param name="Result">The outcome of the join request.</param>
+/// <param name="Actor">The joined actor.</param>
+/// <param name="TargetNodeRid">The routing id of the node the actor was routed to.</param>
+/// <param name="JoinEpoch">The join epoch (generation) assigned.</param>
+/// <param name="Flags">Implementation-defined join flags.</param>
 public sealed record ActorJoinEntrySpotResult(RequestResult Result,
     ActorRef Actor, RoutingId TargetNodeRid, ulong JoinEpoch, uint Flags);
 
 /// <summary>
-/// Represents the actor join handler callback.
+/// Invoked with the result of an actor join and its reply parts; the callback
+/// owns the parts and must dispose them.
 /// </summary>
 public delegate void ActorJoinHandler(ActorJoinResult result,
     IReadOnlyList<Message> replyParts);
 
 /// <summary>
-/// Represents the actor join entry spot handler callback.
+/// Invoked with the result of an actor join routed through an entry spot.
 /// </summary>
 public delegate void ActorJoinEntrySpotHandler(
     ActorJoinEntrySpotResult result);
 
 /// <summary>
-/// Defines the actor join operation contract.
+/// Builds an actor join: add message parts, then submit and await a reply.
 /// </summary>
 public interface ActorJoinOperation
 {
     /// <summary>
-    /// Adds a message part to the operation.
+    /// Adds a message part; consumed on a successful submit (see <see cref="SendOperation"/>).
     /// </summary>
     ActorJoinSubmitOperation Message(Message message);
 }
 
 /// <summary>
-/// Defines the actor join submit operation contract.
+/// Accepts further parts, timeout, flags, and the terminal submit of an actor join.
 /// </summary>
 public interface ActorJoinSubmitOperation
 {
     /// <summary>
-    /// Adds a message part to the operation.
+    /// Adds a message part; consumed on a successful submit (see <see cref="SendOperation"/>).
     /// </summary>
     ActorJoinSubmitOperation Message(Message message);
     /// <summary>
-    /// Sets the operation timeout.
+    /// Sets how long the operation waits before timing out.
     /// </summary>
     ActorJoinSubmitOperation Timeout(TimeSpan timeout);
     /// <summary>
-    /// Sets operation flags.
+    /// Sets the send flags applied at submit time.
     /// </summary>
     ActorJoinCallbackSubmitOperation Flags(SendFlags flags);
     /// <summary>
@@ -76,41 +77,41 @@ public interface ActorJoinSubmitOperation
     Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> SubmitAsync(
         CancellationToken ct = default);
     /// <summary>
-    /// Submits the operation.
+    /// Submits the operation; the result is delivered to the callback.
     /// </summary>
     bool Submit(ActorJoinHandler callback);
 }
 
 /// <summary>
-/// Defines the actor join callback submit operation contract.
+/// Callback-submission stage of an actor join (reached after setting flags).
 /// </summary>
 public interface ActorJoinCallbackSubmitOperation
 {
     /// <summary>
-    /// Adds a message part to the operation.
+    /// Adds a message part; consumed on a successful submit (see <see cref="SendOperation"/>).
     /// </summary>
     ActorJoinCallbackSubmitOperation Message(Message message);
     /// <summary>
-    /// Sets the operation timeout.
+    /// Sets how long the operation waits before timing out.
     /// </summary>
     ActorJoinCallbackSubmitOperation Timeout(TimeSpan timeout);
     /// <summary>
-    /// Sets operation flags.
+    /// Sets the send flags applied at submit time.
     /// </summary>
     ActorJoinCallbackSubmitOperation Flags(SendFlags flags);
     /// <summary>
-    /// Submits the operation.
+    /// Submits the operation; the result is delivered to the callback.
     /// </summary>
     bool Submit(ActorJoinHandler callback);
 }
 
 /// <summary>
-/// Defines the actor join entry spot operation contract.
+/// Builds an actor join routed through an entry spot: optionally set a timeout, then submit.
 /// </summary>
 public interface ActorJoinEntrySpotOperation
 {
     /// <summary>
-    /// Sets the operation timeout.
+    /// Sets how long the operation waits before timing out.
     /// </summary>
     ActorJoinEntrySpotOperation Timeout(TimeSpan timeout);
     /// <summary>
@@ -118,22 +119,22 @@ public interface ActorJoinEntrySpotOperation
     /// </summary>
     Task<ActorJoinEntrySpotResult> SubmitAsync(CancellationToken ct = default);
     /// <summary>
-    /// Submits the operation.
+    /// Submits the operation; the result is delivered to the callback.
     /// </summary>
     bool Submit(ActorJoinEntrySpotHandler callback);
 }
 
 /// <summary>
-/// Defines the actor join reply operation contract.
+/// Builds a reply to an actor-join request: add parts, then submit.
 /// </summary>
 public interface ActorJoinReplyOperation
 {
     /// <summary>
-    /// Adds a message part to the operation.
+    /// Adds a message part; consumed on a successful submit (see <see cref="SendOperation"/>).
     /// </summary>
     ActorJoinReplyOperation Message(Message message);
     /// <summary>
-    /// Submits the operation.
+    /// Submits the reply. Failures throw <see cref="ZlinkException"/>.
     /// </summary>
     void Submit();
 }

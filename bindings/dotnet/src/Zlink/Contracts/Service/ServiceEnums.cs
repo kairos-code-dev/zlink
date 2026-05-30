@@ -3,82 +3,83 @@
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines registry option values.
+/// Configurable options of a service registry.
 /// </summary>
 public enum RegistryOption
 {
     /// <summary>
-    /// Indicates the id registry option.
+    /// The registry's identifier.
     /// </summary>
     Id = 0x3801,
     /// <summary>
-    /// Indicates the heartbeat interval milliseconds registry option.
+    /// How often the registry sends heartbeats, in milliseconds.
     /// </summary>
     HeartbeatIntervalMs = 0x3802,
     /// <summary>
-    /// Indicates the heartbeat timeout milliseconds registry option.
+    /// How long without a heartbeat before a member is dropped, in
+    /// milliseconds.
     /// </summary>
     HeartbeatTimeoutMs = 0x3803,
     /// <summary>
-    /// Indicates the broadcast interval milliseconds registry option.
+    /// How often the registry broadcasts its state, in milliseconds.
     /// </summary>
     BroadcastIntervalMs = 0x3804
 }
 
 /// <summary>
-/// Defines spot dispatch event values.
+/// The kind of readable event surfaced by a spot dispatch.
 /// </summary>
 public enum SpotDispatchEvent
 {
     /// <summary>
-    /// Indicates the subscribe readable spot dispatch event.
+    /// A subscription has a message ready to read.
     /// </summary>
     SubscribeReadable = 1,
     /// <summary>
-    /// Indicates the routed readable spot dispatch event.
+    /// A routed message is ready to read.
     /// </summary>
     RoutedReadable = 2,
     /// <summary>
-    /// Indicates the timer readable spot dispatch event.
+    /// A timer has expired.
     /// </summary>
     TimerReadable = 3,
     /// <summary>
-    /// Indicates the channel reply readable spot dispatch event.
+    /// A channel reply is ready to read.
     /// </summary>
     ChannelReplyReadable = 4,
     /// <summary>
-    /// Indicates the actor readable spot dispatch event.
+    /// An actor message is ready to read.
     /// </summary>
     ActorReadable = 5,
     /// <summary>
-    /// Indicates the actor join readable spot dispatch event.
+    /// An actor join request is ready to read.
     /// </summary>
     ActorJoinReadable = 6,
     /// <summary>
-    /// Indicates the actor lifecycle readable spot dispatch event.
+    /// An actor lifecycle event is ready to read.
     /// </summary>
     ActorLifecycleReadable = 7
 }
 
 /// <summary>
-/// Defines spot dispatch subject kind values.
+/// What kind of subject a spot dispatch event concerns.
 /// </summary>
 public enum SpotDispatchSubjectKind
 {
     /// <summary>
-    /// Indicates the spot spot dispatch subject kind.
+    /// The spot itself.
     /// </summary>
     Spot = 1,
     /// <summary>
-    /// Indicates the timer spot dispatch subject kind.
+    /// A timer.
     /// </summary>
     Timer = 2,
     /// <summary>
-    /// Indicates the channel dealer spot dispatch subject kind.
+    /// A channel dealer socket.
     /// </summary>
     ChannelDealer = 3,
     /// <summary>
-    /// Indicates the actor spot dispatch subject kind.
+    /// An actor.
     /// </summary>
     Actor = 4
 }

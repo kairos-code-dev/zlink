@@ -8,195 +8,238 @@ using System.Threading.Tasks;
 namespace Systems.Zlink;
 
 /// <summary>
-/// First stage of a send operation builder.
+/// Builds a multipart send: add one or more parts, then
+/// <see cref="SendSubmitOperation.Submit"/>.
 /// </summary>
+/// <remarks>
+/// Submitting consumes the added <see cref="Message"/> parts. On a successful
+/// submit each part's payload is moved into the transport and the managed
+/// instance is left empty; reading a consumed part's payload afterward throws,
+/// though disposing it stays safe and is still required to return pooled
+/// instances. If the submit fails, ownership of every part is restored to the
+/// caller for retry or disposal. The request, reply, and actor-join builders in
+/// this file share this same ownership model.
+/// </remarks>
 public interface SendOperation
 {
     /// <summary>
-    /// Add the first message part to the operation.
+    /// Adds the first message part. The part is consumed on a successful
+    /// submit; see <see cref="SendOperation"/> for the ownership contract.
     /// </summary>
     SendSubmitOperation Message(Message message);
 }
 
 /// <summary>
-/// Submit stage of a send operation builder.
+/// Accepts further parts, flags, and the terminal submit of a send builder.
 /// </summary>
 public interface SendSubmitOperation
 {
     /// <summary>
-    /// Add another message part to the operation.
+    /// Adds another message part. The part is consumed on a successful submit;
+    /// see <see cref="SendOperation"/> for the ownership contract.
     /// </summary>
     SendSubmitOperation Message(Message message);
 
     /// <summary>
-    /// Set send flags for the operation.
+    /// Sets the flags applied at submit time, replacing any previously set
+    /// flags.
     /// </summary>
     SendSubmitOperation Flags(SendFlags flags);
 
     /// <summary>
-    /// Submit the operation.
+    /// Submits the accumulated parts.
     /// </summary>
+    /// <returns>
+    /// true when the parts were queued for sending; false only when
+    /// <see cref="SendFlags.DontWait"/> is set and the send would have blocked
+    /// (back-pressure). Other failures throw <see cref="ZlinkException"/>.
+    /// </returns>
     bool Submit();
 }
 
 /// <summary>
-/// First stage of a request operation builder.
+/// Builds a request: add the request parts, then submit and await a reply.
 /// </summary>
 public interface RequestOperation
 {
     /// <summary>
-    /// Add the first request message part.
+    /// Adds the first request part. The part is consumed on a successful
+    /// submit; see <see cref="SendOperation"/> for the ownership contract.
     /// </summary>
     RequestSubmitOperation Message(Message message);
 }
 
 /// <summary>
-/// Submit stage of a request operation builder.
+/// Accepts further parts, timeout, flags, and the terminal submit of a request.
 /// </summary>
 public interface RequestSubmitOperation
 {
     /// <summary>
-    /// Add another request message part.
+    /// Adds another request part. The part is consumed on a successful submit;
+    /// see <see cref="SendOperation"/> for the ownership contract.
     /// </summary>
     RequestSubmitOperation Message(Message message);
 
     /// <summary>
-    /// Set the request timeout.
+    /// Sets how long the submit awaits a reply before the result reports
+    /// <see cref="RequestResult.TimedOut"/>, replacing any previous value.
     /// </summary>
     RequestSubmitOperation Timeout(TimeSpan timeout);
 
     /// <summary>
-    /// Set send flags and switch to the callback submit shape.
+    /// Sets the send flags and narrows the builder to callback submission:
+    /// once flags are set the awaitable <see cref="SubmitAsync"/> is no longer
+    /// reachable, only <see cref="RequestCallbackSubmitOperation.Submit"/>.
     /// </summary>
     RequestCallbackSubmitOperation Flags(SendFlags flags);
 
     /// <summary>
-    /// Submit the request and return the reply parts.
+    /// Submits the request and asynchronously returns the reply parts.
     /// </summary>
     /// <remarks>
-    /// The caller owns the returned messages and must dispose them.
+    /// The caller owns the returned messages and must dispose them. Request
+    /// parts follow the consume-on-submit contract of <see cref="SendOperation"/>.
     /// </remarks>
     Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Submit the request and deliver the result to <paramref name="callback"/>.
+    /// Submits the request; the result and reply parts are delivered later to
+    /// <paramref name="callback"/> (see <see cref="RequestCallback"/> for reply
+    /// ownership).
     /// </summary>
+    /// <returns>
+    /// true when the request was dispatched; false only when
+    /// <see cref="SendFlags.DontWait"/> is set and the send would have blocked
+    /// (back-pressure). Other failures throw <see cref="ZlinkException"/>.
+    /// </returns>
     bool Submit(RequestCallback callback);
 }
 
 /// <summary>
-/// Callback submit stage of a request operation builder.
+/// Callback-submission stage of a request builder (reached after
+/// <see cref="RequestSubmitOperation.Flags"/>).
 /// </summary>
 public interface RequestCallbackSubmitOperation
 {
     /// <summary>
-    /// Add another request message part.
+    /// Adds another request part. The part is consumed on a successful submit;
+    /// see <see cref="SendOperation"/> for the ownership contract.
     /// </summary>
     RequestCallbackSubmitOperation Message(Message message);
 
     /// <summary>
-    /// Set the request timeout.
+    /// Sets how long the submit awaits a reply before the result reports
+    /// <see cref="RequestResult.TimedOut"/>, replacing any previous value.
     /// </summary>
     RequestCallbackSubmitOperation Timeout(TimeSpan timeout);
 
     /// <summary>
-    /// Set send flags for the request.
+    /// Sets the send flags applied at submit time, replacing any previous flags.
     /// </summary>
     RequestCallbackSubmitOperation Flags(SendFlags flags);
 
     /// <summary>
-    /// Submit the request and deliver the result to <paramref name="callback"/>.
+    /// Submits the request; the result and reply parts are delivered later to
+    /// <paramref name="callback"/> (see <see cref="RequestCallback"/> for reply
+    /// ownership).
     /// </summary>
+    /// <returns>
+    /// true when the request was dispatched; false only when
+    /// <see cref="SendFlags.DontWait"/> is set and the send would have blocked
+    /// (back-pressure). Other failures throw <see cref="ZlinkException"/>.
+    /// </returns>
     bool Submit(RequestCallback callback);
 }
 
 /// <summary>
-/// First stage of a reply operation builder.
+/// Builds a reply to a received request: add the reply parts, then submit.
 /// </summary>
 public interface ReplyOperation
 {
     /// <summary>
-    /// Add the first reply message part.
+    /// Adds the first reply part. The part is consumed on a successful submit;
+    /// see <see cref="SendOperation"/> for the ownership contract.
     /// </summary>
     ReplySubmitOperation Message(Message message);
 }
 
 /// <summary>
-/// Submit stage of a reply operation builder.
+/// Accepts further parts, flags, and the terminal submit of a reply builder.
 /// </summary>
 public interface ReplySubmitOperation
 {
     /// <summary>
-    /// Add another reply message part.
+    /// Adds another reply part. The part is consumed on a successful submit;
+    /// see <see cref="SendOperation"/> for the ownership contract.
     /// </summary>
     ReplySubmitOperation Message(Message message);
 
     /// <summary>
-    /// Set send flags for the reply.
+    /// Sets the send flags applied at submit time, replacing any previous flags.
     /// </summary>
     ReplySubmitOperation Flags(SendFlags flags);
 
     /// <summary>
-    /// Submit the reply.
+    /// Submits the reply. Failures throw <see cref="ZlinkException"/>.
     /// </summary>
     void Submit();
 }
 
 /// <summary>
-/// Defines request result values.
+/// The outcome of a request, as delivered to a <see cref="RequestCallback"/>.
 /// </summary>
 public enum RequestResult
 {
     /// <summary>
-    /// Indicates the successful request result.
+    /// The request succeeded and a reply was returned.
     /// </summary>
     Ok = 0,
     /// <summary>
-    /// Indicates the timed out request result.
+    /// No reply arrived within the request timeout.
     /// </summary>
     TimedOut = 101,
     /// <summary>
-    /// Indicates the not found request result.
+    /// The target was not found.
     /// </summary>
     NotFound = 102,
     /// <summary>
-    /// Indicates the terminated request result.
+    /// The context was terminated while the request was in flight.
     /// </summary>
     Terminated = 103,
     /// <summary>
-    /// Indicates the protocol error request result.
+    /// The reply violated the request/reply protocol.
     /// </summary>
     ProtocolError = 104,
     /// <summary>
-    /// Indicates the internal error request result.
+    /// An unexpected internal error occurred.
     /// </summary>
     InternalError = 105,
     /// <summary>
-    /// Indicates the rejected request result.
+    /// The responder rejected the request.
     /// </summary>
     Rejected = 106,
     /// <summary>
-    /// Indicates the conflict request result.
+    /// The request conflicted with existing state.
     /// </summary>
     Conflict = 107,
     /// <summary>
-    /// Indicates the busy request result.
+    /// The responder was busy and could not service the request.
     /// </summary>
     Busy = 108,
     /// <summary>
-    /// Indicates the not connected request result.
+    /// No connected peer was available for the request.
     /// </summary>
     NotConnected = 109,
     /// <summary>
-    /// Indicates the invalid argument request result.
+    /// An argument was invalid.
     /// </summary>
     InvalidArgument = 110,
     /// <summary>
-    /// Indicates the invalid state request result.
+    /// The target was in a state that does not allow the request.
     /// </summary>
     InvalidState = 111,
     /// <summary>
-    /// Indicates the not supported request result.
+    /// The request is not supported.
     /// </summary>
     NotSupported = 112
 }

@@ -5,7 +5,7 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Represents common socket options.
+/// Typed facade over the socket options shared by every socket type.
 /// </summary>
 public class CommonSocketOptions
 {
@@ -36,7 +36,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the max message size.
+    /// Gets or sets the maximum inbound message size in bytes; -1 means no
+    /// limit.
     /// </summary>
     public long MaxMessageSize
     {
@@ -45,7 +46,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Starts a send operation.
+    /// Gets or sets the maximum number of outbound messages queued before the
+    /// socket applies back-pressure; 0 means no limit.
     /// </summary>
     public int SendHighWaterMark
     {
@@ -54,7 +56,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Receives the next available item.
+    /// Gets or sets the maximum number of inbound messages queued before the
+    /// socket applies back-pressure; 0 means no limit.
     /// </summary>
     public int ReceiveHighWaterMark
     {
@@ -63,7 +66,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Starts a send operation.
+    /// Gets or sets the underlying OS send buffer size in bytes; 0 uses the OS
+    /// default.
     /// </summary>
     public int SendBufferSize
     {
@@ -72,7 +76,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Receives the next available item.
+    /// Gets or sets the underlying OS receive buffer size in bytes; 0 uses the
+    /// OS default.
     /// </summary>
     public int ReceiveBufferSize
     {
@@ -81,7 +86,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the linger.
+    /// Gets or sets how long close waits to deliver still-queued messages;
+    /// null waits indefinitely.
     /// </summary>
     public TimeSpan? Linger
     {
@@ -91,7 +97,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the reconnect interval.
+    /// Gets or sets the base delay before reconnecting a broken connection;
+    /// null disables reconnection.
     /// </summary>
     public TimeSpan? ReconnectInterval
     {
@@ -101,7 +108,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the reconnect interval max.
+    /// Gets or sets the maximum delay between reconnection attempts when the
+    /// reconnect interval backs off exponentially; null leaves it uncapped.
     /// </summary>
     public TimeSpan? ReconnectIntervalMax
     {
@@ -111,7 +119,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the backlog.
+    /// Gets or sets the maximum length of the queue of pending inbound
+    /// connections on a bound endpoint.
     /// </summary>
     public int Backlog
     {
@@ -126,7 +135,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Receives the next available item.
+    /// Gets or sets how long a blocking receive waits for a message before
+    /// failing; null blocks indefinitely.
     /// </summary>
     public TimeSpan? ReceiveTimeout
     {
@@ -136,7 +146,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Starts a send operation.
+    /// Gets or sets how long a blocking send waits to enqueue a message before
+    /// failing; null blocks indefinitely.
     /// </summary>
     public TimeSpan? SendTimeout
     {
@@ -146,7 +157,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Connects to the endpoint.
+    /// Gets or sets the time limit for a single connection attempt; null uses
+    /// the OS default.
     /// </summary>
     public TimeSpan? ConnectTimeout
     {
@@ -163,7 +175,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the tcp keep alive.
+    /// Gets or sets TCP keep-alive: -1 uses the OS default, 0 disables it, 1
+    /// enables it.
     /// </summary>
     public int TcpKeepAlive
     {
@@ -196,7 +209,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the heartbeat interval.
+    /// Gets or sets the interval between heartbeat pings on an idle connection;
+    /// null disables heartbeats.
     /// </summary>
     public TimeSpan? HeartbeatInterval
     {
@@ -206,7 +220,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the heartbeat ttl.
+    /// Gets or sets how long the remote peer should consider this connection
+    /// alive without a heartbeat; null leaves it unset.
     /// </summary>
     public TimeSpan? HeartbeatTtl
     {
@@ -216,7 +231,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the heartbeat timeout.
+    /// Gets or sets how long to wait for a heartbeat reply before treating the
+    /// connection as dead; null falls back to the heartbeat interval.
     /// </summary>
     public TimeSpan? HeartbeatTimeout
     {
@@ -226,7 +242,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the ipv6.
+    /// Gets or sets whether IPv6 connections are enabled.
     /// </summary>
     public bool IPv6
     {
@@ -235,7 +251,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the tcp no delay.
+    /// Gets or sets whether Nagle's algorithm is disabled (TCP_NODELAY) so
+    /// small messages are sent without buffering delay.
     /// </summary>
     public bool TcpNoDelay
     {
@@ -262,7 +279,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the immediate.
+    /// Gets or sets whether messages are queued only to fully established
+    /// connections; when false they may also queue to pending connections.
     /// </summary>
     public bool Immediate
     {
@@ -289,7 +307,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the submit retry mode.
+    /// Gets or sets whether a submit that hits a local failure (such as
+    /// back-pressure) is retried; see <see cref="Systems.Zlink.SubmitRetryMode"/>.
     /// </summary>
     public SubmitRetryMode SubmitRetryMode
     {
@@ -298,7 +317,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the submit retry timeout milliseconds.
+    /// Gets or sets the total time budget, in milliseconds, for submit retries
+    /// when <see cref="SubmitRetryMode"/> is enabled.
     /// </summary>
     public int SubmitRetryTimeoutMilliseconds
     {
@@ -307,7 +327,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the submit retry attempts.
+    /// Gets or sets the maximum number of submit retry attempts when
+    /// <see cref="SubmitRetryMode"/> is enabled.
     /// </summary>
     public int SubmitRetryAttempts
     {
@@ -371,7 +392,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the routing id duplicate policy.
+    /// Gets or sets how the socket reacts when a connecting peer presents a
+    /// routing id already in use; see <see cref="RidDuplicatePolicy"/>.
     /// </summary>
     public RidDuplicatePolicy RoutingIdDuplicatePolicy
     {
@@ -381,7 +403,8 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the option.
+    /// Gets the concrete endpoint the socket last bound to, for example the
+    /// resolved address and port after binding to a wildcard.
     /// </summary>
     public string LastEndpoint => Socket.GetOption(SocketOptions.LastEndpoint);
 

@@ -4,12 +4,15 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Socket contract for message-oriented sockets.
+/// Contract for sockets that exchange multipart messages over a direct
+/// connection.
 /// </summary>
 public interface IMessageSocket : IConnectableSocket
 {
     /// <summary>
-    /// Start a multipart send operation.
+    /// Begins a multipart send: add parts on the returned builder, then submit.
+    /// The parts are consumed on a successful submit (see
+    /// <see cref="SendOperation"/> for the ownership contract).
     /// </summary>
     SendOperation Send();
 
@@ -25,20 +28,22 @@ public interface IMessageSocket : IConnectableSocket
     bool Recv(Received result, RecvFlags flags = RecvFlags.None);
 
     /// <summary>
-    /// Register a callback invoked when the socket can accept more sends.
+    /// Registers a callback invoked when the socket can accept more sends after
+    /// back-pressure. The callback runs on a background dispatch thread.
     /// </summary>
     void OnSendReady(Action handler);
 }
 
 /// <summary>
-/// PAIR socket contract.
+/// Contract for a PAIR socket: an exclusive one-to-one peering with no routing.
 /// </summary>
 public interface IPairSocket : IMessageSocket
 {
 }
 
 /// <summary>
-/// DEALER socket contract.
+/// Contract for a DEALER socket: load-balances sends across its connected
+/// peers and can issue routed requests.
 /// </summary>
 public interface IDealerSocket : IMessageSocket
 {
@@ -48,12 +53,13 @@ public interface IDealerSocket : IMessageSocket
     new DealerSocketOptions Options { get; }
 
     /// <summary>
-    /// Set the routing id used by this DEALER socket.
+    /// Sets the routing id that identifies this DEALER to its peers. Apply
+    /// before connecting so peers observe it from the first message.
     /// </summary>
     void SetRoutingId(RoutingId routingId);
 
     /// <summary>
-    /// Get the routing id used by this DEALER socket.
+    /// Gets the routing id that identifies this DEALER to its peers.
     /// </summary>
     RoutingId GetRoutingId();
 
@@ -73,7 +79,9 @@ public interface IDealerSocket : IMessageSocket
     string GetChannelName();
 
     /// <summary>
-    /// Start a request operation.
+    /// Begins a request: add parts on the returned builder, then submit and
+    /// await a reply. Request parts are consumed on a successful submit (see
+    /// <see cref="SendOperation"/> for the ownership contract).
     /// </summary>
     RequestOperation Request();
 }

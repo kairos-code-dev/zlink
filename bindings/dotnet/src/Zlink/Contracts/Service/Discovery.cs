@@ -5,121 +5,134 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines the discovery contract.
+/// A discovery service that learns peer routes from a registry and resolves
+/// spots, actors, and custom routes.
 /// </summary>
 public interface IDiscovery : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets the route value max size.
+    /// Gets the maximum size, in bytes, of a route value.
     /// </summary>
     int RouteValueMaxSize { get; }
 
     /// <summary>
-    /// Gets or sets the spot owner sync enabled.
+    /// Gets or sets whether spot ownership changes are synchronized across
+    /// peers.
     /// </summary>
     bool SpotOwnerSyncEnabled { get; set; }
 
     /// <summary>
-    /// Gets or sets the actor route sync enabled.
+    /// Gets or sets whether actor routes are synchronized across peers.
     /// </summary>
     bool ActorRouteSyncEnabled { get; set; }
 
     /// <summary>
-    /// Connects to the endpoint.
+    /// Connects to a registry's publish endpoint to receive route updates.
     /// </summary>
     void ConnectRegistry(string registryPubEndpoint);
 
     /// <summary>
-    /// Sets the tls client.
+    /// Configures TLS for the registry connection; apply before
+    /// <see cref="ConnectRegistry"/>.
     /// </summary>
+    /// <param name="caCertPath">Path to the CA bundle (PEM) used to verify the registry.</param>
+    /// <param name="hostname">Expected registry hostname to verify against.</param>
+    /// <param name="trustSystem">When true, also trust the host system's CA store.</param>
     void SetTlsClient(string caCertPath, string hostname,
         bool trustSystem = false);
 
     /// <summary>
-    /// Sets the value.
+    /// Sets the application-defined value advertised for this peer.
     /// </summary>
     void SetValue(long value);
 
     /// <summary>
-    /// Gets the value.
+    /// Gets the application-defined value advertised for this peer.
     /// </summary>
     long GetValue();
 
     /// <summary>
-    /// Gets registry member peer entries.
+    /// Returns the registry member peers currently known to this service. The
+    /// caller owns the returned array.
     /// </summary>
     MemberPeerEntry[] MemberPeers();
 
     /// <summary>
-    /// Resolves a spot route.
+    /// Resolves the route to the spot identified by <paramref name="spotRid"/>.
     /// </summary>
     SpotRoute ResolveSpot(RoutingId spotRid);
 
     /// <summary>
-    /// Resolves an actor route.
+    /// Resolves the route to the actor identified by
+    /// <paramref name="actorId"/>.
     /// </summary>
     ActorRoute ResolveActor(string actorId);
 
     /// <summary>
-    /// Binds the endpoint.
+    /// Binds a custom route, associating <paramref name="value"/> with
+    /// <paramref name="key"/> under route <paramref name="kind"/> (see
+    /// <see cref="DiscoveryRouteKind"/>).
     /// </summary>
     void BindRoute(uint kind, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
 
     /// <summary>
-    /// Unbinds the endpoint.
+    /// Removes the route bound to <paramref name="key"/> under route
+    /// <paramref name="kind"/>.
     /// </summary>
     void UnbindRoute(uint kind, ReadOnlySpan<byte> key);
 
     /// <summary>
-    /// Resolves a discovery route.
+    /// Resolves the route value bound to <paramref name="key"/> under route
+    /// <paramref name="kind"/>.
     /// </summary>
     DiscoveryRoute ResolveRoute(uint kind, ReadOnlySpan<byte> key);
 
     /// <summary>
-    /// Closes the resource.
+    /// Closes the discovery service and releases its resources.
     /// </summary>
     void Close();
 }
 
 /// <summary>
-/// Represents discovery route kind.
+/// The route-kind constants used with <see cref="IDiscovery.BindRoute"/> and
+/// related route APIs.
 /// </summary>
 public static class DiscoveryRouteKind
 {
     /// <summary>
-    /// Gets the invalid.
+    /// No route kind (unset).
     /// </summary>
     public const uint Invalid = 0;
     /// <summary>
-    /// Gets the actor.
+    /// A route keyed by actor id.
     /// </summary>
     public const uint Actor = 1;
     /// <summary>
-    /// Gets the spot name.
+    /// A route keyed by spot name.
     /// </summary>
     public const uint SpotName = 2;
     /// <summary>
-    /// Gets the actor session.
+    /// A route keyed by actor session.
     /// </summary>
     public const uint ActorSession = 3;
 }
 
 /// <summary>
-/// Describes spot route data.
+/// The resolved route to a spot: the spot, its owning node, and its kind.
 /// </summary>
-/// <param name="SpotRid">The spot routing id value.</param>
-/// <param name="OwnerNodeRid">The owner node routing id value.</param>
-/// <param name="SpotKind">The spot kind value.</param>
+/// <param name="SpotRid">The spot's routing id.</param>
+/// <param name="OwnerNodeRid">The routing id of the node that owns the spot.</param>
+/// <param name="SpotKind">The kind of spot.</param>
 public sealed record SpotRoute(RoutingId SpotRid, RoutingId OwnerNodeRid,
     SpotKind SpotKind);
 
 /// <summary>
-/// Represents discovery route.
+/// A resolved custom route: its owner and the bound value payload.
 /// </summary>
 public sealed class DiscoveryRoute : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Creates a discovery route instance.
+    /// Creates a discovery route that owns <paramref name="value"/>.
     /// </summary>
     public DiscoveryRoute(RoutingId ownerRoutingId, Message value)
     {
@@ -128,12 +141,12 @@ public sealed class DiscoveryRoute : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Gets the owner routing id.
+    /// Gets the routing id of the peer that owns this route.
     /// </summary>
     public RoutingId OwnerRoutingId { get; }
 
     /// <summary>
-    /// Gets the value.
+    /// Gets the bound value payload, owned by this route and disposed with it.
     /// </summary>
     public Message Value { get; }
 
@@ -146,9 +159,9 @@ public sealed class DiscoveryRoute : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Releases resources owned by this instance.
+    /// Releases resources owned by this instance. Disposal is synchronous; this
+    /// returns an already-completed task for callers that await disposal.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public ValueTask DisposeAsync()
     {
         Value.Dispose();

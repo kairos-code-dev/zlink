@@ -3,19 +3,19 @@
 namespace Systems.Zlink;
 
 /// <summary>
-/// Describes subscription entry data.
+/// One active subscription: a topic filter and whether it is a pattern.
 /// </summary>
-/// <param name="Filter">The filter value.</param>
-/// <param name="IsPattern">The is pattern value.</param>
+/// <param name="Filter">The subscription topic or pattern.</param>
+/// <param name="IsPattern">Whether <paramref name="Filter"/> is a pattern rather than an exact topic.</param>
 public sealed record SubscriptionEntry(string Filter, bool IsPattern);
 
 /// <summary>
-/// Represents subscription event.
+/// A subscriber's subscribe or unsubscribe as observed by an XPUB socket.
 /// </summary>
 public sealed class SubscriptionEvent
 {
     /// <summary>
-    /// Creates a subscription event instance.
+    /// Creates an empty event for reuse across receives.
     /// </summary>
     public SubscriptionEvent()
     {
@@ -28,12 +28,12 @@ public sealed class SubscriptionEvent
     }
 
     /// <summary>
-    /// Gets the routing id.
+    /// Gets the routing id of the subscriber, when known.
     /// </summary>
     public RoutingId? RoutingId { get; private set; }
 
     /// <summary>
-    /// Gets the topic.
+    /// Gets the topic that was subscribed or unsubscribed.
     /// </summary>
     public string Topic { get; private set; } = string.Empty;
 

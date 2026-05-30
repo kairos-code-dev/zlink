@@ -3,7 +3,7 @@
 namespace Systems.Zlink;
 
 /// <summary>
-/// Represents poll event.
+/// One ready source reported by an <see cref="IPoller"/> wait.
 /// </summary>
 public readonly struct PollEvent
 {
@@ -17,11 +17,11 @@ public readonly struct PollEvent
     }
 
     /// <summary>
-    /// Gets the source kind.
+    /// Gets whether the ready source is a socket, file descriptor, or timer.
     /// </summary>
     public PollSourceKind SourceKind { get; }
     /// <summary>
-    /// Gets the slot.
+    /// Gets the caller token supplied when the source was registered.
     /// </summary>
     public nuint Slot { get; }
     /// <summary>

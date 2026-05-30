@@ -5,217 +5,220 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines socket event values.
+/// Connection lifecycle events that a monitor can be subscribed to. Combine as
+/// flags to select which events are delivered.
 /// </summary>
 [Flags]
 public enum SocketEvent
 {
     /// <summary>
-    /// Indicates the connected socket event.
+    /// A connection to a peer was established.
     /// </summary>
     Connected = 0x0001,
     /// <summary>
-    /// Indicates the connect delayed socket event.
+    /// An asynchronous connect is still in progress.
     /// </summary>
     ConnectDelayed = 0x0002,
     /// <summary>
-    /// Indicates the connect retried socket event.
+    /// A failed connect will be retried after a delay.
     /// </summary>
     ConnectRetried = 0x0004,
     /// <summary>
-    /// Indicates the listening socket event.
+    /// The socket began listening on a bound endpoint.
     /// </summary>
     Listening = 0x0008,
     /// <summary>
-    /// Indicates the bind failed socket event.
+    /// Binding to an endpoint failed.
     /// </summary>
     BindFailed = 0x0010,
     /// <summary>
-    /// Indicates the accepted socket event.
+    /// An inbound connection was accepted.
     /// </summary>
     Accepted = 0x0020,
     /// <summary>
-    /// Indicates the accept failed socket event.
+    /// Accepting an inbound connection failed.
     /// </summary>
     AcceptFailed = 0x0040,
     /// <summary>
-    /// Indicates the closed socket event.
+    /// A connection was closed.
     /// </summary>
     Closed = 0x0080,
     /// <summary>
-    /// Indicates the close failed socket event.
+    /// Closing a connection failed.
     /// </summary>
     CloseFailed = 0x0100,
     /// <summary>
-    /// Indicates the disconnected socket event.
+    /// A peer disconnected.
     /// </summary>
     Disconnected = 0x0200,
     /// <summary>
-    /// Indicates the monitor stopped socket event.
+    /// Monitoring of the socket has stopped.
     /// </summary>
     MonitorStopped = 0x0400,
     /// <summary>
-    /// Indicates the handshake failed no detail socket event.
+    /// The connection handshake failed without further detail.
     /// </summary>
     HandshakeFailedNoDetail = 0x0800,
     /// <summary>
-    /// Indicates the connection ready socket event.
+    /// The connection completed its handshake and is ready for traffic.
     /// </summary>
     ConnectionReady = 0x1000,
     /// <summary>
-    /// Indicates the handshake failed protocol socket event.
+    /// The handshake failed due to a protocol error.
     /// </summary>
     HandshakeFailedProtocol = 0x2000,
     /// <summary>
-    /// Indicates the handshake failed auth socket event.
+    /// The handshake failed authentication.
     /// </summary>
     HandshakeFailedAuth = 0x4000,
     /// <summary>
-    /// Indicates the peer weight changed socket event.
+    /// A peer's load-balancing weight changed.
     /// </summary>
     PeerWeightChanged = 0x8000,
     /// <summary>
-    /// Indicates the all socket event.
+    /// Every event; subscribes the monitor to all of the above.
     /// </summary>
     All = 0xFFFF
 }
 
 /// <summary>
-/// Defines monitor event type values.
+/// The kind of a delivered <see cref="MonitorEvent"/>; mirrors the lifecycle
+/// events of <see cref="SocketEvent"/>.
 /// </summary>
 public enum MonitorEventType
 {
     /// <summary>
-    /// Indicates the connected monitor event type.
+    /// A connection to a peer was established.
     /// </summary>
     Connected = 0x0001,
     /// <summary>
-    /// Indicates the connect delayed monitor event type.
+    /// An asynchronous connect is still in progress.
     /// </summary>
     ConnectDelayed = 0x0002,
     /// <summary>
-    /// Indicates the connect retried monitor event type.
+    /// A failed connect will be retried after a delay.
     /// </summary>
     ConnectRetried = 0x0004,
     /// <summary>
-    /// Indicates the listening monitor event type.
+    /// The socket began listening on a bound endpoint.
     /// </summary>
     Listening = 0x0008,
     /// <summary>
-    /// Indicates the bind failed monitor event type.
+    /// Binding to an endpoint failed.
     /// </summary>
     BindFailed = 0x0010,
     /// <summary>
-    /// Indicates the accepted monitor event type.
+    /// An inbound connection was accepted.
     /// </summary>
     Accepted = 0x0020,
     /// <summary>
-    /// Indicates the accept failed monitor event type.
+    /// Accepting an inbound connection failed.
     /// </summary>
     AcceptFailed = 0x0040,
     /// <summary>
-    /// Indicates the closed monitor event type.
+    /// A connection was closed.
     /// </summary>
     Closed = 0x0080,
     /// <summary>
-    /// Indicates the close failed monitor event type.
+    /// Closing a connection failed.
     /// </summary>
     CloseFailed = 0x0100,
     /// <summary>
-    /// Indicates the disconnected monitor event type.
+    /// A peer disconnected.
     /// </summary>
     Disconnected = 0x0200,
     /// <summary>
-    /// Indicates the monitor stopped monitor event type.
+    /// Monitoring of the socket has stopped.
     /// </summary>
     MonitorStopped = 0x0400,
     /// <summary>
-    /// Indicates the handshake failed no detail monitor event type.
+    /// The connection handshake failed without further detail.
     /// </summary>
     HandshakeFailedNoDetail = 0x0800,
     /// <summary>
-    /// Indicates the connection ready monitor event type.
+    /// The connection completed its handshake and is ready for traffic.
     /// </summary>
     ConnectionReady = 0x1000,
     /// <summary>
-    /// Indicates the handshake failed protocol monitor event type.
+    /// The handshake failed due to a protocol error.
     /// </summary>
     HandshakeFailedProtocol = 0x2000,
     /// <summary>
-    /// Indicates the handshake failed auth monitor event type.
+    /// The handshake failed authentication.
     /// </summary>
     HandshakeFailedAuth = 0x4000,
     /// <summary>
-    /// Indicates the peer weight changed monitor event type.
+    /// A peer's load-balancing weight changed.
     /// </summary>
     PeerWeightChanged = 0x8000
 }
 
 /// <summary>
-/// Defines monitor source kind values.
+/// Identifies what a monitored source is.
 /// </summary>
 public enum MonitorSourceKind
 {
     /// <summary>
-    /// Indicates the socket monitor source kind.
+    /// A plain socket.
     /// </summary>
     Socket = 1,
     /// <summary>
-    /// Indicates the spot pub monitor source kind.
+    /// The publish side of a spot.
     /// </summary>
     SpotPub = 3,
     /// <summary>
-    /// Indicates the spot sub monitor source kind.
+    /// The subscribe side of a spot.
     /// </summary>
     SpotSub = 4
 }
 
 /// <summary>
-/// Defines poll source kind values.
+/// Identifies what kind of source a poll event came from.
 /// </summary>
 public enum PollSourceKind
 {
     /// <summary>
-    /// Indicates the socket poll source kind.
+    /// A socket.
     /// </summary>
     Socket = 1,
     /// <summary>
-    /// Indicates the file descriptor poll source kind.
+    /// A raw file descriptor.
     /// </summary>
     Fd = 2,
     /// <summary>
-    /// Indicates the timer poll source kind.
+    /// A timer.
     /// </summary>
     Timer = 3
 }
 
 /// <summary>
-/// Defines poll event flags values.
+/// Readiness conditions a poll source can be watched for or report. Combine as
+/// flags.
 /// </summary>
 public enum PollEventFlags
 {
     /// <summary>
-    /// Indicates the none poll event flags.
+    /// No events.
     /// </summary>
     None = 0,
     /// <summary>
-    /// Indicates the poll in poll event flags.
+    /// Readable: a receive will not block.
     /// </summary>
     PollIn = 1,
     /// <summary>
-    /// Indicates the poll out poll event flags.
+    /// Writable: a send will not block.
     /// </summary>
     PollOut = 2,
     /// <summary>
-    /// Indicates the poll err poll event flags.
+    /// An error condition occurred on the source.
     /// </summary>
     PollErr = 4,
     /// <summary>
-    /// Indicates the poll pri poll event flags.
+    /// Priority/out-of-band data is available.
     /// </summary>
     PollPri = 8,
     /// <summary>
-    /// Indicates the poll completion poll event flags.
+    /// An asynchronous operation completed.
     /// </summary>
     PollCompletion = 32
 }

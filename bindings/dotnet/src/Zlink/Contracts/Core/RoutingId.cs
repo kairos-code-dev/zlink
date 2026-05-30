@@ -11,7 +11,7 @@ using Systems.Zlink.Native;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Represents routing id.
+/// An opaque identifier for a messaging peer or route, 1 to 255 bytes long.
 /// </summary>
 public readonly struct RoutingId : IEquatable<RoutingId>
 {
@@ -35,9 +35,8 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Creates a value from the supplied input.
+    /// Creates a routing id from a copy of the given bytes (1 to 255 bytes).
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static RoutingId From(ReadOnlySpan<byte> bytes)
     {
         Validate(bytes, nameof(bytes));
@@ -45,9 +44,8 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Creates a value from the supplied input.
+    /// Creates a routing id from a copy of the given bytes (1 to 255 bytes).
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static RoutingId From(byte[] bytes)
     {
         if (bytes == null)
@@ -57,9 +55,8 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Creates a value from the supplied input.
+    /// Creates a routing id from the UTF-8 encoding of <paramref name="value"/>.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static RoutingId From(string value)
     {
         if (value == null)
@@ -68,9 +65,9 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Creates a value from the supplied input.
+    /// Creates a routing id by decoding <paramref name="value"/> as a hex
+    /// string (even length, up to 510 hex digits for 255 bytes).
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static RoutingId FromHex(string value)
     {
         if (value == null)
@@ -104,9 +101,9 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Creates a value from the supplied input.
+    /// Creates a 4-byte routing id from <paramref name="value"/> in big-endian
+    /// order.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static RoutingId From(uint value)
     {
         Span<byte> bytes = stackalloc byte[sizeof(uint)];
@@ -115,9 +112,9 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Creates a value from the supplied input.
+    /// Creates a 16-byte routing id from <paramref name="value"/> in big-endian
+    /// order.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static RoutingId From(Guid value)
     {
         byte[] bytes = new byte[16];
@@ -126,19 +123,19 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Gets the size.
+    /// Gets the length of the routing id in bytes; 0 when empty.
     /// </summary>
     public int Size => _bytes?.Length ?? 0;
 
     /// <summary>
-    /// Gets whether the empty.
+    /// Gets whether this routing id has no bytes.
     /// </summary>
     public bool IsEmpty => Size == 0;
 
     /// <summary>
-    /// Converts the value to bytes.
+    /// Returns the routing id bytes, backed by internal storage; empty when this
+    /// id is empty.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public ReadOnlySpan<byte> ToBytes()
     {
         return _bytes ?? ReadOnlySpan<byte>.Empty;
@@ -150,18 +147,17 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Converts the value to hex.
+    /// Returns the routing id as a lowercase hex string.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public string ToHex()
     {
         return Convert.ToHexString(ToBytes()).ToLowerInvariant();
     }
 
     /// <summary>
-    /// Attempts to to uint32.
+    /// Tries to read a 4-byte routing id as a big-endian <see cref="uint"/>.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>true when the id is exactly 4 bytes; otherwise false.</returns>
     public bool TryToUInt32(out uint value)
     {
         ReadOnlySpan<byte> bytes = ToBytes();
@@ -176,9 +172,9 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Attempts to to guid.
+    /// Tries to read a 16-byte routing id as a big-endian <see cref="Guid"/>.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>true when the id is exactly 16 bytes; otherwise false.</returns>
     public bool TryToGuid(out Guid value)
     {
         ReadOnlySpan<byte> bytes = ToBytes();
@@ -193,9 +189,9 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Converts the value to string.
+    /// Returns a human-readable form: printable UTF-8 text when possible,
+    /// otherwise a uint, a Guid, or a "hex:" fallback.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public override string ToString()
     {
         ReadOnlySpan<byte> bytes = ToBytes();
@@ -209,9 +205,8 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Determines whether the values are equal.
+    /// Returns true when <paramref name="other"/> has identical bytes.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public bool Equals(RoutingId other)
     {
         if (_hash != other._hash)
@@ -220,36 +215,33 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Determines whether the values are equal.
+    /// Returns true when <paramref name="obj"/> is a routing id with identical
+    /// bytes.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public override bool Equals(object? obj)
     {
         return obj is RoutingId other && Equals(other);
     }
 
     /// <summary>
-    /// Gets the hash code.
+    /// Returns the precomputed hash over the routing id bytes.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public override int GetHashCode()
     {
         return _hash;
     }
 
     /// <summary>
-    /// Determines whether two values are equal.
+    /// Returns true when both routing ids have identical bytes.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static bool operator ==(RoutingId left, RoutingId right)
     {
         return left.Equals(right);
     }
 
     /// <summary>
-    /// Determines whether two values are not equal.
+    /// Returns true when the routing ids differ.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static bool operator !=(RoutingId left, RoutingId right)
     {
         return !left.Equals(right);
@@ -480,28 +472,16 @@ public readonly struct RoutingId : IEquatable<RoutingId>
             return new RouteCacheKey(bytes.Length, RouteHash.Fnv1a(bytes));
         }
 
-        /// <summary>
-        /// Determines whether the values are equal.
-        /// </summary>
-        /// <returns>The operation result.</returns>
         public bool Equals(RouteCacheKey other)
         {
             return Length == other.Length && Hash == other.Hash;
         }
 
-        /// <summary>
-        /// Determines whether the values are equal.
-        /// </summary>
-        /// <returns>The operation result.</returns>
         public override bool Equals(object? obj)
         {
             return obj is RouteCacheKey other && Equals(other);
         }
 
-        /// <summary>
-        /// Gets the hash code.
-        /// </summary>
-        /// <returns>The operation result.</returns>
         public override int GetHashCode()
         {
             return HashCode.Combine(Length, Hash);

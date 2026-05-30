@@ -5,17 +5,17 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines the atomic counter contract.
+/// A thread-safe integer counter that can be shared across threads.
 /// </summary>
 public interface IAtomicCounter : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets the value.
+    /// Gets the current value with an atomic read.
     /// </summary>
     int Value { get; }
 
     /// <summary>
-    /// Sets the value.
+    /// Atomically sets the value.
     /// </summary>
     void Set(int value);
 

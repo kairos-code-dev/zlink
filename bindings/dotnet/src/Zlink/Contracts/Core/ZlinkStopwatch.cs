@@ -5,17 +5,17 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines the zlink stopwatch contract.
+/// A high-resolution elapsed-time stopwatch.
 /// </summary>
 public interface IZlinkStopwatch : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets the elapsed intermediate time.
+    /// Returns the elapsed time so far, in microseconds, without stopping.
     /// </summary>
     ulong Intermediate();
 
     /// <summary>
-    /// Stops the timer.
+    /// Stops the stopwatch and returns the total elapsed time in microseconds.
     /// </summary>
     ulong Stop();
 }

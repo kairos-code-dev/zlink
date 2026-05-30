@@ -3,136 +3,136 @@
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines auto connect type values.
+/// How a discovery service automatically wires connections between peers.
 /// </summary>
 public enum AutoConnectType
 {
     /// <summary>
-    /// Indicates the invalid auto connect type.
+    /// No auto-connect topology (unset).
     /// </summary>
     Invalid = 0,
     /// <summary>
-    /// Indicates the route mesh auto connect type.
+    /// A mesh of routed (ROUTER) connections between peers.
     /// </summary>
     RouteMesh = 1,
     /// <summary>
-    /// Indicates the client server auto connect type.
+    /// A client-server star: clients connect to servers.
     /// </summary>
     ClientServer = 2,
     /// <summary>
-    /// Indicates the dealer mesh auto connect type.
+    /// A mesh of DEALER connections between peers.
     /// </summary>
     DealerMesh = 3,
     /// <summary>
-    /// Indicates the fanout auto connect type.
+    /// A publish/subscribe fan-out from publishers to subscribers.
     /// </summary>
     Fanout = 4,
     /// <summary>
-    /// Indicates the spot mesh auto connect type.
+    /// A mesh of spot connections between peers.
     /// </summary>
     SpotMesh = 5
 }
 
 /// <summary>
-/// Defines service kind values.
+/// The kind of service a topology entry represents.
 /// </summary>
 public enum ServiceKind
 {
     /// <summary>
-    /// Indicates the discovery service kind.
+    /// A discovery service.
     /// </summary>
     Discovery = 1,
     /// <summary>
-    /// Indicates the spot sub service kind.
+    /// The subscribe side of a spot.
     /// </summary>
     SpotSub = 3,
     /// <summary>
-    /// Indicates the spot pub service kind.
+    /// The publish side of a spot.
     /// </summary>
     SpotPub = 4,
     /// <summary>
-    /// Indicates the socket service kind.
+    /// A plain socket.
     /// </summary>
     Socket = 5
 }
 
 /// <summary>
-/// Defines service role values.
+/// The messaging role a service plays in the topology.
 /// </summary>
 public enum ServiceRole
 {
     /// <summary>
-    /// Indicates the invalid service role.
+    /// No role (unset).
     /// </summary>
     Invalid = 0,
     /// <summary>
-    /// Indicates the spot service role.
+    /// A spot.
     /// </summary>
     Spot = 2,
     /// <summary>
-    /// Indicates the router service role.
+    /// A ROUTER endpoint.
     /// </summary>
     Router = 3,
     /// <summary>
-    /// Indicates the dealer service role.
+    /// A DEALER endpoint.
     /// </summary>
     Dealer = 4,
     /// <summary>
-    /// Indicates the pub service role.
+    /// A publisher.
     /// </summary>
     Pub = 5,
     /// <summary>
-    /// Indicates the sub service role.
+    /// A subscriber.
     /// </summary>
     Sub = 6
 }
 
 /// <summary>
-/// Defines topology source values.
+/// Where a topology entry was learned from.
 /// </summary>
 public enum TopologySource
 {
     /// <summary>
-    /// Indicates the manual topology source.
+    /// Added manually by the application.
     /// </summary>
     Manual = 1,
     /// <summary>
-    /// Indicates the discovery topology source.
+    /// Learned from a discovery service.
     /// </summary>
     Discovery = 2,
     /// <summary>
-    /// Indicates the registry topology source.
+    /// Learned from a service registry.
     /// </summary>
     Registry = 3
 }
 
 /// <summary>
-/// Defines topology state values.
+/// The lifecycle state of a topology connection.
 /// </summary>
 public enum TopologyState
 {
     /// <summary>
-    /// Indicates the discovered topology state.
+    /// The peer was discovered but not yet connected.
     /// </summary>
     Discovered = 1,
     /// <summary>
-    /// Indicates the connecting topology state.
+    /// A connection to the peer is being established.
     /// </summary>
     Connecting = 2,
     /// <summary>
-    /// Indicates the ready topology state.
+    /// The peer is connected and usable.
     /// </summary>
     Ready = 3,
     /// <summary>
-    /// Indicates the lost topology state.
+    /// The connection to the peer was lost.
     /// </summary>
     Lost = 4,
     /// <summary>
-    /// Indicates the error topology state.
+    /// The connection failed with an error.
     /// </summary>
     Error = 5,
     /// <summary>
-    /// Indicates the stopped topology state.
+    /// The connection was stopped.
     /// </summary>
     Stopped = 6
 }

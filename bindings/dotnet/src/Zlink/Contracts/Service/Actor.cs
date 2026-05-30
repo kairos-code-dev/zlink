@@ -8,12 +8,14 @@ using System.Threading.Tasks;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Represents actor ref.
+/// A reference to an actor: the node that hosts it, its actor id, and its
+/// generation.
 /// </summary>
 public readonly struct ActorRef : IEquatable<ActorRef>
 {
     /// <summary>
-    /// Creates a actor ref instance.
+    /// Creates an actor reference for the given host node, actor id, and
+    /// generation.
     /// </summary>
     public ActorRef(RoutingId nodeRid, string actorId, ulong generation)
     {
@@ -36,7 +38,7 @@ public readonly struct ActorRef : IEquatable<ActorRef>
     /// </summary>
     public ulong Generation { get; }
     /// <summary>
-    /// Gets whether the unchecked.
+    /// Gets whether this reference omits generation checking (generation 0).
     /// </summary>
     public bool IsUnchecked => Generation == 0;
 
@@ -47,120 +49,118 @@ public readonly struct ActorRef : IEquatable<ActorRef>
         => Unchecked(targetNodeRid, actorId);
 
     /// <summary>
-    /// Determines whether the values are equal.
+    /// Returns true when <paramref name="other"/> has the same node, actor id,
+    /// and generation.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public bool Equals(ActorRef other)
         => Generation == other.Generation
             && NodeRid.Equals(other.NodeRid)
             && string.Equals(ActorId, other.ActorId, StringComparison.Ordinal);
 
     /// <summary>
-    /// Determines whether the values are equal.
+    /// Returns true when <paramref name="obj"/> is an actor reference equal to
+    /// this one.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public override bool Equals(object? obj)
         => obj is ActorRef other && Equals(other);
 
     /// <summary>
-    /// Gets the hash code.
+    /// Returns a hash over the node, actor id, and generation.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public override int GetHashCode() => HashCode.Combine(NodeRid, ActorId,
         Generation);
 
     /// <summary>
-    /// Determines whether two values are equal.
+    /// Returns true when both references are equal.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static bool operator ==(ActorRef left, ActorRef right)
         => left.Equals(right);
 
     /// <summary>
-    /// Determines whether two values are not equal.
+    /// Returns true when the references differ.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static bool operator !=(ActorRef left, ActorRef right)
         => !left.Equals(right);
 }
 
 /// <summary>
-/// Describes actor route data.
+/// The resolved route to an actor: which spot it currently lives on.
 /// </summary>
-/// <param name="Actor">The actor value.</param>
-/// <param name="CurrentSpotRid">The current spot routing id value.</param>
-/// <param name="CurrentSpotKind">The current spot kind value.</param>
+/// <param name="Actor">The actor.</param>
+/// <param name="CurrentSpotRid">The routing id of the spot the actor is currently on.</param>
+/// <param name="CurrentSpotKind">The kind of the current spot.</param>
 public sealed record ActorRoute(ActorRef Actor, RoutingId CurrentSpotRid,
     SpotKind CurrentSpotKind);
 
 /// <summary>
-/// Describes actor receive info data.
+/// Metadata about a message received for an actor.
 /// </summary>
-/// <param name="Actor">The actor value.</param>
-/// <param name="SourceNodeRid">The source node routing id value.</param>
-/// <param name="SourceSessionRid">The source session routing id value.</param>
-/// <param name="Flags">The flags value.</param>
+/// <param name="Actor">The actor the message was received for.</param>
+/// <param name="SourceNodeRid">The routing id of the source node.</param>
+/// <param name="SourceSessionRid">The routing id of the source session.</param>
+/// <param name="Flags">Implementation-defined receive flags.</param>
 public sealed record ActorRecvInfo(ActorRef Actor, RoutingId SourceNodeRid,
     RoutingId SourceSessionRid, uint Flags);
 
 /// <summary>
-/// Describes actor join info data.
+/// Details of an actor-join request: the actors and spots on each side.
 /// </summary>
-/// <param name="SourceActor">The source actor value.</param>
-/// <param name="TargetActor">The target actor value.</param>
-/// <param name="SourceNodeRid">The source node routing id value.</param>
-/// <param name="SourceSpotRid">The source spot routing id value.</param>
-/// <param name="TargetNodeRid">The target node routing id value.</param>
-/// <param name="TargetSpotRid">The target spot routing id value.</param>
-/// <param name="JoinEpoch">The join epoch value.</param>
-/// <param name="Flags">The flags value.</param>
+/// <param name="SourceActor">The actor requesting the join.</param>
+/// <param name="TargetActor">The actor being joined.</param>
+/// <param name="SourceNodeRid">The routing id of the source node.</param>
+/// <param name="SourceSpotRid">The routing id of the source spot.</param>
+/// <param name="TargetNodeRid">The routing id of the target node.</param>
+/// <param name="TargetSpotRid">The routing id of the target spot.</param>
+/// <param name="JoinEpoch">The join epoch (generation) of this join.</param>
+/// <param name="Flags">Implementation-defined join flags.</param>
 public sealed record ActorJoinInfo(ActorRef SourceActor, ActorRef TargetActor,
     RoutingId SourceNodeRid, RoutingId SourceSpotRid,
     RoutingId TargetNodeRid, RoutingId TargetSpotRid, ulong JoinEpoch,
     uint Flags);
 
 /// <summary>
-/// Describes spot actor lifecycle info data.
+/// Details of an actor lifecycle change, before and after.
 /// </summary>
-/// <param name="PreviousActor">The previous actor value.</param>
-/// <param name="CurrentActor">The current actor value.</param>
-/// <param name="PreviousSpotRid">The previous spot routing id value.</param>
-/// <param name="CurrentSpotRid">The current spot routing id value.</param>
-/// <param name="JoinEpoch">The join epoch value.</param>
-/// <param name="Flags">The flags value.</param>
+/// <param name="PreviousActor">The actor before the change.</param>
+/// <param name="CurrentActor">The actor after the change.</param>
+/// <param name="PreviousSpotRid">The routing id of the spot before the change, if any.</param>
+/// <param name="CurrentSpotRid">The routing id of the spot after the change, if any.</param>
+/// <param name="JoinEpoch">The join epoch (generation) involved.</param>
+/// <param name="Flags">Implementation-defined lifecycle flags.</param>
 public sealed record SpotActorLifecycleInfo(ActorRef PreviousActor,
     ActorRef CurrentActor, RoutingId? PreviousSpotRid,
     RoutingId? CurrentSpotRid, ulong JoinEpoch, uint Flags);
 
 /// <summary>
-/// Defines spot actor lifecycle event kind values.
+/// Whether an actor joined or left a spot.
 /// </summary>
 public enum SpotActorLifecycleEventKind
 {
     /// <summary>
-    /// Indicates the joined spot actor lifecycle event kind.
+    /// The actor joined a spot.
     /// </summary>
     Joined = 1,
     /// <summary>
-    /// Indicates the left spot actor lifecycle event kind.
+    /// The actor left a spot.
     /// </summary>
     Left = 2
 }
 
 /// <summary>
-/// Describes spot actor lifecycle event data.
+/// An actor join/leave lifecycle event observed on a spot.
 /// </summary>
-/// <param name="Kind">The kind value.</param>
-/// <param name="Info">The info value.</param>
+/// <param name="Kind">Whether the actor joined or left.</param>
+/// <param name="Info">Details of the actor and spots involved.</param>
 public sealed record SpotActorLifecycleEvent(
     SpotActorLifecycleEventKind Kind,
     SpotActorLifecycleInfo Info);
 
 /// <summary>
-/// Describes actor received data.
+/// A message received for an actor: its metadata and parts. Owns its parts
+/// until disposed.
 /// </summary>
-/// <param name="Info">The info value.</param>
-/// <param name="Parts">The parts value.</param>
+/// <param name="Info">Metadata about the received message.</param>
+/// <param name="Parts">The message parts, owned by this envelope.</param>
 public sealed record ActorReceived(ActorRecvInfo Info,
     IReadOnlyList<Message> Parts) : IDisposable
 {
@@ -172,9 +172,9 @@ public sealed record ActorReceived(ActorRecvInfo Info,
     public Message Message => FirstPart();
 
     /// <summary>
-    /// Returns the first message part without transferring ownership.
+    /// Returns the first message part, or throws when there are none; the part
+    /// stays owned by this envelope.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public Message FirstPart()
     {
         return Parts.Count > 0
@@ -183,9 +183,9 @@ public sealed record ActorReceived(ActorRecvInfo Info,
     }
 
     /// <summary>
-    /// Returns the only message part or throws when the envelope is multipart.
+    /// Returns the only message part, or throws unless there is exactly one;
+    /// the part stays owned by this envelope.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public Message SinglePartOrThrow()
     {
         if (Parts.Count != 1)
@@ -207,7 +207,7 @@ public sealed record ActorReceived(ActorRecvInfo Info,
 }
 
 /// <summary>
-/// Represents actor join request.
+/// A pending request from an actor to join a spot, awaiting a reply.
 /// </summary>
 public sealed class ActorJoinRequest
 {
@@ -246,7 +246,8 @@ public sealed class ActorJoinRequest
 }
 
 /// <summary>
-/// Defines the actor contract.
+/// A resource handle to an actor: join/leave spots, receive its messages, and
+/// send to its bound session.
 /// </summary>
 public interface IActor : IDisposable, IAsyncDisposable
 {
@@ -256,32 +257,37 @@ public interface IActor : IDisposable, IAsyncDisposable
     ActorRef Ref { get; }
 
     /// <summary>
-    /// Starts a join operation.
+    /// Begins joining the actor to <paramref name="spot"/>; submit the returned
+    /// operation to apply it.
     /// </summary>
     ActorJoinOperation Join(ISpot spot);
 
     /// <summary>
-    /// Starts a leave operation.
+    /// Begins leaving <paramref name="spot"/>; submit the returned operation to
+    /// apply it.
     /// </summary>
     ActorLeaveOperation Leave(ISpot spot);
 
     /// <summary>
-    /// Receives the next available item.
+    /// Receives the next message for this actor, or null when none is available.
     /// </summary>
     ActorReceived? Recv(RecvFlags flags = RecvFlags.None);
 
     /// <summary>
-    /// Starts a send operation.
+    /// Begins a send to the actor's bound session; parts are consumed on a
+    /// successful submit (see <see cref="SendOperation"/>).
     /// </summary>
     SendOperation SendBoundSession();
 
     /// <summary>
-    /// Closes the resource.
+    /// Closes the actor's bound session, waiting up to
+    /// <paramref name="timeout"/> for it to drain.
     /// </summary>
     void CloseBoundSession(TimeSpan timeout = default);
 
     /// <summary>
-    /// Closes the resource.
+    /// Closes the actor, waiting up to <paramref name="timeout"/> for it to
+    /// drain.
     /// </summary>
     void Close(TimeSpan timeout = default);
 }

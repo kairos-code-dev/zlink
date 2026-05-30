@@ -14,19 +14,19 @@ namespace Systems.Zlink;
 public enum ReceivedMessageType
 {
     /// <summary>
-    /// Indicates the raw received message type.
+    /// A plain message with no request/reply framing.
     /// </summary>
     Raw = 0,
     /// <summary>
-    /// Indicates the request received message type.
+    /// A request that can be replied to.
     /// </summary>
     Request = 1,
     /// <summary>
-    /// Indicates the reply received message type.
+    /// A successful reply to a request.
     /// </summary>
     Reply = 2,
     /// <summary>
-    /// Indicates the error reply received message type.
+    /// An error reply to a request.
     /// </summary>
     ErrorReply = 3
 }
@@ -430,7 +430,7 @@ public sealed partial class Received : IDisposable
         }
 
         /// <summary>
-        /// Gets the count.
+        /// Always 1; this list wraps exactly one message.
         /// </summary>
         public int Count => 1;
 
@@ -445,9 +445,8 @@ public sealed partial class Received : IDisposable
         }
 
         /// <summary>
-        /// Gets the enumerator.
+        /// Returns an enumerator that yields the single wrapped message.
         /// </summary>
-        /// <returns>The operation result.</returns>
         public IEnumerator<Message> GetEnumerator()
         {
             yield return _message;

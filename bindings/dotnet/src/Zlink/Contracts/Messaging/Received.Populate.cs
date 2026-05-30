@@ -7,9 +7,8 @@ using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
 
-/// <summary>
-/// Represents received.
-/// </summary>
+// Continuation of Received; the type summary lives on the primary partial in
+// Received.cs.
 public sealed partial class Received : IDisposable
 {
     internal void ResetForReuse()

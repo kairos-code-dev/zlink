@@ -5,7 +5,7 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Represents dealer socket options.
+/// Typed facade over DEALER-specific socket options.
 /// </summary>
 public sealed class DealerSocketOptions : CommonSocketOptions
 {
@@ -21,7 +21,8 @@ public sealed class DealerSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the probe.
+    /// Sets whether to send an empty probe message on connect so the peer
+    /// immediately learns this socket's routing id.
     /// </summary>
     public bool Probe
     {
@@ -29,7 +30,8 @@ public sealed class DealerSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Starts a request operation.
+    /// Sets how long a request issued by this DEALER waits for a reply before
+    /// reporting a timeout; null waits indefinitely.
     /// </summary>
     public TimeSpan? RequestTimeout
     {
@@ -38,7 +40,8 @@ public sealed class DealerSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the peer weight.
+    /// Sets this peer's relative load-balancing weight (0-100); higher values
+    /// receive a larger share of round-robined sends.
     /// </summary>
     public int PeerWeight
     {
@@ -48,7 +51,7 @@ public sealed class DealerSocketOptions : CommonSocketOptions
 }
 
 /// <summary>
-/// Represents router socket options.
+/// Typed facade over ROUTER-specific socket options.
 /// </summary>
 public sealed class RouterSocketOptions : CommonSocketOptions
 {
@@ -64,7 +67,8 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the mandatory.
+    /// Gets or sets whether sending to an unknown route raises an error
+    /// instead of silently dropping the message.
     /// </summary>
     public bool Mandatory
     {
@@ -73,7 +77,9 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the handover.
+    /// Gets or sets whether a new peer reusing an existing routing id takes it
+    /// over (true) or is rejected (false). Shorthand over
+    /// <see cref="CommonSocketOptions.RoutingIdDuplicatePolicy"/>.
     /// </summary>
     public bool Handover
     {
@@ -84,7 +90,8 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the probe.
+    /// Gets or sets whether to send an empty probe message on connect so the
+    /// peer immediately learns this socket's routing id.
     /// </summary>
     public bool Probe
     {
@@ -93,7 +100,8 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Connects to the endpoint.
+    /// Gets the routing id assigned to the next outgoing connection, or null
+    /// when none is pending. Set it with <see cref="SetConnectRoutingId"/>.
     /// </summary>
     public RoutingId? ConnectRoutingId
     {
@@ -105,7 +113,8 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Sets the connect routing id.
+    /// Assigns <paramref name="routingId"/> to the next connection this socket
+    /// initiates, instead of letting the peer choose one.
     /// </summary>
     public void SetConnectRoutingId(RoutingId routingId)
     {
@@ -113,7 +122,8 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Starts a request operation.
+    /// Gets or sets how long a request issued by this ROUTER waits for a reply
+    /// before reporting a timeout; null waits indefinitely.
     /// </summary>
     public TimeSpan? RequestTimeout
     {
@@ -124,7 +134,8 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the peer weight.
+    /// Gets or sets this peer's relative load-balancing weight (0-100); higher
+    /// values receive a larger share of round-robined sends.
     /// </summary>
     public int PeerWeight
     {

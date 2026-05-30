@@ -5,39 +5,41 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines the socket monitor contract.
+/// Observes a socket's connection lifecycle events and current status.
 /// </summary>
 public interface ISocketMonitor : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Registers a handler for event.
+    /// Registers a callback invoked for each monitor event. The callback runs
+    /// on a background dispatch thread.
     /// </summary>
     void OnEvent(Action<MonitorEvent> handler);
 
     /// <summary>
-    /// Receives the next available item.
+    /// Receives the next monitor event, or null when none is pending and
+    /// <see cref="RecvFlags.DontWait"/> is set.
     /// </summary>
     MonitorEvent? Recv(RecvFlags flags = RecvFlags.None);
 
     /// <summary>
-    /// Gets the current status.
+    /// Returns a snapshot of the monitored socket's current status.
     /// </summary>
     MonitorStatus Status();
 
     /// <summary>
-    /// Closes the resource.
+    /// Closes the monitor and releases its resources.
     /// </summary>
     void Close();
 }
 
 /// <summary>
-/// Describes monitor event data.
+/// A single socket connection-lifecycle event reported by a monitor.
 /// </summary>
-/// <param name="Event">The event value.</param>
-/// <param name="Value">The value value.</param>
-/// <param name="RoutingId">The routing id value.</param>
-/// <param name="LocalAddr">The local addr value.</param>
-/// <param name="RemoteAddr">The remote addr value.</param>
+/// <param name="Event">The kind of lifecycle event.</param>
+/// <param name="Value">An event-specific value, such as an error code or a reconnect interval.</param>
+/// <param name="RoutingId">The peer routing id, when the event carries one.</param>
+/// <param name="LocalAddr">The local endpoint address.</param>
+/// <param name="RemoteAddr">The remote endpoint address.</param>
 public sealed record MonitorEvent(
     MonitorEventType Event,
     uint Value,
@@ -46,7 +48,7 @@ public sealed record MonitorEvent(
     string RemoteAddr);
 
 /// <summary>
-/// Represents monitor status.
+/// A snapshot of a socket's monitored state and auto-high-water-mark telemetry.
 /// </summary>
 public sealed class MonitorStatus
 {
@@ -176,7 +178,7 @@ public sealed class MonitorStatus
     /// </summary>
     public int AutoHwmDeferredRcvHwm { get; }
     /// <summary>
-    /// Gets whether the ready.
+    /// Gets whether the monitored socket source is in the ready state.
     /// </summary>
     public bool IsReady => SourceKind == MonitorSourceKind.Socket
         && (StateFlags & 0x1u) != 0;

@@ -5,7 +5,7 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Represents stream socket options.
+/// Typed facade over STREAM-specific socket options.
 /// </summary>
 public sealed class StreamSocketOptions : CommonSocketOptions
 {
@@ -15,7 +15,8 @@ public sealed class StreamSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the notify.
+    /// Gets or sets whether peer connect and disconnect events are delivered to
+    /// the application as messages.
     /// </summary>
     public bool Notify
     {
@@ -25,7 +26,7 @@ public sealed class StreamSocketOptions : CommonSocketOptions
 }
 
 /// <summary>
-/// Represents pub socket options.
+/// Typed facade over PUB/XPUB-specific socket options.
 /// </summary>
 public sealed class PubSocketOptions : CommonSocketOptions
 {
@@ -35,7 +36,8 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the verbose.
+    /// Gets or sets whether every subscription message is delivered to the
+    /// application, including duplicates, rather than only the first per topic.
     /// </summary>
     public bool Verbose
     {
@@ -44,7 +46,8 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the verboser.
+    /// Gets or sets whether every subscription and unsubscription message is
+    /// delivered, including duplicates.
     /// </summary>
     public bool Verboser
     {
@@ -53,7 +56,9 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the manual.
+    /// Gets or sets whether subscriptions are handled manually via
+    /// <see cref="ApproveSubscribe"/> and <see cref="RejectSubscribe"/> instead
+    /// of being accepted automatically.
     /// </summary>
     public bool Manual
     {
@@ -62,7 +67,8 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the manual last value.
+    /// Gets or sets manual subscription handling that also replays the last
+    /// cached message per topic to a newly accepted subscriber.
     /// </summary>
     public bool ManualLastValue
     {
@@ -72,7 +78,8 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the no drop.
+    /// Gets or sets whether a send blocked by back-pressure raises an error
+    /// instead of silently dropping the message.
     /// </summary>
     public bool NoDrop
     {
@@ -81,7 +88,8 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the welcome message.
+    /// Gets or sets a message automatically sent to each newly connected
+    /// subscriber. The getter returns a new message owned by the caller.
     /// </summary>
     public Message WelcomeMessage
     {
@@ -91,12 +99,14 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the option.
+    /// Gets the number of distinct topics currently subscribed across connected
+    /// subscribers.
     /// </summary>
     public int TopicsCount => Socket.GetOption(SocketOptions.TopicsCount);
 
     /// <summary>
-    /// Approves a pending subscription request.
+    /// Accepts a pending subscription from <paramref name="routingId"/>.
+    /// Requires <see cref="Manual"/> mode.
     /// </summary>
     public void ApproveSubscribe(RoutingId routingId)
     {
@@ -104,7 +114,8 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Rejects a pending subscription request.
+    /// Declines a pending subscription from <paramref name="routingId"/>.
+    /// Requires <see cref="Manual"/> mode.
     /// </summary>
     public void RejectSubscribe(RoutingId routingId)
     {
@@ -113,7 +124,7 @@ public sealed class PubSocketOptions : CommonSocketOptions
 }
 
 /// <summary>
-/// Represents sub socket options.
+/// Typed facade over SUB-specific socket options.
 /// </summary>
 public sealed class SubSocketOptions : CommonSocketOptions
 {
@@ -123,7 +134,7 @@ public sealed class SubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets the option.
+    /// Gets the number of active subscriptions on this socket.
     /// </summary>
     public int TopicsCount => Socket.GetOption(SocketOptions.SubTopicsCount);
 }

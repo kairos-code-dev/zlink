@@ -5,12 +5,17 @@ using System;
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines the context contract.
+/// A messaging context: the factory and owner of sockets and services.
 /// </summary>
+/// <remarks>
+/// Every socket, registry, discovery, and spot node created here is owned by
+/// the caller and must be disposed. Disposing the context terminates anything
+/// still open under it.
+/// </remarks>
 public interface IContext : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets the options.
+    /// Gets the context-wide options facade.
     /// </summary>
     IContextOptions Options { get; }
 
@@ -65,28 +70,31 @@ public interface IContext : IDisposable, IAsyncDisposable
     IRegistryQueryClient CreateRegistryQueryClient();
 
     /// <summary>
-    /// Creates a discovery.
+    /// Creates a discovery service for <paramref name="channelName"/> that
+    /// connects peers according to <paramref name="autoConnectType"/>.
     /// </summary>
     IDiscovery CreateDiscovery(AutoConnectType autoConnectType,
         string channelName);
 
     /// <summary>
-    /// Creates a spot node.
+    /// Creates a spot node in the default mode.
     /// </summary>
     ISpotNode CreateSpotNode();
 
     /// <summary>
-    /// Creates a spot node.
+    /// Creates a spot node in the given <paramref name="mode"/>.
     /// </summary>
     ISpotNode CreateSpotNode(SpotNodeMode mode);
 
     /// <summary>
-    /// Shuts down the context.
+    /// Terminates the context, interrupting blocking operations on its sockets
+    /// without disposing them.
     /// </summary>
     void Shutdown();
 
     /// <summary>
-    /// Recalculates automatic high water marks.
+    /// Recomputes automatic high-water marks for sockets configured with an
+    /// <see cref="AutoHwmProfile"/>.
     /// </summary>
     void RecalculateAutoHwm();
 }

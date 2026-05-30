@@ -3,7 +3,8 @@
 namespace Systems.Zlink;
 
 /// <summary>
-/// Defines the spot node contract.
+/// A spot node: hosts spots and actors, tunes their sockets, and exposes the
+/// node's peers, subjects, and topology.
 /// </summary>
 public interface ISpotNode : IDisposable, IAsyncDisposable
 {
@@ -137,7 +138,8 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     ActorRef ActorLookup(string actorId);
     /// <summary>
-    /// Starts a send operation.
+    /// Begins a send to the bound session of <paramref name="actor"/>; parts
+    /// are consumed on a successful submit (see <see cref="SendOperation"/>).
     /// </summary>
     SendOperation SendActorBoundSession(ActorRef actor);
     /// <summary>

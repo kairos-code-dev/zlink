@@ -166,60 +166,6 @@ inline int spot_publish_msg_parts (socket_base_t *socket_,
     return 0;
 }
 
-//  Publish a multipart message using bitwise clones of `src_parts_`. The
-//  caller must have already added one reference per call to each frame's
-//  content (via `msg_t::add_refs`) so the close/consume cycle inside the
-//  send path balances those refs. Designed for fanout-over-distinct-sockets
-//  where N targets share the same source frames: one batched `add_refs(N)`
-//  replaces N per-target `msg_t::copy` atomics.
-//
-//  The source `src_parts_` is left intact (its own reference is preserved).
-inline int spot_publish_msg_parts_prebumped (
-  socket_base_t *socket_,
-  const std::string &topic_,
-  const spot_owned_msg_parts_t &src_parts_)
-{
-    if (!socket_ || topic_.empty ()) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    const size_t count = src_parts_.size ();
-    zlink_msg_t inline_storage[spot_publish_inline_frame_cap];
-    std::vector<zlink_msg_t> heap_storage;
-    zlink_msg_t *send_frames = inline_storage;
-    if (count > spot_publish_inline_frame_cap) {
-        heap_storage.resize (count);
-        send_frames = &heap_storage[0];
-    }
-
-    size_t prepared = 0;
-    for (spot_owned_msg_parts_t::const_iterator it = src_parts_.begin ();
-         prepared < count; ++prepared, ++it) {
-        //  POD bitwise copy; the corresponding refcount slot was pre-added
-        //  by the caller, so no per-frame atomic is paid here.
-        send_frames[prepared] = *it;
-    }
-
-    const int rc = logical_multipart_publish (
-      socket_,
-      topic_.c_str (),
-      count > 0 ? send_frames : NULL,
-      count,
-      ZLINK_DONTWAIT,
-      true);
-    const int saved_errno = rc == 0 ? 0 : errno;
-    //  Close any unconsumed clones; consumed ones are already invalid handles
-    //  and the close is a no-op via `check()` guarding `spot_close_msg_frame`.
-    for (size_t i = 0; i < count; ++i)
-        spot_close_msg_frame (&send_frames[i]);
-    if (saved_errno != 0) {
-        errno = saved_errno;
-        return -1;
-    }
-    return 0;
-}
-
 inline int spot_publish_msg_parts_consume (socket_base_t *socket_,
                                            const std::string &topic_,
                                            spot_owned_msg_parts_t *parts_)

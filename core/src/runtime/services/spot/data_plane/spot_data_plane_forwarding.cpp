@@ -650,34 +650,6 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
         return -1;
     }
 
-    //  Count fast-path-eligible targets up front so we can batch the per-frame
-    //  refcount bump that `spot_publish_msg_parts` would otherwise pay once
-    //  per target. With M >= 2 eligible targets the saving is (M-1)*K atomic
-    //  operations on the source frames.
-    size_t eligible_target_count = 0;
-    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
-           const_iterator scan_it = state_->local_fanout.targets.begin ();
-         scan_it != state_->local_fanout.targets.end (); ++scan_it) {
-        if (scan_it->second.relay_socket
-            && scan_it->second.pending_message_ids.empty ())
-            ++eligible_target_count;
-    }
-
-    const bool batched_share = eligible_target_count >= 2;
-    if (batched_share) {
-        for (spot_owned_msg_parts_t::const_iterator add_it = parts_.begin ();
-             add_it != parts_.end (); ++add_it) {
-            msg_t *src =
-              reinterpret_cast<msg_t *> (const_cast<zlink_msg_t *> (&(*add_it)));
-            src->add_refs (static_cast<int> (eligible_target_count));
-        }
-    }
-
-    //  Tracks pre-bumped slots still unspent. On every fast-path attempt we
-    //  decrement; on early return we release the leftover so the source
-    //  refcount lands back at 1.
-    size_t batched_remaining = batched_share ? eligible_target_count : 0;
-
     uint64_t local_pending_message_id = 0;
     for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
            iterator target_it = state_->local_fanout.targets.begin ();
@@ -689,21 +661,11 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
             continue;
         }
 
-        const bool target_eligible =
-          target.pending_message_ids.empty ();
         pump_socket_commands (target.relay_socket);
-        if (target_eligible) {
-            const int send_rc =
-              batched_share
-                ? spot_publish_msg_parts_prebumped (target.relay_socket, topic_,
-                                                    parts_)
-                : spot_publish_msg_parts (target.relay_socket, topic_, parts_);
-            if (batched_share)
-                --batched_remaining;
-            if (send_rc == 0) {
-                ++target_it;
-                continue;
-            }
+        if (target.pending_message_ids.empty ()
+            && spot_publish_msg_parts (target.relay_socket, topic_, parts_) == 0) {
+            ++target_it;
+            continue;
         }
 
         if (errno != EAGAIN && !target.pending_message_ids.empty ())
@@ -712,29 +674,9 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
             || !spot_data_plane_pending_t::enqueue_local_target_message (
               state_, &target, topic_, parts_, &local_pending_message_id,
               encoded_bytes)) {
-            if (batched_remaining > 0) {
-                for (spot_owned_msg_parts_t::const_iterator rel_it =
-                       parts_.begin ();
-                     rel_it != parts_.end (); ++rel_it) {
-                    msg_t *src = reinterpret_cast<msg_t *> (
-                      const_cast<zlink_msg_t *> (&(*rel_it)));
-                    src->rm_refs (static_cast<int> (batched_remaining));
-                }
-            }
             return -1;
         }
         ++target_it;
-    }
-
-    if (batched_remaining > 0) {
-        //  Some pre-bumped slots were unused because targets fell through to
-        //  the enqueue path. Release them to keep the source refcount at 1.
-        for (spot_owned_msg_parts_t::const_iterator rel_it = parts_.begin ();
-             rel_it != parts_.end (); ++rel_it) {
-            msg_t *src = reinterpret_cast<msg_t *> (
-              const_cast<zlink_msg_t *> (&(*rel_it)));
-            src->rm_refs (static_cast<int> (batched_remaining));
-        }
     }
 
     refresh_poller_interest (state_);

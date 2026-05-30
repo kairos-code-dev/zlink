@@ -6,10 +6,17 @@ import { freezeOwnedMessageParts, MultipartEnvelope } from './envelope';
 
 const TOPIC_MESSAGE_CREATE_TOKEN = Symbol('topic-message.create');
 
+/**
+ * A received publish: its topic and message parts (from
+ * {@link MultipartEnvelope}). Owns its parts until closed.
+ */
 export class TopicMessage extends MultipartEnvelope {
+  /** The source routing id, or null when the receive path provides none. */
   routingId: RoutingId | null;
+  /** The topic the message was published under. */
   topic: string;
 
+  /** Create an empty reusable envelope for use with `subscribe`. */
   constructor();
   constructor(
     token: symbol,

@@ -6,12 +6,29 @@ import type { Discovery } from '../service';
 import type { PairSocket } from './pair_socket';
 import type { DealerSocketOptions } from './socket_options';
 
+/**
+ * DEALER socket: load-balances sends across its connected peers and can issue
+ * routed requests.
+ */
 export interface DealerSocket extends PairSocket {
+  /** The DEALER-specific typed options facade. */
   readonly options: DealerSocketOptions;
+  /** Set the logical channel name used to identify this socket in routing and discovery. */
   setChannelName(channelName: string): void;
+  /** Return the logical channel name set for this socket. */
   getChannelName(): string;
+  /**
+   * Set the routing id that identifies this DEALER to its peers. Apply before
+   * connecting so peers observe it from the first message.
+   */
   setRoutingId(routingId: RoutingId): void;
+  /** Return the routing id that identifies this DEALER to its peers. */
   getRoutingId(): RoutingId;
+  /** Attach a discovery service so this socket can reach discovered peers without manual connect. */
   attachDiscovery(discovery: Discovery): void;
+  /**
+   * Begin a request: add parts on the returned builder, then submit and await a
+   * reply. Parts are consumed on a successful submit.
+   */
   request(): RequestOperation;
 }

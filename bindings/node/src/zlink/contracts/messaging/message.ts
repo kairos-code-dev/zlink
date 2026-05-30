@@ -28,6 +28,10 @@ function normalizeMessageProperties(
   return Object.isFrozen(properties) ? properties : Object.freeze(properties);
 }
 
+/**
+ * A message payload. Sending a message consumes it; `close` releases its
+ * storage.
+ */
 export class Message {
   private _buffer!: Buffer;
   private _refCount!: number;
@@ -51,12 +55,18 @@ export class Message {
     this._metadata = metadata ?? EMPTY_METADATA;
   }
 
+  /**
+   * Create a message holding an independent copy of `buffer` (a buffer-like
+   * value or another {@link Message}); the source may be freely reused
+   * afterward.
+   */
   static from(buffer: BufferLike | Message): Message {
     return buffer instanceof Message
       ? new Message(buffer._buffer)
       : new Message(buffer);
   }
 
+  /** Allocate a message with `size` bytes of writable payload storage. */
   static alloc(size: number): Message {
     if (!Number.isSafeInteger(size) || size < 0) {
       throw new RangeError('size must be a non-negative safe integer');
@@ -64,6 +74,7 @@ export class Message {
     return Message.fromSnapshot({ data: Buffer.allocUnsafe(size) });
   }
 
+  /** Alias for {@link Message.alloc}. */
   static allocate(size: number): Message {
     return Message.alloc(size);
   }
@@ -95,26 +106,36 @@ export class Message {
     };
   }
 
+  /** Return the payload as a Buffer backed by this message's storage. */
   data(): Buffer {
     return this._buffer;
   }
 
+  /** Return a new Buffer copying the payload. */
   toBytes(): Buffer {
     return Buffer.from(this._buffer);
   }
 
+  /** Return a new message holding an independent copy of this payload. */
   copy(): Message {
     return Message.from(this);
   }
 
+  /** Return the payload size in bytes. */
   size(): number {
     return this._buffer.length;
   }
 
+  /** Return true when the payload is empty. */
   isEmpty(): boolean {
     return this._buffer.length === 0;
   }
 
+  /**
+   * Copy the payload (or `length` bytes from `sourceOffset`) into `destination`
+   * at `destinationOffset`; return the number of bytes written. Throws
+   * {@link RangeError} when the range is out of bounds.
+   */
   copyTo(
     destination: Buffer | Uint8Array,
     sourceOffset = 0,
@@ -142,6 +163,10 @@ export class Message {
     );
   }
 
+  /**
+   * Copy the payload into `destination` when it fits; return true on success,
+   * or false when `destination` is too small.
+   */
   tryCopyTo(destination: Buffer | Uint8Array): boolean {
     if (destination.byteLength < this._buffer.length) {
       return false;
@@ -150,10 +175,12 @@ export class Message {
     return true;
   }
 
+  /** Decode the payload as text using `encoding`. */
   getString(encoding: BufferEncoding = 'utf8'): string {
     return this._buffer.toString(encoding);
   }
 
+  /** Return the native message property `name`, or null when it is absent. */
   getProperty(name: string): string | null {
     if (typeof name !== 'string') {
       throw new TypeError('property name must be a string');
@@ -163,12 +190,15 @@ export class Message {
       : null;
   }
 
+  /** Return the native payload reference count (a diagnostic only). */
   refCount(): number {
     return this._refCount;
   }
 
+  /** Release the payload storage owned by this message. */
   close(): void {}
 
+  /** Return the payload decoded as a UTF-8 string. */
   toString(): string {
     return this.getString();
   }

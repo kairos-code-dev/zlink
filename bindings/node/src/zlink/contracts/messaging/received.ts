@@ -108,13 +108,24 @@ function invalidSendContextError(): SubmitError {
   );
 }
 
+/**
+ * A received message envelope: its routing metadata and message parts (from
+ * {@link MultipartEnvelope}), plus an optional reply/send context.
+ *
+ * Owns its parts until closed. Reuse one instance across `recv` calls to avoid
+ * a per-receive allocation.
+ */
 export class Received extends MultipartEnvelope {
+  /** The source routing id, or null when the receive path provides none. */
   routingId: RoutingId | null;
+  /** The source spot routing id, or null when not from a spot route. */
   spotRid: RoutingId | null;
+  /** The request sequence, present when this envelope can be replied to. */
   requestSeq: bigint | null;
   private _replyContext: ReplyContext | null;
   private _sendContext: SendContext | null;
 
+  /** Create an empty reusable envelope for use with `recv`. */
   constructor();
   constructor(
     token: symbol,
@@ -186,6 +197,11 @@ export class Received extends MultipartEnvelope {
     return new Received(RECEIVED_CREATE_TOKEN, parts, routingId, requestSeq, spotRid, replyContext, sendContext);
   }
 
+  /**
+   * Begin a reply to this request: add parts on the returned builder, then
+   * submit. Parts are consumed on a successful submit. Throws when the envelope
+   * is not replyable (has no request sequence).
+   */
   reply(): ReceivedReplyOperation {
     if (!this.requestSeq || !this._replyContext) {
       throw invalidReplyContextError();
@@ -194,6 +210,11 @@ export class Received extends MultipartEnvelope {
     return new ReceivedReplyOperation((parts, flags) => replyContext.reply(parts, flags));
   }
 
+  /**
+   * Begin a send addressed to this envelope's source route: add parts, then
+   * submit. Parts are consumed on a successful submit. Throws when the envelope
+   * carries no send context.
+   */
   send(): ReceivedSendOperation {
     if (!this._sendContext) {
       throw invalidSendContextError();

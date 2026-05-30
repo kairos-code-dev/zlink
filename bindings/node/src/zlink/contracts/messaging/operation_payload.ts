@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
+/** A single value or a list of values accepted by a message-part builder. */
 export type OperationPayloadValue<T> = T | readonly T[];
 
+/** Accumulates message parts for an operation builder; consuming the parts transfers their ownership to the submit. */
 export class OperationPayload<TInput, TStored = TInput> {
   private readonly _normalize: (value: TInput) => TStored;
   private _single!: TStored;

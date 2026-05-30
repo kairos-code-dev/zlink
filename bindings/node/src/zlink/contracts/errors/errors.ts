@@ -21,6 +21,7 @@ export {
   SubmitResult,
 } from './results';
 
+/** Base class for all errors thrown by the zlink bindings; carries a result `code` and the underlying native errno. */
 export class ZlinkError extends Error {
   readonly code: number;
   readonly internalErrno: number;
@@ -36,6 +37,7 @@ export class ZlinkError extends Error {
   }
 }
 
+/** Thrown when submitting a send or publish fails. */
 export class SubmitError extends ZlinkError {
   readonly result: SubmitResult;
 
@@ -49,6 +51,7 @@ export class SubmitError extends ZlinkError {
   }
 }
 
+/** Thrown when a request fails or its reply reports an error. */
 export class RequestError extends ZlinkError {
   readonly result: RequestResult;
 
@@ -62,6 +65,7 @@ export class RequestError extends ZlinkError {
   }
 }
 
+/** Thrown when receiving a message fails. */
 export class RecvError extends ZlinkError {
   readonly result: RecvResult;
 
@@ -75,6 +79,7 @@ export class RecvError extends ZlinkError {
   }
 }
 
+/** Thrown when registering or running a callback handler fails. */
 export class HandlerError extends ZlinkError {
   readonly result: HandlerResult;
 
@@ -88,6 +93,7 @@ export class HandlerError extends ZlinkError {
   }
 }
 
+/** Thrown when closing a socket or resource fails. */
 export class CloseError extends ZlinkError {
   readonly result: CloseResult;
 
@@ -101,6 +107,7 @@ export class CloseError extends ZlinkError {
   }
 }
 
+/** Thrown when binding a socket to an endpoint fails. */
 export class BindError extends ZlinkError {
   readonly result: BindResult;
 
@@ -114,6 +121,7 @@ export class BindError extends ZlinkError {
   }
 }
 
+/** Thrown when connecting a socket to an endpoint fails. */
 export class ConnectError extends ZlinkError {
   readonly result: ConnectResult;
 
@@ -127,6 +135,7 @@ export class ConnectError extends ZlinkError {
   }
 }
 
+/** Thrown when reading or applying a configuration option fails. */
 export class ConfigError extends ZlinkError {
   readonly result: ConfigResult;
 

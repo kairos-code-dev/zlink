@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+/** The outcome of submitting a send or publish. */
 export const SubmitResult = Object.freeze({
   Ok: 0,
   Backpressured: 1,
@@ -18,6 +19,7 @@ export const SubmitResult = Object.freeze({
 } as const);
 export type SubmitResult = typeof SubmitResult[keyof typeof SubmitResult];
 
+/** The outcome of a request, as delivered to a request callback. */
 export const RequestResult = Object.freeze({
   Ok: 0,
   TimedOut: 101,
@@ -35,6 +37,7 @@ export const RequestResult = Object.freeze({
 } as const);
 export type RequestResult = typeof RequestResult[keyof typeof RequestResult];
 
+/** The outcome of a receive. */
 export const RecvResult = Object.freeze({
   Ok: 0,
   NoData: 201,
@@ -46,6 +49,7 @@ export const RecvResult = Object.freeze({
 } as const);
 export type RecvResult = typeof RecvResult[keyof typeof RecvResult];
 
+/** The outcome of registering or running a callback handler. */
 export const HandlerResult = Object.freeze({
   Ok: 0,
   InvalidArgument: 301,
@@ -57,6 +61,7 @@ export const HandlerResult = Object.freeze({
 } as const);
 export type HandlerResult = typeof HandlerResult[keyof typeof HandlerResult];
 
+/** The outcome of closing a socket or resource. */
 export const CloseResult = Object.freeze({
   Ok: 0,
   Busy: 401,
@@ -66,6 +71,7 @@ export const CloseResult = Object.freeze({
 } as const);
 export type CloseResult = typeof CloseResult[keyof typeof CloseResult];
 
+/** The outcome of binding to an endpoint. */
 export const BindResult = Object.freeze({
   Ok: 0,
   InvalidArgument: 501,
@@ -76,6 +82,7 @@ export const BindResult = Object.freeze({
 } as const);
 export type BindResult = typeof BindResult[keyof typeof BindResult];
 
+/** The outcome of connecting to an endpoint. */
 export const ConnectResult = Object.freeze({
   Ok: 0,
   InvalidArgument: 601,
@@ -88,6 +95,7 @@ export const ConnectResult = Object.freeze({
 } as const);
 export type ConnectResult = typeof ConnectResult[keyof typeof ConnectResult];
 
+/** The outcome of reading or applying a configuration option. */
 export const ConfigResult = Object.freeze({
   Ok: 0,
   InvalidHandle: 701,

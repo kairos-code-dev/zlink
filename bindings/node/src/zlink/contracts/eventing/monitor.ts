@@ -2,9 +2,11 @@
 
 import { RoutingId } from '../core';
 
+/** Identifies what a monitored source is (a socket, or a spot's pub/sub side). */
 export const MonitorSourceKind = Object.freeze({ Socket: 1, SpotPub: 3, SpotSub: 4 } as const);
 export type MonitorSourceKindValue = typeof MonitorSourceKind[keyof typeof MonitorSourceKind];
 
+/** The kind of a delivered socket monitor connection-lifecycle event. */
 export const MonitorEventType = Object.freeze({
   Connected: 0x0001,
   ConnectDelayed: 0x0002,
@@ -25,6 +27,15 @@ export const MonitorEventType = Object.freeze({
 } as const);
 export type MonitorEventType = typeof MonitorEventType[keyof typeof MonitorEventType];
 
+/**
+ * A snapshot of a monitored socket's state and auto-high-water-mark telemetry.
+ *
+ * `sourceKind` identifies the monitored source; `stateFlags`/`detailFlags` are
+ * bit masks of its current state; `snd/rcvPendingMsgs` are queued message
+ * counts; and the `autoHwm*` fields report the automatic high-water-mark sizing
+ * decisions (applied marks, effective buffers, last recalculation, deferred
+ * shrinks).
+ */
 export interface MonitorStatus {
   readonly sourceKind: MonitorSourceKindValue;
   readonly stateFlags: number;
@@ -48,6 +59,7 @@ export interface MonitorStatus {
   readonly autoHwmSendBlockedRatioPpm: number;
   readonly autoHwmDeferredSndHwm: number;
   readonly autoHwmDeferredRcvHwm: number;
+  /** Whether the monitored socket is in the ready state. */
   isReady(): boolean;
 }
 
@@ -88,11 +100,17 @@ export interface MonitorEventValueRaw {
 
 const MONITOR_EVENT_CREATE_TOKEN = Symbol('MonitorEvent.create');
 
+/** A single socket connection-lifecycle event reported by a monitor. */
 export class MonitorEvent {
+  /** The kind of lifecycle event. */
   readonly event: MonitorEventType;
+  /** An event-specific value, such as an error code or reconnect interval. */
   readonly value: number;
+  /** The peer routing id, or null when the event carries none. */
   readonly routingId: RoutingId | null;
+  /** The local endpoint address. */
   readonly localAddr: string;
+  /** The remote endpoint address. */
   readonly remoteAddr: string;
 
   private constructor(token: symbol, raw: MonitorEventValueRaw) {
@@ -114,9 +132,14 @@ export class MonitorEvent {
 
 Object.freeze(MonitorEvent);
 
+/** Observes a socket's connection lifecycle events and current status. */
 export interface MonitorSocket {
+  /** Receive the next monitor event, or null when `DontWait` is set and none is available. */
   recv(flags?: number): MonitorEvent | null;
+  /** Register a callback invoked for each monitor event on a background dispatch thread. */
   onEvent(handler: (event: MonitorEvent) => void): void;
+  /** Return a snapshot of the monitored socket's current status. */
   status(): MonitorStatus;
+  /** Close the monitor and release its resources. */
   close(): void;
 }

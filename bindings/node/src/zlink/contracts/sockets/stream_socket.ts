@@ -8,18 +8,45 @@ import type { RecvFlags } from './socket_constants';
 import type { StreamSocketOptions } from './socket_options';
 import type { Socket } from './socket';
 
+/**
+ * STREAM socket: exchanges framed packets with raw TCP peers (addressed by
+ * routing id) and can host actor gateways over those streams.
+ */
 export interface StreamSocket extends Socket {
+  /** The STREAM-specific typed options facade. */
   readonly options: StreamSocketOptions;
+  /** Begin a send addressed to `routingId`; parts are consumed on a successful submit. */
   send(routingId: RoutingId): SendOperation;
+  /** Receive a message into `result`; false when `RecvFlags.DontWait` is set and none is available. */
   recv(result: Received, flags?: RecvFlags): boolean;
+  /**
+   * Register the handler invoked for each inbound framed packet; the handler
+   * owns the messages it receives (see {@link StreamPacketHandler}) and runs on
+   * a background dispatch thread.
+   */
   setPacketHandler(handler: StreamPacketHandler): void;
+  /**
+   * Register a callback invoked when the socket can accept more sends after
+   * back-pressure. The callback runs on a background dispatch thread.
+   */
   setSendReadyHandler(handler: () => void): void;
+  /**
+   * Set the routing id that identifies this socket to its peers. Apply before
+   * connecting so peers observe it from the first packet.
+   */
   setRoutingId(routingId: RoutingId): void;
+  /** Return the routing id that identifies this socket to its peers. */
   getRoutingId(): RoutingId;
+  /** Disconnect the peer identified by `routingId`. */
   disconnectRid(routingId: RoutingId): void;
+  /** Attach an actor gateway so `node`'s actors can be reached over this stream socket. */
   attachActorGateway(node: SpotNode): void;
+  /** Bind `actor` to the session `sessionRid`; submit the returned operation to apply the binding. */
   bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOperation;
+  /** Remove the binding of `actorId` from the session `sessionRid`; submit the returned operation to apply it. */
   unbindActor(sessionRid: RoutingId, actorId: string): ActorUnbindOperation;
+  /** Begin a send addressed to the bound actor `actorId` on session `sessionRid`; parts are consumed on a successful submit. */
   sendBoundActor(sessionRid: RoutingId, actorId: string): SendOperation;
+  /** Return the actors currently bound to the session `sessionRid`. */
   boundActors(sessionRid: RoutingId): ActorRef[];
 }

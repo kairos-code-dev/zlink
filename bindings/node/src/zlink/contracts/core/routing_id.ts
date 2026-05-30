@@ -69,6 +69,7 @@ function uuidString(bytes: Buffer): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+/** An opaque identifier for a messaging peer or route, 1 to 255 bytes long. */
 export class RoutingId {
   private readonly _bytes: Buffer;
 
@@ -80,14 +81,24 @@ export class RoutingId {
     Object.freeze(this);
   }
 
+  /**
+   * Create a routing id from a string (its UTF-8 bytes), a number (a 4-byte
+   * big-endian uint32), or a Buffer/Uint8Array (copied). Throws when the byte
+   * length is not 1..255.
+   */
   static from(value: string | Buffer | Uint8Array | number): RoutingId {
     return new RoutingId(ROUTING_ID_CREATE_TOKEN, normalizeRoutingIdValue(value));
   }
 
+  /**
+   * Create a routing id by decoding `value` as a hex string (non-empty, even
+   * length, up to 510 digits for 255 bytes).
+   */
   static fromHex(value: string): RoutingId {
     return new RoutingId(ROUTING_ID_CREATE_TOKEN, normalizeRoutingIdHex(value));
   }
 
+  /** Return a copy of the routing id bytes. */
   toBytes(): Buffer {
     return Buffer.from(this._bytes);
   }
@@ -97,18 +108,25 @@ export class RoutingId {
     return this._bytes;
   }
 
+  /** The length of the routing id in bytes. */
   get size(): number {
     return this._bytes.length;
   }
 
+  /** Return true when `other` has identical bytes. */
   equals(other: RoutingId): boolean {
     return other instanceof RoutingId && this._bytes.equals(other._bytes);
   }
 
+  /** Return the routing id as a lowercase hex string. */
   toHex(): string {
     return this._bytes.toString('hex');
   }
 
+  /**
+   * Return a human-readable form: printable UTF-8 text when possible, otherwise
+   * a uint, a UUID, or a `hex:` fallback.
+   */
   toString(): string {
     const utf8 = tryPrintableUtf8(this._bytes);
     if (utf8 !== null) {

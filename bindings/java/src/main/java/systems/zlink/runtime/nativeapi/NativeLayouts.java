@@ -441,9 +441,9 @@ public final class NativeLayouts {
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("local_endpoint"),
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("peer_endpoint"),
                     ValueLayout.JAVA_INT.withName("source"),
+                    ValueLayout.JAVA_INT.withName("kind"),
                     ValueLayout.JAVA_INT.withName("state"),
                     ValueLayout.JAVA_INT.withName("weight"),
-                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("connected_since_ms"),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));
 
@@ -476,7 +476,6 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("subject_kind"),
                     ValueLayout.JAVA_INT.withName("ready_peer_count"),
                     ValueLayout.JAVA_INT.withName("active_peer_count"),
-                    MemoryLayout.paddingLayout(8),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));
 
     public static final MemoryLayout SPOT_NODE_SUBJECT_FILTER_LAYOUT =
@@ -504,6 +503,101 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("socket_type"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_visible"),
                     MONITOR_SNAPSHOT_LAYOUT.withName("snapshot"));
+
+    public static final long SPOT_NODE_STATUS_CHANNEL_NAME_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("channel_name"));
+    public static final long SPOT_NODE_STATUS_LOCAL_ENDPOINT_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("local_endpoint"));
+    public static final long SPOT_NODE_STATUS_NODE_ROUTING_ID_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("node_routing_id"));
+    public static final long SPOT_NODE_STATUS_STATE_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("state"));
+    public static final long SPOT_NODE_STATUS_CONFIGURED_PEER_COUNT_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("configured_peer_count"));
+    public static final long SPOT_NODE_STATUS_ACTIVE_PEER_COUNT_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("active_peer_count"));
+    public static final long SPOT_NODE_STATUS_CONNECTED_PEER_COUNT_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("connected_peer_count"));
+    public static final long SPOT_NODE_STATUS_SUBJECT_COUNT_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("subject_count"));
+    public static final long SPOT_NODE_STATUS_READY_SUBJECT_COUNT_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("ready_subject_count"));
+    public static final long SPOT_NODE_STATUS_DISCONNECTED_SUB_TARGET_COUNT_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("disconnected_sub_target_count"));
+    public static final long SPOT_NODE_STATUS_DISCONNECTED_ROUTED_TARGET_COUNT_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("disconnected_routed_target_count"));
+    public static final long SPOT_NODE_STATUS_LAST_ERROR_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("last_error"));
+    public static final long SPOT_NODE_STATUS_LAST_CHANGED_MS_OFFSET =
+            SPOT_NODE_STATUS_LAYOUT.byteOffset(PathElement.groupElement("last_changed_ms"));
+
+    public static final long SPOT_NODE_PEER_ENTRY_CHANNEL_NAME_OFFSET =
+            SPOT_NODE_PEER_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("channel_name"));
+    public static final long SPOT_NODE_PEER_ENTRY_LOCAL_ENDPOINT_OFFSET =
+            SPOT_NODE_PEER_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("local_endpoint"));
+    public static final long SPOT_NODE_PEER_ENTRY_PEER_ENDPOINT_OFFSET =
+            SPOT_NODE_PEER_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("peer_endpoint"));
+    public static final long SPOT_NODE_PEER_ENTRY_SOURCE_OFFSET =
+            SPOT_NODE_PEER_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("source"));
+    public static final long SPOT_NODE_PEER_ENTRY_KIND_OFFSET =
+            SPOT_NODE_PEER_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("kind"));
+    public static final long SPOT_NODE_PEER_ENTRY_STATE_OFFSET =
+            SPOT_NODE_PEER_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("state"));
+    public static final long SPOT_NODE_PEER_ENTRY_WEIGHT_OFFSET =
+            SPOT_NODE_PEER_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("weight"));
+    public static final long SPOT_NODE_PEER_ENTRY_CONNECTED_SINCE_MS_OFFSET =
+            SPOT_NODE_PEER_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("connected_since_ms"));
+    public static final long SPOT_NODE_PEER_ENTRY_LAST_CHANGED_MS_OFFSET =
+            SPOT_NODE_PEER_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("last_changed_ms"));
+
+    public static final long SPOT_NODE_PEER_FILTER_PEER_ENDPOINT_OFFSET =
+            SPOT_NODE_PEER_FILTER_LAYOUT.byteOffset(PathElement.groupElement("peer_endpoint"));
+    public static final long SPOT_NODE_PEER_FILTER_SOURCE_OFFSET =
+            SPOT_NODE_PEER_FILTER_LAYOUT.byteOffset(PathElement.groupElement("source"));
+    public static final long SPOT_NODE_PEER_FILTER_STATE_OFFSET =
+            SPOT_NODE_PEER_FILTER_LAYOUT.byteOffset(PathElement.groupElement("state"));
+
+    public static final long SPOT_NODE_SUBJECT_ENTRY_ROLE_OFFSET =
+            SPOT_NODE_SUBJECT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("role"));
+    public static final long SPOT_NODE_SUBJECT_ENTRY_SUBJECT_OFFSET =
+            SPOT_NODE_SUBJECT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("subject"));
+    public static final long SPOT_NODE_SUBJECT_ENTRY_SUBJECT_KIND_OFFSET =
+            SPOT_NODE_SUBJECT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("subject_kind"));
+    public static final long SPOT_NODE_SUBJECT_ENTRY_READY_PEER_COUNT_OFFSET =
+            SPOT_NODE_SUBJECT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("ready_peer_count"));
+    public static final long SPOT_NODE_SUBJECT_ENTRY_ACTIVE_PEER_COUNT_OFFSET =
+            SPOT_NODE_SUBJECT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("active_peer_count"));
+    public static final long SPOT_NODE_SUBJECT_ENTRY_LAST_CHANGED_MS_OFFSET =
+            SPOT_NODE_SUBJECT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("last_changed_ms"));
+
+    public static final long SPOT_NODE_SUBJECT_FILTER_ROLE_OFFSET =
+            SPOT_NODE_SUBJECT_FILTER_LAYOUT.byteOffset(PathElement.groupElement("role"));
+    public static final long SPOT_NODE_SUBJECT_FILTER_SUBJECT_OFFSET =
+            SPOT_NODE_SUBJECT_FILTER_LAYOUT.byteOffset(PathElement.groupElement("subject"));
+    public static final long SPOT_NODE_SUBJECT_FILTER_SUBJECT_KIND_OFFSET =
+            SPOT_NODE_SUBJECT_FILTER_LAYOUT.byteOffset(PathElement.groupElement("subject_kind"));
+
+    public static final long SPOT_NODE_SOCKET_FILTER_OWNER_OFFSET =
+            SPOT_NODE_SOCKET_SNAPSHOT_FILTER_LAYOUT.byteOffset(PathElement.groupElement("owner"));
+    public static final long SPOT_NODE_SOCKET_FILTER_SOCKET_TYPE_OFFSET =
+            SPOT_NODE_SOCKET_SNAPSHOT_FILTER_LAYOUT.byteOffset(PathElement.groupElement("socket_type"));
+    public static final long SPOT_NODE_SOCKET_FILTER_SOCKET_NAME_OFFSET =
+            SPOT_NODE_SOCKET_SNAPSHOT_FILTER_LAYOUT.byteOffset(PathElement.groupElement("socket_name"));
+
+    public static final long SPOT_NODE_SOCKET_ENTRY_OWNER_OFFSET =
+            SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("owner"));
+    public static final long SPOT_NODE_SOCKET_ENTRY_OWNER_ID_OFFSET =
+            SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("owner_id"));
+    public static final long SPOT_NODE_SOCKET_ENTRY_OWNER_NAME_OFFSET =
+            SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("owner_name"));
+    public static final long SPOT_NODE_SOCKET_ENTRY_SOCKET_NAME_OFFSET =
+            SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("socket_name"));
+    public static final long SPOT_NODE_SOCKET_ENTRY_SOCKET_TYPE_OFFSET =
+            SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("socket_type"));
+    public static final long SPOT_NODE_SOCKET_ENTRY_AUTO_HWM_VISIBLE_OFFSET =
+            SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("auto_hwm_visible"));
+    public static final long SPOT_NODE_SOCKET_ENTRY_SNAPSHOT_OFFSET =
+            SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("snapshot"));
 
     public static final MemoryLayout SPOT_NODE_SPOT_ENTRY_LAYOUT =
             MemoryLayout.structLayout(
@@ -656,4 +750,91 @@ public final class NativeLayouts {
                     ROUTING_ID_LAYOUT.withName("routing_id"),
                     ValueLayout.JAVA_INT.withName("state"),
                     ValueLayout.JAVA_INT.withName("source"));
+
+    public static final long REGISTRY_TOPOLOGY_FILTER_AUTO_CONNECT_TYPE_OFFSET =
+            REGISTRY_TOPOLOGY_FILTER_LAYOUT.byteOffset(PathElement.groupElement("auto_connect_type"));
+    public static final long REGISTRY_TOPOLOGY_FILTER_SERVICE_KIND_OFFSET =
+            REGISTRY_TOPOLOGY_FILTER_LAYOUT.byteOffset(PathElement.groupElement("service_kind"));
+    public static final long REGISTRY_TOPOLOGY_FILTER_SERVICE_ROLE_OFFSET =
+            REGISTRY_TOPOLOGY_FILTER_LAYOUT.byteOffset(PathElement.groupElement("service_role"));
+    public static final long REGISTRY_TOPOLOGY_FILTER_CHANNEL_NAME_OFFSET =
+            REGISTRY_TOPOLOGY_FILTER_LAYOUT.byteOffset(PathElement.groupElement("channel_name"));
+    public static final long REGISTRY_TOPOLOGY_FILTER_ROUTING_ID_OFFSET =
+            REGISTRY_TOPOLOGY_FILTER_LAYOUT.byteOffset(PathElement.groupElement("routing_id"));
+    public static final long REGISTRY_TOPOLOGY_FILTER_STATE_OFFSET =
+            REGISTRY_TOPOLOGY_FILTER_LAYOUT.byteOffset(PathElement.groupElement("state"));
+    public static final long REGISTRY_TOPOLOGY_FILTER_SOURCE_OFFSET =
+            REGISTRY_TOPOLOGY_FILTER_LAYOUT.byteOffset(PathElement.groupElement("source"));
+
+    public static final long REGISTRY_SERVICE_SUMMARY_FILTER_AUTO_CONNECT_TYPE_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_FILTER_LAYOUT.byteOffset(PathElement.groupElement("auto_connect_type"));
+    public static final long REGISTRY_SERVICE_SUMMARY_FILTER_SERVICE_ROLE_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_FILTER_LAYOUT.byteOffset(PathElement.groupElement("service_role"));
+    public static final long REGISTRY_SERVICE_SUMMARY_FILTER_CHANNEL_NAME_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_FILTER_LAYOUT.byteOffset(PathElement.groupElement("channel_name"));
+
+    public static final long REGISTRY_STATUS_REGISTRY_ID_OFFSET =
+            REGISTRY_STATUS_LAYOUT.byteOffset(PathElement.groupElement("registry_id"));
+    public static final long REGISTRY_STATUS_BIND_ENDPOINT_OFFSET =
+            REGISTRY_STATUS_LAYOUT.byteOffset(PathElement.groupElement("bind_endpoint"));
+    public static final long REGISTRY_STATUS_STATE_OFFSET =
+            REGISTRY_STATUS_LAYOUT.byteOffset(PathElement.groupElement("state"));
+    public static final long REGISTRY_STATUS_TOPOLOGY_ENTRY_COUNT_OFFSET =
+            REGISTRY_STATUS_LAYOUT.byteOffset(PathElement.groupElement("topology_entry_count"));
+    public static final long REGISTRY_STATUS_PEER_REGISTRY_COUNT_OFFSET =
+            REGISTRY_STATUS_LAYOUT.byteOffset(PathElement.groupElement("peer_registry_count"));
+    public static final long REGISTRY_STATUS_CONNECTED_PEER_REGISTRY_COUNT_OFFSET =
+            REGISTRY_STATUS_LAYOUT.byteOffset(PathElement.groupElement("connected_peer_registry_count"));
+    public static final long REGISTRY_STATUS_LIST_SEQ_OFFSET =
+            REGISTRY_STATUS_LAYOUT.byteOffset(PathElement.groupElement("list_seq"));
+    public static final long REGISTRY_STATUS_LAST_ERROR_OFFSET =
+            REGISTRY_STATUS_LAYOUT.byteOffset(PathElement.groupElement("last_error"));
+    public static final long REGISTRY_STATUS_LAST_CHANGED_MS_OFFSET =
+            REGISTRY_STATUS_LAYOUT.byteOffset(PathElement.groupElement("last_changed_ms"));
+
+    public static final long REGISTRY_TOPOLOGY_ENTRY_AUTO_CONNECT_TYPE_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("auto_connect_type"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_ROUTING_ID_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("routing_id"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_SERVICE_KIND_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("service_kind"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_SERVICE_ROLE_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("service_role"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_CHANNEL_NAME_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("channel_name"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_ENDPOINT_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("endpoint"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_SOURCE_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("source"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_STATE_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("state"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_DESIRED_COUNT_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("desired_count"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_READY_COUNT_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("ready_count"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_ERROR_CODE_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("error_code"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_LAST_REPORTED_MS_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("last_reported_ms"));
+    public static final long REGISTRY_TOPOLOGY_ENTRY_SPOT_KIND_OFFSET =
+            REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("spot_kind"));
+
+    public static final long REGISTRY_SERVICE_SUMMARY_ENTRY_AUTO_CONNECT_TYPE_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("auto_connect_type"));
+    public static final long REGISTRY_SERVICE_SUMMARY_ENTRY_SERVICE_ROLE_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("service_role"));
+    public static final long REGISTRY_SERVICE_SUMMARY_ENTRY_CHANNEL_NAME_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("channel_name"));
+    public static final long REGISTRY_SERVICE_SUMMARY_ENTRY_TOTAL_COUNT_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("total_count"));
+    public static final long REGISTRY_SERVICE_SUMMARY_ENTRY_CONNECTING_COUNT_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("connecting_count"));
+    public static final long REGISTRY_SERVICE_SUMMARY_ENTRY_READY_COUNT_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("ready_count"));
+    public static final long REGISTRY_SERVICE_SUMMARY_ENTRY_ERROR_COUNT_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("error_count"));
+    public static final long REGISTRY_SERVICE_SUMMARY_ENTRY_STOPPED_COUNT_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("stopped_count"));
+    public static final long REGISTRY_SERVICE_SUMMARY_ENTRY_LAST_REPORTED_MS_OFFSET =
+            REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT.byteOffset(PathElement.groupElement("last_reported_ms"));
 }

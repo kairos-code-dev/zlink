@@ -28,8 +28,10 @@ struct routing_id_access_t
 
     static zlink_routing_id_t to_native (const routing_id_t &routing_id_) noexcept
     {
+        // Core consumes only the first `.size` bytes of `.data` (e.g.
+        // blob_t(data, size) in socket_base_routing, memcmp(.., size) in the
+        // spot router channel); the tail is never observed, so skip zeroing it.
         zlink_routing_id_t native;
-        std::memset (&native, 0, sizeof (native));
         native.size = static_cast<uint8_t> (routing_id_._size);
         if (routing_id_._size > 0)
             std::memcpy (native.data, routing_id_._data.data (), routing_id_._size);

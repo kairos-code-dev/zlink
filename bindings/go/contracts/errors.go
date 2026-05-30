@@ -5,23 +5,40 @@ package contracts
 import impl "zlink.systems/zlink/internal/errors"
 
 type (
-	ZlinkError    = impl.ZlinkError
-	SubmitError   = impl.SubmitError
-	RequestError  = impl.RequestError
-	RecvError     = impl.RecvError
-	HandlerError  = impl.HandlerError
-	CloseError    = impl.CloseError
-	BindError     = impl.BindError
-	ConnectError  = impl.ConnectError
-	ConfigError   = impl.ConfigError
-	SubmitResult  = impl.SubmitResult
+	// ZlinkError is the base error type for the zlink bindings, carrying a result code and native errno.
+	ZlinkError = impl.ZlinkError
+	// SubmitError is returned when submitting a send or publish fails.
+	SubmitError = impl.SubmitError
+	// RequestError is returned when a request fails or its reply reports an error.
+	RequestError = impl.RequestError
+	// RecvError is returned when receiving a message fails.
+	RecvError = impl.RecvError
+	// HandlerError is returned when registering or running a callback handler fails.
+	HandlerError = impl.HandlerError
+	// CloseError is returned when closing a socket or resource fails.
+	CloseError = impl.CloseError
+	// BindError is returned when binding a socket to an endpoint fails.
+	BindError = impl.BindError
+	// ConnectError is returned when connecting a socket to an endpoint fails.
+	ConnectError = impl.ConnectError
+	// ConfigError is returned when reading or applying a configuration option fails.
+	ConfigError = impl.ConfigError
+	// SubmitResult is the outcome of submitting a send or publish.
+	SubmitResult = impl.SubmitResult
+	// RequestResult is the outcome of a request.
 	RequestResult = impl.RequestResult
-	RecvResult    = impl.RecvResult
+	// RecvResult is the outcome of a receive.
+	RecvResult = impl.RecvResult
+	// HandlerResult is the outcome of registering or running a callback handler.
 	HandlerResult = impl.HandlerResult
-	CloseResult   = impl.CloseResult
-	BindResult    = impl.BindResult
+	// CloseResult is the outcome of closing a socket or resource.
+	CloseResult = impl.CloseResult
+	// BindResult is the outcome of binding to an endpoint.
+	BindResult = impl.BindResult
+	// ConnectResult is the outcome of connecting to an endpoint.
 	ConnectResult = impl.ConnectResult
-	ConfigResult  = impl.ConfigResult
+	// ConfigResult is the outcome of reading or applying a configuration option.
+	ConfigResult = impl.ConfigResult
 )
 
 const (

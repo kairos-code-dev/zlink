@@ -7,22 +7,34 @@ use crate::socket_contracts::{
     XSubSocket,
 };
 
+/// Selects an automatic high-water-mark sizing profile that trades memory,
+/// latency, and throughput.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AutoHwmProfile {
+    /// Smallest queues, minimizing memory use.
     Compact,
+    /// Small queues that drain quickly to favor latency.
     LowLatency,
+    /// Balances latency against throughput.
     Balanced,
+    /// Large queues that favor throughput.
     Throughput,
 }
 
-/// Recalculation trigger reported by the auto-HWM v2 monitor snapshot.
+/// Recalculation trigger reported by the auto-HWM monitor snapshot.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AutoHwmRecalcReason {
+    /// No recalculation has occurred.
     None,
+    /// The initial sizing at startup.
     Initial,
+    /// The socket's role changed.
     RoleChange,
+    /// The auto-HWM policy was toggled.
     PolicyToggle,
+    /// A periodic refresh.
     Refresh,
+    /// A shrink that was deferred to avoid disruption.
     DeferredShrink,
 }
 
@@ -141,81 +153,115 @@ impl<'a> ContextOptions<'a> {
         Self { context }
     }
 
+    /// Returns the number of background I/O threads serving the context.
     pub fn io_threads(&self) -> Result<i32, ConfigError> {
         self.context.io_threads()
     }
+    /// Sets the number of background I/O threads serving the context.
     pub fn set_io_threads(&self, threads: i32) -> Result<(), ConfigError> {
         self.context.set_io_threads(threads)
     }
+    /// Returns the maximum number of sockets the context may create.
     pub fn max_sockets(&self) -> Result<i32, ConfigError> {
         self.context.max_sockets()
     }
+    /// Sets the maximum number of sockets the context may create.
     pub fn set_max_sockets(&self, max: i32) -> Result<(), ConfigError> {
         self.context.set_max_sockets(max)
     }
+    /// Returns the largest value [`set_max_sockets`](Self::set_max_sockets) may
+    /// take on this build.
     pub fn socket_limit(&self) -> Result<i32, ConfigError> {
         self.context.socket_limit()
     }
+    /// Returns the OS scheduling priority of the context's I/O threads.
     pub fn thread_priority(&self) -> Result<i32, ConfigError> {
         self.context.thread_priority()
     }
+    /// Sets the OS scheduling priority of the context's I/O threads.
     pub fn set_thread_priority(&self, priority: i32) -> Result<(), ConfigError> {
         self.context.set_thread_priority(priority)
     }
+    /// Returns the OS scheduling policy of the context's I/O threads.
     pub fn thread_scheduling_policy(&self) -> Result<i32, ConfigError> {
         self.context.thread_scheduling_policy()
     }
+    /// Sets the OS scheduling policy of the context's I/O threads.
     pub fn set_thread_scheduling_policy(&self, policy: i32) -> Result<(), ConfigError> {
         self.context.set_thread_scheduling_policy(policy)
     }
+    /// Returns the default maximum inbound message size, in bytes, for new
+    /// sockets.
     pub fn max_message_size(&self) -> Result<i32, ConfigError> {
         self.context.max_message_size()
     }
+    /// Sets the default maximum inbound message size, in bytes, for new sockets.
     pub fn set_max_message_size(&self, size: i32) -> Result<(), ConfigError> {
         self.context.set_max_message_size(size)
     }
+    /// Returns the size of the context's message worker thread pool.
     pub fn msg_t_size(&self) -> Result<i32, ConfigError> {
         self.context.msg_t_size()
     }
+    /// Returns whether the context blocks on termination until queued messages
+    /// have been sent.
     pub fn blocky(&self) -> Result<bool, ConfigError> {
         self.context.blocky()
     }
+    /// Sets whether the context blocks on termination until queued messages have
+    /// been sent.
     pub fn set_blocky(&self, blocky: bool) -> Result<(), ConfigError> {
         self.context.set_blocky(blocky)
     }
+    /// Returns the prefix applied to the names of threads the context creates.
     pub fn thread_name_prefix(&self) -> Result<String, ConfigError> {
         self.context.thread_name_prefix()
     }
+    /// Sets the prefix applied to the names of threads the context creates.
     pub fn set_thread_name_prefix(&self, prefix: &str) -> Result<(), ConfigError> {
         self.context.set_thread_name_prefix(prefix)
     }
+    /// Returns whether high-water marks are sized automatically.
     pub fn auto_hwm_enabled(&self) -> Result<bool, ConfigError> {
         self.context.auto_hwm_enabled()
     }
+    /// Sets whether high-water marks are sized automatically.
     pub fn set_auto_hwm_enabled(&self, enabled: bool) -> Result<(), ConfigError> {
         self.context.set_auto_hwm_enabled(enabled)
     }
+    /// Returns the minimum delay between automatic high-water-mark
+    /// recalculations.
     pub fn auto_hwm_recalc_debounce(&self) -> Result<Duration, ConfigError> {
         self.context.auto_hwm_recalc_debounce()
     }
+    /// Sets the minimum delay between automatic high-water-mark recalculations.
     pub fn set_auto_hwm_recalc_debounce(&self, value: Duration) -> Result<(), ConfigError> {
         self.context.set_auto_hwm_recalc_debounce(value)
     }
+    /// Returns the profile used to size high-water marks automatically.
     pub fn auto_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError> {
         self.context.auto_hwm_profile()
     }
+    /// Sets the profile used to size high-water marks automatically; see
+    /// [`AutoHwmProfile`].
     pub fn set_auto_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError> {
         self.context.set_auto_hwm_profile(profile)
     }
+    /// Returns the assumed message size, in bytes, used when auto-sizing
+    /// high-water marks.
     pub fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> {
         self.context.auto_hwm_msg_unit_bytes()
     }
+    /// Sets the assumed message size, in bytes, used when auto-sizing high-water
+    /// marks.
     pub fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> {
         self.context.set_auto_hwm_msg_unit_bytes(bytes)
     }
+    /// Pins the context's I/O threads to also run on CPU core `cpu`.
     pub fn add_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError> {
         self.context.add_thread_affinity(cpu)
     }
+    /// Removes CPU core `cpu` from the context's I/O thread affinity.
     pub fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError> {
         self.context.remove_thread_affinity(cpu)
     }

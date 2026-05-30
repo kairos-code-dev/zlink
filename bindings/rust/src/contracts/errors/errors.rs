@@ -6,14 +6,18 @@ pub use crate::results::{
 };
 
 macro_rules! define_error_type {
-    ($name:ident, $result:ident, $variant:ident) => {
+    ($name:ident, $result:ident, $variant:ident, $doc:literal) => {
+        #[doc = $doc]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub struct $name {
+            /// The typed result code that classifies this failure.
             pub code: $result,
+            /// The underlying native errno, or 0 when none.
             pub internal_errno: i32,
         }
 
         impl $name {
+            /// Creates an error from a typed result `code` and native errno.
             pub const fn new(code: $result, internal_errno: i32) -> Self {
                 Self {
                     code,
@@ -21,10 +25,12 @@ macro_rules! define_error_type {
                 }
             }
 
+            /// Returns the typed result code that classifies this failure.
             pub const fn code(&self) -> $result {
                 self.code
             }
 
+            /// Returns the underlying native errno, or 0 when none.
             pub const fn internal_errno(&self) -> i32 {
                 self.internal_errno
             }
@@ -52,28 +58,38 @@ macro_rules! define_error_type {
     };
 }
 
-define_error_type!(SubmitError, SubmitResult, Submit);
-define_error_type!(RequestError, RequestResult, Request);
-define_error_type!(RecvError, RecvResult, Recv);
-define_error_type!(HandlerError, HandlerResult, Handler);
-define_error_type!(CloseError, CloseResult, Close);
-define_error_type!(BindError, BindResult, Bind);
-define_error_type!(ConnectError, ConnectResult, Connect);
-define_error_type!(ConfigError, ConfigResult, Config);
+define_error_type!(SubmitError, SubmitResult, Submit, "Error from submitting a send or publish.");
+define_error_type!(RequestError, RequestResult, Request, "Error from a request, or a reply that reported failure.");
+define_error_type!(RecvError, RecvResult, Recv, "Error from receiving a message.");
+define_error_type!(HandlerError, HandlerResult, Handler, "Error from registering or running a callback handler.");
+define_error_type!(CloseError, CloseResult, Close, "Error from closing a socket or resource.");
+define_error_type!(BindError, BindResult, Bind, "Error from binding to an endpoint.");
+define_error_type!(ConnectError, ConnectResult, Connect, "Error from connecting to an endpoint.");
+define_error_type!(ConfigError, ConfigResult, Config, "Error from reading or applying a configuration option.");
 
+/// Any error raised by the binding, tagged by the operation that produced it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZlinkError {
+    /// A send or publish submit failed.
     Submit(SubmitError),
+    /// A request failed.
     Request(RequestError),
+    /// A receive failed.
     Recv(RecvError),
+    /// A callback handler operation failed.
     Handler(HandlerError),
+    /// Closing a resource failed.
     Close(CloseError),
+    /// Binding to an endpoint failed.
     Bind(BindError),
+    /// Connecting to an endpoint failed.
     Connect(ConnectError),
+    /// Reading or applying a configuration option failed.
     Config(ConfigError),
 }
 
 impl ZlinkError {
+    /// Returns the typed result code as its raw integer value.
     pub fn code(&self) -> i32 {
         match self {
             Self::Submit(err) => err.code as i32,
@@ -87,6 +103,7 @@ impl ZlinkError {
         }
     }
 
+    /// Returns the underlying native errno, or 0 when none.
     pub fn internal_errno(&self) -> i32 {
         match self {
             Self::Submit(err) => err.internal_errno,

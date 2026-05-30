@@ -10,10 +10,19 @@ pub(crate) trait ReceivedSendRuntime: Send {
     fn send_op(&self) -> SendOp<Empty>;
 }
 
+/// A received message envelope: its routing metadata and message parts.
+///
+/// Owns its parts until the envelope is dropped or
+/// [`close`](Received::close)d. Reuse one instance across `recv` calls to
+/// avoid a per-receive allocation.
 pub struct Received {
+    /// The source routing id, when the receive path provides one.
     pub routing_id: Option<RoutingId>,
+    /// The source spot routing id, when the envelope came from a spot route.
     pub spot_rid: Option<RoutingId>,
+    /// The request sequence, present when this envelope can be replied to.
     pub request_seq: Option<u64>,
+    /// The message parts, owned by this envelope.
     pub parts: Vec<Message>,
     pub(crate) reply_context: Option<Box<dyn ReceivedReplyRuntime>>,
     pub(crate) send_context: Option<Box<dyn ReceivedSendRuntime>>,
@@ -64,30 +73,41 @@ impl Received {
         }
     }
 
+    /// Returns `true` when the envelope carries exactly one part.
     pub fn is_single_part(&self) -> bool {
         self.parts.len() == 1
     }
 
+    /// Returns the source routing id, when present.
     pub fn routing_id(&self) -> Option<&RoutingId> {
         self.routing_id.as_ref()
     }
 
+    /// Returns the request sequence, present when this envelope can be replied
+    /// to.
     pub fn request_seq(&self) -> Option<u64> {
         self.request_seq
     }
 
+    /// Returns the message parts, owned by this envelope.
     pub fn parts(&self) -> &[Message] {
         &self.parts
     }
 
+    /// Returns the first part without transferring ownership; errors when the
+    /// envelope has no parts.
     pub fn first_part(&self) -> Result<&Message, RecvError> {
         self.parts.first().ok_or_else(recv_state_error)
     }
 
+    /// Consumes the envelope and returns its only part, transferring ownership;
+    /// errors unless it holds exactly one part.
     pub fn single_part(self) -> Result<Message, RecvError> {
         self.single_part_or_error()
     }
 
+    /// Consumes the envelope and returns its only part, transferring ownership;
+    /// errors unless it holds exactly one part.
     pub fn single_part_or_error(self) -> Result<Message, RecvError> {
         if self.parts.len() != 1 {
             return Err(recv_state_error());
@@ -95,10 +115,12 @@ impl Received {
         Ok(self.parts.into_iter().next().expect("single part"))
     }
 
+    /// Consumes the envelope and returns ownership of all its parts.
     pub fn into_parts(self) -> Vec<Message> {
         self.parts
     }
 
+    /// Closes every part, releasing their payloads.
     pub fn close(mut self) -> Result<(), CloseError> {
         for part in &mut self.parts {
             part.close_now();
@@ -106,10 +128,15 @@ impl Received {
         Ok(())
     }
 
+    /// Begins a reply to this request: add parts on the returned builder, then
+    /// submit. Parts are consumed on a successful submit (see [`SendOp`]). Only
+    /// valid for replyable envelopes (those with a request sequence).
     pub fn reply(&self) -> ReplyOp<Empty> {
         crate::messaging_domain_runtime::received_reply(self)
     }
 
+    /// Begins a send addressed to this envelope's source route: add parts, then
+    /// submit. Parts are consumed on a successful submit (see [`SendOp`]).
     pub fn send(&self) -> SendOp<Empty> {
         crate::messaging_domain_runtime::received_send(self)
     }

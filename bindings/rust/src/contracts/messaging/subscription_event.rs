@@ -1,12 +1,18 @@
 use crate::routing_id::RoutingId;
 
+/// A subscriber's subscribe or unsubscribe as observed by an XPUB socket.
 pub struct SubscriptionEvent {
+    /// The subscriber's routing id, when known.
     pub routing_id: Option<RoutingId>,
+    /// The topic that was subscribed or unsubscribed.
     pub topic: smol_str::SmolStr,
+    /// `true` for a subscribe, `false` for an unsubscribe.
     pub subscribed: bool,
 }
 
 impl SubscriptionEvent {
+    /// Creates an empty reusable event; reuse it across
+    /// `receive_subscription_event` calls.
     pub fn empty() -> Self {
         Self {
             routing_id: None,

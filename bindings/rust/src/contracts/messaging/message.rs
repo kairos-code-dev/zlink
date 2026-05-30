@@ -33,6 +33,8 @@ impl Message {
         crate::message_runtime::message_with_size(size)
     }
 
+    /// Allocates a message with writable payload storage of `size` bytes; an
+    /// alias for [`Message::with_size`].
     pub fn allocate(size: usize) -> Result<Self, ConfigError> {
         Self::with_size(size)
     }
@@ -71,10 +73,13 @@ impl Message {
         std::str::from_utf8(self.data())
     }
 
+    /// Returns a new `Vec<u8>` holding a copy of the payload.
     pub fn to_vec(&self) -> Vec<u8> {
         self.as_bytes().to_vec()
     }
 
+    /// Copies the payload into `destination`, returning the number of bytes
+    /// written. Returns an error when `destination` is smaller than the payload.
     pub fn copy_to(&self, destination: &mut [u8]) -> Result<usize, ConfigError> {
         let bytes = self.as_bytes();
         if destination.len() < bytes.len() {
@@ -102,6 +107,7 @@ impl Message {
         self.inner.ref_count()
     }
 
+    /// Returns an independent copy of this message that owns its own payload.
     pub fn try_clone(&self) -> Result<Self, ConfigError> {
         Ok(Self {
             inner: self.inner.try_clone_box()?,
@@ -112,6 +118,7 @@ impl Message {
 impl TryFrom<&[u8]> for Message {
     type Error = ConfigError;
 
+    /// Creates a message holding an independent copy of the bytes.
     fn try_from(data: &[u8]) -> Result<Self, ConfigError> {
         crate::message_runtime::message_from_slice(data)
     }
@@ -120,6 +127,7 @@ impl TryFrom<&[u8]> for Message {
 impl TryFrom<Vec<u8>> for Message {
     type Error = ConfigError;
 
+    /// Creates a message holding an independent copy of the bytes.
     fn try_from(v: Vec<u8>) -> Result<Self, ConfigError> {
         crate::message_runtime::message_from_slice(&v)
     }
@@ -128,6 +136,7 @@ impl TryFrom<Vec<u8>> for Message {
 impl TryFrom<&str> for Message {
     type Error = ConfigError;
 
+    /// Creates a message holding the UTF-8 bytes of the string.
     fn try_from(value: &str) -> Result<Self, ConfigError> {
         crate::message_runtime::message_from_slice(value.as_bytes())
     }

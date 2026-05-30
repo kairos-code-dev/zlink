@@ -6,7 +6,9 @@ use crate::error::{CloseError, ConfigError, HandlerError, RecvError};
 use crate::flags::RecvFlags;
 use crate::routing_id::RoutingId;
 
+/// A socket that a [`SocketMonitor`] can observe.
 pub trait Monitorable: Any {
+    /// Returns this source as `&dyn Any` for downcasting.
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -23,9 +25,12 @@ pub(crate) trait SocketMonitorRuntime: Send {
 pub struct SocketMonitorEventMask(u32);
 
 impl SocketMonitorEventMask {
+    /// Subscribes to every monitor event.
     pub const ALL: Self = Self(0x7FFF);
+    /// Subscribes only to the connection-ready event.
     pub const CONNECTION_READY: Self = Self(0x1000);
 
+    /// Returns the raw mask bits.
     pub const fn bits(self) -> u32 {
         self.0
     }
@@ -51,80 +56,122 @@ impl BitOrAssign for SocketMonitorEventMask {
     }
 }
 
+/// Convenience alias for [`SocketMonitorEventMask::ALL`].
 pub const MONITOR_EVENT_ALL: SocketMonitorEventMask = SocketMonitorEventMask::ALL;
+/// Convenience alias for [`SocketMonitorEventMask::CONNECTION_READY`].
 pub const MONITOR_EVENT_CONNECTION_READY: SocketMonitorEventMask =
     SocketMonitorEventMask::CONNECTION_READY;
 
-/// A typed socket monitor event.
+/// A single socket connection-lifecycle event reported by a monitor.
 #[derive(Debug, Clone)]
 pub struct MonitorEvent {
+    /// The kind of lifecycle event.
     pub event: MonitorEventType,
+    /// An event-specific value, such as an error code or reconnect interval.
     pub value: u32,
+    /// The peer routing id, when the event carries one.
     pub routing_id: Option<RoutingId>,
+    /// The local endpoint address.
     pub local_addr: String,
+    /// The remote endpoint address.
     pub remote_addr: String,
 }
 
 impl MonitorEvent {
+    /// Returns `true` when this event is a connection-established event.
     pub fn is_connected(&self) -> bool {
         self.event.0 & 0x0001 != 0
     }
 
+    /// Returns `true` when this event is a peer-disconnected event.
     pub fn is_disconnected(&self) -> bool {
         self.event.0 & 0x0200 != 0
     }
 
+    /// Returns `true` when this event is a started-listening event.
     pub fn is_listening(&self) -> bool {
         self.event.0 & 0x0008 != 0
     }
 
+    /// Returns `true` when this event is an inbound-connection-accepted event.
     pub fn is_accepted(&self) -> bool {
         self.event.0 & 0x0020 != 0
     }
 
+    /// Returns `true` when this event is a connection-closed event.
     pub fn is_closed(&self) -> bool {
         self.event.0 & 0x0080 != 0
     }
 
+    /// Returns `true` when this event is a handshake-complete, ready-for-traffic
+    /// event.
     pub fn is_connection_ready(&self) -> bool {
         self.event.0 & 0x1000 != 0
     }
 }
 
+/// The raw bitmask identifying a monitor event's kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MonitorEventType(pub u64);
 
+/// Identifies what a monitored source is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MonitorSourceKind {
+    /// A plain socket.
     Socket,
+    /// The publish side of a spot.
     SpotPub,
+    /// The subscribe side of a spot.
     SpotSub,
 }
 
-/// A point-in-time snapshot of a monitored entity's state.
+/// A point-in-time snapshot of a monitored entity's state and auto-high-water-
+/// mark telemetry.
 #[derive(Debug, Clone)]
 pub struct MonitorStatus {
+    /// What kind of source this snapshot describes.
     pub source_kind: MonitorSourceKind,
+    /// Bit flags describing the source's current state.
     pub state_flags: u32,
+    /// Bit flags carrying additional state detail.
     pub detail_flags: u32,
+    /// The number of outbound messages currently queued.
     pub snd_pending_msgs: u64,
+    /// The number of inbound messages currently queued.
     pub rcv_pending_msgs: u64,
+    /// Whether automatic high-water-mark sizing is enabled.
     pub auto_hwm_enabled: bool,
+    /// The active auto-HWM profile.
     pub auto_hwm_profile: u32,
+    /// The role the auto-HWM sizing inferred for this socket.
     pub auto_hwm_role: u32,
+    /// The auto-HWM policy class in effect.
     pub auto_hwm_policy_class: u32,
+    /// The per-unit memory budget, in bytes, used when sizing.
     pub auto_hwm_unit_budget_bytes: u64,
+    /// The upper cap applied to auto-sized high-water marks.
     pub auto_hwm_size_cap: u32,
+    /// The number of message slots auto-sizing allotted to the socket.
     pub auto_hwm_socket_message_slots: u64,
+    /// The effective per-message size, in bytes, used when sizing.
     pub auto_hwm_effective_message_bytes: u64,
+    /// The send high-water mark currently applied.
     pub auto_hwm_applied_sndhwm: i32,
+    /// The receive high-water mark currently applied.
     pub auto_hwm_applied_rcvhwm: i32,
+    /// The effective OS send buffer size, in bytes.
     pub auto_hwm_effective_sndbuf: i32,
+    /// The effective OS receive buffer size, in bytes.
     pub auto_hwm_effective_rcvbuf: i32,
+    /// When the last auto-HWM recalculation ran, in milliseconds.
     pub auto_hwm_last_recalc_ms: u64,
+    /// What triggered the last recalculation.
     pub auto_hwm_last_recalc_reason: AutoHwmRecalcReason,
+    /// The fraction of sends blocked by back-pressure, in parts per million.
     pub auto_hwm_send_blocked_ratio_ppm: u32,
+    /// A send high-water mark whose shrink was deferred.
     pub auto_hwm_deferred_sndhwm: i32,
+    /// A receive high-water mark whose shrink was deferred.
     pub auto_hwm_deferred_rcvhwm: i32,
 }
 
@@ -159,11 +206,15 @@ impl SocketMonitor {
         self.inner.status()
     }
 
+    /// Returns a snapshot of the monitored socket's current status; an alias for
+    /// [`status`](Self::status).
     pub fn snapshot(&self) -> Result<MonitorStatus, ConfigError> {
         self.status()
     }
 
     /// Install a callback handler for monitor events.
+    ///
+    /// The callback runs on a background dispatch thread.
     pub fn on_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn(&MonitorEvent) + Send + 'static,
@@ -171,20 +222,24 @@ impl SocketMonitor {
         self.inner.on_event(Box::new(handler))
     }
 
+    /// Returns a no-op event handler that ignores every event.
     pub fn ignore_handler() -> fn(&MonitorEvent) {
         ignore_monitor_event
     }
 
+    /// Closes the monitor and releases its resources.
     pub fn close(&mut self) -> Result<(), CloseError> {
         self.inner.close()
     }
 }
 
 impl MonitorStatus {
+    /// Returns `true` when the monitored socket is in the ready state.
     pub fn is_ready(&self) -> bool {
         crate::monitor::monitor_status_is_ready(self)
     }
 
+    /// Returns `true` when the monitored socket is closed.
     pub fn is_closed(&self) -> bool {
         crate::monitor::monitor_status_is_closed(self)
     }

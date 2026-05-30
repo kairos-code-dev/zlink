@@ -13,8 +13,13 @@ pub struct RoutingId {
 }
 
 impl RoutingId {
+    /// The maximum routing id length, in bytes.
     pub const MAX_LEN: usize = 255;
 
+    /// Creates a routing id from a copy of `data`.
+    ///
+    /// # Panics
+    /// Panics when `data` is empty or longer than [`MAX_LEN`](Self::MAX_LEN).
     pub fn from_bytes(data: &[u8]) -> Self {
         if data.is_empty() {
             panic!("routing id must not be empty");
@@ -34,22 +39,35 @@ impl RoutingId {
         raw
     }
 
+    /// Creates a routing id from the UTF-8 bytes of `value`.
+    ///
+    /// # Panics
+    /// Panics on the same length conditions as [`from_bytes`](Self::from_bytes).
     pub fn from_string(value: &str) -> Self {
         Self::from_bytes(value.as_bytes())
     }
 
+    /// Creates a 4-byte routing id from `value` in big-endian order.
     pub fn from_u32(value: u32) -> Self {
         Self::from_bytes(&value.to_be_bytes())
     }
 
+    /// Creates a 16-byte routing id from the given UUID bytes.
     pub fn from_uuid_bytes(value: [u8; 16]) -> Self {
         Self::from_bytes(&value)
     }
 
+    /// Creates a routing id by decoding `value` as a hex string.
+    ///
+    /// # Panics
+    /// Panics when `value` is not valid hex of 1 to 255 bytes; use
+    /// [`try_from_hex`](Self::try_from_hex) to handle errors instead.
     pub fn from_hex(value: &str) -> Self {
         Self::try_from_hex(value).expect("invalid routing id hex string")
     }
 
+    /// Creates a routing id by decoding `value` as a hex string (even length,
+    /// up to 510 digits for 255 bytes), returning an error on invalid input.
     pub fn try_from_hex(value: &str) -> Result<Self, ConfigError> {
         if value.is_empty() || value.len() % 2 != 0 || value.len() > Self::MAX_LEN * 2 {
             return Err(validation_error());
@@ -64,6 +82,8 @@ impl RoutingId {
         Self::new(&data)
     }
 
+    /// Creates a routing id from the UTF-8 bytes of `value`, returning an error
+    /// when the length is out of range.
     pub fn try_from_string(value: &str) -> Result<Self, ConfigError> {
         Self::new(value.as_bytes())
     }
@@ -75,6 +95,7 @@ impl RoutingId {
         Ok(Self::from_bytes(data))
     }
 
+    /// Returns the routing id bytes.
     pub fn as_bytes(&self) -> &[u8] {
         &self.data[..self.size as usize]
     }
@@ -83,6 +104,7 @@ impl RoutingId {
         self.as_bytes()
     }
 
+    /// Returns the length of the routing id in bytes.
     pub fn size(&self) -> usize {
         self.size as usize
     }
@@ -91,10 +113,12 @@ impl RoutingId {
         self.size()
     }
 
+    /// Returns `true` when the routing id has no bytes.
     pub fn is_empty(&self) -> bool {
         self.size == 0
     }
 
+    /// Returns the routing id as a lowercase hex string.
     pub fn to_hex(&self) -> String {
         let mut out = String::with_capacity(self.size() * 2);
         for byte in self.as_bytes() {
@@ -119,6 +143,8 @@ fn hex_nibble(value: u8) -> Option<u8> {
 }
 
 impl std::fmt::Display for RoutingId {
+    /// Formats as printable UTF-8 text when possible, otherwise as a `u32`, a
+    /// UUID, or a `hex:` fallback.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Ok(text) = std::str::from_utf8(self.as_bytes()) {
             if !text.chars().any(char::is_control) {
@@ -160,6 +186,8 @@ impl std::fmt::Display for RoutingId {
 impl TryFrom<&[u8]> for RoutingId {
     type Error = ConfigError;
 
+    /// Creates a routing id from a copy of the bytes, returning an error when
+    /// the length is out of range.
     fn try_from(data: &[u8]) -> Result<Self, ConfigError> {
         Self::new(data)
     }
@@ -168,6 +196,8 @@ impl TryFrom<&[u8]> for RoutingId {
 impl TryFrom<&str> for RoutingId {
     type Error = ConfigError;
 
+    /// Creates a routing id from the UTF-8 bytes of the string, returning an
+    /// error when the length is out of range.
     fn try_from(value: &str) -> Result<Self, ConfigError> {
         Self::try_from_string(value)
     }

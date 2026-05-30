@@ -28,22 +28,31 @@ def _require(factory, name):
 
 
 def create_registry(ctx):
+    """Create a service registry on ``ctx``. The caller owns it."""
     return _require(_registry_factory, "registry")(ctx)
 
 
 def create_discovery(ctx, auto_connect_type, channel_name: str):
+    """Create a discovery service for ``channel_name`` that connects peers
+    according to ``auto_connect_type``. The caller owns it."""
     return _require(_discovery_factory, "discovery")(
         ctx, auto_connect_type, channel_name
     )
 
 
 def create_registry_query_client(ctx):
+    """Create a read-only registry query client on ``ctx``. The caller owns
+    it."""
     return _require(_registry_query_client_factory, "registry query client")(ctx)
 
 
 @runtime_checkable
 class _ClosableContract(Protocol):
-    def close(self): ...
+    """Base for closable resources that support the context-manager protocol."""
+
+    def close(self):
+        """Close the resource and release its native resources."""
+        ...
 
     def __enter__(self): ...
 
@@ -56,33 +65,58 @@ class _ClosableContract(Protocol):
 
 @runtime_checkable
 class Discovery(_ClosableContract, Protocol):
-    def connect_registry(self, registry_endpoint: str): ...
+    """A discovery service that learns peer routes from a registry and resolves
+    spots and actors for a fixed channel."""
 
-    def set_value(self, value: int): ...
+    def connect_registry(self, registry_endpoint: str):
+        """Connect to a registry's publish endpoint to receive route
+        updates."""
+        ...
 
-    def get_value(self) -> int: ...
+    def set_value(self, value: int):
+        """Set the application-defined value advertised for this peer."""
+        ...
 
-    def member_peers(self): ...
+    def get_value(self) -> int:
+        """Return the application-defined value advertised for this peer."""
+        ...
 
-    def resolve_spot(self, spot_rid): ...
+    def member_peers(self):
+        """Return the registry member peers currently known to this service."""
+        ...
 
-    def resolve_actor(self, actor_id): ...
+    def resolve_spot(self, spot_rid):
+        """Resolve the route to the spot identified by ``spot_rid``."""
+        ...
+
+    def resolve_actor(self, actor_id):
+        """Resolve the route to the actor identified by ``actor_id``."""
+        ...
 
     @property
-    def spot_owner_sync_enabled(self): ...
+    def spot_owner_sync_enabled(self):
+        """Whether spot ownership changes are synchronized across peers."""
+        ...
 
     @spot_owner_sync_enabled.setter
     def spot_owner_sync_enabled(self, enabled): ...
 
     @property
-    def actor_route_sync_enabled(self): ...
+    def actor_route_sync_enabled(self):
+        """Whether actor routes are synchronized across peers."""
+        ...
 
     @actor_route_sync_enabled.setter
     def actor_route_sync_enabled(self, enabled): ...
 
     def set_tls_client(
         self, ca_cert: str | None, hostname: str | None, trust_system: bool = False
-    ): ...
+    ):
+        """Configure TLS for the registry connection; apply before
+        :meth:`connect_registry`. ``ca_cert`` is the CA bundle path, ``hostname``
+        the expected registry hostname, and ``trust_system`` also trusts the
+        system CA store."""
+        ...
 
 
 def __getattr__(name):

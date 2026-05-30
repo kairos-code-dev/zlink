@@ -3,6 +3,7 @@
 from enum import IntEnum, IntFlag
 
 class ContextOption(IntEnum):
+    """Raw native context option codes used by the runtime."""
     IO_THREADS = 1
     MAX_SOCKETS = 2
     SOCKET_LIMIT = 3
@@ -20,12 +21,14 @@ class ContextOption(IntEnum):
     AUTO_HWM_MSG_UNIT_BYTES = 18
 
 class AutoHwmProfile(IntEnum):
+    """An automatic high-water-mark sizing profile trading memory, latency, and throughput."""
     COMPACT = 0
     LOW_LATENCY = 1
     BALANCED = 2
     THROUGHPUT = 3
 
 class AutoHwmRecalcReason(IntEnum):
+    """What triggered the last automatic high-water-mark recalculation."""
     NONE = 0
     INITIAL = 1
     ROLE_CHANGE = 2

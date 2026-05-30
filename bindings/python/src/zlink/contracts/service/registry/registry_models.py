@@ -16,6 +16,7 @@ from ..codes import (
 
 @dataclass(frozen=True)
 class MemberPeerEntry:
+    """One member peer registered on a channel."""
     auto_connect_type: AutoConnectType
     service_role: ServiceRole
     channel_name: str
@@ -27,6 +28,7 @@ class MemberPeerEntry:
 
 @dataclass(frozen=True)
 class RegistryStatus:
+    """A snapshot of a registry's status."""
     registry_id: int
     bind_endpoint: str
     state: RegistryState
@@ -40,6 +42,7 @@ class RegistryStatus:
 
 @dataclass(frozen=True)
 class RegistryServiceSummaryEntry:
+    """A per-service rollup of registered endpoints grouped by connection state."""
     auto_connect_type: AutoConnectType
     service_role: ServiceRole
     channel_name: str
@@ -53,6 +56,7 @@ class RegistryServiceSummaryEntry:
 
 @dataclass(frozen=True)
 class RegistryServiceSummaryFilter:
+    """Filter for a service-summary query; unset fields match anything."""
     auto_connect_type: AutoConnectType | None = None
     service_role: ServiceRole | None = None
     channel_name: str | None = None
@@ -60,6 +64,7 @@ class RegistryServiceSummaryFilter:
 
 @dataclass(frozen=True)
 class RegistryTopologyEntry:
+    """One entry in a registry's topology: a service endpoint and its state."""
     auto_connect_type: AutoConnectType
     routing_id: RoutingId
     service_kind: ServiceKind
@@ -77,6 +82,7 @@ class RegistryTopologyEntry:
 
 @dataclass(frozen=True)
 class RegistryTopologyFilter:
+    """Filter for a registry topology query; unset fields match anything."""
     auto_connect_type: AutoConnectType | None = None
     service_kind: ServiceKind | None = None
     service_role: ServiceRole | None = None

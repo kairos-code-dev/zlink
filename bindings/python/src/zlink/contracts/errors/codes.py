@@ -3,6 +3,7 @@
 from enum import IntEnum, IntFlag
 
 class CloseResult(IntEnum):
+    """The outcome of closing a socket or resource."""
     OK = 0
     BUSY = 401
     SHUTDOWN = 402
@@ -10,6 +11,7 @@ class CloseResult(IntEnum):
     INTERNAL_ERROR = 404
 
 class BindResult(IntEnum):
+    """The outcome of binding to an endpoint."""
     OK = 0
     INVALID_ARGUMENT = 501
     ADDR_IN_USE = 502
@@ -18,6 +20,7 @@ class BindResult(IntEnum):
     INTERNAL_ERROR = 505
 
 class ConnectResult(IntEnum):
+    """The outcome of connecting to an endpoint."""
     OK = 0
     INVALID_ARGUMENT = 601
     NOT_SUPPORTED = 602
@@ -28,6 +31,7 @@ class ConnectResult(IntEnum):
     BUSY = 607
 
 class ConfigResult(IntEnum):
+    """The outcome of reading or applying a configuration option."""
     OK = 0
     INVALID_HANDLE = 701
     INVALID_ARGUMENT = 702
@@ -37,15 +41,18 @@ class ConfigResult(IntEnum):
     NOT_FOUND = 706
 
 class ErrorCode(IntEnum):
+    """Native zlink-internal error codes (FSM, protocol, termination)."""
     EFSM = 156384763
     ENOCOMPATPROTO = 156384764
     ETERM = 156384765
     EMTHREAD = 156384766
 
 class ProtocolError(IntEnum):
+    """Wire-protocol error codes reported during a handshake."""
     ZMP_MALFORMED_COMMAND_HELLO = 0x10000013
 
 class DisconnectReason(IntEnum):
+    """Why a connection was disconnected."""
     UNKNOWN = 0
     HANDSHAKE_FAILED = 3
     TRANSPORT_ERROR = 4

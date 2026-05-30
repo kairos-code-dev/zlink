@@ -3,6 +3,7 @@
 from enum import IntEnum, IntFlag
 
 class MonitorEventMask(IntFlag):
+    """A bitmask selecting which socket monitor events to subscribe to."""
     CONNECTED = 0x0001
     CONNECT_DELAYED = 0x0002
     CONNECT_RETRIED = 0x0004
@@ -22,6 +23,7 @@ class MonitorEventMask(IntFlag):
     ALL = 0xFFFF
 
 class PollEventFlag(IntFlag):
+    """Readiness conditions a poll source can be watched for or report (readable, writable, error)."""
     """Mirrors ``zlink_poller_event_flag_e`` in the C ABI. ``POLLCOMPLETION``
     is reserved for binding runtime workers that drive request completion;
     application code generally uses ``POLLIN`` / ``POLLOUT``."""
@@ -34,6 +36,7 @@ class PollEventFlag(IntFlag):
     POLLCOMPLETION = 32
 
 class PollSourceKind(IntEnum):
+    """Whether a poll event came from a socket, a file descriptor, or a timer."""
     SOCKET = 1
     FD = 2
     TIMER = 3

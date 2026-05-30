@@ -13,6 +13,17 @@ def register_socket_monitor_factory(factory):
 
 
 class MonitorStatus:
+    """A point-in-time snapshot of a monitored socket's state and auto-high-
+    water-mark telemetry.
+
+    ``source_kind`` identifies the monitored source; ``state_flags`` and
+    ``detail_flags`` are bit masks describing its current state;
+    ``snd_pending_msgs``/``rcv_pending_msgs`` are the queued message counts; and
+    the ``auto_hwm_*`` fields report the automatic high-water-mark sizing
+    decisions (applied marks, effective buffers, last recalculation, and
+    deferred shrinks).
+    """
+
     def __init__(
         self,
         *,
@@ -63,10 +74,19 @@ class MonitorStatus:
         self.auto_hwm_deferred_rcvhwm = auto_hwm_deferred_rcvhwm
 
     def is_ready(self):
+        """Return whether the monitored socket is in the ready state."""
         return bool(self.state_flags & (1 << 0))
 
 
 class MonitorEvent:
+    """A single socket connection-lifecycle event reported by a monitor.
+
+    ``event`` is the event kind; ``value`` is an event-specific value such as an
+    error code or reconnect interval; ``routing_id`` is the peer routing id when
+    the event carries one; and ``local_addr``/``remote_addr`` are the endpoint
+    addresses.
+    """
+
     def __init__(self, *, event, value, routing_id, local_addr, remote_addr):
         self.event = event
         self.value = value
@@ -76,15 +96,27 @@ class MonitorEvent:
 
 @runtime_checkable
 class MonitorSocket(Protocol):
+    """Observes a socket's connection lifecycle events and current status."""
+
     ignore_handler = staticmethod(lambda event: None)
 
-    def status(self): ...
+    def status(self):
+        """Return a :class:`MonitorStatus` snapshot of the monitored socket."""
+        ...
 
-    def close(self): ...
+    def close(self):
+        """Close the monitor and release its resources."""
+        ...
 
-    def recv(self, *, flags=0): ...
+    def recv(self, *, flags=0):
+        """Receive the next monitor event, or ``None`` when ``DONT_WAIT`` is set
+        and none is available."""
+        ...
 
-    def on_event(self, handler): ...
+    def on_event(self, handler):
+        """Register ``handler``, invoked for each monitor event on a background
+        dispatch thread."""
+        ...
 
     def __enter__(self): ...
 
@@ -96,6 +128,8 @@ class MonitorSocket(Protocol):
 
 
 def open_socket_monitor(socket, events=MonitorEventMask.ALL):
+    """Open a monitor on ``socket`` for the selected ``events``. The caller owns
+    the returned monitor and must close it."""
     if _socket_monitor_factory is None:
         raise RuntimeError("zlink monitor runtime is not registered")
     return _socket_monitor_factory(socket, events=events)

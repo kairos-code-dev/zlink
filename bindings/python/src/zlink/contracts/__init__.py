@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: MPL-2.0
 
+"""Public contract surface of the zlink Python bindings.
+
+Re-exports the typed ``Protocol`` contracts and factory functions for messages,
+sockets, eventing, errors, and the service layer (discovery, registry, spot,
+actor). Each symbol is documented at its definition in the submodules.
+"""
+
 from .core import (
     Context,
     ContextOptions,

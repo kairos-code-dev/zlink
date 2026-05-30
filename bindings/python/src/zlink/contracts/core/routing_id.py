@@ -4,15 +4,24 @@ import uuid
 
 
 class RoutingId:
+    """An opaque identifier for a messaging peer or route, 1 to 255 bytes long."""
+
     def __init__(self, data):
+        """Create a routing id from a copy of ``data`` (a bytes-like object of 1
+        to 255 bytes). Raise :class:`ValueError` when the length is out of
+        range."""
         self._raw = _validated_routing_id_bytes(data)
 
     @classmethod
     def from_bytes(cls, data):
+        """Create a routing id from a copy of the raw ``data`` bytes."""
         return cls(data)
 
     @classmethod
     def from_(cls, value):
+        """Create a routing id from a ``str`` (UTF-8 bytes), an ``int`` (4-byte
+        big-endian uint32), a :class:`uuid.UUID` (16 bytes), or a bytes-like
+        object."""
         if isinstance(value, str):
             return cls(value.encode("utf-8"))
         if isinstance(value, int):
@@ -25,6 +34,9 @@ class RoutingId:
 
     @classmethod
     def from_hex(cls, value):
+        """Create a routing id by decoding ``value`` as a hex string (non-empty,
+        even length, up to 510 digits for 255 bytes). Raise :class:`TypeError`
+        or :class:`ValueError` on invalid input."""
         if not isinstance(value, str):
             raise TypeError("value must be str")
         if len(value) == 0 or len(value) % 2 != 0 or any(
@@ -37,13 +49,16 @@ class RoutingId:
 
     @classmethod
     def from_string(cls, value):
+        """Create a routing id from ``value`` via :meth:`from_`."""
         return cls.from_(value)
 
     def to_bytes(self):
+        """Return the routing id bytes."""
         return self._raw
 
     @property
     def size(self):
+        """The length of the routing id in bytes."""
         return len(self._raw)
 
     def __bytes__(self):
@@ -67,9 +82,12 @@ class RoutingId:
         return f"RoutingId({self._raw!r})"
 
     def to_hex(self):
+        """Return the routing id as a lowercase hex string."""
         return self._raw.hex()
 
     def __str__(self):
+        """Return a human-readable form: printable UTF-8 text when possible,
+        otherwise a uint, a UUID, or a ``hex:`` fallback."""
         try:
             text = self._raw.decode("utf-8")
             if all(ch.isprintable() or ch == " " for ch in text):

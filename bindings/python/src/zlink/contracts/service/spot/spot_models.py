@@ -25,6 +25,7 @@ from ..codes import (
 
 @dataclass(frozen=True)
 class SpotDispatchInfo:
+    """The event and context passed to an on-dispatch-event callback."""
     event: SpotDispatchEvent
     subject_kind: SpotDispatchSubjectKind
     timer: object | None = None
@@ -38,6 +39,7 @@ class SpotDispatchInfo:
 
 @dataclass(frozen=True)
 class ActorRef:
+    """A reference to an actor: the node hosting it, its id, and its generation."""
     node_rid: RoutingId
     actor_id: str
     generation: int
@@ -52,6 +54,7 @@ class ActorRef:
 
 @dataclass(frozen=True)
 class ActorRoute:
+    """The resolved route to an actor: which spot it currently lives on."""
     actor: ActorRef
     current_spot_rid: RoutingId
     current_spot_kind: SpotKind
@@ -59,6 +62,7 @@ class ActorRoute:
 
 @dataclass(frozen=True)
 class ActorRecvInfo:
+    """Metadata about a message received for an actor."""
     actor: ActorRef
     source_node_rid: RoutingId
     source_session_rid: RoutingId
@@ -67,6 +71,7 @@ class ActorRecvInfo:
 
 @dataclass(frozen=True)
 class ActorJoinInfo:
+    """Details of an actor-join request: the actors and spots on each side."""
     source_actor: ActorRef
     target_actor: ActorRef
     source_node_rid: RoutingId
@@ -79,6 +84,7 @@ class ActorJoinInfo:
 
 @dataclass(frozen=True)
 class ActorJoinRequest:
+    """A pending request from an actor to join a spot, awaiting a reply."""
     info: ActorJoinInfo
     message: Message
 
@@ -89,6 +95,7 @@ class ActorJoinRequest:
 
 @dataclass(frozen=True)
 class ActorJoinResult:
+    """The outcome of an actor join."""
     result: object
     join_result_code: int
     actor: ActorRef
@@ -99,6 +106,7 @@ class ActorJoinResult:
 
 @dataclass(frozen=True)
 class ActorJoinEntrySpotResult:
+    """The outcome of an actor join routed through an entry spot."""
     result: object
     actor: ActorRef
     target_node_rid: RoutingId
@@ -108,6 +116,7 @@ class ActorJoinEntrySpotResult:
 
 @dataclass(frozen=True)
 class ActorLookupResult:
+    """The outcome of an actor lookup."""
     result: object
     actor: ActorRef
     flags: int
@@ -115,6 +124,7 @@ class ActorLookupResult:
 
 @dataclass(frozen=True)
 class SpotActorLifecycleInfo:
+    """Details of an actor lifecycle change, before and after."""
     previous_actor: ActorRef
     current_actor: ActorRef
     previous_spot_rid: RoutingId | None
@@ -125,12 +135,14 @@ class SpotActorLifecycleInfo:
 
 @dataclass(frozen=True)
 class SpotActorLifecycleEvent:
+    """An actor join/leave lifecycle event observed on a spot."""
     kind: SpotActorLifecycleEventKind
     info: SpotActorLifecycleInfo
 
 
 @dataclass(frozen=True)
 class SpotNodeSpotEntry:
+    """One spot hosted on a spot node and its actor counts."""
     spot_rid: RoutingId
     spot_kind: SpotKind
     dispatch_handler_attached: bool
@@ -142,6 +154,7 @@ class SpotNodeSpotEntry:
 
 @dataclass(frozen=True)
 class SpotNodeActorEntry:
+    """One actor hosted on a spot node and its current placement."""
     actor: ActorRef
     current_spot_rid: RoutingId
     current_spot_kind: SpotKind
@@ -152,6 +165,7 @@ class SpotNodeActorEntry:
 
 @dataclass(frozen=True)
 class SpotNodeStatus:
+    """A snapshot of a spot node's status and peer/subject counts."""
     channel_name: str
     local_endpoint: str
     node_routing_id: RoutingId
@@ -169,6 +183,7 @@ class SpotNodeStatus:
 
 @dataclass(frozen=True)
 class SpotNodePeerEntry:
+    """One peer of a spot node and its connection details."""
     channel_name: str
     local_endpoint: str
     peer_endpoint: str
@@ -182,6 +197,7 @@ class SpotNodePeerEntry:
 
 @dataclass(frozen=True)
 class SpotNodePeerFilter:
+    """Filter for a spot node peer query; unset fields match anything."""
     peer_endpoint: str | None = None
     source: SpotPeerSource | None = None
     state: SpotPeerState | None = None
@@ -189,6 +205,7 @@ class SpotNodePeerFilter:
 
 @dataclass(frozen=True)
 class SpotNodeSubjectEntry:
+    """One subject (topic or pattern) served by a spot node."""
     role: SpotRole
     subject: str
     subject_kind: SubjectKind
@@ -199,6 +216,7 @@ class SpotNodeSubjectEntry:
 
 @dataclass(frozen=True)
 class SpotNodeSubjectFilter:
+    """Filter for a spot node subject query; unset fields match anything."""
     role: SpotRole | None = None
     subject: str | None = None
     subject_kind: SubjectKind | None = None
@@ -206,6 +224,7 @@ class SpotNodeSubjectFilter:
 
 @dataclass(frozen=True)
 class SpotNodeSocketFilter:
+    """Filter for a spot node socket query; unset fields match anything."""
     owner: SpotNodeSocketOwner | None = None
     socket_type: SocketType | None = None
     socket_name: str | None = None
@@ -213,6 +232,7 @@ class SpotNodeSocketFilter:
 
 @dataclass(frozen=True)
 class SpotNodeSocketEntry:
+    """One socket owned within a spot node and its monitored status."""
     owner: SpotNodeSocketOwner
     owner_id: int
     owner_name: str

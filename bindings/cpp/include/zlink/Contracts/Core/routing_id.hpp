@@ -283,7 +283,7 @@ inline void validate_bounded_c_string (const std::string &value_,
 class routing_id_t
 {
   public:
-    routing_id_t (const uint8_t *bytes_, size_t size_) : _data (), _size (0)
+    routing_id_t (const uint8_t *bytes_, size_t size_) : _size (0)
     {
         assign (bytes_, size_);
     }
@@ -442,7 +442,7 @@ class routing_id_t
     }
 
   private:
-    routing_id_t () noexcept : _data (), _size (0) {}
+    routing_id_t () noexcept : _size (0) {}
 
     void assign (const uint8_t *bytes_, size_t size_)
     {
@@ -454,7 +454,10 @@ class routing_id_t
             throw std::invalid_argument (
               "routing id bytes must not be null for non-empty input");
 
-        _data.fill (0);
+        // Only the first `_size` bytes of `_data` are ever read (see data(),
+        // to_bytes(), operator==, hash, to_native). Leaving the tail
+        // uninitialized avoids a 255-byte zero-fill on every construction; do
+        // not reintroduce it.
         _size = static_cast<uint8_t> (size_);
         if (size_ > 0)
             std::memcpy (_data.data (), bytes_, size_);
@@ -462,7 +465,7 @@ class routing_id_t
 
     void assign_unchecked (const uint8_t *bytes_, size_t size_) noexcept
     {
-        _data.fill (0);
+        // Only the first `_size` bytes are significant; skip the zero-fill.
         _size = static_cast<uint8_t> (size_);
         if (size_ > 0 && bytes_)
             std::memcpy (_data.data (), bytes_, size_);

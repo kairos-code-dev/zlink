@@ -16,8 +16,8 @@
   5분 예제를 띄운 뒤, 필요한 기능 문서로 이동하세요.
 - **메시징이 처음인 사람** → 코어 가이드 [개요](../../01-overview.ko.md)와
   [소켓 패턴](../../03-0-socket-patterns.ko.md)을 먼저 본 뒤 여기로 돌아오세요.
-- **API 멤버를 찾는 사람** → 생성형 [API 레퍼런스](./05-reference.ko.md#api-레퍼런스).
-- **메인테이너** → 구현 계약 [`doc/spec/bindings/`](../../../spec/bindings/).
+- **API 멤버를 찾는 사람** → [API 레퍼런스 생성](./05-reference.ko.md#api-레퍼런스-생성).
+- **메인테이너** → 구현 계약 [`doc/spec/bindings/java`](../../../spec/bindings/java/README.ko.md).
 
 ## 문서 구성
 

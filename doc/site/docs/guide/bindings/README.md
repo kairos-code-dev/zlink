@@ -1,34 +1,34 @@
-[코어 가이드](../01-overview.ko.md)
+[코어 가이드](../01-overview.md)
 
 # 언어별 바인딩 가이드
 
 zlink는 C 코어 위에 여러 언어 바인딩을 제공합니다. 각 가이드는 **그 언어에서
 zlink를 쓰는 방법**(설치, 관용 예제, 타입 매핑, 언어 고유 규칙)을 다룹니다.
 메시징 **개념 자체**(소켓 패턴, 트랜스포트, 서비스, 라우팅 ID)는 언어 중립적으로
-[코어 가이드](../01-overview.ko.md)가 한 번만 소유하며, 각 언어 가이드는 개념이
+[코어 가이드](../01-overview.md)가 한 번만 소유하며, 각 언어 가이드는 개념이
 필요한 지점마다 코어로 링크합니다.
 
 ## 읽는 순서
 
 - **이미 메시징을 안다 / 빨리 쓰고 싶다** → 자기 언어 가이드로 바로 가세요. 막히는
   개념은 그 자리에서 코어 링크로 확인하면 됩니다.
-- **메시징이 처음이다** → 코어 [개요](../01-overview.ko.md)와
-  [소켓 패턴](../03-0-socket-patterns.ko.md)을 먼저 본 뒤 언어 가이드로 오세요.
+- **메시징이 처음이다** → 코어 [개요](../01-overview.md)와
+  [소켓 패턴](../03-0-socket-patterns.md)을 먼저 본 뒤 언어 가이드로 오세요.
 
 ## 언어 고르기
 
 | 언어 | 사용 가이드 | 생성 API 레퍼런스 | 패키지 |
 |------|------------|------------------|--------|
-| .NET | [dotnet/](./dotnet/index.ko.md) | docfx | `Systems.Zlink` |
-| C++ | [cpp/](./cpp/index.ko.md) | doxygen | `zlink::zlink-cpp` (CMake) |
-| Java | [java/](./java/index.ko.md) | javadoc | `systems.zlink:zlink-java` |
-| Node | [node/](./node/index.ko.md) | typedoc | `@zlink-systems/zlink` |
-| Python | [python/](./python/index.ko.md) | sphinx | `zlink` (PyPI) |
-| Go | [go/](./go/index.ko.md) | godoc | `zlink.systems/zlink` |
-| Rust | [rust/](./rust/index.ko.md) | rustdoc | `zlink` (crates.io) |
+| .NET | [dotnet/](./dotnet/index.md) | docfx | `Systems.Zlink` |
+| C++ | [cpp/](./cpp/index.md) | doxygen | `zlink::zlink-cpp` (CMake) |
+| Java | [java/](./java/index.md) | javadoc | `systems.zlink:zlink-java` |
+| Node | [node/](./node/index.md) | typedoc | `@zlink-systems/zlink` |
+| Python | [python/](./python/index.md) | sphinx | `zlink` (PyPI) |
+| Go | [go/](./go/index.md) | godoc | `zlink.systems/zlink` |
+| Rust | [rust/](./rust/index.md) | rustdoc | `zlink` (crates.io) |
 
 > C는 코어 그 자체이므로 별도 바인딩 가이드 대신
-> [코어 C API 가이드](../02-core-api.ko.md)를 봅니다.
+> [코어 C API 가이드](../02-core-api.md)를 봅니다.
 
 ## 가이드 구성 (모든 언어 공통)
 

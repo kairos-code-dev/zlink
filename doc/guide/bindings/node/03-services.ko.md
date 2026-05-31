@@ -98,17 +98,17 @@ actor.join(spot)
     }
   });
 
-// 스팟에서 조인 수락
+// 스팟에서 조인 수락 — recvActorJoin은 요청(또는 null)을 반환
 const req = spot.recvActorJoin(zlink.RecvFlags.None);
 if (req) {
   spot.replyActorJoin(req, 0).message(Buffer.from('welcome')).submit();
-  req.close();
+  req.message.close();
 }
 
-// 액터 메시지 수신
-const received = actor.recv(zlink.RecvFlags.DontWait);
-if (received) {
-  console.log(received.message.data().toString());
-  received.close();
+// 액터 메시지 수신 — recvPart는 ActorPart(또는 null)를 반환
+const part = actor.recvPart(zlink.RecvFlags.DontWait);
+if (part) {
+  console.log(part.message.data().toString());
+  part.message.close();
 }
 ```

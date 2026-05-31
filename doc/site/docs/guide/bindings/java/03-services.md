@@ -177,7 +177,7 @@ try (Message payload = Message.from("join-request")) {
     actor.join(spot)
         .message(payload)
         .timeout(Duration.ofSeconds(5))
-        .submit(actor.ref(), (result, parts) -> {
+        .submit((result, parts) -> {
             try {
                 if (result.result() == RequestResult.OK) {
                     joinDone.countDown();

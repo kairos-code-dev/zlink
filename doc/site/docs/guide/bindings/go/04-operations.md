@@ -14,18 +14,15 @@
 opts := socket.Options()
 
 // 공통 옵션
-opts.SetSendHWM(1000)                       // 전송 고수위 표시
-opts.SetRecvHWM(1000)                       // 수신 고수위 표시
+opts.SetSendHighWaterMark(1000)             // 전송 고수위 표시
+opts.SetReceiveHighWaterMark(1000)          // 수신 고수위 표시
 opts.SetSendTimeout(500 * time.Millisecond) // 전송 타임아웃
-opts.SetRecvTimeout(500 * time.Millisecond) // 수신 타임아웃
+opts.SetReceiveTimeout(500 * time.Millisecond) // 수신 타임아웃
 opts.SetLinger(0)                           // Close() 후 대기 없음
 
-// DEALER/ROUTER 전용
-dealerOpts := dealer.Options()
-dealerOpts.SetRequestTimeout(2 * time.Second)
-
-routerOpts := router.Options()
-routerOpts.SetMandatory(true) // 없는 라우팅 ID로 보내면 에러
+// DEALER/ROUTER의 요청 타임아웃·mandatory는 소켓에 직접 설정합니다
+dealer.SetRequestTimeout(2 * time.Second)
+router.SetMandatory(true) // 없는 라우팅 ID로 보내면 에러
 ```
 
 자동 HWM(auto-hwm) 프로파일로 메모리 크기를 자동 관리합니다:
@@ -64,24 +61,25 @@ client.Connect("tls+tcp://server.example.com:5556")
 소켓의 연결 수명 이벤트를 구독합니다. ([코어 참고](../../06-monitoring.md))
 
 ```go
-// 기본: 모든 이벤트 구독
-mon := socket.MonitorOpen()
+// 패키지 함수로 모니터를 엽니다 (이벤트 마스크는 가변 인자, 생략 시 ALL)
+mon, err := zlink.OpenSocketMonitor(socket, zlink.MonitorEventConnectionReady)
+if err != nil { ... }
 defer mon.Close()
 
-// 특정 이벤트만 구독
-mon := socket.MonitorOpenWith(zlink.MonitorEventConnectionReady | zlink.MonitorEventPeerWeightChanged)
+// 여러 이벤트 마스크 OR
+mon, _ = zlink.OpenSocketMonitor(socket,
+    zlink.MonitorEventConnectionReady|zlink.MonitorEventPeerWeightChanged)
 
-// 이벤트 수신 (블로킹)
-var event zlink.MonitorEvent
-mon.Recv(&event, zlink.RecvFlagsNone)
-
+// 이벤트 수신 (블로킹) — 반환값으로 받습니다
+event, err := mon.Recv(zlink.RecvFlagsNone)
+if err != nil { ... }
 if event.IsConnectionReady() {
     fmt.Println("피어 연결됨")
 }
 
 // 콜백 방식
-mon.SetHandler(func(e zlink.MonitorEvent) {
-    fmt.Printf("event: %v addr: %s\n", e.Event(), e.LocalAddr())
+mon.OnEvent(func(e *zlink.MonitorEvent) {
+    fmt.Printf("event: %v addr: %s\n", e.Event, e.LocalAddr)
 })
 ```
 
@@ -96,16 +94,16 @@ poller, err := zlink.NewPoller()
 if err != nil { ... }
 defer poller.Close()
 
-// 소켓 등록 (슬롯 번호는 이벤트 식별용)
-poller.Add(socket1, 1, zlink.PollIn)
-poller.Add(socket2, 2, zlink.PollIn)
-poller.AddFD(fileFD, 3, zlink.PollIn)
+// 소켓 등록 — 인자 순서: (대상, 이벤트, 슬롯). 슬롯은 이벤트 식별용 토큰
+poller.AddSocket(socket1, zlink.PollIn, 1)
+poller.AddSocket(socket2, zlink.PollIn, 2)
+poller.AddFd(fileFD, zlink.PollIn, 3)
 
 // 타임아웃까지 대기
 events := make([]zlink.PollEvent, 16)
 n, err := poller.Wait(events, 100*time.Millisecond)
 for i := 0; i < n; i++ {
-    switch events[i].Slot() {
+    switch events[i].Slot {   // Slot은 필드입니다
     case 1:
         // socket1 수신 준비됨
     case 2:
@@ -114,22 +112,22 @@ for i := 0; i < n; i++ {
 }
 ```
 
-타이머:
+타이머: 간격은 `uint64` 나노초입니다(`time.Duration`을 변환).
 
 ```go
 timer, err := zlink.NewTimer()
 if err != nil { ... }
 defer timer.Close()
 
-timer.Start(500*time.Millisecond, 0) // 0 = 무한 반복
+timer.Start(uint64(500*time.Millisecond), 0) // 0 = 무한 반복
 
-// 콜백 방식
-timer.SetHandler(func(count uint64) {
+// 콜백 방식 — 핸들러는 타이머 자신과 발화 횟수를 받습니다
+timer.OnFire(func(t *zlink.Timer, count uint64) {
     fmt.Printf("타이머 %d회 발화\n", count)
 })
 
 // 폴러와 함께 사용
-poller.Add(timer, 99)
+poller.AddTimer(timer, 99)
 ```
 
 SpotNode 이벤트 루프에 바인딩된 타이머:

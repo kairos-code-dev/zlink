@@ -217,7 +217,8 @@ try (XSubSocket frontend = ctx.createXSubSocket();
     frontend.bind("tcp://127.0.0.1:5565");
     backend.bind("tcp://127.0.0.1:5566");
 
-    new Thread(() -> Zlink.proxy(frontend, backend)).start();
+    // 캡처 소켓은 선택적이며, 사용하지 않으면 null을 넘깁니다
+    new Thread(() -> Zlink.proxy(frontend, backend, null)).start();
 }
 ```
 

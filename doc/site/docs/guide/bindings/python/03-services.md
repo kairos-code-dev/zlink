@@ -74,10 +74,10 @@ with zlink.create_context() as ctx:
     with zlink.create_spot_node(ctx) as node, \
          node.create_spot() as spot:
 
-        actor = node.create_actor("player-42")
+        actor = node.actor("player-42")     # 액터 생성·획득
         ref = actor.ref()
 
-        import threading, time
+        import threading
 
         join_done = threading.Event()
 
@@ -87,19 +87,19 @@ with zlink.create_context() as ctx:
             if result.result == zlink.RequestResult.OK:
                 join_done.set()
 
+        # timeout은 초 단위(float)
         actor.join(spot).message(b"join").timeout(5.0).submit(on_join)
 
-        # 스팟에서 조인 수락
-        req = zlink.create_received()
-        spot.recv_actor_join_into(req)
-        with req:
-            spot.reply_actor_join(req.actor_join_info, 0).message(b"ok").submit()
+        # 스팟에서 조인 수락 — recv_actor_join이 요청 객체를 반환
+        item = spot.recv_actor_join(flags=zlink.RecvFlags.NONE)
+        spot.reply_actor_join(item, 0).message(b"ok").submit()
+        item.message.close()
 
         join_done.wait(timeout=6)
 
-        # 액터 메시지 수신
-        msg = actor.recv(zlink.RecvFlags.DONT_WAIT)
-        if msg:
-            with msg:
-                print(msg.message.to_bytes())
+        # 액터 메시지 수신 — recv_part는 파트(또는 None)를 반환
+        part = actor.recv_part(flags=zlink.RecvFlags.DONT_WAIT)
+        if part is not None:
+            print(part.message.to_bytes())
+            part.message.close()
 ```

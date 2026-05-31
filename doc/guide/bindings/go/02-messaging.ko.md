@@ -210,14 +210,14 @@ reply, _ := zlink.NewMessageFrom([]byte("world"))
 received.Send().Message(reply).Submit(nil)
 ```
 
-패킷 콜백 방식으로 처리할 수도 있습니다:
+패킷 콜백 방식으로 처리할 수도 있습니다. 핸들러는 라우팅 ID와 헤더·본문 두
+프레임을 받으며, 두 메시지 모두 콜백에서 닫아야 합니다:
 
 ```go
-server.SetRecvHandler(func(rid zlink.RoutingID, parts []*zlink.Message) {
-    for _, p := range parts {
-        fmt.Printf("from %s: %s\n", rid.String(), p.Data())
-        p.Close()
-    }
+server.OnPacket(func(source zlink.RoutingID, header, body *zlink.Message) {
+    fmt.Printf("from %s: %s\n", source.String(), body.Data())
+    header.Close()
+    body.Close()
 })
 ```
 

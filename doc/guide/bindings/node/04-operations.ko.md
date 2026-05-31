@@ -59,12 +59,15 @@ try {
 
 ```javascript
 const poller = zlink.createPoller();
-poller.add(socket1, 1, [zlink.PollEventFlag.PollIn]);
-poller.add(socket2, 2, [zlink.PollEventFlag.PollIn]);
+// 인자 순서: (소켓, 이벤트 배열, 슬롯)
+poller.add(socket1, [zlink.PollEventFlag.PollIn], 1);
+poller.add(socket2, [zlink.PollEventFlag.PollIn], 2);
 
-const events = poller.wait(100); // 타임아웃 밀리초
-for (const ev of events) {
-  switch (ev.slot) {
+// wait는 미리 만든 버퍼를 채우고 준비된 개수를 반환합니다
+const events = zlink.createPollEvents(16);
+const n = poller.wait(events, 100); // 타임아웃 밀리초
+for (let i = 0; i < n; i++) {
+  switch (events.slot(i)) {
     case 1: /* socket1 */ break;
     case 2: /* socket2 */ break;
   }
@@ -72,12 +75,12 @@ for (const ev of events) {
 poller.close();
 ```
 
-타이머:
+타이머: 간격·반복은 **bigint 나노초**입니다.
 
 ```javascript
 const timer = zlink.createTimer();
-timer.start(500, 0); // interval(ms), repeat(0=무한)
-const count = timer.recv(); // 발화까지 대기
+timer.start(500_000_000n, 0n); // 500ms = 5억 ns, repeat 0n = 무한
+const count = timer.recv();     // bigint | null (발화 횟수)
 timer.close();
 ```
 
@@ -99,7 +102,8 @@ Node는 단일 스레드 이벤트 루프 모델입니다.
 const reply = await dealer.request().message(buf).submitAsync();
 
 // 또는 폴러로 논블로킹
-const events = poller.wait(0); // 즉시 반환
+const events = zlink.createPollEvents(16);
+const n = poller.wait(events, 0); // 즉시 반환
 ```
 
 ---
@@ -107,6 +111,6 @@ const events = poller.wait(0); // 즉시 반환
 ## 네이티브 버전
 
 ```javascript
-const v = zlink.runtimeVersion();
-console.log(`zlink ${v.major}.${v.minor}.${v.patch}`);
+const [major, minor, patch] = zlink.version(); // [number, number, number]
+console.log(`zlink ${major}.${minor}.${patch}`);
 ```

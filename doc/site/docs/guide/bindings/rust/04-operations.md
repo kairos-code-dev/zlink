@@ -23,8 +23,9 @@ router.options().set_mandatory(true).unwrap();
 자동 HWM:
 
 ```rust
-ctx.options().set_auto_hwm_enabled(true).unwrap();
-ctx.options().set_auto_hwm_profile(zlink::AutoHwmProfile::Balanced).unwrap();
+// 컨텍스트 설정은 Context에 직접 있습니다
+ctx.set_auto_hwm_enabled(true).unwrap();
+ctx.set_auto_hwm_profile(zlink::AutoHwmProfile::Balanced).unwrap();
 ```
 
 ---
@@ -65,12 +66,15 @@ if status.is_ready() {
 
 ```rust
 let poller = zlink::Poller::new().unwrap();
-poller.add(&socket1, 1, zlink::PollEventFlags::POLL_IN).unwrap();
-poller.add(&socket2, 2, zlink::PollEventFlags::POLL_IN).unwrap();
+// add_socket(소켓, 이벤트(i16), 슬롯). 이벤트 상수는 zlink::POLLIN 등
+poller.add_socket(&socket1, zlink::POLLIN, 1).unwrap();
+poller.add_socket(&socket2, zlink::POLLIN, 2).unwrap();
 
-let events = poller.wait(std::time::Duration::from_millis(100)).unwrap();
-for ev in &events {
-    match ev.slot() {
+// wait는 미리 만든 슬라이스를 채우고 준비된 개수를 반환합니다(타임아웃 ms, i64)
+let mut events = vec![zlink::PollEvent::default(); 16];
+let n = poller.wait(&mut events, 100).unwrap();
+for ev in &events[..n] {
+    match ev.slot {   // slot은 필드입니다
         1 => { /* socket1 */ }
         2 => { /* socket2 */ }
         _ => {}
@@ -78,12 +82,15 @@ for ev in &events {
 }
 ```
 
-타이머:
+타이머: 간격은 **나노초**(`u64`)입니다.
 
 ```rust
 let timer = zlink::Timer::new().unwrap();
-timer.start(std::time::Duration::from_millis(500), 0).unwrap();
-let count = timer.recv().unwrap();   // 발화까지 대기
+timer.start(500_000_000, 0).unwrap();   // 500ms, repeat 0 = 무한
+// recv는 발화 횟수(Option<u64>)를 반환합니다
+if let Some(count) = timer.recv().unwrap() {
+    println!("발화 {count}회");
+}
 ```
 
 ---
@@ -112,6 +119,6 @@ std::thread::spawn(move || {
 ## 네이티브 버전
 
 ```rust
-let v = zlink::runtime_version();
-println!("zlink {}.{}.{}", v.major, v.minor, v.patch);
+let (major, minor, patch) = zlink::version();   // (i32, i32, i32) 튜플
+println!("zlink {major}.{minor}.{patch}");
 ```

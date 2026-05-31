@@ -127,7 +127,7 @@ sub.set_subscription("events").unwrap();
 
 let mut event = zlink::SubscriptionEvent::empty();
 if xpub.receive_subscription_event(&mut event, RecvFlags::NONE).unwrap() {
-    println!("subscribed={} topic={}", event.subscribed(), event.topic());
+    println!("subscribed={} topic={}", event.subscribed, event.topic);
 }
 ```
 

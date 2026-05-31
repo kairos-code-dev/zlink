@@ -8,11 +8,15 @@
 
 ```python
 opts = socket.options()
-opts.send_hwm = 1000
-opts.recv_hwm = 1000
-opts.send_timeout = 500   # 밀리초
-opts.recv_timeout = 500
-opts.linger = 0
+opts.send_high_water_mark = 1000
+opts.receive_high_water_mark = 1000
+opts.send_timeout_ms = 500       # 밀리초
+opts.receive_timeout_ms = 500
+opts.linger_ms = 0
+
+# DEALER/ROUTER 전용 옵션 (옵션 퍼사드에 있음)
+dealer.options().request_timeout_ms = 2000
+router.options().mandatory = True
 
 # 자동 HWM
 ctx.options().auto_hwm_enabled = True
@@ -39,10 +43,14 @@ client.connect("tls+tcp://server.example.com:5556")
 
 ## 모니터링
 
+연결 준비 여부는 모니터 스냅샷으로 확인합니다.
+
 ```python
 with socket.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as monitor:
-    event = monitor.recv()
-    if event.is_connection_ready():
+    # 이벤트 스트림 수신
+    event = monitor.recv()              # MonitorEvent
+    # 현재 상태 스냅샷
+    if monitor.status().is_ready():
         print("피어 연결됨")
 ```
 
@@ -52,21 +60,24 @@ with socket.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as monitor:
 
 ```python
 poller = zlink.create_poller()
-poller.add(socket1, slot=1, events=zlink.PollEventFlag.POLLIN)
-poller.add(socket2, slot=2, events=zlink.PollEventFlag.POLLIN)
+# 인자 순서: (대상, 이벤트, 슬롯)
+poller.add_socket(socket1, zlink.PollEventFlag.POLLIN, 1)
+poller.add_socket(socket2, zlink.PollEventFlag.POLLIN, 2)
 
-events = poller.wait(timeout_ms=100)
-for ev in events:
-    print(ev.slot, ev.revents)
+# wait는 미리 만든 버퍼를 채우고 준비된 개수를 반환합니다
+events = zlink.create_poll_events(16)
+n = poller.wait(events, 100)   # timeout 밀리초
+for i in range(events.ready_count):
+    print(events.slot(i), events.revents(i))
 
 poller.close()
 ```
 
-타이머:
+타이머: 간격은 **나노초** 정수입니다.
 
 ```python
 timer = zlink.create_timer()
-timer.start(interval_ms=500, repeat=0)
+timer.start(500_000_000, 0)   # 500ms = 5억 ns, repeat 0 = 무한
 
 def on_fire(count):
     print(f"타이머 {count}회")
@@ -90,6 +101,6 @@ timer.close()
 ## 네이티브 라이브러리 버전
 
 ```python
-v = zlink.runtime_version()
-print(f"zlink {v.major}.{v.minor}.{v.patch}")
+major, minor, patch = zlink.version()   # (major, minor, patch) 튜플
+print(f"zlink {major}.{minor}.{patch}")
 ```

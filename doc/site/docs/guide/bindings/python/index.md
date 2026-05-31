@@ -33,4 +33,4 @@
 | Registry | `zlink.create_registry(ctx)` | 서비스 카탈로그 | [03](./03-services.md#registry) |
 | Discovery | `zlink.create_discovery(...)` | 서비스 발견 | [03](./03-services.md#discovery) |
 | SpotNode/Spot | `create_spot_node` / `node.create_spot()` | 메시 노드 | [03](./03-services.md#spotnode--spot) |
-| Actor | `node.create_actor("id")` | 상태 엔티티 | [03](./03-services.md#actor) |
+| Actor | `node.actor("id")` | 상태 엔티티 | [03](./03-services.md#actor) |

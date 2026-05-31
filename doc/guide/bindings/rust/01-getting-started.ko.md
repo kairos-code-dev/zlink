@@ -74,7 +74,7 @@ let msg = Message::try_from(b"payload").unwrap();
 
 // 크기 지정 빈 프레임
 let mut msg = Message::with_size(256).unwrap();
-msg.as_mut_slice().copy_from_slice(&data);
+msg.data_mut().copy_from_slice(&data);
 
 // 전송 — msg는 여기서 move됨
 socket.send().message(msg).submit().unwrap();

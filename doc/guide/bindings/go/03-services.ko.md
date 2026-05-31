@@ -175,13 +175,13 @@ _, err := actor.Join(spot).
     })
 if err != nil { ... }
 
-// 스팟 쪽에서 조인 요청 수락
+// 스팟 쪽에서 조인 요청 수락 — RecvActorJoin은 요청 객체를 반환합니다
 go func() {
-    var req zlink.ActorJoinRequest
-    spot.RecvActorJoin(&req, zlink.RecvFlagsNone)
-    defer req.Close()
+    req, err := spot.RecvActorJoin(zlink.RecvFlagsNone)
+    if err != nil { return }
+    defer req.Message.Close()
     replyMsg, _ := zlink.NewMessageFrom([]byte("welcome"))
-    spot.ReplyActorJoin(&req, 0).Message(replyMsg).Submit(nil)
+    spot.ReplyActorJoin(req, 0).Message(replyMsg).Submit(nil)
 }()
 
 if err := <-joinDone; err != nil { ... }
@@ -189,12 +189,14 @@ if err := <-joinDone; err != nil { ... }
 
 ### 액터 메시지 수신
 
+`RecvPart`는 `*ActorPart`를 반환하며, 페이로드는 `.Message` 필드에 있습니다.
+
 ```go
-received, err := actor.Recv(zlink.RecvFlagsDontWait)
+part, err := actor.RecvPart(zlink.RecvFlagsDontWait)
 if err != nil { ... }
-if received != nil {
-    defer received.Close()
-    fmt.Printf("from actor: %s\n", received.Message.Data())
+if part != nil {
+    defer part.Message.Close()
+    fmt.Printf("from actor: %s\n", part.Message.Data())
 }
 ```
 

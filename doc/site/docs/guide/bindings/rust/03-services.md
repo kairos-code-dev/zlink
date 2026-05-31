@@ -14,7 +14,8 @@ let registry = Registry::new(&ctx).unwrap();
 registry.bind("tcp://127.0.0.1:7400", "tcp://127.0.0.1:7401").unwrap();
 
 for entry in registry.topology().unwrap() {
-    println!("{}: {:?}", entry.channel_name(), entry.state());
+    // 토폴로지 엔트리 멤버는 필드입니다
+    println!("{}: {:?}", entry.channel_name, entry.state);
 }
 ```
 
@@ -109,14 +110,16 @@ actor.join(&spot)
     })
     .unwrap();
 
-// 스팟에서 조인 수락
-let mut req = zlink::ActorJoinRequest::empty();
-spot.recv_actor_join(&mut req, RecvFlags::NONE).unwrap();
+// 스팟에서 조인 수락 — recv_actor_join은 요청을 반환합니다
+// (논블로킹이 필요하면 recv_actor_join_with_flags(RecvFlags::DONT_WAIT))
+let req = spot.recv_actor_join().unwrap();
 let reply = Message::try_from(b"welcome").unwrap();
 spot.reply_actor_join(&req, 0).message(reply).submit().unwrap();
 
-// 액터 메시지 수신
-if let Some(received) = actor.recv(RecvFlags::DONT_WAIT).unwrap() {
-    println!("{}", received.message().as_str().unwrap());
+// 액터 메시지 수신 — &mut ActorReceived에 채우고 bool을 반환합니다
+let mut received = zlink::ActorReceived::empty();
+if actor.recv(&mut received, RecvFlags::DONT_WAIT).unwrap() {
+    // message는 필드입니다
+    println!("{}", received.message.as_str().unwrap());
 }
 ```

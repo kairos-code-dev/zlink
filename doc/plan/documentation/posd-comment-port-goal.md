@@ -56,9 +56,9 @@ Rust → Python → Node → Go → Java → C/C++ 헤더
 | **1. Rust** | ✅ | ✅ 28파일 전체 | ✅ doc 0/0, build clean, tests 16/16 | ✅ R1회 | ✅ `ab14c1fc2` | ✅ 완료 |
 | **2. Python** | ✅ | ✅ 전체 contracts | ✅ compile/import OK, tests 68/68 | ✅ R1회 | ✅ `344354beb` | ✅ 완료 |
 | **3. Node** | ✅ | ✅ 전체 contracts | ✅ tsc 0, typecheck 0 | ✅ R1회 | ✅ `11752fce7` | ✅ 완료 |
-| **4. Go** | ⬜ | ⬜ | ⬜ | ⬜ R0회 | ⬜ | ⬜ |
-| **5. Java** | ⬜ | ⬜ | ⬜ | ⬜ R0회 | ⬜ | ⬜ |
-| **6. C/C++ 헤더** | ⬜ | ⬜ | ⬜ | ⬜ R0회 | ⬜ | ⬜ |
+| **4. Go** | ✅ | ✅ 6파일 contracts/ | ✅ build clean, tests 16/16, doc 0/0 | ✅ R1회 | ✅ `9fdb9c838` | ✅ 완료 |
+| **5. Java** | ✅ | ✅ 155파일 contracts/ | ✅ build clean, javadoc 0, tests 86/86 | ✅ R1회 | ✅ `c567b3d87` | ✅ 완료 |
+| **6. C/C++ 헤더** | ✅ | ✅ 36 hpp + 13 h | ✅ build 0/0, tests 19/19 | ✅ R1회 | ✅ `f4d2f8467` | ✅ 완료 |
 
 > 리뷰 루프 칸의 `R<n>회` = 이슈 0이 나오기까지 돈 전수 리뷰 라운드 수(기록용).
 

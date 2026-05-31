@@ -6,6 +6,11 @@
 SPOT 기본 설정과 디스패치 핸들러 등록은 [SPOT 가이드](./07-3-spot.ko.md)를 본다.
 정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
 
+> Actor가 **무슨 역할이고 언제** 쓰는지(세션↔처리 단위 binding, 재접속 이전성,
+> plain Spot과의 차이)는
+> [서비스 개요 §멘탈 모델](./07-0-services.ko.md#12-멘탈-모델--어느-층을-언제-쓰나)을
+> 먼저 본다.
+
 ## Actor 위치 조회와 전송
 
 Actor id로 현재 위치를 알아낸 뒤에는 Actor 전용 transport API를 쓰지 않는다.

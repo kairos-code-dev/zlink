@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+/** Builds an actor-from-session unbind operation. */
 public interface ActorUnbindOperation {
     ActorUnbindOperation timeout(Duration timeout);
     CompletableFuture<List<Message>> submitAsync();

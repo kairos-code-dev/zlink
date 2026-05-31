@@ -6,6 +6,10 @@ import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.sockets.Socket;
 import java.time.Duration;
 
+/**
+ * Multiplexes sockets, file descriptors, and timers, reporting which become
+ * ready. The caller owns this resource and must close it.
+ */
 public interface Poller extends AutoCloseable {
 
     void add(Socket socket, long slot, PollEventFlags... events);

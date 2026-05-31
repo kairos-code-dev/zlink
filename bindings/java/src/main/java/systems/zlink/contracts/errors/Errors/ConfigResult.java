@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
+/** The outcome of reading or applying a configuration option. */
 public enum ConfigResult {
     OK(0),
     INVALID_HANDLE(701),

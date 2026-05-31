@@ -2,9 +2,13 @@
 
 package systems.zlink.contracts.service.registry;
 
+/** Where a topology entry was learned from. */
 public enum TopologySource {
+    /** Added manually by the application. */
     MANUAL(1),
+    /** Learned from a discovery service. */
     DISCOVERY(2),
+    /** Learned from a service registry. */
     REGISTRY(3);
 
     private final int value;

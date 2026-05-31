@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
+/** Thrown when binding a socket to an endpoint fails. */
 public final class ZlinkBindException extends ZlinkException {
     private final BindResult result;
 

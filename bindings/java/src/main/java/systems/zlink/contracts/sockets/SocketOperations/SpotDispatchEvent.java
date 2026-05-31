@@ -2,13 +2,21 @@
 
 package systems.zlink.contracts.sockets;
 
+/** The kind of readable event surfaced by a spot dispatch. */
 public enum SpotDispatchEvent {
+    /** A subscription has a message ready to read. */
     SUBSCRIBE_READABLE(1),
+    /** A routed message is ready to read. */
     ROUTED_READABLE(2),
+    /** A timer has expired. */
     TIMER_READABLE(3),
+    /** A channel reply is ready to read. */
     CHANNEL_REPLY_READABLE(4),
+    /** An actor message is ready to read. */
     ACTOR_READABLE(5),
+    /** An actor join request is ready to read. */
     ACTOR_JOIN_READABLE(6),
+    /** An actor lifecycle event is ready to read. */
     ACTOR_LIFECYCLE_READABLE(7);
 
     private final int value;

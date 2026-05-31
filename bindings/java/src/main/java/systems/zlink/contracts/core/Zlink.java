@@ -10,6 +10,10 @@ import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.service.spot.Spot;
 import java.time.Duration;
 
+/**
+ * Library entry point: factories for contexts, timers, pollers, and threads,
+ * plus process-wide utilities (version, capabilities, proxying).
+ */
 public final class Zlink {
     private Zlink() {}
 

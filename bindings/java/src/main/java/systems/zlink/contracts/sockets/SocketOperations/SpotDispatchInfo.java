@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+/** The event and context passed to a spot dispatch callback. */
 public final class SpotDispatchInfo {
     private final SpotDispatchEvent event;
     private final SpotDispatchSubjectKind subjectKind;

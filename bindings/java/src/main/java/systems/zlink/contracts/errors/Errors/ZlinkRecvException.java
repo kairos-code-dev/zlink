@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 import systems.zlink.contracts.sockets.RecvResult;
+/** Thrown when receiving a message fails. */
 public final class ZlinkRecvException extends ZlinkException {
     private final RecvResult result;
 

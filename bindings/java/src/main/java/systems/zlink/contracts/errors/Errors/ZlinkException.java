@@ -8,6 +8,7 @@ import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.internal.ContractAccess;
 import java.util.Locale;
 
+/** Base class for all exceptions thrown by the zlink bindings. */
 public abstract class ZlinkException extends RuntimeException {
     private final int code;
     private final int internalErrno;

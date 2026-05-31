@@ -3,6 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 
+/** The outcome of a request. */
 public enum RequestResult {
     OK(0),
     TIMED_OUT(101),

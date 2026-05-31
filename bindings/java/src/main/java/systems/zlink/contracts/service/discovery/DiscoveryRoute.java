@@ -6,6 +6,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import java.util.Objects;
 
+/** A resolved custom route entry: the owning node routing id and a value payload. */
 public final class DiscoveryRoute implements AutoCloseable {
     private final RoutingId ownerRoutingId;
     private final Message value;

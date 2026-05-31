@@ -3,6 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 
+/** The outcome of a non-blocking send attempt. */
 public enum SendResult {
     SENT,
     BACKPRESSURED,

@@ -9,6 +9,7 @@ import systems.zlink.contracts.service.spot.ReplyOperation;
 import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.service.spot.SendOperation;
 
+/** Routes messages to peers addressed by routing id; the request/reply server side. */
 public interface RouterSocket extends Socket {
     void bind(String endpoint);
     void connect(String endpoint);

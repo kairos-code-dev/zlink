@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
+/** Thrown when connecting a socket to an endpoint fails. */
 public final class ZlinkConnectException extends ZlinkException {
     private final ConnectResult result;
 

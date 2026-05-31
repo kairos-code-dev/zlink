@@ -2,10 +2,15 @@
 
 package systems.zlink.contracts.sockets;
 
+/** The kind of subject a spot dispatch event concerns. */
 public enum SpotDispatchSubjectKind {
+    /** The spot itself. */
     SPOT(1),
+    /** A timer. */
     TIMER(2),
+    /** A channel dealer socket. */
     CHANNEL_DEALER(3),
+    /** An actor. */
     ACTOR(4);
 
     private final int value;

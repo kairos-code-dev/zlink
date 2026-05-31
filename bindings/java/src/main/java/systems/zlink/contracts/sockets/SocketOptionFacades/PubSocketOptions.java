@@ -8,6 +8,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.core.RoutingId;
 import java.util.Objects;
 
+/** The typed facade over PUB/XPUB-specific socket options. */
 public class PubSocketOptions extends CommonSocketOptions {
     private boolean manualEnabled;
 

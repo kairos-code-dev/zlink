@@ -2,12 +2,16 @@
 
 package systems.zlink.contracts.service.registry;
 
+/** The lifecycle state of a topology connection. */
 public enum TopologyState {
+    /** The peer was found but a connection is not yet established. */
     DISCOVERED(1),
     CONNECTING(2),
+    /** The peer is connected and usable. */
     READY(3),
     LOST(4),
     ERROR(5),
+    /** The connection was explicitly stopped. */
     STOPPED(6);
 
     private final int value;

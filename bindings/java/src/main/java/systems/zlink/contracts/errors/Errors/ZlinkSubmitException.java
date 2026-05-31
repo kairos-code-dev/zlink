@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 import systems.zlink.contracts.sockets.SubmitResult;
+/** Thrown when submitting a send or publish fails. */
 public final class ZlinkSubmitException extends ZlinkException {
     private final SubmitResult result;
 

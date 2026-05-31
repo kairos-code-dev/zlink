@@ -8,6 +8,7 @@ import systems.zlink.contracts.messaging.Message;
 import java.util.Objects;
 import java.util.Optional;
 
+/** Details of an actor-join request: the actors and spots on each side. */
 public final class ActorJoinInfo {
     private final ActorRef sourceActor;
     private final ActorRef targetActor;

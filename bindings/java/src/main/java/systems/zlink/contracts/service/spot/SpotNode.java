@@ -14,7 +14,11 @@ import java.util.Optional;
 
 /** Lifecycle and topology facade for the current unified spot node model. */
 public interface SpotNode extends AutoCloseable {
-    /** Result of atomically getting or creating a local logical spot. */
+    /**
+     * Result of atomically getting or creating a local logical spot.
+     * @param spot the spot that was retrieved or created
+     * @param created true if the spot was newly created; false if it already existed
+     */
     public record SpotGetOrCreateResult(Spot spot, boolean created) {}
 
     void setPubBind(String endpoint);

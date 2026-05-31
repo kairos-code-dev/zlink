@@ -7,6 +7,7 @@ import java.time.Duration;
 import systems.zlink.internal.DurationConversions;
 import java.util.Objects;
 
+/** The typed facade over DEALER-specific socket options. */
 public final class DealerSocketOptions extends CommonSocketOptions {
     private static final int OPT_PROBE = 0x3201;
     private static final int OPT_REQUEST_TIMEOUT_MS = 0x3202;

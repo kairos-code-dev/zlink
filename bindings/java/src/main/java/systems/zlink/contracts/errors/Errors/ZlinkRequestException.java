@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 import systems.zlink.contracts.sockets.RequestResult;
+/** Thrown when a request fails or its reply reports an error. */
 public final class ZlinkRequestException extends ZlinkException {
     private final RequestResult result;
 

@@ -2,6 +2,7 @@
 
 package systems.zlink.contracts.service.spot;
 
+/** The kind of an actor lifecycle transition event. */
 public enum SpotActorLifecycleEventKind {
     JOINED,
     LEFT;

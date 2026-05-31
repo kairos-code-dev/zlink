@@ -7,6 +7,7 @@ import systems.zlink.contracts.sockets.SendFlags;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
+/** Accepts further parts, timeout, flags, and the terminal submit of an actor join. */
 public interface ActorJoinSubmitOperation {
     ActorJoinSubmitOperation message(Message part);
     ActorJoinSubmitOperation timeout(Duration timeout);

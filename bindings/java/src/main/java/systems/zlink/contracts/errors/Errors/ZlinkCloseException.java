@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
+/** Thrown when closing a socket or resource fails. */
 public final class ZlinkCloseException extends ZlinkException {
     private final CloseResult result;
 

@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
+/** The outcome of closing a socket or resource. */
 public enum CloseResult {
     OK(0),
     BUSY(401),

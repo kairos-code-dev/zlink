@@ -2,8 +2,11 @@
 
 package systems.zlink.contracts.sockets;
 
+/** Determines how a socket reacts to a peer that reuses an existing routing id. */
 public enum RidDuplicatePolicy {
+    /** Reject the new peer and keep the existing route. */
     REJECT(0),
+    /** Hand the routing id to the new peer, dropping the previous holder. */
     HANDOVER(1);
 
     private final int value;

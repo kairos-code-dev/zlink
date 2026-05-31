@@ -4,6 +4,7 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.internal.ContractAccess;
 
+/** The typed facade over SUB/XSUB-specific socket options. */
 public final class SubSocketOptions extends CommonSocketOptions {
     public SubSocketOptions(Socket socket) {
         super(socket);

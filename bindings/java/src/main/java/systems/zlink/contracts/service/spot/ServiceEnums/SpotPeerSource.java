@@ -2,9 +2,13 @@
 
 package systems.zlink.contracts.service.spot;
 
+/** How a spot peer became known to the node. */
 public enum SpotPeerSource {
+    /** Added manually by the application. */
     MANUAL(1),
+    /** Learned from a discovery service. */
     DISCOVERY(2),
+    /** Both manually added and discovered. */
     MIXED(3);
 
     private final int value;

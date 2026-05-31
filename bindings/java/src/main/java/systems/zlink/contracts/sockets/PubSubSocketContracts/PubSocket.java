@@ -6,6 +6,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.spot.SendOperation;
 
+/** A topic-filtered publisher that drops messages with no matching subscriber. */
 public interface PubSocket extends Socket {
     void bind(String endpoint);
     void connect(String endpoint);

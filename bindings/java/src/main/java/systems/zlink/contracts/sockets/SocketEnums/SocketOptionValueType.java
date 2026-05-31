@@ -3,6 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 
+/** The wire type of a socket option value. */
 public enum SocketOptionValueType {
     INT32,
     INT64,

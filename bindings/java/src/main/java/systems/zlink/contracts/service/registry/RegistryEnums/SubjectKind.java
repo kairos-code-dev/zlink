@@ -2,9 +2,13 @@
 
 package systems.zlink.contracts.service.registry;
 
+/** How a subscription subject is matched. */
 public enum SubjectKind {
+    /** No subject. */
     NONE(0),
+    /** An exact topic match. */
     TOPIC(1),
+    /** A pattern match. */
     PATTERN(2);
 
     private final int value;

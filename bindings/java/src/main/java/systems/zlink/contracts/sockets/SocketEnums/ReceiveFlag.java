@@ -3,6 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 
+/** Low-level receive flags used by the native socket API. */
 public enum ReceiveFlag {
     NONE(0), DONTWAIT(1);
 

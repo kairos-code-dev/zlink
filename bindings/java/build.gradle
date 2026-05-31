@@ -143,6 +143,10 @@ javadoc {
     options.memberLevel = JavadocMemberLevel.PUBLIC
     options.addStringOption('sourcepath',
         sourceSets.main.java.srcDirs*.absolutePath.join(File.pathSeparator))
+    // Suppress missing-@param / missing-@return / no-comment warnings: most public
+    // APIs have meaningful class-level Javadoc; per-method param boilerplate adds
+    // noise without value. Broken-reference and syntax warnings remain active.
+    options.addStringOption('Xdoclint:-missing', '-quiet')
 }
 
 publishing {

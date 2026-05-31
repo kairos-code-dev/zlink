@@ -2,10 +2,15 @@
 
 package systems.zlink.contracts.service.registry;
 
+/** The kind of service a topology entry represents. */
 public enum ServiceKind {
+    /** A discovery service. */
     DISCOVERY(1),
+    /** The subscribe side of a spot. */
     SPOT_SUB(3),
+    /** The publish side of a spot. */
     SPOT_PUB(4),
+    /** A plain socket. */
     SOCKET(5);
 
     private final int value;

@@ -3,6 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 
+/** The outcome of a receive. */
 public enum RecvResult {
     OK(0),
     NO_DATA(201),

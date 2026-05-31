@@ -8,6 +8,7 @@ import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.service.spot.SendOperation;
 
+/** A socket that load-balances sends across its connected peers and can issue routed requests. */
 public interface DealerSocket extends Socket {
     void bind(String endpoint);
     void connect(String endpoint);

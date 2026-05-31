@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
+/** Native zlink-specific errno values above the POSIX range. */
 enum ErrorCode {
     EFSM(156384763),
     ENOCOMPATPROTO(156384764),

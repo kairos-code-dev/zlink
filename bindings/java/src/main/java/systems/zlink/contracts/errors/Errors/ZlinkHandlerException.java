@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
+/** Thrown when registering or running a callback handler fails. */
 public final class ZlinkHandlerException extends ZlinkException {
     private final HandlerResult result;
 

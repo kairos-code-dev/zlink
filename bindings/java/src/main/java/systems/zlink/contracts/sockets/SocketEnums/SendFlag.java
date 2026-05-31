@@ -3,6 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 
+/** Low-level send flags used by the native socket API. */
 public enum SendFlag {
     NONE(0), DONTWAIT(1), SNDMORE(2), DONTWAIT_SNDMORE(3);
 

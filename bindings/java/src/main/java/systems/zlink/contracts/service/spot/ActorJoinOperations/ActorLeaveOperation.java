@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+/** Builds an actor leave operation. */
 public interface ActorLeaveOperation {
     ActorLeaveOperation timeout(Duration timeout);
     CompletableFuture<List<Message>> submitAsync();

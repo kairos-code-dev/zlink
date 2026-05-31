@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+/** Pre-defined socket option keys for use with the typed socket options facades. */
 public final class SocketOptions {
     private static final int MAX_ROUTING_ID_BYTES = 256;
     private static final int MAX_LAST_ENDPOINT_BYTES = 512;

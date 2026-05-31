@@ -3,6 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 
+/** Native socket option identifiers used by the option facades. */
 enum SocketOption {
     AFFINITY(4), ROUTING_ID(5), SUBSCRIBE(6), UNSUBSCRIBE(7),
     RATE(8), RECOVERY_IVL(9), SNDBUF(11), RCVBUF(12),

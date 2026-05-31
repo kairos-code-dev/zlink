@@ -8,6 +8,7 @@ import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.service.discovery.Discovery;
 import java.util.Optional;
 
+/** A receive-only subscriber filtered by its subscriptions. */
 public interface SubSocket extends Socket {
     void bind(String endpoint);
     void connect(String endpoint);

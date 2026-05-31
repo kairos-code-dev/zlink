@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
+/** Thrown when reading or applying a configuration option fails. */
 public final class ZlinkConfigException extends ZlinkException {
     private final ConfigResult result;
 

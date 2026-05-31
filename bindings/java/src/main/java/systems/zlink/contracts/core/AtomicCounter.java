@@ -2,6 +2,7 @@
 
 package systems.zlink.contracts.core;
 
+/** A thread-safe atomic integer counter. The caller owns this resource and must close it. */
 public interface AtomicCounter extends AutoCloseable {
     void set(int value);
 

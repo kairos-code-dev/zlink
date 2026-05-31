@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
+/** The outcome of connecting a socket to an endpoint. */
 public enum ConnectResult {
     OK(0),
     INVALID_ARGUMENT(601),

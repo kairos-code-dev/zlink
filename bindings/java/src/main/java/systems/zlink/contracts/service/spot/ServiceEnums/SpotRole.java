@@ -2,8 +2,11 @@
 
 package systems.zlink.contracts.service.spot;
 
+/** The pub/sub role of a spot subject. */
 public enum SpotRole {
+    /** A publisher subject. */
     PUB(1),
+    /** A subscriber subject. */
     SUB(2);
 
     private final int value;

@@ -2,10 +2,14 @@
 
 package systems.zlink.contracts.service.spot;
 
+/** The overall readiness state of a spot node. */
 public enum SpotNodeState {
+    /** Not yet connecting to any peer. */
     IDLE(1),
     CONNECTING(2),
+    /** Some but not all peers are connected. */
     PARTIAL_READY(3),
+    /** All expected peers are connected. */
     READY(4),
     ERROR(5);
 

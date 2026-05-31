@@ -4,6 +4,10 @@ package systems.zlink.contracts.eventing;
 
 import systems.zlink.contracts.sockets.RecvFlags;
 
+/**
+ * Observes a socket's connection lifecycle events and current status.
+ * The caller owns this resource and must close it.
+ */
 public interface SocketMonitor extends AutoCloseable {
     SocketMonitorHandler IGNORE_HANDLER = event -> {
     };

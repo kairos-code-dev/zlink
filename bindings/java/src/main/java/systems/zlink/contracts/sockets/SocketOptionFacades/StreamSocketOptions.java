@@ -5,6 +5,7 @@ package systems.zlink.contracts.sockets;
 import systems.zlink.internal.ContractAccess;
 
 
+/** The typed facade over STREAM-specific socket options. */
 public final class StreamSocketOptions extends CommonSocketOptions {
     public StreamSocketOptions(Socket socket) {
         super(socket);

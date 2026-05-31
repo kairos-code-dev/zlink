@@ -4,6 +4,10 @@ package systems.zlink.contracts.sockets;
 
 import java.util.Objects;
 
+/**
+ * A typed descriptor for a single socket option, including its id, value type, and read/write access.
+ * @param <T> the Java type of the option value
+ */
 public final class SocketOptionKey<T> {
     private final String name;
     private final int optionId;

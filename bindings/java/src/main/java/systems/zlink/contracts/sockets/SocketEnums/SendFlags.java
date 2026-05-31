@@ -3,8 +3,11 @@
 package systems.zlink.contracts.sockets;
 
 
+/** Flags that modify send behavior. */
 public enum SendFlags {
+    /** Default send behavior: block until the message can be queued. */
     NONE(0),
+    /** Do not block; report back-pressure instead of waiting. */
     DONT_WAIT(1);
 
     private final int value;

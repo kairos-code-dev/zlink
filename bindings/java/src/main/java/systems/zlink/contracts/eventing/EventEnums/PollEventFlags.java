@@ -4,11 +4,17 @@ package systems.zlink.contracts.eventing;
 
 import java.util.EnumSet;
 
+/** Readiness conditions a poll source can be watched for or report. Combine as flags. */
 public enum PollEventFlags {
+    /** Readable: a receive will not block. */
     POLLIN(1),
+    /** Writable: a send will not block. */
     POLLOUT(2),
+    /** An error condition occurred on the source. */
     POLLERR(4),
+    /** Priority or out-of-band data is available. */
     POLLPRI(8),
+    /** An asynchronous operation completed. */
     POLLCOMPLETION(32);
 
     private final int mask;

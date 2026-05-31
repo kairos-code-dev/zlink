@@ -5,6 +5,7 @@ package systems.zlink.contracts.service.spot;
 import systems.zlink.contracts.messaging.Message;
 import java.util.Objects;
 
+/** A pending request from an actor to join a spot, awaiting a reply. */
 public final class ActorJoinRequest implements AutoCloseable {
     private final ActorJoinInfo info;
     private final Message message;

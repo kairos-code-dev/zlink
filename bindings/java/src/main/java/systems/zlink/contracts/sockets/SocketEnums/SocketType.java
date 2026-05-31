@@ -2,7 +2,9 @@
 
 package systems.zlink.contracts.sockets;
 
+/** Identifies a socket's messaging pattern. */
 public enum SocketType {
+    /** Matches any socket type; used as a filter value, not a real type. */
     ANY(0),
     PAIR(0x1001),
     PUB(0x1002),

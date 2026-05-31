@@ -2,12 +2,19 @@
 
 package systems.zlink.contracts.service.registry;
 
+/** The messaging role a service plays in the topology. */
 public enum ServiceRole {
+    /** No role (unset). */
     INVALID(0),
+    /** A spot. */
     SPOT(2),
+    /** A ROUTER endpoint. */
     ROUTER(3),
+    /** A DEALER endpoint. */
     DEALER(4),
+    /** A publisher. */
     PUB(5),
+    /** A subscriber. */
     SUB(6);
 
     private final int value;

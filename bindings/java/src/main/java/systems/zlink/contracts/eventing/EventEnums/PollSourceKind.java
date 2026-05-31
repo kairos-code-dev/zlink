@@ -2,9 +2,13 @@
 
 package systems.zlink.contracts.eventing;
 
+/** Identifies what kind of source a poll event came from. */
 public enum PollSourceKind {
+    /** A socket. */
     SOCKET(1),
+    /** A raw file descriptor. */
     FD(2),
+    /** A timer. */
     TIMER(3);
 
     private final int value;

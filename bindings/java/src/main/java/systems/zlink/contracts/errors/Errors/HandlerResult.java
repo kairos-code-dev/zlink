@@ -3,6 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
+/** The outcome of registering or running a callback handler. */
 public enum HandlerResult {
     OK(0),
     INVALID_ARGUMENT(301),

@@ -3,6 +3,7 @@
 package systems.zlink.contracts.core;
 
 
+/** Context configuration option keys used by the native socket API. */
 public enum ContextOption {
     IO_THREADS(1), MAX_SOCKETS(2), SOCKET_LIMIT(3),
     THREAD_PRIORITY(3), THREAD_SCHED_POLICY(4), MAX_MSGSZ(5),

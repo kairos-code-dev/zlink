@@ -5,7 +5,11 @@ package systems.zlink.contracts.messaging;
 
 import java.nio.charset.StandardCharsets;
 
-/** Snapshot entry returned from SUB/XSUB/XPUB subscription snapshots. */
+/**
+ * Snapshot entry returned from SUB/XSUB/XPUB subscription snapshots.
+ * @param filter the subscription filter string
+ * @param pattern whether the filter is a pattern match
+ */
 public record SubscriptionEntry(String filter, boolean pattern) {
     public SubscriptionEntry {
         filter = filter == null ? "" : filter;

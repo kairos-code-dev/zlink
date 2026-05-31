@@ -2,7 +2,9 @@
 
 package systems.zlink.contracts.service.spot;
 
+/** The connection state of a spot peer. */
 public enum SpotPeerState {
+    /** Configured but not yet connecting. */
     CONFIGURED(1),
     CONNECTING(2),
     CONNECTED(3);

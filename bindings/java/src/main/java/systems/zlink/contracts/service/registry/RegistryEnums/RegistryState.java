@@ -2,6 +2,7 @@
 
 package systems.zlink.contracts.service.registry;
 
+/** The operational state of a registry. */
 public enum RegistryState {
     IDLE(1),
     ACTIVE(2),

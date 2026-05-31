@@ -7,6 +7,7 @@ import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.messaging.TopicMessage;
 import java.util.Optional;
 
+/** A subscriber whose subscriptions are carried as messages. */
 public interface XSubSocket extends Socket {
     void bind(String endpoint);
     void connect(String endpoint);

@@ -8,6 +8,7 @@ import java.time.Duration;
 import systems.zlink.internal.DurationConversions;
 import java.util.Objects;
 
+/** The typed facade over socket options shared by every socket type. */
 public class CommonSocketOptions {
     final Socket socket;
 

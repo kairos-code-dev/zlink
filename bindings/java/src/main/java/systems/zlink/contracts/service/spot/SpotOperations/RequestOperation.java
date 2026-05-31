@@ -3,6 +3,17 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.messaging.Message;
+/**
+ * Builds a request: add the request parts, then submit and await a reply.
+ * Parts are consumed on a successful submit (see {@link SendOperation} for the
+ * ownership contract). The caller owns any reply parts delivered on completion.
+ */
 public interface RequestOperation {
+    /**
+     * Adds the first request part.
+     *
+     * @param part the request part; consumed on a successful submit
+     * @return the submit stage
+     */
     RequestSubmitOperation message(Message part);
 }

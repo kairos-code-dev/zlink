@@ -2,9 +2,13 @@
 
 package systems.zlink.contracts.service.spot;
 
+/** Which component owns a spot node socket. */
 public enum SpotNodeSocketOwner {
+    /** Any owner (no filter). */
     ANY(0),
+    /** Owned by the node itself. */
     NODE(1),
+    /** Owned by a spot. */
     SPOT(2);
 
     private final int value;

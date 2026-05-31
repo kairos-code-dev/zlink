@@ -5,6 +5,7 @@ package systems.zlink.contracts.eventing;
 import systems.zlink.internal.ContractAccess;
 import java.util.Objects;
 
+/** A pre-allocated result buffer for a poller wait; holds up to {@code capacity} ready events. */
 public final class PollEvents {
     private final int capacity;
     private final PollSourceKind[] sourceKinds;

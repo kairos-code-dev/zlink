@@ -2,6 +2,7 @@
 
 package systems.zlink.contracts.core;
 
+/** Exposes the native zlink library version. */
 public final class ZlinkVersion {
     private ZlinkVersion() {}
 

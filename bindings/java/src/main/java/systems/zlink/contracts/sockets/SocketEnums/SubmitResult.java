@@ -3,6 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 
+/** The outcome of submitting a send or publish. */
 public enum SubmitResult {
     OK(0),
     BACKPRESSURED(1),

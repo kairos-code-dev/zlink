@@ -2,10 +2,18 @@
 
 package systems.zlink.contracts.sockets;
 
+/**
+ * Selects an automatic high-water-mark sizing profile that trades memory,
+ * latency, and throughput.
+ */
 public enum AutoHwmProfile {
+    /** Smallest queues, minimizing memory use. */
     COMPACT(0),
+    /** Small queues that drain quickly to favor latency. */
     LOW_LATENCY(1),
+    /** Balances latency against throughput. */
     BALANCED(2),
+    /** Large queues that favor throughput. */
     THROUGHPUT(3);
 
     private final int value;

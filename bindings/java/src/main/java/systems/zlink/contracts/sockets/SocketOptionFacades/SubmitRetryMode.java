@@ -2,8 +2,11 @@
 
 package systems.zlink.contracts.sockets;
 
+/** Determines whether a failed submit is retried. */
 public enum SubmitRetryMode {
+    /** Never retry; a failed submit fails immediately. */
     OFF(0),
+    /** Retry when the submit fails locally, such as under back-pressure. */
     LOCAL_FAILURE(1);
 
     private final int value;

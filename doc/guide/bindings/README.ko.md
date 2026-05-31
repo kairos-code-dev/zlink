@@ -21,7 +21,7 @@ zlink를 쓰는 방법**(설치, 관용 예제, 타입 매핑, 언어 고유 규
 |------|------------|------------------|--------|
 | .NET | [dotnet/](./dotnet/index.ko.md) | docfx | `Systems.Zlink` |
 | C++ | _(작성 예정)_ | doxygen | — |
-| Java | _(작성 예정)_ | javadoc | — |
+| Java | [java/](./java/index.ko.md) | javadoc | `systems.zlink:zlink-java` |
 | Node | _(작성 예정)_ | typedoc | — |
 | Python | _(작성 예정)_ | sphinx | — |
 | Go | [go/](./go/index.ko.md) | godoc | `zlink.systems/zlink` |

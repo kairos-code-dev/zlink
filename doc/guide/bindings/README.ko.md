@@ -1,5 +1,3 @@
-[English](./README.md) | [한국어](./README.ko.md)
-
 [코어 가이드](../01-overview.ko.md)
 
 # 언어별 바인딩 가이드
@@ -26,7 +24,7 @@ zlink를 쓰는 방법**(설치, 관용 예제, 타입 매핑, 언어 고유 규
 | Java | _(작성 예정)_ | javadoc | — |
 | Node | _(작성 예정)_ | typedoc | — |
 | Python | _(작성 예정)_ | sphinx | — |
-| Go | _(작성 예정)_ | godoc | — |
+| Go | [go/](./go/index.ko.md) | godoc | `zlink.systems/zlink` |
 | Rust | _(작성 예정)_ | rustdoc | — |
 
 > C는 코어 그 자체이므로 별도 바인딩 가이드 대신

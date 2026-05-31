@@ -11,7 +11,7 @@
 | 독자 | 시작 문서 | 설명 |
 |------|-----------|------|
 | **라이브러리 사용자** | [guide/01-overview.ko.md](./guide/01-overview.ko.md) | zlink API로 메시징 애플리케이션 개발 |
-| **바인딩 사용자** | [bindings/overview.ko.md](bindings/overview.ko.md) | C++/Java/.NET/Node.js/Python 바인딩 |
+| **바인딩 사용자** | [guide/bindings/README.ko.md](guide/bindings/README.ko.md) | C++/Java/.NET/Node.js/Python 바인딩 |
 | **라이브러리 개발자** | [internals/architecture.ko.md](./internals/architecture.ko.md) | 내부 아키텍처 및 구현 상세 |
 | **빌드/배포 담당자** | [building/build-guide.ko.md](./building/build-guide.ko.md) | 빌드, 테스트, 패키징 |
 
@@ -57,16 +57,16 @@
 | [spec/core/socket/](./spec/core/socket/README.ko.md) | 소켓 스펙 (공통 + 타입별) |
 | [spec/bindings/README.md](./spec/bindings/README.md) | Cross-language 바인딩 정책 및 언어별 스펙 |
 
-## 바인딩 가이드 (bindings/)
+## 바인딩 가이드 (guide/bindings/)
 
-| 문서 | 설명 |
-|------|------|
-| [overview.ko.md](bindings/overview.ko.md) | 공통 개요 및 크로스 언어 API 정렬 |
-| [cpp.ko.md](bindings/cpp.ko.md) | C++ 바인딩 (header-only RAII) |
-| [java.ko.md](bindings/java.ko.md) | Java 바인딩 (FFM API, Java 22+) |
-| [dotnet.ko.md](bindings/dotnet.ko.md) | .NET 바인딩 (LibraryImport, .NET 8+) |
-| [node.ko.md](bindings/node.ko.md) | Node.js 바인딩 (N-API) |
-| [python.ko.md](bindings/python.ko.md) | Python 바인딩 (ctypes/CFFI) |
+각 언어 사용 가이드는 [`guide/bindings/`](guide/bindings/README.ko.md)에 모여 있다.
+메시징 개념은 코어 가이드가 소유하고, 언어 가이드는 그 언어의 사용법·타입
+매핑·고유 규칙을 다룬다.
+
+| 언어 | 가이드 | 비고 |
+|------|------|------|
+| .NET | [dotnet/](guide/bindings/dotnet/index.ko.md) | LibraryImport, .NET 8+ |
+| C++ / Java / Node / Python / Go / Rust | [바인딩 가이드 목록](guide/bindings/README.ko.md) | 작성 예정 |
 
 ## 내부 구조 (internals/)
 

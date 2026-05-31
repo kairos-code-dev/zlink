@@ -24,7 +24,7 @@ internal context, link to the internals document instead.
 | Audience | Starting Document | Description |
 |----------|-------------------|-------------|
 | **Library Users** | [guide/01-overview.md](./guide/01-overview.md) | Developing messaging applications with the zlink API |
-| **Binding Users** | [bindings/overview.md](bindings/overview.md) | C++/Java/.NET/Node.js/Python bindings |
+| **Binding Users** | [guide/bindings/README.md](guide/bindings/README.md) | C++/Java/.NET/Node.js/Python bindings |
 | **Library Developers** | [internals/architecture.md](./internals/architecture.md) | Internal architecture and implementation details |
 | **Build/Release Engineers** | [building/build-guide.md](./building/build-guide.md) | Building, testing, and packaging |
 
@@ -70,16 +70,17 @@ internal context, link to the internals document instead.
 | [spec/core/socket/](./spec/core/socket/README.md) | Socket specifications (common + per-type) |
 | [spec/bindings/README.md](./spec/bindings/README.md) | Cross-language binding policy and per-language specs |
 
-## Bindings Guide (bindings/)
+## Binding Guides (guide/bindings/)
 
-| Document | Description |
-|----------|-------------|
-| [overview.md](bindings/overview.md) | Common overview and cross-language API alignment |
-| [cpp.md](bindings/cpp.md) | C++ binding (header-only RAII) |
-| [java.md](bindings/java.md) | Java binding (FFM API, Java 22+) |
-| [dotnet.md](bindings/dotnet.md) | .NET binding (LibraryImport, .NET 8+) |
-| [node.md](bindings/node.md) | Node.js binding (N-API) |
-| [python.md](bindings/python.md) | Python binding (ctypes/CFFI) |
+Per-language usage guides live under
+[`guide/bindings/`](guide/bindings/README.md). Messaging concepts are owned by the
+core guide; each language guide covers that language's usage, type mapping, and
+language-specific rules.
+
+| Language | Guide | Notes |
+|----------|-------|-------|
+| .NET | [dotnet/](guide/bindings/dotnet/index.md) | LibraryImport, .NET 8+ |
+| C++ / Java / Node / Python / Go / Rust | [Binding guide index](guide/bindings/README.md) | planned |
 
 ## Internals (internals/)
 

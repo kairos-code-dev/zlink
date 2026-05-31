@@ -32,18 +32,30 @@ type (
 )
 
 const (
-	MonitorEventAll               = impl.MonitorEventAll
-	MonitorEventConnectionReady   = impl.MonitorEventConnectionReady
+	// MonitorEventAll subscribes the monitor to every connection lifecycle event.
+	MonitorEventAll = impl.MonitorEventAll
+	// MonitorEventConnectionReady fires when a connection completes its handshake and is ready for traffic.
+	MonitorEventConnectionReady = impl.MonitorEventConnectionReady
+	// MonitorEventPeerWeightChanged fires when a peer's load-balancing weight changes.
 	MonitorEventPeerWeightChanged = impl.MonitorEventPeerWeightChanged
-	MonitorSourceSocket           = impl.MonitorSourceSocket
-	MonitorSourceSpotPub          = impl.MonitorSourceSpotPub
-	MonitorSourceSpotSub          = impl.MonitorSourceSpotSub
-	PollIn                        = impl.PollIn
-	PollOut                       = impl.PollOut
-	PollCompletion                = impl.PollCompletion
-	PollSourceSocket              = impl.PollSourceSocket
-	PollSourceFD                  = impl.PollSourceFD
-	PollSourceTimer               = impl.PollSourceTimer
+	// MonitorSourceSocket identifies a plain socket as the monitored source.
+	MonitorSourceSocket = impl.MonitorSourceSocket
+	// MonitorSourceSpotPub identifies the publish side of a spot as the monitored source.
+	MonitorSourceSpotPub = impl.MonitorSourceSpotPub
+	// MonitorSourceSpotSub identifies the subscribe side of a spot as the monitored source.
+	MonitorSourceSpotSub = impl.MonitorSourceSpotSub
+	// PollIn reports that a receive will not block.
+	PollIn = impl.PollIn
+	// PollOut reports that a send will not block.
+	PollOut = impl.PollOut
+	// PollCompletion reports that an asynchronous operation has completed.
+	PollCompletion = impl.PollCompletion
+	// PollSourceSocket identifies a socket as the source of a poll event.
+	PollSourceSocket = impl.PollSourceSocket
+	// PollSourceFD identifies a raw file descriptor as the source of a poll event.
+	PollSourceFD = impl.PollSourceFD
+	// PollSourceTimer identifies a timer as the source of a poll event.
+	PollSourceTimer = impl.PollSourceTimer
 )
 
 var (

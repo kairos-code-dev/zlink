@@ -23,15 +23,25 @@ type (
 )
 
 const (
-	AutoHwmProfileCompact             = impl.AutoHwmProfileCompact
-	AutoHwmProfileLowLatency          = impl.AutoHwmProfileLowLatency
-	AutoHwmProfileBalanced            = impl.AutoHwmProfileBalanced
-	AutoHwmProfileThroughput          = impl.AutoHwmProfileThroughput
-	AutoHwmRecalcReasonNone           = impl.AutoHwmRecalcReasonNone
-	AutoHwmRecalcReasonInitial        = impl.AutoHwmRecalcReasonInitial
-	AutoHwmRecalcReasonRoleChange     = impl.AutoHwmRecalcReasonRoleChange
-	AutoHwmRecalcReasonPolicyToggle   = impl.AutoHwmRecalcReasonPolicyToggle
-	AutoHwmRecalcReasonRefresh        = impl.AutoHwmRecalcReasonRefresh
+	// AutoHwmProfileCompact uses the smallest queues to minimize memory use.
+	AutoHwmProfileCompact = impl.AutoHwmProfileCompact
+	// AutoHwmProfileLowLatency uses small queues that drain quickly to favor latency.
+	AutoHwmProfileLowLatency = impl.AutoHwmProfileLowLatency
+	// AutoHwmProfileBalanced balances latency against throughput.
+	AutoHwmProfileBalanced = impl.AutoHwmProfileBalanced
+	// AutoHwmProfileThroughput uses large queues to maximize throughput.
+	AutoHwmProfileThroughput = impl.AutoHwmProfileThroughput
+	// AutoHwmRecalcReasonNone indicates no recalculation has occurred yet.
+	AutoHwmRecalcReasonNone = impl.AutoHwmRecalcReasonNone
+	// AutoHwmRecalcReasonInitial is set on the first recalculation after context creation.
+	AutoHwmRecalcReasonInitial = impl.AutoHwmRecalcReasonInitial
+	// AutoHwmRecalcReasonRoleChange is set when a socket's topology role changes.
+	AutoHwmRecalcReasonRoleChange = impl.AutoHwmRecalcReasonRoleChange
+	// AutoHwmRecalcReasonPolicyToggle is set when auto-HWM is enabled or disabled.
+	AutoHwmRecalcReasonPolicyToggle = impl.AutoHwmRecalcReasonPolicyToggle
+	// AutoHwmRecalcReasonRefresh is set when an explicit recalculation is requested.
+	AutoHwmRecalcReasonRefresh = impl.AutoHwmRecalcReasonRefresh
+	// AutoHwmRecalcReasonDeferredShrink is set when a scheduled deferred queue shrink fires.
 	AutoHwmRecalcReasonDeferredShrink = impl.AutoHwmRecalcReasonDeferredShrink
 )
 

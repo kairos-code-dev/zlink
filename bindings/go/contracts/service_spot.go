@@ -88,11 +88,17 @@ type (
 )
 
 const (
-	SpotNodeModePubSub                = impl.SpotNodeModePubSub
-	SpotNodeModeRouted                = impl.SpotNodeModeRouted
-	SpotNodeModeAll                   = impl.SpotNodeModeAll
-	SpotNodeSocketOwnerAny            = impl.SpotNodeSocketOwnerAny
-	SpotNodeSocketOwnerNode           = impl.SpotNodeSocketOwnerNode
+	// SpotNodeModePubSub enables publish/subscribe messaging only.
+	SpotNodeModePubSub = impl.SpotNodeModePubSub
+	// SpotNodeModeRouted enables routed request/reply messaging only.
+	SpotNodeModeRouted = impl.SpotNodeModeRouted
+	// SpotNodeModeAll enables both pub/sub and routed messaging.
+	SpotNodeModeAll = impl.SpotNodeModeAll
+	// SpotNodeSocketOwnerAny matches any owner (no filter).
+	SpotNodeSocketOwnerAny = impl.SpotNodeSocketOwnerAny
+	// SpotNodeSocketOwnerNode matches sockets owned by the node itself.
+	SpotNodeSocketOwnerNode = impl.SpotNodeSocketOwnerNode
+	// SpotNodeSocketOwnerSpot matches sockets owned by a spot.
 	SpotNodeSocketOwnerSpot           = impl.SpotNodeSocketOwnerSpot
 	SpotNodeOptionRouterHwmProfile    = impl.SpotNodeOptionRouterHwmProfile
 	SpotNodeOptionRouterHighWaterMark = impl.SpotNodeOptionRouterHighWaterMark
@@ -100,19 +106,30 @@ const (
 	SpotNodeOptionPubSubHighWaterMark = impl.SpotNodeOptionPubSubHighWaterMark
 	SpotNodeOptionDispatchWorkersMin  = impl.SpotNodeOptionDispatchWorkersMin
 	SpotNodeOptionDispatchWorkersMax  = impl.SpotNodeOptionDispatchWorkersMax
-	SpotNodeStateIdle                 = impl.SpotNodeStateIdle
-	SpotNodeStateConnecting           = impl.SpotNodeStateConnecting
-	SpotNodeStatePartialReady         = impl.SpotNodeStatePartialReady
-	SpotNodeStateReady                = impl.SpotNodeStateReady
-	SpotNodeStateError                = impl.SpotNodeStateError
-	SpotPeerSourceManual              = impl.SpotPeerSourceManual
-	SpotPeerSourceDiscovery           = impl.SpotPeerSourceDiscovery
-	SpotPeerSourceMixed               = impl.SpotPeerSourceMixed
-	SpotPeerKindSpotMesh              = impl.SpotPeerKindSpotMesh
-	SpotPeerKindRouterChannel         = impl.SpotPeerKindRouterChannel
-	SpotPeerStateConfigured           = impl.SpotPeerStateConfigured
-	SpotPeerStateConnecting           = impl.SpotPeerStateConnecting
-	SpotPeerStateConnected            = impl.SpotPeerStateConnected
+	// SpotNodeStateIdle means the node is not yet connecting to any peer.
+	SpotNodeStateIdle       = impl.SpotNodeStateIdle
+	SpotNodeStateConnecting = impl.SpotNodeStateConnecting
+	// SpotNodeStatePartialReady means some but not all peers are connected.
+	SpotNodeStatePartialReady = impl.SpotNodeStatePartialReady
+	// SpotNodeStateReady means all expected peers are connected.
+	SpotNodeStateReady = impl.SpotNodeStateReady
+	SpotNodeStateError = impl.SpotNodeStateError
+	// SpotPeerSourceManual identifies a peer added manually by the application.
+	SpotPeerSourceManual = impl.SpotPeerSourceManual
+	// SpotPeerSourceDiscovery identifies a peer learned from a discovery service.
+	SpotPeerSourceDiscovery = impl.SpotPeerSourceDiscovery
+	// SpotPeerSourceMixed identifies a peer that was both manually added and discovered.
+	SpotPeerSourceMixed = impl.SpotPeerSourceMixed
+	// SpotPeerKindSpotMesh identifies a peer in the spot mesh.
+	SpotPeerKindSpotMesh = impl.SpotPeerKindSpotMesh
+	// SpotPeerKindRouterChannel identifies a peer reached over a router channel.
+	SpotPeerKindRouterChannel = impl.SpotPeerKindRouterChannel
+	// SpotPeerStateConfigured means the peer is configured but not yet connecting.
+	SpotPeerStateConfigured = impl.SpotPeerStateConfigured
+	SpotPeerStateConnecting = impl.SpotPeerStateConnecting
+	SpotPeerStateConnected  = impl.SpotPeerStateConnected
 )
 
+// RemoteActorRef builds an unchecked remote actor reference from a target node routing id and actor id.
+// Unlike a lookup, this returns immediately without a network round-trip.
 var RemoteActorRef = impl.RemoteActorRef

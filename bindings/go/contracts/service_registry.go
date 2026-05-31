@@ -30,21 +30,31 @@ type (
 )
 
 const (
-	RegistryStateIdle                 = impl.RegistryStateIdle
-	RegistryStateActive               = impl.RegistryStateActive
-	RegistryStateDegraded             = impl.RegistryStateDegraded
-	RegistryStateError                = impl.RegistryStateError
-	TopologySourceManual              = impl.TopologySourceManual
-	TopologySourceDiscovery           = impl.TopologySourceDiscovery
-	TopologySourceRegistry            = impl.TopologySourceRegistry
-	TopologyStateDiscovered           = impl.TopologyStateDiscovered
-	TopologyStateConnecting           = impl.TopologyStateConnecting
-	TopologyStateReady                = impl.TopologyStateReady
-	TopologyStateLost                 = impl.TopologyStateLost
-	TopologyStateError                = impl.TopologyStateError
-	TopologyStateStopped              = impl.TopologyStateStopped
-	RegistryOptionID                  = impl.RegistryOptionID
+	RegistryStateIdle     = impl.RegistryStateIdle
+	RegistryStateActive   = impl.RegistryStateActive
+	RegistryStateDegraded = impl.RegistryStateDegraded
+	RegistryStateError    = impl.RegistryStateError
+	// TopologySourceManual identifies a peer added manually by the application.
+	TopologySourceManual = impl.TopologySourceManual
+	// TopologySourceDiscovery identifies a peer learned from a discovery service.
+	TopologySourceDiscovery = impl.TopologySourceDiscovery
+	// TopologySourceRegistry identifies a peer learned from a service registry.
+	TopologySourceRegistry = impl.TopologySourceRegistry
+	// TopologyStateDiscovered means the peer was found but a connection is not yet established.
+	TopologyStateDiscovered = impl.TopologyStateDiscovered
+	TopologyStateConnecting = impl.TopologyStateConnecting
+	// TopologyStateReady means the peer is connected and usable.
+	TopologyStateReady = impl.TopologyStateReady
+	TopologyStateLost  = impl.TopologyStateLost
+	TopologyStateError = impl.TopologyStateError
+	// TopologyStateStopped means the connection was explicitly stopped.
+	TopologyStateStopped = impl.TopologyStateStopped
+	// RegistryOptionID is the registry's identifier.
+	RegistryOptionID = impl.RegistryOptionID
+	// RegistryOptionHeartbeatIntervalMS is how often the registry sends heartbeats, in milliseconds.
 	RegistryOptionHeartbeatIntervalMS = impl.RegistryOptionHeartbeatIntervalMS
-	RegistryOptionHeartbeatTimeoutMS  = impl.RegistryOptionHeartbeatTimeoutMS
+	// RegistryOptionHeartbeatTimeoutMS is how long without a heartbeat before a member is dropped, in milliseconds.
+	RegistryOptionHeartbeatTimeoutMS = impl.RegistryOptionHeartbeatTimeoutMS
+	// RegistryOptionBroadcastIntervalMS is how often the registry broadcasts its state, in milliseconds.
 	RegistryOptionBroadcastIntervalMS = impl.RegistryOptionBroadcastIntervalMS
 )

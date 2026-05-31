@@ -58,32 +58,52 @@ type (
 )
 
 const (
-	SocketTypeAny                           = impl.SocketTypeAny
-	SocketTypePair                          = impl.SocketTypePair
-	SocketTypePub                           = impl.SocketTypePub
-	SocketTypeSub                           = impl.SocketTypeSub
-	SocketTypeDealer                        = impl.SocketTypeDealer
-	SocketTypeRouter                        = impl.SocketTypeRouter
-	SocketTypeXPub                          = impl.SocketTypeXPub
-	SocketTypeXSub                          = impl.SocketTypeXSub
-	SocketTypeStream                        = impl.SocketTypeStream
-	RidDuplicateReject                      = impl.RidDuplicateReject
-	RidDuplicateHandover                    = impl.RidDuplicateHandover
-	SubmitRetryOff                          = impl.SubmitRetryOff
-	SubmitRetryLocalFailure                 = impl.SubmitRetryLocalFailure
-	SendFlagsNone                           = impl.SendFlagsNone
-	SendFlagsDontWait                       = impl.SendFlagsDontWait
-	RecvFlagsNone                           = impl.RecvFlagsNone
-	RecvFlagsDontWait                       = impl.RecvFlagsDontWait
-	SpotDispatchEventSubscribeReadable      = impl.SpotDispatchEventSubscribeReadable
-	SpotDispatchEventRoutedReadable         = impl.SpotDispatchEventRoutedReadable
-	SpotDispatchEventTimerReadable          = impl.SpotDispatchEventTimerReadable
-	SpotDispatchEventChannelReplyReadable   = impl.SpotDispatchEventChannelReplyReadable
-	SpotDispatchEventActorReadable          = impl.SpotDispatchEventActorReadable
-	SpotDispatchEventActorJoinReadable      = impl.SpotDispatchEventActorJoinReadable
+	// SocketTypeAny matches any socket type; used as a filter value, not a real type.
+	SocketTypeAny    = impl.SocketTypeAny
+	SocketTypePair   = impl.SocketTypePair
+	SocketTypePub    = impl.SocketTypePub
+	SocketTypeSub    = impl.SocketTypeSub
+	SocketTypeDealer = impl.SocketTypeDealer
+	SocketTypeRouter = impl.SocketTypeRouter
+	SocketTypeXPub   = impl.SocketTypeXPub
+	SocketTypeXSub   = impl.SocketTypeXSub
+	SocketTypeStream = impl.SocketTypeStream
+	// RidDuplicateReject rejects the new peer and keeps the existing route.
+	RidDuplicateReject = impl.RidDuplicateReject
+	// RidDuplicateHandover hands the routing id to the new peer, dropping the previous holder.
+	RidDuplicateHandover = impl.RidDuplicateHandover
+	// SubmitRetryOff never retries; a failed submit fails immediately.
+	SubmitRetryOff = impl.SubmitRetryOff
+	// SubmitRetryLocalFailure retries when the submit fails locally, such as under back-pressure.
+	SubmitRetryLocalFailure = impl.SubmitRetryLocalFailure
+	// SendFlagsNone is the default send behavior: block until the message can be queued.
+	SendFlagsNone = impl.SendFlagsNone
+	// SendFlagsDontWait does not block; reports back-pressure instead of waiting.
+	SendFlagsDontWait = impl.SendFlagsDontWait
+	// RecvFlagsNone is the default receive behavior: block until a message is available.
+	RecvFlagsNone = impl.RecvFlagsNone
+	// RecvFlagsDontWait does not block; returns immediately when no message is available.
+	RecvFlagsDontWait = impl.RecvFlagsDontWait
+	// SpotDispatchEventSubscribeReadable fires when a subscription has a message ready to read.
+	SpotDispatchEventSubscribeReadable = impl.SpotDispatchEventSubscribeReadable
+	// SpotDispatchEventRoutedReadable fires when a routed message is ready to read.
+	SpotDispatchEventRoutedReadable = impl.SpotDispatchEventRoutedReadable
+	// SpotDispatchEventTimerReadable fires when a timer has expired.
+	SpotDispatchEventTimerReadable = impl.SpotDispatchEventTimerReadable
+	// SpotDispatchEventChannelReplyReadable fires when a channel reply is ready to read.
+	SpotDispatchEventChannelReplyReadable = impl.SpotDispatchEventChannelReplyReadable
+	// SpotDispatchEventActorReadable fires when an actor message is ready to read.
+	SpotDispatchEventActorReadable = impl.SpotDispatchEventActorReadable
+	// SpotDispatchEventActorJoinReadable fires when an actor join request is ready to read.
+	SpotDispatchEventActorJoinReadable = impl.SpotDispatchEventActorJoinReadable
+	// SpotDispatchEventActorLifecycleReadable fires when an actor lifecycle event is ready to read.
 	SpotDispatchEventActorLifecycleReadable = impl.SpotDispatchEventActorLifecycleReadable
-	SpotDispatchSubjectSpot                 = impl.SpotDispatchSubjectSpot
-	SpotDispatchSubjectTimer                = impl.SpotDispatchSubjectTimer
-	SpotDispatchSubjectChannelDealer        = impl.SpotDispatchSubjectChannelDealer
-	SpotDispatchSubjectActor                = impl.SpotDispatchSubjectActor
+	// SpotDispatchSubjectSpot identifies the spot itself as the dispatch subject.
+	SpotDispatchSubjectSpot = impl.SpotDispatchSubjectSpot
+	// SpotDispatchSubjectTimer identifies a timer as the dispatch subject.
+	SpotDispatchSubjectTimer = impl.SpotDispatchSubjectTimer
+	// SpotDispatchSubjectChannelDealer identifies a channel dealer socket as the dispatch subject.
+	SpotDispatchSubjectChannelDealer = impl.SpotDispatchSubjectChannelDealer
+	// SpotDispatchSubjectActor identifies an actor as the dispatch subject.
+	SpotDispatchSubjectActor = impl.SpotDispatchSubjectActor
 )

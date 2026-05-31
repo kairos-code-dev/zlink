@@ -6,6 +6,7 @@
 namespace zlink
 {
 
+/// @brief Exchanges framed packets with raw TCP peers and can host actor gateways.
 class stream_socket_t : public routed_message_socket_t
 {
   public:

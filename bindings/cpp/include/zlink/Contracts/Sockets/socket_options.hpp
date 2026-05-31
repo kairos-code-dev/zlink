@@ -19,6 +19,7 @@ using socket_fd_t = unsigned int;
 using socket_fd_t = int;
 #endif
 
+/// @brief TCP keepalive mode for socket options.
 enum class tcp_keepalive_mode_t : int
 {
     os_default = -1,
@@ -26,12 +27,14 @@ enum class tcp_keepalive_mode_t : int
     on = 1
 };
 
+/// @brief Determines whether a failed submit is retried.
 enum class submit_retry_mode_t : int
 {
-    off = 0,
-    local_failure = 1
+    off = 0,           ///< Never retry; a failed submit fails immediately.
+    local_failure = 1  ///< Retry when the submit fails locally (e.g. back-pressure).
 };
 
+/// @brief The typed facade over socket options shared by every socket type.
 class common_socket_options_t
 {
   public:
@@ -86,6 +89,7 @@ class common_socket_options_t
     socket_t *_socket;
 };
 
+/// @brief The typed facade over ROUTER-specific socket options.
 class router_socket_options_t : public common_socket_options_t
 {
   public:
@@ -106,6 +110,7 @@ class router_socket_options_t : public common_socket_options_t
     void peer_weight (peer_weight_t value);
 };
 
+/// @brief The typed facade over DEALER-specific socket options.
 class dealer_socket_options_t : public common_socket_options_t
 {
   public:
@@ -120,6 +125,7 @@ class dealer_socket_options_t : public common_socket_options_t
     void peer_weight (peer_weight_t value);
 };
 
+/// @brief The typed facade over STREAM-specific socket options.
 class stream_socket_options_t : public common_socket_options_t
 {
   public:
@@ -130,6 +136,7 @@ class stream_socket_options_t : public common_socket_options_t
     void notify (bool value);
 };
 
+/// @brief The typed facade over PUB/XPUB-specific socket options.
 class pub_socket_options_t : public common_socket_options_t
 {
   public:
@@ -153,6 +160,7 @@ class pub_socket_options_t : public common_socket_options_t
     int topics_count () const;
 };
 
+/// @brief The typed facade over SUB/XSUB-specific socket options.
 class sub_socket_options_t : public common_socket_options_t
 {
   public:

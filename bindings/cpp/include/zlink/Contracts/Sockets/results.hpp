@@ -6,6 +6,7 @@
 namespace zlink
 {
 
+/// @brief Flags that modify send behavior; @c dontwait reports back-pressure instead of blocking.
 class send_flags_t
 {
   public:
@@ -33,6 +34,7 @@ inline constexpr bool operator!= (send_flags_t a_, send_flags_t b_) noexcept
     return !(a_ == b_);
 }
 
+/// @brief Flags that modify receive behavior; @c dontwait returns instead of blocking when no message is available.
 class recv_flags_t
 {
   public:
@@ -65,6 +67,7 @@ inline const send_flags_t send_flags_t::dontwait {0x0001u};
 inline const recv_flags_t recv_flags_t::none {0};
 inline const recv_flags_t recv_flags_t::dontwait {0x0001u};
 
+/// @brief The outcome of a non-blocking send attempt.
 enum class send_result_t : int
 {
     sent = 0,
@@ -72,6 +75,7 @@ enum class send_result_t : int
     not_ready = 2
 };
 
+/// @brief The outcome of submitting a send or publish.
 enum class submit_result_t : int
 {
     ok = 0,
@@ -90,6 +94,7 @@ enum class submit_result_t : int
     not_admitted = 13
 };
 
+/// @brief The outcome of a receive.
 enum class recv_result_t : int
 {
     ok = 0,

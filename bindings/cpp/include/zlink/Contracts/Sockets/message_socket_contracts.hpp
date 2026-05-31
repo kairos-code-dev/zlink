@@ -6,6 +6,7 @@
 namespace zlink
 {
 
+/// @brief Base for sockets that send and receive multipart messages.
 class message_socket_t : public socket_t
 {
   protected:
@@ -20,6 +21,7 @@ class message_socket_t : public socket_t
     message_socket_t (context_t &ctx_, socket_type type_) : socket_t (ctx_, type_) {}
 };
 
+/// @brief Base for sockets that route messages by routing id.
 class routed_message_socket_t : public message_socket_t
 {
   protected:
@@ -34,6 +36,7 @@ class routed_message_socket_t : public message_socket_t
 namespace zlink
 {
 
+/// @brief An exclusive one-to-one peering socket with no routing.
 class pair_socket_t : public message_socket_t
 {
   public:
@@ -58,6 +61,7 @@ class pair_socket_t : public message_socket_t
 namespace zlink
 {
 
+/// @brief A socket that load-balances sends across its connected peers and can issue routed requests.
 class dealer_socket_t : public message_socket_t
 {
   public:

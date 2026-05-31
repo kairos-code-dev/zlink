@@ -25,6 +25,7 @@ enum class discovery_socket_role : int
     sub = 0
 };
 
+/// @brief The operational state of a registry.
 enum class registry_state : int
 {
     idle = 1,
@@ -33,21 +34,23 @@ enum class registry_state : int
     error = 4
 };
 
+/// @brief Where a topology entry was learned from.
 enum class topology_source : int
 {
-    manual = 1,
-    discovery = 2,
-    registry = 3
+    manual = 1,    ///< Added manually by the application.
+    discovery = 2, ///< Learned from a discovery service.
+    registry = 3   ///< Learned from a service registry.
 };
 
+/// @brief The lifecycle state of a topology connection.
 enum class topology_state : int
 {
-    discovered = 1,
+    discovered = 1, ///< The peer was found but a connection is not yet established.
     connecting = 2,
-    ready = 3,
+    ready = 3,      ///< The peer is connected and usable.
     lost = 4,
     error = 5,
-    stopped = 6
+    stopped = 6     ///< The connection was explicitly stopped.
 };
 
 using registry_socket_role_t = registry_socket_role;
@@ -56,6 +59,7 @@ using registry_state_t = registry_state;
 using topology_source_t = topology_source;
 using topology_state_t = topology_state;
 
+/// @brief One member peer registered on a channel.
 class member_peer_entry_t
 {
   public:

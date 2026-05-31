@@ -8,6 +8,7 @@ namespace zlink
 namespace service
 {
 
+/// @brief A handle to a local actor: join/leave spots, receive messages, and send to its bound session.
 class actor_t
 {
   public:

@@ -6,6 +6,7 @@
 namespace zlink
 {
 
+/// @brief Routes messages to peers addressed by routing id; the request/reply server side.
 class router_socket_t : public routed_message_socket_t
 {
   public:

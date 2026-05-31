@@ -22,6 +22,10 @@ namespace detail
 struct timer_access_t;
 } // namespace detail
 
+/**
+ * @brief Fires on an interval and can be polled or awaited.
+ * @note The caller owns this resource and must call close() when done.
+ */
 class timer_t
 {
   public:

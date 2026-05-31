@@ -8,13 +8,15 @@
 namespace zlink
 {
 
+/// @brief Identifies what a monitored source is.
 enum class monitor_source_kind : int
 {
-    socket = 1,
-    spot_pub = 3,
-    spot_sub = 4
+    socket = 1,   ///< A plain socket.
+    spot_pub = 3, ///< The publish side of a spot.
+    spot_sub = 4  ///< The subscribe side of a spot.
 };
 
+/// @brief Bitmask of a monitored socket's readiness states.
 enum class monitor_state : uint32_t
 {
     ready = 1,
@@ -42,6 +44,7 @@ inline monitor_status_detail operator| (monitor_status_detail a,
       static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
 }
 
+/// @brief Reason a connection was disconnected.
 enum class disconnect_reason : int
 {
     unknown = 0,
@@ -50,6 +53,7 @@ enum class disconnect_reason : int
     ctx_term = 5
 };
 
+/// @brief A snapshot of a monitored socket's state and auto-HWM telemetry.
 struct monitor_status_t
 {
     monitor_status_t ()

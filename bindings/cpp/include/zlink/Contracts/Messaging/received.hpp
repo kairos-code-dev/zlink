@@ -17,6 +17,7 @@ namespace detail
 struct received_access_t;
 }
 
+/// @brief A received message envelope: routing metadata, parts, and an optional reply context.
 class received_t
 {
   public:

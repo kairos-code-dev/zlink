@@ -8,6 +8,7 @@
 namespace zlink
 {
 
+/// @brief The outcome of registering or running a callback handler.
 enum class handler_result_t : int
 {
     ok = 0,
@@ -19,6 +20,7 @@ enum class handler_result_t : int
     internal_error = 306
 };
 
+/// @brief The outcome of closing a socket or resource.
 enum class close_result_t : int
 {
     ok = 0,
@@ -28,6 +30,7 @@ enum class close_result_t : int
     internal_error = 404
 };
 
+/// @brief The outcome of binding a socket to an endpoint.
 enum class bind_result_t : int
 {
     ok = 0,
@@ -38,6 +41,7 @@ enum class bind_result_t : int
     internal_error = 505
 };
 
+/// @brief The outcome of connecting a socket to an endpoint.
 enum class connect_result_t : int
 {
     ok = 0,
@@ -50,6 +54,7 @@ enum class connect_result_t : int
     busy = 607
 };
 
+/// @brief The outcome of reading or applying a configuration option.
 enum class config_result_t : int
 {
     ok = 0,
@@ -61,7 +66,7 @@ enum class config_result_t : int
     not_found = 706
 };
 
-
+/// @brief Native zlink-specific errno values above the POSIX range.
 enum class error_code : int
 {
     efsm = 156384763,
@@ -70,6 +75,7 @@ enum class error_code : int
     emthread = 156384766
 };
 
+/// @brief Native protocol error codes.
 enum class protocol_error : int
 {
     zmp_malformed_command_hello = 0x10000013

@@ -217,6 +217,7 @@ namespace detail
 struct spot_operation_state_t;
 } // namespace detail
 
+/// @brief Accepts further parts, flags, and the terminal submit of a send builder.
 class send_submit_operation_t
 {
   public:
@@ -231,6 +232,8 @@ class send_submit_operation_t
 
   private:
     explicit send_submit_operation_t (detail::spot_operation_state_t &&state_);
+    explicit send_submit_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -239,6 +242,11 @@ class send_submit_operation_t
     friend class send_operation_t;
 };
 
+/**
+ * @brief Builds a multipart send: add one or more parts, then submit().
+ * @note Submitting consumes the added message_t parts; on success each part is
+ *       moved into the transport and left invalid; on failure ownership returns to the caller.
+ */
 class send_operation_t
 {
   public:
@@ -251,6 +259,8 @@ class send_operation_t
 
   private:
     explicit send_operation_t (detail::spot_operation_state_t &&state_);
+    explicit send_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -269,6 +279,7 @@ class send_operation_t
 
 class request_callback_submit_operation_t;
 
+/// @brief Accepts further parts, timeout, flags, and the terminal submit of a request.
 class request_submit_operation_t
 {
   public:
@@ -287,6 +298,8 @@ class request_submit_operation_t
   private:
     explicit request_submit_operation_t (
       detail::spot_operation_state_t &&state_);
+    explicit request_submit_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -296,6 +309,7 @@ class request_submit_operation_t
     friend class request_callback_submit_operation_t;
 };
 
+/// @brief Builds a request: add the request parts, then submit and await a reply.
 class request_operation_t
 {
   public:
@@ -307,6 +321,8 @@ class request_operation_t
 
   private:
     explicit request_operation_t (detail::spot_operation_state_t &&state_);
+    explicit request_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -317,6 +333,7 @@ class request_operation_t
     friend class zlink::router_socket_t;
 };
 
+/// @brief Callback-submission stage of a request builder (reached after flags()).
 class request_callback_submit_operation_t
 {
   public:
@@ -335,6 +352,8 @@ class request_callback_submit_operation_t
   private:
     explicit request_callback_submit_operation_t (
       detail::spot_operation_state_t &&state_);
+    explicit request_callback_submit_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -343,6 +362,7 @@ class request_callback_submit_operation_t
     friend class request_submit_operation_t;
 };
 
+/// @brief Accepts further parts, flags, and the terminal submit of a reply builder.
 class reply_submit_operation_t
 {
   public:
@@ -356,6 +376,8 @@ class reply_submit_operation_t
 
   private:
     explicit reply_submit_operation_t (detail::spot_operation_state_t &&state_);
+    explicit reply_submit_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -364,6 +386,7 @@ class reply_submit_operation_t
     friend class reply_operation_t;
 };
 
+/// @brief Builds a reply to a received request: add the reply parts, then submit().
 class reply_operation_t
 {
   public:
@@ -375,6 +398,8 @@ class reply_operation_t
 
   private:
     explicit reply_operation_t (detail::spot_operation_state_t &&state_);
+    explicit reply_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;

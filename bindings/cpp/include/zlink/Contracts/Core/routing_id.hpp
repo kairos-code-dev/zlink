@@ -19,9 +19,10 @@
 namespace zlink
 {
 
+/// @brief Identifies a socket's messaging pattern.
 enum class socket_type : int
 {
-    any = 0,
+    any = 0,       ///< Any type (filter value, not a real socket type).
     pair = 0x1001,
     pub = 0x1002,
     sub = 0x1003,
@@ -32,6 +33,7 @@ enum class socket_type : int
     stream = 0x1008
 };
 
+/// @brief Context configuration option keys.
 enum class context_option : int
 {
     io_threads = 1,
@@ -51,14 +53,16 @@ enum class context_option : int
     auto_hwm_msg_unit_bytes = 18
 };
 
+/// @brief Selects an automatic high-water-mark sizing profile.
 enum class auto_hwm_profile : int
 {
-    compact = 0,
-    low_latency = 1,
-    balanced = 2,
-    throughput = 3
+    compact = 0,     ///< Smallest queues, minimizing memory use.
+    low_latency = 1, ///< Small queues that drain quickly to favor latency.
+    balanced = 2,    ///< Balances latency against throughput.
+    throughput = 3   ///< Large queues that favor throughput.
 };
 
+/// @brief OS scheduling policy for I/O threads.
 enum class thread_scheduling_policy_t : int
 {
     default_policy = -1,
@@ -67,11 +71,12 @@ enum class thread_scheduling_policy_t : int
     round_robin = 2
 };
 
+/// @brief How a socket reacts to a peer that reuses an existing routing id.
 enum class rid_duplicate_policy_t : int
 {
-    reject = 0,
-    handover = 1,
-    replace = 1
+    reject = 0,   ///< Reject the new peer and keep the existing route.
+    handover = 1, ///< Hand the routing id to the new peer, dropping the previous holder.
+    replace = 1   ///< Alias for handover.
 };
 
 class routing_id_t;
@@ -109,6 +114,7 @@ class actor_bind_operation_t;
 class actor_unbind_operation_t;
 } // namespace service
 
+/// @brief Strongly-typed I/O thread count for context creation.
 class io_thread_count_t
 {
   public:
@@ -280,6 +286,7 @@ inline void validate_bounded_c_string (const std::string &value_,
 
 } // namespace detail
 
+/// @brief An opaque identifier for a messaging peer or route, 1 to 255 bytes.
 class routing_id_t
 {
   public:

@@ -10,6 +10,7 @@
 extern "C" {
 #endif
 
+/** @brief A single socket connection-lifecycle event reported by a monitor. */
 typedef struct {
     uint64_t event;
     uint64_t value;
@@ -18,12 +19,14 @@ typedef struct {
     char remote_addr[256];
 } zlink_monitor_event_t;
 
+/** @brief Callback invoked for each socket monitor event. */
 typedef void (*zlink_monitor_handler_fn) (
   const zlink_monitor_event_t *event_, void *userdata_);
 
 typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 typedef zlink_monitor_handler_fn zlink_socket_monitor_handler_fn;
 
+/** @brief Options for opening a socket monitor; specifies which events to subscribe to. */
 typedef struct zlink_socket_monitor_open_options_t
 {
     zlink_socket_monitor_event_mask_t events;
@@ -38,6 +41,7 @@ typedef struct zlink_socket_monitor_open_options_t
 ZLINK_EXPORT void zlink_monitor_ignore_handler (
   const zlink_monitor_event_t *event_, void *userdata_);
 
+/** @brief A snapshot of a monitored socket's state and auto-HWM telemetry. */
 typedef struct zlink_monitor_status_t
 {
     /* Snapshot source kind: raw socket, SPOT pub, or SPOT sub. */
@@ -115,11 +119,13 @@ typedef struct zlink_monitor_status_t
 ZLINK_EXPORT void *zlink_socket_monitor_open (
   void *s_, const zlink_socket_monitor_open_options_t *options_);
 
+/** @brief Register a handler for monitor events. */
 ZLINK_EXPORT zlink_handler_result_t zlink_socket_monitor_handler (
   void *monitor_,
   zlink_socket_monitor_handler_fn handler_,
   void *userdata_);
 
+/** @brief Receive one monitor event; use DONT_WAIT flag for non-blocking. */
 ZLINK_EXPORT zlink_recv_result_t zlink_socket_monitor_recv (
   void *monitor_,
   zlink_socket_monitor_event_t *out_,
@@ -142,6 +148,7 @@ typedef unsigned int zlink_fd_t;
 typedef int zlink_fd_t;
 #endif
 
+/** @brief A raw poll descriptor: a socket or file descriptor and its watched/fired events. */
 typedef struct zlink_pollitem_t
 {
     void *socket;
@@ -150,6 +157,7 @@ typedef struct zlink_pollitem_t
     short revents;
 } zlink_pollitem_t;
 
+/** @brief One ready source reported by a poller wait. */
 typedef struct zlink_poller_event_t
 {
     zlink_poller_source_kind_t source_kind;

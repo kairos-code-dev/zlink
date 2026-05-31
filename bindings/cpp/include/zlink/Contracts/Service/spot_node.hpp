@@ -56,6 +56,10 @@ struct spot_access_t;
 namespace service
 {
 
+/**
+ * @brief Hosts spots and actors, tunes their sockets, and exposes the node's peers, subjects, and topology.
+ * @note The caller owns this resource and must destroy it when done.
+ */
 class spot_node_t
 {
     struct mode_ctor_tag_t;

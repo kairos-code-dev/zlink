@@ -33,6 +33,14 @@ namespace advanced
 class external_message_t;
 } // namespace advanced
 
+/**
+ * @brief Owns one zlink message payload.
+ *
+ * @note Sending a message consumes its payload: the native frame is moved into
+ *       the transport on a successful send, leaving the instance invalid.
+ *       Call close() to release a message that will not be sent.
+ *       Copy construction and assignment perform deep copies of the payload.
+ */
 class message_t
 {
   public:
@@ -47,15 +55,22 @@ class message_t
 
     bool valid () const noexcept;
 
+    /// @brief Allocates a message with writable payload storage of @p size_ bytes.
     static message_t allocate (size_t size_);
+    /// @brief Creates a message holding an independent copy of the given bytes.
     static message_t from_bytes (const std::vector<uint8_t> &bytes_);
+    /// @brief Creates a message holding an independent copy of the given bytes.
     static message_t from_bytes (std::span<const std::byte> bytes_);
+    /// @brief Creates a message holding an independent copy of the given bytes.
     static message_t from_bytes (std::span<const uint8_t> bytes_);
+    /// @brief Encodes the string as UTF-8 and copies it into a new message.
     static message_t from_string (const std::string &text_);
 
     void init ();
     void init (size_t size_);
 
+    /// @brief Returns a pointer to the payload storage owned by this message.
+    /// @note The returned pointer is valid only while this message remains valid (not sent or closed).
     std::byte *data () noexcept;
     const std::byte *data () const noexcept;
 

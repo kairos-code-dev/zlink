@@ -22,6 +22,7 @@ namespace zlink
 namespace service
 {
 
+/// @brief A multi-role messaging endpoint that can publish, subscribe, route, request, reply, and host actors.
 class spot_t
 {
   public:

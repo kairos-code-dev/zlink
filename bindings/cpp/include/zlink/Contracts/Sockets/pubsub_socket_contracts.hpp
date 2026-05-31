@@ -6,6 +6,7 @@
 namespace zlink
 {
 
+/// @brief Base for publisher sockets (PUB and XPUB).
 class publisher_socket_t : public socket_t
 {
   protected:
@@ -17,6 +18,7 @@ class publisher_socket_t : public socket_t
 namespace zlink
 {
 
+/// @brief Base for subscriber sockets (SUB and XSUB).
 class subscriber_socket_t : public socket_t
 {
   public:
@@ -54,6 +56,7 @@ class subscriber_socket_t : public socket_t
 namespace zlink
 {
 
+/// @brief A topic-filtered publisher that drops messages with no matching subscriber.
 class pub_socket_t : public publisher_socket_t
 {
   public:
@@ -97,6 +100,7 @@ class pub_socket_t : public publisher_socket_t
 namespace zlink
 {
 
+/// @brief A receive-only subscriber filtered by its subscriptions.
 class sub_socket_t : public subscriber_socket_t
 {
   public:
@@ -157,6 +161,7 @@ class sub_socket_t : public subscriber_socket_t
 namespace zlink
 {
 
+/// @brief A publisher that also surfaces subscriber subscription events.
 class xpub_socket_t : public publisher_socket_t
 {
   public:
@@ -195,6 +200,7 @@ class xpub_socket_t : public publisher_socket_t
 namespace zlink
 {
 
+/// @brief A subscriber whose subscriptions are carried as messages.
 class xsub_socket_t : public subscriber_socket_t
 {
   public:

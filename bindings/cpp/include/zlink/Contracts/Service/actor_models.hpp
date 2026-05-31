@@ -13,6 +13,7 @@ namespace detail
 struct actor_model_access_t;
 } // namespace detail
 
+/// @brief References an actor: the node hosting it, its id, and its generation.
 class actor_ref_t
 {
   public:
@@ -59,6 +60,7 @@ class actor_ref_t
     friend struct detail::actor_model_access_t;
 };
 
+/// @brief Metadata about a message received for an actor.
 struct actor_recv_info_t
 {
     actor_recv_info_t ()
@@ -78,6 +80,7 @@ struct actor_recv_info_t
     friend struct detail::actor_model_access_t;
 };
 
+/// @brief Details of an actor-join request: the actors and spots on each side.
 struct actor_join_info_t
 {
     actor_join_info_t ()
@@ -109,6 +112,7 @@ struct actor_join_info_t
     friend struct detail::actor_model_access_t;
 };
 
+/// @brief A pending request from an actor to join a spot, awaiting a reply.
 class actor_join_request_t
 {
   public:
@@ -126,6 +130,7 @@ class actor_join_request_t
     message_t _message;
 };
 
+/// @brief The outcome of an actor join.
 struct actor_join_result_t
 {
     actor_join_result_t ()
@@ -149,6 +154,7 @@ struct actor_join_result_t
     friend struct detail::actor_model_access_t;
 };
 
+/// @brief The outcome of an actor join to an entry spot.
 struct actor_join_entry_spot_result_t
 {
     actor_join_entry_spot_result_t ()
@@ -170,6 +176,7 @@ struct actor_join_entry_spot_result_t
     friend struct detail::actor_model_access_t;
 };
 
+/// @brief The outcome of an actor lookup.
 struct actor_lookup_result_t
 {
     actor_lookup_result_t ()
@@ -185,6 +192,7 @@ struct actor_lookup_result_t
     friend struct detail::actor_model_access_t;
 };
 
+/// @brief Details of an actor lifecycle change, before and after.
 struct spot_actor_lifecycle_info_t
 {
     spot_actor_lifecycle_info_t ()
@@ -208,12 +216,14 @@ struct spot_actor_lifecycle_info_t
     friend struct detail::actor_model_access_t;
 };
 
+/// @brief The kind of an actor lifecycle transition event.
 enum class spot_actor_lifecycle_event_kind_t : int
 {
     joined = 1,
     left = 2
 };
 
+/// @brief An actor lifecycle event delivered to a lifecycle subscriber.
 struct spot_actor_lifecycle_event_t
 {
     spot_actor_lifecycle_event_t ()

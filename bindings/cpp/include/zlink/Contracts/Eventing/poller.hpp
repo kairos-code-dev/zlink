@@ -19,6 +19,10 @@ class spot_t;
 class spot_node_t;
 } // namespace service
 
+/**
+ * @brief Multiplexes sockets, file descriptors, and timers.
+ * @note The caller owns this resource and must call close() when done.
+ */
 class poller_t
 {
   public:

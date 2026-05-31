@@ -18,6 +18,7 @@ namespace detail
 int current_errno () noexcept;
 } // namespace detail
 
+/// @brief Base class for all exceptions thrown by the zlink C++ bindings.
 class binding_error_t : public std::runtime_error
 {
   public:
@@ -53,6 +54,7 @@ class binding_error_t : public std::runtime_error
     std::string _message;
 };
 
+/// @brief General zlink error carrying a native result code.
 class error_t : public binding_error_t
 {
   public:
@@ -67,6 +69,7 @@ class error_t : public binding_error_t
     }
 };
 
+/// @brief Thrown when submitting a send or publish fails.
 class submit_error_t : public binding_error_t
 {
   public:
@@ -87,6 +90,7 @@ class submit_error_t : public binding_error_t
     submit_result_t _result;
 };
 
+/// @brief Thrown when a request fails or its reply reports an error.
 class request_error_t : public binding_error_t
 {
   public:
@@ -107,6 +111,7 @@ class request_error_t : public binding_error_t
     request_result_t _result;
 };
 
+/// @brief Thrown when receiving a message fails.
 class recv_error_t : public binding_error_t
 {
   public:
@@ -127,6 +132,7 @@ class recv_error_t : public binding_error_t
     recv_result_t _result;
 };
 
+/// @brief Thrown when registering or running a callback handler fails.
 class handler_error_t : public binding_error_t
 {
   public:
@@ -147,6 +153,7 @@ class handler_error_t : public binding_error_t
     handler_result_t _result;
 };
 
+/// @brief Thrown when closing a socket or resource fails.
 class close_error_t : public binding_error_t
 {
   public:
@@ -167,6 +174,7 @@ class close_error_t : public binding_error_t
     close_result_t _result;
 };
 
+/// @brief Thrown when binding a socket to an endpoint fails.
 class bind_error_t : public binding_error_t
 {
   public:
@@ -187,6 +195,7 @@ class bind_error_t : public binding_error_t
     bind_result_t _result;
 };
 
+/// @brief Thrown when connecting a socket to an endpoint fails.
 class connect_error_t : public binding_error_t
 {
   public:
@@ -207,6 +216,7 @@ class connect_error_t : public binding_error_t
     connect_result_t _result;
 };
 
+/// @brief Thrown when reading or applying a configuration option fails.
 class config_error_t : public binding_error_t
 {
   public:

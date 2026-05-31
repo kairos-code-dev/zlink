@@ -19,6 +19,10 @@ namespace detail
 struct monitor_access_t;
 } // namespace detail
 
+/**
+ * @brief Observes a socket's connection lifecycle events and current status.
+ * @note The caller owns this resource and must call close() when done.
+ */
 class socket_monitor_t
 {
   public:

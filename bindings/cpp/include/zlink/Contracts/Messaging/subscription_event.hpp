@@ -9,6 +9,7 @@
 namespace zlink
 {
 
+/// @brief A subscriber's subscribe or unsubscribe event as observed by an XPUB socket.
 struct subscription_event_t
 {
     subscription_event_t ()
@@ -21,6 +22,7 @@ struct subscription_event_t
     bool subscribed;
 };
 
+/// @brief A subscription filter entry (topic string and whether it is a pattern).
 struct subscription_filter_t
 {
     std::string filter;

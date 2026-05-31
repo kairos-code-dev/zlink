@@ -12,6 +12,7 @@ namespace zlink
 
 class context_t;
 
+/// @brief Typed facade over context options governing I/O threads and socket defaults.
 class context_options_t
 {
   public:

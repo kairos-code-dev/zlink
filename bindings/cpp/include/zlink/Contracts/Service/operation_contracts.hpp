@@ -31,6 +31,7 @@ actor_bind_operation_t detail_make_actor_bind_operation (detail::actor_bind_stat
 actor_unbind_operation_t detail_make_actor_unbind_operation (
   detail::actor_bind_state_t &&state_);
 
+/// @brief Builds an actor join: add parts, then submit and await the result.
 class actor_join_operation_t
 {
   public:
@@ -51,6 +52,7 @@ class actor_join_operation_t
     friend class actor_t;
 };
 
+/// @brief Accepts further parts, timeout, flags, and the terminal submit of an actor join.
 class actor_join_submit_operation_t
 {
   public:
@@ -75,6 +77,7 @@ class actor_join_submit_operation_t
     friend class actor_join_callback_submit_operation_t;
 };
 
+/// @brief Callback-submission stage of an actor join builder.
 class actor_join_callback_submit_operation_t
 {
   public:
@@ -100,6 +103,7 @@ class actor_join_callback_submit_operation_t
     friend class actor_join_submit_operation_t;
 };
 
+/// @brief Builds an actor join to an entry spot.
 class actor_join_entry_spot_operation_t
 {
   public:
@@ -124,6 +128,7 @@ class actor_join_entry_spot_operation_t
     friend class spot_node_t;
 };
 
+/// @brief Builds a reply to an actor-join request.
 class actor_join_reply_operation_t
 {
   public:
@@ -144,6 +149,7 @@ class actor_join_reply_operation_t
     friend class spot_t;
 };
 
+/// @brief Builds an actor leave operation.
 class actor_leave_operation_t
 {
   public:
@@ -166,6 +172,7 @@ class actor_leave_operation_t
     friend class actor_t;
 };
 
+/// @brief Builds an actor destroy operation.
 class actor_destroy_operation_t
 {
   public:
@@ -187,6 +194,7 @@ class actor_destroy_operation_t
     friend class spot_node_t;
 };
 
+/// @brief Builds a remote actor lookup operation.
 class actor_lookup_operation_t
 {
   public:
@@ -208,6 +216,7 @@ class actor_lookup_operation_t
     friend class spot_node_t;
 };
 
+/// @brief Builds an actor-to-session bind operation.
 class actor_bind_operation_t
 {
   public:
@@ -230,6 +239,7 @@ class actor_bind_operation_t
     detail_make_actor_bind_operation (detail::actor_bind_state_t &&state_);
 };
 
+/// @brief Builds an actor-from-session unbind operation.
 class actor_unbind_operation_t
 {
   public:

@@ -25,6 +25,10 @@ struct registry_access_t;
 namespace service
 {
 
+/**
+ * @brief A service registry that members publish to and peers query for topology.
+ * @note The caller owns this resource and must destroy it when done.
+ */
 class registry_t
 {
   public:

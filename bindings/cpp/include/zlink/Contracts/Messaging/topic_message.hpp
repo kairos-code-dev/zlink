@@ -17,6 +17,7 @@ namespace detail
 struct topic_message_access_t;
 }
 
+/// @brief A received publish: its topic and message parts.
 class topic_message_t
 {
   public:

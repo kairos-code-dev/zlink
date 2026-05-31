@@ -41,56 +41,63 @@ enum class spot_node_socket_type_t : int
     xsub = 4103
 };
 
+/// @brief The overall readiness state of a spot node.
 enum class spot_node_state : int
 {
-    idle = 1,
+    idle = 1,          ///< Not yet connecting to any peer.
     connecting = 2,
-    partial_ready = 3,
-    ready = 4,
+    partial_ready = 3, ///< Some but not all peers are connected.
+    ready = 4,         ///< All expected peers are connected.
     error = 5
 };
 
+/// @brief Which messaging patterns a spot node enables.
 enum class spot_node_mode : int
 {
-    pubsub = 1,
-    routed = 2,
-    all = 3
+    pubsub = 1, ///< Publish/subscribe only.
+    routed = 2, ///< Routed request/reply only.
+    all = 3     ///< Both pub/sub and routed.
 };
 
+/// @brief Which component owns a spot node socket.
 enum class spot_node_socket_owner : int
 {
-    any = 0,
-    node = 1,
-    spot = 2
+    any = 0,  ///< Any owner (no filter).
+    node = 1, ///< Owned by the node itself.
+    spot = 2  ///< Owned by a spot.
 };
 
+/// @brief How a spot peer became known to the node.
 enum class spot_peer_source : int
 {
-    manual = 1,
-    discovery = 2,
-    mixed = 3
+    manual = 1,    ///< Added manually by the application.
+    discovery = 2, ///< Learned from a discovery service.
+    mixed = 3      ///< Both manually added and discovered.
 };
 
+/// @brief The connection style of a spot peer.
 enum class spot_peer_kind : int
 {
-    spot_mesh = 1,
-    router_channel = 2
+    spot_mesh = 1,      ///< A peer in the spot mesh.
+    router_channel = 2  ///< A peer reached over a router channel.
 };
 
+/// @brief The connection state of a spot peer.
 enum class spot_peer_state : int
 {
-    configured = 1,
+    configured = 1, ///< Configured but not yet connecting.
     connecting = 2,
     connected = 3
 };
 
 template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);
 
+/// @brief How a subscription subject is matched.
 enum class subject_kind : uint32_t
 {
-    none = 0,
-    topic = 1,
-    pattern = 2
+    none = 0,    ///< No subject.
+    topic = 1,   ///< An exact topic match.
+    pattern = 2  ///< A pattern match.
 };
 
 using spot_node_socket_role_t = spot_node_socket_role;
@@ -103,6 +110,7 @@ using spot_peer_kind_t = spot_peer_kind;
 using spot_peer_state_t = spot_peer_state;
 using subject_kind_t = subject_kind;
 
+/// @brief A snapshot of a spot node's status and peer/subject counts.
 class spot_node_status_t
 {
   public:
@@ -180,6 +188,7 @@ class spot_node_status_t
     friend struct detail::service_model_access_t;
 };
 
+/// @brief One peer of a spot node and its connection details.
 class spot_node_peer_entry_t
 {
   public:
@@ -231,6 +240,7 @@ class spot_node_peer_entry_t
     friend struct detail::service_model_access_t;
 };
 
+/// @brief Filters a spot node peer query; unset fields match anything.
 class spot_node_peer_filter_t
 {
   public:
@@ -275,6 +285,7 @@ class spot_node_peer_filter_t
     std::optional<spot_peer_state_t> state_;
 };
 
+/// @brief One subject (topic or pattern) served by a spot node.
 class spot_node_subject_entry_t
 {
   public:
@@ -310,6 +321,7 @@ class spot_node_subject_entry_t
     friend struct detail::service_model_access_t;
 };
 
+/// @brief Filters a spot node subject query; unset fields match anything.
 class spot_node_subject_filter_t
 {
   public:
@@ -351,6 +363,7 @@ class spot_node_subject_filter_t
     std::optional<subject_kind_t> subject_kind_;
 };
 
+/// @brief Filters a spot node socket query; unset fields match anything.
 class spot_node_socket_filter_t
 {
   public:
@@ -396,6 +409,7 @@ class spot_node_socket_filter_t
     std::optional<std::string> socket_name_;
 };
 
+/// @brief One socket owned within a spot node and its monitored status.
 class spot_node_socket_entry_t
 {
   public:
@@ -434,6 +448,7 @@ class spot_node_socket_entry_t
     friend struct detail::service_model_access_t;
 };
 
+/// @brief One spot hosted on a spot node and its actor counts.
 class spot_node_spot_entry_t
 {
   public:
@@ -483,6 +498,7 @@ class spot_node_spot_entry_t
     friend struct detail::service_model_access_t;
 };
 
+/// @brief One actor hosted on a spot node and its current placement.
 class spot_node_actor_entry_t
 {
   public:

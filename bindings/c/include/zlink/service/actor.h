@@ -14,6 +14,7 @@ extern "C" {
 #define ZLINK_ACTOR_ID_MAX 256
 #define ZLINK_ACTOR_JOIN_INFO_REMOTE 1u
 
+/** @brief References an actor: the node hosting it, its id, and its generation. */
 typedef struct zlink_actor_ref_t
 {
     zlink_routing_id_t node_rid;
@@ -21,6 +22,7 @@ typedef struct zlink_actor_ref_t
     uint64_t generation;
 } zlink_actor_ref_t;
 
+/** @brief Metadata about a message received for an actor. */
 typedef struct zlink_actor_recv_info_t
 {
     zlink_actor_ref_t actor;
@@ -29,6 +31,7 @@ typedef struct zlink_actor_recv_info_t
     uint32_t flags;
 } zlink_actor_recv_info_t;
 
+/** @brief Details of an actor-join request: the actors and spots on each side. */
 typedef struct zlink_actor_join_info_t
 {
     zlink_actor_ref_t source_actor;
@@ -42,6 +45,7 @@ typedef struct zlink_actor_join_info_t
     uint32_t flags;
 } zlink_actor_join_info_t;
 
+/** @brief The resolved route to an actor: which spot it currently lives on. */
 typedef struct zlink_actor_route_t
 {
     zlink_actor_ref_t actor;
@@ -49,6 +53,7 @@ typedef struct zlink_actor_route_t
     zlink_spot_kind_t current_spot_kind;
 } zlink_actor_route_t;
 
+/** @brief The outcome of an actor join. */
 typedef struct zlink_actor_join_result_t
 {
     zlink_request_result_t result;
@@ -59,6 +64,7 @@ typedef struct zlink_actor_join_result_t
     uint32_t flags;
 } zlink_actor_join_result_t;
 
+/** @brief The outcome of an actor join to an entry spot. */
 typedef struct zlink_actor_join_entry_spot_result_t
 {
     zlink_request_result_t result;
@@ -68,6 +74,7 @@ typedef struct zlink_actor_join_entry_spot_result_t
     uint32_t flags;
 } zlink_actor_join_entry_spot_result_t;
 
+/** @brief The outcome of an actor lookup. */
 typedef struct zlink_actor_lookup_result_t
 {
     zlink_request_result_t result;
@@ -75,6 +82,7 @@ typedef struct zlink_actor_lookup_result_t
     uint32_t flags;
 } zlink_actor_lookup_result_t;
 
+/** @brief Details of an actor lifecycle change, before and after. */
 typedef struct zlink_spot_actor_lifecycle_info_t
 {
     zlink_actor_ref_t previous_actor;
@@ -85,12 +93,14 @@ typedef struct zlink_spot_actor_lifecycle_info_t
     uint32_t flags;
 } zlink_spot_actor_lifecycle_info_t;
 
+/** @brief The kind of an actor lifecycle transition event. */
 typedef enum zlink_spot_actor_lifecycle_event_kind_t
 {
     ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED = 1,
     ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT = 2
 } zlink_spot_actor_lifecycle_event_kind_t;
 
+/** @brief An actor lifecycle event delivered to a lifecycle subscriber. */
 typedef struct zlink_spot_actor_lifecycle_event_t
 {
     zlink_spot_actor_lifecycle_event_kind_t kind;

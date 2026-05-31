@@ -9,6 +9,7 @@
 namespace zlink
 {
 
+/// @brief The outcome of a request.
 enum class request_result_t : int
 {
     ok = 0,
@@ -26,6 +27,8 @@ enum class request_result_t : int
     not_supported = 112
 };
 
+/// @brief Receives request completion and reply payloads.
+/// @note On @c ok, the callback owns the messages in the vector and must call close() on each.
 using request_callback_t =
   std::function<void(request_result_t, std::vector<message_t>)>;
 

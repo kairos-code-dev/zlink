@@ -6,6 +6,7 @@
 namespace zlink
 {
 
+/// @brief Connection lifecycle events that a monitor can be subscribed to; combine as flags.
 enum class monitor_event : uint32_t
 {
     connected = 1,
@@ -37,6 +38,7 @@ inline monitor_event operator| (monitor_event a, monitor_event b)
                                        | static_cast<uint32_t> (b));
 }
 
+/// @brief A single socket connection-lifecycle event reported by a monitor.
 struct monitor_event_t
 {
     monitor_event_t ()
@@ -52,6 +54,7 @@ struct monitor_event_t
     std::string remote_addr;
 };
 
+/// @brief Identifies what kind of source a monitor is attached to.
 enum class monitor_target_kind_t : int
 {
     socket = 0,

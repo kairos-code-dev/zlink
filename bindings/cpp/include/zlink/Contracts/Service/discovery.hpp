@@ -23,6 +23,10 @@ struct discovery_access_t;
 namespace service
 {
 
+/**
+ * @brief Learns peer routes from a registry and resolves spots and actors for a fixed channel.
+ * @note The caller owns this resource and must destroy it when done.
+ */
 class discovery_t
 {
   public:

@@ -218,6 +218,7 @@ struct spot_operation_state_t;
 } // namespace detail
 
 /// @brief Accepts further parts, flags, and the terminal submit of a send builder.
+/// @note Parts are consumed on a successful submit (see @ref send_operation_t).
 class send_submit_operation_t
 {
   public:
@@ -280,6 +281,7 @@ class send_operation_t
 class request_callback_submit_operation_t;
 
 /// @brief Accepts further parts, timeout, flags, and the terminal submit of a request.
+/// @note Parts are consumed on a successful submit (see @ref send_operation_t for the ownership model).
 class request_submit_operation_t
 {
   public:
@@ -363,6 +365,7 @@ class request_callback_submit_operation_t
 };
 
 /// @brief Accepts further parts, flags, and the terminal submit of a reply builder.
+/// @note Parts are consumed on a successful submit (see @ref send_operation_t for the ownership model).
 class reply_submit_operation_t
 {
   public:

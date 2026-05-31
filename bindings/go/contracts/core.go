@@ -9,6 +9,7 @@ type (
 	// Version is the native zlink library version (major, minor, patch).
 	Version = impl.Version
 	// Context is a messaging context: the factory and owner of sockets and services.
+	// Closing the context terminates any sockets still open under it.
 	Context = impl.Context
 	// ContextOptions are context-wide options governing the I/O threads and defaults shared by every socket.
 	ContextOptions = impl.ContextOptions

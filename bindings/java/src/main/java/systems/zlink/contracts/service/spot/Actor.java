@@ -26,10 +26,15 @@ public interface Actor extends AutoCloseable {
      */
     ActorLeaveOperation leave(Spot spot);
 
-    /** Receives the next actor message without blocking. */
+    /**
+     * Receives the next actor message; {@link RecvFlags#DONT_WAIT} returns
+     * immediately when no message is available, {@link RecvFlags#NONE} blocks.
+     * The caller owns the returned {@link ActorReceived} and must close it.
+     */
     ActorReceived recv(RecvFlags flags);
 
-    /** Receives the next actor message, blocking until one arrives. */
+    /** Receives the next actor message, blocking until one arrives.
+     * The caller owns the returned {@link ActorReceived} and must close it. */
     ActorReceived recv();
 
     /** Builds a send to the bound session. */

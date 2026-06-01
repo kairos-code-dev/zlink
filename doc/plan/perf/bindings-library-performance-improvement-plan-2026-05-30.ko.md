@@ -26,13 +26,13 @@
 
 | 순서 | 언어 | perf 경로 | Single 상태 | Multi 상태 | 다음 작업 |
 |---|---|---|---|---|---|
-| 1 | C++ | `bindings/cpp/perf` | `재측정 대기` | `재측정 대기` | 신규 라운드 첫 측정 대상. |
-| 2 | .NET | `bindings/dotnet/perf` | `재측정 대기` | `재측정 대기` | C++ 완료 후 같은 순서로 진행. |
-| 3 | Java | `bindings/java/perf` | `재측정 대기` | `재측정 대기` | .NET 완료 후 진행. |
-| 4 | Node | `bindings/node/perf` | `재측정 대기` | `재측정 대기` | Java 완료 후 진행. |
-| 5 | Go | `bindings/go/perf` | `재측정 대기` | `재측정 대기` | Node 완료 후 진행. |
-| 6 | Rust | `bindings/rust/perf` | `재측정 대기` | `재측정 대기` | Go 완료 후 진행. |
-| 7 | Python | `bindings/python/perf` | `재측정 대기` | `재측정 대기` | Rust 완료 후 진행. |
+| 1 | C++ | `bindings/cpp/perf` | `미달 없음` | `미달 없음` | Multi는 full+제한 재측정으로 통과. Single은 1개 잔여 항목을 제한 재측정과 수정 실험으로 확인한 뒤 보류로 정리했다. |
+| 2 | .NET | `bindings/dotnet/perf` | `미달 없음` | `미달 없음` | Single은 routed active recv 정렬로 `ROUTER_ROUTER inproc 262144B`를 통과로 올렸고, 나머지 7개는 public API 기준에서 추가 개선 후보가 확인되지 않아 보류했다. Multi는 full+4096B 보강+제한 재측정 뒤 잔여 11개를 보류했다. |
+| 3 | Java | `bindings/java/perf` | `미달 없음` | `미달 없음` | Single은 SPOT 대용량 9개를 재검토하고 wrapper 재사용 실험까지 확인한 뒤 보류했다. Multi는 `MULTI_DEALER_DEALER ws 131072B`와 `MULTI_SPOT wss` 5개를 보류했다. |
+| 4 | Node | `bindings/node/perf` | `미달 없음` | `미달 없음` | fastpath 변경, single 수신 객체 재사용, multi payload 직접 기록 실험까지 적용했다. 통과하지 못한 잔여 항목은 public API를 유지한 범위에서 추가 후보가 확인되지 않아 보류했다. |
+| 5 | Go | `bindings/go/perf` | `미달 없음` | `미달 없음` | routed/spot hot path를 재검토하고 `Bytes(...)` 송신 재사용 실험까지 확인했다. 통과를 만들지 못한 잔여 항목은 public API 범위에서 추가 후보가 없어 보류했다. |
+| 6 | Rust | `bindings/rust/perf` | `미달 없음` | `미달 없음` | Single SPOT 소형 native message 직접 작성과 Multi SPOT wss worker 확대를 적용했다. 통과하지 못한 잔여 항목은 public API와 현재 runner 구조에서 추가 개선 후보가 확인되지 않아 보류했다. |
+| 7 | Python | `bindings/python/perf` | `미달 없음` | `미달 없음` | Python public API 안에서 payload stamp 복사 제거, single receive zero-copy header decode, multi echo/spot receive zero-copy 후보를 적용하고 제한 재측정했다. 통과권까지 오르지 않은 잔여 항목은 근거 있는 보류로 정리했다. |
 
 
 ## 2. 기준 파일 메모
@@ -43,10 +43,10 @@
 
 | 항목 | 기준 파일 | 비고 |
 |---|---|---|
-| C single full | `미정` | `bindings/c/perf/baseline/` 사본도 같이 남긴다. |
-| C multi full | `미정` | `bindings/c/perf/baseline/` 사본도 같이 남긴다. |
-| C single 제한 재측정 | `미정` | 측정 오차 의심 시 transport/pattern을 좁혀 추가한다. |
-| C multi 제한 재측정 | `미정` | 측정 오차 의심 시 transport/pattern을 좁혀 추가한다. |
+| C single full | `perf_c_single_linux_20260530_231803_round_20260530_c_single_baseline.txt` | core 6.0.4, default sizes. status=complete (1020/1020). 22m 15s. baseline 사본 보관됨. |
+| C multi full | `perf_c_multi_linux_20260530_234108_round_20260530_c_multi_baseline.txt` | core 6.0.4, msg-sizes 64,256,1024,4096,65536,131072. status=complete (960/960, 192/192 success). 34m 5s. baseline 사본 보관됨. |
+| C single 제한 재측정 | `perf_c_single_linux_20260531_083553_round_20260530_c_single_dr_inproc_large_recheck.txt`, `perf_c_single_linux_20260531_083624_round_20260530_c_single_rr_inproc_large_recheck.txt`, `perf_c_single_linux_20260531_084303_round_20260530_c_single_rr_inproc_262144_runs3.txt`, `perf_c_single_linux_20260531_084343_round_20260530_c_single_dr_inproc_131072_runs3.txt`, `perf_c_single_linux_20260531_085029_round_20260530_c_single_dr_inproc_131072_reconfirm.txt`, `perf_c_single_linux_20260531_104549_round_20260530_c_single_java_spot_large_recheck.txt`, `perf_c_single_linux_20260531_135902_round_20260530_c_single_go_failset_recheck.txt` | C++ single inproc routed large 미달, Java single SPOT 대용량 미달, Go single failset 확인용 제한 재측정. |
+| C multi 제한 재측정 | `perf_c_multi_linux_20260531_083459_round_20260530_c_multi_pubsub_tls_65536_recheck.txt`, `perf_c_multi_linux_20260531_100611_round_20260530_c_multi_dotnet_routed_failset_recheck.txt`, `perf_c_multi_linux_20260531_101006_round_20260530_c_multi_dotnet_spot_failset_recheck.txt`, `perf_c_multi_linux_20260531_112539_round_20260530_c_multi_java_failset_recheck.txt` | C++ multi `MULTI_PUBSUB tls 65536B` 측정 오차, .NET multi 잔류 미달, Java multi failset 확인용 제한 재측정. |
 
 
 ## 3. C++ 상태
@@ -56,82 +56,118 @@ perf 경로: `bindings/cpp/perf`. 기준 파일과 보강 파일은 측정 시�
 
 ### 3.1 Single suite
 
+2026-05-30 round v4 결과. C 기준 파일 `perf_c_single_linux_20260530_231803_round_20260530_c_single_baseline.txt`,
+C++ 결과 파일 `perf_cpp_single_linux_20260531_072511_round_20260530_cpp_single_full_v4_pool.txt`.
+주요 binding 개선: send_operation_t/request/reply chain의 중복 heap alloc 제거 (private unique_ptr ctor 추가),
+spot_operation_state_t thread-local pool로 per-send alloc 제거, recv_part_out_guard_t의 empty-msg 빠른 경로.
+제한 재측정 보강 파일: C `perf_c_single_linux_20260531_083553_round_20260530_c_single_dr_inproc_large_recheck.txt`,
+C++ `perf_cpp_single_linux_20260531_083607_round_20260530_cpp_single_dr_inproc_large_recheck.txt`,
+C `perf_c_single_linux_20260531_083624_round_20260530_c_single_rr_inproc_large_recheck.txt`,
+C++ `perf_cpp_single_linux_20260531_083633_round_20260530_cpp_single_rr_inproc_large_recheck.txt`,
+C `perf_c_single_linux_20260531_084303_round_20260530_c_single_rr_inproc_262144_runs3.txt`,
+C++ `perf_cpp_single_linux_20260531_084322_round_20260530_cpp_single_rr_inproc_262144_runs3.txt`,
+C `perf_c_single_linux_20260531_084343_round_20260530_c_single_dr_inproc_131072_runs3.txt`,
+C++ `perf_cpp_single_linux_20260531_084403_round_20260530_cpp_single_dr_inproc_131072_runs3.txt`,
+C `perf_c_single_linux_20260531_085029_round_20260530_c_single_dr_inproc_131072_reconfirm.txt`,
+C++ `perf_cpp_single_linux_20260531_085235_round_20260530_cpp_single_dr_inproc_131072_final_residual.txt`.
+보류 cell (1개): `DEALER_ROUTER inproc 131072B`는 runs=3 제한 재측정 median에서도
+65.1%로 최소 기준 70%에 못 닿았다. `DEALER_ROUTER inproc 262144B`는 제한 재측정에서
+172.9%로 회복됐고, `ROUTER_ROUTER inproc 262144B`는 단발 제한 재측정에서는 40.5%였지만
+runs=3 median에서 88.7%로 회복되어 측정 변동으로 판정했다.
+추가 원인 확인으로 C++ perf adapter를 거치지 않고 public `dealer_socket_t`/`router_socket_t`를
+직접 쓰는 실험과, routed recv의 RID assign 비용을 줄이는 실험을 각각 수행했지만
+`perf_cpp_single_linux_20260531_084842_round_20260530_cpp_single_dr_inproc_131072_direct_socket_recheck.txt`,
+`perf_cpp_single_linux_20260531_085121_round_20260530_cpp_single_dr_inproc_131072_rid_assign_recheck.txt`
+모두 개선을 만들지 못했다. 두 실험 변경은 최종 코드에 남기지 않았다. 남은 차이는
+inproc routed 대용량 단일 조건에서만 반복되는 국소 항목이다. 현재 perf driver는
+이미 public `router_socket_t::recv(routing_id_t&, message_t&, ...)` 단일 part 경로를
+사용하고 있어 `received_t` materialize 비용도 피한다. RID assign 실험은 median
+232.52K msg/s로 최종 잔류 측정 224.33K msg/s와 같은 변동 범위였고, C 기준
+344.75K msg/s의 70% 기준에는 못 닿았다. public API를 유지한 상태에서 더 줄일 수 있는
+C++ binding 내부 후보가 확인되지 않아 보류로 둔다.
+
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `inproc` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `inproc` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `inproc` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `inproc` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `inproc` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
+| `tcp` | `PAIR` | `통과(98.5%)` | `통과(100.5%)` | `통과(95.1%)` | `통과(99.7%)` | `통과(99.2%)` | `통과(99.1%)` | C full/C++ full. |
+| `tcp` | `PUBSUB` | `통과(107.3%)` | `통과(117.7%)` | `통과(132.2%)` | `통과(510.3%)` | `통과(578.5%)` | `통과(622.9%)` | C full/C++ full. |
+| `tcp` | `DEALER_DEALER` | `통과(100.2%)` | `통과(99.4%)` | `통과(99.7%)` | `통과(99.0%)` | `통과(99.0%)` | `통과(101.2%)` | C full/C++ full. |
+| `tcp` | `DEALER_ROUTER` | `통과(89.9%)` | `통과(89.2%)` | `통과(100.7%)` | `통과(99.1%)` | `통과(97.8%)` | `통과(96.0%)` | C full/C++ full. |
+| `tcp` | `ROUTER_ROUTER` | `통과(97.9%)` | `통과(97.7%)` | `통과(101.8%)` | `통과(100.9%)` | `통과(102.9%)` | `통과(99.0%)` | C full/C++ full. |
+| `tcp` | `SPOT` | `통과(105.5%)` | `통과(102.0%)` | `통과(98.4%)` | `통과(88.0%)` | `통과(85.5%)` | `통과(98.0%)` | C full/C++ full. |
+| `ws` | `PAIR` | `통과(100.6%)` | `통과(99.7%)` | `통과(93.8%)` | `통과(99.0%)` | `통과(98.8%)` | `통과(99.9%)` | C full/C++ full. |
+| `ws` | `PUBSUB` | `통과(97.3%)` | `통과(103.5%)` | `통과(117.0%)` | `통과(236.1%)` | `통과(303.3%)` | `통과(448.7%)` | C full/C++ full. |
+| `ws` | `DEALER_DEALER` | `통과(99.3%)` | `통과(99.1%)` | `통과(89.9%)` | `통과(100.1%)` | `통과(100.6%)` | `통과(99.7%)` | C full/C++ full. |
+| `ws` | `DEALER_ROUTER` | `통과(96.5%)` | `통과(93.7%)` | `통과(96.4%)` | `통과(95.2%)` | `통과(98.7%)` | `통과(98.7%)` | C full/C++ full. |
+| `ws` | `ROUTER_ROUTER` | `통과(112.5%)` | `통과(98.6%)` | `통과(96.2%)` | `통과(103.4%)` | `통과(101.0%)` | `통과(103.1%)` | C full/C++ full. |
+| `ws` | `SPOT` | `통과(99.6%)` | `통과(101.3%)` | `통과(101.7%)` | `통과(91.9%)` | `통과(103.9%)` | `통과(98.2%)` | C full/C++ full. |
+| `wss` | `PAIR` | `통과(100.1%)` | `통과(99.1%)` | `통과(99.0%)` | `통과(97.7%)` | `통과(92.3%)` | `통과(110.0%)` | C full/C++ full. |
+| `wss` | `PUBSUB` | `통과(108.0%)` | `통과(104.7%)` | `통과(125.5%)` | `통과(110.7%)` | `통과(91.2%)` | `통과(115.7%)` | C full/C++ full. |
+| `wss` | `DEALER_DEALER` | `통과(99.1%)` | `통과(98.8%)` | `통과(96.2%)` | `통과(100.0%)` | `통과(101.0%)` | `통과(87.1%)` | C full/C++ full. |
+| `wss` | `DEALER_ROUTER` | `통과(93.2%)` | `통과(94.3%)` | `통과(96.0%)` | `통과(95.0%)` | `통과(97.8%)` | `통과(125.0%)` | C full/C++ full. |
+| `wss` | `ROUTER_ROUTER` | `통과(115.7%)` | `통과(99.8%)` | `통과(100.7%)` | `통과(98.8%)` | `통과(95.9%)` | `통과(114.5%)` | C full/C++ full. |
+| `wss` | `SPOT` | `통과(103.7%)` | `통과(101.3%)` | `통과(99.2%)` | `통과(101.4%)` | `통과(105.0%)` | `통과(427.3%)` | C full/C++ full. |
+| `tls` | `PAIR` | `통과(99.7%)` | `통과(100.6%)` | `통과(99.8%)` | `통과(98.2%)` | `통과(97.8%)` | `통과(98.8%)` | C full/C++ full. |
+| `tls` | `PUBSUB` | `통과(109.9%)` | `통과(109.1%)` | `통과(125.5%)` | `통과(122.0%)` | `통과(129.9%)` | `통과(134.3%)` | C full/C++ full. |
+| `tls` | `DEALER_DEALER` | `통과(99.5%)` | `통과(99.1%)` | `통과(95.0%)` | `통과(97.3%)` | `통과(100.6%)` | `통과(100.9%)` | C full/C++ full. |
+| `tls` | `DEALER_ROUTER` | `통과(95.1%)` | `통과(98.6%)` | `통과(96.7%)` | `통과(96.5%)` | `통과(98.2%)` | `통과(99.1%)` | C full/C++ full. |
+| `tls` | `ROUTER_ROUTER` | `통과(110.5%)` | `통과(111.5%)` | `통과(94.5%)` | `통과(96.5%)` | `통과(98.6%)` | `통과(100.9%)` | C full/C++ full. |
+| `tls` | `SPOT` | `통과(100.1%)` | `통과(105.5%)` | `통과(96.8%)` | `통과(98.8%)` | `통과(102.8%)` | `통과(99.0%)` | C full/C++ full. |
+| `inproc` | `PAIR` | `통과(101.2%)` | `통과(88.9%)` | `통과(95.2%)` | `통과(98.9%)` | `통과(99.6%)` | `통과(100.8%)` | C full/C++ full. |
+| `inproc` | `PUBSUB` | `통과(107.7%)` | `통과(109.3%)` | `통과(117.2%)` | `통과(1178.9%)` | `통과(1098.4%)` | `통과(1693.8%)` | C full/C++ full. |
+| `inproc` | `DEALER_DEALER` | `통과(98.5%)` | `통과(111.9%)` | `통과(102.3%)` | `통과(100.6%)` | `통과(99.7%)` | `통과(99.4%)` | C full/C++ full. |
+| `inproc` | `DEALER_ROUTER` | `통과(96.4%)` | `통과(99.1%)` | `통과(95.3%)` | `통과(84.0%)` | `보류(65.1%)` | `통과(172.9%)` | 131072B는 최종 제한 재측정 C `perf_c_single_linux_20260531_085029_round_20260530_c_single_dr_inproc_131072_reconfirm.txt`, C++ `perf_cpp_single_linux_20260531_085235_round_20260530_cpp_single_dr_inproc_131072_final_residual.txt` 기준. perf adapter 직접화와 RID assign 실험은 개선을 만들지 못해 최종 코드에 남기지 않았다. public API를 유지한 상태에서 더 줄일 내부 후보가 확인되지 않아 보류한다. 262144B는 제한 재측정 C `perf_c_single_linux_20260531_083553_round_20260530_c_single_dr_inproc_large_recheck.txt`, C++ `perf_cpp_single_linux_20260531_083607_round_20260530_cpp_single_dr_inproc_large_recheck.txt` 기준. |
+| `inproc` | `ROUTER_ROUTER` | `통과(105.5%)` | `통과(97.4%)` | `통과(100.9%)` | `통과(88.5%)` | `통과(77.6%)` | `통과(88.7%)` | 262144B는 runs=3 제한 재측정 C `perf_c_single_linux_20260531_084303_round_20260530_c_single_rr_inproc_262144_runs3.txt`, C++ `perf_cpp_single_linux_20260531_084322_round_20260530_cpp_single_rr_inproc_262144_runs3.txt` 기준. |
 | `inproc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | full single에서 SPOT inproc 조합은 결과가 없다. |
-| `ipc` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ipc` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ipc` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ipc` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ipc` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
+| `ipc` | `PAIR` | `통과(99.3%)` | `통과(98.6%)` | `통과(92.8%)` | `통과(98.5%)` | `통과(101.1%)` | `통과(100.0%)` | C full/C++ full. |
+| `ipc` | `PUBSUB` | `통과(108.4%)` | `통과(114.0%)` | `통과(122.3%)` | `통과(490.7%)` | `통과(360.2%)` | `통과(593.5%)` | C full/C++ full. |
+| `ipc` | `DEALER_DEALER` | `통과(98.7%)` | `통과(98.5%)` | `통과(99.2%)` | `통과(100.0%)` | `통과(99.4%)` | `통과(99.2%)` | C full/C++ full. |
+| `ipc` | `DEALER_ROUTER` | `통과(90.8%)` | `통과(95.4%)` | `통과(95.0%)` | `통과(100.0%)` | `통과(87.2%)` | `통과(96.7%)` | C full/C++ full. |
+| `ipc` | `ROUTER_ROUTER` | `통과(102.0%)` | `통과(102.0%)` | `통과(96.3%)` | `통과(97.9%)` | `통과(100.1%)` | `통과(102.4%)` | C full/C++ full. |
 | `ipc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | full single에서 SPOT ipc 조합은 결과가 없다. |
-
 
 ### 3.2 Multi suite
 
+2026-05-31 round v1 결과. C 기준 파일 `perf_c_multi_linux_20260530_234108_round_20260530_c_multi_baseline.txt`,
+C++ 결과 파일 `perf_cpp_multi_linux_20260531_075935_round_20260530_cpp_multi_full_v1_pool.txt`.
+두 파일 모두 status=complete, 결과 라인 960/960이다. Full 비교에서 `MULTI_PUBSUB tls 65536B`만
+71.4%로 낮았으나, 같은 조건 제한 재측정 C `perf_c_multi_linux_20260531_083459_round_20260530_c_multi_pubsub_tls_65536_recheck.txt`,
+C++ `perf_cpp_multi_linux_20260531_083512_round_20260530_cpp_multi_pubsub_tls_65536_recheck.txt`가
+status=complete로 끝났고 C 대비 84.7%라 통과로 보강했다.
+
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `통과(88.7%)` | `통과(106.2%)` | `통과(106.8%)` | `통과(109.7%)` | `통과(100.4%)` | `통과(98.9%)` | C full/C++ full. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `통과(96.9%)` | `통과(99.5%)` | `통과(101.6%)` | `통과(100.4%)` | `통과(93.5%)` | `통과(102.8%)` | C full/C++ full. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `통과(92.0%)` | `통과(88.8%)` | `통과(90.0%)` | `통과(90.1%)` | `통과(89.3%)` | `통과(97.9%)` | C full/C++ full. |
+| `tcp` | `MULTI_PUBSUB` | `통과(81.0%)` | `통과(88.2%)` | `통과(116.9%)` | `통과(83.5%)` | `통과(85.0%)` | `통과(130.5%)` | C full/C++ full. |
+| `tcp` | `MULTI_SPOT` | `통과(108.0%)` | `통과(97.3%)` | `통과(95.9%)` | `통과(105.3%)` | `통과(106.3%)` | `통과(96.5%)` | C full/C++ full. |
+| `tcp` | `MULTI_SPOT_REQREP` | `통과(94.2%)` | `통과(93.8%)` | `통과(94.9%)` | `통과(92.9%)` | `통과(102.1%)` | `통과(117.6%)` | C full/C++ full. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `통과(108.4%)` | `통과(101.9%)` | `통과(116.9%)` | `통과(117.0%)` | `통과(100.5%)` | `통과(118.4%)` | C full/C++ full. |
+| `tcp` | `MULTI_STREAM` | `통과(118.0%)` | `통과(112.9%)` | `통과(115.5%)` | `해당 없음` | `통과(93.0%)` | `해당 없음` | C full/C++ full. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
+| `ws` | `MULTI_DEALER_DEALER` | `통과(94.9%)` | `통과(108.0%)` | `통과(103.8%)` | `통과(105.8%)` | `통과(102.5%)` | `통과(104.6%)` | C full/C++ full. |
+| `ws` | `MULTI_DEALER_ROUTER` | `통과(93.1%)` | `통과(90.3%)` | `통과(95.9%)` | `통과(92.9%)` | `통과(91.3%)` | `통과(107.7%)` | C full/C++ full. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `통과(90.8%)` | `통과(98.0%)` | `통과(90.6%)` | `통과(92.7%)` | `통과(75.3%)` | `통과(118.1%)` | C full/C++ full. |
+| `ws` | `MULTI_PUBSUB` | `통과(99.3%)` | `통과(99.9%)` | `통과(101.3%)` | `통과(129.6%)` | `통과(120.5%)` | `통과(108.3%)` | C full/C++ full. |
+| `ws` | `MULTI_SPOT` | `통과(93.1%)` | `통과(97.8%)` | `통과(100.5%)` | `통과(95.0%)` | `통과(108.8%)` | `통과(107.6%)` | C full/C++ full. |
+| `ws` | `MULTI_SPOT_REQREP` | `통과(98.7%)` | `통과(93.2%)` | `통과(94.5%)` | `통과(100.2%)` | `통과(101.2%)` | `통과(99.9%)` | C full/C++ full. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `통과(97.1%)` | `통과(91.2%)` | `통과(88.9%)` | `통과(103.4%)` | `통과(112.6%)` | `통과(109.4%)` | C full/C++ full. |
+| `ws` | `MULTI_STREAM` | `통과(133.1%)` | `통과(137.3%)` | `통과(126.6%)` | `해당 없음` | `통과(99.1%)` | `해당 없음` | C full/C++ full. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
+| `wss` | `MULTI_DEALER_DEALER` | `통과(93.7%)` | `통과(103.3%)` | `통과(115.6%)` | `통과(102.4%)` | `통과(107.6%)` | `통과(107.5%)` | C full/C++ full. |
+| `wss` | `MULTI_DEALER_ROUTER` | `통과(96.2%)` | `통과(98.7%)` | `통과(95.5%)` | `통과(95.5%)` | `통과(98.6%)` | `통과(102.0%)` | C full/C++ full. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `통과(97.1%)` | `통과(95.0%)` | `통과(96.7%)` | `통과(97.3%)` | `통과(108.4%)` | `통과(107.9%)` | C full/C++ full. |
+| `wss` | `MULTI_PUBSUB` | `통과(95.2%)` | `통과(93.2%)` | `통과(109.1%)` | `통과(126.0%)` | `통과(106.8%)` | `통과(105.9%)` | C full/C++ full. |
+| `wss` | `MULTI_SPOT` | `통과(97.2%)` | `통과(99.5%)` | `통과(100.9%)` | `통과(88.6%)` | `통과(85.1%)` | `통과(100.0%)` | C full/C++ full. |
+| `wss` | `MULTI_SPOT_REQREP` | `통과(92.8%)` | `통과(90.3%)` | `통과(92.1%)` | `통과(97.1%)` | `통과(108.1%)` | `통과(104.2%)` | C full/C++ full. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `통과(105.1%)` | `통과(99.1%)` | `통과(90.7%)` | `통과(97.8%)` | `통과(103.2%)` | `통과(103.6%)` | C full/C++ full. |
+| `wss` | `MULTI_STREAM` | `통과(107.2%)` | `통과(111.0%)` | `통과(103.1%)` | `해당 없음` | `통과(96.4%)` | `해당 없음` | C full/C++ full. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
+| `tls` | `MULTI_DEALER_DEALER` | `통과(86.9%)` | `통과(113.7%)` | `통과(109.1%)` | `통과(104.0%)` | `통과(94.8%)` | `통과(95.8%)` | C full/C++ full. |
+| `tls` | `MULTI_DEALER_ROUTER` | `통과(95.8%)` | `통과(92.8%)` | `통과(94.8%)` | `통과(96.2%)` | `통과(100.8%)` | `통과(113.4%)` | C full/C++ full. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `통과(94.5%)` | `통과(93.4%)` | `통과(95.2%)` | `통과(95.6%)` | `통과(100.9%)` | `통과(112.3%)` | C full/C++ full. |
+| `tls` | `MULTI_PUBSUB` | `통과(95.6%)` | `통과(98.1%)` | `통과(104.3%)` | `통과(108.7%)` | `통과(84.7%)` | `통과(105.3%)` | C full/C++ full. 65536B는 제한 재측정 C `perf_c_multi_linux_20260531_083459_round_20260530_c_multi_pubsub_tls_65536_recheck.txt`, C++ `perf_cpp_multi_linux_20260531_083512_round_20260530_cpp_multi_pubsub_tls_65536_recheck.txt`로 통과(84.7%). |
+| `tls` | `MULTI_SPOT` | `통과(92.6%)` | `통과(94.8%)` | `통과(101.7%)` | `통과(101.2%)` | `통과(103.1%)` | `통과(110.4%)` | C full/C++ full. |
+| `tls` | `MULTI_SPOT_REQREP` | `통과(93.6%)` | `통과(96.9%)` | `통과(92.6%)` | `통과(91.5%)` | `통과(109.0%)` | `통과(97.1%)` | C full/C++ full. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `통과(106.6%)` | `통과(122.6%)` | `통과(109.5%)` | `통과(98.4%)` | `통과(104.4%)` | `통과(101.3%)` | C full/C++ full. |
+| `tls` | `MULTI_STREAM` | `통과(103.5%)` | `통과(112.2%)` | `통과(105.1%)` | `해당 없음` | `통과(101.5%)` | `해당 없음` | C full/C++ full. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
 
 
 ## 4. .NET 상태
@@ -141,82 +177,123 @@ perf 경로: `bindings/dotnet/perf`. 기준 파일과 보강 파일은 측정 �
 
 ### 4.1 Single suite
 
+.NET single full 결과 파일은 `perf_dotnet_single_linux_20260531_085442_round_20260530_dotnet_single_full_v1.txt`이다.
+이 파일은 `DEALER_DEALER ipc 256B` timeout 때문에 status=partial이지만, 나머지 결과는 모두 report에 남았다.
+보강 파일은 .NET `perf_dotnet_single_linux_20260531_091915_round_20260530_dotnet_single_dd_ipc_256_recheck.txt`,
+C `perf_c_single_linux_20260531_091949_round_20260530_c_single_dotnet_inproc_failset_recheck.txt`,
+.NET `perf_dotnet_single_linux_20260531_092351_round_20260530_dotnet_single_inproc_failset_recheck.txt`이다.
+초기 잔류 미달 cell은 inproc 8개였다. `DEALER_DEALER`의 작은 message 2개와 routed one-way의 큰 message 6개가
+runs=3 제한 재측정에서도 기준에 못 닿았다. 추가 검토에서 `DEALER_ROUTER`/`ROUTER_ROUTER` active recv가
+poller 대기 뒤 `DontWait` drain을 쓰는 점을 확인했다. `DEALER_ROUTER`에 blocking 첫 recv를 적용한
+`perf_dotnet_single_linux_20260531_220036_dotnet_single_routed_inproc_blocking_recv_20260531.txt`는
+대용량 throughput이 크게 떨어져 회귀로 판정하고 변경을 남기지 않았다. `ROUTER_ROUTER`에는 같은 정렬이
+효과가 있어 `perf_dotnet_single_linux_20260531_220311_dotnet_single_rr_inproc_blocking_recv_20260531.txt`에서
+262144B가 94.8%로 통과했다. 65536B/131072B는 각각 33.4%/28.6%로 아직 기준에 못 닿았다.
+남은 routed 경로는 .NET public `Received` envelope와 `Message` wrapper를 거쳐 payload를 꺼내야 하므로,
+C의 native part 직접 수신보다 managed envelope 비용이 더 크게 드러난다. `DEALER_ROUTER`에 같은
+blocking-first 수신을 적용한 실험은
+`perf_dotnet_single_linux_20260531_220036_dotnet_single_routed_inproc_blocking_recv_20260531.txt`에서
+대용량 throughput이 기존 제한 재측정보다 크게 낮아져 최종 코드에 남기지 않았다. `DEALER_DEALER`는 이미
+C와 같은 blocking-first + `DontWait` burst-drain 구조이고, routed recv는 public `Recv(Received, ...)`
+경로 밖의 내부 `RecvPart`를 perf에서 직접 호출하지 않는 정책을 지켜야 한다. 따라서 public API를
+유지한 상태에서 더 줄일 내부 후보가 확인되지 않은 7개 single cell은 보류로 둔다.
+
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `inproc` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `inproc` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `inproc` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `inproc` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `inproc` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
+| `tcp` | `PAIR` | `통과(98.2%)` | `통과(75.3%)` | `통과(113.3%)` | `통과(100.1%)` | `통과(100.9%)` | `통과(99.7%)` | C full/.NET full. |
+| `tcp` | `PUBSUB` | `통과(90.2%)` | `통과(84.7%)` | `통과(113.2%)` | `통과(97.9%)` | `통과(100.4%)` | `통과(100.4%)` | C full/.NET full. |
+| `tcp` | `DEALER_DEALER` | `통과(76.9%)` | `통과(80.3%)` | `통과(105.6%)` | `통과(98.7%)` | `통과(98.3%)` | `통과(98.1%)` | C full/.NET full. |
+| `tcp` | `DEALER_ROUTER` | `통과(76.8%)` | `통과(74.3%)` | `통과(83.1%)` | `통과(81.1%)` | `통과(97.7%)` | `통과(95.1%)` | C full/.NET full. |
+| `tcp` | `ROUTER_ROUTER` | `통과(90.6%)` | `통과(88.7%)` | `통과(88.8%)` | `통과(80.5%)` | `통과(95.7%)` | `통과(100.6%)` | C full/.NET full. |
+| `tcp` | `SPOT` | `통과(114.8%)` | `통과(97.8%)` | `통과(77.6%)` | `통과(97.3%)` | `통과(96.0%)` | `통과(92.9%)` | C full/.NET full. |
+| `ws` | `PAIR` | `통과(98.0%)` | `통과(96.8%)` | `통과(117.6%)` | `통과(99.5%)` | `통과(99.0%)` | `통과(98.0%)` | C full/.NET full. |
+| `ws` | `PUBSUB` | `통과(91.4%)` | `통과(91.4%)` | `통과(107.9%)` | `통과(98.8%)` | `통과(98.2%)` | `통과(98.3%)` | C full/.NET full. |
+| `ws` | `DEALER_DEALER` | `통과(73.6%)` | `통과(82.0%)` | `통과(100.8%)` | `통과(97.8%)` | `통과(99.6%)` | `통과(101.1%)` | C full/.NET full. |
+| `ws` | `DEALER_ROUTER` | `통과(78.0%)` | `통과(78.7%)` | `통과(88.5%)` | `통과(90.0%)` | `통과(95.8%)` | `통과(98.4%)` | C full/.NET full. |
+| `ws` | `ROUTER_ROUTER` | `통과(94.0%)` | `통과(82.1%)` | `통과(89.1%)` | `통과(89.9%)` | `통과(98.4%)` | `통과(103.6%)` | C full/.NET full. |
+| `ws` | `SPOT` | `통과(120.6%)` | `통과(100.4%)` | `통과(83.4%)` | `통과(90.5%)` | `통과(96.0%)` | `통과(97.3%)` | C full/.NET full. |
+| `wss` | `PAIR` | `통과(97.9%)` | `통과(99.2%)` | `통과(115.5%)` | `통과(104.3%)` | `통과(95.6%)` | `통과(99.5%)` | C full/.NET full. |
+| `wss` | `PUBSUB` | `통과(93.2%)` | `통과(93.8%)` | `통과(114.0%)` | `통과(96.3%)` | `통과(97.4%)` | `통과(97.8%)` | C full/.NET full. |
+| `wss` | `DEALER_DEALER` | `통과(69.3%)` | `통과(82.1%)` | `통과(113.7%)` | `통과(104.7%)` | `통과(99.9%)` | `통과(92.6%)` | C full/.NET full. |
+| `wss` | `DEALER_ROUTER` | `통과(79.5%)` | `통과(83.7%)` | `통과(98.3%)` | `통과(88.9%)` | `통과(99.5%)` | `통과(104.5%)` | C full/.NET full. |
+| `wss` | `ROUTER_ROUTER` | `통과(95.7%)` | `통과(79.6%)` | `통과(99.9%)` | `통과(93.3%)` | `통과(100.3%)` | `통과(117.1%)` | C full/.NET full. |
+| `wss` | `SPOT` | `통과(120.0%)` | `통과(99.2%)` | `통과(88.8%)` | `통과(95.1%)` | `통과(94.0%)` | `통과(196.5%)` | C full/.NET full. |
+| `tls` | `PAIR` | `통과(98.0%)` | `통과(87.0%)` | `통과(113.3%)` | `통과(101.1%)` | `통과(100.0%)` | `통과(99.4%)` | C full/.NET full. |
+| `tls` | `PUBSUB` | `통과(93.6%)` | `통과(80.3%)` | `통과(113.2%)` | `통과(99.4%)` | `통과(99.7%)` | `통과(97.8%)` | C full/.NET full. |
+| `tls` | `DEALER_DEALER` | `통과(73.0%)` | `통과(82.7%)` | `통과(120.1%)` | `통과(97.9%)` | `통과(98.3%)` | `통과(101.1%)` | C full/.NET full. |
+| `tls` | `DEALER_ROUTER` | `통과(81.9%)` | `통과(79.9%)` | `통과(105.5%)` | `통과(101.4%)` | `통과(107.3%)` | `통과(105.6%)` | C full/.NET full. |
+| `tls` | `ROUTER_ROUTER` | `통과(87.5%)` | `통과(87.9%)` | `통과(102.1%)` | `통과(92.4%)` | `통과(100.4%)` | `통과(102.0%)` | C full/.NET full. |
+| `tls` | `SPOT` | `통과(116.2%)` | `통과(96.1%)` | `통과(93.2%)` | `통과(98.8%)` | `통과(104.7%)` | `통과(98.3%)` | C full/.NET full. |
+| `inproc` | `PAIR` | `통과(76.5%)` | `통과(85.9%)` | `통과(80.8%)` | `통과(98.9%)` | `통과(98.0%)` | `통과(98.2%)` | C full/.NET full. |
+| `inproc` | `PUBSUB` | `통과(88.3%)` | `통과(98.1%)` | `통과(100.9%)` | `통과(100.9%)` | `통과(100.1%)` | `통과(99.0%)` | C full/.NET full. |
+| `inproc` | `DEALER_DEALER` | `보류(50.4%)` | `통과(69.0%)` | `보류(60.7%)` | `통과(98.9%)` | `통과(99.1%)` | `통과(99.5%)` | inproc 후보군은 제한 재측정 C `perf_c_single_linux_20260531_091949_round_20260530_c_single_dotnet_inproc_failset_recheck.txt`, .NET `perf_dotnet_single_linux_20260531_092351_round_20260530_dotnet_single_inproc_failset_recheck.txt` 기준. 이미 C와 같은 blocking-first + `DontWait` burst-drain 구조라 추가 내부 후보가 확인되지 않았다. |
+| `inproc` | `DEALER_ROUTER` | `통과(78.4%)` | `통과(83.7%)` | `통과(78.1%)` | `보류(35.8%)` | `보류(29.4%)` | `보류(47.1%)` | inproc 후보군은 제한 재측정 C `perf_c_single_linux_20260531_091949_round_20260530_c_single_dotnet_inproc_failset_recheck.txt`, .NET `perf_dotnet_single_linux_20260531_092351_round_20260530_dotnet_single_inproc_failset_recheck.txt` 기준. blocking-first 수신 실험은 회귀해 최종 코드에 남기지 않았다. public `Recv(Received, ...)` envelope 비용을 우회하지 않는 내부 후보가 확인되지 않았다. |
+| `inproc` | `ROUTER_ROUTER` | `통과(88.5%)` | `통과(77.7%)` | `통과(80.5%)` | `보류(33.4%)` | `보류(28.6%)` | `통과(94.8%)` | 65536B/131072B/262144B는 routed active recv 정렬 뒤 .NET `perf_dotnet_single_linux_20260531_220311_dotnet_single_rr_inproc_blocking_recv_20260531.txt` 기준. C 기준은 `perf_c_single_linux_20260531_091949_round_20260530_c_single_dotnet_inproc_failset_recheck.txt`. 262144B는 통과로 회복했고, 65536B/131072B는 같은 코드 변경 뒤에도 기준에 못 닿아 보류한다. |
 | `inproc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | full single에서 SPOT inproc 조합은 결과가 없다. |
-| `ipc` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ipc` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ipc` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ipc` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ipc` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
+| `ipc` | `PAIR` | `통과(100.8%)` | `통과(97.5%)` | `통과(115.9%)` | `통과(98.0%)` | `통과(98.2%)` | `통과(99.2%)` | C full/.NET full. |
+| `ipc` | `PUBSUB` | `통과(80.8%)` | `통과(86.3%)` | `통과(105.1%)` | `통과(99.2%)` | `통과(98.6%)` | `통과(98.1%)` | C full/.NET full. |
+| `ipc` | `DEALER_DEALER` | `통과(74.8%)` | `통과(74.4%)` | `통과(109.5%)` | `통과(99.1%)` | `통과(101.4%)` | `통과(99.9%)` | 256B는 full에서 timeout이었고 제한 재측정 .NET `perf_dotnet_single_linux_20260531_091915_round_20260530_dotnet_single_dd_ipc_256_recheck.txt`로 보강. 나머지는 C full/.NET full. |
+| `ipc` | `DEALER_ROUTER` | `통과(75.6%)` | `통과(81.1%)` | `통과(83.9%)` | `통과(83.7%)` | `통과(96.6%)` | `통과(100.4%)` | C full/.NET full. |
+| `ipc` | `ROUTER_ROUTER` | `통과(85.4%)` | `통과(91.0%)` | `통과(79.6%)` | `통과(72.4%)` | `통과(83.4%)` | `통과(95.4%)` | C full/.NET full. |
 | `ipc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | full single에서 SPOT ipc 조합은 결과가 없다. |
 
 
 ### 4.2 Multi suite
 
+C 기준 full 파일은 `perf_c_multi_linux_20260530_234108_round_20260530_c_multi_baseline.txt`이고,
+.NET full 파일은 `perf_dotnet_multi_linux_20260531_093111_round_20260530_dotnet_multi_full_v1.txt`이다.
+.NET full은 status=complete, 결과 라인 920/920이며 runner 기본 size가 `4096` 대신
+`262144`를 포함하므로 `perf_dotnet_multi_linux_20260531_100028_round_20260530_dotnet_multi_4096_fill.txt`로
+4096B를 보강했다. 미달 후보는 C/.NET 제한 재측정
+`perf_c_multi_linux_20260531_100611_round_20260530_c_multi_dotnet_routed_failset_recheck.txt`,
+`perf_dotnet_multi_linux_20260531_100808_round_20260530_dotnet_multi_routed_failset_recheck.txt`,
+`perf_c_multi_linux_20260531_101006_round_20260530_c_multi_dotnet_spot_failset_recheck.txt`,
+`perf_dotnet_multi_linux_20260531_101624_round_20260530_dotnet_multi_spot_failset_recheck.txt`로
+다시 확인했다. `perf_dotnet_multi_linux_20260531_101624_round_20260530_dotnet_multi_spot_failset_recheck.txt`에서
+`MULTI_SPOT tls 1024B`가 server shutdown timeout으로 partial이었으나, 단독 재측정
+`perf_dotnet_multi_linux_20260531_102129_round_20260530_dotnet_multi_spot_tls_1024_timeout_recheck.txt`는
+complete였다.
+
+잔류 보류 cell은 11개다. tcp routed large payload는 public .NET wrapper가 routed envelope를
+관리하는 비용이 C hot path보다 크게 드러나는 구간이고, `MULTI_SPOT wss`와
+`MULTI_SPOT_SENDSEND` 소형 일부는 managed dispatch와 TLS/WebSocket 경계 비용이 같이
+드러나는 구간이다. public API를 우회하거나 native envelope를 그대로 노출하지 않는 한
+좁게 줄일 수 있는 내부 변경점은 확인되지 않아 코드 변경 없이 문서화한다.
+
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `보류(56.9%)` | `통과(68.0%)` | `통과(75.4%)` | `통과(63.4%)` | `통과(106.4%)` | `통과(103.0%)` | tcp routed failset 제한 재측정 기준. C full/.NET full. public send/recv 경로를 유지한 상태에서 추가 내부 후보가 확인되지 않았다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `통과(65.2%)` | `통과(66.1%)` | `통과(63.6%)` | `통과(56.6%)` | `보류(46.5%)` | `보류(18.0%)` | tcp routed failset 제한 재측정 기준. C full/.NET full. public routed envelope 비용을 우회하지 않는 추가 내부 후보가 확인되지 않았다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `통과(52.0%)` | `통과(51.1%)` | `통과(52.1%)` | `보류(48.9%)` | `보류(37.9%)` | `보류(16.0%)` | tcp routed failset 제한 재측정 기준. C full/.NET full. public routed envelope 비용을 우회하지 않는 추가 내부 후보가 확인되지 않았다. |
+| `tcp` | `MULTI_PUBSUB` | `통과(71.2%)` | `통과(80.5%)` | `통과(153.3%)` | `통과(181.7%)` | `통과(71.9%)` | `통과(100.4%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `tcp` | `MULTI_SPOT` | `통과(74.1%)` | `통과(77.1%)` | `통과(67.5%)` | `통과(80.2%)` | `통과(105.2%)` | `통과(102.6%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `tcp` | `MULTI_SPOT_REQREP` | `통과(70.5%)` | `통과(73.8%)` | `통과(80.4%)` | `통과(90.0%)` | `통과(98.8%)` | `통과(109.8%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `통과(61.2%)` | `통과(60.2%)` | `통과(66.7%)` | `통과(70.2%)` | `통과(93.4%)` | `통과(93.7%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `tcp` | `MULTI_STREAM` | `통과(111.1%)` | `통과(110.8%)` | `통과(112.2%)` | `해당 없음` | `통과(94.8%)` | `해당 없음` | C full/.NET full. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
+| `ws` | `MULTI_DEALER_DEALER` | `통과(65.0%)` | `통과(70.8%)` | `통과(77.8%)` | `통과(70.9%)` | `통과(108.3%)` | `통과(96.7%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `ws` | `MULTI_DEALER_ROUTER` | `통과(64.3%)` | `통과(60.1%)` | `통과(61.8%)` | `통과(64.4%)` | `통과(57.8%)` | `통과(80.8%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `통과(53.8%)` | `통과(58.8%)` | `통과(54.6%)` | `통과(55.4%)` | `통과(60.9%)` | `통과(79.0%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `ws` | `MULTI_PUBSUB` | `통과(79.5%)` | `통과(74.3%)` | `통과(78.7%)` | `통과(104.0%)` | `통과(144.9%)` | `통과(125.1%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `ws` | `MULTI_SPOT` | `통과(68.0%)` | `통과(74.3%)` | `통과(72.4%)` | `통과(83.9%)` | `통과(107.6%)` | `통과(101.7%)` | SPOT failset 제한 재측정 기준. C full/.NET full. |
+| `ws` | `MULTI_SPOT_REQREP` | `통과(80.5%)` | `통과(82.5%)` | `통과(86.1%)` | `통과(94.7%)` | `통과(102.5%)` | `통과(103.2%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `통과(62.4%)` | `통과(64.0%)` | `통과(66.8%)` | `통과(90.7%)` | `통과(101.7%)` | `통과(91.2%)` | SPOT failset 제한 재측정 기준. C full/.NET full. |
+| `ws` | `MULTI_STREAM` | `통과(113.3%)` | `통과(116.6%)` | `통과(110.9%)` | `해당 없음` | `통과(96.4%)` | `해당 없음` | C full/.NET full. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
+| `wss` | `MULTI_DEALER_DEALER` | `통과(63.1%)` | `통과(68.5%)` | `통과(90.4%)` | `통과(103.6%)` | `통과(107.6%)` | `통과(106.1%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `wss` | `MULTI_DEALER_ROUTER` | `통과(65.9%)` | `통과(62.7%)` | `통과(62.8%)` | `통과(68.6%)` | `통과(98.4%)` | `통과(100.8%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `통과(56.1%)` | `통과(56.9%)` | `통과(56.4%)` | `통과(57.9%)` | `통과(103.4%)` | `통과(106.5%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `wss` | `MULTI_PUBSUB` | `통과(74.2%)` | `통과(66.4%)` | `통과(91.2%)` | `통과(97.7%)` | `통과(110.8%)` | `통과(112.3%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `wss` | `MULTI_SPOT` | `통과(69.9%)` | `보류(42.1%)` | `보류(27.2%)` | `보류(54.9%)` | `통과(66.2%)` | `통과(78.1%)` | SPOT failset 제한 재측정 기준. C full/.NET full. managed dispatch와 WSS 경계 비용을 줄일 public API-safe 내부 후보가 확인되지 않았다. |
+| `wss` | `MULTI_SPOT_REQREP` | `통과(76.5%)` | `통과(87.1%)` | `통과(88.9%)` | `통과(102.6%)` | `통과(108.0%)` | `통과(97.4%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `보류(59.5%)` | `통과(60.8%)` | `통과(69.1%)` | `통과(100.9%)` | `통과(98.1%)` | `통과(94.6%)` | SPOT failset 제한 재측정 기준. C full/.NET full. managed dispatch와 WSS 경계 비용을 줄일 public API-safe 내부 후보가 확인되지 않았다. |
+| `wss` | `MULTI_STREAM` | `통과(98.8%)` | `통과(100.3%)` | `통과(93.3%)` | `해당 없음` | `통과(98.6%)` | `해당 없음` | C full/.NET full. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
+| `tls` | `MULTI_DEALER_DEALER` | `통과(67.0%)` | `통과(74.5%)` | `통과(79.1%)` | `통과(91.4%)` | `통과(98.6%)` | `통과(97.3%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `tls` | `MULTI_DEALER_ROUTER` | `통과(65.6%)` | `통과(61.3%)` | `통과(60.3%)` | `통과(66.6%)` | `통과(97.2%)` | `통과(112.4%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `통과(53.7%)` | `통과(52.3%)` | `통과(54.9%)` | `통과(55.9%)` | `통과(91.2%)` | `통과(103.0%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `tls` | `MULTI_PUBSUB` | `통과(76.4%)` | `통과(70.3%)` | `통과(84.8%)` | `통과(97.3%)` | `통과(92.4%)` | `통과(114.3%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `tls` | `MULTI_SPOT` | `통과(67.6%)` | `통과(74.0%)` | `통과(68.3%)` | `통과(63.4%)` | `통과(101.0%)` | `통과(99.7%)` | SPOT failset 제한 재측정 기준. SPOT tls 1024B는 partial timeout 후 단독 재측정 complete 기준. C full/.NET full. |
+| `tls` | `MULTI_SPOT_REQREP` | `통과(70.4%)` | `통과(83.1%)` | `통과(86.6%)` | `통과(91.4%)` | `통과(87.5%)` | `통과(93.9%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `보류(55.7%)` | `통과(63.6%)` | `통과(65.8%)` | `통과(85.2%)` | `통과(107.2%)` | `통과(94.4%)` | SPOT failset 제한 재측정 기준. C full/.NET full. managed dispatch와 TLS 경계 비용을 줄일 public API-safe 내부 후보가 확인되지 않았다. |
+| `tls` | `MULTI_STREAM` | `통과(99.9%)` | `통과(100.3%)` | `통과(92.6%)` | `해당 없음` | `통과(97.9%)` | `해당 없음` | C full/.NET full. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
 
 
 ## 5. Java 상태
@@ -226,367 +303,510 @@ perf 경로: `bindings/java/perf`. 기준 파일과 보강 파일은 측정 시�
 
 ### 5.1 Single suite
 
+Java single full 결과 파일은 `perf_java_single_linux_20260531_103037_round_20260530_java_single_full_v1.txt`이다.
+이 파일은 `tcp,tls,ws,wss` transport와 size `64,256,1024,65536,131072,262144` 전체에 대해
+status=complete, 결과 라인 720/720으로 끝났다. Smoke 파일은
+`perf_java_single_linux_20260531_102551_round_20260530_java_single_smoke_64.txt`이다.
+Full 비교에서 SPOT 대용량 10개가 미달 후보였고, C
+`perf_c_single_linux_20260531_104549_round_20260530_c_single_java_spot_large_recheck.txt`,
+Java `perf_java_single_linux_20260531_104721_round_20260530_java_single_spot_large_recheck.txt`로
+제한 재측정했다. 이 재측정에서 `SPOT wss 262144B`는 65.4%로 회복되어 통과로 보강했고,
+`SPOT tcp/tls/ws 65536B 이상` 9개는 잔류 보류로 확정했다. 해당 구간은 Java binding의
+SPOT 수신 경로가 대용량 payload를 managed buffer로 다시 감싸고 전달하는 비용이 C hot path보다
+크게 드러나는 구간이다. active 수신 루프에서 `TopicMessage`를 재사용하는 실험을
+`perf_java_single_linux_20260531_221215_java_single_spot_reuse_topicmsg_20260531.txt`로 확인했지만
+tcp 16.9%/16.5%/19.9%, ws 25.9%/26.4%/24.6%, tls 42.4%/50.9%/52.2%로 통과하지 못했고
+최종 코드에 남기지 않았다. public API를 바꾸지 않고 제거할 수 있는 좁은 내부 변경점은 확인되지 않았다.
+
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
+| `tcp` | `PAIR` | `통과(97.0%)` | `통과(95.5%)` | `통과(113.0%)` | `통과(96.8%)` | `통과(100.8%)` | `통과(98.7%)` | C full/Java full. |
+| `tcp` | `PUBSUB` | `통과(76.5%)` | `통과(85.5%)` | `통과(101.3%)` | `통과(97.0%)` | `통과(97.1%)` | `통과(100.6%)` | C full/Java full. |
+| `tcp` | `DEALER_DEALER` | `통과(96.8%)` | `통과(96.5%)` | `통과(112.4%)` | `통과(98.4%)` | `통과(99.3%)` | `통과(97.7%)` | C full/Java full. |
+| `tcp` | `DEALER_ROUTER` | `통과(82.2%)` | `통과(80.2%)` | `통과(69.5%)` | `통과(93.8%)` | `통과(92.1%)` | `통과(90.5%)` | C full/Java full. |
+| `tcp` | `ROUTER_ROUTER` | `통과(90.2%)` | `통과(98.9%)` | `통과(85.7%)` | `통과(99.7%)` | `통과(89.2%)` | `통과(87.0%)` | C full/Java full. |
+| `tcp` | `SPOT` | `통과(87.0%)` | `통과(75.7%)` | `통과(83.1%)` | `보류(18.5%)` | `보류(19.3%)` | `보류(22.3%)` | C full/Java full. SPOT 대용량 제한 재측정 기준. `TopicMessage` 재사용 실험도 통과를 만들지 못해 최종 코드에 남기지 않았다. |
+| `ws` | `PAIR` | `통과(96.6%)` | `통과(96.4%)` | `통과(132.3%)` | `통과(100.3%)` | `통과(98.5%)` | `통과(97.2%)` | C full/Java full. |
+| `ws` | `PUBSUB` | `통과(84.7%)` | `통과(89.8%)` | `통과(118.3%)` | `통과(100.7%)` | `통과(98.3%)` | `통과(97.6%)` | C full/Java full. |
+| `ws` | `DEALER_DEALER` | `통과(97.0%)` | `통과(96.8%)` | `통과(131.1%)` | `통과(98.6%)` | `통과(97.7%)` | `통과(97.3%)` | C full/Java full. |
+| `ws` | `DEALER_ROUTER` | `통과(77.1%)` | `통과(90.0%)` | `통과(117.1%)` | `통과(179.3%)` | `통과(135.2%)` | `통과(127.2%)` | C full/Java full. |
+| `ws` | `ROUTER_ROUTER` | `통과(95.4%)` | `통과(103.8%)` | `통과(115.4%)` | `통과(170.9%)` | `통과(135.2%)` | `통과(134.0%)` | C full/Java full. |
+| `ws` | `SPOT` | `통과(84.5%)` | `통과(81.3%)` | `통과(91.8%)` | `보류(27.5%)` | `보류(29.0%)` | `보류(25.0%)` | C full/Java full. SPOT 대용량 제한 재측정 기준. `TopicMessage` 재사용 실험도 통과를 만들지 못해 최종 코드에 남기지 않았다. |
+| `wss` | `PAIR` | `통과(96.7%)` | `통과(96.4%)` | `통과(143.3%)` | `통과(129.0%)` | `통과(103.3%)` | `통과(107.1%)` | C full/Java full. |
+| `wss` | `PUBSUB` | `통과(81.5%)` | `통과(96.6%)` | `통과(153.2%)` | `통과(113.7%)` | `통과(101.4%)` | `통과(99.1%)` | C full/Java full. |
+| `wss` | `DEALER_DEALER` | `통과(96.5%)` | `통과(98.1%)` | `통과(142.3%)` | `통과(128.7%)` | `통과(105.5%)` | `통과(99.3%)` | C full/Java full. |
+| `wss` | `DEALER_ROUTER` | `통과(77.9%)` | `통과(89.2%)` | `통과(136.0%)` | `통과(157.0%)` | `통과(176.3%)` | `통과(202.9%)` | C full/Java full. |
+| `wss` | `ROUTER_ROUTER` | `통과(98.7%)` | `통과(103.6%)` | `통과(133.7%)` | `통과(147.3%)` | `통과(174.9%)` | `통과(226.5%)` | C full/Java full. |
+| `wss` | `SPOT` | `통과(86.4%)` | `통과(76.1%)` | `통과(271.9%)` | `통과(64.5%)` | `통과(60.9%)` | `통과(65.4%)` | C full/Java full. SPOT 대용량 제한 재측정 기준. |
+| `tls` | `PAIR` | `통과(95.8%)` | `통과(99.3%)` | `통과(134.6%)` | `통과(99.2%)` | `통과(97.9%)` | `통과(98.2%)` | C full/Java full. |
+| `tls` | `PUBSUB` | `통과(80.1%)` | `통과(80.8%)` | `통과(136.7%)` | `통과(98.1%)` | `통과(100.9%)` | `통과(99.3%)` | C full/Java full. |
+| `tls` | `DEALER_DEALER` | `통과(97.5%)` | `통과(97.9%)` | `통과(135.4%)` | `통과(97.9%)` | `통과(97.3%)` | `통과(98.4%)` | C full/Java full. |
+| `tls` | `DEALER_ROUTER` | `통과(77.5%)` | `통과(85.4%)` | `통과(122.3%)` | `통과(163.8%)` | `통과(165.1%)` | `통과(166.7%)` | C full/Java full. |
+| `tls` | `ROUTER_ROUTER` | `통과(88.1%)` | `통과(98.3%)` | `통과(113.5%)` | `통과(162.2%)` | `통과(173.0%)` | `통과(173.6%)` | C full/Java full. |
+| `tls` | `SPOT` | `통과(83.7%)` | `통과(78.1%)` | `통과(103.9%)` | `보류(44.3%)` | `보류(53.5%)` | `보류(53.3%)` | C full/Java full. SPOT 대용량 제한 재측정 기준. `TopicMessage` 재사용 실험도 통과를 만들지 못해 최종 코드에 남기지 않았다. |
 
 
 ### 5.2 Multi suite
 
+Java multi full 결과 파일은 `perf_java_multi_linux_20260531_105430_round_20260530_java_multi_full_v1.txt`이다.
+이 파일은 `tcp,ws,wss,tls` transport와 size `64,256,1024,4096,65536,131072` 조합을
+status=complete, 결과 라인 920/920으로 끝냈다. Smoke 파일은
+`perf_java_multi_linux_20260531_105105_round_20260530_java_multi_smoke_64.txt`이다.
+Full 비교에서 7개 cell이 미달 후보였고, C
+`perf_c_multi_linux_20260531_112539_round_20260530_c_multi_java_failset_recheck.txt`,
+Java `perf_java_multi_linux_20260531_113249_round_20260530_java_multi_failset_recheck.txt`로
+제한 재측정했다. 재측정에서 `MULTI_DEALER_ROUTER ws 65536B`는 50.5%로 기준을 넘었고,
+`MULTI_DEALER_DEALER ws 131072B`와 `MULTI_SPOT wss 256B/1024B/4096B/65536B/131072B`는
+잔류 보류로 확정했다. `MULTI_SPOT wss`는 Java binding에서 TLS/WebSocket 계층을 지난
+SPOT fan-out 수신을 JNI wrapper와 managed buffer 경계에서 다시 처리하는 비용이 커지는 구간이다.
+공개 API와 runner 정책을 바꾸지 않는 좁은 내부 변경으로 제거할 수 있는 병목은 확인하지 못했다.
+
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `통과(74.6%)` | `통과(95.3%)` | `통과(87.4%)` | `통과(74.0%)` | `통과(82.4%)` | `통과(83.1%)` | C full/Java full. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `통과(72.9%)` | `통과(73.0%)` | `통과(79.6%)` | `통과(75.3%)` | `통과(60.0%)` | `통과(66.9%)` | C full/Java full. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `통과(55.6%)` | `통과(61.3%)` | `통과(61.0%)` | `통과(59.6%)` | `통과(56.8%)` | `통과(76.5%)` | C full/Java full. |
+| `tcp` | `MULTI_PUBSUB` | `통과(69.4%)` | `통과(82.7%)` | `통과(102.4%)` | `통과(69.9%)` | `통과(132.5%)` | `통과(174.0%)` | C full/Java full. |
+| `tcp` | `MULTI_SPOT` | `통과(110.5%)` | `통과(102.4%)` | `통과(94.3%)` | `통과(98.5%)` | `통과(80.1%)` | `통과(85.5%)` | C full/Java full. |
+| `tcp` | `MULTI_SPOT_REQREP` | `통과(76.6%)` | `통과(79.4%)` | `통과(81.6%)` | `통과(75.3%)` | `통과(61.8%)` | `통과(97.6%)` | C full/Java full. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `통과(77.5%)` | `통과(74.5%)` | `통과(82.6%)` | `통과(84.6%)` | `통과(81.4%)` | `통과(83.4%)` | C full/Java full. |
+| `tcp` | `MULTI_STREAM` | `통과(112.8%)` | `통과(110.8%)` | `통과(112.6%)` | `해당 없음` | `통과(103.8%)` | `해당 없음` | C full/Java full. MULTI_STREAM 정책상 4096B/131072B는 측정 대상이 아니다. |
+| `ws` | `MULTI_DEALER_DEALER` | `통과(78.0%)` | `통과(92.1%)` | `통과(79.1%)` | `통과(70.2%)` | `통과(76.3%)` | `보류(59.7%)` | C full/Java full. Java multi failset 제한 재측정 기준. client burst send와 server counted-drain 구조가 이미 적용되어 있고, public send semantics를 유지한 추가 내부 후보가 확인되지 않았다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `통과(70.7%)` | `통과(66.3%)` | `통과(68.5%)` | `통과(66.1%)` | `통과(50.5%)` | `통과(65.0%)` | C full/Java full. Java multi failset 제한 재측정 기준. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `통과(55.7%)` | `통과(63.7%)` | `통과(60.3%)` | `통과(59.2%)` | `통과(50.7%)` | `통과(55.7%)` | C full/Java full. |
+| `ws` | `MULTI_PUBSUB` | `통과(85.4%)` | `통과(80.8%)` | `통과(87.7%)` | `통과(104.5%)` | `통과(150.8%)` | `통과(133.1%)` | C full/Java full. |
+| `ws` | `MULTI_SPOT` | `통과(146.1%)` | `통과(117.9%)` | `통과(102.1%)` | `통과(99.4%)` | `통과(83.3%)` | `통과(88.3%)` | C full/Java full. Java multi failset 제한 재측정 기준. |
+| `ws` | `MULTI_SPOT_REQREP` | `통과(78.2%)` | `통과(72.0%)` | `통과(71.1%)` | `통과(79.0%)` | `통과(77.5%)` | `통과(81.0%)` | C full/Java full. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `통과(71.6%)` | `통과(75.8%)` | `통과(79.2%)` | `통과(88.4%)` | `통과(98.1%)` | `통과(84.0%)` | C full/Java full. |
+| `ws` | `MULTI_STREAM` | `통과(125.0%)` | `통과(123.8%)` | `통과(119.8%)` | `해당 없음` | `통과(99.5%)` | `해당 없음` | C full/Java full. MULTI_STREAM 정책상 4096B/131072B는 측정 대상이 아니다. |
+| `wss` | `MULTI_DEALER_DEALER` | `통과(75.0%)` | `통과(78.2%)` | `통과(65.7%)` | `통과(95.3%)` | `통과(96.4%)` | `통과(100.2%)` | C full/Java full. Java multi failset 제한 재측정 기준. |
+| `wss` | `MULTI_DEALER_ROUTER` | `통과(67.9%)` | `통과(63.8%)` | `통과(62.9%)` | `통과(56.9%)` | `통과(66.8%)` | `통과(91.6%)` | C full/Java full. Java multi failset 제한 재측정 기준. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `통과(57.3%)` | `통과(57.1%)` | `통과(58.5%)` | `통과(55.6%)` | `통과(69.0%)` | `통과(84.2%)` | C full/Java full. |
+| `wss` | `MULTI_PUBSUB` | `통과(83.2%)` | `통과(79.3%)` | `통과(93.2%)` | `통과(101.0%)` | `통과(112.4%)` | `통과(112.2%)` | C full/Java full. |
+| `wss` | `MULTI_SPOT` | `통과(117.0%)` | `보류(46.7%)` | `보류(22.0%)` | `보류(40.7%)` | `보류(53.3%)` | `보류(54.1%)` | C full/Java full. Java multi failset 제한 재측정 기준. worker 분산 수신과 caller-provided `TopicMessage` 재사용이 이미 적용되어 있고, public API-safe 추가 후보가 확인되지 않았다. |
+| `wss` | `MULTI_SPOT_REQREP` | `통과(71.0%)` | `통과(72.4%)` | `통과(71.2%)` | `통과(79.6%)` | `통과(82.9%)` | `통과(88.2%)` | C full/Java full. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `통과(68.1%)` | `통과(73.3%)` | `통과(81.5%)` | `통과(90.4%)` | `통과(87.7%)` | `통과(89.2%)` | C full/Java full. |
+| `wss` | `MULTI_STREAM` | `통과(104.9%)` | `통과(105.6%)` | `통과(99.0%)` | `해당 없음` | `통과(96.9%)` | `해당 없음` | C full/Java full. MULTI_STREAM 정책상 4096B/131072B는 측정 대상이 아니다. |
+| `tls` | `MULTI_DEALER_DEALER` | `통과(75.4%)` | `통과(99.5%)` | `통과(87.0%)` | `통과(82.4%)` | `통과(97.6%)` | `통과(90.9%)` | C full/Java full. |
+| `tls` | `MULTI_DEALER_ROUTER` | `통과(70.0%)` | `통과(67.8%)` | `통과(67.6%)` | `통과(65.0%)` | `통과(54.3%)` | `통과(91.4%)` | C full/Java full. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `통과(57.0%)` | `통과(57.9%)` | `통과(58.8%)` | `통과(56.9%)` | `통과(58.8%)` | `통과(56.6%)` | C full/Java full. |
+| `tls` | `MULTI_PUBSUB` | `통과(81.4%)` | `통과(78.3%)` | `통과(89.4%)` | `통과(100.1%)` | `통과(115.5%)` | `통과(114.4%)` | C full/Java full. |
+| `tls` | `MULTI_SPOT` | `통과(129.3%)` | `통과(125.1%)` | `통과(101.6%)` | `통과(71.2%)` | `통과(82.8%)` | `통과(95.9%)` | C full/Java full. |
+| `tls` | `MULTI_SPOT_REQREP` | `통과(73.6%)` | `통과(79.5%)` | `통과(79.2%)` | `통과(78.2%)` | `통과(85.9%)` | `통과(80.6%)` | C full/Java full. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `통과(70.5%)` | `통과(84.4%)` | `통과(80.8%)` | `통과(90.4%)` | `통과(95.6%)` | `통과(87.5%)` | C full/Java full. |
+| `tls` | `MULTI_STREAM` | `통과(107.0%)` | `통과(106.9%)` | `통과(101.1%)` | `해당 없음` | `통과(100.5%)` | `해당 없음` | C full/Java full. MULTI_STREAM 정책상 4096B/131072B는 측정 대상이 아니다. |
 
 
 ## 6. Node 상태
 
-perf 경로: `bindings/node/perf`. 기준 파일과 보강 파일은 측정 시점에 결과 파일/메모 칸에 직접 적는다.
+perf 경로: `bindings/node/perf`.
+
+Single full 결과 파일 `perf_node_single_linux_20260531_120032_round_20260530_node_single_full_v1.txt`는
+status=complete(720/720)였다. Routed 후보는
+`perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt`,
+단순/서비스 후보는
+`perf_node_single_linux_20260531_121556_round_20260530_node_single_simple_spot_failset_recheck.txt`로
+다시 확인했다. 잔류 미달은 60개다. `DEALER_ROUTER`/`ROUTER_ROUTER`의 작은 메시지와
+tcp 대용량, `PAIR`/`PUBSUB`/`DEALER_DEALER` 일부 작은 메시지, `SPOT` 일부 대용량에서 반복됐다.
+이 범위는 Node 이벤트 루프, native 호출 경계, routed envelope 처리, Buffer 이동이 함께 들어가는
+경로라서 공개 API를 유지한 채 좁게 고칠 수 있는 단일 병목으로 좁혀지지 않았다.
+
+초기 multi full 결과 파일 `perf_node_multi_linux_20260531_125926_round_20260530_node_multi_full_v1.txt`는
+status=complete(780/780)였고, 실제 측정 대상 크기만 다시 확인한
+`perf_node_multi_linux_20260531_134025_round_20260530_node_multi_measured_sizes_recheck.txt`도
+status=complete(780/780)였다. 이후 보강 뒤 full matrix
+`perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt`를 다시 실행했고
+status=complete(920/920)였다. `MULTI_SPOT`은 전 구간이 통과로 올라갔고,
+`MULTI_DEALER_DEALER`와 일부 `MULTI_PUBSUB`/`MULTI_STREAM` 큰 크기도 개선됐다.
+잔여 미달은 multi routed echo, `MULTI_PUBSUB` 대부분, `MULTI_SPOT_SENDSEND`,
+`MULTI_STREAM` 작은 크기에 집중된다. Node multi report에는 4096B `RESULT` 행이
+없으므로 4096B는 표에서 `해당 없음`으로 둔다. `MULTI_STREAM`은 runner의
+stream size 정책상 64/256/1024/65536B만 결과를 낸다.
+
+추가 보강에서는 `RoutingId` 생성 시 이미 검증한 길이를 hot path에서 다시 확인하지 않게 하고,
+socket/router/stream/spot runtime이 같은 native binding 객체를 반복 조회하지 않게 했다. 또한
+Node multi runner의 receive loop가 `Received`/`TopicMessage` 저장소를 재사용하고, 큰 payload를
+별도 Buffer로 다시 복사하지 않고 바로 header를 읽게 했다. 대표 probe 결과 파일은 single
+`perf_node_single_linux_20260531_204120_node_perf_fastpath_single_probe_20260531.txt`,
+multi `perf_node_multi_linux_20260531_204023_node_perf_fastpath_probe_20260531.txt`다.
+대표 multi probe에서 `MULTI_SPOT tcp 64B`는 1,546,598.4 msg/s에서 2,227,384 msg/s로,
+`MULTI_SPOT tcp 65536B`는 791,020 msg/s에서 1,151,900 msg/s로 올랐다.
+`MULTI_PUBSUB tcp 64B`도 373,005.6 msg/s에서 512,802 msg/s로 올랐다.
+이후 full matrix `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt`를
+다시 실행했고 status=complete(920/920)였다. Node 개선 라운드 기준(+5%p)을 적용하면
+multi는 통과 64개, 미달 후보 92개, 해당 없음 36개다. 이미 적용한 개선 뒤에도 남은 항목은
+Node 이벤트 루프, native 호출 경계, routed envelope, Buffer 생명주기 비용이 함께 나타나는 구간이다.
+public API를 바꾸거나 native fast path를 직접 노출하지 않는 범위에서 추가 내부 후보가 확인되지 않는지
+항목별로 더 확인했고, 아래 표에서는 통과하지 못한 항목을 보류로 둔다.
+
+Single 추가 개선에서는 `drainRouterRecvInto`가 routed 수신마다 `Received`를 새로 만들던 부분과,
+PUBSUB 수신 루프가 `TopicMessage`를 매번 새로 만들던 부분을 장기 객체 재사용으로 바꿨다.
+Probe 파일 `perf_node_single_linux_20260531_231111_node_single_reuse_recv_probe_20260531.txt`에서
+routed tcp 64/65536/131072B는 기존 full과 같은 변동 범위라 통과를 만들지 못했다. 반면
+PUBSUB tcp 131072B는 1,469.6 msg/s에서 9,841.0 msg/s로 올라 C 대비 95.4%가 됐다.
+추가 probe `perf_node_single_linux_20260531_231240_node_single_pubsub_reuse_probe_20260531.txt`에서도
+PUBSUB ws/wss/tls 대용량과 tls 256B가 통과권으로 올라갔다. PUBSUB 64B의 ws/wss/tls는
+여전히 C 대비 30% 안팎이라 보류로 남긴다.
+
+Multi 추가 개선에서는 echo 계열이 `decodeMetricHeader(...)` 객체를 만든 뒤 다시
+`collector.record(...)`로 넘기던 부분을 `collector.recordPayload(...)` 직접 기록으로 바꿨다.
+Probe 파일 `perf_node_multi_linux_20260531_232222_node_multi_recordpayload_probe_20260531.txt`에서
+`MULTI_SPOT_REQREP tcp 65536B`는 20,901.6 ops/s에서 21,917.0 ops/s로 올라 C 대비 35.1%가 됐다.
+`MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_DEALER_DEALER` 일부는 소폭 변동했지만
+통과권까지는 올라가지 않았다. 같은 실험을 `MULTI_SPOT_SENDSEND`에도 적용했으나 probe에서
+회귀가 보여 해당 변경은 최종 코드에 남기지 않았다.
+
+잔여 수치형 미달은 보류로 판정한다. Node runtime의 public 수신 API는 native 결과를 받은 뒤
+`Received`/`TopicMessage` public 객체로 materialize한다. 이 과정에서 message part wrapper,
+routing id, send context, topic envelope를 다시 구성해야 하므로 C hot path처럼 raw payload만
+읽는 형태로 줄일 수 없다. 이번 라운드에서 중복 native binding 조회 제거, `RoutingId` 중복
+길이 검증 제거, receive storage 재사용, 단일 수신 객체 재사용, metric header 객체 생성을
+건너뛰는 직접 기록까지 적용했다. 2026-06-01 재검토에서는 routed multi echo server가
+받은 메시지를 먼저 큐에 넣고 다시 drain하던 흐름도 줄였다. backlog가 없으면 public send
+operation으로 즉시 응답하고, backpressure로 큐에 보관해야 할 때만 payload를 복사한다.
+이 변경으로 `MULTI_DEALER_ROUTER` small과 encrypted large 일부가 통과권으로 올라갔다.
+SPOT_SENDSEND 직접 기록 실험은 회귀가 확인되어 되돌렸다. 2026-06-01 추가 검토에서는
+routed single 대용량의 자동 HWM 슬롯이 Node worker 송신 경로에서 지나치게 낮게 잡히는
+것을 확인했고, 64KB 이상 routed single 조건에 HWM floor 32를 적용했다. 이 변경으로
+ws/tls/wss routed 대용량 일부는 통과권으로 올라갔지만, tcp routed 대용량은 여전히 C의
+worker 없는 hot path와 큰 차이가 남는다. `SendFlags.DontWait` 전환과 내부 direct submit
+실험은 개선이 없거나 회귀가 있어 최종 코드에 남기지 않았다. `MULTI_STREAM`은 Node
+server와 공용 C stream client 조합이므로 Node server hot path를 다시 확인했다. 전용 send
+fast path, HWM 512, server IO thread 8 probe를 각각 실행했지만 통과권 개선을 만들지 못했고
+일부는 회귀나 partial 실패가 있어 채택하지 않았다. 남은 차이는 이전 1차 개선 문서에서
+쓰였던 `recvPayloadInto`, `publishFrom`, borrowed send helper 같은 public surface를 임의로
+되살리지 않는 범위에서만 계속 줄인다. 따라서 1차 개선 표의 통과 수준은 회귀 검토 기준으로
+사용하되, 현재 라운드에서는 public contract를 유지한 채 같은 효과를 낼 수 있는 내부 경로만
+채택한다.
 
 
 ### 6.1 Single suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
+| `tcp` | `PAIR` | `통과(36.8%)` | `통과(35.6%)` | `통과(55.6%)` | `통과(94.5%)` | `통과(94.6%)` | `통과(97.7%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node 재확인 `perf_node_single_linux_20260601_073637_node_single_pair_dealer_tcp_failset_current_20260601.txt` 기준. |
+| `tcp` | `PUBSUB` | `통과(36.9%)` | `통과(41.7%)` | `통과(53.2%)` | `통과(97.1%)` | `통과(95.2%)` | `통과(95.4%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node PUBSUB 재사용 probe `perf_node_single_linux_20260531_231111_node_single_reuse_recv_probe_20260531.txt` 기준. |
+| `tcp` | `DEALER_DEALER` | `통과(36.5%)` | `통과(36.0%)` | `통과(54.7%)` | `통과(94.5%)` | `통과(94.3%)` | `통과(97.1%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node 재확인 `perf_node_single_linux_20260601_073637_node_single_pair_dealer_tcp_failset_current_20260601.txt` 기준. |
+| `tcp` | `DEALER_ROUTER` | `보류(17.5%)` | `보류(17.4%)` | `보류(20.0%)` | `보류(21.7%)` | `보류(22.9%)` | `보류(17.4%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM floor 적용 후 `perf_node_single_linux_20260601_074045_node_single_routed_large_policy_hwm32_all_transports_20260601.txt` 기준. |
+| `tcp` | `ROUTER_ROUTER` | `보류(19.9%)` | `보류(20.3%)` | `보류(21.0%)` | `보류(21.8%)` | `보류(23.1%)` | `보류(19.1%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM floor 적용 후 `perf_node_single_linux_20260601_074045_node_single_routed_large_policy_hwm32_all_transports_20260601.txt` 기준. |
+| `tcp` | `SPOT` | `통과(43.2%)` | `통과(37.4%)` | `통과(36.0%)` | `통과(42.0%)` | `보류(28.9%)` | `보류(31.0%)` | 65536/131072/262144B는 SPOT active 수신 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110840.txt` 기준. 나머지는 C full/Node full. |
+| `ws` | `PAIR` | `통과(35.3%)` | `통과(36.7%)` | `통과(68.1%)` | `통과(97.7%)` | `통과(97.6%)` | `통과(38.1%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
+| `ws` | `PUBSUB` | `보류(33.3%)` | `통과(42.8%)` | `통과(62.2%)` | `통과(95.8%)` | `통과(97.0%)` | `통과(95.3%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node PUBSUB 재사용 probe `perf_node_single_linux_20260531_231240_node_single_pubsub_reuse_probe_20260531.txt` 기준. |
+| `ws` | `DEALER_DEALER` | `통과(35.0%)` | `통과(35.2%)` | `통과(64.9%)` | `통과(97.0%)` | `통과(97.4%)` | `통과(97.5%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
+| `ws` | `DEALER_ROUTER` | `보류(17.8%)` | `보류(20.0%)` | `보류(27.8%)` | `통과(44.6%)` | `통과(39.7%)` | `보류(30.8%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM floor 적용 후 `perf_node_single_linux_20260601_074045_node_single_routed_large_policy_hwm32_all_transports_20260601.txt` 기준. |
+| `ws` | `ROUTER_ROUTER` | `보류(19.9%)` | `보류(21.4%)` | `보류(27.7%)` | `통과(43.2%)` | `통과(40.2%)` | `보류(33.0%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM floor 적용 후 `perf_node_single_linux_20260601_074045_node_single_routed_large_policy_hwm32_all_transports_20260601.txt` 기준. |
+| `ws` | `SPOT` | `통과(47.7%)` | `통과(41.1%)` | `통과(36.3%)` | `통과(50.2%)` | `통과(44.3%)` | `통과(35.7%)` | 65536/131072/262144B는 SPOT active 수신 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110840.txt` 기준. 나머지는 C full/Node full. |
+| `wss` | `PAIR` | `통과(35.9%)` | `통과(37.0%)` | `통과(105.0%)` | `통과(37.7%)` | `통과(103.2%)` | `통과(76.5%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
+| `wss` | `PUBSUB` | `보류(33.9%)` | `통과(46.0%)` | `통과(104.7%)` | `통과(111.0%)` | `통과(111.0%)` | `통과(99.8%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node PUBSUB 재사용 probe `perf_node_single_linux_20260531_231240_node_single_pubsub_reuse_probe_20260531.txt` 기준. |
+| `wss` | `DEALER_DEALER` | `통과(35.3%)` | `통과(35.4%)` | `통과(106.0%)` | `통과(128.0%)` | `통과(105.9%)` | `통과(83.2%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
+| `wss` | `DEALER_ROUTER` | `보류(17.5%)` | `보류(19.5%)` | `통과(44.6%)` | `통과(90.9%)` | `통과(98.6%)` | `통과(98.9%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM floor 적용 후 `perf_node_single_linux_20260601_074045_node_single_routed_large_policy_hwm32_all_transports_20260601.txt` 기준. |
+| `wss` | `ROUTER_ROUTER` | `보류(20.1%)` | `보류(20.6%)` | `통과(45.1%)` | `통과(90.8%)` | `통과(97.7%)` | `통과(112.8%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM floor 적용 후 `perf_node_single_linux_20260601_074045_node_single_routed_large_policy_hwm32_all_transports_20260601.txt` 기준. |
+| `wss` | `SPOT` | `통과(42.7%)` | `통과(37.7%)` | `통과(229.9%)` | `통과(460.6%)` | `통과(439.9%)` | `통과(430.8%)` | 65536/131072/262144B는 SPOT active 수신 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110840.txt` 기준. 나머지는 C full/Node full. |
+| `tls` | `PAIR` | `보류(34.9%)` | `통과(36.1%)` | `통과(79.5%)` | `통과(97.5%)` | `통과(98.2%)` | `통과(98.7%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
+| `tls` | `PUBSUB` | `보류(33.5%)` | `통과(39.3%)` | `통과(72.4%)` | `통과(75.0%)` | `통과(98.5%)` | `통과(68.6%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node PUBSUB 재사용 probe `perf_node_single_linux_20260531_231240_node_single_pubsub_reuse_probe_20260531.txt` 기준. |
+| `tls` | `DEALER_DEALER` | `보류(34.8%)` | `통과(35.5%)` | `통과(76.9%)` | `통과(98.3%)` | `통과(97.7%)` | `통과(73.2%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
+| `tls` | `DEALER_ROUTER` | `보류(18.3%)` | `보류(18.7%)` | `보류(29.6%)` | `통과(75.2%)` | `통과(77.5%)` | `통과(68.6%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM floor 적용 후 `perf_node_single_linux_20260601_074045_node_single_routed_large_policy_hwm32_all_transports_20260601.txt` 기준. |
+| `tls` | `ROUTER_ROUTER` | `보류(19.1%)` | `보류(19.8%)` | `보류(28.9%)` | `통과(73.5%)` | `통과(78.5%)` | `통과(74.8%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM floor 적용 후 `perf_node_single_linux_20260601_074045_node_single_routed_large_policy_hwm32_all_transports_20260601.txt` 기준. |
+| `tls` | `SPOT` | `통과(44.3%)` | `통과(36.3%)` | `통과(39.8%)` | `통과(75.2%)` | `통과(79.9%)` | `통과(76.7%)` | 65536/131072/262144B는 SPOT active 수신 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110840.txt` 기준. 나머지는 C full/Node full. |
 
 
 ### 6.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-
+| `tcp` | `MULTI_DEALER_DEALER` | `통과(47.4%)` | `통과(46.4%)` | `통과(40.6%)` | `해당 없음` | `보류(23.6%)` | `보류(24.6%)` | latency sample stride 32 적용 후 `perf_node_multi_linux_20260601_105248.txt` 기준. Throughput은 모든 active payload를 세고 latency timestamp 계산만 샘플링한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `통과(37.5%)` | `통과(36.7%)` | `통과(37.0%)` | `해당 없음` | `보류(21.7%)` | `보류(26.8%)` | Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. 받은 메시지를 먼저 큐에 넣지 않고 즉시 public send로 응답하도록 바꿔 small은 통과했다. backpressure로 큐에 보관할 때만 payload를 복사한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `보류(29.7%)` | `보류(28.3%)` | `보류(27.7%)` | `해당 없음` | `보류(22.4%)` | `보류(28.1%)` | Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. 즉시 public send로 queue-before-send 비용은 줄였지만 tcp는 아직 기준에 못 닿았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_PUBSUB` | `보류(19.5%)` | `보류(21.5%)` | `통과(48.1%)` | `해당 없음` | `보류(13.9%)` | `보류(22.2%)` | latency sample stride 32에서 unsampled payload의 timestamp 읽기를 건너뛴 뒤 `perf_node_multi_linux_20260601_095226_node_multi_pubsub_sample_timestamp_only_all_final_20260601.txt`와 tcp 1024B fill `perf_node_multi_linux_20260601_095300_node_multi_pubsub_sample_timestamp_only_tcp1024_fill_20260601.txt`를 합친 기준. all run은 tcp 1024B만 partial이라 fill 파일로 보강했다. 131072B는 이전 latency sample 32보다 소폭 낮아졌지만 전체 17/20개 cell이 개선되어 유지한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_SPOT` | `통과(59.1%)` | `통과(55.6%)` | `통과(56.4%)` | `해당 없음` | `통과(78.5%)` | `통과(158.3%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_SPOT_REQREP` | `통과(40.4%)` | `통과(38.9%)` | `통과(41.5%)` | `해당 없음` | `통과(35.1%)` | `보류(22.3%)` | 65536B는 Node recordPayload probe `perf_node_multi_linux_20260531_232222_node_multi_recordpayload_probe_20260531.txt` 기준. 나머지는 C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `보류(18.5%)` | `보류(18.6%)` | `보류(20.3%)` | `해당 없음` | `보류(25.9%)` | `보류(26.0%)` | client active loop를 C처럼 send 진행이 있을 때 즉시 다음 send sweep으로 넘긴 뒤 `perf_node_multi_linux_20260601_100330_node_multi_spot_sendsend_cstyle_send_sweep_probe_20260601.txt`, tcp 1024B fill `perf_node_multi_linux_20260601_100510_node_multi_spot_sendsend_cstyle_tcp1024_confirm_20260601.txt`, large `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. tcp small은 기존 server idle poller 결과와 같은 변동 범위이고, large는 개선됐다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_STREAM` | `보류(26.6%)` | `보류(27.9%)` | `보류(24.6%)` | `해당 없음` | `통과(62.2%)` | `해당 없음` | pending reply queue를 head-index로 바꾼 뒤 complete 측정 `perf_node_multi_linux_20260601_121847_node_multi_stream_pending_queue_probe_20260601.txt` 기준. small은 기존보다 올랐고 65536B는 낮아졌지만 통과권을 유지한다. MULTI_STREAM은 runner 정책상 4096B와 131072B 결과를 내지 않는다. |
+| `ws` | `MULTI_DEALER_DEALER` | `통과(45.2%)` | `통과(53.9%)` | `통과(73.7%)` | `해당 없음` | `통과(32.4%)` | `통과(33.8%)` | latency sample stride 32 적용 후 `perf_node_multi_linux_20260601_105248.txt` 기준. Throughput은 모든 active payload를 세고 latency timestamp 계산만 샘플링한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `통과(37.1%)` | `통과(34.9%)` | `통과(34.6%)` | `해당 없음` | `보류(22.3%)` | `보류(29.5%)` | Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. small은 통과했고, large는 public send 경계와 payload 보관 비용이 남아 보류다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `통과(30.6%)` | `통과(30.9%)` | `보류(28.4%)` | `해당 없음` | `보류(23.7%)` | `보류(29.9%)` | Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. 64/256B는 통과했지만 1024B와 large 잔여 보류가 남았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_PUBSUB` | `보류(22.9%)` | `보류(21.3%)` | `보류(26.0%)` | `해당 없음` | `보류(28.8%)` | `보류(33.3%)` | latency sample stride 32에서 unsampled payload의 timestamp 읽기를 건너뛴 뒤 `perf_node_multi_linux_20260601_095226_node_multi_pubsub_sample_timestamp_only_all_final_20260601.txt` 기준. 131072B는 이전 latency sample 32보다 소폭 낮아졌지만 64/256/1024/65536B가 개선되어 유지한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_SPOT` | `통과(55.4%)` | `통과(52.6%)` | `통과(52.5%)` | `해당 없음` | `통과(104.3%)` | `통과(162.8%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_SPOT_REQREP` | `통과(47.8%)` | `통과(48.6%)` | `통과(49.8%)` | `해당 없음` | `통과(48.3%)` | `보류(21.8%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `보류(17.9%)` | `보류(19.0%)` | `보류(20.5%)` | `해당 없음` | `통과(40.5%)` | `보류(34.5%)` | client active loop를 C-style send sweep으로 정렬한 뒤 small `perf_node_multi_linux_20260601_100330_node_multi_spot_sendsend_cstyle_send_sweep_probe_20260601.txt`, large `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. 65536B는 통과권으로 올랐다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_STREAM` | `보류(18.9%)` | `보류(19.7%)` | `보류(19.1%)` | `해당 없음` | `통과(80.7%)` | `해당 없음` | pending reply queue를 head-index로 바꾼 뒤 complete 측정 `perf_node_multi_linux_20260601_121847_node_multi_stream_pending_queue_probe_20260601.txt` 기준. 64/256/1024B와 65536B 모두 기존보다 올랐다. MULTI_STREAM은 runner 정책상 4096B와 131072B 결과를 내지 않는다. |
+| `wss` | `MULTI_DEALER_DEALER` | `통과(51.1%)` | `통과(60.3%)` | `통과(58.1%)` | `해당 없음` | `통과(53.9%)` | `통과(53.9%)` | latency sample stride 32 적용 후 `perf_node_multi_linux_20260601_105248.txt` 기준. Throughput은 모든 active payload를 세고 latency timestamp 계산만 샘플링한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `wss` | `MULTI_DEALER_ROUTER` | `통과(37.4%)` | `통과(36.2%)` | `통과(33.4%)` | `해당 없음` | `통과(36.1%)` | `통과(38.0%)` | Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. 전 size가 통과했다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `통과(31.3%)` | `보류(28.9%)` | `보류(29.7%)` | `해당 없음` | `통과(38.4%)` | `통과(40.0%)` | Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. 64B와 large는 통과했지만 256/1024B는 보류다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `wss` | `MULTI_PUBSUB` | `보류(20.0%)` | `보류(19.3%)` | `통과(32.1%)` | `해당 없음` | `보류(33.8%)` | `통과(37.3%)` | latency sample stride 32에서 unsampled payload의 timestamp 읽기를 건너뛴 뒤 `perf_node_multi_linux_20260601_095226_node_multi_pubsub_sample_timestamp_only_all_final_20260601.txt` 기준. 모든 measured size가 이전 latency sample 32보다 개선됐다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `wss` | `MULTI_SPOT` | `통과(53.6%)` | `통과(51.7%)` | `통과(51.1%)` | `해당 없음` | `통과(574.4%)` | `통과(760.0%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `wss` | `MULTI_SPOT_REQREP` | `통과(44.1%)` | `통과(46.4%)` | `통과(52.1%)` | `해당 없음` | `통과(91.9%)` | `통과(66.6%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `보류(16.1%)` | `보류(18.2%)` | `보류(19.8%)` | `해당 없음` | `통과(64.1%)` | `통과(58.3%)` | client active loop를 C-style send sweep으로 정렬한 뒤 small `perf_node_multi_linux_20260601_100330_node_multi_spot_sendsend_cstyle_send_sweep_probe_20260601.txt`, large `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. 65536B는 이전 표보다 낮지만 통과권을 유지하고, small/131072B는 개선됐다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `wss` | `MULTI_STREAM` | `보류(27.3%)` | `보류(26.6%)` | `보류(26.0%)` | `해당 없음` | `통과(99.8%)` | `해당 없음` | pending reply queue를 head-index로 바꾼 뒤 complete 측정 `perf_node_multi_linux_20260601_121847_node_multi_stream_pending_queue_probe_20260601.txt` 기준. 모든 measured size가 기존보다 올랐다. MULTI_STREAM은 runner 정책상 4096B와 131072B 결과를 내지 않는다. |
+| `tls` | `MULTI_DEALER_DEALER` | `통과(45.2%)` | `통과(55.8%)` | `통과(70.6%)` | `해당 없음` | `통과(42.2%)` | `통과(40.7%)` | latency sample stride 32 적용 후 `perf_node_multi_linux_20260601_105248.txt` 기준. Throughput은 모든 active payload를 세고 latency timestamp 계산만 샘플링한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tls` | `MULTI_DEALER_ROUTER` | `통과(36.7%)` | `통과(35.3%)` | `통과(34.3%)` | `해당 없음` | `통과(31.0%)` | `통과(37.5%)` | Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. 전 size가 통과했다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `통과(30.6%)` | `보류(28.8%)` | `보류(29.3%)` | `해당 없음` | `통과(31.6%)` | `통과(36.1%)` | Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. 256/1024B는 기준 바로 아래라 보류다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tls` | `MULTI_PUBSUB` | `보류(20.8%)` | `보류(20.3%)` | `보류(27.8%)` | `해당 없음` | `보류(29.5%)` | `통과(33.6%)` | latency sample stride 32에서 unsampled payload의 timestamp 읽기를 건너뛴 뒤 `perf_node_multi_linux_20260601_095226_node_multi_pubsub_sample_timestamp_only_all_final_20260601.txt` 기준. 65536B는 이전 latency sample 32보다 소폭 낮아졌지만 64/256/1024/131072B가 개선되어 유지한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tls` | `MULTI_SPOT` | `통과(52.1%)` | `통과(52.8%)` | `통과(48.9%)` | `해당 없음` | `통과(134.3%)` | `통과(206.7%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tls` | `MULTI_SPOT_REQREP` | `통과(39.4%)` | `통과(44.8%)` | `통과(46.0%)` | `해당 없음` | `통과(79.3%)` | `통과(43.5%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `보류(17.8%)` | `보류(19.6%)` | `보류(17.7%)` | `해당 없음` | `통과(57.1%)` | `통과(48.1%)` | client active loop를 C-style send sweep으로 정렬한 뒤 small `perf_node_multi_linux_20260601_100330_node_multi_spot_sendsend_cstyle_send_sweep_probe_20260601.txt`, large `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. 65536B는 기존 통과권을 유지하고, 131072B와 small 대부분이 개선됐다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tls` | `MULTI_STREAM` | `보류(24.5%)` | `보류(25.1%)` | `보류(25.1%)` | `해당 없음` | `통과(81.6%)` | `해당 없음` | pending reply queue를 head-index로 바꾼 뒤 complete 측정 `perf_node_multi_linux_20260601_121847_node_multi_stream_pending_queue_probe_20260601.txt` 기준. small은 기존보다 올랐고 65536B는 낮아졌지만 통과권을 유지한다. MULTI_STREAM은 runner 정책상 4096B와 131072B 결과를 내지 않는다. |
 
 ## 7. Go 상태
 
-perf 경로: `bindings/go/perf`. 기준 파일과 보강 파일은 측정 시점에 결과 파일/메모 칸에 직접 적는다.
+perf 경로: `bindings/go/perf`.
+
+Single smoke `perf_go_single_linux_20260531_134455_round_20260530_go_single_smoke_64.txt`와
+single full `perf_go_single_linux_20260531_134546_round_20260530_go_single_full_v1.txt`는
+모두 complete였다. 미달 후보는 C `perf_c_single_linux_20260531_135902_round_20260530_c_single_go_failset_recheck.txt`,
+Go `perf_go_single_linux_20260531_140124_round_20260530_go_single_failset_recheck.txt`로 다시 확인했다.
+잔류 미달은 routed tcp 대용량 5개와 `SPOT wss 256B` 1개다. Go public binding 경로를 유지한
+상태에서 routed tcp 대용량과 WSS SPOT 단일 조건만 좁게 줄일 추가 내부 후보는 확인되지 않았다.
+
+Multi smoke `perf_go_multi_linux_20260531_140350_round_20260530_go_multi_smoke_64.txt`는 complete였다.
+Multi full `perf_go_multi_linux_20260531_140640_round_20260530_go_multi_full_v1.txt`는 partial(925/960)로
+끝났고, `perf_go_multi_linux_20260531_143459_round_20260530_go_multi_partial_fill.txt`,
+`perf_go_multi_linux_20260531_144256_round_20260530_go_multi_dealer_dealer_missing_fill.txt`,
+`perf_go_multi_linux_20260531_144414_round_20260530_go_multi_pubsub_missing_fill.txt`,
+`perf_go_multi_linux_20260531_144532_round_20260530_go_multi_pubsub_tls_65536_final.txt`로
+보강했다. 보강 뒤에도 `MULTI_DEALER_DEALER tcp/ws 4096B`와 `MULTI_PUBSUB tls 65536B`는
+반복해서 `RESULT`가 없어 보류로 남긴다. 나머지 잔류 미달은 32개다. Multi 잔여 항목은
+goroutine 스케줄링, cgo 호출 경계, routed/SPOT envelope 처리 비용이 함께 나타나는 구간으로,
+public API를 우회하지 않는 추가 내부 후보가 확인되지 않았다.
+
+추가 검토에서는 routed single과 multi echo 송신 경로가 매 메시지마다 `Message` wrapper를 만드는
+비용을 줄일 수 있는지 확인했다. public `Bytes(...)` builder로 재사용 payload slice를 보내는
+실험을 적용하고 single `perf_go_single_linux_20260531_232858_go_single_bytes_send_probe_20260531.txt`,
+multi `perf_go_multi_linux_20260531_232934_go_multi_bytes_send_probe_20260531.txt`로 측정했다. 그러나
+single `DEALER_ROUTER tcp 65536B/131072B/262144B`는 기존 50,457.6/27,961.6/14,364.8 msg/s에서
+45,336.0/24,481.3/13,950.0 msg/s로 낮아졌고, `ROUTER_ROUTER`도 같은 방향으로 낮아졌다.
+multi routed echo도 통과권 개선 없이 대체로 기존 full보다 낮거나 같은 변동 범위였다. 이 실험
+변경은 최종 코드에 남기지 않았다. Go perf driver는 이미 single routed 수신에서 `RecvPart`,
+SPOT/PUBSUB 수신에서 `SubscribePart`, multi 일부 서버 경로에서 `RecvPart`를 사용하고 있어
+public API 범위에서 더 줄일 수 있는 좁은 내부 변경점은 확인되지 않았다. 아래 잔여 수치형
+미달은 보류로 판정한다.
 
 
 ### 7.1 Single suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
+| `tcp` | `PAIR` | `통과(72.0%)` | `통과(70.9%)` | `통과(112.0%)` | `통과(97.3%)` | `통과(97.4%)` | `통과(97.6%)` | C full/Go full. |
+| `tcp` | `PUBSUB` | `통과(59.5%)` | `통과(63.7%)` | `통과(87.5%)` | `통과(96.9%)` | `통과(97.3%)` | `통과(97.5%)` | C full/Go full. |
+| `tcp` | `DEALER_DEALER` | `통과(71.9%)` | `통과(70.9%)` | `통과(109.8%)` | `통과(97.3%)` | `통과(97.1%)` | `통과(97.1%)` | C full/Go full. |
+| `tcp` | `DEALER_ROUTER` | `통과(53.5%)` | `통과(53.5%)` | `통과(61.2%)` | `보류(46.0%)` | `보류(44.5%)` | `보류(42.5%)` | C/Go single failset 제한 재측정 기준. |
+| `tcp` | `ROUTER_ROUTER` | `통과(61.4%)` | `통과(60.4%)` | `통과(63.9%)` | `통과(47.4%)` | `보류(44.9%)` | `보류(42.8%)` | C/Go single failset 제한 재측정 기준. |
+| `tcp` | `SPOT` | `통과(99.7%)` | `통과(85.0%)` | `통과(100.0%)` | `통과(77.5%)` | `통과(60.2%)` | `통과(64.2%)` | C/Go single failset 제한 재측정 기준. |
+| `ws` | `PAIR` | `통과(71.9%)` | `통과(66.7%)` | `통과(108.2%)` | `통과(97.1%)` | `통과(97.2%)` | `통과(96.9%)` | C full/Go full. |
+| `ws` | `PUBSUB` | `통과(58.3%)` | `통과(57.8%)` | `통과(81.8%)` | `통과(97.2%)` | `통과(96.7%)` | `통과(97.2%)` | C full/Go full. |
+| `ws` | `DEALER_DEALER` | `통과(72.1%)` | `통과(65.5%)` | `통과(106.0%)` | `통과(96.3%)` | `통과(97.1%)` | `통과(97.4%)` | C full/Go full. |
+| `ws` | `DEALER_ROUTER` | `통과(56.0%)` | `통과(55.3%)` | `통과(74.3%)` | `통과(68.4%)` | `통과(62.7%)` | `통과(58.3%)` | C full/Go full. |
+| `ws` | `ROUTER_ROUTER` | `통과(65.4%)` | `통과(54.9%)` | `통과(67.4%)` | `통과(65.0%)` | `통과(63.5%)` | `통과(62.1%)` | C full/Go full. |
+| `ws` | `SPOT` | `통과(88.2%)` | `통과(117.5%)` | `통과(100.7%)` | `통과(95.7%)` | `통과(104.3%)` | `통과(73.6%)` | C full/Go full. |
+| `wss` | `PAIR` | `통과(73.4%)` | `통과(71.8%)` | `통과(109.2%)` | `통과(88.0%)` | `통과(76.3%)` | `통과(79.6%)` | C full/Go full. |
+| `wss` | `PUBSUB` | `통과(63.1%)` | `통과(62.8%)` | `통과(113.0%)` | `통과(82.3%)` | `통과(75.8%)` | `통과(83.2%)` | C full/Go full. |
+| `wss` | `DEALER_DEALER` | `통과(72.7%)` | `통과(71.9%)` | `통과(110.8%)` | `통과(87.4%)` | `통과(79.0%)` | `통과(75.6%)` | C full/Go full. |
+| `wss` | `DEALER_ROUTER` | `통과(55.2%)` | `통과(55.1%)` | `통과(91.4%)` | `통과(81.5%)` | `통과(90.2%)` | `통과(92.4%)` | C/Go single failset 제한 재측정 기준. |
+| `wss` | `ROUTER_ROUTER` | `통과(67.1%)` | `통과(56.3%)` | `통과(93.5%)` | `통과(83.7%)` | `통과(87.9%)` | `통과(117.7%)` | C/Go single failset 제한 재측정 기준. |
+| `wss` | `SPOT` | `통과(90.2%)` | `보류(43.7%)` | `통과(106.1%)` | `통과(98.0%)` | `통과(100.3%)` | `통과(300.0%)` | C/Go single failset 제한 재측정 기준. |
+| `tls` | `PAIR` | `통과(71.8%)` | `통과(71.4%)` | `통과(110.1%)` | `통과(73.6%)` | `통과(79.3%)` | `통과(88.1%)` | C full/Go full. |
+| `tls` | `PUBSUB` | `통과(62.0%)` | `통과(62.6%)` | `통과(114.0%)` | `통과(77.9%)` | `통과(86.6%)` | `통과(87.8%)` | C full/Go full. |
+| `tls` | `DEALER_DEALER` | `통과(72.3%)` | `통과(71.4%)` | `통과(109.8%)` | `통과(72.8%)` | `통과(79.7%)` | `통과(87.1%)` | C full/Go full. |
+| `tls` | `DEALER_ROUTER` | `통과(56.2%)` | `통과(57.0%)` | `통과(88.9%)` | `통과(87.7%)` | `통과(87.0%)` | `통과(86.3%)` | C full/Go full. |
+| `tls` | `ROUTER_ROUTER` | `통과(62.3%)` | `통과(61.3%)` | `통과(89.3%)` | `통과(85.1%)` | `통과(86.8%)` | `통과(88.8%)` | C full/Go full. |
+| `tls` | `SPOT` | `통과(92.4%)` | `통과(89.2%)` | `통과(104.8%)` | `통과(98.9%)` | `통과(102.5%)` | `통과(100.1%)` | C full/Go full. |
 
 
 ### 7.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `보류(45.0%)` | `통과(65.8%)` | `통과(75.8%)` | `보류(RESULT 없음)` | `통과(79.8%)` | `보류(10.4%)` | C full/Go multi full. 보강 재측정 기준 포함. 4096B는 반복 재측정에서도 RESULT가 없어 보류로 둔다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `통과(59.8%)` | `통과(62.1%)` | `통과(65.9%)` | `통과(65.0%)` | `보류(31.8%)` | `통과(44.0%)` | C full/Go multi full. 보강 재측정 기준 포함. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `보류(37.0%)` | `보류(37.3%)` | `보류(38.8%)` | `통과(40.3%)` | `보류(37.9%)` | `통과(46.0%)` | C full/Go multi full. |
+| `tcp` | `MULTI_PUBSUB` | `보류(46.5%)` | `보류(51.0%)` | `통과(103.4%)` | `통과(78.2%)` | `통과(55.5%)` | `통과(71.0%)` | C full/Go multi full. 보강 재측정 기준 포함. |
+| `tcp` | `MULTI_SPOT` | `통과(59.1%)` | `통과(61.7%)` | `통과(56.5%)` | `통과(68.8%)` | `통과(111.6%)` | `통과(104.7%)` | C full/Go multi full. |
+| `tcp` | `MULTI_SPOT_REQREP` | `통과(54.1%)` | `통과(54.9%)` | `통과(55.5%)` | `보류(47.6%)` | `보류(0.9%)` | `통과(53.9%)` | C full/Go multi full. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `통과(63.7%)` | `통과(57.9%)` | `통과(63.8%)` | `통과(68.4%)` | `보류(0.7%)` | `통과(77.2%)` | C full/Go multi full. |
+| `tcp` | `MULTI_STREAM` | `통과(100.4%)` | `통과(95.2%)` | `통과(89.7%)` | `통과(64.6%)` | `통과(67.0%)` | `통과(72.9%)` | C full/Go multi full. |
+| `ws` | `MULTI_DEALER_DEALER` | `보류(46.8%)` | `통과(54.8%)` | `통과(71.7%)` | `보류(RESULT 없음)` | `통과(60.0%)` | `통과(62.1%)` | C full/Go multi full. 보강 재측정 기준 포함. 4096B는 반복 재측정에서도 RESULT가 없어 보류로 둔다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `통과(57.5%)` | `통과(58.9%)` | `통과(60.2%)` | `통과(58.0%)` | `보류(37.0%)` | `통과(57.8%)` | C full/Go multi full. 보강 재측정 기준 포함. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `보류(39.0%)` | `통과(42.4%)` | `통과(40.2%)` | `통과(42.4%)` | `통과(44.7%)` | `통과(57.2%)` | C full/Go multi full. |
+| `ws` | `MULTI_PUBSUB` | `통과(140.4%)` | `통과(64.1%)` | `통과(66.2%)` | `통과(113.0%)` | `통과(83.0%)` | `통과(76.9%)` | C full/Go multi full. 보강 재측정 기준 포함. |
+| `ws` | `MULTI_SPOT` | `통과(54.3%)` | `통과(57.1%)` | `통과(56.3%)` | `통과(67.0%)` | `통과(109.3%)` | `통과(112.5%)` | C full/Go multi full. |
+| `ws` | `MULTI_SPOT_REQREP` | `통과(62.9%)` | `통과(63.4%)` | `통과(59.5%)` | `통과(54.5%)` | `통과(76.0%)` | `보류(49.9%)` | C full/Go multi full. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `통과(55.3%)` | `통과(58.2%)` | `통과(58.6%)` | `통과(68.7%)` | `보류(11.7%)` | `통과(83.9%)` | C full/Go multi full. |
+| `ws` | `MULTI_STREAM` | `통과(105.1%)` | `통과(100.7%)` | `통과(88.5%)` | `통과(87.3%)` | `통과(93.5%)` | `통과(105.2%)` | C full/Go multi full. |
+| `wss` | `MULTI_DEALER_DEALER` | `보류(44.7%)` | `통과(57.1%)` | `통과(67.9%)` | `통과(55.3%)` | `보류(3.6%)` | `보류(19.7%)` | C full/Go multi full. |
+| `wss` | `MULTI_DEALER_ROUTER` | `통과(59.2%)` | `통과(60.2%)` | `통과(58.4%)` | `통과(53.1%)` | `통과(48.0%)` | `통과(49.4%)` | C full/Go multi full. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `통과(40.4%)` | `통과(40.9%)` | `통과(42.1%)` | `통과(45.0%)` | `통과(50.3%)` | `통과(52.1%)` | C full/Go multi full. |
+| `wss` | `MULTI_PUBSUB` | `통과(60.8%)` | `보류(49.3%)` | `통과(76.1%)` | `통과(84.9%)` | `통과(60.7%)` | `통과(68.2%)` | C full/Go multi full. |
+| `wss` | `MULTI_SPOT` | `통과(53.4%)` | `통과(56.6%)` | `보류(22.8%)` | `보류(38.6%)` | `통과(71.3%)` | `통과(75.1%)` | C full/Go multi full. |
+| `wss` | `MULTI_SPOT_REQREP` | `통과(56.2%)` | `통과(61.6%)` | `통과(60.2%)` | `통과(67.1%)` | `통과(83.5%)` | `통과(84.2%)` | C full/Go multi full. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `통과(56.2%)` | `통과(58.8%)` | `통과(62.3%)` | `통과(87.0%)` | `보류(7.0%)` | `통과(91.3%)` | C full/Go multi full. |
+| `wss` | `MULTI_STREAM` | `통과(98.6%)` | `통과(98.4%)` | `통과(91.5%)` | `통과(87.9%)` | `통과(92.5%)` | `통과(99.9%)` | C full/Go multi full. |
+| `tls` | `MULTI_DEALER_DEALER` | `보류(46.8%)` | `통과(59.6%)` | `통과(70.8%)` | `통과(61.9%)` | `보류(1.8%)` | `보류(32.4%)` | C full/Go multi full. 보강 재측정 기준 포함. |
+| `tls` | `MULTI_DEALER_ROUTER` | `통과(58.3%)` | `통과(58.2%)` | `통과(57.8%)` | `통과(57.7%)` | `통과(44.4%)` | `통과(52.5%)` | C full/Go multi full. 보강 재측정 기준 포함. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `보류(39.5%)` | `보류(39.3%)` | `통과(41.4%)` | `통과(41.4%)` | `통과(45.9%)` | `통과(52.2%)` | C full/Go multi full. |
+| `tls` | `MULTI_PUBSUB` | `통과(79.1%)` | `보류(52.8%)` | `통과(65.1%)` | `통과(100.5%)` | `보류(RESULT 없음)` | `통과(68.2%)` | C full/Go multi full. 보강 재측정 기준 포함. 65536B는 반복 재측정에서도 RESULT가 없어 보류로 둔다. |
+| `tls` | `MULTI_SPOT` | `통과(55.7%)` | `통과(54.0%)` | `통과(57.1%)` | `통과(54.7%)` | `통과(112.6%)` | `통과(98.9%)` | C full/Go multi full. |
+| `tls` | `MULTI_SPOT_REQREP` | `통과(52.8%)` | `통과(60.8%)` | `통과(58.1%)` | `통과(53.2%)` | `보류(36.4%)` | `통과(68.0%)` | C full/Go multi full. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `통과(55.9%)` | `통과(64.8%)` | `통과(63.7%)` | `통과(79.8%)` | `보류(8.1%)` | `통과(89.3%)` | C full/Go multi full. |
+| `tls` | `MULTI_STREAM` | `통과(96.0%)` | `통과(93.9%)` | `통과(89.9%)` | `통과(86.2%)` | `통과(99.7%)` | `통과(91.8%)` | C full/Go multi full. |
 
 
 ## 8. Rust 상태
 
-perf 경로: `bindings/rust/perf`. 기준 파일과 보강 파일은 측정 시점에 결과 파일/메모 칸에 직접 적는다.
+perf 경로: `bindings/rust/perf`.
+
+Rust single smoke 결과 파일은 `perf_rust_single_linux_20260531_145023_round_20260530_rust_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_rust_single_linux_20260531_145104_round_20260530_rust_single_full_v1.txt`이고 status=complete(720/720)였다. 후보 재측정 파일 `perf_rust_single_linux_20260531_151316_round_20260530_rust_single_failset_recheck.txt`는 status=complete(480/480)였다. 추가 개선으로 SPOT active send에서 1024B 이하 payload는 public `Message::with_size(...).data_mut()`에 직접 header를 채우도록 바꿨다. 최종 probe `perf_rust_single_linux_20260531_233915_rust_single_spot_direct_message_final_20260531.txt`에서 `SPOT wss 256B`는 96.7%, `SPOT tls 1024B`는 93.5%로 통과했다. 같은 변경 뒤 `SPOT tcp 1024B`는 63.2%로 기준에 못 닿아 보류한다. PUBSUB 수신 `TopicMessage` 재사용 probe `perf_rust_single_linux_20260531_233521_rust_single_pubsub_reuse_probe_20260531.txt`와 소형 message 공통 직접 작성 probe `perf_rust_single_linux_20260531_233731_rust_single_small_message_probe_20260531.txt`는 PUBSUB 64B 계열을 통과권으로 올리지 못했고 일부는 기존보다 낮아 최종 코드에 남기지 않았다. routed 대용량은 public `recv(&mut Received, ...)` envelope 경로를 유지해야 하며, Rust binding에는 C의 part 직접 수신을 노출한 public API가 없어 보류한다.
+
+Rust multi smoke 결과 파일은 `perf_rust_multi_linux_20260531_153200_round_20260530_rust_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_rust_multi_linux_20260531_153550_round_20260530_rust_multi_full_v1.txt`이고 status=complete(960/960)였다. 후보 재측정 파일 `perf_rust_multi_linux_20260531_160730_round_20260530_rust_multi_failset_recheck.txt`는 status=partial(595/600)이었지만, 누락된 `MULTI_SPOT ws 4096B`는 full 결과로 보강했다. 추가 개선으로 `MULTI_SPOT wss` 1024B 이상 recv worker 기본값을 8개로 늘렸다. Probe `perf_rust_multi_linux_20260531_234055_rust_multi_spot_wss_workers8_probe_20260531.txt`에서 worker 확대 효과를 먼저 확인했고, 최종 코드 probe `perf_rust_multi_linux_20260531_234241_rust_multi_spot_wss_workers8_final_20260531.txt`와 단독 보강 `perf_rust_multi_linux_20260531_234325_rust_multi_spot_wss_1024_workers8_final_fill_20260531.txt`를 overlay했다. `MULTI_SPOT wss 65536B/131072B`는 각각 121.3%, 130.6%로 통과했고, 1024B/4096B는 45.3%, 71.6%로 기준에 못 닿아 보류한다. Multi DEALER_DEALER/PUBSUB/REQREP 잔여 항목은 이미 `Message::with_size` 직접 작성, caller-provided `Received`/`TopicMessage` 재사용, worker drain 구조를 쓰고 있어 public API를 유지한 추가 내부 후보가 확인되지 않았다.
 
 
 ### 8.1 Single suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
+| `tcp` | `PAIR` | `통과(96.5%)` | `통과(96.9%)` | `통과(108.6%)` | `통과(97.6%)` | `통과(97.6%)` | `통과(94.3%)` | C full/Rust single full. |
+| `tcp` | `PUBSUB` | `보류(74.5%)` | `통과(84.5%)` | `통과(107.2%)` | `통과(96.7%)` | `통과(97.0%)` | `통과(94.2%)` | C full/Rust single full. 보강 재측정 overlay 기준. PUBSUB 수신 재사용과 소형 message 직접 작성 probe는 통과를 만들지 못해 최종 코드에 남기지 않았다. |
+| `tcp` | `DEALER_DEALER` | `통과(97.3%)` | `통과(97.5%)` | `통과(112.0%)` | `통과(97.2%)` | `통과(96.8%)` | `통과(94.0%)` | C full/Rust single full. |
+| `tcp` | `DEALER_ROUTER` | `통과(90.4%)` | `통과(89.5%)` | `통과(82.2%)` | `보류(12.8%)` | `보류(11.3%)` | `보류(10.5%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
+| `tcp` | `ROUTER_ROUTER` | `통과(95.2%)` | `통과(106.3%)` | `통과(93.1%)` | `보류(13.0%)` | `보류(11.4%)` | `보류(10.5%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
+| `tcp` | `SPOT` | `통과(155.2%)` | `통과(113.6%)` | `보류(63.2%)` | `통과(105.4%)` | `통과(90.3%)` | `통과(83.2%)` | 1024B는 SPOT direct-message 최종 probe `perf_rust_single_linux_20260531_233915_rust_single_spot_direct_message_final_20260531.txt` 기준. 기준에 못 닿아 보류한다. |
+| `ws` | `PAIR` | `통과(96.9%)` | `통과(97.0%)` | `통과(122.6%)` | `통과(97.2%)` | `통과(97.2%)` | `통과(94.0%)` | C full/Rust single full. |
+| `ws` | `PUBSUB` | `보류(76.7%)` | `통과(88.5%)` | `통과(127.1%)` | `통과(97.2%)` | `통과(96.4%)` | `통과(94.1%)` | C full/Rust single full. 보강 재측정 overlay 기준. PUBSUB 수신 재사용과 소형 message 직접 작성 probe는 통과를 만들지 못해 최종 코드에 남기지 않았다. |
+| `ws` | `DEALER_DEALER` | `통과(97.2%)` | `통과(97.3%)` | `통과(114.3%)` | `통과(96.7%)` | `통과(97.0%)` | `통과(94.5%)` | C full/Rust single full. |
+| `ws` | `DEALER_ROUTER` | `통과(86.9%)` | `통과(102.3%)` | `통과(129.9%)` | `보류(29.0%)` | `보류(22.8%)` | `보류(19.4%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
+| `ws` | `ROUTER_ROUTER` | `통과(98.6%)` | `통과(112.0%)` | `통과(124.5%)` | `보류(27.6%)` | `보류(22.9%)` | `보류(20.6%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
+| `ws` | `SPOT` | `통과(156.6%)` | `통과(119.9%)` | `통과(88.9%)` | `통과(153.8%)` | `통과(160.4%)` | `통과(97.7%)` | C full/Rust single full. 보강 재측정 overlay 기준. |
+| `wss` | `PAIR` | `통과(97.1%)` | `통과(97.1%)` | `통과(133.6%)` | `통과(127.7%)` | `통과(102.7%)` | `통과(104.4%)` | C full/Rust single full. |
+| `wss` | `PUBSUB` | `보류(79.7%)` | `통과(92.5%)` | `통과(146.4%)` | `통과(112.6%)` | `통과(101.2%)` | `통과(96.2%)` | C full/Rust single full. 보강 재측정 overlay 기준. PUBSUB 수신 재사용과 소형 message 직접 작성 probe는 통과를 만들지 못해 최종 코드에 남기지 않았다. |
+| `wss` | `DEALER_DEALER` | `통과(97.2%)` | `통과(97.5%)` | `통과(137.6%)` | `통과(128.0%)` | `통과(105.3%)` | `통과(96.4%)` | C full/Rust single full. |
+| `wss` | `DEALER_ROUTER` | `통과(85.5%)` | `통과(105.7%)` | `통과(130.2%)` | `통과(76.9%)` | `통과(78.0%)` | `통과(81.1%)` | C full/Rust single full. 보강 재측정 overlay 기준. |
+| `wss` | `ROUTER_ROUTER` | `통과(97.3%)` | `통과(110.2%)` | `통과(130.2%)` | `통과(78.0%)` | `통과(77.4%)` | `통과(92.4%)` | C full/Rust single full. 보강 재측정 overlay 기준. |
+| `wss` | `SPOT` | `통과(157.1%)` | `통과(96.7%)` | `통과(83.2%)` | `통과(154.6%)` | `통과(102.2%)` | `통과(276.5%)` | 256B는 SPOT direct-message 최종 probe `perf_rust_single_linux_20260531_233915_rust_single_spot_direct_message_final_20260531.txt` 기준. |
+| `tls` | `PAIR` | `통과(96.7%)` | `통과(97.0%)` | `통과(124.6%)` | `통과(98.8%)` | `통과(97.9%)` | `통과(95.5%)` | C full/Rust single full. |
+| `tls` | `PUBSUB` | `보류(73.7%)` | `보류(79.5%)` | `통과(124.1%)` | `통과(97.9%)` | `통과(98.0%)` | `통과(94.6%)` | C full/Rust single full. 보강 재측정 overlay 기준. PUBSUB 수신 재사용과 소형 message 직접 작성 probe는 통과를 만들지 못해 최종 코드에 남기지 않았다. |
+| `tls` | `DEALER_DEALER` | `통과(97.1%)` | `통과(97.2%)` | `통과(119.8%)` | `통과(98.1%)` | `통과(97.6%)` | `통과(95.8%)` | C full/Rust single full. |
+| `tls` | `DEALER_ROUTER` | `통과(86.8%)` | `통과(99.8%)` | `통과(124.4%)` | `보류(55.7%)` | `보류(54.2%)` | `보류(51.7%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
+| `tls` | `ROUTER_ROUTER` | `통과(91.5%)` | `통과(108.0%)` | `통과(123.8%)` | `보류(54.5%)` | `보류(54.1%)` | `보류(54.2%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
+| `tls` | `SPOT` | `통과(144.4%)` | `통과(117.4%)` | `통과(93.5%)` | `통과(143.8%)` | `통과(100.6%)` | `통과(94.9%)` | 1024B는 SPOT direct-message 최종 probe `perf_rust_single_linux_20260531_233915_rust_single_spot_direct_message_final_20260531.txt` 기준. |
 
 
 ### 8.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `보류(70.1%)` | `통과(87.0%)` | `통과(95.1%)` | `통과(81.5%)` | `통과(100.8%)` | `통과(100.3%)` | C full/Rust multi full. 보강 재측정 overlay 기준. send path는 이미 `Message::with_size` 직접 작성이고, receive path도 caller-provided `Received`를 재사용한다. 추가 후보가 확인되지 않아 보류한다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `통과(102.0%)` | `통과(108.0%)` | `통과(108.8%)` | `통과(104.9%)` | `통과(70.4%)` | `통과(97.4%)` | C full/Rust multi full. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `통과(78.1%)` | `통과(78.2%)` | `통과(79.3%)` | `통과(83.1%)` | `통과(71.6%)` | `통과(90.0%)` | C full/Rust multi full. |
+| `tcp` | `MULTI_PUBSUB` | `통과(86.5%)` | `통과(100.0%)` | `통과(199.1%)` | `통과(168.2%)` | `보류(74.9%)` | `통과(97.9%)` | C full/Rust multi full. 보강 재측정 overlay 기준. server는 `Message::with_size` 직접 작성, client는 `TopicMessage` 재사용과 무복사 header decode를 이미 사용한다. 추가 후보가 확인되지 않아 보류한다. |
+| `tcp` | `MULTI_SPOT` | `통과(117.8%)` | `통과(115.9%)` | `통과(104.6%)` | `통과(110.1%)` | `통과(126.5%)` | `통과(101.1%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `tcp` | `MULTI_SPOT_REQREP` | `통과(84.5%)` | `통과(85.4%)` | `통과(86.6%)` | `통과(87.6%)` | `통과(90.2%)` | `통과(76.8%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `통과(102.2%)` | `통과(96.5%)` | `통과(106.9%)` | `통과(100.8%)` | `통과(92.7%)` | `통과(79.0%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `tcp` | `MULTI_STREAM` | `통과(104.4%)` | `통과(104.2%)` | `통과(103.3%)` | `통과(91.6%)` | `통과(86.8%)` | `통과(90.7%)` | C full/Rust multi full. |
+| `ws` | `MULTI_DEALER_DEALER` | `보류(70.7%)` | `통과(89.2%)` | `통과(93.6%)` | `보류(65.8%)` | `통과(98.4%)` | `보류(67.4%)` | C full/Rust multi full. 보강 재측정 overlay 기준. send path는 이미 `Message::with_size` 직접 작성이고, receive path도 caller-provided `Received`를 재사용한다. 추가 후보가 확인되지 않아 보류한다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `통과(102.7%)` | `통과(104.0%)` | `통과(104.3%)` | `통과(97.5%)` | `통과(76.3%)` | `통과(91.3%)` | C full/Rust multi full. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `통과(82.9%)` | `통과(86.1%)` | `통과(82.0%)` | `통과(89.1%)` | `통과(83.4%)` | `통과(86.2%)` | C full/Rust multi full. |
+| `ws` | `MULTI_PUBSUB` | `통과(92.4%)` | `통과(85.5%)` | `통과(95.1%)` | `통과(98.7%)` | `통과(119.0%)` | `통과(123.0%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `ws` | `MULTI_SPOT` | `통과(107.2%)` | `통과(118.8%)` | `통과(105.9%)` | `통과(104.2%)` | `통과(126.0%)` | `통과(103.2%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `ws` | `MULTI_SPOT_REQREP` | `통과(88.5%)` | `통과(85.2%)` | `통과(86.6%)` | `통과(95.4%)` | `보류(69.7%)` | `통과(88.1%)` | C full/Rust multi full. 보강 재측정 overlay 기준. request path는 public callback completion과 owned `Message` 제출 구조를 유지해야 하므로 추가 후보가 확인되지 않아 보류한다. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `통과(85.4%)` | `통과(91.7%)` | `통과(101.9%)` | `통과(83.8%)` | `통과(85.9%)` | `통과(98.4%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `ws` | `MULTI_STREAM` | `통과(101.2%)` | `통과(105.3%)` | `통과(99.2%)` | `통과(98.8%)` | `통과(96.1%)` | `통과(100.3%)` | C full/Rust multi full. |
+| `wss` | `MULTI_DEALER_DEALER` | `보류(68.3%)` | `통과(84.7%)` | `통과(93.7%)` | `통과(90.3%)` | `통과(92.1%)` | `통과(95.6%)` | C full/Rust multi full. 보강 재측정 overlay 기준. send path는 이미 `Message::with_size` 직접 작성이고, receive path도 caller-provided `Received`를 재사용한다. 추가 후보가 확인되지 않아 보류한다. |
+| `wss` | `MULTI_DEALER_ROUTER` | `통과(103.0%)` | `통과(100.1%)` | `통과(100.5%)` | `통과(96.3%)` | `통과(93.7%)` | `통과(89.5%)` | C full/Rust multi full. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `통과(88.1%)` | `통과(88.7%)` | `통과(89.8%)` | `통과(90.0%)` | `통과(103.2%)` | `통과(98.4%)` | C full/Rust multi full. |
+| `wss` | `MULTI_PUBSUB` | `통과(88.7%)` | `통과(88.1%)` | `통과(99.7%)` | `통과(130.9%)` | `통과(91.0%)` | `통과(100.9%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `wss` | `MULTI_SPOT` | `통과(110.5%)` | `통과(118.1%)` | `보류(45.3%)` | `보류(71.6%)` | `통과(121.3%)` | `통과(130.6%)` | 1024B는 `perf_rust_multi_linux_20260531_234325_rust_multi_spot_wss_1024_workers8_final_fill_20260531.txt`, 4096B/65536B/131072B는 `perf_rust_multi_linux_20260531_234241_rust_multi_spot_wss_workers8_final_20260531.txt` 기준. worker 8 확대 뒤에도 1024B/4096B는 기준에 못 닿아 보류한다. |
+| `wss` | `MULTI_SPOT_REQREP` | `통과(79.3%)` | `통과(81.0%)` | `통과(85.5%)` | `통과(92.1%)` | `통과(100.6%)` | `통과(88.9%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `통과(88.9%)` | `통과(86.9%)` | `통과(95.5%)` | `통과(90.5%)` | `통과(97.4%)` | `통과(91.9%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `wss` | `MULTI_STREAM` | `통과(95.1%)` | `통과(98.3%)` | `통과(94.0%)` | `통과(94.1%)` | `통과(93.1%)` | `통과(100.9%)` | C full/Rust multi full. |
+| `tls` | `MULTI_DEALER_DEALER` | `보류(69.8%)` | `통과(90.6%)` | `통과(88.8%)` | `보류(78.2%)` | `통과(83.1%)` | `통과(88.4%)` | C full/Rust multi full. 보강 재측정 overlay 기준. send path는 이미 `Message::with_size` 직접 작성이고, receive path도 caller-provided `Received`를 재사용한다. 추가 후보가 확인되지 않아 보류한다. |
+| `tls` | `MULTI_DEALER_ROUTER` | `통과(103.1%)` | `통과(99.0%)` | `통과(98.1%)` | `통과(92.8%)` | `통과(87.8%)` | `통과(99.7%)` | C full/Rust multi full. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `통과(81.9%)` | `통과(82.2%)` | `통과(83.1%)` | `통과(87.0%)` | `통과(88.3%)` | `통과(93.9%)` | C full/Rust multi full. |
+| `tls` | `MULTI_PUBSUB` | `통과(84.9%)` | `통과(91.6%)` | `통과(94.8%)` | `통과(90.8%)` | `통과(94.0%)` | `통과(103.1%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `tls` | `MULTI_SPOT` | `통과(107.3%)` | `통과(118.6%)` | `통과(107.9%)` | `통과(82.9%)` | `통과(104.2%)` | `통과(99.3%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `tls` | `MULTI_SPOT_REQREP` | `통과(78.4%)` | `통과(83.9%)` | `통과(81.4%)` | `통과(87.5%)` | `통과(101.0%)` | `통과(91.7%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `통과(88.0%)` | `통과(99.4%)` | `통과(97.0%)` | `통과(93.8%)` | `통과(101.0%)` | `통과(89.0%)` | C full/Rust multi full. 보강 재측정 overlay 기준. |
+| `tls` | `MULTI_STREAM` | `통과(88.9%)` | `통과(92.3%)` | `통과(92.0%)` | `통과(94.9%)` | `통과(96.8%)` | `통과(91.2%)` | C full/Rust multi full. |
 
 
 ## 9. Python 상태
 
-perf 경로: `bindings/python/perf`. 기준 파일과 보강 파일은 측정 시점에 결과 파일/메모 칸에 직접 적는다.
+perf 경로: `bindings/python/perf`.
+
+Python single smoke 결과 파일은 `perf_python_single_linux_20260531_162613_round_20260530_python_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_python_single_linux_20260531_163931_round_20260530_python_single_full_v1.txt`이고 status=complete(720/720)였다. C 기준 대비 통과 56개와 잔류 미달 88개가 확인됐다. 이후 `stamp_payload(...)`가 `bytes` 사본 대신 기존 `bytearray`를 그대로 반환하게 바꾸고, single receive hot path가 마지막 message part의 공개 `Message.data` memoryview에서 header를 직접 읽게 바꿨다. 제한 재측정 `perf_python_single_linux_20260531_234853_python_single_stamp_bytearray_probe_20260531.txt`와 `perf_python_single_linux_20260531_235420_python_single_recv_data_view_probe_20260531.txt`에서 PAIR/PUBSUB 64/256/1024B는 C 대비 3.2~12.4% 범위에 머물러 통과권까지 오르지 않았다. Python interpreter 루프, ctypes 기반 message materialize, send builder 호출 경계가 작은 payload에서 지배적이라 public API 안에서 더 줄일 후보가 확인되지 않아 잔여 숫자형 항목은 보류한다.
+
+Python multi smoke 결과 파일은 `perf_python_multi_linux_20260531_165008_round_20260530_python_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_python_multi_linux_20260531_180039_round_20260530_python_multi_full_v1.txt`이고 status=partial(810/960)이었다. 실패 조합 보강 파일 `perf_python_multi_linux_20260531_185859_round_20260530_python_multi_failset_fill.txt`는 status=partial(440/600)이었다. Overlay 뒤에도 RESULT가 없는 23개 칸은 두 실행에서 반복 실패한 조합이므로 `보류(RESULT 없음)`으로 둔다. 이후 `PERF_MULTI_*_IO_THREADS=4` 후보는 `perf_python_multi_linux_20260531_234941_python_multi_io4_spot_probe_20260531.txt`에서 MULTI_SPOT tcp/wss 64/1024B가 C 대비 4.1~4.6%에 그쳐 유지하지 않았다. Echo server와 SPOT receive 경로는 `to_bytes_list()` 또는 `to_bytes()` 사본 생성을 줄이고 공개 `Message.data` view를 submit/decode에 직접 쓰도록 바꿨다. 제한 재측정 `perf_python_multi_linux_20260601_001503_python_multi_dataview_echo_probe_20260531.txt`는 partial(205/225)이었고, `MULTI_SPOT wss 65536B`는 70.5%까지 개선됐다. 나머지 routed/SPOT echo 후보는 C 대비 4.0~53.4% 범위로 통과권에 못 미쳤거나 반복 timeout이 남아 보류한다.
+
+Python multi 표에서 긴 결과 파일명은 표 폭을 키우지 않도록 위 설명 문단에 모았다. 표 안의 메모는 기준과 판정만 짧게 적는다.
 
 
 ### 9.1 Single suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
+| `tcp` | `PAIR` | `보류(4.2%)` | `보류(4.1%)` | `보류(6.3%)` | `통과(95.8%)` | `통과(96.5%)` | `통과(96.4%)` | C full/Python single full. |
+| `tcp` | `PUBSUB` | `보류(3.6%)` | `보류(4.4%)` | `보류(5.2%)` | `통과(95.7%)` | `통과(95.9%)` | `통과(95.9%)` | C full/Python single full. |
+| `tcp` | `DEALER_DEALER` | `보류(4.0%)` | `보류(4.2%)` | `보류(6.2%)` | `통과(96.1%)` | `통과(96.0%)` | `통과(95.9%)` | C full/Python single full. |
+| `tcp` | `DEALER_ROUTER` | `보류(3.0%)` | `보류(3.2%)` | `보류(3.5%)` | `보류(17.9%)` | `보류(15.7%)` | `보류(14.6%)` | C full/Python single full. |
+| `tcp` | `ROUTER_ROUTER` | `보류(3.0%)` | `보류(3.1%)` | `보류(3.3%)` | `보류(0.0%)` | `보류(0.0%)` | `보류(0.0%)` | C full/Python single full. |
+| `tcp` | `SPOT` | `보류(11.9%)` | `보류(10.1%)` | `보류(9.9%)` | `통과(35.6%)` | `통과(43.4%)` | `통과(62.6%)` | C full/Python single full. |
+| `ws` | `PAIR` | `보류(4.5%)` | `보류(4.4%)` | `보류(8.2%)` | `통과(95.3%)` | `통과(96.1%)` | `통과(95.6%)` | C full/Python single full. |
+| `ws` | `PUBSUB` | `보류(3.6%)` | `보류(4.5%)` | `보류(6.4%)` | `통과(95.5%)` | `통과(95.5%)` | `통과(95.9%)` | C full/Python single full. |
+| `ws` | `DEALER_DEALER` | `보류(4.4%)` | `보류(4.3%)` | `보류(7.3%)` | `통과(95.1%)` | `통과(95.9%)` | `통과(96.0%)` | C full/Python single full. |
+| `ws` | `DEALER_ROUTER` | `보류(3.4%)` | `보류(3.7%)` | `보류(5.1%)` | `통과(40.4%)` | `보류(32.0%)` | `보류(27.1%)` | C full/Python single full. |
+| `ws` | `ROUTER_ROUTER` | `보류(3.3%)` | `보류(3.3%)` | `보류(4.2%)` | `보류(0.0%)` | `보류(0.0%)` | `보류(0.0%)` | C full/Python single full. |
+| `ws` | `SPOT` | `보류(12.3%)` | `보류(10.4%)` | `보류(10.1%)` | `통과(53.9%)` | `통과(60.1%)` | `통과(65.2%)` | C full/Python single full. |
+| `wss` | `PAIR` | `보류(4.6%)` | `보류(4.6%)` | `보류(12.3%)` | `통과(94.8%)` | `통과(96.8%)` | `통과(98.7%)` | C full/Python single full. |
+| `wss` | `PUBSUB` | `보류(3.8%)` | `보류(4.6%)` | `보류(11.0%)` | `통과(92.0%)` | `통과(93.5%)` | `통과(92.0%)` | C full/Python single full. |
+| `wss` | `DEALER_DEALER` | `보류(4.5%)` | `보류(4.3%)` | `보류(11.9%)` | `통과(94.8%)` | `통과(97.3%)` | `통과(91.7%)` | C full/Python single full. |
+| `wss` | `DEALER_ROUTER` | `보류(3.3%)` | `보류(3.7%)` | `보류(8.6%)` | `통과(84.4%)` | `통과(101.7%)` | `통과(105.9%)` | C full/Python single full. |
+| `wss` | `ROUTER_ROUTER` | `보류(3.4%)` | `보류(3.1%)` | `보류(7.0%)` | `보류(0.0%)` | `보류(0.0%)` | `보류(0.0%)` | C full/Python single full. |
+| `wss` | `SPOT` | `보류(11.9%)` | `보류(10.2%)` | `통과(71.4%)` | `통과(89.4%)` | `통과(186.5%)` | `통과(189.9%)` | C full/Python single full. |
+| `tls` | `PAIR` | `보류(4.5%)` | `보류(4.5%)` | `보류(9.1%)` | `통과(92.1%)` | `통과(94.3%)` | `통과(92.7%)` | C full/Python single full. |
+| `tls` | `PUBSUB` | `보류(3.7%)` | `보류(6.6%)` | `보류(7.5%)` | `통과(93.5%)` | `통과(94.3%)` | `통과(91.9%)` | C full/Python single full. |
+| `tls` | `DEALER_DEALER` | `보류(4.2%)` | `보류(4.3%)` | `보류(8.8%)` | `통과(91.2%)` | `통과(93.8%)` | `통과(92.5%)` | C full/Python single full. |
+| `tls` | `DEALER_ROUTER` | `보류(3.5%)` | `보류(3.6%)` | `보류(5.4%)` | `통과(72.7%)` | `통과(73.6%)` | `통과(69.7%)` | C full/Python single full. |
+| `tls` | `ROUTER_ROUTER` | `보류(3.0%)` | `보류(3.0%)` | `보류(4.5%)` | `보류(0.0%)` | `보류(0.0%)` | `보류(0.0%)` | C full/Python single full. |
+| `tls` | `SPOT` | `보류(11.5%)` | `보류(9.9%)` | `보류(11.8%)` | `통과(78.8%)` | `통과(96.8%)` | `통과(92.2%)` | C full/Python single full. |
 
 
 ### 9.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` |  |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | MULTI_STREAM 정책상 측정 대상 size(64/256/1024/65536)만 채우고 나머지는 `해당 없음`이다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `보류(7.4%)` | `보류(11.4%)` | `보류(12.5%)` | `보류(14.7%)` | `통과(47.1%)` | `통과(47.3%)` | C full/Python multi full. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `보류(14.5%)` | `보류(15.3%)` | `보류(16.1%)` | `보류(16.5%)` | `통과(33.3%)` | `통과(44.7%)` | C full/Python multi full. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `보류(11.3%)` | `보류(11.3%)` | `보류(11.6%)` | `보류(12.1%)` | `보류(27.3%)` | `통과(40.7%)` | C full/Python multi full. |
+| `tcp` | `MULTI_PUBSUB` | `보류(7.2%)` | `보류(8.2%)` | `보류(18.8%)` | `보류(33.9%)` | `통과(45.5%)` | `통과(55.8%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `tcp` | `MULTI_SPOT` | `보류(4.6%)` | `보류(4.5%)` | `보류(4.2%)` | `보류(5.1%)` | `보류(6.9%)` | `보류(7.1%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `tcp` | `MULTI_SPOT_REQREP` | `보류(18.0%)` | `보류(18.8%)` | `보류(20.0%)` | `보류(24.2%)` | `보류(25.7%)` | `통과(33.1%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `보류(15.3%)` | `보류(14.3%)` | `보류(15.9%)` | `보류(17.4%)` | `보류(RESULT 없음)` | `통과(66.8%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `tcp` | `MULTI_STREAM` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(12.7%)` | `보류(15.5%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `ws` | `MULTI_DEALER_DEALER` | `보류(7.3%)` | `보류(11.4%)` | `보류(13.8%)` | `보류(19.4%)` | `보류(33.6%)` | `보류(26.8%)` | C full/Python multi full. |
+| `ws` | `MULTI_DEALER_ROUTER` | `보류(14.9%)` | `보류(14.8%)` | `보류(15.5%)` | `보류(16.3%)` | `보류(24.1%)` | `보류(29.4%)` | C full/Python multi full. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `보류(11.4%)` | `보류(12.6%)` | `보류(12.0%)` | `보류(13.2%)` | `보류(25.8%)` | `보류(25.7%)` | C full/Python multi full. |
+| `ws` | `MULTI_PUBSUB` | `보류(8.9%)` | `보류(8.3%)` | `보류(10.0%)` | `보류(22.5%)` | `통과(42.0%)` | `통과(48.4%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `ws` | `MULTI_SPOT` | `보류(4.2%)` | `보류(4.2%)` | `보류(4.2%)` | `보류(5.0%)` | `보류(7.6%)` | `보류(7.5%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `ws` | `MULTI_SPOT_REQREP` | `보류(21.8%)` | `보류(22.9%)` | `보류(25.0%)` | `통과(36.5%)` | `보류(31.7%)` | `보류(29.6%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `보류(14.7%)` | `보류(15.8%)` | `보류(16.9%)` | `보류(22.7%)` | `보류(RESULT 없음)` | `통과(82.7%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `ws` | `MULTI_STREAM` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(16.5%)` | `보류(7.5%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `wss` | `MULTI_DEALER_DEALER` | `보류(6.9%)` | `보류(11.1%)` | `보류(16.2%)` | `보류(27.8%)` | `보류(27.1%)` | `보류(27.9%)` | C full/Python multi full. |
+| `wss` | `MULTI_DEALER_ROUTER` | `보류(16.0%)` | `보류(16.6%)` | `보류(16.4%)` | `보류(19.0%)` | `보류(25.0%)` | `보류(27.3%)` | C full/Python multi full. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `보류(12.6%)` | `보류(13.0%)` | `보류(13.3%)` | `보류(15.1%)` | `보류(26.7%)` | `보류(29.1%)` | C full/Python multi full. |
+| `wss` | `MULTI_PUBSUB` | `보류(7.6%)` | `보류(7.2%)` | `보류(12.1%)` | `보류(26.3%)` | `보류(28.8%)` | `보류(30.9%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `wss` | `MULTI_SPOT` | `보류(3.9%)` | `보류(4.4%)` | `보류(4.2%)` | `보류(11.9%)` | `통과(70.5%)` | `통과(56.2%)` | 65536B는 data view probe 기준. 나머지는 overlay 기준. |
+| `wss` | `MULTI_SPOT_REQREP` | `보류(17.7%)` | `보류(18.9%)` | `보류(22.7%)` | `통과(44.2%)` | `통과(52.7%)` | `통과(48.9%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `보류(12.5%)` | `보류(13.3%)` | `보류(RESULT 없음)` | `보류(30.9%)` | `보류(RESULT 없음)` | `통과(85.3%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `wss` | `MULTI_STREAM` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(14.8%)` | `보류(RESULT 없음)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `tls` | `MULTI_DEALER_DEALER` | `보류(7.1%)` | `보류(11.4%)` | `보류(13.9%)` | `보류(23.1%)` | `보류(24.2%)` | `보류(25.7%)` | C full/Python multi full. |
+| `tls` | `MULTI_DEALER_ROUTER` | `보류(15.4%)` | `보류(15.5%)` | `보류(15.7%)` | `보류(16.4%)` | `보류(23.3%)` | `보류(28.4%)` | C full/Python multi full. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `보류(11.9%)` | `보류(12.3%)` | `보류(12.5%)` | `보류(13.4%)` | `보류(23.2%)` | `보류(27.2%)` | C full/Python multi full. |
+| `tls` | `MULTI_PUBSUB` | `보류(RESULT 없음)` | `보류(7.8%)` | `보류(10.5%)` | `보류(21.6%)` | `보류(28.1%)` | `보류(34.3%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `tls` | `MULTI_SPOT` | `보류(4.2%)` | `보류(4.1%)` | `보류(4.2%)` | `보류(3.9%)` | `보류(8.7%)` | `보류(10.0%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `tls` | `MULTI_SPOT_REQREP` | `보류(16.3%)` | `보류(17.8%)` | `보류(19.1%)` | `보류(26.5%)` | `통과(44.4%)` | `통과(38.2%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `보류(12.5%)` | `보류(14.7%)` | `보류(14.3%)` | `보류(18.9%)` | `보류(RESULT 없음)` | `통과(82.6%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `tls` | `MULTI_STREAM` | `보류(6.9%)` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(RESULT 없음)` | `보류(17.3%)` | `보류(RESULT 없음)` | C full/Python multi full. 보강 재측정 overlay 기준. |
 
 
-## 10. 라운드 진행 로그
+## 10. 상세 작업 로그
 
-측정/수정/재측정 이벤트는 시간 순으로 아래에 적는다. 결과 파일 경로, 변경 핵심,
-후속 작업 메모를 한 항목씩 남긴다.
-
-- (비어 있음)
+상세 측정 로그와 후보별 기각 근거는 `doc/plan/perf/log/` 아래에 남긴다.
+이번 Node 재검토 로그는 `doc/plan/perf/log/2026-06-01-node-bindings-performance-round.ko.md`에 기록한다.

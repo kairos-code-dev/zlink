@@ -41,7 +41,7 @@ defer server.Close()
 server.Bind("tcp://127.0.0.1:5555")
 
 var received zlink.Received
-server.Recv(&received, zlink.RecvFlagsNone)
+if _, err := server.Recv(&received, zlink.RecvFlagsNone); err != nil { ... }
 defer received.Close()
 
 part, _ := received.SinglePartOrError()
@@ -64,7 +64,7 @@ ping, _ := zlink.NewMessageFrom([]byte("PING"))
 client.Send().Message(ping).Submit(nil)
 
 var received zlink.Received
-client.Recv(&received, zlink.RecvFlagsNone)
+if _, err := client.Recv(&received, zlink.RecvFlagsNone); err != nil { ... }
 defer received.Close()
 
 part, _ := received.SinglePartOrError()

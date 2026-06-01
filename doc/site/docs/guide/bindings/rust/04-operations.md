@@ -23,9 +23,9 @@ router.options().set_mandatory(true).unwrap();
 자동 HWM:
 
 ```rust
-// 컨텍스트 설정은 Context에 직접 있습니다
-ctx.set_auto_hwm_enabled(true).unwrap();
-ctx.set_auto_hwm_profile(zlink::AutoHwmProfile::Balanced).unwrap();
+// 컨텍스트 옵션은 ctx.options()를 통해 접근합니다
+ctx.options().set_auto_hwm_enabled(true).unwrap();
+ctx.options().set_auto_hwm_profile(zlink::AutoHwmProfile::Balanced).unwrap();
 ```
 
 ---

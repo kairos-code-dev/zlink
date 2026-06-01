@@ -24,7 +24,7 @@
 | 컨텍스트 | `zlink.createContext()` | 런타임 진입점 | [01](./01-getting-started.md) |
 | 메시지 | `Buffer` | 페이로드 (버퍼) | [01](./01-getting-started.md) |
 | 수신 | `new zlink.Received()` | 수신 봉투 | [01](./01-getting-started.md) |
-| 라우팅 ID | `new zlink.RoutingId(buf)` | 피어 식별 값 | [01](./01-getting-started.md) |
+| 라우팅 ID | `zlink.RoutingId.from(Buffer.from('peer-1'))` | 피어 식별 값 | [01](./01-getting-started.md) |
 | PAIR | `zlink.createPairSocket(ctx)` | 1:1 배타적 연결 | [02](./02-messaging.md#pair) |
 | DEALER/ROUTER | `createDealer/RouterSocket` | 요청/응답 | [02](./02-messaging.md#dealer--router) |
 | PUB/SUB | `createPub/SubSocket` | 토픽 발행/구독 | [02](./02-messaging.md#pub--sub) |

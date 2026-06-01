@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- C++ STREAM Open Items](./stream-open-items.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Stream Connector For C++](./cpp-stream-connector.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
@@ -18,9 +18,14 @@ auto app = zlink::framework::app_t::create();
 
 app.use_zlink([](auto &zlink) {
     zlink.node("route-node")
+      .spot_node("session-actors", [](auto &spot_node) {
+          spot_node.bind("tcp://0.0.0.0:7101");
+          spot_node.enable_actor_gateway();
+      })
       .stream("route-stream", [](auto &stream) {
           stream.bind("tcp://0.0.0.0:9200");
           stream.packet_session("route");
+          stream.attach_actor_gateway("session-actors");
       });
 });
 ```
@@ -47,7 +52,7 @@ app.handlers()
 ## 3. Packet reply
 
 ```cpp
-std::future<void> send_route_ack(
+zlink::framework::stream_write_call_t send_route_ack(
   zlink::framework::stream_t &stream,
   const zlink::framework::stream_header_t &request_header,
   const route_ack_t &ack)
@@ -63,5 +68,40 @@ std::future<void> send_route_ack(
 }
 ```
 
-framework MVP는 raw stream session 샘플을 제공하지 않는다. Header도 framework가
+framework core는 raw stream session 샘플을 제공하지 않는다. Header도 framework가
 정의한 `stream_header_t` 방식만 사용한다.
+
+## 4. actor relay
+
+```cpp
+class game_session_t final : public zlink::framework::packet_stream_session_t {
+public:
+    explicit game_session_t(zlink::framework::session_actor_manager_t &actors)
+      : actors_(actors)
+    {
+    }
+
+    zlink::framework::task_t<void> on_packet(zlink::framework::stream_t &stream,
+      const zlink::framework::stream_header_t &header,
+      const zlink::message_t &payload) override
+    {
+        if (is_login(header)) {
+            actor_ = co_await actors_
+              .bind(find_actor_ref(payload))
+              .submit();
+            co_return;
+        }
+
+        co_await actor_
+          .relay(header, payload)
+          .submit();
+    }
+
+private:
+    zlink::framework::session_actor_manager_t &actors_;
+    zlink::framework::session_actor_t actor_;
+};
+```
+
+session actor relay는 route mesh packet을 application 코드에서 만들지 않는다. STREAM
+session은 attach된 ActorGateway를 통해 actor로 packet을 넘긴다.

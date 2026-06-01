@@ -19,6 +19,11 @@
 `C++` framework는 기존 C++ binding을 대체하지 않는다. framework는 C++ binding 위에
 올라가며, binding이 제공하는 typed public API를 내부 runtime substrate로 사용한다.
 
+기능과 사용성 개념은 `.NET` framework를 기준으로 맞춘다. 즉 app/host, DI scope,
+handler registry, channel messaging, `STREAM`, `SPOT`, ActorGateway session relay,
+monitoring, graceful shutdown은 같은 모델을 제공하고, C++ public API는 C++20 coroutine,
+callback, RAII ownership에 맞게 표현만 바꾼다.
+
 binding 기준은 아래 문서를 따른다.
 
 - [C++ Binding Specification](/home/hep7/project/kairos/zlink/doc/spec/bindings/cpp/README.md)
@@ -43,8 +48,8 @@ framework 구현은 아래 C++ binding 타입을 기준으로 삼는다.
 | registry | `zlink::service::registry_t`, `zlink::service::registry_query_client_t` | embedded registry와 topology query에 사용한다. |
 | spot node | `zlink::service::spot_node_t` | spot lifecycle과 channel attach를 관리한다. |
 | spot | `zlink::service::spot_t` | spot publish, subscribe, direct routing, channel request/send에 사용한다. |
-| async request | `zlink::async_result_t<T>` | framework future/pending request 구현의 기반이다. |
-| codec extension | `zlink::codec::json` | JSON serializer 기본 구현에 사용한다. |
+| async request | `zlink::async_result_t<T>` | framework call object와 pending submit 구현의 내부 기반이다. |
+| codec | `message_t` 중심 codec API | JSON serializer 기본 구현에 사용한다. 기존 함수형 codec helper는 message 중심 표면으로 정렬한다. |
 
 framework는 binding의 native handle, raw callback userdata, raw option key를 public
 API로 올리지 않는다. 사용자가 필요한 것은 channel name, topic, typed payload,
@@ -96,7 +101,9 @@ class request_client_t;
 class spot_context_t;
 class send_ready_context_t;
 class stream_header_t;
+class stream_error_t;
 class stream_t;
+class packet_stream_session_t;
 class module_t;
 class hosted_service_t;
 
@@ -134,12 +141,12 @@ public:
 } // namespace zlink::framework
 ```
 
-`run`은 MVP에서 `int`를 반환한다. 반환값은 process exit code로 사용할 수 있어야 한다.
+`run`은 `int`를 반환한다. 반환값은 process exit code로 사용할 수 있어야 한다.
 handler 예외, runtime 오류, signal shutdown은 host가 수집하고 종료 경로를 닫는다.
 
 ## 5. DI
 
-DI는 MVP에서 자체 container로 구현한다. C++ binding에는 DI 개념이 없으므로, framework
+DI는 자체 container로 구현한다. C++ binding에는 DI 개념이 없으므로, framework
 계층이 service lifetime과 handler owner resolve를 직접 제공한다.
 
 ```cpp
@@ -147,6 +154,7 @@ namespace zlink::framework {
 
 enum class service_lifetime_t {
     singleton,
+    scoped,
     transient
 };
 
@@ -168,6 +176,9 @@ public:
     service_collection_t &add_singleton(std::unique_ptr<T> instance);
 
     template <typename T>
+    service_collection_t &add_scoped();
+
+    template <typename T>
     service_collection_t &add_transient();
 
     template <typename T>
@@ -178,13 +189,21 @@ public:
 } // namespace zlink::framework
 ```
 
-MVP 생성 규칙은 아래와 같다.
+기본 생성 규칙은 아래와 같다.
 
 - `add_singleton<T>()`, `add_transient<T>()`는 기본 생성 가능한 타입만 자동 생성한다.
+- `add_scoped<T>()`는 framework-owned scope 안에서만 resolve한다.
 - 생성자 의존성이 있는 타입은 `add_factory<T>()`를 사용한다.
 - handler owner는 service collection에 등록되어 있어야 한다.
 - 등록되지 않은 handler owner를 framework가 암묵적으로 생성하지 않는다.
-- `Boost.Ext.DI` 같은 외부 DI 라이브러리는 MVP 필수 dependency로 두지 않는다.
+- `Boost.Ext.DI` 같은 외부 DI 라이브러리는 public dependency로 두지 않는다.
+
+`scoped` lifetime은 zlink core 기능이 아니라 framework-owned DI lifetime이다. `.NET`
+framework가 `IServiceScope`를 만들어 handler dispatch, STREAM session, Spot activation
+수명에 붙이는 것처럼, C++ framework도 자체 DI container에서 같은 scope 경계를 만든다.
+channel handler는 dispatch마다 scope를 만들고, STREAM session은 session scope를 가지며,
+Spot과 Entry Spot은 activation scope를 가진다. actor factory는 actor creation scope에서
+resolve하고, actor instance 자체는 actor runtime이 소유한다.
 
 예시는 아래와 같다.
 
@@ -233,6 +252,7 @@ class stream_builder_t {
 public:
     stream_builder_t &bind(std::string endpoint);
     stream_builder_t &packet_session(std::string session_name);
+    stream_builder_t &attach_actor_gateway(std::string spot_node_name);
 };
 
 } // namespace zlink::framework
@@ -329,18 +349,177 @@ handler registry는 typed payload를 함수 수준에서 처리하게 하는 표
 ```cpp
 namespace zlink::framework {
 
+enum class handler_execution_t {
+    standard,
+    offload
+};
+
 struct handler_options_t {
     std::optional<std::string> packet_name;
     std::optional<std::chrono::milliseconds> timeout;
     std::optional<std::size_t> max_concurrency;
+    handler_execution_t execution = handler_execution_t::standard;
     bool ordered = false;
+};
+
+enum class timer_overrun_policy_t {
+    skip_late_ticks = 1,
+    catch_up_bounded = 2,
+    delay_next_tick = 3
+};
+
+struct timer_options_t {
+    timer_overrun_policy_t overrun_policy =
+      timer_overrun_policy_t::skip_late_ticks;
+    std::uint32_t max_catch_up_ticks = 1;
+    bool stop_on_unhandled_exception = false;
+};
+
+struct timer_tick_t {
+    std::string name;
+    std::uint64_t delivery_index;
+    std::uint64_t scheduled_index;
+    std::chrono::nanoseconds period;
+    std::chrono::steady_clock::duration scheduled_elapsed;
+    std::chrono::steady_clock::duration started_elapsed;
+    std::chrono::steady_clock::duration delay;
+    std::uint64_t skipped_ticks;
+};
+
+class timer_t;
+class send_call_t;
+class relay_call_t;
+class stream_write_call_t;
+class join_spot_call_t;
+
+template <typename T>
+class task_t;
+
+template <typename T>
+class result_t;
+
+class pending_operation_t;
+
+class actor_ref_t {
+public:
+    actor_ref_t(zlink::routing_id_t node_rid,
+      std::string actor_id,
+      std::uint64_t generation);
+
+    zlink::routing_id_t node_rid() const;
+    std::string_view actor_id() const;
+    std::uint64_t generation() const;
+    bool is_unchecked() const;
+};
+
+enum class framework_error_kind_t {
+    actor_route_not_found,
+    actor_create_failed,
+    actor_already_exists,
+    actor_type_mismatch,
+    spot_create_failed,
+    spot_route_not_found,
+    spot_type_mismatch,
+    actor_session_not_bound,
+    handler_not_found,
+    route_handler_not_found,
+    actor_dispatch_handler_not_found,
+    payload_decode_failed,
+    route_not_connected,
+    request_target_not_found,
+    request_rejected,
+    request_protocol_error,
+    request_failed,
+    timeout,
+    shutdown
+};
+
+class framework_exception_t : public std::exception {
+public:
+    framework_error_kind_t kind() const noexcept;
+    bool is_retriable() const noexcept;
+};
+
+template <typename TReply>
+class request_call_t {
+public:
+    request_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<TReply> submit();
+    pending_operation_t submit(std::function<void(result_t<TReply>)> callback);
+};
+
+class send_call_t {
+public:
+    send_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<void> submit();
+    pending_operation_t submit(std::function<void(result_t<void>)> callback);
+};
+
+class relay_call_t {
+public:
+    relay_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<void> submit();
+    pending_operation_t submit(std::function<void(result_t<void>)> callback);
+};
+
+class stream_write_call_t {
+public:
+    stream_write_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<void> submit();
+    pending_operation_t submit(std::function<void(result_t<void>)> callback);
+};
+
+template <typename TActor>
+class bind_actor_call_t {
+public:
+    bind_actor_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<TActor> submit();
+    pending_operation_t submit(std::function<void(result_t<TActor>)> callback);
+};
+
+enum class stream_message_kind_t : std::uint8_t {
+    send = 1,
+    request = 2,
+    response = 3,
+    error = 4,
+    control = 5
+};
+
+enum class stream_codec_t : std::uint8_t {
+    raw = 0,
+    json = 1,
+    message_pack = 2,
+    protobuf = 3
+};
+
+enum class stream_header_flags_t : std::uint8_t {
+    none = 0,
+    has_request_seq = 0x01,
+    has_metadata = 0x02,
+    payload_compressed = 0x04
+};
+
+enum class stream_session_error_t {
+    internal,
+    transport_error,
+    handshake_failed
+};
+
+class stream_error_t {
+public:
+    stream_session_error_t error() const;
+    int native_code() const;
+    std::string_view message() const;
 };
 
 class stream_header_t {
 public:
-    std::string_view session_id() const;
+    stream_message_kind_t kind() const;
+    stream_codec_t codec() const;
+    stream_header_flags_t flags() const;
+    std::optional<std::uint64_t> request_seq() const;
     std::string_view packet_name() const;
-    std::string_view content_type() const;
+    std::optional<std::string_view> metadata(std::string_view key) const;
     std::optional<std::string_view> correlation_id() const;
 };
 
@@ -348,7 +527,31 @@ class stream_t {
 public:
     virtual ~stream_t() = default;
     virtual std::string session_id() const = 0;
-    virtual std::future<void> write_packet(
+    virtual stream_write_call_t write_packet(
+      const stream_header_t &header,
+      const zlink::message_t &payload) = 0;
+};
+
+class session_actor_t {
+public:
+    relay_call_t relay(
+      const stream_header_t &header,
+      const zlink::message_t &payload);
+};
+
+class session_actor_manager_t {
+public:
+    bind_actor_call_t<session_actor_t> bind(actor_ref_t actor);
+};
+
+class packet_stream_session_t {
+public:
+    virtual ~packet_stream_session_t() = default;
+    virtual task_t<void> on_connected(stream_t &stream) = 0;
+    virtual task_t<void> on_disconnected(stream_t &stream) = 0;
+    virtual task_t<void> on_error(stream_t &stream, const stream_error_t &error) = 0;
+    virtual task_t<void> on_packet(
+      stream_t &stream,
       const stream_header_t &header,
       const zlink::message_t &payload) = 0;
 };
@@ -362,11 +565,11 @@ public:
       void (TOwner::*method)(const TEvent &),
       handler_options_t options = {});
 
-    template <typename TRequest, typename TReply, typename TOwner>
+    template <typename TRequest, typename TReply, typename TOwner, typename TReturn>
     handler_registry_t &request(
       std::string channel_name,
       std::string packet_name,
-      TReply (TOwner::*method)(const TRequest &),
+      TReturn (TOwner::*method)(const TRequest &),
       handler_options_t options = {});
 
     template <typename TCommand, typename TOwner>
@@ -406,12 +609,18 @@ handler dispatch는 binding의 `zlink::message_t`와 `zlink::multipart_t`를 받
 serializer를 통해 typed payload로 변환하고, DI에서 owner를 resolve한 다음 method를
 호출한다.
 
-STREAM handler는 일반 request/send/event handler와 분리한다. framework MVP는 packet
+STREAM handler는 일반 request/send/event handler와 분리한다. framework core는 packet
 방식만 지원하고, header도 framework가 정의한 `stream_header_t`만 사용한다. raw stream
-session과 사용자 정의 header framing은 MVP 범위에 넣지 않는다.
+session과 사용자 정의 header framing은 core public 표면에 넣지 않는다.
 
-stream callback은 transport callback 안에서 직접 실행하지 않고 framework executor로
-넘어간 뒤 실행한다. 같은 stream session의 packet/lifecycle callback은 직렬로 처리한다.
+stream callback은 framework가 packet을 수신하고 header 검증을 마친 뒤 호출한다. 별도
+실행기로 넘기는 것이 기본은 아니며, 같은 stream session의 packet/lifecycle callback은
+직렬로 처리한다. CPU-bound 또는 blocking 가능성이 있는 stream handler는 offload 실행
+정책을 명시한다.
+
+request handler 반환값은 `TReply` 또는 `task_t<TReply>`를 허용한다. `task_t<TReply>`를
+반환하는 handler는 `.NET`의 `async Task<TReply>` handler와 같은 의미이며, 내부
+request/send/relay도 `co_await call.submit()` 형태로 사용한다.
 
 ## 9. Messaging API
 
@@ -442,11 +651,11 @@ public:
 class request_client_t {
 public:
     template <typename TCommand>
-    void send(std::string_view channel_name, const TCommand &command,
+    send_call_t send(std::string_view channel_name, const TCommand &command,
       send_options_t options = {});
 
     template <typename TReply, typename TRequest>
-    std::future<TReply> request(std::string_view channel_name,
+    request_call_t<TReply> request(std::string_view channel_name,
       const TRequest &request,
       request_options_t options = {});
 };
@@ -475,8 +684,11 @@ framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성
 
 ## 10. Serialization
 
-framework serializer는 binding codec extension 위에 얹는다. JSON 기본 구현은
-`zlink::codec::json`과 `nlohmann/json`을 기준으로 한다.
+framework serializer는 binding의 message 중심 codec API 위에 얹는다. binding의
+codec 구조도 connector와 같은 방향으로 맞춘다. 즉 base binding은 raw `message_t`와
+protocol enum만 제공하고, JSON, MessagePack, Protobuf 구현은 선택 codec target이
+제공한다. JSON 기본 구현은 `message_t::from_json(...)`,
+`message.parse_json<T>()` 같은 표면과 `nlohmann/json`을 기준으로 한다.
 
 ```cpp
 namespace zlink::framework {
@@ -505,6 +717,28 @@ public:
 framework public handler와 messaging API는 `zlink::message_t`를 일반 사용자에게
 강요하지 않는다. 다만 고급 handler는 raw message를 직접 받을 수 있다.
 
+binding codec helper는 아래 방향으로 변경한다.
+
+```cpp
+auto message = zlink::message_t::from_json(order);
+auto order = message.parse_json<order_created_t>();
+```
+
+기존 codec namespace의 함수형 helper는 이행 기간의 호환 shim으로만 둔다. 신규
+framework, connector, binding 샘플과 테스트는 message 중심 표면을 기준으로 고정한다.
+base binding target은 JSON, MessagePack, Protobuf dependency를 갖지 않는다. 각 codec은
+별도 선택 target이 제공하되, 사용자가 해당 target을 링크하고 header를 include한 경우에만
+관련 `message_t` helper가 열린다.
+
+```cmake
+target_link_libraries(app PRIVATE zlink::cpp)
+
+# 필요할 때만 추가한다.
+target_link_libraries(app PRIVATE zlink::cpp_codec_json)
+target_link_libraries(app PRIVATE zlink::cpp_codec_messagepack)
+target_link_libraries(app PRIVATE zlink::cpp_codec_protobuf)
+```
+
 ```cpp
 app.handlers()
   .send_raw("orders", "orders.raw", [](const zlink::message_t &message) {
@@ -524,11 +758,18 @@ class spot_node_builder_t {
 public:
     spot_node_builder_t &bind(std::string endpoint);
     spot_node_builder_t &use_discovery(std::string channel_name);
+    spot_node_builder_t &enable_actor_gateway();
     spot_node_builder_t &attach_channel_client(std::string channel_name);
     spot_node_builder_t &attach_publisher(std::string channel_name);
 
+    template <typename TEntrySpot>
+    spot_node_builder_t &add_entry_spot();
+
     template <typename TSpot>
     spot_node_builder_t &add_spot(std::string spot_name);
+
+    template <typename TActorFactory>
+    spot_node_builder_t &add_actor_factory(std::string actor_type);
 };
 
 class send_ready_context_t {
@@ -551,7 +792,7 @@ public:
       send_options_t options = {});
 
     template <typename TReply, typename TRequest>
-    std::future<TReply> request_to(zlink::routing_id_t node_rid,
+    request_call_t<TReply> request_to(zlink::routing_id_t node_rid,
       zlink::routing_id_t spot_rid,
       const TRequest &request,
       request_options_t options = {});
@@ -559,6 +800,31 @@ public:
     template <typename TEvent>
     void publish(std::string_view topic, const TEvent &event,
       send_options_t options = {});
+
+    template <typename THandler>
+    timer_t add_timer(std::string name,
+      std::chrono::nanoseconds period,
+      timer_options_t options = {});
+};
+
+class bound_session_t {
+public:
+    template <typename TMessage>
+    send_call_t send(const TMessage &message);
+
+    send_call_t disconnect();
+};
+
+class actor_context_t {
+public:
+    std::string_view actor_id() const;
+    std::string_view actor_type() const;
+    bound_session_t &bound_session();
+
+    template <typename TRequest>
+    join_spot_call_t join_spot(
+      zlink::routing_id_t spot_rid,
+      const TRequest &request);
 };
 
 } // namespace zlink::framework
@@ -566,8 +832,52 @@ public:
 
 `spot_context_t::publish(...)`는 현재 spot channel 안의 topic publish를 뜻하므로
 별도 channel name을 받지 않는다. 직접 `routing_id_t`를 다루는 API는 spot-to-spot
-경로에 제한한다. 일반 application handler와 client는 channel name과 topic을 먼저
-사용한다.
+경로와 Entry Spot join 경로에 제한한다. 일반 application handler와 client는 channel
+name과 topic을 먼저 사용한다.
+
+timer는 native timer handle을 application에 넘기지 않는다. `timer_t`는 CAPI timer
+등록의 lifetime과 취소를 표현하는 public handle이며, callback은 user Spot에서는 core
+SPOT dispatch boundary를 따르고 Entry Spot에서는 Entry Spot 전체를 전역 직렬화하지
+않는다.
+
+timer 구현은 CAPI timer를 기반으로 한다. CAPI timer의 `fire_count`는 framework가
+`delivery_index`, `scheduled_index`, `skipped_ticks`, overrun policy를 계산하는 입력이다.
+`timer_tick_t`는 native timer event를 그대로 노출한 구조체가 아니라, framework가
+`.NET` timer와 같은 의미로 재구성한 dispatch metadata다.
+
+ActorGateway session relay는 `session_actor_manager_t`, `session_actor_t`,
+`actor_context_t`, `bound_session_t`가 담당한다. 이 표면은 route mesh channel을 직접
+보여 주지 않는다. runtime이 ActorGateway 내부 frame, actor ref, bound session metadata를
+소유한다.
+
+비동기 표면은 `.NET`의 `SubmitAsync()`와 callback submit 모델을 C++로 투영한다.
+`request(...)`, `send(...)`, `relay(...)`, `join_spot(...)` 같은 호출은 즉시 실행하지
+않는 call object를 반환하고, 마지막 `submit()`이 실제 submit 지점이다.
+
+```cpp
+auto reply = co_await client
+  .request<profile_reply_t>("profile", query)
+  .timeout(std::chrono::seconds(2))
+  .submit();
+
+client
+  .request<profile_reply_t>("profile", query)
+  .timeout(std::chrono::seconds(2))
+  .submit([](zlink::framework::result_t<profile_reply_t> result) {
+      if (!result) {
+          return;
+      }
+
+      use_profile(result.value());
+  });
+```
+
+public framework async 표면에 `std::future`를 사용하지 않는다. blocking wait는 handler,
+timer, STREAM session callback, actor relay 경로에서 허용하지 않는다.
+
+오류 종류는 `.NET` framework의 `ZLinkFrameworkErrorKind`를 C++ naming으로 투영한다.
+callback submit은 `result_t<T>` 안에 `framework_error_kind_t`와 message를 담고,
+coroutine submit은 같은 정보를 가진 `framework_exception_t`를 throw한다.
 
 ## 12. Hosted Service 와 Module
 
@@ -623,7 +933,7 @@ public:
 
 ## 13. Configuration 과 Logging
 
-configuration은 JSON, environment variables, CLI args를 MVP 범위로 둔다.
+configuration은 JSON, environment variables, CLI args를 core 표면으로 둔다.
 
 ```cpp
 namespace zlink::framework {
@@ -654,9 +964,9 @@ public:
 } // namespace zlink::framework
 ```
 
-JSON loader는 `nlohmann/json`을 사용한다. YAML은 MVP 범위에 넣지 않는다.
-metrics와 health 표면은 MVP에서 최소 형태만 둔다. exporter, label schema, tracing
-hook은 별도 observability 초안에서 확정한다.
+JSON loader는 `nlohmann/json`을 사용한다. YAML은 필요하면 configuration extension으로
+둔다. metrics와 health 표면은 core 관찰 기능으로 둔다. exporter, label schema,
+tracing hook은 별도 observability 초안에서 확정한다.
 
 ## 14. 전체 샘플
 
@@ -753,3 +1063,7 @@ int main(int argc, char **argv)
   builder와 `spot_context_t`로 감싸는 방식으로 정리한다.
 - SPOT discovery 설정은 `spot_node.use_discovery(channel_name)`처럼 active SPOT
   channel view 이름을 명시하는 형태로 맞춘다.
+- STREAM session actor relay는 `stream.attach_actor_gateway(spot_node_name)`과
+  `session_actor_t::relay(...)` 표면으로 맞춘다.
+- SPOT timer는 CAPI timer `fire_count`를 기반으로 `timer_options_t`, `timer_tick_t`,
+  overrun policy, timer failure monitoring을 포함하는 표면으로 맞춘다.

@@ -39,6 +39,9 @@ surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리�
 | event publisher 전용 타입 | `publisher_t::publish(channel, topic, event)` |
 | channel 전체 연결 설정 | capability builder의 `bind`, `connect`, `use_discovery` |
 | spot 전용 publisher client | `spot_context_t` 또는 `publisher_t`의 channel/topic 표면 |
+| target Spot 직접 호출 public client | actor 생성 또는 Entry Spot join 뒤 actor/session handle 사용 |
+| session actor relay용 route mesh channel | `stream.attach_actor_gateway(...)`와 `session_actor_t::relay(...)` |
+| raw timer callback | `spot_context_t::add_timer(...)`와 `timer_tick_t` metadata |
 
 handler owner는 service collection에 등록된 타입이어야 한다. 등록되지 않은 owner를
 framework가 암묵적으로 생성하지 않는다. 이 규칙은 handler lifecycle과 shutdown 중
@@ -67,8 +70,27 @@ app.handlers()
 ```
 
 raw payload가 필요한 경우에만 `send_raw(...)` 같은 고급 extension을 사용한다. STREAM은
-MVP에서 framework Header 기반 packet 방식만 지원하므로 raw stream session은 공개
+framework core에서 Header 기반 packet 방식만 지원하므로 raw stream session은 공개
 표면에 두지 않는다. 일반 샘플은 typed handler registry를 먼저 보여 준다.
+
+request handler는 `TReply`를 바로 반환하거나 `task_t<TReply>`를 반환할 수 있다.
+후자는 `.NET`의 `async Task<TReply>` handler와 같은 의미다. handler 안에서 다른
+request/relay를 기다려야 하면 blocking wait를 쓰지 않고 `co_await call.submit()`을
+사용한다.
+
+CPU-bound 또는 blocking 가능성이 있는 handler는 framework core의 offload 실행 정책을
+명시한다. 일반 handler 등록 표면은 그대로 유지하고, 실행 정책만 option으로 바꾼다.
+
+```cpp
+app.handlers()
+  .request<match_request_t, match_reply_t, match_handler_t>(
+    "match",
+    "match.allocate",
+    &match_handler_t::allocate,
+    zlink::framework::handler_options_t{
+      .execution = zlink::framework::handler_execution_t::offload,
+    });
+```
 
 ## 4. Messaging 주입 기준
 
@@ -83,9 +105,12 @@ public:
     {
     }
 
-    std::future<order_status_reply_t> get_status(order_status_query_t query)
+    zlink::framework::request_call_t<order_status_reply_t> get_status(
+      order_status_query_t query)
     {
-        return client_.request<order_status_reply_t>("orders", query);
+        return client_
+          .request<order_status_reply_t>("orders", query)
+          .timeout(std::chrono::seconds(2));
     }
 
 private:
@@ -152,16 +177,29 @@ app.use_zlink([](auto &zlink) {
       })
       .spot_node("stage-spot-node", [](auto &spot_node) {
           spot_node.bind("tcp://0.0.0.0:9000");
+          spot_node.enable_actor_gateway();
           spot_node.use_discovery("game.stage");
           spot_node.attach_channel_client("profile");
           spot_node.attach_publisher("game.stage");
+          spot_node.add_entry_spot<player_entry_spot_t>();
+          spot_node.add_actor_factory<player_actor_factory_t>("player");
           spot_node.add_spot<stage_spot_t>("stage");
       });
 });
 ```
 
-직접 `routing_id_t`를 받는 API는 spot-to-spot send/request 경로에 제한한다. 일반
-application handler와 publisher는 channel name과 topic을 먼저 사용한다.
+직접 `routing_id_t`를 받는 API는 spot-to-spot send/request와 Entry Spot join 경로에
+제한한다. 일반 application handler와 publisher는 channel name과 topic을 먼저 사용한다.
+current Spot 밖에서 target Spot을 직접 호출하는 별도 public client는 기본 표면에 두지
+않는다.
+
+SPOT timer는 CAPI timer 등록을 감싼 framework timer handle과 `timer_tick_t` metadata로
+설명한다. user Spot timer는 core SPOT dispatch boundary에서 순서 정책을 따르고,
+Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다.
+
+Session actor relay는 application route mesh channel을 쓰지 않는다. STREAM session은
+`attach_actor_gateway(...)`로 local SpotNode에 붙고, packet relay는
+`session_actor_t::relay(...)`로 표현한다.
 
 ## 7. 중요한 규칙
 
@@ -172,3 +210,6 @@ application handler와 publisher는 channel name과 topic을 먼저 사용한다
 - 일반 channel messaging의 handler dispatch는 local server capability ingress 기준이다.
 - outbound client capability의 receive path는 reply correlation 경로로 본다.
 - `ROUTER -> DEALER` 임의 push는 channel messaging 공용 계약에 넣지 않는다.
+- session actor relay는 ActorGateway attach와 logical actor handle 기준으로 설명한다.
+- Registry는 Spot remote address 조회 기본값으로 쓰고 actor-session binding 저장소로
+  쓰지 않는다.

@@ -22,3 +22,41 @@
 
 일반 request 핫패스는 각 channel discovery view를 기준으로 설명하고, registry query는
 운영 점검과 topology snapshot 용도로 분리한다.
+
+## 2. Registry-backed Spot lookup
+
+Registry 기본 구현은 Spot owner 조회와 Spot RID directory를 돕는다.
+
+`C++` framework는 아래 표면을 제공해야 한다.
+
+```cpp
+app.use_zlink([](auto &zlink) {
+    zlink.node("play-node")
+      .discovery([](auto &discovery) {
+          discovery.connect_registry("tcp://registry:5551");
+      })
+      .spot_node("play-actors", [](auto &spot_node) {
+          spot_node.use_registry_spot_remote_addresses("game.route");
+      });
+});
+```
+
+중요한 제한은 다음과 같다.
+
+- Registry Spot 기본값과 custom Spot resolver를 동시에 등록하면 시작 오류로 본다.
+- Spot discovery 없이 Registry Spot 기본값을 켜면 validation 오류로 본다.
+- route channel이 둘 이상이면 resolver가 사용할 channel 이름을 명시해야 한다.
+- 생성된 Spot은 `routing_id_t` 기준으로 조회할 수 있어야 한다.
+
+## 3. Actor relay와 분리
+
+session actor relay는 Registry actor route lookup을 hot path로 사용하지 않는다.
+
+- STREAM session은 `attach_actor_gateway(...)`로 local SpotNode에 붙는다.
+- session bind는 local actor handle 또는 remote actor ref를 사용한다.
+- actor-session binding은 framework/core runtime state로 유지한다.
+- sample-only route store 또는 metadata store를 두지 않는다.
+
+이 분리는 session relay가 Registry 조회 지연이나 sample 전용 저장소에 묶이지 않게
+하기 위한 것이다. Registry는 Spot remote address와 topology 관찰을 돕고, session
+packet relay는 ActorGateway 경로가 맡는다.

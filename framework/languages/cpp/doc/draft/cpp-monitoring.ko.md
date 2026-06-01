@@ -18,6 +18,8 @@
 - 실제 callback payload는 struct로 둔다.
 - socket/discovery는 하부 monitor를 감싼다.
 - registry/spot는 snapshot diff 기반으로 다시 올린다.
+- SPOT timer handler failure는 snapshot diff를 기다리지 않는 point-in-time event로
+  올린다.
 
 ## 2. 등록 예시
 
@@ -27,6 +29,7 @@ monitoring.add_socket_events("profile.server", socket_event_t::all);
 monitoring.add_discovery_events("profile.client.discovery");
 monitoring.add_registry_events("registry", std::chrono::seconds(1));
 monitoring.add_spot_events("stage-node", std::chrono::seconds(1));
+monitoring.add_spot_timer_events("spot-timer");
 ```
 
 ## 3. Handler 예시
@@ -46,3 +49,8 @@ source 이름은 logical name을 쓰는 편이 자연스럽다.
 - discovery: `profile.client.discovery`
 - registry: `registry`
 - spot: `stage-node`
+- spot timer: `spot-timer`
+
+timer handler 예외 event는 interval 설정을 기다리지 않고 즉시 전달한다. payload에는
+exception 객체 자체가 아니라 timer 이름, handler 타입 이름, delivery index,
+scheduled index, exception type, message 같은 직렬화 가능한 요약 정보를 넣는다.

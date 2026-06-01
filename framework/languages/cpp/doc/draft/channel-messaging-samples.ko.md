@@ -21,15 +21,16 @@ public:
     {
     }
 
-    get_user_reply_t get_user(const get_user_request_t &request)
+    zlink::framework::task_t<get_user_reply_t> get_user(
+      const get_user_request_t &request)
     {
-        auto account = client_
+        auto account = co_await client_
           .request<account_reply_t>("account", account_query_t{
               .account_id = request.account_id,
           })
-          .get();
+          .submit();
 
-        return build_user_reply(account);
+        co_return build_user_reply(account);
     }
 
 private:

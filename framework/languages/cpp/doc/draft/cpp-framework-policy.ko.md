@@ -27,6 +27,7 @@
 
 - 메시지 송수신
 - actor와 비슷하지만 네트워크와 라우팅을 먼저 고려하는 `SPOT`
+- STREAM session과 actor를 ActorGateway로 묶는 session relay
 - 여러 프로세스와 여러 노드를 전제로 하는 distributed runtime
 - channel, topic, routing id 기반 routing
 - 애플리케이션 lifecycle
@@ -34,7 +35,7 @@
 - backpressure와 graceful shutdown
 
 따라서 `C++` 프레임워크는 `HTTP route`나 `controller`를 중심으로 설명하지 않는다.
-사용자가 raw socket, poll loop, service discovery 배선을 직접 다루지 않고,
+사용자가 raw socket, runtime event 처리, service discovery 배선을 직접 다루지 않고,
 서비스 등록, handler 등록, 메시징 client, spot, hosted service 같은 상위 개념으로
 분산 메시징 앱을 구성하게 만드는 것이 목표다.
 
@@ -43,15 +44,19 @@
 언어 특성에 맞는 세부 구현 사항을 이 문서와 하위 문서에서 구체화한다.
 
 특히 `C++`에는 `.NET`, `Java`, `Node.js`처럼 기준으로 삼을 메이저 애플리케이션
-프레임워크가 없으므로, 다른 언어보다 app, host, DI, handler registry, executor,
-lifecycle 같은 기반 프레임워크 설계 내용을 더 많이 담는다. 이 내용은 공통 정책을
-대체하는 것이 아니라, 공통 정책에서 다루지 않은 `C++` standalone framework 세부
-스펙을 채우기 위한 것이다.
+프레임워크가 없으므로, 다른 언어보다 app, host, DI, handler registry, CAPI dispatch
+연결, lifecycle, ActorGateway attach 같은 기반 프레임워크 설계 내용을 더 많이 담는다.
+이 내용은 공통 정책을 대체하는 것이 아니라, 공통 정책에서 다루지 않은 `C++`
+standalone framework 세부 스펙을 채우기 위한 것이다.
 
 이 문서와 기존 `C++` 세부 초안의 bootstrap API가 다르면, 구현 전 정렬 작업에서 기존
 세부 초안을 이 문서의 `C++` 상세 방향에 맞춰 갱신한다. 다만 공통 framework 정책과
 충돌하는 내용이 발견되면 먼저 공통 정책을 확인하고, 필요하면 공통 정책을 갱신한 뒤
 언어별 문서를 맞춘다.
+
+동작 기준은 현재 `.NET` framework 구현과 정식 spec 문서다. `C++` 문서는 그 동작을
+`C++20` coroutine, callback submit, RAII, CMake/package 구조에 맞게 투영한다. 기능
+범위는 축소하지 않고, 언어별 표현과 구현 순서만 다르게 둔다.
 
 ## 2. 사용자 목표 표면
 
@@ -113,7 +118,7 @@ int main(int argc, char **argv)
 }
 ```
 
-위 코드는 정책 방향을 보여 주는 예시다. 실제 구현 전에는 아래를 함께 확정해야 한다.
+위 코드는 정책 방향을 보여 주는 예시다. 구현은 아래 기준을 따른다.
 
 - app 생성의 canonical 시작점은 `app_t::create()`다. 기존 세부 초안에 남아 있던
   이전 bootstrap 표기는 이 정책에 맞춰 정리한다.
@@ -121,7 +126,7 @@ int main(int argc, char **argv)
   기본으로 한다. handler owner는 DI container에서 resolve한다.
 - handler owner 타입이 명시되지 않는 축약형은 handler가 이미 service로 등록된 경우에만
   허용한다.
-- `run`은 MVP에서 process exit code로 사용할 수 있는 `int`를 반환한다.
+- `run`은 process exit code로 사용할 수 있는 `int`를 반환한다.
 - typed payload 이름에서 packet key를 얻는 규칙을 serializer 정책과 맞춘다.
 
 ## 3. 권장 구현 루트
@@ -166,6 +171,45 @@ framework/languages/cpp/
 public include path는 `zlink/framework/...` 아래로 제한한다. native core나 C binding
 세부 헤더를 사용자가 직접 include해야만 동작하는 표면은 만들지 않는다.
 
+C++ Stream Connector는 위 framework package에 포함하지 않는다. 같은 언어 디렉토리
+아래에서 개발할 수는 있지만, 별도 library와 별도 배포 단위로 둔다.
+
+```text
+framework/languages/cpp/connector/
++-- include/zlink/stream_connector/
++-- src/
++-- tests/
++-- samples/
++-- CMakeLists.txt
+```
+
+framework package의 CMake target은 `zlink::framework`이고, connector package의 CMake
+target은 `zlink::stream_connector`다. 서버 framework가 connector를 의존하거나,
+connector가 서버 framework를 의존하는 구조로 만들지 않는다.
+
+Unreal Connector도 별도 배포 단위다. 일반 C++ connector public API를 그대로 노출하는
+wrapper가 아니라, Unreal plugin/module, Unreal 타입, Game Thread dispatch, Blueprint
+호출 표면을 가진 connector로 둔다. wire protocol과 codec 의미는 C++ Stream Connector와
+같게 유지한다.
+
+## 3.0 Language Baseline
+
+`C++` framework는 `C++20` 이상만 지원한다. 이 기준은 coroutine 기반 handler와
+`task_t<T>` async 표면을 framework의 기본 표현으로 삼기 위한 결정이다.
+
+필수 기준은 아래와 같다.
+
+- public header와 samples는 `C++20`으로 작성한다.
+- coroutine handler는 `task_t<T>` 또는 `task_t<void>`를 반환한다.
+- callback submit 경로는 항상 함께 제공한다. 모든 사용자가 coroutine으로만 작성해야
+  한다는 뜻은 아니다.
+- public async 표면에는 `std::future`를 사용하지 않는다.
+- handler, timer, stream session, actor relay 안에서 blocking wait를 허용하지 않는다.
+- CPU-bound 또는 blocking 가능성이 있는 handler는 framework core의 offload executor를
+  명시적으로 사용한다.
+- C++20 표준 library 기능을 사용할 수 있지만, CAPI dispatch callback을 handler 등록
+  표면에 연결하는 내부 경계는 framework가 직접 소유한다.
+
 ## 3.1 외부 라이브러리 정책
 
 `C++` framework core는 zlink runtime과 poller를 유일한 I/O 실행 기반으로 사용한다.
@@ -181,16 +225,21 @@ runtime의 중심에 들어오면 zlink poller와 책임이 겹친다. `C++` fra
 readiness, send readiness, monitor event, shutdown drain을 zlink runtime 기준으로
 설명해야 한다. 단, zlink core 내부 transport 구현이 사용하는 내부 dependency는 이
 정책의 금지 대상이 아니다. 이 정책은 framework public header, framework 직접
-dependency, framework executor 모델에 대한 제한이다.
+dependency, framework dispatch integration 모델에 대한 제한이다.
 
 JSON 구현은 `nlohmann/json` 하나로 고정한다. 설정 파일, JSON codec helper, 테스트
-fixture에서 같은 JSON 타입과 같은 변환 규칙을 사용한다. 성능 특화 JSON parser가
-필요해지더라도 public JSON 정책을 늘리지 않고, 내부 최적화 또는 별도 extension으로
+fixture에서 같은 JSON 타입과 같은 변환 규칙을 사용한다. C++ binding codec 구조는
+connector와 같은 원칙으로 바꾼다. base binding은 codec dependency를 갖지 않고,
+JSON, MessagePack, Protobuf는 선택 codec target이 제공한다. public codec 표면은 별도
+codec namespace 함수를 사용자가 직접 찾아 호출하는 방식을 기본 사용자 경험으로 두지
+않고, `message_t` 중심 API로 정리한다. 예를 들어 `message.parse<T>()`,
+`message.parse_json<T>()`, `message_t::from_json(value)` 같은 형태가 기본이다.
+성능 특화 JSON parser가 필요해지더라도 public JSON 정책을 늘리지 않고, 내부 최적화로
 검토한다.
 
-DI는 MVP에서 자체 구현한다. 사용자는 항상 `zlink::framework`가 제공하는
+DI는 자체 구현한다. 사용자는 항상 `zlink::framework`가 제공하는
 `service_collection_t`, `service_provider_t`, lifetime API만 사용해야 한다.
-`Boost.Ext.DI` 같은 외부 DI 라이브러리는 MVP 필수 dependency로 두지 않는다.
+`Boost.Ext.DI` 같은 외부 DI 라이브러리는 public dependency로 두지 않는다.
 
 ## 3.2 권장 라이브러리 목록
 
@@ -202,19 +251,23 @@ dependency를 public API 밖에 숨기는 것이다. 사용자는 `zlink::framew
 | 영역 | 권장 라이브러리 | 링크 | 적용 범위 | 정책 |
 |------|----------------|------|----------|------|
 | runtime / I/O | zlink C++ binding | 내부 binding | 필수 | framework runtime의 유일한 I/O 기반이다. `context_t`, socket, discovery, spot, stream binding을 내부 substrate로 사용한다. |
-| JSON | `nlohmann/json` | <https://github.com/nlohmann/json> | 필수 | 설정 파일, JSON codec helper, 테스트 fixture의 기준 JSON 구현으로 고정한다. |
-| logging backend | `spdlog` | <https://github.com/gabime/spdlog> | MVP 후보 | public logging API 뒤에 숨긴다. 사용자는 `app.logging()`만 사용하고 `spdlog` logger나 sink 타입을 직접 받지 않는다. |
-| string formatting | `{fmt}` | <https://github.com/fmtlib/fmt> | MVP 후보 | C++17 환경에서 내부 메시지 formatting에 사용한다. public API에는 `fmt::format_string` 같은 타입을 노출하지 않는다. |
-| CLI args | `CLI11` | <https://github.com/CLIUtils/CLI11> | 선택 | `app.config().load_cli(...)` 구현 후보로 둔다. 간단한 MVP parser로 충분하면 필수 dependency로 올리지 않는다. |
-| unit test | GoogleTest | <https://github.com/google/googletest> | 개발 의존성 후보 | framework C++ typed API 테스트에 사용한다. core 기존 테스트 방식과 충돌하지 않게 framework/languages/cpp 테스트에만 제한한다. |
-| microbenchmark | google/benchmark | <https://github.com/google/benchmark> | MVP 이후 | handler dispatch, serializer, DI resolve hot path 측정이 필요할 때만 추가한다. 공식 perf 수치와 섞지 않는다. |
-| YAML | `yaml-cpp` | <https://github.com/jbeder/yaml-cpp> | MVP 제외 | YAML configuration을 도입할 때만 extension으로 검토한다. MVP는 JSON, env, CLI만 지원한다. |
-| Protobuf | Protocol Buffers C++ | <https://protobuf.dev/> | MVP 제외 | `zlink-codec-protobuf` extension 구현 후보로만 둔다. framework core 필수 dependency가 아니다. |
-| FlatBuffers | FlatBuffers | <https://flatbuffers.dev/> | MVP 제외 | 별도 codec extension 후보로 둔다. framework core와 public handler registry에는 넣지 않는다. |
+| JSON | `nlohmann/json` | <https://github.com/nlohmann/json> | framework 필수 | 설정 파일, framework JSON serializer, 테스트 fixture의 기준 JSON 구현으로 고정한다. binding base dependency는 아니다. |
+| logging backend | `spdlog` | <https://github.com/gabime/spdlog> | 내부 구현 | public logging API 뒤에 숨긴다. 사용자는 `app.logging()`만 사용하고 `spdlog` logger나 sink 타입을 직접 받지 않는다. |
+| string formatting | `{fmt}` | <https://github.com/fmtlib/fmt> | 내부 구현 | 내부 메시지 formatting에 사용한다. public API에는 `fmt::format_string` 같은 타입을 노출하지 않는다. |
+| CLI args | 자체 parser | framework 내부 | 선택 기능 | `app.config().load_cli(...)`는 자체 parser로 구현한다. CLI parsing을 위해 외부 타입을 public API에 올리지 않는다. |
+| test runner | CTest | CMake 기본 기능 | 필수 | framework C++ test와 sample smoke를 CTest label로 등록한다. CI와 local regression 실행의 기준이다. |
+| unit / regression test | GoogleTest | <https://github.com/google/googletest> | 개발 의존성 | framework C++ 객체, coroutine, DI, handler registry, lifecycle 회귀 테스트의 기본 harness로 사용한다. |
+| mock / fake boundary | GoogleMock | GoogleTest 포함 | 개발 의존성 | runtime boundary, handler invoker, offload executor, monitoring sink 테스트의 mock/fake에 사용한다. |
+| microbenchmark | google/benchmark | <https://github.com/google/benchmark> | 개발 선택 기능 | handler dispatch, serializer, DI resolve hot path 측정이 필요할 때만 추가한다. 공식 perf 수치와 섞지 않는다. |
+| YAML | `yaml-cpp` | <https://github.com/jbeder/yaml-cpp> | 확장 기능 | YAML configuration은 framework core 밖의 configuration extension으로 둔다. core configuration은 JSON, env, CLI를 기준으로 한다. |
+| MessagePack | MessagePack C++ | connector / binding 선택 기능 | 선택 codec | connector와 binding codec target에서 build option으로 켜고 끈다. framework server core 필수 dependency가 아니다. |
+| Protobuf | Protocol Buffers C++ | <https://protobuf.dev/> | connector / binding 선택 기능 | connector와 binding codec target에서 optional build feature로 둔다. framework server core 필수 dependency가 아니다. |
+| FlatBuffers | FlatBuffers | <https://flatbuffers.dev/> | 확장 기능 | framework core와 connector 기본 기능에는 넣지 않는다. 별도 요구가 생기면 확장 기능으로 설계한다. |
 
-MVP 필수 외부 runtime dependency는 가능한 한 `nlohmann/json` 하나로 시작한다. logging,
-formatting, CLI parsing은 구현 편의와 패키징 비용을 비교한 뒤 내부 dependency로만
-추가한다. 테스트와 benchmark 라이브러리는 배포 runtime dependency가 아니다.
+core 외부 runtime dependency는 가능한 한 `nlohmann/json` 하나로 시작한다. logging,
+formatting, CLI parsing은 구현 편의와 패키징 비용을 비교한 뒤 public API 밖의 내부
+dependency로만 추가한다. GoogleTest, GoogleMock, benchmark 라이브러리는 개발 의존성이고
+배포 runtime dependency가 아니다.
 
 아래 라이브러리는 framework core 직접 dependency로 두지 않는다.
 
@@ -223,7 +276,7 @@ formatting, CLI parsing은 구현 편의와 패키징 비용을 비교한 뒤 �
 | async I/O | `Boost.Asio` | zlink poller와 runtime event loop 책임이 겹친다. |
 | WebSocket 구현 | `Boost.Beast` | HTTP/Web framework로 오해될 수 있고, zlink transport 또는 integration 경계에서 다루는 편이 맞다. |
 | event loop | `libuv` | zlink poller와 별도 event loop를 함께 운영하면 shutdown, timer, readiness 의미가 복잡해진다. |
-| DI | `Boost.Ext.DI` | MVP에서는 자체 container로 lifetime과 host shutdown 규칙을 직접 닫는다. |
+| DI | `Boost.Ext.DI` | framework 자체 container로 lifetime과 host shutdown 규칙을 직접 닫는다. |
 
 ## 4. 모듈 정책
 
@@ -244,11 +297,11 @@ formatting, CLI parsing은 구현 편의와 패키징 비용을 비교한 뒤 �
 - hosted service 시작과 종료 순서 관리
 
 `app_t`는 깊은 모듈이어야 한다. 호출자가 zlink context, socket 생성 순서, poller
-실행 순서를 기억해야 한다면 host 추상화가 실패한 것이다.
+실행 순서, ActorGateway attach 순서를 기억해야 한다면 host 추상화가 실패한 것이다.
 
 ### 4.2 DI Container
 
-DI container는 서비스 wiring을 위한 최소 기능만 제공한다.
+DI container는 framework lifecycle과 handler wiring에 필요한 기능을 제공한다.
 
 필수 public 등록 표면은 아래 정도로 제한한다.
 
@@ -260,9 +313,11 @@ app.services().add_factory<clock_t>([](service_provider_t &services) {
 });
 ```
 
-지원 lifetime은 MVP에서 `singleton`, `transient`만 둔다. `scoped` lifetime은
-request scope, stream session scope, spot scope 중 무엇을 의미하는지 먼저 닫은 뒤
-추가한다.
+지원 lifetime은 `singleton`, `scoped`, `transient`로 둔다. `scoped`는 zlink core
+기능이 아니다. `.NET` framework가 `IServiceScope`를 core stream, spot, handler
+lifecycle에 맞춰 붙이는 것처럼, C++ framework가 자체 DI container에서 만드는
+framework-owned scope다. 사용자가 임의로 전역 scope를 만들고 lifetime을 해석하게 하지
+않는다.
 
 금지 방향은 아래와 같다.
 
@@ -271,19 +326,21 @@ request scope, stream session scope, spot scope 중 무엇을 의미하는지 �
 - 생성자 의존성을 숨기는 service locator 남용
 - 외부 DI 라이브러리의 injector, binding DSL, scope 타입을 public API로 노출하는 모델
 
-기본 방향은 constructor injection이다. MVP에서는 자체 container를 구현하고,
+기본 방향은 constructor injection이다. 자체 container를 구현하고,
 생성자 자동 추론보다 명시 factory와 명시 등록을 먼저 지원한다. lifetime registry,
 service collection, module registration 의미는 framework가 소유한다. 이렇게 해야
 handler lifecycle, hosted service stop 순서, shutdown 중 resolve 금지 같은 규칙을
 host와 함께 닫을 수 있다.
 
-MVP의 생성 규칙은 아래처럼 닫는다.
+기본 생성 규칙은 아래처럼 닫는다.
 
 - `add_singleton<T>()`, `add_transient<T>()`는 기본 생성 가능한 타입만 자동 생성한다.
+- `add_scoped<T>()`는 framework-owned scope 안에서만 resolve할 수 있다.
 - 생성자 의존성이 있는 타입은 `add_factory<T>()`로 등록한다.
 - handler owner에 의존성이 있으면 handler owner도 `add_factory<T>()` 또는 동등한
   명시 등록을 사용한다.
-- 생성자 자동 wiring은 MVP 범위에 넣지 않는다.
+- 생성자 자동 wiring은 core 표면에 넣지 않는다. 필요하면 public API 밖의 helper나
+  extension으로 검토한다.
 
 내부 구현 경계는 아래처럼 나눈다.
 
@@ -292,8 +349,25 @@ MVP의 생성 규칙은 아래처럼 닫는다.
 | public | `service_collection_t`, `service_provider_t`, `service_lifetime_t` | 노출 |
 | internal | `service_registry_t`, `service_descriptor_t`, `factory_adapter_t` | 숨김 |
 
-`Boost.Ext.DI`는 나중에 생성자 자동 wiring 요구가 커졌을 때 내부 구현 후보로만
-검토한다. 이 경우에도 public header와 샘플에는 외부 DI 타입을 노출하지 않는다.
+`Boost.Ext.DI`는 framework public DI 표면에 사용하지 않는다. 생성자 자동 wiring이
+필요해져도 `service_collection_t`와 `service_provider_t` 계약 안에서 자체 helper로
+흡수한다.
+
+zlink core에는 아래 scope 개념이 없다. 이 경계는 모두 framework 계층이 core lifecycle
+event를 기준으로 만들어 붙이는 DI lifetime이다.
+
+framework-owned scope 경계는 아래와 같다.
+
+| Scope | 생성 시점 | 종료 시점 | 용도 |
+|-------|-----------|-----------|------|
+| handler invocation scope | channel request/send/event dispatch 시작 | 해당 handler dispatch 완료 | stateless channel handler와 filter resolve |
+| stream session scope | STREAM session accepted/connected | session close cleanup 완료 | session handler, session-scoped state |
+| spot activation scope | user Spot 생성 | Spot remove/destroy cleanup 완료 | Spot instance, Spot handler, Spot timer handler |
+| entry spot scope | SpotNode Entry Spot activation | SpotNode shutdown | Entry Spot instance와 Entry Spot handler |
+| actor creation scope | actor factory 호출 | actor creation 완료 | actor factory resolve와 생성 보조 dependency |
+
+actor instance 자체는 actor runtime이 소유한다. actor 상태를 DI scoped service로 숨기기보다
+actor 객체와 `actor_context_t`에 명확히 둔다.
 
 ### 4.3 Runtime Integration
 
@@ -326,12 +400,12 @@ app.use_zlink([](auto &zlink) {
 - channel capability 연결
 - spot node lifecycle
 - service discovery 연결
-- poller와 framework executor binding
+- CAPI dispatch callback과 handler dispatch binding
 - transport endpoint 검증
 
 framework runtime은 `Boost.Asio`, `Boost.Beast`, `libuv` event loop를 중심 실행기로
-사용하지 않는다. timer, readiness, graceful shutdown, worker wakeup은 zlink runtime과
-framework executor 사이의 명시적인 binding으로 처리한다.
+사용하지 않는다. timer, readiness, graceful shutdown은 CAPI dispatch callback을
+framework handler dispatch 경계에 연결하는 내부 binding으로 처리한다.
 
 사용자가 native socket handle이나 poller 내부 규칙을 알아야 한다면 public surface가
 너무 얕은 것이다.
@@ -363,6 +437,9 @@ spot.send_to(target_node, target_spot, command);
 
 send와 publish는 기본 async submit이다. public API에 `send_nonblocking` 같은 이름을
 늘리지 않고, backpressure는 pending queue, timeout, ready notification으로 다룬다.
+framework 표면에는 protocol-specific received wrapper를 늘리지 않는다. binding에서
+받은 수신 metadata는 framework runtime이 correlation, actor relay, handler dispatch에
+필요한 범위로 해석하고, 사용자 handler에는 typed payload와 필요한 context만 넘긴다.
 
 ### 4.5 Spot / Actor Model
 
@@ -376,16 +453,83 @@ send와 publish는 기본 async submit이다. public API에 `send_nonblocking` �
 
 필수 기능은 아래와 같다.
 
-- mailbox
-- message queue
+- core dispatch ordering
+- spot message dispatch
 - handler execution
 - routing-id addressing
 - local/remote transparency
 - spot lifecycle
 - timer
+- Entry Spot
+- actor factory
+- ActorGateway session relay
+- bound session push
 
 일반 application handler는 channel/topic 중심으로 시작하고, 직접 `routing_id_t`를
-다루는 API는 spot-to-spot 또는 운영 진단 경로에 제한한다.
+다루는 API는 spot-to-spot, Entry Spot join, 운영 진단 경로에 제한한다. current Spot
+밖에서 target Spot으로 직접 send/request 하는 별도 public client는 기본 표면에 두지
+않는다. actor 생성 또는 Entry Spot join으로 `actor_ref_t`를 얻고, session이 필요하면
+session actor handle로 bind하는 흐름을 사용한다.
+
+### 4.5.1 SPOT Timer
+
+SPOT timer는 CAPI timer 등록을 framework 표면으로 감싼 server-side timer다.
+application이 native C API timer handle을 직접 받지 않는다. framework는 별도 timer
+scheduler를 기본으로 만들지 않고, CAPI timer dispatch event를 받아 해당 Spot handler로
+투영한다. public 계약은 `spot_context_t::add_timer(...)`와 timer handler 중심으로 닫는다.
+
+이 구조로 `.NET` framework timer와 같은 기능성을 구현할 수 있다. C core timer는
+고성능 interval wakeup, poller readable event, `fire_count` 누적값, stop/destroy
+lifecycle을 제공한다. C++ framework는 그 위에서 `.NET`과 같은 overrun policy, tick
+metadata, Spot dispatch 사상, handler 예외 monitoring, shutdown drain을 완성한다.
+따라서 C++ framework는 별도 timer thread나 별도 scheduler를 기본 실행 모델로 두지
+않는다.
+
+timer는 cleanup, heartbeat, timeout sweep, room tick, match tick을 같은 표면으로
+다룬다. 별도 `add_tick` 같은 이름은 만들지 않는다. 대신 tick metadata와 overrun
+정책을 제공한다.
+
+```cpp
+struct timer_options_t {
+    timer_overrun_policy_t overrun_policy =
+      timer_overrun_policy_t::skip_late_ticks;
+    std::uint32_t max_catch_up_ticks = 1;
+    bool stop_on_unhandled_exception = false;
+};
+```
+
+실행 규칙은 다음과 같다.
+
+- user Spot timer callback은 같은 user Spot의 packet, actor packet, subscription,
+  channel reply와 같은 core SPOT dispatch boundary에서 순서 정책을 따른다.
+- Entry Spot timer callback은 Entry Spot 전체를 전역 직렬화하지 않는다.
+- 같은 timer instance의 callback은 겹쳐 실행하지 않는다.
+- CAPI `fire_count`와 framework가 보관하는 이전 fire count를 비교해 `skipped_ticks`,
+  `scheduled_index`, catch-up 실행 대상을 계산한다.
+- 시간 계산은 monotonic clock 기준으로 한다. wall-clock 시간은 로그와 monitoring
+  payload에만 사용한다.
+- handler 예외는 monitoring에 즉시 기록하고, option에 따라 timer를 계속 실행하거나
+  중단한다.
+
+### 4.5.2 ActorGateway Session Relay
+
+Session 서버와 Play 서버를 분리하는 흐름은 ActorGateway를 기준으로 설명한다.
+STREAM session이 사용할 local SpotNode를 `attach_actor_gateway(...)`로 지정하고,
+session은 actor handle에 bind한 뒤 `relay(...)`로 packet을 넘긴다.
+
+이 경로는 application route mesh channel을 사용하지 않는다. route mesh channel은
+일반 routed SPOT egress용으로 남을 수 있지만, session actor relay의 필수 구성 요소가
+아니다.
+
+구현해야 하는 framework 기능은 아래와 같다.
+
+- actor factory 등록
+- actor id/type 기반 create, find, get-or-create
+- local actor handle과 remote actor ref bind
+- session actor relay
+- actor context의 `bound_session_t`
+- stream close 시 session binding cleanup
+- actor disconnect notification을 application 선택 사항으로 남기는 정책
 
 ### 4.6 Handler Framework
 
@@ -439,10 +583,11 @@ dead-letter 정책으로 넘기는 것이다.
 
 serialization은 message와 object 사이의 변환을 맡는다.
 
-지원 후보는 아래와 같다.
+지원 범위는 아래와 같다.
 
 - raw bytes
 - JSON (`nlohmann/json`)
+- MessagePack
 - Protobuf
 - FlatBuffers
 - custom codec
@@ -458,27 +603,68 @@ public:
 };
 ```
 
-MVP에서는 raw bytes와 `nlohmann/json` 기반 JSON codec을 기본으로 둔다. Protobuf와
-FlatBuffers는 extension으로 둔다. codec 선택이 transport lifecycle과 섞이면 안 된다.
-public serializer API는 `nlohmann::json`을 직접 요구하지 않는 typed serializer
-추상화를 먼저 노출하고, JSON helper에서만 `nlohmann/json` 변환 규칙을 제공한다.
+raw bytes와 `nlohmann/json` 기반 JSON codec을 framework serializer 기본값으로 둔다.
+C++ public codec 표면은 message 중심이어야 한다. 사용자가 codec namespace의 함수형
+helper를 찾아 호출하는 방식은 주 표면으로 두지 않는다. 기본 사용성은 아래 형태다.
 
-### 4.8 Concurrency / Execution Model
+```cpp
+auto message = zlink::message_t::from_json(order);
+auto order = message.parse_json<order_created_t>();
+```
 
-concurrency 계층은 handler 실행을 제어한다.
+framework serializer registry는 이 message 중심 codec API 위에 얹는다. codec 선택이
+transport lifecycle과 섞이면 안 된다. public serializer API는 `nlohmann::json`을 직접
+요구하지 않는 typed serializer 추상화를 먼저 노출하고, JSON helper에서만
+`nlohmann/json` 변환 규칙을 제공한다.
+
+binding base target은 codec dependency를 갖지 않는다. JSON, MessagePack, Protobuf는
+각각 선택 target으로 제공한다. framework와 connector는 이 선택 target을 필요한 범위에서
+사용하지만, binding만 쓰는 사용자가 불필요한 codec dependency를 설치하게 만들지 않는다.
+
+### 4.8 Handler Execution Model
+
+C++ framework의 사용자 표면은 handler 등록 모델이다. application 개발자는 CAPI
+dispatch callback이나 recv 순서를 직접 다루지 않고, channel, stream session, Spot,
+actor, timer handler만 구현한다.
+
+framework 내부는 CAPI dispatch callback을 받아 해당 객체의 recv 결과를 typed handler로
+연결한다. 이 경계는 사용자 API가 아니며, 별도 event loop나 기본 실행 모델을 뜻하지
+않는다.
 
 필수 기능은 아래와 같다.
 
-- worker pool
-- dispatch queue
-- strand 또는 serialized execution
-- message ordering
-- backpressure
-- handler timeout
+- CAPI dispatch callback 등록
+- event kind와 대상 객체를 기준으로 한 recv 처리
+- typed handler projection
+- CAPI timer event projection
+- core가 제공하는 ordering 보존
+- framework core가 제공하는 offload executor
+- backpressure와 handler timeout
 
-중요한 정책은 사용자가 thread를 직접 만들고 관리하지 않게 하는 것이다. 사용자는
-동시성 수준, ordering key, queue depth 같은 정책만 설정하고, 실제 thread와 poll loop
-배선은 framework가 맡는다.
+중요한 정책은 사용자가 handler만 구현하면 같은 방식으로 동작하게 하는 것이다.
+framework는 core가 이미 제공하는 dispatch boundary를 다시 queue로 복제하지 않고,
+typed payload 변환, DI scope, handler 호출, 오류 격리, completion 규칙을 닫는다.
+CPU-bound 또는 blocking 가능성이 있는 handler는 framework core의 offload executor로
+넘기도록 가이드하고, 해당 선택은 handler option으로 명시한다.
+
+실행 위치와 순서 보장은 아래 계약으로 닫는다.
+
+| 입력 경로 | 사용자 표면 | 순서 보장 |
+|-----------|------------|-----------|
+| channel request/send | registered channel handler | core 도착 순서와 channel 정책을 따른다 |
+| pub/sub event | registered subscriber handler | core 도착 순서와 topic 정책을 따른다 |
+| STREAM session lifecycle/packet | registered stream session handler | 같은 session의 connected, packet, disconnected callback은 직렬 |
+| Entry Spot actor packet | registered Entry Spot actor handler | 같은 actor id는 core actor ordering을 따른다 |
+| user Spot packet/actor packet/subscription/timer | registered Spot handler | 같은 user Spot 안에서는 core SPOT dispatch boundary를 따른다 |
+| Entry Spot timer | registered Entry Spot timer handler | Entry Spot 전체를 전역 직렬화하지 않고, 같은 timer instance만 재진입 금지 |
+| callback submit completion | `submit(callback)` | `result_t<T>`로 완료한다 |
+| coroutine resume | `co_await call.submit()` | 성공 값 또는 `framework_exception_t`로 완료한다 |
+| CPU-bound handler | `handler_options_t::execution = handler_execution_t::offload` | framework core offload executor에서 실행한다 |
+
+application handler는 CAPI callback 함수 본문 안에서 직접 실행하지 않는다. framework는
+recv, header 검증, deserialize, DI resolve, error isolation을 거친 뒤 등록된 handler를
+호출한다. 일반 handler는 기본 경로를 사용하고, CPU-bound 작업이나 blocking 가능성이
+있는 legacy API 호출은 offload 실행 정책을 명시해 별도 thread에서 처리한다.
 
 ### 4.9 Backpressure / Flow Control
 
@@ -504,6 +690,21 @@ spot_context.on_send_ready([](send_ready_context_t &context) {
 기본 정책은 무한 queue가 아니다. queue 상한, submit timeout, overflow 정책을
 명시적으로 둘 수 있어야 한다.
 
+기본 backpressure 계약은 아래처럼 둔다.
+
+| 상황 | 기본 결과 |
+|------|-----------|
+| pending queue 한도 초과 | `request_rejected` 실패 result |
+| timeout 전 send-ready 발생 | pending 작업을 drain하고 success 또는 하위 submit result로 완료 |
+| timeout까지 send-ready 없음 | `timeout` 실패 result |
+| shutdown 시작 뒤 새 submit | `shutdown` 실패 result |
+| shutdown 중 이미 pending인 작업 | graceful drain 안에서 처리하고, 만료되면 `shutdown` 실패 result |
+| route가 연결되지 않음 | `route_not_connected` 실패 result |
+| 대상 handler 또는 actor route 없음 | `handler_not_found`, `actor_route_not_found`, `spot_route_not_found` 계열 실패 result |
+
+drop 정책은 기본값으로 두지 않는다. 명시 drop/retry/dead-letter 정책은 reliability
+초안에서 별도 계약으로 닫는다.
+
 ### 4.10 Observability
 
 observability는 운영 환경에서 필수 축이다.
@@ -524,8 +725,33 @@ app.metrics().add_runtime_metrics();
 app.health().add_zlink_runtime_check();
 ```
 
-MVP에서는 logging과 health를 먼저 둔다. metrics와 tracing은 event 이름, label
-cardinality, exporter 정책을 정한 뒤 확장한다.
+logging과 health는 core 관찰 표면이다. metrics와 tracing은 event 이름, label
+cardinality, exporter 정책을 정한 뒤 observability extension으로 확장한다.
+
+event schema는 typed payload 기준으로 둔다. 모든 event는 최소한 아래 필드를 가진다.
+
+- `source_name`
+- `timestamp`
+- `kind`
+- `severity`
+- `node_name`
+- `correlation_id` 또는 빈 값
+
+도메인별 event는 아래 범주로 나눈다.
+
+| 범주 | 예시 kind |
+|------|-----------|
+| socket | connected, disconnected, send_ready, send_failed |
+| discovery | endpoint_added, endpoint_removed, view_changed |
+| registry | snapshot_changed, query_failed |
+| stream | session_connected, session_disconnected, packet_rejected, write_failed |
+| spot | status_changed, peers_changed, subjects_changed |
+| spot timer | timer_handler_failed, timer_stopped_after_unhandled_exception |
+| actor/session | actor_bound, actor_unbound, relay_failed, bound_session_closed |
+
+snapshot diff event는 interval 설정을 따른다. timer failure, handler exception, packet
+rejection, relay failure 같은 point-in-time event는 interval을 기다리지 않고 즉시
+발행한다.
 
 ### 4.11 Configuration
 
@@ -547,7 +773,8 @@ app.config()
   .load_cli(argc, argv);
 ```
 
-JSON loader는 `nlohmann/json`을 사용한다. YAML은 MVP 범위에 넣지 않는다. 설정 key
+JSON loader는 `nlohmann/json`을 사용한다. YAML은 core configuration 표면에 넣지 않고,
+필요하면 extension으로 둔다. 설정 key
 이름은 문서와 샘플에서 일관되게 유지한다. 설정 파일 구조가 runtime 내부 자료구조를
 그대로 노출하면 안 된다.
 
@@ -598,6 +825,29 @@ public:
 hosted service는 app lifecycle에 묶인다. `stop`은 graceful shutdown timeout 안에서
 끝나야 하며, 실패하면 host가 오류를 수집해 종료 경로로 넘긴다.
 
+### 4.13.1 Lifecycle / Ownership
+
+app shutdown 순서는 아래처럼 닫는다.
+
+1. stop requested event를 발행하고 새 submit을 `shutdown` result로 거부한다.
+2. STREAM accept와 channel ingress를 멈춘다.
+3. pending request/send/relay를 graceful drain timeout까지 처리한다.
+4. hosted service `stop`을 호출한다.
+5. timer를 취소하고 timer callback 재진입을 막는다.
+6. SpotNode, stream socket, channel socket, discovery, registry client를 닫는다.
+7. CAPI dispatch callback 연결을 끊고, offload executor를 drain한 뒤 context를
+   종료한다.
+
+ownership 규칙은 아래와 같다.
+
+- callback에서 받은 `message_t`와 payload view는 callback 동안만 빌린 값이다.
+- callback 밖으로 보관하려면 copy 또는 move 정책을 명시해야 한다.
+- `relay(...)`와 `send(...)`는 caller payload를 소비하지 않는다. remote frame이
+  필요하면 framework runtime이 별도 buffer를 만든다.
+- stream close는 session binding cleanup만 수행하고 actor current Spot을 바꾸지 않는다.
+- user Spot destroy/leave 중 pending 작업은 target lifecycle 결과에 맞춰 `closed` 또는
+  `shutdown` result로 완료한다.
+
 ### 4.14 Discovery / Topology
 
 Discovery와 topology는 zlink framework의 차별화 축이다.
@@ -615,11 +865,16 @@ Discovery와 topology는 zlink framework의 차별화 축이다.
 직접 peer endpoint를 넣는 manual 연결도 지원하되, 같은 capability 안에서 Discovery와
 manual 연결을 섞지 않는다.
 
+Registry-backed 기본값은 Spot remote address 조회에 사용한다. session actor relay는
+Registry actor route lookup을 hot path로 쓰지 않고, stream의 ActorGateway attach와
+logical actor handle을 사용한다. actor-session binding은 framework/core runtime state
+이며 Registry row나 sample-only metadata store에 저장하지 않는다.
+
 ### 4.15 STREAM 범위
 
-framework MVP에서 `STREAM`은 packet 방식만 지원한다. 그중에서도 header는 framework가
+framework core에서 `STREAM`은 packet 방식만 지원한다. 그중에서도 header는 framework가
 정의한 `stream_header_t` 형식만 사용한다. raw stream session, 사용자 정의 header
-framing, 임의 byte stream dispatch는 MVP 범위에 넣지 않는다.
+framing, 임의 byte stream dispatch는 framework core public 표면에 넣지 않는다.
 
 이 제한은 `.NET` framework 쪽 STREAM 정책과 같은 방향이다. application handler가
 transport별 framing이나 raw stream read loop를 직접 다루지 않게 하고, framework가
@@ -631,7 +886,7 @@ transport별 framing이나 raw stream read loop를 직접 다루지 않게 하�
 transport abstraction은 zlink core가 제공하는 transport 의미를 framework 표면으로
 감싼다. framework core는 별도 network I/O stack을 추가하지 않는다.
 
-지원 후보는 zlink core 기준으로 아래와 같다.
+지원 범위는 zlink core 기준으로 아래와 같다.
 
 - TCP
 - IPC
@@ -646,61 +901,198 @@ PGM은 `C++` framework 지원 범위에 넣지 않는다.
 
 ### 4.17 Reliability Features
 
-reliability 기능은 MVP 이후 확장까지 고려해 public 표면이 막히지 않게 설계한다.
+reliability 기능은 완성 형태까지 고려해 public 표면이 막히지 않게 설계한다.
 
-지원 후보는 아래와 같다.
+지원 범위는 아래와 같다.
 
 - retry
 - timeout
 - dead-letter
 - drain
 - graceful close
-- request cancellation
+- lifecycle cancellation
 - idempotency key hook
 
-MVP에서는 timeout, graceful close, drain을 먼저 확정한다. retry와 dead-letter는
-handler 재실행 의미, ordering, 중복 처리 정책이 필요하므로 별도 초안으로 분리한다.
+timeout, graceful close, drain은 core reliability 표면이다. retry와 dead-letter는
+handler 재실행 의미, ordering, 중복 처리 정책이 필요하므로 별도 초안으로 분리해
+정확한 계약을 닫는다.
+
+비동기 호출은 `.NET`의 `SubmitAsync()`와 callback submit 모델을 따른다. C++에서는
+`request(...)`, `send(...)`, `relay(...)`가 call object를 만들고, 마지막 `submit()`이
+실제 실행 지점이다. callback 방식은 `submit(callback)`을 쓰고, coroutine 방식은
+`co_await call.submit()`을 쓴다. public async 표면에 `std::future`를 사용하지 않고,
+handler/runtime 내부에서 blocking wait를 허용하지 않는다.
+
+callback submit은 `result_t<T>`로 완료된다. coroutine submit은 성공 시 값을 반환하고,
+실패 시 `framework_exception_t`를 throw한다. 이 exception은 `.NET` framework의
+`ZLinkFrameworkException`처럼 error kind와 message, retriable 여부를 담는다.
+error kind 이름은 C++ naming으로 바꾸되 의미는 `.NET`의 `ZLinkFrameworkErrorKind`를
+기준으로 맞춘다.
 
 ### 4.18 Integration Layer
 
-integration layer는 초기에는 최소 범위로 둔다.
+integration layer는 core framework 위의 확장 계층으로 둔다.
 
-후보는 아래와 같다.
+확장 영역은 아래와 같다.
 
 - Kafka bridge
 - gRPC bridge
 - HTTP gateway
 
-초기 구현은 bridge보다 framework core를 먼저 안정화한다. 외부 시스템 bridge는
+구현 순서는 bridge보다 framework core를 먼저 안정화한다. 외부 시스템 bridge는
 messaging core, serialization, backpressure, observability가 정리된 뒤 추가한다.
 
-## 5. MVP 우선순위
+## 5. 구현 순서
 
-먼저 구현할 범위는 아래와 같다.
+아래 순서는 기능 축소가 아니라 구현 순서다. 최종 C++ framework는 `.NET` framework와
+동일한 수준의 실시간 메시징 프로그램 개발 기능을 제공하는 것을 목표로 한다.
 
-| 우선순위 | 영역 | 완료 기준 |
+| 순서 | 영역 | 완료 기준 |
 |:--:|------|----------|
 | 1 | app / host | `app_t::create`, 구성, `int run`, signal handling, graceful shutdown |
-| 2 | DI | 자체 container, public service API, singleton/transient/factory |
+| 2 | DI | 자체 container, public service API, singleton/scoped/transient/factory |
 | 3 | runtime integration | context, socket, discovery, spot node lifecycle을 host가 관리 |
-| 4 | handler framework | typed subscribe/request handler 등록과 invoke |
+| 4 | handler framework | typed subscribe/request handler 등록, invoke, offload 실행 정책 |
 | 5 | messaging core | publish, request, send, reply dispatch |
-| 6 | spot abstraction | spot lifecycle, mailbox, direct routing, publish |
-| 7 | hosted services | start/stop lifecycle과 shutdown 연동 |
-| 8 | logging / health | runtime 오류, handler 예외, runtime 상태를 볼 수 있는 최소 표면 |
-| 9 | graceful shutdown | drain, worker stop, socket close 순서 검증 |
+| 6 | spot abstraction | spot lifecycle, core dispatch ordering, direct routing, publish |
+| 7 | SPOT timer | tick metadata, overrun policy, timer failure monitoring |
+| 8 | actor/session relay | ActorGateway attach, session bind, relay, bound session push |
+| 9 | hosted services | start/stop lifecycle과 shutdown 연동 |
+| 10 | logging / health | runtime 오류, handler 예외, runtime 상태를 볼 수 있는 core 표면 |
+| 11 | graceful shutdown | drain, offload executor stop, socket close 순서 검증 |
 
-나중으로 미룰 범위는 아래와 같다.
+core framework 밖의 확장 영역은 아래와 같다. 이 목록은 기능을 제외한다는 뜻이
+아니라, framework 본체의 필수 계약과 분리해도 사용자 모델이 깨지지 않는 영역을
+구분한 것이다.
 
 - metrics
 - tracing
 - Kafka bridge
 - advanced retry
-- scoped lifetime
-- Protobuf integration
 - FlatBuffers integration
 - HTTP gateway
 - YAML configuration
+
+## 5.1 Packaging / Public Header
+
+패키징은 아래 기준으로 둔다.
+
+- 단일 umbrella header는 `#include <zlink/framework.hpp>`다.
+- 세부 header는 `zlink/framework/*.hpp` 아래에 둔다.
+- CMake target 이름은 `zlink::framework`다.
+- framework target은 필요한 binding target을 private 또는 transitive dependency로
+  정확히 연결한다. 사용자가 native C header를 직접 include해야 동작하는 표면은 만들지
+  않는다.
+- public template API는 header에 둘 수 있지만, CAPI dispatch binding, native handle owner,
+  runtime event binding, ActorGateway frame codec은 `src/` 구현에 숨긴다.
+- 외부 라이브러리 타입은 public handler/module/config callback signature에 노출하지
+  않는다.
+
+C++ Stream Connector 패키징은 별도 문서인
+[STREAM Connector](./cpp-stream-connector.ko.md)를 따른다. framework sample이나
+framework target에 connector public API를 섞지 않는다.
+Unreal Connector도 같은 문서에서 다루며 framework target에 포함하지 않는다.
+
+## 5.1.1 Review Samples
+
+framework 동작 리뷰 샘플은 `Bingo`와 `TicTacToe` 두 개로 둔다.
+
+`Bingo`는 channel/SPOT 중심의 기본 실시간 메시징 샘플이다. app/host, DI, channel
+request/reply, publish/subscribe, callback submit, coroutine submit, handler error
+mapping, user Spot, timer, monitoring, graceful shutdown, CPU-bound handler offload를
+검토한다. `Bingo`에는 STREAM ActorGateway relay 변형을 두지 않는다.
+
+`TicTacToe`는 STREAM과 ActorGateway 기반 actor/session relay 샘플이다. `.NET` 쪽에서
+session relay 구조로 검증한 TicTacToe와 같은 개념을 따르되, C++ 샘플 이름에는 별도
+접미사를 붙이지 않는다. 이 샘플은 STREAM endpoint, ActorGateway attach, Entry Spot,
+actor factory, session actor bind, relay, bound session push, actor join/move,
+disconnect cleanup을 검토한다.
+
+권장 샘플 배치는 아래와 같다.
+
+```text
+framework/languages/cpp/samples/
++-- Bingo/
+|   +-- README.ko.md
+|   +-- CMakeLists.txt
+|   +-- Server/
+|   +-- Client/
+|   +-- Shared/
+|   +-- run_local.sh
++-- TicTacToe/
+|   +-- README.ko.md
+|   +-- CMakeLists.txt
+|   +-- Server/
+|   +-- Client/
+|   +-- Shared/
+|   +-- run_local.sh
+```
+
+CTest sample smoke 이름은 `framework-sample-smoke-bingo`와
+`framework-sample-smoke-tictactoe`로 둔다.
+
+## 5.2 Test Matrix
+
+구현 완료 기준은 아래 테스트 축을 포함한다.
+
+테스트 도구 결정은 아래와 같다.
+
+- CMake option은 `ZLINK_FRAMEWORK_CPP_BUILD_TESTS`, `ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES`,
+  `ZLINK_FRAMEWORK_CPP_REGISTER_CTEST`를 둔다.
+- test runner는 CTest다. `framework/languages/cpp` 안의 test executable과 sample smoke를
+  CTest label로 등록한다.
+- test harness는 GoogleTest를 기본으로 사용한다. runtime boundary, handler invoker,
+  offload executor, monitoring sink처럼 fake나 expectation이 필요한 테스트에는
+  GoogleMock을 사용한다.
+- GoogleTest와 GoogleMock은 framework C++ 개발 의존성이다. public framework header와
+  배포 runtime dependency에는 노출하지 않는다.
+- C++20 compile contract 테스트를 별도로 둔다. public header, concepts, coroutine
+  return type, callback submit signature가 깨지면 컴파일 단계에서 실패해야 한다.
+- 회귀 테스트는 `.NET` framework와 같은 기능 축을 C++ 표면으로 반복한다. C++ 문법만
+  다르고 기능 기대값은 같아야 한다.
+
+| 축 | 검증 내용 |
+|----|-----------|
+| app/host | startup, signal stop, graceful shutdown, shutdown 중 submit result |
+| DI/module | singleton/scoped/transient/factory, duplicate registration, shutdown 중 resolve 금지 |
+| channel messaging | request/reply, send, pub/sub, timeout, disconnected, queue full |
+| async surface | `submit(callback)`, `co_await submit()`, completion path, blocking wait 금지 |
+| handler execution | 기본 handler 실행, CPU-bound handler offload, concurrency 제한, shutdown drain |
+| STREAM | packet header validation, session ordering, write backpressure, close cleanup |
+| SPOT | spot create/destroy, publish, request_to, core SPOT dispatch ordering |
+| timer | CAPI timer projection, fire_count 기반 skipped tick 계산, tick metadata, overrun policy, exception event, cancel, Entry Spot timer non-global serialization |
+| ActorGateway relay | bind local/remote actor, relay request/reply, bound session push, disconnect cleanup |
+| Registry | Spot remote address lookup, duplicate resolver rejection, ambiguous route channel validation |
+| monitoring | typed event payload, immediate failure event, snapshot diff interval |
+| samples | `Bingo`, `TicTacToe` sample smoke |
+
+회귀 테스트 레이어는 아래처럼 나눈다.
+
+| 레이어 | 목적 | CTest label |
+|--------|------|-------------|
+| contract compile | public header와 타입 표면이 의도대로 컴파일되는지 확인. 필요한 경우 GoogleTest binary 안의 static assertion test로 묶는다 | `framework-contract` |
+| unit | GoogleTest로 DI, serializer, handler registry, error mapping, call object 상태 전이를 process 내부에서 검증 | `framework-unit` |
+| integration | GoogleTest fixture와 core runtime을 사용해 channel, STREAM, SPOT, ActorGateway 흐름을 inproc/tcp로 검증 | `framework-integration` |
+| sample smoke | 문서 샘플과 실제 sample executable이 실행 가능한지 확인 | `framework-sample-smoke` |
+| regression | GoogleTest로 과거 버그와 `.NET` parity 항목을 명시적으로 고정 | `framework-regression` |
+
+필수 회귀 항목은 아래와 같다.
+
+- `submit(callback)`과 `co_await submit()`이 같은 timeout/error kind를 반환한다.
+- shutdown 이후 새 submit은 `shutdown`으로 실패한다.
+- pending queue 한도 초과는 `request_rejected`로 실패한다.
+- handler decode 실패는 `payload_decode_failed`로 보고하고 runtime을 죽이지 않는다.
+- scoped service는 handler dispatch, stream session, Spot activation 경계를 넘지 않는다.
+- STREAM header validation 실패는 application handler로 전달되지 않는다.
+- STREAM session callback은 같은 session 안에서 직렬로 처리된다.
+- ActorGateway relay는 application route mesh channel을 우회하지 않는다.
+- `actor_ref_t`의 `node_rid`, `actor_id`, `generation` round-trip이 유지된다.
+- actor duplicate와 actor type mismatch는 각각 `actor_already_exists`,
+  `actor_type_mismatch`로 보고한다.
+- user Spot timer는 core SPOT dispatch ordering을 따르고, Entry Spot timer는 Entry Spot
+  전체를 전역 직렬화하지 않는다.
+- CPU-bound handler를 `handler_execution_t::offload`로 등록하면 offload executor drain이
+  graceful shutdown에 포함된다.
 
 ## 6. 설계 원칙
 
@@ -715,12 +1107,8 @@ messaging core, serialization, backpressure, observability가 정리된 뒤 추�
   아니라 명확한 failed result 또는 exception으로 닫는다.
 - 비자명한 public surface는 최소 두 가지 대안을 비교한 뒤 선택한다.
 
-## 7. 남은 결정 사항
+## 7. 현재 결정 상태
 
-구현 전에 아래 항목을 별도 초안이나 인터페이스 문서에서 닫아야 한다.
-
-- `scoped` lifetime을 도입할 경우 scope 의미
-- request cancellation과 timeout 결과 타입
-- default executor의 worker 수와 queue 상한 기본값
-- dead-letter의 저장소와 재처리 표면
-- configuration key schema
+이 문서 기준으로 C++ framework core 구현을 시작하기 위한 추가 사용자 결정 항목은 없다.
+dead-letter 저장소, 재처리 표면, YAML 같은 추가 configuration source는
+core framework 계약 밖의 확장으로 별도 설계한다.

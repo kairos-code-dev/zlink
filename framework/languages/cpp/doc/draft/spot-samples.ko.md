@@ -34,9 +34,12 @@ app.use_zlink([](auto &zlink) {
       })
       .spot_node("stage-spot-node", [](auto &spot_node) {
           spot_node.bind("tcp://0.0.0.0:9000");
+          spot_node.enable_actor_gateway();
           spot_node.use_discovery("game.stage");
           spot_node.attach_channel_client("profile");
           spot_node.attach_publisher("game.stage");
+          spot_node.add_entry_spot<player_entry_spot_t>();
+          spot_node.add_actor_factory<player_actor_factory_t>("player");
           spot_node.add_spot<stage_spot_t>("stage");
           spot_node.add_spot<room_spot_t>("room");
       });
@@ -58,6 +61,12 @@ public:
         context_.on_send_ready([](auto &ready) {
             ready.resume_pending();
         });
+
+        timer_ = context_.add_timer<stage_tick_handler_t>(
+          "stage-tick",
+          std::chrono::milliseconds(16),
+          {.overrun_policy =
+             zlink::framework::timer_overrun_policy_t::skip_late_ticks});
     }
 
     void update_state(const stage_state_updated_t &event)
@@ -67,6 +76,16 @@ public:
 
 private:
     zlink::framework::spot_context_t &context_;
+    zlink::framework::timer_t timer_;
+};
+
+class stage_tick_handler_t final {
+public:
+    void handle(stage_spot_t &spot,
+      const zlink::framework::timer_tick_t &tick)
+    {
+        spot.advance(tick.period, tick.skipped_ticks + 1);
+    }
 };
 ```
 
@@ -80,7 +99,7 @@ public:
     {
     }
 
-    std::future<profile_reply_t> load_profile(
+    zlink::framework::request_call_t<profile_reply_t> load_profile(
       zlink::routing_id_t node_rid,
       zlink::routing_id_t profile_spot_rid,
       profile_query_t query)
@@ -96,7 +115,7 @@ private:
 };
 ```
 
-직접 `routing_id_t`를 받는 API는 spot-to-spot 경로에 제한한다.
+직접 `routing_id_t`를 받는 API는 spot-to-spot과 Entry Spot join 경로에 제한한다.
 
 ## 4. 외부 노드에서 event publish
 
@@ -106,3 +125,26 @@ publisher.publish(
   "stage.state.updated",
   build_stage_state_updated());
 ```
+
+## 5. actor bound session push
+
+```cpp
+class player_actor_t final {
+public:
+    explicit player_actor_t(zlink::framework::actor_context_t &context)
+      : context_(context)
+    {
+    }
+
+    void notify_turn_changed(turn_changed_t event)
+    {
+        context_.bound_session().send(event).submit();
+    }
+
+private:
+    zlink::framework::actor_context_t &context_;
+};
+```
+
+actor에서 client로 push할 때도 application route mesh channel을 직접 만들지 않는다.
+framework runtime의 bound session 경로를 사용한다.

@@ -102,14 +102,21 @@ app.handlers()
 `handler_options_t::packet_name`이나 등록 인자를 사용한다.
 
 일반 event publish는 `publisher_t::publish(channel, topic, event)` 표면으로 설명한다.
+current Spot 밖에서 target Spot으로 직접 send/request 하는 public client는 channel
+messaging 표면에 넣지 않는다. 그런 흐름은 actor 생성 또는 Entry Spot join으로 actor
+handle을 얻은 뒤 ActorGateway/session actor 경로로 연결한다.
+
+request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `submit()`에서
+실행한다. callback 방식은 `submit(callback)`, coroutine 방식은
+`co_await call.submit()`을 사용한다. handler 안에서 blocking wait를 쓰지 않는다.
 
 ## 4. Dispatch 기준
 
 - 일반 request/send dispatch는 local server capability ingress 기준이다.
 - outbound client capability 수신은 pending request의 reply correlation 경로다.
 - 같은 capability에서 Discovery와 manual 연결을 같이 섞지 않는다.
-- runtime 연결 제어가 필요하면 capability 단위 connection manager를 별도 extension으로
-  둔다.
+- runtime 연결 제어가 필요하면 framework core의 capability 단위 connection manager가
+  담당한다. 사용자는 raw socket이 아니라 channel capability 표면으로 연결을 다룬다.
 
 ## 5. Outbound-only host
 

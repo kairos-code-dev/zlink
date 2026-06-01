@@ -315,27 +315,25 @@ internal static class PerfRouterRouter
         senderThread.IsBackground = true;
         senderThread.Start();
 
-        using var poller = Zlink.CreatePoller();
-        var events = new PollEvent[1];
-        poller.Add(receiver, PollEventFlags.PollIn, 0);
         var receivedBuffer = Received.Create();
-        // PERF_SINGLE_TEST_POLICY § 1.4: signal-driven (-1) poller wait, no
-        // sender_done atomic flag, no short-poll/deadline fallback. The phase
-        // ends purely when the wire-level stop token arrives, matching C
-        // perf_router_router.cpp run_active_phase (recv loop exits only on
-        // recv_rc == 2 / is_stop_token).
+        // PERF_SINGLE_TEST_POLICY § 1.4: blocking first recv per cycle, then
+        // DontWait burst-drain. The phase ends purely when the wire-level stop
+        // token arrives, matching C perf_router_router.cpp run_active_phase.
         while (!stopReceived)
         {
-            if (!WaitForInputSignalDriven(poller, events))
+            if (!TryReceiveBlocking(receiver, receivedBuffer))
                 continue;
 
-            while (TryReceive(receiver, receivedBuffer))
+            bool drain = true;
+            while (drain)
             {
                 if (ProcessReceived(receivedBuffer))
                 {
                     stopReceived = true;
                     break;
                 }
+
+                drain = TryReceive(receiver, receivedBuffer);
             }
         }
 
@@ -359,6 +357,24 @@ internal static class PerfRouterRouter
             return receiver.Recv(result, RecvFlags.DontWait);
         }
         catch (ZlinkRecvException)
+        {
+            return false;
+        }
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                        || IsWouldBlock(ex.InternalErrno))
+        {
+            return false;
+        }
+    }
+
+    private static bool TryReceiveBlocking(IRouterSocket receiver, Received result)
+    {
+        try
+        {
+            return receiver.Recv(result);
+        }
+        catch (ZlinkRecvException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
         {
             return false;
         }

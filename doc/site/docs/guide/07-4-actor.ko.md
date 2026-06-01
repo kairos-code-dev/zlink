@@ -18,50 +18,60 @@
 ## Actor란 — 무엇이고 언제 쓰나
 
 실시간 게임 서버를 떠올리면 가장 쉽다. 플레이어가 접속하면 서버 안에 그 플레이어를
-대표하는 객체가 하나 생긴다. 이 객체는 플레이어의 상태(점수·위치·손패)를 들고, 그가
-보낸 입력을 **들어온 순서대로** 처리하고, 그에게 보낼 메시지를 push한다. zlink의
-**Actor**가 바로 이 객체이고, Actor들이 모이는 곳이 **Spot**이다.
+대표하는 객체가 하나 생긴다. 이 객체는 플레이어의 상태(점수·위치·손패)를 들고, 그
+플레이어가 보낸 입력을 들어온 순서대로 처리한다. zlink의 **Actor**가 바로 이 객체다.
 
-두 가지 성질이 핵심이다.
+**Actor는 항상 Spot 안에 있다.** Actor는 단독으로 존재하지 않고 반드시 어떤 Spot에
+소속된다. 메시지도 Actor에게 곧바로 꽂히지 않는다 — Spot으로 들어온 메시지를 그
+Spot의 dispatch 핸들러에서 "이건 이 Actor 것"으로 **간접 참조**해 받는다(Actor 전용
+콜백이 아니라 Spot dispatch에서 `recv_actor_part`로 읽는다).
 
-- **id로 주소 지정** — Actor는 연결(소켓)이 아니라 id로 가리킨다. 서버는
-  "player-2에게 보내"라고만 하면 되고, player-2가 지금 어느 서버·소켓에 붙어 있는지
-  추적할 필요가 없다 — zlink가 id를 보고 그 Actor에게 전달한다. (받는 쪽을 연결이
-  아니라 id로 가리키므로, 끊겼다 다른 서버로 다시 붙어도 같은 Actor로 이어진다.)
-- **자기 큐로 순차 처리** — 각 Actor는 자기 메시지 큐를 갖고, 들어온 메시지를 하나씩
-  순서대로(직렬) 처리한다. 락 없이 "이 세션의 일은 이 Actor가 순서대로"라서 상태를
-  안전하게 들고 간다.
+**Actor에게 메시지를 보내는 길은 STREAM 세션뿐이다.** 백엔드가 Actor에게 직접
+꽂는 API는 없다. 외부 클라이언트가 STREAM으로 연결하면 그 **세션에 Actor를 bind**
+하고, 세션으로 들어온 패킷을 그 Actor로 **relay**한다 — `세션 bind → 패킷 relay`가
+Actor에게 메시지가 닿는 유일한 경로다. 받는 쪽을 연결이 아니라 actor id로 가리키므로,
+클라이언트가 끊겼다 다른 서버로 다시 붙어도 같은 Actor로 이어진다.
+
+**Entry Spot은 로비다.** Actor를 만들면 처음에는 반드시 **Entry Spot**(`SpotNode`가
+소유하는 진입점)에 생긴다. 모든 Actor가 여기로 들어오며, 보통 여기서 인증·초기
+처리·들어갈 방 선택을 한 뒤 `join`으로 개별 user Spot(방)으로 옮겨 간다(`leave`하면
+다시 Entry Spot으로 돌아온다). Entry Spot에서는 STREAM으로 relay된 actor 패킷이
+actor별 순서로 처리되지만 Entry Spot 전체가 하나의 직렬 경계는 아니다(나머지는 병렬).
+user Spot으로 옮겨 가면 그 **Spot의 dispatch 경계에서 순서대로** 처리된다.
 
 **언제 쓰나**
 
-- **멀티플레이 게임 방** — 한 방(Spot)에 여러 플레이어(Actor), 각자 id로 주소 지정.
-  (가장 직관적)
+- **멀티플레이 게임 방** — 한 방(user Spot)에 여러 플레이어(Actor), 각자 id로 주소
+  지정. (가장 직관적)
 - **실시간 게임 세션** — 접속자 1명당 Actor 1개로 그 세션 패킷을 순서대로 처리하는
   권위 세션. (실무에서 가장 흔함)
 - **게임이 아니어도** — 긴 TCP 세션을 유지하며 그 세션 메시지를 고속·순차로
   처리해야 하는 곳(거래/주문 세션, IoT 디바이스 세션, 세션별 명령 스트림 등).
 
-Actor는 raw 소켓의 대안이 아니라 Spot 위에 얹는 한 단계 더 높은 모델이며, Actor
-메시지도 결국 Spot routed 평면 위로 흐른다.
+Actor는 raw 소켓의 대안이 아니라 Spot 위에 얹는 한 단계 더 높은 모델이다.
 
 ## 시나리오 1 — 한 방의 두 플레이어 (id 주소 지정)
 
-한 방(Spot)에 두 플레이어 `player-1`, `player-2`가 입장(join)한다. 서버가 각
-플레이어에게 자기 앞으로 온 메시지를 보내면(`player-1`←`your-turn`,
-`player-2`←`wait`), **그 Actor만** 그것을 받는다. 같은 방을 공유해도 메시지는 id로
-정확히 그 플레이어에게 간다.
+두 플레이어 `player-1`, `player-2`가 Entry Spot에서 생성돼 한 방(user Spot)으로
+join한다. 각 Actor는 STREAM 세션에 bind되고, 서버가 STREAM으로 각 플레이어 앞으로
+패킷을 relay하면(`player-1`←`your-turn`, `player-2`←`wait`) **그 Actor만** 받는다.
+같은 방을 공유해도 메시지는 actor id로 정확히 그 플레이어에게 간다.
 
 ```mermaid
 sequenceDiagram
-    participant S as 서버 (room / Spot)
-    participant P1 as player-1
-    participant P2 as player-2
+    participant C as 클라이언트 (STREAM 세션)
+    participant R as room (user Spot)
+    participant P1 as player-1 (Actor)
+    participant P2 as player-2 (Actor)
 
-    P1->>S: join (enter-room)
-    P2->>S: join (enter-room)
-    S->>P1: "your-turn"
-    S->>P2: "wait"
-    Note over P1,P2: 같은 방이지만 각자 자기 메시지만 받는다
+    Note over P1,P2: Entry Spot(로비)에서 생성 → join으로 room 이동, 세션에 bind
+    P1->>R: join
+    P2->>R: join
+    C->>R: STREAM 패킷 (→ player-1)
+    R->>P1: relay "your-turn"
+    C->>R: STREAM 패킷 (→ player-2)
+    R->>P2: relay "wait"
+    Note over P1,P2: 같은 방, 각자 자기 메시지만 받는다
 ```
 
 === "C++"
@@ -101,71 +111,71 @@ sequenceDiagram
     --8<-- "bindings/rust/samples/actor_room_example.rs"
     ```
 
-## 시나리오 2 — 순차 처리되는 메시지 큐
+## 시나리오 2 — STREAM 메시지 순차 처리
 
-Actor는 자기 큐의 메시지를 **들어온 순서대로** 처리한다. Actor가 잠깐 처리 위치에서
-빠져 있어도(leave) 그 사이 도착한 메시지는 큐에 순서대로 쌓였다가, 다시 돌아오면
-(rejoin) 그대로 이어 처리된다. 아래 예제는 `"before"`(붙어 있을 때)와
-`"between"`(빠져 있는 사이)을 보내고, 결과가 순서대로 `"before/between"`이 됨을
-보인다 — 세션별 순차 처리의 바탕이다.
+한 플레이어 Actor가 Entry Spot에서 생성돼 개별 방(user Spot)으로 join한다. STREAM이
+그 세션으로 입력(`move`, `attack`, `loot`)을 연달아 relay하면, Actor는 방의 dispatch
+경계에서 **들어온 순서대로** 처리한다 — 한 세션의 일을 한 Actor가 직렬로 처리하는
+모델이다.
 
 ```mermaid
 sequenceDiagram
-    participant G as 서버 (게이트웨이)
-    participant A as Actor (single-player)
+    participant C as 클라이언트 (STREAM 세션)
+    participant R as room (user Spot)
+    participant A as player (Actor)
 
-    A->>G: join
-    G->>A: "before" (처리)
-    A->>G: leave
-    Note over A: 처리 위치 이탈
-    G--xA: "between" 도착 → 큐에 보존
-    A->>G: join (rejoin)
-    G->>A: "between" (큐된 순서대로 처리)
-    Note over A: 결과: "before/between"
+    Note over A: Entry Spot(로비)에서 생성 → join으로 room 이동, 세션에 bind
+    A->>R: join
+    C->>R: STREAM "move"
+    C->>R: STREAM "attack"
+    C->>R: STREAM "loot"
+    R->>A: move → attack → loot (들어온 순서대로 처리)
 ```
 
 === "C++"
     ```cpp
-    --8<-- "bindings/cpp/samples/actor_queue_example.cpp"
+    --8<-- "bindings/cpp/samples/actor_sequential_example.cpp"
     ```
 === "C#/.NET"
     ```csharp
-    --8<-- "bindings/dotnet/samples/ActorQueueExample/Program.cs"
+    --8<-- "bindings/dotnet/samples/ActorSequentialExample/Program.cs"
     ```
 === "Java"
     ```java
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/ActorQueueExample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/ActorSequentialExample.java"
     ```
 === "Kotlin"
     ```kotlin
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/ActorQueueExample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/ActorSequentialExample.kt"
     ```
 === "Python"
     ```python
-    --8<-- "bindings/python/samples/actor_queue_example.py"
+    --8<-- "bindings/python/samples/actor_sequential_example.py"
     ```
 === "Node/TypeScript"
     ```typescript
-    --8<-- "bindings/node/samples/actor_queue_example.ts"
+    --8<-- "bindings/node/samples/actor_sequential_example.ts"
     ```
 === "JavaScript"
     ```javascript
-    --8<-- "bindings/javascript/samples/actor_queue_example.js"
+    --8<-- "bindings/javascript/samples/actor_sequential_example.js"
     ```
 === "Go"
     ```go
-    --8<-- "bindings/go/samples/actor_queue_example/main.go"
+    --8<-- "bindings/go/samples/actor_sequential_example/main.go"
     ```
 === "Rust"
     ```rust
-    --8<-- "bindings/rust/samples/actor_queue_example.rs"
+    --8<-- "bindings/rust/samples/actor_sequential_example.rs"
     ```
 
 ## 더 보기
 
-- 위 탭들은 각 언어 `samples/`의 `actor_room_example`·`actor_queue_example` 파일을
-  그대로 임베드한 것이다.
-- 더 큰 패턴: `actor_room_server`(STREAM 게이트웨이로 외부 클라이언트 세션을 actor에
-  연결), `actor_gateway_relay`(외부 세션 릴레이).
+- 위 탭들은 각 언어 `samples/`의 `actor_room_example`·`actor_sequential_example`
+  파일을 그대로 임베드한 것이다.
+- Actor가 방을 잠깐 leave했다 다시 join하는 사이에도 메시지가 큐에 보존되는 동작은
+  `actor_queue_example`을 본다.
+- 외부 raw TCP 클라이언트를 STREAM 게이트웨이로 실제 연결하는 더 큰 패턴:
+  `actor_room_server`, `actor_gateway_relay`.
 - 정확한 계약: [SPOT spec](../spec/core/service/spot.ko.md). 개념·언제 쓰나:
   [서비스 개요 §멘탈 모델](./07-0-services.ko.md).

@@ -246,19 +246,24 @@
   고정 시나리오를 모든 언어에서 같은 순서·같은 식별자로 따른다.
 - `actor_room_server_sample`:
   - actor id `"room-player-1"` 가 user Spot에 `"enter-room"` 으로 join 한다.
+  - Spot은 join을 `"accepted"` 로 수락한다.
   - STREAM session에서 `"move:north"` payload가 bound actor로 전달된다.
   - Spot dispatch의 `ACTOR_READABLE` subject로 그 payload를 drain해 확인한다.
 - `actor_gateway_relay_sample`:
-  - actor id `"play-session-actor"` 가 gateway STREAM session의 part를 remote
-    Actor로 relay하는 흐름을 보인다.
+  - actor id `"play-session-actor"` 가 play node의 user Spot에 `"join-play"` 로 join한다.
+  - gateway STREAM session에서 `"client-input"` payload가 bound actor로 relay된다.
+  - Spot dispatch의 `ACTOR_READABLE` 로 그 payload를 확인한다.
 - `actor_single_player_queue_sample`:
   - actor id `"single-player"` 가 첫 user Spot에 `"join-first"` 로 join한다.
   - actor가 leave한 사이 도착한 메시지(`"before"`, `"between"`)가 유실되지 않고
     큐잉된다.
-  - actor가 `"join-second"` 로 rejoin하면 큐된 메시지를 도착 순서대로 수신한다.
+  - actor가 `"join-second"` 로 다른 Spot에 rejoin하면 큐된 메시지를 도착 순서대로
+    수신한다.
   - 이 샘플의 의미는 **재접속 이전성**(actor가 세션 위치와 무관하게 같은 엔티티로
     이어지고, 그 사이 메시지가 보존됨)이다.
+- join 수락 payload는 `"accepted"` 를 기본으로 한다.
 - 세 샘플 모두 actor가 socket이나 endpoint를 직접 소유한다고 설명하지 않는다.
+- 기준 구현은 cpp/go/rust 샘플이며, 다른 언어 샘플은 이 값·순서에 맞춘다.
 
 ## Sample Transport Rules
 - 샘플의 endpoint는 `tcp://127.0.0.1:<port>` 를 기본으로 사용한다.
@@ -654,9 +659,9 @@
 | pubsub | one-way | `"prices"` | `"101.25"` |
 | spot-recv | composite | `"room:lobby"` | service id: `"sample"`, publish: `"hello-spot"`, send: `"hello-spot-send"`, timer: `"tick-1"` |
 | spot-request | async request | — | service id: `"sample"`, request: `"spot-ping"`, reply: `"spot-pong"` |
-| actor-room-server | dispatch | — | actor id: `"room-player-1"`, join: `"enter-room"`, stream payload: `"move:north"` |
-| actor-gateway-relay | stream relay | — | actor id: `"play-session-actor"`, relay payload: `"relay"` |
-| actor-single-player-queue | queue order | — | actor id: `"single-player"`, join 시퀀스: `"join-first"` → leave → 큐잉 `"before"`/`"between"` → rejoin `"join-second"` → 수신 |
+| actor-room-server | dispatch | — | actor id: `"room-player-1"`, join: `"enter-room"`, accept: `"accepted"`, stream payload: `"move:north"` |
+| actor-gateway-relay | stream relay | — | actor id: `"play-session-actor"`, join: `"join-play"`, relay payload: `"client-input"` |
+| actor-single-player-queue | queue order | — | actor id: `"single-player"`, join 시퀀스: `"join-first"` → leave → 큐잉 `"before"`/`"between"` → rejoin `"join-second"`, accept: `"accepted"` |
 
 > Actor 샘플은 단순 send/recv가 아니라 **시나리오 시퀀스**(join → 처리 → leave/relay/queue)를
 > 보인다. 위 값은 그 시퀀스의 고정 식별자·payload이며, 언어가 달라도 같은 값과

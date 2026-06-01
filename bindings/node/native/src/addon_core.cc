@@ -2773,10 +2773,23 @@ napi_value router_reply(napi_env env, napi_callback_info info)
         return NULL;
     }
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector_or_single(env, argv[3], &parts))
-        return NULL;
+    zlink_msg_t single_part;
+    bool use_single_part = false;
+    bool is_array = false;
+    if (napi_is_array(env, argv[3], &is_array) == napi_ok && is_array) {
+        if (!build_msg_vector(env, argv[3], &parts))
+            return NULL;
+    } else {
+        if (!init_msg_from_value(env, argv[3], &single_part))
+            return NULL;
+        use_single_part = true;
+    }
     int rc =
-      router_reply_parts(router, &peer_rid, request_seq, parts.data(), parts.size());
+      router_reply_parts(router,
+                         &peer_rid,
+                         request_seq,
+                         use_single_part ? &single_part : parts.data(),
+                         use_single_part ? 1 : parts.size());
     if (rc != ZLINK_SUBMIT_OK) {
         return throw_last_error(env, "routerReply failed");
     }

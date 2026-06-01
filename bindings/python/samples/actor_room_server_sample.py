@@ -15,22 +15,31 @@ def main():
     with zlink.create_context() as ctx:
         with zlink.create_spot_node(ctx) as node:
             with node.create_spot() as spot:
-                actor = node.actor("room-1")
+                actor = node.actor("room-player-1")
                 actor_ref = actor.ref()
                 replies = []
                 joins = []
+                payloads = []
 
                 def on_dispatch(current_spot, info):
-                    if info.event != zlink.SpotDispatchEvent.ACTOR_JOIN_READABLE:
-                        return
-                    item = current_spot.recv_actor_join(flags=zlink.RecvFlags.DONT_WAIT)
-                    if item is None:
-                        return
-                    joins.append(item.message.to_bytes())
-                    item.message.close()
-                    current_spot.reply_actor_join(item, 0).message(
-                        b"joined"
-                    ).submit()
+                    if info.event == zlink.SpotDispatchEvent.ACTOR_JOIN_READABLE:
+                        item = current_spot.recv_actor_join(
+                            flags=zlink.RecvFlags.DONT_WAIT
+                        )
+                        if item is None:
+                            return
+                        joins.append(item.message.to_bytes())
+                        item.message.close()
+                        current_spot.reply_actor_join(item, 0).message(
+                            b"accepted"
+                        ).submit()
+                    elif info.event == zlink.SpotDispatchEvent.ACTOR_READABLE:
+                        while True:
+                            part = info.recv_actor_part(flags=zlink.RecvFlags.DONT_WAIT)
+                            if part is None:
+                                return
+                            payloads.append(part.message.to_bytes())
+                            part.message.close()
 
                 spot.on_dispatch_event(on_dispatch)
 
@@ -58,25 +67,36 @@ def main():
                                 description="stream actor bind",
                             )
 
-                            actor.join(spot).message(b"join-room").timeout(2).submit(
+                            actor.join(spot).message(b"enter-room").timeout(2).submit(
                                 on_reply
                             )
                             wait_until(lambda: replies, timeout_ms=5000, description="actor join")
 
-                            if joins != [b"join-room"]:
+                            if joins != [b"enter-room"]:
                                 raise AssertionError("unexpected join request")
                             if (
                                 replies[0][0].result != zlink.RequestResult.OK
-                                or replies[0][1] != [b"joined"]
+                                or replies[0][1] != [b"accepted"]
                             ):
                                 raise AssertionError("unexpected join reply")
-                            if spot.actors()[0].actor_id != "room-1":
+                            if spot.actors()[0].actor_id != "room-player-1":
                                 raise AssertionError("joined actor snapshot missing")
+
+                            stream.send_bound_actor(
+                                session_rid, "room-player-1"
+                            ).message(b"move:north").submit()
+                            wait_until(
+                                lambda: payloads,
+                                timeout_ms=5000,
+                                description="actor payload",
+                            )
+                            if payloads != [b"move:north"]:
+                                raise AssertionError("unexpected actor payload")
                             submit_request_op(
                                 actor.leave(spot), description="actor leave"
                             )
                 actor.close()
-                print("[actor/room] join accepted")
+                print('[actor/room] stream payload: "move:north" -> actor: "move:north"')
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ def main():
     with zlink.create_context() as ctx:
         with zlink.create_spot_node(ctx) as node:
             with node.create_spot() as spot:
-                actor = node.actor("player-1")
+                actor = node.actor("play-session-actor")
                 actor_ref = actor.ref()
                 received = []
                 replies = []
@@ -28,7 +28,7 @@ def main():
                             return
                         item.message.close()
                         current_spot.reply_actor_join(item, 0).message(
-                            b"ok"
+                            b"accepted"
                         ).submit()
                     elif info.event == zlink.SpotDispatchEvent.ACTOR_READABLE:
                         part = info.recv_actor_part(flags=zlink.RecvFlags.DONT_WAIT)
@@ -57,15 +57,15 @@ def main():
                                 stream.bind_actor(session_rid, actor_ref),
                                 description="stream actor bind",
                             )
-                            actor.join(spot).message(b"join").timeout(2).submit(
+                            actor.join(spot).message(b"join-play").timeout(2).submit(
                                 lambda result, messages: (
                                     replies.append(result),
                                     [message.close() for message in messages],
                                 ),
                             )
                             wait_until(lambda: replies, timeout_ms=5000, description="actor join")
-                            stream.send_bound_actor(session_rid, "player-1").message(
-                                b"client-payload"
+                            stream.send_bound_actor(session_rid, "play-session-actor").message(
+                                b"client-input"
                             ).submit()
                             wait_until(
                                 lambda: received,
@@ -73,13 +73,13 @@ def main():
                                 description="actor payload",
                             )
 
-                            if received != [b"client-payload"]:
+                            if received != [b"client-input"]:
                                 raise AssertionError("unexpected actor payload")
                             submit_request_op(
                                 actor.leave(spot), description="actor leave"
                             )
                 actor.close()
-                print("[actor/gateway] stream relayed to actor")
+                print('[actor/gateway] stream payload: "client-input" -> actor: "client-input"')
 
 
 if __name__ == "__main__":

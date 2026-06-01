@@ -14,7 +14,7 @@ def main():
     with zlink.create_context() as ctx:
         with zlink.create_spot_node(ctx) as node:
             with node.create_spot() as spot:
-                actor = node.actor("solo")
+                actor = node.actor("single-player")
                 actor_ref = actor.ref()
                 payloads = []
                 replies = []
@@ -28,7 +28,7 @@ def main():
                             return
                         item.message.close()
                         current_spot.reply_actor_join(item, 0).message(
-                            b"ok"
+                            b"accepted"
                         ).submit()
                     elif info.event == zlink.SpotDispatchEvent.ACTOR_READABLE:
                         while True:
@@ -58,34 +58,43 @@ def main():
                                 stream.bind_actor(session_rid, actor_ref),
                                 description="stream actor bind",
                             )
-                            actor.join(spot).message(b"join").timeout(2).submit(
+                            actor.join(spot).message(b"join-first").timeout(2).submit(
                                 lambda result, messages: (
                                     replies.append(result),
                                     [message.close() for message in messages],
                                 ),
                             )
                             wait_until(lambda: replies, timeout_ms=5000, description="actor join")
+
+                            # before leave 와 leave 사이의 메시지가 큐잉됨
+                            stream.send_bound_actor(
+                                session_rid, "single-player"
+                            ).message(b"before").submit()
                             submit_request_op(
                                 actor.leave(spot), description="actor leave"
                             )
-                            stream.send_bound_actor(session_rid, "solo").message(
-                                b"queued"
-                            ).submit()
+                            stream.send_bound_actor(
+                                session_rid, "single-player"
+                            ).message(b"between").submit()
 
-                            actor.join(spot).message(b"rejoin").timeout(2).submit(
+                            actor.join(spot).message(b"join-second").timeout(2).submit(
                                 lambda result, messages: (
                                     replies.append(result),
                                     [message.close() for message in messages],
                                 ),
                             )
-                            wait_until(lambda: payloads, timeout_ms=5000, description="queued actor payload")
-                            if payloads != [b"queued"]:
-                                raise AssertionError("queued payload was not preserved")
+                            wait_until(
+                                lambda: len(payloads) >= 2,
+                                timeout_ms=5000,
+                                description="queued actor payloads",
+                            )
+                            if payloads != [b"before", b"between"]:
+                                raise AssertionError("queued payloads were not preserved")
                             submit_request_op(
                                 actor.leave(spot), description="actor leave"
                             )
                 actor.close()
-                print("[actor/solo] queued payload preserved across leave")
+                print('[actor/single-player] queued payload: "before/between" -> actor: "before/between"')
 
 
 if __name__ == "__main__":

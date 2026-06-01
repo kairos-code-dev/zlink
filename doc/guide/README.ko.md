@@ -29,6 +29,8 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) 기반의 현대적 메시�
 ## Part 1 · 개념 (왜·무엇)
 
 - [03-0 소켓 패턴 선택 가이드](./03-0-socket-patterns.ko.md) — 어떤 패턴을 언제
+- [신뢰성·전달 보장](./reliability.ko.md) — 무엇이 보장되고 무엇이 안 되나
+- [설계 근거](./design-rationale.ko.md) — 왜 이렇게 설계했나(zero-copy/lock-free/Proactor)
 - [09 메시지 API & 소유권](./09-message-api.ko.md) — 메시지 수명·zero-copy
 - [11 스레드 안전성](./11-thread-safety.ko.md) — 무엇을 공유해도 되나
 
@@ -66,6 +68,14 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) 기반의 현대적 메시�
 - [02 Core C API](./02-core-api.ko.md) — context·socket·message·timer 함수
 - [09 Message API](./09-message-api.ko.md) — 메시지 타입·수명 상세
 - [12 소켓 옵션](./12-socket-options.ko.md) — 전체 옵션 목록
+- [ZMP 프로토콜 레퍼런스](./zmp-protocol.ko.md) — wire 형식(새 바인딩·interop용)
+- [용어집](./glossary.ko.md) — 용어 한 줄 정의 + 링크
+
+## 보조 (작성자·시나리오)
+
+- [공유 시나리오 매트릭스](./scenarios.ko.md) — 코어·전 언어가 재사용하는 정규 예제
+- [가이드 작성 스타일 규약](./STYLE.ko.md) — 황금률·챕터 템플릿·링크 규칙
+- [예제 코드 관리 규약](./EXAMPLES.ko.md) — 샘플 단일 출처·드리프트 방지
 
 ---
 

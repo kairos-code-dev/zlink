@@ -586,7 +586,10 @@ impl MultiSettings {
             clients: env_or("PERF_MULTI_CLIENTS", 100),
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
             send_high_water_mark: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 0)),
-            receive_high_water_mark: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 0)),
+            receive_high_water_mark: env_or_i32(
+                "PERF_MULTI_RCVHWM",
+                env_or_i32("PERF_MULTI_HWM", 0),
+            ),
             send_timeout_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as u64,
             receive_timeout_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as u64,
         }
@@ -640,10 +643,12 @@ pub fn apply_multi_hwm<O: MultiSocketHwmOptions>(opts: &O, settings: &MultiSetti
         return;
     }
     if settings.send_high_water_mark > 0 {
-        opts.set_send_high_water_mark(settings.send_high_water_mark).expect("sndhwm");
+        opts.set_send_high_water_mark(settings.send_high_water_mark)
+            .expect("sndhwm");
     }
     if settings.receive_high_water_mark > 0 {
-        opts.set_receive_high_water_mark(settings.receive_high_water_mark).expect("rcvhwm");
+        opts.set_receive_high_water_mark(settings.receive_high_water_mark)
+            .expect("rcvhwm");
     }
 }
 

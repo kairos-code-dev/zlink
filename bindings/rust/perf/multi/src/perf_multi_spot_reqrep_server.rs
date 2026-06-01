@@ -3,8 +3,9 @@ mod common;
 
 use std::io::{self, BufRead, Write};
 use std::sync::{
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
-    mpsc, Arc, Mutex,
+    mpsc,
 };
 use std::thread;
 use std::time::{Duration, Instant};

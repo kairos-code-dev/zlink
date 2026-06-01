@@ -2,9 +2,7 @@
 
 mod common;
 
-use zlink::{
-    SocketMonitor, SubmitResult,
-};
+use zlink::{SocketMonitor, SubmitResult};
 
 fn main() {
     let config = common::PerfConfig::from_env_and_args();

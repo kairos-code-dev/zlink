@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use zlink::{
-    Context, DealerSocket, Message, PairSocket, PubSocket, RouterSocket, SocketMonitor,
-    SubSocket, SubmitError, ZlinkError,
+    Context, DealerSocket, Message, PairSocket, PubSocket, RouterSocket, SocketMonitor, SubSocket,
+    SubmitError, ZlinkError,
 };
 
 // -- Metric header (29 bytes) ------------------------------------------------
@@ -707,10 +707,12 @@ pub fn apply_single_spot_node_admission(node: &zlink::SpotNode) {
     let sndhwm = resolve_single_send_high_water_mark();
     let rcvhwm = resolve_single_receive_high_water_mark();
     if sndhwm > 0 {
-        node.set_pubsub_high_water_mark(sndhwm).expect("spot node pubsub hwm");
+        node.set_pubsub_high_water_mark(sndhwm)
+            .expect("spot node pubsub hwm");
     }
     if rcvhwm > 0 {
-        node.set_router_high_water_mark(rcvhwm).expect("spot node router hwm");
+        node.set_router_high_water_mark(rcvhwm)
+            .expect("spot node router hwm");
     }
 }
 

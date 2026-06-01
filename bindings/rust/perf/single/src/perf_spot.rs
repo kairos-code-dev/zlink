@@ -5,9 +5,7 @@ mod common;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use zlink::{
-    Message, RecvFlags, RoutingId, SendFlags, Spot, SpotNode, SubmitResult, TopicMessage,
-};
+use zlink::{Message, RecvFlags, RoutingId, SendFlags, Spot, SpotNode, SubmitResult, TopicMessage};
 
 const TOPIC: &str = "bench";
 
@@ -148,10 +146,25 @@ fn main() {
             // backpressure poll 1ms (perf_socket_poll(NULL,0,1)). No per-message
             // send-gap sleep.
             while Instant::now() < active_deadline {
-                common::encode_header(&mut payload, common::PHASE_ACTIVE, config.size as u32, seq);
+                let message = if config.size <= 1024 {
+                    let mut message = Message::with_size(config.size.max(common::HEADER_SIZE))
+                        .expect("active message");
+                    let data = message.data_mut();
+                    data.fill(0);
+                    common::encode_header(data, common::PHASE_ACTIVE, config.size as u32, seq);
+                    message
+                } else {
+                    common::encode_header(
+                        &mut payload,
+                        common::PHASE_ACTIVE,
+                        config.size as u32,
+                        seq,
+                    );
+                    Message::try_from(&payload).expect("active message")
+                };
                 match publisher
                     .publish(TOPIC)
-                    .message(Message::try_from(&payload).expect("active message"))
+                    .message(message)
                     .flags(SendFlags::DONT_WAIT)
                     .submit()
                 {

@@ -5,9 +5,7 @@ mod common;
 
 use std::io::{self, BufRead};
 use std::time::{Duration, Instant};
-use zlink::{
-    POLLIN, PollEvent, Poller, Received, RecvFlags, RecvResult,
-};
+use zlink::{POLLIN, PollEvent, Poller, Received, RecvFlags, RecvResult};
 
 fn main() {
     let args = common::MultiArgs::parse();

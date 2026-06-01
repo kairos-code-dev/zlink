@@ -30,7 +30,9 @@ fn main() {
         .expect("sndtimeo");
     stream
         .common_options()
-        .set_receive_timeout(std::time::Duration::from_millis(settings.receive_timeout_ms))
+        .set_receive_timeout(std::time::Duration::from_millis(
+            settings.receive_timeout_ms,
+        ))
         .expect("rcvtimeo");
     stream
         .common_options()

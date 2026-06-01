@@ -29,25 +29,31 @@ public final class ActorRoomServerSample {
              Spot spot = node.createSpot();
              StreamSocket stream = ctx.createStreamSocket();
              var monitor = stream.monitorOpen(MonitorEventType.ACCEPTED)) {
-            Actor actor = node.createActor("room-1");
+            Actor actor = node.createActor("room-player-1");
             ActorRef actorRef = actor.ref();
             List<String> joins = new ArrayList<>();
             List<RequestResult> replies = new ArrayList<>();
+            List<String> payloads = new ArrayList<>();
 
             spot.setDispatchHandler(info -> {
-                if (info.event() != SpotDispatchEvent.ACTOR_JOIN_READABLE) {
-                    return;
-                }
-                try (ActorJoinRequest request =
-                         spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
-                    if (request == null) {
-                        return;
+                if (info.event() == SpotDispatchEvent.ACTOR_JOIN_READABLE) {
+                    try (ActorJoinRequest request =
+                             spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
+                        if (request == null) {
+                            return;
+                        }
+                        joins.add(request.message().toUtf8String());
+                        try (Message reply = Message.from("accepted")) {
+                            spot.replyActorJoin(request, 0)
+                              .message(reply)
+                              .submit();
+                        }
                     }
-                    joins.add(request.message().toUtf8String());
-                    try (Message reply = Message.from("joined")) {
-                        spot.replyActorJoin(request, 0)
-                          .message(reply)
-                          .submit();
+                } else if (info.event() == SpotDispatchEvent.ACTOR_READABLE) {
+                    for (var part : info.actorMessages()) {
+                        try (part) {
+                            payloads.add(part.message().toUtf8String());
+                        }
                     }
                 }
             });
@@ -68,7 +74,7 @@ public final class ActorRoomServerSample {
                   .join()
                   .forEach(Message::close);
 
-                try (Message request = Message.from("join-room")) {
+                try (Message request = Message.from("enter-room")) {
                     actor.join(spot)
                       .message(request)
                       .timeout(Duration.ofSeconds(2))
@@ -79,15 +85,24 @@ public final class ActorRoomServerSample {
                 }
                 SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
 
-                if (!List.of("join-room").equals(joins)
+                if (!List.of("enter-room").equals(joins)
                     || replies.get(0) != RequestResult.OK
                     || spot.actors().isEmpty()) {
                     throw new IllegalStateException("actor room join failed");
                 }
+
+                try (Message inbound = Message.from("move:north")) {
+                    stream.sendBoundActor(sessionRid, "room-player-1")
+                      .message(inbound)
+                      .submit();
+                }
+                SampleSupport.waitUntil("actor payload",
+                    () -> payloads.contains("move:north"));
+
                 actor.leave(spot).submitAsync().join().forEach(Message::close);
                 actor.close();
             }
-            System.out.println("[actor/room] join accepted");
+            System.out.println("[actor/room] stream payload: \"move:north\" -> actor: \"move:north\"");
         }
     }
 }

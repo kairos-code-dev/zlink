@@ -31,7 +31,7 @@ public final class ActorGatewayRelaySample {
              StreamSocket stream = ctx.createStreamSocket();
              var monitor = stream.monitorOpen(
                  systems.zlink.contracts.eventing.MonitorEventType.ACCEPTED)) {
-            Actor actor = node.createActor("player-1");
+            Actor actor = node.createActor("play-session-actor");
             ActorRef actorRef = actor.ref();
             List<String> payloads = new ArrayList<>();
             List<RequestResult> replies = new ArrayList<>();
@@ -41,7 +41,7 @@ public final class ActorGatewayRelaySample {
                     try (ActorJoinRequest request =
                              spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
                         if (request != null) {
-                            try (Message reply = Message.from("ok")) {
+                            try (Message reply = Message.from("accepted")) {
                                 spot.replyActorJoin(request, 0)
                                   .message(reply)
                                   .submit();
@@ -74,7 +74,7 @@ public final class ActorGatewayRelaySample {
                   .submitAsync()
                   .join()
                   .forEach(Message::close);
-                try (Message request = Message.from("join")) {
+                try (Message request = Message.from("join-play")) {
                     actor.join(spot)
                       .message(request)
                       .timeout(Duration.ofSeconds(2))
@@ -84,21 +84,21 @@ public final class ActorGatewayRelaySample {
                     });
                 }
                 SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
-                try (Message payload = Message.from("client-payload")) {
-                    stream.sendBoundActor(sessionRid, "player-1")
+                try (Message payload = Message.from("client-input")) {
+                    stream.sendBoundActor(sessionRid, "play-session-actor")
                       .message(payload)
                       .submit();
                 }
                 SampleSupport.waitUntil("actor payload",
                     () -> !payloads.isEmpty());
 
-                if (!List.of("client-payload").equals(payloads)) {
+                if (!List.of("client-input").equals(payloads)) {
                     throw new IllegalStateException("unexpected actor payload");
                 }
                 actor.leave(spot).submitAsync().join().forEach(Message::close);
                 actor.close();
             }
-            System.out.println("[actor/gateway] stream relayed to actor");
+            System.out.println("[actor/gateway] stream payload: \"client-input\" -> actor: \"client-input\"");
         }
     }
 }

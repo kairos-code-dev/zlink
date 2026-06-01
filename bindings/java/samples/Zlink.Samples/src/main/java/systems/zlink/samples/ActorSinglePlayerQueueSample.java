@@ -31,7 +31,7 @@ public final class ActorSinglePlayerQueueSample {
              StreamSocket stream = ctx.createStreamSocket();
              var monitor = stream.monitorOpen(
                  systems.zlink.contracts.eventing.MonitorEventType.ACCEPTED)) {
-            Actor actor = node.createActor("solo");
+            Actor actor = node.createActor("single-player");
             ActorRef actorRef = actor.ref();
             List<String> payloads = new ArrayList<>();
             List<RequestResult> replies = new ArrayList<>();
@@ -41,7 +41,7 @@ public final class ActorSinglePlayerQueueSample {
                     try (ActorJoinRequest request =
                              spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
                         if (request != null) {
-                            try (Message reply = Message.from("ok")) {
+                            try (Message reply = Message.from("accepted")) {
                                 spot.replyActorJoin(request, 0)
                                   .message(reply)
                                   .submit();
@@ -74,7 +74,7 @@ public final class ActorSinglePlayerQueueSample {
                   .submitAsync()
                   .join()
                   .forEach(Message::close);
-                try (Message request = Message.from("join")) {
+                try (Message request = Message.from("join-first")) {
                     actor.join(spot)
                       .message(request)
                       .timeout(Duration.ofSeconds(2))
@@ -84,14 +84,20 @@ public final class ActorSinglePlayerQueueSample {
                     });
                 }
                 SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
+
+                try (Message payload = Message.from("before")) {
+                    stream.sendBoundActor(sessionRid, "single-player")
+                      .message(payload)
+                      .submit();
+                }
                 actor.leave(spot).submitAsync().join().forEach(Message::close);
-                try (Message payload = Message.from("queued")) {
-                    stream.sendBoundActor(sessionRid, "solo")
+                try (Message payload = Message.from("between")) {
+                    stream.sendBoundActor(sessionRid, "single-player")
                       .message(payload)
                       .submit();
                 }
 
-                try (Message request = Message.from("rejoin")) {
+                try (Message request = Message.from("join-second")) {
                     actor.join(spot)
                       .message(request)
                       .timeout(Duration.ofSeconds(2))
@@ -101,15 +107,15 @@ public final class ActorSinglePlayerQueueSample {
                     });
                 }
                 SampleSupport.waitUntil("queued actor payload",
-                    () -> !payloads.isEmpty());
-                if (!List.of("queued").equals(payloads)) {
+                    () -> payloads.size() >= 2);
+                if (!List.of("before", "between").equals(payloads)) {
                     throw new IllegalStateException(
-                      "queued payload was not preserved");
+                      "queued payloads were not preserved");
                 }
                 actor.leave(spot).submitAsync().join().forEach(Message::close);
                 actor.close();
             }
-            System.out.println("[actor/solo] queued payload preserved across leave");
+            System.out.println("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"");
         }
     }
 }

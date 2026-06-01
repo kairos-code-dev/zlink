@@ -39,6 +39,22 @@ runtime이고, C++ Stream Connector와 Unreal Stream Connector는 별도 산출�
   다루지 않는다.
 - CAPI dispatch callback과 CAPI timer event는 framework runtime 내부에서 typed handler로
   사상한다.
+- C++ framework는 `bindings/cpp`보다 더 강한 contract/runtime 분리를 적용한다.
+  public contract header는 runtime 구현 header를 include하지 않고, runtime 세부는
+  `src/runtime/*`에 둔다.
+- `.NET`식 contract 분리는 C++ public 타입을 전부 pure virtual class로 만들라는 뜻이
+  아니다. public facade는 concrete type일 수 있지만 runtime 구현 타입을 노출하지 않는다.
+- 각 기능을 구현하기 전 public contract owner와 runtime implementation owner를 먼저
+  문서 또는 코드 주석이 아닌 파일 구조로 나눈다. 이 분리가 정해지지 않으면 구현을
+  진행하지 않는다.
+- 구현 중 interface/implementation 경계가 애매해지면 코드를 먼저 작성하지 않는다.
+  관련 draft 문서를 먼저 수정해 `.NET` 대응, public contract owner, runtime owner,
+  test boundary를 다시 고정한 뒤 구현을 재개한다.
+- `contracts/detail/*`은 type trait, concept check, facade forwarding만 허용한다.
+  queue, executor, dispatch projection, serializer registry, frame codec 같은 runtime
+  구현은 둘 수 없다.
+- public facade가 상태를 가져야 하면 PIMPL 또는 type-erased state를 사용하고, state
+  정의는 `src/runtime/*`에 둔다.
 - codec 사용성은 binding, framework, connector 모두 `message_t` 중심으로 맞춘다.
 - base C++ binding은 JSON, MessagePack, Protobuf dependency를 끌고 오지 않는다.
 - MessagePack, Protobuf, LZ4는 선택 기능으로 두고 기본 설치에 강제하지 않는다.
@@ -57,25 +73,153 @@ runtime이고, C++ Stream Connector와 Unreal Stream Connector는 별도 산출�
 | framework samples | `framework/languages/cpp/samples` | sample executables | `Bingo`, `TicTacToe` 리뷰 샘플 |
 | framework tests | `framework/languages/cpp/tests` | CTest labels | contract, unit, integration, regression, sample smoke |
 
+각 산출물 안에서는 `.NET` framework의 `Contracts/*`와 `Runtime/*` 분리를 따른다.
+C++에서는 `Contracts/*`가 설치되는 public header이고, `Runtime/*`가 컴파일되는 구현이다.
+이 기준은 `bindings/cpp`의 인터페이스/구현 분리보다 강하게 적용한다. framework는 낮은
+수준 native wrapper가 아니라 application host/runtime 계층이므로, public header는 계약과
+facade만 노출하고 runtime 실행 세부는 `src/runtime/*`에 숨겨야 한다.
+
+| `.NET` 기준 | C++ framework 기준 | C++ connector 기준 | 공개 여부 |
+|-------------|--------------------|---------------------|-----------|
+| `Contracts/*` | `framework/include/zlink/framework/contracts/*` | `connector/include/zlink/stream_connector/contracts/*` | public |
+| `Runtime/*` | `framework/src/runtime/*` | `connector/src/runtime/*` | private implementation |
+| `Runtime/Backend/Contracts` | `framework/src/runtime/backend/contracts` | `connector/src/runtime/backend/contracts` | private backend contract |
+| project facade | `zlink/framework.hpp`, `zlink/framework/*.hpp` | `zlink/stream_connector.hpp` | public |
+| implementation glue | `framework/src/runtime/*` 내부 helper | `connector/src/runtime/*` 내부 helper | private |
+
+framework의 public/runtime 하위 축은 `.NET` `Zlink.Framework`의 현재 구조를 기준으로
+아래처럼 고정한다. C++ 파일 배치가 이 표와 맞지 않는다면 먼저 문서를 갱신하고, 그 다음
+코드를 옮긴다.
+
+| `.NET` public 축 | C++ public owner | `.NET` runtime 축 | C++ runtime owner |
+|------------------|------------------|-------------------|-------------------|
+| `Contracts/Actors` | `contracts/actors/*` | `Runtime/Actors` | `src/runtime/actors/*` |
+| `Contracts/Assembly` | `contracts/assembly/*` | `Runtime/Host` | `src/runtime/host/*` |
+| `Contracts/Channels` | `contracts/channels/*` | `Runtime/Channels`, `Runtime/Messaging` | `src/runtime/channels/*`, `src/runtime/messaging/*` |
+| `Contracts/Codecs` | `contracts/codecs/*` | `Runtime/Codecs` | `src/runtime/codecs/*` |
+| `Contracts/Configuration` | `contracts/configuration/*` | `Runtime/Configuration` | `src/runtime/configuration/*` |
+| `Contracts/Dispatch` | `contracts/dispatch/*` | `Runtime/Dispatch`, `Runtime/Execution` | `src/runtime/dispatch/*`, `src/runtime/execution/*` |
+| `Contracts/Errors` | `contracts/errors/*` | `Runtime/Messaging` | `src/runtime/messaging/*` |
+| `Contracts/Eventing` | `contracts/eventing/*` | `Runtime/Diagnostics` | `src/runtime/diagnostics/*` |
+| `Contracts/Handlers` | `contracts/handlers/*` | `Runtime/Handlers` | `src/runtime/handlers/*` |
+| `Contracts/Registry` | `contracts/registry/*` | `Runtime/Registry` | `src/runtime/registry/*` |
+| `Contracts/Spots` | `contracts/spots/*` | `Runtime/Spots` | `src/runtime/spots/*` |
+| `Contracts/Streams` | `contracts/streams/*` | `Runtime/Streams` | `src/runtime/streams/*` |
+| `Contracts/Timers` | `contracts/timers/*` | `Runtime/Timers` | `src/runtime/timers/*` |
+| internal backend seam | 없음 | `Runtime/Backend`, `Runtime/Backend/Contracts` | `src/runtime/backend/*`, `src/runtime/backend/contracts/*` |
+
+`src/runtime/backend/contracts/*`는 public contract가 아니다. 이 이름은 runtime 내부 seam을
+뜻하며, 설치 header와 extension public header에서 include하면 안 된다.
+
+Unreal Connector는 Unreal 관례에 따라 `Source/ZLinkStreamConnector/Public`과
+`Source/ZLinkStreamConnector/Private`를 사용한다. `Public`은 Unreal 전용 contract와
+Blueprint/Game Thread 표면만 담고, transport와 codec 구현은 `Private`에 둔다.
+
+public header가 binding 타입을 노출할 수 있는 범위도 제한한다. `message_t`처럼 payload
+copy/move boundary를 설명하는 타입은 contract에 나타날 수 있지만, `context_t`,
+socket type, native handle owner, dispatch callback owner는 framework runtime 내부에만
+둔다. 이 기준은 connector와 Unreal connector에도 적용한다. connector public API는
+client endpoint, packet, codec option, callback/coroutine submit을 노출하고, receive
+loop, reconnect state, heartbeat, frame codec 구현은 runtime/private에 둔다.
+
 ## 4. Goal 구성 원칙
 
 각 goal은 아래 형식으로 실행한다.
 
 1. 관련 draft 문서를 먼저 읽는다.
-2. public header와 target 구조를 구현한다.
-3. internal runtime 구현을 붙인다.
-4. 해당 goal의 contract/unit/integration 테스트를 추가한다.
-5. 필요한 샘플 코드를 갱신한다.
-6. 해당 goal 범위에 대해 POSD 기반 리팩토링을 수행한다.
-7. 리팩토링 뒤 같은 검증을 다시 실행한다.
-8. `git diff --check`와 해당 CTest label을 실행한다.
-9. goal 완료 기준을 문서 항목별로 대조한다.
+2. public contract owner와 runtime implementation owner를 먼저 확정한다.
+   확정할 수 없거나 `.NET` 구조와 어긋나는 부분이 있으면 구현을 멈추고 draft 문서를
+   먼저 수정한다.
+3. public header와 target 구조를 구현한다.
+4. internal runtime 구현을 붙인다.
+5. 해당 goal의 contract/unit/integration 테스트를 추가한다.
+6. 필요한 샘플 코드를 갱신한다.
+7. 해당 goal 범위에 대해 POSD 기반 리팩토링을 수행한다.
+8. 리팩토링 뒤 같은 검증을 다시 실행한다.
+9. `git diff --check`와 해당 CTest label을 실행한다.
+10. goal 완료 기준을 문서 항목별로 대조한다.
 
 goal 하나가 끝났다고 전체 기능이 완성된 것으로 보지 않는다. 다음 goal이 이전 public
 표면을 바꿔야 하면, 호출자 복잡성이 줄어드는지와 `.NET` 기능 parity가 유지되는지를
 먼저 확인한다.
 
-### 4.1 POSD 리팩토링 게이트
+### 4.1 Public Surface Gate
+
+각 goal은 구현 전에 public surface gate를 통과해야 한다. 이 gate의 목적은 C++ 구현이
+진행되면서 `.NET`의 `Contracts/*`와 `Runtime/*` 분리보다 약해지는 것을 막는 것이다.
+
+확인 항목은 아래와 같다.
+
+- 새 public 타입이 어느 `contracts/*` header의 소유인지 정한다.
+- 같은 기능의 runtime state, registry, cache, queue, dispatcher, codec 구현이 어느
+  `src/runtime/*` 파일의 소유인지 정한다.
+- facade header는 contract header를 묶는 역할만 하며, runtime header를 include하지 않는다.
+- public method 인자와 반환값에 native handle, socket, poller, dispatch token,
+  callback userdata가 들어가지 않는다.
+- `contracts/detail/*`에 둘 코드는 compile-time 검사와 forwarding으로 제한한다.
+- 상태가 필요한 facade는 PIMPL 또는 type-erased state를 사용한다.
+- 새 public header가 외부 dependency 타입을 노출하면 그 dependency가 기능상 필수인지
+  확인한다. 필수가 아니면 runtime 또는 extension target 뒤로 숨긴다.
+- layout/contract test에 public header include와 runtime include 금지 검사를 추가하거나
+  기존 검사를 갱신한다.
+
+이 gate를 통과하지 못하면 해당 goal의 runtime 구현을 시작하지 않는다.
+
+#### 4.1.1 Interface Separation Review
+
+각 goal을 시작할 때 아래 내용을 먼저 기록한다. 기록 위치는 해당 goal의 작업 로그,
+PR 설명, 또는 `cpp-framework-posd-refactoring-log.ko.md`의 goal 항목이다.
+
+| 확인 항목 | 통과 기준 |
+|-----------|-----------|
+| `.NET` 대응 확인 | 같은 기능의 `.NET Contracts/*` 타입과 `Runtime/*` 구현을 먼저 확인한다. |
+| contract owner | 새 public 타입이 들어갈 `contracts/*` header 또는 facade header가 정해져 있다. |
+| runtime owner | state, registry, cache, queue, dispatcher, frame codec, native owner가 들어갈 `src/runtime/*` 파일이 정해져 있다. |
+| public dependency | public header가 불필요한 외부 dependency를 강제하지 않는다. |
+| native leakage | CAPI handle, socket, poller slot, callback userdata, dispatch token이 public signature에 없다. |
+| detail 사용 | `contracts/detail/*`은 type trait, concept check, forwarding만 가진다. |
+| state hiding | public facade가 상태를 가지면 PIMPL 또는 type-erased state를 사용한다. |
+| validation | contract/layout test가 public header include와 runtime include 금지 규칙을 확인한다. |
+
+이 검토는 구현 선행 조건이다. 새 기능을 public header에 추가하면서 runtime owner를
+정하지 못했다면 구현을 멈추고 draft를 먼저 갱신한다.
+
+#### 4.1.2 Goal별 Interface/Implementation Owner Matrix
+
+각 goal은 아래 owner matrix를 기준으로 시작한다. 구현 중 더 정확한 owner가 필요하면
+먼저 이 문서와 관련 draft를 갱신한 뒤 코드를 수정한다. 이 표에 없는 public 타입이나
+runtime state를 새로 만들 때도 같은 규칙을 적용한다.
+
+| Goal | public contract owner | runtime implementation owner | public에 두지 않는 것 |
+|------|-----------------------|------------------------------|-----------------------|
+| 1. skeleton/build | facade header, `contracts/*` 빈 owner | `framework/src/runtime/*`, connector `src/runtime/*`, Unreal `Private/` | runtime header install, public runtime include |
+| 2. binding codec | `bindings/cpp/include/zlink/message.hpp`, 선택 codec header | 선택 codec target 구현 | codec 외부 dependency의 base binding 강제 |
+| 3. core types/error | `contracts/errors/*`, `contracts/dispatch/*`, call object contract | `src/runtime/messaging/*`, `src/runtime/dispatch/*` | pending node, completion token, blocking wait |
+| 4. app/host/config/logging | `contracts/configuration/*`, `app.hpp` | `src/runtime/host/*`, `src/runtime/configuration/*`, `src/runtime/diagnostics/*` | native context owner, signal backend, logger backend |
+| 5. DI/scope | service collection/provider/scope contract | `src/runtime/configuration/*` | service cache, destruction stack, scope registry |
+| 6. runtime integration | zlink builder, dispatch/offload option contract | `src/runtime/backend/*`, `src/runtime/channels/*`, `src/runtime/execution/*` | CAPI handle, poller slot, recv/drain loop |
+| 7. handler/serializer | `contracts/handlers/*`, `contracts/codecs/*` | `src/runtime/handlers/*`, `src/runtime/codecs/*` | descriptor map, serializer map, DI resolve order |
+| 8. channel messaging | `contracts/channels/*` | `src/runtime/channels/*`, `src/runtime/messaging/*` | socket set, reply correlation table, send-ready queue |
+| 9. flow/reliability | call result, retry/dead-letter hook contract | `src/runtime/messaging/*`, `src/runtime/channels/*` | bounded queue storage, timeout wheel, drain state |
+| 10. SPOT runtime | `contracts/spots/*`, selected actor contract | `src/runtime/spots/*`, `src/runtime/actors/*` | activation table, native dispatch router, subscription pump |
+| 11. SPOT timer | `contracts/timers/*`, Spot timer facade | `src/runtime/timers/*`, `src/runtime/spots/*` | native timer token, fire-count drain loop |
+| 12. STREAM framework | `contracts/streams/*` | `src/runtime/streams/*` | frame codec, session table, transport loop |
+| 13. ActorGateway relay | `contracts/actors/*`, bound session contract | `src/runtime/actors/*`, `src/runtime/streams/*` | actor mailbox, relay packet dispatcher, locator codec |
+| 14. Registry/topology | `contracts/registry/*`, discovery builder contract | `src/runtime/registry/*`, `src/runtime/configuration/*` | topology cache, backend query owner, route resolver state |
+| 15. monitoring | `contracts/eventing/*`, monitoring builder contract | `src/runtime/diagnostics/*`, 기능별 runtime event source | snapshot diff cache, telemetry backend |
+| 16. module/hosted service | module and hosted service contract | `src/runtime/host/*`, `src/runtime/configuration/*` | lifecycle scheduler, hosted service drain set |
+| 17. C++ connector | `connector/include/zlink/stream_connector/contracts/*` | `connector/src/runtime/*` | receive loop, reconnect state, pending request table, frame codec |
+| 18. Unreal connector | Unreal `Public/` contract | Unreal `Private/` implementation | general C++ connector runtime class, transport internals |
+| 19. samples | sample source using public API only | sample support runtime only when private to sample | sample-only metadata store as framework contract |
+| 20. final regression | installed public headers and test contracts | all runtime owner directories | accidental external dependency leak, runtime header include |
+| 21. extensions | extension public contract/target | extension private runtime | Kafka/gRPC/HTTP/YAML/FlatBuffers dependency in core target |
+
+owner matrix를 만족하지 못하는 변경은 완료 기준을 통과한 것으로 보지 않는다. 특히
+`contracts/detail/*`에 queue, executor, dispatch projection, codec registry, frame codec,
+native lifecycle 구현을 넣는 방식은 금지한다. template 편의가 필요하면 public header에서
+검사와 forwarding만 수행하고, 실제 저장소와 실행은 type-erased runtime call로 넘긴다.
+
+### 4.2 POSD 리팩토링 게이트
 
 각 goal은 다음 goal로 넘어가기 전에 아래 절차를 완료해야 한다. 이 절차는 선택 사항이
 아니며, 구현이 작더라도 최소 한 번은 수행한다.
@@ -125,11 +269,14 @@ POSD 게이트 완료 기준은 아래와 같다.
 구현 항목:
 
 - `framework/languages/cpp/framework` 디렉토리와 public include layout 생성
+- `framework/include/zlink/framework/contracts/*`와 `framework/src/runtime/*` 분리
 - `zlink/framework.hpp` umbrella header
 - `zlink/framework/*.hpp` 세부 header
 - `zlink::framework` CMake target
 - `framework/languages/cpp/connector` 디렉토리와 `zlink::stream_connector` target
+- `connector/include/zlink/stream_connector/contracts/*`와 `connector/src/runtime/*` 분리
 - `framework/languages/cpp/unreal-connector` plugin/module 골격
+- Unreal `Public/`과 `Private/` 분리
 - `framework/languages/cpp/samples/Bingo`
 - `framework/languages/cpp/samples/TicTacToe`
 - `framework/languages/cpp/tests`와 CTest label 구조
@@ -146,6 +293,13 @@ POSD 게이트 완료 기준은 아래와 같다.
 - framework target과 connector target이 독립적으로 configure된다.
 - connector를 링크하지 않아도 framework target이 configure된다.
 - framework target을 링크하지 않아도 connector target이 configure된다.
+- public contract header와 runtime 구현 디렉토리가 물리적으로 분리된다.
+- runtime 구현 header가 installed public include 표면에 들어가지 않는다.
+- public contract header가 `src/runtime/*` header를 include하지 않는다.
+- public header가 CAPI handle, dispatch callback userdata, raw recv loop, poller slot,
+  frame codec, pending queue 구현 타입을 include하거나 노출하지 않는다.
+- public facade header는 `contracts/*`를 묶는 역할만 하고 새 runtime 구현 계약을 만들지 않는다.
+- layout contract test가 public/runtime 분리와 runtime include 금지를 검증한다.
 - public header include compile test가 통과한다.
 
 검증:
@@ -225,6 +379,8 @@ git diff --check -- bindings/cpp framework/languages/cpp
 - shutdown 이후 새 submit은 `shutdown`으로 실패한다.
 - timeout은 `timeout`으로 실패한다.
 - public async 표면에 `std::future`가 없다.
+- call object public header는 submit 계약만 제공하고, pending queue와 runtime submitter
+  구현 타입을 노출하지 않는다.
 
 검증:
 
@@ -264,6 +420,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-unit
 - `run()`은 종료 코드를 반환한다.
 - shutdown 중 새 submit은 실패 result로 닫힌다.
 - JSON, env, CLI config가 같은 configuration model로 합쳐진다.
+- host/app public header는 runtime owner, signal backend, native context owner 구현을
+  노출하지 않는다.
 
 검증:
 
@@ -349,6 +507,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R scope
 - offload executor는 shutdown에서 drain된다.
 - handler와 client 코드는 transport 종류를 직접 알 필요가 없다.
 - framework core는 zlink core transport 의미를 감싸며 별도 event loop를 만들지 않는다.
+- CAPI dispatch projection, recv/drain 순서, native handle owner는 `src/runtime/*`
+  내부 구현으로만 존재한다.
 
 검증:
 
@@ -384,6 +544,11 @@ handler를 등록하는 표면을 제공하는 것이다.
 
 완료 기준:
 
+- `handler_registry_t`와 `serializer_registry_t` public header는 descriptor map,
+  serializer map, DI resolve 순서, monitoring event 생성 구현을 노출하지 않는다.
+- handler/serializer template 코드는 shape 검사와 type-erased runtime 호출로 제한된다.
+- handler registry runtime state는 `src/runtime/handlers/*`, serializer registry runtime
+  state는 `src/runtime/codecs/*`에 있다.
 - 등록되지 않은 handler owner를 암묵 생성하지 않는다.
 - decode 실패는 `payload_decode_failed`로 보고하고 runtime을 죽이지 않는다.
 - handler 예외는 framework error와 monitoring event로 정리된다.
@@ -452,7 +617,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R channe
 구현 항목:
 
 - nonblocking send
-- send-ready callback integration
+- send-ready runtime integration
 - HWM awareness
 - queue depth 조회
 - bounded pending queue
@@ -488,11 +653,11 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 구현 항목:
 
 - `spot_node_builder_t`
+- `contracts/spots/*` public owner와 `src/runtime/spots/*` runtime owner 분리
 - named spot factory 등록
 - `spot_name` 기준 생성
 - `spot_rid -> spot_name` 조회
 - `spot_context_t`
-- `send_ready_context_t`
 - `spot_context_t::publish(...)`
 - `spot_context_t::request_to(...)`
 - spot-to-spot send/request
@@ -508,6 +673,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 
 완료 기준:
 
+- SPOT public header는 activation table, native dispatch router, subscription pump,
+  spot packet dispatcher 구현 타입을 노출하지 않는다.
 - 일반 application handler와 client는 channel name과 topic을 먼저 사용한다.
 - `rid` 직접 지정은 spot-to-spot 경로와 Entry Spot join 같은 actor lifecycle 경로에 제한한다.
 - SPOT node lifecycle은 app host가 관리한다.
@@ -530,6 +697,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R spot
 구현 항목:
 
 - `timer_t`
+- `contracts/timers/*` public owner와 `src/runtime/timers/*` runtime owner 분리
 - `timer_options_t`
 - `timer_overrun_policy_t`
 - `timer_tick_t`
@@ -555,6 +723,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R spot
 
 완료 기준:
 
+- timer public header는 native timer token, CAPI dispatch event, `fire_count` drain loop
+  구현 타입을 노출하지 않는다.
 - 사용자는 native timer handle, poller slot, timer recv 순서를 직접 다루지 않는다.
 - `fire_count` 누적값으로 missed tick이 계산된다.
 - user Spot timer는 같은 Spot의 packet/subscription/channel reply 순서 정책을 따른다.
@@ -818,6 +988,10 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R hoste
 - connector는 framework sample이나 framework target이 아니다.
 - 하나의 `zlink::stream_connector` target으로 기본 사용이 가능하다.
 - MessagePack, Protobuf, LZ4는 사용자가 켰을 때만 dependency를 요구한다.
+- connector public contract header와 `connector/src/runtime/*` 구현이 물리적으로
+  분리된다.
+- connector public header는 receive loop, transport connection, pending request table,
+  frame sender 구현 타입을 노출하지 않는다.
 - manual dispatch에서는 callback이 `dispatch()` 호출 경로에서 실행된다.
 - immediate dispatch에서는 별도 manual dispatch 없이 callback이 실행된다.
 
@@ -863,6 +1037,9 @@ ctest --test-dir framework/languages/cpp/build -L connector-integration
 - public API는 Unreal 타입과 thread model을 따른다.
 - callback은 Game Thread에서 실행된다.
 - Unreal 사용자가 codec 산출물을 따로 가져오지 않아도 JSON 기본 사용이 가능하다.
+- Unreal `Public/` header는 Unreal 전용 contract와 facade만 노출하고, connection,
+  codec registry, thread dispatch 구현은 `Private/`에 둔다.
+- Unreal public API는 일반 C++ connector runtime 구현 타입을 그대로 노출하지 않는다.
 
 검증:
 
@@ -944,15 +1121,20 @@ ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke
 
 완료 기준:
 
-- 모든 goal의 완료 기준이 충족된다.
-- draft 추적표에 남은 구현 항목이 없다.
+- Goal 1부터 Goal 19까지의 완료 기준이 충족된다.
+- Goal 21에서 다룰 extension boundary 항목을 제외하고 draft 추적표에 남은 구현 항목이 없다.
 - CTest label 전체가 통과한다.
-- Goal 1부터 Goal 21까지 각 goal에서 POSD 기반 리팩토링을 최소 한 번씩 수행했다.
-- POSD 리팩토링 기록이 21개 이상 남아 있다.
+- Goal 1부터 Goal 20까지 각 goal에서 POSD 기반 리팩토링을 최소 한 번씩 수행했다.
+- POSD 리팩토링 기록이 20개 이상 남아 있다.
 - framework public header에 GoogleTest, GoogleMock, spdlog, fmt, codec 외부 타입이
   불필요하게 노출되지 않는다.
+- framework, connector, Unreal connector public header가 runtime implementation header를
+  include하지 않는다.
+- `contracts/detail/*`에는 type trait, concept check, facade forwarding만 있고 queue,
+  executor, dispatch projection, frame codec 구현이 없다.
 - C++ framework 사용성은 `.NET` framework와 같은 application model로 설명된다.
-- core framework 밖 extension도 dependency isolation과 extension point 기준을 만족한다.
+- core framework 밖 extension은 Goal 21에서 dependency isolation과 extension point 기준을
+  닫고, 그 뒤 전체 21개 goal 최종 감사를 다시 수행한다.
 
 검증:
 
@@ -1008,6 +1190,7 @@ git diff --check -- framework/languages/cpp
 | Draft 문서 | 구현 goal |
 |------------|-----------|
 | [cpp-framework-implementation-plan.ko.md](./cpp-framework-implementation-plan.ko.md) | Goal 1-21 실행 추적 |
+| [cpp-framework-posd-refactoring-log.ko.md](./cpp-framework-posd-refactoring-log.ko.md) | Goal 1-21 POSD 리팩토링 기록 |
 | [README.ko.md](./README.ko.md) | Goal 1-21 |
 | [cpp-framework-policy.ko.md](./cpp-framework-policy.ko.md) | Goal 1-21 |
 | [cpp-framework-interfaces.ko.md](./cpp-framework-interfaces.ko.md) | Goal 1-16, Goal 20, Goal 21 |

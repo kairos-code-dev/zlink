@@ -14,7 +14,7 @@ namespace zlink::codec::proto
 {
 
 template<typename T>
-T decode (const message_t &msg)
+T parse_message (const message_t &msg)
 {
     static_assert (
       std::is_base_of<::google::protobuf::Message, T>::value,
@@ -29,7 +29,7 @@ T decode (const message_t &msg)
 }
 
 template<typename T>
-message_t encode (const T &value)
+message_t make_message (const T &value)
 {
     static_assert (
       std::is_base_of<::google::protobuf::Message, T>::value,
@@ -53,15 +53,27 @@ message_t encode (const T &value)
 }
 
 template<typename T>
+T decode (const message_t &msg)
+{
+    return msg.template parse_protobuf<T> ();
+}
+
+template<typename T>
+message_t encode (const T &value)
+{
+    return message_t::from_protobuf (value);
+}
+
+template<typename T>
 T parse (const message_t &msg)
 {
-    return decode<T> (msg);
+    return msg.template parse_protobuf<T> ();
 }
 
 template<typename T>
 message_t to_message (const T &value)
 {
-    return encode (value);
+    return message_t::from_protobuf (value);
 }
 
 } // namespace zlink::codec::proto
@@ -70,5 +82,24 @@ namespace zlink::codec
 {
 namespace protobuf = proto;
 }
+
+namespace zlink
+{
+
+template<typename T>
+message_t
+message_t::from_protobuf (const T &value_)
+{
+    return codec::proto::make_message (value_);
+}
+
+template<typename T>
+T
+message_t::parse_protobuf () const
+{
+    return codec::proto::parse_message<T> (*this);
+}
+
+} // namespace zlink
 
 #endif

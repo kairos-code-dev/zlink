@@ -17,6 +17,8 @@ set(
 find_package(nlohmann_json REQUIRED)
 
 add_library(zlink-codec-json INTERFACE)
+add_library(zlink_cpp_codec_json ALIAS zlink-codec-json)
+add_library(zlink::cpp_codec_json ALIAS zlink-codec-json)
 target_compile_features(zlink-codec-json INTERFACE cxx_std_20)
 
 target_link_libraries(zlink-codec-json INTERFACE zlink_cpp)

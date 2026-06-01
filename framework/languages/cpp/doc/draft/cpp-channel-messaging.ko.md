@@ -12,6 +12,17 @@
 > 현재 공개 계약이 아니며, `C++` host/runtime에서 channel messaging을 어떤 표면으로
 > 드러낼지 정리한다.
 
+## 인터페이스 경계
+
+channel public contract는 `contracts/channels/*`가 소유한다. 사용자가 보는 타입은
+channel builder, capability option, `message_bus_t`, `request_client_t`, `publisher_t`,
+call object, reliability event다. `ROUTER`/`DEALER` socket owner, recv pump, reply
+correlation table, send-ready queue, discovery watch state는 `src/runtime/channels/*`에
+둔다.
+
+channel 문서의 예시는 public contract 모양을 보여 주기 위한 것이다. 내부 dispatch 순서나
+pending queue 구조를 사용자가 호출해야 하는 API처럼 해석하지 않는다.
+
 ## 1. Channel 의미
 
 channel은 framework에서 request/reply와 pub/sub capability를 묶는 이름이다.

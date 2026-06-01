@@ -13,6 +13,17 @@
 > 개념을 `C++` standalone framework에서 어떻게 자체 host/runtime 기능으로 만들지
 > 정리한다.
 
+## 인터페이스 경계
+
+ActorGateway session relay의 public contract는 `contracts/streams/*`와
+`contracts/actors/*`에 나누어 둔다. session, actor reference, bound session, actor
+factory, actor context는 public contract가 될 수 있다. actor mailbox, join coordinator,
+relay packet dispatcher, stream-to-spot binding table, session actor lifecycle state는
+`src/runtime/actors/*`와 `src/runtime/streams/*`에 둔다.
+
+이 문서의 relay 흐름은 사용자가 구현할 session/actor contract를 설명하기 위한 것이다.
+ActorGateway frame codec이나 내부 relay packet 종류를 public API로 노출한다는 뜻이 아니다.
+
 ## 1. 방향
 
 `C++`에는 `ASP.NET Core` 같은 기존 application framework가 없다. 따라서 session

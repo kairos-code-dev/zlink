@@ -29,7 +29,9 @@ binding 기준은 아래 문서를 따른다.
 - [C++ Binding Specification](/home/hep7/project/kairos/zlink/doc/spec/bindings/cpp/README.md)
 - [C++ Codec Extension Specification](/home/hep7/project/kairos/zlink/doc/spec/bindings/cpp/codec.md)
 
-framework public API는 `zlink::framework` namespace 아래에 둔다. binding의 public
+framework public API는 `zlink::framework` namespace 아래에 둔다. 물리 구조는
+`.NET` framework의 `Contracts/*`와 `Runtime/*` 분리를 따른다. C++에서 contract는
+설치되는 public header이고, runtime은 `src/runtime/*` 안의 구현이다. binding의 public
 타입은 framework 내부 구현과 일부 고급 extension point에서 사용할 수 있지만, 일반
 사용자는 raw socket이나 poller를 직접 만지지 않아도 앱을 만들 수 있어야 한다.
 
@@ -57,23 +59,208 @@ handler, service lifetime, timeout 같은 framework 개념이다.
 
 ## 3. Header 와 Namespace
 
-권장 public header layout은 아래와 같다.
+권장 public header layout은 아래와 같다. `contracts/*` 아래 header가 `.NET`
+`Contracts/*`에 대응하는 실제 public contract owner이고, `zlink/framework/*.hpp`
+header는 사용자가 편하게 include할 수 있는 facade다.
 
 ```text
 zlink/framework.hpp
 zlink/framework/app.hpp
-zlink/framework/services.hpp
+zlink/framework/channels.hpp
 zlink/framework/handlers.hpp
-zlink/framework/messaging.hpp
-zlink/framework/runtime.hpp
-zlink/framework/spot.hpp
-zlink/framework/serialization.hpp
-zlink/framework/config.hpp
-zlink/framework/logging.hpp
-zlink/framework/observability.hpp
-zlink/framework/hosting.hpp
-zlink/framework/modules.hpp
+zlink/framework/spots.hpp
+zlink/framework/streams.hpp
+zlink/framework/timers.hpp
+zlink/framework/contracts/actors/*.hpp
+zlink/framework/contracts/channels/*.hpp
+zlink/framework/contracts/codecs/*.hpp
+zlink/framework/contracts/configuration/*.hpp
+zlink/framework/contracts/dispatch/*.hpp
+zlink/framework/contracts/errors/*.hpp
+zlink/framework/contracts/eventing/*.hpp
+zlink/framework/contracts/handlers/*.hpp
+zlink/framework/contracts/registry/*.hpp
+zlink/framework/contracts/spots/*.hpp
+zlink/framework/contracts/streams/*.hpp
+zlink/framework/contracts/timers/*.hpp
 ```
+
+`zlink/framework/runtime.hpp` 같은 public header는 만들지 않는다. runtime이라는 이름은
+구현 디렉토리 `framework/src/runtime/*`에만 사용한다. public API에서 runtime 객체가
+필요하면 `app_t`, `host_t`, `channel_client_t`, `spot_context_t`처럼 사용자가 이해하는
+계약 이름으로 노출한다.
+
+`bindings/cpp`보다 framework 쪽의 분리를 더 강하게 잡는다. binding은 zlink core의
+native 개념을 C++로 안전하게 감싸는 계층이지만, framework는 application contract를
+제공하는 계층이다. 그래서 framework contract header가 binding public 타입을 내부
+substrate로 참조할 수는 있어도, native socket owner, CAPI dispatch callback, raw recv
+순서, frame codec 구현을 public contract로 끌어올리면 안 된다.
+
+public header에 template 구현이 필요한 경우에는 `contracts/detail/*`만 사용한다.
+이 detail 영역은 type trait, concept check, facade forwarding을 위한 곳이며,
+runtime 구현을 숨겨 넣는 장소가 아니다.
+
+이 구조는 `.NET`의 public interface를 C++ pure virtual class로 모두 옮긴다는 뜻이
+아니다. C++ public API는 concrete facade와 value type을 적극적으로 사용할 수 있다.
+다만 facade의 멤버, 생성자, method signature가 runtime 구현 타입을 노출하지 않아야 한다.
+runtime 객체를 가리켜야 하는 public facade는 PIMPL, type-erased state, shared internal
+state 같은 방식으로 구현을 숨긴다. 사용자 확장점만 abstract interface 또는 concept
+contract로 둔다.
+
+인터페이스 분리는 `.NET`보다 약하게 적용하지 않는다. `.NET`에서는 `Contracts/*`가
+사용자와 extension author가 보는 타입이고, `Runtime/*`는 `internal` 구현이다. C++에는
+assembly-level `internal`이 없으므로 물리적인 include 경계와 CMake install 경계로 같은
+효과를 만든다. 설치되는 header는 contract와 facade뿐이며, runtime header는 build tree
+안에서만 사용한다.
+
+public type을 만들 때는 아래 질문에 모두 답해야 한다.
+
+| 질문 | public contract에 둘 수 있는 경우 | runtime에 숨겨야 하는 경우 |
+|------|----------------------------------|-----------------------------|
+| 사용자가 직접 구현하는가? | handler, filter, serializer, hosted service처럼 구현 대상이면 둔다. | framework가 내부에서만 구현하면 숨긴다. |
+| 사용자가 값을 조합하는가? | option, builder, typed result처럼 조합 대상이면 둔다. | queue node, dispatch token, recv state처럼 조합하지 않으면 숨긴다. |
+| `.NET` Contracts에 대응하는가? | 같은 기능 축의 public 계약이면 C++ contract로 둔다. | `.NET` Runtime 또는 Runtime/Backend에 대응하면 숨긴다. |
+| native 실행 순서를 드러내는가? | 드러내지 않으면 facade로 둘 수 있다. | poll/recv/drain 순서가 보이면 숨긴다. |
+
+### 3.1 기능별 Contract/Runtime Owner
+
+인터페이스 분리는 파일 이름만 맞추는 작업이 아니다. 기능을 구현하기 전에 어느 타입이
+사용자 계약이고 어느 타입이 runtime 구현인지 먼저 닫아야 한다. 아래 표는 `.NET`
+framework의 `Contracts/*`와 `Runtime/*` 구조를 C++ framework에 옮길 때의 기준이다.
+
+| 기능 축 | C++ public contract owner | C++ runtime implementation owner | public에 두지 않는 것 |
+|---------|---------------------------|----------------------------------|-----------------------|
+| assembly/module discovery | `contracts/assembly/*` | `src/runtime/host/*` | module scan cache, startup ordering |
+| app/host/config | `contracts/configuration/*`, `app.hpp` | `src/runtime/host/*`, `src/runtime/configuration/*` | native context owner, signal backend, startup graph |
+| DI/scope | `contracts/configuration/services.hpp` | `src/runtime/configuration/services.*` | service cache, destruction stack, scope registry |
+| error/result/call | `contracts/errors/*`, `contracts/channels/call.hpp`, `contracts/dispatch/task.hpp` | `src/runtime/messaging/*`, 기능별 runtime submitter | pending operation node, queue slot, completion token |
+| handler | `contracts/handlers/*` | `src/runtime/handlers/*` | descriptor map, DI resolve order, reflection/shape cache |
+| serializer/codec | `contracts/codecs/*` | `src/runtime/codecs/*`, 선택 codec target | JSON backend wiring, type-erased serializer map |
+| channel | `contracts/channels/*` | `src/runtime/channels/*` | socket set, recv pump, reply correlation table, send-ready queue |
+| SPOT | `contracts/spots/*` | `src/runtime/spots/*` | Spot activation table, native dispatch router, subscription pump |
+| timer | `contracts/timers/*` | `src/runtime/timers/*` | native timer token, `fire_count` drain loop, timer registry |
+| STREAM | `contracts/streams/*` | `src/runtime/streams/*` | frame codec, session table, session serial executor, transport loop |
+| actor relay | `contracts/actors/*`, 필요한 stream contract | `src/runtime/actors/*`, `src/runtime/streams/*` | actor mailbox, join coordinator, relay packet dispatcher |
+| registry/monitoring | `contracts/registry/*`, `contracts/eventing/*` | `src/runtime/registry/*`, `src/runtime/diagnostics/*` | topology cache, snapshot diff cache, backend query client owner |
+| execution/offload | `contracts/dispatch/*` | `src/runtime/dispatch/*`, `src/runtime/execution/*` | thread pool queue, work item storage, shutdown drain state |
+| backend substrate | 없음 | `src/runtime/backend/*`, `src/runtime/backend/contracts/*` | zlink binding adapter, backend private contract |
+
+각 행은 구현 단계의 최소 파일 구조다. 예를 들어 channel 기능을 만들 때
+`channel_builder_t`, `message_bus_t`, `request_client_t`는 public contract에 둘 수 있지만,
+`dealer_socket_t` owner, pending request table, send-ready drain queue는 runtime owner에
+둔다. public 타입이 내부 state를 가리켜야 하면 public header에는 전방 선언과
+`shared_ptr`/PIMPL만 두고 state 정의는 runtime owner 파일에 둔다.
+
+`backend substrate` 행은 의도적으로 public owner가 없다. `.NET`의
+`Runtime/Backend/Contracts`처럼 backend 내부 계약이 필요할 수는 있지만, 이 계약은
+framework와 zlink binding substrate 사이의 private seam이다. 사용자가 보는 extension
+point가 필요하면 `contracts/*` 아래 별도 public 타입을 만든다. backend 내부 타입을
+이름만 바꿔 public header에 올리는 방식은 허용하지 않는다.
+
+### 3.2 C++에서 생기는 분리 이슈와 결정
+
+`.NET`은 assembly `internal`로 runtime 타입을 숨길 수 있지만 C++는 header를 설치하면
+그 자체가 공개 표면이 된다. 그래서 C++ framework는 아래 결정을 따른다.
+
+| 이슈 | 잘못된 방향 | 결정 |
+|------|-------------|------|
+| template 때문에 구현이 header에 들어감 | descriptor map, queue, socket owner까지 template header에 넣는다. | header에는 type check와 forwarding만 둔다. 실제 저장소와 실행은 type-erased runtime으로 보낸다. |
+| concrete facade가 interface 분리를 약하게 만듦 | public class 멤버에 runtime 타입을 직접 둔다. | concrete facade는 허용하지만 상태는 PIMPL/type-erased state로 숨긴다. |
+| 성능을 이유로 runtime state를 노출하고 싶어짐 | 사용자가 pending table, native socket, timer token을 직접 다루게 한다. | public 표면은 깊게 유지한다. 필요한 성능 조절은 option, executor, queue limit 같은 contract로 제공한다. |
+| 외부 dependency가 public header로 번짐 | JSON/MessagePack/Protobuf 타입을 기본 public signature에 넣는다. | codec별 선택 target 또는 message boundary 뒤에 둔다. 기본 framework/connector는 불필요한 codec dependency를 요구하지 않는다. |
+| 테스트가 private header를 include함 | unit test가 runtime header에 의존해 public 계약을 우회한다. | contract test는 public header만 include한다. runtime unit test만 private header를 include할 수 있다. |
+| ABI와 inline 구현이 뒤섞임 | public inline 함수가 runtime 자료구조를 직접 조작한다. | inline은 validation과 forwarding으로 제한한다. 자료구조 변경 가능성은 runtime에 숨긴다. |
+
+이 결정 때문에 public 타입 수가 `.NET`보다 조금 많아질 수 있다. C++에는 interface,
+record, extension method를 같은 방식으로 표현할 수 없기 때문이다. 하지만 사용자가 보는
+개념 수는 늘리지 않는다. 사용자는 app, channel, handler, Spot, stream, timer, connector
+같은 framework 개념만 다루고, runtime 실행 순서와 native 소유권은 알 필요가 없어야 한다.
+
+따라서 C++ public header는 다음 두 계층만 가진다.
+
+- `contracts/*`: 실제 public contract owner다. 타입 의미와 호출 shape를 정의한다.
+- `zlink/framework/*.hpp`: include 편의를 위한 facade다. 새 계약을 발명하지 않고
+  `contracts/*`를 다시 묶는다.
+
+아래 항목은 public contract가 아니라 runtime 구현이다.
+
+- handler descriptor map과 dispatch lookup table
+- serializer type-erased map과 JSON backend wiring
+- socket/context lifecycle owner
+- pending request table과 send-ready queue
+- stream frame encoder/decoder 구현
+- ActorGateway frame codec과 remote locator
+- timer native token과 fire-count drain loop
+- monitoring snapshot diff cache
+
+public facade가 runtime 상태를 보관해야 할 때도 상태 정의는 header에 두지 않는다.
+예시는 아래 형태다.
+
+```cpp
+namespace zlink::framework {
+
+namespace detail {
+class handler_registry_state_t;
+}
+
+class handler_registry_t {
+public:
+    handler_registry_t();
+    ~handler_registry_t();
+
+private:
+    std::shared_ptr<detail::handler_registry_state_t> _state;
+};
+
+}
+```
+
+위 예시에서 `handler_registry_state_t`의 정의와 descriptor map 구현은
+`framework/src/runtime/handlers/*`에만 둔다. public header는 사용자가 호출할 method와
+template forwarding만 가진다.
+
+### 3.3 구현 전 Interface Separation 절차
+
+새 기능을 구현하기 전에는 아래 순서로 `.NET` 구조와 C++ 구조를 맞춘다. 이 절차는
+코드 리뷰 때 사후로 확인하는 항목이 아니라, public header를 만들기 전에 끝내야 하는
+선행 작업이다.
+
+1. 같은 기능의 `.NET Contracts/*` 파일을 확인하고 사용자가 보는 타입과 호출 shape를
+   적는다.
+2. 같은 기능의 `.NET Runtime/*` 파일을 확인하고 내부 구현 책임을 적는다.
+3. C++ public owner를 `framework/include/zlink/framework/contracts/*` 또는 facade
+   header 중 하나로 정한다.
+4. C++ runtime owner를 `framework/src/runtime/*` 아래의 기능별 디렉토리로 정한다.
+5. public header가 runtime header를 include하지 않는지, runtime 타입을 signature로
+   노출하지 않는지 layout contract test로 고정한다.
+6. template 구현이 필요하면 `contracts/detail/*`에 type trait, concept check,
+   forwarding만 남기고 state와 실행 구현은 runtime owner로 보낸다.
+
+아래 표는 구현 시 확인해야 하는 파일 대응의 기준이다.
+
+| 확인 대상 | C++에 남길 것 | C++에서 숨길 것 |
+|-----------|---------------|-----------------|
+| `.NET Contracts/Channels` | channel builder, client, call object, result shape | pending request table, route receive pump |
+| `.NET Contracts/Handlers` | handler option, invocation context, filter contract | descriptor cache, DI resolve order, method invoker |
+| `.NET Contracts/Spots` | Spot context, Spot RID view, actor factory shape | activation table, native dispatch router, subscription pump |
+| `.NET Contracts/Streams` | stream header, session, bound session, stream error | frame codec, session table, serial executor |
+| `.NET Contracts/Registry` | registry options, query model, topology result | backend discovery owner, topology cache, route resolver state |
+| `.NET Contracts/Timers` | timer handle, timer option, tick model | native timer token, fire-count drain loop |
+| `.NET Contracts/Eventing` | typed runtime event, sink registration | snapshot diff cache, telemetry backend |
+| `.NET Runtime/Execution` | public dispatch/offload option만 노출 | thread pool queue, work item storage, drain state |
+
+이 표에서 `C++에 남길 것`은 반드시 pure virtual interface일 필요가 없다. C++ public
+타입은 concrete facade일 수 있다. 다만 facade가 깊은 모듈이어야 하므로, 사용자가
+runtime 실행 순서나 native 소유권을 기억하지 않아도 같은 기능을 쓸 수 있어야 한다.
+
+분리 기준이 애매할 때는 아래 결정을 따른다.
+
+| 상황 | 결정 |
+|------|------|
+| public API가 binding 타입을 받아야 하는가? | `message_t`처럼 payload boundary를 나타내는 값 타입만 허용한다. socket, context, native owner는 runtime에 둔다. |
+| 성능 때문에 inline 구현이 필요한가? | validation과 forwarding만 inline으로 둔다. queue 조작, dispatch, codec encode/decode는 runtime으로 보낸다. |
+| 테스트가 private state를 확인해야 하는가? | public contract test는 public header만 사용한다. private state 검증은 runtime unit test로 분리한다. |
+| connector가 framework 타입을 재사용하고 싶은가? | wire 의미와 codec 정책만 공유한다. connector public header가 framework runtime이나 server facade를 include하지 않는다. |
 
 모든 framework 타입은 `zlink::framework` namespace 아래에 둔다.
 
@@ -99,7 +286,6 @@ class message_bus_t;
 class publisher_t;
 class request_client_t;
 class spot_context_t;
-class send_ready_context_t;
 class stream_header_t;
 class stream_error_t;
 class stream_t;
@@ -431,7 +617,9 @@ enum class framework_error_kind_t {
     request_protocol_error,
     request_failed,
     timeout,
-    shutdown
+    shutdown,
+    disconnected,
+    closed
 };
 
 class framework_exception_t : public std::exception {
@@ -558,36 +746,36 @@ public:
 
 class handler_registry_t {
 public:
-    template <typename TEvent, typename TOwner>
-    handler_registry_t &subscribe(
+    template <typename TOwner, typename TEvent>
+    handler_registry_t &on_event(
       std::string channel_name,
       std::string topic,
       void (TOwner::*method)(const TEvent &),
       handler_options_t options = {});
 
-    template <typename TRequest, typename TReply, typename TOwner, typename TReturn>
-    handler_registry_t &request(
+    template <typename TOwner, typename TRequest, typename TReply>
+    handler_registry_t &on_request(
       std::string channel_name,
-      std::string packet_name,
-      TReturn (TOwner::*method)(const TRequest &),
+      std::string topic,
+      TReply (TOwner::*method)(const TRequest &),
       handler_options_t options = {});
 
-    template <typename TCommand, typename TOwner>
-    handler_registry_t &send(
+    template <typename TOwner, typename TCommand>
+    handler_registry_t &on_send(
       std::string channel_name,
-      std::string packet_name,
+      std::string topic,
       void (TOwner::*method)(const TCommand &),
       handler_options_t options = {});
 
     handler_registry_t &send_raw(
       std::string channel_name,
+      std::string topic,
       std::string packet_name,
-      std::function<void(const zlink::message_t &)> handler,
+      std::function<result_t<void>(const payload_view_t &)> handler,
       handler_options_t options = {});
 
-    handler_registry_t &packet_stream(
-      std::string stream_name,
-      std::function<void(stream_t &, const stream_header_t &, const zlink::message_t &)> handler);
+    handler_registry_t &observe_failures(
+      std::function<void(const handler_failure_event_t &)> observer);
 };
 
 } // namespace zlink::framework
@@ -599,7 +787,7 @@ handler owner 타입은 service collection에서 resolve한다.
 app.services().add_transient<order_handler_t>();
 
 app.handlers()
-  .subscribe<order_created_t, order_handler_t>(
+  .on_event<order_handler_t, order_created_t>(
     "orders",
     "orders.created",
     &order_handler_t::on_created);
@@ -772,18 +960,9 @@ public:
     spot_node_builder_t &add_actor_factory(std::string actor_type);
 };
 
-class send_ready_context_t {
-public:
-    std::size_t pending_count() const;
-    void resume_pending();
-};
-
 class spot_context_t {
 public:
     zlink::routing_id_t spot_rid() const;
-
-    spot_context_t &on_send_ready(
-      std::function<void(send_ready_context_t &)> callback);
 
     template <typename TCommand>
     void send_to(zlink::routing_id_t node_rid,

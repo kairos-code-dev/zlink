@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[Framework Adapter 정책](../../../../doc/spec/README.ko.md) | [구현 계획](./cpp-framework-implementation-plan.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./cpp-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [ActorGateway relay](./actor-gateway-session-relay.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [STREAM decisions](./stream-open-items.ko.md) | [STREAM Connector](./cpp-stream-connector.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
+[Framework Adapter 정책](../../../../doc/spec/README.ko.md) | [구현 계획](./cpp-framework-implementation-plan.ko.md) | [POSD 기록](./cpp-framework-posd-refactoring-log.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./cpp-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [ActorGateway relay](./actor-gateway-session-relay.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [STREAM decisions](./stream-open-items.ko.md) | [STREAM Connector](./cpp-stream-connector.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
 
 # Draft -- ZLink Framework For C++
 
@@ -27,6 +27,103 @@ messaging model, handler model, `STREAM`, `SPOT`, ActorGateway session relay,
 monitoring, graceful shutdown을 제공한다. 차이는 언어 표현과 ownership 모델뿐이다.
 `.NET`의 `Task<T>`와 `SubmitAsync()`는 C++20 `task_t<T>`와 `submit()`/`co_await`로,
 `.NET` DI scope는 C++ 자체 DI scope와 RAII lifetime으로 투영한다.
+
+폴더 구조도 `.NET` framework의 역할 분리를 기준으로 맞춘다. `.NET`의
+`Contracts/*`는 C++에서 설치되는 public header인
+`framework/include/zlink/framework/contracts/*`에 대응하고, `.NET`의 `Runtime/*`는
+C++에서 배포 대상이 아닌 `framework/src/runtime/*` 구현에 대응한다. C++는 파일명,
+namespace, header 배치를 `snake_case`와 `.hpp` 중심으로 유지하되, public 계약과
+runtime 구현을 같은 파일이나 같은 디렉토리에 섞지 않는다.
+
+이 분리는 기존 `bindings/cpp`보다 더 강하게 적용한다. binding은 native zlink API를
+C++ 타입으로 감싸는 낮은 계층이므로 일부 thin wrapper와 inline 구현이 public header에
+남을 수 있다. 하지만 framework는 application 개발자가 직접 쓰는 높은 계층이므로,
+public header는 app, handler, call object, stream, spot, timer 같은 계약만 보여야 한다.
+CAPI handle, dispatch callback, recv loop, frame codec, pending queue, thread/executor
+구현은 framework runtime 내부에 숨긴다.
+
+이 기준은 단순한 폴더 이름 규칙이 아니다. 각 기능을 구현하기 전에 먼저 public contract
+owner와 runtime implementation owner를 나눈다. contract header는 사용자가 구현하거나
+호출하는 shape만 설명하고, registry table, queue, dispatch projection, codec wiring,
+native lifecycle은 runtime 구현이 소유한다. C++에서 concrete facade를 쓰더라도 내부
+상태는 PIMPL 또는 type-erased state로 감추며, `contracts/detail/*`은 template 검사와
+forwarding까지만 허용한다.
+
+따라서 draft를 구현할 때는 구현 파일을 만들기 전에 다음 질문을 먼저 닫는다.
+
+- 이 타입이 `.NET Contracts/*`에 대응하는 사용자 계약인가?
+- 이 타입의 state, registry, queue, dispatcher, codec 구현은 어느 `src/runtime/*` 파일이
+  소유하는가?
+- public header가 native handle, socket, poller, callback userdata, dispatch token,
+  frame codec 구현, timer token을 노출하지 않는가?
+- template 때문에 header에 들어간 코드가 compile-time 검사와 forwarding을 넘어서지 않는가?
+- layout/contract test가 public header와 runtime header의 경계를 확인하는가?
+
+이 질문은 구현 중간에 확인하는 참고 사항이 아니라 구현 시작 전 gate다. 어떤 기능이
+`.NET Contracts/*`에 대응하는지, 그 기능의 C++ public header가 어디인지, 그리고 같은
+기능의 runtime 구현이 어느 `src/runtime/*` owner로 들어가는지 먼저 닫지 않으면 해당
+goal 구현을 시작하지 않는다. C++에는 assembly `internal`이 없으므로 이 gate는 문서
+규칙이 아니라 설치 header, CMake target, test include 경계로 강제해야 한다.
+
+기본 물리 구조는 아래처럼 고정한다.
+
+| 역할 | C++ 위치 | 설치/공개 여부 | 기준 |
+|------|----------|----------------|------|
+| framework contract | `framework/include/zlink/framework/contracts/*` | 설치 public header | `.NET Contracts/*` 대응 |
+| framework facade | `framework/include/zlink/framework/*.hpp`, `zlink/framework.hpp` | 설치 public header | include 편의, 새 runtime 계약 금지 |
+| framework runtime | `framework/src/runtime/*` | private build input | `.NET Runtime/*` 대응 |
+| framework runtime backend contract | `framework/src/runtime/backend/contracts/*` | private build input | `.NET Runtime/Backend/Contracts/*` 대응 |
+| connector contract | `connector/include/zlink/stream_connector/contracts/*` | 설치 public header | `.NET Stream Connector Contracts/*` 대응 |
+| connector runtime | `connector/src/runtime/*` | private build input | connector receive/reconnect/codec 구현 |
+| Unreal connector public | `unreal-connector/Source/ZLinkStreamConnector/Public/*` | Unreal public header | Unreal 타입과 Blueprint/Game Thread 표면 |
+| Unreal connector private | `unreal-connector/Source/ZLinkStreamConnector/Private/*` | Unreal private implementation | transport, codec, thread dispatch |
+
+`.NET`의 현재 폴더 구조는 아래 C++ 구조와 1:1 의미로 맞춘다. C++는 언어 관례 때문에
+파일명과 타입 이름은 다르게 쓸 수 있지만, 어느 쪽이 사용자가 보는 계약이고 어느 쪽이
+runtime 구현인지에 대한 경계는 바꾸지 않는다.
+
+| `.NET` framework | C++ framework | 의미 |
+|------------------|---------------|------|
+| `Contracts/Actors` | `contracts/actors` | actor와 bound session public 계약 |
+| `Contracts/Assembly` | `contracts/assembly` | module/assembly discovery public 계약 |
+| `Contracts/Channels` | `contracts/channels` | channel send/request/pub/sub public 계약 |
+| `Contracts/Codecs` | `contracts/codecs` | serializer와 message codec public 계약 |
+| `Contracts/Configuration` | `contracts/configuration` | app builder, DI, option public 계약 |
+| `Contracts/Dispatch` | `contracts/dispatch` | task, callback submit, offload option public 계약 |
+| `Contracts/Errors` | `contracts/errors` | error kind, exception, result public 계약 |
+| `Contracts/Eventing` | `contracts/eventing` | monitoring event public 계약 |
+| `Contracts/Handlers` | `contracts/handlers` | handler shape와 registry public 계약 |
+| `Contracts/Registry` | `contracts/registry` | registry와 topology public 계약 |
+| `Contracts/Spots` | `contracts/spots` | Spot actor, context, publish public 계약 |
+| `Contracts/Streams` | `contracts/streams` | STREAM session과 endpoint public 계약 |
+| `Contracts/Timers` | `contracts/timers` | timer option과 tick handler public 계약 |
+| `Runtime/Actors` | `src/runtime/actors` | actor instance, mailbox, relay dispatch 구현 |
+| `Runtime/Backend` | `src/runtime/backend` | zlink binding substrate 연결 구현 |
+| `Runtime/Backend/Contracts` | `src/runtime/backend/contracts` | public이 아닌 backend 내부 계약 |
+| `Runtime/Channels` | `src/runtime/channels` | socket owner, correlation, send-ready 구현 |
+| `Runtime/Codecs` | `src/runtime/codecs` | type-erased serializer map과 codec wiring |
+| `Runtime/Configuration` | `src/runtime/configuration` | service registry, option materialization 구현 |
+| `Runtime/Diagnostics` | `src/runtime/diagnostics` | logging, monitoring source, health 구현 |
+| `Runtime/Dispatch` | `src/runtime/dispatch` | callback/coroutine completion 구현 |
+| `Runtime/Execution` | `src/runtime/execution` | offload executor와 drain 구현 |
+| `Runtime/Handlers` | `src/runtime/handlers` | descriptor map, DI resolve, invoke 구현 |
+| `Runtime/Host` | `src/runtime/host` | app lifecycle, graceful shutdown 구현 |
+| `Runtime/Messaging` | `src/runtime/messaging` | call state, pending operation, retry hook 구현 |
+| `Runtime/Registry` | `src/runtime/registry` | topology cache와 query owner 구현 |
+| `Runtime/Spots` | `src/runtime/spots` | activation table, subscription pump 구현 |
+| `Runtime/Streams` | `src/runtime/streams` | session table, frame codec, transport loop 구현 |
+| `Runtime/Timers` | `src/runtime/timers` | native timer token과 tick drain 구현 |
+
+public header에서 내부 상태가 필요하면 PIMPL, opaque state, type-erased handle 중 하나를
+쓴다. 이때 state의 전방 선언은 public header에 둘 수 있지만, state 정의와 method 구현은
+runtime owner에 둔다. 반대로 CAPI handle, socket owner, poller slot, dispatch callback,
+pending queue, frame codec, timer token은 public data member, public 반환값, public
+callback 인자로 올리지 않는다.
+
+이 표에 맞는 owner를 정하지 못한 기능은 구현을 시작하지 않는다. 구현 중 public 타입이
+추가로 필요하다는 사실을 발견하면, 코드를 먼저 늘리지 않고 이 draft의 owner 표와 해당
+기능 문서를 먼저 갱신한다. 그 뒤 public header, runtime owner, test boundary가 함께
+맞는지 확인하고 구현으로 넘어간다.
 
 Stream Connector는 C++ framework 샘플이나 framework package가 아니다. C++용
 Stream Connector는 별도 public header, 별도 CMake target, 별도 배포 단위를 가지는
@@ -84,6 +181,7 @@ host/runtime 표면으로만 구체화한다.
 | 문서 | 역할 |
 |------|------|
 | [cpp-framework-implementation-plan.ko.md](./cpp-framework-implementation-plan.ko.md) | draft 전체 내용을 goal 단위로 빠짐없이 구현하기 위한 실행 계획 |
+| [cpp-framework-posd-refactoring-log.ko.md](./cpp-framework-posd-refactoring-log.ko.md) | 각 goal에서 수행한 POSD 기반 리팩토링 기록 |
 | [cpp-framework-policy.ko.md](./cpp-framework-policy.ko.md) | `C++` standalone host/runtime의 제품 포지셔닝, 권장 모듈 구조, 라이브러리 정책, 구현 순서 |
 | [cpp-framework-interfaces.ko.md](./cpp-framework-interfaces.ko.md) | C++ binding public API를 기반으로 한 framework public interface 설계 |
 | [handler-interfaces.ko.md](./handler-interfaces.ko.md) | 기존 `C++` adapter 세부 인터페이스 초안. standalone framework 정책에 맞춰 정렬해야 할 대상 |

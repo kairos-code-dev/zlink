@@ -21,20 +21,23 @@ C++ Stream Connector는 `ZLink Framework for C++` 샘플이 아니다. 서버 fr
 
 ```text
 framework/languages/cpp/
-+-- include/zlink/framework/
-+-- src/
-+-- tests/
-+-- samples/
++-- framework/
+|   +-- include/zlink/framework/contracts/
+|   +-- src/runtime/
 +-- connector/
 |   +-- include/zlink/stream_connector/
+|   |   +-- contracts/
 |   +-- src/
+|   |   +-- runtime/
 |   +-- tests/
 |   +-- samples/
 |   +-- CMakeLists.txt
 +-- unreal-connector/
 |   +-- Source/
 |   |   +-- ZLinkStreamConnector/
-|   |   +-- ZLinkStreamConnector.uplugin
+|   |   |   +-- Public/
+|   |   |   +-- Private/
+|   +-- ZLinkStreamConnector.uplugin
 |   +-- Tests/
 |   +-- Samples/
 +-- CMakeLists.txt
@@ -48,6 +51,45 @@ Unreal Connector도 별도 배포 단위다. 일반 C++ connector를 그대로 �
 아니라, Unreal 타입과 Unreal thread model에 맞춘 public API를 제공한다. 내부 wire
 protocol, codec id, header/payload frame, heartbeat/reconnect 의미는 일반 C++ connector와
 같게 유지한다.
+
+connector의 public contract와 runtime 구현도 `.NET` Stream Connector의
+`Contracts/*`와 `Runtime/*` 분리를 따른다. C++에서는 public header가
+`include/zlink/stream_connector/contracts/*`에 있고, 구현은 `src/runtime/*`에 있다.
+Unreal Connector는 Unreal 관례 때문에 `Public/`과 `Private/`를 쓰지만, 의미는 같다.
+`Public/`에는 Unreal 전용 타입과 호출 표면만 두고, connection, receive loop, codec,
+thread dispatch 구현은 `Private/`에 둔다.
+
+connector도 framework와 같은 public surface gate를 적용한다. public header는 endpoint,
+packet, request/send builder, callback/coroutine submit, codec option만 노출한다.
+reconnect state, heartbeat scheduler, pending request table, frame encoder/decoder,
+compression worker, socket receive loop는 `src/runtime/*`에 둔다. Unreal Connector도
+Blueprint/Game Thread 표면만 `Public/`에 두고, 일반 C++ connector runtime class를 그대로
+public type으로 노출하지 않는다.
+
+connector의 contract/runtime 분리는 framework보다 약하게 적용하지 않는다. connector는
+별도 배포 라이브러리지만, 사용자는 client endpoint와 packet 호출 모델만 알아야 한다.
+`connector_t`가 내부 connection state를 가져야 하면 public header에는 opaque state만
+두고, reconnect loop, heartbeat timer, request correlation, frame codec, compression
+worker는 runtime 구현에 둔다. Unreal Connector도 같은 원칙을 Unreal 방식으로 적용한다.
+Unreal `Public/` header에는 `UObject`, Blueprint delegate, Game Thread callback처럼
+Unreal 사용자가 직접 보는 표면만 두며, 일반 C++ connector runtime class를 상속하거나
+멤버로 노출하지 않는다.
+
+connector 구현도 시작 전에 owner를 아래처럼 나눈다.
+
+| 기능 | C++ connector public owner | C++ connector runtime owner | Unreal public owner | Unreal private owner |
+|------|----------------------------|-----------------------------|---------------------|----------------------|
+| connector lifecycle | `contracts/connector.hpp` | `src/runtime/connection/*` | `Public/ZLinkStreamConnector.h` | `Private/Connection/*` |
+| packet send/request | `contracts/calls.hpp`, `contracts/packet.hpp` | `src/runtime/messaging/*` | Blueprint callable send/request API | `Private/Messaging/*` |
+| callback/coroutine submit | `contracts/dispatch/*` | `src/runtime/dispatch/*` | Blueprint delegate, Game Thread callback | `Private/Dispatch/*` |
+| codec option | `contracts/codecs/*` | `src/runtime/codecs/*` | Unreal codec option types | `Private/Codecs/*` |
+| reconnect/heartbeat | state event contract | `src/runtime/connection/*` | connection state delegate | `Private/Connection/*` |
+| compression | packet option contract | `src/runtime/compression/*` | Unreal packet option | `Private/Compression/*` |
+
+이 표의 public owner는 사용자 호출 shape와 option만 담는다. request correlation table,
+receive loop, heartbeat scheduler, frame encoder/decoder, compression worker, Game Thread
+queue 구현은 public header에 두지 않는다. 일반 C++ connector와 Unreal Connector는 같은
+wire 의미를 공유하지만 public 타입은 서로 독립이다.
 
 ## 2. 패키징
 

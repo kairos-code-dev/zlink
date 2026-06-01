@@ -12,6 +12,17 @@
 > 현재 공개 계약이 아니며, `C++` runtime에서 socket, discovery, registry, spot
 > runtime event를 어떤 표면으로 올릴지 정리한다.
 
+## 인터페이스 경계
+
+monitoring public contract는 `contracts/eventing/*`와 필요한 기능별 event model이
+소유한다. 사용자는 logical source name, event kind, typed payload, handler 등록 표면만
+본다. socket monitor binding, registry snapshot diff cache, spot snapshot provider,
+timer failure event factory, telemetry backend는 `src/runtime/diagnostics/*`와 각 기능별
+runtime에 둔다.
+
+monitoring event는 내부 구현 상태를 그대로 공개하지 않는다. payload는 운영자가 이해할 수
+있는 안정적인 field만 담고, native handle이나 private runtime pointer를 포함하지 않는다.
+
 ## 1. 방향
 
 - event kind는 enum으로 둔다.

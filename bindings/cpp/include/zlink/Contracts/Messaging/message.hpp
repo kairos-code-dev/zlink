@@ -66,6 +66,15 @@ class message_t
     /// @brief Encodes the string as UTF-8 and copies it into a new message.
     static message_t from (const std::string &text_);
 
+    template<typename T>
+    static message_t from_json (const T &value_);
+
+    template<typename T>
+    static message_t from_messagepack (const T &value_);
+
+    template<typename T>
+    static message_t from_protobuf (const T &value_);
+
     void init ();
     void init (size_t size_);
 
@@ -87,6 +96,15 @@ class message_t
     size_t copy_to (std::span<std::byte> destination_) const;
     size_t copy_to (std::span<uint8_t> destination_) const;
     std::string to_string () const;
+
+    template<typename T>
+    T parse_json () const;
+
+    template<typename T>
+    T parse_messagepack () const;
+
+    template<typename T>
+    T parse_protobuf () const;
 
     void close ();
 

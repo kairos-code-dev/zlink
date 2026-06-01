@@ -1,0 +1,608 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "channel_runtime.hpp"
+
+#include <zlink/framework/contracts/configuration/zlink_builder.hpp>
+
+#include <utility>
+
+namespace zlink::framework::detail
+{
+
+channel_capability_snapshot_t &
+select_capability (channel_builder_state_t &state, channel_capability_t kind)
+{
+  switch (kind) {
+  case channel_capability_t::server:
+    return state.snapshot.server;
+  case channel_capability_t::client:
+    return state.snapshot.client;
+  case channel_capability_t::publisher:
+    return state.snapshot.publisher;
+  case channel_capability_t::subscriber:
+    return state.snapshot.subscriber;
+  }
+  return state.snapshot.client;
+}
+
+const channel_capability_snapshot_t *
+server_capability (const channel_runtime_state_t &state,
+                   const std::string &channel_name)
+{
+  const auto found = state.channels.find (channel_name);
+  if (found == state.channels.end ()) {
+    return nullptr;
+  }
+  return &found->second.server;
+}
+
+const channel_capability_snapshot_t *
+client_capability (const channel_runtime_state_t &state,
+                   const std::string &channel_name)
+{
+  const auto found = state.channels.find (channel_name);
+  if (found == state.channels.end ()) {
+    return nullptr;
+  }
+  return &found->second.client;
+}
+
+const channel_capability_snapshot_t *
+publisher_capability (const channel_runtime_state_t &state,
+                      const std::string &channel_name)
+{
+  const auto found = state.channels.find (channel_name);
+  if (found == state.channels.end ()) {
+    return nullptr;
+  }
+  return &found->second.publisher;
+}
+
+bool
+is_enabled (const channel_capability_snapshot_t *capability)
+{
+  return capability != nullptr && capability->enabled;
+}
+
+bool
+has_connection (const channel_capability_snapshot_t *capability)
+{
+  return capability != nullptr && capability->enabled &&
+         (capability->discovery || !capability->bind_endpoints.empty () ||
+          !capability->connect_endpoints.empty ());
+}
+
+void
+ensure_manual_allowed (const channel_capability_snapshot_t &snapshot)
+{
+  if (snapshot.discovery) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "manual endpoint cannot be mixed with discovery in one capability");
+  }
+}
+
+void
+ensure_discovery_allowed (const channel_capability_snapshot_t &snapshot)
+{
+  if (!snapshot.bind_endpoints.empty () || !snapshot.connect_endpoints.empty ()) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "discovery cannot be mixed with manual endpoints in one capability");
+  }
+}
+
+channel_runtime_t::channel_runtime_t (
+  std::shared_ptr<channel_runtime_state_t> state)
+  : _state (std::move (state))
+{
+}
+
+result_t<zlink::message_t>
+channel_runtime_t::dispatch_request (
+  std::string channel_name,
+  std::string topic,
+  std::string packet_name,
+  service_provider_t &services,
+  serializer_registry_t &serializers,
+  const handler_registry_t &handlers,
+  const zlink::message_t &message) const
+{
+  if (!is_enabled (server_capability (*_state, channel_name))) {
+    return result_t<zlink::message_t>::failure (
+      framework_error_kind_t::route_not_connected,
+      "channel server capability is not enabled");
+  }
+  return handlers.invoke (channel_name,
+                          topic,
+                          packet_name,
+                          services,
+                          serializers,
+                          message);
+}
+
+result_t<void>
+channel_runtime_t::dispatch_send (std::string channel_name,
+                                  std::string topic,
+                                  std::string packet_name,
+                                  service_provider_t &services,
+                                  serializer_registry_t &serializers,
+                                  const handler_registry_t &handlers,
+                                  const zlink::message_t &message) const
+{
+  auto result = dispatch_request (std::move (channel_name),
+                                  std::move (topic),
+                                  std::move (packet_name),
+                                  services,
+                                  serializers,
+                                  handlers,
+                                  message);
+  if (!result) {
+    return result_t<void>::failure (
+      result.error_kind (),
+      result.error () ? result.error ()->what () : "channel dispatch failed");
+  }
+  return result_t<void>::success ();
+}
+
+result_t<std::uint64_t>
+channel_runtime_t::reserve_outbound_request (std::string channel_name)
+{
+  if (_state->shutdown) {
+    return result_t<std::uint64_t>::failure (
+      framework_error_kind_t::shutdown,
+      "channel runtime is shutting down");
+  }
+  if (_state->closed) {
+    return result_t<std::uint64_t>::failure (
+      framework_error_kind_t::closed,
+      "channel runtime is closed");
+  }
+  const auto *client = client_capability (*_state, channel_name);
+  if (!has_connection (client)) {
+    return result_t<std::uint64_t>::failure (
+      framework_error_kind_t::disconnected,
+      "channel client is not connected");
+  }
+  if (_state->pending >= _state->max_pending) {
+    return result_t<std::uint64_t>::failure (
+      framework_error_kind_t::request_rejected,
+      "channel pending queue is full");
+  }
+
+  const auto request_seq = _state->next_request_seq++;
+  _state->pending_request_channels.emplace (request_seq,
+                                            std::move (channel_name));
+  ++_state->pending;
+  return result_t<std::uint64_t>::success (request_seq);
+}
+
+result_t<std::uint64_t>
+channel_runtime_t::queue_pending_send (std::string channel_name,
+                                       std::string idempotency_key)
+{
+  if (_state->shutdown) {
+    return result_t<std::uint64_t>::failure (
+      framework_error_kind_t::shutdown,
+      "channel runtime is shutting down");
+  }
+  if (_state->closed) {
+    return result_t<std::uint64_t>::failure (
+      framework_error_kind_t::closed,
+      "channel runtime is closed");
+  }
+  if (_state->pending >= _state->max_pending) {
+    return result_t<std::uint64_t>::failure (
+      framework_error_kind_t::request_rejected,
+      "channel pending queue is full");
+  }
+  const auto operation_id = _state->next_request_seq++;
+  _state->pending_operations.emplace (
+    operation_id,
+    channel_reliability_event_t {
+      std::move (channel_name),
+      std::move (idempotency_key),
+      framework_error_kind_t::timeout,
+      "pending operation timed out" });
+  ++_state->pending;
+  return result_t<std::uint64_t>::success (operation_id);
+}
+
+result_t<void>
+channel_runtime_t::complete_outbound_reply (std::uint64_t request_seq)
+{
+  const auto found = _state->pending_request_channels.find (request_seq);
+  if (found == _state->pending_request_channels.end ()) {
+    return result_t<void>::failure (
+      framework_error_kind_t::request_protocol_error,
+      "reply does not match a pending outbound request");
+  }
+  _state->pending_request_channels.erase (found);
+  --_state->pending;
+  return result_t<void>::success ();
+}
+
+result_t<void>
+channel_runtime_t::mark_send_ready (std::uint64_t operation_id)
+{
+  const auto found = _state->pending_operations.find (operation_id);
+  if (found == _state->pending_operations.end ()) {
+    return result_t<void>::failure (
+      framework_error_kind_t::request_protocol_error,
+      "send-ready does not match a pending operation");
+  }
+  _state->pending_operations.erase (found);
+  --_state->pending;
+  return result_t<void>::success ();
+}
+
+result_t<void>
+channel_runtime_t::expire_pending (std::uint64_t operation_id)
+{
+  const auto found = _state->pending_operations.find (operation_id);
+  if (found == _state->pending_operations.end ()) {
+    return result_t<void>::failure (
+      framework_error_kind_t::request_protocol_error,
+      "timeout does not match a pending operation");
+  }
+  auto event = found->second;
+  _state->pending_operations.erase (found);
+  --_state->pending;
+  if (_state->dead_letter_hook) {
+    _state->dead_letter_hook (event);
+  }
+  return result_t<void>::failure (framework_error_kind_t::timeout,
+                                  "pending operation timed out");
+}
+
+result_t<void>
+channel_runtime_t::retry_pending (std::uint64_t operation_id)
+{
+  const auto found = _state->pending_operations.find (operation_id);
+  if (found == _state->pending_operations.end ()) {
+    return result_t<void>::failure (
+      framework_error_kind_t::request_protocol_error,
+      "retry does not match a pending operation");
+  }
+  if (_state->retry_hook) {
+    _state->retry_hook (found->second);
+  }
+  return result_t<void>::success ();
+}
+
+void
+channel_runtime_t::close () noexcept
+{
+  _state->closed = true;
+  drain ();
+}
+
+void
+channel_runtime_t::shutdown () noexcept
+{
+  _state->shutdown = true;
+  drain ();
+}
+
+std::size_t
+channel_runtime_t::pending_count () const noexcept
+{
+  return _state->pending;
+}
+
+std::size_t
+channel_runtime_t::pending_limit () const noexcept
+{
+  return _state->max_pending;
+}
+
+void
+channel_runtime_t::drain () noexcept
+{
+  _state->pending_request_channels.clear ();
+  _state->pending_operations.clear ();
+  _state->pending = 0;
+}
+
+channel_runtime_t
+channel_runtime_t::from (const message_bus_t &bus)
+{
+  return channel_runtime_t (bus._state);
+}
+
+} // namespace zlink::framework::detail
+
+namespace zlink::framework
+{
+
+capability_builder_t::capability_builder_t ()
+  : _state (std::make_shared<detail::capability_builder_state_t> ())
+{
+}
+
+capability_builder_t::capability_builder_t (
+  std::shared_ptr<detail::capability_builder_state_t> state)
+  : _state (std::move (state))
+{
+}
+
+capability_builder_t::~capability_builder_t () = default;
+
+capability_builder_t::capability_builder_t (capability_builder_t &&) noexcept =
+  default;
+
+capability_builder_t &capability_builder_t::operator= (
+  capability_builder_t &&) noexcept = default;
+
+capability_builder_t &
+capability_builder_t::bind (std::string endpoint)
+{
+  detail::ensure_manual_allowed (_state->snapshot);
+  _state->snapshot.enabled = true;
+  _state->snapshot.bind_endpoints.push_back (std::move (endpoint));
+  return *this;
+}
+
+capability_builder_t &
+capability_builder_t::connect (std::string endpoint)
+{
+  detail::ensure_manual_allowed (_state->snapshot);
+  _state->snapshot.enabled = true;
+  _state->snapshot.connect_endpoints.push_back (std::move (endpoint));
+  return *this;
+}
+
+capability_builder_t &
+capability_builder_t::use_discovery ()
+{
+  detail::ensure_discovery_allowed (_state->snapshot);
+  _state->snapshot.enabled = true;
+  _state->snapshot.discovery = true;
+  return *this;
+}
+
+channel_capability_snapshot_t
+capability_builder_t::snapshot () const
+{
+  return _state->snapshot;
+}
+
+channel_builder_t::channel_builder_t ()
+  : _state (std::make_shared<detail::channel_builder_state_t> (""))
+{
+}
+
+channel_builder_t::channel_builder_t (
+  std::shared_ptr<detail::channel_builder_state_t> state)
+  : _state (std::move (state))
+{
+}
+
+channel_builder_t::~channel_builder_t () = default;
+
+channel_builder_t::channel_builder_t (channel_builder_t &&) noexcept = default;
+
+channel_builder_t &channel_builder_t::operator= (
+  channel_builder_t &&) noexcept = default;
+
+void
+channel_builder_t::enable_capability (
+  channel_capability_snapshot_t &target,
+  const std::function<void (capability_builder_t &)> &configure)
+{
+  auto state = std::make_shared<detail::capability_builder_state_t> ();
+  state->snapshot = target;
+  state->snapshot.enabled = true;
+  capability_builder_t builder (state);
+  if (configure) {
+    configure (builder);
+  }
+  target = state->snapshot;
+}
+
+channel_builder_t &
+channel_builder_t::enable_server (
+  std::function<void (capability_builder_t &)> configure)
+{
+  enable_capability (_state->snapshot.server, configure);
+  return *this;
+}
+
+channel_builder_t &
+channel_builder_t::enable_client (
+  std::function<void (capability_builder_t &)> configure)
+{
+  enable_capability (_state->snapshot.client, configure);
+  return *this;
+}
+
+channel_builder_t &
+channel_builder_t::enable_publisher (
+  std::function<void (capability_builder_t &)> configure)
+{
+  enable_capability (_state->snapshot.publisher, configure);
+  return *this;
+}
+
+channel_builder_t &
+channel_builder_t::enable_subscriber (
+  std::function<void (capability_builder_t &)> configure)
+{
+  enable_capability (_state->snapshot.subscriber, configure);
+  return *this;
+}
+
+channel_snapshot_t
+channel_builder_t::snapshot () const
+{
+  return _state->snapshot;
+}
+
+message_bus_t::erased_request_result_t::erased_request_result_t (
+  framework_exception_t error)
+  : _error (std::move (error))
+{
+}
+
+message_bus_t::message_bus_t ()
+  : _state (std::make_shared<detail::channel_runtime_state_t> ())
+{
+}
+
+message_bus_t::message_bus_t (
+  std::shared_ptr<detail::channel_runtime_state_t> state)
+  : _state (std::move (state))
+{
+}
+
+message_bus_t::~message_bus_t () = default;
+
+message_bus_t::message_bus_t (message_bus_t &&) noexcept = default;
+
+message_bus_t &message_bus_t::operator= (message_bus_t &&) noexcept = default;
+
+std::size_t
+message_bus_t::pending_count () const noexcept
+{
+  return _state->pending;
+}
+
+std::size_t
+message_bus_t::pending_limit () const noexcept
+{
+  return _state->max_pending;
+}
+
+message_bus_t::erased_request_result_t
+message_bus_t::submit_request (std::string channel_name)
+{
+  detail::channel_runtime_t runtime (_state);
+  auto reservation = runtime.reserve_outbound_request (channel_name);
+  if (!reservation) {
+    return erased_request_result_t (framework_exception_t (
+      reservation.error_kind (),
+      reservation.error () ? reservation.error ()->what ()
+                           : "channel request failed"));
+  }
+  runtime.drain ();
+  return erased_request_result_t (framework_exception_t (
+    framework_error_kind_t::timeout,
+    "request reply was not completed by the local test runtime"));
+}
+
+result_t<void>
+message_bus_t::submit_send (std::string channel_name)
+{
+  const auto *client = detail::client_capability (*_state, channel_name);
+  if (!detail::has_connection (client)) {
+    return result_t<void>::failure (
+      framework_error_kind_t::disconnected,
+      "channel client is not connected");
+  }
+  return result_t<void>::success ();
+}
+
+result_t<void>
+message_bus_t::submit_publish (std::string channel_name, std::string topic)
+{
+  (void) topic;
+  const auto *publisher = detail::publisher_capability (*_state, channel_name);
+  if (!detail::has_connection (publisher)) {
+    return result_t<void>::failure (
+      framework_error_kind_t::disconnected,
+      "channel publisher is not connected");
+  }
+  return result_t<void>::success ();
+}
+
+request_client_t::request_client_t (message_bus_t bus, std::string channel_name)
+  : _bus (std::move (bus)), _channel_name (std::move (channel_name))
+{
+}
+
+publisher_t::publisher_t (message_bus_t bus) : _bus (std::move (bus)) {}
+
+zlink_builder_t::zlink_builder_t ()
+  : _state (std::make_shared<detail::zlink_builder_state_t> ())
+{
+}
+
+zlink_builder_t::~zlink_builder_t () = default;
+
+zlink_builder_t::zlink_builder_t (zlink_builder_t &&) noexcept = default;
+
+zlink_builder_t &zlink_builder_t::operator= (
+  zlink_builder_t &&) noexcept = default;
+
+zlink_builder_t &
+zlink_builder_t::node (std::string node_name)
+{
+  _state->node_name = std::move (node_name);
+  return *this;
+}
+
+zlink_builder_t &
+zlink_builder_t::max_pending (std::size_t count)
+{
+  _state->runtime->max_pending = count;
+  return *this;
+}
+
+zlink_builder_t &
+zlink_builder_t::on_retry (retry_hook_t hook)
+{
+  _state->runtime->retry_hook = std::move (hook);
+  return *this;
+}
+
+zlink_builder_t &
+zlink_builder_t::on_dead_letter (dead_letter_hook_t hook)
+{
+  _state->runtime->dead_letter_hook = std::move (hook);
+  return *this;
+}
+
+zlink_builder_t &
+zlink_builder_t::channel (std::string channel_name,
+                          std::function<void (channel_builder_t &)> configure)
+{
+  auto state = std::make_shared<detail::channel_builder_state_t> (
+    std::move (channel_name));
+  channel_builder_t builder (state);
+  if (configure) {
+    configure (builder);
+  }
+  _state->runtime->channels[state->snapshot.name] = state->snapshot;
+  return *this;
+}
+
+std::vector<channel_snapshot_t>
+zlink_builder_t::channels () const
+{
+  std::vector<channel_snapshot_t> result;
+  result.reserve (_state->runtime->channels.size ());
+  for (const auto &[_, snapshot] : _state->runtime->channels) {
+    result.push_back (snapshot);
+  }
+  return result;
+}
+
+message_bus_t
+zlink_builder_t::message_bus () const
+{
+  return message_bus_t (_state->runtime);
+}
+
+request_client_t
+zlink_builder_t::request_client (std::string channel_name) const
+{
+  return request_client_t (message_bus (), std::move (channel_name));
+}
+
+publisher_t
+zlink_builder_t::publisher () const
+{
+  return publisher_t (message_bus ());
+}
+
+} // namespace zlink::framework

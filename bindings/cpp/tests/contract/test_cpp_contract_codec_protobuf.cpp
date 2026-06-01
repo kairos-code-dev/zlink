@@ -9,10 +9,13 @@ int main ()
 {
     google::protobuf::StringValue value;
     value.set_value ("ok");
-    zlink::message_t message = zlink::codec::protobuf::encode (value);
+    zlink::message_t message = zlink::message_t::from_protobuf (value);
     assert (message.valid ());
     const google::protobuf::StringValue decoded =
-      zlink::codec::protobuf::decode<google::protobuf::StringValue> (message);
+      message.parse_protobuf<google::protobuf::StringValue> ();
     assert (decoded.value () == "ok");
+    const google::protobuf::StringValue shim_decoded =
+      zlink::codec::protobuf::decode<google::protobuf::StringValue> (message);
+    assert (shim_decoded.value () == "ok");
     return 0;
 }

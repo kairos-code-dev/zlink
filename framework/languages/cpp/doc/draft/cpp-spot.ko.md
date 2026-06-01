@@ -12,6 +12,18 @@
 > 현재 공개 계약이 아니며, `C++` host/runtime에서 `SPOT`을 어떤 표면으로 통합할지
 > 정리한다.
 
+## 인터페이스 경계
+
+SPOT public contract는 `contracts/spots/*`가 소유한다. public 표면에는
+`spot_node_builder_t`, `spot_context_t`, `SpotRid`, `NodeRid`, packet registry view,
+Entry Spot과 actor factory 등록 계약만 둔다. Spot activation table, native dispatch
+router, subscription pump, routed relay packet dispatcher, discovery reconciler는
+`src/runtime/spots/*`와 관련 runtime 영역에 둔다.
+
+직접 `rid`를 사용하는 public API는 spot-to-spot 메시징과 Entry Spot join 같은 actor
+lifecycle 경로에 제한한다. 일반 handler와 client는 channel name, topic, typed payload를
+먼저 사용한다.
+
 ## 1. 방향
 
 `SPOT`은 lightweight distributed endpoint다. actor와 비슷하지만 네트워크, 라우팅,
@@ -22,7 +34,6 @@
 
 - `spot_node_builder_t`
 - `spot_context_t`
-- `send_ready_context_t`
 - `timer_t`, `timer_options_t`, `timer_tick_t`
 - actor factory와 `actor_context_t`
 - `module_t` 또는 DI 기반 spot owner 등록
@@ -164,16 +175,13 @@ current Spot 밖에서 target Spot으로 직접 send/request 하는 public clien
 
 ## 6. Backpressure
 
-SPOT send path는 send-ready callback과 pending queue를 통해 backpressure를 드러낸다.
+SPOT send path의 send-ready callback과 pending queue는 runtime 내부 구현이다. public
+표면은 call object, timeout, result error kind로 backpressure를 보여 준다. application
+handler가 pending queue를 직접 resume하거나 poller readiness를 직접 다루는 API는 두지
+않는다.
 
-```cpp
-context.on_send_ready([](zlink::framework::send_ready_context_t &ready) {
-    ready.resume_pending();
-});
-```
-
-기본 정책은 무한 queue가 아니다. queue 상한, submit timeout, overflow 정책은
-framework runtime 설정으로 닫는다.
+기본 정책은 무한 queue가 아니다. queue 상한, submit timeout, overflow 정책은 framework
+runtime 설정으로 닫고, 한도 초과는 `request_rejected` 같은 실패 result로 돌려준다.
 
 ## 7. 중요한 규칙
 

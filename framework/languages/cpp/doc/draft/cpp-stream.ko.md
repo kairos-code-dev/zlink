@@ -12,6 +12,17 @@
 > 현재 공개 계약이 아니며, `C++` runtime에서 `STREAM`을 어떤 표면으로 올릴지
 > 정리한다.
 
+## 인터페이스 경계
+
+STREAM public contract는 `contracts/streams/*`가 소유한다. public 표면에는
+`stream_builder_t`, session contract, packet handler, bound session, stream call object,
+metadata와 error model을 둔다. stream socket owner, frame codec, session table, request
+tracker, session serial executor, transport loop는 `src/runtime/streams/*`에 둔다.
+
+STREAM public API는 raw byte stream이 아니라 framework Header 기반 packet 모델이다.
+Header parsing과 backpressure 처리는 runtime 책임이며, application handler는 이미 정리된
+packet, metadata, typed payload만 다룬다.
+
 ## 1. 방향
 
 framework core에서 `STREAM`은 packet 방식만 지원한다. 그중에서도 Header는 framework가

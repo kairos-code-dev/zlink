@@ -12,6 +12,17 @@
 > 현재 공개 계약이 아니며, stage 같은 상위 모델을 `SPOT` 위에 감쌀 때 필요한
 > 조건을 정리한다.
 
+## 인터페이스 경계
+
+stage wrapper는 framework core contract가 아니라 SPOT 위에 올릴 수 있는 상위 패턴이다.
+wrapper public 표면은 `SpotRid`, `NodeRid`, packet registry view, timer option,
+outbound channel client, domain state와 method처럼 application이 직접 다루는 개념만
+가진다. Spot activation state, timer token, outbound transport, packet dispatcher는
+framework runtime 구현에 남긴다.
+
+wrapper가 편의를 위해 SPOT 기능을 감싸더라도 내부 runtime 타입을 public 멤버로 노출하면
+안 된다. 필요한 기능은 wrapper option과 method로 다시 표현한다.
+
 `C++`에서는 stage wrapper가 특히 중요하다.
 
 - 현재 `SpotRid`, `NodeRid` 노출

@@ -17,6 +17,8 @@ set(
 find_package(Protobuf REQUIRED)
 
 add_library(zlink-codec-protobuf INTERFACE)
+add_library(zlink_cpp_codec_protobuf ALIAS zlink-codec-protobuf)
+add_library(zlink::cpp_codec_protobuf ALIAS zlink-codec-protobuf)
 target_compile_features(zlink-codec-protobuf INTERFACE cxx_std_20)
 
 target_link_libraries(zlink-codec-protobuf INTERFACE zlink_cpp)

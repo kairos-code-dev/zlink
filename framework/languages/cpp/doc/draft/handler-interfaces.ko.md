@@ -205,6 +205,10 @@ Session actor relay는 application route mesh channel을 쓰지 않는다. STREA
 
 - `C++` framework 문서는 공통 framework 정책과 C++ binding public spec을 함께 따른다.
 - 구현 전 설계는 이 디렉토리의 draft 문서에만 둔다.
+- handler public contract는 `contracts/handlers/*`가 소유하고, handler descriptor map,
+  DI resolve, serializer 호출 순서, dispatch lookup 구현은 `src/runtime/handlers/*`에 둔다.
+- handler template 코드는 handler shape 검사와 type-erased runtime 호출로 제한한다.
+  pending queue, recv loop, monitoring event 생성 구현을 `contracts/detail/*`에 넣지 않는다.
 - public surface는 native socket, poller, callback userdata를 직접 노출하지 않는다.
 - 같은 capability는 자동 연결과 수동 연결 중 하나만 선택한다.
 - 일반 channel messaging의 handler dispatch는 local server capability ingress 기준이다.

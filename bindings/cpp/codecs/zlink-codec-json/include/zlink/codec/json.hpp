@@ -12,7 +12,7 @@ namespace zlink::codec::json
 {
 
 template<typename T>
-T decode (const message_t &msg)
+T parse_message (const message_t &msg)
 {
     const auto *begin = reinterpret_cast<const char *> (msg.data ());
     const auto *end = begin ? begin + msg.size () : begin;
@@ -20,7 +20,7 @@ T decode (const message_t &msg)
 }
 
 template<typename T>
-message_t encode (const T &value)
+message_t make_message (const T &value)
 {
     const auto json = nlohmann::json (value);
     const auto text = json.dump ();
@@ -29,17 +29,48 @@ message_t encode (const T &value)
 }
 
 template<typename T>
+T decode (const message_t &msg)
+{
+    return msg.template parse_json<T> ();
+}
+
+template<typename T>
+message_t encode (const T &value)
+{
+    return message_t::from_json (value);
+}
+
+template<typename T>
 T parse (const message_t &msg)
 {
-    return decode<T> (msg);
+    return msg.template parse_json<T> ();
 }
 
 template<typename T>
 message_t to_message (const T &value)
 {
-    return encode (value);
+    return message_t::from_json (value);
 }
 
 } // namespace zlink::codec::json
+
+namespace zlink
+{
+
+template<typename T>
+message_t
+message_t::from_json (const T &value_)
+{
+    return codec::json::make_message (value_);
+}
+
+template<typename T>
+T
+message_t::parse_json () const
+{
+    return codec::json::parse_message<T> (*this);
+}
+
+} // namespace zlink
 
 #endif

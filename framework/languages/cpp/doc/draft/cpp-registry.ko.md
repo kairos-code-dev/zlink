@@ -12,6 +12,16 @@
 > 현재 공개 계약이 아니며, `C++` runtime에서 Registry를 어떤 표면으로 통합할지
 > 정리한다.
 
+## 인터페이스 경계
+
+Registry public contract는 `contracts/registry/*`가 소유한다. embedded registry option,
+topology query model, registry query client 표면은 public contract가 될 수 있다. backend
+discovery factory, route resolver cache, registry payload codec, query transport owner는
+`src/runtime/registry/*`에 둔다.
+
+Registry는 운영 점검과 route lookup 보조 기능이다. 일반 request hot path가 registry
+runtime 구현 타입이나 backend query state에 의존하도록 public API를 만들지 않는다.
+
 ## 1. 방향
 
 `C++` host는 아래 registry 표면을 가져야 한다.

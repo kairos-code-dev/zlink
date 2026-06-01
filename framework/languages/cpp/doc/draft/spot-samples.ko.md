@@ -58,10 +58,6 @@ public:
 
     void initialize()
     {
-        context_.on_send_ready([](auto &ready) {
-            ready.resume_pending();
-        });
-
         timer_ = context_.add_timer<stage_tick_handler_t>(
           "stage-tick",
           std::chrono::milliseconds(16),

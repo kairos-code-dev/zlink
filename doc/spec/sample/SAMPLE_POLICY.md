@@ -5,10 +5,15 @@
 - 샘플은 문서이자 실행 가능한 검증 수단이어야 한다.
 - 샘플은 사용자 onboarding, 언어 간 비교, public contract 설명을 위한 정답
   세트다.
+- 샘플은 가이드 문서 코드의 **단일 출처**다. 가이드의 코드 예제(특히 7언어 탭
+  문서)는 샘플의 실제 API·흐름을 따른다 (Documentation Source Rules).
+- 같은 샘플은 모든 언어에서 같은 시나리오·식별자·값·순서를 쓴다
+  (Cross-Language Uniformity Rules). 표현만 언어 관용을 따른다.
 
 ## 적용 범위
 - `core/samples/`
-- `bindings/<언어>/samples/`
+- `bindings/<언어>/samples/` (네이티브 바인딩: C, C++, C#/.NET, Java, Node, Python, Go, Rust)
+- `bindings/kotlin/samples/`, `bindings/javascript/samples/` (런타임 공유 언어)
 - 샘플 실행 스크립트
 - 샘플 전용 helper
 
@@ -235,6 +240,25 @@
   `zlink_spot_node_actor_recv_part()`를 기준으로 작성한다.
 - Actor active route 조회가 필요하면 `zlink_discovery_resolve_actor()`를 사용한다.
   generic route lookup을 Actor 주소 조회 sample에 쓰지 않는다.
+
+## Actor Sample Scenario Rules
+- Actor 샘플은 단순 send/recv가 아니라 시나리오 시퀀스를 보인다. 각 샘플은 아래
+  고정 시나리오를 모든 언어에서 같은 순서·같은 식별자로 따른다.
+- `actor_room_server_sample`:
+  - actor id `"room-player-1"` 가 user Spot에 `"enter-room"` 으로 join 한다.
+  - STREAM session에서 `"move:north"` payload가 bound actor로 전달된다.
+  - Spot dispatch의 `ACTOR_READABLE` subject로 그 payload를 drain해 확인한다.
+- `actor_gateway_relay_sample`:
+  - actor id `"play-session-actor"` 가 gateway STREAM session의 part를 remote
+    Actor로 relay하는 흐름을 보인다.
+- `actor_single_player_queue_sample`:
+  - actor id `"single-player"` 가 첫 user Spot에 `"join-first"` 로 join한다.
+  - actor가 leave한 사이 도착한 메시지(`"before"`, `"between"`)가 유실되지 않고
+    큐잉된다.
+  - actor가 `"join-second"` 로 rejoin하면 큐된 메시지를 도착 순서대로 수신한다.
+  - 이 샘플의 의미는 **재접속 이전성**(actor가 세션 위치와 무관하게 같은 엔티티로
+    이어지고, 그 사이 메시지가 보존됨)이다.
+- 세 샘플 모두 actor가 socket이나 endpoint를 직접 소유한다고 설명하지 않는다.
 
 ## Sample Transport Rules
 - 샘플의 endpoint는 `tcp://127.0.0.1:<port>` 를 기본으로 사용한다.
@@ -630,9 +654,14 @@
 | pubsub | one-way | `"prices"` | `"101.25"` |
 | spot-recv | composite | `"room:lobby"` | service id: `"sample"`, publish: `"hello-spot"`, send: `"hello-spot-send"`, timer: `"tick-1"` |
 | spot-request | async request | — | service id: `"sample"`, request: `"spot-ping"`, reply: `"spot-pong"` |
-| actor-room-server | dispatch | `"room:lobby"` | actor id: `"player-1"`, payload: `"move"` |
-| actor-gateway-relay | stream relay | — | actor id: `"remote-player"`, payload: `"relay"` |
-| actor-single-player-queue | queue order | — | actor id: `"solo-player"`, payload sequence: `"one"`, `"two"` |
+| actor-room-server | dispatch | — | actor id: `"room-player-1"`, join: `"enter-room"`, stream payload: `"move:north"` |
+| actor-gateway-relay | stream relay | — | actor id: `"play-session-actor"`, relay payload: `"relay"` |
+| actor-single-player-queue | queue order | — | actor id: `"single-player"`, join 시퀀스: `"join-first"` → leave → 큐잉 `"before"`/`"between"` → rejoin `"join-second"` → 수신 |
+
+> Actor 샘플은 단순 send/recv가 아니라 **시나리오 시퀀스**(join → 처리 → leave/relay/queue)를
+> 보인다. 위 값은 그 시퀀스의 고정 식별자·payload이며, 언어가 달라도 같은 값과
+> 같은 순서를 따른다. 자세한 시나리오 의미는 [Actor Sample Scenario
+> Rules](#actor-sample-scenario-rules)를 본다.
 | monitor | event plane | — | recv: `"connection-ready"` |
 | discovery-registry | service plane | — | service id: `"sample"`, state: `discovered`, remove: `removed` |
 | registry-query | service plane | — | service id: `"sample"`, snapshot: `found` |
@@ -696,6 +725,61 @@
   - `bindings/<언어>/samples/run_samples.ps1`
   - language-specific task runner entry
 
+## Runtime-Shared Language Sample Rules
+- 일부 언어는 새 네이티브 바인딩 없이 기존 바인딩의 런타임·패키지를 그대로 쓴다.
+  이를 **런타임 공유 언어**로 부른다.
+  - **Kotlin** — JVM 런타임. 기존 java 바인딩(`systems.zlink.*`)을 그대로 import.
+  - **JavaScript** — Node 런타임. 기존 node 바인딩(`@zlink-systems/zlink`)을 require.
+- 런타임 공유 언어 샘플은 **별도 디렉토리**에 둔다.
+  - `bindings/kotlin/samples/`, `bindings/javascript/samples/`.
+  - 네이티브 바인딩 소스(`src/`)는 만들지 않는다. 샘플 빌드·실행에 필요한 최소
+    설정(kotlin `build.gradle`, javascript 러너)만 둔다.
+- 런타임 공유 언어 샘플도 canonical sample 세트와 Cross-Language Uniformity
+  Rules를 **그대로 따른다**. 즉 같은 시나리오·식별자·payload·순서·출력을 쓴다.
+- 코드 표현만 언어 관용을 따른다(Kotlin coroutine·null-safety, JavaScript
+  no-types 등). 값과 흐름은 통일한다.
+- 런타임 공유 언어가 canonical 샘플을 추가할 때, 그 런타임의 네이티브 바인딩
+  샘플(Kotlin↔java, JavaScript↔node)의 값·순서를 그대로 가져온다.
+
+## Cross-Language Uniformity Rules
+- 같은 canonical 샘플은 모든 언어에서 **같은 시나리오·같은 식별자·같은 순서·같은
+  출력**을 따른다. 언어별로 자유롭게 다른 값을 쓰지 않는다.
+- `Sample Message Content Rules` 표의 값과 `Canonical Sample Profiles`의 fixed
+  content가 그 단일 기준이다. 정책 값과 샘플 구현이 다르면 **샘플을 정책에
+  맞춘다**(정책이 blueprint).
+- 통일 대상에는 다음이 포함된다.
+  - actor id, service id, topic, payload, 시퀀스 순서
+  - 출력 라인 포맷(`[pattern] ... -> ...`)
+- 언어 관용에 따라 다른 것은 허용한다(코드 스타일, 에러 처리, 소유권 표현, 메시지
+  생성 팩토리 이름 등). **값과 흐름은 통일, 표현은 언어 관용.**
+- 새 언어 바인딩이 canonical 샘플을 추가할 때, 기존 언어 샘플의 값·순서를 그대로
+  가져온다. 새 값을 임의로 만들지 않는다.
+
+## Documentation Source Rules
+- 샘플은 가이드 문서 코드의 **단일 출처**다. 가이드(`doc/guide/`)의 코드 예제는
+  샘플과 1:1로 대응하며, 손으로 베껴 쓴 코드가 샘플 API와 어긋나면 안 된다.
+- 7언어 코드 탭 문서(예: actor 가이드)의 각 탭은 그 언어 canonical 샘플의 실제
+  흐름을 따른다. 샘플에 없는 API를 문서가 지어내면 안 된다.
+- 문서가 샘플 코드를 인용할 때, 테스트성 동기화·검증 코드(assert, channel,
+  mutex, 고정 timeout 등)는 가독성을 위해 생략할 수 있으나, **핵심 메시징 API
+  호출과 그 순서는 샘플과 같아야** 한다.
+- 자세한 문서 측 규칙은 [문서화 원칙](../../principal/documentation/documentation-principles.ko.md)을
+  본다.
+
+## Snippet Extraction Rules (Recommended)
+- 가이드 탭 문서로 자동 추출할 핵심 흐름을 샘플에 표시하려면, 명명된 스니펫
+  영역을 둔다.
+  - 형식: `region guide:<snippet-name>` 시작, `endregion guide:<snippet-name>` 종료
+    (언어별 주석 문법으로).
+  - 예: C#은 `// #region guide:actor-create` / `// #endregion`, Rust는
+    `// region guide:actor-create` / `// endregion`.
+- 스니펫 이름은 모든 언어에서 같은 흐름에 같은 이름을 쓴다(예: `actor-create`,
+  `actor-join`, `actor-recv`, `actor-leave`).
+- 스니펫 영역 안의 코드는 그 자체로 핵심 메시징 흐름이어야 하며, 테스트 동기화
+  코드는 영역 밖에 둔다.
+- 이 규칙은 현재 `Recommended`다. 도입 전까지는 `Documentation Source Rules`의
+  1:1 대응으로 정합성을 유지한다.
+
 ## Sample Verification Requirements
 - 새 canonical sample 추가 시 다음을 같이 확인해야 한다.
   - 개별 샘플 단독 실행 성공
@@ -711,4 +795,10 @@
   - 핵심 로직이 helper 뒤에 숨지 않았는가
   - 실제 메시징을 하고 결과를 확인하는가
   - 전체 샘플 실행 스크립트에 포함되어 있는가
+  - **모든 언어가 같은 시나리오·식별자·payload·순서·출력을 쓰는가** (Cross-Language
+    Uniformity)
+  - actor 샘플이 [Actor Sample Scenario Rules](#actor-sample-scenario-rules)의
+    고정 시나리오를 따르는가
+  - 가이드 문서가 인용하는 코드가 이 샘플의 실제 API와 1:1로 일치하는가
+    (Documentation Source)
   - 불필요한 `lock` 기반 대기를 사용하지 않았는가

@@ -5,6 +5,7 @@
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
 #include <Runtime/Service/request_submitter.hpp>
+#include <Runtime/Service/spot_state.hpp>
 
 namespace zlink
 {
@@ -103,7 +104,10 @@ bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
 
 } // namespace
 
-request_submit_operation_t::~request_submit_operation_t () = default;
+request_submit_operation_t::~request_submit_operation_t ()
+{
+    detail::release_state (std::move (_state));
+}
 request_submit_operation_t::request_submit_operation_t (
   request_submit_operation_t &&) noexcept = default;
 request_submit_operation_t &request_submit_operation_t::operator= (
@@ -113,6 +117,12 @@ request_submit_operation_t::request_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
     _state (
       std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
+{
+}
+
+request_submit_operation_t::request_submit_operation_t (
+  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
+    _state (std::move (state_ptr_))
 {
 }
 
@@ -141,7 +151,10 @@ request_submit_operation_t::timeout (std::chrono::milliseconds timeout_) &&
     return std::move (*this);
 }
 
-request_operation_t::~request_operation_t () = default;
+request_operation_t::~request_operation_t ()
+{
+    detail::release_state (std::move (_state));
+}
 request_operation_t::request_operation_t (request_operation_t &&) noexcept =
   default;
 request_operation_t &
@@ -151,6 +164,12 @@ request_operation_t::request_operation_t (
   detail::spot_operation_state_t &&state_) :
     _state (
       std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
+{
+}
+
+request_operation_t::request_operation_t (
+  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
+    _state (std::move (state_ptr_))
 {
 }
 
@@ -168,11 +187,13 @@ request_operation_t::state () const noexcept
 request_submit_operation_t request_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
-    return request_submit_operation_t (std::move (state ()));
+    return request_submit_operation_t (std::move (_state));
 }
 
-request_callback_submit_operation_t::~request_callback_submit_operation_t () =
-  default;
+request_callback_submit_operation_t::~request_callback_submit_operation_t ()
+{
+    detail::release_state (std::move (_state));
+}
 request_callback_submit_operation_t::request_callback_submit_operation_t (
   request_callback_submit_operation_t &&) noexcept = default;
 request_callback_submit_operation_t &
@@ -183,6 +204,12 @@ request_callback_submit_operation_t::request_callback_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
     _state (
       std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
+{
+}
+
+request_callback_submit_operation_t::request_callback_submit_operation_t (
+  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
+    _state (std::move (state_ptr_))
 {
 }
 
@@ -223,9 +250,8 @@ request_callback_submit_operation_t::flags (int flags_) &&
 request_callback_submit_operation_t
 request_submit_operation_t::flags (int flags_) &&
 {
-    auto &state = this->state ();
-    state.flags = send_flags_t (flags_);
-    return request_callback_submit_operation_t (std::move (state));
+    state ().flags = send_flags_t (flags_);
+    return request_callback_submit_operation_t (std::move (_state));
 }
 
 async_result_t<std::vector<message_t> >
@@ -264,8 +290,7 @@ request_submit_operation_t::submit_async () &&
 
 bool request_submit_operation_t::submit (request_callback_t callback_) &&
 {
-    auto &state = this->state ();
-    request_callback_submit_operation_t ready (std::move (state));
+    request_callback_submit_operation_t ready (std::move (_state));
     return std::move (ready).submit (std::move (callback_));
 }
 

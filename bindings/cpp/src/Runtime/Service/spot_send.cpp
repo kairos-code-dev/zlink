@@ -222,23 +222,23 @@ bool spot_t::send_to_spot (const routing_id_t &dest_node_rid_,
 send_operation_t spot_t::send_to_spot (const routing_id_t &dest_node_rid_,
                                        const routing_id_t &dest_spot_rid_)
 {
-    detail::spot_operation_state_t state;
-    state.spot = this;
-    state.kind = detail::spot_operation_kind_t::send_to_spot;
-    state.first_rid = dest_node_rid_;
-    state.second_rid = dest_spot_rid_;
-    return send_operation_t (std::move (state));
+    auto state_ptr = detail::acquire_state ();
+    state_ptr->spot = this;
+    state_ptr->kind = detail::spot_operation_kind_t::send_to_spot;
+    state_ptr->first_rid = dest_node_rid_;
+    state_ptr->second_rid = dest_spot_rid_;
+    return send_operation_t (std::move (state_ptr));
 }
 
 request_operation_t spot_t::request_to_spot (const routing_id_t &dest_node_rid_,
                                              const routing_id_t &dest_spot_rid_)
 {
-    detail::spot_operation_state_t state;
-    state.spot = this;
-    state.kind = detail::spot_operation_kind_t::request_to_spot;
-    state.first_rid = dest_node_rid_;
-    state.second_rid = dest_spot_rid_;
-    return request_operation_t (std::move (state));
+    auto state_ptr = detail::acquire_state ();
+    state_ptr->spot = this;
+    state_ptr->kind = detail::spot_operation_kind_t::request_to_spot;
+    state_ptr->first_rid = dest_node_rid_;
+    state_ptr->second_rid = dest_spot_rid_;
+    return request_operation_t (std::move (state_ptr));
 }
 
 async_result_t<std::vector<message_t> >
@@ -333,11 +333,11 @@ bool spot_t::request_to_spot (
 
 request_operation_t spot_t::request_to_router (const routing_id_t &peer_rid_)
 {
-    detail::spot_operation_state_t state;
-    state.spot = this;
-    state.kind = detail::spot_operation_kind_t::request_to_router;
-    state.first_rid = peer_rid_;
-    return request_operation_t (std::move (state));
+    auto state_ptr = detail::acquire_state ();
+    state_ptr->spot = this;
+    state_ptr->kind = detail::spot_operation_kind_t::request_to_router;
+    state_ptr->first_rid = peer_rid_;
+    return request_operation_t (std::move (state_ptr));
 }
 
 async_result_t<std::vector<message_t> >

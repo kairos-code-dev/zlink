@@ -745,11 +745,11 @@ spot_node_t::remote_actor_get_ref (const routing_id_t &target_node_rid_,
 
 send_operation_t spot_node_t::send_bound_session_msg (const actor_ref_t &actor_)
 {
-    detail::spot_operation_state_t state;
-    state.kind = detail::spot_operation_kind_t::bound_session_send;
-    state.node = this;
-    state.actor = actor_;
-    return send_operation_t (std::move (state));
+    auto state_ptr = detail::acquire_state ();
+    state_ptr->kind = detail::spot_operation_kind_t::bound_session_send;
+    state_ptr->node = this;
+    state_ptr->actor = actor_;
+    return send_operation_t (std::move (state_ptr));
 }
 
 } // namespace service

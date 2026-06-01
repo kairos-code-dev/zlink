@@ -19,18 +19,18 @@ dealer_socket_t::dealer_socket_t (context_t &ctx_)
 
 service::send_operation_t dealer_socket_t::send ()
 {
-    service::detail::spot_operation_state_t state;
-    state.kind = service::detail::spot_operation_kind_t::raw_send;
-    state.raw_socket = detail::native_handle (*this);
-    return service::send_operation_t (std::move (state));
+    auto state_ptr = service::detail::acquire_state ();
+    state_ptr->kind = service::detail::spot_operation_kind_t::raw_send;
+    state_ptr->raw_socket = detail::native_handle (*this);
+    return service::send_operation_t (std::move (state_ptr));
 }
 
 service::request_operation_t dealer_socket_t::request ()
 {
-    service::detail::spot_operation_state_t state;
-    state.kind = service::detail::spot_operation_kind_t::raw_request;
-    state.raw_socket = detail::native_handle (*this);
-    return service::request_operation_t (std::move (state));
+    auto state_ptr = service::detail::acquire_state ();
+    state_ptr->kind = service::detail::spot_operation_kind_t::raw_request;
+    state_ptr->raw_socket = detail::native_handle (*this);
+    return service::request_operation_t (std::move (state_ptr));
 }
 
 int dealer_socket_t::recv (received_t &out_, recv_flags_t flags_)

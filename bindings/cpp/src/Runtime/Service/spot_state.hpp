@@ -2,6 +2,9 @@
 #ifndef ZLINK_CPP_SERVICES_SPOT_STATE_HPP_INCLUDED
 #define ZLINK_CPP_SERVICES_SPOT_STATE_HPP_INCLUDED
 
+#include <memory>
+#include <vector>
+
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/Contracts/Messaging/received.hpp>
@@ -201,6 +204,72 @@ inline void restore_send_parts_to_state (spot_operation_state_t &state_,
     }
     state_.parts = std::move (parts_);
 }
+
+// Thread-local pool of spot_operation_state_t to avoid per-send heap alloc.
+// Each send/request/reply chain acquires one pooled state at the entry factory
+// and returns it on submit success. The pool keeps string/vector capacity so
+// repeated PAIR/DEALER/PUBSUB sends with empty topic or short topic do not
+// trigger malloc/free per call. The reset_for_reuse routine zeros borrowed
+// pointers and clears containers in place (no realloc when SSO holds).
+inline void reset_for_reuse (spot_operation_state_t &state_) noexcept
+{
+    state_.spot = nullptr;
+    state_.kind = spot_operation_kind_t::publish;
+    state_.topic.clear ();
+    state_.channel_name.clear ();
+    state_.first_rid.reset ();
+    state_.second_rid.reset ();
+    state_.first_rid_native_cache = zlink_routing_id_t{};
+    state_.second_rid_native_cache = zlink_routing_id_t{};
+    state_.has_first_rid_native_cache = false;
+    state_.has_second_rid_native_cache = false;
+    state_.request_seq = 0;
+    state_.single_part.reset ();
+    state_.single_part_source = nullptr;
+    state_.discard_single_part_on_backpressure = false;
+    state_.parts.clear ();
+    state_.flags = send_flags_t::none;
+    state_.timeout = std::chrono::milliseconds{};
+    state_.raw_socket = nullptr;
+    state_.received = nullptr;
+    state_.node = nullptr;
+    state_.stream = nullptr;
+    state_.actor.reset ();
+    state_.actor_id.clear ();
+}
+
+inline std::vector<std::unique_ptr<spot_operation_state_t> > &
+state_pool () noexcept
+{
+    static thread_local std::vector<std::unique_ptr<spot_operation_state_t> >
+      pool;
+    return pool;
+}
+
+inline std::unique_ptr<spot_operation_state_t> acquire_state ()
+{
+    auto &pool = state_pool ();
+    if (!pool.empty ()) {
+        auto state = std::move (pool.back ());
+        pool.pop_back ();
+        return state;
+    }
+    return std::make_unique<spot_operation_state_t> ();
+}
+
+inline void
+release_state (std::unique_ptr<spot_operation_state_t> state_ptr_) noexcept
+{
+    if (!state_ptr_)
+        return;
+    constexpr size_t k_pool_cap = 8;
+    auto &pool = state_pool ();
+    if (pool.size () >= k_pool_cap)
+        return;
+    reset_for_reuse (*state_ptr_);
+    pool.push_back (std::move (state_ptr_));
+}
+
 } // namespace detail
 
 

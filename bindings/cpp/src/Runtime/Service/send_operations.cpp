@@ -4,13 +4,17 @@
 #include <Runtime/Messaging/received_access.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
+#include <Runtime/Service/spot_state.hpp>
 
 namespace zlink
 {
 namespace service
 {
 
-send_submit_operation_t::~send_submit_operation_t () = default;
+send_submit_operation_t::~send_submit_operation_t ()
+{
+    detail::release_state (std::move (_state));
+}
 send_submit_operation_t::send_submit_operation_t (
   send_submit_operation_t &&) noexcept = default;
 send_submit_operation_t &send_submit_operation_t::operator= (
@@ -20,6 +24,12 @@ send_submit_operation_t::send_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
     _state (
       std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
+{
+}
+
+send_submit_operation_t::send_submit_operation_t (
+  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
+    _state (std::move (state_ptr_))
 {
 }
 
@@ -55,7 +65,10 @@ send_submit_operation_t &&send_submit_operation_t::flags (int flags_) &&
     return std::move (*this);
 }
 
-send_operation_t::~send_operation_t () = default;
+send_operation_t::~send_operation_t ()
+{
+    detail::release_state (std::move (_state));
+}
 send_operation_t::send_operation_t (send_operation_t &&) noexcept = default;
 send_operation_t &
 send_operation_t::operator= (send_operation_t &&) noexcept = default;
@@ -63,6 +76,12 @@ send_operation_t::operator= (send_operation_t &&) noexcept = default;
 send_operation_t::send_operation_t (detail::spot_operation_state_t &&state_) :
     _state (
       std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
+{
+}
+
+send_operation_t::send_operation_t (
+  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
+    _state (std::move (state_ptr_))
 {
 }
 
@@ -81,7 +100,7 @@ send_submit_operation_t send_operation_t::message (message_t &part_) &&
     state ().single_part_source = &part_;
     if (!detail::can_borrow_single_send_part (state ().kind))
         state ().single_part.emplace (std::move (part_));
-    return send_submit_operation_t (std::move (state ()));
+    return send_submit_operation_t (std::move (_state));
 }
 
 send_submit_operation_t send_operation_t::message (message_t &&part_) &&
@@ -89,7 +108,7 @@ send_submit_operation_t send_operation_t::message (message_t &&part_) &&
     state ().single_part.emplace (std::move (part_));
     state ().single_part_source = nullptr;
     state ().discard_single_part_on_backpressure = true;
-    return send_submit_operation_t (std::move (state ()));
+    return send_submit_operation_t (std::move (_state));
 }
 
 bool send_submit_operation_t::submit () &&

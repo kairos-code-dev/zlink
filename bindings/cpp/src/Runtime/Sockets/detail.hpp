@@ -31,7 +31,12 @@ class recv_part_out_guard_t
           _has_saved (false),
           _committed (false)
     {
-        if (_part.valid ()) {
+        // Only save+restore when the caller passes a msg that already carries
+        // a payload. A freshly-inited empty msg has no state worth preserving
+        // and the perf-critical recv loops construct an empty msg each
+        // iteration, so skipping the save eliminates an init/close pair per
+        // recv call without weakening the public contract for non-empty msgs.
+        if (_part.valid () && zlink_msg_size (native_handle (_part)) > 0) {
             move_to_native (_part, &_saved);
             _has_saved = true;
         }

@@ -5,6 +5,8 @@
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_state.hpp>
 
+// spot_state.hpp provides detail::release_state for pool reuse.
+
 namespace zlink
 {
 namespace service
@@ -43,7 +45,10 @@ void submit_raw_reply (detail::spot_operation_state_t &state_)
 
 } // namespace
 
-reply_submit_operation_t::~reply_submit_operation_t () = default;
+reply_submit_operation_t::~reply_submit_operation_t ()
+{
+    detail::release_state (std::move (_state));
+}
 reply_submit_operation_t::reply_submit_operation_t (
   reply_submit_operation_t &&) noexcept = default;
 reply_submit_operation_t &reply_submit_operation_t::operator= (
@@ -53,6 +58,12 @@ reply_submit_operation_t::reply_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
     _state (
       std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
+{
+}
+
+reply_submit_operation_t::reply_submit_operation_t (
+  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
+    _state (std::move (state_ptr_))
 {
 }
 
@@ -80,7 +91,10 @@ reply_submit_operation_t &&reply_submit_operation_t::flags (int flags_) &&
     return std::move (*this);
 }
 
-reply_operation_t::~reply_operation_t () = default;
+reply_operation_t::~reply_operation_t ()
+{
+    detail::release_state (std::move (_state));
+}
 reply_operation_t::reply_operation_t (reply_operation_t &&) noexcept = default;
 reply_operation_t &
 reply_operation_t::operator= (reply_operation_t &&) noexcept = default;
@@ -88,6 +102,12 @@ reply_operation_t::operator= (reply_operation_t &&) noexcept = default;
 reply_operation_t::reply_operation_t (detail::spot_operation_state_t &&state_) :
     _state (
       std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
+{
+}
+
+reply_operation_t::reply_operation_t (
+  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
+    _state (std::move (state_ptr_))
 {
 }
 
@@ -104,7 +124,7 @@ const detail::spot_operation_state_t &reply_operation_t::state () const noexcept
 reply_submit_operation_t reply_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
-    return reply_submit_operation_t (std::move (state ()));
+    return reply_submit_operation_t (std::move (_state));
 }
 
 void reply_submit_operation_t::submit () &&

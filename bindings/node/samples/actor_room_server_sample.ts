@@ -47,6 +47,17 @@ async function main() {
   try {
     spot = node.createSpot();
     actor = node.createActor('room-player-1');
+    const payloads = [];
+    spot.setDispatchHandler((info) => {
+      if (info.event !== zlink.SpotDispatchEvent.ActorReadable) {
+        return;
+      }
+      for (;;) {
+        const part = info.recvActorPart(zlink.RecvFlags.DontWait);
+        if (!part) return;
+        payloads.push(part.message.data().toString());
+      }
+    });
     stream.attachActorGateway(node);
     stream.bind(endpoint);
     client = net.createConnection({ host: '127.0.0.1', port });
@@ -57,17 +68,23 @@ async function main() {
     });
     await stream.bindActor(session, actor.ref()).timeout(2000).submitAsync();
 
-    const replyPromise = actor.join(spot).message(Buffer.from('join-room')).timeout(2000).submitAsync();
+    const replyPromise = actor.join(spot).message(Buffer.from('enter-room')).timeout(2000).submitAsync();
 
     const request = waitForJoin(spot);
-    assert.equal(request.message.data().toString(), 'join-room');
-    spot.replyActorJoin(request, 0).message(Buffer.from('welcome')).submit();
+    assert.equal(request.message.data().toString(), 'enter-room');
+    spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
 
     const reply = await replyPromise;
     assert.equal(reply.result.result, zlink.RequestResult.Ok);
-    assert.equal(reply.parts[0].data().toString(), 'welcome');
+    assert.equal(reply.parts[0].data().toString(), 'accepted');
+
+    stream.sendBoundActor(session, 'room-player-1').message(Buffer.from('move:north')).submit();
+    for (let i = 0; i < 100 && payloads.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.deepEqual(payloads, ['move:north']);
     await actor.leave(spot).timeout(2000).submitAsync();
-    console.log('[actor/room] join accepted with reply: "welcome"');
+    console.log('[actor/room] stream payload: "move:north" -> actor: "move:north"');
   } finally {
     if (session) {
       try {

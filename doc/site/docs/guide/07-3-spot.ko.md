@@ -124,6 +124,23 @@ zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
 ### 3.2 Discovery 기반 연결
 
 운영 환경에서는 Discovery를 붙여 SPOT 메시(mesh)를 자동으로 구성하는 편이 낫다.
+각 노드는 Registry에 자신을 등록하고, Registry가 브로드캐스트하는 같은 채널의 피어
+목록을 Discovery가 받아 자동으로 peer 연결을 맺는다.
+
+```mermaid
+sequenceDiagram
+    participant N as 내 SpotNode (채널 "alpha")
+    participant D as Discovery
+    participant R as Registry
+    participant P as 다른 SPOT 피어 (채널 "alpha")
+
+    P->>R: 자신을 "alpha" 채널로 등록
+    N->>D: attach_discovery (SPOT_MESH, "alpha")
+    D->>R: connect_registry
+    R-->>D: "alpha" 채널 피어 목록 broadcast
+    D->>P: 자동 peer 연결 (수동 connect_peer 불필요)
+    Note over N,P: 같은 채널 view를 공유하는 피어끼리 자동 메시 구성
+```
 
 ```c
 void *node = zlink_spot_node_new(ctx, NULL);
@@ -239,6 +256,22 @@ int rc = zlink_spot_subscribe(
 자동으로 연결이 맺어진다. **수동 경로**는 호출자가 `DEALER` 소켓을 만들고 직접
 `connect()`를 호출해야 한다. 두 방식의 채널 호출 동작은 동일하며, 피어 발견과 연결
 관리 방식만 다르다.
+
+채널 호출 자체는 항상 노드에 등록된 `DEALER`를 통해 나가고, 대상 채널의 서비스
+처리자(ROUTER)들 중 하나로 라우팅된다. 응답은 dispatch 이벤트로 돌아온다.
+
+```mermaid
+sequenceDiagram
+    participant S as 내 Spot
+    participant DL as 등록된 DEALER (대상 채널 "orders")
+    participant H as orders 채널 서비스 처리자 (ROUTER)
+
+    Note over S,DL: attach_channel_dealer로 "orders"용 DEALER를 노드에 등록
+    S->>DL: request_channel("orders", req)
+    DL->>H: DEALER → ROUTER 라우팅
+    H-->>DL: reply
+    DL-->>S: dispatch 이벤트로 reply 수신
+```
 
 ### 5.1 자동 연결 경로
 

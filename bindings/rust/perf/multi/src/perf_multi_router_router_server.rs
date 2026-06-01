@@ -4,12 +4,12 @@ mod common;
 use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 use std::time::Duration;
 use zlink::{
-    Message, POLLIN, POLLOUT, PollEvent, Poller, RecvFlags, RecvResult, RoutingId, SendFlags,
+    Message, PollEvent, Poller, RecvFlags, RecvResult, RoutingId, SendFlags, POLLIN, POLLOUT,
 };
 
 fn main() {
@@ -18,7 +18,7 @@ fn main() {
     let ctx = common::perf_server_context();
     common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let router = ctx.router_socket().expect("router");
-    let rid = RoutingId::from_bytes(b"perf-rr-server");
+    let rid = RoutingId::from(b"perf-rr-server");
     router.set_routing_id(&rid).expect("set rid");
     router
         .common_options()

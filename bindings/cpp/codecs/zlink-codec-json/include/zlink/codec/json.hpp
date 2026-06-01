@@ -24,7 +24,7 @@ message_t encode (const T &value)
 {
     const auto json = nlohmann::json (value);
     const auto text = json.dump ();
-    return message_t::from_bytes (
+    return message_t::from (
       std::as_bytes (std::span<const char> (text.data (), text.size ())));
 }
 

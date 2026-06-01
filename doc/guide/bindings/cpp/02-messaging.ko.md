@@ -16,7 +16,7 @@ zlink::pair_socket_t client (ctx);
 server.bind ("tcp://127.0.0.1:5560");
 client.connect ("tcp://127.0.0.1:5560");
 
-zlink::message_t msg = zlink::message_t::from_string ("hello");
+zlink::message_t msg = zlink::message_t::from ("hello");
 client.send ().message (msg).submit ();
 
 zlink::received_t inbound;
@@ -36,7 +36,7 @@ zlink::context_t ctx;
 zlink::router_socket_t router (ctx);
 zlink::dealer_socket_t dealer (ctx);
 
-auto rid = zlink::routing_id_t::from_bytes (
+auto rid = zlink::routing_id_t::from (
     reinterpret_cast<const uint8_t*> ("client-01"), 9);
 dealer.set_routing_id (rid);
 
@@ -44,13 +44,13 @@ router.bind ("tcp://127.0.0.1:5561");
 dealer.connect ("tcp://127.0.0.1:5561");
 
 // 요청
-zlink::message_t req = zlink::message_t::from_string ("get-price");
+zlink::message_t req = zlink::message_t::from ("get-price");
 dealer.send ().message (req).submit ();
 
 // 서버: 수신 후 회신
 zlink::received_t request;
 router.recv (request);
-zlink::message_t reply = zlink::message_t::from_string ("101.25");
+zlink::message_t reply = zlink::message_t::from ("101.25");
 request.send ().message (reply).submit ();
 request.close ();
 
@@ -66,7 +66,7 @@ response.close ();
 `submit_async()`는 `std::future`를 반환합니다.
 
 ```cpp
-zlink::message_t req = zlink::message_t::from_string ("ping");
+zlink::message_t req = zlink::message_t::from ("ping");
 std::vector<zlink::message_t> reply =
     dealer.request ()
         .message (req)
@@ -90,7 +90,7 @@ auto reply = co_await dealer.request ().message (req).submit_async ();
 zlink::received_t request;
 router.recv (request);
 if (request.request_seq ().has_value ()) {
-    zlink::message_t reply = zlink::message_t::from_string ("pong");
+    zlink::message_t reply = zlink::message_t::from ("pong");
     router.reply (request.routing_id ().value (),
                   request.request_seq ().value ())
           .message (reply).submit ();
@@ -110,7 +110,7 @@ pub.bind ("tcp://127.0.0.1:5562");
 sub.set_subscription ("prices");
 sub.connect ("tcp://127.0.0.1:5562");
 
-zlink::message_t msg = zlink::message_t::from_string ("101.25");
+zlink::message_t msg = zlink::message_t::from ("101.25");
 pub.publish ("prices").message (msg).submit ();
 
 zlink::topic_message_t inbound;
@@ -157,7 +157,7 @@ zlink::received_t inbound;
 server.recv (inbound);
 std::printf ("%s\n", inbound.parts ()[0].to_string ().c_str ()); // hello
 
-zlink::message_t reply = zlink::message_t::from_string ("world");
+zlink::message_t reply = zlink::message_t::from ("world");
 inbound.send ().message (reply).submit ();
 inbound.close ();
 ```
@@ -195,7 +195,7 @@ if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
 ## 멀티파트 전송
 
 ```cpp
-zlink::message_t header = zlink::message_t::from_string ("cmd:buy");
-zlink::message_t body = zlink::message_t::from_string ("{\"qty\":10}");
+zlink::message_t header = zlink::message_t::from ("cmd:buy");
+zlink::message_t body = zlink::message_t::from ("{\"qty\":10}");
 dealer.send ().message (header).message (body).submit ();
 ```

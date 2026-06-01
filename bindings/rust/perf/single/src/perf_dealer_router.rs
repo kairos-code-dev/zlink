@@ -19,7 +19,7 @@ fn main() {
     common::apply_single_auto_hwm_msg_unit(&ctx, config.size);
     let router = ctx.router_socket().expect("router");
     let dealer = ctx.dealer_socket().expect("dealer");
-    let rid = RoutingId::from_bytes(b"perf-dealer");
+    let rid = RoutingId::from(b"perf-dealer");
     dealer.set_routing_id(&rid).expect("set rid");
     // Match C perf: numeric socket HWM remains behind the manual-override gate.
     common::apply_single_hwm(&router);

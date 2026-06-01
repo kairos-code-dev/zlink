@@ -23,7 +23,7 @@ message_t encode (const T &value)
 {
     msgpack::sbuffer buffer;
     msgpack::pack (buffer, value);
-    return message_t::from_bytes (
+    return message_t::from (
       std::as_bytes (std::span<const char> (buffer.data (), buffer.size ())));
 }
 

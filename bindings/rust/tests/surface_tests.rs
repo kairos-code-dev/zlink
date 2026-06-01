@@ -83,7 +83,7 @@ fn router_socket_send_requires_routing_id() {
     sock.bind("inproc://surface-router").unwrap();
 
     // RouterSocket::send takes a RoutingId and returns a builder.
-    let rid = RoutingId::from_bytes(b"peer-001");
+    let rid = RoutingId::from(b"peer-001");
     let msg = Message::try_from(b"response").unwrap();
     let _ = sock.send(&rid).message(msg).submit();
     let mut received = Received::empty();
@@ -96,7 +96,7 @@ fn stream_socket_send_requires_routing_id() {
     let sock = ctx.stream_socket().unwrap();
     sock.bind("tcp://127.0.0.1:*").unwrap();
 
-    let rid = RoutingId::from_bytes(b"client-001");
+    let rid = RoutingId::from(b"client-001");
     let msg = Message::try_from(b"data").unwrap();
     let _ = sock.send(&rid).message(msg).submit();
 }
@@ -178,7 +178,7 @@ fn router_typed_options() {
     let router = sock.router_options();
     router.set_mandatory(true).unwrap();
     router.set_probe(false).unwrap();
-    sock.set_routing_id(&RoutingId::from_bytes(b"router-surface"))
+    sock.set_routing_id(&RoutingId::from(b"router-surface"))
         .unwrap();
     common
         .set_linger(std::time::Duration::from_millis(1))
@@ -222,7 +222,7 @@ fn rid_disconnect_surface_exists() {
     let pair = ctx.pair_socket().unwrap();
     let router = ctx.router_socket().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
-    let rid = RoutingId::from_bytes(b"peer-rid");
+    let rid = RoutingId::from(b"peer-rid");
 
     let _ = pair.disconnect_rid(&rid);
     let _ = router.disconnect_rid(&rid);

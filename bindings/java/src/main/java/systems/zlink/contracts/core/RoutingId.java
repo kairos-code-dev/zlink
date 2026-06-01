@@ -32,6 +32,11 @@ public final class RoutingId {
             }
 
             @Override
+            public RoutingId tryFromInlineCached(int size, long lo, long hi) {
+                return RoutingId.tryFromInlineCached(size, lo, hi);
+            }
+
+            @Override
             public byte[] trustedBytes(RoutingId routingId) {
                 return routingId.trustedBytes();
             }
@@ -77,7 +82,7 @@ public final class RoutingId {
     // avoids the byte[] allocation that is otherwise discarded on cache hits.
     // Returns null on miss; caller must fall back to allocating a byte[] and
     // calling fromTrusted(byte[]).
-    public static RoutingId tryFromInlineCached(int size, long lo, long hi) {
+    static RoutingId tryFromInlineCached(int size, long lo, long hi) {
         if (size <= 0 || size > 16) {
             return null;
         }

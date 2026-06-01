@@ -39,7 +39,7 @@ bool is_supported_transport (const std::string &transport_)
 
 zlink::routing_id_t make_text_rid (const char *text_)
 {
-    return zlink::routing_id_t::from_bytes (
+    return zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (text_), std::strlen (text_));
 }
 

@@ -744,7 +744,7 @@ Entry Spot 설정 API는 아래 형태로 고정한다.
 ```csharp
 spotNode.ConfigureEntrySpot(entry =>
 {
-    entry.RoutingId = RoutingId.FromUtf8("entry");
+    entry.RoutingId = RoutingId.From("entry");
 });
 ```
 

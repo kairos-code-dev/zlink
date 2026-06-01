@@ -14,7 +14,7 @@ fn main() {
     let play_node = SpotNode::new(&ctx).expect("play node failed");
     let mut play_spot = play_node.create_spot().expect("play spot failed");
     play_spot
-        .set_routing_id(&zlink::RoutingId::from_bytes(b"play-spot"))
+        .set_routing_id(&zlink::RoutingId::from(b"play-spot"))
         .unwrap();
 
     let actor = gateway_node
@@ -50,7 +50,7 @@ fn main() {
     stream
         .attach_actor_gateway(&gateway_node)
         .expect("stream actor gateway attach failed");
-    let session = zlink::RoutingId::from_bytes(b"gateway-session");
+    let session = zlink::RoutingId::from(b"gateway-session");
     let actor_ref = actor.actor_ref().expect("actor ref failed");
     let (bind_tx, bind_rx) = mpsc::channel();
     stream

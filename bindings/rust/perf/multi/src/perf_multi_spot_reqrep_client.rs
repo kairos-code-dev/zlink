@@ -3,7 +3,7 @@ mod common;
 
 use std::io::{self, BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -134,7 +134,7 @@ fn main() {
     common::apply_multi_spot_node_admission(&data_node, &settings);
     common::apply_multi_spot_node_admission(&control_node, &settings);
     data_node
-        .set_routing_id(&RoutingId::from_bytes(b"SPOT-REQREP-CLIENT-NODE"))
+        .set_routing_id(&RoutingId::from(b"SPOT-REQREP-CLIENT-NODE"))
         .expect("data rid");
 
     let control_pub = control_node.create_spot().expect("control pub");
@@ -176,8 +176,8 @@ fn main() {
         .connect_peer(&data_endpoint)
         .expect("connect data");
 
-    let server_node_rid = RoutingId::from_bytes(SERVER_NODE_RID);
-    let server_spot_rid = RoutingId::from_bytes(SERVER_SPOT_RID);
+    let server_node_rid = RoutingId::from(SERVER_NODE_RID);
+    let server_spot_rid = RoutingId::from(SERVER_SPOT_RID);
     let mut latency = common::LatencyStats::new();
     let mut spots: Vec<Box<Spot>> = Vec::with_capacity(settings.clients);
     let mut payloads = Vec::with_capacity(settings.clients);
@@ -185,7 +185,7 @@ fn main() {
     let mut waiting = Vec::with_capacity(settings.clients);
     for index in 0..settings.clients {
         let spot = Box::new(data_node.create_spot().expect("spot"));
-        spot.set_routing_id(&RoutingId::from_bytes(
+        spot.set_routing_id(&RoutingId::from(
             format!("SPOT-REQREP-CLIENT-SPOT-{index}").as_bytes(),
         ))
         .expect("spot rid");

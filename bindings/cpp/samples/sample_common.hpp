@@ -53,7 +53,7 @@ inline std::string unique_tcp (const char *base_)
 
 inline zlink::message_t make_message (const std::string &text_)
 {
-    return zlink::message_t::from_string (text_);
+    return zlink::message_t::from (text_);
 }
 
 inline bool wait_until (std::condition_variable &cv_,

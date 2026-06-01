@@ -47,9 +47,9 @@ func TestNewMessageWithSizeExposesWritablePayload(t *testing.T) {
 }
 
 func TestMessageCanonicalCopyHelpers(t *testing.T) {
-	msg, err := zlink.NewMessageFromString("copy-payload")
+	msg, err := zlink.NewMessageString("copy-payload")
 	if err != nil {
-		t.Fatalf("NewMessageFromString() error = %v", err)
+		t.Fatalf("NewMessageString() error = %v", err)
 	}
 	defer msg.Close()
 

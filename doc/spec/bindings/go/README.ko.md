@@ -292,8 +292,9 @@ Go 생성은 공개 생성자와 리소스 메서드로 노출된다.
   명시적인 opt-in이다. `Submit(...)`이 반환된 뒤에는 submit이 에러를 보고하더라도
   호출자는 그 메시지를 재사용해서는 안 된다.
 - Message payload factory는 from-source 의미를 보존하면서 Go 생성자 명명을
-  사용한다. `NewMessage(...)`는 주요 생성자이고 `NewMessageFrom(...)`은 안정된
-  codec 대상 헬퍼다. `NewMessageFromBytes`는 공개 계약의 일부가 아니다.
+  사용한다. `NewMessage(...)`는 주요 생성자이고 `NewMessageString(...)`은
+  UTF-8 문자열 입력을 처리한다. `NewMessageFrom(...)`과
+  `NewMessageFromBytes`는 공개 계약의 일부가 아니다.
 - `SendNoWait`, `PublishWithFlags`, `RequestAsync` 같은 operation start 메서드
   family를 추가하지 않는다. operation 이름 하나를 유지하고 builder가 변형을
   흡수하게 한다. 종료 builder 메서드는 관용적 이름을 사용할 수 있다.

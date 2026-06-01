@@ -3,8 +3,8 @@ mod common;
 
 use std::time::{Duration, Instant};
 use zlink::{
-    Message, POLLIN, POLLOUT, PollEvent, Poller, RecvFlags, RouterSocket, RoutingId, SendFlags,
-    SocketMonitor,
+    Message, PollEvent, Poller, RecvFlags, RouterSocket, RoutingId, SendFlags, SocketMonitor,
+    POLLIN, POLLOUT,
 };
 
 fn drain_socket(
@@ -43,7 +43,7 @@ fn main() {
 
     let ctx = common::perf_client_context();
     common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
-    let server_rid = RoutingId::from_bytes(b"perf-rr-server");
+    let server_rid = RoutingId::from(b"perf-rr-server");
     let mut sockets: Vec<RouterSocket> = Vec::with_capacity(settings.clients);
     let payload_size = args.msg_size.max(common::HEADER_SIZE);
     let mut waiting_reply = vec![false; settings.clients];
@@ -62,7 +62,7 @@ fn main() {
         sock.common_options()
             .set_receive_timeout(Duration::from_millis(1))
             .expect("recv timeout");
-        let rid = RoutingId::from_bytes(format!("CLIENT-{index}").as_bytes());
+        let rid = RoutingId::from(format!("CLIENT-{index}").as_bytes());
         sock.set_routing_id(&rid).expect("set rid");
         sock.router_options()
             .set_connect_routing_id(&server_rid)

@@ -47,7 +47,7 @@ fn main() {
 
     let router = ctx.router_socket().expect("router socket failed");
     let dealer = ctx.dealer_socket().expect("dealer socket failed");
-    let rid = RoutingId::from_bytes(b"dealer-node-7");
+    let rid = RoutingId::from(b"dealer-node-7");
     dealer.set_routing_id(&rid).expect("set routing id failed");
 
     let router_mon = SocketMonitor::open(&router).expect("router monitor open failed");

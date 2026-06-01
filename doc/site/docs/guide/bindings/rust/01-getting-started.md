@@ -104,7 +104,7 @@ let seq: Option<u64> = received.request_seq();
 ### 라우팅 ID
 
 ```rust
-let rid = RoutingId::from_bytes(b"server-01");
+let rid = RoutingId::from(b"server-01");
 socket.set_routing_id(&rid).unwrap();
 ```
 

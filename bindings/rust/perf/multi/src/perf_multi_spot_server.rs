@@ -103,17 +103,17 @@ fn main() {
     common::apply_multi_spot_node_admission(&data_node, &settings);
     common::apply_multi_spot_node_admission(&control_node, &settings);
     data_node
-        .set_routing_id(&RoutingId::from_bytes(b"z-rust-multi-spot-server"))
+        .set_routing_id(&RoutingId::from(b"z-rust-multi-spot-server"))
         .expect("data rid");
     control_node
-        .set_routing_id(&RoutingId::from_bytes(b"z-rust-multi-spot-control-server"))
+        .set_routing_id(&RoutingId::from(b"z-rust-multi-spot-control-server"))
         .expect("control rid");
 
     let data_spot = data_node.create_spot().expect("data spot");
     let control_pub = control_node.create_spot().expect("control pub");
     let control_sub = control_node.create_spot().expect("control sub");
     data_spot
-        .set_routing_id(&RoutingId::from_bytes(b"z-rust-multi-spot-server-spot"))
+        .set_routing_id(&RoutingId::from(b"z-rust-multi-spot-server-spot"))
         .expect("data spot rid");
     control_sub.set_subscription(TOPIC).expect("control sub");
 

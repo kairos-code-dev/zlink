@@ -263,11 +263,11 @@ public final class Message implements AutoCloseable {
         return from(value.getBytes(StandardCharsets.UTF_8));
     }
 
-    public static Message sharedFrom(byte[] data) {
+    static Message sharedFrom(byte[] data) {
         return sharedFrom(data, 0, data.length);
     }
 
-    public static Message sharedFrom(byte[] data, int offset, int length) {
+    static Message sharedFrom(byte[] data, int offset, int length) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
         Message msg = new Message(ContractAccess.nativeMessageOpenSharedScope(),

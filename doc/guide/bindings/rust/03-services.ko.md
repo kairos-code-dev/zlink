@@ -77,8 +77,8 @@ let ctx = Context::new().unwrap();
 let pub_node = SpotNode::new(&ctx).unwrap();
 let sub_node = SpotNode::new(&ctx).unwrap();
 
-pub_node.set_routing_id(&zlink::RoutingId::from_bytes(b"node-pub")).unwrap();
-sub_node.set_routing_id(&zlink::RoutingId::from_bytes(b"node-sub")).unwrap();
+pub_node.set_routing_id(&zlink::RoutingId::from(b"node-pub")).unwrap();
+sub_node.set_routing_id(&zlink::RoutingId::from(b"node-sub")).unwrap();
 pub_node.set_pub_bind("tcp://127.0.0.1:5700").unwrap();
 sub_node.set_pub_bind("tcp://127.0.0.1:5701").unwrap();
 pub_node.connect_peer("tcp://127.0.0.1:5701").unwrap();

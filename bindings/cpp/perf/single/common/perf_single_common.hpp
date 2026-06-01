@@ -32,7 +32,7 @@ typedef ::perf::latency_sampler_t latency_stats_builder_t;
 
 inline zlink::message_t message_from_payload (const void *data_, size_t size_)
 {
-    return zlink::message_t::from_bytes (
+    return zlink::message_t::from (
       std::as_bytes (std::span<const char> (
         static_cast<const char *> (data_), size_)));
 }

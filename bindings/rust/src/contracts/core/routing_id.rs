@@ -16,11 +16,7 @@ impl RoutingId {
     /// The maximum routing id length, in bytes.
     pub const MAX_LEN: usize = 255;
 
-    /// Creates a routing id from a copy of `data`.
-    ///
-    /// # Panics
-    /// Panics when `data` is empty or longer than [`MAX_LEN`](Self::MAX_LEN).
-    pub fn from_bytes(data: &[u8]) -> Self {
+    fn from_bytes(data: &[u8]) -> Self {
         if data.is_empty() {
             panic!("routing id must not be empty");
         }
@@ -37,24 +33,6 @@ impl RoutingId {
         };
         raw.data[..data.len()].copy_from_slice(data);
         raw
-    }
-
-    /// Creates a routing id from the UTF-8 bytes of `value`.
-    ///
-    /// # Panics
-    /// Panics on the same length conditions as [`from_bytes`](Self::from_bytes).
-    pub fn from_string(value: &str) -> Self {
-        Self::from_bytes(value.as_bytes())
-    }
-
-    /// Creates a 4-byte routing id from `value` in big-endian order.
-    pub fn from_u32(value: u32) -> Self {
-        Self::from_bytes(&value.to_be_bytes())
-    }
-
-    /// Creates a 16-byte routing id from the given UUID bytes.
-    pub fn from_uuid_bytes(value: [u8; 16]) -> Self {
-        Self::from_bytes(&value)
     }
 
     /// Creates a routing id by decoding `value` as a hex string.
@@ -80,12 +58,6 @@ impl RoutingId {
             data.push((high << 4) | low);
         }
         Self::new(&data)
-    }
-
-    /// Creates a routing id from the UTF-8 bytes of `value`, returning an error
-    /// when the length is out of range.
-    pub fn try_from_string(value: &str) -> Result<Self, ConfigError> {
-        Self::new(value.as_bytes())
     }
 
     pub(crate) fn new(data: &[u8]) -> Result<Self, ConfigError> {
@@ -183,22 +155,47 @@ impl std::fmt::Display for RoutingId {
     }
 }
 
-impl TryFrom<&[u8]> for RoutingId {
-    type Error = ConfigError;
-
-    /// Creates a routing id from a copy of the bytes, returning an error when
-    /// the length is out of range.
-    fn try_from(data: &[u8]) -> Result<Self, ConfigError> {
-        Self::new(data)
+impl From<&[u8]> for RoutingId {
+    /// Creates a routing id from a copy of the bytes.
+    ///
+    /// # Panics
+    /// Panics when the input is empty or longer than [`RoutingId::MAX_LEN`].
+    fn from(data: &[u8]) -> Self {
+        Self::from_bytes(data)
     }
 }
 
-impl TryFrom<&str> for RoutingId {
-    type Error = ConfigError;
+impl<const N: usize> From<&[u8; N]> for RoutingId {
+    /// Creates a routing id from a copy of the bytes.
+    ///
+    /// # Panics
+    /// Panics when the input is empty or longer than [`RoutingId::MAX_LEN`].
+    fn from(data: &[u8; N]) -> Self {
+        Self::from_bytes(data)
+    }
+}
 
-    /// Creates a routing id from the UTF-8 bytes of the string, returning an
-    /// error when the length is out of range.
-    fn try_from(value: &str) -> Result<Self, ConfigError> {
-        Self::try_from_string(value)
+impl From<&str> for RoutingId {
+    /// Creates a routing id from the UTF-8 bytes of `value`.
+    ///
+    /// # Panics
+    /// Panics when the encoded input is empty or longer than
+    /// [`RoutingId::MAX_LEN`].
+    fn from(value: &str) -> Self {
+        Self::from_bytes(value.as_bytes())
+    }
+}
+
+impl From<u32> for RoutingId {
+    /// Creates a 4-byte routing id from `value` in big-endian order.
+    fn from(value: u32) -> Self {
+        Self::from_bytes(&value.to_be_bytes())
+    }
+}
+
+impl From<[u8; 16]> for RoutingId {
+    /// Creates a 16-byte routing id from the given UUID bytes.
+    fn from(value: [u8; 16]) -> Self {
+        Self::from_bytes(&value)
     }
 }

@@ -256,11 +256,11 @@ void test_socket_common_and_router_options ()
     assert (stream_options.notify ());
 
     const std::string rid_text = "router-alpha";
-    const zlink::routing_id_t expected_routing_id = zlink::routing_id_t::from_bytes (
+    const zlink::routing_id_t expected_routing_id = zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (rid_text.data ()), rid_text.size ());
     router.set_routing_id (expected_routing_id);
     zlink::routing_id_t routing_id =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("x"), 1);
     router.get_routing_id (routing_id);
     assert (routing_id.to_bytes ()

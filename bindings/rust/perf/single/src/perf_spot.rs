@@ -98,23 +98,23 @@ fn main() {
     }
 
     publisher_node
-        .set_routing_id(&RoutingId::from_bytes(b"z-rust-perf-spot-publisher"))
+        .set_routing_id(&RoutingId::from(b"z-rust-perf-spot-publisher"))
         .expect("publisher node rid");
     subscriber_node
-        .set_routing_id(&RoutingId::from_bytes(b"a-rust-perf-spot-subscriber"))
+        .set_routing_id(&RoutingId::from(b"a-rust-perf-spot-subscriber"))
         .expect("subscriber node rid");
 
     let publisher = publisher_node.create_spot().expect("publisher spot");
     let stop_publisher = subscriber_node.create_spot().expect("stop publisher spot");
     let subscriber = subscriber_node.create_spot().expect("subscriber spot");
     publisher
-        .set_routing_id(&RoutingId::from_bytes(b"z-rust-perf-spot-publisher-spot"))
+        .set_routing_id(&RoutingId::from(b"z-rust-perf-spot-publisher-spot"))
         .expect("publisher spot rid");
     stop_publisher
-        .set_routing_id(&RoutingId::from_bytes(b"m-rust-perf-spot-stop-spot"))
+        .set_routing_id(&RoutingId::from(b"m-rust-perf-spot-stop-spot"))
         .expect("stop publisher spot rid");
     subscriber
-        .set_routing_id(&RoutingId::from_bytes(b"a-rust-perf-spot-subscriber-spot"))
+        .set_routing_id(&RoutingId::from(b"a-rust-perf-spot-subscriber-spot"))
         .expect("subscriber spot rid");
 
     subscriber

@@ -433,7 +433,7 @@ void test_dealer_send_no_wait_direct ()
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("dealer-send-no-wait");
     const zlink::routing_id_t dealer_id =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("dealer-direct"), 13);
     dealer.set_routing_id (dealer_id);
 
@@ -453,7 +453,7 @@ void test_dealer_send_no_wait_direct ()
     assert (!outbound.valid ());
 
     zlink::routing_id_t source =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("placeholder"), 11);
     zlink::message_t inbound;
     assert (router.recv (source, inbound) == 0);
@@ -503,7 +503,7 @@ void test_router_recv_single_part_direct ()
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("router-direct");
     const zlink::routing_id_t dealer_id =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("dealer-a"), 8);
     dealer.set_routing_id (dealer_id);
 
@@ -520,7 +520,7 @@ void test_router_recv_single_part_direct ()
     assert (dealer.send ().message (outbound).submit ());
 
     zlink::routing_id_t source =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("placeholder"), 11);
     zlink::message_t inbound;
     assert (router.recv (source, inbound) == 0);
@@ -541,10 +541,10 @@ void test_router_send_builder_owns_target_rid ()
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("router-send-owned-rid");
     const zlink::routing_id_t dealer_a_id =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("dealer-a-owned"), 14);
     const zlink::routing_id_t dealer_b_id =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("dealer-b-owned"), 14);
     dealer_a.set_routing_id (dealer_a_id);
     dealer_b.set_routing_id (dealer_b_id);
@@ -568,7 +568,7 @@ void test_router_send_builder_owns_target_rid ()
     zlink::message_t hello_a = zlink_cpp_contract::make_message ("hello-a");
     assert (dealer_a.send ().message (hello_a).submit ());
     zlink::routing_id_t source =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("placeholder"), 11);
     zlink::message_t inbound;
     assert (router.recv (source, inbound) == 0);
@@ -611,7 +611,7 @@ void test_router_recv_received_single_part_large ()
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("router-received-large");
     const zlink::routing_id_t dealer_id =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("dealer-large"), 12);
     dealer.set_routing_id (dealer_id);
 
@@ -662,7 +662,7 @@ void test_router_recv_received_multipart ()
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("router-received-multipart");
     const zlink::routing_id_t dealer_id =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("dealer-multi"), 12);
     dealer.set_routing_id (dealer_id);
 
@@ -695,7 +695,7 @@ void test_router_direct_recv_no_data_preserves_output ()
     zlink::router_socket_t router (ctx);
 
     const zlink::routing_id_t placeholder =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("placeholder"), 11);
     zlink::routing_id_t source = placeholder;
     zlink::message_t existing = zlink_cpp_contract::make_message ("keep");
@@ -733,7 +733,7 @@ void test_router_direct_recv_multipart_failure_preserves_output ()
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("router-direct-multipart-fail");
     const zlink::routing_id_t dealer_id =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("dealer-b"), 8);
     dealer.set_routing_id (dealer_id);
 
@@ -751,7 +751,7 @@ void test_router_direct_recv_multipart_failure_preserves_output ()
     assert (dealer.send ().message (first).message (second).submit ());
 
     const zlink::routing_id_t placeholder =
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("placeholder"), 11);
     zlink::routing_id_t source = placeholder;
     zlink::message_t inbound = zlink_cpp_contract::make_message ("keep");

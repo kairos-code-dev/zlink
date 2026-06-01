@@ -32,7 +32,7 @@ int main ()
       .get ();
 
     zlink::routing_id_t play_spot_rid = play_spot.routing_id ();
-    zlink::message_t join = zlink::message_t::from_string ("join-play");
+    zlink::message_t join = zlink::message_t::from ("join-play");
     assert (gateway_node.join_actor (concrete, play_node_rid, play_spot_rid)
       .message (join)
       .flags (zlink::recv_flags_t::dontwait)
@@ -46,7 +46,7 @@ int main ()
     assert (capture.join_result == zlink::request_result_t::ok);
     concrete = capture.joined_actor;
 
-    zlink::message_t frame = zlink::message_t::from_string ("client-input");
+    zlink::message_t frame = zlink::message_t::from ("client-input");
     assert (stream_session.stream.send_bound_actor (
       stream_session.session, "play-session-actor")
       .message (frame)

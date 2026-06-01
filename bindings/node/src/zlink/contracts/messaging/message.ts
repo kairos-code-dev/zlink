@@ -67,16 +67,11 @@ export class Message {
   }
 
   /** Allocate a message with `size` bytes of writable payload storage. */
-  static alloc(size: number): Message {
+  static allocate(size: number): Message {
     if (!Number.isSafeInteger(size) || size < 0) {
       throw new RangeError('size must be a non-negative safe integer');
     }
     return Message.fromSnapshot({ data: Buffer.allocUnsafe(size) });
-  }
-
-  /** Alias for {@link Message.alloc}. */
-  static allocate(size: number): Message {
-    return Message.alloc(size);
   }
 
   /** @internal */

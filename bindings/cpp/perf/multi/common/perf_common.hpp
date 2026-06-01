@@ -51,7 +51,7 @@ inline void noop_free (void *, void *)
 inline zlink::message_t message_from_external_buffer (std::vector<char> &buffer,
                                                       size_t size)
 {
-    return zlink::message_t::from_bytes (
+    return zlink::message_t::from (
       std::as_bytes (std::span<const char> (buffer.data (), size)));
 }
 

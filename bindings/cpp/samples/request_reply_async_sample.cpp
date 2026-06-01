@@ -33,7 +33,7 @@ int main ()
     zlink::socket_monitor_t dealer_monitor = dealer_socket.monitor_open ();
 
     const std::string routing_id_text = "request-reply-client";
-    const zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
+    const zlink::routing_id_t routing_id = zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (routing_id_text.data ()),
       routing_id_text.size ());
     dealer_socket.set_routing_id (routing_id);

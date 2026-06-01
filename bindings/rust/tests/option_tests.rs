@@ -206,8 +206,8 @@ fn dealer_and_router_expose_working_routing_id_options() {
     let ctx = Context::new().unwrap();
     let dealer = ctx.dealer_socket().unwrap();
     let router = ctx.router_socket().unwrap();
-    let dealer_rid = RoutingId::from_bytes(b"dealer-opt-rid");
-    let router_rid = RoutingId::from_bytes(b"router-opt-rid");
+    let dealer_rid = RoutingId::from(b"dealer-opt-rid");
+    let router_rid = RoutingId::from(b"router-opt-rid");
     dealer.set_routing_id(&dealer_rid).unwrap();
     router.set_routing_id(&router_rid).unwrap();
     assert_eq!(dealer.routing_id().unwrap(), dealer_rid);

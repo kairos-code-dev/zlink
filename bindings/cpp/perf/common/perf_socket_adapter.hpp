@@ -274,7 +274,7 @@ class socket_t
     int set_routing_id (const void *data_, size_t size_)
     {
         try {
-            routing_id_t routing_id = routing_id_t::from_bytes (
+            routing_id_t routing_id = routing_id_t::from (
               static_cast<const uint8_t *> (data_), size_);
             return invoke_routing_id_set (routing_id);
         }
@@ -287,7 +287,7 @@ class socket_t
     int set_routing_id (const std::string &routing_id_)
     {
         try {
-            routing_id_t routing_id = routing_id_t::from_bytes (
+            routing_id_t routing_id = routing_id_t::from (
               reinterpret_cast<const uint8_t *> (routing_id_.data ()),
               routing_id_.size ());
             return invoke_routing_id_set (routing_id);
@@ -780,7 +780,7 @@ class socket_t
                         errno = EOPNOTSUPP;
                         return -1;
                     }
-                    routing_id_t routing_id = routing_id_t::from_bytes (
+                    routing_id_t routing_id = routing_id_t::from (
                       reinterpret_cast<const uint8_t *> (value_.data ()),
                       value_.size ());
                     socket_.options ().connect_routing_id (routing_id);

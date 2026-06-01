@@ -39,7 +39,7 @@ void debug_log (const std::string &message_)
 
 zlink::routing_id_t routing_id_from_ascii (const std::string &value_)
 {
-    return zlink::routing_id_t::from_bytes (
+    return zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (value_.data ()), value_.size ());
 }
 
@@ -171,12 +171,12 @@ class router_router_client_bench_t
 
             const std::string routing_id = std::string ("rr_") + std::to_string (i);
             (void) sock.set_routing_id (
-              zlink::routing_id_t::from_bytes (
+              zlink::routing_id_t::from (
                 reinterpret_cast<const uint8_t *> (routing_id.data ()),
                 routing_id.size ()));
             try {
                 sock.options ().connect_routing_id (
-                  zlink::routing_id_t::from_bytes (
+                  zlink::routing_id_t::from (
                     reinterpret_cast<const uint8_t *> (_server_id.data ()),
                     _server_id.size ()));
             } catch (const zlink::config_error_t &) {
@@ -281,8 +281,8 @@ class router_router_client_bench_t
         }
         zlink::message_t request =
           state.borrow_payload
-            ? zlink::message_t::from_bytes (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)))
-            : zlink::message_t::from_bytes (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)));
+            ? zlink::message_t::from (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)))
+            : zlink::message_t::from (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)));
         if (!request.valid ()) {
             return false;
         }

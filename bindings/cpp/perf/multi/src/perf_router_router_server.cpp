@@ -94,7 +94,7 @@ bool perf_router_router_server (const std::string &lib_name,
         return false;
 
     server.set_routing_id (
-      zlink::routing_id_t::from_bytes (
+      zlink::routing_id_t::from (
         reinterpret_cast<const uint8_t *> ("SERVER"), 6));
     perf::multi::apply_benchmark_socket_options (server, settings, transport);
     if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size))

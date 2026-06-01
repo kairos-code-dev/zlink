@@ -218,7 +218,7 @@ counter.close();
 
 const diagnosticMessage = zlink.Message.from(Buffer.from('diagnostic'));
 const constructedMessage = zlink.Message.from(Buffer.from('constructed'));
-const allocatedMessage = zlink.Message.alloc(16);
+const allocatedMessage = zlink.Message.allocate(16);
 const allocatedMessageAlias = zlink.Message.allocate(16);
 diagnosticMessage.data();
 diagnosticMessage.toBytes();

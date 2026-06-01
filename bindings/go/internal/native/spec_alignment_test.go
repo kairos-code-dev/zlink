@@ -21,19 +21,19 @@ func TestRoutingIDCanonicalHelpers(t *testing.T) {
 	if got := NewRoutingIDFromHex("004142"); !got.Equal(rid) {
 		t.Fatalf("NewRoutingIDFromHex() = %v, want %v", got, rid)
 	}
-	parsed, err := ParseRoutingIDHex("004142")
+	parsed, err := parseRoutingIDHex("004142")
 	if err != nil {
-		t.Fatalf("ParseRoutingIDHex() error = %v", err)
+		t.Fatalf("parseRoutingIDHex() error = %v", err)
 	}
 	if !parsed.Equal(rid) {
-		t.Fatalf("ParseRoutingIDHex() = %v, want %v", parsed, rid)
+		t.Fatalf("parseRoutingIDHex() = %v, want %v", parsed, rid)
 	}
-	maxParsed, err := ParseRoutingIDHex(strings.Repeat("a", 510))
+	maxParsed, err := parseRoutingIDHex(strings.Repeat("a", 510))
 	if err != nil {
-		t.Fatalf("ParseRoutingIDHex(max) error = %v", err)
+		t.Fatalf("parseRoutingIDHex(max) error = %v", err)
 	}
 	if maxParsed.Size() != 255 {
-		t.Fatalf("ParseRoutingIDHex(max).Size() = %d, want 255", maxParsed.Size())
+		t.Fatalf("parseRoutingIDHex(max).Size() = %d, want 255", maxParsed.Size())
 	}
 	if got := NewRoutingIDFromHex("not-hex"); got.Size() != 0 {
 		t.Fatalf("NewRoutingIDFromHex(invalid).Size() = %d, want 0", got.Size())
@@ -41,19 +41,19 @@ func TestRoutingIDCanonicalHelpers(t *testing.T) {
 	if got := NewRoutingIDFromHex(strings.Repeat("a", 512)); got.Size() != 0 {
 		t.Fatalf("NewRoutingIDFromHex(oversize).Size() = %d, want 0", got.Size())
 	}
-	if _, err := ParseRoutingIDHex(strings.Repeat("a", 512)); err == nil {
-		t.Fatalf("ParseRoutingIDHex(oversize) should fail")
+	if _, err := parseRoutingIDHex(strings.Repeat("a", 512)); err == nil {
+		t.Fatalf("parseRoutingIDHex(oversize) should fail")
 	} else {
 		var configErr *ConfigError
 		if !errors.As(err, &configErr) {
-			t.Fatalf("ParseRoutingIDHex(oversize) error type = %T, want *ConfigError", err)
+			t.Fatalf("parseRoutingIDHex(oversize) error type = %T, want *ConfigError", err)
 		}
 	}
-	if got := NewRoutingIDFromString("dealer-1").String(); got != "dealer-1" {
-		t.Fatalf("NewRoutingIDFromString().String() = %q, want dealer-1", got)
+	if got := NewRoutingIDString("dealer-1").String(); got != "dealer-1" {
+		t.Fatalf("NewRoutingIDString().String() = %q, want dealer-1", got)
 	}
-	if got := NewRoutingIDFromUInt32(23).String(); got != "23" {
-		t.Fatalf("NewRoutingIDFromUInt32().String() = %q, want 23", got)
+	if got := NewRoutingIDUint32(23).String(); got != "23" {
+		t.Fatalf("NewRoutingIDUint32().String() = %q, want 23", got)
 	}
 	if rid.Hash() != NewRoutingID([]byte{0x00, 0x41, 0x42}).Hash() {
 		t.Fatalf("Hash() should be stable for equal routing ids")

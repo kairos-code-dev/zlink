@@ -477,7 +477,7 @@ void test_spot_node_snapshot_contract ()
     assert (subjects.size () >= 0);
     assert (node.routing_id ().size () == 16);
 
-    const zlink::routing_id_t node_rid = zlink::routing_id_t::from_bytes (
+    const zlink::routing_id_t node_rid = zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> ("spot-node-rid"), 13);
     node.set_routing_id (node_rid);
     assert (node.routing_id ().to_bytes ()
@@ -533,7 +533,7 @@ void test_unified_spot_self_delivery_recv_contract ()
 
     zlink::message_t outbound =
       zlink_cpp_contract::make_message ("service-self");
-    const zlink::routing_id_t spot_rid = zlink::routing_id_t::from_bytes (
+    const zlink::routing_id_t spot_rid = zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> ("spot-self-rid"), 13);
     spot.set_routing_id (spot_rid);
     assert (spot.routing_id ().to_bytes ()
@@ -574,7 +574,7 @@ void test_spot_node_get_or_create_spot_contract ()
 {
     zlink::context_t ctx;
     zlink::service::spot_node_t node (ctx);
-    const zlink::routing_id_t spot_rid = zlink::routing_id_t::from_bytes (
+    const zlink::routing_id_t spot_rid = zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> ("cpp-room"), 8);
 
     std::pair<zlink::service::spot_t, bool> first =

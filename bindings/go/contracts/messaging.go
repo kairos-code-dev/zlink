@@ -28,22 +28,18 @@ type (
 var (
 	// NewRoutingID creates a routing id from a copy of the given bytes (1 to 255).
 	NewRoutingID = impl.NewRoutingID
-	// NewRoutingIDFromString creates a routing id from the UTF-8 bytes of the string.
-	NewRoutingIDFromString = impl.NewRoutingIDFromString
-	// NewRoutingIDFromUInt32 creates a 4-byte big-endian routing id from the value.
-	NewRoutingIDFromUInt32 = impl.NewRoutingIDFromUInt32
-	// NewRoutingIDFromUUIDBytes creates a 16-byte routing id from the UUID bytes.
-	NewRoutingIDFromUUIDBytes = impl.NewRoutingIDFromUUIDBytes
+	// NewRoutingIDString creates a routing id from the UTF-8 bytes of the string.
+	NewRoutingIDString = impl.NewRoutingIDString
+	// NewRoutingIDUint32 creates a 4-byte big-endian routing id from the value.
+	NewRoutingIDUint32 = impl.NewRoutingIDUint32
+	// NewRoutingIDUUIDBytes creates a 16-byte routing id from the UUID bytes.
+	NewRoutingIDUUIDBytes = impl.NewRoutingIDUUIDBytes
 	// NewRoutingIDFromHex creates a routing id by decoding the hex string.
 	NewRoutingIDFromHex = impl.NewRoutingIDFromHex
-	// ParseRoutingIDHex parses a hex string into a routing id, returning an error on invalid input.
-	ParseRoutingIDHex = impl.ParseRoutingIDHex
 	// NewMessage creates an empty message.
 	NewMessage = impl.NewMessage
-	// NewMessageFrom creates a message holding an independent copy of the given bytes.
-	NewMessageFrom = impl.NewMessageFrom
-	// NewMessageFromString creates a message holding the UTF-8 bytes of the string.
-	NewMessageFromString = impl.NewMessageFromString
+	// NewMessageString creates a message holding the UTF-8 bytes of the string.
+	NewMessageString = impl.NewMessageString
 	// NewMessageWithSize allocates a message with the given number of writable payload bytes.
 	NewMessageWithSize = impl.NewMessageWithSize
 )

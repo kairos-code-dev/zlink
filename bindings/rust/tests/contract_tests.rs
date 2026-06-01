@@ -149,7 +149,7 @@ fn message_drop_calls_close() {
 
 #[test]
 fn routing_id_roundtrip() {
-    let rid = RoutingId::from_bytes(b"peer-42");
+    let rid = RoutingId::from(b"peer-42");
     assert_eq!(rid.as_bytes(), b"peer-42");
     assert_eq!(rid.size(), 7);
 }
@@ -157,7 +157,7 @@ fn routing_id_roundtrip() {
 #[test]
 fn routing_id_max_length() {
     let data = vec![0xABu8; 255];
-    let rid = RoutingId::from_bytes(&data);
+    let rid = RoutingId::from(data.as_slice());
     assert_eq!(rid.size(), 255);
 }
 
@@ -235,7 +235,7 @@ fn request_router_exposes_request_sequence() {
 fn router_reply_with_non_empty_flags_fails_explicitly() {
     let ctx = Context::new().unwrap();
     let router = ctx.router_socket().unwrap();
-    let rid = RoutingId::from_bytes(b"peer-42");
+    let rid = RoutingId::from(b"peer-42");
     let err = router
         .reply(&rid, 1)
         .message(Message::try_from(b"pong").unwrap())
@@ -250,7 +250,7 @@ fn spot_reply_with_non_empty_flags_fails_explicitly() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let spot = node.create_spot().unwrap();
-    let rid = RoutingId::from_bytes(b"peer-42");
+    let rid = RoutingId::from(b"peer-42");
 
     let router_err = spot
         .reply_to_router(rid, 1)
@@ -273,7 +273,7 @@ fn spot_reply_with_non_empty_flags_fails_explicitly() {
 fn spot_node_get_or_create_spot_reuses_logical_spot() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
-    let rid = RoutingId::from_bytes(b"rust-room");
+    let rid = RoutingId::from(b"rust-room");
 
     let (first, first_created) = node.get_or_create_spot(&rid).unwrap();
     let (second, second_created) = node.get_or_create_spot(&rid).unwrap();

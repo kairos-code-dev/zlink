@@ -3,16 +3,15 @@ mod common;
 
 use std::io::{self, BufRead, Write};
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
-    mpsc,
+    mpsc, Arc, Mutex,
 };
 use std::thread;
 use std::time::{Duration, Instant};
 
 use zlink::{
-    Message, POLLIN, PollEvent, Poller, Received, RecvFlags, RecvResult, RoutingId, SendFlags,
-    Spot, SpotNode, SubmitResult, TopicMessage,
+    Message, PollEvent, Poller, Received, RecvFlags, RecvResult, RoutingId, SendFlags, Spot,
+    SpotNode, SubmitResult, TopicMessage, POLLIN,
 };
 
 const PATTERN: &str = "MULTI_SPOT_SENDSEND";
@@ -152,14 +151,14 @@ fn main() {
     common::apply_multi_spot_node_admission(&data_node, &settings);
     common::apply_multi_spot_node_admission(&control_node, &settings);
     data_node
-        .set_routing_id(&RoutingId::from_bytes(SERVER_NODE_RID))
+        .set_routing_id(&RoutingId::from(SERVER_NODE_RID))
         .expect("data rid");
 
     let replier = Arc::new(Mutex::new(data_node.create_spot().expect("spot")));
     replier
         .lock()
         .expect("spot lock")
-        .set_routing_id(&RoutingId::from_bytes(SERVER_SPOT_RID))
+        .set_routing_id(&RoutingId::from(SERVER_SPOT_RID))
         .expect("spot rid");
 
     let control_pub = control_node.create_spot().expect("control pub");

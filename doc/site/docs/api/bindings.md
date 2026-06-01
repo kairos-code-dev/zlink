@@ -803,11 +803,11 @@ Routing id value object. Binary-safe (1-255 bytes).
 
 | 의미 | .NET | Java | Node | Python | Rust | C++ | Go |
 |------|------|------|------|--------|------|-----|----|
-| 사용자 문자열 | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `from_string` / `TryFrom<&str>` | `from(std::string)` | `NewRoutingIDFromString` |
-| raw bytes | `From(bytes)` | `from(byte[])` | `from(Buffer)` | `from_bytes` / `from_` | `from_bytes` | `from(bytes)` | `NewRoutingID` |
-| hex round-trip | `FromHex` | `fromHex` | `fromHex` | `from_hex` | `from_hex` | `from_hex` | `NewRoutingIDFromHex` / `ParseRoutingIDHex` |
-| uint32 | `From(uint)` | `from(long)` | `from(number)` | `from_(int)` | `from_u32` | `from(uint32_t)` | `NewRoutingIDFromUInt32` |
-| UUID | `From(Guid)` | `from(UUID)` | 16-byte `from(Buffer)` | `from_(uuid.UUID)` | `from_uuid_bytes` | `from_uuid` | `NewRoutingIDFromUUIDBytes` |
+| 사용자 문자열 | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `From<&str>` | `from(std::string)` | `NewRoutingIDString` |
+| raw bytes | `From(bytes)` | `from(byte[])` | `from(Buffer)` | `from_(bytes)` | `From<&[u8]>` | `from(bytes)` | `NewRoutingID` |
+| hex round-trip | `FromHex` | `fromHex` | `fromHex` | `from_hex` | `from_hex` / `try_from_hex` | `from_hex` | `NewRoutingIDFromHex` |
+| uint32 | `From(uint)` | `from(long)` | `from(number)` | `from_(int)` | `From<u32>` | `from(uint32_t)` | `NewRoutingIDUint32` |
+| UUID | `From(Guid)` | `from(UUID)` | 16-byte `from(Buffer)` | `from_(uuid.UUID)` | `From<[u8; 16]>` | `from(std::array<uint8_t, 16>)` | `NewRoutingIDUUIDBytes` |
 
 규칙:
 - **binary-safe value type**. 사용자 설정 routing id 는 보통 사람이 읽는

@@ -112,7 +112,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
     std::deque<pending_reply_t> pending_replies;
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events (1);
-    zlink::routing_id_t source_rid = zlink::routing_id_t::from_bytes (
+    zlink::routing_id_t source_rid = zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> ("x"), 1);
     zlink::message_t part;
     poller.add (server, zlink::poll_event_flag_t::pollin, 0);

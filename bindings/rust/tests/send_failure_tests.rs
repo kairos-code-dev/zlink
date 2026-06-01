@@ -18,7 +18,7 @@ fn blocking_send_failure_surfaces_error() {
         .set_send_timeout(Duration::from_millis(100))
         .unwrap();
 
-    let rid = RoutingId::from_bytes(b"nonexistent-peer");
+    let rid = RoutingId::from(b"nonexistent-peer");
     let msg = Message::try_from(b"will-fail").unwrap();
     let result = router.send(&rid).message(msg).submit();
 

@@ -24,7 +24,7 @@ server.Bind("tcp://127.0.0.1:5560")
 client.Connect("tcp://127.0.0.1:5560")
 
 // 전송
-msg, _ := zlink.NewMessageFrom([]byte("hello"))
+msg, _ := zlink.NewMessage([]byte("hello"))
 client.Send().Message(msg).Submit(nil)
 
 // 수신
@@ -52,14 +52,14 @@ dealer, _ := ctx.DealerSocket()
 defer dealer.Close()
 
 // 라우팅 ID 설정 (선택, 설정 안 하면 임의 할당)
-rid := zlink.NewRoutingIDFromString("client-01")
+rid := zlink.NewRoutingIDString("client-01")
 dealer.SetRoutingID(rid)
 
 router.Bind("tcp://127.0.0.1:5561")
 dealer.Connect("tcp://127.0.0.1:5561")
 
 // 클라이언트: 요청 전송
-req, _ := zlink.NewMessageFrom([]byte("get-price"))
+req, _ := zlink.NewMessage([]byte("get-price"))
 dealer.Send().Message(req).Submit(nil)
 
 // 서버: 수신 후 회신
@@ -67,7 +67,7 @@ var request zlink.Received
 if _, err := router.Recv(&request, zlink.RecvFlagsNone); err != nil { ... }
 defer request.Close()
 
-reply, _ := zlink.NewMessageFrom([]byte("101.25"))
+reply, _ := zlink.NewMessage([]byte("101.25"))
 request.Send().Message(reply).Submit(nil) // Received에서 직접 회신
 
 // 클라이언트: 응답 수신
@@ -110,7 +110,7 @@ defer request.Close()
 
 if request.HasRequestSeq() {
     seq := request.RequestSeq()
-    reply, _ := zlink.NewMessageFrom([]byte("ok"))
+    reply, _ := zlink.NewMessage([]byte("ok"))
     router.Reply(request.RoutingID(), seq).Message(reply).Submit(nil)
 }
 ```
@@ -120,8 +120,8 @@ if request.HasRequestSeq() {
 한 번의 Submit으로 여러 프레임을 보냅니다.
 
 ```go
-header, _ := zlink.NewMessageFrom([]byte("cmd:buy"))
-body, _ := zlink.NewMessageFrom([]byte(`{"qty":10}`))
+header, _ := zlink.NewMessage([]byte("cmd:buy"))
+body, _ := zlink.NewMessage([]byte(`{"qty":10}`))
 dealer.Send().Message(header).Message(body).Submit(nil)
 ```
 
@@ -146,7 +146,7 @@ sub.Connect("tcp://127.0.0.1:5562")
 sub.SetSubscription("prices")
 
 // 발행
-msg, _ := zlink.NewMessageFrom([]byte("101.25"))
+msg, _ := zlink.NewMessage([]byte("101.25"))
 pub.Publish("prices").Message(msg).Submit(nil)
 
 // 수신
@@ -206,7 +206,7 @@ part, _ := received.SinglePartOrError()
 fmt.Println(string(part.Data())) // hello
 
 // TCP 클라이언트로 회신
-reply, _ := zlink.NewMessageFrom([]byte("world"))
+reply, _ := zlink.NewMessage([]byte("world"))
 received.Send().Message(reply).Submit(nil)
 ```
 

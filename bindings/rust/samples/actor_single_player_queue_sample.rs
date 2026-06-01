@@ -42,7 +42,7 @@ fn main() {
     stream
         .attach_actor_gateway(&node)
         .expect("stream actor gateway attach failed");
-    let session = zlink::RoutingId::from_bytes(b"single-player-session");
+    let session = zlink::RoutingId::from(b"single-player-session");
 
     let (first_tx, first_rx) = mpsc::channel();
     actor

@@ -174,7 +174,7 @@ void test_router_send_throws_for_closed_socket ()
     router.close ();
 
     const std::string rid_text = "UNKNOWN";
-    zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
+    zlink::routing_id_t routing_id = zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (rid_text.data ()), rid_text.size ());
     zlink::message_t outbound = zlink_cpp_contract::make_message ("no-route");
     expect_runtime_error ([&] {
@@ -240,7 +240,7 @@ void test_routing_id_accepts_maximum_size ()
 {
     const std::string bytes (255, 'r');
 
-    const zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
+    const zlink::routing_id_t routing_id = zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size ());
     assert (routing_id.size () == bytes.size ());
     assert (routing_id.to_bytes ()
@@ -253,7 +253,7 @@ void test_routing_id_rejects_oversize_input ()
 
     bool threw = false;
     try {
-        (void) zlink::routing_id_t::from_bytes (
+        (void) zlink::routing_id_t::from (
           reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size ());
     } catch (const std::invalid_argument &) {
         threw = true;
@@ -265,7 +265,7 @@ void test_routing_id_rejects_null_pointer_for_non_empty_bytes ()
 {
     bool threw = false;
     try {
-        (void) zlink::routing_id_t::from_bytes (nullptr, 1);
+        (void) zlink::routing_id_t::from (nullptr, 1);
     } catch (const std::invalid_argument &) {
         threw = true;
     }
@@ -277,10 +277,10 @@ void test_routing_id_copy_assignment_preserves_short_value ()
     const std::string long_bytes (128, 'L');
     const std::string short_bytes ("rid");
 
-    zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
+    zlink::routing_id_t routing_id = zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (long_bytes.data ()),
       long_bytes.size ());
-    const zlink::routing_id_t short_id = zlink::routing_id_t::from_bytes (
+    const zlink::routing_id_t short_id = zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (short_bytes.data ()),
       short_bytes.size ());
 

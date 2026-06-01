@@ -217,7 +217,7 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
     assert.equal(message.copyTo(destination), 7);
     assert.equal(destination.toString(), 'message');
     assert.equal(messageCopy.toBytes().toString(), 'message');
-    const allocatedMessage = zlink.Message.alloc(3);
+    const allocatedMessage = zlink.Message.allocate(3);
     allocatedMessage.data()[0] = 0x01;
     allocatedMessage.data()[1] = 0x02;
     allocatedMessage.data()[2] = 0x03;

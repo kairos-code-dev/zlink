@@ -397,6 +397,10 @@ and are the review ownership map for public crate items and re-exports.
 - Message payload factories use the fallible from-source contract:
   `Message::try_from(...)` and `TryFrom` implementations. Copy-specific names
   such as `copy_from` are not part of the public contract.
+- Routing id construction uses standard `From` implementations.
+  Public helpers named `from_bytes`, `from_string`, `from_u32`, or
+  `from_uuid_bytes` are not part of the public contract; hex decoding may keep
+  `from_hex` / `try_from_hex`.
 - Do not add operation-start method families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
   the builder absorb the variation. Terminal builder methods may use idiomatic

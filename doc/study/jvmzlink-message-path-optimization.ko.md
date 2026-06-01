@@ -686,7 +686,7 @@ binding perf의 multi `router-router`, `dealer-router` 64B도
 
 - native `routingId`
 - `byte[]` 생성
-- `RoutingId.FromBytes(...)`
+- `RoutingId.From(...)`
 
 를 타면서 다시 한 번 복사했고,
 send에서는 `RoutingId.ToByteArray()`로 새 배열을 다시 만들었다.

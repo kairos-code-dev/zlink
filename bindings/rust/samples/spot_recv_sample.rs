@@ -45,12 +45,10 @@ fn main() {
         .attach_discovery(&subscriber_discovery)
         .expect("subscriber discovery attach failed");
     publisher_node
-        .set_routing_id(&zlink::RoutingId::from_bytes(b"z-rust-spot-recv-publisher"))
+        .set_routing_id(&zlink::RoutingId::from(b"z-rust-spot-recv-publisher"))
         .expect("publisher routing id failed");
     subscriber_node
-        .set_routing_id(&zlink::RoutingId::from_bytes(
-            b"a-rust-spot-recv-subscriber",
-        ))
+        .set_routing_id(&zlink::RoutingId::from(b"a-rust-spot-recv-subscriber"))
         .expect("subscriber routing id failed");
     bind_spot_pub_endpoint(&publisher_node).expect("publisher bind failed");
     bind_spot_pub_endpoint(&subscriber_node).expect("subscriber bind failed");
@@ -59,14 +57,10 @@ fn main() {
         .create_spot()
         .expect("subscriber spot failed");
     publisher
-        .set_routing_id(&zlink::RoutingId::from_bytes(
-            b"z-rust-spot-recv-publisher-spot",
-        ))
+        .set_routing_id(&zlink::RoutingId::from(b"z-rust-spot-recv-publisher-spot"))
         .expect("publisher spot routing id failed");
     subscriber
-        .set_routing_id(&zlink::RoutingId::from_bytes(
-            b"a-rust-spot-recv-subscriber-spot",
-        ))
+        .set_routing_id(&zlink::RoutingId::from(b"a-rust-spot-recv-subscriber-spot"))
         .expect("subscriber spot routing id failed");
     subscriber
         .set_subscription(TOPIC)

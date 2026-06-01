@@ -3,7 +3,7 @@
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use zlink::{

@@ -3,8 +3,8 @@ mod common;
 
 use std::time::{Duration, Instant};
 use zlink::{
-    DealerSocket, Message, POLLIN, POLLOUT, PollEvent, Poller, RecvFlags, RoutingId, SendFlags,
-    SocketMonitor,
+    DealerSocket, Message, PollEvent, Poller, RecvFlags, RoutingId, SendFlags, SocketMonitor,
+    POLLIN, POLLOUT,
 };
 
 fn drain_socket(
@@ -60,7 +60,7 @@ fn main() {
         sock.common_options()
             .set_receive_timeout(Duration::from_millis(settings.receive_timeout_ms))
             .expect("recv timeout");
-        let rid = RoutingId::from_bytes(format!("CLIENT-{index}").as_bytes());
+        let rid = RoutingId::from(format!("CLIENT-{index}").as_bytes());
         sock.set_routing_id(&rid).expect("set rid");
         if matches!(args.transport.as_str(), "tls" | "wss") {
             let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");

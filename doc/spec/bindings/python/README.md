@@ -48,7 +48,7 @@ classes live under `_runtime`, and callers create them through explicit
   handles are `typing.Protocol` declarations. They describe the public surface
   but are not constructors.
 - Public construction: package-root factories such as `create_context()`,
-  `create_pair_socket(...)`, `create_message_from(...)`, `create_poller()`,
+  `create_pair_socket(...)`, `create_message(...)`, `create_poller()`,
   and `create_spot_node(...)`, plus public owner methods such as
   `SpotNode.create_spot()`.
 - Internal implementation: underscore-prefixed packages such as `_runtime` and
@@ -339,7 +339,7 @@ methods.
   construction is not public.
 - `create_poller()`, `create_poll_events(...)`, `create_timer()`, and
   `create_timer_from_spot(...)` create eventing resources.
-- `create_message(...)`, `allocate_message(...)`, `create_message_from(...)`,
+- `create_message(...)`, `allocate_message(...)`,
   `create_received()`, `create_topic_message()`, and
   `create_subscription_event()` create reusable messaging storage.
 - Version, capability, strerror, proxy, sleep, and multipart cleanup helpers
@@ -390,9 +390,9 @@ from `zlink`.
   `request_frame(...)` or `reply(request_token, parts)`. A dealer can start a
   request through `request()`, but it cannot reply to an arbitrary token
   because it has no API-level peer routing id.
-- Message payload factories use `create_message_from(...)` because contract
-  Protocol classes are not construction shortcuts. `copy_from`, `from_bytes`,
-  and `Message.from_(...)` are not part of the public contract.
+- Message payload factories use `Message.from_(...)`; Python keeps the trailing
+  underscore because `from` is a reserved word. `create_message_from`,
+  `copy_from`, and `from_bytes` are not part of the public contract.
 - Do not add operation-start method families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
   the builder absorb the variation. Terminal builder methods may use idiomatic

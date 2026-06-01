@@ -29,9 +29,9 @@ fn main() {
     // PERF_SINGLE_TEST_POLICY § 1.4: receiver blocks on `recv()` until the
     // wire-level stop token arrives, so no recv timeout is needed.
 
-    let sender_rid = RoutingId::from_bytes(b"perf-rr-sender");
+    let sender_rid = RoutingId::from(b"perf-rr-sender");
     sender.set_routing_id(&sender_rid).expect("set rid");
-    let receiver_rid = RoutingId::from_bytes(b"perf-rr-receiver");
+    let receiver_rid = RoutingId::from(b"perf-rr-receiver");
     receiver.set_routing_id(&receiver_rid).expect("set rid");
     receiver
         .router_options()

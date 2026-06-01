@@ -303,25 +303,15 @@ class routing_id_t
 
     routing_id_t &operator= (routing_id_t &&other_) noexcept = default;
 
-    static routing_id_t from_bytes (const uint8_t *bytes_, size_t size_)
+    static routing_id_t from (const uint8_t *bytes_, size_t size_)
     {
         return routing_id_t (bytes_, size_);
     }
 
-    static routing_id_t from_bytes (const std::vector<uint8_t> &bytes_)
+    static routing_id_t from (const std::vector<uint8_t> &bytes_)
     {
         return routing_id_t (
           bytes_.empty () ? nullptr : bytes_.data (), bytes_.size ());
-    }
-
-    static routing_id_t from (const uint8_t *bytes_, size_t size_)
-    {
-        return from_bytes (bytes_, size_);
-    }
-
-    static routing_id_t from (const std::vector<uint8_t> &bytes_)
-    {
-        return from_bytes (bytes_);
     }
 
     static routing_id_t from (const std::string &value_)
@@ -337,12 +327,12 @@ class routing_id_t
             static_cast<uint8_t> ((value_ >> 16u) & 0xffu),
             static_cast<uint8_t> ((value_ >> 8u) & 0xffu),
             static_cast<uint8_t> (value_ & 0xffu)};
-        return from_bytes (bytes, sizeof (bytes));
+        return from (bytes, sizeof (bytes));
     }
 
-    static routing_id_t from_uuid (const std::array<uint8_t, 16> &value_)
+    static routing_id_t from (const std::array<uint8_t, 16> &value_)
     {
-        return from_bytes (value_.data (), value_.size ());
+        return from (value_.data (), value_.size ());
     }
 
     static routing_id_t from_hex (const std::string &value_)
@@ -362,12 +352,7 @@ class routing_id_t
                 throw std::invalid_argument ("routing id string must be hex");
             bytes.push_back (static_cast<uint8_t> ((high << 4) | low));
         }
-        return from_bytes (bytes);
-    }
-
-    static routing_id_t from_string (const std::string &value_)
-    {
-        return from (value_);
+        return from (bytes);
     }
 
     const uint8_t *data () const noexcept { return _data.data (); }

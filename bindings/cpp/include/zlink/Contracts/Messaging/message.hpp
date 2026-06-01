@@ -58,13 +58,13 @@ class message_t
     /// @brief Allocates a message with writable payload storage of @p size_ bytes.
     static message_t allocate (size_t size_);
     /// @brief Creates a message holding an independent copy of the given bytes.
-    static message_t from_bytes (const std::vector<uint8_t> &bytes_);
+    static message_t from (const std::vector<uint8_t> &bytes_);
     /// @brief Creates a message holding an independent copy of the given bytes.
-    static message_t from_bytes (std::span<const std::byte> bytes_);
+    static message_t from (std::span<const std::byte> bytes_);
     /// @brief Creates a message holding an independent copy of the given bytes.
-    static message_t from_bytes (std::span<const uint8_t> bytes_);
+    static message_t from (std::span<const uint8_t> bytes_);
     /// @brief Encodes the string as UTF-8 and copies it into a new message.
-    static message_t from_string (const std::string &text_);
+    static message_t from (const std::string &text_);
 
     void init ();
     void init (size_t size_);
@@ -114,8 +114,8 @@ namespace advanced
 class external_message_t
 {
   public:
-    static message_t from_bytes (std::span<const std::byte> bytes_);
-    static message_t from_bytes (std::span<const uint8_t> bytes_);
+    static message_t from (std::span<const std::byte> bytes_);
+    static message_t from (std::span<const uint8_t> bytes_);
 };
 } // namespace advanced
 

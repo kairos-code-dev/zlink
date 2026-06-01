@@ -35,7 +35,7 @@ server.recv (inbound);
 std::printf ("%s\n", inbound.parts ()[0].to_string ().c_str ()); // PING
 inbound.close ();
 
-zlink::message_t ack = zlink::message_t::from_string ("ACK");
+zlink::message_t ack = zlink::message_t::from ("ACK");
 inbound.send ().message (ack).submit ();
 ```
 
@@ -45,7 +45,7 @@ zlink::context_t ctx;
 zlink::pair_socket_t client (ctx);
 client.connect ("tcp://127.0.0.1:5555");
 
-zlink::message_t ping = zlink::message_t::from_string ("PING");
+zlink::message_t ping = zlink::message_t::from ("PING");
 client.send ().message (ping).submit ();
 
 zlink::received_t inbound;
@@ -77,11 +77,11 @@ inbound.close ();
 
 ```cpp
 // 문자열에서 생성
-zlink::message_t msg = zlink::message_t::from_string ("payload");
+zlink::message_t msg = zlink::message_t::from ("payload");
 
 // 바이트에서 생성
 std::vector<uint8_t> bytes = {0x01, 0x02};
-zlink::message_t msg = zlink::message_t::from_bytes (bytes);
+zlink::message_t msg = zlink::message_t::from (bytes);
 
 // 크기 지정 빈 프레임
 zlink::message_t msg = zlink::message_t::allocate (256);
@@ -119,7 +119,7 @@ inbound.close ();   // 명시적 해제 (또는 소멸자)
 ### 라우팅 ID
 
 ```cpp
-auto rid = zlink::routing_id_t::from_bytes (
+auto rid = zlink::routing_id_t::from (
     reinterpret_cast<const uint8_t*> (text.data ()), text.size ());
 socket.set_routing_id (rid);
 ```
@@ -137,7 +137,7 @@ socket.set_routing_id (rid);
 
 ```cpp
 try {
-    zlink::message_t msg = zlink::message_t::from_string ("data");
+    zlink::message_t msg = zlink::message_t::from ("data");
     socket.send ().message (msg).submit ();  // 성공 시 msg move
 } catch (const zlink::submit_error_t &e) {
     // 전송 실패 처리

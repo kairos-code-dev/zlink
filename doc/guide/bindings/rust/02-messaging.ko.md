@@ -39,7 +39,7 @@ let ctx = Context::new().unwrap();
 let router = ctx.router_socket().unwrap();
 let dealer = ctx.dealer_socket().unwrap();
 
-let rid = RoutingId::from_bytes(b"client-01");
+let rid = RoutingId::from(b"client-01");
 dealer.set_routing_id(&rid).unwrap();
 
 router.bind("tcp://127.0.0.1:5561").unwrap();

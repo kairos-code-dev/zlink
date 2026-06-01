@@ -83,7 +83,7 @@ bool send_spot_payload (zlink::service::spot_t &spot_,
     if (sent_out_)
         *sent_out_ = false;
 
-    zlink::message_t msg = zlink::message_t::from_bytes (
+    zlink::message_t msg = zlink::message_t::from (
       std::as_bytes (std::span<const char> (
         static_cast<const char *> (data_), size_)));
     if (!msg.valid ())

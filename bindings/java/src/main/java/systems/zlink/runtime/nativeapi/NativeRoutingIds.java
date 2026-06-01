@@ -6,6 +6,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.internal.ContractAccess;
 
 public final class NativeRoutingIds {
     private NativeRoutingIds() {}
@@ -37,7 +38,8 @@ public final class NativeRoutingIds {
             long hiMask = hiBits == 64 ? -1L
                 : (hiBits == 0 ? 0L : ((1L << hiBits) - 1L));
             hi &= hiMask;
-            RoutingId cached = RoutingId.tryFromInlineCached(size, lo, hi);
+            RoutingId cached = ContractAccess.routingIdTryFromInlineCached(
+                size, lo, hi);
             if (cached != null) {
                 return cached;
             }

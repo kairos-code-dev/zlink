@@ -73,7 +73,7 @@ fn dealer_router_roundtrip() {
     router.bind("inproc://beh-dr").unwrap();
 
     let dealer = ctx.dealer_socket().unwrap();
-    let rid = RoutingId::from_bytes(b"dealer-42");
+    let rid = RoutingId::from(b"dealer-42");
     dealer.set_routing_id(&rid).unwrap();
     dealer.connect("inproc://beh-dr").unwrap();
     thread::sleep(Duration::from_millis(50));
@@ -107,7 +107,7 @@ fn router_recv_preserves_routing_id_and_multipart_payload() {
     router.bind("inproc://beh-router-part").unwrap();
 
     let dealer = ctx.dealer_socket().unwrap();
-    let rid = RoutingId::from_bytes(b"dealer-part");
+    let rid = RoutingId::from(b"dealer-part");
     dealer.set_routing_id(&rid).unwrap();
     dealer.connect("inproc://beh-router-part").unwrap();
     thread::sleep(Duration::from_millis(50));
@@ -223,7 +223,7 @@ fn dealer_router_send_from_callback() {
 
     let router = ctx.router_socket().unwrap();
     let dealer = ctx.dealer_socket().unwrap();
-    let rid = RoutingId::from_bytes(b"dealer-cb-test");
+    let rid = RoutingId::from(b"dealer-cb-test");
     dealer.set_routing_id(&rid).unwrap();
 
     // Establish connection before installing callback -- required for the

@@ -24,7 +24,7 @@
 | 컨텍스트 | `Context::new()` | 런타임 진입점 | [01](./01-getting-started.md) |
 | 메시지 | `Message::try_from(b"data")` | 페이로드 프레임 | [01](./01-getting-started.md) |
 | 수신 | `Received::empty()` | 수신 봉투 | [01](./01-getting-started.md) |
-| 라우팅 ID | `RoutingId::from_bytes(b"id")` | 피어 식별 값 | [01](./01-getting-started.md) |
+| 라우팅 ID | `RoutingId::from(b"id")` | 피어 식별 값 | [01](./01-getting-started.md) |
 | PAIR | `ctx.pair_socket()` | 1:1 배타적 연결 | [02](./02-messaging.md#pair) |
 | DEALER/ROUTER | `ctx.dealer/router_socket()` | 요청/응답 | [02](./02-messaging.md#dealer--router) |
 | PUB/SUB | `ctx.pub/sub_socket()` | 토픽 발행/구독 | [02](./02-messaging.md#pub--sub) |

@@ -135,7 +135,7 @@ class dealer_router_client_bench_t
 
             const std::string routing_id = std::string ("dr_") + std::to_string (i);
             (void) sock.set_routing_id (
-              zlink::routing_id_t::from_bytes (
+              zlink::routing_id_t::from (
                 reinterpret_cast<const uint8_t *> (routing_id.data ()),
                 routing_id.size ()));
 
@@ -229,8 +229,8 @@ class dealer_router_client_bench_t
 
         state.request =
           state.borrow_payload
-            ? zlink::message_t::from_bytes (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)))
-            : zlink::message_t::from_bytes (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)));
+            ? zlink::message_t::from (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)))
+            : zlink::message_t::from (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)));
         if (!state.request.valid ()) {
             return false;
         }

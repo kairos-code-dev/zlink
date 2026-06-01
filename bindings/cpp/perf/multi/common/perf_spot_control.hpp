@@ -465,7 +465,7 @@ inline bool publish_control_message (SpotHandle &spot_,
                             std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
         zlink::message_t outbound =
-          zlink::message_t::from_bytes (std::as_bytes (
+          zlink::message_t::from (std::as_bytes (
             std::span<const char> (payload_.data (), payload_.size ())));
         if (!outbound.valid ()) {
             errno = EINVAL;

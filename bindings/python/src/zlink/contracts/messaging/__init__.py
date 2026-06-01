@@ -4,8 +4,6 @@ from .message import (
     Message,
     allocate_message,
     create_message,
-    create_message_from,
-    wrap_message_buffer,
 )
 from .received import (
     Received,
@@ -23,8 +21,6 @@ __all__ = [
     "Message",
     "create_message",
     "allocate_message",
-    "create_message_from",
-    "wrap_message_buffer",
     "Received",
     "ReceivedMessage",
     "ReceivedMultipart",

@@ -7,8 +7,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use zlink::{
-    Message, POLLIN, PollEvent, Poller, RecvFlags, RecvResult, RoutingId, SendFlags, Spot,
-    SpotNode, SubmitResult, TopicMessage,
+    Message, PollEvent, Poller, RecvFlags, RecvResult, RoutingId, SendFlags, Spot, SpotNode,
+    SubmitResult, TopicMessage, POLLIN,
 };
 
 const TOPIC: &str = "bench";
@@ -121,10 +121,10 @@ fn main() {
     common::apply_multi_spot_node_admission(&data_node, &settings);
     common::apply_multi_spot_node_admission(&control_node, &settings);
     data_node
-        .set_routing_id(&RoutingId::from_bytes(b"a-rust-multi-spot-client"))
+        .set_routing_id(&RoutingId::from(b"a-rust-multi-spot-client"))
         .expect("data rid");
     control_node
-        .set_routing_id(&RoutingId::from_bytes(b"a-rust-multi-spot-control-client"))
+        .set_routing_id(&RoutingId::from(b"a-rust-multi-spot-control-client"))
         .expect("control rid");
 
     let control_pub = control_node.create_spot().expect("control pub");
@@ -151,7 +151,7 @@ fn main() {
     let mut spots: Vec<Box<Spot>> = Vec::with_capacity(settings.clients);
     for index in 0..settings.clients {
         let spot = Box::new(data_node.create_spot().expect("spot"));
-        spot.set_routing_id(&RoutingId::from_bytes(
+        spot.set_routing_id(&RoutingId::from(
             format!("a-rust-multi-spot-client-spot-{index}").as_bytes(),
         ))
         .expect("spot rid");

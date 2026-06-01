@@ -11,32 +11,32 @@ use zlink::{
 #[test]
 fn routing_id_max_length_accepted() {
     let data = vec![0x42u8; 255];
-    let rid = RoutingId::from_bytes(&data);
+    let rid = RoutingId::from(data.as_slice());
     assert_eq!(rid.size(), 255, "255-byte routing id must succeed");
 }
 
 #[test]
 fn routing_id_exceeds_max_fails() {
     let data = vec![0x42u8; 256];
-    let result = std::panic::catch_unwind(|| RoutingId::from_bytes(&data));
+    let result = std::panic::catch_unwind(|| RoutingId::from(data.as_slice()));
     assert!(result.is_err(), "256-byte routing id must fail immediately");
 }
 
 #[test]
 fn routing_id_empty_fails() {
-    let result = std::panic::catch_unwind(|| RoutingId::from_bytes(&[]));
+    let result = std::panic::catch_unwind(|| RoutingId::from(&[] as &[u8]));
     assert!(result.is_err(), "empty routing id must fail");
 }
 
 #[test]
 fn routing_id_one_byte_accepted() {
-    let rid = RoutingId::from_bytes(&[0x01]);
+    let rid = RoutingId::from(&[0x01]);
     assert_eq!(rid.size(), 1);
 }
 
 #[test]
 fn routing_id_hex_and_display_policy() {
-    let rid = RoutingId::from_bytes(&[0x00, 0x41, 0x42]);
+    let rid = RoutingId::from(&[0x00, 0x41, 0x42]);
     assert_eq!(RoutingId::from_hex("004142"), rid);
     assert_eq!(RoutingId::try_from_hex("004142").unwrap(), rid);
     assert_eq!(rid.to_string(), "hex:004142");
@@ -53,8 +53,8 @@ fn routing_id_hex_and_display_policy() {
         RoutingId::try_from_hex(&oversized).is_err(),
         "oversized hex routing id string must return ConfigError"
     );
-    assert_eq!(RoutingId::from_string("dealer-1").to_string(), "dealer-1");
-    assert_eq!(RoutingId::from_u32(23).to_string(), "23");
+    assert_eq!(RoutingId::from("dealer-1").to_string(), "dealer-1");
+    assert_eq!(RoutingId::from(23u32).to_string(), "23");
 }
 
 #[test]

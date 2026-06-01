@@ -325,29 +325,27 @@ const (
 )
 
 var (
-	IgnoreMonitorHandler      = impl.IgnoreMonitorHandler
-	OpenSocketMonitor         = impl.OpenSocketMonitor
-	NewRoutingID              = impl.NewRoutingID
-	NewRoutingIDFromString    = impl.NewRoutingIDFromString
-	NewRoutingIDFromUInt32    = impl.NewRoutingIDFromUInt32
-	NewRoutingIDFromUUIDBytes = impl.NewRoutingIDFromUUIDBytes
-	NewRoutingIDFromHex       = impl.NewRoutingIDFromHex
-	ParseRoutingIDHex         = impl.ParseRoutingIDHex
-	NewMessage                = impl.NewMessage
-	NewMessageFrom            = impl.NewMessageFrom
-	NewMessageFromString      = impl.NewMessageFromString
-	NewMessageWithSize        = impl.NewMessageWithSize
-	RemoteActorRef            = impl.RemoteActorRef
-	RuntimeVersion            = impl.RuntimeVersion
-	NewContext                = impl.NewContext
-	NewTimer                  = impl.NewTimer
-	NewTimerFromSpot          = impl.NewTimerFromSpot
-	NewPoller                 = impl.NewPoller
-	Poll                      = impl.Poll
-	Has                       = impl.Has
-	Proxy                     = impl.Proxy
-	ProxySteerable            = impl.ProxySteerable
-	Sleep                     = impl.Sleep
-	MultipartClose            = impl.MultipartClose
-	NewStopwatch              = impl.NewStopwatch
+	IgnoreMonitorHandler  = impl.IgnoreMonitorHandler
+	OpenSocketMonitor     = impl.OpenSocketMonitor
+	NewRoutingID          = impl.NewRoutingID
+	NewRoutingIDString    = impl.NewRoutingIDString
+	NewRoutingIDUint32    = impl.NewRoutingIDUint32
+	NewRoutingIDUUIDBytes = impl.NewRoutingIDUUIDBytes
+	NewRoutingIDFromHex   = impl.NewRoutingIDFromHex
+	NewMessage            = impl.NewMessage
+	NewMessageString      = impl.NewMessageString
+	NewMessageWithSize    = impl.NewMessageWithSize
+	RemoteActorRef        = impl.RemoteActorRef
+	RuntimeVersion        = impl.RuntimeVersion
+	NewContext            = impl.NewContext
+	NewTimer              = impl.NewTimer
+	NewTimerFromSpot      = impl.NewTimerFromSpot
+	NewPoller             = impl.NewPoller
+	Poll                  = impl.Poll
+	Has                   = impl.Has
+	Proxy                 = impl.Proxy
+	ProxySteerable        = impl.ProxySteerable
+	Sleep                 = impl.Sleep
+	MultipartClose        = impl.MultipartClose
+	NewStopwatch          = impl.NewStopwatch
 )

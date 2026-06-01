@@ -13,11 +13,6 @@ class RoutingId:
         self._raw = _validated_routing_id_bytes(data)
 
     @classmethod
-    def from_bytes(cls, data):
-        """Create a routing id from a copy of the raw ``data`` bytes."""
-        return cls(data)
-
-    @classmethod
     def from_(cls, value):
         """Create a routing id from a ``str`` (UTF-8 bytes), an ``int`` (4-byte
         big-endian uint32), a :class:`uuid.UUID` (16 bytes), or a bytes-like
@@ -46,11 +41,6 @@ class RoutingId:
         if len(value) > 510:
             raise ValueError("routing id string must decode to at most 255 bytes")
         return cls(bytes.fromhex(value))
-
-    @classmethod
-    def from_string(cls, value):
-        """Create a routing id from ``value`` via :meth:`from_`."""
-        return cls.from_(value)
 
     def to_bytes(self):
         """Return the routing id bytes."""

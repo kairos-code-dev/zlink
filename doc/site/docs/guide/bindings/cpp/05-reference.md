@@ -10,7 +10,7 @@ C++ 바인딩은 `zlink::binding_error_t`를 상속하는 작업별 예외를 �
 
 ```cpp
 try {
-    zlink::message_t msg = zlink::message_t::from_string ("data");
+    zlink::message_t msg = zlink::message_t::from ("data");
     socket.send ().message (msg).submit ();
 } catch (const zlink::submit_error_t &e) {
     if (e.result () == zlink::submit_result_t::backpressured) {

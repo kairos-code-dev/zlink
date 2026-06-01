@@ -44,7 +44,7 @@ Python은 물리적 패키지 트리를 .NET 카테고리 맵에 가깝게 유�
 - 공개 리소스 계약: 네이티브 기반 리소스, 빌더, operation 핸들은
   `typing.Protocol` 선언이다. 공개 표면을 설명하지만 생성자는 아니다.
 - 공개 생성: `create_context()`, `create_pair_socket(...)`,
-  `create_message_from(...)`, `create_poller()`, `create_spot_node(...)` 같은
+  `create_message(...)`, `create_poller()`, `create_spot_node(...)` 같은
   패키지 루트 팩토리와 `SpotNode.create_spot()` 같은 공개 소유자 메서드가 담당한다.
 - 내부 구현: `_runtime`, `_native`처럼 언더스코어 접두 패키지, 비공개 확장 모듈,
   콜백 브리지 코드, request 진행 헬퍼, raw part-loop 헬퍼.
@@ -307,8 +307,8 @@ import하지 않는다. 패키지 루트는 팩토리에서 런타임 구현을 
   공개되지 않는다.
 - `create_poller()`, `create_poll_events(...)`, `create_timer()`,
   `create_timer_from_spot(...)`은 eventing 리소스를 생성한다.
-- `create_message(...)`, `allocate_message(...)`, `create_message_from(...)`,
-  `create_received()`, `create_topic_message()`, `create_subscription_event()`는
+- `create_message(...)`, `allocate_message(...)`, `create_received()`,
+  `create_topic_message()`, `create_subscription_event()`는
   재사용 가능한 messaging 저장소를 생성한다.
 - 버전, capability, strerror, proxy, sleep, multipart cleanup 헬퍼는 공개 패키지
   함수다. 이 함수들 뒤의 네이티브 호출은 비공개 모듈에 둔다.
@@ -355,9 +355,9 @@ import하지 않는다. 패키지 루트는 팩토리에서 런타임 구현을 
   프로토콜 envelope 헬퍼를 노출하지 않는다. dealer는 `request()`로 request를
   시작할 수 있지만, API 수준의 피어 routing id가 없으므로 임의의 토큰에 답할 수
   없다.
-- 메시지 payload 팩토리는 계약 Protocol 클래스가 생성 단축 경로가 아니므로
-  `create_message_from(...)`을 사용한다. `copy_from`, `from_bytes`,
-  `Message.from_(...)`은 공개 계약의 일부가 아니다.
+- 메시지 payload 팩토리는 `Message.from_(...)`을 사용한다. Python에서는
+  `from`이 예약어이므로 뒤에 밑줄을 붙인다. `create_message_from`,
+  `copy_from`, `from_bytes`는 공개 계약의 일부가 아니다.
 - `send_no_wait`, `publish_with_flags`, `request_async` 같은 operation-start
   메서드 패밀리를 추가하지 않는다. operation 이름은 하나로 유지하고 변이는
   빌더가 흡수하도록 둔다. 빌더의 terminal 메서드는 `submit_async` 같은 관용

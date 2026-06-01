@@ -216,7 +216,6 @@ _bootstrap_runtime()
 
 create_message = messaging_runtime.create_message
 allocate_message = messaging_runtime.message_allocate
-create_message_from = messaging_runtime.message_from
 create_received = messaging_runtime.create_received
 create_topic_message = messaging_runtime.create_topic_message
 create_subscription_event = messaging_runtime.create_subscription_event
@@ -287,7 +286,6 @@ __all__ = [
     "Message",
     "create_message",
     "allocate_message",
-    "create_message_from",
     "Received",
     "create_received",
     "TopicMessage",

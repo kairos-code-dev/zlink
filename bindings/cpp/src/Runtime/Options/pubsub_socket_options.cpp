@@ -84,7 +84,7 @@ message_t pub_socket_options_t::welcome_message () const
     const std::string value =
       detail::get_pub_option_string (detail::native_option_handle (_socket),
                                      detail::pub_option_id::welcome_msg);
-    return message_t::from_bytes (
+    return message_t::from (
       std::as_bytes (std::span<const char> (value.data (), value.size ())));
 }
 

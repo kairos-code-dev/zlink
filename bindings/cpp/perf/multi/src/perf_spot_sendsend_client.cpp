@@ -238,7 +238,7 @@ bool submit_request (client_slot_t &slot,
           slot.next_seq,
           perf_metric::now_ns ()))
         return false;
-    slot.message = zlink::message_t::from_bytes (std::as_bytes (
+    slot.message = zlink::message_t::from (std::as_bytes (
       std::span<const char> (slot.payload.data (), slot.payload.size ())));
     if (!slot.message.valid ())
         return false;

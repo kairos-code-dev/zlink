@@ -96,7 +96,7 @@ fn send_failure_does_not_leak() {
         .set_send_timeout(Duration::from_millis(50))
         .unwrap();
 
-    let rid = RoutingId::from_bytes(b"ghost");
+    let rid = RoutingId::from(b"ghost");
     let msg = Message::try_from(b"will-fail").unwrap();
     let _ = router.send(&rid).message(msg).submit();
     // msg is consumed regardless of success/failure – no native leak

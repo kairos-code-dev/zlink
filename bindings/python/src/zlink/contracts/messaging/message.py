@@ -69,13 +69,12 @@ def allocate_message(size: int):
     return _require(_message_allocate_factory, "message allocate")(size)
 
 
-def create_message_from(data):
-    """Create a message holding an independent copy of ``data`` (a bytes-like
-    object); the caller may freely mutate or discard ``data`` afterward."""
+def _message_from(data):
+    """Create a message holding an independent copy of ``data``."""
     return _require(_message_from_factory, "message from")(data)
 
 
-def wrap_message_buffer(data):
+def _wrap_message_buffer(data):
     """Create a message that wraps ``data`` without copying it.
 
     The caller must keep ``data`` alive and unmodified for as long as the
@@ -91,6 +90,16 @@ class Message(Protocol):
     Supports the context-manager protocol; closing the message (or leaving its
     ``with`` block) releases the payload. Sending a message consumes it.
     """
+
+    @classmethod
+    def from_(cls, data):
+        """Create a message holding an independent copy of ``data``."""
+        return _message_from(data)
+
+    @classmethod
+    def allocate(cls, size: int):
+        """Allocate a message with writable payload storage of ``size`` bytes."""
+        return allocate_message(size)
 
     def copy(self):
         """Return a new message holding an independent copy of this payload."""

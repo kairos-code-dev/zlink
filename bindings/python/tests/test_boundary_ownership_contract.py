@@ -14,11 +14,11 @@ class BoundaryValidationContractTests(unittest.TestCase):
                                      zlink.ConfigResult.NOT_SUPPORTED)
 
     def test_routing_id_byte_boundaries_are_checked_before_native_call(self):
-        self.assertEqual(zlink.RoutingId.from_bytes(b"a" * 255).size, 255)
+        self.assertEqual(zlink.RoutingId.from_(b"a" * 255).size, 255)
 
         for invalid in (b"", b"a" * 256):
             with self.assertRaises(ValueError):
-                zlink.RoutingId.from_bytes(invalid)
+                zlink.RoutingId.from_(invalid)
 
     def test_endpoint_and_channel_name_reject_fixed_buffer_overflow(self):
         with zlink.create_context() as ctx:
@@ -84,7 +84,7 @@ class BoundaryValidationContractTests(unittest.TestCase):
 class OwnershipContractTests(unittest.TestCase):
     def test_message_copy_owns_bytes_independently_of_source_buffer(self):
         source = bytearray(b"payload")
-        with zlink.create_message_from(source) as message:
+        with zlink.Message.from_(source) as message:
             source[:] = b"changed"
             self.assertEqual(message.to_bytes(), b"payload")
 

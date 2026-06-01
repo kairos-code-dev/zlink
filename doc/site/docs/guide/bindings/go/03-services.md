@@ -102,7 +102,7 @@ if err != nil { ... }
 defer node.Close()
 
 // 노드 라우팅 ID (다른 노드가 이 노드를 식별하는 값)
-node.SetRoutingID(zlink.NewRoutingIDFromString("node-1"))
+node.SetRoutingID(zlink.NewRoutingIDString("node-1"))
 
 // PUB/SUB 메시지를 위한 엔드포인트 바인드
 node.SetPubBind("tcp://127.0.0.1:5700")
@@ -118,14 +118,14 @@ spot, err := node.Spot()
 if err != nil { ... }
 defer spot.Close()
 
-spot.SetRoutingID(zlink.NewRoutingIDFromString("spot-pub"))
+spot.SetRoutingID(zlink.NewRoutingIDString("spot-pub"))
 spot.SetSubscription("market:BTC")   // 구독 토픽 등록
 
 // 피어가 연결될 때까지 대기 (실제 코드에서는 적절한 방식으로 대기)
 // ...
 
 // 발행
-msg, _ := zlink.NewMessageFrom([]byte("67000.00"))
+msg, _ := zlink.NewMessage([]byte("67000.00"))
 spot.Publish("market:BTC").Message(msg).Submit(nil)
 
 // 구독 수신
@@ -207,7 +207,7 @@ go func() {
     req, err := spot.RecvActorJoin(zlink.RecvFlagsNone)
     if err != nil { return }
     defer req.Message.Close()
-    replyMsg, _ := zlink.NewMessageFrom([]byte("welcome"))
+    replyMsg, _ := zlink.NewMessage([]byte("welcome"))
     spot.ReplyActorJoin(req, 0).Message(replyMsg).Submit(nil)
 }()
 

@@ -24,7 +24,7 @@ int main ()
       .submit_async ()
       .get ();
 
-    zlink::message_t join = zlink::message_t::from_string ("enter-room");
+    zlink::message_t join = zlink::message_t::from ("enter-room");
     assert (actor.join (spot)
       .message (join)
       .flags (zlink::recv_flags_t::dontwait)
@@ -37,7 +37,7 @@ int main ()
     assert (wait_until_flag (capture, &actor_sample_capture_t::joined));
     assert (capture.join_result == zlink::request_result_t::ok);
 
-    zlink::message_t event = zlink::message_t::from_string ("move:north");
+    zlink::message_t event = zlink::message_t::from ("move:north");
     assert (stream_session.stream.send_bound_actor (
       stream_session.session, "room-player-1")
       .message (event)

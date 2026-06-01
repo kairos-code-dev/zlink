@@ -6,8 +6,8 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use zlink::{
-    Context, DealerSocket, Message, POLLIN, POLLOUT, PairSocket, PollEvent, Poller, PubSocket,
-    RouterSocket, SocketMonitor, Spot, SpotNode, StreamSocket, SubSocket, ZlinkError,
+    Context, DealerSocket, Message, PairSocket, PollEvent, Poller, PubSocket, RouterSocket,
+    SocketMonitor, Spot, SpotNode, StreamSocket, SubSocket, ZlinkError, POLLIN, POLLOUT,
 };
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";

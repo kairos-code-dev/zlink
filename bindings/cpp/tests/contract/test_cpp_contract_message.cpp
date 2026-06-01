@@ -9,7 +9,7 @@ namespace {
 
 void test_string_roundtrip ()
 {
-    zlink::message_t msg = zlink::message_t::from_string ("alpha");
+    zlink::message_t msg = zlink::message_t::from ("alpha");
     assert (msg.valid ());
     assert (msg.to_string () == "alpha");
 }
@@ -21,7 +21,7 @@ void test_bytes_roundtrip ()
     bytes.push_back (0x20);
     bytes.push_back (0x30);
 
-    zlink::message_t msg = zlink::message_t::from_bytes (bytes);
+    zlink::message_t msg = zlink::message_t::from (bytes);
     assert (msg.valid ());
 
     const std::vector<uint8_t> out = msg.to_bytes ();
@@ -50,7 +50,7 @@ void test_copy_helpers_copy_payload ()
     assert (empty.valid ());
     assert (empty.is_empty ());
 
-    zlink::message_t msg = zlink::message_t::from_string ("copy-payload");
+    zlink::message_t msg = zlink::message_t::from ("copy-payload");
     assert (!msg.is_empty ());
 
     std::vector<uint8_t> target (msg.size ());
@@ -74,7 +74,7 @@ void test_copy_helpers_copy_payload ()
 void test_copy_and_move_preserve_payload ()
 {
     const std::string payload (1024, 'c');
-    zlink::message_t original = zlink::message_t::from_string (payload);
+    zlink::message_t original = zlink::message_t::from (payload);
     zlink::message_t copy (original);
     zlink::message_t moved (std::move (original));
 
@@ -88,7 +88,7 @@ void test_copy_and_move_preserve_payload ()
 
 void test_diagnostic_surface_uses_canonical_names ()
 {
-    zlink::message_t msg = zlink::message_t::from_string ("diagnostic");
+    zlink::message_t msg = zlink::message_t::from ("diagnostic");
     assert (msg.valid ());
     assert (msg.ref_count () >= 1);
     assert (!msg.property ("missing").has_value ());

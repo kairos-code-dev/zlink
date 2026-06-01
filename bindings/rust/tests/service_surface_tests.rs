@@ -46,7 +46,7 @@ fn spot_node_snapshot_surfaces_exist() {
     let _ = node.subjects(None).unwrap();
     let _ = node.set_tls_server("cert", "key", false);
     let _ = node.set_tls_client("ca", "localhost", true);
-    node.set_routing_id(&RoutingId::from_bytes(b"node-surface"))
+    node.set_routing_id(&RoutingId::from(b"node-surface"))
         .unwrap();
     let _ = node.routing_id().unwrap();
     node.set_router_high_water_mark(1).unwrap();
@@ -60,7 +60,7 @@ fn spot_callback_surfaces_exist() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let spot = node.create_spot().unwrap();
-    spot.set_routing_id(&RoutingId::from_bytes(b"spot-surface"))
+    spot.set_routing_id(&RoutingId::from(b"spot-surface"))
         .unwrap();
     let _ = spot.routing_id().unwrap();
     let _ = spot
@@ -81,8 +81,8 @@ fn spot_callback_surfaces_exist() {
         .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit();
-    let rid = RoutingId::from_bytes(b"rid-surface");
-    let spot_rid = RoutingId::from_bytes(b"spot-surface");
+    let rid = RoutingId::from(b"rid-surface");
+    let spot_rid = RoutingId::from(b"spot-surface");
     let _ = spot
         .send_to_spot(rid, spot_rid)
         .message(Message::try_from(b"payload").unwrap())
@@ -188,7 +188,7 @@ fn discovery_resolve_spot_surface_exists() {
     assert!(!discovery.actor_route_sync_enabled().unwrap());
     discovery.set_actor_route_sync_enabled(true).unwrap();
     assert!(discovery.actor_route_sync_enabled().unwrap());
-    let _ = discovery.resolve_spot(&RoutingId::from_bytes(b"spot-rid"));
+    let _ = discovery.resolve_spot(&RoutingId::from(b"spot-rid"));
     let _ = discovery.resolve_actor("actor-rid");
 }
 
@@ -196,13 +196,13 @@ fn discovery_resolve_spot_surface_exists() {
 fn actor_surfaces_exist() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
-    node.set_routing_id(&RoutingId::from_bytes(b"actor-node"))
+    node.set_routing_id(&RoutingId::from(b"actor-node"))
         .unwrap();
     let spot = node.create_spot().unwrap();
-    spot.set_routing_id(&RoutingId::from_bytes(b"actor-spot"))
+    spot.set_routing_id(&RoutingId::from(b"actor-spot"))
         .unwrap();
     let stream = ctx.stream_socket().unwrap();
-    let session_rid = RoutingId::from_bytes(b"actor-session");
+    let session_rid = RoutingId::from(b"actor-session");
 
     let mut actor = node.create_actor("actor-surface").unwrap();
     let actor_ref = actor.actor_ref().unwrap();
@@ -212,7 +212,7 @@ fn actor_surfaces_exist() {
         "actor-surface"
     );
     assert_eq!(
-        SpotNode::remote_actor_ref(&RoutingId::from_bytes(b"remote-node"), "remote-actor")
+        SpotNode::remote_actor_ref(&RoutingId::from(b"remote-node"), "remote-actor")
             .unwrap()
             .generation,
         0
@@ -246,24 +246,24 @@ fn actor_surfaces_exist() {
     let _ = actor.leave(&spot);
     let _ = actor.close();
     let remote =
-        SpotNode::remote_actor_ref(&RoutingId::from_bytes(b"remote-node"), "remote-actor").unwrap();
+        SpotNode::remote_actor_ref(&RoutingId::from(b"remote-node"), "remote-actor").unwrap();
     let _ = node
         .destroy_actor(&remote)
         .timeout(std::time::Duration::from_millis(1));
     let _ = node
         .join_actor(
             &remote,
-            &RoutingId::from_bytes(b"actor-node"),
-            &RoutingId::from_bytes(b"actor-spot"),
+            &RoutingId::from(b"actor-node"),
+            &RoutingId::from(b"actor-spot"),
         )
         .message(Message::try_from(b"join").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .timeout(std::time::Duration::from_millis(1));
     let _ = node
-        .join_actor_entry_spot(&remote, &RoutingId::from_bytes(b"actor-node"))
+        .join_actor_entry_spot(&remote, &RoutingId::from(b"actor-node"))
         .timeout(std::time::Duration::from_millis(1));
     let _ = node
-        .leave_actor(&remote, &RoutingId::from_bytes(b"actor-spot"))
+        .leave_actor(&remote, &RoutingId::from(b"actor-spot"))
         .timeout(std::time::Duration::from_millis(1));
     fn _dispatch_handler(_info: SpotDispatchInfo<'_>) {}
     let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchInfo<'_>)>;
@@ -275,7 +275,7 @@ fn actor_surfaces_exist() {
 fn actor_entry_spot_join_returns_actor_ref() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
-    let node_rid = RoutingId::from_bytes(b"entry-join-node");
+    let node_rid = RoutingId::from(b"entry-join-node");
     node.set_routing_id(&node_rid).unwrap();
     let actor = node.create_actor("entry-join-actor").unwrap();
     let actor_ref = actor.actor_ref().unwrap();

@@ -6,7 +6,7 @@ import json
 from dataclasses import asdict, is_dataclass
 from typing import Any, TypeVar, cast
 
-from zlink import Message, create_message_from
+from zlink import Message
 
 T = TypeVar("T")
 
@@ -58,4 +58,4 @@ def _normalize_encoded(value: Any) -> Any:
 
 
 def _new_message(data: bytes) -> Message:
-    return create_message_from(data)
+    return Message.from_(data)

@@ -46,7 +46,7 @@ from ...contracts.errors.codes import ConfigResult, ConnectResult
 from ...contracts.sockets.codes import HandlerResult, RecvResult, RequestResult, SubmitResult
 from ...contracts.core.routing_id import RoutingId
 from ..messaging.message_materializer import Message, Received, SubscriptionEvent
-from ...contracts.messaging.message import create_message_from
+from ...contracts.messaging.message import _message_from
 from ..messaging.request_reply import (
     _PendingRequest,
     _RequestProgressPump,
@@ -845,8 +845,8 @@ class StreamSocket(
                 routing_id = None
                 if source_rid_ptr:
                     routing_id = RoutingId(_routing_id_bytes(source_rid_ptr.contents))
-                header = create_message_from(_msg_to_bytes(header_ptr.contents))
-                body = create_message_from(_msg_to_bytes(body_ptr.contents))
+                header = _message_from(_msg_to_bytes(header_ptr.contents))
+                body = _message_from(_msg_to_bytes(body_ptr.contents))
             except Exception:
                 _report_unhandled_callback_exception(handler)
                 return

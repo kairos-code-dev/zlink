@@ -81,7 +81,7 @@ zlink::context_t ctx;
 zlink::service::spot_node_t node (ctx);
 zlink::service::spot_t spot = node.create_spot ();
 
-node.set_routing_id (zlink::routing_id_t::from_bytes (
+node.set_routing_id (zlink::routing_id_t::from (
     reinterpret_cast<const uint8_t*> ("node-1"), 6));
 node.set_pub_bind ("tcp://127.0.0.1:5700");
 node.connect_peer ("tcp://10.0.0.2:5700");
@@ -90,7 +90,7 @@ node.connect_peer ("tcp://10.0.0.2:5700");
 spot.set_subscription ("market:BTC");
 
 // 발행
-zlink::message_t msg = zlink::message_t::from_string ("67000.00");
+zlink::message_t msg = zlink::message_t::from ("67000.00");
 spot.publish ("market:BTC").message (msg).submit ();
 
 // 구독 수신
@@ -139,7 +139,7 @@ zlink::service::actor_t actor = node.create_actor ("player-42");
 zlink::actor_ref_t ref = actor.ref ();
 
 // 스팟 조인 (콜백 방식)
-zlink::message_t payload = zlink::message_t::from_string ("join");
+zlink::message_t payload = zlink::message_t::from ("join");
 actor.join (spot)
     .message (payload)
     .flags (zlink::recv_flags_t::dontwait)
@@ -155,7 +155,7 @@ actor.join (spot)
 // 스팟에서 조인 수락 (디스패치 핸들러 내)
 auto request = spot.recv_actor_join (zlink::recv_flags_t::dontwait);
 if (request.has_value ()) {
-    zlink::message_t reply = zlink::message_t::from_string ("welcome");
+    zlink::message_t reply = zlink::message_t::from ("welcome");
     spot.reply_actor_join (*request, 0).message (reply).submit ();
 }
 

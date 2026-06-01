@@ -87,7 +87,7 @@ bool message_t::valid () const noexcept { return _valid; }
 
 message_t message_t::allocate (size_t size_) { return message_t (size_); }
 
-message_t message_t::from_bytes (std::span<const std::byte> bytes_)
+message_t message_t::from (std::span<const std::byte> bytes_)
 {
     message_t msg (bytes_.size ());
     if (!msg.valid ())
@@ -97,20 +97,20 @@ message_t message_t::from_bytes (std::span<const std::byte> bytes_)
     return msg;
 }
 
-message_t message_t::from_bytes (const std::vector<uint8_t> &bytes_)
+message_t message_t::from (const std::vector<uint8_t> &bytes_)
 {
-    return from_bytes (std::span<const uint8_t> (bytes_.data (), bytes_.size ()));
+    return from (std::span<const uint8_t> (bytes_.data (), bytes_.size ()));
 }
 
-message_t message_t::from_bytes (std::span<const uint8_t> bytes_)
+message_t message_t::from (std::span<const uint8_t> bytes_)
 {
-    return from_bytes (std::as_bytes (bytes_));
+    return from (std::as_bytes (bytes_));
 }
 
-message_t message_t::from_string (const std::string &text_)
+message_t message_t::from (const std::string &text_)
 {
-    return from_bytes (std::as_bytes (std::span<const char> (text_.data (),
-                                                             text_.size ())));
+    return from (std::as_bytes (std::span<const char> (text_.data (),
+                                                       text_.size ())));
 }
 
 void message_t::init ()
@@ -220,14 +220,14 @@ void message_t::close ()
 namespace advanced
 {
 
-message_t external_message_t::from_bytes (std::span<const std::byte> bytes_)
+message_t external_message_t::from (std::span<const std::byte> bytes_)
 {
-    return message_t::from_bytes (bytes_);
+    return message_t::from (bytes_);
 }
 
-message_t external_message_t::from_bytes (std::span<const uint8_t> bytes_)
+message_t external_message_t::from (std::span<const uint8_t> bytes_)
 {
-    return message_t::from_bytes (bytes_);
+    return message_t::from (bytes_);
 }
 
 } // namespace advanced

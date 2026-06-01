@@ -41,35 +41,35 @@ func NewRoutingID(data []byte) RoutingID {
 	return rid
 }
 
-// NewRoutingIDFromString encodes a user-visible routing id string as UTF-8.
+// NewRoutingIDString encodes a user-visible routing id string as UTF-8.
 // Invalid input returns the empty RoutingID value.
-func NewRoutingIDFromString(value string) RoutingID {
+func NewRoutingIDString(value string) RoutingID {
 	return NewRoutingID([]byte(value))
 }
 
-func NewRoutingIDFromUInt32(value uint32) RoutingID {
+func NewRoutingIDUint32(value uint32) RoutingID {
 	var data [4]byte
 	binary.BigEndian.PutUint32(data[:], value)
 	return NewRoutingID(data[:])
 }
 
-func NewRoutingIDFromUUIDBytes(value [16]byte) RoutingID {
+func NewRoutingIDUUIDBytes(value [16]byte) RoutingID {
 	return NewRoutingID(value[:])
 }
 
 // NewRoutingIDFromHex parses the hex form returned by RoutingID.Hex. Invalid
 // input returns the empty RoutingID value.
 func NewRoutingIDFromHex(value string) RoutingID {
-	rid, err := ParseRoutingIDHex(value)
+	rid, err := parseRoutingIDHex(value)
 	if err != nil {
 		return RoutingID{}
 	}
 	return rid
 }
 
-// ParseRoutingIDHex parses the hex form returned by RoutingID.Hex. Invalid
+// parseRoutingIDHex parses the hex form returned by RoutingID.Hex. Invalid
 // input returns *ConfigError.
-func ParseRoutingIDHex(value string) (RoutingID, error) {
+func parseRoutingIDHex(value string) (RoutingID, error) {
 	if len(value) == 0 || len(value)%2 != 0 || len(value) > maxRoutingIDSize*2 {
 		return RoutingID{}, validationError("routing id string must be non-empty even-length hex and decode to at most %d bytes", maxRoutingIDSize)
 	}
@@ -193,14 +193,7 @@ func NewMessageWithSize(size int) (*Message, error) {
 	return m, nil
 }
 
-// NewMessageFrom creates a message from a byte slice. The current Go
-// binding uses the owned-message path; the helper exists so codec extensions
-// can target a stable constructor.
-func NewMessageFrom(data []byte) (*Message, error) {
-	return NewMessage(data)
-}
-
-func NewMessageFromString(value string) (*Message, error) {
+func NewMessageString(value string) (*Message, error) {
 	return NewMessage([]byte(value))
 }
 

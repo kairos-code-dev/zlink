@@ -308,7 +308,7 @@ class dealer_dealer_client_bench_t
             return false;
         const size_t token_size = std::strlen (perf::multi::k_stop_token);
         zlink::message_t part =
-          zlink::message_t::from_bytes (std::as_bytes (
+          zlink::message_t::from (std::as_bytes (
             std::span<const char> (perf::multi::k_stop_token, token_size)));
         if (!part.valid ())
             return false;

@@ -1625,6 +1625,29 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
 
 ### 네이밍 정책
 
+#### 생성 함수 네이밍
+
+`Message`와 `RoutingId`처럼 입력 값에서 새 객체를 만드는 공개 함수는 `.NET`
+바인딩의 `From(...)` 의미를 기준으로 맞춘다. 입력 타입이 함수 이름에 들어가면
+같은 개념이 언어마다 여러 이름으로 갈라지므로 피한다.
+
+- 일반 생성은 `from(...)` 또는 언어별 동등 이름 하나로 모은다.
+  `from_bytes`, `from_string`, `from_u32`, `from_uuid` 같은 타입 suffix 이름은
+  canonical public API 로 쓰지 않는다.
+- hex 디코딩은 사람이 읽는 문자열 디코딩이라는 의미가 다르므로
+  `from_hex` 계열을 예외로 허용한다. 언어별 표기는 `FromHex`, `fromHex`,
+  `from_hex`, `NewRoutingIDFromHex`처럼 관용구를 따른다.
+- Python은 `from`이 예약어이므로 `from_(...)`를 사용한다.
+- Rust는 routing id에 표준 `From` 구현을 사용하고, 실패 가능한 message
+  생성에는 `try_from` 관용구를 사용할 수 있다. 입력 타입 이름을 붙인
+  `from_bytes` / `from_string` 계열 public helper는 두지 않는다.
+- Go는 오버로드가 없으므로 `NewRoutingID(...)`, `NewRoutingIDString(...)`,
+  `NewRoutingIDUint32(...)`, `NewRoutingIDUUIDBytes(...)`처럼 typed constructor를
+  허용한다. 이 예외는 Go의 정적 타입 스타일을 유지하기 위한 것이며,
+  `NewRoutingIDFromString`처럼 `From`과 타입 이름을 함께 반복하지 않는다.
+- allocation은 source 변환이 아니므로 `allocate(...)` 또는 언어별 생성자
+  관용구(`NewMessageWithSize(...)` 등)를 사용한다.
+
 #### 한 entrypoint, 빌더 단계로 변형 표현
 
 같은 작업의 변형(async/callback, single/multipart, flags 유무, timeout 유무)은
@@ -1807,10 +1830,10 @@ builder 는 하나 이상의 `Message` 를 누적해서 multipart payload 를 �
 | 의미 | .NET | Java | Node | Python | Rust | C++ | Go |
 |------|------|------|------|--------|------|-----|----|
 | 빈 message | `new Message()` | `new Message()` | `Message.from(Buffer.alloc(0))` 또는 equivalent | `Message()` | `Message::new()` | `message_t()` | `NewMessage(nil)` |
-| 크기 allocation | `Allocate(size)` | `allocate(size)` | `alloc(size)` / `allocate(size)` | `allocate(size)` | `with_size(size)` / `allocate(size)` | `allocate(size)` | `NewMessageWithSize(size)` |
-| bytes copy | `From(bytes)` | `from(byte[])` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from_bytes(...)` | `NewMessage(data)` / `NewMessageFrom(data)` |
-| UTF-8 string | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `TryFrom<&str>` 또는 equivalent | `from_string` | `NewMessageFromString` |
-| external buffer copy | — | `from(ByteBuffer)` / `from(ByteBuf)` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from_bytes(...)` | `NewMessage(data)` / `NewMessageFrom(data)` |
+| 크기 allocation | `Allocate(size)` | `allocate(size)` | `allocate(size)` | `allocate(size)` | `with_size(size)` / `allocate(size)` | `allocate(size)` | `NewMessageWithSize(size)` |
+| bytes copy | `From(bytes)` | `from(byte[])` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from(...)` | `NewMessage(data)` |
+| UTF-8 string | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `TryFrom<&str>` 또는 equivalent | `from(std::string)` | `NewMessageString` |
+| external buffer copy | — | `from(ByteBuffer)` / `from(ByteBuf)` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from(...)` | `NewMessage(data)` |
 | message copy | `Copy()` | `from(Message)` | `copy()` 또는 `from(Message)` | `copy()` | `Clone` 또는 `try_clone()` | copy constructor | `Clone()` / `Copy()` |
 | explicit move | `Move()` / `MoveMessage(...)` | `move()` / `moveMessage(...)` | `moveMessage(...)` | `move_message(...)` | move-by-value | move constructor / rvalue builder | `MoveMessage(...)` |
 | bytes snapshot | `ToArray()` | `toByteArray()` | `toBytes()` | `to_bytes()` | `to_vec()` | `to_bytes()` | `BytesCopy()` 또는 equivalent |
@@ -1980,11 +2003,11 @@ Routing id value object. Binary-safe (1-255 bytes).
 
 | 의미 | .NET | Java | Node | Python | Rust | C++ | Go |
 |------|------|------|------|--------|------|-----|----|
-| 사용자 문자열 | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `from_string` / `TryFrom<&str>` | `from(std::string)` | `NewRoutingIDFromString` |
-| raw bytes | `From(bytes)` | `from(byte[])` | `from(Buffer)` | `from_bytes` / `from_` | `from_bytes` | `from(bytes)` | `NewRoutingID` |
-| hex round-trip | `FromHex` | `fromHex` | `fromHex` | `from_hex` | `from_hex` | `from_hex` | `NewRoutingIDFromHex` / `ParseRoutingIDHex` |
-| uint32 | `From(uint)` | `from(long)` | `from(number)` | `from_(int)` | `from_u32` | `from(uint32_t)` | `NewRoutingIDFromUInt32` |
-| UUID | `From(Guid)` | `from(UUID)` | 16-byte `from(Buffer)` | `from_(uuid.UUID)` | `from_uuid_bytes` | `from_uuid` | `NewRoutingIDFromUUIDBytes` |
+| 사용자 문자열 | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `From<&str>` | `from(std::string)` | `NewRoutingIDString` |
+| raw bytes | `From(bytes)` | `from(byte[])` | `from(Buffer)` | `from_(bytes)` | `From<&[u8]>` | `from(bytes)` | `NewRoutingID` |
+| hex round-trip | `FromHex` | `fromHex` | `fromHex` | `from_hex` | `from_hex` / `try_from_hex` | `from_hex` | `NewRoutingIDFromHex` |
+| uint32 | `From(uint)` | `from(long)` | `from(number)` | `from_(int)` | `From<u32>` | `from(uint32_t)` | `NewRoutingIDUint32` |
+| UUID | `From(Guid)` | `from(UUID)` | 16-byte `from(Buffer)` | `from_(uuid.UUID)` | `From<[u8; 16]>` | `from(std::array<uint8_t, 16>)` | `NewRoutingIDUUIDBytes` |
 
 규칙:
 - **binary-safe value type**. 사용자 설정 routing id 는 보통 사람이 읽는

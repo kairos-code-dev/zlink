@@ -11,7 +11,7 @@ static void join_only_dispatch (
 
     auto request = state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);
     assert (request.has_value ());
-    zlink::message_t reply = zlink::message_t::from_string ("accepted");
+    zlink::message_t reply = zlink::message_t::from ("accepted");
     state_.spot->reply_actor_join (*request, 0).message (reply).submit ();
 }
 
@@ -38,7 +38,7 @@ int main ()
                       const zlink::spot_dispatch_info_t &info) {
           join_only_dispatch (first_state, info);
       });
-    zlink::message_t join_first = zlink::message_t::from_string ("join-first");
+    zlink::message_t join_first = zlink::message_t::from ("join-first");
     assert (actor.join (first_spot)
       .message (join_first)
       .flags (zlink::recv_flags_t::dontwait)
@@ -51,7 +51,7 @@ int main ()
     assert (wait_until_flag (first_capture, &actor_sample_capture_t::joined));
     assert (first_capture.join_result == zlink::request_result_t::ok);
 
-    zlink::message_t before = zlink::message_t::from_string ("before-");
+    zlink::message_t before = zlink::message_t::from ("before-");
     assert (stream_session.stream.send_bound_actor (
       stream_session.session, "single-player")
       .message (before)
@@ -59,7 +59,7 @@ int main ()
       .submit ());
     (void) actor.leave (first_spot).submit_async ().get ();
 
-    zlink::message_t between = zlink::message_t::from_string ("between-");
+    zlink::message_t between = zlink::message_t::from ("between-");
     assert (stream_session.stream.send_bound_actor (
       stream_session.session, "single-player")
       .message (between)
@@ -74,7 +74,7 @@ int main ()
                        const zlink::spot_dispatch_info_t &info) {
           actor_sample_dispatch (second_state, info);
       });
-    zlink::message_t join_second = zlink::message_t::from_string ("join-second");
+    zlink::message_t join_second = zlink::message_t::from ("join-second");
     assert (node.join_actor (ref, node.routing_id (), second_spot.routing_id ())
       .message (join_second)
       .flags (zlink::recv_flags_t::dontwait)

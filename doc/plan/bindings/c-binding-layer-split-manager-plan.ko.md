@@ -310,7 +310,7 @@
   - java: json 3/3, msgpack 2/2, proto 2/2 — 전 codec 통과 (netty compileOnly, IOException 수정)
   - node: json PASS, msgpack PASS (npm install @msgpack/msgpack), proto PASS (npm install protobufjs)
   - go: json PASS, msgpack PASS (go mod tidy), proto PASS (wrapperspb.StringValue 사용)
-  - python: json 2/2, msgpack 2/2, proto 2/2 — 전 codec 통과 (from_bytes 직접 호출로 수정)
+  - python: json 2/2, msgpack 2/2, proto 2/2 — 전 codec 통과 (`from_` 직접 호출로 수정)
   - cpp: all written — nlohmann-json3-dev/libmsgpack-dev 미설치 (`sudo apt install` 필요)
 - **전체 리뷰 후 누락 항목 수정 (2026-04-20)**:
   - Python 비정규 callback samples 삭제: dealer_router/pair/pubsub/request_reply/spot 5개 (bindings/python/samples/에서 제거, stream_packet_callback_sample.py만 유지)

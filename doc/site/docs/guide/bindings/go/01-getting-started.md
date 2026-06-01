@@ -47,7 +47,7 @@ defer received.Close()
 part, _ := received.SinglePartOrError()
 fmt.Println(string(part.Data())) // PING
 
-reply, _ := zlink.NewMessageFrom([]byte("ACK"))
+reply, _ := zlink.NewMessage([]byte("ACK"))
 server.Send().Message(reply).Submit(nil)
 ```
 
@@ -60,7 +60,7 @@ client, _ := ctx.PairSocket()
 defer client.Close()
 client.Connect("tcp://127.0.0.1:5555")
 
-ping, _ := zlink.NewMessageFrom([]byte("PING"))
+ping, _ := zlink.NewMessage([]byte("PING"))
 client.Send().Message(ping).Submit(nil)
 
 var received zlink.Received
@@ -113,14 +113,14 @@ opts.SetIOThreads(4)
 
 ```go
 // 바이트 슬라이스에서 복사본 생성
-msg, err := zlink.NewMessageFrom([]byte("payload"))
+msg, err := zlink.NewMessage([]byte("payload"))
 
 // 크기를 지정해 빈 프레임 할당, 직접 채워 넣기
 msg, err := zlink.NewMessageWithSize(256)
 copy(msg.Data(), myData)
 
 // 문자열에서 복사본 생성
-msg, err := zlink.NewMessageFromString("payload")
+msg, err := zlink.NewMessageString("payload")
 
 // 전송 안 하고 폐기할 때
 defer msg.Close()
@@ -165,9 +165,9 @@ rid := received.RoutingID() // *RoutingID, nil이면 없음
 
 ```go
 rid := zlink.NewRoutingID([]byte("server-01"))
-rid := zlink.NewRoutingIDFromString("server-01")
-rid := zlink.NewRoutingIDFromUInt32(1)          // 4바이트 big-endian
-rid := zlink.NewRoutingIDFromUUIDBytes(uuid)    // 16바이트 UUID
+rid := zlink.NewRoutingIDString("server-01")
+rid := zlink.NewRoutingIDUint32(1)          // 4바이트 big-endian
+rid := zlink.NewRoutingIDUUIDBytes(uuid)    // 16바이트 UUID
 rid, err := zlink.ParseRoutingIDHex("0102...")   // 16진수 파싱
 
 fmt.Println(rid.String())  // 사람이 읽기 좋은 형태로 출력
@@ -189,7 +189,7 @@ Go 바인딩의 소유권 규칙은 단순합니다.
 
 ```go
 // 패턴: 에러가 나도 안전하게
-msg, _ := zlink.NewMessageFrom([]byte("data"))
+msg, _ := zlink.NewMessage([]byte("data"))
 if _, err := socket.Send().Message(msg).Submit(nil); err != nil {
     defer msg.Close() // 전송 실패 시에만 닫음
 }

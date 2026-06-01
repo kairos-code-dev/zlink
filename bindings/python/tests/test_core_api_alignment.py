@@ -28,7 +28,7 @@ TOPIC = b"room:lobby"
 
 class CoreApiAlignmentTests(unittest.TestCase):
     def test_routing_id_hex_and_display_policy(self):
-        rid = zlink.RoutingId.from_bytes(bytes([0x00, 0x41, 0x42]))
+        rid = zlink.RoutingId.from_(bytes([0x00, 0x41, 0x42]))
         self.assertEqual(zlink.RoutingId.from_hex("004142"), rid)
         self.assertEqual(str(rid), "hex:004142")
         self.assertEqual(zlink.RoutingId.from_hex("a" * 510).size, 255)
@@ -178,7 +178,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
 
         with ctx:
             with zlink.create_router_socket(ctx) as router:
-                op = router.reply(zlink.RoutingId.from_bytes(b"peer"), 1)
+                op = router.reply(zlink.RoutingId.from_(b"peer"), 1)
                 self.assertIsInstance(op, zlink.ReplyOp)
 
     def test_context_options_use_snake_case(self):
@@ -475,7 +475,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 with self.assertRaises(TypeError):
                     zlink.Spot(node)
                 node.set_routing_id(b"node-1")
-                self.assertEqual(node.routing_id, zlink.RoutingId.from_bytes(b"node-1"))
+                self.assertEqual(node.routing_id, zlink.RoutingId.from_(b"node-1"))
                 with node.create_spot() as spot:
                     self.assertIsInstance(spot, zlink.Spot)
                     self.assertTrue(hasattr(spot, "on_dispatch_event"))
@@ -485,8 +485,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         " poller; explicit drain must not be on the public API",
                     )
                     spot.set_routing_id(b"spot-1")
-                    self.assertEqual(spot.routing_id, zlink.RoutingId.from_bytes(b"spot-1"))
-                    room_rid = zlink.RoutingId.from_bytes(b"py-room")
+                    self.assertEqual(spot.routing_id, zlink.RoutingId.from_(b"spot-1"))
+                    room_rid = zlink.RoutingId.from_(b"py-room")
                     room_a, created_a = node.get_or_create_spot(room_rid)
                     room_b, created_b = node.get_or_create_spot(room_rid)
                     try:
@@ -539,11 +539,11 @@ class CoreApiAlignmentTests(unittest.TestCase):
         ctx = zlink.create_context()
         ctx.close()
 
-        rid = zlink.RoutingId.from_bytes(b"peer-1")
+        rid = zlink.RoutingId.from_(b"peer-1")
         self.assertEqual(rid.to_bytes(), b"peer-1")
         self.assertEqual(rid.size, 6)
         self.assertEqual(str(rid), "peer-1")
-        self.assertTrue(hasattr(zlink, "create_message_from"))
+        self.assertTrue(hasattr(zlink.Message, "from_"))
         self.assertFalse(hasattr(zlink.Message, "copy_from"))
         self.assertFalse(hasattr(zlink.Message, "from_bytes"))
 
@@ -559,8 +559,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 op = dealer.request().message(b"payload").flags(zlink.SendFlags.NONE)
                 self.assertFalse(hasattr(op, "submit_async"))
             with zlink.create_router_socket(ctx) as router:
-                peer_rid = zlink.RoutingId.from_bytes(b"peer")
-                spot_rid = zlink.RoutingId.from_bytes(b"spot")
+                peer_rid = zlink.RoutingId.from_(b"peer")
+                spot_rid = zlink.RoutingId.from_(b"spot")
                 op = router.request(peer_rid).message(b"payload").flags(
                     zlink.SendFlags.NONE
                 )
@@ -584,7 +584,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertEqual(cm.exception.result, zlink.ConfigResult.NOT_SUPPORTED)
 
     def test_message_diagnostics_and_copy_helpers(self):
-        with zlink.create_message_from(b"payload") as message:
+        with zlink.Message.from_(b"payload") as message:
             self.assertEqual(message.size(), 7)
             self.assertEqual(message.to_bytes(), b"payload")
             self.assertEqual(bytes(message.data), b"payload")
@@ -600,11 +600,11 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.assertTrue(message.try_copy_to(bytearray(7)))
             self.assertFalse(message.try_copy_to(bytearray(6)))
 
-            with zlink.create_message_from(message) as copy:
+            with zlink.Message.from_(message) as copy:
                 self.assertEqual(copy.to_bytes(), b"payload")
                 self.assertIsNot(copy, message)
 
-        with zlink.create_message_from("text") as message:
+        with zlink.Message.from_("text") as message:
             self.assertEqual(message.to_bytes(), b"text")
 
         with zlink.allocate_message(3) as message:

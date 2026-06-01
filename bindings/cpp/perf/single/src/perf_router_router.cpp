@@ -19,7 +19,7 @@ bool perf_debug_enabled ()
 
 zlink::routing_id_t routing_id_from_ascii (const char *value_)
 {
-    return zlink::routing_id_t::from_bytes (
+    return zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (value_), std::strlen (value_));
 }
 
@@ -56,7 +56,7 @@ bool complete_handshake (::perf::socket_t &receiver,
     zlink::poller_t poller;
     receiver.poller_add (poller, zlink::poll_event_flag_t::pollin);
     while (!connected && std::chrono::steady_clock::now () < deadline) {
-        zlink::message_t outbound = zlink::message_t::from_string ("PING");
+        zlink::message_t outbound = zlink::message_t::from ("PING");
         if (!outbound.valid ())
             return false;
 
@@ -102,7 +102,7 @@ bool complete_handshake (::perf::socket_t &receiver,
     if (!connected || !sender_actual_rid.has_value ())
         return false;
 
-    zlink::message_t reply = zlink::message_t::from_string ("PONG");
+    zlink::message_t reply = zlink::message_t::from ("PONG");
     if (!reply.valid ()
         || perf::send_socket (receiver, *sender_actual_rid, reply) != 0) {
         if (perf_debug_enabled ())

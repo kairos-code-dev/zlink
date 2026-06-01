@@ -43,7 +43,7 @@ inline bool wait_until_flag (actor_sample_capture_t &capture_,
 
 inline zlink::routing_id_t sample_rid (const char *text_)
 {
-    return zlink::routing_id_t::from_bytes (
+    return zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (text_), std::strlen (text_));
 }
 
@@ -80,7 +80,7 @@ inline void actor_sample_dispatch (
         auto request =
           state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);
         assert (request.has_value ());
-        zlink::message_t reply = zlink::message_t::from_string ("accepted");
+        zlink::message_t reply = zlink::message_t::from ("accepted");
         state_.spot->reply_actor_join (*request, 0).message (reply).submit ();
         return;
     }

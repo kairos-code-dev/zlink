@@ -219,7 +219,7 @@ size_t active_spot_slot_limit (size_t total_slots, size_t msg_size)
 
 zlink::routing_id_t make_text_rid (const char *text_)
 {
-    return zlink::routing_id_t::from_bytes (
+    return zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> (text_), std::strlen (text_));
 }
 
@@ -358,7 +358,7 @@ class spot_reqrep_client_bench_t
             }
             const std::string rid_text =
               std::string ("SPOT-REQREP-") + std::to_string (i);
-            slot->spot->set_routing_id (zlink::routing_id_t::from_bytes (
+            slot->spot->set_routing_id (zlink::routing_id_t::from (
               reinterpret_cast<const uint8_t *> (rid_text.data ()),
               rid_text.size ()));
             slot->payload.assign (payload_size, k_payload_fill);
@@ -406,7 +406,7 @@ class spot_reqrep_client_bench_t
             return false;
         }
 
-        zlink::message_t request = zlink::message_t::from_bytes (
+        zlink::message_t request = zlink::message_t::from (
           std::as_bytes (std::span<const char> (slot_.payload.data (),
                                                 slot_.payload.size ())));
         if (!request.valid ())

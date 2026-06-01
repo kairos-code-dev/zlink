@@ -4,9 +4,9 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-static async Task JoinAndAccept(ISpot spot, IActor actor)
+static async Task JoinAndAccept(ISpot spot, IActor actor, string joinPayload)
 {
-    using Message joinMessage = Message.From("join:queue");
+    using Message joinMessage = Message.From(joinPayload);
     Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
         actor.Join(spot)
             .Message(joinMessage)
@@ -18,7 +18,7 @@ static async Task JoinAndAccept(ISpot spot, IActor actor)
         request = spot.RecvActorJoin(RecvFlags.DontWait);
         return request != null;
     }, 2000, "actor queue join request");
-    using Message reply = Message.From("accepted:queue");
+    using Message reply = Message.From("accepted");
     spot.ReplyActorJoin(request!, joinResultCode: 0).Message(reply).Submit();
     foreach (Message part in (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
         part.Dispose();
@@ -27,7 +27,7 @@ static async Task JoinAndAccept(ISpot spot, IActor actor)
 using var ctx = Zlink.CreateContext();
 using var node = ctx.CreateSpotNode();
 using var spot = node.CreateSpot();
-using var actor = node.CreateActor("solo-player-1");
+using var actor = node.CreateActor("single-player");
 List<string> actorMessages = new();
 using var sessionReady = new ManualResetEventSlim(false);
 RoutingId? sessionRid = null;
@@ -64,14 +64,14 @@ Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor.Ref)
     .SubmitAsync()
     .WaitAsync(TimeSpan.FromSeconds(5)));
 
-await JoinAndAccept(spot, actor);
+await JoinAndAccept(spot, actor, "join-first");
 
-using Message first = Message.From("queue:first");
+using Message before = Message.From("before");
 stream.SendBoundActor(sessionRid.Value, actor.Ref.ActorId)
-    .Message(first)
+    .Message(before)
     .Submit();
 SampleSupport.WaitOrThrow(
-    () => actorMessages.Contains("queue:first"),
+    () => actorMessages.Contains("before"),
     5000,
     "first actor message");
 
@@ -79,17 +79,17 @@ Zlink.MultipartClose(await actor.Leave(spot)
     .Timeout(TimeSpan.FromSeconds(2))
     .SubmitAsync()
     .WaitAsync(TimeSpan.FromSeconds(5)));
-using Message second = Message.From("queue:second");
+using Message between = Message.From("between");
 stream.SendBoundActor(sessionRid.Value, actor.Ref.ActorId)
-    .Message(second)
+    .Message(between)
     .Submit();
-await JoinAndAccept(spot, actor);
+await JoinAndAccept(spot, actor, "join-second");
 SampleSupport.WaitOrThrow(
-    () => actorMessages.Contains("queue:second"),
+    () => actorMessages.Contains("between"),
     5000,
     "queued actor message");
 
-Console.WriteLine("[actor/queue] preserved actor message across rejoin");
+Console.WriteLine("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"");
 Zlink.MultipartClose(await actor.Leave(spot)
     .Timeout(TimeSpan.FromSeconds(2))
     .SubmitAsync()

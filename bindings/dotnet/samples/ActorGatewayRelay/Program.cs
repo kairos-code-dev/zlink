@@ -8,7 +8,7 @@ if (!SampleSupport.IsNativeAvailable())
 using var ctx = Zlink.CreateContext();
 using var node = ctx.CreateSpotNode();
 using var spot = node.CreateSpot();
-using var actor = node.CreateActor("gateway-player-1");
+using var actor = node.CreateActor("play-session-actor");
 using var sessionReady = new ManualResetEventSlim(false);
 RoutingId? sessionRid = null;
 string receivedPayload = "";
@@ -50,7 +50,7 @@ Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor.Ref)
     .SubmitAsync()
     .WaitAsync(TimeSpan.FromSeconds(5)));
 
-using Message joinMessage = Message.From("join:gateway");
+using Message joinMessage = Message.From("join-play");
 Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
     actor.Join(spot)
         .Message(joinMessage)
@@ -62,21 +62,21 @@ SampleSupport.WaitOrThrow(() =>
     request = spot.RecvActorJoin(RecvFlags.DontWait);
     return request != null;
 }, 2000, "actor join request");
-using Message joinReply = Message.From("accepted:gateway");
+using Message joinReply = Message.From("accepted");
 spot.ReplyActorJoin(request!, joinResultCode: 0).Message(joinReply).Submit();
 foreach (Message reply in (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
     reply.Dispose();
 
-using Message relayed = Message.From("relay:hello-gateway");
+using Message relayed = Message.From("client-input");
 stream.SendBoundActor(sessionRid.Value, actor.Ref.ActorId)
     .Message(relayed)
     .Submit();
 SampleSupport.WaitOrThrow(
-    () => receivedPayload == "relay:hello-gateway",
+    () => receivedPayload == "client-input",
     5000,
     "actor relay");
 
-Console.WriteLine("[actor/gateway] relayed stream session to actor");
+Console.WriteLine("[actor/gateway] stream payload: \"client-input\" -> actor: \"client-input\"");
 Zlink.MultipartClose(await actor.Leave(spot)
     .Timeout(TimeSpan.FromSeconds(2))
     .SubmitAsync()

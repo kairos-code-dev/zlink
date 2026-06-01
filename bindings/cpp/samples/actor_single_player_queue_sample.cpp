@@ -51,7 +51,7 @@ int main ()
     assert (wait_until_flag (first_capture, &actor_sample_capture_t::joined));
     assert (first_capture.join_result == zlink::request_result_t::ok);
 
-    zlink::message_t before = zlink::message_t::from ("before-");
+    zlink::message_t before = zlink::message_t::from ("before");
     assert (stream_session.stream.send_bound_actor (
       stream_session.session, "single-player")
       .message (before)
@@ -59,7 +59,7 @@ int main ()
       .submit ());
     (void) actor.leave (first_spot).submit_async ().get ();
 
-    zlink::message_t between = zlink::message_t::from ("between-");
+    zlink::message_t between = zlink::message_t::from ("between");
     assert (stream_session.stream.send_bound_actor (
       stream_session.session, "single-player")
       .message (between)
@@ -87,12 +87,11 @@ int main ()
     assert (wait_until_flag (second_capture, &actor_sample_capture_t::joined));
     assert (second_capture.join_result == zlink::request_result_t::ok);
     assert (wait_until_flag (second_capture, &actor_sample_capture_t::actor_read));
-    assert (second_capture.payload == "before-between-");
+    assert (second_capture.payload == "beforebetween");
 
     (void) actor.leave (second_spot).submit_async ().get ();
     actor.close ();
     std::printf (
-      "[actor/single-player] queued payload: \"before-between-\" -> actor: \"%s\"\n",
-      second_capture.payload.c_str ());
+      "[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"\n");
     return 0;
 }

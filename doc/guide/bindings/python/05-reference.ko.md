@@ -9,15 +9,15 @@
 ```python
 try:
     socket.send().message(b"data").submit()
-except zlink.ZlinkSubmitError as e:
+except zlink.SubmitError as e:
     if e.result == zlink.SubmitResult.BACKPRESSURED:
         pass  # 재시도
     else:
         raise
 ```
 
-예외 타입: `ZlinkSubmitError`, `ZlinkRequestError`, `ZlinkRecvError`,
-`ZlinkBindError`, `ZlinkConnectError`, `ZlinkConfigError`, `ZlinkCloseError`.
+예외 타입: `SubmitError`, `RequestError`, `RecvError`,
+`BindError`, `ConnectError`, `ConfigError`, `CloseError`, `HandlerError`.
 모두 `ZlinkError`를 상속합니다.
 
 ---

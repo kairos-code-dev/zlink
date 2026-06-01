@@ -1,5 +1,3 @@
-[English](./index.md) | [한국어](./index.ko.md)
-
 [바인딩 가이드](../README.ko.md) · [코어 가이드](../../01-overview.ko.md)
 
 # .NET 바인딩 가이드 (`Systems.Zlink`)

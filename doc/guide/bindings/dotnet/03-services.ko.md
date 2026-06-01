@@ -1,5 +1,3 @@
-[English](./03-services.md) | [한국어](./03-services.ko.md)
-
 [← 메시징](./02-messaging.ko.md) · [.NET 가이드](./index.ko.md) · [다음: 운영 →](./04-operations.ko.md)
 
 # 서비스 레이어

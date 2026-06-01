@@ -29,7 +29,7 @@ client.Send().Message(msg).Submit(nil)
 
 // 수신
 var received zlink.Received
-server.Recv(&received, zlink.RecvFlagsNone)
+if _, err := server.Recv(&received, zlink.RecvFlagsNone); err != nil { ... }
 defer received.Close()
 
 part, _ := received.SinglePartOrError()
@@ -64,7 +64,7 @@ dealer.Send().Message(req).Submit(nil)
 
 // 서버: 수신 후 회신
 var request zlink.Received
-router.Recv(&request, zlink.RecvFlagsNone)
+if _, err := router.Recv(&request, zlink.RecvFlagsNone); err != nil { ... }
 defer request.Close()
 
 reply, _ := zlink.NewMessageFrom([]byte("101.25"))
@@ -72,7 +72,7 @@ request.Send().Message(reply).Submit(nil) // Received에서 직접 회신
 
 // 클라이언트: 응답 수신
 var response zlink.Received
-dealer.Recv(&response, zlink.RecvFlagsNone)
+if _, err := dealer.Recv(&response, zlink.RecvFlagsNone); err != nil { ... }
 defer response.Close()
 
 part, _ := response.SinglePartOrError()
@@ -105,7 +105,7 @@ fmt.Println(string(parts[0].Data()))
 
 ```go
 var request zlink.Received
-router.Recv(&request, zlink.RecvFlagsNone)
+if _, err := router.Recv(&request, zlink.RecvFlagsNone); err != nil { ... }
 defer request.Close()
 
 if request.HasRequestSeq() {
@@ -151,7 +151,7 @@ pub.Publish("prices").Message(msg).Submit(nil)
 
 // 수신
 var topic zlink.TopicMessage
-sub.Subscribe(&topic, zlink.RecvFlagsNone)
+if _, err := sub.Subscribe(&topic, zlink.RecvFlagsNone); err != nil { ... }
 defer topic.Close()
 
 part, _ := topic.SinglePartOrError()
@@ -177,7 +177,7 @@ sub.SetSubscription("events")
 
 // 구독 이벤트 수신 (subscribe 메시지)
 var event zlink.SubscriptionEvent
-xpub.ReceiveSubscriptionEvent(&event, zlink.RecvFlagsNone)
+if _, err := xpub.ReceiveSubscriptionEvent(&event, zlink.RecvFlagsNone); err != nil { ... }
 fmt.Printf("subscribed=%v topic=%s\n", event.Subscribed(), event.Topic())
 ```
 
@@ -199,7 +199,7 @@ conn.Write([]byte("hello"))
 
 // STREAM 소켓 수신: 라우팅 ID = TCP 세션 ID
 var received zlink.Received
-server.Recv(&received, zlink.RecvFlagsNone)
+if _, err := server.Recv(&received, zlink.RecvFlagsNone); err != nil { ... }
 defer received.Close()
 
 part, _ := received.SinglePartOrError()

@@ -27,7 +27,7 @@ std::string ep = opts.last_endpoint ();
 auto router_opts = router.options ();
 router_opts.mandatory (true);
 
-// DEALER 전용
+// DEALER·ROUTER 공통 (양쪽 옵션 퍼사드에 존재)
 auto dealer_opts = dealer.options ();
 dealer_opts.request_timeout (std::chrono::milliseconds (2000));
 ```

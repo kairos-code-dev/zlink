@@ -68,7 +68,7 @@ if !ok { /* 메시지 없음 */ }
 | `zlink_msg_size(msg)` | `msg.Size()` |
 | `zlink_msg_close(msg)` | `msg.Close()` |
 | `zlink_routing_id_t` | `zlink.RoutingID` |
-| `zlink_socket_monitor_open(...)` | `socket.MonitorOpen()` |
+| `zlink_socket_monitor_open(...)` | `zlink.OpenSocketMonitor(socket, ...)` |
 | `zlink_poller_new()` | `zlink.NewPoller()` |
 | `zlink_timer_new()` | `zlink.NewTimer()` |
 | `zlink_spot_node_new(ctx)` | `ctx.SpotNode()` |

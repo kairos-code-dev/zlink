@@ -1,5 +1,3 @@
-[English](./02-messaging.md) | [한국어](./02-messaging.ko.md)
-
 [← 시작하기](./01-getting-started.ko.md) · [.NET 가이드](./index.ko.md) · [다음: 서비스 →](./03-services.ko.md)
 
 # 메시징 — 소켓 패턴별 사용법

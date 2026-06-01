@@ -20,7 +20,7 @@ opts.sendTimeout(Duration.ofMillis(500));
 opts.recvTimeout(Duration.ofMillis(500));
 opts.linger(Duration.ZERO); // Close() 후 대기 없음
 
-// DEALER 전용
+// DEALER·ROUTER 공통 (양쪽 옵션 퍼사드에 존재)
 var dealerOpts = dealer.options();
 dealerOpts.requestTimeout(Duration.ofSeconds(2));
 

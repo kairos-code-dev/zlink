@@ -33,3 +33,4 @@
 | Registry | `Registry::new(&ctx)` | 서비스 카탈로그 | [03](./03-services.ko.md#registry) |
 | Discovery | `Discovery::new(&ctx, ...)` | 서비스 발견 | [03](./03-services.ko.md#discovery) |
 | SpotNode/Spot | `SpotNode::new(&ctx)` | 메시 노드 | [03](./03-services.ko.md#spotnode--spot) |
+| Actor | `node.create_actor("id")` | 멀티파트 액터 | [03](./03-services.ko.md#actor) |

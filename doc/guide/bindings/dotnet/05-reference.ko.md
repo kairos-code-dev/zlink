@@ -1,5 +1,3 @@
-[English](./05-reference.md) | [한국어](./05-reference.ko.md)
-
 [← 운영](./04-operations.ko.md) · [.NET 가이드](./index.ko.md)
 
 # 레퍼런스 — 에러 · 코덱 · C API 대응표 · API 레퍼런스 · 샘플

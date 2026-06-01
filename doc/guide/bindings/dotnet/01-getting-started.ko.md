@@ -1,5 +1,3 @@
-[English](./01-getting-started.md) | [한국어](./01-getting-started.ko.md)
-
 [.NET 가이드](./index.ko.md) · [다음: 메시징 →](./02-messaging.ko.md)
 
 # 시작하기

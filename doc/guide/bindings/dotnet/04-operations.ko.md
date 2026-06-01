@@ -1,5 +1,3 @@
-[English](./04-operations.md) | [한국어](./04-operations.ko.md)
-
 [← 서비스](./03-services.ko.md) · [.NET 가이드](./index.ko.md) · [다음: 레퍼런스 →](./05-reference.ko.md)
 
 # 운영 — 옵션 · TLS · 모니터링 · 폴러/타이머 · 스레딩 · 네이티브

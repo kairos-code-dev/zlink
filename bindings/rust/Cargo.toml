@@ -32,6 +32,10 @@ name = "actor_queue_example"
 path = "samples/actor_queue_example.rs"
 
 [[example]]
+name = "actor_room_example"
+path = "samples/actor_room_example.rs"
+
+[[example]]
 name = "request_reply_async_sample"
 path = "samples/request_reply_async_sample.rs"
 

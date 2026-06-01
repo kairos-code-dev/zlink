@@ -26,7 +26,8 @@ def sampleMainClasses = [
     runActorRoomServer: 'systems.zlink.samples.ActorRoomServerSampleKt',
     runActorGatewayRelay: 'systems.zlink.samples.ActorGatewayRelaySampleKt',
     runActorSinglePlayerQueue: 'systems.zlink.samples.ActorSinglePlayerQueueSampleKt',
-    runActorQueueExample: 'systems.zlink.samples.ActorQueueExampleKt'
+    runActorQueueExample: 'systems.zlink.samples.ActorQueueExampleKt',
+    runActorRoomExample: 'systems.zlink.samples.ActorRoomExampleKt'
 ]
 
 sampleMainClasses.each { taskName, mainClassName ->

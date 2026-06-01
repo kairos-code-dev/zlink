@@ -359,6 +359,7 @@ if(ZLINK_CPP_BUILD_SAMPLES)
     actor_gateway_relay_sample.cpp
     actor_single_player_queue_sample.cpp
     actor_queue_example.cpp
+    actor_room_example.cpp
   )
   foreach(sample_source IN LISTS ZLINK_CPP_SAMPLE_SOURCES)
     get_filename_component(sample_name "${sample_source}" NAME_WE)

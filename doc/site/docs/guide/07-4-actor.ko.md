@@ -42,6 +42,29 @@ join한 상태에서, `"between"`은 leave한 사이에 도착해 큐잉되고, 
 게이트웨이로 접속한 클라이언트의 라우팅 ID지만, 자립 실행을 위해 예제에서는
 고정값으로 만든다.
 
+아래 다이어그램이 그 흐름이다 — 핵심은 actor가 leave한 사이에 도착한 `"between"`이
+유실되지 않고 큐잉됐다가 rejoin 때 배달된다는 점이다.
+
+```mermaid
+sequenceDiagram
+    participant G as 게이트웨이 (session)
+    participant S as Spot
+    participant A as Actor (single-player)
+
+    A->>S: join ("join-first")
+    S-->>A: accepted
+    G->>S: "before" 전송
+    S->>A: "before" 배달 (joined 상태)
+    A->>S: leave
+    Note over S,A: 세션 바인딩은 유지
+    G->>S: "between" 전송
+    Note over S: actor 이탈 → 큐잉
+    A->>S: join ("join-second") · rejoin
+    S-->>A: accepted
+    S->>A: "between" 배달 (큐됐던 메시지)
+    Note over A: 수신 결과: "before / between"
+```
+
 ## 전체 프로그램
 
 === "C++"

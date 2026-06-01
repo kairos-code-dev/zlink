@@ -28,6 +28,10 @@ libc = "0.2"
 smol_str = "0.3"
 
 [[example]]
+name = "actor_queue_example"
+path = "samples/actor_queue_example.rs"
+
+[[example]]
 name = "request_reply_async_sample"
 path = "samples/request_reply_async_sample.rs"
 

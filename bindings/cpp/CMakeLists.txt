@@ -179,6 +179,7 @@ add_library(zlink_cpp STATIC
   src/Runtime/Service/spot_send.cpp
   src/Runtime/Service/spot_node.cpp
 )
+add_library(zlink::cpp ALIAS zlink_cpp)
 
 target_include_directories(zlink_cpp
   PUBLIC
@@ -210,6 +211,53 @@ install(EXPORT zlink_cppTargets
   NAMESPACE zlink::
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_cpp
 )
+
+function(add_zlink_cpp_codec_target codec_name include_dir)
+  set(target_name "zlink_cpp_codec_${codec_name}")
+  if(TARGET ${target_name})
+    return()
+  endif()
+
+  add_library(${target_name} INTERFACE)
+  add_library("zlink::cpp_codec_${codec_name}" ALIAS ${target_name})
+  target_compile_features(${target_name} INTERFACE cxx_std_20)
+  target_include_directories(${target_name} INTERFACE ${include_dir})
+  target_link_libraries(${target_name} INTERFACE zlink_cpp ${ARGN})
+endfunction()
+
+find_package(nlohmann_json QUIET)
+if(nlohmann_json_FOUND)
+  add_zlink_cpp_codec_target(
+    json
+    ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-json/include
+    nlohmann_json::nlohmann_json)
+endif()
+
+find_package(msgpack-cxx QUIET CONFIG)
+if(TARGET msgpack-cxx)
+  add_zlink_cpp_codec_target(
+    messagepack
+    ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-messagepack/include
+    msgpack-cxx)
+elseif(TARGET msgpack-cxx::msgpack-cxx)
+  add_zlink_cpp_codec_target(
+    messagepack
+    ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-messagepack/include
+    msgpack-cxx::msgpack-cxx)
+endif()
+
+find_package(Protobuf QUIET)
+if(TARGET protobuf::libprotobuf)
+  add_zlink_cpp_codec_target(
+    protobuf
+    ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-protobuf/include
+    protobuf::libprotobuf)
+elseif(TARGET protobuf::protobuf)
+  add_zlink_cpp_codec_target(
+    protobuf
+    ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-protobuf/include
+    protobuf::protobuf)
+endif()
 
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)
@@ -310,6 +358,7 @@ if(ZLINK_CPP_BUILD_SAMPLES)
     actor_room_server_sample.cpp
     actor_gateway_relay_sample.cpp
     actor_single_player_queue_sample.cpp
+    actor_queue_example.cpp
   )
   foreach(sample_source IN LISTS ZLINK_CPP_SAMPLE_SOURCES)
     get_filename_component(sample_name "${sample_source}" NAME_WE)
@@ -359,50 +408,32 @@ if(ZLINK_CPP_BUILD_TESTS)
     )
   endforeach()
 
-  find_package(nlohmann_json QUIET)
-  if(nlohmann_json_FOUND)
+  if(TARGET zlink::cpp_codec_json)
     add_cpp_contract_test(
       test_cpp_contract_codec_json
       tests/contract/test_cpp_contract_codec_json.cpp
     )
-    target_include_directories(test_cpp_contract_codec_json PRIVATE
-      ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-json/include
-    )
     target_link_libraries(test_cpp_contract_codec_json PRIVATE
-      nlohmann_json::nlohmann_json
+      zlink::cpp_codec_json
     )
   endif()
 
-  find_package(msgpack-cxx QUIET CONFIG)
-  if(TARGET msgpack-cxx OR TARGET msgpack-cxx::msgpack-cxx)
+  if(TARGET zlink::cpp_codec_messagepack)
     add_cpp_contract_test(
       test_cpp_contract_codec_messagepack
       tests/contract/test_cpp_contract_codec_messagepack.cpp
     )
-    target_include_directories(test_cpp_contract_codec_messagepack PRIVATE
-      ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-messagepack/include
-    )
-    if(TARGET msgpack-cxx)
-      target_link_libraries(test_cpp_contract_codec_messagepack PRIVATE msgpack-cxx)
-    else()
-      target_link_libraries(test_cpp_contract_codec_messagepack PRIVATE msgpack-cxx::msgpack-cxx)
-    endif()
+    target_link_libraries(test_cpp_contract_codec_messagepack PRIVATE
+      zlink::cpp_codec_messagepack)
   endif()
 
-  find_package(Protobuf QUIET)
-  if(Protobuf_FOUND)
+  if(TARGET zlink::cpp_codec_protobuf)
     add_cpp_contract_test(
       test_cpp_contract_codec_protobuf
       tests/contract/test_cpp_contract_codec_protobuf.cpp
     )
-    target_include_directories(test_cpp_contract_codec_protobuf PRIVATE
-      ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-protobuf/include
-    )
-    if(TARGET protobuf::libprotobuf)
-      target_link_libraries(test_cpp_contract_codec_protobuf PRIVATE protobuf::libprotobuf)
-    elseif(TARGET protobuf::protobuf)
-      target_link_libraries(test_cpp_contract_codec_protobuf PRIVATE protobuf::protobuf)
-    endif()
+    target_link_libraries(test_cpp_contract_codec_protobuf PRIVATE
+      zlink::cpp_codec_protobuf)
   endif()
 endif()
 

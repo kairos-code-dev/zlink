@@ -133,7 +133,7 @@ def stamp_payload(payload, phase=0, *, run_id=None, seq=None):
         int(header_seq),
         int(time.time_ns()),
     )
-    return bytes(payload)
+    return payload
 
 
 def new_payload(size):

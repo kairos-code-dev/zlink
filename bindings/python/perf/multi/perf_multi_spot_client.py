@@ -62,7 +62,7 @@ def _subscribe_active_metric_once(spot, storage, *, msg_size, run_id, sample_lat
 
     try:
         parts = storage.parts
-        data = parts[0].to_bytes() if parts else b""
+        data = parts[0].data if parts else memoryview(b"")
         size = len(data)
         if size != msg_size or size < HEADER_SIZE:
             return False, None

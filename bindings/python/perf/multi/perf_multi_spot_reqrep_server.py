@@ -89,7 +89,9 @@ def main(argv=None):
                 if not has_received:
                     return
                 with received:
-                    received.reply().messages(*received.to_bytes_list()).submit()
+                    received.reply().messages(
+                        *(part.data for part in received.parts)
+                    ).submit()
 
         replier.on_dispatch_event(on_dispatch)
 

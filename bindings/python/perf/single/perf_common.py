@@ -294,6 +294,7 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
     perf_counter = time.perf_counter
     time_ns = time.time_ns
     count = received
+    stop_view = memoryview(STOP_TOKEN)
     stop_wait_end = active_end + (_env_int("PERF_SINGLE_STOP_WAIT_MS", 2000) / 1000.0)
 
     try:
@@ -316,32 +317,34 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                     stop_received = True
                     break
                 flags = dont_wait
-                parts = storage.parts
-                data = parts[-1].to_bytes() if parts else b""
-                storage.close()
-                if data == STOP_TOKEN:
-                    stop_received = True
-                    break
-                if len(data) != msg_size or len(data) < HEADER_SIZE:
-                    continue
-                magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
-                    unpack_from(HEADER_FORMAT, data, 0)
-                )
-                if (
-                    magic != HEADER_MAGIC
-                    or phase != 1
-                    or hdr_msg_size != msg_size
-                    or hdr_run_id != run_id
-                ):
-                    continue
-                if perf_counter() >= active_end:
-                    continue
-                count += 1
-                now_ns = time_ns()
-                if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
-                    latencies.append(float(now_ns - sent_ts_ns))
-                else:
-                    latencies.append(0.0)
+                try:
+                    parts = storage.parts
+                    data = parts[-1].data if parts else memoryview(b"")
+                    if len(data) == len(stop_view) and data == stop_view:
+                        stop_received = True
+                        break
+                    if len(data) != msg_size or len(data) < HEADER_SIZE:
+                        continue
+                    magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
+                        unpack_from(HEADER_FORMAT, data, 0)
+                    )
+                    if (
+                        magic != HEADER_MAGIC
+                        or phase != 1
+                        or hdr_msg_size != msg_size
+                        or hdr_run_id != run_id
+                    ):
+                        continue
+                    if perf_counter() >= active_end:
+                        continue
+                    count += 1
+                    now_ns = time_ns()
+                    if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
+                        latencies.append(float(now_ns - sent_ts_ns))
+                    else:
+                        latencies.append(0.0)
+                finally:
+                    storage.close()
     finally:
         poller.close()
     return count

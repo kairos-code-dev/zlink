@@ -45,7 +45,7 @@ def _drain_replier(replier):
             try:
                 (
                     received.send()
-                    .messages(*received.to_bytes_list())
+                    .messages(*(part.data for part in received.parts))
                     .flags(zlink.SendFlags.DONT_WAIT)
                     .submit()
                 )

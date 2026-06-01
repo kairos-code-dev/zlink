@@ -22,15 +22,16 @@
 플레이어가 보낸 입력을 들어온 순서대로 처리한다. zlink의 **Actor**가 바로 이 객체다.
 
 **Actor는 항상 Spot 안에 있다.** Actor는 단독으로 존재하지 않고 반드시 어떤 Spot에
-소속된다. 메시지도 Actor에게 곧바로 꽂히지 않는다 — Spot으로 들어온 메시지를 그
-Spot의 dispatch 핸들러에서 "이건 이 Actor 것"으로 **간접 참조**해 받는다(Actor 전용
-콜백이 아니라 Spot dispatch에서 `recv_actor_part`로 읽는다).
+소속된다. Actor에게 온 메시지도 Actor 전용 콜백으로 받는 게 아니라, 그 **Actor가
+속한 Spot의 dispatch 이벤트**에서 `recv_actor_part`로 **간접 수신**한다.
 
-**Actor에게 메시지를 보내는 길은 STREAM 세션뿐이다.** 백엔드가 Actor에게 직접
-꽂는 API는 없다. 외부 클라이언트가 STREAM으로 연결하면 그 **세션에 Actor를 bind**
-하고, 세션으로 들어온 패킷을 그 Actor로 **relay**한다 — `세션 bind → 패킷 relay`가
-Actor에게 메시지가 닿는 유일한 경로다. 받는 쪽을 연결이 아니라 actor id로 가리키므로,
-클라이언트가 끊겼다 다른 서버로 다시 붙어도 같은 Actor로 이어진다.
+**Actor에게 메시지는 STREAM 세션으로 전달한다.** 외부 클라이언트가 STREAM으로
+연결하면 그 **세션에 Actor를 bind**하고, 세션으로 들어온 패킷을 **그 actor id를 보고
+relay**한다 — `세션 bind → actor 지정 relay`로 Actor에게 메시지가 닿는다(백엔드에서
+Spot끼리 주고받는 메시징은 별개 경로이며 [Spot 가이드](./07-3-spot.ko.md)에서
+다룬다). 받는 쪽을 연결이 아니라 actor id로 가리키므로, 클라이언트가 끊겼다 **같은
+서버**에 다시 붙으면 actor id로 같은 Actor에 다시 bind해 이어 가고, **다른 서버**의
+Actor에 연결하려면 discovery로 그 Actor를 찾아야 한다.
 
 **Entry Spot은 로비다.** Actor를 만들면 처음에는 반드시 **Entry Spot**(`SpotNode`가
 소유하는 진입점)에 생긴다. 모든 Actor가 여기로 들어오며, 보통 여기서 인증·초기
@@ -67,11 +68,9 @@ sequenceDiagram
     Note over P1,P2: Entry Spot(로비)에서 생성 → join으로 room 이동, 세션에 bind
     P1->>R: join
     P2->>R: join
-    C->>R: STREAM 패킷 (→ player-1)
-    R->>P1: relay "your-turn"
-    C->>R: STREAM 패킷 (→ player-2)
-    R->>P2: relay "wait"
-    Note over P1,P2: 같은 방, 각자 자기 메시지만 받는다
+    C->>P1: STREAM relay "your-turn" (player-1 지정)
+    C->>P2: STREAM relay "wait" (player-2 지정)
+    Note over P1,P2: STREAM은 actor id를 보고 그 Actor에 전달 — 각자 자기 것만 받는다
 ```
 
 === "C++"
@@ -126,10 +125,10 @@ sequenceDiagram
 
     Note over A: Entry Spot(로비)에서 생성 → join으로 room 이동, 세션에 bind
     A->>R: join
-    C->>R: STREAM "move"
-    C->>R: STREAM "attack"
-    C->>R: STREAM "loot"
-    R->>A: move → attack → loot (들어온 순서대로 처리)
+    C->>A: STREAM relay "move" (player 지정)
+    C->>A: STREAM relay "attack"
+    C->>A: STREAM relay "loot"
+    Note over A,R: room의 dispatch 경계에서 들어온 순서대로 처리
 ```
 
 === "C++"

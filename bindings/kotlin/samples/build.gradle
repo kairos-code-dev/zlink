@@ -1,0 +1,45 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version '2.1.0'
+    id 'application'
+}
+
+evaluationDependsOn(':')
+
+repositories {
+    mavenCentral()
+}
+
+kotlin {
+    jvmToolchain(22)
+}
+
+// Kotlin actor samples share the Java binding runtime (systems.zlink.*) and the
+// shared SampleSupport helpers from the Java samples project. No separate native
+// binding exists; this subproject only adds idiomatic Kotlin sample sources.
+dependencies {
+    implementation project(':')
+    implementation project(':samples')
+    compileOnly 'io.netty:netty-buffer:4.1.100.Final'
+}
+
+def sampleMainClasses = [
+    runActorRoomServer: 'systems.zlink.samples.ActorRoomServerSampleKt',
+    runActorGatewayRelay: 'systems.zlink.samples.ActorGatewayRelaySampleKt',
+    runActorSinglePlayerQueue: 'systems.zlink.samples.ActorSinglePlayerQueueSampleKt'
+]
+
+sampleMainClasses.each { taskName, mainClassName ->
+    tasks.register(taskName, JavaExec) {
+        group = 'application'
+        classpath = sourceSets.main.runtimeClasspath +
+            project(':').sourceSets.main.runtimeClasspath +
+            project(':samples').sourceSets.main.runtimeClasspath
+        mainClass = mainClassName
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+    }
+}
+
+tasks.register('runAllKotlinSamples') {
+    group = 'application'
+    dependsOn sampleMainClasses.keySet().collect { tasks.named(it) }
+}

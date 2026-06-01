@@ -1,0 +1,13 @@
+{
+  "name": "@zlink-systems/javascript-samples",
+  "version": "6.0.4",
+  "private": true,
+  "description": "Plain-JavaScript actor samples sharing the Node binding runtime (@zlink-systems/zlink)",
+  "license": "MPL-2.0",
+  "scripts": {
+    "samples": "./run_samples.sh"
+  },
+  "dependencies": {
+    "@zlink-systems/zlink": "file:../../node"
+  }
+}

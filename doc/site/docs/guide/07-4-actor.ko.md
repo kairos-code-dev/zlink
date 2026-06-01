@@ -2,12 +2,14 @@
 
 # SPOT Actor 사용 가이드
 
-이 문서는 Actor의 핵심 흐름을 **7개 언어 코드 탭**으로 보인다. 개념(역할·언제
+이 문서는 Actor의 핵심 흐름을 **9개 언어 코드 탭**으로 보인다. 개념(역할·언제
 쓰나)은 언어 무관이라 탭 밖에 한 번 설명하고, 코드는 탭에서 자기 언어만 본다.
+Kotlin은 Java 바인딩 런타임을, JavaScript는 Node 바인딩 런타임을 공유하지만
+언어가 다르므로 별도 탭으로 보인다.
 
 !!! note "파일럿 문서"
     이 문서는 [문서화 원칙](../../../principal/documentation/documentation-principles.ko.md)에
-    따라 7언어 탭 형식을 시험 적용한 첫 문서다. 코드는 각 언어의
+    따라 9언어 탭 형식을 시험 적용한 첫 문서다. 코드는 각 언어의
     `samples/actor_single_player_queue` 샘플에서 가져왔다(테스트용 동기화·검증
     코드는 가독성을 위해 생략). 정확한 함수 계약은
     [SPOT spec](../spec/core/service/spot.ko.md)을 본다.
@@ -62,6 +64,14 @@ Actor는 Spot에 합류(join)해 그 Spot으로 들어온 메시지를 받는 **
         ActorRef ref = actor.ref();
     }
     ```
+=== "Kotlin"
+    ```kotlin
+    val ctx = Zlink.createContext()
+    val node = ctx.createSpotNode()
+    val spot = node.createSpot()
+    val actor = node.createActor("single-player")
+    val ref = actor.ref()
+    ```
 === "Python"
     ```python
     with zlink.create_context() as ctx:
@@ -72,6 +82,14 @@ Actor는 Spot에 합류(join)해 그 Spot으로 들어온 메시지를 받는 **
     ```
 === "Node/TypeScript"
     ```typescript
+    const ctx = zlink.createContext();
+    const node = zlink.createSpotNode(ctx);
+    const spot = node.createSpot();
+    const actor = node.createActor('single-player');
+    const ref = actor.ref();
+    ```
+=== "JavaScript"
+    ```javascript
     const ctx = zlink.createContext();
     const node = zlink.createSpotNode(ctx);
     const spot = node.createSpot();
@@ -122,21 +140,37 @@ Actor가 spot에 join한다. join은 비동기 제출이며 완료는 콜백/fut
     ```
 === "Java"
     ```java
-    try (Message joinMsg = Message.from("join")) {
+    try (Message joinMsg = Message.from("join-first")) {
         var joinFuture = actor.join(spot)
             .message(joinMsg)
             .timeout(Duration.ofSeconds(2))
             .submitAsync();
     }
     ```
+=== "Kotlin"
+    ```kotlin
+    Message.from("join-first").use { joinMsg ->
+        actor.join(spot)
+            .message(joinMsg)
+            .timeout(Duration.ofSeconds(2))
+            .submit { result, messages -> messages.forEach(Message::close) }
+    }
+    ```
 === "Python"
     ```python
-    actor.join(spot).message(b"join").timeout(2).submit(
+    actor.join(spot).message(b"join-first").timeout(2).submit(
         lambda result, messages: [m.close() for m in messages]
     )
     ```
 === "Node/TypeScript"
     ```typescript
+    const replyPromise = actor.join(spot)
+        .message(Buffer.from('join-first'))
+        .timeout(2000)
+        .submitAsync();
+    ```
+=== "JavaScript"
+    ```javascript
     const replyPromise = actor.join(spot)
         .message(Buffer.from('join-first'))
         .timeout(2000)
@@ -176,7 +210,7 @@ Actor가 spot에 join한다. join은 비동기 제출이며 완료는 콜백/fut
     ActorJoinRequest? request = spot.RecvActorJoin(RecvFlags.DontWait);
     if (request != null)
     {
-        using Message reply = Message.From("accepted:queue");
+        using Message reply = Message.From("accepted");
         spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
     }
     ```
@@ -185,6 +219,14 @@ Actor가 spot에 join한다. join은 비동기 제출이며 완료는 콜백/fut
     try (ActorJoinRequest request = spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
         try (Message reply = Message.from("accepted")) {
             spot.replyActorJoin(request, 0).message(reply).submit();
+        }
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    spot.recvActorJoin(RecvFlags.DONT_WAIT)?.use { request ->
+        Message.from("accepted").use { reply ->
+            spot.replyActorJoin(request, 0).message(reply).submit()
         }
     }
     ```
@@ -199,7 +241,14 @@ Actor가 spot에 join한다. join은 비동기 제출이며 완료는 콜백/fut
     ```typescript
     const request = spot.recvActorJoin(zlink.RecvFlags.DontWait);
     if (request) {
-        spot.replyActorJoin(request, 0).message(Buffer.from('ok')).submit();
+        spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
+    }
+    ```
+=== "JavaScript"
+    ```javascript
+    const request = spot.recvActorJoin(zlink.RecvFlags.DontWait);
+    if (request) {
+        spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
     }
     ```
 === "Go"
@@ -248,10 +297,21 @@ Actor에게 향한 메시지는 Spot의 dispatch 핸들러에서 `ACTOR_READABLE
     ```java
     spot.setDispatchHandler(info -> {
         if (info.event() != SpotDispatchEvent.ACTOR_READABLE) return;
-        try (ActorReceived part = actor.recv(RecvFlags.DONT_WAIT)) {
-            if (part != null) payloads.add(part.message().toUtf8String());
+        for (ActorReceived part : info.actorMessages()) {
+            try (part) {
+                payloads.add(part.message().toUtf8String());
+            }
         }
     });
+    ```
+=== "Kotlin"
+    ```kotlin
+    spot.setDispatchHandler { info ->
+        if (info.event() != SpotDispatchEvent.ACTOR_READABLE) return@setDispatchHandler
+        for (part in info.actorMessages()) {
+            part.use { payloads.add(it.message().toUtf8String()) }
+        }
+    }
     ```
 === "Python"
     ```python
@@ -268,6 +328,17 @@ Actor에게 향한 메시지는 Spot의 dispatch 핸들러에서 `ACTOR_READABLE
     ```
 === "Node/TypeScript"
     ```typescript
+    spot.setDispatchHandler((info) => {
+        if (info.event !== zlink.SpotDispatchEvent.ActorReadable) return;
+        for (;;) {
+            const part = info.recvActorPart(zlink.RecvFlags.DontWait);
+            if (!part) return;
+            payloads.push(part.message.data().toString());
+        }
+    });
+    ```
+=== "JavaScript"
+    ```javascript
     spot.setDispatchHandler((info) => {
         if (info.event !== zlink.SpotDispatchEvent.ActorReadable) return;
         for (;;) {
@@ -322,6 +393,11 @@ actor가 leave하면 처리 위치만 Entry Spot으로 빠지고 세션 연결�
     actor.leave(spot).submitAsync().join().forEach(Message::close);
     actor.close();
     ```
+=== "Kotlin"
+    ```kotlin
+    actor.leave(spot).submitAsync().join().forEach(Message::close)
+    actor.close()
+    ```
 === "Python"
     ```python
     actor.leave(spot)
@@ -329,6 +405,11 @@ actor가 leave하면 처리 위치만 Entry Spot으로 빠지고 세션 연결�
     ```
 === "Node/TypeScript"
     ```typescript
+    await actor.leave(spot).timeout(2000).submitAsync();
+    actor.close(2000);
+    ```
+=== "JavaScript"
+    ```javascript
     await actor.leave(spot).timeout(2000).submitAsync();
     actor.close(2000);
     ```

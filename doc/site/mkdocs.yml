@@ -101,9 +101,14 @@ nav:
   - Home: index.md
   - Guide:
     - Overview: guide/01-overview.md
-    - Core API: guide/02-core-api.md
-    - Socket Patterns:
-      - Overview: guide/03-0-socket-patterns.md
+    - Concepts:
+      - Socket Pattern Selection: guide/03-0-socket-patterns.md
+      - Reliability & Delivery: guide/reliability.ko.md
+      - Design Rationale: guide/design-rationale.ko.md
+      - Message API & Ownership: guide/09-message-api.md
+      - Thread Safety: guide/11-thread-safety.md
+    - Messaging Patterns:
+      - Routing ID: guide/08-routing-id.md
       - PAIR: guide/03-1-pair.md
       - PUB/SUB: guide/03-2-pubsub.md
       - DEALER: guide/03-3-dealer.md
@@ -112,18 +117,21 @@ nav:
       - Proxy: guide/03-6-proxy.md
     - Transports: guide/04-transports.md
     - TLS Security: guide/05-tls-security.md
-    - Monitoring: guide/06-monitoring.md
     - Services:
       - Overview: guide/07-0-services.md
       - Discovery: guide/07-1-discovery.md
       - SPOT: guide/07-3-spot.md
       - Actor: guide/07-4-actor.md
       - Registry: guide/07-4-registry.md
-    - Routing ID: guide/08-routing-id.md
-    - Message API: guide/09-message-api.md
-    - Performance: guide/10-performance.md
-    - Thread Safety: guide/11-thread-safety.md
-    - Socket Options: guide/12-socket-options.md
+    - Operations:
+      - Monitoring: guide/06-monitoring.md
+      - Performance: guide/10-performance.md
+    - Reference:
+      - Core C API: guide/02-core-api.md
+      - Socket Options: guide/12-socket-options.md
+      - ZMP Protocol: guide/zmp-protocol.ko.md
+      - Glossary: guide/glossary.ko.md
+      - Shared Scenarios: guide/scenarios.ko.md
     - Bindings:
       - Overview: guide/bindings/README.md
       - .NET:

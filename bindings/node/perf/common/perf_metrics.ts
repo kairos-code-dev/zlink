@@ -9,6 +9,7 @@ const runtimePolicy = require('./perf_runtime_policy');
 
 export const {
   HEADER_SIZE,
+  createMetricCollector,
   createPayload,
   createRunId,
   currentEpochNs,
@@ -17,6 +18,10 @@ export const {
   summarizeMetrics,
   stampPayload
 } = measurement;
+
+export const {
+  integerEnv
+} = runtimePolicy;
 
 module.exports = {
   ...args,

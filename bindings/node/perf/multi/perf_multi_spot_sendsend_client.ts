@@ -144,6 +144,7 @@ async function main() {
       slots.push({
         spot,
         payload: createPayload(options.msgSize),
+        received: new zlink.Received(),
         waitingReply: false,
         nextSeq: 1n
       });
@@ -212,7 +213,7 @@ async function main() {
     const drainSlot = (index) => {
       const slot = activeSlots[index];
       let progressed = false;
-      const received = new zlink.Received();
+      const received = slot.received;
       while (true) {
         try {
           if (!slot.spot.recvRouted(received, zlink.RecvFlags.DontWait)) {
@@ -224,20 +225,16 @@ async function main() {
           }
           throw error;
         }
-        try {
-          if (!received.routingId || !received.spotRid || received.requestSeq !== 0n
-              || received.parts.length === 0) {
-            continue;
-          }
-          slot.waitingReply = false;
-          collector.record(
-            decodeMetricHeader(received.parts[0].data()),
-            currentEpochNs()
-          );
-          progressed = true;
-        } finally {
-          received.close();
+        if (!received.routingId || !received.spotRid || received.requestSeq !== 0n
+            || received.parts.length === 0) {
+          continue;
         }
+        slot.waitingReply = false;
+        collector.record(
+          decodeMetricHeader(received.parts[0].data()),
+          currentEpochNs()
+        );
+        progressed = true;
       }
       return progressed;
     };
@@ -262,6 +259,9 @@ async function main() {
           progressed = true;
           hasWaitingReply = true;
         }
+      }
+      if (progressed) {
+        continue;
       }
       for (let i = 0; i < activeSlots.length; i += 1) {
         progressed = drainSlot(i) || progressed;
@@ -323,6 +323,7 @@ async function main() {
     closeQuietly(controlSub);
     closeQuietly(controlPub);
     for (const slot of slots) {
+      closeQuietly(slot.received);
       closeQuietly(slot.spot);
     }
     closeQuietly(node);

@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, HEADER_SIZE, summarizeMetrics, } = require('../common/perf_metrics');
+const { createMetricCollector, createRunId, currentEpochNs, HEADER_SIZE, integerEnv, summarizeMetrics, } = require('../common/perf_metrics');
 const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runPairBenchmark(msgSize, options) {
     if (options.transport === 'inproc') {
@@ -51,6 +51,7 @@ async function runPairBenchmark(msgSize, options) {
             msgSize,
             activeStartNs,
             activeStopNs,
+            latencySampleStride: integerEnv('PERF_SINGLE_PAIR_LATENCY_SAMPLE_STRIDE', 32),
         });
         // PERF_SINGLE_TEST_POLICY § 1.4 / § 2.0.1: no start/stop control
         // channel. The connection-ready gate above is the only cross-thread
@@ -58,8 +59,12 @@ async function runPairBenchmark(msgSize, options) {
         // setup_connected_*); the receiver drains until the wire stop token,
         // exactly like C perf_single_one_way.hpp run_active_phase.
         const recvTask = drainRecvSocket(server, (received) => {
-            const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
-            collector.record(header, currentEpochNs());
+            const data = received.singlePartOrThrow().data();
+            if (data.length !== Math.max(msgSize, HEADER_SIZE)) {
+                collector.recordPayload(null, currentEpochNs());
+                return;
+            }
+            collector.recordPayload(data, currentEpochNs());
         }, { recordUntilNs: activeStopNs });
         await Promise.race([
             recvTask,

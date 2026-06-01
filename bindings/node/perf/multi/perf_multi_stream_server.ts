@@ -49,14 +49,33 @@ function tryStreamSend(stream, routingId, frame) {
   }
 }
 
+function pendingLength(pending) {
+  return pending.items.length - pending.head;
+}
+
+function pushPending(pending, reply) {
+  pending.items.push(reply);
+}
+
+function compactPending(pending) {
+  if (pending.head > 0 && pending.head >= pending.items.length) {
+    pending.items.length = 0;
+    pending.head = 0;
+  } else if (pending.head > 1024 && pending.head * 2 >= pending.items.length) {
+    pending.items.splice(0, pending.head);
+    pending.head = 0;
+  }
+}
+
 function drainPending(stream, pending) {
-  while (pending.length > 0) {
-    const reply = pending[0];
+  while (pending.head < pending.items.length) {
+    const reply = pending.items[pending.head];
     if (!tryStreamSend(stream, reply.routingId, reply.frame)) {
       break;
     }
-    pending.shift();
+    pending.head += 1;
   }
+  compactPending(pending);
 }
 
 function sleepMillis(ms) {
@@ -72,7 +91,7 @@ async function main() {
   let pollBuffer = null;
   let rl = null;
   let stop = false;
-  const pending = [];
+  const pending = { items: [], head: 0 };
 
   try {
     applySocketPolicy(stream);
@@ -83,8 +102,8 @@ async function main() {
     stream.bind(options.endpoint);
     stream.setPacketHandler((sourceRid, header, body) => {
       const frame = packetFrame(header, body);
-      if (pending.length > 0 || !tryStreamSend(stream, sourceRid, frame)) {
-        pending.push({ routingId: sourceRid, frame });
+      if (pendingLength(pending) > 0 || !tryStreamSend(stream, sourceRid, frame)) {
+        pushPending(pending, { routingId: sourceRid, frame });
       }
     });
     poller.add(stream, pollEvents(POLLOUT), 0);
@@ -102,7 +121,7 @@ async function main() {
     })();
 
     while (!stop) {
-      if (pending.length === 0) {
+      if (pendingLength(pending) === 0) {
         await sleepMillis(50);
         continue;
       }

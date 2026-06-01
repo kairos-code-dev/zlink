@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, HEADER_SIZE, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, HEADER_SIZE, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, sendStopTokenOnce, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
@@ -12,7 +12,6 @@ async function main() {
     applyContextPolicy(ctx, 'client', 'MULTI_DEALER_ROUTER');
     const dealers = [];
     const payloads = [];
-    const replyBuffers = [];
     const replyMessages = [];
     const waiting = [];
     const sendPending = [];
@@ -26,7 +25,6 @@ async function main() {
             dealer.setRoutingId(zlink.RoutingId.from(Buffer.from(`CLIENT-${i}`, 'ascii')));
             dealers.push(dealer);
             payloads.push(createPayload(options.msgSize));
-            replyBuffers.push(Buffer.allocUnsafe(HEADER_SIZE));
             replyMessages.push(new zlink.Received());
             waiting.push(false);
             sendPending.push(false);
@@ -54,25 +52,12 @@ async function main() {
         const drainReply = (index) => {
             let progressed = false;
             while (true) {
-                if (options.msgSize >= 65536) {
-                    const echoed = replyBuffers[index];
-                    const received = new zlink.Received();
-                    if (!dealers[index].recv(received, zlink.RecvFlags.DontWait)) {
-                        break;
-                    }
-                    const data = received.singlePartOrThrow().data();
-                    data.copy(echoed, 0, 0, Math.min(echoed.length, data.length));
-                    waiting[index] = false;
-                    collector.record(decodeMetricHeader(echoed.subarray(0, Math.min(data.length, echoed.length))), currentEpochNs());
+                const echoed = replyMessages[index];
+                if (!recvNoWaitInto(dealers[index], echoed)) {
+                    break;
                 }
-                else {
-                    const echoed = replyMessages[index];
-                    if (!recvNoWaitInto(dealers[index], echoed)) {
-                        break;
-                    }
-                    waiting[index] = false;
-                    collector.record(decodeMetricHeader(echoed.parts[0].data()), currentEpochNs());
-                }
+                waiting[index] = false;
+                collector.recordPayload(echoed.parts[0].data(), currentEpochNs());
                 progressed = true;
             }
             return progressed;

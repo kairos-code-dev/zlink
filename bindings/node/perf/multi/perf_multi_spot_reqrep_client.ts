@@ -7,7 +7,6 @@ const {
   createMetricCollector,
   createPayload,
   createRunId,
-  decodeMetricHeaderFromParts,
   currentEpochNs,
   sleepImmediate,
   sleepMillis,
@@ -112,7 +111,8 @@ function tryRequestSpotReply(spot, payload, timeoutMs, onReply, onDone) {
       .submit((result, parts) => {
         try {
           if (result === zlink.RequestResult.Ok) {
-            onReply(decodeMetricHeaderFromParts(parts));
+            const part = Array.isArray(parts) && parts.length > 0 ? parts[0] : null;
+            onReply(part && typeof part.data === 'function' ? part.data() : null);
           } else {
             trace(`request callback result=${result}`);
           }
@@ -268,8 +268,8 @@ async function main() {
             continue;
           }
           stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-          const submitted = tryRequestSpotReply(slot.spot, slot.payload, requestTimeoutMs, (header) => {
-            collector.record(header, currentEpochNs());
+          const submitted = tryRequestSpotReply(slot.spot, slot.payload, requestTimeoutMs, (payload) => {
+            collector.recordPayload(payload, currentEpochNs());
           }, () => {
             slot.inflight = false;
           });

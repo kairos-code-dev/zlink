@@ -3,11 +3,13 @@
 
 const zlink = require('@zlink-systems/zlink');
 import {
+  createMetricCollector,
   createPayload,
   createRunId,
   currentEpochNs,
   decodeMetricHeader,
   HEADER_SIZE,
+  integerEnv,
   sleepMillis,
   summarizeMetrics,
   stampPayload
@@ -161,8 +163,7 @@ async function runSpotBenchmark(msgSize: number, options: SpotBenchmarkOptions) 
     let probeReady = false;
     let stopReceived = false;
     const activeDeadline = { valueNs: 0n };
-    const latenciesNs: number[] = [];
-    let accepted = 0;
+    let collector: ReturnType<typeof createMetricCollector> | null = null;
     const collectReadable = (countActive: boolean) => {
       return drainSpot(subscriber, recvBuffer, (received) => {
         // PERF_SINGLE_TEST_POLICY § 1.4: wire-level stop token terminates
@@ -174,6 +175,10 @@ async function runSpotBenchmark(msgSize: number, options: SpotBenchmarkOptions) 
           return;
         }
         if (received.size !== payloadSize) {
+          return;
+        }
+        if (countActive && collector) {
+          collector.recordPayload(recvBuffer, currentEpochNs());
           return;
         }
         const header = decodeMetricHeader(recvBuffer);
@@ -201,11 +206,6 @@ async function runSpotBenchmark(msgSize: number, options: SpotBenchmarkOptions) 
         const nowNs = currentEpochNs();
         if (activeDeadline.valueNs !== 0n && nowNs > activeDeadline.valueNs) {
           return;
-        }
-        accepted += 1;
-        const sentTsNs = BigInt(header.sentTsNs);
-        if (nowNs >= sentTsNs) {
-          latenciesNs.push(Number(nowNs - sentTsNs));
         }
       });
     };
@@ -252,6 +252,13 @@ async function runSpotBenchmark(msgSize: number, options: SpotBenchmarkOptions) 
     const activeStartNs = currentEpochNs();
     activeDeadline.valueNs = activeStartNs
       + BigInt(Math.floor(options.duration * 1_000_000_000));
+    collector = createMetricCollector({
+      runId,
+      msgSize,
+      activeStartNs,
+      activeStopNs: activeDeadline.valueNs,
+      latencySampleStride: integerEnv('PERF_SINGLE_SPOT_LATENCY_SAMPLE_STRIDE', 32),
+    });
     while (currentEpochNs() < activeDeadline.valueNs && !stopReceived) {
       stampPayload(payload, {
         phase: 1,
@@ -283,15 +290,16 @@ async function runSpotBenchmark(msgSize: number, options: SpotBenchmarkOptions) 
       }
     }
 
-    if (accepted <= 0) {
+    const result = await collector.finish();
+    if (result.accepted <= 0) {
       throw new Error('spot benchmark produced no measured messages');
     }
     emitSpotNodeHwmDetail(publisherNode, 'SPOT', options.transport, 'publisher_node', msgSize);
     emitSpotNodeHwmDetail(subscriberNode, 'SPOT', options.transport, 'subscriber_node', msgSize);
 
     return {
-      latenciesNs,
-      accepted
+      latenciesNs: result.latenciesNs,
+      accepted: result.accepted
     };
   } finally {
     if (subscriber) {

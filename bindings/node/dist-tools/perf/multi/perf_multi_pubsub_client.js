@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, currentEpochNs, HEADER_SIZE, summarizeMetrics } = require('../common/perf_metrics');
+const { integerEnv } = require('../common/perf_args');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, waitForConnectionReady } = require('./perf_multi_runtime');
@@ -25,7 +26,7 @@ async function main() {
     const ctx = zlink.createContext();
     applyContextPolicy(ctx, 'client', 'MULTI_PUBSUB');
     const subs = [];
-    const payloadBuffers = [];
+    const receivedMessages = [];
     let rl = null;
     let collector = null;
     try {
@@ -37,7 +38,7 @@ async function main() {
             await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
             applyAutoHwmMsgUnit(ctx, options.msgSize);
             subs.push(sub);
-            payloadBuffers.push(Buffer.allocUnsafe(Math.max(options.msgSize, HEADER_SIZE)));
+            receivedMessages.push(new zlink.TopicMessage());
         }
         ctx.recalculateAutoHwm();
         for (const sub of subs) {
@@ -54,6 +55,7 @@ async function main() {
                     msgSize: options.msgSize,
                     activeStartNs,
                     activeStopNs,
+                    latencySampleStride: integerEnv('PERF_MULTI_PUBSUB_LATENCY_SAMPLE_STRIDE', 32),
                 });
                 const poller = zlink.createPoller();
                 const pollBuffer = zlink.createPollEvents(Math.max(1, subs.length));
@@ -83,19 +85,17 @@ async function main() {
                                 || !pollEventHas({ revents: pollBuffer.revents(offset) }, POLLIN)) {
                                 continue;
                             }
-                            const payload = payloadBuffers[index];
+                            const received = receivedMessages[index];
                             while (true) {
-                                const received = new zlink.TopicMessage();
                                 if (!subs[index].subscribe(received, zlink.RecvFlags.DontWait)) {
                                     break;
                                 }
                                 const data = received.singlePartOrThrow().data();
-                                data.copy(payload, 0, 0, Math.min(payload.length, data.length));
-                                if (isStopTokenPayload(payload, data.length)) {
+                                if (isStopTokenPayload(data, data.length)) {
                                     stopReceived = true;
                                     continue;
                                 }
-                                collector.recordPayload(payload, currentEpochNs());
+                                collector.recordPayload(data, currentEpochNs());
                             }
                         }
                     }

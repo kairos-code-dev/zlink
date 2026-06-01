@@ -5,6 +5,7 @@ exports.configureTlsServer = exports.configureTlsClient = exports.applyAutoHwmMs
 exports.applyContextPolicy = applyContextPolicy;
 exports.applySpotNodeAdmission = applySpotNodeAdmission;
 exports.applySocketPolicy = applySocketPolicy;
+exports.routedLargeMessageSocketPolicy = routedLargeMessageSocketPolicy;
 exports.emitSingleSocketHwmDetail = emitSingleSocketHwmDetail;
 exports.emitSpotNodeHwmDetail = emitSpotNodeHwmDetail;
 exports.benchmarkEndpoint = benchmarkEndpoint;
@@ -25,7 +26,7 @@ const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 const zlink = require('@zlink-systems/zlink');
 const { MonitorEventType, RecvFlags, RecvResult } = zlink;
-const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeader, decodeMetricHeaderFromParts, HEADER_SIZE, MIN_MSG_SIZE, applyAutoHwmMsgUnit, applyAutoHwmProfile, integerEnv, manualSocketOverridesEnabled, sleepImmediate, sleepMillis, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, currentEpochNs, HEADER_SIZE, MIN_MSG_SIZE, applyAutoHwmMsgUnit, applyAutoHwmProfile, integerEnv, manualSocketOverridesEnabled, sleepImmediate, sleepMillis, stampPayload } = require('../common/perf_metrics');
 exports.applyAutoHwmMsgUnit = applyAutoHwmMsgUnit;
 const { configureTlsClient, configureTlsServer, } = require('../common/perf_tls');
 exports.configureTlsClient = configureTlsClient;
@@ -54,6 +55,7 @@ function senderWorkerState(worker) {
 }
 function applySocketPolicy(socket, options = {}) {
     const manualOverrides = manualSocketOverridesEnabled('single');
+    const policyOverrides = options.policySocketOverrides === true;
     const hwm = Number.isFinite(options.hwm)
         ? options.hwm
         : integerEnv('PERF_SINGLE_HWM', NaN);
@@ -73,7 +75,7 @@ function applySocketPolicy(socket, options = {}) {
         ? options.lingerMs
         : integerEnv('PERF_SINGLE_LINGER_MS', 0);
     if (socket.options) {
-        if (manualOverrides) {
+        if (manualOverrides || policyOverrides) {
             if (Number.isFinite(sendHwm) && sendHwm > 0) {
                 socket.options.sendHwm = sendHwm;
             }
@@ -88,6 +90,23 @@ function applySocketPolicy(socket, options = {}) {
             socket.options.noDrop = Boolean(options.noDrop);
         }
     }
+}
+function routedLargeMessageSocketPolicy(options = {}, msgSize) {
+    if (manualSocketOverridesEnabled('single')) {
+        return options;
+    }
+    if (!Number.isFinite(msgSize) || msgSize < 65536) {
+        return options;
+    }
+    const floor = integerEnv('PERF_SINGLE_ROUTED_LARGE_HWM_FLOOR', 32);
+    if (!Number.isFinite(floor) || floor <= 0) {
+        return options;
+    }
+    return {
+        ...options,
+        hwm: Math.max(floor, Number.isFinite(options.hwm) ? Number(options.hwm) : 0),
+        policySocketOverrides: true,
+    };
 }
 function applySpotNodeAdmission(node, options = {}) {
     const manualOverrides = manualSocketOverridesEnabled('single');
@@ -259,6 +278,17 @@ function subscribeNoWait(socket, received = new zlink.TopicMessage(), flags = Re
         throw error;
     }
 }
+function isStopTokenPayload(buffer, size) {
+    if (size !== STOP_TOKEN_BYTES.length) {
+        return false;
+    }
+    for (let i = 0; i < STOP_TOKEN_BYTES.length; i += 1) {
+        if (buffer[i] !== STOP_TOKEN_BYTES[i]) {
+            return false;
+        }
+    }
+    return true;
+}
 async function waitForConnectionReady(socket, connectFn = null, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 1000)) {
     const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
     try {
@@ -387,7 +417,6 @@ async function drainRecvSocket(socket, onMessage, options = {}) {
 }
 async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
     const payloadSize = Math.max(msgSize, HEADER_SIZE);
-    const buffer = Buffer.allocUnsafe(Math.max(HEADER_SIZE, STOP_TOKEN_BYTES.length));
     const recordUntilNs = options.recordUntilNs === undefined
         ? null
         : BigInt(options.recordUntilNs);
@@ -395,6 +424,7 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
     let iterCount = 0;
     let totalReceived = 0;
     let recordingActive = true;
+    const reusableReceived = new zlink.Received();
     if (process.env.PERF_NODE_TRACE === '1') {
         console.error(`[drainRouterRecvInto] entry`);
     }
@@ -405,16 +435,14 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
         }
         let first = true;
         while (true) {
-            const received = new zlink.Received();
+            const received = reusableReceived;
             if (!router.recv(received, first ? RecvFlags.None : RecvFlags.DontWait)) {
                 break;
             }
             const data = received.singlePartOrThrow().data();
-            data.copy(buffer, 0, 0, Math.min(buffer.length, data.length));
             const receivedSize = data.length;
             first = false;
-            if (receivedSize === STOP_TOKEN_BYTES.length
-                && buffer.subarray(0, receivedSize).equals(STOP_TOKEN_BYTES)) {
+            if (isStopTokenPayload(data, receivedSize)) {
                 stopReceived = true;
                 if (process.env.PERF_NODE_TRACE === '1') {
                     console.error(`[drainRouterRecvInto] stop totalReceived=${totalReceived}`);
@@ -425,17 +453,18 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
             if (process.env.PERF_NODE_TRACE === '1' && (totalReceived % 100000) === 0) {
                 console.error(`[drainRouterRecvInto] received=${totalReceived}`);
             }
+            const receivedAtNs = currentEpochNs();
             if (recordUntilNs !== null && recordingActive) {
-                recordingActive = currentEpochNs() <= recordUntilNs;
+                recordingActive = receivedAtNs <= recordUntilNs;
             }
             if (recordUntilNs !== null && !recordingActive) {
                 continue;
             }
             if (receivedSize !== payloadSize) {
-                onHeader(null);
+                onHeader(null, receivedAtNs);
                 continue;
             }
-            onHeader(decodeMetricHeader(buffer));
+            onHeader(data, receivedAtNs);
         }
     }
 }
@@ -489,8 +518,12 @@ function drainRecvSocketNoWaitUntilIdle(socket, collector, payloadSize, viaSubsc
             stopReceived = true;
             continue;
         }
-        const header = decodeMetricHeaderFromParts(received.parts, payloadSize);
-        collector.record(header, currentEpochNs());
+        const data = received.singlePartOrThrow().data();
+        if (data.length !== payloadSize) {
+            collector.recordPayload(null, currentEpochNs());
+            continue;
+        }
+        collector.recordPayload(data, currentEpochNs());
     }
 }
 async function runLocalSocketOneWayBenchmark({ pattern, msgSize, options, endpointToken, createReceiver, createSender, configureReceiver = null, configureSender = null, 
@@ -555,6 +588,7 @@ receiverHwmComponent = 'receiver', senderHwmComponent = 'sender' }) {
             msgSize,
             activeStartNs,
             activeStopNs,
+            latencySampleStride: integerEnv('PERF_SINGLE_LOCAL_LATENCY_SAMPLE_STRIDE', 32),
         });
         // PERF_POLICY § 1.1.2 / C bindings/c/perf/single/common/
         // perf_single_one_way.hpp run_active_phase (~276-358): C runs a
@@ -747,6 +781,7 @@ module.exports = {
     applyContextPolicy,
     applySpotNodeAdmission,
     applySocketPolicy,
+    routedLargeMessageSocketPolicy,
     configureTlsClient,
     configureTlsServer,
     emitSingleSocketHwmDetail,

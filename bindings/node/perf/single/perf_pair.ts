@@ -6,9 +6,9 @@ const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createRunId,
-  decodeMetricHeaderFromParts,
   currentEpochNs,
   HEADER_SIZE,
+  integerEnv,
   summarizeMetrics,
 } = require('../common/perf_metrics');
 const {
@@ -78,6 +78,7 @@ async function runPairBenchmark(msgSize, options) {
       msgSize,
       activeStartNs,
       activeStopNs,
+      latencySampleStride: integerEnv('PERF_SINGLE_PAIR_LATENCY_SAMPLE_STRIDE', 32),
     });
 
     // PERF_SINGLE_TEST_POLICY § 1.4 / § 2.0.1: no start/stop control
@@ -88,8 +89,12 @@ async function runPairBenchmark(msgSize, options) {
     const recvTask = drainRecvSocket(
       server,
       (received) => {
-        const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
-        collector.record(header, currentEpochNs());
+        const data = received.singlePartOrThrow().data();
+        if (data.length !== Math.max(msgSize, HEADER_SIZE)) {
+          collector.recordPayload(null, currentEpochNs());
+          return;
+        }
+        collector.recordPayload(data, currentEpochNs());
       },
       { recordUntilNs: activeStopNs }
     );

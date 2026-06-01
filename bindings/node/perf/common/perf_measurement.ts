@@ -266,9 +266,14 @@ function createMetricCollector(config) {
     ? BigInt('0xffffffffffffffff')
     : BigInt(config.activeStopNs);
   const rttDivisor = config.roundTrip ? 2n : 1n;
+  const latencySampleStride = Math.max(1, Number(config.latencySampleStride ?? 1) | 0);
   let accepted = 0;
   let rejected = 0;
   let closed = false;
+
+  function shouldSampleLatency(nextAccepted) {
+    return ((nextAccepted - 1) % latencySampleStride) === 0;
+  }
 
   return {
     recordPayload(buffer, receivedAtNs) {
@@ -290,13 +295,18 @@ function createMetricCollector(config) {
       if (recvTsNs < activeStartNs || recvTsNs > activeStopNs) {
         return;
       }
-      const sentTsNs = buffer.readBigInt64LE(21);
-      if (recvTsNs < sentTsNs) {
-        rejected += 1;
-        return;
+      const nextAccepted = accepted + 1;
+      if (shouldSampleLatency(nextAccepted)) {
+        const sentTsNs = buffer.readBigInt64LE(21);
+        if (recvTsNs < sentTsNs) {
+          rejected += 1;
+          return;
+        }
+        accepted = nextAccepted;
+        latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
+      } else {
+        accepted = nextAccepted;
       }
-      accepted += 1;
-      latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
     },
     record(header, receivedAtNs) {
       if (!header || closed) {
@@ -314,12 +324,17 @@ function createMetricCollector(config) {
       if (recvTsNs < activeStartNs || recvTsNs > activeStopNs) {
         return;
       }
-      if (recvTsNs < sentTsNs) {
-        rejected += 1;
-        return;
+      const nextAccepted = accepted + 1;
+      if (shouldSampleLatency(nextAccepted)) {
+        if (recvTsNs < sentTsNs) {
+          rejected += 1;
+          return;
+        }
+        accepted = nextAccepted;
+        latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
+      } else {
+        accepted = nextAccepted;
       }
-      accepted += 1;
-      latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
     },
     async finish() {
       closed = true;

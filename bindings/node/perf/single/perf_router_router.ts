@@ -7,6 +7,7 @@ const {
   createMetricCollector,
   createRunId,
   currentEpochNs,
+  integerEnv,
   summarizeMetrics,
 } = require('../common/perf_metrics');
 const {
@@ -19,6 +20,7 @@ const {
   drainRouterRecvInto,
   emitSingleSocketHwmDetail,
   parseSingleBinaryArgs,
+  routedLargeMessageSocketPolicy,
   runLocalSocketOneWayBenchmark,
   spawnSenderWorker,
   waitForWorkerError,
@@ -57,6 +59,7 @@ function handshakeRouterReceiver(receiver) {
 }
 
 async function runRouterRouterBenchmark(msgSize, options) {
+  const socketOptions = routedLargeMessageSocketPolicy(options, msgSize);
   if (options.transport === 'inproc') {
     // inproc is context-local so the Worker sender path cannot reach it.
     // Run both ROUTER sockets in one shared context with the C-faithful
@@ -65,7 +68,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
     return runLocalSocketOneWayBenchmark({
       pattern: 'ROUTER_ROUTER',
       msgSize,
-      options,
+      options: socketOptions,
       endpointToken: 'router-router',
       createReceiver: (ctx) => zlink.createRouterSocket(ctx),
       createSender: (ctx) => zlink.createRouterSocket(ctx),
@@ -121,7 +124,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
   let worker = null;
 
   try {
-    applySocketPolicy(receiver, options);
+    applySocketPolicy(receiver, socketOptions);
     applyAutoHwmMsgUnit(ctx, msgSize);
     ctx.recalculateAutoHwm();
     receiver.setRoutingId(RECEIVER_ROUTING_ID);
@@ -136,7 +139,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
       runId: options.runId ?? 1,
       receiverRoutingIdBytes: RECEIVER_ID,
       senderRoutingIdBytes: SENDER_ID,
-      options,
+      options: socketOptions,
     });
     const workerError = waitForWorkerError(worker);
     await Promise.race([
@@ -161,6 +164,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
       msgSize,
       activeStartNs,
       activeStopNs,
+      latencySampleStride: integerEnv('PERF_SINGLE_ROUTED_LATENCY_SAMPLE_STRIDE', 32),
     });
 
     // PERF_SINGLE_TEST_POLICY § 1.4 / § 2.0.1: the PING/PONG handshake
@@ -170,8 +174,8 @@ async function runRouterRouterBenchmark(msgSize, options) {
     const recvTask = drainRouterRecvInto(
       receiver,
       msgSize,
-      (header) => {
-        collector.record(header, currentEpochNs());
+      (payload, receivedAtNs) => {
+        collector.recordPayload(payload, receivedAtNs);
       },
       { recordUntilNs: activeStopNs }
     );

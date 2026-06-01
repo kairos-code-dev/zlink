@@ -54,8 +54,11 @@ import {
 
 type SpotNodeHandle = { nativeHandle(): unknown };
 
+const native = requireNative();
+
 export class StreamSocket extends SocketBase {
   readonly options: StreamSocketOptions;
+  private readonly _packetRoutingIdCache = new Map<string, RoutingId>();
   constructor(ctx: Context) {
     super(ctx, NativeSocketType.STREAM);
     this.options = StreamSocketOptions.create(this);
@@ -70,8 +73,8 @@ export class StreamSocket extends SocketBase {
       let result;
       try {
         result = Array.isArray(normalized)
-          ? requireNative().socketSendRoutingNoWaitResultParts(this.nativeHandle(), normalizedRoutingId, normalized) as number
-          : requireNative().socketSendRoutingNoWaitResult(this.nativeHandle(), normalizedRoutingId, normalized) as number;
+          ? native.socketSendRoutingNoWaitResultParts(this.nativeHandle(), normalizedRoutingId, normalized) as number
+          : native.socketSendRoutingNoWaitResult(this.nativeHandle(), normalizedRoutingId, normalized) as number;
       } catch (error) {
         throw submitNativeError(error, flags, 'send failed');
       }
@@ -81,14 +84,14 @@ export class StreamSocket extends SocketBase {
     }
     try {
       if (Array.isArray(normalized)) {
-        requireNative().socketSendRoutingParts(
+        native.socketSendRoutingParts(
           this.nativeHandle(),
           normalizedRoutingId,
           normalized,
           flags | 0
         );
       } else {
-        requireNative().socketSendRouting(
+        native.socketSendRouting(
           this.nativeHandle(),
           normalizedRoutingId,
           normalized,
@@ -108,8 +111,8 @@ export class StreamSocket extends SocketBase {
     let raw;
     try {
       raw = ((recvFlags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().socketRecvMessageNoWait(this.nativeHandle())
-        : requireNative().socketRecvMessage(this.nativeHandle(), recvFlags | 0);
+        ? native.socketRecvMessageNoWait(this.nativeHandle())
+        : native.socketRecvMessage(this.nativeHandle(), recvFlags | 0);
     } catch (error) {
       throw recvNativeError(error, recvFlags, 'recv failed');
     }
@@ -126,10 +129,10 @@ export class StreamSocket extends SocketBase {
   }
   setPacketHandler(handler: StreamPacketHandler): void {
     handlerCall('stream packet handler registration failed', () => {
-      requireNative().socketStreamAttach(
+      native.socketStreamAttach(
         this.nativeHandle(),
         (routingId: Buffer | null, packets: Buffer[]) => {
-          const sourceRid = wrapRoutingId(routingId);
+          const sourceRid = this.packetRoutingId(routingId);
           if (!sourceRid) {
             return 0;
           }
@@ -142,33 +145,51 @@ export class StreamSocket extends SocketBase {
       );
     });
   }
+  private packetRoutingId(routingId: Buffer | null): RoutingId | null {
+    if (!routingId || routingId.length === 0) {
+      return null;
+    }
+    const key = routingId.toString('latin1');
+    const cached = this._packetRoutingIdCache.get(key);
+    if (cached) {
+      return cached;
+    }
+    if (this._packetRoutingIdCache.size >= 16384) {
+      this._packetRoutingIdCache.clear();
+    }
+    const wrapped = wrapRoutingId(routingId);
+    if (wrapped) {
+      this._packetRoutingIdCache.set(key, wrapped);
+    }
+    return wrapped;
+  }
   setSendReadyHandler(handler: SocketSendReadyHandler): void {
     handlerCall('send-ready handler registration failed', () => {
-      requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
+      native.socketSendReadyHandler(this.nativeHandle(), handler);
     });
   }
   setRoutingId(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);
     configCall('routing id set failed', () => {
-      requireNative().handleSetRoutingId(this.nativeHandle(), normalizedRoutingId);
+      native.handleSetRoutingId(this.nativeHandle(), normalizedRoutingId);
     });
   }
   getRoutingId(): RoutingId {
     return RoutingId.from(
       configCall('routing id get failed', () =>
-        requireNative().handleGetRoutingId(this.nativeHandle()) as Buffer
+        native.handleGetRoutingId(this.nativeHandle()) as Buffer
       )
     );
   }
   disconnectRid(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);
     configCall('stream disconnect by routing id failed', () => {
-      requireNative().socketDisconnectRid(this.nativeHandle(), normalizedRoutingId);
+      native.socketDisconnectRid(this.nativeHandle(), normalizedRoutingId);
     });
   }
   attachActorGateway(node: SpotNodeHandle): void {
     configCall('stream actor gateway attachment failed', () => {
-      requireNative().streamAttachActorGateway(this.nativeHandle(), node.nativeHandle());
+      native.streamAttachActorGateway(this.nativeHandle(), node.nativeHandle());
     });
   }
   bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOperation {
@@ -198,7 +219,7 @@ export class StreamSocket extends SocketBase {
   boundActors(sessionRid: RoutingId): ActorRef[] {
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     return (configCall('stream bound actors snapshot failed', () =>
-      requireNative().streamBoundActors(this.nativeHandle(), normalizedSessionRid) as Array<{ nodeRid: Buffer; actorId: string; generation: bigint | number }>
+      native.streamBoundActors(this.nativeHandle(), normalizedSessionRid) as Array<{ nodeRid: Buffer; actorId: string; generation: bigint | number }>
     )).map((entry) => actorRefFromRaw(entry));
   }
 }

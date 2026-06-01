@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createRunId, decodeMetricHeader, decodeMetricHeaderFromParts, currentEpochNs, HEADER_SIZE, summarizeMetrics, } = require('../common/perf_metrics');
+const { createMetricCollector, createRunId, currentEpochNs, HEADER_SIZE, integerEnv, summarizeMetrics, } = require('../common/perf_metrics');
 const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsClient, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerError, waitForPostReadySettle, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 function trace(message) {
@@ -13,9 +13,8 @@ function trace(message) {
 function yieldImmediate() {
     return new Promise((resolve) => setImmediate(resolve));
 }
-function trySubscribe(socket, buffer, flags) {
+function trySubscribe(socket, received, buffer, flags) {
     try {
-        const received = new zlink.TopicMessage();
         if (!socket.subscribe(received, flags)) {
             return null;
         }
@@ -38,6 +37,7 @@ async function drainPubSubPayloadInto(socket, buffer, onHeader, options = {}) {
     let stopReceived = false;
     let recordingActive = true;
     let iterCount = 0;
+    const reusableReceived = new zlink.TopicMessage();
     while (!stopReceived) {
         iterCount += 1;
         if ((iterCount & 0x3f) === 0) {
@@ -46,7 +46,7 @@ async function drainPubSubPayloadInto(socket, buffer, onHeader, options = {}) {
         let processed = false;
         let first = true;
         while (true) {
-            const received = trySubscribe(socket, buffer, first ? zlink.RecvFlags.None : zlink.RecvFlags.DontWait);
+            const received = trySubscribe(socket, reusableReceived, buffer, first ? zlink.RecvFlags.None : zlink.RecvFlags.DontWait);
             if (!received) {
                 break;
             }
@@ -64,10 +64,10 @@ async function drainPubSubPayloadInto(socket, buffer, onHeader, options = {}) {
                 continue;
             }
             if (received.size < HEADER_SIZE) {
-                onHeader(null);
+                onHeader(null, currentEpochNs());
                 continue;
             }
-            onHeader(decodeMetricHeader(buffer));
+            onHeader(buffer, currentEpochNs(), received.size);
         }
         if (!processed) {
             await yieldImmediate();
@@ -184,6 +184,7 @@ async function runPubSubBenchmark(msgSize, options) {
             msgSize,
             activeStartNs,
             activeStopNs,
+            latencySampleStride: integerEnv('PERF_SINGLE_PUBSUB_LATENCY_SAMPLE_STRIDE', 32),
         });
         // PERF_SINGLE_TEST_POLICY § 1.4 / § 2.0.1 / C setup_connected_pubsub_
         // pair + send_pubsub_stop_token: the `bound`->CONNECTION_READY->settle
@@ -191,8 +192,12 @@ async function runPubSubBenchmark(msgSize, options) {
         // the worker, SUB connects here). No extra start/stop ack — the
         // subscriber drains until the wire stop token on the topic.
         const payloadBuffer = Buffer.allocUnsafe(Math.max(msgSize, HEADER_SIZE, STOP_TOKEN_BYTES.length));
-        const recvTask = drainPubSubPayloadInto(sub, payloadBuffer, (header) => {
-            collector.record(header, currentEpochNs());
+        const recvTask = drainPubSubPayloadInto(sub, payloadBuffer, (payload, receivedAtNs, receivedSize) => {
+            if (receivedSize !== Math.max(msgSize, HEADER_SIZE)) {
+                collector.recordPayload(null, receivedAtNs);
+                return;
+            }
+            collector.recordPayload(payload, receivedAtNs);
         }, { recordUntilNs: activeStopNs });
         await Promise.race([
             recvTask,

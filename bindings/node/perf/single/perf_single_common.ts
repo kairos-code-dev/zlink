@@ -17,8 +17,6 @@ const {
   createPayload,
   createRunId,
   currentEpochNs,
-  decodeMetricHeader,
-  decodeMetricHeaderFromParts,
   HEADER_SIZE,
   MIN_MSG_SIZE,
   applyAutoHwmMsgUnit,
@@ -59,6 +57,7 @@ interface SingleSocketPolicyOptions {
   recvTimeout?: number;
   lingerMs?: number;
   noDrop?: boolean;
+  policySocketOverrides?: boolean;
 }
 
 interface RecordUntilOptions {
@@ -92,6 +91,7 @@ function senderWorkerState(worker: SenderWorker): SenderWorkerState {
 function applySocketPolicy(socket, options: SingleSocketPolicyOptions = {}) {
   const manualOverrides =
     manualSocketOverridesEnabled('single');
+  const policyOverrides = options.policySocketOverrides === true;
   const hwm = Number.isFinite(options.hwm)
     ? options.hwm
     : integerEnv('PERF_SINGLE_HWM', NaN);
@@ -112,7 +112,7 @@ function applySocketPolicy(socket, options: SingleSocketPolicyOptions = {}) {
     : integerEnv('PERF_SINGLE_LINGER_MS', 0);
 
   if (socket.options) {
-    if (manualOverrides) {
+    if (manualOverrides || policyOverrides) {
       if (Number.isFinite(sendHwm) && sendHwm > 0) {
         socket.options.sendHwm = sendHwm;
       }
@@ -127,6 +127,32 @@ function applySocketPolicy(socket, options: SingleSocketPolicyOptions = {}) {
       socket.options.noDrop = Boolean(options.noDrop);
     }
   }
+}
+
+function routedLargeMessageSocketPolicy(
+  options: SingleSocketPolicyOptions = {},
+  msgSize: number
+): SingleSocketPolicyOptions {
+  if (manualSocketOverridesEnabled('single')) {
+    return options;
+  }
+  if (!Number.isFinite(msgSize) || msgSize < 65536) {
+    return options;
+  }
+
+  const floor = integerEnv('PERF_SINGLE_ROUTED_LARGE_HWM_FLOOR', 32);
+  if (!Number.isFinite(floor) || floor <= 0) {
+    return options;
+  }
+
+  return {
+    ...options,
+    hwm: Math.max(
+      floor,
+      Number.isFinite(options.hwm) ? Number(options.hwm) : 0
+    ),
+    policySocketOverrides: true,
+  };
 }
 
 function applySpotNodeAdmission(node, options: Pick<SingleSocketPolicyOptions, 'hwm' | 'sendHwm' | 'recvHwm'> = {}) {
@@ -303,6 +329,18 @@ function subscribeNoWait(socket, received = new zlink.TopicMessage(), flags = Re
   }
 }
 
+function isStopTokenPayload(buffer, size) {
+  if (size !== STOP_TOKEN_BYTES.length) {
+    return false;
+  }
+  for (let i = 0; i < STOP_TOKEN_BYTES.length; i += 1) {
+    if (buffer[i] !== STOP_TOKEN_BYTES[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 async function waitForConnectionReady(
   socket,
   connectFn = null,
@@ -443,7 +481,6 @@ async function drainRecvSocket(socket, onMessage, options: RecordUntilOptions = 
 
 async function drainRouterRecvInto(router, msgSize, onHeader, options: RecordUntilOptions = {}) {
   const payloadSize = Math.max(msgSize, HEADER_SIZE);
-  const buffer = Buffer.allocUnsafe(Math.max(HEADER_SIZE, STOP_TOKEN_BYTES.length));
   const recordUntilNs = options.recordUntilNs === undefined
     ? null
     : BigInt(options.recordUntilNs);
@@ -451,6 +488,7 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options: RecordUnt
   let iterCount = 0;
   let totalReceived = 0;
   let recordingActive = true;
+  const reusableReceived = new zlink.Received();
   if (process.env.PERF_NODE_TRACE === '1') {
     console.error(`[drainRouterRecvInto] entry`);
   }
@@ -461,16 +499,14 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options: RecordUnt
     }
     let first = true;
     while (true) {
-      const received = new zlink.Received();
+      const received = reusableReceived;
       if (!router.recv(received, first ? RecvFlags.None : RecvFlags.DontWait)) {
         break;
       }
       const data = received.singlePartOrThrow().data();
-      data.copy(buffer, 0, 0, Math.min(buffer.length, data.length));
       const receivedSize = data.length;
       first = false;
-      if (receivedSize === STOP_TOKEN_BYTES.length
-          && buffer.subarray(0, receivedSize).equals(STOP_TOKEN_BYTES)) {
+      if (isStopTokenPayload(data, receivedSize)) {
         stopReceived = true;
         if (process.env.PERF_NODE_TRACE === '1') {
           console.error(`[drainRouterRecvInto] stop totalReceived=${totalReceived}`);
@@ -481,17 +517,18 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options: RecordUnt
       if (process.env.PERF_NODE_TRACE === '1' && (totalReceived % 100000) === 0) {
         console.error(`[drainRouterRecvInto] received=${totalReceived}`);
       }
+      const receivedAtNs = currentEpochNs();
       if (recordUntilNs !== null && recordingActive) {
-        recordingActive = currentEpochNs() <= recordUntilNs;
+        recordingActive = receivedAtNs <= recordUntilNs;
       }
       if (recordUntilNs !== null && !recordingActive) {
         continue;
       }
       if (receivedSize !== payloadSize) {
-        onHeader(null);
+        onHeader(null, receivedAtNs);
         continue;
       }
-      onHeader(decodeMetricHeader(buffer));
+      onHeader(data, receivedAtNs);
     }
   }
 }
@@ -548,8 +585,12 @@ function drainRecvSocketNoWaitUntilIdle(socket, collector, payloadSize, viaSubsc
       stopReceived = true;
       continue;
     }
-    const header = decodeMetricHeaderFromParts(received.parts, payloadSize);
-    collector.record(header, currentEpochNs());
+    const data = received.singlePartOrThrow().data();
+    if (data.length !== payloadSize) {
+      collector.recordPayload(null, currentEpochNs());
+      continue;
+    }
+    collector.recordPayload(data, currentEpochNs());
   }
 }
 
@@ -626,6 +667,7 @@ async function runLocalSocketOneWayBenchmark({
       msgSize,
       activeStartNs,
       activeStopNs,
+      latencySampleStride: integerEnv('PERF_SINGLE_LOCAL_LATENCY_SAMPLE_STRIDE', 32),
     });
 
     // PERF_POLICY § 1.1.2 / C bindings/c/perf/single/common/
@@ -835,6 +877,7 @@ module.exports = {
   applyContextPolicy,
   applySpotNodeAdmission,
   applySocketPolicy,
+  routedLargeMessageSocketPolicy,
   configureTlsClient,
   configureTlsServer,
   emitSingleSocketHwmDetail,
@@ -860,6 +903,7 @@ export {
   applyContextPolicy,
   applySpotNodeAdmission,
   applySocketPolicy,
+  routedLargeMessageSocketPolicy,
   configureTlsClient,
   configureTlsServer,
   emitSingleSocketHwmDetail,

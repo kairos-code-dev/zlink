@@ -7,15 +7,13 @@ const { configureTlsClient } = require('../common/perf_tls');
 const { createRunId, decodeMetricHeader, currentEpochNs, HEADER_SIZE, sleepMillis } = require('../common/perf_metrics');
 const { applyAutoHwmMsgUnit, applyContextPolicy, applySpotNodeAdmission, emitMultiSocketHwmDetail } = require('./perf_multi_runtime');
 const TOPIC = 'bench';
-function trySpotSubscribe(spot, buffer) {
+function trySpotSubscribe(spot, received) {
     try {
-        const received = new zlink.TopicMessage();
         if (!spot.subscribe(received, zlink.RecvFlags.DontWait)) {
             return null;
         }
         const data = received.singlePartOrThrow().data();
-        data.copy(buffer, 0, 0, Math.min(buffer.length, data.length));
-        return { size: data.length, topic: received.topic, routingId: received.routingId };
+        return { data, topic: received.topic, routingId: received.routingId };
     }
     catch (error) {
         if (error instanceof zlink.RecvError &&
@@ -74,11 +72,10 @@ async function main() {
         applyAutoHwmMsgUnit(ctx, options.msgSize);
         applySpotNodeAdmission(node);
         connectPeerIfNeeded(node, options.peerEndpoint);
-        const payloadSize = Math.max(options.msgSize, HEADER_SIZE);
         for (let i = 0; i < options.clients; i += 1) {
             const spot = node.createSpot();
             spot.setSubscription(TOPIC);
-            slots.push({ spot, buffer: Buffer.allocUnsafe(payloadSize) });
+            slots.push({ spot, received: new zlink.TopicMessage() });
         }
         ctx.recalculateAutoHwm();
         if (options.workerIndex === 0) {
@@ -103,16 +100,16 @@ async function main() {
         while (currentEpochNs() < fallbackDeadlineNs) {
             let progressed = false;
             for (let i = 0; i < slots.length; i += 1) {
-                const { spot, buffer } = slots[i];
+                const { spot, received: message } = slots[i];
                 let drained = 0;
                 while (drained < burstCap && currentEpochNs() < fallbackDeadlineNs) {
-                    const received = trySpotSubscribe(spot, buffer);
-                    if (!received) {
+                    const payload = trySpotSubscribe(spot, message);
+                    if (!payload) {
                         break;
                     }
                     drained += 1;
                     progressed = true;
-                    const header = decodeMetricHeader(buffer.subarray(0, received.size));
+                    const header = decodeMetricHeader(payload.data);
                     if (!header
                         || (header.runId >>> 0) !== expectedRunId
                         || (header.msgSize >>> 0) !== options.msgSize

@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, sleepMillis, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, currentEpochNs, sleepImmediate, sleepMillis, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
 const { POLLIN, POLLCOMPLETION, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, subscribeNoWait, trySocketPublish, waitForSpotNodeConnectedPeerCount, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
@@ -63,7 +63,8 @@ function tryRequestSpotReply(spot, payload, timeoutMs, onReply, onDone) {
             .submit((result, parts) => {
             try {
                 if (result === zlink.RequestResult.Ok) {
-                    onReply(decodeMetricHeaderFromParts(parts));
+                    const part = Array.isArray(parts) && parts.length > 0 ? parts[0] : null;
+                    onReply(part && typeof part.data === 'function' ? part.data() : null);
                 }
                 else {
                     trace(`request callback result=${result}`);
@@ -211,8 +212,8 @@ async function main() {
                         continue;
                     }
                     stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-                    const submitted = tryRequestSpotReply(slot.spot, slot.payload, requestTimeoutMs, (header) => {
-                        collector.record(header, currentEpochNs());
+                    const submitted = tryRequestSpotReply(slot.spot, slot.payload, requestTimeoutMs, (payload) => {
+                        collector.recordPayload(payload, currentEpochNs());
                     }, () => {
                         slot.inflight = false;
                     });

@@ -10,9 +10,5 @@ function requireRoutingId(routingId: RoutingId, name = 'routingId'): Buffer {
 }
 
 export function normalizeRoutingId(routingId: RoutingId, name = 'routingId'): Buffer {
-  const normalized = requireRoutingId(routingId, name);
-  if (normalized.length === 0 || normalized.length > 255) {
-    throw new RangeError(`${name} must be 1..255 bytes`);
-  }
-  return normalized;
+  return requireRoutingId(routingId, name);
 }

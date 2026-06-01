@@ -102,8 +102,7 @@ async function runSpotBenchmark(msgSize, options) {
         let probeReady = false;
         let stopReceived = false;
         const activeDeadline = { valueNs: 0n };
-        const latenciesNs = [];
-        let accepted = 0;
+        let collector = null;
         const collectReadable = (countActive) => {
             return drainSpot(subscriber, recvBuffer, (received) => {
                 // PERF_SINGLE_TEST_POLICY § 1.4: wire-level stop token terminates
@@ -115,6 +114,10 @@ async function runSpotBenchmark(msgSize, options) {
                     return;
                 }
                 if (received.size !== payloadSize) {
+                    return;
+                }
+                if (countActive && collector) {
+                    collector.recordPayload(recvBuffer, (0, perf_metrics_1.currentEpochNs)());
                     return;
                 }
                 const header = (0, perf_metrics_1.decodeMetricHeader)(recvBuffer);
@@ -142,11 +145,6 @@ async function runSpotBenchmark(msgSize, options) {
                 const nowNs = (0, perf_metrics_1.currentEpochNs)();
                 if (activeDeadline.valueNs !== 0n && nowNs > activeDeadline.valueNs) {
                     return;
-                }
-                accepted += 1;
-                const sentTsNs = BigInt(header.sentTsNs);
-                if (nowNs >= sentTsNs) {
-                    latenciesNs.push(Number(nowNs - sentTsNs));
                 }
             });
         };
@@ -190,6 +188,13 @@ async function runSpotBenchmark(msgSize, options) {
         const activeStartNs = (0, perf_metrics_1.currentEpochNs)();
         activeDeadline.valueNs = activeStartNs
             + BigInt(Math.floor(options.duration * 1_000_000_000));
+        collector = (0, perf_metrics_1.createMetricCollector)({
+            runId,
+            msgSize,
+            activeStartNs,
+            activeStopNs: activeDeadline.valueNs,
+            latencySampleStride: (0, perf_metrics_1.integerEnv)('PERF_SINGLE_SPOT_LATENCY_SAMPLE_STRIDE', 32),
+        });
         while ((0, perf_metrics_1.currentEpochNs)() < activeDeadline.valueNs && !stopReceived) {
             (0, perf_metrics_1.stampPayload)(payload, {
                 phase: 1,
@@ -220,14 +225,15 @@ async function runSpotBenchmark(msgSize, options) {
                 await (0, perf_metrics_1.sleepMillis)(1);
             }
         }
-        if (accepted <= 0) {
+        const result = await collector.finish();
+        if (result.accepted <= 0) {
             throw new Error('spot benchmark produced no measured messages');
         }
         (0, perf_single_common_1.emitSpotNodeHwmDetail)(publisherNode, 'SPOT', options.transport, 'publisher_node', msgSize);
         (0, perf_single_common_1.emitSpotNodeHwmDetail)(subscriberNode, 'SPOT', options.transport, 'subscriber_node', msgSize);
         return {
-            latenciesNs,
-            accepted
+            latenciesNs: result.latenciesNs,
+            accepted: result.accepted
         };
     }
     finally {

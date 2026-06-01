@@ -2,8 +2,8 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createRunId, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
-const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRouterRecvInto, emitSingleSocketHwmDetail, parseSingleBinaryArgs, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { createMetricCollector, createRunId, currentEpochNs, integerEnv, summarizeMetrics, } = require('../common/perf_metrics');
+const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRouterRecvInto, emitSingleSocketHwmDetail, parseSingleBinaryArgs, routedLargeMessageSocketPolicy, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
@@ -31,6 +31,7 @@ function handshakeRouterReceiver(receiver) {
     }
 }
 async function runRouterRouterBenchmark(msgSize, options) {
+    const socketOptions = routedLargeMessageSocketPolicy(options, msgSize);
     if (options.transport === 'inproc') {
         // inproc is context-local so the Worker sender path cannot reach it.
         // Run both ROUTER sockets in one shared context with the C-faithful
@@ -39,7 +40,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
         return runLocalSocketOneWayBenchmark({
             pattern: 'ROUTER_ROUTER',
             msgSize,
-            options,
+            options: socketOptions,
             endpointToken: 'router-router',
             createReceiver: (ctx) => zlink.createRouterSocket(ctx),
             createSender: (ctx) => zlink.createRouterSocket(ctx),
@@ -95,7 +96,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
     const endpoint = await benchmarkEndpoint(options.transport, `router-router-${msgSize}`);
     let worker = null;
     try {
-        applySocketPolicy(receiver, options);
+        applySocketPolicy(receiver, socketOptions);
         applyAutoHwmMsgUnit(ctx, msgSize);
         ctx.recalculateAutoHwm();
         receiver.setRoutingId(RECEIVER_ROUTING_ID);
@@ -110,7 +111,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
             runId: options.runId ?? 1,
             receiverRoutingIdBytes: RECEIVER_ID,
             senderRoutingIdBytes: SENDER_ID,
-            options,
+            options: socketOptions,
         });
         const workerError = waitForWorkerError(worker);
         await Promise.race([
@@ -134,13 +135,14 @@ async function runRouterRouterBenchmark(msgSize, options) {
             msgSize,
             activeStartNs,
             activeStopNs,
+            latencySampleStride: integerEnv('PERF_SINGLE_ROUTED_LATENCY_SAMPLE_STRIDE', 32),
         });
         // PERF_SINGLE_TEST_POLICY § 1.4 / § 2.0.1: the PING/PONG handshake
         // above is the routing-id discovery gate (C perf_router_router.cpp
         // does the same). No extra start/stop control channel — the receiver
         // uses blocking recv + drain and exits on the wire stop token.
-        const recvTask = drainRouterRecvInto(receiver, msgSize, (header) => {
-            collector.record(header, currentEpochNs());
+        const recvTask = drainRouterRecvInto(receiver, msgSize, (payload, receivedAtNs) => {
+            collector.recordPayload(payload, receivedAtNs);
         }, { recordUntilNs: activeStopNs });
         await Promise.race([
             recvTask,

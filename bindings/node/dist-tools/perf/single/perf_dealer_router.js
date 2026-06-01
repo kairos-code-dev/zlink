@@ -2,14 +2,15 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createRunId, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
-const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRouterRecvInto, emitSingleSocketHwmDetail, parseSingleBinaryArgs, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { createMetricCollector, createRunId, currentEpochNs, integerEnv, summarizeMetrics, } = require('../common/perf_metrics');
+const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRouterRecvInto, emitSingleSocketHwmDetail, parseSingleBinaryArgs, routedLargeMessageSocketPolicy, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runDealerRouterBenchmark(msgSize, options) {
+    const socketOptions = routedLargeMessageSocketPolicy(options, msgSize);
     if (options.transport === 'inproc') {
         return runLocalSocketOneWayBenchmark({
             pattern: 'DEALER_ROUTER',
             msgSize,
-            options,
+            options: socketOptions,
             endpointToken: 'dealer-router',
             createReceiver: (ctx) => zlink.createRouterSocket(ctx),
             createSender: (ctx) => zlink.createDealerSocket(ctx),
@@ -22,7 +23,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
     const endpoint = await benchmarkEndpoint(options.transport, `dealer-router-${msgSize}`);
     let worker = null;
     try {
-        applySocketPolicy(router, options);
+        applySocketPolicy(router, socketOptions);
         applyAutoHwmMsgUnit(ctx, msgSize);
         ctx.recalculateAutoHwm();
         configureTlsServer(router, options.transport);
@@ -34,7 +35,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
             duration: options.duration,
             msgSize,
             runId: options.runId ?? 1,
-            options,
+            options: socketOptions,
         });
         const workerError = waitForWorkerError(worker);
         await Promise.race([
@@ -51,13 +52,14 @@ async function runDealerRouterBenchmark(msgSize, options) {
             msgSize,
             activeStartNs,
             activeStopNs,
+            latencySampleStride: integerEnv('PERF_SINGLE_ROUTED_LATENCY_SAMPLE_STRIDE', 32),
         });
         // PERF_SINGLE_TEST_POLICY § 1.4 / § 2.0.1: no start/stop control
         // channel. The connection-ready gate above is the only cross-thread
         // sync; the receiver uses blocking recv + drain and exits on the wire
         // stop token (C perf_dealer_router.cpp recv-until-stop-token model).
-        const recvTask = drainRouterRecvInto(router, msgSize, (header) => {
-            collector.record(header, currentEpochNs());
+        const recvTask = drainRouterRecvInto(router, msgSize, (payload, receivedAtNs) => {
+            collector.recordPayload(payload, receivedAtNs);
         }, { recordUntilNs: activeStopNs });
         await Promise.race([
             recvTask,

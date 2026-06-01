@@ -39,7 +39,7 @@ function sleepMillis(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function echoRouted(received) {
+function echoRouted(spot, received) {
   if (!received.routingId || !received.spotRid || received.parts.length === 0) {
     return;
   }
@@ -82,16 +82,11 @@ function recvRoutedNoWait(spot, received) {
   }
 }
 
-function drainRoutedMessages(spot) {
-  const received = new zlink.Received();
+function drainRoutedMessages(spot, received) {
   let count = 0;
-  try {
-    while (recvRoutedNoWait(spot, received)) {
-      count += 1;
-      echoRouted(received);
-    }
-  } finally {
-    received.close();
+  while (recvRoutedNoWait(spot, received)) {
+    count += 1;
+    echoRouted(spot, received);
   }
   return count;
 }
@@ -114,7 +109,10 @@ async function main() {
   let connectedControlEndpoint = '';
   let controlPoller = null;
   let controlEvents = null;
+  let dataPoller = null;
+  let dataEvents = null;
   let rl = null;
+  const routedReceived = new zlink.Received();
 
   try {
     applySpotNodeAdmission(node);
@@ -139,7 +137,9 @@ async function main() {
     controlPoller = zlink.createPoller();
     controlEvents = zlink.createPollEvents(1);
     controlPoller.add(controlSub, pollEvents(POLLIN), 0);
-
+    dataPoller = zlink.createPoller();
+    dataEvents = zlink.createPollEvents(1);
+    dataPoller.add(spot, pollEvents(POLLIN), 0);
     console.log(`READY,${options.endpoint}`);
     console.log(`CONTROL_READY,${options.controlEndpoint}`);
     trace('ready');
@@ -210,18 +210,29 @@ async function main() {
 
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `START,${options.msgSize}`);
 
+    let idleWaits = 0;
     while (!stop) {
-      if (drainRoutedMessages(spot) === 0) {
-        await sleepMillis(1);
+      if (drainRoutedMessages(spot, routedReceived) === 0) {
+        dataPoller.wait(dataEvents, 1);
+        idleWaits += 1;
+        if (idleWaits >= 16) {
+          idleWaits = 0;
+          await sleepMillis(0);
+        }
+      } else {
+        idleWaits = 0;
       }
     }
     trace('stop');
   } finally {
     stop = true;
+    dataEvents?.close();
+    dataPoller?.close();
     controlEvents?.close();
     controlPoller?.close();
     rl?.close();
     controlPubWaiter.close();
+    closeQuietly(routedReceived);
     closeQuietly(controlSub);
     closeQuietly(controlPub);
     closeQuietly(spot);

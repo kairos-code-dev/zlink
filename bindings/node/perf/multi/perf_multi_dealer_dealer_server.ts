@@ -7,9 +7,9 @@ const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createRunId,
-  decodeMetricHeader,
   currentEpochNs,
   HEADER_SIZE,
+  integerEnv,
   summarizeMetrics
 } = require('../common/perf_metrics');
 const { configureTlsServer } = require('../common/perf_tls');
@@ -51,7 +51,6 @@ async function main() {
   const server = zlink.createDealerSocket(ctx);
   const poller = zlink.createPoller();
   const payloadSize = Math.max(options.msgSize, HEADER_SIZE);
-  const recvBuffer = Buffer.allocUnsafe(payloadSize);
   let pollBuffer = null;
   let rl = null;
   let collector = null;
@@ -85,6 +84,7 @@ async function main() {
         runId: createRunId(1),
         msgSize: options.msgSize,
         activeStartNs,
+        latencySampleStride: integerEnv('PERF_MULTI_DEALER_DEALER_LATENCY_SAMPLE_STRIDE', 32),
       });
 
       // C run_receive_window (~240-297): poller wait with `-1` (signal-
@@ -94,26 +94,24 @@ async function main() {
       // elapsed after a drain. Per-socket stop tokens only wake the `-1`
       // wait; the duration deadline bounds the phase (C line 299 ignores
       // the stop count).
+      const received = new zlink.Received();
       while (currentEpochNs() < activeStopNs) {
         const ready = waitPollerOne(poller, pollBuffer, -1);
         if (!ready || !pollEventHas(ready, POLLIN)) {
           continue;
         }
         while (true) {
-          const received = new zlink.Received();
           if (!server.recv(received, zlink.RecvFlags.DontWait)) {
             break;
           }
           const data = received.singlePartOrThrow().data();
-          data.copy(recvBuffer, 0, 0, Math.min(recvBuffer.length, data.length));
           const receivedBytes = data.length;
-          if (isStopToken(recvBuffer.subarray(0, receivedBytes))) {
+          if (isStopToken(data)) {
             continue;
           }
-          collector.record(
-            receivedBytes === payloadSize ? decodeMetricHeader(recvBuffer) : null,
-            currentEpochNs()
-          );
+          if (receivedBytes === payloadSize) {
+            collector.recordPayload(data, currentEpochNs());
+          }
         }
       }
 
@@ -129,11 +127,11 @@ async function main() {
       const idleNs = 50_000_000n;
       const tailDeadlineNs = currentEpochNs() + tailMaxNs;
       let idleDeadlineNs = currentEpochNs() + idleNs;
+      const tailReceived = new zlink.Received();
       while (currentEpochNs() < tailDeadlineNs && currentEpochNs() < idleDeadlineNs) {
         let drained = false;
         while (true) {
-          const received = new zlink.Received();
-          if (!server.recv(received, zlink.RecvFlags.DontWait)) {
+          if (!server.recv(tailReceived, zlink.RecvFlags.DontWait)) {
             break;
           }
           drained = true;

@@ -6,10 +6,9 @@ const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createRunId,
-  decodeMetricHeader,
-  decodeMetricHeaderFromParts,
   currentEpochNs,
   HEADER_SIZE,
+  integerEnv,
   summarizeMetrics,
 } = require('../common/perf_metrics');
 const {
@@ -41,9 +40,8 @@ function yieldImmediate() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function trySubscribe(socket, buffer, flags) {
+function trySubscribe(socket, received, buffer, flags) {
   try {
-    const received = new zlink.TopicMessage();
     if (!socket.subscribe(received, flags)) {
       return null;
     }
@@ -71,6 +69,7 @@ async function drainPubSubPayloadInto(
   let stopReceived = false;
   let recordingActive = true;
   let iterCount = 0;
+  const reusableReceived = new zlink.TopicMessage();
   while (!stopReceived) {
     iterCount += 1;
     if ((iterCount & 0x3f) === 0) {
@@ -81,6 +80,7 @@ async function drainPubSubPayloadInto(
     while (true) {
       const received = trySubscribe(
         socket,
+        reusableReceived,
         buffer,
         first ? zlink.RecvFlags.None : zlink.RecvFlags.DontWait
       );
@@ -101,10 +101,10 @@ async function drainPubSubPayloadInto(
         continue;
       }
       if (received.size < HEADER_SIZE) {
-        onHeader(null);
+        onHeader(null, currentEpochNs());
         continue;
       }
-      onHeader(decodeMetricHeader(buffer));
+      onHeader(buffer, currentEpochNs(), received.size);
     }
     if (!processed) {
       await yieldImmediate();
@@ -226,6 +226,7 @@ async function runPubSubBenchmark(msgSize, options) {
       msgSize,
       activeStartNs,
       activeStopNs,
+      latencySampleStride: integerEnv('PERF_SINGLE_PUBSUB_LATENCY_SAMPLE_STRIDE', 32),
     });
 
     // PERF_SINGLE_TEST_POLICY § 1.4 / § 2.0.1 / C setup_connected_pubsub_
@@ -237,8 +238,12 @@ async function runPubSubBenchmark(msgSize, options) {
     const recvTask = drainPubSubPayloadInto(
       sub,
       payloadBuffer,
-      (header) => {
-        collector.record(header, currentEpochNs());
+      (payload, receivedAtNs, receivedSize) => {
+        if (receivedSize !== Math.max(msgSize, HEADER_SIZE)) {
+          collector.recordPayload(null, receivedAtNs);
+          return;
+        }
+        collector.recordPayload(payload, receivedAtNs);
       },
       { recordUntilNs: activeStopNs }
     );

@@ -26,6 +26,8 @@ import type { ActorRefRaw, SpotActorJoinRecvRaw, SpotActorLifecycleRaw, SpotDisp
 
 type OwnerSpotNode = { nativeHandle(): unknown; readonly routingId: RoutingId; unregisterSpot(spot: Spot): void };
 
+const nativeBinding = requireNative();
+
 export class Spot extends NativeHandle {
   private static readonly CREATE_TOKEN = Symbol('Spot.create');
   private readonly _node: OwnerSpotNode;
@@ -33,7 +35,7 @@ export class Spot extends NativeHandle {
     if (token !== Spot.CREATE_TOKEN) {
       throw new TypeError('Spot instances must be created with SpotNode.createSpot()');
     }
-    super(native ?? requireNative().spotNew(node.nativeHandle()));
+    super(native ?? nativeBinding.spotNew(node.nativeHandle()));
     this._node = node;
   }
 
@@ -52,28 +54,29 @@ export class Spot extends NativeHandle {
   setRoutingId(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);
     configCall('spot routing id set failed', () => {
-      requireNative().handleSetRoutingId(this._native, normalizedRoutingId);
+      nativeBinding.handleSetRoutingId(this._native, normalizedRoutingId);
     });
   }
   get routingId(): RoutingId {
     return RoutingId.from(configCall('spot routing id get failed', () =>
-      requireNative().handleGetRoutingId(this._native) as Buffer
+      nativeBinding.handleGetRoutingId(this._native) as Buffer
     ));
   }
   get requestTimeout(): number {
     return readInt32Option(configCall('spot request timeout get failed', () =>
-      requireNative().spotGetOption(this._native, SpotOption.REQUEST_TIMEOUT_MS) as Buffer
+      nativeBinding.spotGetOption(this._native, SpotOption.REQUEST_TIMEOUT_MS) as Buffer
     ), 'requestTimeout');
   }
   set requestTimeout(value: number) {
     const buffer = int32Buffer(value, 'requestTimeout');
     configCall('spot request timeout set failed', () => {
-      requireNative().spotSetOption(this._native, SpotOption.REQUEST_TIMEOUT_MS, buffer);
+      nativeBinding.spotSetOption(this._native, SpotOption.REQUEST_TIMEOUT_MS, buffer);
     });
   }
   publish(topic: string): SendOperation {
     return new RuntimeSendOperation((parts, opFlags) => this.publishDirect(topic, parts, opFlags));
   }
+
   private submitSpotSend(flags: SendFlags, errorMessage: string, invoke: () => void): boolean {
     try {
       invoke();
@@ -88,7 +91,7 @@ export class Spot extends NativeHandle {
   }
   private publishDirect(topic: string, payloadParts: MessageLike | readonly MessageLike[], flags: SendFlags): boolean {
     return this.submitSpotSend(flags, 'spot publish failed', () => {
-      requireNative().spotPublish(
+      nativeBinding.spotPublish(
         this._native,
         validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER),
         normalizeOperationPayload(payloadParts),
@@ -99,18 +102,18 @@ export class Spot extends NativeHandle {
   setSubscription(topicOrPattern: string): void {
     const normalized = validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER);
     configCall('spot subscription set failed', () => {
-      requireNative().spotSubscribe(this._native, normalized);
+      nativeBinding.spotSubscribe(this._native, normalized);
     });
   }
   unsetSubscription(topicOrPattern: string): void {
     const normalized = validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER);
     configCall('spot subscription unset failed', () => {
-      requireNative().spotUnsubscribe(this._native, normalized);
+      nativeBinding.spotUnsubscribe(this._native, normalized);
     });
   }
   subscriptionAt(index: number): SubscriptionEntry | null {
     return configCall('spot subscription lookup failed', () =>
-      requireNative().subscriptionAt(this._native, index >>> 0) as SubscriptionEntry | null
+      nativeBinding.subscriptionAt(this._native, index >>> 0) as SubscriptionEntry | null
     );
   }
   subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
@@ -121,8 +124,8 @@ export class Spot extends NativeHandle {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().spotRecvNoWait(this._native) as NativeTopicMessageRaw | null
-        : requireNative().spotRecv(this._native, flags | 0) as NativeTopicMessageRaw | null;
+        ? nativeBinding.spotRecvNoWait(this._native) as NativeTopicMessageRaw | null
+        : nativeBinding.spotRecv(this._native, flags | 0) as NativeTopicMessageRaw | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'subscribe failed');
     }
@@ -137,7 +140,7 @@ export class Spot extends NativeHandle {
   }
   setSendReadyHandler(handler: SpotSendReadyHandler): void {
     handlerCall('spot send-ready handler registration failed', () => {
-      requireNative().spotSendReadyHandler(this._native, handler);
+      nativeBinding.spotSendReadyHandler(this._native, handler);
     });
   }
   sendToChannel(channelName: string): SendOperation {
@@ -145,7 +148,7 @@ export class Spot extends NativeHandle {
   }
   private sendChannelDirect(channelName: string, payloadParts: MessageLike | readonly MessageLike[], flags: SendFlags): boolean {
     return this.submitSpotSend(flags, 'spot sendToChannel failed', () => {
-      requireNative().spotSendChannel(
+      nativeBinding.spotSendChannel(
         this._native,
         validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER),
         normalizeOperationPayload(payloadParts),
@@ -158,7 +161,7 @@ export class Spot extends NativeHandle {
   }
   private sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadParts: MessageLike | readonly MessageLike[], flags: SendFlags): boolean {
     return this.submitSpotSend(flags, 'spot sendToSpot failed', () => {
-      requireNative().spotSendToSpot(
+      nativeBinding.spotSendToSpot(
         this._native,
         normalizeRoutingId(destNodeRid),
         normalizeRoutingId(destSpotRid),
@@ -181,7 +184,7 @@ export class Spot extends NativeHandle {
       maybeTimeout,
       'requestToChannel failed',
       (spotHandle, parts, callback, flags, timeoutMs) => {
-        requireNative().spotRequestChannel(
+        nativeBinding.spotRequestChannel(
           spotHandle,
           normalizedChannelName,
           parts,
@@ -212,7 +215,7 @@ export class Spot extends NativeHandle {
       maybeTimeout,
       'requestToSpot failed',
       (spotHandle, parts, callback, flags, timeoutMs) => {
-        requireNative().spotRequestSpot(
+        nativeBinding.spotRequestSpot(
           spotHandle,
           nodeRid,
           spotRid,
@@ -233,7 +236,7 @@ export class Spot extends NativeHandle {
       maybeTimeout,
       'requestToRouter failed',
       (spotHandle, parts, callback, flags, timeoutMs) => {
-        requireNative().spotRequestRouter(
+        nativeBinding.spotRequestRouter(
           spotHandle,
           peer,
           parts,
@@ -284,7 +287,7 @@ export class Spot extends NativeHandle {
     const normalizedDestNodeRid = normalizeRoutingId(destNodeRid);
     const normalizedDestSpotRid = normalizeRoutingId(destSpotRid);
     try {
-      requireNative().spotReplySpot(
+      nativeBinding.spotReplySpot(
         this._native,
         normalizedDestNodeRid,
         normalizedDestSpotRid,
@@ -299,7 +302,7 @@ export class Spot extends NativeHandle {
     normalizeReplyFlags(flags);
     const normalizedPeerRid = normalizeRoutingId(peerRid);
     try {
-      requireNative().spotReplyRouter(
+      nativeBinding.spotReplyRouter(
         this._native,
         normalizedPeerRid,
         requestSeq,
@@ -313,7 +316,7 @@ export class Spot extends NativeHandle {
   recvRouted(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
     let raw;
     try {
-      raw = requireNative().spotRecvRouted(this._native, flags | 0) as SpotRoutedRaw | null;
+      raw = nativeBinding.spotRecvRouted(this._native, flags | 0) as SpotRoutedRaw | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'recvRouted failed');
     }
@@ -353,7 +356,7 @@ export class Spot extends NativeHandle {
   }
   setDispatchHandler(handler: SpotDispatchEventHandler): void {
     handlerCall('spot dispatch handler registration failed', () => {
-      requireNative().spotDispatchEventHandler(this._native, this._node.nativeHandle(), (raw: SpotDispatchRaw) => {
+      nativeBinding.spotDispatchEventHandler(this._native, this._node.nativeHandle(), (raw: SpotDispatchRaw) => {
         const rawActorParts = raw.actorParts ?? [];
         const actorParts = new Array<ActorPart | undefined>(rawActorParts.length);
         const actorRef = rawActorParts[0]?.info.actor
@@ -384,7 +387,7 @@ export class Spot extends NativeHandle {
   recvActorJoin(flags: RecvFlags = RecvFlags.None): ActorJoinRequest | null {
     let raw;
     try {
-      raw = requireNative().spotActorJoinRecv(this._native, flags | 0) as SpotActorJoinRecvRaw | null;
+      raw = nativeBinding.spotActorJoinRecv(this._native, flags | 0) as SpotActorJoinRecvRaw | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'actor join recv failed');
     }
@@ -403,7 +406,7 @@ export class Spot extends NativeHandle {
     return new RuntimeActorJoinReplyOperation((partsInput) => {
       const parts = normalizeOperationPayload(partsInput);
       try {
-        requireNative().spotActorJoinReply(spotHandle, rawInfo, code, parts);
+        nativeBinding.spotActorJoinReply(spotHandle, rawInfo, code, parts);
       } catch (error) {
         throw submitNativeError(error, SendFlags.None, 'actor join reply failed');
       }
@@ -412,7 +415,7 @@ export class Spot extends NativeHandle {
   recvActorLifecycle(flags: RecvFlags = RecvFlags.None): SpotActorLifecycleEvent | null {
     let raw;
     try {
-      raw = requireNative().spotRecvActorLifecycle(this._native, flags | 0) as SpotActorLifecycleRaw | null;
+      raw = nativeBinding.spotRecvActorLifecycle(this._native, flags | 0) as SpotActorLifecycleRaw | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'actor lifecycle recv failed');
     }
@@ -426,14 +429,14 @@ export class Spot extends NativeHandle {
   }
   actors(): ActorRef[] {
     return (configCall('spot actors snapshot failed', () =>
-      requireNative().spotActors(this._native) as ActorRefRaw[]
+      nativeBinding.spotActors(this._native) as ActorRefRaw[]
     ))
       .map((entry) => actorRefFromRaw(entry));
   }
   close(): void {
     if (this._native) {
       closeCall('spot close failed', () => {
-        requireNative().spotDestroy(this._native);
+        nativeBinding.spotDestroy(this._native);
       });
       this._native = null;
       this._node.unregisterSpot(this);

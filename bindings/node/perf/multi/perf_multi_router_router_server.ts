@@ -5,8 +5,6 @@
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { configureTlsServer } = require('../common/perf_tls');
-const { HEADER_SIZE } = require('../common/perf_metrics');
-const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
@@ -32,7 +30,7 @@ function drainPending(router, pending) {
   }
 }
 
-function receiveAndQueueReplies(router, recvBuffer, pending) {
+function receiveAndQueueReplies(router, pending) {
   while (true) {
     const received = new zlink.Received();
     if (!router.recv(received, zlink.RecvFlags.DontWait)) {
@@ -41,12 +39,12 @@ function receiveAndQueueReplies(router, recvBuffer, pending) {
     if (!received.routingId || received.spotRid || received.requestSeq) {
       continue;
     }
-    const data = received.singlePartOrThrow().data();
-    data.copy(recvBuffer, 0, 0, Math.min(recvBuffer.length, data.length));
-    pending.push({
-      routingId: received.routingId,
-      payload: Buffer.from(recvBuffer.subarray(0, data.length))
-    });
+    const routingId = received.routingId;
+    const payload = received.singlePartOrThrow();
+    if (pending.length === 0 && trySocketSend(router, routingId, payload)) {
+      continue;
+    }
+    pending.push({ routingId, payload: Buffer.from(payload.data()) });
   }
 }
 
@@ -56,7 +54,6 @@ async function main() {
   applyContextPolicy(ctx, 'server', 'MULTI_ROUTER_ROUTER');
   const router = zlink.createRouterSocket(ctx);
   const poller = zlink.createPoller();
-  const recvBuffer = Buffer.allocUnsafe(Math.max(options.msgSize, HEADER_SIZE, STOP_TOKEN_BYTES.length));
   const pending = [];
   let pollBuffer = null;
   let rl = null;
@@ -99,7 +96,7 @@ async function main() {
         drainPending(router, pending);
       }
       if (pollEventHas(ready, POLLIN)) {
-        receiveAndQueueReplies(router, recvBuffer, pending);
+        receiveAndQueueReplies(router, pending);
         drainPending(router, pending);
       }
     }

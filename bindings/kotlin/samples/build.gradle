@@ -28,7 +28,8 @@ def sampleMainClasses = [
     runActorSinglePlayerQueue: 'systems.zlink.samples.ActorSinglePlayerQueueSampleKt',
     runActorQueueExample: 'systems.zlink.samples.ActorQueueExampleKt',
     runActorRoomExample: 'systems.zlink.samples.ActorRoomExampleKt',
-    runActorSequentialExample: 'systems.zlink.samples.ActorSequentialExampleKt'
+    runActorSequentialExample: 'systems.zlink.samples.ActorSequentialExampleKt',
+    runSpotPubSubExample: 'systems.zlink.samples.SpotPubSubExampleKt'
 ]
 
 sampleMainClasses.each { taskName, mainClassName ->

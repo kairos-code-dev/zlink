@@ -40,6 +40,10 @@ name = "actor_sequential_example"
 path = "samples/actor_sequential_example.rs"
 
 [[example]]
+name = "spot_pubsub_example"
+path = "samples/spot_pubsub_example.rs"
+
+[[example]]
 name = "request_reply_async_sample"
 path = "samples/request_reply_async_sample.rs"
 

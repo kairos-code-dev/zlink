@@ -2,8 +2,11 @@
 
 # SPOT 사용 가이드
 
-이 문서는 애플리케이션 개발자가 SPOT을 어떻게 쓰는지 설명한다.
-정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
+이 문서는 애플리케이션 개발자가 SPOT을 어떻게 쓰는지 설명한다. 핵심 시나리오(토픽
+pub/sub)는 **한 파일로 된 실행 가능한 예제**를 **9개 언어 코드 탭**으로 보인다 —
+각 탭은 리포지토리의 자립형 예제 파일(`samples/spot_pubsub_example`)을 그대로
+임베드한 것이고 빌드·실행으로 검증됐다. 정확한 함수 계약은
+[SPOT spec](../spec/core/service/spot.ko.md)를 본다.
 
 ## 1. SPOT이 하는 일
 
@@ -28,50 +31,76 @@ SPOT은 `SpotNode`와 `Spot` 두 층으로 나뉜다.
 따라서 첫 `zlink_spot_recv()` 호출이 숨겨진 activation이나 자원 생성을 수행한다고
 가정하면 안 된다.
 
-## 2. 가장 단순한 흐름
+## 2. 시나리오 — 토픽 pub/sub
 
-```c
-void *ctx = zlink_ctx_new();
-void *node = zlink_spot_node_new(ctx, NULL);
-zlink_spot_node_set_pub_bind(node, "tcp://127.0.0.1:7001");
+SPOT의 가장 기본 흐름이다. 한 `SpotNode`가 토픽에 **publish**하면, 그 토픽을
+**subscribe**한 다른 노드가 받는다(채팅방·주제별 브로드캐스트 같은 작은 pub/sub).
+아래 예제는 두 노드를 peer 연결하고, 구독자가 `room:lobby`를 구독한 뒤, 발행자가
+그 토픽으로 보낸 메시지를 받는 전체 흐름이다.
 
-void *spot = zlink_spot_new(node);
+```mermaid
+sequenceDiagram
+    participant P as publisher 노드
+    participant S as subscriber 노드
 
-zlink_msg_t msg;
-zlink_msg_init_size(&msg, 5);
-memcpy(zlink_msg_data(&msg), "hello", 5);
-
-zlink_spot_publish(spot, "market", "price.usdkrw", &msg, 1, 0);
-zlink_msg_close(&msg);
-
-zlink_spot_destroy(&spot);
-zlink_spot_node_destroy(&node);
-zlink_ctx_term(&ctx);
+    Note over P,S: 두 SpotNode를 peer 연결 (set_pub_bind + connect_peer)
+    S->>S: set_subscription("room:lobby")
+    P->>S: publish "room:lobby" → "hello-everyone"
+    Note over S: 구독한 토픽이므로 수신
 ```
 
-`NULL`을 넘기면 topic 기능과 routed 기능을 모두 켠다 — `ZLINK_SPOT_NODE_MODE_ALL`과
-동일하다. 한쪽 기능만 필요한 프로세스라면 생성 시점에 `zlink_spot_node_options_t`를
-넘긴다.
+=== "C++"
+    ```cpp
+    --8<-- "bindings/cpp/samples/spot_pubsub_example.cpp"
+    ```
+=== "C#/.NET"
+    ```csharp
+    --8<-- "bindings/dotnet/samples/SpotPubSubExample/Program.cs"
+    ```
+=== "Java"
+    ```java
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotPubSubExample.java"
+    ```
+=== "Kotlin"
+    ```kotlin
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotPubSubExample.kt"
+    ```
+=== "Python"
+    ```python
+    --8<-- "bindings/python/samples/spot_pubsub_example.py"
+    ```
+=== "Node/TypeScript"
+    ```typescript
+    --8<-- "bindings/node/samples/spot_pubsub_example.ts"
+    ```
+=== "JavaScript"
+    ```javascript
+    --8<-- "bindings/javascript/samples/spot_pubsub_example.js"
+    ```
+=== "Go"
+    ```go
+    --8<-- "bindings/go/samples/spot_pubsub_example/main.go"
+    ```
+=== "Rust"
+    ```rust
+    --8<-- "bindings/rust/samples/spot_pubsub_example.rs"
+    ```
 
-```c
-zlink_spot_node_options_t opts = {
-  .mode = ZLINK_SPOT_NODE_MODE_PUBSUB
-};
-void *node = zlink_spot_node_new(ctx, &opts);
-```
+위 예제는 수동 peer 연결을 쓴다(`set_pub_bind`로 자기 발행 endpoint를 열고
+`connect_peer`로 상대에 연결). 더 큰 메시(mesh)는 discovery로 자동 연결한다 — §3.
 
-세 가지 mode 값의 차이는 아래와 같다.
+### 2.1 SpotNode mode 선택
 
-| mode 상수 | 효과 |
+`SpotNode`를 만들 때 mode를 지정해 필요한 기능만 켤 수 있다(C는 `NULL`이면
+`ZLINK_SPOT_NODE_MODE_ALL`).
+
+| mode | 효과 |
 |---|---|
-| `ZLINK_SPOT_NODE_MODE_ALL` (또는 `NULL`) | topic publish/subscribe와 routed request/reply 모두 사용 가능 |
-| `ZLINK_SPOT_NODE_MODE_PUBSUB` | topic publish/subscribe만 사용. routed API는 `ENOTSUP`으로 실패 |
-| `ZLINK_SPOT_NODE_MODE_ROUTED` | routed request/reply만 사용. topic API는 `ENOTSUP`으로 실패 |
+| `ALL` (기본) | topic publish/subscribe와 routed request/reply 모두 사용 |
+| `PUBSUB` | topic publish/subscribe만 사용. routed API는 `ENOTSUP`으로 실패 |
+| `ROUTED` | routed request/reply만 사용. topic API는 `ENOTSUP`으로 실패 |
 
-꺼진 기능은 내부 socket을 생성하지 않는다 — 사용하지 않는 기능에 대한 숨은 자원 비용이 없다.
-
-이 예제는 한 프로세스 안에서 SPOT 노드를 만들고 통합 `Spot` 파사드로
-토픽 하나를 발행하는 최소 흐름이다.
+꺼진 기능은 내부 socket을 생성하지 않는다 — 쓰지 않는 기능의 숨은 자원 비용이 없다.
 
 ## 3. Node를 네트워크에 올리는 방법
 

@@ -821,6 +821,18 @@ sample gate는 아래를 자동 확인해야 한다.
 - 문서 링크와 sample README 링크가 깨지지 않는다.
 - Phase 11 POSD 리팩토링 체크 통과
 
+### Phase 11 audit evidence
+
+아래 표는 구현 완료 기준으로 승격한 문서와 남긴 draft 범위를 대조한 결과다.
+
+| 항목 | `.NET` 기준 | Java/Kotlin 문서 | 검증 | 판정 |
+|------|-------------|------------------|------|------|
+| 사용자 guide | `framework/languages/dotnet/doc/guide/*` | `framework/languages/java/doc/guide/*`에 01~12 guide와 `guide/samples/*` 배치 | official 문서 링크 check, guide/internal 표현 검색 | 완료 |
+| 공개 계약 spec | `framework/languages/dotnet/doc/spec/*` | `framework/languages/java/doc/spec/*`에 handler, Spring Boot channel/spot/actor/stream/registry/monitoring, connector 계약 배치 | `spec/README.ko.md`, 초안 표현 검색 | 완료 |
+| internals | `framework/languages/dotnet/doc/internals/*` | `framework/languages/java/doc/internals/*`에 backend policy, behavior/lifecycle/regression matrix 배치 | official 문서 링크 check, internals 사용법 표현 검색 | 완료 |
+| draft 잔여 항목 | `.NET` `doc/draft/*` | `draft/README.ko.md`가 실행 계획, 포팅 계획, 후속 초안만 안내 | draft README 링크 check | 완료 |
+| sample 실행 문서 | `.NET` `doc/guide/samples/*`, `samples/run_samples.sh` | `samples/README.md`, `guide/samples/*`, Java/Kotlin sample runner | `./samples/run_samples.sh`, official 문서 링크 check | 완료 |
+
 ## 16. 작업 중 점검 체크리스트
 
 각 phase가 끝날 때 아래를 확인한다.

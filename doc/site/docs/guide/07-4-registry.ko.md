@@ -609,6 +609,46 @@ Registry와 로컬 서비스 모니터는 다른 목적을 가진다:
 2. 이상 항목 식별 (`LOST`, `ERROR` 엔트리)
 3. 해당 프로세스의 로컬 서비스 모니터로 상세 분석
 
+## 언어별 완전한 예제
+
+registry 스냅샷을 질의해 서비스 엔드포인트를 조회하는 자립형 예제다(모든 바인딩, 빌드·실행 검증됨).
+
+=== "C++"
+
+    --8<-- "bindings/cpp/samples/registry_query_sample.cpp"
+
+=== "C#/.NET"
+
+    --8<-- "bindings/dotnet/samples/RegistryQuery/Program.cs"
+
+=== "Java"
+
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/RegistryQuerySample.java"
+
+=== "Kotlin"
+
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/RegistryQuerySample.kt"
+
+=== "Python"
+
+    --8<-- "bindings/python/samples/registry_query_sample.py"
+
+=== "Node/TypeScript"
+
+    --8<-- "bindings/node/samples/registry_query_sample.ts"
+
+=== "JavaScript"
+
+    --8<-- "bindings/javascript/samples/registry_query_sample.js"
+
+=== "Go"
+
+    --8<-- "bindings/go/samples/registry_query_sample/main.go"
+
+=== "Rust"
+
+    --8<-- "bindings/rust/samples/registry_query_sample.rs"
+
 ## 9. 다음 단계
 
 - [Service Discovery](./07-1-discovery.ko.md) -- 기반 인프라

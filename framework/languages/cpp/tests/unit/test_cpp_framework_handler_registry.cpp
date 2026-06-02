@@ -2,8 +2,11 @@
 
 #include <zlink/framework.hpp>
 
+#include <chrono>
+#include <coroutine>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -34,22 +37,30 @@ struct async_request_t
   int value {};
 };
 
+struct delayed_request_t
+{
+  int value {};
+};
+
 class handler_t
 {
 public:
   reply_t get_reply (const request_t &request)
   {
+    last_thread = std::this_thread::get_id ();
     last_request = request.value;
     return { request.value + 1 };
   }
 
   void on_command (const command_t &command)
   {
+    last_thread = std::this_thread::get_id ();
     last_command = command.value;
   }
 
   zlink::framework::task_t<void> on_event (const event_t &event)
   {
+    last_thread = std::this_thread::get_id ();
     last_event = event.value;
     co_return;
   }
@@ -57,18 +68,42 @@ public:
   zlink::framework::task_t<reply_t> get_async_reply (
     const async_request_t &request)
   {
+    last_thread = std::this_thread::get_id ();
     last_request = request.value;
     co_return reply_t { request.value + 10 };
   }
 
+  zlink::framework::task_t<reply_t> get_delayed_reply (
+    const delayed_request_t &request)
+  {
+    last_thread = std::this_thread::get_id ();
+    last_request = request.value;
+    struct delay_awaiter_t
+    {
+      int value;
+      bool await_ready () const noexcept { return false; }
+      void await_suspend (std::coroutine_handle<> continuation) const
+      {
+        std::thread ([continuation] {
+          std::this_thread::sleep_for (std::chrono::milliseconds (5));
+          continuation.resume ();
+        }).detach ();
+      }
+      reply_t await_resume () const noexcept { return { value + 20 }; }
+    };
+    co_return co_await delay_awaiter_t { request.value };
+  }
+
   reply_t throw_reply (const request_t &)
   {
+    last_thread = std::this_thread::get_id ();
     throw std::runtime_error ("boom");
   }
 
   int last_request = 0;
   int last_command = 0;
   int last_event = 0;
+  std::thread::id last_thread;
 };
 
 template<typename T>
@@ -82,6 +117,32 @@ add_int_serializer (zlink::framework::serializer_registry_t &serializers)
     [](const zlink::message_t &message) {
       return T { std::stoi (message.to_string ()) };
     });
+}
+
+zlink::framework::task_t<reply_t>
+delayed_reply_task (int value)
+{
+  struct delay_awaiter_t
+  {
+    int value;
+    bool await_ready () const noexcept { return false; }
+    void await_suspend (std::coroutine_handle<> continuation) const
+    {
+      std::thread ([continuation] {
+        std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        continuation.resume ();
+      }).detach ();
+    }
+    reply_t await_resume () const noexcept { return { value }; }
+  };
+  co_return co_await delay_awaiter_t { value };
+}
+
+zlink::framework::task_t<int>
+await_shared_reply (zlink::framework::task_t<reply_t> &task, int offset)
+{
+  auto reply = co_await task;
+  co_return reply.value + offset;
 }
 
 } // namespace
@@ -99,6 +160,7 @@ main ()
   add_int_serializer<command_t> (serializers);
   add_int_serializer<event_t> (serializers);
   add_int_serializer<async_request_t> (serializers);
+  add_int_serializer<delayed_request_t> (serializers);
 
   zlink::framework::handler_registry_t handlers;
   int failure_events = 0;
@@ -131,6 +193,11 @@ main ()
     "async",
     &handler_t::get_async_reply,
     { .packet_name = "async" });
+  handlers.on_request<handler_t, delayed_request_t, reply_t> (
+    "game",
+    "delayed",
+    &handler_t::get_delayed_reply,
+    { .packet_name = "delayed" });
   handlers.on_request<handler_t, request_t, reply_t> (
     "game",
     "throw",
@@ -156,6 +223,10 @@ main ()
       serializers.get<reply_t> ().deserialize (request_result.value ()).value !=
         8) {
     return 3;
+  }
+  if (provider.get_required<handler_t> ().last_thread ==
+      std::this_thread::get_id ()) {
+    return 30;
   }
 
   auto send_result = handlers.invoke (
@@ -197,6 +268,27 @@ main ()
       serializers.get<reply_t> ().deserialize (async_result.value ()).value !=
         15) {
     return 7;
+  }
+
+  auto delayed_result = handlers.invoke (
+    "game",
+    "delayed",
+    "delayed",
+    provider,
+    serializers,
+    zlink::message_t::from (std::string ("6")));
+  if (!delayed_result ||
+      serializers.get<reply_t> ().deserialize (delayed_result.value ()).value !=
+        26) {
+    return 31;
+  }
+
+  auto shared = delayed_reply_task (40);
+  auto first_waiter = await_shared_reply (shared, 1);
+  auto second_waiter = await_shared_reply (shared, 2);
+  if (first_waiter.result ().value () != 41 ||
+      second_waiter.result ().value () != 42) {
+    return 32;
   }
 
   auto missing_result = handlers.invoke (

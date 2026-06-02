@@ -13,6 +13,10 @@ namespace zlink::samples::bingo
 class authenticate_player_handler_t
 {
 public:
+  using request_type = authenticate_player_req_t;
+  using reply_type = authenticate_player_res_t;
+  static constexpr const char *topic_name = "AuthenticatePlayer";
+
   explicit authenticate_player_handler_t (
     zlink::framework::logger_t<> logger = {})
     : _logger (std::move (logger))

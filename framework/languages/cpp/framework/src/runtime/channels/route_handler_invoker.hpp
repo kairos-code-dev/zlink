@@ -9,7 +9,7 @@ namespace zlink::framework::detail
 class route_handler_invoker_t
 {
 public:
-  result_t<void> invoke_send (
+  task_t<void> invoke_send (
     const route_handler_registry_t &handlers,
     std::string_view router_channel_id,
     std::string_view packet_name,
@@ -18,7 +18,7 @@ public:
     const zlink::message_t &message,
     const framework::route_handler_context_t &context) const;
 
-  result_t<zlink::message_t> invoke_request (
+  task_t<zlink::message_t> invoke_request (
     const route_handler_registry_t &handlers,
     std::string_view router_channel_id,
     std::string_view packet_name,

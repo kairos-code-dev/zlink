@@ -8,6 +8,7 @@
 #include "../Shared/Contracts/messages.hpp"
 
 #include <zlink/stream_connector.hpp>
+#include <zlink/stream_connector/codecs/auto_codec.hpp>
 
 #include <string>
 #include <utility>
@@ -56,6 +57,12 @@ public:
       join_match_req_t { std::move (match_id), _actor_id });
   }
 
+  tictactoe_client_call_result_t create_match ()
+  {
+    return request<create_match_res_t> (
+      create_match_req_t { _actor_id });
+  }
+
   tictactoe_client_call_result_t place_mark (std::string match_id, int cell)
   {
     return request<place_mark_res_t> (
@@ -75,15 +82,18 @@ private:
 
   void register_notifications ()
   {
-    _connector.on<opponent_joined_notify_t> (
+    zlink::stream_connector::codecs::on<opponent_joined_notify_t> (
+      _connector,
       [this](const opponent_joined_notify_t &message) {
         _notifications.opponent_joined (message);
       });
-    _connector.on<turn_changed_notify_t> (
+    zlink::stream_connector::codecs::on<turn_changed_notify_t> (
+      _connector,
       [this](const turn_changed_notify_t &message) {
         _notifications.turn_changed (message);
       });
-    _connector.on<game_ended_notify_t> (
+    zlink::stream_connector::codecs::on<game_ended_notify_t> (
+      _connector,
       [this](const game_ended_notify_t &message) {
         _notifications.game_ended (message);
       });
@@ -93,7 +103,8 @@ private:
   tictactoe_client_call_result_t request (const TRequest &request_message)
   {
     auto result =
-      _connector.request<TReply> (request_message)
+      zlink::stream_connector::codecs::request<TReply> (
+        _connector, request_message)
         .submit ()
         .result ();
     return { TRequest::packet_name,

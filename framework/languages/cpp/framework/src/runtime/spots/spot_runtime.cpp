@@ -5,6 +5,7 @@
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
 #include "runtime/channels/channel_runtime.hpp"
+#include "runtime/dispatch/coroutine_executor.hpp"
 
 #include <algorithm>
 #include <utility>
@@ -92,6 +93,12 @@ spot_context_t::spot_name () const
   return _state->spot_name;
 }
 
+spot_handler_registry_t
+spot_context_t::handlers ()
+{
+  return spot_handler_registry_t (_state);
+}
+
 send_call_t
 spot_context_t::publish_erased (std::string topic)
 {
@@ -150,6 +157,121 @@ std::vector<spot_packet_descriptor_t>
 spot_context_t::packet_registry () const
 {
   return _state->packets;
+}
+
+spot_handler_registry_t::spot_handler_registry_t ()
+  : _state (std::make_shared<detail::spot_context_state_t> ())
+{
+}
+
+spot_handler_registry_t::spot_handler_registry_t (
+  std::shared_ptr<detail::spot_context_state_t> state)
+  : _state (std::move (state))
+{
+}
+
+spot_handler_registry_t::~spot_handler_registry_t () = default;
+spot_handler_registry_t::spot_handler_registry_t (
+  spot_handler_registry_t &&) noexcept = default;
+spot_handler_registry_t &spot_handler_registry_t::operator= (
+  spot_handler_registry_t &&) noexcept = default;
+
+spot_handler_registry_t &
+spot_handler_registry_t::add_handler_erased (
+  spot_handler_kind_t kind,
+  std::string packet_name,
+  std::string topic,
+  std::type_index handler_type,
+  std::type_index payload_type,
+  std::type_index actor_type,
+  std::type_index reply_type,
+  invoker_t invoker)
+{
+  const auto duplicate = std::any_of (
+    _state->handlers.begin (),
+    _state->handlers.end (),
+    [&](const spot_handler_descriptor_t &descriptor) {
+      return descriptor.kind == kind &&
+             descriptor.packet_name == packet_name &&
+             descriptor.topic == topic &&
+             descriptor.actor_type == actor_type;
+    });
+  if (duplicate) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "duplicate spot handler registration");
+  }
+
+  _state->handlers.push_back (
+    spot_handler_descriptor_t { kind,
+                                std::move (packet_name),
+                                std::move (topic),
+                                handler_type,
+                                payload_type,
+                                actor_type,
+                                reply_type });
+  _state->handler_invokers.push_back (std::move (invoker));
+  return *this;
+}
+
+std::vector<spot_handler_descriptor_t>
+spot_handler_registry_t::descriptors () const
+{
+  return _state->handlers;
+}
+
+task_t<zlink::message_t>
+spot_handler_registry_t::invoke_erased (
+  spot_handler_kind_t kind,
+  std::string_view packet_name,
+  std::string_view topic,
+  std::type_index actor_type,
+  void *spot,
+  void *actor,
+  service_provider_t &services,
+  serializer_registry_t &serializers,
+  const zlink::message_t &message,
+  const spot_actor_change_result_t *change_result) const
+{
+  for (std::size_t index = 0; index < _state->handlers.size (); ++index) {
+    const auto &descriptor = _state->handlers[index];
+    if (descriptor.kind == kind &&
+        descriptor.packet_name == packet_name &&
+        descriptor.topic == topic &&
+        descriptor.actor_type == actor_type) {
+      auto owned_message = message;
+      const auto handler_index = index;
+      return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
+        [this,
+         handler_index,
+         spot,
+         actor,
+         &services,
+         &serializers,
+         owned_message = std::move (owned_message),
+         change_result]() -> boost::asio::awaitable<result_t<zlink::message_t>> {
+          try {
+            auto handler_task = _state->handler_invokers[handler_index] (
+              spot, actor, services, serializers, owned_message, change_result);
+            co_return result_t<zlink::message_t>::success (
+              (co_await runtime::await_task_result (
+                 std::move (handler_task)))
+                .value ());
+          } catch (const framework_exception_t &error) {
+            co_return result_t<zlink::message_t>::failure (
+              error.kind (), error.what (), error.is_retriable ());
+          } catch (...) {
+            co_return result_t<zlink::message_t>::failure (
+              framework_error_kind_t::request_failed,
+              "spot handler threw an exception");
+          }
+        });
+    }
+  }
+  return task_t<zlink::message_t> (
+    result_t<zlink::message_t>::failure (
+      framework_error_kind_t::handler_not_found,
+      "spot handler is not registered"));
 }
 
 spot_node_builder_t::spot_node_builder_t ()

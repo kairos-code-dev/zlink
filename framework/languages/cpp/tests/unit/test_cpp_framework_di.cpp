@@ -24,6 +24,14 @@ struct dependent_t {
   int value;
 };
 
+struct second_dependent_t {
+  second_dependent_t (singleton_t &singleton, dependent_t &dependent)
+    : value (singleton.value + dependent.value)
+  {
+  }
+  int value;
+};
+
 } // namespace
 
 int
@@ -33,9 +41,8 @@ main ()
   services.add_singleton<singleton_t> ();
   services.add_scoped<scoped_t> ();
   services.add_transient<transient_t> ();
-  services.add_factory<dependent_t> ([](zlink::framework::service_provider_t &p) {
-    return std::make_unique<dependent_t> (p.get_required<singleton_t> ());
-  });
+  services.add_transient<dependent_t, singleton_t> ();
+  services.add_transient<second_dependent_t, singleton_t, dependent_t> ();
 
   auto provider = services.build_provider ();
 
@@ -53,6 +60,10 @@ main ()
 
   if (provider.get_required<dependent_t> ().value != 1) {
     return 3;
+  }
+
+  if (provider.get_required<second_dependent_t> ().value != 2) {
+    return 12;
   }
 
   bool scoped_from_root_failed = false;

@@ -14,6 +14,49 @@
 
 ## Goal 1. Repository Skeleton And Build
 
+### 추가 리뷰. Unreal Connector async 표면 분리
+
+#### 발견한 위험 신호
+
+- 일반 C++ Stream Connector의 `task_t`, `submit()`, `co_await` 표면과 Unreal Connector의
+  delegate callback 표면이 같은 connector 설명 안에서 함께 읽혔다. 이 상태에서는 Unreal
+  public header에도 coroutine API가 필요하다고 오해할 수 있다.
+- Unreal public header가 일반 C++ connector runtime을 감싸지 않는다는 검사는 있었지만,
+  `task_t`나 coroutine header가 Unreal public 표면에 새지 않는다는 회귀 검사는 없었다.
+
+#### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| Unreal에도 일반 C++ connector와 같은 coroutine 표면 제공 | C++ connector와 이름이 같아진다 | Unreal thread model, Blueprint delegate, Game Thread dispatch와 맞지 않는다 |
+| Unreal은 delegate callback만 제공 | Unreal 사용성이 자연스럽고 Game Thread 규칙을 분명히 한다 | 일반 C++ connector와 async 표현이 다르다 |
+
+선택은 두 번째 방식이다. wire protocol과 codec 의미는 같게 유지하되, Unreal public API는
+Unreal 타입과 delegate callback을 기준으로 둔다. coroutine은 일반 C++ connector와
+framework server runtime의 C++20 표면에만 둔다.
+
+#### 적용한 리팩토링
+
+- `cpp-stream-connector.ko.md`에 Unreal Connector는 `task_t`, `submit()`, `co_await` 표면을
+  public API로 제공하지 않는다고 명시했다.
+- `cpp-framework-implementation-plan.ko.md`의 Unreal Goal 완료 기준과 feature index를
+  delegate callback 기준으로 보정했다.
+- `test_cpp_framework_layout_contract`에 Unreal public header가 일반 connector include,
+  `task_t`, `<coroutine>`, `co_await`, `submit`을 노출하지 않는지 확인하는 검사를 추가했다.
+
+#### 남은 tradeoff
+
+- Unreal public API는 일반 C++ connector와 같은 wire 의미를 쓰지만 async 표현은 다르다.
+  이는 Unreal lifecycle과 Blueprint/Game Thread 규칙을 지키기 위한 의도된 차이다.
+
+#### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_layout_contract
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_layout_contract --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
 ### 발견한 위험 신호
 
 - `zlink::stream_connector` target이 아직 public header에서 사용하지 않는 codec build
@@ -156,9 +199,8 @@ executor, CAPI dispatch, native handle owner는 포함하지 않는다.
 ### 적용한 리팩토링
 
 - `pending_operation_t`를 `contracts/channels/pending_operation.hpp`로 분리했다.
-- `request_call_t`, `send_call_t`, `relay_call_t`, `stream_write_call_t`,
-  `join_spot_call_t`의 반복 submit/timeout forwarding을
-  `contracts/detail/call_facade.hpp`로 모았다.
+- `request_call_t`, `send_call_t`, `relay_call_t`, `stream_write_call_t`의 반복
+  submit/timeout forwarding을 `contracts/detail/call_facade.hpp`로 모았다.
 - 기존 `zlink/framework/call.hpp`, `error.hpp`, `result.hpp`, `task.hpp`는 facade wrapper로
   정리하고, 실제 contract owner는 `contracts/*` 아래로 옮겼다.
 - contract test에 `std::future`가 public async 타입이 아님을 확인하는 static assert와
@@ -632,6 +674,232 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R spot 
 ctest --test-dir framework/languages/cpp/build -L framework-regression -R spot --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on-failure
 git diff --check -- framework/languages/cpp bindings/cpp
+```
+
+### 추가 리뷰. SPOT Context handler registry 보정
+
+#### 발견한 위험 신호
+
+- `.NET` sample은 Spot 안의 `Configure()`에서 `Context.Handlers.AddHandler`,
+  `AddActorJoin`, `AddActorPacket`, `AddActorLeft`로 메시지 handler를 등록한다. C++에는
+  `spot_context_t::register_packet`만 있어 packet 이름은 기록할 수 있었지만 실제 handler
+  등록 owner가 없었다.
+- 샘플이 handler 객체를 직접 생성해 호출하면 framework가 handler registration/dispatch를
+  소유한다는 점을 확인하기 어렵다. 이 상태에서는 sample logic이 framework 밖에 남는다.
+- C++에는 `.NET` assembly reflection이 없는데 무리하게 자동 추론을 복제하면 숨은 타입 규칙이
+  생긴다.
+
+#### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `register_packet`만 유지 | 변경이 작다 | `.NET Context.Handlers`와 다르고 handler owner가 없다 |
+| reflection 유사 매크로로 handler 자동 수집 | 호출은 짧다 | C++ 타입 규칙과 빌드 의존성이 복잡해진다 |
+| `spot_context_t::handlers()`와 typed registry 제공 | `.NET` 등록 모델을 유지하면서 C++ 타입을 명시할 수 있다 | template 인자가 더 필요하다 |
+
+선택은 typed registry다. C++ 표면은 `.NET` 이름과 역할을 따르되, handler type, actor type,
+message type, reply type을 template 인자로 명시한다.
+
+#### 적용한 리팩토링
+
+- `spot_handler_kind_t`, `spot_handler_descriptor_t`, `spot_handler_registry_t`를
+  `contracts/spots/spot.hpp`에 추가했다.
+- `spot_context_t::handlers()`를 추가하고 registry descriptor storage는
+  `src/runtime/spots/spot_runtime.*`의 context state에 숨겼다.
+- `add_handler`, `add_subscribe`, `add_actor_join`, `add_actor_packet`,
+  `add_post_actor_joined`, `add_actor_left`, `add_actor_disconnected` 등록 표면을 추가했다.
+- duplicate handler registration은 같은 kind, packet/topic, actor 조합 기준으로
+  `request_protocol_error`를 낸다.
+- Bingo/TicTacToe Spot sample에 `.NET Configure()`에 해당하는 `configure(context)`를 추가해
+  handler를 직접 등록하게 했다.
+- play sample executable과 sample parity test가 handler descriptor kind와 packet name을
+  확인하도록 보강했다.
+
+#### 남은 tradeoff
+
+- C++는 `.NET`처럼 `AddHandler<THandler>()`만으로 handler interface generic argument를
+  reflection으로 읽지 않는다. 자동 수집은 추후 macro/codegen 또는 explicit registration
+  policy가 필요할 때 별도 goal에서 다룬다.
+
+#### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_spot_runtime test_cpp_framework_sample_parity sample_cpp_framework_bingo_play sample_cpp_framework_tictactoe_play
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(spot_runtime|sample_parity)|sample_smoke_sample_cpp_framework_(bingo|tictactoe)_play' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. SPOT actor join/packet context shape 보정
+
+### 발견한 위험 신호
+
+- actor lifecycle handler는 Spot instance와 change result를 받도록 보정됐지만,
+  actor join/packet handler는 여전히 `handle(request)` 또는 `handle(actor, message)`처럼
+  일부 정보만 받는 형태가 남아 있었다.
+- `.NET`의 `IZLinkSpotActorSendHandler<TSpot,TActor,TMessage>`는 `spot`, `actor`,
+  `ZLinkSpotActorSendContext`, `message`를 받고,
+  request handler는 `ZLinkSpotActorRequestContext`와 reply option을 받는다. C++에서
+  context가 빠지면 packet name, content type, metadata, reply compression 같은 정책을
+  application이 확인하거나 조정할 수 없다.
+- 샘플과 parity test 일부가 handler를 1-인자로 직접 호출하고 있어 framework dispatch
+  경로와 handler signature가 어긋났다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 `handle(message)` 호환 유지 | 변경이 작다 | `.NET` handler 계약과 다르고 context 정책이 새어 나온다 |
+| context를 raw map/string 인자로 넘김 | 타입 수가 적다 | packet metadata와 reply option 의미가 흐려진다 |
+| `spot_actor_send_context_t`, `spot_actor_request_context_t`를 추가 | `.NET` 의미를 C++ 타입으로 보존한다 | public contract 타입이 늘어난다 |
+
+선택은 context 타입 추가다. C++은 reflection이 없으므로 actor join/packet 등록 API에
+`TSpot`을 명시하고, handler 실행 시 typed Spot, actor, context, DTO를 함께 전달한다.
+
+### 적용한 리팩토링
+
+- `spot_actor_message_metadata_t`, `spot_actor_reply_options_t`,
+  `spot_actor_send_context_t`, `spot_actor_request_context_t`를 추가했다.
+- `add_actor_join`과 `add_actor_packet` 등록 API를 `THandler, TSpot, TActor, ...`
+  형태로 보정했다.
+- actor join invoker가 `handle(spot, actor, request)` shape를 우선 호출한다.
+- actor packet invoker가 `handle(spot, actor, request_context, message)` 또는
+  `handle(spot, actor, send_context, message)` shape를 우선 호출한다.
+- `test_cpp_framework_spot_runtime`이 Spot state와 packet context가 handler에 실제로
+  전달되는지 검증하도록 보강했다.
+- Bingo/TicTacToe Play handler와 sample parity의 직접 handler 호출을 Spot/context-aware
+  호출로 교체했다.
+
+### 남은 tradeoff
+
+- 일반 SPOT packet handler와 Entry Spot actor packet handler의 shape는 후속 리뷰에서
+  `.NET`과 맞췄다. 이 절은 actor join/packet context 보정의 근거로 남긴다.
+- actor context가 실제 actor gateway runtime과 결합되는 전체 e2e는 계속 확장해야 한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_spot_runtime test_cpp_framework_sample_parity sample_cpp_framework_bingo_play sample_cpp_framework_tictactoe_play
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_spot_runtime|test_cpp_framework_sample_parity|sample_smoke_sample_cpp_framework_(bingo|tictactoe)_play' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. Spot 일반 handler와 EntrySpot actor packet shape 보정
+
+### 발견한 위험 신호
+
+- C++ `add_handler`와 `add_subscribe`는 handler에 DTO만 넘겼다. `.NET`의
+  `IZLinkSpotPacketHandler<TSpot,TMessage>`와
+  `IZLinkSpotSubscriptionHandler<TSpot,TEvent>`는 Spot instance와 DTO를 함께 받는다.
+  Spot을 받지 않으면 handler가 외부 참조나 전역 상태로 Spot state를 찾아야 한다.
+- Bingo/TicTacToe Entry Spot 샘플은 actor가 보낸 request를 일반 Spot packet처럼
+  `add_handler`로 등록했다. `.NET` sample은 Entry Spot에서도 actor request handler로
+  등록하고, handler가 `EntrySpot`, actor, request context, DTO를 받는다.
+- 일부 sample smoke는 예전 `handle(request)` 직접 호출을 유지했다. 이 상태에서는
+  framework dispatch 경로와 sample 검증 경로가 서로 다른 API를 사용한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `handle(message)` fallback 유지 | 기존 sample 수정이 작다 | `.NET` 동일 contract가 강제되지 않고 얕은 handler가 계속 남는다 |
+| 일반 packet에도 별도 context 타입 추가 | 확장 여지가 크다 | `.NET` 일반 Spot packet handler보다 표면이 넓어진다 |
+| 일반 packet은 `handle(spot, message)`, EntrySpot actor packet은 `handle(spot, actor, context, message)`로 분리 | `.NET` handler 의미와 일치한다 | C++ 등록 API에 `TSpot` template 인자가 필요하다 |
+
+선택은 세 번째 방식이다. C++은 reflection으로 handler interface의 `TSpot`을 읽을 수 없으므로
+`add_handler`, `add_subscribe`, `add_actor_packet`에서 `TSpot`을 명시한다.
+
+### 적용한 리팩토링
+
+- `add_handler<THandler, TSpot, TMessage>`와
+  `add_subscribe<THandler, TSpot, TEvent>`로 일반 Spot packet/subscription 등록 표면을
+  보정했다.
+- 일반 Spot packet invoker가 `handle(spot, message)`만 호출하도록 바꿨다. 기존
+  `handle(message)` fallback은 남기지 않았다.
+- actor join invoker의 `handle(actor, request)`, `handle(request)` fallback과 actor packet
+  invoker의 `handle(actor, message)`, `handle(message)` fallback을 제거했다.
+- post-joined/left lifecycle은 `handle(spot, actor, result)`, disconnected lifecycle은
+  `.NET`처럼 `handle(spot, actor)`만 호출하도록 분리했다.
+- `test_cpp_framework_spot_runtime`이 일반 Spot packet handler에서 Spot state를 수정하는지
+  검증하도록 보강했다.
+- Bingo Entry Spot의 `MatchBingoReq`와 TicTacToe Entry Spot의 `JoinMatchReq`를
+  `add_actor_packet` 등록으로 바꿨다.
+- Bingo `player_actor_t`에 `.NET` `PlayerActor.DisplayName`에 해당하는 display name을
+  추가하고, match handler가 actor state를 기준으로 room join을 수행하게 했다.
+- TicTacToe `join_match_handler_t`가 `EntrySpot`, actor, request context, DTO를 받도록
+  변경했다. actor id는 actor object를 기준으로 결정한다.
+- sample parity test와 Play smoke의 직접 handler 호출도 새 actor packet shape로 바꿨다.
+
+### 남은 tradeoff
+
+- 일반 Spot subscription의 실제 publish pump e2e는 아직 별도 확장 검증이 필요하다. 이번
+  변경은 public registration과 typed invocation shape를 맞춘 범위다.
+- EntrySpot actor packet handler는 sample-local room directory/room 객체를 DI로 받는다.
+  실제 actor context의 `JoinSpot`까지 포함한 완전한 gateway e2e는 다음 actor gateway
+  정렬 단계에서 더 보강해야 한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_spot_runtime test_cpp_framework_sample_parity sample_cpp_framework_bingo_play sample_cpp_framework_tictactoe_play
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_spot_runtime|test_cpp_framework_sample_parity|sample_smoke_sample_cpp_framework_(bingo|tictactoe)_play' --output-on-failure
+```
+
+## 추가 리뷰. SPOT actor lifecycle handler shape 보정
+
+### 발견한 위험 신호
+
+- C++ SPOT lifecycle handler는 `actor`만 받거나 sample-local 문자열/notification DTO를
+  받는 형태가 섞여 있었다. `.NET`의 `IZLinkSpotPostActorJoinedHandler<TSpot,TActor>`와
+  `IZLinkSpotActorLeftHandler<TSpot,TActor>`는 handler가 `spot`, `actor`,
+  `ZLinkSpotActorChangeResult`를 함께 받는다.
+- lifecycle handler가 Spot instance를 받지 못하면 handler 안에서 actor가 어떤 Spot에
+  붙었는지 확인하거나, leave 원인이 `JoinSpot`인지 `JoinEntrySpot`인지 구분하는 정책이
+  application 코드 밖으로 새어 나온다.
+- C++은 `.NET`처럼 handler interface를 reflection으로 읽어 `TSpot`을 추론할 수 없다.
+  `add_post_actor_joined<THandler,TActor>()` 표면을 유지하면 Spot instance를 typed로
+  전달할 방법이 없다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| actor-only lifecycle handler 유지 | 등록 API가 짧다 | `.NET` lifecycle 의미와 다르고 Spot state 접근이 불가능하다 |
+| handler가 void pointer Spot을 받음 | template 인자를 줄인다 | 호출자가 cast를 알아야 하므로 복잡성이 위로 올라간다 |
+| lifecycle 등록에 `TSpot`을 명시 | typed Spot, actor, result를 모두 전달한다 | C++ template 인자가 하나 늘어난다 |
+
+선택은 lifecycle 등록에 `TSpot`을 명시하는 방식이다. 언어 특성상 reflection이 없는 부분만
+template 인자로 드러내고, dispatch/DI/serializer 실행은 framework 내부에 둔다.
+
+### 적용한 리팩토링
+
+- `spot_actor_change_kind_t`, `spot_actor_change_result_t`를 SPOT public contract에
+  추가했다.
+- `add_post_actor_joined`, `add_actor_left`, `add_actor_disconnected` 등록 API를
+  `THandler, TSpot, TActor` template 형태로 보정했다.
+- lifecycle invoker가 `spot`, `actor`, `spot_actor_change_result_t`를 typed handler에
+  전달하도록 바꿨다.
+- `test_cpp_framework_spot_runtime`이 joined, left, disconnected handler dispatch를
+  실제로 호출하고 change kind 전달을 검증하도록 보강했다.
+- Bingo/TicTacToe Play sample이 lifecycle handler까지 framework dispatch 경로로 실행하게
+  보강했다.
+- sample lifecycle handler는 notification DTO를 직접 받지 않고 Spot snapshot과 actor,
+  change result에서 필요한 DTO를 만든다.
+
+### 남은 tradeoff
+
+- actor packet/request handler도 `.NET`은 Spot instance와 send/request context를 받는다.
+  현재 C++ 보정은 lifecycle에 집중했다. 다음 리뷰에서는 actor packet/request handler의
+  `TSpot`과 context 표면도 같은 기준으로 맞춰야 한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_spot_runtime test_cpp_framework_sample_parity sample_cpp_framework_bingo_play sample_cpp_framework_tictactoe_play
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_spot_runtime|test_cpp_framework_sample_parity|sample_smoke_sample_cpp_framework_(bingo|tictactoe)_play' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
 ```
 
 ## Goal 11. SPOT Timer
@@ -1320,6 +1588,169 @@ ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on
 git diff --check -- framework/languages/cpp bindings/cpp
 ```
 
+### 추가 리뷰. Client E2E 서버 로그 검증
+
+#### 발견한 위험 신호
+
+- Bingo/TicTacToe client sample은 실제 STREAM server를 띄우고 connector로 request/reply와
+  push notification을 주고받았지만, CTest는 executable exit code만 확인했다. 서버 로그가
+  비어 있거나 기대 packet 흐름과 달라도 client result가 우연히 성공하면 놓칠 수 있었다.
+- 서버 로그 파일 이름은 README에 적혀 있었지만, bind, receive, reply, push 흐름이
+  회귀 테스트의 observable contract로 고정되어 있지 않았다.
+- 전체 CTest 순서에서 Bingo loopback server가 같은 inbound connection에 reply frame과
+  push frame을 연속 `submit()`하다가 `EAGAIN`을 만났다. 이는 샘플의 논리 흐름 문제가
+  아니라 STREAM socket write readiness를 샘플 서버가 직접 떠안은 문제다.
+
+#### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 client smoke만 유지 | 테스트가 빠르고 단순하다 | 서버 쪽 실제 frame 흐름을 증명하지 못한다 |
+| 샘플 코드 안에서 로그 문자열을 직접 assert | 실행 파일 하나로 끝난다 | 샘플 사용성 코드에 테스트 전용 검증 로직이 섞인다 |
+| CTest wrapper가 샘플을 실행한 뒤 로그 파일을 검증 | 샘플 코드는 사용자 흐름으로 유지하고 회귀 검증을 분리한다 | CMake script test가 하나 더 필요하다 |
+| reply와 push를 별도 public 동작으로 바꿈 | 연속 submit 문제가 줄어든다 | `.NET` 샘플의 reply 후 bound-session push 논리 흐름과 달라질 수 있다 |
+| 같은 STREAM write에 reply frame과 push frame을 순서대로 담음 | `.NET`과 같은 reply 후 push frame 순서를 유지하면서 write readiness 문제를 숨기지 않는다 | loopback server helper가 frame batching을 알아야 한다 |
+
+선택은 CTest wrapper 방식이다. 샘플 executable은 계속 public API 사용성만 보여 주고,
+회귀 테스트는 실행 뒤 서버 로그를 읽어 실제 bind, receive, reply, push 흐름과 packet
+이름, 최소 처리 횟수를 검증한다.
+
+연속 submit 실패는 frame batching으로 정리했다. `.NET` 샘플처럼 request reply와
+bound-session push는 논리적으로 분리되어 있고, 로그도 `reply` 다음 `push`를 그대로 남긴다.
+다만 C++ loopback server는 같은 STREAM connection에 두 frame을 순서대로 쓰는 transport
+세부를 한 번의 write로 처리한다. 이는 public framework/connector API 차이가 아니라
+STREAM wire가 여러 frame을 한 byte stream에 실을 수 있다는 구현 세부다.
+
+#### 적용한 리팩토링
+
+- `tests/samples/verify_sample_client_log.cmake`를 추가해 샘플 executable 실행, 서버 로그
+  생성 여부, 기대 문자열, 최소 receive/reply/push line 수를 검증하게 했다.
+- Bingo client E2E 로그 테스트가 `AuthenticateReq`, `MatchBingoReq`,
+  `StartBingoGameReq`, `LeaveRoomReq`, `PlayerJoinedNotify`, `BingoGameEndedNotify`와
+  10개 receive, 9개 reply, 10개 push 흐름을 확인하도록 등록했다.
+- TicTacToe client E2E 로그 테스트가 `AuthenticateReq`, `JoinMatchReq`, `PlaceMarkReq`,
+  `TurnChangedNotify`와 9개 receive, 9개 reply, 9개 push 흐름을 확인하도록 등록했다.
+- `framework-sample-log` CTest label을 추가해 로그 검증만 따로 실행할 수 있게 했다.
+- sample loopback server helper에 reply frame과 push frame을 같은 STREAM write에 담는
+  `send_stream_reply_and_push`를 추가하고, Bingo/TicTacToe client sample server가 이를
+  사용하도록 바꿨다.
+
+#### 남은 tradeoff
+
+- 로그 검증은 샘플 loopback server가 본 STREAM frame 흐름을 검증한다. 별도 OS process
+  orchestration은 `.NET` MultiProcess 테스트의 역할이고, C++ 샘플에서는 connector와 실제
+  TCP server 사이의 observable packet flow를 우선 고정한다.
+- loopback server의 frame batching은 샘플 서버 전용 transport helper다. framework public
+  API와 샘플 client의 호출 흐름은 `.NET`과 같이 request reply와 notification push를
+  별도 의미로 유지한다.
+
+#### 재실행한 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client
+ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -R sample_e2e_log_sample_cpp_framework_bingo_client --output-on-failure --repeat until-fail:10
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Connector E2E 검증 라벨 보정
+
+### 발견한 위험 신호
+
+- 구현 계획의 Goal 17 검증 명령은 `connector-e2e` 라벨을 요구하지만, CTest 라벨 목록에는
+  해당 라벨이 없었다. 이 상태에서는 connector unit/integration과 실제 sample client E2E를
+  분리해서 재실행할 수 없다.
+- 실제 connector E2E 증거는 Bingo/TicTacToe client sample의 서버 로그 검증에 있었지만,
+  라벨이 `framework-sample-client-e2e`와 `framework-sample-log`에만 묶여 있어 Goal 17의
+  connector 검증 경로와 연결되지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `test_cpp_stream_connector`에만 `connector-e2e` 라벨 추가 | 라벨 추가가 작다 | local test runtime 검증과 실제 sample endpoint E2E를 구분하지 못한다 |
+| sample client 로그 검증 테스트에 `connector-e2e` 라벨 추가 | 실제 connector가 sample STREAM endpoint와 메시지를 주고받는 증거에 라벨이 붙는다 | 하나의 테스트가 sample과 connector 라벨을 함께 가진다 |
+| 별도 connector E2E executable 작성 | 책임이 가장 분명하다 | 이미 같은 흐름을 검증하는 sample E2E와 중복된다 |
+
+선택은 sample client 로그 검증 테스트에 `connector-e2e` 라벨을 추가하는 것이다. 같은 실행이
+사용자 리뷰용 sample E2E이면서 connector가 실제 endpoint에 붙는 회귀 증거이므로, 라벨을
+겹쳐 두는 편이 중복 테스트보다 단순하다.
+
+### 적용한 리팩토링
+
+- `sample_e2e_log_sample_cpp_framework_bingo_client`에 `connector-e2e` 라벨을 추가했다.
+- `sample_e2e_log_sample_cpp_framework_tictactoe_client`에 `connector-e2e` 라벨을 추가했다.
+- `ctest --print-labels`에서 Goal 17 검증 라벨이 보이도록 CTest 표면을 맞췄다.
+
+### 남은 tradeoff
+
+- `connector-e2e` 라벨은 sample client E2E와 같은 테스트를 가리킨다. 이는 connector가
+  framework sample endpoint에 붙는 실제 흐름을 검증하기 위한 의도된 중복 라벨이다.
+
+### 재실행할 검증 명령
+
+```bash
+ctest --test-dir framework/languages/cpp/build -L connector-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build --print-labels
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. Connector runtime option 실제 동작 보정
+
+### 발견한 위험 신호
+
+- Stream Connector의 `request_timeout` option이 public contract에 있었지만 runtime에서는
+  `(void) timeout`으로 무시되고 있었다. 서버가 response frame을 보내지 않으면 request
+  호출자가 무기한 block될 수 있어 실시간 messaging client로 사용할 수 없다.
+- reconnect와 heartbeat는 options와 파일만 있었고 실제 connect retry나 frame 전송으로
+  연결되지 않았다. 이는 파일 분리는 되어 있지만 구현체가 없는 얕은 모듈이다.
+- request read를 단순 blocking read로 두면 timeout과 dispatch responsiveness를 보장하기
+  어렵다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| background receive thread를 추가 | heartbeat와 timeout 처리가 명확하다 | 현재 connector의 manual dispatch 모델과 thread 소유권이 커진다 |
+| request path만 timed non-blocking read로 보정 | public API를 바꾸지 않고 무기한 block을 제거한다 | background receive loop 수준의 완전한 async runtime은 아니다 |
+| heartbeat 전용 thread 추가 | 주기 전송이 정확하다 | 사용자가 쓰지 않는 connector에도 thread 비용이 생긴다 |
+| `dispatch()` 경로에서 interval이 지난 heartbeat만 전송 | background thread 없이 manual dispatch 모델과 맞는다 | dispatch가 호출될 때 heartbeat가 진행된다 |
+| reconnect를 connect retry loop로 구현 | 현재 sync connect contract 안에서 재시도 의미를 닫는다 | async backoff cancellation은 아직 없다 |
+
+선택은 timed non-blocking request read, connect retry loop, opportunistic heartbeat다. 이렇게 하면
+현재 connector의 sync/coroutine facade와 manual dispatch 모델을 유지하면서 무기한 block과
+옵션 무시 문제를 없앨 수 있다.
+
+### 적용한 리팩토링
+
+- `submit_request(...)`가 `request_timeout` deadline을 기준으로 socket `available()`과
+  `read_some()`을 사용해 frame prefix/header/payload를 읽도록 바꿨다.
+- timeout이 지나면 pending request를 제거하고 `request_timeout` error를 돌려준다.
+- `connect()`가 `reconnect.max_attempts`, `initial_delay`, `max_delay`, `backoff_factor`에 따라
+  실패한 endpoint에 재시도하고, 두 번째 시도부터 `reconnecting` state를 발행하게 했다.
+- `dispatch()` 경로에서 heartbeat interval이 지난 경우 `$zlink.heartbeat.ping` control frame을
+  전송하도록 했다. 별도 background thread는 만들지 않았다.
+- connector unit test에 request timeout, heartbeat control frame, reconnecting state 검증을
+  추가했다.
+
+### 남은 tradeoff
+
+- heartbeat는 background scheduler가 아니라 `dispatch()`에 묶인 opportunistic heartbeat다.
+  이는 현재 manual dispatch connector 모델에서 thread 비용을 만들지 않기 위한 선택이다.
+- connect timeout은 Boost.Asio sync connect 실패를 error로 매핑한다. 세밀한 per-attempt
+  async timeout은 이후 async connector runtime이 필요할 때 private runtime 안에서 확장한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-unit --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-integration --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
 ## Goal 20. Final Parity And Regression Gate
 
 ### Interface Separation Review
@@ -1371,8 +1802,9 @@ git diff --check -- framework/languages/cpp bindings/cpp
 
 ### 남은 tradeoff
 
-- Goal 21 extension boundary가 아직 남아 있다. 따라서 active thread goal은 완료가 아니며,
-  Goal 21 이후 전체 21개 goal 최종 감사, 변경 범위 리뷰, 커밋/푸시가 필요하다.
+- 이 항목은 Goal 20 실행 시점의 회귀 게이트 기록이다. 당시에는 Goal 21 extension
+  boundary가 남아 있었고, 이후 Goal 21과 추가 리뷰 항목에서 extension boundary와 최종
+  감사 보정을 이어서 닫았다.
 
 ### 재실행한 검증 명령
 
@@ -2547,6 +2979,332 @@ ctest --test-dir framework/languages/cpp/build -R test_unreal_stream_connector -
 ctest --test-dir framework/languages/cpp/build --output-on-failure
 ```
 
+## 추가 리뷰. Bingo Api Program/HostFactory 책임 분리 보정
+
+### 발견한 위험 신호
+
+- Bingo C++ `Server/Api/main.cpp`가 `.NET` `Program.cs`와 달리 host factory, DI, logging,
+  monitoring, handler registration, serializer smoke 검증을 모두 직접 수행했다.
+- `app.logging().use_callback_sink(...)`는 샘플 앱 설정이 아니라 로그 검증용 in-memory sink다.
+  이 코드가 `main.cpp`에 있으면 사용자가 실제 API server에 필요한 설정으로 오해한다.
+- `app.handlers().on_request<...>(...)` 자체는 C++에서 reflection이 없기 때문에 필요한 등록
+  표면일 수 있지만, `main.cpp`에 있으면 handler discovery/group 구성이 application entry
+  point로 새어 나온다.
+- `api_server_host_factory_t::build(...)`가 완성된 host가 아니라 `zlink_builder_t`만 반환해
+  `.NET`의 `ApiServerHostFactory.Build(topology).RunAsync()` 구조와 달랐다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `main.cpp`에 smoke 검증 유지 | 현재 CTest 유지가 쉽다 | 샘플 entry point가 실제 앱 코드처럼 보이지 않는다 |
+| `main.cpp`에서 helper 함수만 호출 | 파일은 짧아진다 | 책임은 여전히 entry point에 남는다 |
+| `api_server_host_factory_t`가 `app_t`를 완성해서 반환 | `.NET` Program/HostFactory 구조와 맞다 | factory 안에 C++ typed registration이 들어간다 |
+
+선택은 세 번째 방식이다. C++은 assembly scan이 없으므로 typed handler registration은 factory
+내부에 두되, `main.cpp`는 topology 생성과 `run(...)`만 남긴다.
+
+### 적용한 리팩토링
+
+- `sample_cpp_framework_bingo_api`의 `main.cpp`를 `ApiServerHostFactory.Build(...).RunAsync()`
+  에 해당하는 구조로 줄였다.
+- `api_server_host_factory_t::build(...)`가 `zlink_builder_t`가 아니라 완성된 `app_t`를
+  반환하게 했다.
+- API channel 구성, logging, monitoring, hosted service, service factory, handler
+  registration을 `api_server_host_factory_t` 안으로 이동했다.
+- 로그 검증용 callback sink, handler 직접 invoke, sample-local serializer smoke를
+  `main.cpp`에서 제거했다.
+- `AuthenticatePlayer`와 `MatchBingo` handler registration을 factory 내부 private 함수로
+  숨겼다.
+
+### 남은 tradeoff
+
+- C++ framework에는 아직 `.NET`의 `AddHandlersFromAssemblyOf(...)`와 같은 자동 discovery가
+  없다. C++에서는 reflection이 없으므로 typed registration helper나 module 단위 registration
+  표면을 더 정리해야 한다.
+- TicTacToe API와 다른 role sample도 같은 기준으로 다시 리뷰해야 한다. 이번 항목은 Bingo
+  API entry point 누수를 먼저 막은 단계다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_api
+ctest --test-dir framework/languages/cpp/build -R sample_smoke_sample_cpp_framework_bingo_api --output-on-failure
+```
+
+## 추가 리뷰. AddZLinkFramework 대응 C++ module API 보정
+
+### 발견한 위험 신호
+
+- Bingo API의 설정을 `main.cpp`에서 `api_server_host_factory_t`로 옮긴 뒤에도 factory 내부가
+  services, logging, monitoring, handler registration, zlink runtime 구성을 순서대로 나열하는
+  스크립트처럼 보였다.
+- `.NET` sample은 `AddZLinkFramework(options => ...)` 안에서 handler discovery, codec,
+  channel, discovery 구성을 한 고수준 진입점으로 묶는다. C++에는 이에 대응하는 public API가
+  없어서 sample role factory가 framework 내부 구성 순서를 직접 보여 줬다.
+- C++에는 assembly reflection이 없기 때문에 `.NET`의 `AddHandlersFromAssemblyOf(...)`를 그대로
+  옮길 수 없다. 그렇다고 handler registration을 role factory에 직접 나열하면 Program/HostFactory
+  구조가 계속 얕아진다.
+- `app_t::add_zlink_framework<TModule>(...)`처럼 module type을 직접 넘기는 방식도 충분하지
+  않다. 사용자가 봐야 하는 것은 module 생명주기나 DI factory가 아니라, `.NET` sample처럼
+  discovery를 쓰고 client-server channel 두 개를 구성하며 handler group에 handler를 붙인다는
+  의도다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| factory 안에서 private helper 함수로만 분리 | 구현이 작다 | framework 사용 표면 자체는 계속 거칠다 |
+| 기존 `module_t` 인스턴스를 사용자가 직접 만들고 `add_module(...)` 호출 | 기존 API를 재사용한다 | `.NET AddZLinkFramework`처럼 role type을 넘기는 구성 진입점이 없다 |
+| `app_t::add_zlink_framework<TModule>(...)` 추가 | module 단위로 세부 구성을 묶을 수 있다 | 사용자가 읽는 설정 수준이 여전히 module/DI/handler signature 중심이 된다 |
+| `app_t::add_zlink_framework(options_callback)` 추가 | `.NET AddZLinkFramework(options => ...)`와 같은 읽기 수준을 제공한다 | options builder 계층을 새로 구현해야 한다 |
+
+선택은 `add_zlink_framework(options_callback)`를 주 표면으로 두는 것이다. C++ role module은
+내부 확장 단위로 유지할 수 있지만, 샘플과 사용자 문서에는 options builder를 노출한다. C++에서
+reflection이 없다는 차이는 `AddHandlersFromAssemblyOf(...)`를
+`options.handlers().add<THandler>(group_name)`으로 바꾸는 데서만 드러나야 한다.
+
+### 적용한 리팩토링
+
+- 문서 기준을 `app_t::add_zlink_framework<TModule>(...)` 중심에서
+  `app_t::add_zlink_framework(options_callback)` 중심으로 수정했다.
+- C++ sample API 설정의 목표 형태를 `.NET` `ApiServerHostFactory`와 같은 수준의 예제로 명시했다.
+- handler 자동 검색은 C++에서 제공하지 않고,
+  `options.handlers().add<authenticate_player_handler_t>("api")`처럼 handler 타입을 명시하는 것으로
+  차이를 제한한다고 정리했다.
+- `options.codecs().add_json()`은 codec 사용 선언만 맡기고, request/reply message type은 handler
+  registration에서 framework가 읽어 serializer를 자동 등록하는 방향으로 낮췄다.
+- C++에서는 람다 중첩이 `.NET`보다 장황해지므로 channel 설정은
+  `options.client_server_channel(name).server(endpoint).handler_group(group)`처럼 fluent builder로
+  표현한다고 정리했다.
+- DI 생성자 주입을 추가해 `add_singleton<T, Dep...>()`, `add_scoped<T, Dep...>()`,
+  `add_transient<T, Dep...>()`가 `service_provider_t`에서 의존성을 resolve한 뒤 생성자를 호출하게
+  했다.
+- handler는 `dependency_list_t<Dep...>`로 생성자 의존성을 명시한다. handler 등록은 이 목록을
+  읽어 DI에 owner를 등록하므로, sample 설정에 handler용 factory lambda가 노출되지 않는다.
+- module, handler용 DI factory, handler member function pointer, monitoring channel 문자열은
+  낮은 수준 구현 세부로 분류했다. 이것들이 `main.cpp`, role `*HostFactory`, 일반 사용자 설정
+  예제에 노출되면 아직 목표 수준에 도달하지 못한 것으로 본다.
+- Bingo API `main.cpp`는 topology 생성과 `run(...)`만 남긴 상태를 유지했다.
+
+### 남은 tradeoff
+
+- Bingo와 TicTacToe의 Registry, API, Play, Session role factory는 모두
+  `zlink_framework_options_t` 기반 options builder를 사용한다. 샘플 `main.cpp`는 topology 생성과
+  `run(...)`만 수행한다.
+- 샘플에서 낮은 수준 `use_zlink`, `channel`, `enable_server`, `enable_client`, handler용 DI
+  factory, serializer registry 직접 설정이 다시 나타나지 않도록 sample parity 계약 테스트가
+  source pattern을 확인한다.
+- `zlink_builder_t`의 낮은 수준 API는 framework 내부 runtime과 단위 테스트용 확장 표면으로 남아
+  있다. 일반 사용자 설정 표면인 `zlink_framework_options_t`에서는 람다 기반
+  `add_client_server_channel(...)`과 `client_server_channel_options_t`를 제거했다.
+- `stream_node` fluent builder는 `bind`와 `packet_session`이 모두 지정된 뒤에만 내부 stream
+  builder에 반영한다. 이렇게 해야 체인 중간 상태가 runtime에 등록되어 저수준 검증 오류를 만드는
+  문제를 막을 수 있다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_registry sample_cpp_framework_bingo_api sample_cpp_framework_bingo_play sample_cpp_framework_bingo_session sample_cpp_framework_tictactoe_registry sample_cpp_framework_tictactoe_api sample_cpp_framework_tictactoe_play sample_cpp_framework_tictactoe_session test_cpp_framework_sample_parity test_cpp_framework_contract_headers test_cpp_framework_module_hosted test_cpp_framework_DI_scope
+ctest --test-dir framework/languages/cpp/build -R 'sample_smoke_sample_cpp_framework_(bingo|tictactoe)_(registry|api|play|session)|test_cpp_framework_sample_parity|test_cpp_framework_contract_headers|test_cpp_framework_module_hosted|test_cpp_framework_DI_scope' --output-on-failure
+```
+
+## 추가 리뷰. ActorContext JoinSpot 결과 구조 보정
+
+### 발견한 위험 신호
+
+- `.NET`의 `IZLinkActorContext.JoinSpot(...)`은 submit 결과로
+  `ZLinkActorJoinResult<TReply>`를 돌려준다. 이 결과에는 result code, join 이후 actor ref,
+  typed reply가 함께 있다. C++에는 `actor_context_t::join_spot(...)` 표면이 없었고,
+  기존 `join_spot_call_t<TActor>`는 결과 타입이 actor 하나로 고정되어 있었다.
+- `join_spot_call_t<TActor>`라는 이름은 JoinSpot 결과를 표현하는 것처럼 보이지만 typed reply를
+  담을 자리가 없었다. 이 상태에서 `TActor` 자리에 join result를 넣으면 template 이름과 의미가
+  어긋난다.
+- actor gateway test는 session bind, relay, bound session push만 확인했다. actor context에서
+  Spot/Entry Spot join을 submit하는 경로는 검증하지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `join_spot_call_t<TActor>` 유지 | 변경이 작다 | `.NET`의 actor ref + reply 결과 구조를 표현하지 못한다 |
+| `join_spot_call_t<T>`의 `T`를 join result로 재해석 | 파일 변경이 적다 | 타입 이름이 거짓말을 하고 호출자 의미가 흐려진다 |
+| `actor_join_result_t<TReply>`, `actor_join_spot_call_t<TReply>`, `actor_join_entry_spot_call_t` 추가 | `.NET` 결과 의미를 그대로 보존한다 | public 타입이 늘어난다 |
+
+선택은 세 번째 방식이다. C++의 template 인자는 reply 타입을 표현해야 하며, actor ref와 result
+code는 `actor_join_result_t<TReply>` 안에 함께 둔다.
+
+### 적용한 리팩토링
+
+- 사용되지 않던 `join_spot_call_t<TActor>`를 제거했다.
+- `actor_join_result_t<TReply>`를 추가했다. 이 타입은 `.NET`의
+  `ZLinkActorJoinResult<TReply>`와 같은 의미로 result code, actor ref, typed reply를 가진다.
+- `actor_join_spot_call_t<TReply>`와 `actor_join_entry_spot_call_t`를 추가했다.
+- `actor_context_t::join_spot<TRequest, TReply>(...)`와
+  `actor_context_t::join_entry_spot(...)` public 표면을 추가했다.
+- actor gateway runtime state에 Spot join dispatcher와 Entry Spot join dispatcher seam을
+  추가했다. 실제 native/core transport 연결은 이 seam 안으로 들어갈 수 있다.
+- `test_cpp_framework_ActorGateway_actor_session_relay`가 actor context에서 JoinSpot request
+  payload를 보내고, typed reply와 actor ref를 함께 받는지 검증하도록 확장했다.
+- 같은 test가 Entry Spot join에서 actor ref만 반환되는지도 검증한다.
+
+### 남은 tradeoff
+
+- 이번 변경은 actor context public contract와 actor gateway runtime seam을 닫은 단계다.
+  실제 core ActorGateway transport, actor current Spot 저장, `GetSpot()` 표면은 다음 반복에서
+  더 맞춰야 한다.
+- JoinSpot request/reply codec은 현재 `message_t::from_json(...)`과 `parse_json<T>()`를
+  사용한다. framework serializer registry와 결합할지는 sample/runtime 통합 단계에서 다시
+  검토한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_ActorGateway_actor_session_relay
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_ActorGateway_actor_session_relay --output-on-failure
+```
+
+## 추가 리뷰. SPOT handler registry typed dispatch 보정
+
+### 발견한 위험 신호
+
+- `spot_context_t::handlers()`가 `.NET` `Context.Handlers`와 비슷한 등록 표면을
+  제공했지만, 기존 확인은 descriptor 개수와 packet 이름에 머물렀다. 이 상태는 얕은
+  모듈 신호다. 사용자는 handler를 등록했다고 생각하지만 framework가 실제 payload decode,
+  DI resolve, handler 호출을 책임지는지 확인할 수 없었다.
+- Play sample은 일부 도메인 handler를 직접 생성해 `handle(...)`을 호출했다. 그러면
+  framework의 SPOT dispatch boundary가 샘플에서 검증되지 않고, application 코드가
+  runtime 실행 순서를 알고 있어야 한다.
+- Bingo join DTO는 JSON round-trip hook이 빠져 있어 serializer registry를 통과하는
+  typed dispatch를 샘플에서 사용할 수 없었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| descriptor registry만 유지 | 구현이 작다 | `.NET` handler dispatch와 같은 기능이라고 보기 어렵다 |
+| 샘플에서 직접 handler 호출 유지 | smoke가 단순하다 | framework가 메시지를 처리하는지 확인하지 못한다 |
+| registry가 typed invoker를 저장하고 DI/serializer를 통해 실행 | 등록 표면과 실행 의미가 연결된다 | C++ template helper가 늘어난다 |
+
+선택은 typed invoker 저장 방식이다. C++은 reflection이 없으므로 handler, actor, message,
+reply type을 template 인자로 받되, payload decode와 owner resolve는 runtime으로 숨긴다.
+
+### 적용한 리팩토링
+
+- `spot_handler_registry_t`가 descriptor와 함께 erased invoker를 저장하도록 보강했다.
+- `invoke_packet`, `invoke_actor_join`, `invoke_actor_packet`, actor lifecycle invoke
+  표면을 추가했다.
+- SPOT handler dispatch는 `serializer_registry_t`로 `message_t`를 DTO로 바꾸고,
+  `service_provider_t`에서 handler owner를 resolve한 뒤 typed `handle(...)`을 호출한다.
+- `test_cpp_framework_spot_runtime`이 descriptor 확인뿐 아니라 실제 packet, actor join,
+  actor packet dispatch를 검증하도록 보강했다.
+- Bingo/TicTacToe Play smoke가 등록된 join/packet handler를 framework dispatch 경로로
+  실행하도록 보강했다.
+- Bingo `bingo_room_join_req_t`, `bingo_room_join_res_t`에 JSON hook을 추가해 application
+  layer 직접 field parsing 없이 serializer registry를 사용할 수 있게 했다.
+
+### 남은 tradeoff
+
+- 일부 sample lifecycle handler는 아직 `.NET`처럼 Spot instance와 actor change result를
+  모두 받는 완성형 시그니처가 아니다. 현재 registry는 실행 가능한 handler shape는 실제
+  호출하고, 불일치 shape는 protocol error로 보고한다. 다음 단계에서는 lifecycle handler
+  shape와 actor context/result 모델을 `.NET`과 더 맞춰야 한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_spot_runtime test_cpp_framework_sample_parity sample_cpp_framework_bingo_play sample_cpp_framework_tictactoe_play
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_spot_runtime|test_cpp_framework_sample_parity|sample_smoke_sample_cpp_framework_(bingo|tictactoe)_play' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. Install consumer regression 고정
+
+### 발견한 위험 신호
+
+- framework와 connector package를 수동으로 설치한 뒤 consumer를 빌드하는 검증은 있었지만
+  CTest 회귀에 고정되어 있지 않았다. export target이나 native runtime 설치 규칙이 다시
+  깨져도 일반 unit test만으로는 잡기 어렵다.
+- `zlink::stream_connector` install export는 static library link interface에
+  `Threads::Threads`를 포함하지만 package config가 `find_dependency(Threads)`를 호출하지
+  않으면 설치 consumer configure 단계에서 실패한다.
+- Linux native runtime은 SONAME이 `libzlink.so.6`인데 install 규칙이 `libzlink.so`만 복사하면
+  consumer 실행 단계에서 loader가 runtime을 찾지 못한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 수동 install 검증만 유지 | CTest 시간이 짧다 | 배포 회귀가 자동으로 잡히지 않는다 |
+| header compile test만 추가 | 빠르다 | export config와 runtime loader 문제를 검증하지 못한다 |
+| CTest에서 install, consumer configure/build/run까지 수행 | 실제 배포 경계를 검증한다 | package test 시간이 조금 늘어난다 |
+
+선택은 CTest package consumer 검증이다. `.NET`의 contract/e2e test project처럼 C++도
+배포 경계를 테스트 목록에 고정한다.
+
+### 적용한 리팩토링
+
+- `tests/package/install_consumer.cmake`를 추가했다.
+- 새 CTest `test_cpp_framework_install_consumer`가 현재 build tree를 임시 prefix에 설치하고,
+  별도 consumer project를 생성해 `find_package(zlink_framework_cpp)`와
+  `find_package(zlink_stream_connector_cpp)`를 실행한다.
+- consumer는 `zlink::framework`, `zlink::framework_extension_metrics`,
+  `zlink::stream_connector`, `zlink::stream_connector_codecs`를 링크하고
+  `auto_codec.hpp`를 실제로 include한다.
+- package config에 `find_dependency(Threads)`를 추가했다.
+- Linux install 규칙은 `libzlink.so*` 파일을 함께 설치해 SONAME이 요구하는
+  `libzlink.so.6`도 배포 prefix에 들어가게 했다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build -DZLINK_STREAM_CONNECTOR_WITH_LZ4=ON
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_install_consumer --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Public contract header coverage 보정
+
+### 발견한 위험 신호
+
+- `.NET` framework contract tests는 reflection으로 모든 public contract interface가 scenario
+  example에 포함되는지 검증한다. C++는 reflection이 없어서 새 public contract header가
+  생겨도 compile coverage 없이 지나갈 수 있었다.
+- facade header만 include하면 개별 contract header가 독립적으로 compile되는지 보장하지
+  못한다.
+- layout test가 주요 파일 존재 여부는 보지만, `contracts/*.hpp`가 contract compile test에
+  포함되는지까지는 확인하지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| facade include만 유지 | 테스트가 짧다 | 개별 public header 독립성이 깨져도 숨는다 |
+| 모든 public header를 install consumer에서만 확인 | 배포 경계는 본다 | source tree에서 coverage 누락이 바로 드러나지 않는다 |
+| contract header test가 모든 `contracts/*.hpp`를 직접 include하고 layout test가 coverage를 스캔 | C++ 방식으로 surface coverage를 고정한다 | include 목록을 명시적으로 관리해야 한다 |
+
+선택은 direct include coverage다. C++에는 `.NET` reflection이 없으므로 파일 시스템과
+compile test를 결합해 같은 목적을 달성한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_contract_headers.cpp`가 framework와 stream connector의 모든
+  public `contracts/*.hpp`를 직접 include하도록 확장했다.
+- `test_cpp_framework_layout_contract.cpp`가 public contract header tree를 스캔하고, 각
+  header가 contract header compile test에 직접 include되어 있지 않으면 실패하게 했다.
+- 이 검증은 `framework/include/zlink/framework/contracts`와
+  `connector/include/zlink/stream_connector/contracts` 양쪽에 적용된다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_contract_headers test_cpp_framework_layout_contract
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(contract_headers|layout_contract)' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
 ## 추가 리뷰. Stream Connector auto codec helper 보정
 
 ### 발견한 위험 신호
@@ -2559,6 +3317,10 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
   codec dependency가 기본 connector 사용자에게 전파된다.
 - C++에는 `.NET` attribute reflection이 없으므로 MessagePackObject, Protobuf IMessage 같은
   런타임 자동 선택을 그대로 복제하면 언어 특성과 맞지 않는다.
+- 샘플 DTO에 sample-only `to_stream_payload`/`from_stream_payload` helper나 직접 JSON field
+  parser가 들어가면 application code가 serializer를 알아야 한다. 이는 `.NET` 샘플의
+  `connector.Request(dto).SubmitAsync<T>()` 흐름과 다르고, codec 선택 지식이 샘플로
+  새어 나오는 얕은 모듈이다.
 
 ### 비교한 대안
 
@@ -2567,9 +3329,14 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 | 기존 codec registry만 유지 | 변경이 작다 | `.NET Codecs` 패키지 역할이 비어 있다 |
 | 기본 connector target에 모든 codec helper 포함 | 사용법이 단순하다 | MessagePack/Protobuf dependency를 강제한다 |
 | 같은 배포물 안에 별도 `stream_connector_codecs` target 제공 | 의존성을 선택적으로 유지하면서 auto helper를 제공한다 | 사용자가 helper target을 명시적으로 링크해야 한다 |
+| 샘플 DTO별 payload helper 유지 | 샘플 loopback 작성이 쉽다 | serializer 정책이 application sample에 퍼지고 `.NET` connector 사용성과 달라진다 |
 
 선택은 별도 helper target이다. C++ auto codec 선택은 기본 JSON으로 두고, MessagePack과
 Protobuf는 `codec_traits<T>` 특수화로 명시한다.
+
+샘플 DTO는 C++ serializer가 찾을 수 있는 `to_json`/`from_json` hook만 제공한다. client
+application code는 `.NET`과 같은 수준에서 `codecs::request<TReply>`, `codecs::send`,
+`codecs::on<T>`만 호출한다. sample-only payload 변환 함수나 직접 JSON parser는 두지 않는다.
 
 ### 적용한 리팩토링
 
@@ -2585,11 +3352,24 @@ Protobuf는 `codec_traits<T>` 특수화로 명시한다.
 - `test_cpp_stream_connector`가 auto codec send frame의 `codec=json`, packet name, JSON
   payload를 실제 loopback에서 확인하고, `codecs::on<T>`가 dispatch 전에 JSON payload를 DTO로
   복원하는지 검증한다.
+- Bingo/TicTacToe client sample이 `zlink::stream_connector::codecs::{send,request,on}`을
+  사용하도록 보정했다. 샘플 application code는 raw STREAM payload 조립이나 직접 JSON parse를
+  하지 않는다.
+- Bingo/TicTacToe DTO contract header에서 sample-only `to_stream_payload`와
+  `from_stream_payload` helper를 제거하고, `to_json`/`from_json` hook만 남겼다.
+- sample loopback server는 reply/push frame payload를 만들 때 `message_t::from_json`을
+  내부 helper에서 사용한다. 이 코드는 샘플 server transport adapter의 세부이며 client
+  application API가 아니다.
+- layout contract test가 client sample의 connector codec helper include와
+  `codecs::request`, `codecs::on`, `.submit()` 사용을 확인하도록 보강했다.
 
 ### 남은 tradeoff
 
 - C++ auto codec은 `.NET`처럼 attribute reflection으로 MessagePack/Protobuf를 자동 선택하지
   않는다. 해당 codec을 쓰는 타입은 `codec_traits<T>` 특수화로 선택한다.
+- DTO별 `to_json`/`from_json` hook은 C++의 ADL 기반 serializer 연결점이다. 이것은 `.NET`
+  record/attribute metadata에 해당하는 계약 선언이지, application layer serializer 호출이
+  아니다.
 
 ### 재실행할 검증 명령
 
@@ -2598,6 +3378,7 @@ cmake -S framework/languages/cpp -B framework/languages/cpp/build -DZLINK_STREAM
 cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
 ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
 ctest --test-dir framework/languages/cpp/build --output-on-failure
+rg -n "to_stream_payload|from_stream_payload|json_value|json_field|nlohmann::json::parse" framework/languages/cpp/samples
 ```
 
 ## 추가 리뷰. Unreal Stream Connector pending dispatch 보정
@@ -2787,6 +3568,114 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 cmake -S framework/languages/cpp -B framework/languages/cpp/build -DZLINK_STREAM_CONNECTOR_WITH_LZ4=ON
 cmake --build framework/languages/cpp/build
 ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Sample handler 파일 분류 보정
+
+### 발견한 위험 신호
+
+- `Bingo/Server/Play/EntrySpot/match_bingo_actor_handler.hpp`,
+  `TicTacToe/Server/Play/EntrySpot/join_match_handler.hpp`,
+  `TicTacToe/Server/Play/GameSpots/place_mark_handler.hpp`는 실제 구현 없이 `Handlers/*`
+  header만 include하는 wrapper였다. `.NET` 샘플은 handler 구현체가 `Handlers/` 아래에
+  직접 있으므로, wrapper는 파일 구조 parity를 보여 주지 못한다.
+- `BingoRoomSpots/bingo_room_handlers.hpp`는 여러 handler를 묶는 aggregate header였고,
+  `bingo_room_timer_handler.hpp`가 다시 이 aggregate를 include했다. 이 구조는 실제
+  의존성보다 include 편의가 앞서며, 어떤 파일이 handler owner인지 흐리게 만든다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| wrapper 유지 | include 경로가 짧다 | 구현 없는 파일이 구조 parity처럼 보이고 owner가 흐려진다 |
+| wrapper에 실제 구현을 옮김 | 파일 수는 유지된다 | `.NET`의 `Handlers/*` owner와 달라진다 |
+| wrapper 제거, 실제 `Handlers/*` 구현체를 직접 include | `.NET` 파일 분류와 맞고 얕은 모듈이 사라진다 | include 사용처를 갱신해야 한다 |
+
+선택은 wrapper 제거다. C++ 샘플은 언어 스타일상 `.hpp`를 쓰지만, handler 구현의 소유 위치는
+`.NET`과 같은 `Handlers/*` 아래로 고정한다.
+
+### 적용한 리팩토링
+
+- 실제 구현 없는 handler wrapper header 3개를 삭제했다.
+- `BingoRoomSpots/bingo_room_handlers.hpp` aggregate header를 삭제했다.
+- `Bingo`와 `TicTacToe` sample include를 실제 `Handlers/*` 구현체 경로로 바꿨다.
+- `bingo_room_timer_handler.hpp`는 aggregate header 대신 실제 의존성인 `bingo_room.hpp`를
+  include하도록 보정했다.
+- layout contract test가 삭제된 wrapper/aggregate header가 다시 생기면 실패하도록
+  `require_absent` 검사를 추가했다.
+
+### 남은 tradeoff
+
+- `Shared/sample.hpp`는 sample parity test 편의를 위한 include surface다. 다만 이제 구현 없는
+  wrapper를 통하지 않고 실제 role/handler owner를 직접 include한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_sample_parity test_cpp_framework_layout_contract sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(sample_parity|layout_contract)' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. Sample Session role 구현 분리
+
+### 발견한 위험 신호
+
+- `.NET` Bingo와 TicTacToe는 `Server/Session/Sessions/*`에 session class를 두고,
+  `Sessions/Handlers/*`에 authenticate/create-match packet handler를 둔다. C++ 샘플은
+  Session role의 핵심 흐름이 `main.cpp` smoke 로직에만 있었기 때문에 실제 framework 사용
+  구조를 리뷰하기 어려웠다.
+- `main.cpp` 안에서 actor bind와 relay를 직접 실행하면 session dispatch의 순서가 sample
+  executable 구현 지식으로 남는다. `.NET`의 `IZLinkSession.OnDispatchAsync`처럼 handler를
+  먼저 시도하고, 처리되지 않은 packet을 bound actor에게 relay하는 정책이 별도 모듈로
+  보이지 않는다.
+- 요청 DTO에는 `to_json` hook만 있고 일부 `from_json` hook이 빠져 있었다. session handler가
+  typed request를 `message.parse_json<T>()`로 읽으려면 serializer hook이 DTO contract에
+  있어야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `main.cpp` smoke 유지 | 변경이 작다 | Session role 파일 분류와 dispatch 정책이 드러나지 않는다 |
+| session logic을 framework runtime test로만 검증 | 테스트는 강해진다 | 샘플이 `.NET` sample 구조와 계속 다르다 |
+| `Sessions/*`와 `Sessions/Handlers/*`에 실제 session/handler 구현 추가 | `.NET` 구조와 같고 리뷰 대상이 분명하다 | sample header가 늘어난다 |
+
+선택은 session/handler 구현 추가다. C++에서는 header-only sample class로 두지만, 역할 분류는
+`.NET`과 같은 `Server/Session/Sessions`와 `Sessions/Handlers`로 맞춘다.
+
+### 적용한 리팩토링
+
+- Bingo에 `Sessions/bingo_session.hpp`와
+  `Sessions/Handlers/authenticate_session_handler.hpp`를 추가했다.
+- TicTacToe에 `Sessions/session_relay_session.hpp`,
+  `Sessions/Handlers/authenticate_session_packet_handler.hpp`,
+  `Sessions/Handlers/create_match_session_packet_handler.hpp`를 추가했다.
+- session class는 `.NET`처럼 packet handler를 먼저 시도하고, 처리되지 않은 packet은 인증
+  뒤 bound actor로 relay한다.
+- session handler는 `message.parse_json<T>()`와 `message_t::from_json(...)`만 사용한다.
+  application layer의 직접 JSON field parsing은 추가하지 않았다.
+- Bingo/TicTacToe request DTO에 빠져 있던 `from_json` hook을 추가했다.
+- Session role `main.cpp`는 새 session/handler class를 실제로 생성해 authenticate, actor
+  bind, create-match reply, relay, disconnect cleanup을 smoke한다.
+- layout contract test가 `Server/Session/Sessions/*`와 `Sessions/Handlers/*` 파일 존재를
+  확인하도록 보강했다.
+
+### 남은 tradeoff
+
+- C++ sample handler는 `.NET`의 `IZLinkChannelClient` 대신 sample-local handler 객체를
+  주입받는다. 현재 C++ framework sample runtime에서는 실제 channel client DI를 모두 띄우는
+  e2e가 아니라 role별 smoke로 검증하기 때문이다. public 흐름은 `message_t` codec,
+  session packet handler, actor bind, relay 순서로 맞췄다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_session sample_cpp_framework_tictactoe_session test_cpp_framework_layout_contract
+ctest --test-dir framework/languages/cpp/build -R 'sample_smoke_sample_cpp_framework_(bingo|tictactoe)_session|test_cpp_framework_layout_contract' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
 ```
 
 ## 추가 리뷰. Unreal Stream Connector LZ4 frame parity 보정

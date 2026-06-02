@@ -128,6 +128,77 @@ actor_context_t::bound_session () const
   return bound_session_t (_state, std::string (_actor_ref.actor_id ()));
 }
 
+result_t<detail::actor_join_reply_t>
+actor_context_t::join_spot_erased (spot_rid_t spot_rid,
+                                   const zlink::message_t &request)
+{
+  if (_actor_ref.empty ()) {
+    return result_t<detail::actor_join_reply_t>::failure (
+      framework_error_kind_t::actor_route_not_found,
+      "actor ref is empty");
+  }
+  if (spot_rid.empty ()) {
+    return result_t<detail::actor_join_reply_t>::failure (
+      framework_error_kind_t::spot_route_not_found,
+      "spot rid is empty");
+  }
+  if (!_state->join_spot_dispatcher) {
+    return result_t<detail::actor_join_reply_t>::failure (
+      framework_error_kind_t::actor_dispatch_handler_not_found,
+      "actor join spot dispatcher is not configured");
+  }
+  auto joined = _state->join_spot_dispatcher (_actor_ref, spot_rid, request);
+  if (!joined) {
+    const auto *error = joined.error ();
+    return result_t<detail::actor_join_reply_t>::failure (
+      joined.error_kind (),
+      error != nullptr ? error->what () : "actor join spot failed");
+  }
+
+  _actor_ref = joined.value ().actor;
+  auto found = _state->actors_by_id.find (std::string (_actor_ref.actor_id ()));
+  if (found != _state->actors_by_id.end ()) {
+    found->second.ref = _actor_ref;
+  }
+  return joined;
+}
+
+actor_join_entry_spot_call_t
+actor_context_t::join_entry_spot (node_rid_t spot_node_rid)
+{
+  if (_actor_ref.empty ()) {
+    return actor_join_entry_spot_call_t (result_t<actor_ref_t>::failure (
+      framework_error_kind_t::actor_route_not_found,
+      "actor ref is empty"));
+  }
+  if (spot_node_rid.empty ()) {
+    return actor_join_entry_spot_call_t (result_t<actor_ref_t>::failure (
+      framework_error_kind_t::spot_route_not_found,
+      "spot node rid is empty"));
+  }
+  if (!_state->join_entry_spot_dispatcher) {
+    return actor_join_entry_spot_call_t (result_t<actor_ref_t>::failure (
+      framework_error_kind_t::actor_dispatch_handler_not_found,
+      "actor join entry spot dispatcher is not configured"));
+  }
+
+  auto joined = _state->join_entry_spot_dispatcher (_actor_ref, spot_node_rid);
+  if (!joined) {
+    const auto *error = joined.error ();
+    return actor_join_entry_spot_call_t (result_t<actor_ref_t>::failure (
+      joined.error_kind (),
+      error != nullptr ? error->what () : "actor join entry spot failed"));
+  }
+
+  _actor_ref = joined.value ();
+  auto found = _state->actors_by_id.find (std::string (_actor_ref.actor_id ()));
+  if (found != _state->actors_by_id.end ()) {
+    found->second.ref = _actor_ref;
+  }
+  return actor_join_entry_spot_call_t (
+    result_t<actor_ref_t>::success (_actor_ref));
+}
+
 session_actor_t::session_actor_t ()
   : _state (std::make_shared<detail::actor_gateway_state_t> ())
 {
@@ -346,6 +417,20 @@ actor_gateway_runtime_t::actor_disconnected (std::string actor_id) const
 {
   const auto found = _state->actors_by_id.find (actor_id);
   return found != _state->actors_by_id.end () && found->second.disconnected;
+}
+
+void
+actor_gateway_runtime_t::on_join_spot (
+  actor_gateway_state_t::join_spot_dispatcher_t dispatcher)
+{
+  _state->join_spot_dispatcher = std::move (dispatcher);
+}
+
+void
+actor_gateway_runtime_t::on_join_entry_spot (
+  actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher)
+{
+  _state->join_entry_spot_dispatcher = std::move (dispatcher);
 }
 
 } // namespace zlink::framework::detail

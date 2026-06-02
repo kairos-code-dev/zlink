@@ -2,6 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/configuration/configuration.hpp>
+#include <zlink/framework/contracts/configuration/framework_options.hpp>
 #include <zlink/framework/contracts/configuration/logging.hpp>
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
@@ -11,6 +12,7 @@
 
 #include <functional>
 #include <memory>
+#include <utility>
 
 namespace zlink::framework
 {
@@ -41,6 +43,19 @@ public:
 
   app_t &use_zlink (std::function<void (zlink_builder_t &)> configure);
   app_t &add_module (module_t &module);
+  app_t &add_zlink_framework (
+    std::function<void (zlink_framework_options_t &)> configure);
+  template<typename TModule, typename... TArgs>
+    requires framework_module_contract_t<TModule>
+  app_t &add_zlink_framework (TArgs &&...args)
+  {
+    TModule module (std::forward<TArgs> (args)...);
+    module.configure_services (services ());
+    module.configure_zlink (_zlink_builder ());
+    module.configure_handlers (handlers ());
+    module.configure_monitoring (monitoring ());
+    return *this;
+  }
   app_t &add_hosted_service (std::unique_ptr<hosted_service_t> service);
 
   int run (int argc, char **argv);
@@ -49,6 +64,9 @@ public:
   void request_stop () noexcept;
 
 private:
+  zlink_builder_t &_zlink_builder () noexcept;
+  serializer_registry_t &_serializers () noexcept;
+
   std::unique_ptr<detail::app_state_t> _state;
 };
 

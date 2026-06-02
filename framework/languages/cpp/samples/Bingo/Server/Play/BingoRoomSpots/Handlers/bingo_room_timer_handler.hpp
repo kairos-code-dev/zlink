@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../bingo_room_handlers.hpp"
+#include "../bingo_room.hpp"
 
 namespace zlink::samples::bingo
 {

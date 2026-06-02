@@ -79,9 +79,9 @@ public:
   using raw_handler_t =
     std::function<result_t<void> (const payload_view_t &)>;
   using invoker_t =
-    std::function<result_t<zlink::message_t> (service_provider_t &,
-                                              serializer_registry_t &,
-                                              const zlink::message_t &)>;
+    std::function<task_t<zlink::message_t> (service_provider_t &,
+                                            serializer_registry_t &,
+                                            const zlink::message_t &)>;
   using failure_observer_t =
     std::function<void (const handler_failure_event_t &)>;
 
@@ -112,15 +112,17 @@ public:
         std::type_index (typeid (TRequest)) },
       [method](service_provider_t &services,
                serializer_registry_t &serializers,
-               const zlink::message_t &message) -> result_t<zlink::message_t> {
+               const zlink::message_t &message) -> task_t<zlink::message_t> {
         try {
           auto &owner = services.get_required<TOwner> ();
           auto request = serializers.get<TRequest> ().deserialize (message);
           auto reply = (owner.*method) (request);
-          return result_t<zlink::message_t>::success (
-            serializers.get<TReply> ().serialize (reply));
+          return task_t<zlink::message_t> (
+            result_t<zlink::message_t>::success (
+              serializers.get<TReply> ().serialize (reply)));
         } catch (...) {
-          return detail::current_exception_to_message_result ();
+          return task_t<zlink::message_t> (
+            detail::current_exception_to_message_result ());
         }
       });
   }
@@ -144,15 +146,15 @@ public:
         std::type_index (typeid (TRequest)) },
       [method](service_provider_t &services,
                serializer_registry_t &serializers,
-               const zlink::message_t &message) -> result_t<zlink::message_t> {
+               const zlink::message_t &message) -> task_t<zlink::message_t> {
         try {
           auto &owner = services.get_required<TOwner> ();
           auto request = serializers.get<TRequest> ().deserialize (message);
-          auto reply = (owner.*method) (request).result ().value ();
-          return result_t<zlink::message_t>::success (
+          auto reply = co_await (owner.*method) (request);
+          co_return result_t<zlink::message_t>::success (
             serializers.get<TReply> ().serialize (reply));
         } catch (...) {
-          return detail::current_exception_to_message_result ();
+          co_return detail::current_exception_to_message_result ();
         }
       });
   }
@@ -264,6 +266,20 @@ public:
                                      const zlink::message_t &message) const;
 
 private:
+  task_t<zlink::message_t> invoke_async (
+    std::string_view channel_name,
+    std::string_view packet_name,
+    service_provider_t &services,
+    serializer_registry_t &serializers,
+    const zlink::message_t &message) const;
+  task_t<zlink::message_t> invoke_async (
+    std::string_view channel_name,
+    std::string_view topic,
+    std::string_view packet_name,
+    service_provider_t &services,
+    serializer_registry_t &serializers,
+    const zlink::message_t &message) const;
+
   template<typename TOwner, typename TPayload>
   handler_registry_t &add_void_member_handler (
     std::string channel_name,
@@ -284,14 +300,16 @@ private:
         std::type_index (typeid (TPayload)) },
       [method](service_provider_t &services,
                serializer_registry_t &serializers,
-               const zlink::message_t &message) -> result_t<zlink::message_t> {
+               const zlink::message_t &message) -> task_t<zlink::message_t> {
         try {
           auto &owner = services.get_required<TOwner> ();
           auto payload = serializers.get<TPayload> ().deserialize (message);
           (owner.*method) (payload);
-          return result_t<zlink::message_t>::success (zlink::message_t {});
+          return task_t<zlink::message_t> (
+            result_t<zlink::message_t>::success (zlink::message_t {}));
         } catch (...) {
-          return detail::current_exception_to_message_result ();
+          return task_t<zlink::message_t> (
+            detail::current_exception_to_message_result ());
         }
       });
   }
@@ -316,14 +334,14 @@ private:
         std::type_index (typeid (TPayload)) },
       [method](service_provider_t &services,
                serializer_registry_t &serializers,
-               const zlink::message_t &message) -> result_t<zlink::message_t> {
+               const zlink::message_t &message) -> task_t<zlink::message_t> {
         try {
           auto &owner = services.get_required<TOwner> ();
           auto payload = serializers.get<TPayload> ().deserialize (message);
-          (owner.*method) (payload).result ().value ();
-          return result_t<zlink::message_t>::success (zlink::message_t {});
+          co_await (owner.*method) (payload);
+          co_return result_t<zlink::message_t>::success (zlink::message_t {});
         } catch (...) {
-          return detail::current_exception_to_message_result ();
+          co_return detail::current_exception_to_message_result ();
         }
       });
   }

@@ -2,13 +2,17 @@
 
 #include "runtime/connector_runtime.hpp"
 
+#include "runtime/heartbeat_monitor.hpp"
 #include "runtime/protocol/compression/lz4_compression_codec.hpp"
 #include "runtime/protocol/framing/frame_codec.hpp"
 #include "runtime/protocol/framing.hpp"
 #include "runtime/protocol/header_codec.hpp"
 #include "runtime/transport/stream_connection.hpp"
 
+#include <algorithm>
+#include <chrono>
 #include <mutex>
+#include <thread>
 
 namespace zlink::stream_connector::detail
 {
@@ -82,6 +86,46 @@ has_flag (header_flags_t flags, header_flags_t flag) noexcept
           static_cast<std::uint8_t> (flag)) != 0;
 }
 
+using steady_clock_t = std::chrono::steady_clock;
+
+result_t<std::vector<std::uint8_t>>
+read_exact_until (connector_state_t &state,
+                  std::size_t size,
+                  steady_clock_t::time_point deadline)
+{
+  std::vector<std::uint8_t> bytes (size);
+  std::size_t offset = 0;
+  while (offset < size) {
+    if (steady_clock_t::now () >= deadline) {
+      return result_t<std::vector<std::uint8_t>>::failure (
+        error_code_t::request_timeout,
+        "stream connector request timed out");
+    }
+    boost::system::error_code error;
+    const auto available = state.socket ? state.socket->available (error) : 0;
+    if (error) {
+      return result_t<std::vector<std::uint8_t>>::failure (
+        error_code_t::disconnected,
+        error.message ());
+    }
+    if (available == 0) {
+      std::this_thread::sleep_for (std::chrono::milliseconds (1));
+      continue;
+    }
+    const auto to_read =
+      std::min<std::size_t> (available, bytes.size () - offset);
+    const auto read = state.socket->read_some (
+      boost::asio::buffer (bytes.data () + offset, to_read), error);
+    if (error) {
+      return result_t<std::vector<std::uint8_t>>::failure (
+        error_code_t::disconnected,
+        error.message ());
+    }
+    offset += read;
+  }
+  return result_t<std::vector<std::uint8_t>>::success (std::move (bytes));
+}
+
 result_t<void>
 write_packet_frame (connector_state_t &state,
                     message_kind_t kind,
@@ -124,9 +168,17 @@ write_packet_frame (connector_state_t &state,
 }
 
 result_t<packet_t>
-read_packet_frame (connector_state_t &state)
+read_packet_frame (connector_state_t &state,
+                   steady_clock_t::time_point deadline)
 {
-  auto prefix = read_exact (state, 6);
+  auto prefix_result = read_exact_until (state, 6, deadline);
+  if (!prefix_result) {
+    return result_t<packet_t>::failure (
+      prefix_result.error_code (),
+      prefix_result.error () ? prefix_result.error ()->message
+                             : "stream connector read failed");
+  }
+  auto prefix = std::move (prefix_result.value ());
   const auto header_size =
     static_cast<std::size_t> ((prefix[0] << 8) | prefix[1]);
   const auto payload_size =
@@ -134,16 +186,28 @@ read_packet_frame (connector_state_t &state)
     (static_cast<std::size_t> (prefix[3]) << 16) |
     (static_cast<std::size_t> (prefix[4]) << 8) |
     static_cast<std::size_t> (prefix[5]);
-  auto header_bytes = read_exact (state, header_size);
-  auto payload_bytes = read_exact (state, payload_size);
+  auto header_bytes = read_exact_until (state, header_size, deadline);
+  if (!header_bytes) {
+    return result_t<packet_t>::failure (
+      header_bytes.error_code (),
+      header_bytes.error () ? header_bytes.error ()->message
+                            : "stream connector header read failed");
+  }
+  auto payload_bytes = read_exact_until (state, payload_size, deadline);
+  if (!payload_bytes) {
+    return result_t<packet_t>::failure (
+      payload_bytes.error_code (),
+      payload_bytes.error () ? payload_bytes.error ()->message
+                             : "stream connector payload read failed");
+  }
   header_codec_t header_codec;
-  auto decoded = header_codec.decode (header_bytes);
+  auto decoded = header_codec.decode (header_bytes.value ());
   if (!decoded) {
     return result_t<packet_t>::failure (
       decoded.error_code (), decoded.error ()->message);
   }
   auto header = decoded.value ();
-  auto payload = message_from_bytes (payload_bytes);
+  auto payload = message_from_bytes (payload_bytes.value ());
   const bool compressed =
     has_flag (header.flags, header_flags_t::payload_compressed);
   if (compressed) {
@@ -170,6 +234,29 @@ read_packet_frame (connector_state_t &state)
                header.codec,
                compressed,
                payload });
+}
+
+result_t<void>
+send_due_heartbeat (connector_state_t &state)
+{
+  if (!is_transport_connected (state)) {
+    return result_t<void>::success ();
+  }
+  const auto now = steady_clock_t::now ();
+  heartbeat_monitor_t monitor (state.options.heartbeat);
+  if (!monitor.due (state.last_heartbeat_sent, now)) {
+    return result_t<void>::success ();
+  }
+  packet_t heartbeat;
+  heartbeat.name = "$zlink.heartbeat.ping";
+  heartbeat.codec = codec_t::raw;
+  heartbeat.payload = zlink::message_t::from (std::string {});
+  auto written =
+    write_packet_frame (state, message_kind_t::control, heartbeat, std::nullopt);
+  if (written) {
+    state.last_heartbeat_sent = now;
+  }
+  return written;
 }
 
 } // namespace
@@ -201,7 +288,6 @@ submit_request (std::shared_ptr<connector_state_t> state,
                 packet_t packet,
                 std::chrono::milliseconds timeout)
 {
-  (void) timeout;
   std::lock_guard<std::mutex> lock (state->transport_mutex);
   if (!is_transport_connected (*state)) {
     return result_t<zlink::message_t>::failure (
@@ -227,8 +313,9 @@ submit_request (std::shared_ptr<connector_state_t> state,
     return result_t<zlink::message_t>::failure (
       written.error_code (), written.error ()->message);
   }
+  const auto deadline = steady_clock_t::now () + timeout;
   for (;;) {
-    auto received = read_packet_frame (*state);
+    auto received = read_packet_frame (*state, deadline);
     if (!received) {
       state->pending_requests.erase (seq);
       return result_t<zlink::message_t>::failure (
@@ -252,6 +339,12 @@ result_t<void>
 dispatch_pending (std::shared_ptr<connector_state_t> state)
 {
   std::lock_guard<std::mutex> lock (state->transport_mutex);
+  if (is_transport_connected (*state)) {
+    if (auto heartbeat = send_due_heartbeat (*state); !heartbeat) {
+      return heartbeat;
+    }
+    drain_available_pushes (*state);
+  }
   while (!state->dispatch_queue.empty ()) {
     auto packet = std::move (state->dispatch_queue.front ());
     state->dispatch_queue.pop_front ();

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../Play/Handlers/bingo_room_directory.hpp"
+#include "../../../Shared/Configuration/sample_names.hpp"
+#include "../../../Shared/Contracts/messages.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -10,28 +11,40 @@
 namespace zlink::samples::bingo
 {
 
+using zlink::framework::task_t;
+
 class match_bingo_api_handler_t
 {
 public:
+  using request_type = match_bingo_api_req_t;
+  using reply_type = match_bingo_api_res_t;
+  using dependency_types =
+    zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
+  static constexpr const char *topic_name = "MatchBingo";
+
   explicit match_bingo_api_handler_t (
-    bingo_room_directory_t &rooms,
+    zlink::framework::channel_client_t &client,
     zlink::framework::logger_t<> logger = {})
-    : _rooms (rooms), _logger (std::move (logger))
+    : _client (client), _logger (std::move (logger))
   {
   }
 
-  match_bingo_api_res_t handle (const match_bingo_api_req_t &request)
+  task_t<match_bingo_api_res_t> handle (const match_bingo_api_req_t &request)
   {
-    const auto room_id = _rooms.allocate (request.mode);
+    auto allocated = co_await _client
+      .request<allocate_bingo_room_res_t> (
+        sample_names_t::play_channel,
+        allocate_bingo_room_req_t { request.mode })
+      .submit ();
     _logger.info ("match bingo room",
                   { { "actor_id", request.actor_id },
-                    { "room_id", room_id },
+                    { "room_id", allocated.room_id },
                     { "mode", request.mode } });
-    return { room_id };
+    co_return match_bingo_api_res_t { allocated.room_id };
   }
 
 private:
-  bingo_room_directory_t &_rooms;
+  zlink::framework::channel_client_t &_client;
   zlink::framework::logger_t<> _logger;
 };
 

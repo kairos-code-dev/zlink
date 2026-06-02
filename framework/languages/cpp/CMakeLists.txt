@@ -76,6 +76,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/codecs/serializer.cpp
   framework/src/runtime/diagnostics/logging.cpp
   framework/src/runtime/diagnostics/monitoring_runtime.cpp
+  framework/src/runtime/dispatch/coroutine_executor.cpp
   framework/src/runtime/dispatch/offload_executor.cpp
   framework/src/runtime/execution/serial_execution_queue.cpp
   framework/src/runtime/handlers/handler_registry.cpp
@@ -102,6 +103,12 @@ target_include_directories(zlink_framework PUBLIC
 target_include_directories(zlink_framework PRIVATE
   ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 target_link_libraries(zlink_framework PUBLIC zlink::cpp)
+find_package(Boost REQUIRED)
+if(Boost_INCLUDE_DIRS)
+  target_include_directories(zlink_framework PRIVATE ${Boost_INCLUDE_DIRS})
+elseif(Boost_INCLUDE_DIR)
+  target_include_directories(zlink_framework PRIVATE ${Boost_INCLUDE_DIR})
+endif()
 find_package(nlohmann_json REQUIRED)
 target_include_directories(zlink_framework PUBLIC
   $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/codecs/zlink-codec-json/include>)
@@ -286,6 +293,15 @@ if(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME AND EXISTS "${ZLINK_FRAMEWORK_CPP_NATIVE_R
   if(WIN32)
     install(FILES "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME}"
       DESTINATION ${CMAKE_INSTALL_BINDIR})
+  elseif(UNIX AND NOT APPLE)
+    get_filename_component(
+      ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME_DIR
+      "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME}"
+      DIRECTORY)
+    file(GLOB ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME_FILES
+      "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME_DIR}/libzlink.so*")
+    install(FILES ${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME_FILES}
+      DESTINATION ${CMAKE_INSTALL_LIBDIR})
   else()
     install(FILES "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME}"
       DESTINATION ${CMAKE_INSTALL_LIBDIR})
@@ -500,6 +516,15 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_extensions PROPERTIES
     LABELS "framework-extension"
     TIMEOUT 30)
+  add_test(NAME test_cpp_framework_install_consumer
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DZLINK_FRAMEWORK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+      -DZLINK_FRAMEWORK_CPP_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/package-consumer-install
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/package/install_consumer.cmake)
+  set_tests_properties(test_cpp_framework_install_consumer PROPERTIES
+    LABELS "framework-package;framework-regression;connector-package"
+    TIMEOUT 120)
   add_zlink_connector_test(
     test_cpp_stream_connector
     tests/unit/test_cpp_stream_connector.cpp
@@ -555,7 +580,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     samples/Bingo/Client/main.cpp
     "framework-sample-bingo;framework-sample-client"
     zlink::framework
-    zlink::stream_connector)
+    zlink::stream_connector
+    zlink::stream_connector_codecs)
 
   add_zlink_framework_sample(
     sample_cpp_framework_tictactoe_registry
@@ -586,7 +612,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     samples/TicTacToe/Client/main.cpp
     "framework-sample-tictactoe;framework-sample-client"
     zlink::framework
-    zlink::stream_connector)
+    zlink::stream_connector
+    zlink::stream_connector_codecs)
 
   set_tests_properties(
     sample_smoke_sample_cpp_framework_bingo_client
@@ -596,4 +623,36 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     sample_smoke_sample_cpp_framework_tictactoe_client
     PROPERTIES
       LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-smoke;framework-sample-client-e2e")
+
+  add_test(
+    NAME sample_e2e_log_sample_cpp_framework_bingo_client
+    COMMAND ${CMAKE_COMMAND}
+      -D SAMPLE_EXECUTABLE=$<TARGET_FILE:sample_cpp_framework_bingo_client>
+      -D SAMPLE_LOG=${CMAKE_CURRENT_BINARY_DIR}/sample-e2e-logs/bingo-server.log
+      -D "EXPECTED_CONTAINS=bind |recv AuthenticateReq|recv MatchBingoReq|recv StartBingoGameReq|recv LeaveRoomReq|reply AuthenticateReq|reply MatchBingoReq|push PlayerJoinedNotify|push BingoGameStartedNotify|push BingoNumberDrawnNotify|push BingoGameEndedNotify"
+      -D MIN_RECV=10
+      -D MIN_REPLY=9
+      -D MIN_PUSH=8
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/samples/verify_sample_client_log.cmake)
+  set_tests_properties(
+    sample_e2e_log_sample_cpp_framework_bingo_client
+    PROPERTIES
+      LABELS "framework-sample-bingo;framework-sample-client;framework-sample-client-e2e;framework-sample-log;connector-e2e"
+      TIMEOUT 30)
+
+  add_test(
+    NAME sample_e2e_log_sample_cpp_framework_tictactoe_client
+    COMMAND ${CMAKE_COMMAND}
+      -D SAMPLE_EXECUTABLE=$<TARGET_FILE:sample_cpp_framework_tictactoe_client>
+      -D SAMPLE_LOG=${CMAKE_CURRENT_BINARY_DIR}/sample-e2e-logs/tictactoe-server.log
+      -D "EXPECTED_CONTAINS=bind |recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply AuthenticateReq|reply PlaceMarkReq|push TurnChangedNotify"
+      -D MIN_RECV=9
+      -D MIN_REPLY=9
+      -D MIN_PUSH=9
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/samples/verify_sample_client_log.cmake)
+  set_tests_properties(
+    sample_e2e_log_sample_cpp_framework_tictactoe_client
+    PROPERTIES
+      LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-client-e2e;framework-sample-log;connector-e2e"
+      TIMEOUT 30)
 endif()

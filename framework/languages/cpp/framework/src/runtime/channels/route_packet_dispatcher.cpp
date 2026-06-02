@@ -96,7 +96,8 @@ route_packet_dispatcher_t::dispatch_send (
                                           *_services,
                                           *_serializers,
                                           body.value (),
-                                          context);
+                                          context)
+                      .result ();
   if (!dispatched) {
     return result_t<std::optional<route_dispatch_reply_t>>::failure (
       dispatched.error_kind (),
@@ -163,7 +164,8 @@ route_packet_dispatcher_t::dispatch_request (
                                         *_services,
                                         *_serializers,
                                         body.value (),
-                                        context);
+                                        context)
+                .result ();
   if (!reply) {
     framework_exception_t error (
       reply.error_kind (),

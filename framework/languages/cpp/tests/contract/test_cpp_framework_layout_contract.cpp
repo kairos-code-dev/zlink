@@ -24,6 +24,17 @@ require_exists (const std::filesystem::path &path)
 }
 
 bool
+require_absent (const std::filesystem::path &path,
+                const std::string &reason)
+{
+  if (!std::filesystem::exists (path)) {
+    return true;
+  }
+  std::cerr << "unexpected path: " << path << " (" << reason << ")\n";
+  return false;
+}
+
+bool
 public_headers_do_not_include_runtime (const std::filesystem::path &root)
 {
   bool ok = true;
@@ -58,18 +69,51 @@ file_contains (const std::filesystem::path &path, const std::string &needle)
 }
 
 bool
+contract_headers_have_compile_coverage (const std::filesystem::path &root,
+                                        const std::filesystem::path &include_dir,
+                                        const std::string &include_prefix)
+{
+  const auto coverage_file =
+    root / "tests/contract/test_cpp_framework_contract_headers.cpp";
+  std::ifstream coverage_input (coverage_file);
+  std::ostringstream coverage_buffer;
+  coverage_buffer << coverage_input.rdbuf ();
+  const auto coverage_text = coverage_buffer.str ();
+
+  bool ok = true;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator (root / include_dir)) {
+    if (!entry.is_regular_file () || entry.path ().extension () != ".hpp") {
+      continue;
+    }
+    const auto relative = std::filesystem::relative (
+      entry.path (), root / include_dir);
+    const auto include = std::string ("#include <") + include_prefix +
+                         relative.generic_string () + ">";
+    if (coverage_text.find (include) == std::string::npos) {
+      std::cerr << "public contract header lacks direct compile coverage: "
+                << entry.path () << '\n';
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+bool
 client_sample_uses_connector (const std::filesystem::path &root,
                               const std::filesystem::path &client_file)
 {
   const auto path = root / client_file;
   bool ok = true;
   ok &= file_contains (path, "zlink/stream_connector.hpp");
+  ok &= file_contains (path, "zlink/stream_connector/codecs/auto_codec.hpp");
   ok &= file_contains (path, "connector_factory_t::create");
   ok &= file_contains (path, ".connect ()");
-  ok &= file_contains (path, ".request<");
+  ok &= file_contains (path, "zlink::stream_connector::codecs::request<");
+  ok &= file_contains (path, "zlink::stream_connector::codecs::on<");
   ok &= file_contains (path, ".submit ()");
   if (!ok) {
-    std::cerr << "client sample does not show connector connect/request/submit: "
+    std::cerr << "client sample does not show connector codec connect/request/submit: "
               << path << '\n';
   }
   return ok;
@@ -320,15 +364,17 @@ main ()
   ok &= require_exists (
     root /
     "samples/Bingo/Server/Play/BingoRoomSpots/Handlers/bingo_room_timer_handler.hpp");
-  ok &= require_exists (
-    root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_handlers.hpp");
+  ok &= require_absent (
+    root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_handlers.hpp",
+    "sample handler aggregate headers hide the real .NET-aligned Handlers owner");
   ok &= require_exists (
     root / "samples/Bingo/Server/Play/EntrySpot/bingo_entry_spot.hpp");
   ok &= require_exists (
     root /
     "samples/Bingo/Server/Play/EntrySpot/Handlers/match_bingo_actor_handler.hpp");
-  ok &= require_exists (
-    root / "samples/Bingo/Server/Play/EntrySpot/match_bingo_actor_handler.hpp");
+  ok &= require_absent (
+    root / "samples/Bingo/Server/Play/EntrySpot/match_bingo_actor_handler.hpp",
+    "sample handler wrappers hide the real .NET-aligned Handlers owner");
   ok &= require_exists (
     root / "samples/Bingo/Server/Play/Handlers/allocate_bingo_room_handler.hpp");
   ok &= require_exists (
@@ -343,6 +389,11 @@ main ()
     root / "samples/Bingo/Server/Session/main.cpp");
   ok &= require_exists (
     root / "samples/Bingo/Server/Session/session_server_host_factory.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Session/Sessions/bingo_session.hpp");
+  ok &= require_exists (
+    root /
+    "samples/Bingo/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp");
   ok &= require_exists (
     root / "samples/Bingo/Client/bingo_notification_inbox.hpp");
   ok &= require_exists (
@@ -366,10 +417,11 @@ main ()
   ok &= require_exists (
     root / "samples/TicTacToe/Server/Api/Handlers/create_match_handler.hpp");
   ok &= require_exists (
-    root / "samples/TicTacToe/Server/Play/EntrySpot/join_match_handler.hpp");
-  ok &= require_exists (
     root /
     "samples/TicTacToe/Server/Play/EntrySpot/Handlers/join_match_handler.hpp");
+  ok &= require_absent (
+    root / "samples/TicTacToe/Server/Play/EntrySpot/join_match_handler.hpp",
+    "sample handler wrappers hide the real .NET-aligned Handlers owner");
   ok &= require_exists (
     root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_match_room.hpp");
   ok &= require_exists (
@@ -386,8 +438,9 @@ main ()
   ok &= require_exists (
     root /
     "samples/TicTacToe/Server/Play/GameSpots/Handlers/place_mark_handler.hpp");
-  ok &= require_exists (
-    root / "samples/TicTacToe/Server/Play/GameSpots/place_mark_handler.hpp");
+  ok &= require_absent (
+    root / "samples/TicTacToe/Server/Play/GameSpots/place_mark_handler.hpp",
+    "sample handler wrappers hide the real .NET-aligned Handlers owner");
   ok &= require_exists (
     root / "samples/TicTacToe/Server/Play/Handlers/create_match_room_handler.hpp");
   ok &= require_exists (
@@ -398,6 +451,15 @@ main ()
     root / "samples/TicTacToe/Server/Registry/registry_host_factory.hpp");
   ok &= require_exists (
     root / "samples/TicTacToe/Server/Session/session_server_host_factory.hpp");
+  ok &= require_exists (
+    root /
+    "samples/TicTacToe/Server/Session/Sessions/session_relay_session.hpp");
+  ok &= require_exists (
+    root /
+    "samples/TicTacToe/Server/Session/Sessions/Handlers/authenticate_session_packet_handler.hpp");
+  ok &= require_exists (
+    root /
+    "samples/TicTacToe/Server/Session/Sessions/Handlers/create_match_session_packet_handler.hpp");
   ok &= require_exists (
     root / "samples/TicTacToe/Client/session_actor_notification_inbox.hpp");
   ok &= require_exists (
@@ -428,6 +490,26 @@ main ()
       "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
     "zlink/stream_connector",
     "Unreal connector must not wrap the general C++ connector runtime");
+  ok &= file_does_not_contain (
+    root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+    "zlink/stream_connector",
+    "Unreal public API must not include the general C++ connector surface");
+  ok &= file_does_not_contain (
+    root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+    "task_t",
+    "Unreal public API must not expose connector coroutine task_t");
+  ok &= file_does_not_contain (
+    root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+    "<coroutine>",
+    "Unreal public API must not include coroutine support");
+  ok &= file_does_not_contain (
+    root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+    "co_await",
+    "Unreal public API must not expose coroutine await syntax");
+  ok &= file_does_not_contain (
+    root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+    "submit",
+    "Unreal public API must use delegates instead of connector submit calls");
   ok &= file_contains (
     root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
     "\"Sockets\"");
@@ -447,6 +529,14 @@ main ()
     root / "framework/include");
   ok &= public_headers_do_not_include_runtime (
     root / "connector/include");
+  ok &= contract_headers_have_compile_coverage (
+    root,
+    "framework/include/zlink/framework/contracts",
+    "zlink/framework/contracts/");
+  ok &= contract_headers_have_compile_coverage (
+    root,
+    "connector/include/zlink/stream_connector/contracts",
+    "zlink/stream_connector/contracts/");
 
   return ok ? 0 : 1;
 }

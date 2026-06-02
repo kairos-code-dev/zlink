@@ -4,6 +4,8 @@
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <string>
 
 namespace
@@ -18,6 +20,42 @@ std::string
 to_stream_payload (const typed_session_push_t &message)
 {
   return message.body;
+}
+
+struct join_request_t
+{
+  std::string room_id;
+};
+
+struct join_reply_t
+{
+  std::string room_id;
+  std::string mark;
+};
+
+void
+to_json (nlohmann::json &json, const join_request_t &value)
+{
+  json = { { "roomId", value.room_id } };
+}
+
+void
+from_json (const nlohmann::json &json, join_request_t &value)
+{
+  value.room_id = json.value ("roomId", "");
+}
+
+void
+to_json (nlohmann::json &json, const join_reply_t &value)
+{
+  json = { { "roomId", value.room_id }, { "mark", value.mark } };
+}
+
+void
+from_json (const nlohmann::json &json, join_reply_t &value)
+{
+  value.room_id = json.value ("roomId", "");
+  value.mark = json.value ("mark", "");
 }
 
 } // namespace
@@ -132,6 +170,65 @@ main ()
   if (!rebound || !gateway.actor_bound ("bob")) {
     return 11;
   }
+
+  bool join_spot_seen = false;
+  gateway.on_join_spot (
+    [&](const zlink::framework::actor_ref_t &actor,
+        zlink::framework::spot_rid_t spot_rid,
+        const zlink::message_t &payload) {
+      const auto request = payload.parse_json<join_request_t> ();
+      join_spot_seen = actor.actor_id () == "bob" &&
+                       spot_rid.value () == "match-1" &&
+                       request.room_id == "match-1";
+      return zlink::framework::result_t<
+        zlink::framework::detail::actor_join_reply_t>::success (
+        zlink::framework::detail::actor_join_reply_t {
+          0,
+          zlink::framework::actor_ref_t (
+            zlink::framework::node_rid_t::from_string ("spot-node"),
+            "player",
+            "bob",
+            8),
+          zlink::message_t::from_json (join_reply_t { "match-1", "O" }) });
+    });
+  auto actor_context = rebound.value ().context ();
+  const auto join_spot = actor_context
+                           .join_spot<join_request_t, join_reply_t> (
+                             zlink::framework::spot_rid_t::from_string (
+                               "match-1"),
+                             join_request_t { "match-1" })
+                           .submit ()
+                           .result ();
+  if (!join_spot || !join_spot_seen ||
+      join_spot.value ().result_code != 0 ||
+      join_spot.value ().actor.generation () != 8 ||
+      join_spot.value ().reply.mark != "O") {
+    return 14;
+  }
+
+  bool entry_join_seen = false;
+  gateway.on_join_entry_spot (
+    [&](const zlink::framework::actor_ref_t &actor,
+        zlink::framework::node_rid_t node_rid) {
+      entry_join_seen = actor.actor_id () == "bob" &&
+                        node_rid.value () == "entry-node";
+      return zlink::framework::result_t<zlink::framework::actor_ref_t>::success (
+        zlink::framework::actor_ref_t (
+          zlink::framework::node_rid_t::from_string ("entry-node"),
+          "player",
+          "bob",
+          9));
+    });
+  const auto entry_join = actor_context
+                            .join_entry_spot (
+                              zlink::framework::node_rid_t::from_string (
+                                "entry-node"))
+                            .submit ()
+                            .result ();
+  if (!entry_join || !entry_join_seen || entry_join.value ().generation () != 9) {
+    return 15;
+  }
+
   manager.unbind_session ("bob");
   if (gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
     return 12;

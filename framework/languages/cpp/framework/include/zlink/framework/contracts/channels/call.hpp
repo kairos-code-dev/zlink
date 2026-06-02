@@ -67,21 +67,4 @@ public:
   using base_t::timeout;
 };
 
-template<typename TActor>
-class join_spot_call_t
-  : private detail::call_facade_t<join_spot_call_t<TActor>, TActor>
-{
-private:
-  using base_t = detail::call_facade_t<join_spot_call_t<TActor>, TActor>;
-
-public:
-  explicit join_spot_call_t (result_t<TActor> result)
-    : base_t (std::move (result))
-  {
-  }
-
-  using base_t::submit;
-  using base_t::timeout;
-};
-
 } // namespace zlink::framework

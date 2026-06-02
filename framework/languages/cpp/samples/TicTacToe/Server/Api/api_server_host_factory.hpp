@@ -9,12 +9,25 @@ namespace zlink::samples::tictactoe
 class api_server_host_factory_t
 {
 public:
-  static zlink::framework::zlink_builder_t build (
+  static zlink::framework::app_t build (
     const sample_topology_t &topology)
   {
-    zlink::framework::zlink_builder_t zlink;
-    configure_api_host (zlink, topology);
-    return zlink;
+    auto app = zlink::framework::app_t::create ();
+    add_sample_auto_stop (app);
+    app.add_zlink_framework (
+      [&](zlink::framework::zlink_framework_options_t &options) {
+        options.services ().add_singleton<create_match_room_handler_t> ();
+        options.handlers ()
+          .add<authenticate_actor_handler_t> ("api")
+          .add<create_match_handler_t> ("api");
+        options.codecs ().add_json ();
+        options.client_server_channel (sample_names_t::api_channel)
+          .server (topology.api_endpoint)
+          .handler_group ("api");
+        options.client_server_channel (sample_names_t::play_channel)
+          .client (topology.play_endpoint);
+      });
+    return app;
   }
 };
 

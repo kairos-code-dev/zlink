@@ -46,6 +46,61 @@ private:
   std::uint64_t _generation = 0;
 };
 
+template<typename TReply>
+struct actor_join_result_t
+{
+  int result_code = 0;
+  actor_ref_t actor;
+  TReply reply;
+};
+
+namespace detail
+{
+struct actor_join_reply_t
+{
+  int result_code = 0;
+  actor_ref_t actor;
+  zlink::message_t reply;
+};
+} // namespace detail
+
+template<typename TReply>
+class actor_join_spot_call_t
+  : private detail::call_facade_t<actor_join_spot_call_t<TReply>,
+                                  actor_join_result_t<TReply>>
+{
+private:
+  using base_t =
+    detail::call_facade_t<actor_join_spot_call_t<TReply>,
+                          actor_join_result_t<TReply>>;
+
+public:
+  explicit actor_join_spot_call_t (result_t<actor_join_result_t<TReply>> result)
+    : base_t (std::move (result))
+  {
+  }
+
+  using base_t::submit;
+  using base_t::timeout;
+};
+
+class actor_join_entry_spot_call_t
+  : private detail::call_facade_t<actor_join_entry_spot_call_t, actor_ref_t>
+{
+private:
+  using base_t =
+    detail::call_facade_t<actor_join_entry_spot_call_t, actor_ref_t>;
+
+public:
+  explicit actor_join_entry_spot_call_t (result_t<actor_ref_t> result)
+    : base_t (std::move (result))
+  {
+  }
+
+  using base_t::submit;
+  using base_t::timeout;
+};
+
 class bound_session_t
 {
 public:
@@ -95,12 +150,52 @@ public:
   bool is_joined () const noexcept;
   bound_session_t bound_session () const;
 
+  template<typename TRequest, typename TReply>
+  actor_join_spot_call_t<TReply> join_spot (spot_rid_t spot_rid,
+                                            const TRequest &request)
+  {
+    try {
+      const auto erased =
+        join_spot_erased (std::move (spot_rid),
+                          zlink::message_t::from_json (request));
+      if (!erased) {
+        const auto *error = erased.error ();
+        return actor_join_spot_call_t<TReply> (
+          result_t<actor_join_result_t<TReply>>::failure (
+            erased.error_kind (),
+            error != nullptr ? error->what () : "actor join spot failed"));
+      }
+      const auto &reply = erased.value ();
+      return actor_join_spot_call_t<TReply> (
+        result_t<actor_join_result_t<TReply>>::success (
+          actor_join_result_t<TReply> {
+            reply.result_code,
+            reply.actor,
+            reply.reply.template parse_json<TReply> () }));
+    } catch (const framework_exception_t &error) {
+      return actor_join_spot_call_t<TReply> (
+        result_t<actor_join_result_t<TReply>>::failure (
+          error.kind (), error.what (), error.is_retriable ()));
+    } catch (...) {
+      return actor_join_spot_call_t<TReply> (
+        result_t<actor_join_result_t<TReply>>::failure (
+          framework_error_kind_t::payload_decode_failed,
+          "actor join spot reply decode failed"));
+    }
+  }
+
+  actor_join_entry_spot_call_t join_entry_spot (node_rid_t spot_node_rid);
+
 private:
   friend class session_actor_t;
   friend class session_actor_manager_t;
   explicit actor_context_t (
     std::shared_ptr<detail::actor_gateway_state_t> state,
     actor_ref_t actor_ref);
+
+  result_t<detail::actor_join_reply_t> join_spot_erased (
+    spot_rid_t spot_rid,
+    const zlink::message_t &request);
 
   std::shared_ptr<detail::actor_gateway_state_t> _state;
   actor_ref_t _actor_ref;

@@ -9,12 +9,17 @@ namespace zlink::samples::bingo
 class registry_host_factory_t
 {
 public:
-  static zlink::framework::zlink_builder_t build (
+  static zlink::framework::app_t build (
     const sample_topology_t &topology)
   {
-    zlink::framework::zlink_builder_t zlink;
-    configure_registry_host (zlink, topology);
-    return zlink;
+    auto app = zlink::framework::app_t::create ();
+    add_sample_auto_stop (app);
+    app.add_zlink_framework (
+      [&](zlink::framework::zlink_framework_options_t &options) {
+        options.registry (topology.registry_pub_endpoint,
+                          topology.registry_router_endpoint);
+      });
+    return app;
   }
 };
 

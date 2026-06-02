@@ -4,6 +4,7 @@
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/Contracts/Messaging/received.hpp>
 #include <zlink/Contracts/Service/operation_contracts.hpp>
+#include <zlink/codec/json.hpp>
 #include <zlink/stream_connector.hpp>
 
 #include <cstdint>
@@ -130,19 +131,62 @@ make_stream_frame (zlink::stream_connector::message_kind_t kind,
     std::string (frame.begin (), frame.end ()));
 }
 
+inline zlink::message_t
+make_stream_reply_frame (const stream_server_frame_t &request,
+                         zlink::message_t payload)
+{
+  return make_stream_frame (
+    zlink::stream_connector::message_kind_t::response,
+    request.request_seq,
+    "reply",
+    payload.to_string ());
+}
+
+inline zlink::message_t
+make_stream_push_frame (std::string packet_name, zlink::message_t payload)
+{
+  return make_stream_frame (
+    zlink::stream_connector::message_kind_t::send,
+    std::nullopt,
+    std::move (packet_name),
+    payload.to_string ());
+}
+
+inline void
+send_stream_frames (zlink::received_t &inbound,
+                    std::vector<zlink::message_t> frames)
+{
+  std::string bytes;
+  for (const auto &frame : frames) {
+    bytes += frame.to_string ();
+  }
+  inbound.send ().message (zlink::message_t::from (std::move (bytes))).submit ();
+}
+
 template<typename TReply>
 void
 send_stream_reply (zlink::received_t &inbound,
                    const stream_server_frame_t &request,
                    const TReply &reply)
 {
-  inbound.send ()
-    .message (make_stream_frame (
-      zlink::stream_connector::message_kind_t::response,
-      request.request_seq,
-      "reply",
-      to_stream_payload (reply)))
-    .submit ();
+  send_stream_frames (
+    inbound,
+    { make_stream_reply_frame (request, zlink::message_t::from_json (reply)) });
+}
+
+template<typename TReply, typename TNotify>
+void
+send_stream_reply_and_push (zlink::received_t &inbound,
+                            const stream_server_frame_t &request,
+                            const TReply &reply,
+                            std::string packet_name,
+                            const TNotify &notify)
+{
+  send_stream_frames (
+    inbound,
+    { make_stream_reply_frame (request, zlink::message_t::from_json (reply)),
+      make_stream_push_frame (std::move (packet_name),
+                              zlink::message_t::from_json (notify)) });
 }
 
 template<typename TNotify>
@@ -151,13 +195,10 @@ send_stream_push (zlink::received_t &inbound,
                   std::string packet_name,
                   const TNotify &notify)
 {
-  inbound.send ()
-    .message (make_stream_frame (
-      zlink::stream_connector::message_kind_t::send,
-      std::nullopt,
-      std::move (packet_name),
-      to_stream_payload (notify)))
-    .submit ();
+  send_stream_frames (
+    inbound,
+    { make_stream_push_frame (std::move (packet_name),
+                              zlink::message_t::from_json (notify)) });
 }
 
 } // namespace zlink::samples

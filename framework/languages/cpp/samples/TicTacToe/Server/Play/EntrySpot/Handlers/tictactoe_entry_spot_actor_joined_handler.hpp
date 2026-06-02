@@ -3,6 +3,8 @@
 
 #include "../tictactoe_entry_spot.hpp"
 
+#include <zlink/framework.hpp>
+
 #include <string>
 #include <utility>
 
@@ -12,9 +14,14 @@ namespace zlink::samples::tictactoe
 class tictactoe_entry_spot_actor_joined_handler_t
 {
 public:
-  void handle (entry_spot_t &spot, std::string actor_id) const
+  using spot_type = entry_spot_t;
+  using actor_type = player_actor_t;
+
+  void handle (entry_spot_t &spot,
+               const player_actor_t &actor,
+               const zlink::framework::spot_actor_change_result_t &) const
   {
-    spot.actor_ids.push_back (std::move (actor_id));
+    spot.actor_ids.push_back (actor.actor_id);
   }
 };
 

@@ -1,0 +1,592 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include <zlink/framework/contracts/channels/channel.hpp>
+#include <zlink/framework/contracts/codecs/serializer.hpp>
+#include <zlink/framework/contracts/configuration/services.hpp>
+#include <zlink/framework/contracts/configuration/zlink_builder.hpp>
+#include <zlink/framework/contracts/detail/message_name.hpp>
+#include <zlink/framework/contracts/dispatch/execution.hpp>
+#include <zlink/framework/contracts/eventing/events.hpp>
+#include <zlink/framework/contracts/handlers/handler_registry.hpp>
+#include <zlink/framework/contracts/registry/registry.hpp>
+
+#include <cstddef>
+#include <functional>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <typeindex>
+#include <utility>
+#include <vector>
+
+namespace zlink::framework
+{
+
+template<typename... T>
+struct dependency_list_t
+{
+};
+
+namespace detail
+{
+
+template<typename T>
+concept static_topic_name =
+  requires { { T::topic_name } -> std::convertible_to<const char *>; };
+
+template<typename T>
+std::string
+handler_topic_name ()
+{
+  if constexpr (static_topic_name<T>) {
+    return T::topic_name;
+  } else {
+    return message_name<typename T::request_type> ();
+  }
+}
+
+template<typename T>
+concept static_dependency_types =
+  requires { typename T::dependency_types; };
+
+template<typename T>
+struct handler_dependencies_t
+{
+  using type = dependency_list_t<>;
+};
+
+template<static_dependency_types T>
+struct handler_dependencies_t<T>
+{
+  using type = typename T::dependency_types;
+};
+
+template<typename THandler, typename TDependencies>
+struct injected_handler_registrar_t;
+
+template<typename THandler, typename... TDependencies>
+struct injected_handler_registrar_t<THandler,
+                                    dependency_list_t<TDependencies...>>
+{
+  static void add (service_collection_t &services)
+  {
+    if constexpr (sizeof...(TDependencies) == 0) {
+      services.add_singleton<THandler> ();
+    } else {
+      services.add_singleton<THandler, TDependencies...> ();
+    }
+  }
+};
+
+struct handler_group_options_state_t
+{
+  using installer_t = std::function<void (const std::string &)>;
+  using serializer_installer_t = std::function<void ()>;
+
+  std::map<std::string, std::vector<std::string>> channels_by_group;
+  std::map<std::string, std::vector<installer_t>> installers_by_group;
+  std::vector<serializer_installer_t> json_serializer_installers;
+  std::set<std::type_index> json_serializer_types;
+  bool json_enabled = false;
+
+  void add_channel (const std::string &group_name,
+                    const std::string &channel_name)
+  {
+    auto &channels = channels_by_group[group_name];
+    channels.push_back (channel_name);
+    auto found = installers_by_group.find (group_name);
+    if (found == installers_by_group.end ()) {
+      return;
+    }
+    for (const auto &installer : found->second) {
+      installer (channel_name);
+    }
+  }
+
+  void add_installer (std::string group_name, installer_t installer)
+  {
+    auto &installers = installers_by_group[group_name];
+    installers.push_back (installer);
+    auto found = channels_by_group.find (group_name);
+    if (found == channels_by_group.end ()) {
+      return;
+    }
+    for (const auto &channel : found->second) {
+      installer (channel);
+    }
+  }
+
+  void add_json_serializer_installer (serializer_installer_t installer)
+  {
+    json_serializer_installers.push_back (std::move (installer));
+    if (!json_enabled) {
+      return;
+    }
+    json_serializer_installers.back () ();
+  }
+};
+
+} // namespace detail
+
+class handler_options_builder_t
+{
+public:
+  handler_options_builder_t (
+    service_collection_t &services,
+    handler_registry_t &handlers,
+    serializer_registry_t &serializers,
+    std::shared_ptr<detail::handler_group_options_state_t> state)
+    : _services (&services),
+      _handlers (&handlers),
+      _serializers (&serializers),
+      _state (std::move (state))
+  {
+  }
+
+  template<typename THandler>
+  handler_options_builder_t &add (std::string group_name)
+  {
+    using request_type = typename THandler::request_type;
+    using reply_type = typename THandler::reply_type;
+
+    detail::injected_handler_registrar_t<
+      THandler,
+      typename detail::handler_dependencies_t<THandler>::type>::add (
+        *_services);
+
+    auto *handlers = _handlers;
+    auto *serializers = _serializers;
+    auto state = _state;
+    _state->add_json_serializer_installer ([serializers, state] {
+      if (state->json_serializer_types.emplace (
+            std::type_index (typeid (request_type))).second) {
+        serializers->template add_json<request_type> ();
+      }
+      if (state->json_serializer_types.emplace (
+            std::type_index (typeid (reply_type))).second) {
+        serializers->template add_json<reply_type> ();
+      }
+    });
+    _state->add_installer (
+      std::move (group_name),
+      [handlers](const std::string &channel_name) {
+        handlers->on_request<THandler, request_type, reply_type> (
+          channel_name,
+          detail::handler_topic_name<THandler> (),
+          &THandler::handle,
+          { .execution = handler_execution_t::offload });
+      });
+    return *this;
+  }
+
+private:
+  service_collection_t *_services;
+  handler_registry_t *_handlers;
+  serializer_registry_t *_serializers;
+  std::shared_ptr<detail::handler_group_options_state_t> _state;
+};
+
+class codec_options_builder_t
+{
+public:
+  explicit codec_options_builder_t (
+    std::shared_ptr<detail::handler_group_options_state_t> state)
+    : _state (std::move (state))
+  {
+  }
+
+  codec_options_builder_t &add_json ()
+  {
+    _state->json_enabled = true;
+    for (const auto &installer : _state->json_serializer_installers) {
+      installer ();
+    }
+    return *this;
+  }
+
+private:
+  std::shared_ptr<detail::handler_group_options_state_t> _state;
+};
+
+class discovery_options_builder_t
+{
+public:
+  explicit discovery_options_builder_t (zlink_builder_t &zlink)
+    : _zlink (&zlink)
+  {
+  }
+
+  discovery_options_builder_t &add (std::string registry_router_endpoint)
+  {
+    _zlink->discovery (
+      [&](discovery_builder_t &discovery) {
+        discovery.connect_registry (std::move (registry_router_endpoint));
+      });
+    return *this;
+  }
+
+private:
+  zlink_builder_t *_zlink;
+};
+
+class client_server_channel_builder_t
+{
+public:
+  client_server_channel_builder_t (
+    std::string channel_name,
+    zlink_builder_t &zlink,
+    std::shared_ptr<detail::handler_group_options_state_t> handler_groups)
+    : _channel_name (std::move (channel_name)),
+      _zlink (&zlink),
+      _handler_groups (std::move (handler_groups))
+  {
+  }
+
+  client_server_channel_builder_t &server (std::string endpoint)
+  {
+    _server_endpoint = std::move (endpoint);
+    apply_channel ();
+    return *this;
+  }
+
+  client_server_channel_builder_t &client ()
+  {
+    _client_enabled = true;
+    apply_channel ();
+    return *this;
+  }
+
+  client_server_channel_builder_t &client (std::string endpoint)
+  {
+    _client_enabled = true;
+    _client_endpoint = std::move (endpoint);
+    apply_channel ();
+    return *this;
+  }
+
+  client_server_channel_builder_t &handler_group (std::string group_name)
+  {
+    _handler_groups->add_channel (std::move (group_name), _channel_name);
+    return *this;
+  }
+
+private:
+  void apply_channel ()
+  {
+    const auto channel_name = _channel_name;
+    const auto server_endpoint = _server_endpoint;
+    const auto client_enabled = _client_enabled;
+    const auto client_endpoint = _client_endpoint;
+    _zlink->channel (
+      channel_name,
+      [server_endpoint, client_enabled, client_endpoint](
+        channel_builder_t &channel) {
+        if (!server_endpoint.empty ()) {
+          channel.enable_server (
+            [server_endpoint](capability_builder_t &server) {
+              server.bind (server_endpoint);
+            });
+        }
+        if (client_enabled) {
+          channel.enable_client (
+            [client_endpoint](capability_builder_t &client) {
+              if (!client_endpoint.empty ()) {
+                client.connect (client_endpoint);
+              }
+            });
+        }
+      });
+  }
+
+  std::string _channel_name;
+  zlink_builder_t *_zlink;
+  std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
+  std::string _server_endpoint;
+  std::string _client_endpoint;
+  bool _client_enabled = false;
+};
+
+class publisher_channel_builder_t
+{
+public:
+  publisher_channel_builder_t (std::string channel_name, zlink_builder_t &zlink)
+    : _channel_name (std::move (channel_name)), _zlink (&zlink)
+  {
+  }
+
+  publisher_channel_builder_t &bind (std::string endpoint)
+  {
+    const auto channel_name = _channel_name;
+    _zlink->channel (
+      channel_name,
+      [endpoint = std::move (endpoint)](channel_builder_t &channel) mutable {
+        channel.enable_publisher (
+          [endpoint = std::move (endpoint)](
+            capability_builder_t &publisher) mutable {
+            publisher.bind (std::move (endpoint));
+          });
+      });
+    return *this;
+  }
+
+private:
+  std::string _channel_name;
+  zlink_builder_t *_zlink;
+};
+
+class spot_node_options_builder_t
+{
+public:
+  spot_node_options_builder_t (std::string spot_node_name,
+                               zlink_builder_t &zlink)
+    : _spot_node_name (std::move (spot_node_name)), _zlink (&zlink)
+  {
+  }
+
+  spot_node_options_builder_t &bind (std::string endpoint)
+  {
+    _endpoint = std::move (endpoint);
+    apply ();
+    return *this;
+  }
+
+  spot_node_options_builder_t &use_discovery (std::string channel_name)
+  {
+    _discovery_channel = std::move (channel_name);
+    apply ();
+    return *this;
+  }
+
+  spot_node_options_builder_t &enable_actor_gateway ()
+  {
+    _actor_gateway = true;
+    apply ();
+    return *this;
+  }
+
+  template<typename TSpot>
+  spot_node_options_builder_t &add_spot (std::string spot_name)
+  {
+    _actions.push_back (
+      [spot_name = std::move (spot_name)](
+        spot_node_builder_t &spot_node) mutable {
+        spot_node.add_spot<TSpot> (std::move (spot_name));
+      });
+    apply ();
+    return *this;
+  }
+
+  template<typename TEntrySpot>
+  spot_node_options_builder_t &add_entry_spot ()
+  {
+    _actions.push_back ([](spot_node_builder_t &spot_node) {
+      spot_node.add_entry_spot<TEntrySpot> ();
+    });
+    apply ();
+    return *this;
+  }
+
+  template<typename TFactory>
+  spot_node_options_builder_t &add_actor_factory (std::string actor_type)
+  {
+    _actions.push_back (
+      [actor_type = std::move (actor_type)](
+        spot_node_builder_t &spot_node) mutable {
+        spot_node.add_actor_factory<TFactory> (std::move (actor_type));
+      });
+    apply ();
+    return *this;
+  }
+
+private:
+  void apply ()
+  {
+    const auto spot_node_name = _spot_node_name;
+    const auto endpoint = _endpoint;
+    const auto discovery_channel = _discovery_channel;
+    const auto actor_gateway = _actor_gateway;
+    const auto actions = _actions;
+    _zlink->spot_node (
+      spot_node_name,
+      [=](spot_node_builder_t &spot_node) {
+        if (!endpoint.empty ()) {
+          spot_node.bind (endpoint);
+        }
+        if (!discovery_channel.empty ()) {
+          spot_node.use_discovery (discovery_channel);
+        }
+        if (actor_gateway) {
+          spot_node.enable_actor_gateway ();
+        }
+        for (const auto &action : actions) {
+          action (spot_node);
+        }
+      });
+  }
+
+  std::string _spot_node_name;
+  zlink_builder_t *_zlink;
+  std::string _endpoint;
+  std::string _discovery_channel;
+  bool _actor_gateway = false;
+  std::vector<std::function<void (spot_node_builder_t &)>> _actions;
+};
+
+class stream_node_options_builder_t
+{
+public:
+  stream_node_options_builder_t (std::string stream_name, zlink_builder_t &zlink)
+    : _stream_name (std::move (stream_name)), _zlink (&zlink)
+  {
+  }
+
+  stream_node_options_builder_t &bind (std::string endpoint)
+  {
+    _endpoint = std::move (endpoint);
+    apply ();
+    return *this;
+  }
+
+  stream_node_options_builder_t &packet_session (std::string session_name)
+  {
+    _session_name = std::move (session_name);
+    apply ();
+    return *this;
+  }
+
+  stream_node_options_builder_t &attach_actor_gateway (
+    std::string spot_node_name)
+  {
+    _actor_gateway_spot_node = std::move (spot_node_name);
+    apply ();
+    return *this;
+  }
+
+private:
+  void apply ()
+  {
+    if (_endpoint.empty () || _session_name.empty ()) {
+      return;
+    }
+    const auto stream_name = _stream_name;
+    const auto endpoint = _endpoint;
+    const auto session_name = _session_name;
+    const auto actor_gateway_spot_node = _actor_gateway_spot_node;
+    _zlink->stream (
+      stream_name,
+      [=](stream_builder_t &stream) {
+        if (!endpoint.empty ()) {
+          stream.bind (endpoint);
+        }
+        if (!session_name.empty ()) {
+          stream.packet_session (session_name);
+        }
+        if (!actor_gateway_spot_node.empty ()) {
+          stream.attach_actor_gateway (actor_gateway_spot_node);
+        }
+      });
+  }
+
+  std::string _stream_name;
+  zlink_builder_t *_zlink;
+  std::string _endpoint;
+  std::string _session_name;
+  std::string _actor_gateway_spot_node;
+};
+
+class zlink_framework_options_t
+{
+public:
+  zlink_framework_options_t (service_collection_t &services,
+                             handler_registry_t &handlers,
+                             serializer_registry_t &serializers,
+                             zlink_builder_t &zlink,
+                             monitoring_builder_t &monitoring)
+    : _services (&services),
+      _handlers (&handlers),
+      _serializers (&serializers),
+      _zlink (&zlink),
+      _monitoring (&monitoring),
+      _handler_groups (
+        std::make_shared<detail::handler_group_options_state_t> ())
+  {
+  }
+
+  handler_options_builder_t handlers ()
+  {
+    return handler_options_builder_t (
+      *_services, *_handlers, *_serializers, _handler_groups);
+  }
+
+  codec_options_builder_t codecs ()
+  {
+    return codec_options_builder_t (_handler_groups);
+  }
+
+  discovery_options_builder_t discovery ()
+  {
+    return discovery_options_builder_t (*_zlink);
+  }
+
+  service_collection_t &services () noexcept { return *_services; }
+
+  zlink_framework_options_t &registry (std::string pub_endpoint,
+                                       std::string router_endpoint)
+  {
+    _zlink->registry (
+      [&](registry_builder_t &registry) {
+        registry.bind (std::move (pub_endpoint), std::move (router_endpoint));
+      });
+    return *this;
+  }
+
+  client_server_channel_builder_t client_server_channel (
+    std::string channel_name)
+  {
+    return client_server_channel_builder_t (
+      std::move (channel_name), *_zlink, _handler_groups);
+  }
+
+  publisher_channel_builder_t publisher_channel (std::string channel_name)
+  {
+    return publisher_channel_builder_t (std::move (channel_name), *_zlink);
+  }
+
+  spot_node_options_builder_t spot_node (std::string spot_node_name)
+  {
+    return spot_node_options_builder_t (std::move (spot_node_name), *_zlink);
+  }
+
+  stream_node_options_builder_t stream_node (std::string stream_name)
+  {
+    return stream_node_options_builder_t (std::move (stream_name), *_zlink);
+  }
+
+  monitoring_builder_t &monitoring () noexcept { return *_monitoring; }
+
+  zlink_framework_options_t &handler_coroutine_workers (
+    std::size_t worker_count)
+  {
+    _handler_coroutine_workers = worker_count;
+    return *this;
+  }
+
+  std::size_t handler_coroutine_workers () const noexcept
+  {
+    return _handler_coroutine_workers;
+  }
+
+private:
+  service_collection_t *_services;
+  handler_registry_t *_handlers;
+  serializer_registry_t *_serializers;
+  zlink_builder_t *_zlink;
+  monitoring_builder_t *_monitoring;
+  std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
+  std::size_t _handler_coroutine_workers = 0;
+};
+
+} // namespace zlink::framework

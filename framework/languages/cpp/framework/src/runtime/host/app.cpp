@@ -2,6 +2,8 @@
 
 #include <zlink/framework/contracts/configuration/app.hpp>
 
+#include "runtime/dispatch/coroutine_executor.hpp"
+
 #include <atomic>
 #include <csignal>
 #include <chrono>
@@ -40,6 +42,7 @@ public:
   logging_builder_t logging;
   monitoring_builder_t monitoring;
   zlink_builder_t zlink;
+  serializer_registry_t serializers;
   std::vector<std::unique_ptr<hosted_service_t>> hosted_services;
   std::atomic_bool stop_requested = false;
   int exit_code = 0;
@@ -109,10 +112,42 @@ app_t::monitoring () noexcept
   return _state->monitoring;
 }
 
+zlink_builder_t &
+app_t::_zlink_builder () noexcept
+{
+  return _state->zlink;
+}
+
+serializer_registry_t &
+app_t::_serializers () noexcept
+{
+  return _state->serializers;
+}
+
 app_t &
 app_t::use_zlink (std::function<void (zlink_builder_t &)> configure)
 {
   configure (_state->zlink);
+  return *this;
+}
+
+app_t &
+app_t::add_zlink_framework (
+  std::function<void (zlink_framework_options_t &)> configure)
+{
+  _state->services.add_singleton<channel_client_t> (
+    std::make_unique<channel_client_t> (_state->zlink.message_bus ()));
+  zlink_framework_options_t options (
+    _state->services,
+    _state->handlers,
+    _state->serializers,
+    _state->zlink,
+    _state->monitoring);
+  if (configure) {
+    configure (options);
+  }
+  runtime::configure_handler_coroutine_executor (
+    options.handler_coroutine_workers ());
   return *this;
 }
 

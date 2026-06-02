@@ -48,7 +48,7 @@ struct route_handler_descriptor_t
 class route_handler_registry_t
 {
 public:
-  using invoker_t = std::function<result_t<zlink::message_t> (
+  using invoker_t = std::function<task_t<zlink::message_t> (
     service_provider_t &,
     serializer_registry_t &,
     const zlink::message_t &,
@@ -76,14 +76,16 @@ public:
                serializer_registry_t &serializers,
                const zlink::message_t &message,
                const framework::route_handler_context_t &context)
-        -> result_t<zlink::message_t> {
+        -> task_t<zlink::message_t> {
         try {
           auto &owner = services.get_required<TOwner> ();
           auto payload = serializers.get<TMessage> ().deserialize (message);
           (owner.*method) (payload, context);
-          return result_t<zlink::message_t>::success (zlink::message_t {});
+          return task_t<zlink::message_t> (
+            result_t<zlink::message_t>::success (zlink::message_t {}));
         } catch (...) {
-          return route_current_exception_to_message_result ();
+          return task_t<zlink::message_t> (
+            route_current_exception_to_message_result ());
         }
       });
   }
@@ -110,20 +112,14 @@ public:
                serializer_registry_t &serializers,
                const zlink::message_t &message,
                const framework::route_handler_context_t &context)
-        -> result_t<zlink::message_t> {
+        -> task_t<zlink::message_t> {
         try {
           auto &owner = services.get_required<TOwner> ();
           auto payload = serializers.get<TMessage> ().deserialize (message);
-          auto result = (owner.*method) (payload, context).result ();
-          if (!result) {
-            return result_t<zlink::message_t>::failure (
-              result.error_kind (),
-              result.error () ? result.error ()->what ()
-                              : "routed send handler failed");
-          }
-          return result_t<zlink::message_t>::success (zlink::message_t {});
+          co_await (owner.*method) (payload, context);
+          co_return result_t<zlink::message_t>::success (zlink::message_t {});
         } catch (...) {
-          return route_current_exception_to_message_result ();
+          co_return route_current_exception_to_message_result ();
         }
       });
   }
@@ -150,15 +146,17 @@ public:
                serializer_registry_t &serializers,
                const zlink::message_t &message,
                const framework::route_handler_context_t &context)
-        -> result_t<zlink::message_t> {
+        -> task_t<zlink::message_t> {
         try {
           auto &owner = services.get_required<TOwner> ();
           auto request = serializers.get<TRequest> ().deserialize (message);
           auto reply = (owner.*method) (request, context);
-          return result_t<zlink::message_t>::success (
-            serializers.get<TReply> ().serialize (reply));
+          return task_t<zlink::message_t> (
+            result_t<zlink::message_t>::success (
+              serializers.get<TReply> ().serialize (reply)));
         } catch (...) {
-          return route_current_exception_to_message_result ();
+          return task_t<zlink::message_t> (
+            route_current_exception_to_message_result ());
         }
       });
   }
@@ -185,21 +183,15 @@ public:
                serializer_registry_t &serializers,
                const zlink::message_t &message,
                const framework::route_handler_context_t &context)
-        -> result_t<zlink::message_t> {
+        -> task_t<zlink::message_t> {
         try {
           auto &owner = services.get_required<TOwner> ();
           auto request = serializers.get<TRequest> ().deserialize (message);
-          auto reply = (owner.*method) (request, context).result ();
-          if (!reply) {
-            return result_t<zlink::message_t>::failure (
-              reply.error_kind (),
-              reply.error () ? reply.error ()->what ()
-                             : "routed request handler failed");
-          }
-          return result_t<zlink::message_t>::success (
-            serializers.get<TReply> ().serialize (reply.value ()));
+          auto reply = co_await (owner.*method) (request, context);
+          co_return result_t<zlink::message_t>::success (
+            serializers.get<TReply> ().serialize (reply));
         } catch (...) {
-          return route_current_exception_to_message_result ();
+          co_return route_current_exception_to_message_result ();
         }
       });
   }
@@ -214,6 +206,14 @@ public:
     std::string_view packet_name) const;
 
   result_t<zlink::message_t> invoke (
+    std::string_view router_channel_id,
+    runtime::messaging::message_kind_t kind,
+    std::string_view packet_name,
+    service_provider_t &services,
+    serializer_registry_t &serializers,
+    const zlink::message_t &message,
+    const framework::route_handler_context_t &context) const;
+  task_t<zlink::message_t> invoke_async (
     std::string_view router_channel_id,
     runtime::messaging::message_kind_t kind,
     std::string_view packet_name,

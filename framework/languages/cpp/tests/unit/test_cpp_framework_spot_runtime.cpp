@@ -14,6 +14,13 @@ namespace
 
 struct stage_spot_t
 {
+  int join_seen {};
+  int packet_seen {};
+  int joined_count {};
+  int left_count {};
+  int disconnected_count {};
+  zlink::framework::spot_actor_change_kind_t last_change_kind =
+    zlink::framework::spot_actor_change_kind_t::join_spot;
 };
 
 struct entry_spot_t
@@ -22,6 +29,8 @@ struct entry_spot_t
 
 struct player_actor_factory_t
 {
+  int joined_value {};
+  int moved_value {};
 };
 
 struct state_update_t
@@ -37,6 +46,81 @@ struct move_request_t
 struct move_reply_t
 {
   int value {};
+};
+
+class state_update_handler_t
+{
+public:
+  void handle (stage_spot_t &spot, const state_update_t &message)
+  {
+    spot.packet_seen = message.value;
+    last_value = message.value;
+  }
+
+  int last_value {};
+};
+
+class move_join_handler_t
+{
+public:
+  move_reply_t handle (stage_spot_t &spot,
+                       player_actor_factory_t &actor,
+                       const move_request_t &request)
+  {
+    spot.join_seen = request.value;
+    actor.joined_value = request.value;
+    return { request.value + 1 };
+  }
+};
+
+class move_packet_handler_t
+{
+public:
+  void handle (stage_spot_t &spot,
+               player_actor_factory_t &actor,
+               const zlink::framework::spot_actor_send_context_t &context,
+               const move_request_t &request)
+  {
+    if (context.packet_name == "move") {
+      spot.packet_seen = request.value;
+    }
+    actor.moved_value = request.value;
+  }
+};
+
+class actor_joined_handler_t
+{
+public:
+  void handle (stage_spot_t &spot,
+               player_actor_factory_t &actor,
+               const zlink::framework::spot_actor_change_result_t &result)
+  {
+    ++spot.joined_count;
+    spot.last_change_kind = result.kind;
+    actor.joined_value += 100;
+  }
+};
+
+class actor_left_handler_t
+{
+public:
+  void handle (stage_spot_t &spot,
+               player_actor_factory_t &actor,
+               const zlink::framework::spot_actor_change_result_t &result)
+  {
+    ++spot.left_count;
+    spot.last_change_kind = result.kind;
+    actor.moved_value += 100;
+  }
+};
+
+class actor_disconnected_handler_t
+{
+public:
+  void handle (stage_spot_t &spot, player_actor_factory_t &)
+  {
+    ++spot.disconnected_count;
+  }
 };
 
 struct stage_wrapper_t
@@ -234,6 +318,156 @@ main ()
     return 12;
   }
 
+  context.handlers ()
+    .add_handler<state_update_handler_t, stage_spot_t, state_update_t> (
+      "state.update")
+    .add_actor_packet<move_packet_handler_t,
+                      stage_spot_t,
+                      player_actor_factory_t,
+                      move_request_t> ("move")
+    .add_actor_join<move_join_handler_t,
+                    stage_spot_t,
+                    player_actor_factory_t,
+                    move_request_t,
+                    move_reply_t> ("join")
+    .add_post_actor_joined<actor_joined_handler_t,
+                           stage_spot_t,
+                           player_actor_factory_t> ()
+    .add_actor_left<actor_left_handler_t,
+                    stage_spot_t,
+                    player_actor_factory_t> ()
+    .add_actor_disconnected<actor_disconnected_handler_t,
+                            stage_spot_t,
+                            player_actor_factory_t> ();
+  const auto handler_descriptors = context.handlers ().descriptors ();
+  if (handler_descriptors.size () != 6 ||
+      handler_descriptors[0].kind !=
+        zlink::framework::spot_handler_kind_t::packet ||
+      handler_descriptors[0].packet_name != "state.update" ||
+      handler_descriptors[1].kind !=
+        zlink::framework::spot_handler_kind_t::actor_packet ||
+      handler_descriptors[1].packet_name != "move" ||
+      handler_descriptors[2].kind !=
+        zlink::framework::spot_handler_kind_t::actor_join ||
+      handler_descriptors[2].packet_name != "join" ||
+      handler_descriptors[3].kind !=
+        zlink::framework::spot_handler_kind_t::post_actor_joined ||
+      handler_descriptors[4].kind !=
+        zlink::framework::spot_handler_kind_t::actor_left ||
+      handler_descriptors[5].kind !=
+        zlink::framework::spot_handler_kind_t::actor_disconnected) {
+    return 20;
+  }
+
+  zlink::framework::service_collection_t spot_services;
+  spot_services.add_singleton<state_update_handler_t> ();
+  spot_services.add_singleton<move_join_handler_t> ();
+  spot_services.add_singleton<move_packet_handler_t> ();
+  spot_services.add_singleton<actor_joined_handler_t> ();
+  spot_services.add_singleton<actor_left_handler_t> ();
+  spot_services.add_singleton<actor_disconnected_handler_t> ();
+  auto spot_provider = spot_services.build_provider ();
+
+  zlink::framework::serializer_registry_t spot_serializers;
+  spot_serializers.add<state_update_t> (
+    [](const state_update_t &value) {
+      return zlink::message_t::from (std::to_string (value.value));
+    },
+    [](const zlink::message_t &message) {
+      return state_update_t { std::stoi (message.to_string ()) };
+    });
+  spot_serializers.add<move_request_t> (
+    [](const move_request_t &value) {
+      return zlink::message_t::from (std::to_string (value.value));
+    },
+    [](const zlink::message_t &message) {
+      return move_request_t { std::stoi (message.to_string ()) };
+    });
+  spot_serializers.add<move_reply_t> (
+    [](const move_reply_t &value) {
+      return zlink::message_t::from (std::to_string (value.value));
+    },
+    [](const zlink::message_t &message) {
+      return move_reply_t { std::stoi (message.to_string ()) };
+    });
+
+  stage_spot_t stage_spot;
+  player_actor_factory_t actor;
+  const auto packet_dispatch = context.handlers ().invoke_packet (
+    "state.update",
+    stage_spot,
+    spot_provider,
+    spot_serializers,
+    zlink::message_t::from (std::string ("30")));
+  if (!packet_dispatch ||
+      spot_provider.get_required<state_update_handler_t> ().last_value != 30 ||
+      stage_spot.packet_seen != 30) {
+    return 22;
+  }
+
+  const auto join_dispatch = context.handlers ().invoke_actor_join (
+    "join",
+    stage_spot,
+    actor,
+    spot_provider,
+    spot_serializers,
+    zlink::message_t::from (std::string ("41")));
+  if (!join_dispatch ||
+      spot_serializers.get<move_reply_t> ()
+          .deserialize (join_dispatch.value ())
+          .value != 42 ||
+      actor.joined_value != 41 ||
+      stage_spot.join_seen != 41) {
+    return 23;
+  }
+
+  const auto move_dispatch = context.handlers ().invoke_actor_packet (
+    "move",
+    stage_spot,
+    actor,
+    spot_provider,
+    spot_serializers,
+    zlink::message_t::from (std::string ("55")));
+  if (!move_dispatch || actor.moved_value != 55 ||
+      stage_spot.packet_seen != 55) {
+    return 24;
+  }
+
+  const auto joined_dispatch = context.handlers ().invoke_post_actor_joined (
+    stage_spot,
+    actor,
+    spot_provider,
+    spot_serializers,
+    zlink::framework::spot_actor_change_result_t (
+      zlink::framework::spot_actor_change_kind_t::join_spot));
+  if (!joined_dispatch || stage_spot.joined_count != 1 ||
+      actor.joined_value != 141 ||
+      stage_spot.last_change_kind !=
+        zlink::framework::spot_actor_change_kind_t::join_spot) {
+    return 25;
+  }
+
+  const auto left_dispatch = context.handlers ().invoke_actor_left (
+    stage_spot,
+    actor,
+    spot_provider,
+    spot_serializers,
+    zlink::framework::spot_actor_change_result_t (
+      zlink::framework::spot_actor_change_kind_t::join_entry_spot));
+  if (!left_dispatch || stage_spot.left_count != 1 ||
+      actor.moved_value != 155 ||
+      stage_spot.last_change_kind !=
+        zlink::framework::spot_actor_change_kind_t::join_entry_spot) {
+    return 26;
+  }
+
+  const auto disconnected_dispatch =
+    context.handlers ().invoke_actor_disconnected (
+      stage_spot, actor, spot_provider, spot_serializers);
+  if (!disconnected_dispatch || stage_spot.disconnected_count != 1) {
+    return 27;
+  }
+
   bool duplicate_packet_failed = false;
   try {
     context.register_packet<state_update_t> ("state.update");
@@ -243,6 +477,19 @@ main ()
   }
   if (!duplicate_packet_failed) {
     return 13;
+  }
+
+  bool duplicate_handler_failed = false;
+  try {
+    context.handlers ()
+      .add_handler<state_update_handler_t, stage_spot_t, state_update_t> (
+        "state.update");
+  } catch (const zlink::framework::framework_exception_t &error) {
+    duplicate_handler_failed =
+      error.kind () == framework_error_kind_t::request_protocol_error;
+  }
+  if (!duplicate_handler_failed) {
+    return 21;
   }
 
   auto publish_result =

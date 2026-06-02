@@ -8,6 +8,7 @@
 #include "../Shared/Contracts/messages.hpp"
 
 #include <zlink/stream_connector.hpp>
+#include <zlink/stream_connector/codecs/auto_codec.hpp>
 
 #include <string>
 #include <utility>
@@ -65,7 +66,8 @@ public:
   bingo_client_call_result_t leave (std::string room_id)
   {
     auto result =
-      _connector.send (leave_room_req_t { std::move (room_id) })
+      zlink::stream_connector::codecs::send (
+        _connector, leave_room_req_t { std::move (room_id) })
         .submit ()
         .result ();
     return { leave_room_req_t::packet_name,
@@ -87,19 +89,23 @@ private:
 
   void register_notifications ()
   {
-    _connector.on<player_joined_notify_t> (
+    zlink::stream_connector::codecs::on<player_joined_notify_t> (
+      _connector,
       [this](const player_joined_notify_t &message) {
         _notifications.on_joined (message);
       });
-    _connector.on<game_started_notify_t> (
+    zlink::stream_connector::codecs::on<game_started_notify_t> (
+      _connector,
       [this](const game_started_notify_t &message) {
         _notifications.on_started (message);
       });
-    _connector.on<number_drawn_notify_t> (
+    zlink::stream_connector::codecs::on<number_drawn_notify_t> (
+      _connector,
       [this](const number_drawn_notify_t &message) {
         _notifications.on_drawn (message);
       });
-    _connector.on<game_ended_notify_t> (
+    zlink::stream_connector::codecs::on<game_ended_notify_t> (
+      _connector,
       [this](const game_ended_notify_t &message) {
         _notifications.on_ended (message);
       });
@@ -109,7 +115,8 @@ private:
   bingo_client_call_result_t request (const TRequest &request_message)
   {
     auto result =
-      _connector.request<TReply> (request_message)
+      zlink::stream_connector::codecs::request<TReply> (
+        _connector, request_message)
         .submit ()
         .result ();
     return { TRequest::packet_name,

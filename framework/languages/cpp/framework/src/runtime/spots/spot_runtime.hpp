@@ -39,6 +39,8 @@ public:
   spot_rid_t spot_rid;
   std::string spot_name;
   std::vector<spot_packet_descriptor_t> packets;
+  std::vector<spot_handler_descriptor_t> handlers;
+  std::vector<spot_handler_registry_t::invoker_t> handler_invokers;
   std::vector<std::string> ordering_log;
   std::vector<std::shared_ptr<timer_state_t>> timers;
 };

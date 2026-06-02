@@ -10,7 +10,10 @@
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
 
+#include <algorithm>
+#include <chrono>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 namespace zlink::stream_connector::detail
@@ -277,23 +280,49 @@ connector_t::connect ()
       "stream connector endpoint must use tcp://host:port"));
   }
 
-  detail::change_state (_state, connection_state_t::connecting);
-  try {
-    boost::asio::ip::tcp::resolver resolver (_state->io_context);
-    auto endpoints = resolver.resolve (parsed->host, parsed->port);
-    _state->socket =
-      std::make_unique<boost::asio::ip::tcp::socket> (_state->io_context);
-    boost::asio::connect (*_state->socket, endpoints);
-  } catch (const std::exception &ex) {
+  const auto max_attempts =
+    _state->options.reconnect.enabled
+      ? std::max (1, _state->options.reconnect.max_attempts.value_or (1))
+      : 1;
+  auto retry_delay = _state->options.reconnect.initial_delay;
+  std::string last_error;
+
+  for (int attempt = 1; attempt <= max_attempts; ++attempt) {
     detail::change_state (
       _state,
-      connection_state_t::disconnected,
-      error_t { error_code_t::connect_timeout, ex.what () });
-    return task_t<void> (
-      result_t<void>::failure (error_code_t::connect_timeout, ex.what ()));
+      attempt == 1 ? connection_state_t::connecting
+                   : connection_state_t::reconnecting);
+    try {
+      boost::asio::ip::tcp::resolver resolver (_state->io_context);
+      auto endpoints = resolver.resolve (parsed->host, parsed->port);
+      _state->socket =
+        std::make_unique<boost::asio::ip::tcp::socket> (_state->io_context);
+      boost::asio::connect (*_state->socket, endpoints);
+      _state->last_heartbeat_sent = std::chrono::steady_clock::now ();
+      detail::change_state (_state, connection_state_t::connected);
+      return task_t<void> (result_t<void>::success ());
+    } catch (const std::exception &ex) {
+      last_error = ex.what ();
+      boost::system::error_code ignored;
+      if (_state->socket) {
+        _state->socket->close (ignored);
+      }
+      if (attempt < max_attempts) {
+        std::this_thread::sleep_for (retry_delay);
+        retry_delay = std::min (
+          _state->options.reconnect.max_delay,
+          std::chrono::milliseconds (static_cast<int> (
+            retry_delay.count () * _state->options.reconnect.backoff_factor)));
+      }
+    }
   }
-  detail::change_state (_state, connection_state_t::connected);
-  return task_t<void> (result_t<void>::success ());
+
+  detail::change_state (
+    _state,
+    connection_state_t::disconnected,
+    error_t { error_code_t::connect_timeout, last_error });
+  return task_t<void> (
+    result_t<void>::failure (error_code_t::connect_timeout, last_error));
 }
 
 task_t<void>

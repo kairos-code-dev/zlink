@@ -119,6 +119,13 @@ public:
     }, service_lifetime_t::singleton);
   }
 
+  template<typename T, typename... TDependencies>
+    requires (sizeof...(TDependencies) > 0)
+  service_collection_t &add_singleton ()
+  {
+    return add_injected<T, TDependencies...> (service_lifetime_t::singleton);
+  }
+
   template<typename T>
   service_collection_t &add_singleton (std::unique_ptr<T> instance)
   {
@@ -140,6 +147,13 @@ public:
     }, service_lifetime_t::scoped);
   }
 
+  template<typename T, typename... TDependencies>
+    requires (sizeof...(TDependencies) > 0)
+  service_collection_t &add_scoped ()
+  {
+    return add_injected<T, TDependencies...> (service_lifetime_t::scoped);
+  }
+
   template<typename T>
   service_collection_t &add_transient ()
   {
@@ -148,6 +162,13 @@ public:
     return add_factory<T> ([](service_provider_t &) {
       return std::make_unique<T> ();
     }, service_lifetime_t::transient);
+  }
+
+  template<typename T, typename... TDependencies>
+    requires (sizeof...(TDependencies) > 0)
+  service_collection_t &add_transient ()
+  {
+    return add_injected<T, TDependencies...> (service_lifetime_t::transient);
   }
 
   template<typename T, typename TFactory>
@@ -176,6 +197,20 @@ public:
   service_provider_t build_provider () const;
 
 private:
+  template<typename T, typename... TDependencies>
+  service_collection_t &add_injected (service_lifetime_t lifetime)
+  {
+    static_assert (
+      std::is_constructible_v<T, TDependencies &...>,
+      "injected service constructor must accept dependencies by reference");
+    return add_factory<T> (
+      [](service_provider_t &provider) {
+        return std::make_unique<T> (
+          provider.get_required<TDependencies> ()...);
+      },
+      lifetime);
+  }
+
   service_collection_t &add_descriptor (std::type_index type,
                                         service_lifetime_t lifetime,
                                         service_factory_t factory);

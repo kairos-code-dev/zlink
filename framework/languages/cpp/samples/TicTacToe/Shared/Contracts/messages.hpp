@@ -4,6 +4,7 @@
 #include <zlink/Contracts/Messaging/message.hpp>
 
 #include <array>
+#include <nlohmann/json.hpp>
 #include <string>
 
 namespace zlink::samples::tictactoe
@@ -150,132 +151,264 @@ struct game_ended_notify_t
   tictactoe_state_t state;
 };
 
-inline std::string
-json_field (const char *name, const std::string &value)
+inline void to_json (nlohmann::json &json, const authenticate_req_t &value)
 {
-  return std::string ("\"") + name + "\":\"" + value + "\"";
+  json = { { "actorId", value.actor_id } };
 }
 
-inline std::string
-json_field (const char *name, bool value)
+inline void from_json (const nlohmann::json &json, authenticate_req_t &value)
 {
-  return std::string ("\"") + name + "\":" + (value ? "true" : "false");
+  value.actor_id = json.value ("actorId", "");
 }
 
-inline std::string
-json_field (const char *name, int value)
+inline void to_json (nlohmann::json &json,
+                     const authenticate_actor_req_t &value)
 {
-  return std::string ("\"") + name + "\":" + std::to_string (value);
+  json = { { "actorId", value.actor_id } };
 }
 
-inline std::string
-to_stream_payload (const authenticate_req_t &message)
+inline void from_json (const nlohmann::json &json,
+                       authenticate_actor_req_t &value)
 {
-  return "{" + json_field ("actorId", message.actor_id) + "}";
+  value.actor_id = json.value ("actorId", "");
 }
 
-inline std::string
-to_stream_payload (const join_match_req_t &message)
+inline void to_json (nlohmann::json &json,
+                     const authenticate_actor_res_t &value)
 {
-  return "{" + json_field ("matchId", message.match_id) + "," +
-         json_field ("actorId", message.actor_id) + "}";
+  json = { { "accepted", value.accepted },
+           { "actorId", value.actor_id },
+           { "reason", value.reason } };
 }
 
-inline std::string
-to_stream_payload (const place_mark_req_t &message)
+inline void from_json (const nlohmann::json &json,
+                       authenticate_actor_res_t &value)
 {
-  return "{" + json_field ("matchId", message.match_id) + "," +
-         json_field ("actorId", message.actor_id) + "," +
-         json_field ("cell", message.cell) + "}";
+  value.accepted = json.value ("accepted", false);
+  value.actor_id = json.value ("actorId", "");
+  value.reason = json.value ("reason", "");
 }
 
-inline std::string
-to_stream_payload (const authenticate_res_t &message)
+inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
 {
-  return "{" + json_field ("actorId", message.actor_id) + "}";
+  json = { { "nodeRid", value.node_rid },
+           { "actorId", value.actor_id },
+           { "generation", value.generation } };
 }
 
-inline std::string
-to_stream_payload (const join_match_res_t &message)
+inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
 {
-  return "{" + json_field ("matchId", message.match_id) + "," +
-         json_field ("actorId", message.actor_id) + "," +
-         json_field ("mark", message.mark) + "}";
+  value.node_rid = json.value ("nodeRid", std::array<unsigned char, 16> {});
+  value.actor_id = json.value ("actorId", "");
+  value.generation = json.value ("generation", 0ULL);
 }
 
-inline std::string
-to_stream_payload (const place_mark_res_t &message)
+inline void to_json (nlohmann::json &json,
+                     const ensure_player_actor_req_t &value)
 {
-  return "{" + json_field ("matchId", message.state.match_id) + "," +
-         json_field ("cell", message.state.last_move_cell) + "}";
+  json = { { "actorId", value.actor_id } };
 }
 
-inline std::string
-to_stream_payload (const opponent_joined_notify_t &message)
+inline void from_json (const nlohmann::json &json,
+                       ensure_player_actor_req_t &value)
 {
-  return "{" + json_field ("matchId", message.match_id) + "," +
-         json_field ("opponentActorId", message.opponent_actor_id) + "," +
-         json_field ("mark", message.mark) + "}";
+  value.actor_id = json.value ("actorId", "");
 }
 
-inline std::string
-to_stream_payload (const turn_changed_notify_t &message)
+inline void to_json (nlohmann::json &json,
+                     const ensure_player_actor_res_t &value)
 {
-  return "{" + json_field ("matchId", message.match_id) + "," +
-         json_field ("turnActorId", message.turn_actor_id) + "}";
+  json = { { "actorId", value.actor_id },
+           { "actorType", value.actor_type },
+           { "actor", value.actor } };
 }
 
-inline std::string
-to_stream_payload (const game_ended_notify_t &message)
+inline void from_json (const nlohmann::json &json,
+                       ensure_player_actor_res_t &value)
 {
-  return "{" + json_field ("matchId", message.match_id) + "," +
-         json_field ("winnerActorId", message.winner_actor_id) + "," +
-         json_field ("draw", message.draw) + "}";
+  value.actor_id = json.value ("actorId", "");
+  value.actor_type = json.value ("actorType", "");
+  value.actor = json.value ("actor", actor_ref_snapshot_t {});
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, authenticate_res_t &message)
+inline void to_json (nlohmann::json &json, const create_match_req_t &value)
 {
-  message.actor_id = "player";
+  json = { { "ownerActorId", value.owner_actor_id } };
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, join_match_res_t &message)
+inline void from_json (const nlohmann::json &json, create_match_req_t &value)
 {
-  message.match_id = "game-1";
-  message.actor_id = "player";
-  message.mark = "X";
-  message.state.match_id = message.match_id;
+  value.owner_actor_id = json.value ("ownerActorId", "");
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, place_mark_res_t &message)
+inline void to_json (nlohmann::json &json,
+                     const create_match_room_req_t &)
 {
-  message.state.match_id = "game-1";
-  message.state.status = "playing";
+  json = nlohmann::json::object ();
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, opponent_joined_notify_t &message)
+inline void from_json (const nlohmann::json &, create_match_room_req_t &)
 {
-  message.match_id = "game-1";
-  message.opponent_actor_id = "player";
-  message.mark = "O";
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, turn_changed_notify_t &message)
+inline void to_json (nlohmann::json &json,
+                     const create_match_room_res_t &value)
 {
-  message.match_id = "game-1";
-  message.turn_actor_id = "player";
+  json = { { "matchId", value.match_id } };
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, game_ended_notify_t &message)
+inline void from_json (const nlohmann::json &json,
+                       create_match_room_res_t &value)
 {
-  message.match_id = "game-1";
-  message.winner_actor_id = "player";
-  message.state.status = "ended";
+  value.match_id = json.value ("matchId", "");
+}
+
+inline void to_json (nlohmann::json &json, const join_match_req_t &value)
+{
+  json = { { "matchId", value.match_id }, { "actorId", value.actor_id } };
+}
+
+inline void from_json (const nlohmann::json &json, join_match_req_t &value)
+{
+  value.match_id = json.value ("matchId", "");
+  value.actor_id = json.value ("actorId", "");
+}
+
+inline void to_json (nlohmann::json &json, const place_mark_req_t &value)
+{
+  json = { { "matchId", value.match_id },
+           { "actorId", value.actor_id },
+           { "cell", value.cell } };
+}
+
+inline void from_json (const nlohmann::json &json, place_mark_req_t &value)
+{
+  value.match_id = json.value ("matchId", "");
+  value.actor_id = json.value ("actorId", "");
+  value.cell = json.value ("cell", 0);
+}
+
+inline void to_json (nlohmann::json &json, const tictactoe_state_t &value)
+{
+  json = { { "matchId", value.match_id },
+           { "board", value.board },
+           { "status", value.status },
+           { "turnActorId", value.turn_actor_id },
+           { "winnerActorId", value.winner_actor_id },
+           { "draw", value.draw },
+           { "xActorId", value.x_actor_id },
+           { "oActorId", value.o_actor_id },
+           { "lastMoveActorId", value.last_move_actor_id },
+           { "lastMoveCell", value.last_move_cell } };
+}
+
+inline void from_json (const nlohmann::json &json, tictactoe_state_t &value)
+{
+  value.match_id = json.value ("matchId", "");
+  value.board = json.value ("board", ".........");
+  value.status = json.value ("status", "");
+  value.turn_actor_id = json.value ("turnActorId", "");
+  value.winner_actor_id = json.value ("winnerActorId", "");
+  value.draw = json.value ("draw", false);
+  value.x_actor_id = json.value ("xActorId", "");
+  value.o_actor_id = json.value ("oActorId", "");
+  value.last_move_actor_id = json.value ("lastMoveActorId", "");
+  value.last_move_cell = json.value ("lastMoveCell", -1);
+}
+
+inline void to_json (nlohmann::json &json, const authenticate_res_t &value)
+{
+  json = { { "actorId", value.actor_id } };
+}
+
+inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
+{
+  value.actor_id = json.value ("actorId", "");
+}
+
+inline void to_json (nlohmann::json &json, const create_match_res_t &value)
+{
+  json = { { "matchId", value.match_id },
+           { "ownerActorId", value.owner_actor_id } };
+}
+
+inline void from_json (const nlohmann::json &json, create_match_res_t &value)
+{
+  value.match_id = json.value ("matchId", "");
+  value.owner_actor_id = json.value ("ownerActorId", "");
+}
+
+inline void to_json (nlohmann::json &json, const join_match_res_t &value)
+{
+  json = { { "matchId", value.match_id },
+           { "actorId", value.actor_id },
+           { "mark", value.mark },
+           { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, join_match_res_t &value)
+{
+  value.match_id = json.value ("matchId", "");
+  value.actor_id = json.value ("actorId", "");
+  value.mark = json.value ("mark", "");
+  value.state = json.value ("state", tictactoe_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const place_mark_res_t &value)
+{
+  json = { { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, place_mark_res_t &value)
+{
+  value.state = json.value ("state", tictactoe_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const opponent_joined_notify_t &value)
+{
+  json = { { "matchId", value.match_id },
+           { "opponentActorId", value.opponent_actor_id },
+           { "mark", value.mark },
+           { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json,
+                       opponent_joined_notify_t &value)
+{
+  value.match_id = json.value ("matchId", "");
+  value.opponent_actor_id = json.value ("opponentActorId", "");
+  value.mark = json.value ("mark", "");
+  value.state = json.value ("state", tictactoe_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const turn_changed_notify_t &value)
+{
+  json = { { "matchId", value.match_id },
+           { "turnActorId", value.turn_actor_id },
+           { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, turn_changed_notify_t &value)
+{
+  value.match_id = json.value ("matchId", "");
+  value.turn_actor_id = json.value ("turnActorId", "");
+  value.state = json.value ("state", tictactoe_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const game_ended_notify_t &value)
+{
+  json = { { "matchId", value.match_id },
+           { "winnerActorId", value.winner_actor_id },
+           { "draw", value.draw },
+           { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, game_ended_notify_t &value)
+{
+  value.match_id = json.value ("matchId", "");
+  value.winner_actor_id = json.value ("winnerActorId", "");
+  value.draw = json.value ("draw", false);
+  value.state = json.value ("state", tictactoe_state_t {});
 }
 
 } // namespace zlink::samples::tictactoe

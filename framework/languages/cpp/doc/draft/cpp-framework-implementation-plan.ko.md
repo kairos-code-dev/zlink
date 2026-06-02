@@ -58,6 +58,12 @@ runtime이고, C++ Stream Connector와 Unreal Stream Connector는 별도 산출�
 - codec 사용성은 binding, framework, connector 모두 `message_t` 중심으로 맞춘다.
 - base C++ binding은 JSON, MessagePack, Protobuf dependency를 끌고 오지 않는다.
 - MessagePack, Protobuf, LZ4는 선택 기능으로 두고 기본 설치에 강제하지 않는다.
+- application sample code는 serializer를 직접 호출하지 않는다. typed DTO 변환은
+  framework/connector codec helper 내부에서 처리하며, 샘플 DTO header에는 C++ serializer가
+  찾을 수 있는 `to_json`/`from_json` hook만 둔다.
+- 샘플 client는 raw STREAM payload 조립, `nlohmann::json::parse`, field-by-field JSON
+  추출, sample-only `to_stream_payload`/`from_stream_payload` helper를 사용하지 않는다.
+  `.NET` 샘플처럼 connector의 typed request/send/on 표면을 사용한다.
 - 테스트는 CTest로 등록하고, framework C++ 테스트는 GoogleTest와 GoogleMock을 사용한다.
 - 모든 goal은 구현 뒤 POSD 기반 리팩토링을 반드시 한 번 이상 수행한다. 21개 goal을
   모두 진행하면 POSD 기반 리팩토링도 최소 21번 수행되어야 한다.
@@ -132,9 +138,12 @@ Blueprint/Game Thread 표면만 담고, transport와 codec 구현은 `Private`�
 public header가 binding 타입을 노출할 수 있는 범위도 제한한다. `message_t`처럼 payload
 copy/move boundary를 설명하는 타입은 contract에 나타날 수 있지만, `context_t`,
 socket type, native handle owner, dispatch callback owner는 framework runtime 내부에만
-둔다. 이 기준은 connector와 Unreal connector에도 적용한다. connector public API는
-client endpoint, packet, codec option, callback/coroutine submit을 노출하고, receive
-loop, reconnect state, heartbeat, frame codec 구현은 runtime/private에 둔다.
+둔다. 이 기준은 connector와 Unreal connector에도 적용한다. 일반 C++ connector public
+API는 client endpoint, packet, codec option, callback/coroutine submit을 노출하고,
+receive loop, reconnect state, heartbeat, frame codec 구현은 runtime에 둔다. Unreal
+connector public API는 Unreal 타입, Blueprint callable 함수, Blueprint/native delegate,
+Game Thread dispatch만 노출하며 일반 C++ connector의 `task_t`나 coroutine submit 표면을
+가져오지 않는다.
 
 ## 4. Goal 구성 원칙
 
@@ -225,7 +234,7 @@ runtime state를 새로 만들 때도 같은 규칙을 적용한다.
 | 17. C++ connector | `connector/include/zlink/stream_connector/contracts/*` | `connector/src/runtime/*` | Asio receive loop, reconnect state, pending request table, frame codec |
 | 18. Unreal connector | Unreal `Public/` contract | Unreal `Private/` implementation | Unreal `Sockets`/`Networking`, transport internals |
 | 19. samples | sample source using public API only | sample support runtime only when private to sample | sample-only metadata store as framework contract |
-| 20. final regression | installed public headers and test contracts | all runtime owner directories | accidental external dependency leak, runtime header include |
+| 20. final regression | installed public headers and package consumer tests | all runtime owner directories | accidental external dependency leak, runtime header include, missing native runtime soname |
 | 21. extensions | extension public contract/target | extension private runtime | Kafka/gRPC/HTTP/YAML/FlatBuffers dependency in core target |
 
 owner matrix를 만족하지 못하는 변경은 완료 기준을 통과한 것으로 보지 않는다. 특히
@@ -314,6 +323,9 @@ POSD 게이트 완료 기준은 아래와 같다.
   frame codec, pending queue 구현 타입을 include하거나 노출하지 않는다.
 - public facade header는 `contracts/*`를 묶는 역할만 하고 새 runtime 구현 계약을 만들지 않는다.
 - layout contract test가 public/runtime 분리와 runtime include 금지를 검증한다.
+- framework와 connector의 모든 `contracts/*.hpp`는 public header include compile test에
+  직접 포함된다. 새 public contract header를 추가하고 coverage를 누락하면 layout contract
+  test가 실패한다.
 - public header include compile test가 통과한다.
 
 검증:
@@ -349,6 +361,9 @@ git diff --check -- framework/languages/cpp
   - `message.parse_protobuf<T>()`
 - 기존 codec namespace 함수형 helper는 이행 기간용 shim으로 유지 가능
 - 신규 binding/framework/connector 샘플은 message 중심 API만 사용
+- framework와 connector 샘플 application code는 `message_t::from_json`,
+  `message.parse_json<T>()`, 또는 connector auto codec helper를 통해 typed DTO를 다룬다.
+  직접 JSON parser를 호출해 field를 꺼내는 코드는 완료 기준을 통과하지 못한다.
 
 완료 기준:
 
@@ -377,11 +392,14 @@ git diff --check -- bindings/cpp framework/languages/cpp
 - `framework_exception_t`
 - `result_t<T>`
 - `task_t<T>`
+- internal `coroutine_executor_t`
 - `send_call_t`
 - `request_call_t<T>`
 - `stream_write_call_t`
 - `relay_call_t`
-- `join_spot_call_t`
+- `actor_join_result_t<TReply>`
+- `actor_join_spot_call_t<TReply>`
+- `actor_join_entry_spot_call_t`
 - `submit(callback)` 표면
 - `co_await submit()` 표면
 - timeout, shutdown, disconnected, queue full, decode failure, handler not found mapping
@@ -393,6 +411,18 @@ git diff --check -- bindings/cpp framework/languages/cpp
 - shutdown 이후 새 submit은 `shutdown`으로 실패한다.
 - timeout은 `timeout`으로 실패한다.
 - public async 표면에 `std::future`가 없다.
+- public async 표면에 `boost::asio::awaitable`이 없다.
+- `task_t<T>`와 handler dispatch는 내부 `coroutine_executor_t`를 통해 실행한다.
+- handler registry, route handler, SPOT handler, stream session callback invoker는
+  내부적으로 `task_t<...>`를 반환한다. executor coroutine은 이 task를 await하고,
+  handler 실행 중 `.result()`로 기다리는 bridge를 만들지 않는다.
+- `task_t<T>`는 다중 await를 지원한다. pending task에 여러 continuation이 붙어도 모두
+  재개되어야 한다.
+- task completion은 first-complete-wins이다. 두 번째 완료 시도는 결과를 덮어쓰지 않는다.
+- `coroutine_executor_t`는 `boost::asio::thread_pool`, `boost::asio::co_spawn`,
+  `boost::asio::awaitable`을 runtime 구현 안에서만 사용한다.
+- handler coroutine executor 기본 worker 수는 CPU 수 기반이다. `handler_coroutine_workers(n)`
+  설정으로 조정할 수 있고, 설정은 executor 최초 생성 전에 반영된다.
 - call object public header는 submit 계약만 제공하고, pending queue와 runtime submitter
   구현 타입을 노출하지 않는다.
 
@@ -523,6 +553,9 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R scope
 - handler 등록 방식으로 channel, stream, spot, timer event를 처리한다.
 - CPU-bound handler는 offload executor에서 실행 가능하다.
 - offload executor는 shutdown에서 drain된다.
+- 모든 channel handler, route handler, SPOT handler, stream session callback은 coroutine
+  executor를 통과해 실행된다.
+- coroutine executor는 Asio 기반 구현이지만 public API에는 Boost.Asio 타입을 노출하지 않는다.
 - handler와 client 코드는 transport 종류를 직접 알 필요가 없다.
 - framework core는 zlink core transport 의미를 감싸며 별도 event loop를 만들지 않는다.
 - CAPI dispatch projection, recv/drain 순서, native handle owner는 `src/runtime/*`
@@ -682,6 +715,23 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 - Entry Spot
 - `SpotRid`, `NodeRid` public view
 - packet registry
+- `spot_context_t::handlers()`
+- `spot_handler_registry_t`
+- `add_handler<THandler>()`
+- `add_subscribe<THandler>(topic)`
+- `spot_actor_send_context_t`
+- `spot_actor_request_context_t`
+- `spot_actor_reply_options_t`
+- `add_actor_join<THandler>()`
+- `add_actor_packet<THandler>()`
+- `spot_actor_change_kind_t`
+- `spot_actor_change_result_t`
+- `add_post_actor_joined<THandler>()`
+- `add_actor_left<THandler>()`
+- `add_actor_disconnected<THandler>()`
+- SPOT handler typed invocation
+- SPOT handler DI resolve
+- SPOT handler serializer decode/encode
 - actor factory 기본 구조
 - SPOT discovery 설정
 - Registry-backed Spot lookup
@@ -697,6 +747,33 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 - `rid` 직접 지정은 spot-to-spot 경로와 Entry Spot join 같은 actor lifecycle 경로에 제한한다.
 - SPOT node lifecycle은 app host가 관리한다.
 - core SPOT dispatch ordering이 typed handler 표면에 유지된다.
+- `.NET` `Context.Handlers.AddHandler`, `AddActorJoin`, `AddActorPacket`에 해당하는
+  등록 표면이 C++ `spot_context_t::handlers()`에 있어야 한다. C++에는 assembly reflection이
+  없으므로 handler type은 명시한다. 다만 spot, actor, request, reply type은 handler class의
+  `spot_type`, `actor_type`, `request_type`, `reply_type` alias에서 framework가 읽는다.
+  샘플 Spot 등록부가 `TSpot`, `TActor`, `TRequest`, `TReply`를 반복해서 나열하면 완료 기준을
+  통과하지 못한다.
+- 일반 Spot packet handler와 subscription handler도 `.NET`처럼 Spot instance와 DTO를 함께
+  받아야 한다. 필요한 타입 정보는 handler class에 한 번만 선언하고, 등록부는
+  `add_handler<THandler>()`, `add_subscribe<THandler>(topic)` 형태를 기본으로 한다.
+- 등록된 SPOT handler는 descriptor 조회로 끝나면 안 된다. framework runtime이
+  `serializer_registry_t`로 payload를 DTO로 바꾸고, `service_provider_t`에서 handler
+  owner를 resolve한 뒤 typed handler를 호출해야 한다.
+- actor lifecycle handler는 `.NET`의 `ZLinkSpotActorChangeResult`와 같은 의미의
+  `spot_actor_change_result_t`를 받아야 한다. 단, actor disconnected handler는 `.NET`처럼
+  Spot instance와 actor만 받으며 change result를 받지 않는다. C++은 reflection으로 handler
+  interface의 `TSpot`을 자동 reflection으로 추론할 수 없으므로 handler class alias로
+  보완한다.
+- actor join/packet handler도 `.NET`처럼 Spot instance와 actor를 함께 받아야 한다.
+  actor packet handler는 `spot_actor_send_context_t` 또는 `spot_actor_request_context_t`로
+  packet name, content type, metadata, reply option을 확인할 수 있어야 한다. C++은
+  reflection이 없으므로 handler class alias로 spot/actor/request/reply type을 명시하고,
+  Spot 등록부에서는 handler type만 나열한다.
+- Entry Spot에서 actor가 보낸 packet은 일반 Spot packet이 아니라 actor packet handler로
+  등록한다. handler는 `EntrySpot`, actor, request context, DTO를 받고, framework는
+  deserialize와 reply serialization을 내부에서 처리한다.
+- Play sample smoke는 handler 객체를 직접 호출하는 확인만으로 완료로 보지 않는다.
+  join/packet/lifecycle handler는 `spot_context_t::handlers()` dispatch 경로로 실행되어야 한다.
 - stage 같은 상위 wrapper가 `SpotRid`, `NodeRid`, packet registry, outbound channel client,
   state와 domain method를 보관할 수 있다.
 
@@ -705,6 +782,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 ```bash
 ctest --test-dir framework/languages/cpp/build -L framework-integration -R spot
 ctest --test-dir framework/languages/cpp/build -L framework-regression -R spot
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_sample_parity|sample_smoke_sample_cpp_framework_(bingo|tictactoe)_play' --output-on-failure
 ```
 
 ### Goal 11. SPOT Timer
@@ -820,6 +898,10 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R stream
 - `session_actor_t`
 - `actor_context_t`
 - `bound_session_t`
+- `actor_context_t::join_spot<TRequest, TReply>(...)`
+- `actor_context_t::join_entry_spot(...)`
+- `.NET` `ZLinkActorJoinResult<TReply>`와 같은 의미의
+  `actor_join_result_t<TReply>`
 - actor factory 등록
 - actor id/type 기반 create, find, get-or-create
 - local actor handle bind
@@ -839,6 +921,10 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R stream
 - STREAM session에서 actor로 보내는 packet은 application route mesh channel을 만들지 않는다.
 - session은 `actor_ref_t` 또는 logical actor handle을 bind한다.
 - actor push는 `bound_session_t`를 통해 내려간다.
+- actor가 Spot에 join하면 결과는 actor ref와 typed reply를 함께 돌려준다. C++에서는
+  `.NET`의 `ZLinkActorJoinResult<TReply>`에 해당하는 `actor_join_result_t<TReply>`로
+  표현한다.
+- actor가 Entry Spot에 join하면 `.NET`처럼 actor ref만 돌려준다.
 - stream close는 session binding cleanup만 수행하고 actor current Spot을 바꾸지 않는다.
 - actor-session binding은 Registry나 sample-only metadata store에 저장하지 않는다.
 - `relay(...)`와 `send(...)`는 caller payload를 소비하지 않는다.
@@ -930,6 +1016,16 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R monit
 구현 항목:
 
 - `module_t`
+- `framework_module_contract_t`
+- `app_t::add_zlink_framework(std::function<void(zlink_framework_options_t &)>)`
+- `zlink_framework_options_t`
+- `handler_options_builder_t`
+- `codec_options_builder_t`
+- `discovery_options_builder_t`
+- `client_server_channel_builder_t`
+- `publisher_channel_builder_t`
+- `spot_node_options_builder_t`
+- `stream_node_options_builder_t`
 - module service registration
 - module handler registration
 - module runtime configuration
@@ -952,6 +1048,65 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R monit
 완료 기준:
 
 - module은 handler, service, runtime 구성, observability 확장을 한 곳에 묶을 수 있다.
+- `.NET`의 `AddZLinkFramework(options => ...)`에 해당하는 C++ 고수준 진입점은
+  `app_t::add_zlink_framework(options_callback)`다. 여기서 `options_callback`은
+  `zlink_framework_options_t`를 받는다. C++에는 assembly reflection이 없으므로
+  `.NET`의 `AddHandlersFromAssemblyOf(...)`만 그대로 옮기지 않고,
+  `options.handlers().add<THandler>(group_name)`처럼 handler 타입을 명시해서 등록한다.
+- `options.codecs().add_json()`은 JSON codec 사용만 선언한다. 사용자가 message type을 codec
+  설정에 모두 나열하지 않는다. request/reply serializer 등록은 handler type의 `request_type`,
+  `reply_type`에서 framework가 자동으로 처리한다.
+- handler 생성자 의존성은 `dependency_list_t<Dep...>`와 DI 생성자 주입으로 처리한다.
+  handler를 default constructor에 맞추기 위해 application service를 handler 내부에서 만들거나
+  참조를 `shared_ptr`로 억지 변환하지 않는다.
+- handler가 다른 channel로 request를 보낼 때는
+  `co_await client.request<TReply>(channel_name, request).submit()` 형태를 사용한다.
+  `request_to_channel<TRequest, TReply>(...).submit().result().value()`처럼 request/reply 타입을
+  모두 드러내고 task 결과를 직접 꺼내는 코드는 샘플과 사용자 guide에 노출하지 않는다.
+- application sample과 guide 예제에서는 샘플 namespace에
+  `using zlink::framework::task_t;`를 두고 handler signature를
+  `task_t<TReply> handle(...)`처럼 쓴다. `zlink::framework::task_t<TReply>`를 반복해서
+  async 의미를 가리는 코드는 샘플 완료 기준에 맞지 않는다.
+- 샘플의 framework 설정은 아래 수준으로 읽혀야 한다. 설정을 읽는 사람은 discovery를 쓰고,
+  client-server channel 두 개를 구성하며, API channel에 handler group을 붙인다는 사실을
+  바로 알 수 있어야 한다.
+
+```cpp
+app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &options) {
+  options.handlers ()
+    .add<authenticate_player_handler_t> ("api")
+    .add<match_bingo_api_handler_t> ("api");
+
+  options.codecs ().add_json ();
+
+  options.discovery ().add (topology.registry_router_endpoint);
+
+  options.client_server_channel (sample_names_t::api_channel)
+    .server (topology.api_channel_endpoint)
+    .handler_group ("api");
+
+  options.client_server_channel (sample_names_t::play_channel)
+    .client ();
+});
+```
+
+- `module_t`, `framework_module_contract_t`, handler용 DI factory, handler signature registration,
+  monitoring channel 문자열, serializer smoke 검증, message type을 모두 나열하는 codec 등록은
+  framework 내부 구현 또는 낮은 수준 확장 구현 세부다. 이것들이 샘플 `Program` 역할의
+  `main.cpp`, role `*HostFactory`, 일반 사용자 설정 예제에 노출되면 완료가 아니다.
+- sample `Program` 역할의 `main.cpp`와 role `*HostFactory`에는 handler registration,
+  handler용 DI factory, logging sink, serializer smoke 검증을 두지 않는다. role `*HostFactory`는
+  완성된 `app_t`를 반환하고, role별 세부 구성은 위 options builder 표면으로 표현한다.
+- `zlink_framework_options_t`의 일반 사용자 표면에는 람다 기반 `enable_server`,
+  `enable_client`, `channel(...)`, `use_zlink(...)` 우회 설정을 두지 않는다. 이런 API는
+  framework 내부 runtime builder나 낮은 수준 확장 테스트에서만 사용한다. 샘플과 사용자 예제는
+  `client_server_channel(...).server(...).client(...).handler_group(...)`,
+  `publisher_channel(...).bind(...)`, `spot_node(...).bind(...)`,
+  `stream_node(...).bind(...).packet_session(...)` 같은 fluent options builder만 사용한다.
+- `stream_node` fluent builder는 `bind`와 `packet_session`이 모두 지정된 뒤에만 내부 stream
+  builder에 반영한다. 체인 중간의 불완전한 stream 설정이 runtime에 등록되면, 사용자는 정상적인
+  fluent 호출을 했는데도 `STREAM requires bind endpoint and packet session` 같은 저수준 오류를
+  보게 되기 때문이다.
 - hosted service는 app startup/shutdown과 함께 시작하고 종료한다.
 - shutdown 중 hosted service가 새 submit을 무기한 만들지 않는다.
 - stage wrapper는 게임 기능 전용 타입이 아니라 SPOT 위에 상위 모델을 감싸는 host/runtime 패턴이다.
@@ -1005,7 +1160,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R hoste
 완료 기준:
 
 - connector는 framework sample이나 framework target이 아니다.
-- 하나의 `zlink::stream_connector` target으로 기본 사용이 가능하다.
+- 기본 runtime은 `zlink::stream_connector` target으로 사용하고, typed auto codec helper는
+  같은 배포물 안의 `zlink::stream_connector_codecs` target으로 선택해 사용한다.
 - MessagePack, Protobuf, LZ4는 사용자가 켰을 때만 dependency를 요구한다.
 - connector public contract header와 `connector/src/runtime/*` 구현이 물리적으로
   분리된다.
@@ -1069,6 +1225,8 @@ ctest --test-dir framework/languages/cpp/build -L connector-e2e
   `Sockets`/`Networking` 모듈로 transport를 구현한다.
 - public API는 Unreal 타입과 thread model을 따른다.
 - callback은 Game Thread에서 실행된다.
+- Unreal public API에는 `task_t`, `submit()`, `co_await` 기반 coroutine 표면을 두지 않고,
+  Blueprint delegate와 native multicast delegate callback만 제공한다.
 - Unreal 사용자가 codec 산출물을 따로 가져오지 않아도 JSON 기본 사용이 가능하다.
 - Unreal `Public/` header는 Unreal 전용 contract와 facade만 노출하고, connection,
   codec registry, thread dispatch 구현은 `Private/`에 둔다.
@@ -1130,15 +1288,26 @@ UnrealEditor-Cmd <TestProject>.uproject -ExecCmds="Automation RunTests ZLink.Str
 
 - `Bingo`는 `.NET` Bingo와 같은 session stream 역할을 포함한다.
 - `TicTacToe`가 STREAM과 ActorGateway 기반 actor/session relay 기준 샘플이다.
+- `Server/Session` role은 `.NET`과 같이 `Sessions/*`와 `Sessions/Handlers/*` 아래에
+  session class와 session packet handler를 둔다. `main.cpp` 안의 smoke 로직만으로
+  session dispatch, authenticate, actor bind, relay를 대신하면 완료로 보지 않는다.
 - 샘플 이름에 별도 접미사를 붙이지 않는다.
 - 역할별 sample smoke test가 CTest에 등록된다.
 - `.NET` 샘플과 맞춰야 하는 packet 이름과 핵심 handler 흐름이 contract test에 등록된다.
 - `Client` 샘플은 서버 handler를 직접 호출하지 않고 `zlink::stream_connector`를 통해
   `connect -> request/send submit -> notification callback` 흐름을 사용한다.
+- `Client` 샘플은 `zlink/stream_connector/codecs/auto_codec.hpp`와
+  `zlink::stream_connector::codecs::{send,request,on}`을 사용한다. raw payload 조립,
+  sample-only serializer helper, 직접 JSON parse로 connector codec을 우회하면 안 된다.
+- sample contract DTO는 C++ JSON serializer hook인 `to_json`/`from_json`만 제공한다.
+  application code가 `nlohmann::json::parse`로 field를 직접 읽거나
+  `to_stream_payload`/`from_stream_payload` 같은 sample-only 변환 함수를 호출하면 안 된다.
 - client sample smoke가 단순 컴파일/표면 검증으로만 통과하면 완료로 보지 않는다.
   Bingo와 TicTacToe client executable은 실제 server process와 붙어 request reply와 push
   notification을 검증해야 한다.
 - 서버 쪽 로그는 파일로 남겨서 bind, receive, reply, push 흐름을 확인할 수 있어야 한다.
+  CTest는 client executable 성공만 보지 않고, 로그 파일에 기대 packet 이름과 최소
+  receive/reply/push 횟수가 기록됐는지도 검증해야 한다.
 
 검증:
 
@@ -1146,6 +1315,7 @@ UnrealEditor-Cmd <TestProject>.uproject -ExecCmds="Automation RunTests ZLink.Str
 ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke
 ctest --test-dir framework/languages/cpp/build -L framework-sample-parity
 ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e
+ctest --test-dir framework/languages/cpp/build -L framework-sample-log
 ```
 
 ### Goal 20. Final Parity And Regression Gate
@@ -1269,8 +1439,8 @@ git diff --check -- framework/languages/cpp
 | C++20 baseline | Goal 1, Goal 3 | contract compile |
 | app/host lifecycle | Goal 4 | app/host |
 | DI scope | Goal 5 | DI/module |
-| callback submit | Goal 3, Goal 8, Goal 12, Goal 17 | async surface |
-| coroutine submit | Goal 3, Goal 8, Goal 12, Goal 17 | async surface |
+| callback submit | Goal 3, Goal 8, Goal 12, Goal 17, Goal 18 | 일반 C++는 call object callback, Unreal은 delegate callback |
+| coroutine submit | Goal 3, Goal 8, Goal 12, Goal 17 | Unreal Connector에는 적용하지 않음 |
 | channel request/reply | Goal 8 | channel messaging |
 | send/event publish | Goal 8 | channel messaging |
 | backpressure | Goal 9 | channel messaging, reliability |

@@ -11,6 +11,7 @@
 #include "runtime/protocol/header_codec.hpp"
 
 #include <chrono>
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <nlohmann/json.hpp>
@@ -484,5 +485,99 @@ main ()
     return 34;
   }
   auto_connector.close ().result ();
+
+  zlink::stream_socket_t timeout_server (context);
+  timeout_server.options ().notify (false);
+  timeout_server.bind ("tcp://127.0.0.1:0");
+  const auto timeout_endpoint = timeout_server.options ().last_endpoint ();
+  std::atomic_bool timed_request_seen { false };
+  std::thread timeout_server_thread ([&timeout_server, &timed_request_seen] {
+    zlink::received_t inbound;
+    if (timeout_server.recv (inbound) != 0) {
+      return;
+    }
+    timed_request_seen = true;
+    inbound.close ();
+  });
+  zlink::stream_connector::connector_options_t timeout_options;
+  timeout_options.endpoint = timeout_endpoint;
+  timeout_options.request_timeout = std::chrono::milliseconds (5);
+  auto timeout_connector =
+    zlink::stream_connector::connector_factory_t::create (timeout_options);
+  if (!timeout_connector.connect ().result ()) {
+    return 35;
+  }
+  auto timeout_reply =
+    timeout_connector.request<login_reply_t> (login_request_t {})
+      .packet_name ("timeout.request")
+      .timeout (std::chrono::milliseconds (5))
+      .submit ()
+      .result ();
+  timeout_server_thread.join ();
+  if (timeout_reply ||
+      timeout_reply.error_code () !=
+        zlink::stream_connector::error_code_t::request_timeout ||
+      !timed_request_seen) {
+    return 36;
+  }
+  timeout_connector.close ().result ();
+
+  zlink::stream_socket_t heartbeat_server (context);
+  heartbeat_server.options ().notify (false);
+  heartbeat_server.bind ("tcp://127.0.0.1:0");
+  const auto heartbeat_endpoint = heartbeat_server.options ().last_endpoint ();
+  std::atomic_bool heartbeat_seen { false };
+  std::thread heartbeat_server_thread ([&heartbeat_server, &heartbeat_seen] {
+    zlink::received_t inbound;
+    if (heartbeat_server.recv (inbound) != 0) {
+      return;
+    }
+    std::string buffer = inbound.parts ().empty ()
+                           ? std::string {}
+                           : inbound.parts ()[0].to_string ();
+    if (auto frame = try_read_server_frame (buffer)) {
+      heartbeat_seen =
+        frame->header.kind == zlink::stream_connector::message_kind_t::control &&
+        frame->header.name == "$zlink.heartbeat.ping";
+    }
+    inbound.close ();
+  });
+  zlink::stream_connector::connector_options_t heartbeat_options;
+  heartbeat_options.endpoint = heartbeat_endpoint;
+  heartbeat_options.heartbeat.interval = std::chrono::milliseconds (0);
+  auto heartbeat_connector =
+    zlink::stream_connector::connector_factory_t::create (heartbeat_options);
+  if (!heartbeat_connector.connect ().result () ||
+      !heartbeat_connector.dispatch ().result ()) {
+    return 37;
+  }
+  heartbeat_server_thread.join ();
+  if (!heartbeat_seen) {
+    return 38;
+  }
+  heartbeat_connector.close ().result ();
+
+  zlink::stream_connector::connector_options_t reconnect_options;
+  reconnect_options.endpoint = "tcp://127.0.0.1:1";
+  reconnect_options.reconnect.initial_delay = std::chrono::milliseconds (1);
+  reconnect_options.reconnect.max_delay = std::chrono::milliseconds (1);
+  reconnect_options.reconnect.max_attempts = 2;
+  auto reconnect_connector =
+    zlink::stream_connector::connector_factory_t::create (reconnect_options);
+  std::vector<zlink::stream_connector::connection_state_t> reconnect_states;
+  reconnect_connector.on_connection_state_changed (
+    [&](const zlink::stream_connector::connection_state_changed_t &state) {
+      reconnect_states.push_back (state.current);
+    });
+  auto reconnect_result = reconnect_connector.connect ().result ();
+  if (reconnect_result ||
+      reconnect_result.error_code () !=
+        zlink::stream_connector::error_code_t::connect_timeout ||
+      std::find (reconnect_states.begin (),
+                 reconnect_states.end (),
+                 zlink::stream_connector::connection_state_t::reconnecting) ==
+        reconnect_states.end ()) {
+    return 39;
+  }
   return 0;
 }

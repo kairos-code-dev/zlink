@@ -88,7 +88,10 @@ connector 구현도 시작 전에 owner를 아래처럼 나눈다.
 
 이 표의 public owner는 사용자 호출 shape와 option만 담는다. request correlation table,
 receive loop, heartbeat scheduler, frame encoder/decoder, compression worker, Game Thread
-queue 구현은 public header에 두지 않는다. 현재 C++ runtime 파일 분류는
+queue 구현은 public header에 두지 않는다. 일반 C++ connector만 `task_t`와 `co_await`
+기반 coroutine submit을 제공한다. Unreal Connector는 Unreal 사용자가 자연스럽게 쓰는
+Blueprint delegate와 native multicast delegate callback만 public 표면으로 제공하며,
+별도 coroutine API를 두지 않는다. 현재 C++ runtime 파일 분류는
 `calls`, `protocol`, `protocol/compression`, `protocol/framing`, `transport`,
 `connector_lifecycle`, `connector_callbacks`, `receive_dispatcher`, `receive_loop`,
 `task_runner`, `typed_handler_registry`를 기준으로 고정한다. 일반 C++ connector와 Unreal
@@ -143,9 +146,9 @@ receive loop와 timer/reconnect 구조를 유지하기 위해 raw file descripto
 API를 connector runtime에 직접 흩어 놓지 않는다. 현재 저장소에서는 C++ binding이 이미
 Boost include 경로를 제공하므로 Boost.Asio를 기본 구현 기반으로 사용한다.
 
-포함 기능은 아래와 같다.
+현재 구현된 포함 기능은 아래와 같다.
 
-- TCP, TLS, WebSocket, WebSocket over TLS transport
+- TCP transport
 - connector 생성과 명시 connect
 - connection state event
 - reconnect
@@ -166,6 +169,18 @@ Boost include 경로를 제공하므로 Boost.Asio를 기본 구현 기반으로
 - max send payload size
 - max metadata size
 - connector instance별 독립 실행
+
+TLS, WebSocket, WebSocket over TLS는 `transport_t`에 확장 지점으로 남아 있지만 현재
+runtime이 지원하지 않는 transport로 명확히 실패한다. 지원하지 않는 transport를 조용히
+TCP처럼 처리하지 않는 이유는 endpoint 보안과 handshake 의미가 달라서, 잘못된 성공이 실제
+운영 장애로 이어질 수 있기 때문이다.
+
+request/reply는 pending request table의 sequence로 response frame을 매칭한다. response가
+`request_timeout` 안에 도착하지 않으면 pending request를 제거하고 `request_timeout`
+error를 반환한다. heartbeat는 별도 background thread를 만들지 않고, manual dispatch 모델과
+같은 `dispatch()` 경로에서 interval이 지난 경우 `$zlink.heartbeat.ping` control frame을
+전송한다. reconnect는 `connect()` 실패 시 `reconnect` option의 시도 횟수와 backoff 값을
+따라 재시도하고, 두 번째 시도부터 `reconnecting` state event를 발행한다.
 
 connector는 ActorGateway나 server-side session actor relay를 직접 구현하지 않는다. 그것은
 서버 framework의 STREAM/ActorGateway 기능이다. connector는 STREAM 서버가 이해하는
@@ -389,8 +404,10 @@ Unreal Connector는 callback을 Game Thread에서 실행해야 한다. 내부 ne
 background thread에서 `UObject`, `AActor`, `UWorld`를 직접 만지지 않는다. 기본 dispatch
 mode는 manual이며, `Dispatch()`를 game tick에서 호출하면 그 frame에 쌓인 packet과
 lifecycle event를 Game Thread에서 처리한다.
-Unreal Connector에는 coroutine API를 별도로 두지 않는다. Unreal 사용자는 Blueprint
-delegate나 native multicast delegate로 callback을 받고, `PendingDispatchCount()`는
+Unreal Connector에는 coroutine API를 별도로 두지 않는다. 일반 C++ connector의
+`task_t`, `submit()`, `co_await` 표면을 Unreal public header로 가져오지 않는다. Unreal
+사용자는 Blueprint delegate나 native multicast delegate로 callback을 받고,
+`PendingDispatchCount()`는
 `Dispatch()` 전에 처리할 완성 frame이 private queue에 몇 개 쌓여 있는지 알려준다.
 
 codec은 일반 C++ connector와 같은 배포 정책을 따른다. JSON은 기본 포함한다. MessagePack과

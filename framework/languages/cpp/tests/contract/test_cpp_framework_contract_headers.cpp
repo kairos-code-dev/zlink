@@ -1,16 +1,47 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/framework.hpp>
+#include <zlink/framework/contracts/actors/actor.hpp>
+#include <zlink/framework/contracts/assembly/assembly.hpp>
+#include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/channels/call.hpp>
+#include <zlink/framework/contracts/channels/pending_operation.hpp>
+#include <zlink/framework/contracts/codecs/serializer.hpp>
+#include <zlink/framework/contracts/configuration/app.hpp>
+#include <zlink/framework/contracts/configuration/configuration.hpp>
+#include <zlink/framework/contracts/configuration/framework_options.hpp>
+#include <zlink/framework/contracts/configuration/logging.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
+#include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/errors/error.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/configuration/module.hpp>
+#include <zlink/framework/contracts/configuration/services.hpp>
+#include <zlink/framework/contracts/configuration/transport.hpp>
+#include <zlink/framework/contracts/configuration/zlink_builder.hpp>
+#include <zlink/framework/contracts/detail/call_facade.hpp>
+#include <zlink/framework/contracts/detail/message_name.hpp>
+#include <zlink/framework/contracts/detail/message_payload.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/registry/registry.hpp>
+#include <zlink/framework/contracts/spots/spot.hpp>
+#include <zlink/framework/contracts/streams/stream.hpp>
+#include <zlink/framework/contracts/timers/timer.hpp>
 #include <zlink/stream_connector.hpp>
+#include <zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp>
+#include <zlink/stream_connector/contracts/codec_registry.hpp>
+#include <zlink/stream_connector/contracts/connector.hpp>
+#include <zlink/stream_connector/contracts/result.hpp>
+#include <zlink/stream_connector/contracts/stream_payload.hpp>
+#include <zlink/stream_connector/contracts/task.hpp>
 #include <zlink/stream_connector/contracts/version.hpp>
+#include <zlink/stream_connector/contracts/zlink_stream_connector.hpp>
+#include <zlink/stream_connector/contracts/zlink_stream_connector_factory.hpp>
+#include <zlink/stream_connector/contracts/zlink_stream_connector_options.hpp>
+#include <zlink/stream_connector/contracts/zlink_stream_enums.hpp>
+#include <zlink/stream_connector/contracts/zlink_stream_interfaces.hpp>
+#include <zlink/stream_connector/contracts/zlink_stream_models.hpp>
 
 #include <future>
 #include <type_traits>
@@ -48,6 +79,12 @@ struct named_request_t
 struct named_reply_t
 {
 };
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::channel_client_t &> ()
+                .request<named_reply_t> ("sample", named_request_t {})),
+    zlink::framework::request_call_t<named_reply_t>>);
 
 class named_handler_t
 {

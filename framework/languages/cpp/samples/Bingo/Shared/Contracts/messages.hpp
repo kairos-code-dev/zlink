@@ -3,8 +3,8 @@
 
 #include <array>
 #include <zlink/Contracts/Messaging/message.hpp>
+#include <nlohmann/json.hpp>
 #include <string>
-#include <sstream>
 #include <vector>
 
 namespace zlink::samples::bingo
@@ -199,145 +199,358 @@ struct game_ended_notify_t
   bingo_room_state_t state;
 };
 
-inline std::string
-json_field (const char *name, const std::string &value)
+inline void to_json (nlohmann::json &json, const authenticate_req_t &value)
 {
-  return std::string ("\"") + name + "\":\"" + value + "\"";
+  json = { { "accessToken", value.access_token } };
 }
 
-inline std::string
-json_field (const char *name, bool value)
+inline void from_json (const nlohmann::json &json, authenticate_req_t &value)
 {
-  return std::string ("\"") + name + "\":" + (value ? "true" : "false");
+  value.access_token = json.value ("accessToken", "");
 }
 
-inline std::string
-json_field (const char *name, int value)
+inline void to_json (nlohmann::json &json,
+                     const authenticate_player_req_t &value)
 {
-  return std::string ("\"") + name + "\":" + std::to_string (value);
+  json = { { "accessToken", value.access_token } };
 }
 
-inline std::string
-to_stream_payload (const authenticate_req_t &message)
+inline void from_json (const nlohmann::json &json,
+                       authenticate_player_req_t &value)
 {
-  return "{" + json_field ("accessToken", message.access_token) + "}";
+  value.access_token = json.value ("accessToken", "");
 }
 
-inline std::string
-to_stream_payload (const match_bingo_req_t &message)
+inline void to_json (nlohmann::json &json,
+                     const authenticate_player_res_t &value)
 {
-  return "{" + json_field ("mode", message.mode) + "}";
+  json = { { "accepted", value.accepted },
+           { "actorId", value.actor_id },
+           { "displayName", value.display_name },
+           { "reason", value.reason } };
 }
 
-inline std::string
-to_stream_payload (const start_bingo_game_req_t &message)
+inline void from_json (const nlohmann::json &json,
+                       authenticate_player_res_t &value)
 {
-  return "{" + json_field ("roomId", message.room_id) + "}";
+  value.accepted = json.value ("accepted", false);
+  value.actor_id = json.value ("actorId", "");
+  value.display_name = json.value ("displayName", "");
+  value.reason = json.value ("reason", "");
 }
 
-inline std::string
-to_stream_payload (const leave_room_req_t &message)
+inline void to_json (nlohmann::json &json,
+                     const ensure_player_actor_req_t &value)
 {
-  return "{" + json_field ("roomId", message.room_id) + "}";
+  json = { { "actorId", value.actor_id },
+           { "displayName", value.display_name } };
 }
 
-inline std::string
-to_stream_payload (const authenticate_res_t &message)
+inline void from_json (const nlohmann::json &json,
+                       ensure_player_actor_req_t &value)
 {
-  return "{" + json_field ("actorId", message.actor_id) + "," +
-         json_field ("displayName", message.display_name) + "}";
+  value.actor_id = json.value ("actorId", "");
+  value.display_name = json.value ("displayName", "");
 }
 
-inline std::string
-to_stream_payload (const match_bingo_res_t &message)
+inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
 {
-  return "{" + json_field ("roomId", message.room_id) + "," +
-         json_field ("status", message.state.status) + "}";
+  json = { { "nodeRid", value.node_rid },
+           { "actorId", value.actor_id },
+           { "generation", value.generation } };
 }
 
-inline std::string
-to_stream_payload (const start_bingo_game_res_t &message)
+inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
 {
-  return "{" + json_field ("status", message.state.status) + "}";
+  value.node_rid = json.value ("nodeRid", std::array<unsigned char, 16> {});
+  value.actor_id = json.value ("actorId", "");
+  value.generation = json.value ("generation", 0ULL);
 }
 
-inline std::string
-to_stream_payload (const player_joined_notify_t &message)
+inline void to_json (nlohmann::json &json,
+                     const ensure_player_actor_res_t &value)
 {
-  return "{" + json_field ("roomId", message.room_id) + "," +
-         json_field ("actorId", message.actor_id) + "," +
-         json_field ("displayName", message.display_name) + "," +
-         json_field ("seat", message.seat) + "," +
-         json_field ("host", message.host) + "}";
+  json = { { "actorId", value.actor_id },
+           { "actorType", value.actor_type },
+           { "actor", value.actor } };
 }
 
-inline std::string
-to_stream_payload (const game_started_notify_t &message)
+inline void from_json (const nlohmann::json &json,
+                       ensure_player_actor_res_t &value)
 {
-  return "{" + json_field ("status", message.state.status) + "}";
+  value.actor_id = json.value ("actorId", "");
+  value.actor_type = json.value ("actorType", "");
+  value.actor = json.value ("actor", actor_ref_snapshot_t {});
 }
 
-inline std::string
-to_stream_payload (const number_drawn_notify_t &message)
+inline void to_json (nlohmann::json &json, const match_bingo_req_t &value)
 {
-  return "{" + json_field ("roomId", message.room_id) + "," +
-         json_field ("drawSeq", message.draw_seq) + "," +
-         json_field ("number", message.number) + "}";
+  json = { { "mode", value.mode } };
 }
 
-inline std::string
-to_stream_payload (const game_ended_notify_t &message)
+inline void from_json (const nlohmann::json &json, match_bingo_req_t &value)
 {
-  return "{" + json_field ("status", message.state.status) + "}";
+  value.mode = json.value ("mode", "");
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, authenticate_res_t &message)
+inline void to_json (nlohmann::json &json,
+                     const match_bingo_api_req_t &value)
 {
-  message.actor_id = "player";
-  message.display_name = "Player";
+  json = { { "actorId", value.actor_id },
+           { "displayName", value.display_name },
+           { "mode", value.mode } };
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, match_bingo_res_t &message)
+inline void from_json (const nlohmann::json &json,
+                       match_bingo_api_req_t &value)
 {
-  message.room_id = "room-1";
-  message.state.room_id = message.room_id;
+  value.actor_id = json.value ("actorId", "");
+  value.display_name = json.value ("displayName", "");
+  value.mode = json.value ("mode", "");
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, start_bingo_game_res_t &message)
+inline void to_json (nlohmann::json &json,
+                     const match_bingo_api_res_t &value)
 {
-  message.state.status = "playing";
+  json = { { "roomId", value.room_id } };
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, player_joined_notify_t &message)
+inline void from_json (const nlohmann::json &json,
+                       match_bingo_api_res_t &value)
 {
-  message.room_id = "room-1";
-  message.actor_id = "player";
-  message.display_name = "Player";
-  message.seat = 1;
+  value.room_id = json.value ("roomId", "");
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, game_started_notify_t &message)
+inline void to_json (nlohmann::json &json,
+                     const allocate_bingo_room_req_t &value)
 {
-  message.state.status = "playing";
+  json = { { "mode", value.mode } };
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, number_drawn_notify_t &message)
+inline void from_json (const nlohmann::json &json,
+                       allocate_bingo_room_req_t &value)
 {
-  message.room_id = "room-1";
-  message.draw_seq = 1;
-  message.number = 1;
+  value.mode = json.value ("mode", "");
 }
 
-inline void
-from_stream_payload (const zlink::message_t &, game_ended_notify_t &message)
+inline void to_json (nlohmann::json &json,
+                     const allocate_bingo_room_res_t &value)
 {
-  message.state.status = "ended";
+  json = { { "roomId", value.room_id } };
+}
+
+inline void from_json (const nlohmann::json &json,
+                       allocate_bingo_room_res_t &value)
+{
+  value.room_id = json.value ("roomId", "");
+}
+
+inline void to_json (nlohmann::json &json,
+                     const bingo_room_join_req_t &value)
+{
+  json = { { "roomId", value.room_id },
+           { "actorId", value.actor_id },
+           { "displayName", value.display_name } };
+}
+
+inline void from_json (const nlohmann::json &json,
+                       bingo_room_join_req_t &value)
+{
+  value.room_id = json.value ("roomId", "");
+  value.actor_id = json.value ("actorId", "");
+  value.display_name = json.value ("displayName", "");
+}
+
+inline void to_json (nlohmann::json &json, const start_bingo_game_req_t &value)
+{
+  json = { { "roomId", value.room_id } };
+}
+
+inline void from_json (const nlohmann::json &json, start_bingo_game_req_t &value)
+{
+  value.room_id = json.value ("roomId", "");
+}
+
+inline void to_json (nlohmann::json &json, const leave_room_req_t &value)
+{
+  json = { { "roomId", value.room_id } };
+}
+
+inline void from_json (const nlohmann::json &json, leave_room_req_t &value)
+{
+  value.room_id = json.value ("roomId", "");
+}
+
+inline void to_json (nlohmann::json &json,
+                     const bingo_player_state_t &value)
+{
+  json = { { "actorId", value.actor_id },
+           { "displayName", value.display_name },
+           { "seat", value.seat },
+           { "host", value.host },
+           { "card", value.card },
+           { "marks", value.marks },
+           { "completedLines", value.completed_lines } };
+}
+
+inline void from_json (const nlohmann::json &json,
+                       bingo_player_state_t &value)
+{
+  value.actor_id = json.value ("actorId", "");
+  value.display_name = json.value ("displayName", "");
+  value.seat = json.value ("seat", 0);
+  value.host = json.value ("host", false);
+  value.card = json.value ("card", std::array<int, 25> {});
+  value.marks = json.value ("marks", std::array<bool, 25> {});
+  value.completed_lines = json.value ("completedLines", 0);
+}
+
+inline void to_json (nlohmann::json &json, const bingo_room_state_t &value)
+{
+  json = { { "roomId", value.room_id },
+           { "status", value.status },
+           { "hostActorId", value.host_actor_id },
+           { "canStart", value.can_start },
+           { "drawSeq", value.draw_seq },
+           { "lastDrawnNumber", value.last_drawn_number },
+           { "drawnNumbers", value.drawn_numbers },
+           { "players", value.players },
+           { "winners", value.winners } };
+}
+
+inline void from_json (const nlohmann::json &json, bingo_room_state_t &value)
+{
+  value.room_id = json.value ("roomId", "");
+  value.status = json.value ("status", "");
+  value.host_actor_id = json.value ("hostActorId", "");
+  value.can_start = json.value ("canStart", false);
+  value.draw_seq = json.value ("drawSeq", 0);
+  value.last_drawn_number = json.value ("lastDrawnNumber", 0);
+  value.drawn_numbers = json.value ("drawnNumbers", std::vector<int> {});
+  value.players =
+    json.value ("players", std::vector<bingo_player_state_t> {});
+  value.winners = json.value ("winners", std::vector<std::string> {});
+}
+
+inline void to_json (nlohmann::json &json, const authenticate_res_t &value)
+{
+  json = { { "actorId", value.actor_id },
+           { "displayName", value.display_name } };
+}
+
+inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
+{
+  value.actor_id = json.value ("actorId", "");
+  value.display_name = json.value ("displayName", "");
+}
+
+inline void to_json (nlohmann::json &json, const match_bingo_res_t &value)
+{
+  json = { { "roomId", value.room_id }, { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, match_bingo_res_t &value)
+{
+  value.room_id = json.value ("roomId", "");
+  value.state = json.value ("state", bingo_room_state_t {});
+}
+
+inline void to_json (nlohmann::json &json,
+                     const bingo_room_join_res_t &value)
+{
+  json = { { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json,
+                       bingo_room_join_res_t &value)
+{
+  value.state = json.value ("state", bingo_room_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const start_bingo_game_res_t &value)
+{
+  json = { { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, start_bingo_game_res_t &value)
+{
+  value.state = json.value ("state", bingo_room_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const leave_room_res_t &value)
+{
+  json = { { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, leave_room_res_t &value)
+{
+  value.state = json.value ("state", bingo_room_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const player_joined_notify_t &value)
+{
+  json = { { "roomId", value.room_id },
+           { "actorId", value.actor_id },
+           { "displayName", value.display_name },
+           { "seat", value.seat },
+           { "host", value.host },
+           { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, player_joined_notify_t &value)
+{
+  value.room_id = json.value ("roomId", "");
+  value.actor_id = json.value ("actorId", "");
+  value.display_name = json.value ("displayName", "");
+  value.seat = json.value ("seat", 0);
+  value.host = json.value ("host", false);
+  value.state = json.value ("state", bingo_room_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const game_started_notify_t &value)
+{
+  json = { { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, game_started_notify_t &value)
+{
+  value.state = json.value ("state", bingo_room_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const state_notify_t &value)
+{
+  json = { { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, state_notify_t &value)
+{
+  value.state = json.value ("state", bingo_room_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const number_drawn_notify_t &value)
+{
+  json = { { "roomId", value.room_id },
+           { "drawSeq", value.draw_seq },
+           { "number", value.number },
+           { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, number_drawn_notify_t &value)
+{
+  value.room_id = json.value ("roomId", "");
+  value.draw_seq = json.value ("drawSeq", 0);
+  value.number = json.value ("number", 0);
+  value.state = json.value ("state", bingo_room_state_t {});
+}
+
+inline void to_json (nlohmann::json &json, const game_ended_notify_t &value)
+{
+  json = { { "state", value.state } };
+}
+
+inline void from_json (const nlohmann::json &json, game_ended_notify_t &value)
+{
+  value.state = json.value ("state", bingo_room_state_t {});
 }
 
 } // namespace zlink::samples::bingo

@@ -396,6 +396,9 @@ codec registry, thread dispatch 구현을 담는다.
   한다는 뜻은 아니다.
 - public async 표면에는 `std::future`를 사용하지 않는다.
 - handler, timer, stream session, actor relay 안에서 blocking wait를 허용하지 않는다.
+  handler dispatch 내부에서 `.result()`로 task를 기다리는 bridge 구현도 허용하지 않는다.
+- `task_t<T>`는 `.NET Task`처럼 같은 task를 여러 coroutine이 await할 수 있어야 한다.
+  완료 결과는 한 번만 확정되며, 중복 완료 시도는 결과를 덮어쓰지 않는다.
 - CPU-bound 또는 blocking 가능성이 있는 handler는 framework core의 offload executor를
   명시적으로 사용한다.
 - C++20 표준 library 기능을 사용할 수 있지만, CAPI dispatch callback을 handler 등록
@@ -442,6 +445,7 @@ dependency를 public API 밖에 숨기는 것이다. 사용자는 `zlink::framew
 | 영역 | 권장 라이브러리 | 링크 | 적용 범위 | 정책 |
 |------|----------------|------|----------|------|
 | runtime / I/O | zlink C++ binding | 내부 binding | 필수 | framework runtime의 유일한 I/O 기반이다. `context_t`, socket, discovery, spot, stream binding을 내부 substrate로 사용한다. |
+| coroutine executor | `Boost.Asio` | <https://www.boost.org/doc/libs/latest/doc/html/boost_asio/overview/composition/cpp20_coroutines.html> | framework 내부 구현 | `boost::asio::awaitable`, `co_spawn`, `thread_pool`을 handler coroutine executor 내부에서 사용한다. public API에는 `boost::asio::awaitable`이나 executor 타입을 노출하지 않는다. |
 | JSON | `nlohmann/json` | <https://github.com/nlohmann/json> | framework 필수 | 설정 파일, framework JSON serializer, 테스트 fixture의 기준 JSON 구현으로 고정한다. binding base dependency는 아니다. |
 | logging backend | `spdlog` | <https://github.com/gabime/spdlog> | 내부 구현 | public logging API 뒤에 숨긴다. 사용자는 `app.logging()`만 사용하고 `spdlog` logger나 sink 타입을 직접 받지 않는다. |
 | string formatting | `{fmt}` | <https://github.com/fmtlib/fmt> | 내부 구현 | 내부 메시지 formatting에 사용한다. public API에는 `fmt::format_string` 같은 타입을 노출하지 않는다. |
@@ -455,16 +459,18 @@ dependency를 public API 밖에 숨기는 것이다. 사용자는 `zlink::framew
 | Protobuf | Protocol Buffers C++ | <https://protobuf.dev/> | connector / binding 선택 기능 | connector와 binding codec target에서 optional build feature로 둔다. framework server core 필수 dependency가 아니다. |
 | FlatBuffers | FlatBuffers | <https://flatbuffers.dev/> | 확장 기능 | framework core와 connector 기본 기능에는 넣지 않는다. 별도 요구가 생기면 확장 기능으로 설계한다. |
 
-core 외부 runtime dependency는 가능한 한 `nlohmann/json` 하나로 시작한다. logging,
+framework core의 public API는 외부 runtime 타입을 노출하지 않는다. 다만 C++20 coroutine
+실행기 구현에는 `Boost.Asio`를 내부 dependency로 사용한다. 이 dependency는
+`task_t<T>`, handler, module, options callback signature에 나타나면 안 된다. logging,
 formatting, CLI parsing은 구현 편의와 패키징 비용을 비교한 뒤 public API 밖의 내부
 dependency로만 추가한다. GoogleTest, GoogleMock, benchmark 라이브러리는 개발 의존성이고
 배포 runtime dependency가 아니다.
 
-아래 라이브러리는 framework core 직접 dependency로 두지 않는다.
+아래 라이브러리는 framework public surface dependency로 두지 않는다.
 
 | 영역 | 라이브러리 | 제외 이유 |
 |------|------------|----------|
-| async I/O | `Boost.Asio` | zlink poller와 runtime event loop 책임이 겹친다. |
+| async I/O public surface | `Boost.Asio` 타입 직접 노출 | 사용자는 `task_t<T>`와 zlink call object만 보아야 한다. `boost::asio::awaitable`, executor, strand는 runtime 내부 구현으로 숨긴다. |
 | WebSocket 구현 | `Boost.Beast` | HTTP/Web framework로 오해될 수 있고, zlink transport 또는 integration 경계에서 다루는 편이 맞다. |
 | event loop | `libuv` | zlink poller와 별도 event loop를 함께 운영하면 shutdown, timer, readiness 의미가 복잡해진다. |
 | DI | `Boost.Ext.DI` | framework 자체 container로 lifetime과 host shutdown 규칙을 직접 닫는다. |
@@ -517,20 +523,22 @@ framework-owned scope다. 사용자가 임의로 전역 scope를 만들고 lifet
 - 생성자 의존성을 숨기는 service locator 남용
 - 외부 DI 라이브러리의 injector, binding DSL, scope 타입을 public API로 노출하는 모델
 
-기본 방향은 constructor injection이다. 자체 container를 구현하고,
-생성자 자동 추론보다 명시 factory와 명시 등록을 먼저 지원한다. lifetime registry,
-service collection, module registration 의미는 framework가 소유한다. 이렇게 해야
-handler lifecycle, hosted service stop 순서, shutdown 중 resolve 금지 같은 규칙을
-host와 함께 닫을 수 있다.
+기본 방향은 constructor injection이다. 자체 container를 구현하고, C++ reflection이 없다는
+제약 때문에 생성자 타입을 자동 추론하지는 않는다. 대신 `add_singleton<T, Dep...>()`처럼
+의존 타입을 명시하는 생성자 주입과 명시 factory를 함께 지원한다. lifetime registry, service
+collection, module registration 의미는 framework가 소유한다. 이렇게 해야 handler lifecycle,
+hosted service stop 순서, shutdown 중 resolve 금지 같은 규칙을 host와 함께 닫을 수 있다.
 
 기본 생성 규칙은 아래처럼 닫는다.
 
 - `add_singleton<T>()`, `add_transient<T>()`는 기본 생성 가능한 타입만 자동 생성한다.
+- 생성자 의존성이 있는 타입은 `add_singleton<T, Dep...>()`,
+  `add_scoped<T, Dep...>()`, `add_transient<T, Dep...>()`처럼 의존 타입을 명시해 등록한다.
 - `add_scoped<T>()`는 framework-owned scope 안에서만 resolve할 수 있다.
-- 생성자 의존성이 있는 타입은 `add_factory<T>()`로 등록한다.
-- handler owner에 의존성이 있으면 handler owner도 `add_factory<T>()` 또는 동등한
-  명시 등록을 사용한다.
-- 생성자 자동 wiring은 core 표면에 넣지 않는다. 필요하면 public API 밖의 helper나
+- 복잡한 외부 객체 생성이나 조건부 생성이 필요한 경우에만 `add_factory<T>()`를 사용한다.
+- handler owner에 의존성이 있으면 handler type이 `dependency_list_t<Dep...>`로 의존성을
+  명시하고, handler options builder가 DI 생성자 주입 등록을 수행한다.
+- 생성자 타입 자동 추론은 core 표면에 넣지 않는다. 필요하면 public API 밖의 helper나
   extension으로 검토한다.
 
 내부 구현 경계는 아래처럼 나눈다.
@@ -594,9 +602,10 @@ app.use_zlink([](auto &zlink) {
 - CAPI dispatch callback과 handler dispatch binding
 - transport endpoint 검증
 
-framework runtime은 `Boost.Asio`, `Boost.Beast`, `libuv` event loop를 중심 실행기로
-사용하지 않는다. timer, readiness, graceful shutdown은 CAPI dispatch callback을
-framework handler dispatch 경계에 연결하는 내부 binding으로 처리한다.
+framework runtime은 `Boost.Asio`, `Boost.Beast`, `libuv` event loop를 public 실행기로
+노출하지 않는다. timer, readiness, graceful shutdown은 CAPI dispatch callback을
+framework handler dispatch 경계에 연결하는 내부 binding으로 처리한다. 단, handler coroutine
+executor는 내부 구현으로 `Boost.Asio`를 사용한다.
 
 사용자가 native socket handle이나 poller 내부 규칙을 알아야 한다면 public surface가
 너무 얕은 것이다.
@@ -829,6 +838,7 @@ framework 내부는 CAPI dispatch callback을 받아 해당 객체의 recv 결�
 - typed handler projection
 - CAPI timer event projection
 - core가 제공하는 ordering 보존
+- framework core가 제공하는 coroutine executor
 - framework core가 제공하는 offload executor
 - backpressure와 handler timeout
 
@@ -837,6 +847,18 @@ framework는 core가 이미 제공하는 dispatch boundary를 다시 queue로 �
 typed payload 변환, DI scope, handler 호출, 오류 격리, completion 규칙을 닫는다.
 CPU-bound 또는 blocking 가능성이 있는 handler는 framework core의 offload executor로
 넘기도록 가이드하고, 해당 선택은 handler option으로 명시한다.
+
+모든 channel handler, route handler, SPOT handler, stream session callback은 framework
+coroutine executor를 통과해 실행한다. 내부 구현은 `boost::asio::thread_pool` 위에서
+`boost::asio::co_spawn`으로 `boost::asio::awaitable<result_t<T>>`를 실행한다. 사용자는
+이 사실을 알 필요가 없고, handler에서는 `task_t<T>`와 `co_await call.submit()`만 사용한다.
+handler registry와 route/SPOT/stream dispatch의 내부 invoker는 `task_t<...>`를 반환해야
+하며, executor coroutine은 이 task를 await한다. `.result()`는 C core callback처럼
+동기 반환값이 필요한 framework 경계나 테스트 검증 경계에서만 사용한다.
+handler coroutine executor의 기본 worker 수는 CPU 수 기반으로 잡는다. 전역 1개 thread로
+모든 handler를 직렬화하지 않는다. 순서 보장은 worker 수를 줄여서 만들지 않고, channel,
+spot, stream session 같은 의미 단위의 직렬화 정책으로 닫는다. 필요한 경우
+`handler_coroutine_workers(n)`으로 worker 수를 명시한다.
 
 실행 위치와 순서 보장은 아래 계약으로 닫는다.
 

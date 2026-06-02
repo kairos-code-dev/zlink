@@ -10,6 +10,10 @@ namespace zlink::samples::bingo
 class ensure_player_actor_handler_t
 {
 public:
+  using request_type = ensure_player_actor_req_t;
+  using reply_type = ensure_player_actor_res_t;
+  static constexpr const char *topic_name = "EnsurePlayerActor";
+
   ensure_player_actor_res_t handle (const ensure_player_actor_req_t &request)
   {
     return { request.actor_id,

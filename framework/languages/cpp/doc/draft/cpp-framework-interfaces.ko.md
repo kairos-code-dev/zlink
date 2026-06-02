@@ -423,17 +423,20 @@ public:
 
     service_collection_t &services();
     handler_registry_t &handlers();
-    serializer_registry_t &serializers();
     config_builder_t &config();
     logging_builder_t &logging();
-    metrics_builder_t &metrics();
-    health_builder_t &health();
+    monitoring_builder_t &monitoring();
 
     app_t &use_zlink(std::function<void(zlink_builder_t &)> configure);
     app_t &add_module(module_t &module);
+    app_t &add_zlink_framework(
+      std::function<void(zlink_framework_options_t &)> configure);
+    template <typename TModule, typename... TArgs>
+    app_t &add_zlink_framework(TArgs &&...args);
     app_t &add_hosted_service(std::unique_ptr<hosted_service_t> service);
 
     int run(int argc, char **argv);
+    void stop();
     void request_stop();
 };
 
@@ -471,13 +474,22 @@ public:
     template <typename T>
     service_collection_t &add_singleton();
 
+    template <typename T, typename... TDependencies>
+    service_collection_t &add_singleton();
+
     template <typename T>
     service_collection_t &add_singleton(std::unique_ptr<T> instance);
 
     template <typename T>
     service_collection_t &add_scoped();
 
+    template <typename T, typename... TDependencies>
+    service_collection_t &add_scoped();
+
     template <typename T>
+    service_collection_t &add_transient();
+
+    template <typename T, typename... TDependencies>
     service_collection_t &add_transient();
 
     template <typename T>
@@ -491,8 +503,12 @@ public:
 기본 생성 규칙은 아래와 같다.
 
 - `add_singleton<T>()`, `add_transient<T>()`는 기본 생성 가능한 타입만 자동 생성한다.
+- 생성자 의존성이 있는 타입은 `add_singleton<T, Dep1, Dep2>()`,
+  `add_scoped<T, Dep1, Dep2>()`, `add_transient<T, Dep1, Dep2>()`처럼 의존 타입을 명시한다.
+  framework는 `service_provider_t`에서 `Dep1`, `Dep2`를 resolve한 뒤 `T(Dep1 &, Dep2 &)`를
+  호출한다.
 - `add_scoped<T>()`는 framework-owned scope 안에서만 resolve한다.
-- 생성자 의존성이 있는 타입은 `add_factory<T>()`를 사용한다.
+- 복잡한 외부 객체 생성이나 조건부 생성이 필요한 경우에만 `add_factory<T>()`를 사용한다.
 - handler owner는 service collection에 등록되어 있어야 한다.
 - 등록되지 않은 handler owner를 framework가 암묵적으로 생성하지 않는다.
 - `Boost.Ext.DI` 같은 외부 DI 라이브러리는 public dependency로 두지 않는다.
@@ -509,11 +525,8 @@ resolve하고, actor instance 자체는 actor runtime이 소유한다.
 ```cpp
 app.services()
   .add_singleton<order_repository_t>()
-  .add_factory<order_service_t>([](service_provider_t &services) {
-      return std::make_unique<order_service_t>(
-        services.get_required<order_repository_t>());
-  })
-  .add_transient<order_handler_t>();
+  .add_transient<order_service_t, order_repository_t>()
+  .add_transient<order_handler_t, order_service_t>();
 ```
 
 ## 6. Runtime Builder
@@ -689,7 +702,9 @@ class timer_t;
 class send_call_t;
 class relay_call_t;
 class stream_write_call_t;
-class join_spot_call_t;
+template <typename TReply>
+class actor_join_spot_call_t;
+class actor_join_entry_spot_call_t;
 
 template <typename T>
 class task_t;
@@ -709,6 +724,13 @@ public:
     std::string_view actor_id() const;
     std::uint64_t generation() const;
     bool is_unchecked() const;
+};
+
+template <typename TReply>
+struct actor_join_result_t {
+    int result_code;
+    actor_ref_t actor;
+    TReply reply;
 };
 
 enum class framework_error_kind_t {
@@ -935,6 +957,21 @@ request handler 반환값은 `TReply` 또는 `task_t<TReply>`를 허용한다. `
 반환하는 handler는 `.NET`의 `async Task<TReply>` handler와 같은 의미이며, 내부
 request/send/relay도 `co_await call.submit()` 형태로 사용한다.
 
+handler 실행은 framework runtime의 coroutine executor를 통과한다. 이 executor는 내부적으로
+`boost::asio::thread_pool`과 `boost::asio::co_spawn`으로
+`boost::asio::awaitable<result_t<T>>`를 실행한다. 그러나 public API에는
+`boost::asio::awaitable`, executor, strand 타입을 노출하지 않는다. 사용자 코드는
+`task_t<T>`, `co_await call.submit()`, callback submit만 본다.
+내부 handler invoker는 `result_t<T>`를 직접 반환하지 않고 `task_t<T>`를 반환한다.
+executor는 task 완료를 callback으로 받아 Asio coroutine을 재개한다. 따라서 async handler
+실행 중에 `.result()`로 기다리는 bridge는 없다. `.result()`는 C core dispatch callback처럼
+동기 응답을 돌려줘야 하는 가장 바깥 runtime 경계에서만 사용한다.
+`task_t<T>`는 같은 task를 여러 coroutine이 await할 수 있다. 완료 상태는 한 번만 확정되며,
+중복 완료 시도는 기존 결과를 덮어쓰지 않는다. executor 완료 callback은 완료 결과를
+불필요하게 반복 복사하지 않고, 다른 executor thread로 넘겨야 하는 지점에서만 복사한다.
+handler coroutine executor는 기본적으로 CPU 수 기반 worker pool을 사용하며,
+`handler_coroutine_workers(n)`으로 명시 설정할 수 있다.
+
 ## 9. Messaging API
 
 사용자 코드에서 raw socket 대신 주입받아 쓰는 messaging 표면은 아래와 같다.
@@ -1106,28 +1143,146 @@ public:
 
 class spot_context_t {
 public:
-    zlink::routing_id_t spot_rid() const;
+    node_rid_t node_rid() const;
+    spot_rid_t spot_rid() const;
+    std::string spot_name() const;
+    spot_handler_registry_t handlers();
 
     template <typename TCommand>
-    void send_to(zlink::routing_id_t node_rid,
-      zlink::routing_id_t spot_rid,
-      const TCommand &command,
-      send_options_t options = {});
+    send_call_t send_to(node_rid_t node_rid,
+      spot_rid_t spot_rid,
+      TCommand command);
 
     template <typename TReply, typename TRequest>
-    request_call_t<TReply> request_to(zlink::routing_id_t node_rid,
-      zlink::routing_id_t spot_rid,
-      const TRequest &request,
-      request_options_t options = {});
+    request_call_t<TReply> request_to(node_rid_t node_rid,
+      spot_rid_t spot_rid,
+      TRequest request);
 
     template <typename TEvent>
-    void publish(std::string_view topic, const TEvent &event,
-      send_options_t options = {});
+    send_call_t publish(std::string topic, TEvent event);
 
     template <typename THandler>
     timer_t add_timer(std::string name,
-      std::chrono::nanoseconds period,
+      std::chrono::milliseconds period,
       timer_options_t options = {});
+};
+
+enum class spot_actor_change_kind_t {
+    join_spot,
+    join_entry_spot,
+    leave_spot
+};
+
+struct spot_actor_change_result_t {
+    spot_actor_change_kind_t kind;
+};
+
+struct spot_actor_message_metadata_t {
+    std::map<std::string, std::string> values;
+};
+
+class spot_actor_reply_options_t {
+public:
+    spot_actor_reply_options_t &metadata(std::string key, std::string value);
+    spot_actor_reply_options_t &compress(bool enabled = true);
+};
+
+struct spot_actor_send_context_t {
+    std::string packet_name;
+    std::string content_type;
+    spot_actor_message_metadata_t metadata;
+};
+
+struct spot_actor_request_context_t {
+    std::string packet_name;
+    std::string content_type;
+    spot_actor_message_metadata_t metadata;
+    spot_actor_reply_options_t reply;
+};
+
+class spot_handler_registry_t {
+public:
+    template <typename THandler>
+    spot_handler_registry_t &add_handler(std::string packet_name = {});
+
+    template <typename THandler, typename TSpot, typename TMessage>
+    spot_handler_registry_t &add_handler(std::string packet_name = {});
+
+    template <typename THandler>
+    spot_handler_registry_t &add_subscribe(std::string topic);
+
+    template <typename THandler, typename TSpot, typename TEvent>
+    spot_handler_registry_t &add_subscribe(std::string topic);
+
+    template <typename THandler>
+    spot_handler_registry_t &add_actor_join(std::string packet_name = {});
+
+    template <typename THandler, typename TSpot, typename TActor,
+      typename TRequest,
+      typename TReply>
+    spot_handler_registry_t &add_actor_join(std::string packet_name = {});
+
+    template <typename THandler>
+    spot_handler_registry_t &add_actor_packet(std::string packet_name = {});
+
+    template <typename THandler, typename TSpot, typename TActor,
+      typename TMessage>
+    spot_handler_registry_t &add_actor_packet(std::string packet_name = {});
+
+    template <typename THandler>
+    spot_handler_registry_t &add_post_actor_joined();
+
+    template <typename THandler, typename TSpot, typename TActor>
+    spot_handler_registry_t &add_post_actor_joined();
+
+    template <typename THandler>
+    spot_handler_registry_t &add_actor_left();
+
+    template <typename THandler, typename TSpot, typename TActor>
+    spot_handler_registry_t &add_actor_left();
+
+    template <typename THandler>
+    spot_handler_registry_t &add_actor_disconnected();
+
+    template <typename THandler, typename TSpot, typename TActor>
+    spot_handler_registry_t &add_actor_disconnected();
+
+    template <typename TSpot>
+    result_t<message_t> invoke_packet(std::string_view packet_name,
+      TSpot &spot,
+      service_provider_t &services,
+      serializer_registry_t &serializers,
+      const message_t &message) const;
+
+    template <typename TSpot, typename TActor>
+    result_t<message_t> invoke_actor_join(std::string_view packet_name,
+      TSpot &spot,
+      TActor &actor,
+      service_provider_t &services,
+      serializer_registry_t &serializers,
+      const message_t &message) const;
+
+    template <typename TSpot, typename TActor>
+    result_t<message_t> invoke_actor_packet(std::string_view packet_name,
+      TSpot &spot,
+      TActor &actor,
+      service_provider_t &services,
+      serializer_registry_t &serializers,
+      const message_t &message) const;
+
+    template <typename TSpot, typename TActor>
+    result_t<message_t> invoke_post_actor_joined(TSpot &spot,
+      TActor &actor,
+      service_provider_t &services,
+      serializer_registry_t &serializers,
+      spot_actor_change_result_t result = {});
+
+    template <typename TSpot, typename TActor>
+    result_t<message_t> invoke_actor_left(TSpot &spot,
+      TActor &actor,
+      service_provider_t &services,
+      serializer_registry_t &serializers,
+      spot_actor_change_result_t result);
 };
 
 class bound_session_t {
@@ -1140,14 +1295,16 @@ public:
 
 class actor_context_t {
 public:
-    std::string_view actor_id() const;
-    std::string_view actor_type() const;
-    bound_session_t &bound_session();
+    const actor_ref_t &actor_ref() const;
+    bool is_joined() const;
+    bound_session_t bound_session() const;
 
-    template <typename TRequest>
-    join_spot_call_t join_spot(
-      zlink::routing_id_t spot_rid,
+    template <typename TRequest, typename TReply>
+    actor_join_spot_call_t<TReply> join_spot(
+      spot_rid_t spot_rid,
       const TRequest &request);
+
+    actor_join_entry_spot_call_t join_entry_spot(node_rid_t spot_node_rid);
 };
 
 } // namespace zlink::framework
@@ -1157,6 +1314,52 @@ public:
 별도 channel name을 받지 않는다. 직접 `routing_id_t`를 다루는 API는 spot-to-spot
 경로와 Entry Spot join 경로에 제한한다. 일반 application handler와 client는 channel
 name과 topic을 먼저 사용한다.
+
+`.NET`의 `Context.Handlers.AddHandler`, `AddActorJoin`, `AddActorPacket`과 같은 역할은
+C++에서 `spot_context_t::handlers()`가 맡는다. C++에는 assembly reflection이 없으므로
+handler type은 명시한다. spot, actor, message, reply type은 handler class의
+`spot_type`, `actor_type`, `request_type`, `reply_type` alias에 한 번만 선언하고,
+registry는 `add_actor_join<handler_t>()`처럼 handler type만 받는 overload를 기본으로 쓴다.
+긴 template 인자를 모두 나열하는 overload는 낮은 수준 확장이나 테스트용 escape hatch다.
+샘플과 guide 예제에는 노출하지 않는다.
+
+```cpp
+class bingo_room_join_handler_t {
+public:
+    using spot_type = bingo_room_spot_t;
+    using actor_type = player_actor_t;
+    using request_type = bingo_room_join_req_t;
+    using reply_type = bingo_room_join_res_t;
+
+    bingo_room_join_res_t handle(bingo_room_t &spot,
+      const player_actor_t &actor,
+      const bingo_room_join_req_t &request);
+};
+
+void configure(zlink::framework::spot_context_t &context)
+{
+    context.handlers()
+      .add_actor_join<bingo_room_join_handler_t>()
+      .add_actor_packet<start_bingo_game_handler_t>()
+      .add_post_actor_joined<bingo_room_actor_joined_handler_t>()
+      .add_actor_left<bingo_room_actor_left_handler_t>();
+}
+```
+
+일반 Spot packet handler와 subscription handler는 `handle(spot, message)` 형태로 호출된다.
+actor lifecycle handler는 `spot_actor_change_result_t`를 받는다. 이 타입은 `.NET`의
+`ZLinkSpotActorChangeResult`에 해당하며, `join_spot`, `join_entry_spot`, `leave_spot`
+change kind를 표현한다. actor disconnected handler는 `.NET`처럼 change result 없이
+`handle(spot, actor)` 형태로 호출된다. C++은 handler interface에서 `TSpot`을 reflection으로
+추론할 수 없으므로 handler class alias로 타입 정보를 제공한다.
+등록된 handler는 descriptor로만 남지 않는다. dispatch 경로는 `serializer_registry_t`로
+`message_t`를 DTO로 바꾸고, `service_provider_t`에서 handler owner를 resolve한 뒤
+typed `handle(...)`을 호출한다. 샘플도 이 경로를 통과해야 framework 동작을 확인했다고
+볼 수 있다.
+Entry Spot의 actor packet도 일반 Spot packet으로 등록하지 않는다. `add_actor_packet`으로
+등록하고 handler는 `EntrySpot`, actor, `spot_actor_request_context_t` 또는
+`spot_actor_send_context_t`, DTO를 받는다. 이렇게 해야 `.NET` sample의 actor request
+handler와 같은 구조가 된다.
 
 timer는 native timer handle을 application에 넘기지 않는다. `timer_t`는 CAPI timer
 등록의 lifetime과 취소를 표현하는 public handle이며, callback은 user Spot에서는 core
@@ -1172,10 +1375,14 @@ ActorGateway session relay는 `session_actor_manager_t`, `session_actor_t`,
 `actor_context_t`, `bound_session_t`가 담당한다. 이 표면은 route mesh channel을 직접
 보여 주지 않는다. runtime이 ActorGateway 내부 frame, actor ref, bound session metadata를
 소유한다.
+actor context의 `join_spot<TRequest, TReply>(...)` 결과는
+`actor_join_result_t<TReply>`다. 이 타입은 `.NET`의 `ZLinkActorJoinResult<TReply>`처럼
+join result code, join 이후 actor ref, typed reply를 함께 담는다. Entry Spot join은
+`.NET`과 같이 actor ref만 돌려준다.
 
 비동기 표면은 `.NET`의 `SubmitAsync()`와 callback submit 모델을 C++로 투영한다.
-`request(...)`, `send(...)`, `relay(...)`, `join_spot(...)` 같은 호출은 즉시 실행하지
-않는 call object를 반환하고, 마지막 `submit()`이 실제 submit 지점이다.
+`request(...)`, `send(...)`, `relay(...)`, `join_spot(...)`, `join_entry_spot(...)` 같은
+호출은 즉시 실행하지 않는 call object를 반환하고, 마지막 `submit()`이 실제 submit 지점이다.
 
 ```cpp
 auto reply = co_await client
@@ -1222,12 +1429,112 @@ public:
     virtual void configure_services(service_collection_t &services) {}
     virtual void configure_zlink(zlink_builder_t &zlink) {}
     virtual void configure_handlers(handler_registry_t &handlers) {}
+    virtual void configure_monitoring(monitoring_builder_t &monitoring) {}
 };
+
+template <typename TModule>
+concept framework_module_contract_t =
+  requires(TModule &module,
+    service_collection_t &services,
+    zlink_builder_t &zlink,
+    handler_registry_t &handlers,
+    monitoring_builder_t &monitoring) {
+      module.configure_services(services);
+      module.configure_zlink(zlink);
+      module.configure_handlers(handlers);
+      module.configure_monitoring(monitoring);
+  };
 
 } // namespace zlink::framework
 ```
 
-module은 서비스 등록, runtime 구성, handler 등록을 한 기능 단위로 묶는다.
+module은 서비스 등록, runtime 구성, handler 등록, monitoring 구성을 한 기능 단위로 묶는
+낮은 수준 확장 단위다. 일반 애플리케이션 설정의 주 표면은 module type이 아니라
+`app_t::add_zlink_framework(options_callback)`이다.
+
+`app_t::add_zlink_framework(options_callback)`는 `.NET`의
+`AddZLinkFramework(options => ...)`에 대응하는 C++ 고수준 구성 진입점이다. C++에는 assembly
+reflection이 없으므로 `.NET`의 `AddHandlersFromAssemblyOf(...)`만 그대로 옮기지 않는다.
+그 대신 handler 타입을 명시해서 `options.handlers().add<THandler>(group_name)`으로 등록한다.
+나머지 codec, discovery, client-server channel, handler group 구성은 `.NET`과 같은 읽기 수준을
+유지한다.
+
+`options.codecs().add_json()`은 JSON codec 사용만 선언한다. 사용자가 모든 request/reply message
+type을 codec 설정에 나열하지 않는다. C++ framework는 `options.handlers().add<THandler>(...)`에서
+handler의 `request_type`, `reply_type`을 읽어 필요한 JSON serializer를 내부에서 등록한다.
+handler에 생성자 의존성이 있으면 `using dependency_types =
+zlink::framework::dependency_list_t<dep1_t, dep2_t>;`처럼 의존 타입을 명시한다. framework는
+handler를 등록할 때 `add_singleton<THandler, dep1_t, dep2_t>()`와 같은 DI 생성자 주입 등록을
+사용한다.
+
+```cpp
+app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &options) {
+    options.handlers()
+      .add<authenticate_player_handler_t>("api")
+      .add<match_bingo_api_handler_t>("api");
+
+    options.codecs().add_json();
+
+    options.discovery().add(topology.registry_router_endpoint);
+
+    options.client_server_channel(sample_names_t::api_channel)
+      .server(topology.api_channel_endpoint)
+      .handler_group("api");
+
+    options.client_server_channel(sample_names_t::play_channel)
+      .client();
+});
+```
+
+이 구조에서는 샘플 `main.cpp`, role `*HostFactory`, 일반 사용자 설정 예제가 handler member
+function pointer, handler용 DI factory lambda, monitoring channel 문자열, serializer smoke 검증,
+message type을 모두 나열하는 codec 등록 같은 세부 구현을 직접 알 필요가 없다. 그런 내용이 보이면
+framework options builder가 아직 충분히 깊지 않은 것으로 본다.
+
+`zlink_framework_options_t`의 사용자 표면은 fluent options builder로 제한한다. 람다 기반
+`add_client_server_channel(...)`, `enable_server(...)`, `enable_client(...)` 같은 우회 API는
+일반 사용자 설정에 두지 않는다. C++ 내부 runtime builder에는 낮은 수준 API가 남아 있을 수 있지만,
+샘플과 guide 수준의 설정은 아래처럼 역할이 바로 보이는 형태를 사용한다.
+
+```cpp
+options.client_server_channel(sample_names_t::api_channel)
+  .server(topology.api_endpoint)
+  .handler_group("api");
+
+options.publisher_channel(sample_names_t::notification_channel)
+  .bind(topology.notification_endpoint);
+
+options.stream_node(sample_names_t::stream_name)
+  .bind(topology.stream_endpoint)
+  .packet_session("client-session")
+  .attach_actor_gateway(sample_names_t::spot_node);
+```
+
+handler 안에서 다른 channel로 request를 보낼 때도 호출자는 낮은 수준의 request/reply template
+쌍이나 blocking wait를 보지 않아야 한다. `.NET`의 `await client.RequestAsync<TReply>(...)`와
+같은 읽기 수준을 C++에서는 아래처럼 표현한다.
+
+샘플 namespace에서는 `using zlink::framework::task_t;`를 두고 `task_t<T>`처럼 짧게 쓴다.
+`zlink::framework::task_t<T>`를 handler signature마다 반복하면 async 의미보다 namespace
+노이즈가 먼저 보이기 때문이다. framework public contract 문서에서는 전체 이름을 쓸 수 있지만,
+application sample과 guide 예제는 짧은 alias를 기본으로 한다.
+
+```cpp
+task_t<match_bingo_api_res_t> handle(const match_bingo_api_req_t &request)
+{
+    allocate_bingo_room_res_t allocated = co_await _client
+      .request<allocate_bingo_room_res_t>(
+        sample_names_t::play_channel,
+        allocate_bingo_room_req_t { request.mode })
+      .submit();
+
+    co_return match_bingo_api_res_t { allocated.room_id };
+}
+```
+
+샘플 handler는 `.submit().result().value()`로 결과를 직접 꺼내지 않는다. 그런 코드는 handler가
+runtime 안에서 blocking wait를 수행하는 것처럼 보이고, 모든 언어 버전에서 같은 async 모델을
+제공한다는 목표와 맞지 않다.
 
 ```cpp
 class order_module_t final : public zlink::framework::module_t {

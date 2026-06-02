@@ -6,6 +6,8 @@
 #include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
+#include <concepts>
+
 namespace zlink::framework
 {
 
@@ -43,5 +45,18 @@ public:
     (void) monitoring;
   }
 };
+
+template<typename TModule>
+concept framework_module_contract_t =
+  requires (TModule &module,
+            service_collection_t &services,
+            zlink_builder_t &zlink,
+            handler_registry_t &handlers,
+            monitoring_builder_t &monitoring) {
+    { module.configure_services (services) } -> std::same_as<void>;
+    { module.configure_zlink (zlink) } -> std::same_as<void>;
+    { module.configure_handlers (handlers) } -> std::same_as<void>;
+    { module.configure_monitoring (monitoring) } -> std::same_as<void>;
+  };
 
 } // namespace zlink::framework

@@ -2,6 +2,8 @@
 
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
+#include "runtime/dispatch/coroutine_executor.hpp"
+
 #include <map>
 #include <utility>
 
@@ -100,14 +102,16 @@ handler_registry_t::send_raw (std::string channel_name,
     [handler = std::move (handler)](service_provider_t &,
                                     serializer_registry_t &,
                                     const zlink::message_t &message)
-      -> result_t<zlink::message_t> {
+      -> task_t<zlink::message_t> {
       const auto result = handler (payload_view_t (message));
       if (!result) {
-        return result_t<zlink::message_t>::failure (
-          result.error_kind (),
-          result.error () ? result.error ()->what () : "raw handler failed");
+        return task_t<zlink::message_t> (
+          result_t<zlink::message_t>::failure (
+            result.error_kind (),
+            result.error () ? result.error ()->what () : "raw handler failed"));
       }
-      return result_t<zlink::message_t>::success (zlink::message_t {});
+      return task_t<zlink::message_t> (
+        result_t<zlink::message_t>::success (zlink::message_t {}));
     });
 }
 
@@ -156,18 +160,69 @@ handler_registry_t::invoke (std::string_view channel_name,
                             serializer_registry_t &serializers,
                             const zlink::message_t &message) const
 {
+  return invoke_async (
+           channel_name, topic, packet_name, services, serializers, message)
+    .result ();
+}
+
+task_t<zlink::message_t>
+handler_registry_t::invoke_async (std::string_view channel_name,
+                                  std::string_view packet_name,
+                                  service_provider_t &services,
+                                  serializer_registry_t &serializers,
+                                  const zlink::message_t &message) const
+{
+  return invoke_async (
+    channel_name, "", packet_name, services, serializers, message);
+}
+
+task_t<zlink::message_t>
+handler_registry_t::invoke_async (std::string_view channel_name,
+                                  std::string_view topic,
+                                  std::string_view packet_name,
+                                  service_provider_t &services,
+                                  serializer_registry_t &serializers,
+                                  const zlink::message_t &message) const
+{
   const auto found = _state->handlers.find (detail::make_handler_key (
     channel_name, topic, packet_name));
   if (found == _state->handlers.end ()) {
-    return result_t<zlink::message_t>::failure (
-      framework_error_kind_t::handler_not_found,
-      "handler is not registered");
+    return task_t<zlink::message_t> (
+      result_t<zlink::message_t>::failure (
+        framework_error_kind_t::handler_not_found,
+        "handler is not registered"));
   }
-  auto result = found->second.invoker (services, serializers, message);
-  if (!result && result.error () != nullptr) {
-    emit_failure (found->second.descriptor, *result.error ());
-  }
-  return result;
+  auto owned_message = message;
+  return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
+    [this,
+     entry = &found->second,
+     &services,
+     &serializers,
+     owned_message = std::move (owned_message)]()
+      -> boost::asio::awaitable<result_t<zlink::message_t>> {
+      result_t<zlink::message_t> result =
+        result_t<zlink::message_t>::failure (
+          framework_error_kind_t::request_failed,
+          "handler failed");
+      try {
+        auto handler_task =
+          entry->invoker (services, serializers, owned_message);
+        result = result_t<zlink::message_t>::success (
+          (co_await runtime::await_task_result (std::move (handler_task)))
+            .value ());
+      } catch (const framework_exception_t &error) {
+        result = result_t<zlink::message_t>::failure (
+          error.kind (), error.what (), error.is_retriable ());
+      } catch (...) {
+        result = result_t<zlink::message_t>::failure (
+          framework_error_kind_t::request_failed,
+          "handler threw an exception");
+      }
+      if (!result && result.error () != nullptr) {
+        emit_failure (entry->descriptor, *result.error ());
+      }
+      co_return result;
+    });
 }
 
 handler_registry_t &

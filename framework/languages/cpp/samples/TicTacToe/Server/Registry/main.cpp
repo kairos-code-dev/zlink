@@ -3,12 +3,8 @@
 #include "registry_host_factory.hpp"
 
 int
-main ()
+main (int argc, char **argv)
 {
-  auto zlink = zlink::samples::tictactoe::registry_host_factory_t::build ();
-  const auto registry = zlink.registry_options ();
-  return registry.pub_endpoint == "tcp://127.0.0.1:48101" &&
-             registry.router_endpoint == "tcp://127.0.0.1:48102"
-           ? 0
-           : 1;
+  return zlink::samples::tictactoe::registry_host_factory_t::build ()
+    .run (argc, argv);
 }

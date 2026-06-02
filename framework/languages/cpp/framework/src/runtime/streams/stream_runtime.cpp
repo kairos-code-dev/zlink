@@ -5,6 +5,7 @@
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
 #include "runtime/channels/channel_runtime.hpp"
+#include "runtime/dispatch/coroutine_executor.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -596,7 +597,24 @@ stream_runtime_t::dispatch_serial (
   std::function<task_t<void> ()> callback) const
 {
   stream._state->serial_log.push_back (operation);
-  return callback ().result ();
+  return runtime::handler_coroutine_executor ().submit<void> (
+    [callback = std::move (callback)]() mutable
+      -> boost::asio::awaitable<result_t<void>> {
+      try {
+        auto callback_task = callback ();
+        (co_await runtime::await_task_result (std::move (callback_task)))
+          .value ();
+        co_return result_t<void>::success ();
+      } catch (const framework_exception_t &error) {
+        co_return result_t<void>::failure (
+          error.kind (), error.what (), error.is_retriable ());
+      } catch (...) {
+        co_return result_t<void>::failure (
+          framework_error_kind_t::request_failed,
+          "stream session callback threw an exception");
+      }
+    })
+    .result ();
 }
 
 result_t<void>

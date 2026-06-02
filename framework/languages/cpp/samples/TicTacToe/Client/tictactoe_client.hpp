@@ -48,15 +48,13 @@ public:
           tictactoe_state_t state;
           state.match_id = game_name;
           state.status = "playing";
-          zlink::samples::send_stream_reply (
+          zlink::samples::send_stream_reply_and_push (
             inbound,
             *frame,
-            place_mark_res_t { state });
-          log << "reply " << frame->name << '\n';
-          zlink::samples::send_stream_push (
-            inbound,
+            place_mark_res_t { state },
             turn_changed_notify_t::packet_name,
             turn_changed_notify_t { state.match_id, x_actor_id, state });
+          log << "reply " << frame->name << '\n';
           log << "push " << turn_changed_notify_t::packet_name << '\n';
           ++handled;
         }

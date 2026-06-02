@@ -87,7 +87,7 @@ struct route_handler_registration_t
   std::type_index owner_type;
   std::type_index message_type;
   std::type_index reply_type;
-  std::function<result_t<zlink::message_t> (
+  std::function<task_t<zlink::message_t> (
     service_provider_t &,
     serializer_registry_t &,
     const zlink::message_t &,
@@ -186,19 +186,22 @@ public:
                serializer_registry_t &serializers,
                const zlink::message_t &message,
                const route_handler_context_t &context)
-        -> result_t<zlink::message_t> {
+        -> task_t<zlink::message_t> {
         try {
           auto &owner = services.get_required<TOwner> ();
           auto payload = serializers.get<TMessage> ().deserialize (message);
           (owner.*method) (payload, context);
-          return result_t<zlink::message_t>::success (zlink::message_t {});
+          return task_t<zlink::message_t> (
+            result_t<zlink::message_t>::success (zlink::message_t {}));
         } catch (const framework_exception_t &error) {
-          return result_t<zlink::message_t>::failure (
-            error.kind (), error.what (), error.is_retriable ());
+          return task_t<zlink::message_t> (
+            result_t<zlink::message_t>::failure (
+              error.kind (), error.what (), error.is_retriable ()));
         } catch (...) {
-          return result_t<zlink::message_t>::failure (
-            framework_error_kind_t::request_failed,
-            "routed send handler threw an exception");
+          return task_t<zlink::message_t> (
+            result_t<zlink::message_t>::failure (
+              framework_error_kind_t::request_failed,
+              "routed send handler threw an exception"));
         }
       } });
   }
@@ -221,20 +224,23 @@ public:
                serializer_registry_t &serializers,
                const zlink::message_t &message,
                const route_handler_context_t &context)
-        -> result_t<zlink::message_t> {
+        -> task_t<zlink::message_t> {
         try {
           auto &owner = services.get_required<TOwner> ();
           auto request = serializers.get<TRequest> ().deserialize (message);
           auto reply = (owner.*method) (request, context);
-          return result_t<zlink::message_t>::success (
-            serializers.get<TReply> ().serialize (reply));
+          return task_t<zlink::message_t> (
+            result_t<zlink::message_t>::success (
+              serializers.get<TReply> ().serialize (reply)));
         } catch (const framework_exception_t &error) {
-          return result_t<zlink::message_t>::failure (
-            error.kind (), error.what (), error.is_retriable ());
+          return task_t<zlink::message_t> (
+            result_t<zlink::message_t>::failure (
+              error.kind (), error.what (), error.is_retriable ()));
         } catch (...) {
-          return result_t<zlink::message_t>::failure (
-            framework_error_kind_t::request_failed,
-            "routed request handler threw an exception");
+          return task_t<zlink::message_t> (
+            result_t<zlink::message_t>::failure (
+              framework_error_kind_t::request_failed,
+              "routed request handler threw an exception"));
         }
       } });
   }
@@ -560,6 +566,30 @@ public:
 private:
   message_bus_t _bus;
   std::string _channel_name;
+};
+
+class channel_client_t
+{
+public:
+  explicit channel_client_t (message_bus_t bus) : _bus (std::move (bus)) {}
+
+  template<typename TRequest, typename TReply>
+  request_call_t<TReply> request_to_channel (std::string channel_name,
+                                             TRequest request)
+  {
+    return _bus.request<TRequest, TReply> (
+      std::move (channel_name), std::move (request));
+  }
+
+  template<typename TReply, typename TRequest>
+  request_call_t<TReply> request (std::string channel_name, TRequest request)
+  {
+    return request_to_channel<TRequest, TReply> (
+      std::move (channel_name), std::move (request));
+  }
+
+private:
+  message_bus_t _bus;
 };
 
 class publisher_t

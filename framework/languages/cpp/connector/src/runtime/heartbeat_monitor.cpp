@@ -16,4 +16,16 @@ heartbeat_monitor_t::enabled () const noexcept
   return _options.enabled;
 }
 
+bool
+heartbeat_monitor_t::due (
+  std::chrono::steady_clock::time_point last_sent,
+  std::chrono::steady_clock::time_point now) const noexcept
+{
+  if (!_options.enabled) {
+    return false;
+  }
+  return last_sent == std::chrono::steady_clock::time_point {} ||
+         now - last_sent >= _options.interval;
+}
+
 } // namespace zlink::stream_connector::detail

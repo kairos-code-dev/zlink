@@ -21,6 +21,51 @@ struct stage_packet_t
 {
 };
 
+struct options_request_t
+{
+  static constexpr const char *packet_name = "OptionsRequest";
+  std::string value;
+};
+
+struct options_reply_t
+{
+  static constexpr const char *packet_name = "OptionsReply";
+  std::string value;
+};
+
+inline void to_json (nlohmann::json &json, const options_request_t &value)
+{
+  json = { { "value", value.value } };
+}
+
+inline void from_json (const nlohmann::json &json, options_request_t &value)
+{
+  value.value = json.value ("value", "");
+}
+
+inline void to_json (nlohmann::json &json, const options_reply_t &value)
+{
+  json = { { "value", value.value } };
+}
+
+inline void from_json (const nlohmann::json &json, options_reply_t &value)
+{
+  value.value = json.value ("value", "");
+}
+
+class options_request_handler_t
+{
+public:
+  using request_type = options_request_t;
+  using reply_type = options_reply_t;
+  static constexpr const char *topic_name = "OptionsRequest";
+
+  options_reply_t handle (const options_request_t &request)
+  {
+    return { "reply:" + request.value };
+  }
+};
+
 struct stage_state_t
 {
   int value = 0;
@@ -117,6 +162,41 @@ public:
   std::optional<stage_wrapper_t> wrapper;
 };
 
+struct options_module_counters_t
+{
+  static inline int services = 0;
+  static inline int zlink = 0;
+  static inline int handlers = 0;
+  static inline int monitoring = 0;
+};
+
+class options_module_t
+{
+public:
+  void configure_services (zlink::framework::service_collection_t &services)
+  {
+    services.add_singleton<stage_state_t> ();
+    ++options_module_counters_t::services;
+  }
+
+  void configure_zlink (zlink::framework::zlink_builder_t &zlink)
+  {
+    zlink.node ("options-node");
+    ++options_module_counters_t::zlink;
+  }
+
+  void configure_handlers (zlink::framework::handler_registry_t &)
+  {
+    ++options_module_counters_t::handlers;
+  }
+
+  void configure_monitoring (zlink::framework::monitoring_builder_t &monitoring)
+  {
+    monitoring.add_socket_events ("options");
+    ++options_module_counters_t::monitoring;
+  }
+};
+
 class recording_hosted_service_t final
   : public zlink::framework::hosted_service_t
 {
@@ -203,6 +283,72 @@ main ()
   }
   if (!null_hosted_service_failed) {
     return 5;
+  }
+
+  zlink::framework::app_t options_app = zlink::framework::app_t::create ();
+  options_app.add_zlink_framework<options_module_t> ();
+  if (options_module_counters_t::services != 1 ||
+      options_module_counters_t::zlink != 1 ||
+      options_module_counters_t::handlers != 1 ||
+      options_module_counters_t::monitoring != 1) {
+    return 6;
+  }
+
+  zlink::framework::service_collection_t services;
+  zlink::framework::handler_registry_t handlers;
+  zlink::framework::serializer_registry_t serializers;
+  zlink::framework::zlink_builder_t zlink;
+  zlink::framework::monitoring_builder_t monitoring;
+  zlink::framework::zlink_framework_options_t options (
+    services, handlers, serializers, zlink, monitoring);
+
+  options.handlers ().add<options_request_handler_t> ("api");
+  options.codecs ().add_json ();
+  options.discovery ().add ("tcp://127.0.0.1:9102");
+  options.client_server_channel ("api-channel")
+    .server ("tcp://127.0.0.1:9103")
+    .handler_group ("api");
+  options.client_server_channel ("play-channel").client ();
+
+  const auto *descriptor = handlers.find (
+    "api-channel",
+    "OptionsRequest",
+    options_request_t::packet_name);
+  if (descriptor == nullptr ||
+      descriptor->execution !=
+        zlink::framework::handler_execution_t::offload) {
+    return 7;
+  }
+
+  auto provider = services.build_provider ();
+  auto result = handlers.invoke (
+    "api-channel",
+    "OptionsRequest",
+    options_request_t::packet_name,
+    provider,
+    serializers,
+    zlink::message_t::from_json (options_request_t { "request" }));
+  if (!result) {
+    return 8;
+  }
+  const auto reply = result.value ().parse_json<options_reply_t> ();
+  if (reply.value != "reply:request") {
+    return 9;
+  }
+
+  const auto discovery = zlink.discovery_options ();
+  if (discovery.registry_endpoints.size () != 1 ||
+      discovery.registry_endpoints.front () != "tcp://127.0.0.1:9102") {
+    return 10;
+  }
+  const auto channels = zlink.channels ();
+  if (channels.size () != 2 ||
+      channels[0].name != "api-channel" ||
+      !channels[0].server.enabled ||
+      channels[0].server.bind_endpoints.front () != "tcp://127.0.0.1:9103" ||
+      channels[1].name != "play-channel" ||
+      !channels[1].client.enabled) {
+    return 11;
   }
 
   return 0;

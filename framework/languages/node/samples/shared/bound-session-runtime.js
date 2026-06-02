@@ -4,6 +4,7 @@ const framework = require('../../packages/framework/dist');
 class SampleBoundSessionRuntime {
   constructor() {
     this.delivered = [];
+    this.deliveredSeq = 0;
     this.disconnected = [];
     this.runtime = new framework.ZLinkStreamBindingRuntime({
       messageFactory: {
@@ -18,6 +19,7 @@ class SampleBoundSessionRuntime {
         send: async (actorId, message, options) => {
           const decoded = decodeJsonFrame(message);
           this.delivered.push({
+            seq: ++this.deliveredSeq,
             actorId,
             token: options.bindingToken,
             packetName: options.packetName,
@@ -46,6 +48,14 @@ class SampleBoundSessionRuntime {
 
   unbind(binding) {
     this.runtime.unbind(binding.actor.actorId, binding.context, binding.actor.bindingToken);
+  }
+
+  deliveredFor(actorId, afterSeq = 0) {
+    const delivered = this.delivered.filter((entry) => entry.actorId === actorId && entry.seq > afterSeq);
+    return {
+      delivered,
+      nextSeq: delivered.at(-1)?.seq ?? afterSeq
+    };
   }
 }
 

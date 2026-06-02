@@ -37,6 +37,10 @@ async function buildSessionServerHost(options) {
         packetName: 'StartBingoGameReq',
         handle: (request, routeContext) => relayToPlay(playClient, requireSessionContext(sessionContexts, routeContext), 'StartBingoGameReq', request)
       },
+      {
+        packetName: 'BingoNotificationsReq',
+        handle: (request, routeContext) => relayToPlay(playClient, requireSessionContext(sessionContexts, routeContext), 'BingoNotificationsReq', request)
+      },
       { packetName: 'Ping', handle: () => ({ role: 'session-server', session: BingoSession.name }) }
     ]
   });

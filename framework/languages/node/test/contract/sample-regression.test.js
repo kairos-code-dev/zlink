@@ -84,7 +84,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Play/Handlers/bingo-room-directory.js',
       'Server/Play/Handlers/ensure-player-actor-handler.js',
       'Server/Play/Handlers/match-bingo-channel-handler.js',
-      'Server/Play/Handlers/run-bingo-room-timer-handler.js',
       'Server/Play/Handlers/start-bingo-game-channel-handler.js',
       'Server/Play/play-server-host-factory.js',
       'Server/Play/main.js',
@@ -127,7 +126,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Play/Handlers/bingo-room-directory.ts',
       'Server/Play/Handlers/ensure-player-actor-handler.ts',
       'Server/Play/Handlers/match-bingo-channel-handler.ts',
-      'Server/Play/Handlers/run-bingo-room-timer-handler.ts',
       'Server/Play/Handlers/start-bingo-game-channel-handler.ts',
       'Server/Play/play-server-host-factory.ts',
       'Server/Play/main.ts',
@@ -457,8 +455,7 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [client, "assert.deepEqual(result.ended.winners, ['player-1', 'player-3'])"],
     [clientApp, 'earlyHostStartRejected'],
     [clientApp, 'nonHostStartRejected'],
-    [clientApp, "playClient.request('RunBingoRoomTimerReq'"],
-    [clientApp, "playClient.request('BingoDeliveredNotificationsReq'"],
+    [clientApp, 'waitForEnded'],
     [clientApp, 'startedPushCounts.every'],
     [clientApp, 'drawnPushCounts.every'],
     [clientApp, 'endedPushCounts.every'],
@@ -467,6 +464,7 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [playerClient, "sessionClient.request('session-server', 'AuthenticateReq'"],
     [playerClient, "sessionClient.request('session-server', 'MatchBingoReq'"],
     [playerClient, "sessionClient.request('session-server', 'StartBingoGameReq'"],
+    [playerClient, "sessionClient.request('session-server', 'BingoNotificationsReq'"],
     [inbox, 'PlayerJoinedNotify'],
     [inbox, 'BingoGameStartedNotify'],
     [inbox, 'BingoNumberDrawnNotify'],
@@ -499,6 +497,7 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [sessionFactory, "channelName: 'bingo.play'"],
     [sessionFactory, "packetName: 'MatchBingoReq'"],
     [sessionFactory, "packetName: 'StartBingoGameReq'"],
+    [sessionFactory, "packetName: 'BingoNotificationsReq'"],
     [sessionFactory, 'relayToPlay'],
     [session, 'class BingoSession'],
     [session, 'requireSingleBoundActor'],
@@ -509,7 +508,6 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [playFactory, 'EnsurePlayerActorHandler'],
     [playFactory, 'MatchBingoChannelHandler'],
     [playFactory, 'StartBingoGameChannelHandler'],
-    [playFactory, 'RunBingoRoomTimerHandler'],
     [playFactory, 'SampleBoundSessionRuntime'],
     [playFactory, "channelName: 'bingo.play'"],
     [playFactory, "handlerGroups: ['play']"],
@@ -517,6 +515,7 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [playFactory, "packetName: 'EnsurePlayerActorReq'"],
     [playFactory, "packetName: 'MatchBingoReq'"],
     [playFactory, "packetName: 'StartBingoGameReq'"],
+    [playFactory, "packetName: 'BingoNotificationsReq'"],
     [room, "ZLinkHandlerGroup('play')"],
     [room, "ZLinkRequest('AllocateBingoRoom')"],
     [ensureActor, "ZLinkRequest('EnsurePlayerActorReq')"],
@@ -536,6 +535,10 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     .map(([, text]) => text);
 
   assert.deepEqual(missing, []);
+  assert.equal(clientApp.includes('createChannelClient'), false);
+  assert.equal(clientApp.includes("playClient.request('"), false);
+  assert.equal(clientApp.includes('RunBingoRoomTimerReq'), false);
+  assert.equal(clientApp.includes('BingoDeliveredNotificationsReq'), false);
   assert.equal(apiFactory.includes('createRouteClient'), false);
   assert.equal(client.includes('createRouteClient'), false);
   assert.equal(playerClient.includes('apiClient.request('), false);
@@ -545,6 +548,7 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
   assert.equal(match.includes("'RunBingoRoom'"), false);
   assert.equal(match.includes('players:'), false);
   assert.equal(match.includes('draws:'), false);
+  assert.equal(playFactory.includes('RunBingoRoomTimerReq'), false);
   assert.equal(apiMain.includes("packetName: 'RunBingo'"), false);
   assert.equal(roomMain.includes('const requiredPlayers'), false);
 });

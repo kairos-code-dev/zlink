@@ -12,7 +12,6 @@ const { BingoRoomDirectory } = require('./Handlers/bingo-room-directory');
 const { EnsurePlayerActorHandler } = require('./Handlers/ensure-player-actor-handler');
 const { MatchBingoChannelHandler } = require('./Handlers/match-bingo-channel-handler');
 const { StartBingoGameChannelHandler } = require('./Handlers/start-bingo-game-channel-handler');
-const { RunBingoRoomTimerHandler } = require('./Handlers/run-bingo-room-timer-handler');
 
 async function buildPlayServerHost(options) {
   const boundSessions = new SampleBoundSessionRuntime();
@@ -27,8 +26,7 @@ async function buildPlayServerHost(options) {
   const allocateBingoRoom = new AllocateBingoRoomHandler(rooms);
   const ensurePlayerActor = new EnsurePlayerActorHandler(actorFactory);
   const matchBingo = new MatchBingoChannelHandler(actorFactory, entrySpot, matchBingoActor);
-  const startBingo = new StartBingoGameChannelHandler(actorFactory, rooms, startBingoGame);
-  const runTimer = new RunBingoRoomTimerHandler(rooms, timer);
+  const startBingo = new StartBingoGameChannelHandler(actorFactory, rooms, startBingoGame, timer);
 
   return await startChannelServer({
     endpoint: options.playEndpoint,
@@ -39,8 +37,7 @@ async function buildPlayServerHost(options) {
       { group: 'play', packetName: 'EnsurePlayerActorReq', handle: (request) => ensurePlayerActor.handle(request) },
       { group: 'play', packetName: 'MatchBingoReq', handle: (request) => matchBingo.handle(request) },
       { group: 'play', packetName: 'StartBingoGameReq', handle: (request) => startBingo.handle(request) },
-      { group: 'play', packetName: 'RunBingoRoomTimerReq', handle: (request) => runTimer.handle(request) },
-      { group: 'play', packetName: 'BingoDeliveredNotificationsReq', handle: () => ({ delivered: boundSessions.delivered }) },
+      { group: 'play', packetName: 'BingoNotificationsReq', handle: (request) => boundSessions.deliveredFor(request.actorId, request.afterSeq) },
       { group: 'play', packetName: 'Ping', handle: () => ({ ok: true }) }
     ]
   });

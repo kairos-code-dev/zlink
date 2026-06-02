@@ -1,4 +1,3 @@
-const { createChannelClient } = require('../../shared/channel-runtime');
 const { createRouteClient } = require('../../shared/route-runtime');
 const { reserveTcpEndpoint } = require('../../shared/process-host');
 const { BingoPlayerClient } = require('./bingo-player-client');
@@ -6,10 +5,6 @@ const { SampleNames, SampleTimings } = require('../Shared/Configuration/sample-n
 
 class BingoClientApp {
   async run(options) {
-    const playClient = await createChannelClient({
-      channelName: SampleNames.playChannel,
-      peers: [options.playEndpoint]
-    });
     const routeClients = [];
 
     try {
@@ -37,19 +32,13 @@ class BingoClientApp {
 
       const nonHostStartRejected = await isRejected(() => clients[1].start(firstMatch.roomId));
       const started = await clients[0].start(firstMatch.roomId);
-      const timer = await playClient.request('RunBingoRoomTimerReq', {
-        roomId: firstMatch.roomId
-      }, SampleTimings.requestTimeout);
-      const delivered = (await playClient.request('BingoDeliveredNotificationsReq', {}, SampleTimings.requestTimeout)).delivered;
-      for (const client of clients) {
-        client.notifications.apply(delivered);
-      }
+      const ended = await waitForEnded(clients);
 
       const result = {
         authentications,
         matches,
         started,
-        ended: timer.state,
+        ended,
         playerJoinedPushCounts: clients.map((client) => client.notifications.playerJoined.length),
         startedPushCounts: clients.map((client) => client.notifications.started.length),
         drawnPushCounts: clients.map((client) => client.notifications.drawn.length),
@@ -63,7 +52,6 @@ class BingoClientApp {
       for (const routeClient of routeClients.reverse()) {
         await routeClient.stop();
       }
-      await playClient.stop();
     }
   }
 }
@@ -75,6 +63,23 @@ async function isRejected(action) {
   } catch {
     return true;
   }
+}
+
+async function waitForEnded(clients) {
+  const deadline = Date.now() + SampleTimings.requestTimeout;
+  while (Date.now() < deadline) {
+    for (const client of clients) {
+      await client.syncNotifications();
+    }
+    const ended = clients
+      .flatMap((client) => client.notifications.ended)
+      .at(-1);
+    if (ended !== undefined) {
+      return ended.state;
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  throw new Error('Timed out waiting for BingoGameEndedNotify.');
 }
 
 function validate(result) {

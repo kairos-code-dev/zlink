@@ -9,6 +9,7 @@ class BingoPlayerClient {
     this.displayName = actorDisplayName(actorId);
     this.sessionClient = sessionClient;
     this.notifications = new BingoNotificationInbox(actorId);
+    this.notificationCursor = 0;
   }
 
   async authenticate() {
@@ -36,6 +37,15 @@ class BingoPlayerClient {
       throw new Error(result.reason);
     }
     return result;
+  }
+
+  async syncNotifications() {
+    const response = await this.sessionClient.request('session-server', 'BingoNotificationsReq', {
+      afterSeq: this.notificationCursor
+    }, SampleTimings.requestTimeout);
+    this.notificationCursor = response.nextSeq;
+    this.notifications.apply(response.delivered);
+    return response.delivered;
   }
 }
 

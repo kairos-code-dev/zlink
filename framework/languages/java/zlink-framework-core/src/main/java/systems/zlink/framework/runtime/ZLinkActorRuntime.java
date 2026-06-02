@@ -10,7 +10,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -110,18 +109,28 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         return ref;
     }
 
-    void bindSession(ZLinkActor actor, ZLinkBoundSession boundSession) {
+    long bindSession(ZLinkActor actor, ZLinkBoundSession boundSession) {
         DefaultActorContext context = contextsByActor.get(actor);
         if (context == null) {
             throw new ZLinkConfigurationException(
                 "actor is not managed by this runtime: " + actor.actorId());
         }
-        context.setBoundSession(boundSession);
+        return context.setBoundSession(boundSession);
+    }
+
+    void clearSessionBinding(ZLinkActor actor, long bindingToken) {
+        DefaultActorContext context = contextsByActor.get(actor);
+        if (context == null) {
+            throw new ZLinkConfigurationException(
+                "actor is not managed by this runtime: " + actor.actorId());
+        }
+        context.clearBoundSession(bindingToken);
     }
 
     private static final class DefaultActorContext implements ZLinkActorContext {
         private final ZLinkBackendActorRef actorRef;
         private ZLinkBoundSession boundSession;
+        private long sessionBindingToken;
 
         DefaultActorContext(ZLinkBackendActorRef actorRef) {
             this.actorRef = actorRef;
@@ -155,8 +164,16 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             return null;
         }
 
-        void setBoundSession(ZLinkBoundSession boundSession) {
+        long setBoundSession(ZLinkBoundSession boundSession) {
+            sessionBindingToken++;
             this.boundSession = boundSession;
+            return sessionBindingToken;
+        }
+
+        void clearBoundSession(long bindingToken) {
+            if (bindingToken == sessionBindingToken) {
+                boundSession = null;
+            }
         }
     }
 }

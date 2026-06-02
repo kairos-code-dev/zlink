@@ -55,6 +55,11 @@ credentials도 같은 원칙을 따른다. `MAVEN_REPOSITORY_USERNAME` /
 `GITHUB_ACTOR` / `GITHUB_TOKEN` 을 사용한다. 따라서 package URL은 코드나 문서에
 고정하지 않고, CI 환경이 배포 대상을 주입한다.
 
+POM의 project URL과 SCM URL은 저장소를 가리키는 안정 메타데이터이므로
+`https://github.com/kairos-code-dev/zlink` 를 사용한다. 이것은 artifact를 publish할
+repository URL과 다르다. repository URL은 위 환경변수 규칙으로 정하고, POM URL은
+사용자가 artifact의 소스 저장소를 찾기 위한 식별자로 유지한다.
+
 `zlink-framework-core` 내부 package(= `.NET` `Runtime/` 미러):
 `systems.zlink.framework.{channels, spots, actors, streams, registry, monitoring,
 configuration}`, internal `systems.zlink.framework.runtime`(backend adapter 격리),

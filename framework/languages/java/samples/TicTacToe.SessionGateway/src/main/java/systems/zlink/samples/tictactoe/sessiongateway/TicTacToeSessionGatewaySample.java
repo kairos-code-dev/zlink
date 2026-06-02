@@ -52,11 +52,11 @@ public final class TicTacToeSessionGatewaySample {
         ZLinkActorRef actorRef = new ZLinkActorRef(RoutingId.from("play-node"), "player-1", 1);
         RecordingSessionActors primaryActors = new RecordingSessionActors();
         PlayerSession primary = new PlayerSession(primaryActors);
-        primary.bindActor(actorRef).toCompletableFuture().join();
+        primary.context().actors().bindAsync(actorRef).toCompletableFuture().join();
 
         RecordingSessionActors reconnectActors = new RecordingSessionActors();
         PlayerSession reconnect = new PlayerSession(reconnectActors);
-        reconnect.bindActor(actorRef).toCompletableFuture().join();
+        reconnect.context().actors().bindAsync(actorRef).toCompletableFuture().join();
 
         require(primaryActors.bound().get(0).actorId().equals("player-1"),
             "primary session did not bind expected actor");
@@ -90,10 +90,6 @@ public final class TicTacToeSessionGatewaySample {
 
         PlayerSession(RecordingSessionActors actors) {
             this.actors = actors;
-        }
-
-        CompletionStage<ZLinkSessionActor> bindActor(ZLinkActorRef actorRef) {
-            return actors.bindAsync(actorRef);
         }
 
         @Override

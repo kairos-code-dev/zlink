@@ -39,6 +39,11 @@ JUnit 테스트 이름은 `.NET` 테스트 메서드를 camelCase로 옮긴 대�
 
 ## 3. Spot/Actor regression
 
+`RemoteActorGatewayTest`, `ActorSessionStateTest`, `BoundSessionTest`는 testkit
+fake backend에서 ActorGateway attach, bind/unbind, bound push backend operation을
+관찰해 session relay의 내부 계약을 먼저 고정한다. 실제 OS process를 나누는
+multi-process smoke는 release gate에서 같은 테스트 이름의 의미를 유지해 추가한다.
+
 | 항목 | 계층 | JUnit 테스트 | 통과 기준 |
 |------|------|--------------|-----------|
 | duplicate Spot factory | unit | `NodesAndServicesTest.addZLinkFramework_throws_whenSpotFactoryTypeIsDuplicatedAcrossNodes` | startup validation 오류 |

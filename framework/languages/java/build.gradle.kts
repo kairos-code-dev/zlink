@@ -117,6 +117,16 @@ subprojects {
                     groupId = project.group.toString()
                     artifactId = project.name
                     version = project.version.toString()
+                    pom {
+                        name.set(project.name)
+                        description.set(project.description ?: project.name)
+                        url.set("https://github.com/kairos-code-dev/zlink")
+                        scm {
+                            connection.set("scm:git:https://github.com/kairos-code-dev/zlink.git")
+                            developerConnection.set("scm:git:git@github.com:kairos-code-dev/zlink.git")
+                            url.set("https://github.com/kairos-code-dev/zlink")
+                        }
+                    }
                 }
             }
             repositories {

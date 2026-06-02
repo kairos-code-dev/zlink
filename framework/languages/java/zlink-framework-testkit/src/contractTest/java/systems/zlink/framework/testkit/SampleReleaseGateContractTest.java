@@ -85,6 +85,8 @@ final class SampleReleaseGateContractTest {
             "SessionGateway sample must not replace stream node configuration with a recording builder");
         assertTrue(source.contains("new ZLinkActorRef("),
             "SessionGateway sample must bind by framework actor locator");
+        assertTrue(source.contains("context().actors().bindAsync"),
+            "SessionGateway sample must bind actors through ZLinkSessionContext public API");
         assertFalse(source.contains("systems.zlink.contracts.service.spot.ActorRef"),
             "SessionGateway sample must not import binding ActorRef");
         assertFalse(source.contains("new ActorRef("),

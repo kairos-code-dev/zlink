@@ -1,102 +1,59 @@
 package systems.zlink.framework.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.core.Zlink;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
+import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 
-final class SessionActorsRuntimeIntegrationTest {
-    @Test
-    void bindAsyncUsesStreamActorGatewayBindingPath() {
-        Zlink.version();
-        try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
-            ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
-                .toCompletableFuture()
-                .join();
-            ZLinkSessionActorsRuntime sessionActors = runtime.sessionActors(
-                "gateway",
-                RoutingId.from("session-1"));
-            ZLinkSessionActor bound = sessionActors
-                .bindAsync(actor)
-                .toCompletableFuture()
-                .join();
-
-            assertEquals("player-1", bound.actorId());
-            assertEquals(Optional.of(bound), sessionActors.find("player-1"));
-        }
-    }
-
+final class RemoteActorGatewayTest {
     @Test
     void sessionAndPlayServers_relaySucceeds() {
-        Zlink.version();
-        try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
-            ZLinkSessionActorsRuntime sessionActors = runtime.sessionActors(
-                "gateway",
-                RoutingId.from("session-1"));
-            ZLinkSessionActor bound = sessionActors
-                .bindAsync(new systems.zlink.framework.actors.ZLinkActorRef(
+        FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options(), backend)) {
+            ZLinkSessionActor actor = runtime.sessionActors(
+                    "gateway",
+                    RoutingId.from("session-1"))
+                .bindAsync(new ZLinkActorRef(
                     RoutingId.from("play-node"),
                     "player-1",
                     1))
                 .toCompletableFuture()
                 .join();
 
-            assertEquals("player-1", bound.actorId());
-            assertEquals(Optional.of(bound), sessionActors.find("player-1"));
+            assertEquals("player-1", actor.actorId());
         }
+
+        assertTrue(backend.calls().contains("stream.attachActorGateway.spotNode"));
+        assertTrue(backend.calls().contains("stream.bindActor.player-1"));
     }
 
-    @Test
-    void playActorPush_arrivesAtClientStream() {
-        Zlink.version();
-        try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
-            ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
-                .toCompletableFuture()
-                .join();
-            runtime.sessionActors("gateway", RoutingId.from("session-1"))
-                .bindAsync(actor)
-                .toCompletableFuture()
-                .join();
-
-            actor.context()
-                .boundSession()
-                .send("push")
-                .packetName("Push")
-                .submitAsync()
-                .toCompletableFuture()
-                .join();
-        }
-    }
-
-    private static ZLinkFrameworkRuntime startGatewayRuntime() {
-        Zlink.version();
+    static DefaultZLinkFrameworkOptions options() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
         options.addActorFactory("player", PlayerActorFactory.class);
         options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway-bind-" + System.nanoTime());
+            stream.bind("inproc://fake-gateway");
             stream.attachActorGateway("play");
             stream.registerSession(GameSession.class);
         });
-
-        return ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+        return options;
     }
 
     public static final class PlayerActor implements ZLinkActor {

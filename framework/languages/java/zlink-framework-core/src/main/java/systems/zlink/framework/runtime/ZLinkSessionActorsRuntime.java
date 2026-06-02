@@ -65,7 +65,13 @@ final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             .submitAsync(Duration.ofSeconds(30))
             .toCompletableFuture()
             .join();
-        ZLinkSessionActor actor = new BoundActor(ref);
+        ZLinkSessionActor actor = new BoundActor(
+            stream,
+            sessionRid,
+            ref,
+            Optional.empty(),
+            actors,
+            0);
         bound.add(actor);
         return CompletableFuture.completedFuture(actor);
     }
@@ -78,17 +84,39 @@ final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             .join();
         ZLinkBoundSessionRuntime boundSession =
             new ZLinkBoundSessionRuntime(stream, sessionRid, ref.actorId(), serializer);
-        actors.bindSession(actor, boundSession);
-        ZLinkSessionActor boundActor = new BoundActor(ref);
+        long bindingToken = actors.bindSession(actor, boundSession);
+        ZLinkSessionActor boundActor = new BoundActor(
+            stream,
+            sessionRid,
+            ref,
+            Optional.of(actor),
+            actors,
+            bindingToken);
         bound.add(boundActor);
         return CompletableFuture.completedFuture(boundActor);
     }
 
     private static final class BoundActor implements ZLinkSessionActor {
+        private final ZLinkBackendStreamSocket stream;
+        private final RoutingId sessionRid;
         private final ZLinkBackendActorRef ref;
+        private final Optional<ZLinkActor> managedActor;
+        private final ZLinkActorRuntime actors;
+        private final long bindingToken;
 
-        BoundActor(ZLinkBackendActorRef ref) {
+        BoundActor(
+            ZLinkBackendStreamSocket stream,
+            RoutingId sessionRid,
+            ZLinkBackendActorRef ref,
+            Optional<ZLinkActor> managedActor,
+            ZLinkActorRuntime actors,
+            long bindingToken) {
+            this.stream = stream;
+            this.sessionRid = sessionRid;
             this.ref = ref;
+            this.managedActor = managedActor;
+            this.actors = actors;
+            this.bindingToken = bindingToken;
         }
 
         @Override
@@ -110,6 +138,12 @@ final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
 
         @Override
         public CompletionStage<Void> notifyDisconnectedAsync() {
+            stream.unbindActor(sessionRid, ref.actorId())
+                .submitAsync(Duration.ofSeconds(30))
+                .toCompletableFuture()
+                .join();
+            managedActor.ifPresent(actor ->
+                actors.clearSessionBinding(actor, bindingToken));
             return CompletableFuture.completedFuture(null);
         }
     }

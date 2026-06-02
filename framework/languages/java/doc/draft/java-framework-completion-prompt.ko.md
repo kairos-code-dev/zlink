@@ -50,7 +50,8 @@
 9. regression-test-matrix의 unit, contract, fake backend, integration-single-process,
    integration-multi-process, sample regression 행을 실제 테스트로 닫는다.
 10. Java 서비스와 `.NET`/C++/Node 서비스 중 최소 한 경로의 cross-language 상호호출
-    release 시나리오를 추가하고 통과시킨다.
+    release 시나리오를 추가하고 통과시킨다. Phase 10 최소 gate는
+    `JavaNodeStreamInteropTest.nodeConnector_decodesJavaRequestFrame_andJavaDecodesNodeResponse`다.
 11. 구현된 public API와 테스트에 존재하는 계약만 정식 spec/guide/internals로 승격하고,
     draft에는 후속 항목만 명확히 남긴다.
 12. POSD 기준으로 phase별 위험 신호를 다시 검토하고, 얕은 모듈, 패스스루,

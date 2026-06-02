@@ -104,6 +104,12 @@ configuration}`, internal `systems.zlink.framework.runtime`(backend adapter 격�
 Node connector)를 release 시나리오에 넣는다. 이것이 통과해야 4축 중 기능 축이
 완료로 인정된다.
 
+Phase 10의 최소 release gate는
+`JavaNodeStreamInteropTest.nodeConnector_decodesJavaRequestFrame_andJavaDecodesNodeResponse`로
+고정한다. Java가 만든 STREAM request frame을 Node connector protocol이 decode하고,
+Node가 만든 response frame을 Java가 다시 decode해야 한다. 이 테스트는 sample 목록을
+늘리지 않고 언어 중립 STREAM wire 계약을 검증한다.
+
 ## 2. 작업 원칙
 
 - 한 단계의 public API를 먼저 compile 가능한 contract로 닫고 runtime을 붙인다.

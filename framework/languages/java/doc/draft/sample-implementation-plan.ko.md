@@ -233,4 +233,6 @@ sample gate는 최소한 아래를 자동 확인한다.
 최종 release 판정에서는 sample gate와 별도로 언어 간 상호호출 시나리오도
 통과해야 한다. 이 항목은 sample 목록을 늘리기 위한 조건이 아니라, Java 서비스가
 `.NET`/C++/Node 서비스와 같은 메시지 형식과 호출 규칙으로 상호 호출되는지
-확인하기 위한 기능 축 검증이다.
+확인하기 위한 기능 축 검증이다. 현재 Phase 10 최소 gate는
+`JavaNodeStreamInteropTest.nodeConnector_decodesJavaRequestFrame_andJavaDecodesNodeResponse`이며,
+Java STREAM request frame과 Node STREAM response frame을 서로 decode한다.

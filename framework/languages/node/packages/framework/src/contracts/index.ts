@@ -576,6 +576,9 @@ export interface ZLinkSpotManager {
 export interface ZLinkSpotNodeBuilder {
   router(): SpotRouterCapabilityBuilder;
   pubSub(): SpotPubSubCapabilityBuilder;
+  configureEntrySpot(options: ZLinkEntrySpotOptions): this;
+  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
+  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   attachChannelClient(channelName: string): SpotChannelClientCapabilityBuilder;
   attachSpotPublisherClient(channelName: string): SpotPublisherClientCapabilityBuilder;
   acceptSpotRoutesFromChannel(channelName: string): ZLinkSpotRouteChannelAcceptanceBuilder;

@@ -13,6 +13,8 @@ import type {
   ZLinkClientServerChannelBuilder,
   ZLinkDealerMeshChannelBuilder,
   ZLinkDiscoveryBuilder,
+  ZLinkEntrySpot,
+  ZLinkEntrySpotOptions,
   ZLinkFanoutChannelBuilder,
   ZLinkFrameworkOptions,
   ZLinkRouteChannelBuilder,
@@ -127,6 +129,9 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 export interface ZLinkSpotNodeOptions {
   readonly router?: ZLinkSpotRouterCapabilityOptions;
   readonly pubSub?: ZLinkSpotPubSubCapabilityOptions;
+  readonly entrySpot?: ZLinkEntrySpotOptions;
+  readonly entrySpotType?: Type<ZLinkEntrySpot>;
+  readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly attachedChannelClients?: Readonly<Record<string, ZLinkSpotAttachedChannelClientOptions>>;
   readonly attachedSpotPublisherClients?: Readonly<Record<string, ZLinkSpotPublisherClientOptions>>;
   readonly acceptedSpotRouteChannels?: Readonly<Record<string, ZLinkSpotRouteChannelAcceptanceOptions>>;
@@ -194,7 +199,7 @@ export function createFrameworkRegistration(
   const spotNodes = toSpotNodeMap(options.spotNodes);
   const registration: ZLinkFrameworkRegistration = {
     actorFactories: toTypeMap(options.actorFactories),
-    spotFactories: new Set(options.spotFactories ?? []),
+    spotFactories: toSpotFactorySet(options.spotFactories, spotNodes),
     channels: toChannelMap(options.channels),
     channelClients: channelNamesWith(options.channels, (channel) => channel.client !== undefined || channel.dealerMesh?.client !== undefined),
     fanoutPublishers: channelNamesWith(options.channels, (channel) => channel.publisher !== undefined),
@@ -437,6 +442,28 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     return new DefaultSpotPubSubCapabilityBuilder(this.spotNode.pubSub);
   }
 
+  configureEntrySpot(options: ZLinkEntrySpotOptions): this {
+    this.spotNode.entrySpot = { ...options };
+    return this;
+  }
+
+  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this {
+    if (this.spotNode.entrySpotType !== undefined) {
+      throw new ZLinkConfigurationException('Duplicate Entry Spot registration on SpotNode.');
+    }
+    this.spotNode.entrySpotType = entrySpotType;
+    return this;
+  }
+
+  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
+    this.spotNode.spotFactories ??= [];
+    if (this.spotNode.spotFactories.includes(spotType)) {
+      throw new ZLinkConfigurationException('Duplicate SPOT factory registration on SpotNode.');
+    }
+    this.spotNode.spotFactories.push(spotType);
+    return this;
+  }
+
   attachChannelClient(channelName: string): SpotChannelClientCapabilityBuilder {
     this.spotNode.attachedChannelClients ??= {};
     this.spotNode.attachedChannelClients[channelName] ??= { manualConnections: [] };
@@ -597,6 +624,9 @@ interface MutableStreamNodeOptions {
 interface MutableSpotNodeOptions {
   router?: MutableSpotRouterCapabilityOptions;
   pubSub?: MutableSpotPubSubCapabilityOptions;
+  entrySpot?: ZLinkEntrySpotOptions;
+  entrySpotType?: Type<ZLinkEntrySpot>;
+  spotFactories?: Type<ZLinkSpot>[];
   attachedChannelClients?: Record<string, MutableSpotAttachedChannelClientOptions>;
   attachedSpotPublisherClients?: Record<string, MutableSpotPublisherClientOptions>;
   acceptedSpotRouteChannels?: Record<string, MutableSpotRouteChannelAcceptanceOptions>;
@@ -731,6 +761,19 @@ function toSpotNodeMap(value: ZLinkFrameworkRegistrationOptions['spotNodes']): M
   }));
 }
 
+function toSpotFactorySet(
+  rootFactories: readonly Type<ZLinkSpot>[] | undefined,
+  spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>
+): Set<Type<ZLinkSpot>> {
+  const factories = new Set(rootFactories ?? []);
+  for (const spotNode of spotNodes.values()) {
+    for (const spotFactory of spotNode.spotFactories ?? []) {
+      factories.add(spotFactory);
+    }
+  }
+  return factories;
+}
+
 function toSpotPublisherClientSet(
   explicitClients: readonly string[] | undefined,
   spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>
@@ -802,6 +845,8 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
     validateAttachedChannelClients(spotNodeName, spotNode, registration);
     validateAttachedSpotPublisherClients(spotNodeName, spotNode);
     validateAcceptedSpotRouteChannels(spotNodeName, spotNode, registration);
+    validateEntrySpot(spotNodeName, spotNode);
+    validateSpotNodeFactories(spotNodeName, spotNode);
     if (
       spotNode.router?.routingId !== undefined &&
       spotNode.pubSub?.routingId !== undefined &&
@@ -811,6 +856,24 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
         `SpotNode '${spotNodeName}' router and pubSub routingId must match.`
       );
     }
+  }
+}
+
+function validateEntrySpot(spotNodeName: string, spotNode: ZLinkSpotNodeOptions): void {
+  if (spotNode.entrySpot?.routingId !== undefined) {
+    requireName(`SpotNode '${spotNodeName}' Entry Spot routingId`, spotNode.entrySpot.routingId);
+  }
+}
+
+function validateSpotNodeFactories(spotNodeName: string, spotNode: ZLinkSpotNodeOptions): void {
+  const seen = new Set<Type<ZLinkSpot>>();
+  for (const factory of spotNode.spotFactories ?? []) {
+    if (seen.has(factory)) {
+      throw new ZLinkConfigurationException(
+        `Duplicate SPOT factory registration on SpotNode '${spotNodeName}'.`
+      );
+    }
+    seen.add(factory);
   }
 }
 

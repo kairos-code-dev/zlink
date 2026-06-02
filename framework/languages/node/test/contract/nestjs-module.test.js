@@ -117,15 +117,26 @@ test('ZLinkModule.forRoot passes registered spot factories to the spot manager',
       this.context = context;
     }
   }
+  class LocalStageSpot {
+    constructor(context) {
+      this.context = context;
+    }
+  }
   const module = nestjs.ZLinkModule.forRoot({
-    spotNodes: ['game'],
+    spotNodes: {
+      game: {
+        spotFactories: [LocalStageSpot]
+      }
+    },
     spotFactories: [StageSpot]
   });
   const spotManager = module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_MANAGER).useValue;
 
   const created = await spotManager.create(StageSpot);
+  const localCreated = await spotManager.create(LocalStageSpot);
 
   assert.equal(created.created, true);
+  assert.equal(localCreated.created, true);
 });
 
 test('ZLinkModule.forRoot validates actor factory without spot node at registration time', () => {
@@ -227,6 +238,8 @@ test('framework options builder maps dotnet-shaped registration flow into option
       this.context = context;
     }
   }
+  class LocalStageSpot {}
+  class StageEntrySpot {}
 
   const options = framework.createFrameworkOptions((builder) => {
     builder.useDiscovery().connectRegistry('tcp://127.0.0.1:9400');
@@ -240,8 +253,11 @@ test('framework options builder maps dotnet-shaped registration flow into option
       .bind('tcp://0.0.0.0:9404')
       .attachActorGateway('stage-node')
       .registerSession(GatewaySession);
-    builder.spotFactory(StageSpot);
     const spot = builder.addSpotMesh('game.stage').node('stage-node');
+    spot.addSpotFactory(StageSpot)
+      .addSpotFactory(LocalStageSpot)
+      .addEntrySpot(StageEntrySpot)
+      .configureEntrySpot({ routingId: 'entry-stage' });
     spot.router()
       .bind('tcp://0.0.0.0:9405')
       .routingId('stage-node')
@@ -271,6 +287,10 @@ test('framework options builder maps dotnet-shaped registration flow into option
   assert.equal(streamNode.attachActorGateway, 'stage-node');
   assert.equal(streamNode.session, GatewaySession);
   assert.equal(registration.spotFactories.has(StageSpot), true);
+  assert.equal(registration.spotFactories.has(LocalStageSpot), true);
+  assert.equal(spotNode.entrySpotType, StageEntrySpot);
+  assert.deepEqual(spotNode.entrySpot, { routingId: 'entry-stage' });
+  assert.deepEqual(spotNode.spotFactories, [StageSpot, LocalStageSpot]);
   assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9405');
   assert.deepEqual(spotNode.router.manualConnections, ['tcp://127.0.0.1:9406']);
   assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9407');
@@ -289,6 +309,22 @@ test('framework options builder maps dotnet-shaped registration flow into option
       builder.addSpotMesh('game.stage');
     }),
     /Duplicate SPOT mesh channel 'game.stage'/
+  );
+  assert.throws(
+    () => framework.createFrameworkOptions((builder) => {
+      const node = builder.addSpotMesh('game.stage').node('stage-node');
+      node.addEntrySpot(StageEntrySpot);
+      node.addEntrySpot(StageEntrySpot);
+    }),
+    /Duplicate Entry Spot registration/
+  );
+  assert.throws(
+    () => framework.createFrameworkOptions((builder) => {
+      const node = builder.addSpotMesh('game.stage').node('stage-node');
+      node.addSpotFactory(StageSpot);
+      node.addSpotFactory(StageSpot);
+    }),
+    /Duplicate SPOT factory registration/
   );
 });
 
@@ -758,7 +794,13 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
     subjects() { return []; },
     attachChannelDealer() {},
     attachChannelDealerManual(channelName) { calls.push(`spot:attachChannelDealerManual:${channelName}`); },
-    entrySpot() {},
+    entrySpot() {
+      return {
+        setRoutingId(routingId) {
+          calls.push(`entrySpot:setRoutingId:${routingId}`);
+        }
+      };
+    },
     createActor() {},
     actorLookup() {},
     joinActor() { return true; },
@@ -914,7 +956,13 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     subjects() { return []; },
     attachChannelDealer() {},
     attachChannelDealerManual(channelName) { calls.push(`spot:attachChannelDealerManual:${channelName}`); },
-    entrySpot() {},
+    entrySpot() {
+      return {
+        setRoutingId(routingId) {
+          calls.push(`entrySpot:setRoutingId:${routingId}`);
+        }
+      };
+    },
     createActor() {},
     actorLookup() {},
     joinActor() { return true; },
@@ -940,6 +988,7 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
             routingId: 'node-a',
             manualConnections: ['tcp://127.0.0.1:9304']
           },
+          entrySpot: { routingId: 'entry-node-a' },
           attachedChannelClients: {
             api: { manualConnections: ['tcp://127.0.0.1:9305'] }
           },
@@ -1011,6 +1060,7 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
   assert.deepEqual(calls, [
     'spot:create:3',
     'spot:setRoutingId:node-a',
+    'entrySpot:setRoutingId:entry-node-a',
     'spot:setRouterBind:tcp://0.0.0.0:9301',
     'spot:setPubBind:tcp://0.0.0.0:9303',
     'spot:connectPeer:tcp://127.0.0.1:9302',

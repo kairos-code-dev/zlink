@@ -1676,6 +1676,9 @@ export interface ZLinkSpotManager {
 export interface ZLinkSpotNodeBuilder {
   router(): SpotRouterCapabilityBuilder;
   pubSub(): SpotPubSubCapabilityBuilder;
+  configureEntrySpot(options: ZLinkEntrySpotOptions): this;
+  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
+  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   attachChannelClient(channelName: string): SpotChannelClientCapabilityBuilder;
   attachSpotPublisherClient(channelName: string): SpotPublisherClientCapabilityBuilder;
   acceptSpotRoutesFromChannel(channelName: string): ZLinkSpotRouteChannelAcceptanceBuilder;
@@ -1715,17 +1718,24 @@ export interface ZLinkSpotRouteChannelAcceptanceBuilder {
 ```
 
 > Node builder 에서도 node 자체 `bind(...)` 는 없다. bind 는 router/pubSub capability
-> builder 에서 지정한다. spot factory 타입은 root `spotFactory(...)` 로 등록한다.
+> builder 에서 지정한다. spot factory 타입은 root `spotFactory(...)` 또는 node-local
+> `addSpotFactory(...)` 로 등록한다.
 
 builder 함수 의미:
 
 - `router()`: spot-to-spot routed packet 을 처리할 local router capability 활성화.
 - `pubSub()`: 현재 SPOT channel 의 publish/subscribe capability 활성화.
+- `configureEntrySpot(...)`: native Entry Spot facade 의 routing id 같은 Entry Spot
+  옵션을 지정한다.
+- `addEntrySpot(...)`: 이 SpotNode 의 Entry Spot 타입을 등록한다. 같은 node 에 두 번
+  등록하면 설정 예외다.
+- `addSpotFactory(...)`: 이 SpotNode 가 생성할 수 있는 user Spot factory 타입을 등록한다.
 - `attachChannelClient(...)`: 다른 channel 로 send/request 할 outbound DEALER(client) 부착.
 - `attachSpotPublisherClient(...)`: 외부 노드가 특정 SPOT channel 로 publish 할 outbound publisher client 부착.
 - `acceptSpotRoutesFromChannel(...)`: 지정 channel 에서 들어오는 spot route 수락.
-- `spotFactory(spotType)`: 이 runtime 이 생성/소유할 spot factory 를 타입 기준 등록. 같은
-  `TSpot` 재등록은 예외. `create`/`getOrCreate` 는 이 타입과 정확히 일치하는 factory 를 고름.
+- `spotFactory(spotType)`: root 수준에서 이 runtime 이 생성/소유할 spot factory 를 타입
+  기준 등록한다. node-local `addSpotFactory(...)` 도 `ZLinkSpotManager` 등록 집합에
+  합산된다. 같은 node 안에서 같은 `TSpot` 재등록은 예외다.
 
 ActorGateway 는 별도 node builder 를 두지 않는다. `node(...)` 로 등록한 SpotNode 에
 `router()` 와 router bind 를 설정한 뒤, stream 이 `attachActorGateway(spotNodeName)`

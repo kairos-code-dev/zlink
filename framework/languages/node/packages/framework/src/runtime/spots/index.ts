@@ -104,6 +104,9 @@ export class ZLinkSpotNodeRuntimeManager {
     if (routingId !== undefined) {
       node.setRoutingId(routingId);
     }
+    if (spotNode.entrySpot?.routingId !== undefined) {
+      node.entrySpot().setRoutingId(spotNode.entrySpot.routingId);
+    }
     if (spotNode.router?.bind !== undefined) {
       node.setRouterBind(spotNode.router.bind);
     }

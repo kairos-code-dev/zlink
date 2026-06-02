@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.contracts.core.RoutingId;
@@ -52,6 +53,10 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
     }
 
     public ZLinkClient client() {
+        return channels;
+    }
+
+    public ZLinkFanoutClient fanout() {
         return channels;
     }
 

@@ -6,6 +6,8 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkPublishHandler;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -122,6 +124,55 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void fanoutChannelPublisherWithoutBindIsRejected() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addFanoutChannel("events", channel -> channel.enablePublisher());
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void fanoutChannelSubscriberWithoutPeerAcquisitionPathIsRejected() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addFanoutChannel("events", channel -> {
+            channel.enableSubscriber();
+            channel.addPublishHandler(EventHandler.class, String.class, "Event");
+        });
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void fanoutChannelSubscriberCannotMixDiscoveryAndManualConnections() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:17001"));
+        options.addFanoutChannel("events", channel -> {
+            channel.enableSubscriber(subscriber ->
+                subscriber.useManualConnections(endpoints -> endpoints.connect("inproc://events")));
+            channel.addPublishHandler(EventHandler.class, String.class, "Event");
+        });
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void fanoutChannelRejectsDuplicatePublishHandlerPacketName() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addFanoutChannel("events", channel -> {
+            channel.enableSubscriber(subscriber ->
+                subscriber.useManualConnections(endpoints -> endpoints.connect("inproc://events")));
+            channel.addPublishHandler(EventHandler.class, String.class, "Event");
+            channel.addPublishHandler(EventHandler.class, String.class, "Event");
+        });
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
     void streamNodeRejectsMultipleSessionTypes() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
@@ -165,6 +216,13 @@ final class DefaultZLinkFrameworkOptionsTest {
         @Override
         public CompletionStage<String> handleAsync(String request, ZLinkRequestContext context) {
             return CompletableFuture.completedFuture(request);
+        }
+    }
+
+    public static final class EventHandler implements ZLinkPublishHandler<String> {
+        @Override
+        public CompletionStage<Void> handleAsync(String message, ZLinkPublishContext context) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 

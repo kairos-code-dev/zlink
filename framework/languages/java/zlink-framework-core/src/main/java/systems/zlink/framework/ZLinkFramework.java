@@ -3,6 +3,7 @@ package systems.zlink.framework;
 import java.util.function.Consumer;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.ZLinkFrameworkRuntime;
@@ -25,6 +26,10 @@ public final class ZLinkFramework implements AutoCloseable {
 
     public ZLinkClient client() {
         return runtime.client();
+    }
+
+    public ZLinkFanoutClient fanout() {
+        return runtime.fanout();
     }
 
     public ZLinkSpotManager spotManager() {

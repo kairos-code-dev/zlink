@@ -2,11 +2,15 @@ package systems.zlink.framework.runtime;
 
 import java.util.function.Consumer;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.channels.ZLinkPublishHandler;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.configuration.ChannelServerCapabilityBuilder;
+import systems.zlink.framework.configuration.ChannelPublisherCapabilityBuilder;
 import systems.zlink.framework.configuration.ClientCapabilityBuilder;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
+import systems.zlink.framework.configuration.FanoutChannelBuilder;
 import systems.zlink.framework.configuration.ManualEndpointListBuilder;
+import systems.zlink.framework.configuration.SubscriberCapabilityBuilder;
 
 final class ChannelBuilders {
     private ChannelBuilders() {
@@ -14,6 +18,10 @@ final class ChannelBuilders {
 
     static ClientServerChannelBuilder clientServer(ChannelRegistration registration) {
         return new ClientServer(registration);
+    }
+
+    static FanoutChannelBuilder fanout(ChannelRegistration registration) {
+        return new Fanout(registration);
     }
 
     private record ClientServer(ChannelRegistration registration) implements ClientServerChannelBuilder {
@@ -67,6 +75,55 @@ final class ChannelBuilders {
 
         @Override
         public void enableSpotRouteEgress(String targetSpotNodeChannelName) {
+        }
+    }
+
+    private record Fanout(ChannelRegistration registration) implements FanoutChannelBuilder {
+        @Override
+        public void enablePublisher() {
+            registration.enablePublisher();
+        }
+
+        @Override
+        public void enablePublisher(Consumer<ChannelPublisherCapabilityBuilder> configure) {
+            enablePublisher();
+            configure.accept(registration::addPublisherBind);
+        }
+
+        @Override
+        public void enableSubscriber() {
+            registration.enableSubscriber();
+        }
+
+        @Override
+        public void enableSubscriber(Consumer<SubscriberCapabilityBuilder> configure) {
+            enableSubscriber();
+            configure.accept(subscriberConfigure ->
+                subscriberConfigure.accept((ManualEndpointListBuilder) registration::addSubscriberManualEndpoint));
+        }
+
+        @Override
+        public void addHandlerGroup(String groupName) {
+        }
+
+        @Override
+        public <THandler extends ZLinkPublishHandler<TMessage>, TMessage> void addPublishHandler(
+            Class<THandler> handlerType,
+            Class<TMessage> messageType,
+            String packetName) {
+            registration.addPublishHandler(new ChannelPublishHandlerRegistration<>(
+                handlerType,
+                messageType,
+                packetName));
+        }
+
+        @Override
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        public void addPublishHandler(Class<?> handlerType, String packetName) {
+            registration.addPublishHandler(new ChannelPublishHandlerRegistration(
+                handlerType,
+                String.class,
+                packetName));
         }
     }
 }

@@ -17,20 +17,30 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkFanoutClient;
+import systems.zlink.framework.channels.ZLinkPublishCall;
+import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkPublishHandler;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 
-public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
+public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient, AutoCloseable {
     private final ZLinkBackendContext context;
     private final Map<String, ZLinkBackendDealerSocket> clients = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> servers = new HashMap<>();
+    private final Map<String, ZLinkBackendPublisherSocket> publishers = new HashMap<>();
+    private final Map<String, ZLinkBackendSubscriberSocket> subscribers = new HashMap<>();
     private final List<ZLinkBackendDealerSocket> manualClients = new ArrayList<>();
     private final List<ZLinkBackendRouterSocket> manualServers = new ArrayList<>();
+    private final List<ZLinkBackendPublisherSocket> manualPublishers = new ArrayList<>();
+    private final List<ZLinkBackendSubscriberSocket> manualSubscribers = new ArrayList<>();
     private final List<ZLinkBackendDiscovery> discoveries = new ArrayList<>();
     private final Map<String, Map<String, ChannelRequestHandlerRegistration<?, ?, ?>>> requestHandlers =
+        new HashMap<>();
+    private final Map<String, Map<String, ChannelPublishHandlerRegistration<?, ?>>> publishHandlers =
         new HashMap<>();
     private final ZLinkMessageSerializer serializer;
     private final Duration defaultTimeout;
@@ -76,6 +86,33 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
                 requestHandlers.put(channel.name(), handlersByPacket(channel));
                 startRequestLoop(channel.name(), router);
             }
+            if (channel.kind() == ChannelKind.FANOUT && channel.publisherEnabled()) {
+                ZLinkBackendPublisherSocket publisher = backend.createPublisherSocket(context);
+                if (discovery != null) {
+                    publisher.attachDiscovery(discovery);
+                } else {
+                    manualPublishers.add(publisher);
+                }
+                for (String endpoint : channel.publisherBinds()) {
+                    publisher.bind(endpoint);
+                }
+                publishers.put(channel.name(), publisher);
+            }
+            if (channel.kind() == ChannelKind.FANOUT && channel.subscriberEnabled()) {
+                ZLinkBackendSubscriberSocket subscriber = backend.createSubscriberSocket(context);
+                if (discovery != null) {
+                    subscriber.attachDiscovery(discovery);
+                } else {
+                    for (String endpoint : channel.subscriberManualEndpoints()) {
+                        subscriber.connect(endpoint);
+                    }
+                    manualSubscribers.add(subscriber);
+                }
+                subscriber.setSubscription("");
+                subscribers.put(channel.name(), subscriber);
+                publishHandlers.put(channel.name(), publishHandlersByPacket(channel));
+                startSubscribeLoop(channel.name(), subscriber);
+            }
         }
     }
 
@@ -83,12 +120,15 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
         ZLinkChannelBackendAdapter backend,
         ZLinkFrameworkRegistration registration,
         ChannelRegistration channel) {
-        if (!registration.discoveryEnabled() || channel.kind() != ChannelKind.CLIENT_SERVER) {
+        if (!registration.discoveryEnabled()
+            || (channel.kind() != ChannelKind.CLIENT_SERVER && channel.kind() != ChannelKind.FANOUT)) {
             return null;
         }
         ZLinkBackendDiscovery discovery = backend.createDiscovery(
             context,
-            ZLinkBackendAutoConnectType.CLIENT_SERVER,
+            channel.kind() == ChannelKind.CLIENT_SERVER
+                ? ZLinkBackendAutoConnectType.CLIENT_SERVER
+                : ZLinkBackendAutoConnectType.FANOUT,
             channel.name());
         for (String endpoint : registration.registryEndpoints()) {
             discovery.connectRegistry(endpoint);
@@ -108,11 +148,18 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
     }
 
     @Override
+    public <TMessage> ZLinkPublishCall publish(String channelName, String topic, TMessage message) {
+        return new PublishCall(requirePublisher(channelName), topic, serializer.serialize(message));
+    }
+
+    @Override
     public void close() {
         running = false;
         discoveries.forEach(ZLinkBackendDiscovery::close);
         manualClients.forEach(ZLinkBackendDealerSocket::close);
         manualServers.forEach(ZLinkBackendRouterSocket::close);
+        manualPublishers.forEach(ZLinkBackendPublisherSocket::close);
+        manualSubscribers.forEach(ZLinkBackendSubscriberSocket::close);
         receiveExecutor.shutdownNow();
         context.close();
     }
@@ -123,6 +170,14 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
             throw new ZLinkConfigurationException("channel client is not configured: " + channelName);
         }
         return client;
+    }
+
+    private ZLinkBackendPublisherSocket requirePublisher(String channelName) {
+        ZLinkBackendPublisherSocket publisher = publishers.get(channelName);
+        if (publisher == null) {
+            throw new ZLinkConfigurationException("fanout publisher is not configured: " + channelName);
+        }
+        return publisher;
     }
 
     private void startRequestLoop(String channelName, ZLinkBackendRouterSocket router) {
@@ -156,6 +211,33 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
         }
     }
 
+    private void startSubscribeLoop(String channelName, ZLinkBackendSubscriberSocket subscriber) {
+        receiveExecutor.submit(() -> {
+            while (running) {
+                ZLinkBackendTopicMessage received = subscriber.subscribe(ZLinkBackendRecvMode.DONT_WAIT);
+                if (received != null) {
+                    dispatchPublish(channelName, received);
+                } else {
+                    Thread.onSpinWait();
+                }
+            }
+        });
+    }
+
+    private void dispatchPublish(String channelName, ZLinkBackendTopicMessage received) {
+        try {
+            ParsedPacket packet = parsePacket(received.parts());
+            ChannelPublishHandlerRegistration<?, ?> registration =
+                publishHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
+            if (registration == null) {
+                return;
+            }
+            invokePublishHandler(registration, received.topic(), packet.payload());
+        } finally {
+            received.parts().forEach(Message::close);
+        }
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Message invokeRequestHandler(
         ChannelRequestHandlerRegistration registration,
@@ -174,10 +256,37 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
         }
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void invokePublishHandler(
+        ChannelPublishHandlerRegistration registration,
+        String topic,
+        Message payload) {
+        try {
+            ZLinkPublishHandler handler =
+                (ZLinkPublishHandler) registration.handlerType().getDeclaredConstructor().newInstance();
+            Object message = serializer.deserialize(payload, registration.messageType());
+            handler.handleAsync(message, new DefaultPublishContext(registration.packetName(), topic))
+                .toCompletableFuture()
+                .join();
+        } catch (ReflectiveOperationException ex) {
+            throw new ZLinkConfigurationException(
+                "failed to create publish handler: " + registration.handlerType().getName());
+        }
+    }
+
     private static Map<String, ChannelRequestHandlerRegistration<?, ?, ?>> handlersByPacket(
         ChannelRegistration channel) {
         Map<String, ChannelRequestHandlerRegistration<?, ?, ?>> handlers = new HashMap<>();
         for (ChannelRequestHandlerRegistration<?, ?, ?> handler : channel.requestHandlers()) {
+            handlers.put(handler.packetName(), handler);
+        }
+        return Map.copyOf(handlers);
+    }
+
+    private static Map<String, ChannelPublishHandlerRegistration<?, ?>> publishHandlersByPacket(
+        ChannelRegistration channel) {
+        Map<String, ChannelPublishHandlerRegistration<?, ?>> handlers = new HashMap<>();
+        for (ChannelPublishHandlerRegistration<?, ?> handler : channel.publishHandlers()) {
             handlers.put(handler.packetName(), handler);
         }
         return Map.copyOf(handlers);
@@ -219,6 +328,79 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
         @Override
         public CancellationToken cancellationToken() {
             return NONE;
+        }
+    }
+
+    private static final class DefaultPublishContext implements ZLinkPublishContext {
+        private static final CancellationToken NONE = () -> false;
+        private final String packetName;
+        private final String topic;
+
+        DefaultPublishContext(String packetName, String topic) {
+            this.packetName = packetName;
+            this.topic = topic;
+        }
+
+        @Override
+        public String topic() {
+            return topic;
+        }
+
+        @Override
+        public Optional<String> source() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> channelName() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> packetName() {
+            return Optional.ofNullable(packetName).filter(value -> !value.isBlank());
+        }
+
+        @Override
+        public Optional<String> contentType() {
+            return Optional.empty();
+        }
+
+        @Override
+        public CancellationToken cancellationToken() {
+            return NONE;
+        }
+    }
+
+    private record PublishCall(
+        ZLinkBackendPublisherSocket publisher,
+        String topic,
+        Message payload,
+        Optional<String> packetName) implements ZLinkPublishCall {
+        PublishCall(ZLinkBackendPublisherSocket publisher, String topic, Message payload) {
+            this(publisher, topic, payload, Optional.empty());
+        }
+
+        @Override
+        public ZLinkPublishCall packetName(String packetName) {
+            return new PublishCall(publisher, topic, payload, Optional.of(packetName));
+        }
+
+        @Override
+        public ZLinkPublishCall metadata(String key, String value) {
+            return this;
+        }
+
+        @Override
+        public CompletionStage<Void> submitAsync() {
+            return CompletableFuture.runAsync(() -> {
+                List<Message> publishParts = parts(packetName, payload);
+                try {
+                    publisher.publish(topic, publishParts, SendFlags.NONE);
+                } finally {
+                    publishParts.forEach(Message::close);
+                }
+            });
         }
     }
 

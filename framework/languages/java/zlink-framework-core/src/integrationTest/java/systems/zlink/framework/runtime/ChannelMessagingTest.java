@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -8,9 +9,14 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
+import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkPublishHandler;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
@@ -18,6 +24,9 @@ import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 final class ChannelMessagingTest {
     private static final AtomicInteger NEXT_PORT =
         new AtomicInteger(32_000 + (int) (ProcessHandle.current().pid() % 10_000));
+    private static final AtomicReference<CountDownLatch> FANOUT_LATCH = new AtomicReference<>();
+    private static final AtomicReference<String> FANOUT_MESSAGE = new AtomicReference<>();
+    private static final AtomicReference<String> FANOUT_TOPIC = new AtomicReference<>();
 
     @Test
     void manualClientServer_requestReplySucceeds() {
@@ -76,6 +85,41 @@ final class ChannelMessagingTest {
         }
     }
 
+    @Test
+    void publisherAndSubscriber_workAcrossHosts() throws InterruptedException {
+        String endpoint = tcpEndpoint();
+        CountDownLatch latch = new CountDownLatch(1);
+        FANOUT_LATCH.set(latch);
+        FANOUT_MESSAGE.set(null);
+        FANOUT_TOPIC.set(null);
+
+        DefaultZLinkFrameworkOptions publisherOptions = new DefaultZLinkFrameworkOptions();
+        publisherOptions.addFanoutChannel("events", channel ->
+            channel.enablePublisher(publisher -> publisher.bind(endpoint)));
+
+        DefaultZLinkFrameworkOptions subscriberOptions = new DefaultZLinkFrameworkOptions();
+        subscriberOptions.addFanoutChannel("events", channel -> {
+            channel.enableSubscriber(subscriber ->
+                subscriber.useManualConnections(endpoints -> endpoints.connect(endpoint)));
+            channel.addPublishHandler(ScoreChangedHandler.class, String.class, "ScoreChanged");
+        });
+
+        try (ZLinkFrameworkRuntime ignoredPublisher =
+                 ZLinkFrameworkRuntime.start(publisherOptions, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime subscriber =
+                 ZLinkFrameworkRuntime.start(subscriberOptions, new ZLinkJavaBackendAdapterFactory())) {
+            publishUntilDelivered(ignoredPublisher);
+
+            assertTrue(latch.await(1, TimeUnit.SECONDS), "fanout publish was not delivered");
+            assertEquals("home:1", FANOUT_MESSAGE.get());
+            assertEquals("score", FANOUT_TOPIC.get());
+        } finally {
+            FANOUT_LATCH.set(null);
+            FANOUT_MESSAGE.set(null);
+            FANOUT_TOPIC.set(null);
+        }
+    }
+
     private static String awaitDiscoveryReply(ZLinkFrameworkRuntime client) {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         RuntimeException lastFailure = null;
@@ -94,6 +138,19 @@ final class ChannelMessagingTest {
             }
         }
         throw new AssertionError("discovery request did not succeed", lastFailure);
+    }
+
+    private static void publishUntilDelivered(ZLinkFrameworkRuntime publisher) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        while (System.nanoTime() < deadline && FANOUT_LATCH.get().getCount() > 0) {
+            publisher.fanout()
+                .publish("events", "score", "home:1")
+                .packetName("ScoreChanged")
+                .submitAsync()
+                .toCompletableFuture()
+                .join();
+            Thread.onSpinWait();
+        }
     }
 
     private static String tcpEndpoint() {
@@ -123,6 +180,16 @@ final class ChannelMessagingTest {
         @Override
         public CompletionStage<String> handleAsync(String request, ZLinkRequestContext context) {
             return CompletableFuture.completedFuture(request);
+        }
+    }
+
+    public static final class ScoreChangedHandler implements ZLinkPublishHandler<String> {
+        @Override
+        public CompletionStage<Void> handleAsync(String message, ZLinkPublishContext context) {
+            FANOUT_MESSAGE.set(message);
+            FANOUT_TOPIC.set(context.topic());
+            FANOUT_LATCH.get().countDown();
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

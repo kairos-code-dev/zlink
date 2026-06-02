@@ -225,7 +225,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) {
             try (TopicMessage result = new TopicMessage()) {
                 return socket.subscribe(result, map(mode))
-                    ? new ZLinkBackendTopicMessage(result.getRoutingId(), result.topic(), result.parts())
+                    ? new ZLinkBackendTopicMessage(result.getRoutingId(), result.topic(), copyParts(result.parts()))
                     : null;
             }
         }
@@ -301,7 +301,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) {
             try (TopicMessage result = new TopicMessage()) {
                 return spot.subscribe(result, map(mode))
-                    ? new ZLinkBackendTopicMessage(result.getRoutingId(), result.topic(), result.parts())
+                    ? new ZLinkBackendTopicMessage(result.getRoutingId(), result.topic(), copyParts(result.parts()))
                     : null;
             }
         }
@@ -376,6 +376,12 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             submit.message(parts.get(i));
         }
         return submit.flags(flags).submit();
+    }
+
+    private static List<Message> copyParts(List<Message> parts) {
+        return parts.stream()
+            .map(Message::from)
+            .toList();
     }
 
     private static void submitReply(systems.zlink.contracts.service.spot.ReplyOperation operation, List<Message> parts) {

@@ -76,7 +76,9 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
         String channelName,
         Consumer<FanoutChannelBuilder> configure) {
         addChannel(channelName);
-        configure.accept(NoopBuilders.FANOUT_CHANNEL);
+        ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.FANOUT);
+        registration.channels().add(channel);
+        configure.accept(ChannelBuilders.fanout(channel));
     }
 
     @Override

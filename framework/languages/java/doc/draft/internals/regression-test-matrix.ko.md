@@ -18,9 +18,13 @@
 | integration-multi-process | registry discovery, reconnect, remote actor/session relay |
 | sample regression | 실제 sample 실행과 self-check |
 
-JUnit 테스트 이름은 `.NET` 테스트 메서드를 camelCase로 옮긴 대응이다(`.NET`의
-`AddZLinkFramework_*` → `addZLinkFramework_*`). 확인 기준(의미)은 그대로 유지하며
-`.NET` 코드가 최종 기준이다.
+JUnit 테스트 이름은 `.NET` 테스트 메서드를 camelCase로 옮긴 대응을 우선하되,
+Java 구현에서 이미 고정된 이름이 있으면 현재 JUnit 이름을 그대로 쓴다. 확인
+기준(의미)은 그대로 유지하며 `.NET` 코드가 최종 기준이다.
+
+아래 표의 "필수 예정 gate"는 Java public API나 runtime 구현이 아직 충분하지 않아
+현재 release 완료 증거로 사용할 수 없는 항목이다. 이 항목은 sample release gate를
+완료했다고 판단하기 전에 실제 구현과 테스트 이름을 확정해야 한다.
 
 ## 2. Channel regression
 
@@ -30,16 +34,20 @@ server runtime, client runtime을 나누어 시작한 뒤 `useDiscovery(...)`로
 
 | 항목 | 계층 | JUnit 테스트 | 통과 기준 |
 |------|------|--------------|-----------|
-| duplicate channel name | unit | `ChannelsTest.addZLinkFramework_throws_whenChannelNameIsDuplicated` | startup validation 오류 |
-| handler duplicate mapping | unit | `HandlerExposureTest.addZLinkFramework_throws_whenMappedGroupAndTypedHandlerExposeSameChannelPacket` | 같은 channel의 `kind + packetName` 중복 차단 |
-| client without peer acquisition | unit | `ChannelsTest.addZLinkFramework_throws_whenClientHasNoPeerAcquisitionPath` | startup validation 오류 |
-| discovery/manual mixed capability | unit | `ChannelsTest.addZLinkFramework_throws_whenRouteChannelMixesDiscoveryAndManualConnections` | startup validation 오류 |
+| duplicate channel name | unit | `DefaultZLinkFrameworkOptionsTest.addClientServerChannelRejectsDuplicateChannelName` | startup validation 오류 |
+| handler duplicate mapping | unit | `DefaultZLinkFrameworkOptionsTest.clientServerChannelRejectsDuplicateRequestHandlerPacketName` | 같은 channel의 `kind + packetName` 중복 차단 |
+| client without peer acquisition | unit | `DefaultZLinkFrameworkOptionsTest.clientServerChannelClientWithoutPeerAcquisitionPathIsRejected` | startup validation 오류 |
+| discovery/manual mixed capability | unit | `DefaultZLinkFrameworkOptionsTest.clientServerChannelClientCannotMixDiscoveryAndManualConnections` | startup validation 오류 |
+| fanout publisher without bind | unit | `DefaultZLinkFrameworkOptionsTest.fanoutChannelPublisherWithoutBindIsRejected` | startup validation 오류 |
+| fanout subscriber without peer acquisition | unit | `DefaultZLinkFrameworkOptionsTest.fanoutChannelSubscriberWithoutPeerAcquisitionPathIsRejected` | startup validation 오류 |
+| fanout discovery/manual mixed capability | unit | `DefaultZLinkFrameworkOptionsTest.fanoutChannelSubscriberCannotMixDiscoveryAndManualConnections` | startup validation 오류 |
+| fanout duplicate mapping | unit | `DefaultZLinkFrameworkOptionsTest.fanoutChannelRejectsDuplicatePublishHandlerPacketName` | 같은 fanout channel의 `packetName` 중복 차단 |
 | manual client/server request | integration-single-process | `ChannelMessagingTest.manualClientServer_requestReplySucceeds` | request/reply 성공 |
 | discovery client/server request | integration-single-process | `ChannelMessagingTest.discoveryClientServer_requestReplySucceeds` | registry discovery 기반 request/reply 성공 |
-| fanout publish/subscribe | integration-single-process | `FanoutTest.publisherAndSubscriber_workAcrossHosts` | publish 수신 |
-| route mesh request | integration-single-process | `RouteMeshTest.routeMesh_requestByRoutingIdSucceeds` | target `RoutingId` request 성공 |
-| send/publish async submit | fake backend | `ZLinkAsyncSubmitterTest.submitAsync_drainsPendingItemFromReadyCallback` | ready 전 caller thread를 막지 않음 |
-| pending request cleanup | unit | `ZLinkAsyncSubmitterTest.submitAsync_failsPendingItemWhenSendTimeoutExpires` / `disposeAsync_failsPendingItems` | timeout, cancellation, stop에서 pending 제거 |
+| fanout publish/subscribe | integration-single-process | `ChannelMessagingTest.publisherAndSubscriber_workAcrossHosts` | publish 수신 |
+| route mesh request | 필수 예정 gate | `RouteMeshTest.routeMesh_requestByRoutingIdSucceeds` | target `RoutingId` request 성공. Java builder에 own `RoutingId` 설정/조회 표면을 먼저 확정해야 한다 |
+| send/publish async submit | 필수 예정 gate | `ZLinkAsyncSubmitterTest.submitAsync_drainsPendingItemFromReadyCallback` | ready 전 caller thread를 막지 않음 |
+| pending request cleanup | 필수 예정 gate | `ZLinkAsyncSubmitterTest.submitAsync_failsPendingItemWhenSendTimeoutExpires` / `disposeAsync_failsPendingItems` | timeout, cancellation, stop에서 pending 제거 |
 
 ## 3. Spot/Actor regression
 
@@ -57,9 +65,9 @@ multi-process smoke는 release gate에서 같은 테스트 이름의 의미를 �
 | local-only SpotNode | integration-single-process | `NodesAndServicesTest.addZLinkFramework_allowsStandaloneLocalSpotNode` | discovery 없이 local Spot 생성 |
 | Spot create/get/list/remove | integration-single-process | `SpotManagerTest.spotManager_createListRemoveAndPublish_workThroughFrameworkRuntime` | lifecycle callback과 조회 일관 |
 | Spot getOrCreate 1회 생성 | integration-single-process | `SpotManagerTest.spotManager_getOrCreate_createsOnceAndReusesExistingSpot` | 첫 호출은 생성하고 같은 rid의 두 번째 호출은 기존 Spot 재사용 |
-| Spot timer/publish/remove | integration-single-process | `SpotManagerTest.spot_publishTimerAndRemove_stopCallbacksWork` | timer/publish/remove 의미 유지 |
+| Spot timer/publish/remove | 필수 예정 gate | `SpotManagerTest.spot_publishTimerAndRemove_stopCallbacksWork` | timer/publish/remove 의미 유지 |
 | actor manager factory | integration-single-process | `ActorManagerTest.actorManager_createGetOrCreateFind_work` | create/getOrCreate/find 동작 |
-| session actor relay | integration-single-process | `SessionActorRelayTest.bindAndRelay_work` | `bindAsync`와 `relayAsync` 동작 |
+| session actor relay | integration-single-process | `SessionActorsRuntimeIntegrationTest.bindAsyncUsesStreamActorGatewayBindingPath` | `bindAsync`와 ActorGateway binding path 동작 |
 | remote ActorGateway relay | integration-multi-process | `RemoteActorGatewayTest.sessionAndPlayServers_relaySucceeds` | Session 서버와 Play 서버 사이 relay 성공 |
 | stale binding token guard | integration-multi-process | `ActorSessionStateTest.actorSessionState_filtersStaleDisconnect_andOnlyDisconnectsCurrentStream` | 이전 binding이 새 binding을 지우지 않음 |
 | bound session push | integration-multi-process | `BoundSessionTest.playActorPush_arrivesAtClientStream` | Play actor push가 client stream에 도착 |

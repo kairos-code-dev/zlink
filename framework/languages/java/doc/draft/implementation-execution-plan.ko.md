@@ -39,14 +39,20 @@ Maven package 좌표도 같은 group을 쓴다. 즉 공개 artifact는
 | `zlink-framework-kotlin` | `systems.zlink.framework.kotlin` | (없음) | coroutine/DSL extension. core runtime을 다시 구현하지 않는다 |
 | `zlink-framework-testkit` | `systems.zlink.framework.testkit` | `tests/` fixture | in-process test host, fake backend, contract fixture |
 
-배포 repository URL은 Gradle property가 아니라 환경변수로 결정한다. 기본 순서는
-아래와 같다.
+공식 release package URL은 `https://maven.pkg.github.com/kairos-code-dev/zlink` 로
+고정한다. release CI는 `MAVEN_REPOSITORY_URL` 에 이 값을 넣어 publish한다. Gradle
+스크립트는 fork 검증과 로컬 검증을 위해 URL을 환경변수에서 읽지만, 정식 배포 대상은
+문서와 CI에서 같은 URL을 사용해야 한다.
+
+배포 repository URL 결정 순서는 아래와 같다.
 
 1. `MAVEN_REPOSITORY_URL` 이 있으면 그 URL을 사용한다. 사내 Nexus, Artifactory,
-   GitHub Packages 외부 조직 저장소처럼 명시 대상이 있을 때 이 값을 쓴다.
+   GitHub Packages 외부 조직 저장소처럼 명시 대상이 있을 때 이 값을 쓴다. 공식
+   release CI에서는 이 값을 `https://maven.pkg.github.com/kairos-code-dev/zlink` 로
+   설정한다.
 2. `MAVEN_REPOSITORY_URL` 이 없고 `GITHUB_REPOSITORY` 가 있으면
-   `https://maven.pkg.github.com/${GITHUB_REPOSITORY}` 를 사용한다. 이 저장소의 기본
-   CI 배포 경로다.
+   `https://maven.pkg.github.com/${GITHUB_REPOSITORY}` 를 사용한다. 이것은 fork나 임시
+   CI에서 같은 publish task를 검증하기 위한 fallback이다.
 3. 둘 다 없으면 `build/repo` 아래 로컬 Maven repository로 publish한다. 로컬 검증에서
    외부 저장소 credentials가 없어도 publish task를 확인하기 위한 fallback이다.
 

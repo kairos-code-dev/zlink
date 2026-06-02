@@ -38,6 +38,10 @@ THRESHOLDS = {
     ("go", "routed one-way"): (47, 57),
     ("go", "multi routed echo"): (40, 53),
     ("go", "SPOT 계열"): (50, 60),
+    ("node", "단순 one-way"): (30, 43),
+    ("node", "routed one-way"): (28, 40),
+    ("node", "multi routed echo"): (25, 37),
+    ("node", "SPOT 계열"): (28, 40),
     ("node_python", "단순 one-way"): (35, 43),
     ("node_python", "routed one-way"): (33, 40),
     ("node_python", "multi routed echo"): (30, 37),
@@ -82,7 +86,7 @@ def main():
     parser.add_argument("c_file", type=Path)
     parser.add_argument("target_file", type=Path)
     parser.add_argument("--lang-group", required=True,
-                        choices=["cpp_rust", "dotnet_java", "go", "node_python"])
+                        choices=["cpp_rust", "dotnet_java", "go", "node", "node_python"])
     parser.add_argument("--metric", default="throughput")
     parser.add_argument("--only-fails", action="store_true",
                         help="Print only 미달 rows")

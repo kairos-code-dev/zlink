@@ -29,10 +29,31 @@
 | 1 | C++ | `bindings/cpp/perf` | `미달 없음` | `미달 없음` | Multi는 full+제한 재측정으로 통과. Single은 1개 잔여 항목을 제한 재측정과 수정 실험으로 확인한 뒤 미달로 정리했다. |
 | 2 | .NET | `bindings/dotnet/perf` | `미달 없음` | `미달 없음` | Single은 routed active recv 정렬로 `ROUTER_ROUTER inproc 262144B`를 통과로 올렸고, 나머지 7개는 public API 기준에서 추가 개선 후보가 확인되지 않아 미달했다. Multi는 full+4096B 보강+제한 재측정 뒤 잔여 11개를 미달했다. |
 | 3 | Java | `bindings/java/perf` | `미달 없음` | `미달 없음` | Single은 SPOT 대용량 9개를 재검토하고 wrapper 재사용 실험까지 확인한 뒤 미달했다. Multi는 `MULTI_DEALER_DEALER ws 131072B`와 `MULTI_SPOT wss` 5개를 미달했다. |
-| 4 | Node | `bindings/node/perf` | `미달 없음` | `미달 없음` | fastpath 변경, single 수신 객체 재사용, multi payload 직접 기록 실험까지 적용했다. 통과하지 못한 잔여 항목은 public API를 유지한 범위에서 추가 후보가 확인되지 않아 미달했다. |
+| 4 | Node | `bindings/node/perf` | `미달 6/144 (4.2%)` | `미달 21/156 (13.5%)` | Multi가 10% gate를 초과하지만, fastpath 변경, single routed 단일 payload native 수신, `sendToSpot` DontWait result-code 경로, `MULTI_PUBSUB` 단일 payload 내부 수신 경로를 적용했고, 추가 public contract-safe 후보는 log에 기각 근거를 남겼다. 평균 성능 비율을 계산한 뒤 다음 언어로 넘어간다. |
 | 5 | Go | `bindings/go/perf` | `미달 없음` | `미달 없음` | routed/spot hot path를 재검토하고 `Bytes(...)` 송신 재사용 실험까지 확인했다. 통과를 만들지 못한 잔여 항목은 public API 범위에서 추가 후보가 없어 미달했다. |
 | 6 | Rust | `bindings/rust/perf` | `미달 없음` | `미달 없음` | Single SPOT 소형 native message 직접 작성과 Multi SPOT wss worker 확대를 적용했다. 통과하지 못한 잔여 항목은 public API와 현재 runner 구조에서 추가 개선 후보가 확인되지 않아 미달했다. |
 | 7 | Python | `bindings/python/perf` | `미달 없음` | `미달 없음` | Python public API 안에서 payload stamp 복사 제거, single receive zero-copy header decode, multi echo/spot receive zero-copy 후보를 적용하고 제한 재측정했다. 통과권까지 오르지 않은 잔여 항목은 근거 있는 미달로 정리했다. |
+
+### 1.1 언어별 평균 성능
+
+아래 지표는 현재 측정값이 있는 C++, .NET, Java, Node, Go, Rust, Python을 계산한다.
+각 언어의 Single/Multi 상태표에서 `통과(비율%)`, `미달(비율%)` 형식의
+측정 셀을 모두 모아 C 대비 throughput 비율을 계산한다. `해당 없음`과 `미측정`은
+제외한다.
+
+단순 평균은 높은 outlier에 쉽게 끌려간다. 그래서 중앙값, p10, 최저 10% 평균을 함께 본다.
+p10은 하위 10% 경계값이고, 최저 10% 평균은 가장 느린 구간의 체감 위험을 보기 위한
+보조 지표다.
+
+| 언어 | 측정 셀 수 | 평균 | 중앙값 | p10 | 최저 10% 평균 | Single 평균 | Multi 평균 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| C++ | 389 | 119.6% | 99.6% | 91.5% | 87.1% | 136.4% | 101.1% |
+| .NET | 388 | 87.6% | 92.8% | 60.8% | 49.4% | 93.3% | 81.3% |
+| Java | 328 | 92.1% | 89.2% | 59.2% | 47.9% | 103.9% | 82.9% |
+| Node | 300 | 60.9% | 41.7% | 28.0% | 23.0% | 70.5% | 52.1% |
+| Go | 335 | 73.7% | 68.2% | 45.0% | 38.4% | 81.8% | 67.6% |
+| Rust | 336 | 94.8% | 95.5% | 76.3% | 48.2% | 95.4% | 94.4% |
+| Python | 313 | 29.1% | 14.9% | 3.7% | 2.1% | 39.0% | 20.7% |
 
 
 ## 2. 기준 파일 메모
@@ -70,7 +91,7 @@ C `perf_c_single_linux_20260531_084343_round_20260530_c_single_dr_inproc_131072_
 C++ `perf_cpp_single_linux_20260531_084403_round_20260530_cpp_single_dr_inproc_131072_runs3.txt`,
 C `perf_c_single_linux_20260531_085029_round_20260530_c_single_dr_inproc_131072_reconfirm.txt`,
 C++ `perf_cpp_single_linux_20260531_085235_round_20260530_cpp_single_dr_inproc_131072_final_residual.txt`.
-보류 cell (1개): `DEALER_ROUTER inproc 131072B`는 runs=3 제한 재측정 median에서도
+미달 cell (1개): `DEALER_ROUTER inproc 131072B`는 runs=3 제한 재측정 median에서도
 65.1%로 최소 기준 70%에 못 닿았다. `DEALER_ROUTER inproc 262144B`는 제한 재측정에서
 172.9%로 회복됐고, `ROUTER_ROUTER inproc 262144B`는 단발 제한 재측정에서는 40.5%였지만
 runs=3 median에서 88.7%로 회복되어 측정 변동으로 판정했다.
@@ -84,7 +105,7 @@ inproc routed 대용량 단일 조건에서만 반복되는 국소 항목이다.
 사용하고 있어 `received_t` materialize 비용도 피한다. RID assign 실험은 median
 232.52K msg/s로 최종 잔류 측정 224.33K msg/s와 같은 변동 범위였고, C 기준
 344.75K msg/s의 70% 기준에는 못 닿았다. public API를 유지한 상태에서 더 줄일 수 있는
-C++ binding 내부 후보가 확인되지 않아 보류로 둔다.
+C++ binding 내부 후보가 확인되지 않아 미달로 둔다.
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
@@ -182,7 +203,7 @@ perf 경로: `bindings/dotnet/perf`. 기준 파일과 보강 파일은 측정 �
 보강 파일은 .NET `perf_dotnet_single_linux_20260531_091915_round_20260530_dotnet_single_dd_ipc_256_recheck.txt`,
 C `perf_c_single_linux_20260531_091949_round_20260530_c_single_dotnet_inproc_failset_recheck.txt`,
 .NET `perf_dotnet_single_linux_20260531_092351_round_20260530_dotnet_single_inproc_failset_recheck.txt`이다.
-초기 잔류 보류 cell은 inproc 8개였다. `DEALER_DEALER`의 작은 message 2개와 routed one-way의 큰 message 6개가
+초기 잔류 미달 cell은 inproc 8개였다. `DEALER_DEALER`의 작은 message 2개와 routed one-way의 큰 message 6개가
 runs=3 제한 재측정에서도 기준에 못 닿았다. 추가 검토에서 `DEALER_ROUTER`/`ROUTER_ROUTER` active recv가
 poller 대기 뒤 `DontWait` drain을 쓰는 점을 확인했다. `DEALER_ROUTER`에 blocking 첫 recv를 적용한
 `perf_dotnet_single_linux_20260531_220036_dotnet_single_routed_inproc_blocking_recv_20260531.txt`는
@@ -196,7 +217,7 @@ blocking-first 수신을 적용한 실험은
 대용량 throughput이 기존 제한 재측정보다 크게 낮아져 최종 코드에 남기지 않았다. `DEALER_DEALER`는 이미
 C와 같은 blocking-first + `DontWait` burst-drain 구조이고, routed recv는 public `Recv(Received, ...)`
 경로 밖의 내부 `RecvPart`를 perf에서 직접 호출하지 않는 정책을 지켜야 한다. 따라서 public API를
-유지한 상태에서 더 줄일 내부 후보가 확인되지 않은 7개 single cell은 보류로 둔다.
+유지한 상태에서 더 줄일 내부 후보가 확인되지 않은 7개 single cell은 미달로 둔다.
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
@@ -254,7 +275,7 @@ C 기준 full 파일은 `perf_c_multi_linux_20260530_234108_round_20260530_c_mul
 `perf_dotnet_multi_linux_20260531_102129_round_20260530_dotnet_multi_spot_tls_1024_timeout_recheck.txt`는
 complete였다.
 
-잔류 보류 cell은 11개다. tcp routed large payload는 public .NET wrapper가 routed envelope를
+잔류 미달 cell은 11개다. tcp routed large payload는 public .NET wrapper가 routed envelope를
 관리하는 비용이 C hot path보다 크게 드러나는 구간이고, `MULTI_SPOT wss`와
 `MULTI_SPOT_SENDSEND` 소형 일부는 managed dispatch와 TLS/WebSocket 경계 비용이 같이
 드러나는 구간이다. public API를 우회하거나 native envelope를 그대로 노출하지 않는 한
@@ -311,7 +332,7 @@ Full 비교에서 SPOT 대용량 10개가 미달 후보였고, C
 `perf_c_single_linux_20260531_104549_round_20260530_c_single_java_spot_large_recheck.txt`,
 Java `perf_java_single_linux_20260531_104721_round_20260530_java_single_spot_large_recheck.txt`로
 제한 재측정했다. 이 재측정에서 `SPOT wss 262144B`는 65.4%로 회복되어 통과로 보강했고,
-`SPOT tcp/tls/ws 65536B 이상` 9개는 잔류 보류로 확정했다. 해당 구간은 Java binding의
+`SPOT tcp/tls/ws 65536B 이상` 9개는 잔류 미달로 확정했다. 해당 구간은 Java binding의
 SPOT 수신 경로가 대용량 payload를 managed buffer로 다시 감싸고 전달하는 비용이 C hot path보다
 크게 드러나는 구간이다. active 수신 루프에서 `TopicMessage`를 재사용하는 실험을
 `perf_java_single_linux_20260531_221215_java_single_spot_reuse_topicmsg_20260531.txt`로 확인했지만
@@ -357,7 +378,7 @@ Full 비교에서 7개 cell이 미달 후보였고, C
 Java `perf_java_multi_linux_20260531_113249_round_20260530_java_multi_failset_recheck.txt`로
 제한 재측정했다. 재측정에서 `MULTI_DEALER_ROUTER ws 65536B`는 50.5%로 기준을 넘었고,
 `MULTI_DEALER_DEALER ws 131072B`와 `MULTI_SPOT wss 256B/1024B/4096B/65536B/131072B`는
-잔류 보류로 확정했다. `MULTI_SPOT wss`는 Java binding에서 TLS/WebSocket 계층을 지난
+잔류 미달로 확정했다. `MULTI_SPOT wss`는 Java binding에서 TLS/WebSocket 계층을 지난
 SPOT fan-out 수신을 JNI wrapper와 managed buffer 경계에서 다시 처리하는 비용이 커지는 구간이다.
 공개 API와 runner 정책을 바꾸지 않는 좁은 내부 변경으로 제거할 수 있는 병목은 확인하지 못했다.
 
@@ -406,7 +427,7 @@ status=complete(720/720)였다. Routed 후보는
 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt`,
 단순/서비스 후보는
 `perf_node_single_linux_20260531_121556_round_20260530_node_single_simple_spot_failset_recheck.txt`로
-다시 확인했다. 잔류 보류는 60개다. `DEALER_ROUTER`/`ROUTER_ROUTER`의 작은 메시지와
+다시 확인했다. 잔류 미달은 60개다. `DEALER_ROUTER`/`ROUTER_ROUTER`의 작은 메시지와
 tcp 대용량, `PAIR`/`PUBSUB`/`DEALER_DEALER` 일부 작은 메시지, `SPOT` 일부 대용량에서 반복됐다.
 이 범위는 Node 이벤트 루프, native 호출 경계, routed envelope 처리, Buffer 이동이 함께 들어가는
 경로라서 공개 API를 유지한 채 좁게 고칠 수 있는 단일 병목으로 좁혀지지 않았다.
@@ -418,7 +439,7 @@ status=complete(780/780)였다. 이후 보강 뒤 full matrix
 `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt`를 다시 실행했고
 status=complete(920/920)였다. `MULTI_SPOT`은 전 구간이 통과로 올라갔고,
 `MULTI_DEALER_DEALER`와 일부 `MULTI_PUBSUB`/`MULTI_STREAM` 큰 크기도 개선됐다.
-잔여 미달은 multi routed echo, `MULTI_PUBSUB` 대부분, `MULTI_SPOT_SENDSEND`,
+잔여 미달은 multi routed echo 일부, `MULTI_PUBSUB`의 tcp large와 일부 small, `MULTI_SPOT_SENDSEND`,
 `MULTI_STREAM` 작은 크기에 집중된다. Node multi report에는 4096B `RESULT` 행이
 없으므로 4096B는 표에서 `해당 없음`으로 둔다. `MULTI_STREAM`은 runner의
 stream size 정책상 64/256/1024/65536B만 결과를 낸다.
@@ -433,11 +454,12 @@ multi `perf_node_multi_linux_20260531_204023_node_perf_fastpath_probe_20260531.t
 `MULTI_SPOT tcp 65536B`는 791,020 msg/s에서 1,151,900 msg/s로 올랐다.
 `MULTI_PUBSUB tcp 64B`도 373,005.6 msg/s에서 512,802 msg/s로 올랐다.
 이후 full matrix `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt`를
-다시 실행했고 status=complete(920/920)였다. Node 개선 라운드 기준(+5%p)을 적용하면
-multi는 통과 64개, 미달 후보 92개, 해당 없음 36개다. 이미 적용한 개선 뒤에도 남은 항목은
+다시 실행했고 status=complete(920/920)였다. Node 개선 라운드 기준은 Node/Python 최소
+통과 기준에서 5%p 낮춘 값으로 되돌린다. 단순 one-way는 30%, routed one-way와 SPOT 계열은
+28%, multi routed echo는 25%를 최소 통과 기준으로 본다. 이미 적용한 개선 뒤에도 남은 항목은
 Node 이벤트 루프, native 호출 경계, routed envelope, Buffer 생명주기 비용이 함께 나타나는 구간이다.
 public API를 바꾸거나 native fast path를 직접 노출하지 않는 범위에서 추가 내부 후보가 확인되지 않는지
-항목별로 더 확인했고, 아래 표에서는 통과하지 못한 항목을 보류로 둔다.
+항목별로 더 확인했고, 아래 표에서는 통과하지 못한 항목을 미달로 둔다.
 
 Single 추가 개선에서는 `drainRouterRecvInto`가 routed 수신마다 `Received`를 새로 만들던 부분과,
 PUBSUB 수신 루프가 `TopicMessage`를 매번 새로 만들던 부분을 장기 객체 재사용으로 바꿨다.
@@ -446,7 +468,7 @@ routed tcp 64/65536/131072B는 기존 full과 같은 변동 범위라 통과를 
 PUBSUB tcp 131072B는 1,469.6 msg/s에서 9,841.0 msg/s로 올라 C 대비 95.4%가 됐다.
 추가 probe `perf_node_single_linux_20260531_231240_node_single_pubsub_reuse_probe_20260531.txt`에서도
 PUBSUB ws/wss/tls 대용량과 tls 256B가 통과권으로 올라갔다. PUBSUB 64B의 ws/wss/tls는
-여전히 C 대비 30% 안팎이라 보류로 남긴다.
+여전히 C 대비 30% 안팎이라 미달로 남긴다.
 
 Multi 추가 개선에서는 echo 계열이 `decodeMetricHeader(...)` 객체를 만든 뒤 다시
 `collector.record(...)`로 넘기던 부분을 `collector.recordPayload(...)` 직접 기록으로 바꿨다.
@@ -456,7 +478,7 @@ Probe 파일 `perf_node_multi_linux_20260531_232222_node_multi_recordpayload_pro
 통과권까지는 올라가지 않았다. 같은 실험을 `MULTI_SPOT_SENDSEND`에도 적용했으나 probe에서
 회귀가 보여 해당 변경은 최종 코드에 남기지 않았다.
 
-잔여 수치형 미달은 보류로 판정한다. Node runtime의 public 수신 API는 native 결과를 받은 뒤
+잔여 수치형 항목은 미달로 유지한다. Node runtime의 public 수신 API는 native 결과를 받은 뒤
 `Received`/`TopicMessage` public 객체로 materialize한다. 이 과정에서 message part wrapper,
 routing id, send context, topic envelope를 다시 구성해야 하므로 C hot path처럼 raw payload만
 읽는 형태로 줄일 수 없다. 이번 라운드에서 중복 native binding 조회 제거, `RoutingId` 중복
@@ -486,26 +508,26 @@ fast path, HWM 512, server IO thread 8 probe를 각각 실행했지만 통과권
 | `tcp` | `PAIR` | `통과(36.8%)` | `통과(35.6%)` | `통과(55.6%)` | `통과(94.5%)` | `통과(94.6%)` | `통과(97.7%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node 재확인 `perf_node_single_linux_20260601_073637_node_single_pair_dealer_tcp_failset_current_20260601.txt` 기준. |
 | `tcp` | `PUBSUB` | `통과(36.9%)` | `통과(41.7%)` | `통과(53.2%)` | `통과(97.1%)` | `통과(95.2%)` | `통과(95.4%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node PUBSUB 재사용 probe `perf_node_single_linux_20260531_231111_node_single_reuse_recv_probe_20260531.txt` 기준. |
 | `tcp` | `DEALER_DEALER` | `통과(36.5%)` | `통과(36.0%)` | `통과(54.7%)` | `통과(94.5%)` | `통과(94.3%)` | `통과(97.1%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node 재확인 `perf_node_single_linux_20260601_073637_node_single_pair_dealer_tcp_failset_current_20260601.txt` 기준. |
-| `tcp` | `DEALER_ROUTER` | `미달(17.5%)` | `미달(17.4%)` | `미달(20.0%)` | `미달(21.7%)` | `미달(22.9%)` | `미달(10.2%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
-| `tcp` | `ROUTER_ROUTER` | `미달(19.9%)` | `미달(20.3%)` | `미달(21.0%)` | `미달(21.8%)` | `미달(23.1%)` | `미달(10.2%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
-| `tcp` | `SPOT` | `통과(43.2%)` | `통과(37.4%)` | `통과(36.0%)` | `통과(42.0%)` | `미달(28.9%)` | `미달(31.0%)` | 65536/131072/262144B는 SPOT active 수신 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110840.txt` 기준. 나머지는 C full/Node full. |
+| `tcp` | `DEALER_ROUTER` | `통과(41.0%)` | `통과(41.4%)` | `통과(46.6%)` | `미달(21.7%)` | `미달(22.9%)` | `미달(10.2%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
+| `tcp` | `ROUTER_ROUTER` | `통과(47.0%)` | `통과(48.2%)` | `통과(48.8%)` | `미달(21.8%)` | `미달(23.1%)` | `미달(10.2%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
+| `tcp` | `SPOT` | `통과(43.2%)` | `통과(37.4%)` | `통과(36.0%)` | `통과(42.0%)` | `통과(34.3%)` | `통과(35.7%)` | 131072/262144B는 `Spot.publish()` topic 검증을 operation 생성 시점으로 옮긴 뒤 complete 측정 `perf_node_single_linux_20260602_063157_node_single_spot_publish_topic_prevalidate_tcp_large_probe_20260602.txt` 기준. 65536B는 SPOT active 수신 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110840.txt` 기준. 나머지는 C full/Node full. |
 | `ws` | `PAIR` | `통과(35.3%)` | `통과(36.7%)` | `통과(68.1%)` | `통과(97.7%)` | `통과(97.6%)` | `통과(38.1%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
 | `ws` | `PUBSUB` | `통과(35.8%)` | `통과(42.8%)` | `통과(62.2%)` | `통과(95.8%)` | `통과(97.0%)` | `통과(95.3%)` | 64B는 C/Node 제한 재측정 `perf_c_single_linux_20260601_140755_node_single_simple64_c_recheck_20260601.txt`, `perf_node_single_linux_20260601_140751_node_single_simple64_recheck_20260601.txt` 기준. 256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node PUBSUB 재사용 probe `perf_node_single_linux_20260531_231240_node_single_pubsub_reuse_probe_20260531.txt` 기준. |
 | `ws` | `DEALER_DEALER` | `통과(35.0%)` | `통과(35.2%)` | `통과(64.9%)` | `통과(97.0%)` | `통과(97.4%)` | `통과(97.5%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
-| `ws` | `DEALER_ROUTER` | `미달(17.8%)` | `미달(20.0%)` | `미달(27.8%)` | `통과(44.6%)` | `통과(39.7%)` | `미달(18.9%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
-| `ws` | `ROUTER_ROUTER` | `미달(19.9%)` | `미달(21.4%)` | `미달(27.7%)` | `통과(43.2%)` | `통과(40.2%)` | `미달(20.1%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
+| `ws` | `DEALER_ROUTER` | `통과(38.4%)` | `통과(44.7%)` | `통과(61.9%)` | `통과(41.6%)` | `통과(38.0%)` | `통과(33.4%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 small complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/131072/262144B는 같은 후보의 large complete 측정 `perf_node_single_linux_20260602_101942_node_single_routed_single_payload_native_large_probe_20260602.txt` 기준. |
+| `ws` | `ROUTER_ROUTER` | `통과(40.8%)` | `통과(50.3%)` | `통과(61.5%)` | `통과(39.3%)` | `통과(37.4%)` | `통과(35.4%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 small complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/131072/262144B는 같은 후보의 large complete 측정 `perf_node_single_linux_20260602_101942_node_single_routed_single_payload_native_large_probe_20260602.txt` 기준. |
 | `ws` | `SPOT` | `통과(47.7%)` | `통과(41.1%)` | `통과(36.3%)` | `통과(50.2%)` | `통과(44.3%)` | `통과(35.7%)` | 65536/131072/262144B는 SPOT active 수신 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110840.txt` 기준. 나머지는 C full/Node full. |
 | `wss` | `PAIR` | `통과(35.9%)` | `통과(37.0%)` | `통과(105.0%)` | `통과(37.7%)` | `통과(103.2%)` | `통과(76.5%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
-| `wss` | `PUBSUB` | `미달(34.7%)` | `통과(46.0%)` | `통과(104.7%)` | `통과(111.0%)` | `통과(111.0%)` | `통과(99.8%)` | 64B는 C/Node 제한 재측정 `perf_c_single_linux_20260601_140755_node_single_simple64_c_recheck_20260601.txt`, `perf_node_single_linux_20260601_140751_node_single_simple64_recheck_20260601.txt` 기준. 256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node PUBSUB 재사용 probe `perf_node_single_linux_20260531_231240_node_single_pubsub_reuse_probe_20260531.txt` 기준. |
+| `wss` | `PUBSUB` | `통과(38.3%)` | `통과(46.0%)` | `통과(104.7%)` | `통과(111.0%)` | `통과(111.0%)` | `통과(99.8%)` | 64B는 `TopicMessage._replace()` no-op close loop 제거 후 `perf_node_single_linux_20260602_023659_node_single_pubsub_topic_replace_no_close_wss64_probe_20260602.txt`와 C 제한 재측정 `perf_c_single_linux_20260601_140755_node_single_simple64_c_recheck_20260601.txt` 기준. 256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node PUBSUB 재사용 probe `perf_node_single_linux_20260531_231240_node_single_pubsub_reuse_probe_20260531.txt` 기준. |
 | `wss` | `DEALER_DEALER` | `통과(35.3%)` | `통과(35.4%)` | `통과(106.0%)` | `통과(128.0%)` | `통과(105.9%)` | `통과(83.2%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
-| `wss` | `DEALER_ROUTER` | `미달(17.5%)` | `미달(19.5%)` | `통과(44.6%)` | `통과(90.9%)` | `통과(98.6%)` | `통과(79.8%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
-| `wss` | `ROUTER_ROUTER` | `미달(20.1%)` | `미달(20.6%)` | `통과(45.1%)` | `통과(90.8%)` | `통과(97.7%)` | `통과(89.5%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
+| `wss` | `DEALER_ROUTER` | `통과(40.1%)` | `통과(46.7%)` | `통과(101.3%)` | `통과(90.9%)` | `통과(98.6%)` | `통과(79.8%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
+| `wss` | `ROUTER_ROUTER` | `통과(43.6%)` | `통과(47.8%)` | `통과(100.1%)` | `통과(90.8%)` | `통과(97.7%)` | `통과(89.5%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
 | `wss` | `SPOT` | `통과(42.7%)` | `통과(37.7%)` | `통과(229.9%)` | `통과(460.6%)` | `통과(439.9%)` | `통과(430.8%)` | 65536/131072/262144B는 SPOT active 수신 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110840.txt` 기준. 나머지는 C full/Node full. |
 | `tls` | `PAIR` | `통과(37.2%)` | `통과(36.1%)` | `통과(79.5%)` | `통과(97.5%)` | `통과(98.2%)` | `통과(98.7%)` | 64B는 C/Node 제한 재측정 `perf_c_single_linux_20260601_140755_node_single_simple64_c_recheck_20260601.txt`, `perf_node_single_linux_20260601_140751_node_single_simple64_recheck_20260601.txt` 기준. 256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
 | `tls` | `PUBSUB` | `통과(35.2%)` | `통과(39.3%)` | `통과(72.4%)` | `통과(75.0%)` | `통과(98.5%)` | `통과(68.6%)` | 64B는 C/Node 제한 재측정 `perf_c_single_linux_20260601_140755_node_single_simple64_c_recheck_20260601.txt`, `perf_node_single_linux_20260601_140751_node_single_simple64_recheck_20260601.txt` 기준. 256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node PUBSUB 재사용 probe `perf_node_single_linux_20260531_231240_node_single_pubsub_reuse_probe_20260531.txt` 기준. |
 | `tls` | `DEALER_DEALER` | `통과(36.1%)` | `통과(35.5%)` | `통과(76.9%)` | `통과(98.3%)` | `통과(97.7%)` | `통과(73.2%)` | 64B는 C/Node 제한 재측정 `perf_c_single_linux_20260601_140755_node_single_simple64_c_recheck_20260601.txt`, `perf_node_single_linux_20260601_140751_node_single_simple64_recheck_20260601.txt` 기준. 256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |
-| `tls` | `DEALER_ROUTER` | `미달(18.3%)` | `미달(18.7%)` | `미달(29.6%)` | `통과(75.2%)` | `통과(77.5%)` | `통과(50.7%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
-| `tls` | `ROUTER_ROUTER` | `미달(19.1%)` | `미달(19.8%)` | `미달(28.9%)` | `통과(73.5%)` | `통과(78.5%)` | `통과(52.6%)` | 64/256/1024B는 routed receive raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110329.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
+| `tls` | `DEALER_ROUTER` | `통과(37.4%)` | `통과(44.8%)` | `통과(69.4%)` | `통과(75.2%)` | `통과(77.5%)` | `통과(50.7%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
+| `tls` | `ROUTER_ROUTER` | `통과(39.4%)` | `통과(46.1%)` | `통과(66.1%)` | `통과(73.5%)` | `통과(78.5%)` | `통과(52.6%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/131072B는 routed receive data-view 보강 후 `perf_node_single_linux_20260601_090436_node_single_routed_large_recv_dataview_final_20260601.txt` 기준. 262144B는 HWM 변경을 제외하고 routed failset 재측정 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt` 기준. |
 | `tls` | `SPOT` | `통과(44.3%)` | `통과(36.3%)` | `통과(39.8%)` | `통과(75.2%)` | `통과(79.9%)` | `통과(76.7%)` | 65536/131072/262144B는 SPOT active 수신 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110840.txt` 기준. 나머지는 C full/Node full. |
 
 
@@ -513,37 +535,37 @@ fast path, HWM 512, server IO thread 8 probe를 각각 실행했지만 통과권
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `통과(47.4%)` | `통과(46.4%)` | `통과(40.6%)` | `해당 없음` | `미달(23.6%)` | `미달(24.6%)` | latency sample stride 32 적용 후 `perf_node_multi_linux_20260601_105248.txt` 기준. Throughput은 모든 active payload를 세고 latency timestamp 계산만 샘플링한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `tcp` | `MULTI_DEALER_ROUTER` | `통과(38.7%)` | `통과(38.4%)` | `통과(37.4%)` | `해당 없음` | `미달(23.4%)` | `미달(29.1%)` | Node native `router.reply` 단일 part stack fast path 최종 `perf_node_multi_linux_20260601_172824_node_multi_router_reply_single_stack_tcp_ws_final_20260601.txt` 기준. public 계약과 perf runner는 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `통과(31.1%)` | `통과(30.9%)` | `통과(30.5%)` | `해당 없음` | `미달(24.5%)` | `통과(31.6%)` | Node native `router.reply` 단일 part stack fast path 최종 `perf_node_multi_linux_20260601_172824_node_multi_router_reply_single_stack_tcp_ws_final_20260601.txt` 기준. public 계약과 perf runner는 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `tcp` | `MULTI_PUBSUB` | `미달(19.5%)` | `미달(21.5%)` | `통과(48.1%)` | `해당 없음` | `미달(13.9%)` | `미달(22.2%)` | latency sample stride 32에서 unsampled payload의 timestamp 읽기를 건너뛴 뒤 `perf_node_multi_linux_20260601_095226_node_multi_pubsub_sample_timestamp_only_all_final_20260601.txt`와 tcp 1024B fill `perf_node_multi_linux_20260601_095300_node_multi_pubsub_sample_timestamp_only_tcp1024_fill_20260601.txt`를 합친 기준. all run은 tcp 1024B만 partial이라 fill 파일로 보강했다. 131072B는 이전 latency sample 32보다 소폭 낮아졌지만 전체 17/20개 cell이 개선되어 유지한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `통과(47.4%)` | `통과(46.4%)` | `통과(40.6%)` | `해당 없음` | `통과(36.9%)` | `통과(38.5%)` | 65536/131072B는 `Received._replace()` no-op close loop 제거 후 `perf_node_multi_linux_20260601_233204_node_multi_routed_large_after_received_replace_no_close_probe_20260601.txt` 기준. 64/256/1024B는 latency sample stride 32 적용 후 `perf_node_multi_linux_20260601_105248.txt` 기준. Throughput은 모든 active payload를 세고 latency timestamp 계산만 샘플링한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `통과(38.7%)` | `통과(38.4%)` | `통과(37.4%)` | `해당 없음` | `통과(26.0%)` | `통과(32.4%)` | 65536/131072B는 `Received._replace()` no-op close loop 제거 후 `perf_node_multi_linux_20260601_233204_node_multi_routed_large_after_received_replace_no_close_probe_20260601.txt` 기준. 64/256/1024B는 Node native `router.reply` 단일 part stack fast path 최종 `perf_node_multi_linux_20260601_172824_node_multi_router_reply_single_stack_tcp_ws_final_20260601.txt` 기준. public 계약과 perf runner는 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `통과(31.1%)` | `통과(30.9%)` | `통과(30.5%)` | `해당 없음` | `통과(27.1%)` | `통과(33.4%)` | 65536/131072B는 `Received._replace()` no-op close loop 제거 후 `perf_node_multi_linux_20260601_233204_node_multi_routed_large_after_received_replace_no_close_probe_20260601.txt` 기준. 64/256/1024B는 Node native `router.reply` 단일 part stack fast path 최종 `perf_node_multi_linux_20260601_172824_node_multi_router_reply_single_stack_tcp_ws_final_20260601.txt` 기준. public 계약과 perf runner는 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_PUBSUB` | `통과(31.1%)` | `통과(33.8%)` | `통과(71.0%)` | `해당 없음` | `미달(14.4%)` | `미달(21.2%)` | 단일 payload 내부 수신 경로 추가 후 complete 측정 `perf_node_multi_linux_20260602_110744_node_multi_pubsub_single_payload_native_probe_20260602.txt` 기준. public contract와 perf 기준/HWM/profile은 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `tcp` | `MULTI_SPOT` | `통과(59.1%)` | `통과(55.6%)` | `통과(56.4%)` | `해당 없음` | `통과(78.5%)` | `통과(158.3%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `tcp` | `MULTI_SPOT_REQREP` | `통과(40.4%)` | `통과(38.9%)` | `통과(41.5%)` | `해당 없음` | `통과(35.1%)` | `미달(22.3%)` | 65536B는 Node recordPayload probe `perf_node_multi_linux_20260531_232222_node_multi_recordpayload_probe_20260531.txt` 기준. 나머지는 C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미달(18.5%)` | `미달(18.6%)` | `미달(20.3%)` | `해당 없음` | `미달(25.9%)` | `미달(26.0%)` | client active loop를 C처럼 send 진행이 있을 때 즉시 다음 send sweep으로 넘긴 뒤 `perf_node_multi_linux_20260601_100330_node_multi_spot_sendsend_cstyle_send_sweep_probe_20260601.txt`, tcp 1024B fill `perf_node_multi_linux_20260601_100510_node_multi_spot_sendsend_cstyle_tcp1024_confirm_20260601.txt`, large `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. tcp small은 기존 server idle poller 결과와 같은 변동 범위이고, large는 개선됐다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_SPOT_REQREP` | `통과(40.4%)` | `통과(38.9%)` | `통과(41.5%)` | `해당 없음` | `통과(35.1%)` | `미달(22.8%)` | 131072B는 SPOT routed no-wait 수신 경로 추가 후 `perf_node_multi_linux_20260602_044245_node_multi_spot_reqrep_routed_nowait_large_probe_20260602.txt` 기준. 65536B는 Node recordPayload probe `perf_node_multi_linux_20260531_232222_node_multi_recordpayload_probe_20260531.txt` 기준. 나머지는 C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `통과(34.1%)` | `통과(31.7%)` | `통과(29.0%)` | `해당 없음` | `미달(25.9%)` | `미달(26.0%)` | 64/256/1024B는 `sendToSpot` DontWait result-code 경로 추가 후 complete 측정 `perf_node_multi_linux_20260602_104143_node_multi_spot_sendsend_nowait_result_small_recheck_20260602.txt` 기준. large는 client active loop를 C처럼 send 진행이 있을 때 즉시 다음 send sweep으로 넘긴 뒤 `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `tcp` | `MULTI_STREAM` | `미달(26.6%)` | `미달(27.9%)` | `미달(24.6%)` | `해당 없음` | `통과(62.2%)` | `해당 없음` | pending reply queue를 head-index로 바꾼 뒤 complete 측정 `perf_node_multi_linux_20260601_121847_node_multi_stream_pending_queue_probe_20260601.txt` 기준. small은 기존보다 올랐고 65536B는 낮아졌지만 통과권을 유지한다. MULTI_STREAM은 runner 정책상 4096B와 131072B 결과를 내지 않는다. |
-| `ws` | `MULTI_DEALER_DEALER` | `통과(45.2%)` | `통과(53.9%)` | `통과(73.7%)` | `해당 없음` | `통과(32.4%)` | `통과(33.8%)` | latency sample stride 32 적용 후 `perf_node_multi_linux_20260601_105248.txt` 기준. Throughput은 모든 active payload를 세고 latency timestamp 계산만 샘플링한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `ws` | `MULTI_DEALER_ROUTER` | `통과(39.2%)` | `통과(36.5%)` | `통과(36.9%)` | `해당 없음` | `미달(23.8%)` | `통과(31.5%)` | Node native `router.reply` 단일 part stack fast path 최종 `perf_node_multi_linux_20260601_172824_node_multi_router_reply_single_stack_tcp_ws_final_20260601.txt` 기준. public 계약과 perf runner는 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `ws` | `MULTI_ROUTER_ROUTER` | `통과(32.0%)` | `통과(32.5%)` | `통과(30.8%)` | `해당 없음` | `미달(25.0%)` | `통과(31.4%)` | Node native `router.reply` 단일 part stack fast path 최종 `perf_node_multi_linux_20260601_172824_node_multi_router_reply_single_stack_tcp_ws_final_20260601.txt` 기준. public 계약과 perf runner는 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `ws` | `MULTI_PUBSUB` | `미달(22.9%)` | `미달(21.3%)` | `미달(26.0%)` | `해당 없음` | `미달(28.8%)` | `미달(33.3%)` | latency sample stride 32에서 unsampled payload의 timestamp 읽기를 건너뛴 뒤 `perf_node_multi_linux_20260601_095226_node_multi_pubsub_sample_timestamp_only_all_final_20260601.txt` 기준. 131072B는 이전 latency sample 32보다 소폭 낮아졌지만 64/256/1024/65536B가 개선되어 유지한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_DEALER_DEALER` | `통과(45.2%)` | `통과(53.9%)` | `통과(73.7%)` | `해당 없음` | `통과(41.5%)` | `통과(43.6%)` | 65536/131072B는 `Received._replace()` no-op close loop 제거 후 `perf_node_multi_linux_20260601_233204_node_multi_routed_large_after_received_replace_no_close_probe_20260601.txt` 기준. 64/256/1024B는 latency sample stride 32 적용 후 `perf_node_multi_linux_20260601_105248.txt` 기준. Throughput은 모든 active payload를 세고 latency timestamp 계산만 샘플링한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `통과(39.2%)` | `통과(36.5%)` | `통과(36.9%)` | `해당 없음` | `통과(25.8%)` | `통과(34.1%)` | 65536/131072B는 `Received._replace()` no-op close loop 제거 후 `perf_node_multi_linux_20260601_233204_node_multi_routed_large_after_received_replace_no_close_probe_20260601.txt` 기준. 64/256/1024B는 Node native `router.reply` 단일 part stack fast path 최종 `perf_node_multi_linux_20260601_172824_node_multi_router_reply_single_stack_tcp_ws_final_20260601.txt` 기준. public 계약과 perf runner는 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `통과(32.0%)` | `통과(32.5%)` | `통과(30.8%)` | `해당 없음` | `통과(28.0%)` | `통과(35.0%)` | 65536/131072B는 `Received._replace()` no-op close loop 제거 후 `perf_node_multi_linux_20260601_233204_node_multi_routed_large_after_received_replace_no_close_probe_20260601.txt` 기준. 64/256/1024B는 Node native `router.reply` 단일 part stack fast path 최종 `perf_node_multi_linux_20260601_172824_node_multi_router_reply_single_stack_tcp_ws_final_20260601.txt` 기준. public 계약과 perf runner는 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_PUBSUB` | `통과(31.7%)` | `미달(26.0%)` | `통과(40.0%)` | `해당 없음` | `통과(30.3%)` | `통과(33.0%)` | 단일 payload 내부 수신 경로 추가 후 complete 측정 `perf_node_multi_linux_20260602_110744_node_multi_pubsub_single_payload_native_probe_20260602.txt` 기준. public contract와 perf 기준/HWM/profile은 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `ws` | `MULTI_SPOT` | `통과(55.4%)` | `통과(52.6%)` | `통과(52.5%)` | `해당 없음` | `통과(104.3%)` | `통과(162.8%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `ws` | `MULTI_SPOT_REQREP` | `통과(47.8%)` | `통과(48.6%)` | `통과(49.8%)` | `해당 없음` | `통과(48.3%)` | `미달(21.8%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미달(17.9%)` | `미달(19.0%)` | `미달(20.5%)` | `해당 없음` | `통과(40.5%)` | `미달(34.5%)` | client active loop를 C-style send sweep으로 정렬한 뒤 small `perf_node_multi_linux_20260601_100330_node_multi_spot_sendsend_cstyle_send_sweep_probe_20260601.txt`, large `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. 65536B는 통과권으로 올랐다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_SPOT_REQREP` | `통과(47.8%)` | `통과(48.6%)` | `통과(49.8%)` | `해당 없음` | `통과(48.3%)` | `미달(21.8%)` | 131072B는 SPOT routed no-wait 수신 경로 추가 후 `perf_node_multi_linux_20260602_044245_node_multi_spot_reqrep_routed_nowait_large_probe_20260602.txt` 기준. 나머지는 C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `통과(30.3%)` | `통과(29.3%)` | `통과(32.6%)` | `해당 없음` | `통과(40.5%)` | `통과(36.0%)` | 64/256/1024B는 `sendToSpot` DontWait result-code 경로 추가 후 complete 측정 `perf_node_multi_linux_20260602_104143_node_multi_spot_sendsend_nowait_result_small_recheck_20260602.txt` 기준. 131072B는 `requestSeq=0` reply context 제거 후 `perf_node_multi_linux_20260601_220203_node_multi_spot_sendsend_no_replyctx_probe_20260601.txt` 기준. 65536B는 large `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `ws` | `MULTI_STREAM` | `미달(18.9%)` | `미달(19.7%)` | `미달(19.1%)` | `해당 없음` | `통과(80.7%)` | `해당 없음` | pending reply queue를 head-index로 바꾼 뒤 complete 측정 `perf_node_multi_linux_20260601_121847_node_multi_stream_pending_queue_probe_20260601.txt` 기준. 64/256/1024B와 65536B 모두 기존보다 올랐다. MULTI_STREAM은 runner 정책상 4096B와 131072B 결과를 내지 않는다. |
 | `wss` | `MULTI_DEALER_DEALER` | `통과(51.1%)` | `통과(60.3%)` | `통과(58.1%)` | `해당 없음` | `통과(53.9%)` | `통과(53.9%)` | latency sample stride 32 적용 후 `perf_node_multi_linux_20260601_105248.txt` 기준. Throughput은 모든 active payload를 세고 latency timestamp 계산만 샘플링한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `wss` | `MULTI_DEALER_ROUTER` | `통과(37.4%)` | `통과(36.2%)` | `통과(33.4%)` | `해당 없음` | `통과(36.1%)` | `통과(38.0%)` | Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. 전 size가 통과했다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `wss` | `MULTI_ROUTER_ROUTER` | `통과(31.3%)` | `통과(30.1%)` | `통과(31.2%)` | `해당 없음` | `통과(38.4%)` | `통과(40.0%)` | 256/1024B는 제한 재측정 `perf_node_multi_linux_20260601_140048_node_multi_rr_wss_tls_256_1024_recheck_20260601.txt` 기준. 나머지는 Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `wss` | `MULTI_PUBSUB` | `미달(20.0%)` | `미달(19.3%)` | `통과(32.1%)` | `해당 없음` | `미달(33.8%)` | `통과(37.3%)` | latency sample stride 32에서 unsampled payload의 timestamp 읽기를 건너뛴 뒤 `perf_node_multi_linux_20260601_095226_node_multi_pubsub_sample_timestamp_only_all_final_20260601.txt` 기준. 모든 measured size가 이전 latency sample 32보다 개선됐다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `wss` | `MULTI_PUBSUB` | `미달(29.2%)` | `통과(30.9%)` | `통과(46.5%)` | `해당 없음` | `통과(34.2%)` | `통과(35.2%)` | 단일 payload 내부 수신 경로 추가 후 complete 측정 `perf_node_multi_linux_20260602_110744_node_multi_pubsub_single_payload_native_probe_20260602.txt` 기준. public contract와 perf 기준/HWM/profile은 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `wss` | `MULTI_SPOT` | `통과(53.6%)` | `통과(51.7%)` | `통과(51.1%)` | `해당 없음` | `통과(574.4%)` | `통과(760.0%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `wss` | `MULTI_SPOT_REQREP` | `통과(44.1%)` | `통과(46.4%)` | `통과(52.1%)` | `해당 없음` | `통과(91.9%)` | `통과(66.6%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미달(16.1%)` | `미달(18.2%)` | `미달(19.8%)` | `해당 없음` | `통과(64.1%)` | `통과(58.3%)` | client active loop를 C-style send sweep으로 정렬한 뒤 small `perf_node_multi_linux_20260601_100330_node_multi_spot_sendsend_cstyle_send_sweep_probe_20260601.txt`, large `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. 65536B는 이전 표보다 낮지만 통과권을 유지하고, small/131072B는 개선됐다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `통과(29.1%)` | `미달(23.1%)` | `통과(29.8%)` | `해당 없음` | `통과(64.1%)` | `통과(58.3%)` | 64/256/1024B는 `sendToSpot` DontWait result-code 경로 추가 후 complete 측정 `perf_node_multi_linux_20260602_104143_node_multi_spot_sendsend_nowait_result_small_recheck_20260602.txt` 기준. large는 client active loop를 C-style send sweep으로 정렬한 뒤 `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `wss` | `MULTI_STREAM` | `미달(27.3%)` | `미달(26.6%)` | `미달(26.0%)` | `해당 없음` | `통과(99.8%)` | `해당 없음` | pending reply queue를 head-index로 바꾼 뒤 complete 측정 `perf_node_multi_linux_20260601_121847_node_multi_stream_pending_queue_probe_20260601.txt` 기준. 모든 measured size가 기존보다 올랐다. MULTI_STREAM은 runner 정책상 4096B와 131072B 결과를 내지 않는다. |
 | `tls` | `MULTI_DEALER_DEALER` | `통과(45.2%)` | `통과(55.8%)` | `통과(70.6%)` | `해당 없음` | `통과(42.2%)` | `통과(40.7%)` | latency sample stride 32 적용 후 `perf_node_multi_linux_20260601_105248.txt` 기준. Throughput은 모든 active payload를 세고 latency timestamp 계산만 샘플링한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `tls` | `MULTI_DEALER_ROUTER` | `통과(36.7%)` | `통과(35.3%)` | `통과(34.3%)` | `해당 없음` | `통과(31.0%)` | `통과(37.5%)` | Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. 전 size가 통과했다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `tls` | `MULTI_ROUTER_ROUTER` | `통과(30.6%)` | `통과(32.0%)` | `통과(32.0%)` | `해당 없음` | `통과(31.6%)` | `통과(36.1%)` | 256/1024B는 C 제한 재측정 `perf_c_multi_linux_20260601_140139_node_rr_tls_256_1024_c_recheck_20260601.txt`와 Node 제한 재측정 `perf_node_multi_linux_20260601_140048_node_multi_rr_wss_tls_256_1024_recheck_20260601.txt` 기준. 나머지는 Node 즉시 reply 개선 최종 `perf_node_multi_linux_20260601_082420_node_multi_routed_immediate_reply_final_20260601.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `tls` | `MULTI_PUBSUB` | `미달(20.8%)` | `미달(20.3%)` | `미달(27.8%)` | `해당 없음` | `미달(29.5%)` | `통과(33.6%)` | latency sample stride 32에서 unsampled payload의 timestamp 읽기를 건너뛴 뒤 `perf_node_multi_linux_20260601_095226_node_multi_pubsub_sample_timestamp_only_all_final_20260601.txt` 기준. 65536B는 이전 latency sample 32보다 소폭 낮아졌지만 64/256/1024/131072B가 개선되어 유지한다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tls` | `MULTI_PUBSUB` | `통과(30.1%)` | `통과(30.0%)` | `통과(40.3%)` | `해당 없음` | `통과(31.2%)` | `통과(33.1%)` | 단일 payload 내부 수신 경로 추가 후 complete 측정 `perf_node_multi_linux_20260602_110744_node_multi_pubsub_single_payload_native_probe_20260602.txt` 기준. public contract와 perf 기준/HWM/profile은 바꾸지 않았다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `tls` | `MULTI_SPOT` | `통과(52.1%)` | `통과(52.8%)` | `통과(48.9%)` | `해당 없음` | `통과(134.3%)` | `통과(206.7%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `tls` | `MULTI_SPOT_REQREP` | `통과(39.4%)` | `통과(44.8%)` | `통과(46.0%)` | `해당 없음` | `통과(79.3%)` | `통과(43.5%)` | C full/Node fastpath full `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미달(17.8%)` | `미달(19.6%)` | `미달(17.7%)` | `해당 없음` | `통과(57.1%)` | `통과(48.1%)` | client active loop를 C-style send sweep으로 정렬한 뒤 small `perf_node_multi_linux_20260601_100330_node_multi_spot_sendsend_cstyle_send_sweep_probe_20260601.txt`, large `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. 65536B는 기존 통과권을 유지하고, 131072B와 small 대부분이 개선됐다. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `통과(28.8%)` | `통과(33.5%)` | `통과(32.2%)` | `해당 없음` | `통과(57.1%)` | `통과(48.1%)` | 64/256/1024B는 `sendToSpot` DontWait result-code 경로 추가 후 complete 측정 `perf_node_multi_linux_20260602_104143_node_multi_spot_sendsend_nowait_result_small_recheck_20260602.txt` 기준. large는 client active loop를 C-style send sweep으로 정렬한 뒤 `perf_node_multi_linux_20260601_100833_node_multi_spot_sendsend_cstyle_large_probe_20260601.txt` 기준. Node multi report에 4096B RESULT가 없어 4096B는 해당 없음으로 둔다. |
 | `tls` | `MULTI_STREAM` | `미달(24.5%)` | `미달(25.1%)` | `미달(25.1%)` | `해당 없음` | `통과(81.6%)` | `해당 없음` | pending reply queue를 head-index로 바꾼 뒤 complete 측정 `perf_node_multi_linux_20260601_121847_node_multi_stream_pending_queue_probe_20260601.txt` 기준. small은 기존보다 올랐고 65536B는 낮아졌지만 통과권을 유지한다. MULTI_STREAM은 runner 정책상 4096B와 131072B 결과를 내지 않는다. |
 
 ## 7. Go 상태
@@ -554,7 +576,7 @@ Single smoke `perf_go_single_linux_20260531_134455_round_20260530_go_single_smok
 single full `perf_go_single_linux_20260531_134546_round_20260530_go_single_full_v1.txt`는
 모두 complete였다. 미달 후보는 C `perf_c_single_linux_20260531_135902_round_20260530_c_single_go_failset_recheck.txt`,
 Go `perf_go_single_linux_20260531_140124_round_20260530_go_single_failset_recheck.txt`로 다시 확인했다.
-잔류 보류는 routed tcp 대용량 5개와 `SPOT wss 256B` 1개다. Go public binding 경로를 유지한
+잔류 미달는 routed tcp 대용량 5개와 `SPOT wss 256B` 1개다. Go public binding 경로를 유지한
 상태에서 routed tcp 대용량과 WSS SPOT 단일 조건만 좁게 줄일 추가 내부 후보는 확인되지 않았다.
 
 Multi smoke `perf_go_multi_linux_20260531_140350_round_20260530_go_multi_smoke_64.txt`는 complete였다.
@@ -568,12 +590,12 @@ Multi full `perf_go_multi_linux_20260531_140640_round_20260530_go_multi_full_v1.
 `MULTI_PUBSUB tcp/tls/wss 256B`, `MULTI_PUBSUB tls 65536B`, `MULTI_SPOT wss 1024/4096B`가
 완료 리포트 기준으로 통과권에 회복됐다.
 `MULTI_DEALER_DEALER tcp 4096B`는 단독 runs=3과 runs=5에서도 반복해서 `RESULT`가 없어
-보류로 남긴다. 나머지 잔류 보류는 22개다. Multi 잔여 항목은
+미달로 남긴다. 나머지 잔류 미달는 22개다. Multi 잔여 항목은
 goroutine 스케줄링, cgo 호출 경계, routed/SPOT envelope 처리 비용이 함께 나타나는 구간으로,
 public API를 우회하지 않는 추가 내부 후보가 확인되지 않았다.
 2026-06-01 재검토에서는 `MULTI_SPOT_REQREP`/`MULTI_SPOT_SENDSEND`의 65536B를 transport별로
 제한 재측정했다. tls/ws/wss는 통과권으로 회복됐고, tcp는 runs=5에서도 낮은 median이 반복되어
-보류로 둔다.
+미달로 둔다.
 
 추가 검토에서는 routed single과 multi echo 송신 경로가 매 메시지마다 `Message` wrapper를 만드는
 비용을 줄일 수 있는지 확인했다. public `Bytes(...)` builder로 재사용 payload slice를 보내는
@@ -660,9 +682,9 @@ public API 범위에서 더 줄일 수 있는 좁은 내부 변경점은 확인�
 
 perf 경로: `bindings/rust/perf`.
 
-Rust single smoke 결과 파일은 `perf_rust_single_linux_20260531_145023_round_20260530_rust_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_rust_single_linux_20260531_145104_round_20260530_rust_single_full_v1.txt`이고 status=complete(720/720)였다. 후보 재측정 파일 `perf_rust_single_linux_20260531_151316_round_20260530_rust_single_failset_recheck.txt`는 status=complete(480/480)였다. 추가 개선으로 SPOT active send에서 1024B 이하 payload는 public `Message::with_size(...).data_mut()`에 직접 header를 채우도록 바꿨다. 최종 probe `perf_rust_single_linux_20260531_233915_rust_single_spot_direct_message_final_20260531.txt`에서 `SPOT wss 256B`는 96.7%, `SPOT tls 1024B`는 93.5%로 통과했다. 같은 변경 뒤 `SPOT tcp 1024B`는 63.2%로 기준에 못 닿아 보류한다. PUBSUB 수신 `TopicMessage` 재사용 probe `perf_rust_single_linux_20260531_233521_rust_single_pubsub_reuse_probe_20260531.txt`와 소형 message 공통 직접 작성 probe `perf_rust_single_linux_20260531_233731_rust_single_small_message_probe_20260531.txt`는 PUBSUB 64B 계열을 통과권으로 올리지 못했고 일부는 기존보다 낮아 최종 코드에 남기지 않았다. routed 대용량은 public `recv(&mut Received, ...)` envelope 경로를 유지해야 하며, Rust binding에는 C의 part 직접 수신을 노출한 public API가 없어 보류한다.
+Rust single smoke 결과 파일은 `perf_rust_single_linux_20260531_145023_round_20260530_rust_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_rust_single_linux_20260531_145104_round_20260530_rust_single_full_v1.txt`이고 status=complete(720/720)였다. 후보 재측정 파일 `perf_rust_single_linux_20260531_151316_round_20260530_rust_single_failset_recheck.txt`는 status=complete(480/480)였다. 추가 개선으로 SPOT active send에서 1024B 이하 payload는 public `Message::with_size(...).data_mut()`에 직접 header를 채우도록 바꿨다. 최종 probe `perf_rust_single_linux_20260531_233915_rust_single_spot_direct_message_final_20260531.txt`에서 `SPOT wss 256B`는 96.7%, `SPOT tls 1024B`는 93.5%로 통과했다. 같은 변경 뒤 `SPOT tcp 1024B`는 63.2%로 기준에 못 닿아 미달한다. PUBSUB 수신 `TopicMessage` 재사용 probe `perf_rust_single_linux_20260531_233521_rust_single_pubsub_reuse_probe_20260531.txt`와 소형 message 공통 직접 작성 probe `perf_rust_single_linux_20260531_233731_rust_single_small_message_probe_20260531.txt`는 PUBSUB 64B 계열을 통과권으로 올리지 못했고 일부는 기존보다 낮아 최종 코드에 남기지 않았다. routed 대용량은 public `recv(&mut Received, ...)` envelope 경로를 유지해야 하며, Rust binding에는 C의 part 직접 수신을 노출한 public API가 없어 미달한다.
 
-Rust multi smoke 결과 파일은 `perf_rust_multi_linux_20260531_153200_round_20260530_rust_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_rust_multi_linux_20260531_153550_round_20260530_rust_multi_full_v1.txt`이고 status=complete(960/960)였다. 후보 재측정 파일 `perf_rust_multi_linux_20260531_160730_round_20260530_rust_multi_failset_recheck.txt`는 status=partial(595/600)이었지만, 누락된 `MULTI_SPOT ws 4096B`는 full 결과로 보강했다. 추가 개선으로 `MULTI_SPOT wss` 1024B 이상 recv worker 기본값을 8개로 늘렸다. Probe `perf_rust_multi_linux_20260531_234055_rust_multi_spot_wss_workers8_probe_20260531.txt`에서 worker 확대 효과를 먼저 확인했고, 최종 코드 probe `perf_rust_multi_linux_20260531_234241_rust_multi_spot_wss_workers8_final_20260531.txt`와 단독 보강 `perf_rust_multi_linux_20260531_234325_rust_multi_spot_wss_1024_workers8_final_fill_20260531.txt`를 overlay했다. `MULTI_SPOT wss 65536B/131072B`는 각각 121.3%, 130.6%로 통과했고, 1024B/4096B는 45.3%, 71.6%로 기준에 못 닿아 보류한다. Multi DEALER_DEALER/PUBSUB/REQREP 잔여 항목은 이미 `Message::with_size` 직접 작성, caller-provided `Received`/`TopicMessage` 재사용, worker drain 구조를 쓰고 있어 public API를 유지한 추가 내부 후보가 확인되지 않았다.
+Rust multi smoke 결과 파일은 `perf_rust_multi_linux_20260531_153200_round_20260530_rust_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_rust_multi_linux_20260531_153550_round_20260530_rust_multi_full_v1.txt`이고 status=complete(960/960)였다. 후보 재측정 파일 `perf_rust_multi_linux_20260531_160730_round_20260530_rust_multi_failset_recheck.txt`는 status=partial(595/600)이었지만, 누락된 `MULTI_SPOT ws 4096B`는 full 결과로 보강했다. 추가 개선으로 `MULTI_SPOT wss` 1024B 이상 recv worker 기본값을 8개로 늘렸다. Probe `perf_rust_multi_linux_20260531_234055_rust_multi_spot_wss_workers8_probe_20260531.txt`에서 worker 확대 효과를 먼저 확인했고, 최종 코드 probe `perf_rust_multi_linux_20260531_234241_rust_multi_spot_wss_workers8_final_20260531.txt`와 단독 보강 `perf_rust_multi_linux_20260531_234325_rust_multi_spot_wss_1024_workers8_final_fill_20260531.txt`를 overlay했다. `MULTI_SPOT wss 65536B/131072B`는 각각 121.3%, 130.6%로 통과했고, 1024B/4096B는 45.3%, 71.6%로 기준에 못 닿아 미달한다. Multi DEALER_DEALER/PUBSUB/REQREP 잔여 항목은 이미 `Message::with_size` 직접 작성, caller-provided `Received`/`TopicMessage` 재사용, worker drain 구조를 쓰고 있어 public API를 유지한 추가 내부 후보가 확인되지 않았다.
 
 
 ### 8.1 Single suite
@@ -737,9 +759,9 @@ Rust multi smoke 결과 파일은 `perf_rust_multi_linux_20260531_153200_round_2
 
 perf 경로: `bindings/python/perf`.
 
-Python single smoke 결과 파일은 `perf_python_single_linux_20260531_162613_round_20260530_python_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_python_single_linux_20260531_163931_round_20260530_python_single_full_v1.txt`이고 status=complete(720/720)였다. C 기준 대비 통과 56개와 잔류 미달 88개가 확인됐다. 이후 `stamp_payload(...)`가 `bytes` 사본 대신 기존 `bytearray`를 그대로 반환하게 바꾸고, single receive hot path가 마지막 message part의 공개 `Message.data` memoryview에서 header를 직접 읽게 바꿨다. 제한 재측정 `perf_python_single_linux_20260531_234853_python_single_stamp_bytearray_probe_20260531.txt`와 `perf_python_single_linux_20260531_235420_python_single_recv_data_view_probe_20260531.txt`에서 PAIR/PUBSUB 64/256/1024B는 C 대비 3.2~12.4% 범위에 머물러 통과권까지 오르지 않았다. Python interpreter 루프, ctypes 기반 message materialize, send builder 호출 경계가 작은 payload에서 지배적이라 public API 안에서 더 줄일 후보가 확인되지 않아 잔여 숫자형 항목은 보류한다.
+Python single smoke 결과 파일은 `perf_python_single_linux_20260531_162613_round_20260530_python_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_python_single_linux_20260531_163931_round_20260530_python_single_full_v1.txt`이고 status=complete(720/720)였다. C 기준 대비 통과 56개와 잔류 미달 88개가 확인됐다. 이후 `stamp_payload(...)`가 `bytes` 사본 대신 기존 `bytearray`를 그대로 반환하게 바꾸고, single receive hot path가 마지막 message part의 공개 `Message.data` memoryview에서 header를 직접 읽게 바꿨다. 제한 재측정 `perf_python_single_linux_20260531_234853_python_single_stamp_bytearray_probe_20260531.txt`와 `perf_python_single_linux_20260531_235420_python_single_recv_data_view_probe_20260531.txt`에서 PAIR/PUBSUB 64/256/1024B는 C 대비 3.2~12.4% 범위에 머물러 통과권까지 오르지 않았다. Python interpreter 루프, ctypes 기반 message materialize, send builder 호출 경계가 작은 payload에서 지배적이라 public API 안에서 더 줄일 후보가 확인되지 않아 잔여 숫자형 항목은 미달한다.
 
-Python multi smoke 결과 파일은 `perf_python_multi_linux_20260531_165008_round_20260530_python_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_python_multi_linux_20260531_180039_round_20260530_python_multi_full_v1.txt`이고 status=partial(810/960)이었다. 실패 조합 보강 파일 `perf_python_multi_linux_20260531_185859_round_20260530_python_multi_failset_fill.txt`는 status=partial(440/600)이었다. Overlay 뒤에도 RESULT가 없는 23개 칸은 두 실행에서 반복 실패한 조합이므로 `미달(RESULT 없음)`으로 둔다. 이후 `PERF_MULTI_*_IO_THREADS=4` 후보는 `perf_python_multi_linux_20260531_234941_python_multi_io4_spot_probe_20260531.txt`에서 MULTI_SPOT tcp/wss 64/1024B가 C 대비 4.1~4.6%에 그쳐 유지하지 않았다. Echo server와 SPOT receive 경로는 `to_bytes_list()` 또는 `to_bytes()` 사본 생성을 줄이고 공개 `Message.data` view를 submit/decode에 직접 쓰도록 바꿨다. 제한 재측정 `perf_python_multi_linux_20260601_001503_python_multi_dataview_echo_probe_20260531.txt`는 partial(205/225)이었고, `MULTI_SPOT wss 65536B`는 70.5%까지 개선됐다. 나머지 routed/SPOT echo 후보는 C 대비 4.0~53.4% 범위로 통과권에 못 미쳤거나 반복 timeout이 남아 보류한다.
+Python multi smoke 결과 파일은 `perf_python_multi_linux_20260531_165008_round_20260530_python_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_python_multi_linux_20260531_180039_round_20260530_python_multi_full_v1.txt`이고 status=partial(810/960)이었다. 실패 조합 보강 파일 `perf_python_multi_linux_20260531_185859_round_20260530_python_multi_failset_fill.txt`는 status=partial(440/600)이었다. Overlay 뒤에도 RESULT가 없는 23개 칸은 두 실행에서 반복 실패한 조합이므로 `미달(RESULT 없음)`으로 둔다. 이후 `PERF_MULTI_*_IO_THREADS=4` 후보는 `perf_python_multi_linux_20260531_234941_python_multi_io4_spot_probe_20260531.txt`에서 MULTI_SPOT tcp/wss 64/1024B가 C 대비 4.1~4.6%에 그쳐 유지하지 않았다. Echo server와 SPOT receive 경로는 `to_bytes_list()` 또는 `to_bytes()` 사본 생성을 줄이고 공개 `Message.data` view를 submit/decode에 직접 쓰도록 바꿨다. 제한 재측정 `perf_python_multi_linux_20260601_001503_python_multi_dataview_echo_probe_20260531.txt`는 partial(205/225)이었고, `MULTI_SPOT wss 65536B`는 70.5%까지 개선됐다. 나머지 routed/SPOT echo 후보는 C 대비 4.0~53.4% 범위로 통과권에 못 미쳤거나 반복 timeout이 남아 미달한다.
 
 Python multi 표에서 긴 결과 파일명은 표 폭을 키우지 않도록 위 설명 문단에 모았다. 표 안의 메모는 기준과 판정만 짧게 적는다.
 

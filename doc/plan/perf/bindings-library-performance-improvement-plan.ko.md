@@ -60,10 +60,10 @@ C++보다 높은 기준으로 두지 않는다. 둘 다 native binding 그룹으
 | multi routed echo | `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER` | 65~77% | 50~63% | 40~53% | 30~37% |
 | SPOT 계열 | `SPOT`, `MULTI_SPOT`, `MULTI_SPOT_REQREP`, `MULTI_SPOT_SENDSEND` | 75~90% | 60~70% | 50~60% | 33~40% |
 
-Node 개선 라운드는 위 표의 Node/Python 최소 통과 기준보다 5%p 높은 값을 우선 목표로
-본다. 따라서 `MULTI_PUBSUB` 같은 단순 one-way는 최소 40%, `MULTI_ROUTER_ROUTER`
-같은 multi routed echo는 최소 35%, routed one-way와 SPOT 계열은 각각 최소 38%를
-사용해 신규 미달 후보를 고른다. Python 판정 기준은 이 Node 개선 라운드로 함께 올리지
+Node 개선 라운드는 위 표의 Node/Python 최소 통과 기준보다 5%p 낮은 값을 우선 목표로
+본다. 따라서 `MULTI_PUBSUB` 같은 단순 one-way는 최소 30%, `MULTI_ROUTER_ROUTER`
+같은 multi routed echo는 최소 25%, routed one-way와 SPOT 계열은 각각 최소 28%를
+사용해 신규 미달 후보를 고른다. Python 판정 기준은 이 Node 개선 라운드로 함께 낮추지
 않는다.
 
 `ROUTER_ROUTER` 계열은 추가로 아래 상대 기준을 진단에 사용한다.

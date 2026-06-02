@@ -9,7 +9,7 @@ async function main() {
     async (result) => {
       assert.equal(result.sameActor, true);
       assert.equal(result.staleAccepted, false);
-      assert.deepEqual(result.delivered.map((entry) => [entry.token, entry.packetName, entry.cell]), [
+      assert.deepEqual(result.delivered.map((entry) => [entry.sessionId, entry.packetName, entry.cell]), [
         ['session-1', 'TurnPlaced', 0],
         ['session-2', 'TurnPlaced', 1]
       ]);

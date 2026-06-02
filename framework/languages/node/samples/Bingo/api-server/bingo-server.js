@@ -1,9 +1,9 @@
 const nestjs = require('../../../packages/nestjs/dist');
 const { BingoRoomSpot } = require('../play-server/bingo-room');
-const { BoundNotificationHub } = require('../session-server/notifications');
+const { SampleBoundSessionRuntime } = require('../../shared/bound-session-runtime');
 
 function createBingoServer() {
-  const notificationHub = new BoundNotificationHub();
+  const boundSessions = new SampleBoundSessionRuntime();
   const module = nestjs.ZLinkModule.forRoot({
     spotNodes: ['bingo-room'],
     spotFactories: [BingoRoomSpot]
@@ -11,11 +11,18 @@ function createBingoServer() {
   const spots = getProvider(module, nestjs.ZLINK_SPOT_MANAGER);
 
   return {
-    notificationHub,
+    boundSessions,
     spots,
     BingoRoomSpot,
-    sessionFor(actorId) {
-      return notificationHub.sessionFor(actorId);
+    boundSessionFor(actorId) {
+      return boundSessions.createBoundSession(actorId);
+    },
+    bindSession(actorId, sessionId, generation) {
+      return boundSessions.bind({
+        nodeRid: 'bingo-session-node',
+        actorId,
+        generation: BigInt(generation)
+      }, sessionId);
     }
   };
 }

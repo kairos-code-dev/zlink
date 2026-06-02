@@ -9,20 +9,20 @@ async function main() {
 }
 
 async function runReconnectScenario(gateway) {
-  gateway.bind('p1', 'session-1');
+  const firstBinding = await gateway.bind('p1', 'session-1', 1);
   const first = await gateway.manager.getOrCreate('p1', 'player');
   await first.notifyTurn(0);
 
-  gateway.bind('p1', 'session-2');
+  const secondBinding = await gateway.bind('p1', 'session-2', 2);
   const second = await gateway.manager.getOrCreate('p1', 'player');
   await second.notifyTurn(1);
-  const staleAccepted = gateway.staleSend('p1', 'session-1');
+  gateway.staleUnbind(firstBinding);
 
   return {
     sameActor: first === second,
-    staleAccepted,
-    delivered: gateway.bindings.delivered.map((entry) => ({
-      token: entry.token,
+    staleAccepted: gateway.boundSessions.disconnected.some((entry) => entry.token === firstBinding.actor.bindingToken),
+    delivered: gateway.boundSessions.delivered.map((entry) => ({
+      sessionId: entry.token === firstBinding.actor.bindingToken ? firstBinding.sessionId : secondBinding.sessionId,
       packetName: entry.packetName,
       cell: entry.payload.cell
     }))

@@ -111,6 +111,31 @@ test('node samples do not hide readiness with sleep calls', () => {
   assert.deepEqual(violations, []);
 });
 
+test('node session samples do not implement sample-only actor session stores', () => {
+  const bannedPatterns = [
+    /SessionBindingTable/,
+    /BoundNotificationHub/,
+    /bindings\s*=\s*new Map\(/,
+    /notificationHub/,
+    /sessionFor\(actorId\)/,
+    /staleSend\(actorId/
+  ];
+  const violations = [];
+
+  for (const sample of ['TicTacToe.SessionGateway', 'Bingo']) {
+    for (const file of sampleSourceFiles(path.join(samplesRoot, sample))) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const pattern of bannedPatterns) {
+        if (pattern.test(content)) {
+          violations.push(`${path.relative(samplesRoot, file)} matches ${pattern}`);
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test('node run_samples.sh executes every sample self-check', () => {
   const output = childProcess.execFileSync(path.join(samplesRoot, 'run_samples.sh'), {
     cwd: workspaceRoot,

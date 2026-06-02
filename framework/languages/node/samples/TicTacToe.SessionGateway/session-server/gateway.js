@@ -1,11 +1,10 @@
 const framework = require('../../../packages/framework/dist');
 const nestjs = require('../../../packages/nestjs/dist');
-const { SessionBindingTable } = require('../shared/session-binding');
 const { SessionPlayerActorFactory } = require('../play-server/session-actor');
+const { SampleBoundSessionRuntime } = require('../../shared/bound-session-runtime');
 
 function createSessionGateway() {
-  const bindings = new SessionBindingTable();
-  let currentToken = 'session-1';
+  const boundSessions = new SampleBoundSessionRuntime();
   nestjs.ZLinkModule.forRoot({
     spotNodes: ['session-gateway'],
     actorFactories: { player: SessionPlayerActorFactory }
@@ -13,38 +12,22 @@ function createSessionGateway() {
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['player', SessionPlayerActorFactory]]),
     boundSessionFactory(actorId) {
-      return {
-        send(message) {
-          let packetName;
-          return {
-            metadata() { return this; },
-            packetName(name) {
-              packetName = name;
-              return this;
-            },
-            async submit() {
-              if (!bindings.send(actorId, currentToken, packetName, message)) {
-                throw new Error('stale session binding');
-              }
-            }
-          };
-        },
-        async disconnect() {
-          bindings.bind(actorId, undefined);
-        }
-      };
+      return boundSessions.createBoundSession(actorId);
     }
   });
 
   return {
-    bindings,
+    boundSessions,
     manager,
-    bind(actorId, token) {
-      currentToken = token;
-      bindings.bind(actorId, token);
+    async bind(actorId, sessionId, generation) {
+      return await boundSessions.bind({
+        nodeRid: 'session-node',
+        actorId,
+        generation: BigInt(generation)
+      }, sessionId);
     },
-    staleSend(actorId, token) {
-      return bindings.send(actorId, token, 'StalePush', { stale: true });
+    staleUnbind(actor) {
+      boundSessions.unbind(actor);
     }
   };
 }

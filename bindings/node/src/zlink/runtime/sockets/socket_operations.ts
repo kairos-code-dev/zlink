@@ -252,7 +252,9 @@ export class RoutedMessageSocket extends ConnectableSocket {
       throw recvNativeError(error, flags, 'recv failed');
     }
     if (raw == null) return false;
-    const send = raw.requestSeq == null
+    // A ROUTER recv can always route a reply back to the source by routing id;
+    // the request sequence only gates the correlated reply() path, not send().
+    const send = raw.routingId == null
       ? undefined
       : (parts: readonly Message[], sendFlags: SendFlags) => {
         if (!raw.routingId) {

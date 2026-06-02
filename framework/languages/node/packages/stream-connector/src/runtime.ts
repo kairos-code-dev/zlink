@@ -25,6 +25,7 @@ import { ZlinkStreamRequestBuilder, ZlinkStreamSendBuilder } from './calls';
 import { buildHeader, validateName, ZlinkStreamFrameCodec, ZlinkStreamHeaderCodec } from './protocol';
 import { normalizeOptions } from './options';
 import { connectorError, delay, subscription, throwIfAborted, toStreamError, unwrapStreamError, utf8Decode } from './support';
+import { compressPayload, decompressIfNeeded } from './compression';
 
 export const zlinkStreamConnectorFactory = {
   create(options: ZlinkStreamConnectorOptions): ZlinkStreamConnector {
@@ -175,8 +176,9 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
+    const payloadBytes = compress ? compressPayload(payload.payload, this.options.compression) : payload.payload;
     const header = buildHeader(kind, name, payload.codec, metadata, compress, requestSeq);
-    await this.sendFrame(header, payload.payload, signal);
+    await this.sendFrame(header, payloadBytes, signal);
   }
 
   async requestEncoded(
@@ -221,7 +223,11 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       const pending = this.pendingRequests.get(header.requestSeq);
       if (pending !== undefined) {
         this.pendingRequests.delete(header.requestSeq);
-        pending.resolve({ codec: header.codec, payload });
+        try {
+          pending.resolve({ codec: header.codec, payload: this.payloadForHeader(header, payload) });
+        } catch (cause) {
+          pending.reject(toStreamError(cause, ZlinkStreamErrorCode.DecompressionFailed, 'Decompression failed.'));
+        }
       }
       return;
     }
@@ -253,7 +259,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     if (header.kind === ZlinkStreamMessageKind.Send) {
       const handlers = this.handlers.get(header.name);
       if (handlers !== undefined) {
-        const message = { name: header.name, metadata: header.metadata, payload: { codec: header.codec, payload } };
+        const message = { name: header.name, metadata: header.metadata, payload: { codec: header.codec, payload: this.payloadForHeader(header, payload) } };
         for (const handler of handlers) {
           try {
             await handler(message, signal);
@@ -277,6 +283,10 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       name,
       metadata: ZlinkStreamMetadataMap.empty
     }, new Uint8Array(), signal);
+  }
+
+  private payloadForHeader(header: ZlinkStreamHeader, payload: Uint8Array): Uint8Array {
+    return decompressIfNeeded(header, payload, this.options.compression);
   }
 
   private async connectWithReconnect(signal?: AbortSignal): Promise<ZlinkStreamConnection> {

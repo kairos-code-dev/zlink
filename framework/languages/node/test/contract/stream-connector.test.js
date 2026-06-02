@@ -137,6 +137,45 @@ test('stream connector send and request enforce payload limit before transport w
   assert.equal(requestInstance.pendingDispatchCount, 0);
 });
 
+test('stream connector compression requires configured LZ4 codec before transport write', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory
+  });
+  await instance.connect();
+
+  await assert.rejects(
+    () => instance.send({
+      codec: connector.ZlinkStreamCodec.Raw,
+      payload: new TextEncoder().encode('body')
+    }).packetName('Compressed').compress().submit(),
+    (error) => error.error?.code === connector.ZlinkStreamErrorCode.CompressionFailed
+  );
+  assert.equal(transportFactory.connection.frames.length, 0);
+});
+
+test('stream connector compressed sends write dotnet LZ4-pickled payloads', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    compression: connector.ZlinkStreamCompression.Lz4
+  });
+  const body = new TextEncoder().encode('compressed-body');
+  await instance.connect();
+
+  await instance.send({
+    codec: connector.ZlinkStreamCodec.Raw,
+    payload: body
+  }).packetName('Compressed').compress().submit();
+
+  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  assert.equal((header.flags & connector.ZlinkStreamHeaderFlags.PayloadCompressed) !== 0, true);
+  assert.deepEqual([...unpickleLz4(frame.payload)], [...body]);
+});
+
 test('stream connector request resolves when dispatch reads matching response frame', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
@@ -181,6 +220,46 @@ test('stream connector request resolves when dispatch reads matching response fr
   assert.equal(instance.pendingDispatchCount, 0);
 });
 
+test('stream connector request resolves compressed response payloads', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    compression: connector.ZlinkStreamCompression.Lz4
+  });
+
+  await instance.connect();
+  const pending = instance
+    .request({
+      codec: connector.ZlinkStreamCodec.Raw,
+      payload: new TextEncoder().encode('request')
+    })
+    .packetName('CompressedRequest')
+    .timeout(1000)
+    .submit();
+
+  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  const compressedPayload = Uint8Array.from(Buffer.from('40551F41010047504141414141', 'hex'));
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Response,
+        codec: connector.ZlinkStreamCodec.Raw,
+        flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq | connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+        requestSeq: requestHeader.requestSeq,
+        name: 'CompressedReply',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      compressedPayload
+    )
+  );
+
+  await instance.dispatch();
+  const reply = await pending;
+  assert.equal(new TextDecoder().decode(reply.payload), 'A'.repeat(96));
+});
+
 test('stream connector dispatch invokes typed handlers for send frames', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
@@ -218,6 +297,67 @@ test('stream connector dispatch invokes typed handlers for send frames', async (
       payload: '{"notice":1}'
     }
   ]);
+});
+
+test('stream connector dispatch decompresses send frames for handlers', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    compression: connector.ZlinkStreamCompression.Lz4
+  });
+  const received = [];
+  instance.on('CompressedNotice', (message) => {
+    received.push(new TextDecoder().decode(message.payload.payload));
+  });
+
+  await instance.connect();
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Send,
+        codec: connector.ZlinkStreamCodec.Raw,
+        flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+        name: 'CompressedNotice',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      Uint8Array.from(Buffer.from('40551F41010047504141414141', 'hex'))
+    )
+  );
+
+  await instance.dispatch();
+  assert.deepEqual(received, ['A'.repeat(96)]);
+});
+
+test('stream connector publishes decode error for compressed frames without codec', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory
+  });
+  const errors = [];
+  instance.onErrorReceived((error) => {
+    errors.push(error);
+  });
+  instance.on('CompressedNotice', () => {});
+
+  await instance.connect();
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Send,
+        codec: connector.ZlinkStreamCodec.Raw,
+        flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+        name: 'CompressedNotice',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      Uint8Array.from(Buffer.from('40551F41010047504141414141', 'hex'))
+    )
+  );
+
+  await instance.dispatch();
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].code, connector.ZlinkStreamErrorCode.FrameDecodeFailed);
 });
 
 test('stream connector dispatch publishes decode errors for invalid header frames', async () => {
@@ -716,6 +856,14 @@ function withTimeout(promise, timeoutMs, label) {
       timeout = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
     })
   ]);
+}
+
+function unpickleLz4(payload) {
+  if (payload.length === 0) {
+    return new Uint8Array();
+  }
+  assert.equal(payload[0], 0);
+  return payload.slice(1);
 }
 
 function handleWebSocketEcho(socket, replyName, replyBody) {

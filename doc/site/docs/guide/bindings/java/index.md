@@ -313,6 +313,39 @@ cd bindings/java
 
 ---
 
+## Kotlin
+
+Kotlin은 **별도 네이티브 바인딩 없이 Java 바인딩(`systems.zlink.*`)을 그대로**
+사용합니다. 위의 설치·핵심 타입·소유권·에러·대응표가 모두 동일하게 적용되고,
+Kotlin 관용만 다릅니다.
+
+- **의존성**: `systems.zlink:zlink-java`(위와 동일). Kotlin 플러그인은 **2.1.0**
+  이상을 쓴다.
+- **소유권**: `AutoCloseable`이므로 `try`/`finally` 대신 `use { }`로 정리한다.
+
+```kotlin
+Zlink.createContext().use { ctx ->
+    ctx.createPairSocket().use { socket ->
+        socket.bind("tcp://127.0.0.1:5555")
+        // ...
+    }
+}
+```
+
+- **콜백**: 핸들러는 Kotlin 람다로 그대로 넘긴다 — `timer.onFire { _, n -> ... }`.
+- **샘플**: `bindings/kotlin/samples/`(`.kt`)에 Java 샘플과 같은 canonical 세트가
+  있다. Java gradle의 `:kotlin-samples` 서브프로젝트로 빌드·실행한다.
+
+```bash
+cd bindings/java
+./gradlew :kotlin-samples:runSpotPubSubExample --no-daemon
+```
+
+코어 가이드의 언어 탭에는 **Kotlin** 칸이 따로 있어 메시징·서비스 사용법을
+Kotlin 코드로 바로 볼 수 있다.
+
+---
+
 ## 더 보기
 
 **소켓 패턴**

@@ -231,6 +231,37 @@ node dist-tools/samples/pair_recv_sample.js
 
 ---
 
+## JavaScript
+
+JavaScript는 **별도 네이티브 바인딩 없이 Node 바인딩(`@zlink-systems/zlink`)을
+그대로** 사용합니다. 위의 설치·핵심 타입·소유권·에러·대응표가 동일하게 적용되고,
+TypeScript 타입 표기만 빠집니다.
+
+- **의존성**: `@zlink-systems/zlink`(위와 동일). TypeScript 빌드 단계가 필요 없고
+  순수 `.js`로 바로 `require`한다.
+
+```javascript
+const zlink = require('@zlink-systems/zlink');
+
+const ctx = zlink.createContext();
+const socket = zlink.createPairSocket(ctx);
+// ... 사용 후 socket.close(); ctx.close();
+```
+
+- **소유권**: 명시적 `close()`로 정리한다(Node와 동일, GC에 의존하지 않는다).
+- **샘플**: `bindings/javascript/samples/`(`.js`)에 Node 샘플과 같은 canonical
+  세트가 있다. Node 바인딩을 빌드한 뒤 `node`로 바로 실행한다.
+
+```bash
+cd bindings/node && npm run build      # 공유 런타임 빌드
+node bindings/javascript/samples/spot_pubsub_example.js
+```
+
+코어 가이드의 언어 탭에는 **JavaScript** 칸이 따로 있어 메시징·서비스 사용법을
+JavaScript 코드로 바로 볼 수 있다.
+
+---
+
 ## 더 보기
 
 **소켓 패턴**

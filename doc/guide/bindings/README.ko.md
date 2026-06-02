@@ -26,6 +26,13 @@ zlink를 쓰는 방법**(설치, 관용 예제, 타입 매핑, 언어 고유 규
 | Python | [python/](./python/index.ko.md) | sphinx | `zlink` (PyPI) |
 | Go | [go/](./go/index.ko.md) | godoc | `zlink.systems/zlink` |
 | Rust | [rust/](./rust/index.ko.md) | rustdoc | `zlink` (crates.io) |
+| Kotlin | [java/ §Kotlin](./java/index.ko.md#kotlin) | (java 공유) | `systems.zlink:zlink-java` |
+| JavaScript | [node/ §JavaScript](./node/index.ko.md#javascript) | (node 공유) | `@zlink-systems/zlink` |
+
+> Kotlin과 JavaScript는 **런타임을 공유**합니다 — Kotlin은 Java 바인딩
+> (`systems.zlink.*`), JavaScript는 Node 바인딩(`@zlink-systems/zlink`)을 그대로
+> 씁니다. 별도 네이티브 바인딩이 없어 각각 Java·Node 가이드의 전용 절로 다룹니다.
+> 코어 가이드의 언어 탭에는 Kotlin·JavaScript 칸이 따로 있습니다.
 
 > C는 코어 그 자체이므로 별도 바인딩 가이드 대신
 > [코어 C API 가이드](../02-core-api.ko.md)를 봅니다.

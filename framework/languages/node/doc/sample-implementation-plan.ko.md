@@ -129,14 +129,16 @@ public API만 사용해야 한다.
 ## 5. Cross-Language Smoke 기준
 
 cross-language smoke 는 Node framework 가 언어 중립 wire 계약을 지키는지 확인한다.
-최소 경로는 다음 네 가지다.
+최소 경로는 다음 여섯 가지다.
 
 | 경로 | 확인 기준 |
 |------|-----------|
-| Node client -> dotnet channel server | request/reply, send, publish packet 이 dotnet handler 에서 처리된다 |
+| Node client -> dotnet channel server request/reply | dotnet request handler 가 같은 payload 의미로 reply 한다 |
+| Node client -> dotnet channel server one-way send | dotnet send handler 가 같은 packet 의미로 처리한다 |
+| Node publisher -> dotnet fanout subscriber publish | dotnet publish handler 가 같은 topic/payload 의미로 처리한다 |
 | dotnet client -> Node channel server | Node handler 가 dotnet client 요청에 같은 payload 의미로 reply 한다 |
 | Node stream connector -> dotnet stream server | header session request/reply 와 notification dispatch 가 동작한다 |
-| dotnet 또는 C++/Java stream connector -> Node stream server | Node session `onDispatch` 와 `reply` 가 같은 header/payload 계약으로 동작한다 |
+| dotnet stream connector -> Node stream server | Node session `onDispatch` 와 `reply` 가 같은 header/payload 계약으로 동작한다 |
 
 가능하면 추가로 아래 경로를 포함한다.
 
@@ -167,7 +169,7 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
 - 모든 guide 예제는 실제 sample 또는 test에서 compile 된다.
 - `StreamingClient`, `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo` sample 이
   `run_samples.sh`에서 self-check 를 통과한다.
-- `npm run verify:cross-language` 로 cross-language smoke 네 가지 필수 경로가
+- `npm run verify:cross-language` 로 cross-language smoke 여섯 가지 필수 경로가
   통과한다.
 - sample README 가 실행 명령, topology, success condition 을 설명한다.
 - sample 과 guide 는 framework public API와 connector public API만 사용한다.
@@ -180,5 +182,5 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
 | 테스트 | 확인 기준 |
 |--------|-----------|
 | `regression.spec.ts › node sample plan defines required samples` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo, run_samples.sh 가 명시되어 있다. |
-| `regression.spec.ts › node sample plan defines cross-language smoke` | Node↔dotnet channel, Node connector→dotnet stream, 외부 connector→Node stream 경로가 명시되어 있다. |
+| `regression.spec.ts › node sample plan defines cross-language smoke` | Node↔dotnet channel request/send/publish, Node connector→dotnet stream, dotnet connector→Node stream 경로가 명시되어 있다. |
 | `regression.spec.ts › node guide plan maps dotnet guide chapters` | guide 12개 장과 dotnet guide 대응이 빠지지 않는다. |

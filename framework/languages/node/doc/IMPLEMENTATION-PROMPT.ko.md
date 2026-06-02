@@ -20,11 +20,14 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 
 반드시 먼저 읽을 문서:
 1. framework/languages/node/doc/IMPLEMENTATION-PLAN.ko.md
-2. framework/languages/node/doc/internals/dotnet-to-node-surface-mapping.ko.md
-3. framework/languages/node/doc/internals/backend-dependency-policy.ko.md
-4. framework/languages/node/doc/internals/lifecycle-and-failure-semantics.ko.md
-5. 현재 Phase 가 지정한 spec 문서
-6. 모호한 부분의 dotnet 대응 코드
+2. framework/languages/node/doc/README.ko.md
+3. framework/languages/node/doc/sample-implementation-plan.ko.md
+4. framework/languages/node/doc/internals/dotnet-to-node-surface-mapping.ko.md
+5. framework/languages/node/doc/internals/backend-dependency-policy.ko.md
+6. framework/languages/node/doc/internals/lifecycle-and-failure-semantics.ko.md
+7. framework/languages/node/doc/internals/regression-test-matrix.ko.md
+8. 현재 Phase 가 지정한 spec 문서
+9. 모호한 부분의 dotnet 대응 코드
 
 시작 직후 상태 확인:
 - `git status --short` 로 dirty tree 를 확인한다.
@@ -40,13 +43,18 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 - backend 의존은 adapter 한 층에만 둔다.
 - framework public surface 에 bindings/node concrete type, native detail, generated internal 경로를 노출하지 않는다.
 - 필요한 binding 기능이 없으면 bindings/node public API 를 추가하고 framework 에서 우회하지 않는다.
-- sample-only route store, 임시 metadata store, sleep 기반 readiness masking 을 넣지 않는다.
+- sample-only route store, sample-only metadata store, sleep 기반 readiness masking 을 넣지 않는다.
+- readiness 문제는 실제 ready signal, monitor event, event file, runtime 상태 확인으로
+  드러내고 고친다.
+- compatibility shim 은 추가하지 않는다. public surface 는 dotnet 의미와 Node/NestJS 사용성을
+  동시에 만족하는 최소 표면으로 유지한다.
 - 외부 계약을 바꿔야 하면 spec 을 먼저 수정하고 구현과 테스트를 맞춘다.
 - 구현 변경 후 docs, samples, tests 중 public 이름이나 사용법에 영향받는 곳을 함께 갱신한다.
 - public API 를 새로 열 때는 dotnet 대응 개념이 있는지 확인한다. 내부 구현 편의를 위한
   helper 는 root export 에 노출하지 않는다.
 - stream/session/actor relay 는 application route store 로 우회하지 않는다. native
   ActorGateway, session context, backend adapter 경계를 따라 구현한다.
+- 문서 본문에는 저장소 문서 규칙에서 금지한 표현을 쓰지 않는다.
 
 검증 루프:
 1. 현재 Phase 의 입력 문서와 dotnet 대응 코드를 읽는다.
@@ -54,7 +62,8 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 3. Phase DoD 테스트를 추가하거나 갱신한다.
 4. `npm run build`, `npm run typecheck`, 관련 `node --test ...` 를 실행한다.
 5. 가능한 시점마다 `npm run verify:p0`, `npm run verify:runtime-matrix`,
-   `npm run verify:cross-language` 중 현재 단계에 맞는 더 넓은 release gate 를 실행한다.
+   `npm run verify:cross-language`, `npm run verify:abi-matrix` 중 현재 단계에 맞는
+   더 넓은 release gate 를 실행한다.
 6. `git diff --check -- framework/languages/node` 를 실행한다.
 7. backend dependency guard 를 실행해 framework runtime 이 binding internal 경로를 직접 참조하지 않는지 확인한다.
 8. POSD red flag 를 리뷰한다.
@@ -75,18 +84,53 @@ Phase 별 핵심 완료 조건:
 - P6: actor lifecycle, mailbox ordering, location recheck, dispatch routing 이 dotnet 과 일치한다.
 - P7: stream session, session-to-actor relay, bound session, connector, json/msgpack/protobuf codec 이 dotnet 과 일치한다.
 - P8: registry, monitoring, runtime codec registry 가 dotnet 과 일치한다.
-- P9: regression matrix, user guide, samples, cross-language smoke, doc link tests 가 모두 통과한다.
+- P9: regression matrix, user guide, samples, cross-language smoke, doc link tests, ABI release gate 가 모두 통과한다.
+
+최종 gate:
+- `npm run build`
+- `npm run typecheck`
+- `npm run verify:abi-matrix`
+- `npm run verify:p0`
+- `npm run verify:cross-language`
+- `npm run verify:runtime-matrix`
+- `./samples/run_samples.sh`
+- `git diff --check -- framework/languages/node`
+
+cross-language smoke 필수 경로:
+- Node client -> dotnet channel server request/reply
+- Node client -> dotnet channel server one-way send
+- Node publisher -> dotnet fanout subscriber publish
+- dotnet client -> Node channel server request/reply
+- Node stream connector -> dotnet stream server
+- dotnet stream connector -> Node stream server
+
+sample 필수 경로:
+- StreamingClient
+- TicTacToe
+- TicTacToe.SessionGateway
+- Bingo
+
+ABI release gate 필수 runtime:
+- node20
+- node22
+- win-x64
+- win-arm64
+- linux-x64
+- linux-arm64
+- darwin-x64
+- darwin-arm64
 
 최종 판정:
 - framework/languages/dotnet 과 비교해 구조, 기능, 사용성, 샘플 4축이 모두 동등해야 완료다.
 - dotnet samples 와 같은 시나리오의 Node samples 를 실행 가능한 상태로 제공해야 한다.
 - Node guide 는 dotnet guide 의 주요 장과 대응해야 한다.
 - `npm run verify:cross-language` 로 Node 와 dotnet 사이의 channel/stream 경로를 확인해야 한다.
-- session actor 경로와 C++/Java connector 상호 호출은 plan 의 P9 완료 전 별도 smoke 로
-  닫아야 한다.
+- connector 는 stream connector 의 tcp/ws/wss 경로가 실제로 동작해야 완료다.
 - 모든 테스트와 문서 링크 회귀가 green 이 아니면 완료라고 말하지 않는다.
 - 완료 선언 전에는 dotnet framework 의 src, tests, samples, guide 와 Node 쪽 구현, tests,
   samples, guide 를 표로 대조하고 빠진 항목이 0 인지 확인한다.
+- 완료 보고에는 구현/문서 수정 요약, 통과한 gate 목록, dotnet 대비 구조·기능·사용성·샘플
+  parity 확인 결과를 포함한다. 남은 이슈가 없으면 명시적으로 "남은 이슈 없음"이라고 적는다.
 
 커밋 규칙:
 - 관련 Phase 단위로 작은 커밋을 만든다.

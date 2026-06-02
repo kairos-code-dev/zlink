@@ -7,10 +7,12 @@ session actor packet 위에서 .NET, C++, Java 구현과 상호 호출될 수 �
 
 | 경로 | 확인할 것 |
 |------|-----------|
-| Node client -> dotnet channel server | request/reply, send, publish 의미 |
+| Node client -> dotnet channel server request/reply | request/reply 의미 |
+| Node client -> dotnet channel server one-way send | send packet 의미 |
+| Node publisher -> dotnet fanout subscriber publish | topic/payload 의미 |
 | dotnet client -> Node channel server | Node handler reply 의미 |
 | Node stream connector -> dotnet stream server | header session request/reply |
-| dotnet/C++/Java connector -> Node stream server | Node `onDispatch` 와 `reply` |
+| dotnet connector -> Node stream server | Node `onDispatch` 와 `reply` |
 
 ## 2. 지켜야 할 경계
 
@@ -28,9 +30,8 @@ cross-language smoke 는 wire 계약을 확인한다.
 npm run verify:cross-language
 ```
 
-이 명령은 Node client 와 dotnet server, dotnet client 와 Node server, Node stream
-connector 와 dotnet stream server, dotnet connector 와 Node stream server 경로를
-검증한다.
+이 명령은 Node channel client 의 request/send, Node fanout publisher, dotnet channel
+client, Node stream connector, dotnet stream connector 경로를 검증한다.
 
 ## 회귀 테스트
 

@@ -303,14 +303,16 @@ backend gate 와 별도로 유지한다.
 | `run_samples.sh` 전체 실행 | `integration-multi-process` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo 가 모두 self-check 통과 |
 | `npm run verify:runtime-matrix` | `integration-multi-process` | 현재 runner 가 Node 20 과 Node 22 에서 build, typecheck, 전체 contract test 를 모두 통과시킨다 |
 | `npm run verify:abi-matrix` | `unit` | `framework-node` CI workflow, release 문서, package script 가 `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64` 와 Node 20/22 gate 를 같은 목록으로 유지한다 |
-| `npm run verify:cross-language` | `integration-multi-process` | Node 와 dotnet TestHost 가 channel/stream 필수 경로 네 가지를 같은 프로토콜 의미로 통과시킨다 |
+| `npm run verify:cross-language` | `integration-multi-process` | Node 와 dotnet TestHost 가 channel/stream 필수 경로 여섯 가지를 같은 프로토콜 의미로 통과시킨다 |
 | guide chapter map | `unit` | Node guide 12개 장이 dotnet guide 주요 장과 1:1로 매핑된다 |
 | sample public API import guard | `unit` | sample 이 framework/connector public API만 import하고 binding internal/native 경로를 직접 쓰지 않는다 |
 | sample readiness guard | `unit` | sample 이 sleep-only readiness masking을 사용하지 않고 observable readiness를 기다린다 |
-| Node client -> dotnet channel server | `integration-multi-process` | request/reply, send, publish가 같은 packet 의미로 처리된다 |
+| Node client -> dotnet channel server request/reply | `integration-multi-process` | dotnet request handler가 같은 payload 의미로 reply한다 |
+| Node client -> dotnet channel server one-way send | `integration-multi-process` | dotnet send handler가 같은 packet 의미로 처리한다 |
+| Node publisher -> dotnet fanout subscriber publish | `integration-multi-process` | dotnet publish handler가 같은 topic/payload 의미로 처리한다 |
 | dotnet client -> Node channel server | `integration-multi-process` | Node handler가 dotnet client 요청에 같은 payload 의미로 reply한다 |
 | Node stream connector -> dotnet stream server | `integration-multi-process` | header session request/reply와 notification dispatch가 동작한다 |
-| external connector -> Node stream server | `integration-multi-process` | dotnet/C++/Java 중 하나의 connector가 Node `onDispatch`와 `reply` 경로를 통과한다 |
+| dotnet connector -> Node stream server | `integration-multi-process` | dotnet connector가 Node `onDispatch`와 `reply` 경로를 통과한다 |
 
 ## 9. 문서별 회귀 테스트 단락
 

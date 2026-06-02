@@ -129,13 +129,15 @@ test('node multi dealer-dealer receiver uses caller-provided Received storage', 
     assert.doesNotMatch(body, /\brecvNoWaitInto\b/);
     assert.doesNotMatch(body, /\brecvNoWait\b/);
 });
-test('node multi pubsub client reuses caller-provided topic storage', () => {
+test('node multi pubsub client uses internal single-payload subscribe path', () => {
     const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_pubsub_client.ts');
     const body = fs.readFileSync(file, 'utf8');
-    assert.match(body, /new zlink\.TopicMessage\(\)/);
-    assert.match(body, /\.subscribe\(received, zlink\.RecvFlags\.DontWait\)/);
+    assert.match(body, /requireNative\(\)/);
+    assert.match(body, /socketTrySubscribePayload\(subs\[index\]\.nativeHandle\(\)\)/);
     assert.match(body, /recordPayload/);
     assert.match(body, /const TOPIC = 'bench'/);
+    assert.doesNotMatch(body, /new zlink\.TopicMessage\(\)/);
+    assert.doesNotMatch(body, /\.subscribe\(received, zlink\.RecvFlags\.DontWait\)/);
     assert.doesNotMatch(body, /\bsubscribeNoWait\b/);
 });
 test('node multi publish helper stays on public publish operation', () => {

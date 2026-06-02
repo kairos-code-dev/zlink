@@ -74,7 +74,8 @@ export class Spot extends NativeHandle {
     });
   }
   publish(topic: string): SendOperation {
-    return new RuntimeSendOperation((parts, opFlags) => this.publishDirect(topic, parts, opFlags));
+    const normalizedTopic = validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER);
+    return new RuntimeSendOperation((parts, opFlags) => this.publishDirect(normalizedTopic, parts, opFlags));
   }
 
   private submitSpotSend(flags: SendFlags, errorMessage: string, invoke: () => void): boolean {
@@ -93,7 +94,7 @@ export class Spot extends NativeHandle {
     return this.submitSpotSend(flags, 'spot publish failed', () => {
       nativeBinding.spotPublish(
         this._native,
-        validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER),
+        topic,
         normalizeOperationPayload(payloadParts),
         flags | 0
       );
@@ -160,12 +161,31 @@ export class Spot extends NativeHandle {
     return new RuntimeSendOperation((parts, opFlags) => this.sendToSpotDirect(destNodeRid, destSpotRid, parts, opFlags));
   }
   private sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadParts: MessageLike | readonly MessageLike[], flags: SendFlags): boolean {
+    const nodeRid = normalizeRoutingId(destNodeRid);
+    const spotRid = normalizeRoutingId(destSpotRid);
+    const payload = normalizeOperationPayload(payloadParts);
+    if ((flags | 0) & (SendFlags.DontWait | 0)) {
+      let result;
+      try {
+        result = nativeBinding.spotSendToSpotNoWaitResult(
+          this._native,
+          nodeRid,
+          spotRid,
+          payload
+        ) as number;
+      } catch (error) {
+        throw submitNativeError(error, flags, 'spot sendToSpot failed');
+      }
+      if (result === SubmitResult.Ok) return true;
+      if (result === SubmitResult.Backpressured) return false;
+      throw submitErrorFromResult(result as SubmitResult, 'spot sendToSpot failed');
+    }
     return this.submitSpotSend(flags, 'spot sendToSpot failed', () => {
       nativeBinding.spotSendToSpot(
         this._native,
-        normalizeRoutingId(destNodeRid),
-        normalizeRoutingId(destSpotRid),
-        normalizeOperationPayload(payloadParts),
+        nodeRid,
+        spotRid,
+        payload,
         flags | 0
       );
     });
@@ -316,7 +336,9 @@ export class Spot extends NativeHandle {
   recvRouted(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
     let raw;
     try {
-      raw = nativeBinding.spotRecvRouted(this._native, flags | 0) as SpotRoutedRaw | null;
+      raw = ((flags | 0) & (RecvFlags.DontWait | 0))
+        ? nativeBinding.spotRecvRoutedNoWait(this._native) as SpotRoutedRaw | null
+        : nativeBinding.spotRecvRouted(this._native, flags | 0) as SpotRoutedRaw | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'recvRouted failed');
     }

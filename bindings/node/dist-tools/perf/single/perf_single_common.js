@@ -34,7 +34,9 @@ exports.configureTlsServer = configureTlsServer;
 const { isStopTokenParts } = require('../perf_stop_token');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 const { benchmarkEndpoint: commonBenchmarkEndpoint } = require('../common/perf_endpoint');
+const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const POLLIN = 1;
+const native = requireNative();
 function pollEvents(mask) {
     const events = [];
     if ((mask & POLLIN) !== 0) {
@@ -424,7 +426,6 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
     let iterCount = 0;
     let totalReceived = 0;
     let recordingActive = true;
-    const reusableReceived = new zlink.Received();
     if (process.env.PERF_NODE_TRACE === '1') {
         console.error(`[drainRouterRecvInto] entry`);
     }
@@ -435,11 +436,10 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
         }
         let first = true;
         while (true) {
-            const received = reusableReceived;
-            if (!router.recv(received, first ? RecvFlags.None : RecvFlags.DontWait)) {
+            const data = native.routerRecvSinglePayload(router.nativeHandle(), first ? RecvFlags.None : RecvFlags.DontWait);
+            if (data === null) {
                 break;
             }
-            const data = received.singlePartOrThrow().data();
             const receivedSize = data.length;
             first = false;
             if (isStopTokenPayload(data, receivedSize)) {

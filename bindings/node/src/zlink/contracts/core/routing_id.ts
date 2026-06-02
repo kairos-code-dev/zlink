@@ -90,6 +90,21 @@ export class RoutingId {
     return new RoutingId(ROUTING_ID_CREATE_TOKEN, normalizeRoutingIdValue(value));
   }
 
+  /** @internal */
+  static fromOwnedBuffer(bytes: Buffer): RoutingId {
+    if (!Buffer.isBuffer(bytes)) {
+      throw new TypeError('bytes must be a Buffer');
+    }
+    if (bytes.length === 0 || bytes.length > ROUTING_ID_MAX_LENGTH) {
+      throw new ConfigError(
+        ConfigResult.InvalidArgument,
+        0,
+        `bytes must be 1..${ROUTING_ID_MAX_LENGTH} bytes`
+      );
+    }
+    return new RoutingId(ROUTING_ID_CREATE_TOKEN, bytes);
+  }
+
   /**
    * Create a routing id by decoding `value` as a hex string (non-empty, even
    * length, up to 510 digits for 255 bytes).

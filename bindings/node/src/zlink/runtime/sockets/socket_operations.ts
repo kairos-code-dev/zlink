@@ -252,7 +252,9 @@ export class RoutedMessageSocket extends ConnectableSocket {
       throw recvNativeError(error, flags, 'recv failed');
     }
     if (raw == null) return false;
-    const send = (parts: readonly Message[], sendFlags: SendFlags) => {
+    const send = raw.requestSeq == null
+      ? undefined
+      : (parts: readonly Message[], sendFlags: SendFlags) => {
         if (!raw.routingId) {
           throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
         }

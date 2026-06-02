@@ -2260,6 +2260,60 @@ napi_value socket_try_subscribe_message(napi_env env, napi_callback_info info)
     }
 }
 
+napi_value socket_try_subscribe_payload(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+
+    std::vector<char> topic(256, '\0');
+    size_t topic_len = topic.size();
+
+    for (;;) {
+        const zlink_routing_id_t *source_rid = NULL;
+        zlink_msg_t first_part;
+        if (zlink_msg_init(&first_part) != 0)
+            return throw_last_error(env, "trySubscribePayload failed");
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        int rc = zlink_subscribe_part(
+          sock,
+          &source_rid,
+          topic.data(),
+          topic.size(),
+          &topic_len,
+          &first_part,
+          &has_more,
+          ZLINK_RECV_FLAGS_DONTWAIT);
+        (void) source_rid;
+        if (rc == ZLINK_RECV_OK) {
+            if (has_more == ZLINK_PART_FINAL) {
+                return create_message_data_buffer(env, &first_part);
+            }
+
+            std::vector<zlink_msg_t> parts;
+            rc = collect_recv_parts(sock, &first_part, has_more, &parts);
+            close_msg_vector(parts);
+            if (rc != ZLINK_RECV_OK)
+                return throw_last_error(env, "trySubscribePayload failed");
+            napi_throw_error(
+              env, NULL, "trySubscribePayload requires single-part messages");
+            return NULL;
+        }
+        const int err = zlink_errno();
+        zlink_msg_close(&first_part);
+        if (err == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        if (err != EMSGSIZE)
+            return throw_last_error(env, "trySubscribePayload failed");
+        topic.assign(topic_len > 0 ? topic_len : 1, '\0');
+    }
+}
+
 napi_value socket_send_ready_handler(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -2866,6 +2920,59 @@ napi_value router_try_recv_message(napi_env env, napi_callback_info info)
       parts.size());
     close_msg_vector(parts);
     return out;
+}
+
+napi_value router_recv_single_payload(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+    int32_t flags = 0;
+    if (argc >= 2)
+        napi_get_value_int32(env, argv[1], &flags);
+
+    const zlink_routing_id_t *peer_rid = NULL;
+    const zlink_routing_id_t *spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t part;
+    if (zlink_msg_init(&part) != 0)
+        return throw_last_error(env, "routerRecvSinglePayload failed");
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+
+    int rc = zlink_router_recv_part(
+      router,
+      &peer_rid,
+      &spot_rid,
+      &request_seq,
+      &part,
+      &has_more,
+      static_cast<zlink_recv_flags_t>(flags));
+    (void) peer_rid;
+    (void) spot_rid;
+    (void) request_seq;
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close(&part);
+        if (zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "routerRecvSinglePayload failed");
+    }
+
+    if (has_more != ZLINK_PART_FINAL) {
+        std::vector<zlink_msg_t> rest;
+        int collect_rc = collect_recv_parts(router, &part, has_more, &rest);
+        close_msg_vector(rest);
+        if (collect_rc != ZLINK_RECV_OK)
+            return throw_last_error(env, "routerRecvSinglePayload failed");
+        napi_throw_error(env, NULL, "routerRecvSinglePayload requires single-part messages");
+        return NULL;
+    }
+
+    return create_message_data_buffer(env, &part);
 }
 
 napi_value monitor_open(napi_env env, napi_callback_info info)

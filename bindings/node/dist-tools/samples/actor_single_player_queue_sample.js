@@ -32,7 +32,7 @@ function waitForJoin(spot) {
 async function acceptJoin(actor, spot, payload) {
     const replyPromise = actor.join(spot).message(Buffer.from(payload)).timeout(2000).submitAsync();
     const request = waitForJoin(spot);
-    spot.replyActorJoin(request, 0).message(Buffer.from('ok')).submit();
+    spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
     const reply = await replyPromise;
     assert.equal(reply.result.result, zlink.RequestResult.Ok);
 }
@@ -48,7 +48,7 @@ async function main() {
     let session = null;
     try {
         spot = node.createSpot();
-        actor = node.createActor('queue-player-1');
+        actor = node.createActor('single-player');
         const payloads = [];
         spot.setDispatchHandler((info) => {
             if (info.event !== zlink.SpotDispatchEvent.ActorReadable) {
@@ -70,21 +70,22 @@ async function main() {
             client.write(frame(Buffer.from('open')));
         });
         await stream.bindActor(session, actor.ref()).timeout(2000).submitAsync();
-        await acceptJoin(actor, spot, 'first-join');
+        await acceptJoin(actor, spot, 'join-first');
+        stream.sendBoundActor(session, 'single-player').message(Buffer.from('before')).submit();
         await actor.leave(spot).timeout(2000).submitAsync();
-        stream.sendBoundActor(session, 'queue-player-1').message(Buffer.from('queued')).submit();
-        await acceptJoin(actor, spot, 'second-join');
-        for (let i = 0; i < 100 && payloads.length === 0; i += 1) {
+        stream.sendBoundActor(session, 'single-player').message(Buffer.from('between')).submit();
+        await acceptJoin(actor, spot, 'join-second');
+        for (let i = 0; i < 100 && payloads.length < 2; i += 1) {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
-        assert.deepEqual(payloads, ['queued']);
+        assert.deepEqual(payloads, ['before', 'between']);
         await actor.leave(spot).timeout(2000).submitAsync();
-        console.log('[actor/queue] queued payload survived leave and rejoin');
+        console.log('[actor/single-player] queued payload: "before/between" -> actor: "before/between"');
     }
     finally {
         if (session) {
             try {
-                await stream.unbindActor(session, 'queue-player-1').timeout(2000).submitAsync();
+                await stream.unbindActor(session, 'single-player').timeout(2000).submitAsync();
             }
             catch (_) {
             }

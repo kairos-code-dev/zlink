@@ -69,9 +69,6 @@ export class TopicMessage extends MultipartEnvelope {
     parts: Message[],
     routingId: RoutingId | null = null
   ): void {
-    for (const part of this.parts) {
-      try { part.close(); } catch { /* swallow */ }
-    }
     this.parts = freezeOwnedMessageParts(parts);
     this.routingId = routingId;
     this.topic = topic;

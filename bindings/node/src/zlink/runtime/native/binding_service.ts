@@ -240,6 +240,7 @@ export interface ServiceNativeBinding {
   spotRecvActorLifecycle: (spot: NativeHandle, flags: number) => SpotActorLifecycleRaw | null;
   spotRecvNoWait: (spot: NativeHandle) => NativeTopicMessageRaw | null;
   spotRecvRouted: (spot: NativeHandle, flags: number) => SpotRoutedRaw | null;
+  spotRecvRoutedNoWait: (spot: NativeHandle) => SpotRoutedRaw | null;
   spotReplyRouter: (
     spot: NativeHandle,
     peerRid: Buffer,
@@ -292,6 +293,12 @@ export interface ServiceNativeBinding {
     parts: unknown,
     flags: number
   ) => void;
+  spotSendToSpotNoWaitResult: (
+    spot: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: unknown
+  ) => number;
   spotSetOption: (spot: NativeHandle, option: number, value: Buffer) => void;
   spotSubscribe: (spot: NativeHandle, topic: string) => void;
   spotUnsubscribe: (spot: NativeHandle, topic: string) => void;

@@ -55,7 +55,7 @@ async function main() {
         });
         stream.attachActorGateway(node);
         stream.bind(endpoint);
-        actor = node.createActor('gateway-player-1');
+        actor = node.createActor('play-session-actor');
         client = net.createConnection({ host: '127.0.0.1', port });
         await once(client, 'connect');
         session = await new Promise((resolve) => {
@@ -63,22 +63,22 @@ async function main() {
             client.write(frame(Buffer.from('open')));
         });
         await stream.bindActor(session, actor.ref()).timeout(2000).submitAsync();
-        const joinReply = actor.join(spot).message(Buffer.from('join-gateway')).timeout(2000).submitAsync();
+        const joinReply = actor.join(spot).message(Buffer.from('join-play')).timeout(2000).submitAsync();
         const joinRequest = waitForJoin(spot);
-        spot.replyActorJoin(joinRequest, 0).message(Buffer.from('ok')).submit();
+        spot.replyActorJoin(joinRequest, 0).message(Buffer.from('accepted')).submit();
         await joinReply;
-        stream.sendBoundActor(session, 'gateway-player-1').message(Buffer.from('relay')).submit();
+        stream.sendBoundActor(session, 'play-session-actor').message(Buffer.from('client-input')).submit();
         for (let i = 0; i < 100 && payloads.length === 0; i += 1) {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
-        assert.deepEqual(payloads, ['relay']);
+        assert.deepEqual(payloads, ['client-input']);
         await actor.leave(spot).timeout(2000).submitAsync();
-        console.log('[actor/gateway] stream relayed payload to actor: "relay"');
+        console.log('[actor/gateway] stream payload: "client-input" -> actor: "client-input"');
     }
     finally {
         if (session) {
             try {
-                await stream.unbindActor(session, 'gateway-player-1').timeout(2000).submitAsync();
+                await stream.unbindActor(session, 'play-session-actor').timeout(2000).submitAsync();
             }
             catch (_) {
             }

@@ -22,6 +22,7 @@ export interface SocketNativeBinding {
   monitorOpen: (socket: NativeHandle, eventMask: number) => NativeHandle;
   routerRecvMessage: (socket: NativeHandle, flags: number) => NativeReceivedRaw | null;
   routerRecvMessageNoWait: (socket: NativeHandle) => NativeReceivedRaw | null;
+  routerRecvSinglePayload: (socket: NativeHandle, flags: number) => Buffer | null;
   routerReply: (
     socket: NativeHandle,
     peerRid: Buffer,
@@ -143,6 +144,7 @@ export interface SocketNativeBinding {
     topic: string,
     payload: unknown
   ) => number;
+  socketTrySubscribePayload: (socket: NativeHandle) => Buffer | null;
   socketTrySubscribeMessage: (socket: NativeHandle) => NativeTopicMessageRaw | null;
   socketTrySubscriptionEvent: (
     socket: NativeHandle

@@ -82,47 +82,25 @@ enum message_snapshot_flags_t
     MESSAGE_SNAPSHOT_ALWAYS_PROPERTIES = 1 << 1
 };
 
-// Builds the message "properties" snapshot object in a single metadata pass.
-// Each ZMTP property is probed with zlink_msg_gets exactly once; a separate
-// predicate pass to decide whether any property exists would re-run the same
-// library lookups. Returns NULL when the message carries no snapshot
-// properties and `force` is false, so the common data-only receive path never
-// allocates an empty object.
+// The current core message property API is a stub: zlink_msg_gets() always
+// returns NULL. Preserve the binding's synthetic routed identity properties
+// without paying repeated native property probes on every data-only receive.
 inline napi_value create_message_properties_snapshot(
   napi_env env,
   const zlink_routing_id_t *routing_id,
   zlink_msg_t *msg,
   bool force)
 {
-    const char *socket_type = zlink_msg_gets(msg, "Socket-Type");
-    const char *user_id = zlink_msg_gets(msg, "User-Id");
-    const char *peer_address = zlink_msg_gets(msg, "Peer-Address");
-    const char *routing_id_value = zlink_msg_gets(msg, "Routing-Id");
-    const char *identity =
-      routing_id_value ? NULL : zlink_msg_gets(msg, "Identity");
+    (void) msg;
     const bool has_routing_id_bytes = routing_id && routing_id->size > 0;
 
-    const bool has_any = socket_type || user_id || peer_address
-        || routing_id_value || identity || has_routing_id_bytes;
-    if (!has_any && !force)
+    if (!has_routing_id_bytes && !force)
         return NULL;
 
     napi_value props;
     napi_create_object(env, &props);
 
-    const auto set_property = [env, props](const char *name, const char *value) {
-        if (!value)
-            return;
-        napi_value out;
-        napi_create_string_utf8(env, value, NAPI_AUTO_LENGTH, &out);
-        napi_set_named_property(env, props, name, out);
-    };
-
-    set_property("Socket-Type", socket_type);
-    set_property("User-Id", user_id);
-    set_property("Peer-Address", peer_address);
-
-    if (!routing_id_value && has_routing_id_bytes) {
+    if (has_routing_id_bytes) {
         napi_value out;
         napi_create_string_utf8(
           env,
@@ -131,13 +109,7 @@ inline napi_value create_message_properties_snapshot(
           &out);
         napi_set_named_property(env, props, "Routing-Id", out);
         napi_set_named_property(env, props, "Identity", out);
-    } else if (routing_id_value) {
-        set_property("Routing-Id", routing_id_value);
-        set_property("Identity", routing_id_value);
     }
-
-    if (!routing_id_value)
-        set_property("Identity", identity);
 
     return props;
 }

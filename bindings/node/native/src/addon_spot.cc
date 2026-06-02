@@ -1802,6 +1802,33 @@ napi_value spot_send_spot(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_send_spot_no_wait_result(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    zlink_routing_id_t dest_node_rid;
+    zlink_routing_id_t dest_spot_rid;
+    if (!parse_routing_id_value(env, argv[1], &dest_node_rid))
+        return NULL;
+    if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single(env, argv[3], &parts))
+        return NULL;
+    int rc = spot_send_spot_parts(spot,
+                                  &dest_node_rid,
+                                  &dest_spot_rid,
+                                  parts.data(),
+                                  parts.size(),
+                                  ZLINK_SEND_FLAGS_DONTWAIT);
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
 napi_value spot_reply_router(napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
@@ -1916,6 +1943,43 @@ napi_value spot_recv_routed(napi_env env, napi_callback_info info)
       static_cast<zlink_recv_flags_t>(flags));
     if (rc != ZLINK_RECV_OK)
         return throw_last_error(env, "spotRecvRouted failed");
+    napi_value out =
+      create_spot_routed_event_value(env,
+                                     source_rid.size > 0 ? &source_rid : NULL,
+                                     spot_rid.size > 0 ? &spot_rid : NULL,
+                                     request_seq,
+                                     parts.data(),
+                                     parts.size());
+    close_msg_vector(parts);
+    return out;
+}
+
+napi_value spot_recv_routed_no_wait(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    zlink_routing_id_t source_rid;
+    zlink_routing_id_t spot_rid;
+    uint64_t request_seq = 0;
+    std::vector<zlink_msg_t> parts;
+    int rc = spot_recv_parts(
+      spot,
+      &source_rid,
+      &spot_rid,
+      &request_seq,
+      &parts,
+      ZLINK_RECV_FLAGS_DONTWAIT);
+    if (rc != ZLINK_RECV_OK) {
+        if (zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "spotRecvRoutedNoWait failed");
+    }
     napi_value out =
       create_spot_routed_event_value(env,
                                      source_rid.size > 0 ? &source_rid : NULL,

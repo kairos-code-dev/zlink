@@ -8,7 +8,6 @@ import {
   TopicMessage,
   type MessageSnapshot
 } from '../../contracts';
-import { wrapRoutingId } from '../../contracts/service/spot/spot_models';
 
 export interface NativeReceivedRaw {
   parts: MessageSnapshot[];
@@ -23,6 +22,28 @@ export interface NativeTopicMessageRaw {
   routingId?: Buffer | null;
 }
 
+function wrapNativeRoutingId(routingId: Buffer | null | undefined): RoutingId | null {
+  if (!routingId || routingId.length === 0) {
+    return null;
+  }
+  return RoutingId.fromOwnedBuffer(routingId);
+}
+
+function materializeParts(parts: MessageSnapshot[]): Message[] {
+  if (parts.length === 1) {
+    return [Message.fromSnapshot(parts[0])];
+  }
+  const messages = new Array<Message>(parts.length);
+  for (let i = 0; i < parts.length; i += 1) {
+    messages[i] = Message.fromSnapshot(parts[i]);
+  }
+  return messages;
+}
+
+function hasReplyableRequestSeq(requestSeq: bigint | null): requestSeq is bigint {
+  return requestSeq !== null && requestSeq !== 0n;
+}
+
 export function materializeReceived(
   raw: NativeReceivedRaw,
   reply?: (requestSeq: bigint, parts: readonly Message[], flags: SendFlags) => void,
@@ -30,11 +51,11 @@ export function materializeReceived(
 ): Received {
   const requestSeq = raw.requestSeq ?? null;
   return Received.create(
-    raw.parts.map((part) => Message.fromSnapshot(part)),
-    wrapRoutingId(raw.routingId ?? null),
+    materializeParts(raw.parts),
+    wrapNativeRoutingId(raw.routingId ?? null),
     requestSeq,
-    wrapRoutingId(raw.spotRid ?? null),
-    requestSeq !== null && reply
+    wrapNativeRoutingId(raw.spotRid ?? null),
+    hasReplyableRequestSeq(requestSeq) && reply
       ? {
           reply(parts: readonly Message[], flags: SendFlags): void {
             reply(requestSeq, parts, flags);
@@ -68,11 +89,11 @@ export function materializeReceivedInto(
       sendContext: unknown
     ) => void;
   })._replace(
-    raw.parts.map((part) => Message.fromSnapshot(part)),
-    wrapRoutingId(raw.routingId ?? null),
+    materializeParts(raw.parts),
+    wrapNativeRoutingId(raw.routingId ?? null),
     requestSeq,
-    wrapRoutingId(raw.spotRid ?? null),
-    requestSeq !== null && reply
+    wrapNativeRoutingId(raw.spotRid ?? null),
+    hasReplyableRequestSeq(requestSeq) && reply
       ? {
           reply(parts: readonly Message[], flags: SendFlags): void {
             reply(requestSeq, parts, flags);
@@ -92,8 +113,8 @@ export function materializeReceivedInto(
 export function materializeTopicMessage(raw: NativeTopicMessageRaw): TopicMessage {
   return TopicMessage.create(
     raw.topic,
-    raw.parts.map((part) => Message.fromSnapshot(part)),
-    wrapRoutingId(raw.routingId ?? null)
+    materializeParts(raw.parts),
+    wrapNativeRoutingId(raw.routingId ?? null)
   );
 }
 
@@ -106,7 +127,7 @@ export function adoptTopicMessage(result: TopicMessage, raw: NativeTopicMessageR
     ) => void;
   })._replace(
     raw.topic,
-    raw.parts.map((part) => Message.fromSnapshot(part)),
-    wrapRoutingId(raw.routingId ?? null)
+    materializeParts(raw.parts),
+    wrapNativeRoutingId(raw.routingId ?? null)
   );
 }

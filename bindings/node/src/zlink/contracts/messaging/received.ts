@@ -174,9 +174,6 @@ export class Received extends MultipartEnvelope {
     replyContext: ReplyContext | null = null,
     sendContext: SendContext | null = null
   ): void {
-    for (const p of this.parts) {
-      try { p.close(); } catch { /* swallow */ }
-    }
     this.parts = freezeOwnedMessageParts(parts);
     this.routingId = routingId;
     this.spotRid = spotRid;

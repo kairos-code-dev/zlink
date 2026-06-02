@@ -120,8 +120,8 @@ workspace.
 `runtime/execution/`(serial executor 등).
 
 공통 toolchain: TypeScript `strict`, `reflect-metadata`(decorator 메타데이터),
-Node 20+, 테스트 vitest 또는 jest. CI release gate 는 `node20` 과 `node22` 를
-모두 돌린다.
+Node 20+, 테스트 vitest 또는 jest. CI release gate 는 `npm run verify:runtime-matrix`
+로 `node20` 과 `node22` 를 모두 돌린다.
 
 ---
 
@@ -399,8 +399,8 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - **샘플 동등화**: dotnet `samples/`(TicTacToe, TicTacToe.SessionGateway, Bingo)와
     stream connector 단독 sample 을 같은 시나리오로 구현한다.
   - sample smoke command 를 만들고 CI release gate 에 연결한다.
-  - cross-language smoke 를 release gate 에 연결한다(Node↔dotnet, Node↔C++/Java 중
-    최소 지정 경로).
+  - `npm run verify:cross-language` 를 release gate 에 연결한다(Node↔dotnet,
+    Node↔C++/Java 중 최소 지정 경로).
   - guide/spec/internals/sample 문서 링크가 깨지지 않는지 문서 회귀 테스트를 추가한다.
 - **DoD:**
   - [ ] regression matrix 의 모든 행이 green / multi-process topology 시나리오 통과

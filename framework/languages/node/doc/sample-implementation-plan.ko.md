@@ -156,7 +156,7 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
    고정한다.
 6. `Bingo` sample 을 구현해 timer, room Spot, bound push를 고정한다.
 7. `run_samples.sh` 를 CI release gate 에 연결한다.
-8. cross-language smoke 를 CI release gate 에 연결한다.
+8. `npm run verify:cross-language` 를 CI release gate 에 연결한다.
 9. guide/spec/internals/sample README 링크 회귀 테스트를 실행한다.
 
 ## 7. 완료 기준
@@ -167,7 +167,8 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
 - 모든 guide 예제는 실제 sample 또는 test에서 compile 된다.
 - `StreamingClient`, `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo` sample 이
   `run_samples.sh`에서 self-check 를 통과한다.
-- cross-language smoke 네 가지 필수 경로가 통과한다.
+- `npm run verify:cross-language` 로 cross-language smoke 네 가지 필수 경로가
+  통과한다.
 - sample README 가 실행 명령, topology, success condition 을 설명한다.
 - sample 과 guide 는 framework public API와 connector public API만 사용한다.
 - 문서 링크 회귀 테스트가 guide/spec/internals/sample README 전체를 확인한다.

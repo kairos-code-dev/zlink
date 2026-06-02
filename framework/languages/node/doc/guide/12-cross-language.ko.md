@@ -22,6 +22,16 @@ binding internal/native/generated 경로를 직접 import 하지 않는다.
 cross-language smoke 는 sample smoke 와 별도다. sample 은 사용성을 확인하고,
 cross-language smoke 는 wire 계약을 확인한다.
 
+현재 저장소의 필수 smoke 명령은 다음과 같다.
+
+```bash
+npm run verify:cross-language
+```
+
+이 명령은 Node client 와 dotnet server, dotnet client 와 Node server, Node stream
+connector 와 dotnet stream server, dotnet connector 와 Node stream server 경로를
+검증한다.
+
 ## 회귀 테스트
 
 필수 경로는 `sample-implementation-plan.ko.md` 와 release gate 에서 관리한다.

@@ -53,7 +53,8 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 2. 구현한다.
 3. Phase DoD 테스트를 추가하거나 갱신한다.
 4. `npm run build`, `npm run typecheck`, 관련 `node --test ...` 를 실행한다.
-5. 가능한 시점마다 `npm run verify:p0` 또는 더 넓은 release gate 를 실행한다.
+5. 가능한 시점마다 `npm run verify:p0`, `npm run verify:runtime-matrix`,
+   `npm run verify:cross-language` 중 현재 단계에 맞는 더 넓은 release gate 를 실행한다.
 6. `git diff --check -- framework/languages/node` 를 실행한다.
 7. backend dependency guard 를 실행해 framework runtime 이 binding internal 경로를 직접 참조하지 않는지 확인한다.
 8. POSD red flag 를 리뷰한다.
@@ -80,7 +81,9 @@ Phase 별 핵심 완료 조건:
 - framework/languages/dotnet 과 비교해 구조, 기능, 사용성, 샘플 4축이 모두 동등해야 완료다.
 - dotnet samples 와 같은 시나리오의 Node samples 를 실행 가능한 상태로 제공해야 한다.
 - Node guide 는 dotnet guide 의 주요 장과 대응해야 한다.
-- cross-language smoke 로 Node 와 dotnet 사이의 channel/stream/session actor 경로를 확인해야 한다.
+- `npm run verify:cross-language` 로 Node 와 dotnet 사이의 channel/stream 경로를 확인해야 한다.
+- session actor 경로와 C++/Java connector 상호 호출은 plan 의 P9 완료 전 별도 smoke 로
+  닫아야 한다.
 - 모든 테스트와 문서 링크 회귀가 green 이 아니면 완료라고 말하지 않는다.
 - 완료 선언 전에는 dotnet framework 의 src, tests, samples, guide 와 Node 쪽 구현, tests,
   samples, guide 를 표로 대조하고 빠진 항목이 0 인지 확인한다.

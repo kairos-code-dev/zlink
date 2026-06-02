@@ -278,12 +278,12 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 릴리스로 보내려면 다음 여섯 가지를 모두 만족해야 한다.
 
 1. `unit`, `integration-single-process`, `integration-multi-process` 전부 통과
-2. `node20`, `node22` 양쪽 모두 통과
+2. `npm run verify:runtime-matrix` 로 `node20`, `node22` 양쪽 모두 통과
 3. 위 여섯 플랫폼 ABI 전체에서 CI gate 통과
 4. happy-path 샘플과 대표 failure-path가 각각 한 번 이상 커버되어 있음
 5. `behavior-matrix.ko.md`에 정리한 비허용 조합이 모두 테스트로 고정되어 있음
-6. cross-language smoke 필수 경로가 통과되어 Node 구현이 dotnet/C++/Java 와 같은
-   wire 계약을 지킨다는 것을 확인함
+6. `npm run verify:cross-language` 로 cross-language smoke 필수 경로가 통과되어
+   Node 구현이 dotnet/C++/Java 와 같은 wire 계약을 지킨다는 것을 확인함
 
 즉 샘플이 한 번 실행되는 것만으로는 충분하지 않다. startup validation 과
 runtime failure 의미까지 테스트로 같이 고정되어 있어야 한다.
@@ -301,6 +301,8 @@ backend gate 와 별도로 유지한다.
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | `run_samples.sh` 전체 실행 | `integration-multi-process` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo 가 모두 self-check 통과 |
+| `npm run verify:runtime-matrix` | `integration-multi-process` | 현재 runner 가 Node 20 과 Node 22 에서 build, typecheck, 전체 contract test 를 모두 통과시킨다 |
+| `npm run verify:cross-language` | `integration-multi-process` | Node 와 dotnet TestHost 가 channel/stream 필수 경로 네 가지를 같은 프로토콜 의미로 통과시킨다 |
 | guide chapter map | `unit` | Node guide 12개 장이 dotnet guide 주요 장과 1:1로 매핑된다 |
 | sample public API import guard | `unit` | sample 이 framework/connector public API만 import하고 binding internal/native 경로를 직접 쓰지 않는다 |
 | sample readiness guard | `unit` | sample 이 sleep-only readiness masking을 사용하지 않고 observable readiness를 기다린다 |

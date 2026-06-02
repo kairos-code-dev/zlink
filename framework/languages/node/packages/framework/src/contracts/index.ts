@@ -426,12 +426,12 @@ export interface ZLinkSpotOutbound {
 }
 
 export interface ZLinkRouteClient {
-  send<TMessage>(targetNodeRid: RoutingId, message: TMessage): ZLinkSendCall;
-  request<TRequest>(targetNodeRid: RoutingId, request: TRequest): ZLinkRequestCall;
+  send<TMessage>(routerChannelId: string, targetNodeRid: RoutingId, message: TMessage): ZLinkSendCall;
+  request<TRequest>(routerChannelId: string, targetNodeRid: RoutingId, request: TRequest): ZLinkRequestCall;
 }
 
 export interface ZLinkSpotPublisherClient {
-  publish<TEvent>(topic: string, event: TEvent): ZLinkPublishCall;
+  publishSpot<TEvent>(channelName: string, topic: string, event: TEvent): ZLinkPublishCall;
 }
 
 export interface ZLinkFanoutClient {
@@ -442,6 +442,10 @@ export interface ZLinkFanoutClient {
 export interface ZLinkBoundSession {
   send<TMessage>(message: TMessage): ZLinkBoundSessionSendCall;
   disconnect(signal?: AbortSignal): Promise<void>;
+}
+
+export interface ZLinkBoundSessionFactory {
+  create(actorId: string): ZLinkBoundSession;
 }
 
 export interface ZLinkBoundSessionSendCall {

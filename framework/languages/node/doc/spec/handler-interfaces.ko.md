@@ -157,6 +157,7 @@ export interface ActorRef {
 | client | `ZLinkRouteClient` | route mesh channel 로 target node 호출 | 5.2.1 |
 | client | `ZLinkSpotPublisherClient` | spot channel publish client | 5.3 |
 | client | `ZLinkFanoutClient` | pub/sub fanout publish client | 5.4 |
+| client | `ZLinkBoundSessionFactory` | actor id → 현재 client session proxy 생성 | 5.6 |
 | client | `ZLinkBoundSession` | 현재 actor → 현재 client session 호출 | 5.6 |
 | call | `ZLinkBoundSessionSendCall` | bound session send 빌더 | 5.6 |
 | resolver | `ZLinkSpotRemoteAddressResolver` | spot rid에서 user Spot route 조회 | 5.7 |
@@ -1372,13 +1373,17 @@ actor handler 가 현재 client session 으로 push 할 때 쓰는 client 다. c
 ```ts
 export interface ZLinkBoundSession {
   send<TMessage>(message: TMessage): ZLinkBoundSessionSendCall;
-  disconnect(): Promise<void>;
+  disconnect(signal?: AbortSignal): Promise<void>;
+}
+
+export interface ZLinkBoundSessionFactory {
+  create(actorId: string): ZLinkBoundSession;
 }
 
 export interface ZLinkBoundSessionSendCall {
   packetName(packetName: string): ZLinkBoundSessionSendCall;
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
-  submit(): Promise<void>;
+  submit(signal?: AbortSignal): Promise<void>;
 }
 ```
 
@@ -2437,6 +2442,7 @@ class 구성 방식은 자유롭다(주제별 묶음 `UserHandlers`, packet 별 
 | `ZLinkSpotManager` | `SpotNode` 가 하나 이상일 때 등록 |
 | `ZLinkSpotPublisherClient` | Spot publisher client capability 가 하나 이상일 때 등록 |
 | `ZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록 |
+| `ZLinkBoundSessionFactory` | framework runtime 과 함께 항상 등록 |
 | `ZLinkBoundSession` | actor bound session runtime 등록 시 |
 | `ZLinkSpotRemoteAddressResolver` | 해당 resolver registration 이 있을 때 등록 |
 

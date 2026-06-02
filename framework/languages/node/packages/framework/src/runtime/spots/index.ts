@@ -493,6 +493,12 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
   }
 }
 
+export class DefaultZLinkUnavailableSpotRemoteAddressResolver implements ZLinkSpotRemoteAddressResolver {
+  resolve(_spotRid: RoutingId, _signal?: AbortSignal): Promise<ZLinkSpotRemoteAddress> {
+    throw new ZLinkConfigurationException('Spot remote address resolver runtime is not started.');
+  }
+}
+
 export interface ZLinkSpotRoutedTransport {
   sendToSpot<TMessage>(
     remoteAddress: ZLinkSpotRemoteAddress,

@@ -47,6 +47,64 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
       instanceof framework.DefaultZLinkSpotManager,
     true
   );
+  assert.equal(
+    module.providers.find((provider) => provider.provide === nestjs.ZLINK_ROUTE_CLIENT).useValue
+      instanceof framework.DefaultZLinkRouteClient,
+    true
+  );
+  assert.equal(
+    module.providers.find((provider) => provider.provide === nestjs.ZLINK_BOUND_SESSION_FACTORY).useValue
+      instanceof framework.DefaultZLinkBoundSessionFactory,
+    true
+  );
+  assert.equal(
+    module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_OUTBOUND).useValue
+      instanceof framework.DefaultZLinkSpotOutbound,
+    true
+  );
+  assert.equal(
+    module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_PUBLISHER_CLIENT).useValue
+      instanceof framework.DefaultZLinkSpotPublisherClient,
+    true
+  );
+});
+
+test('ZLinkModule.forRoot public DI clients expose callable framework contracts', async () => {
+  const module = nestjs.ZLinkModule.forRoot({
+    routeChannels: ['mesh'],
+    spotPublisherClients: ['spot-events']
+  });
+
+  const routeClient = module.providers.find((provider) => provider.provide === nestjs.ZLINK_ROUTE_CLIENT).useValue;
+  const boundSessionFactory = module.providers.find((provider) => provider.provide === nestjs.ZLINK_BOUND_SESSION_FACTORY).useValue;
+  const spotPublisher = module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_PUBLISHER_CLIENT).useValue;
+
+  assert.equal(typeof routeClient.send, 'function');
+  assert.equal(typeof routeClient.request, 'function');
+  assert.equal(typeof boundSessionFactory.create, 'function');
+  assert.equal(typeof spotPublisher.publishSpot, 'function');
+
+  await assert.rejects(
+    () => routeClient.send('missing', 'node-a', { ok: true }).packetName('Ping').submit(),
+    framework.ZLinkConfigurationException
+  );
+  await assert.rejects(
+    () => routeClient.send('mesh', 'node-a', { ok: true }).packetName('Ping').submit(),
+    /Route channel runtime is not started/
+  );
+  await assert.rejects(
+    () => spotPublisher.publishSpot('missing', 'topic', { ok: true }).packetName('Event').submit(),
+    framework.ZLinkConfigurationException
+  );
+  await assert.rejects(
+    () => spotPublisher.publishSpot('spot-events', 'topic', { ok: true }).packetName('Event').submit(),
+    /SPOT publisher runtime is not started/
+  );
+  await assert.rejects(
+    () => boundSessionFactory.create('actor-1').send({ ok: true }).packetName('Push').submit(),
+    (error) => error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.ActorSessionNotBound
+  );
 });
 
 test('ZLinkModule.forRoot passes registered spot factories to the spot manager', async () => {

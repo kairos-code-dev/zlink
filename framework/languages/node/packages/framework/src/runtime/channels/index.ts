@@ -5,7 +5,9 @@ import type {
   ZLinkHandlerFilter,
   ZLinkPublishCall,
   ZLinkRequestCall,
-  ZLinkSendCall
+  ZLinkRouteClient,
+  ZLinkSendCall,
+  ZLinkSpotPublisherClient
 } from '../../contracts';
 import { randomUUID } from 'node:crypto';
 import { invokeZLinkHandlerFilters } from '../handlers';
@@ -50,6 +52,24 @@ export interface ZLinkChannelClientTransport {
     signal?: AbortSignal
   ): Promise<TReply>;
   publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void>;
+}
+
+export interface ZLinkRouteClientTransport {
+  send(
+    routerChannelId: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    message: unknown,
+    signal?: AbortSignal
+  ): Promise<void>;
+  request<TReply>(
+    routerChannelId: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    request: unknown,
+    timeoutMs: number | undefined,
+    signal?: AbortSignal
+  ): Promise<TReply>;
 }
 
 export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTransport {
@@ -342,6 +362,67 @@ export class DefaultZLinkFanoutClient implements ZLinkFanoutClient {
   private requireTransport(): ZLinkChannelClientTransport {
     if (this.transport === undefined) {
       throw new ZLinkConfigurationException('Channel runtime is not started.');
+    }
+    return this.transport;
+  }
+}
+
+export class DefaultZLinkRouteClient implements ZLinkRouteClient {
+  constructor(
+    private readonly registration: ZLinkFrameworkRegistration,
+    private readonly transport?: ZLinkRouteClientTransport
+  ) {}
+
+  send<TMessage>(routerChannelId: string, targetNodeRid: string, message: TMessage): ZLinkSendCall {
+    return new DefaultZLinkSendCall(
+      () => this.requireRouteChannel(routerChannelId),
+      (packetName, signal) => this.requireTransport().send(routerChannelId, targetNodeRid, packetName, message, signal)
+    );
+  }
+
+  request<TRequest>(routerChannelId: string, targetNodeRid: string, request: TRequest): ZLinkRequestCall {
+    return new DefaultZLinkRequestCall(
+      () => this.requireRouteChannel(routerChannelId),
+      (packetName, timeoutMs, signal) => this.requireTransport().request(routerChannelId, targetNodeRid, packetName, request, timeoutMs, signal)
+    );
+  }
+
+  private requireRouteChannel(routerChannelId: string): void {
+    if (!this.registration.routeChannels.has(routerChannelId)) {
+      throw new ZLinkConfigurationException(`Route channel '${routerChannelId}' is not registered.`);
+    }
+  }
+
+  private requireTransport(): ZLinkRouteClientTransport {
+    if (this.transport === undefined) {
+      throw new ZLinkConfigurationException('Route channel runtime is not started.');
+    }
+    return this.transport;
+  }
+}
+
+export class DefaultZLinkSpotPublisherClient implements ZLinkSpotPublisherClient {
+  constructor(
+    private readonly registration: ZLinkFrameworkRegistration,
+    private readonly transport?: ZLinkChannelClientTransport
+  ) {}
+
+  publishSpot<TEvent>(channelName: string, topic: string, event: TEvent): ZLinkPublishCall {
+    return new DefaultZLinkPublishCall(
+      () => this.requireSpotPublisherChannel(channelName),
+      (packetName, signal) => this.requireTransport().publish(channelName, topic, packetName, event, signal)
+    );
+  }
+
+  private requireSpotPublisherChannel(channelName: string): void {
+    if (!this.registration.spotPublisherClients.has(channelName)) {
+      throw new ZLinkConfigurationException(`SPOT publisher channel '${channelName}' is not attached.`);
+    }
+  }
+
+  private requireTransport(): ZLinkChannelClientTransport {
+    if (this.transport === undefined) {
+      throw new ZLinkConfigurationException('SPOT publisher runtime is not started.');
     }
     return this.transport;
   }

@@ -5,6 +5,7 @@ import type {
   ZlinkStreamHeader,
   ZLinkActor,
   ZLinkBoundSession,
+  ZLinkBoundSessionFactory,
   ZLinkBoundSessionSendCall,
   ZLinkSessionActor,
   ZLinkSessionActors,
@@ -806,6 +807,14 @@ export class DefaultZLinkBoundSession implements ZLinkBoundSession {
 
   disconnect(signal?: AbortSignal): Promise<void> {
     return this.runtime.disconnectBoundSession(this.actorId, signal);
+  }
+}
+
+export class DefaultZLinkBoundSessionFactory implements ZLinkBoundSessionFactory {
+  constructor(private readonly runtime: ZLinkStreamBindingRuntime) {}
+
+  create(actorId: string): ZLinkBoundSession {
+    return new DefaultZLinkBoundSession(this.runtime, actorId);
   }
 }
 

@@ -85,23 +85,30 @@ namespace 역할만 맡긴다. host 조립, option registration, spot runtime, s
 > `zlink-framework-core` 안에 두고, connector용 codec helper는 위의 4개 connector
 > codec 모듈로 분리한다.
 
-## 1. 완료 정의 (North Star — 4축 동등성)
+## 1. 완료 정의 (North Star — 핵심 5축 동등성 + 샘플 게이트)
 
-이 프로젝트는 **`.NET` framework와 4축이 동등**해질 때 완료다. P0~P11 phase gate를
-모두 통과해도 아래 4축 표가 전부 충족되지 않으면 **미완료**다. 기준 대상은
-`framework/languages/dotnet`.
+이 프로젝트는 **`.NET` framework와 아키텍처, 기능, 사용성, 폴더구조, 파일분류가
+동등**해질 때 완료다. P0~P11 phase gate를 모두 통과해도 아래 5축 표가 전부
+충족되지 않으면 **미완료**다. 샘플은 별도 release gate로 검증하지만, 샘플 gate도
+통과해야 최종 완료다. 기준 대상은 `framework/languages/dotnet`.
 
 | 축 | 동등 기준 | 비교 대상(`.NET`) | 확인 방법 |
 |----|-----------|-------------------|-----------|
-| **구조(structure)** | §0 정규 모듈/패키지 표가 `.NET` `src/`를 미러. backend 어댑터 한 층으로 격리 | `src/`, `Runtime/*` | §0 표 + backend-dependency-policy 회귀 |
+| **아키텍처(architecture)** | `.NET`과 같은 contract/runtime/backend adapter/testkit 분리. backend 어댑터 한 층으로 격리 | `src/`, `Runtime/*`, `tests/` | architecture evidence table + backend-dependency-policy 회귀 |
 | **기능(functionality)** | 모든 서브시스템(channel/spot/actor/stream/registry/monitoring/codec) 동작이 `.NET`과 동일 | `Runtime/*`, `tests/` | regression-test-matrix 전 행 green |
 | **사용성(usability)** | 같은 멘탈 모델·동사·등록 흐름. `.NET` `doc/guide` 대응 Spring Boot 가이드 제공 | `doc/guide/01~12` | Java 사용자 가이드 동등 챕터 매핑 |
-| **샘플(samples)** | `.NET` 샘플과 동일 시나리오의 실행 가능한 Java 샘플 + 샘플 문서 | `samples/` (TicTacToe, Bingo …) | 샘플 앱 빌드·실행 + self-check |
+| **폴더구조(folder layout)** | `.NET` `src/`, `Runtime/*`, `Contracts/*`, `samples/*`, `tests/*` 역할이 Java Gradle module/package/folder로 1:1 추적 가능 | `src/`, `samples/`, `tests/` | folder-layout evidence table |
+| **파일분류(file classification)** | `.NET` 파일의 역할(contracts, builders, runtime host, channels, spots, actors, streams, registry, monitoring, codecs, samples)이 Java에서 같은 카테고리 folder/package로 묶임. Java는 같은 카테고리의 여러 파일을 folder/package로 묶고 루트 package에 흩뿌리지 않음 | `src/**`, `samples/**` | file-classification evidence table |
 
 추가로 아래를 모두 만족해야 한다.
 
 - Java framework core, Spring Boot starter, Stream Connector(+codec 모듈), Kotlin
   wrapper, testkit이 빌드된다.
+- `.NET`의 아키텍처, 기능, 사용성, 폴더구조, 파일분류가 Java/Kotlin에서 evidence
+  table로 1:1 추적된다.
+- Java는 `.NET`과 같은 카테고리의 파일을 같은 package/folder 아래에 묶는다. 예를
+  들어 channels, spots, actors, streams, registry, monitoring, codecs, configuration,
+  runtime host, backend adapter, samples/shared 역할은 서로 섞지 않는다.
 - framework는 Java binding의 public API만 호출한다.
 - `.NET`과 같은 channel, Spot, actor/session, stream, registry, monitoring 의미를
   제공한다.
@@ -116,7 +123,7 @@ namespace 역할만 맡긴다. host 조립, option registration, spot runtime, s
 기능 축에는 **언어 간 상호호출**까지 포함한다. Java 서비스가 `.NET`/C++/Node 서비스와
 **같은 channel/packet** 위에서 상호 호출되는지 확인한다(언어 중립 wire 계약). 최소
 한 경로(예: Java client → `.NET` server channel request/reply, 또는 Java server ←
-Node connector)를 release 시나리오에 넣는다. 이것이 통과해야 4축 중 기능 축이
+Node connector)를 release 시나리오에 넣는다. 이것이 통과해야 기능 축이
 완료로 인정된다.
 
 Phase 10의 최소 release gate는
@@ -124,6 +131,74 @@ Phase 10의 최소 release gate는
 고정한다. Java가 만든 STREAM request frame을 Node connector protocol이 decode하고,
 Node가 만든 response frame을 Java가 다시 decode해야 한다. 이 테스트는 sample 목록을
 늘리지 않고 언어 중립 STREAM wire 계약을 검증한다.
+
+### 1.2 완료 판정 프로토콜
+
+이 작업은 긴 포팅 작업이므로 한 번에 전체 완료를 선언하지 않는다. 각 phase는
+**audit → implementation → verification → review** 순서로 닫는다. 이 네 단계가 모두
+끝나지 않으면 다음 phase로 넘어가지 않는다.
+
+1. **audit**: `.NET` 대응 코드와 현재 Java/Kotlin 코드를 비교해 완료 조건을 표로
+   만든다. 표에는 `.NET` 파일, Java/Kotlin 파일, 테스트 파일, 판정을 모두 적는다.
+2. **implementation**: audit에서 `미완료` 또는 `부분`으로 판정된 항목만 구현한다.
+   unrelated 변경은 하지 않는다.
+3. **verification**: phase gate의 test와 연결 회귀를 실행한다. 실행하지 못한 검증은
+   `미검증`으로 남기고 완료로 세지 않는다.
+4. **review**: no-op, fake, sample 우회, public API 누수, POSD 위험 신호가 남아
+   있는지 다시 검색한다. 하나라도 남으면 phase는 닫히지 않는다.
+
+각 phase가 닫힐 때 아래 형식의 **phase evidence table**을 남긴다. 코드 리뷰와
+커밋 메시지는 이 표를 기준으로 작성한다.
+
+| 항목 | `.NET` 기준 | Java/Kotlin 구현 | 검증 | 판정 |
+|------|-------------|------------------|------|------|
+| 예: channel request/reply | `...` 파일/테스트 | `...` 파일/테스트 | 실행한 명령 | 완료/부분/미완료/미검증 |
+
+판정 규칙은 아래와 같다.
+
+- **완료**: `.NET` 대응 기능이 Java/Kotlin에 있고, public API 경로로 실행되며,
+  자동 검증이 통과한다.
+- **부분**: compile은 되지만 기능 경로나 검증 일부가 빠져 있다.
+- **미완료**: public 표면만 있거나 runtime 배선이 없다.
+- **미검증**: 구현은 있어 보이지만 test 또는 sample 실행 증거가 없다.
+
+`부분`, `미완료`, `미검증`이 하나라도 있으면 해당 phase는 완료가 아니다.
+
+### 1.3 완료 금지 패턴
+
+아래 패턴은 build가 성공해도 완료로 인정하지 않는다. 발견되면 해당 phase의
+verification은 실패로 처리하고 먼저 제거한다.
+
+- public 설정 경로에 남은 `Noop*` builder 또는 상태를 바꾸지 않는 builder method
+- sample 통과만을 위한 `Recording*`, `Fake*`, `InMemory*` runtime 우회
+  (`testkit`과 명시적 unit test fixture는 제외)
+- client나 sample이 framework/connector public API를 거치지 않고 domain object,
+  `Catalog`, `Spot`, actor instance를 직접 호출하는 코드
+- `UnsupportedOperationException("not needed by sample")`처럼 sample 경로가
+  실제 runtime 기능을 생략했음을 숨기는 코드
+- readiness 문제를 가리는 sleep, polling delay, 임시 metadata/route store
+- framework가 Java binding internal/private member를 reflection으로 호출하는 코드
+- Java public API에 blocking helper를 추가해 `CompletionStage` 경로를 우회하는 코드
+- Kotlin wrapper가 Java runtime과 다른 lifecycle, ordering, error 의미를 만드는 코드
+
+단, `zlink-framework-testkit` 안의 fake backend와 fixture는 허용한다. testkit fixture는
+sample이나 production runtime에서 import할 수 없도록 forbidden dependency test로
+막는다.
+
+### 1.4 커밋과 push 조건
+
+커밋과 push는 Phase 11까지 끝난 뒤 한 번에 하지 않는다. 각 phase를 닫을 때마다
+작고 검증 가능한 단위로 커밋할 수 있지만, 아래 조건을 모두 만족해야 한다.
+
+- 해당 phase evidence table의 모든 항목이 `완료`다.
+- phase gate 명령과 결과가 기록되어 있다.
+- §1.3 완료 금지 패턴 검색이 통과한다.
+- unrelated dirty change가 staged 되지 않았다.
+- sample 또는 public API를 바꿨으면 대응 문서와 regression matrix가 함께 갱신됐다.
+
+위 조건을 만족하지 못한 상태에서 커밋하거나 push하지 않는다. 이미 push한 변경에서
+완료 금지 패턴이 발견되면, 다음 작업은 새 기능 추가가 아니라 해당 커밋의 교정 또는
+revert 여부 판단부터 시작한다.
 
 ## 2. 작업 원칙
 
@@ -134,6 +209,8 @@ Node가 만든 response frame을 Java가 다시 decode해야 한다. 이 테스�
 - sample 통과를 위해 sleep, in-memory route store, metadata store 같은 우회를 만들지
   않는다.
 - Kotlin은 Java runtime 위의 thin wrapper로만 구현한다.
+- 각 phase는 §1.2의 audit, implementation, verification, review 순서로만 닫는다.
+- §1.3 완료 금지 패턴이 남아 있으면 build 성공 여부와 관계없이 미완료다.
 
 ## 2.1 POSD 기반 리팩토링 절차
 
@@ -684,12 +761,19 @@ sample gate는 아래를 자동 확인해야 한다.
 
 각 phase가 끝날 때 아래를 확인한다.
 
+- §1.2 phase evidence table이 작성되어 있고 모든 항목이 `완료`다.
+- `.NET` 기준 파일, Java/Kotlin 구현 파일, 검증 파일/명령이 각각 비어 있지 않다.
+- §1.3 완료 금지 패턴 검색 결과가 green이다.
 - 문서의 public 이름과 코드 이름이 일치한다.
 - 새 public API가 생기면 guide, contract, regression 문서가 함께 갱신된다.
 - validation failure와 runtime event의 경계가 behavior matrix와 일치한다.
 - backend concrete type이 public API에 새지 않는다.
 - `.NET` test에서 같은 의미를 검증하는 항목이 있으면 Java regression matrix에
   대응 항목이 있다.
+- sample이 framework/connector public API를 통하지 않고 domain object, `Catalog`,
+  `Spot`, actor instance를 직접 호출하지 않는다.
+- `Noop*`, `Recording*`, `UnsupportedOperationException("not needed by sample")`가
+  production runtime이나 sample에 남아 있지 않다.
 
 ## 16.1 드래프트 함정 정정표 (code-vs-draft)
 
@@ -737,3 +821,58 @@ serial execution queue와 lifecycle을 우회하지 않는다.
 | 11 | **Phase 9** | Kotlin wrapper |
 | 12 | **Phase 10** | samples + release gate (full regression 포함) |
 | 13 | **Phase 11** | documentation promotion |
+
+## 18. 실행 요청 프롬프트
+
+이 문서를 실제 구현 작업에 사용할 때는 아래 프롬프트를 그대로 사용한다. 핵심은
+전체 작업을 한 번에 완료 선언하지 않고, phase마다 audit과 evidence table을 먼저
+작성한 뒤 구현, 검증, 재검토, 커밋, push까지 순서대로 닫는 것이다.
+
+```text
+/home/hep7/project/kairos/zlink 에서 작업해.
+
+목표:
+framework/languages/java/doc/draft/implementation-execution-plan.ko.md 를 기준으로
+framework/languages/dotnet 의 ZLink framework와 동일한 아키텍처, 기능, 사용성,
+폴더구조, 파일분류, 샘플 수준의 Java/Kotlin framework 포팅을 실제 구현해.
+
+중요:
+- scaffold, no-op, fake runtime, recording sample, 직접 객체 호출, Catalog 우회,
+  UnsupportedOperationException("not needed by sample")은 완료로 인정하지 마.
+- 완료 조건은 .NET framework와 아키텍처, 기능, 사용성, 폴더구조, 파일분류가 모두
+  동등해야 해. 하나라도 다르면 완료가 아니야.
+- Java는 같은 카테고리의 여러 파일을 같은 package/folder로 묶어. channels, spots,
+  actors, streams, registry, monitoring, codecs, configuration, runtime host, backend
+  adapter, samples/shared 역할을 루트 package나 임의 폴더에 섞지 마.
+- Java는 CompletionStage 기반 비동기 표면을 기본으로 하고, Kotlin은 suspend/Flow
+  wrapper만 제공해. Java public API에 blocking helper를 추가하지 마.
+- framework는 bindings/java public API만 호출해야 해. 필요한 binding 기능이 없으면
+  bindings/java에 public API를 추가하고 테스트해.
+- .NET framework의 코드와 테스트가 source of truth야. 문서와 코드가 다르면
+  framework/languages/dotnet/src, samples, tests를 우선해.
+- unrelated dirty change는 건드리지 마.
+
+진행 방식:
+1. Phase 0부터 Phase 11까지 순서대로 진행해. 의존성이 허용하는 병행 작업도 먼저
+   phase별 audit을 분리해서 남겨.
+2. 각 phase 시작 전에는 코드 수정하지 말고 .NET 기준 폴더/파일, Java/Kotlin 현재
+   폴더/파일, 테스트 파일, 완료/부분/미완료/미검증 판정을 phase evidence table로
+   작성해.
+3. audit에는 아키텍처, 기능, 사용성, 폴더구조, 파일분류 5축 동등성 판정을 반드시
+   포함해.
+4. 해당 phase의 부분/미완료/미검증 항목만 구현해. unrelated 변경은 하지 마.
+5. phase 구현 후에는 gate test, 연결 회귀, 완료 금지 패턴 검색을 실행해.
+6. 검증 후 POSD red flag, no-op/fake/sample 우회, public API 누수, 문서와 코드 이름
+   불일치를 다시 리뷰해. 하나라도 남으면 같은 phase 안에서 수정과 검증을 반복해.
+7. phase evidence table의 모든 항목이 완료가 되면 그 phase를 닫고, §1.4 조건에 맞춰
+   작은 주제 단위로 커밋하고 push해.
+8. Phase 11까지 모두 닫히기 전에는 최종 완료라고 말하지 마. 부분/미완료/미검증이
+   하나라도 있으면 원인과 다음 수정 범위를 적고 계속 수정해.
+9. 최종 완료 선언은 .NET framework와 아키텍처, 기능, 사용성, 폴더구조, 파일분류,
+   샘플이 모두 동등하고 full regression과 sample self-check가 통과한 뒤에만 해.
+
+검증:
+- 가능한 한 자동 테스트와 sample self-check를 실행해.
+- 실행하지 못한 검증은 미검증으로 남겨.
+- sleep이나 임시 store로 readiness 문제를 숨기지 마.
+```

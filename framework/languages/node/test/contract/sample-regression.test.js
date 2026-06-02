@@ -97,6 +97,49 @@ test('node topology samples mirror dotnet role layout', () => {
       'Shared/Configuration/sample-names.js',
       'Shared/Contracts/bingo-card.js',
       'Shared/Contracts/messages.js'
+    ],
+    'Bingo.Ts': [
+      'Client/bingo-client-app.ts',
+      'Client/bingo-notification-inbox.ts',
+      'Client/bingo-player-client.ts',
+      'Client/self-check.ts',
+      'Server/Api/Handlers/authenticate-player-handler.ts',
+      'Server/Api/Handlers/match-bingo-handler.ts',
+      'Server/Api/api-server-host-factory.ts',
+      'Server/Api/main.ts',
+      'Server/Play/Actors/player-actor.ts',
+      'Server/Play/Actors/player-actor-factory.ts',
+      'Server/Play/BingoRoomSpots/Handlers/bingo-room-actor-joined-handler.ts',
+      'Server/Play/BingoRoomSpots/Handlers/bingo-room-actor-left-handler.ts',
+      'Server/Play/BingoRoomSpots/Handlers/bingo-room-join-handler.ts',
+      'Server/Play/BingoRoomSpots/Handlers/bingo-room-spot-created-handler.ts',
+      'Server/Play/BingoRoomSpots/Handlers/bingo-room-timer-handler.ts',
+      'Server/Play/BingoRoomSpots/Handlers/start-bingo-game-handler.ts',
+      'Server/Play/BingoRoomSpots/bingo-card.ts',
+      'Server/Play/BingoRoomSpots/bingo-notification-publisher.ts',
+      'Server/Play/BingoRoomSpots/bingo-room-models.ts',
+      'Server/Play/BingoRoomSpots/bingo-room-spot.ts',
+      'Server/Play/EntrySpot/Handlers/bingo-entry-spot-actor-joined-handler.ts',
+      'Server/Play/EntrySpot/Handlers/bingo-entry-spot-actor-left-handler.ts',
+      'Server/Play/EntrySpot/Handlers/match-bingo-actor-handler.ts',
+      'Server/Play/EntrySpot/bingo-entry-spot.ts',
+      'Server/Play/Handlers/allocate-bingo-room-handler.ts',
+      'Server/Play/Handlers/bingo-room-directory.ts',
+      'Server/Play/Handlers/ensure-player-actor-handler.ts',
+      'Server/Play/Handlers/match-bingo-channel-handler.ts',
+      'Server/Play/Handlers/run-bingo-room-timer-handler.ts',
+      'Server/Play/Handlers/start-bingo-game-channel-handler.ts',
+      'Server/Play/play-server-host-factory.ts',
+      'Server/Play/main.ts',
+      'Server/Registry/registry-host-factory.ts',
+      'Server/Registry/main.ts',
+      'Server/Session/Sessions/Handlers/authenticate-session-handler.ts',
+      'Server/Session/Sessions/bingo-session.ts',
+      'Server/Session/session-server-host-factory.ts',
+      'Server/Session/main.ts',
+      'Shared/Configuration/sample-names.ts',
+      'Shared/Contracts/bingo-card.ts',
+      'Shared/Contracts/messages.ts'
     ]
   };
   const missing = [];
@@ -150,20 +193,27 @@ test('node framework samples exercise the NestJS module surface', () => {
   assert.deepEqual(missing, []);
 });
 
-test('Bingo TypeScript sample builds and delegates to separated Bingo JS servers', () => {
+test('Bingo TypeScript sample builds and exposes separated TypeScript roles', () => {
   const packageJson = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'package.json'), 'utf8');
   const tsconfig = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'tsconfig.json'), 'utf8');
   const client = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'self-check.ts'), 'utf8');
+  const api = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
+  const session = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'main.ts'), 'utf8');
+  const play = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
   const readme = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'README.ko.md'), 'utf8');
   const runSamples = fs.readFileSync(path.join(samplesRoot, 'run_samples.sh'), 'utf8');
   const required = [
     [packageJson, '@zlink-systems/sample-bingo-ts'],
     [packageJson, 'tsc -p tsconfig.json'],
     [tsconfig, '"outDir": "dist"'],
-    [client, "require('../../../Bingo/Client/bingo-client-app')"],
-    [client, "../../../Bingo/Server/Api/main.js"],
+    [tsconfig, '"Server/**/*.ts"'],
+    [client, "from './bingo-client-app'"],
+    [client, "../Server/Api/main.js"],
     [client, 'PASS Bingo.Ts'],
-    [readme, 'TypeScript client entrypoint'],
+    [api, 'buildApiServerHost'],
+    [session, 'buildSessionServerHost'],
+    [play, 'buildPlayServerHost'],
+    [readme, 'TypeScript Client/Server/Shared 구조'],
     [runSamples, 'samples/Bingo.Ts'],
     [runSamples, 'npm run build'],
     [runSamples, 'npm run start']
@@ -187,12 +237,18 @@ test('node topology samples run server roles as separate processes over TCP rout
     ['Bingo', 'Server/Api/main.js', 'BINGO_API_ENDPOINT'],
     ['Bingo', 'Server/Play/main.js', 'BINGO_PLAY_ENDPOINT'],
     ['Bingo', 'Server/Session/main.js', 'BINGO_SESSION_ENDPOINT'],
-    ['Bingo', 'Server/Registry/main.js', 'BINGO_REGISTRY_ENDPOINT']
+    ['Bingo', 'Server/Registry/main.js', 'BINGO_REGISTRY_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Api/main.ts', 'BINGO_API_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_PLAY_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Registry/main.ts', 'BINGO_REGISTRY_ENDPOINT']
   ];
 
   for (const [sample, serverRelative, endpointEnv] of cases) {
     const serverEntry = path.join(samplesRoot, sample, serverRelative);
-    const clientEntry = path.join(samplesRoot, sample, 'Client', 'self-check.js');
+    const clientEntry = fs.existsSync(path.join(samplesRoot, sample, 'Client', 'self-check.js'))
+      ? path.join(samplesRoot, sample, 'Client', 'self-check.js')
+      : path.join(samplesRoot, sample, 'Client', 'self-check.ts');
     const serverContent = fs.readFileSync(serverEntry, 'utf8');
     const clientContent = fs.readFileSync(clientEntry, 'utf8');
 

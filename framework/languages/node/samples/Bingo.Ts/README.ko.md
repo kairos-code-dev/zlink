@@ -1,7 +1,7 @@
 # Bingo TypeScript Sample
 
-TypeScript client entrypoint 로 Bingo JS 서버 process 를 시작하고 같은 TCP channel
-메시징 경로를 검증한다. `Bingo/` 는 JavaScript 샘플이고, 이 디렉토리는 TypeScript
+TypeScript Client/Server/Shared 구조로 Bingo sample 을 실행하고 같은 TCP route/channel
+메시징 경로를 검증한다. `Bingo/` 는 JavaScript 샘플이고, `Bingo.Ts/` 는 TypeScript
 사용자가 보는 기본 샘플이다.
 
 ## 실행
@@ -14,15 +14,18 @@ npm run start
 
 ## Topology
 
-- `Client/self-check.ts`: TypeScript 로 작성된 self-check entrypoint 이다.
-- `../Bingo/Server/*`: JavaScript Bingo 서버 process 를 재사용한다. 서버 구조와 handler
-  group 등록은 JavaScript 샘플과 동일하다.
-- `../Bingo/Client/bingo-client-app.js`: 현재 framework public client helper 를 통해
-  four-player flow 를 실행한다.
+- `Client/`: TypeScript self-check, client app, player client, notification inbox 구조를
+  제공한다.
+- `Server/Api/`: TypeScript API role entrypoint 와 handler 파일 구성을 제공한다.
+- `Server/Session/`: TypeScript Session role entrypoint 와 session handler 구성을 제공한다.
+- `Server/Play/`: TypeScript Play role entrypoint 와 actor, entry spot, room spot, handler
+  파일 구성을 제공한다.
+- `Server/Registry/`: TypeScript Registry role entrypoint 를 제공한다.
+- `Shared/`: TypeScript sample names 와 message helper 구성을 제공한다.
 
 ## Success Condition
 
-- TypeScript entrypoint 가 Registry, Session, Play, API process 를 시작한다.
+- TypeScript entrypoint 가 TypeScript Registry, Session, Play, API process 를 시작한다.
 - JavaScript Bingo 샘플과 같은 four-player auth, match, start, timer, push fanout 결과를
   검증한다.
 - TypeScript 컴파일이 통과한 산출물을 Node 로 실행한다.

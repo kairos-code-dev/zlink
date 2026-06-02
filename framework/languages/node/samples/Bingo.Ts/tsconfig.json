@@ -6,6 +6,8 @@
     "rootDir": "."
   },
   "include": [
-    "Client/**/*.ts"
+    "Client/**/*.ts",
+    "Server/**/*.ts",
+    "Shared/**/*.ts"
   ]
 }

@@ -1,10 +1,9 @@
 const { runRoleServer } = require('../../shared/role-process');
-const { createGameServer, playDeterministicGame } = require('./game-server');
 
 async function main() {
   await runRoleServer(
-    () => createGameServer(),
-    { play: playDeterministicGame }
+    () => ({ role: 'api-server' }),
+    { ping: (state) => state }
   );
 }
 

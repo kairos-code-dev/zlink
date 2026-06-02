@@ -72,6 +72,8 @@ test('node framework samples exercise the NestJS module surface', () => {
 test('node topology samples run server roles as separate processes', () => {
   const cases = [
     ['TicTacToe', 'server/main.js', 'server/main.js'],
+    ['TicTacToe', 'api-server/main.js', 'api-server/main.js'],
+    ['TicTacToe', 'play-server/main.js', 'play-server/main.js'],
     ['TicTacToe.SessionGateway', 'session-server/main.js', 'session-server/main.js'],
     ['TicTacToe.SessionGateway', 'api-server/main.js', 'api-server/main.js'],
     ['TicTacToe.SessionGateway', 'play-server/main.js', 'play-server/main.js'],
@@ -164,6 +166,27 @@ test('StreamingClient sample covers reconnect request reply and manual notificat
     "client.on('ServerNotice'"
   ];
   const missing = required.filter((text) => !sample.includes(text));
+
+  assert.deepEqual(missing, []);
+});
+
+test('TicTacToe sample covers separated api play roles timer and push notifications', () => {
+  const client = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'client', 'self-check.js'), 'utf8');
+  const server = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'server', 'game-server.js'), 'utf8');
+  const required = [
+    [client, '../api-server/main.js'],
+    [client, '../play-server/main.js'],
+    [client, 'PlayerJoinedNotify'],
+    [client, 'GameStateNotify'],
+    [client, 'timerRegistered'],
+    [server, "addTimer('turn-timeout'"],
+    [server, 'class TurnTimeoutTimer'],
+    [server, 'PlayerJoinedNotify'],
+    [server, 'GameStateNotify']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
 
   assert.deepEqual(missing, []);
 });

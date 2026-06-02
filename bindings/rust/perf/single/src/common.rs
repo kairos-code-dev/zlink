@@ -513,11 +513,11 @@ where
     S: FnMut(Message) -> bool,
 {
     let mut seq: u64 = 0;
-    let mut buf = vec![0u8; msg_size.max(HEADER_SIZE)];
+    let payload_size = msg_size.max(HEADER_SIZE);
 
     while Instant::now() < active_deadline {
-        encode_header(&mut buf, phase, msg_size as u32, seq);
-        let msg = Message::try_from(&buf).expect("msg");
+        let mut msg = Message::with_size(payload_size).expect("msg");
+        encode_header(msg.data_mut(), phase, msg_size as u32, seq);
         if send_fn(msg) {
             seq += 1;
         } else {

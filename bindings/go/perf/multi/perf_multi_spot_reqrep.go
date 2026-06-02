@@ -394,10 +394,12 @@ func submitMultiSpotReqRepRequest(slot *multiSpotReqRepSlot, transport string, m
 
 	request := slot.spot.RequestToSpot(multiSpotReqRepNodeRID, multiSpotReqRepSpotRID)
 	var submit zlink.RequestSubmitOp
+	var requestMessage *zlink.Message
 	if useMultiSpotReqRepBytes(transport, msgSize) {
 		submit = request.Bytes(slot.payload)
 	} else {
-		submit = request.Message(perfcommon.NewMessage(slot.payload))
+		requestMessage = perfcommon.NewMessage(slot.payload)
+		submit = request.Message(requestMessage)
 	}
 	ok, err := submit.Flags(zlink.SendFlagsDontWait).Timeout(200*time.Millisecond).Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
 		defer func() {
@@ -416,6 +418,9 @@ func submitMultiSpotReqRepRequest(slot *multiSpotReqRepSlot, transport string, m
 			latencies <- latencyNs / 2.0
 		}
 	})
+	if requestMessage != nil {
+		_ = requestMessage.Close()
+	}
 	if err != nil {
 		slot.mu.Lock()
 		slot.waiting = false

@@ -30,9 +30,9 @@
 | 2 | .NET | `bindings/dotnet/perf` | `미달 없음` | `미달 없음` | Single은 routed active recv 정렬로 `ROUTER_ROUTER inproc 262144B`를 통과로 올렸고, 나머지 7개는 public API 기준에서 추가 개선 후보가 확인되지 않아 미달했다. Multi는 full+4096B 보강+제한 재측정 뒤 잔여 11개를 미달했다. |
 | 3 | Java | `bindings/java/perf` | `미달 없음` | `미달 없음` | Single은 SPOT 대용량 9개를 재검토하고 wrapper 재사용 실험까지 확인한 뒤 미달했다. Multi는 `MULTI_DEALER_DEALER ws 131072B`와 `MULTI_SPOT wss` 5개를 미달했다. |
 | 4 | Node | `bindings/node/perf` | `미달 6/144 (4.2%)` | `미달 21/156 (13.5%)` | Multi가 10% gate를 초과하지만, fastpath 변경, single routed 단일 payload native 수신, `sendToSpot` DontWait result-code 경로, `MULTI_PUBSUB` 단일 payload 내부 수신 경로를 적용했고, 추가 public contract-safe 후보는 log에 기각 근거를 남겼다. 평균 성능 비율을 계산한 뒤 다음 언어로 넘어간다. |
-| 5 | Go | `bindings/go/perf` | `미달 없음` | `미달 없음` | routed/spot hot path를 재검토하고 `Bytes(...)` 송신 재사용 실험까지 확인했다. 통과를 만들지 못한 잔여 항목은 public API 범위에서 추가 후보가 없어 미달했다. |
-| 6 | Rust | `bindings/rust/perf` | `미달 없음` | `미달 없음` | Single SPOT 소형 native message 직접 작성과 Multi SPOT wss worker 확대를 적용했다. 통과하지 못한 잔여 항목은 public API와 현재 runner 구조에서 추가 개선 후보가 확인되지 않아 미달했다. |
-| 7 | Python | `bindings/python/perf` | `미달 없음` | `미달 없음` | Python public API 안에서 payload stamp 복사 제거, single receive zero-copy header decode, multi echo/spot receive zero-copy 후보를 적용하고 제한 재측정했다. 통과권까지 오르지 않은 잔여 항목은 근거 있는 미달로 정리했다. |
+| 5 | Go | `bindings/go/perf` | `미달 6/144 (4.2%)` | `미달 20/192 (10.4%)` | `MULTI_SPOT_REQREP tcp 4096B`는 request message 누수 수정으로 통과했고, 같은 complete 검증에서 `ws 131072B`도 통과로 회복했다. 잔여 routed echo, one-way 64B, builder hot path 후보를 추가로 시험했지만 새 통과를 만들지 못해 Go는 추가 후보 소진으로 정리하고 Rust로 넘어간다. |
+| 6 | Rust | `bindings/rust/perf` | `미달 25/144 (17.4%)` | `미달 11/192 (5.7%)` | Single 공통 송신 loop를 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿔 `PUBSUB wss 64B`를 통과로 올렸다. 이후 table transport full 확인에서 routed 대용량과 `SPOT tcp/ws/tls 1024B`는 기준에 못 닿았고, public recv envelope를 우회하지 않는 추가 후보는 log에 기각 근거를 남겼다. |
+| 7 | Python | `bindings/python/perf` | `미달 없음` | `미달 없음` | CPython extension native bridge로 ctypes 반복 호출과 Python active loop를 줄였다. Single은 complete report 기준 미달이 없다. Multi는 `MULTI_SPOT_REQREP` native request/reply loop로 잔여 17개 cell을 모두 통과시켰고, `MULTI_SPOT_SENDSEND`는 native dispatch, client `init_data` 소형 fast path, C small failset 제한 재측정 기준으로 잔여 cell을 모두 통과했다. |
 
 ### 1.1 언어별 평균 성능
 
@@ -51,9 +51,9 @@ p10은 하위 10% 경계값이고, 최저 10% 평균은 가장 느린 구간의 
 | .NET | 388 | 87.6% | 92.8% | 60.8% | 49.4% | 93.3% | 81.3% |
 | Java | 328 | 92.1% | 89.2% | 59.2% | 47.9% | 103.9% | 82.9% |
 | Node | 300 | 60.9% | 41.7% | 28.0% | 23.0% | 70.5% | 52.1% |
-| Go | 335 | 73.7% | 68.2% | 45.0% | 38.4% | 81.8% | 67.6% |
+| Go | 335 | 73.8% | 68.2% | 45.0% | 38.2% | 81.8% | 67.7% |
 | Rust | 336 | 94.8% | 95.5% | 76.3% | 48.2% | 95.4% | 94.4% |
-| Python | 313 | 29.1% | 14.9% | 3.7% | 2.1% | 39.0% | 20.7% |
+| Python | 328 | 80.5% | 82.2% | 46.5% | 38.3% | 85.4% | 76.7% |
 
 
 ## 2. 기준 파일 메모
@@ -649,7 +649,7 @@ public API 범위에서 더 줄일 수 있는 좁은 내부 변경점은 확인�
 | `tcp` | `MULTI_ROUTER_ROUTER` | `미달(36.5%)` | `미달(37.5%)` | `미달(37.7%)` | `통과(40.3%)` | `미달(38.3%)` | `통과(46.0%)` | 64/256/1024/65536B는 제한 재측정 `perf_go_multi_linux_20260601_200558_go_multi_routed_tcp_tls_failset_recheck_20260601.txt` 기준. 나머지는 C full/Go multi full. |
 | `tcp` | `MULTI_PUBSUB` | `미달(47.5%)` | `통과(59.3%)` | `통과(103.4%)` | `통과(78.2%)` | `통과(55.5%)` | `통과(71.0%)` | 64/256B는 제한 재측정 `perf_go_multi_linux_20260601_201047_go_multi_simple_small_failset_recheck_20260601.txt` 기준. 나머지는 C full/Go multi full. |
 | `tcp` | `MULTI_SPOT` | `통과(59.1%)` | `통과(61.7%)` | `통과(56.5%)` | `통과(68.8%)` | `통과(111.6%)` | `통과(104.7%)` | C full/Go multi full. |
-| `tcp` | `MULTI_SPOT_REQREP` | `통과(54.1%)` | `통과(54.9%)` | `통과(55.5%)` | `미달(47.6%)` | `미달(1.3%)` | `통과(53.9%)` | 65536B는 runs=5 제한 재측정 `perf_go_multi_linux_20260601_194109_go_multi_spot_tcp65536_runs5_recheck_20260601.txt` 기준. 나머지는 C full/Go multi full. |
+| `tcp` | `MULTI_SPOT_REQREP` | `통과(54.1%)` | `통과(55.3%)` | `통과(55.5%)` | `통과(65.0%)` | `미달(1.1%)` | `통과(53.9%)` | 256/4096/65536B는 request message 누수 수정 뒤 complete 재확인 `perf_go_multi_linux_20260602_152744_go_multi_spot_reqrep_message_close_tcp_reconfirm_20260602.txt` 기준. 4096B는 통과로 회복했고 65536B는 여전히 기준에 못 닿아 미달한다. 나머지는 C full/Go multi full. |
 | `tcp` | `MULTI_SPOT_SENDSEND` | `통과(63.7%)` | `통과(57.9%)` | `통과(63.8%)` | `통과(68.4%)` | `미달(3.7%)` | `통과(77.2%)` | 65536B는 runs=5 제한 재측정 `perf_go_multi_linux_20260601_194109_go_multi_spot_tcp65536_runs5_recheck_20260601.txt` 기준. 나머지는 C full/Go multi full. |
 | `tcp` | `MULTI_STREAM` | `통과(100.4%)` | `통과(95.2%)` | `통과(89.7%)` | `통과(64.6%)` | `통과(67.0%)` | `통과(72.9%)` | C full/Go multi full. |
 | `ws` | `MULTI_DEALER_DEALER` | `미달(46.8%)` | `통과(56.1%)` | `통과(71.7%)` | `통과(55.1%)` | `통과(60.0%)` | `통과(62.1%)` | 64/256B는 제한 재측정 `perf_go_multi_linux_20260601_201047_go_multi_simple_small_failset_recheck_20260601.txt` 기준. 4096B는 단독 완료 재측정 `perf_go_multi_linux_20260601_195703_go_multi_dealer_dealer_ws_4096_recheck_20260601.txt` 기준. 나머지는 C full/Go multi full. |
@@ -657,7 +657,7 @@ public API 범위에서 더 줄일 수 있는 좁은 내부 변경점은 확인�
 | `ws` | `MULTI_ROUTER_ROUTER` | `미달(39.0%)` | `통과(42.4%)` | `통과(40.2%)` | `통과(42.4%)` | `통과(44.7%)` | `통과(57.2%)` | C full/Go multi full. |
 | `ws` | `MULTI_PUBSUB` | `통과(343.7%)` | `통과(90.7%)` | `통과(66.2%)` | `통과(113.0%)` | `통과(83.0%)` | `통과(76.9%)` | 64/256B는 제한 재측정 `perf_go_multi_linux_20260601_201047_go_multi_simple_small_failset_recheck_20260601.txt` 기준. 나머지는 C full/Go multi full. |
 | `ws` | `MULTI_SPOT` | `통과(54.3%)` | `통과(57.1%)` | `통과(56.3%)` | `통과(67.0%)` | `통과(109.3%)` | `통과(112.5%)` | C full/Go multi full. |
-| `ws` | `MULTI_SPOT_REQREP` | `통과(62.9%)` | `통과(63.4%)` | `통과(59.5%)` | `통과(54.5%)` | `통과(67.1%)` | `미달(49.9%)` | 65536B는 제한 재측정 `perf_go_multi_linux_20260601_193756_go_multi_spot_65536_recheck_20260601.txt` 기준. 나머지는 C full/Go multi full. |
+| `ws` | `MULTI_SPOT_REQREP` | `통과(62.9%)` | `통과(63.4%)` | `통과(59.5%)` | `통과(54.5%)` | `통과(67.1%)` | `통과(50.1%)` | 131072B는 request message 누수 수정 검증 `perf_go_multi_linux_20260602_152143_go_multi_spot_reqrep_message_close_fullpattern_20260602.txt` 기준으로 통과권에 회복했다. 65536B는 제한 재측정 `perf_go_multi_linux_20260601_193756_go_multi_spot_65536_recheck_20260601.txt` 기준. 나머지는 C full/Go multi full. |
 | `ws` | `MULTI_SPOT_SENDSEND` | `통과(55.3%)` | `통과(58.2%)` | `통과(58.6%)` | `통과(68.7%)` | `통과(89.8%)` | `통과(83.9%)` | 65536B는 제한 재측정 `perf_go_multi_linux_20260601_193756_go_multi_spot_65536_recheck_20260601.txt` 기준. 나머지는 C full/Go multi full. |
 | `ws` | `MULTI_STREAM` | `통과(105.1%)` | `통과(100.7%)` | `통과(88.5%)` | `통과(87.3%)` | `통과(93.5%)` | `통과(105.2%)` | C full/Go multi full. |
 | `wss` | `MULTI_DEALER_DEALER` | `미달(44.6%)` | `통과(56.6%)` | `통과(67.9%)` | `통과(55.3%)` | `통과(50.9%)` | `통과(52.9%)` | 64/256B는 제한 재측정 `perf_go_multi_linux_20260601_201047_go_multi_simple_small_failset_recheck_20260601.txt` 기준. 65536B는 단독 완료 재측정 `perf_go_multi_linux_20260601_195558_go_multi_dealer_dealer_wss_tls_65536_recheck_20260601.txt` 기준. 131072B는 단독 완료 재측정 `perf_go_multi_linux_20260601_195945_go_multi_dealer_dealer_131072_recheck_20260601.txt` 기준. 나머지는 C full/Go multi full. |
@@ -682,7 +682,7 @@ public API 범위에서 더 줄일 수 있는 좁은 내부 변경점은 확인�
 
 perf 경로: `bindings/rust/perf`.
 
-Rust single smoke 결과 파일은 `perf_rust_single_linux_20260531_145023_round_20260530_rust_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_rust_single_linux_20260531_145104_round_20260530_rust_single_full_v1.txt`이고 status=complete(720/720)였다. 후보 재측정 파일 `perf_rust_single_linux_20260531_151316_round_20260530_rust_single_failset_recheck.txt`는 status=complete(480/480)였다. 추가 개선으로 SPOT active send에서 1024B 이하 payload는 public `Message::with_size(...).data_mut()`에 직접 header를 채우도록 바꿨다. 최종 probe `perf_rust_single_linux_20260531_233915_rust_single_spot_direct_message_final_20260531.txt`에서 `SPOT wss 256B`는 96.7%, `SPOT tls 1024B`는 93.5%로 통과했다. 같은 변경 뒤 `SPOT tcp 1024B`는 63.2%로 기준에 못 닿아 미달한다. PUBSUB 수신 `TopicMessage` 재사용 probe `perf_rust_single_linux_20260531_233521_rust_single_pubsub_reuse_probe_20260531.txt`와 소형 message 공통 직접 작성 probe `perf_rust_single_linux_20260531_233731_rust_single_small_message_probe_20260531.txt`는 PUBSUB 64B 계열을 통과권으로 올리지 못했고 일부는 기존보다 낮아 최종 코드에 남기지 않았다. routed 대용량은 public `recv(&mut Received, ...)` envelope 경로를 유지해야 하며, Rust binding에는 C의 part 직접 수신을 노출한 public API가 없어 미달한다.
+Rust single smoke 결과 파일은 `perf_rust_single_linux_20260531_145023_round_20260530_rust_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_rust_single_linux_20260531_145104_round_20260530_rust_single_full_v1.txt`이고 status=complete(720/720)였다. 후보 재측정 파일 `perf_rust_single_linux_20260531_151316_round_20260530_rust_single_failset_recheck.txt`는 status=complete(480/480)였다. 추가 개선으로 SPOT active send에서 1024B 이하 payload는 public `Message::with_size(...).data_mut()`에 직접 header를 채우도록 바꿨다. 이번 라운드에서는 single 공통 송신 loop도 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿨다. Complete probe `perf_rust_single_linux_20260602_162501_rust_single_direct_message_pubsub_small_probe_20260602.txt`에서 `PUBSUB wss 64B`가 83.0%로 통과했고, 나머지 PUBSUB small 미달은 기준에 못 닿았다. routed 대용량 complete probe `perf_rust_single_linux_20260602_162557_rust_single_direct_message_routed_large_probe_20260602.txt`와 `SPOT tcp 1024B` complete probe `perf_rust_single_linux_20260602_164334_rust_single_direct_message_spot_tcp1024_probe_20260602.txt`는 새 통과를 만들지 못했다. PUBSUB 수신 `TopicMessage` 재사용 재확인 `perf_rust_single_linux_20260602_164508_rust_single_direct_message_pubsub_reuse_small_probe_20260602.txt`도 통과 수를 늘리지 못해 최종 코드에 남기지 않았다. 이후 table transport full `perf_rust_single_linux_20260602_175921_rust_single_after_candidates_table_transports_full_20260602.txt`는 status=complete(720/720)였고, routed 대용량과 `SPOT tcp/ws/tls 1024B`가 미달로 확인됐다. routed 대용량은 public `recv(&mut Received, ...)` envelope 경로를 유지해야 하며, Rust binding에는 C의 part 직접 수신을 노출한 public API가 없어 미달한다.
 
 Rust multi smoke 결과 파일은 `perf_rust_multi_linux_20260531_153200_round_20260530_rust_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_rust_multi_linux_20260531_153550_round_20260530_rust_multi_full_v1.txt`이고 status=complete(960/960)였다. 후보 재측정 파일 `perf_rust_multi_linux_20260531_160730_round_20260530_rust_multi_failset_recheck.txt`는 status=partial(595/600)이었지만, 누락된 `MULTI_SPOT ws 4096B`는 full 결과로 보강했다. 추가 개선으로 `MULTI_SPOT wss` 1024B 이상 recv worker 기본값을 8개로 늘렸다. Probe `perf_rust_multi_linux_20260531_234055_rust_multi_spot_wss_workers8_probe_20260531.txt`에서 worker 확대 효과를 먼저 확인했고, 최종 코드 probe `perf_rust_multi_linux_20260531_234241_rust_multi_spot_wss_workers8_final_20260531.txt`와 단독 보강 `perf_rust_multi_linux_20260531_234325_rust_multi_spot_wss_1024_workers8_final_fill_20260531.txt`를 overlay했다. `MULTI_SPOT wss 65536B/131072B`는 각각 121.3%, 130.6%로 통과했고, 1024B/4096B는 45.3%, 71.6%로 기준에 못 닿아 미달한다. Multi DEALER_DEALER/PUBSUB/REQREP 잔여 항목은 이미 `Message::with_size` 직접 작성, caller-provided `Received`/`TopicMessage` 재사용, worker drain 구조를 쓰고 있어 public API를 유지한 추가 내부 후보가 확인되지 않았다.
 
@@ -692,29 +692,29 @@ Rust multi smoke 결과 파일은 `perf_rust_multi_linux_20260531_153200_round_2
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
 | `tcp` | `PAIR` | `통과(96.5%)` | `통과(96.9%)` | `통과(108.6%)` | `통과(97.6%)` | `통과(97.6%)` | `통과(94.3%)` | C full/Rust single full. |
-| `tcp` | `PUBSUB` | `미달(74.5%)` | `통과(84.5%)` | `통과(107.2%)` | `통과(96.7%)` | `통과(97.0%)` | `통과(94.2%)` | C full/Rust single full. 보강 재측정 overlay 기준. PUBSUB 수신 재사용과 소형 message 직접 작성 probe는 통과를 만들지 못해 최종 코드에 남기지 않았다. |
+| `tcp` | `PUBSUB` | `미달(75.6%)` | `통과(83.4%)` | `통과(107.2%)` | `통과(96.7%)` | `통과(97.0%)` | `통과(94.2%)` | 64/256B는 single 공통 송신 직접 작성 complete probe `perf_rust_single_linux_20260602_162501_rust_single_direct_message_pubsub_small_probe_20260602.txt` 기준. 나머지는 C full/Rust single full. |
 | `tcp` | `DEALER_DEALER` | `통과(97.3%)` | `통과(97.5%)` | `통과(112.0%)` | `통과(97.2%)` | `통과(96.8%)` | `통과(94.0%)` | C full/Rust single full. |
 | `tcp` | `DEALER_ROUTER` | `통과(90.4%)` | `통과(89.5%)` | `통과(82.2%)` | `미달(12.8%)` | `미달(11.3%)` | `미달(10.5%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
 | `tcp` | `ROUTER_ROUTER` | `통과(95.2%)` | `통과(106.3%)` | `통과(93.1%)` | `미달(13.0%)` | `미달(11.4%)` | `미달(10.5%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
-| `tcp` | `SPOT` | `통과(155.2%)` | `통과(113.6%)` | `미달(63.2%)` | `통과(105.4%)` | `통과(90.3%)` | `통과(83.2%)` | 1024B는 SPOT direct-message 최종 probe `perf_rust_single_linux_20260531_233915_rust_single_spot_direct_message_final_20260531.txt` 기준. 기준에 못 닿아 미달한다. |
+| `tcp` | `SPOT` | `통과(155.2%)` | `통과(113.6%)` | `미달(59.9%)` | `통과(105.4%)` | `통과(90.3%)` | `통과(83.2%)` | 1024B는 table transport full `perf_rust_single_linux_20260602_175921_rust_single_after_candidates_table_transports_full_20260602.txt` 기준. 기준에 못 닿아 미달한다. |
 | `ws` | `PAIR` | `통과(96.9%)` | `통과(97.0%)` | `통과(122.6%)` | `통과(97.2%)` | `통과(97.2%)` | `통과(94.0%)` | C full/Rust single full. |
-| `ws` | `PUBSUB` | `미달(76.7%)` | `통과(88.5%)` | `통과(127.1%)` | `통과(97.2%)` | `통과(96.4%)` | `통과(94.1%)` | C full/Rust single full. 보강 재측정 overlay 기준. PUBSUB 수신 재사용과 소형 message 직접 작성 probe는 통과를 만들지 못해 최종 코드에 남기지 않았다. |
+| `ws` | `PUBSUB` | `미달(77.0%)` | `통과(87.5%)` | `통과(127.1%)` | `통과(97.2%)` | `통과(96.4%)` | `통과(94.1%)` | 64/256B는 single 공통 송신 직접 작성 complete probe `perf_rust_single_linux_20260602_162501_rust_single_direct_message_pubsub_small_probe_20260602.txt` 기준. 나머지는 C full/Rust single full. |
 | `ws` | `DEALER_DEALER` | `통과(97.2%)` | `통과(97.3%)` | `통과(114.3%)` | `통과(96.7%)` | `통과(97.0%)` | `통과(94.5%)` | C full/Rust single full. |
 | `ws` | `DEALER_ROUTER` | `통과(86.9%)` | `통과(102.3%)` | `통과(129.9%)` | `미달(29.0%)` | `미달(22.8%)` | `미달(19.4%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
 | `ws` | `ROUTER_ROUTER` | `통과(98.6%)` | `통과(112.0%)` | `통과(124.5%)` | `미달(27.6%)` | `미달(22.9%)` | `미달(20.6%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
-| `ws` | `SPOT` | `통과(156.6%)` | `통과(119.9%)` | `통과(88.9%)` | `통과(153.8%)` | `통과(160.4%)` | `통과(97.7%)` | C full/Rust single full. 보강 재측정 overlay 기준. |
+| `ws` | `SPOT` | `통과(156.6%)` | `통과(119.9%)` | `미달(71.9%)` | `통과(153.8%)` | `통과(160.4%)` | `통과(97.7%)` | 1024B는 table transport full `perf_rust_single_linux_20260602_175921_rust_single_after_candidates_table_transports_full_20260602.txt` 기준으로 미달한다. 나머지는 C full/Rust single full. 보강 재측정 overlay 기준. |
 | `wss` | `PAIR` | `통과(97.1%)` | `통과(97.1%)` | `통과(133.6%)` | `통과(127.7%)` | `통과(102.7%)` | `통과(104.4%)` | C full/Rust single full. |
-| `wss` | `PUBSUB` | `미달(79.7%)` | `통과(92.5%)` | `통과(146.4%)` | `통과(112.6%)` | `통과(101.2%)` | `통과(96.2%)` | C full/Rust single full. 보강 재측정 overlay 기준. PUBSUB 수신 재사용과 소형 message 직접 작성 probe는 통과를 만들지 못해 최종 코드에 남기지 않았다. |
+| `wss` | `PUBSUB` | `통과(83.0%)` | `통과(91.4%)` | `통과(146.4%)` | `통과(112.6%)` | `통과(101.2%)` | `통과(96.2%)` | 64/256B는 single 공통 송신 직접 작성 complete probe `perf_rust_single_linux_20260602_162501_rust_single_direct_message_pubsub_small_probe_20260602.txt` 기준. 나머지는 C full/Rust single full. |
 | `wss` | `DEALER_DEALER` | `통과(97.2%)` | `통과(97.5%)` | `통과(137.6%)` | `통과(128.0%)` | `통과(105.3%)` | `통과(96.4%)` | C full/Rust single full. |
 | `wss` | `DEALER_ROUTER` | `통과(85.5%)` | `통과(105.7%)` | `통과(130.2%)` | `통과(76.9%)` | `통과(78.0%)` | `통과(81.1%)` | C full/Rust single full. 보강 재측정 overlay 기준. |
 | `wss` | `ROUTER_ROUTER` | `통과(97.3%)` | `통과(110.2%)` | `통과(130.2%)` | `통과(78.0%)` | `통과(77.4%)` | `통과(92.4%)` | C full/Rust single full. 보강 재측정 overlay 기준. |
 | `wss` | `SPOT` | `통과(157.1%)` | `통과(96.7%)` | `통과(83.2%)` | `통과(154.6%)` | `통과(102.2%)` | `통과(276.5%)` | 256B는 SPOT direct-message 최종 probe `perf_rust_single_linux_20260531_233915_rust_single_spot_direct_message_final_20260531.txt` 기준. |
 | `tls` | `PAIR` | `통과(96.7%)` | `통과(97.0%)` | `통과(124.6%)` | `통과(98.8%)` | `통과(97.9%)` | `통과(95.5%)` | C full/Rust single full. |
-| `tls` | `PUBSUB` | `미달(73.7%)` | `미달(79.5%)` | `통과(124.1%)` | `통과(97.9%)` | `통과(98.0%)` | `통과(94.6%)` | C full/Rust single full. 보강 재측정 overlay 기준. PUBSUB 수신 재사용과 소형 message 직접 작성 probe는 통과를 만들지 못해 최종 코드에 남기지 않았다. |
+| `tls` | `PUBSUB` | `미달(79.5%)` | `미달(78.5%)` | `통과(124.1%)` | `통과(97.9%)` | `통과(98.0%)` | `통과(94.6%)` | 64/256B는 single 공통 송신 직접 작성 complete probe `perf_rust_single_linux_20260602_162501_rust_single_direct_message_pubsub_small_probe_20260602.txt` 기준. 나머지는 C full/Rust single full. |
 | `tls` | `DEALER_DEALER` | `통과(97.1%)` | `통과(97.2%)` | `통과(119.8%)` | `통과(98.1%)` | `통과(97.6%)` | `통과(95.8%)` | C full/Rust single full. |
 | `tls` | `DEALER_ROUTER` | `통과(86.8%)` | `통과(99.8%)` | `통과(124.4%)` | `미달(55.7%)` | `미달(54.2%)` | `미달(51.7%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
 | `tls` | `ROUTER_ROUTER` | `통과(91.5%)` | `통과(108.0%)` | `통과(123.8%)` | `미달(54.5%)` | `미달(54.1%)` | `미달(54.2%)` | C full/Rust single full. 보강 재측정 overlay 기준. public `Received` envelope를 우회하지 않는 추가 후보가 확인되지 않았다. |
-| `tls` | `SPOT` | `통과(144.4%)` | `통과(117.4%)` | `통과(93.5%)` | `통과(143.8%)` | `통과(100.6%)` | `통과(94.9%)` | 1024B는 SPOT direct-message 최종 probe `perf_rust_single_linux_20260531_233915_rust_single_spot_direct_message_final_20260531.txt` 기준. |
+| `tls` | `SPOT` | `통과(144.4%)` | `통과(117.4%)` | `미달(66.7%)` | `통과(143.8%)` | `통과(100.6%)` | `통과(94.9%)` | 1024B는 table transport full `perf_rust_single_linux_20260602_175921_rust_single_after_candidates_table_transports_full_20260602.txt` 기준으로 미달한다. |
 
 
 ### 8.2 Multi suite
@@ -759,9 +759,17 @@ Rust multi smoke 결과 파일은 `perf_rust_multi_linux_20260531_153200_round_2
 
 perf 경로: `bindings/python/perf`.
 
-Python single smoke 결과 파일은 `perf_python_single_linux_20260531_162613_round_20260530_python_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_python_single_linux_20260531_163931_round_20260530_python_single_full_v1.txt`이고 status=complete(720/720)였다. C 기준 대비 통과 56개와 잔류 미달 88개가 확인됐다. 이후 `stamp_payload(...)`가 `bytes` 사본 대신 기존 `bytearray`를 그대로 반환하게 바꾸고, single receive hot path가 마지막 message part의 공개 `Message.data` memoryview에서 header를 직접 읽게 바꿨다. 제한 재측정 `perf_python_single_linux_20260531_234853_python_single_stamp_bytearray_probe_20260531.txt`와 `perf_python_single_linux_20260531_235420_python_single_recv_data_view_probe_20260531.txt`에서 PAIR/PUBSUB 64/256/1024B는 C 대비 3.2~12.4% 범위에 머물러 통과권까지 오르지 않았다. Python interpreter 루프, ctypes 기반 message materialize, send builder 호출 경계가 작은 payload에서 지배적이라 public API 안에서 더 줄일 후보가 확인되지 않아 잔여 숫자형 항목은 미달한다.
+Python single smoke 결과 파일은 `perf_python_single_linux_20260531_162613_round_20260530_python_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_python_single_linux_20260531_163931_round_20260530_python_single_full_v1.txt`이고 status=complete(720/720)였다. C 기준 대비 통과 56개와 잔류 미달 88개가 확인됐다. 이후 `stamp_payload(...)`가 `bytes` 사본 대신 기존 `bytearray`를 그대로 반환하게 바꾸고, single receive hot path가 마지막 message part의 공개 `Message.data` memoryview에서 header를 직접 읽게 바꿨다. 제한 재측정 `perf_python_single_linux_20260531_234853_python_single_stamp_bytearray_probe_20260531.txt`와 `perf_python_single_linux_20260531_235420_python_single_recv_data_view_probe_20260531.txt`에서 PAIR/PUBSUB 64/256/1024B는 C 대비 3.2~12.4% 범위에 머물러 통과권까지 오르지 않았다. 이 후보만으로는 Python interpreter 루프, ctypes 기반 message materialize, send builder 호출 경계를 충분히 줄이지 못했다.
 
-Python multi smoke 결과 파일은 `perf_python_multi_linux_20260531_165008_round_20260530_python_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_python_multi_linux_20260531_180039_round_20260530_python_multi_full_v1.txt`이고 status=partial(810/960)이었다. 실패 조합 보강 파일 `perf_python_multi_linux_20260531_185859_round_20260530_python_multi_failset_fill.txt`는 status=partial(440/600)이었다. Overlay 뒤에도 RESULT가 없는 23개 칸은 두 실행에서 반복 실패한 조합이므로 `미달(RESULT 없음)`으로 둔다. 이후 `PERF_MULTI_*_IO_THREADS=4` 후보는 `perf_python_multi_linux_20260531_234941_python_multi_io4_spot_probe_20260531.txt`에서 MULTI_SPOT tcp/wss 64/1024B가 C 대비 4.1~4.6%에 그쳐 유지하지 않았다. Echo server와 SPOT receive 경로는 `to_bytes_list()` 또는 `to_bytes()` 사본 생성을 줄이고 공개 `Message.data` view를 submit/decode에 직접 쓰도록 바꿨다. 제한 재측정 `perf_python_multi_linux_20260601_001503_python_multi_dataview_echo_probe_20260531.txt`는 partial(205/225)이었고, `MULTI_SPOT wss 65536B`는 70.5%까지 개선됐다. 나머지 routed/SPOT echo 후보는 C 대비 4.0~53.4% 범위로 통과권에 못 미쳤거나 반복 timeout이 남아 미달한다.
+Python multi smoke 결과 파일은 `perf_python_multi_linux_20260531_165008_round_20260530_python_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_python_multi_linux_20260531_180039_round_20260530_python_multi_full_v1.txt`이고 status=partial(810/960)이었다. 실패 조합 보강 파일 `perf_python_multi_linux_20260531_185859_round_20260530_python_multi_failset_fill.txt`는 status=partial(440/600)이었다. Overlay 뒤에도 RESULT가 없는 23개 칸은 두 실행에서 반복 실패한 조합이므로 `미달(RESULT 없음)`으로 둔다. 이후 `PERF_MULTI_*_IO_THREADS=4` 후보는 `perf_python_multi_linux_20260531_234941_python_multi_io4_spot_probe_20260531.txt`에서 MULTI_SPOT tcp/wss 64/1024B가 C 대비 4.1~4.6%에 그쳐 유지하지 않았다. Echo server와 SPOT receive 경로는 `to_bytes_list()` 또는 `to_bytes()` 사본 생성을 줄이고 공개 `Message.data` view를 submit/decode에 직접 쓰도록 바꿨다. 제한 재측정 `perf_python_multi_linux_20260601_001503_python_multi_dataview_echo_probe_20260531.txt`는 partial(205/225)이었고, `MULTI_SPOT wss 65536B`는 70.5%까지 개선됐다. 이 단계까지는 routed/SPOT echo 후보 다수가 C 대비 4.0~53.4% 범위에 머물렀거나 반복 timeout이 남아 추가 후보가 필요했다.
+
+2026-06-02에는 `ctypes` 반복 호출을 줄이기 위해 CPython extension 기반 native bridge를 추가했다. `python3 setup.py build_ext --inplace --force`, `python3 -m compileall -q src tests perf`, `PYTHONPATH=src pytest -q tests`는 통과했다. full single `perf_python_single_linux_20260602_200749_python_native_bridge_full_single_20260602.txt`는 status=partial(1000/1020)이었지만, 실패 4개는 complete 제한 재측정으로 모두 회복됐다. 이후 일반 one-way single의 active phase를 native loop로 옮긴 complete report `perf_python_single_linux_20260602_234110_python_single_native_active_phase_verify_20260602.txt`에서 `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`의 `64/256/1024B`는 C 대비 최소 59.8% 이상으로 통과했다. SPOT은 직접 polling 방식의 native receive 후보가 불안정해 제거했지만, core dispatch callback 안에서만 `zlink_spot_subscribe_part(...)`를 drain하는 native count handler로 다시 구현했다. complete report `perf_python_single_linux_20260603_000326_python_spot_native_dispatch_count_verify_20260603.txt`에서 SPOT `tcp/tls/ws/wss`의 `64/256/1024B` 12개 cell은 C 대비 최소 77.5%로 모두 통과했다. 100us backoff 후보는 `perf_python_single_linux_20260603_001101_python_spot_native_dispatch_count_backoff100us_verify_20260603.txt`에서 `SPOT wss 256B`가 19.3%로 회귀해 최종 코드에 남기지 않았다.
+
+`DEALER_ROUTER`/`ROUTER_ROUTER` tcp/ws 대형 12개 cell은 native loop가 C single과 달리 active send에 `ZLINK_DONTWAIT`를 쓰고 있어 대역폭이 약 1.28GB/s에 묶였다. C single active send와 같은 `ZLINK_SEND_FLAGS_NONE`로 정렬한 complete report `perf_python_single_linux_20260603_014924.txt`에서 대상 cell은 C 대비 40.9~67.4%로 상승했고, 기존 미달 10개 cell이 모두 통과했다. `python3 setup.py build_ext --inplace --force`, `python3 -m compileall -q src tests perf`, `PYTHONPATH=src pytest -q tests`도 통과했다.
+
+Multi는 native bridge 이후 full run `perf_python_multi_linux_20260602_210003_python_native_bridge_full_multi_20260602.txt`가 status=partial(800/920)이었고, 초기 `MULTI_SPOT_SENDSEND`와 `MULTI_STREAM` failset 재측정도 반복 partial로 남았다. 이후 `MULTI_STREAM` native echo와 C multi default에 맞춘 Python multi `io_threads=4`를 적용한 complete report `perf_python_multi_linux_20260602_230703_python_stream_native_echo_default_io4_verify_20260602.txt`에서 대상 16개 cell이 C 대비 62.9~92.0%로 통과했다. `MULTI_SPOT_SENDSEND` 65536/131072B 대상은 `perf_python_multi_linux_20260602_231518_python_spot_sendsend_default_io4_slot_verify_20260602.txt`와 `perf_python_multi_linux_20260602_231618_python_spot_sendsend_tls65536_default_io4_recheck_20260602.txt` 기준 38.2~84.3%로 통과했다. `MULTI_DEALER_DEALER`는 native send/count loop complete report `perf_python_multi_linux_20260603_001915_python_multi_dealer_dealer_native_send_count_full_verify_20260603.txt`에서 C 대비 35.1~99.7%로 통과했고, `MULTI_PUBSUB`는 native publish/count loop complete report `perf_python_multi_linux_20260603_002713_python_multi_pubsub_native_publish_count_full_verify_20260603.txt`에서 C 대비 53.6~153.1%로 통과했다. `MULTI_DEALER_ROUTER`와 `MULTI_ROUTER_ROUTER`는 native client round-trip loop complete report `perf_python_multi_linux_20260603_010318.txt`에서 대형 16개 cell이 C 대비 39.3~90.8%로 통과했다. 이후 routed echo server의 수신-반송 loop 전체를 native loop로 옮긴 complete report `perf_python_multi_linux_20260603_012037.txt`에서 small/4096B 32개 cell도 C 대비 74.2~99.4%로 통과했다.
+
+`MULTI_SPOT`은 native polling-count client와 latency sample stride 1024 후보를 반영한 complete report 기준으로 모든 transport/msg-size가 통과했다. `MULTI_SPOT_SENDSEND`는 native client loop를 C perf처럼 등록형 poller 기반으로 맞춘 뒤 5개 cell이 추가로 통과했고, active phase 직전에 native routed echo handler를 설치한 보강 probe에서 `ws 1024B`도 통과했다. 이후 client send path에서 64/256B payload를 `zlink_msg_init_data(...)`로 초기화해 사본 생성을 줄였고, 같은 현재 환경에서 C `MULTI_SPOT_SENDSEND` 64/256B failset을 제한 재측정한 complete report로 small cell 기준을 보강했다. `MULTI_SPOT_REQREP`는 request submit과 reply callback 집계를 CPython extension active loop로 옮기고 server reply dispatch도 native handler로 처리한 뒤 잔여 17개 cell이 complete report 기준 모두 통과했다. 현재 Python 표는 complete report가 있는 cell만 반영하며, Single과 Multi 모두 미달이 없다. 상세 근거는 `doc/plan/perf/log/2026-06-02-python-bindings-performance-round.ko.md`에 남겼다.
 
 Python multi 표에서 긴 결과 파일명은 표 폭을 키우지 않도록 위 설명 문단에 모았다. 표 안의 메모는 기준과 판정만 짧게 적는다.
 
@@ -770,68 +778,68 @@ Python multi 표에서 긴 결과 파일명은 표 폭을 키우지 않도록 �
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미달(4.2%)` | `미달(4.1%)` | `미달(6.3%)` | `통과(95.8%)` | `통과(96.5%)` | `통과(96.4%)` | C full/Python single full. |
-| `tcp` | `PUBSUB` | `미달(3.6%)` | `미달(4.4%)` | `미달(5.2%)` | `통과(95.7%)` | `통과(95.9%)` | `통과(95.9%)` | C full/Python single full. |
-| `tcp` | `DEALER_DEALER` | `미달(4.0%)` | `미달(4.2%)` | `미달(6.2%)` | `통과(96.1%)` | `통과(96.0%)` | `통과(95.9%)` | C full/Python single full. |
-| `tcp` | `DEALER_ROUTER` | `미달(3.0%)` | `미달(3.2%)` | `미달(3.5%)` | `미달(17.9%)` | `미달(15.7%)` | `미달(14.6%)` | C full/Python single full. |
-| `tcp` | `ROUTER_ROUTER` | `미달(3.0%)` | `미달(3.1%)` | `미달(3.3%)` | `미달(0.0%)` | `미달(0.0%)` | `미달(0.0%)` | C full/Python single full. |
-| `tcp` | `SPOT` | `미달(11.9%)` | `미달(10.1%)` | `미달(9.9%)` | `통과(35.6%)` | `통과(43.4%)` | `통과(62.6%)` | C full/Python single full. |
-| `ws` | `PAIR` | `미달(4.5%)` | `미달(4.4%)` | `미달(8.2%)` | `통과(95.3%)` | `통과(96.1%)` | `통과(95.6%)` | C full/Python single full. |
-| `ws` | `PUBSUB` | `미달(3.6%)` | `미달(4.5%)` | `미달(6.4%)` | `통과(95.5%)` | `통과(95.5%)` | `통과(95.9%)` | C full/Python single full. |
-| `ws` | `DEALER_DEALER` | `미달(4.4%)` | `미달(4.3%)` | `미달(7.3%)` | `통과(95.1%)` | `통과(95.9%)` | `통과(96.0%)` | C full/Python single full. |
-| `ws` | `DEALER_ROUTER` | `미달(3.4%)` | `미달(3.7%)` | `미달(5.1%)` | `통과(40.4%)` | `미달(32.0%)` | `미달(27.1%)` | C full/Python single full. |
-| `ws` | `ROUTER_ROUTER` | `미달(3.3%)` | `미달(3.3%)` | `미달(4.2%)` | `미달(0.0%)` | `미달(0.0%)` | `미달(0.0%)` | C full/Python single full. |
-| `ws` | `SPOT` | `미달(12.3%)` | `미달(10.4%)` | `미달(10.1%)` | `통과(53.9%)` | `통과(60.1%)` | `통과(65.2%)` | C full/Python single full. |
-| `wss` | `PAIR` | `미달(4.6%)` | `미달(4.6%)` | `미달(12.3%)` | `통과(94.8%)` | `통과(96.8%)` | `통과(98.7%)` | C full/Python single full. |
-| `wss` | `PUBSUB` | `미달(3.8%)` | `미달(4.6%)` | `미달(11.0%)` | `통과(92.0%)` | `통과(93.5%)` | `통과(92.0%)` | C full/Python single full. |
-| `wss` | `DEALER_DEALER` | `미달(4.5%)` | `미달(4.3%)` | `미달(11.9%)` | `통과(94.8%)` | `통과(97.3%)` | `통과(91.7%)` | C full/Python single full. |
-| `wss` | `DEALER_ROUTER` | `미달(3.3%)` | `미달(3.7%)` | `미달(8.6%)` | `통과(84.4%)` | `통과(101.7%)` | `통과(105.9%)` | C full/Python single full. |
-| `wss` | `ROUTER_ROUTER` | `미달(3.4%)` | `미달(3.1%)` | `미달(7.0%)` | `미달(0.0%)` | `미달(0.0%)` | `미달(0.0%)` | C full/Python single full. |
-| `wss` | `SPOT` | `미달(11.9%)` | `미달(10.2%)` | `통과(71.4%)` | `통과(89.4%)` | `통과(186.5%)` | `통과(189.9%)` | C full/Python single full. |
-| `tls` | `PAIR` | `미달(4.5%)` | `미달(4.5%)` | `미달(9.1%)` | `통과(92.1%)` | `통과(94.3%)` | `통과(92.7%)` | C full/Python single full. |
-| `tls` | `PUBSUB` | `미달(3.7%)` | `미달(6.6%)` | `미달(7.5%)` | `통과(93.5%)` | `통과(94.3%)` | `통과(91.9%)` | C full/Python single full. |
-| `tls` | `DEALER_DEALER` | `미달(4.2%)` | `미달(4.3%)` | `미달(8.8%)` | `통과(91.2%)` | `통과(93.8%)` | `통과(92.5%)` | C full/Python single full. |
-| `tls` | `DEALER_ROUTER` | `미달(3.5%)` | `미달(3.6%)` | `미달(5.4%)` | `통과(72.7%)` | `통과(73.6%)` | `통과(69.7%)` | C full/Python single full. |
-| `tls` | `ROUTER_ROUTER` | `미달(3.0%)` | `미달(3.0%)` | `미달(4.5%)` | `미달(0.0%)` | `미달(0.0%)` | `미달(0.0%)` | C full/Python single full. |
-| `tls` | `SPOT` | `미달(11.5%)` | `미달(9.9%)` | `미달(11.8%)` | `통과(78.8%)` | `통과(96.8%)` | `통과(92.2%)` | C full/Python single full. |
+| `tcp` | `PAIR` | `통과(95.0%)` | `통과(94.9%)` | `통과(88.7%)` | `통과(95.8%)` | `통과(96.5%)` | `통과(96.4%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `tcp` | `PUBSUB` | `통과(96.2%)` | `통과(101.8%)` | `통과(72.8%)` | `통과(95.7%)` | `통과(95.9%)` | `통과(95.9%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `tcp` | `DEALER_DEALER` | `통과(94.9%)` | `통과(95.1%)` | `통과(90.0%)` | `통과(96.1%)` | `통과(96.0%)` | `통과(95.9%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `tcp` | `DEALER_ROUTER` | `통과(75.0%)` | `통과(80.3%)` | `통과(61.6%)` | `통과(48.0%)` | `통과(43.7%)` | `통과(40.9%)` | 64/256/1024B는 native active phase complete report 기준. 대형은 blocking send 정렬 complete report 기준. |
+| `tcp` | `ROUTER_ROUTER` | `통과(95.1%)` | `통과(96.8%)` | `통과(63.3%)` | `통과(48.2%)` | `통과(42.4%)` | `통과(41.9%)` | 64/256/1024B는 native active phase complete report 기준. 대형은 blocking send 정렬 complete report 기준. |
+| `tcp` | `SPOT` | `통과(86.8%)` | `통과(77.5%)` | `통과(85.9%)` | `통과(35.6%)` | `통과(43.4%)` | `통과(62.6%)` | 64/256/1024B는 native dispatch-count complete report 기준. |
+| `ws` | `PAIR` | `통과(94.7%)` | `통과(94.9%)` | `통과(88.5%)` | `통과(95.3%)` | `통과(96.1%)` | `통과(95.6%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `ws` | `PUBSUB` | `통과(95.3%)` | `통과(101.1%)` | `통과(76.6%)` | `통과(95.5%)` | `통과(95.5%)` | `통과(95.9%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `ws` | `DEALER_DEALER` | `통과(94.9%)` | `통과(95.1%)` | `통과(84.7%)` | `통과(95.1%)` | `통과(95.9%)` | `통과(96.0%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `ws` | `DEALER_ROUTER` | `통과(78.5%)` | `통과(95.3%)` | `통과(61.8%)` | `통과(67.4%)` | `통과(62.2%)` | `통과(56.0%)` | 64/256/1024B는 native active phase complete report 기준. 대형은 blocking send 정렬 complete report 기준. |
+| `ws` | `ROUTER_ROUTER` | `통과(93.8%)` | `통과(101.2%)` | `통과(59.8%)` | `통과(63.4%)` | `통과(62.5%)` | `통과(59.7%)` | 64/256/1024B는 native active phase complete report 기준. 대형은 blocking send 정렬 complete report 기준. |
+| `ws` | `SPOT` | `통과(87.9%)` | `통과(81.3%)` | `통과(95.6%)` | `통과(53.9%)` | `통과(60.1%)` | `통과(65.2%)` | 64/256/1024B는 native dispatch-count complete report 기준. |
+| `wss` | `PAIR` | `통과(94.8%)` | `통과(93.9%)` | `통과(88.9%)` | `통과(94.8%)` | `통과(96.8%)` | `통과(98.7%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `wss` | `PUBSUB` | `통과(95.4%)` | `통과(94.2%)` | `통과(93.2%)` | `통과(92.0%)` | `통과(93.5%)` | `통과(92.0%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `wss` | `DEALER_DEALER` | `통과(95.1%)` | `통과(94.8%)` | `통과(89.3%)` | `통과(94.8%)` | `통과(97.3%)` | `통과(91.7%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `wss` | `DEALER_ROUTER` | `통과(79.2%)` | `통과(89.5%)` | `통과(71.4%)` | `통과(77.9%)` | `통과(81.7%)` | `통과(98.3%)` | 64/256/1024B는 native active phase complete report 기준. 대형은 single routed large complete probe 기준. |
+| `wss` | `ROUTER_ROUTER` | `통과(90.0%)` | `통과(95.3%)` | `통과(66.1%)` | `통과(80.8%)` | `통과(80.7%)` | `통과(86.7%)` | 64/256/1024B는 native active phase complete report 기준. 대형은 single routed large complete probe 기준. |
+| `wss` | `SPOT` | `통과(88.4%)` | `통과(80.9%)` | `통과(94.0%)` | `통과(89.4%)` | `통과(186.5%)` | `통과(189.9%)` | 64/256/1024B는 native dispatch-count complete report 기준. |
+| `tls` | `PAIR` | `통과(94.3%)` | `통과(94.3%)` | `통과(91.6%)` | `통과(92.1%)` | `통과(94.3%)` | `통과(92.7%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `tls` | `PUBSUB` | `통과(94.7%)` | `통과(86.8%)` | `통과(88.8%)` | `통과(93.5%)` | `통과(94.3%)` | `통과(91.9%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `tls` | `DEALER_DEALER` | `통과(95.0%)` | `통과(94.9%)` | `통과(89.0%)` | `통과(91.2%)` | `통과(93.8%)` | `통과(92.5%)` | 64/256/1024B는 native active phase complete report 기준. |
+| `tls` | `DEALER_ROUTER` | `통과(78.4%)` | `통과(87.9%)` | `통과(66.8%)` | `통과(63.7%)` | `통과(66.6%)` | `통과(66.7%)` | 64/256/1024B는 native active phase complete report 기준. 대형은 single routed large complete probe 기준. |
+| `tls` | `ROUTER_ROUTER` | `통과(88.5%)` | `통과(95.4%)` | `통과(61.7%)` | `통과(61.6%)` | `통과(72.0%)` | `통과(68.9%)` | 64/256/1024B는 native active phase complete report 기준. 대형은 single routed large complete probe 기준. |
+| `tls` | `SPOT` | `통과(85.5%)` | `통과(81.1%)` | `통과(92.7%)` | `통과(78.8%)` | `통과(96.8%)` | `통과(92.2%)` | 64/256/1024B는 native dispatch-count complete report 기준. |
 
 
 ### 9.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미달(7.4%)` | `미달(11.4%)` | `미달(12.5%)` | `미달(14.7%)` | `통과(47.1%)` | `통과(47.3%)` | C full/Python multi full. |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미달(14.5%)` | `미달(15.3%)` | `미달(16.1%)` | `미달(16.5%)` | `통과(33.3%)` | `통과(44.7%)` | C full/Python multi full. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미달(11.3%)` | `미달(11.3%)` | `미달(11.6%)` | `미달(12.1%)` | `미달(27.3%)` | `통과(40.7%)` | C full/Python multi full. |
-| `tcp` | `MULTI_PUBSUB` | `미달(7.2%)` | `미달(8.2%)` | `미달(18.8%)` | `미달(33.9%)` | `통과(45.5%)` | `통과(55.8%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `tcp` | `MULTI_SPOT` | `미달(4.6%)` | `미달(4.5%)` | `미달(4.2%)` | `미달(5.1%)` | `미달(6.9%)` | `미달(7.1%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `tcp` | `MULTI_SPOT_REQREP` | `미달(18.0%)` | `미달(18.8%)` | `미달(20.0%)` | `미달(24.2%)` | `미달(25.7%)` | `통과(33.1%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미달(15.3%)` | `미달(14.3%)` | `미달(15.9%)` | `미달(17.4%)` | `미달(RESULT 없음)` | `통과(66.8%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `tcp` | `MULTI_STREAM` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(12.7%)` | `미달(15.5%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `ws` | `MULTI_DEALER_DEALER` | `미달(7.3%)` | `미달(11.4%)` | `미달(13.8%)` | `미달(19.4%)` | `미달(33.6%)` | `미달(26.8%)` | C full/Python multi full. |
-| `ws` | `MULTI_DEALER_ROUTER` | `미달(14.9%)` | `미달(14.8%)` | `미달(15.5%)` | `미달(16.3%)` | `미달(24.1%)` | `미달(29.4%)` | C full/Python multi full. |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미달(11.4%)` | `미달(12.6%)` | `미달(12.0%)` | `미달(13.2%)` | `미달(25.8%)` | `미달(25.7%)` | C full/Python multi full. |
-| `ws` | `MULTI_PUBSUB` | `미달(8.9%)` | `미달(8.3%)` | `미달(10.0%)` | `미달(22.5%)` | `통과(42.0%)` | `통과(48.4%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `ws` | `MULTI_SPOT` | `미달(4.2%)` | `미달(4.2%)` | `미달(4.2%)` | `미달(5.0%)` | `미달(7.6%)` | `미달(7.5%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `ws` | `MULTI_SPOT_REQREP` | `미달(21.8%)` | `미달(22.9%)` | `미달(25.0%)` | `통과(36.5%)` | `미달(31.7%)` | `미달(29.6%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미달(14.7%)` | `미달(15.8%)` | `미달(16.9%)` | `미달(22.7%)` | `미달(RESULT 없음)` | `통과(82.7%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `ws` | `MULTI_STREAM` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(16.5%)` | `미달(7.5%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `wss` | `MULTI_DEALER_DEALER` | `미달(6.9%)` | `미달(11.1%)` | `미달(16.2%)` | `미달(27.8%)` | `미달(27.1%)` | `미달(27.9%)` | C full/Python multi full. |
-| `wss` | `MULTI_DEALER_ROUTER` | `미달(16.0%)` | `미달(16.6%)` | `미달(16.4%)` | `미달(19.0%)` | `미달(25.0%)` | `미달(27.3%)` | C full/Python multi full. |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미달(12.6%)` | `미달(13.0%)` | `미달(13.3%)` | `미달(15.1%)` | `미달(26.7%)` | `미달(29.1%)` | C full/Python multi full. |
-| `wss` | `MULTI_PUBSUB` | `미달(7.6%)` | `미달(7.2%)` | `미달(12.1%)` | `미달(26.3%)` | `미달(28.8%)` | `미달(30.9%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `wss` | `MULTI_SPOT` | `미달(3.9%)` | `미달(4.4%)` | `미달(4.2%)` | `미달(11.9%)` | `통과(70.5%)` | `통과(56.2%)` | 65536B는 data view probe 기준. 나머지는 overlay 기준. |
-| `wss` | `MULTI_SPOT_REQREP` | `미달(17.7%)` | `미달(18.9%)` | `미달(22.7%)` | `통과(44.2%)` | `통과(52.7%)` | `통과(48.9%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미달(12.5%)` | `미달(13.3%)` | `미달(RESULT 없음)` | `미달(30.9%)` | `미달(RESULT 없음)` | `통과(85.3%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `wss` | `MULTI_STREAM` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(14.8%)` | `미달(RESULT 없음)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `tls` | `MULTI_DEALER_DEALER` | `미달(7.1%)` | `미달(11.4%)` | `미달(13.9%)` | `미달(23.1%)` | `미달(24.2%)` | `미달(25.7%)` | C full/Python multi full. |
-| `tls` | `MULTI_DEALER_ROUTER` | `미달(15.4%)` | `미달(15.5%)` | `미달(15.7%)` | `미달(16.4%)` | `미달(23.3%)` | `미달(28.4%)` | C full/Python multi full. |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미달(11.9%)` | `미달(12.3%)` | `미달(12.5%)` | `미달(13.4%)` | `미달(23.2%)` | `미달(27.2%)` | C full/Python multi full. |
-| `tls` | `MULTI_PUBSUB` | `미달(RESULT 없음)` | `미달(7.8%)` | `미달(10.5%)` | `미달(21.6%)` | `미달(28.1%)` | `미달(34.3%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `tls` | `MULTI_SPOT` | `미달(4.2%)` | `미달(4.1%)` | `미달(4.2%)` | `미달(3.9%)` | `미달(8.7%)` | `미달(10.0%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `tls` | `MULTI_SPOT_REQREP` | `미달(16.3%)` | `미달(17.8%)` | `미달(19.1%)` | `미달(26.5%)` | `통과(44.4%)` | `통과(38.2%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미달(12.5%)` | `미달(14.7%)` | `미달(14.3%)` | `미달(18.9%)` | `미달(RESULT 없음)` | `통과(82.6%)` | C full/Python multi full. 보강 재측정 overlay 기준. |
-| `tls` | `MULTI_STREAM` | `미달(6.9%)` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(RESULT 없음)` | `미달(17.3%)` | `미달(RESULT 없음)` | C full/Python multi full. 보강 재측정 overlay 기준. |
+| `tcp` | `MULTI_DEALER_DEALER` | `통과(74.1%)` | `통과(74.5%)` | `통과(78.7%)` | `통과(68.9%)` | `통과(99.7%)` | `통과(74.0%)` | native send/count complete report 기준. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `통과(91.7%)` | `통과(91.1%)` | `통과(99.4%)` | `통과(94.1%)` | `통과(39.3%)` | `통과(57.0%)` | small/4096B는 native full-server echo complete report 기준. 대형은 native client round-trip complete report 기준. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `통과(77.7%)` | `통과(77.4%)` | `통과(80.2%)` | `통과(74.2%)` | `통과(47.9%)` | `통과(55.4%)` | small/4096B는 native full-server echo complete report 기준. 대형은 native client round-trip complete report 기준. |
+| `tcp` | `MULTI_PUBSUB` | `통과(81.1%)` | `통과(77.2%)` | `통과(128.1%)` | `통과(153.1%)` | `통과(53.6%)` | `통과(64.3%)` | native publish/count complete report 기준. |
+| `tcp` | `MULTI_SPOT` | `통과(79.1%)` | `통과(77.2%)` | `통과(73.4%)` | `통과(94.6%)` | `통과(178.0%)` | `통과(235.8%)` | 64/1024/4096B는 native polling-count complete report `perf_python_multi_linux_20260603_020438.txt` 기준. 256/65536/131072B는 `perf_python_multi_linux_20260603_020954.txt` 기준. |
+| `tcp` | `MULTI_SPOT_REQREP` | `통과(93.3%)` | `통과(93.2%)` | `통과(90.0%)` | `통과(86.0%)` | `통과(90.9%)` | `통과(33.1%)` | 64/256B는 native reqrep complete report `perf_python_multi_linux_20260603_051511.txt` 기준. 1024B는 `perf_python_multi_linux_20260603_051611.txt` 기준. 4096/65536B는 `perf_python_multi_linux_20260603_051805.txt` 기준. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `통과(35.8%)` | `통과(33.7%)` | `통과(33.4%)` | `통과(35.1%)` | `통과(38.2%)` | `통과(57.1%)` | 64/256B는 Python `perf_python_multi_linux_20260603_055040.txt`, C small failset `perf_c_multi_linux_20260603_062523.txt` 기준. 1024B는 Python boundary complete `perf_python_multi_linux_20260603_061712.txt`와 C full 기준. |
+| `tcp` | `MULTI_STREAM` | `통과(87.8%)` | `통과(88.1%)` | `통과(92.0%)` | `해당 없음` | `통과(76.1%)` | `해당 없음` | native stream echo complete report 기준. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
+| `ws` | `MULTI_DEALER_DEALER` | `통과(39.5%)` | `통과(79.4%)` | `통과(79.2%)` | `통과(63.5%)` | `통과(71.2%)` | `통과(59.4%)` | native send/count complete report 기준. |
+| `ws` | `MULTI_DEALER_ROUTER` | `통과(89.6%)` | `통과(83.2%)` | `통과(89.3%)` | `통과(86.7%)` | `통과(40.4%)` | `통과(54.4%)` | small/4096B는 native full-server echo complete report 기준. 대형은 native client round-trip complete report 기준. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `통과(75.2%)` | `통과(84.2%)` | `통과(78.3%)` | `통과(78.9%)` | `통과(47.5%)` | `통과(55.4%)` | small/4096B는 native full-server echo complete report 기준. 대형은 native client round-trip complete report 기준. |
+| `ws` | `MULTI_PUBSUB` | `통과(72.7%)` | `통과(66.2%)` | `통과(78.0%)` | `통과(95.2%)` | `통과(84.0%)` | `통과(87.0%)` | native publish/count complete report 기준. |
+| `ws` | `MULTI_SPOT` | `통과(74.3%)` | `통과(70.3%)` | `통과(74.8%)` | `통과(77.7%)` | `통과(189.7%)` | `통과(183.2%)` | 256B는 단독 complete report `perf_python_multi_linux_20260603_021058.txt` 기준. 나머지는 native polling-count complete report `perf_python_multi_linux_20260603_021040.txt` 기준. |
+| `ws` | `MULTI_SPOT_REQREP` | `통과(93.5%)` | `통과(89.5%)` | `통과(88.1%)` | `통과(36.5%)` | `통과(86.5%)` | `통과(88.2%)` | 64/256/1024B는 native reqrep complete report `perf_python_multi_linux_20260603_050745.txt` 기준. 65536/131072B는 `perf_python_multi_linux_20260603_051956.txt` 기준. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `통과(37.6%)` | `통과(37.0%)` | `통과(34.6%)` | `통과(46.1%)` | `통과(67.2%)` | `통과(48.0%)` | 64/256B는 Python `perf_python_multi_linux_20260603_055608.txt`, C small failset `perf_c_multi_linux_20260603_062523.txt` 기준. 1024B는 Python boundary complete `perf_python_multi_linux_20260603_061712.txt`와 C full 기준. |
+| `ws` | `MULTI_STREAM` | `통과(72.5%)` | `통과(78.4%)` | `통과(66.5%)` | `해당 없음` | `통과(72.6%)` | `해당 없음` | native stream echo complete report 기준. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
+| `wss` | `MULTI_DEALER_DEALER` | `통과(35.1%)` | `통과(80.1%)` | `통과(81.8%)` | `통과(83.7%)` | `통과(85.6%)` | `통과(68.9%)` | native send/count complete report 기준. |
+| `wss` | `MULTI_DEALER_ROUTER` | `통과(88.6%)` | `통과(88.8%)` | `통과(83.0%)` | `통과(86.2%)` | `통과(80.4%)` | `통과(74.7%)` | small/4096B는 native full-server echo complete report 기준. 대형은 native client round-trip complete report 기준. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `통과(82.1%)` | `통과(82.0%)` | `통과(82.4%)` | `통과(81.8%)` | `통과(77.6%)` | `통과(72.3%)` | small/4096B는 native full-server echo complete report 기준. 대형은 native client round-trip complete report 기준. |
+| `wss` | `MULTI_PUBSUB` | `통과(74.9%)` | `통과(71.2%)` | `통과(90.7%)` | `통과(121.4%)` | `통과(94.3%)` | `통과(90.7%)` | native publish/count complete report 기준. |
+| `wss` | `MULTI_SPOT` | `통과(68.0%)` | `통과(58.5%)` | `통과(68.5%)` | `통과(48.8%)` | `통과(70.5%)` | `통과(56.2%)` | 64/256/4096B는 native polling-count 단독 complete report 기준이다. 1024B는 latency sample stride 1024 complete report `perf_python_multi_linux_20260603_025840.txt` 기준이다. 65536B는 data view probe 기준. |
+| `wss` | `MULTI_SPOT_REQREP` | `통과(83.4%)` | `통과(82.7%)` | `통과(84.3%)` | `통과(44.2%)` | `통과(52.7%)` | `통과(48.9%)` | 64/256/1024B는 native reqrep complete report `perf_python_multi_linux_20260603_051029.txt` 기준. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `통과(33.6%)` | `통과(35.2%)` | `통과(35.7%)` | `통과(52.2%)` | `통과(80.9%)` | `통과(78.7%)` | 64/256B는 Python `perf_python_multi_linux_20260603_055608.txt`, C small failset `perf_c_multi_linux_20260603_062523.txt` 기준. 1024B는 Python boundary complete `perf_python_multi_linux_20260603_061712.txt`와 C full 기준. |
+| `wss` | `MULTI_STREAM` | `통과(83.9%)` | `통과(90.0%)` | `통과(87.6%)` | `해당 없음` | `통과(62.9%)` | `해당 없음` | native stream echo complete report 기준. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
+| `tls` | `MULTI_DEALER_DEALER` | `통과(35.3%)` | `통과(46.5%)` | `통과(53.2%)` | `통과(60.8%)` | `통과(79.0%)` | `통과(72.4%)` | native send/count complete report 기준. |
+| `tls` | `MULTI_DEALER_ROUTER` | `통과(89.2%)` | `통과(87.4%)` | `통과(88.4%)` | `통과(83.2%)` | `통과(77.3%)` | `통과(90.8%)` | small/4096B는 native full-server echo complete report 기준. 대형은 native client round-trip complete report 기준. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `통과(79.7%)` | `통과(80.3%)` | `통과(79.5%)` | `통과(79.9%)` | `통과(76.0%)` | `통과(82.7%)` | small/4096B는 native full-server echo complete report 기준. 대형은 native client round-trip complete report 기준. |
+| `tls` | `MULTI_PUBSUB` | `통과(69.6%)` | `통과(70.5%)` | `통과(77.5%)` | `통과(90.2%)` | `통과(81.6%)` | `통과(93.6%)` | native publish/count complete report 기준. |
+| `tls` | `MULTI_SPOT` | `통과(67.1%)` | `통과(68.7%)` | `통과(76.8%)` | `통과(72.5%)` | `통과(227.4%)` | `통과(181.9%)` | 64B는 단독 complete report `perf_python_multi_linux_20260603_021509.txt` 기준. 나머지는 native polling-count complete report `perf_python_multi_linux_20260603_021443.txt` 기준. |
+| `tls` | `MULTI_SPOT_REQREP` | `통과(83.8%)` | `통과(86.8%)` | `통과(86.1%)` | `통과(83.0%)` | `통과(44.4%)` | `통과(38.2%)` | 64/1024B는 native reqrep complete report `perf_python_multi_linux_20260603_051319.txt` 기준. 256B는 `perf_python_multi_linux_20260603_051128.txt` 기준. 4096B는 `perf_python_multi_linux_20260603_052054.txt` 기준. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `통과(33.8%)` | `통과(36.7%)` | `통과(33.4%)` | `통과(42.7%)` | `통과(84.3%)` | `통과(76.6%)` | 64/256B는 Python `perf_python_multi_linux_20260603_061712.txt`/`perf_python_multi_linux_20260603_055608.txt`, C small failset `perf_c_multi_linux_20260603_062523.txt` 기준. 1024B는 Python boundary complete `perf_python_multi_linux_20260603_061712.txt`와 C full 기준. |
+| `tls` | `MULTI_STREAM` | `통과(83.8%)` | `통과(87.1%)` | `통과(83.2%)` | `해당 없음` | `통과(79.4%)` | `해당 없음` | native stream echo complete report 기준. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
 
 
 ## 10. 상세 작업 로그

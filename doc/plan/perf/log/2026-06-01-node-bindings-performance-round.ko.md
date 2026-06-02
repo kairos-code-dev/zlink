@@ -4753,3 +4753,169 @@ Node 측정과 후보 검토 기록이다. 계획 문서 본문에는 최종 상
     되돌렸다.
   - 되돌린 뒤 `npm run rebuild-native`, `npm run build`, public `.d.ts` diff 확인,
     socket surface test, optimization guard test를 다시 통과했다.
+
+## Node 잔여 미달 후보 재검토와 다음 언어 이동 판단
+
+- 현재 문서 기준:
+  - Single: 미달 6/144, 4.2%
+  - Multi: 미달 21/156, 13.5%
+- 남은 multi 미달 묶음:
+  - `MULTI_PUBSUB`: `tcp 65536/131072B`, `ws 256B`, `wss 64B`
+  - `MULTI_SPOT_REQREP`: `tcp/ws 131072B`
+  - `MULTI_SPOT_SENDSEND`: `tcp 65536/131072B`, `wss 256B`
+  - `MULTI_STREAM`: `tcp/ws/wss/tls 64/256/1024B`
+- 재검토:
+  - 위 묶음은 이번 라운드에서 단일 payload native receive, topic/source metadata 생략,
+    stack topic buffer, transport별 helper 선택, publish/result-code 경로, server `Received`
+    재사용, request reply single-part materialize, SPOT no-vector send, payload-only routed
+    receive, stream packet/peer/cache/shape 후보까지 각각 측정했다.
+  - 새 통과를 만들지 못했거나, 새 통과보다 기존 통과 회귀가 커서 모두 되돌렸고 각 결과
+    파일은 위 후보별 log에 남겼다.
+  - 남은 개선은 batch receive/send, raw packet/payload public surface, perf 전용 public helper
+    또는 stream callback 계약 변경 쪽으로 기울어 현재 public contract와 C perf 의미 보존
+    원칙 안에서는 바로 적용할 후보로 보지 않는다.
+- 검증:
+  - `npm run build`: 통과
+  - `git diff -- bindings/node/dist/index.d.ts`: 변경 없음
+  - `node --test dist-tools/tests/socket_surface.test.js`: 통과
+  - `node --test dist-tools/tests/optimization_guard.test.js`: 통과
+  - 기각 후보 이름(`spotRecvRoutedPayloadNoWait`, `socketTrySubscribePayloadNoMeta`,
+    `socketTrySubscribePayloadStackTopic` 등)은 `bindings/node` 소스에 남아 있지 않다.
+- 판정:
+  - Node multi는 10% gate를 아직 넘지만, public contract와 perf 원칙을 지키는 내부 후보는
+    이번 라운드에서 충분히 측정/기각했다.
+  - 사용자 지시에 따라 Node에서 더 이상 바로 적용할 개선 후보가 없으므로 다음 10% 초과
+    언어인 Go multi로 이동한다.
+
+## MULTI_SPOT_SENDSEND sendToSpot routing id 사전 정규화 후보 기각
+
+- 대상:
+  - multi `MULTI_SPOT_SENDSEND`
+  - `tcp 65536/131072B`, `wss 256B` 중심
+- 근거:
+  - `sendToSpot(...).message(...).flags(DontWait).submit()` 경로는 public fluent operation
+    계약을 유지해야 하므로 perf 전용 helper를 추가할 수 없다.
+  - 대신 public 메서드 시그니처를 바꾸지 않고, operation 생성 시점에 대상 routing id를
+    한 번 정규화한 뒤 submit 경로에서 재사용하면 반복 submit 비용을 줄일 수 있는지 확인했다.
+- 검증:
+  - `npm run build`: 통과
+  - `git diff -- bindings/node/dist/index.d.ts`: 변경 없음
+  - `node --test dist-tools/tests/socket_surface.test.js`: 통과
+  - `node --test dist-tools/tests/optimization_guard.test.js`: 통과
+- 측정:
+  - 명령: `PERF_FAIL_FAST=1 bindings/node/perf/run_benchmarks_multi.sh --transports tcp,wss --pattern MULTI_SPOT_SENDSEND --msg-sizes 256,65536,131072 --duration 1 --runs 3 --results-tag node_multi_spot_sendsend_normalized_rid_probe_20260602`
+  - Node: `perf_node_multi_linux_20260602_133332_node_multi_spot_sendsend_normalized_rid_probe_20260602.txt`
+  - status: complete
+- 결과:
+  - `tcp 256/65536/131072B`: 77.606/15.577/6.376 Kops/s
+  - `wss 256/65536/131072B`: 59.577/8.078/4.750 Kops/s
+- 판정:
+  - 잔여 미달 셀을 통과로 바꿀 수준의 개선이 아니다.
+  - public contract 변경 없이 적용 가능한 내부 후보였지만 실측 효과가 부족하므로 최종 코드에
+    반영하지 않고 되돌렸다.
+  - 되돌린 뒤 `bindings/node` 코드 diff와 public `.d.ts` diff가 모두 비어 있음을 확인했다.
+
+## Node 추가 재검토 후 이동 판단 보강
+
+- 현재 문서 기준:
+  - Single: 미달 6/144, 4.2%
+  - Multi: 미달 21/156, 13.5%
+- 추가 재검토:
+  - `MULTI_STREAM`은 raw stream send, raw packet handler, routing-id cache,
+    packet payload shape, peer remember 제거 후보가 이미 complete 측정 또는 안정성 실패로
+    기각되어 같은 축을 반복하지 않았다.
+  - `MULTI_PUBSUB`은 payload-only receive, topic/source metadata 생략, stack topic buffer,
+    transport별 selective helper 후보가 기존 통과 회귀 때문에 기각되어 다시 적용하지 않았다.
+  - `MULTI_SPOT_SENDSEND`는 이번에 routing id 사전 정규화 후보까지 추가로 측정했으나
+    잔여 미달을 줄이지 못했다.
+- 판정:
+  - Node multi는 여전히 10% gate를 넘지만, public contract와 perf 원칙을 지키는 내부 후보는
+    현재 라운드에서 추가 개선으로 이어지지 않았다.
+  - 사용자 지시대로 Node에서 더 이상 적용 가능한 개선 후보가 없으면 다음 언어로 넘어간다.
+
+## Node full multi 재확인 보조 로그
+
+- 목적:
+  - Node에서 더 이상 적용 가능한 내부 개선 후보가 없다는 판단을 보강하기 위해 full multi를
+    한 번 더 실행했다.
+  - 문서 표는 `status=complete` 리포트만 근거로 쓰는 원칙을 유지한다.
+- 명령:
+  - `PERF_FAIL_FAST=0 bindings/node/perf/run_benchmarks_multi.sh --duration 1 --runs 3 --results-tag node_multi_full_no_candidate_reconfirm_20260602`
+- 리포트:
+  - `bindings/node/perf/results/multi/report/perf_node_multi_linux_20260602_144939_node_multi_full_no_candidate_reconfirm_20260602.txt`
+- 결과:
+  - status: partial
+  - success: 183
+  - fail: 1
+  - 실패: `MULTI_STREAM current tcp 64B` client failed, 서버 측에서
+    `malloc(): unaligned tcache chunk detected`가 발생했다.
+  - 따라서 이 리포트는 main 문서 표 갱신 근거로 쓰지 않고 보조 확인 로그로만 남긴다.
+- 관찰:
+  - STREAM의 tcp/tls/ws/wss 소형 메시지 구간은 이번 재확인에서도 latency가 크게 흔들렸다.
+  - 실행 중 routed echo 계열에서 `DontWait` send failure가 `SubmitError`로 보고되는 stderr가
+    반복되었지만 runner는 계속 진행했다. 이 경로는 앞선 라운드에서 perf runner가 public
+    `submit()` 의미를 유지한 채 false로 처리하도록 정리된 영역이므로, public contract를
+    바꾸는 성능 개선 후보로 보지 않는다.
+- 검증:
+  - `npm run build`: 통과
+  - `node --test dist-tools/tests/socket_surface.test.js`: 통과
+  - `node --test dist-tools/tests/optimization_guard.test.js`: 통과
+  - `git diff -- bindings/node`: 변경 없음
+  - `git diff -- bindings/node/dist/index.d.ts`: 변경 없음
+- 판정:
+  - 이번 full 재확인은 partial이므로 수치 표에는 반영하지 않는다.
+  - Node는 현재 main 문서 기준으로 single 4.2%, multi 13.5% 미달이며, multi가 10% gate를
+    넘는다.
+  - 다만 이번 라운드에서 public contract와 perf 원칙을 지키는 내부 후보는 추가 통과로
+    이어지지 않았고, full 재확인에서도 새로 적용할 수 있는 binding-library 후보는 확인되지
+    않았다.
+  - 따라서 사용자 지시대로 Node에서 더 진행할 후보가 없으면 다음 언어로 넘어간다.
+
+## Node 종료 판단과 Go 이동
+
+- 기준:
+  - main 문서 기준 Node single은 `미달 6/144 (4.2%)`, multi는 `미달 21/156 (13.5%)`다.
+  - multi는 10% gate를 넘지만, 추가 작업은 public contract와 perf 원칙을 지키는 내부 후보가
+    있을 때만 진행한다.
+- 재검토:
+  - `MULTI_PUBSUB`, `MULTI_SPOT_REQREP`, `MULTI_SPOT_SENDSEND`, `MULTI_STREAM` 잔여 cluster를
+    다시 대조했다.
+  - 이전 라운드에서 payload-only receive, topic/source metadata 생략, stack topic buffer,
+    transport-selective subscribe helper, raw stream send, raw packet handler, routing-id cache,
+    sendToSpot routing id 사전 정규화, SPOT receive/reply materialize 축은 complete 측정 후
+    통과를 만들지 못했거나 기존 통과 회귀가 커서 기각했다.
+  - 이번 확인에서도 perf runner, HWM/profile, 기준값, C baseline, public API를 건드리지 않고
+    새로 적용할 좁은 내부 후보는 확인되지 않았다.
+- 판단:
+  - Node에 남은 미달은 문서에 `미달`로 유지한다.
+  - 사용자 지시대로 Node에서 더 이상 바로 적용할 개선 부분이 없으므로 다음 순서인 Go로 넘어간다.
+
+## Node routed send context 현행 코드 재확인
+
+- 대상:
+  - multi `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`
+  - `tcp,ws,wss,tls`
+  - `64,256,1024,65536,131072B`
+- 확인 내용:
+  - 현재 `HEAD`의 `RoutedMessageSocket.recv(...)`는 request sequence가 없는 routed receive에서도
+    routing id가 있으면 `Received.send()` context를 유지한다.
+  - 이는 public routed send 의미에 걸려 있으므로 perf 후보 실패만으로 되돌릴 변경이 아니다.
+  - 다만 Node 잔여 미달을 줄일 수 있는지 targeted perf로 다시 확인했다.
+- 검증:
+  - clean 없는 TypeScript 빌드: `npx tsc -p tsconfig.json && npx tsc -p tsconfig.tools.json`
+  - `node --test dist-tools/tests/socket_surface.test.js`: 통과
+  - `node --test dist-tools/tests/optimization_guard.test.js`: 통과
+  - `git diff -- bindings/node/dist/index.d.ts`: 변경 없음
+- 측정:
+  - 명령: `PERF_FAIL_FAST=1 bindings/node/perf/run_benchmarks_multi.sh --transports tcp,ws,wss,tls --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --msg-sizes 64,256,1024,65536,131072 --duration 1 --runs 3 --results-tag node_multi_routed_send_context_recheck_20260602`
+  - Node: `perf_node_multi_linux_20260602_162007_node_multi_routed_send_context_recheck_20260602.txt`
+  - status: complete
+- 결과:
+  - `MULTI_DEALER_ROUTER` median throughput은 예를 들어 `tcp 64/256/1024B`가
+    158.138/140.770/124.657 Kops/s였다.
+  - `MULTI_ROUTER_ROUTER` median throughput은 예를 들어 `tcp 64/256/1024B`가
+    123.467/113.787/109.709 Kops/s였다.
+  - 현재 문서 표에 반영된 routed echo 최종값보다 낮은 셀이 많고, 새 통과 항목을 만들지 못했다.
+- 판정:
+  - 이 재확인은 complete report지만 표 개선 근거가 아니므로 main 문서 수치에는 반영하지 않는다.
+  - 현행 public 동작은 유지하되, Node multi 미달 해소 후보로는 추가 개선 효과가 없다고 본다.

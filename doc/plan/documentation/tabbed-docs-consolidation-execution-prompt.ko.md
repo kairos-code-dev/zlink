@@ -4,13 +4,25 @@
 핸드오프 프롬프트. 새 세션/다른 에이전트에 그대로 붙여 넣는다. 현재 상태를
 현물로 재점검하므로 plan이 이미 완료 표시여도 안전하다(검증만 하고 잔여만 마무리).
 
+> **무중단 실행:** 이 프롬프트는 중간에 멈추거나 사용자에게 확인/보고하지 않고
+> 모든 완료 기준이 충족될 때까지 한 번에 끝낸다.
+
 ---
 
 ## 전체 프롬프트
 
 ```
 역할: 너는 zlink 리포(/home/hep7/project/kairos/zlink, 기본 브랜치 main)에서
-"문서 탭 통합 개편(v2)" 계획을 끝까지 완료하는 실행 에이전트다.
+"문서 탭 통합 개편(v2)" 계획을 끝까지 완료하는 자율 실행 에이전트다.
+
+## 실행 원칙 (최우선)
+- 중간에 멈추지 마라. 사용자에게 확인/질문/중간보고하지 마라. 모든 완료 기준이
+  충족될 때까지 작업→검증→수정을 한 턴도 쉬지 않고 반복한다.
+- 막히거나 트레이드오프가 생겨도 되묻지 말고 명백한 기본값으로 결정해 계속 간다.
+- 한 단계가 끝나면 "다음 작업 진행할까요?" 같은 멈춤 없이 곧장 다음 단계로 넘어간다.
+- 종료 조건은 단 하나: 계획 §4 완료 판정 7항목이 전부 검증으로 PASS. 그 전엔
+  무슨 일이 있어도 멈추지 않는다. (도중의 보고/요약 출력은 금지 — 진행만 한다.)
+- 마지막 PASS 후에만 §4 체크박스·§6 로그를 갱신하고 그때 1회 종료 요약을 남긴다.
 
 ## 입력 (source of truth — 반드시 먼저 읽어라)
 - 계획 런북: doc/plan/documentation/tabbed-docs-consolidation-plan.ko.md
@@ -20,13 +32,15 @@
 - 탭 인프라: doc/site/mkdocs.yml (pymdownx.tabbed/snippets)
 - 바인딩 스펙(타깃 블루프린트): doc/spec/bindings/<lang>/
 
-## 진행 방식
+## 진행 루프 (멈추지 말 것)
 1. 계획을 읽고 P1~P7 각각의 "현재 실제 상태"를 코드/문서로 직접 확인한다
    (계획의 체크박스나 로그를 믿지 말고 리포 현물로 검증).
-2. 완료 판정 기준(§4) 7항목 중 미충족 항목만 골라 끝까지 완료한다.
+2. §4 7항목 중 미충족을 전부 추려, 의존 순서(P1→…→P7)로 끝까지 완료한다.
 3. 각 단계는 "기능별로 9개 언어 전부" 만들고, 빌드+실행으로 검증한 뒤 커밋한다.
-   물어보지 말고 명백한 자율 결정으로 진행하되, 측정/검증 없이 커밋하지 마라.
-4. 마지막에 §4 전 항목을 재검증하고 §6 완료 로그를 갱신한다.
+   측정/검증 없이 커밋하지 마라.
+4. 단계가 끝나도 멈추지 말고 다음 단계로 즉시 진행. 모든 단계가 끝나면 §4 전 항목을
+   재검증한다. 하나라도 실패하면 멈추지 말고 그 자리에서 고쳐 다시 검증한다(루프).
+5. §4 전 항목 PASS가 확인되면 §4 체크박스와 §6 완료 로그를 갱신하고 종료한다.
 
 ## 대상 언어 (탭 9칸, 정확한 라벨)
 C++ / C#/.NET / Java / Kotlin / Python / Node/TypeScript / JavaScript / Go / Rust
@@ -78,25 +92,24 @@ H. P6 CI 게이트: doc/site/scripts/check_doc_tabs.py가 (1)탭 9언어 누락/
    (2)`--8<--` 스니펫 경로 미해석(`:section` 접미 처리), (3)언어↔확장자 불일치를
    검출하고 .github/workflows/docs.yml의 mkdocs build 직전에 실행돼야 한다.
 
-## 검증 (각 단계 + 최종)
+## 검증 (각 단계 + 최종, 멈추지 말고 자체 수행)
 - 샘플: 언어별 빌드·실행으로 기대 출력 확인(go run / 직접 실행 /
   cargo run --example / cmake+make / gradlew run<Name> / dotnet run --project /
-  node dist-tools/...). 측정 없는 커밋 금지.
+  node dist-tools/...). 실패하면 멈추지 말고 고쳐 재실행. 측정 없는 커밋 금지.
 - 문서: `cd doc/site && mkdocs build` 무오류 + `python3 doc/site/scripts/
   check_doc_tabs.py` 통과. 렌더 감사: 빌드된 /ko HTML에서
   `<p>` 코드 깨짐 0, `language-<lang> highlight` 블록 수 = 탭셋×9,
-  코드 첫 줄 leading-indent 전부 0인지 확인.
+  코드 첫 줄 leading-indent 전부 0인지 확인. 실패 시 그 자리에서 수정 후 재검증.
 - 빌드 산출물(bindings/node/dist-tools 등)은 커밋하지 말고 HEAD로 복원해 트리를
   깨끗이 유지한다.
 
 ## 제약
 - 기본 main에서 작업(브랜치는 명시 요청 시만). 기능/단계별로 검증 후 커밋.
 - 코드를 spec에 맞춘다(spec이 타깃 블루프린트). spec을 코드에 맞춰 "고치지" 마라.
-- 트레이드오프로 막히면 되묻지 말고 명백한 기본값으로 진행하고 결과에 명시.
 - 커밋 메시지 끝에:
   Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 
-## 완료 기준 (이게 전부 충족돼야 종료)
+## 완료(종료) 기준 — 이게 전부 PASS여야 비로소 멈춘다
 계획 §4의 7항목 + §6 로그 갱신:
 1) 코어 패턴·서비스 문서가 9~10칸 언어 탭으로 통합.
 2) 모든 탭 코드가 실제 샘플/contract와 일치(추측 0).
@@ -105,7 +118,8 @@ H. P6 CI 게이트: doc/site/scripts/check_doc_tabs.py가 (1)탭 9언어 누락/
 5) 탭 누락·소실·API 부재를 CI가 검출.
 6) mkdocs로 전 언어 탭 렌더 확인(깨짐 0, col 0 균일, 하이라이트).
 7) mkdocs nav·미러·README가 새 구조 반영.
-완료 후 §4 체크박스와 §6 완료 로그를 갱신하고, 미충족이 없음을 근거와 함께 보고하라.
+7항목 중 하나라도 미충족이면 멈추지 말고 계속 고친다. 전부 PASS가 확인된 그 순간
+§4 체크박스·§6 로그를 갱신하고 종료한다(이때만 1회 최종 요약).
 ```
 
 ---
@@ -114,8 +128,10 @@ H. P6 CI 게이트: doc/site/scripts/check_doc_tabs.py가 (1)탭 9언어 누락/
 
 ```
 zlink 리포(main 브랜치)에서 doc/plan/documentation/tabbed-docs-consolidation-plan.ko.md
-계획을 끝까지 완료해라. 계획 §4 완료 판정 7항목을 리포 현물로 점검하고 미충족만
-마무리한 뒤, §4 체크박스와 §6 로그를 갱신해 보고한다.
+계획을 끝까지 완료해라. 중간에 멈추지 말고, 사용자에게 확인/중간보고 없이, 계획 §4
+완료 판정 7항목이 전부 검증 PASS될 때까지 작업→검증→수정을 한 번에 반복한다. 막혀도
+되묻지 말고 기본값으로 결정해 계속 간다. 전부 PASS인 순간에만 §4 체크박스·§6 로그를
+갱신하고 종료한다(그때만 최종 요약 1회).
 
 핵심 규약:
 1. 탭 코드는 하드코딩 금지 — 빌드·실행 검증된 샘플을 `--8<-- "경로:doc"` 스니펫으로
@@ -129,7 +145,8 @@ zlink 리포(main 브랜치)에서 doc/plan/documentation/tabbed-docs-consolidat
    07-3-spot/07-4-actor 정본↔미러 양방향 drift 주의(맹목 cp 금지).
 5. 검증: 샘플 언어별 빌드·실행 / `mkdocs build` 무오류 /
    `python3 doc/site/scripts/check_doc_tabs.py` 통과 / /ko HTML에서 <p>깨짐0·
-   하이라이트·leading-indent 0. dist-tools 등 빌드 산출물 커밋 금지.
-6. spec이 타깃(코드를 spec에 맞춤). 막혀도 되묻지 말고 기본값으로 진행.
-   커밋 끝에: Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+   하이라이트·leading-indent 0. 실패 시 그 자리에서 고쳐 재검증. dist-tools 등 빌드
+   산출물 커밋 금지.
+6. spec이 타깃(코드를 spec에 맞춤). 커밋 끝에:
+   Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 ```

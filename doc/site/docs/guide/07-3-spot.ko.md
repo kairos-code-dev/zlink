@@ -339,6 +339,60 @@ zlink_spot_request_channel(
 같은 `channel_name`에 `DEALER`를 두 개 등록할 수 없다. 자동 연결과 수동
 연결도 이름이 같으면 충돌로 처리된다.
 
+### 5.4 시나리오 — 게임룸에서 API 서버로 데이터 요청
+
+게임룸(Spot)이 outgame 데이터(프로필, 인벤토리 등)를 별도 API 서버에 요청한다.
+게임룸은 `DEALER`로 채널을 호출하고, API 서버(`ROUTER`)는 부하 분산된 인스턴스 중
+하나가 응답한다. 게임 로직(Spot)과 백엔드 서비스(channel)를 분리하는 구조다.
+
+```mermaid
+sequenceDiagram
+  participant Room as 게임룸 (Spot)
+  participant Dealer as 채널 DEALER
+  participant Api as API 서버 (ROUTER)
+  Room->>Dealer: requestToChannel("api", "get-profile")
+  Dealer->>Api: 부하 분산 라우팅
+  Api->>Api: recv + 프로필 조회
+  Api-->>Dealer: reply("profile:level-7")
+  Dealer-->>Room: 응답 콜백
+```
+
+=== "C++"
+
+    --8<-- "bindings/cpp/samples/spot_channel_example.cpp"
+
+=== "C#/.NET"
+
+    --8<-- "bindings/dotnet/samples/SpotChannelExample/Program.cs"
+
+=== "Java"
+
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotChannelExample.java"
+
+=== "Kotlin"
+
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotChannelExample.kt"
+
+=== "Python"
+
+    --8<-- "bindings/python/samples/spot_channel_example.py"
+
+=== "Node/TypeScript"
+
+    --8<-- "bindings/node/samples/spot_channel_example.ts"
+
+=== "JavaScript"
+
+    --8<-- "bindings/javascript/samples/spot_channel_example.js"
+
+=== "Go"
+
+    --8<-- "bindings/go/samples/spot_channel_example/main.go"
+
+=== "Rust"
+
+    --8<-- "bindings/rust/samples/spot_channel_example.rs"
+
 ## 6. 디스패치 이벤트 핸들러로 통합 소비
 
 SPOT에는 두 가지 핸들러 등록 방식이 있으며, 같은 Spot에서 동시에 쓸 수 없다.
@@ -476,6 +530,59 @@ zlink_timer_destroy(&timer);
 
 `zlink_spot_timer_new()`는 Spot 내부 I/O 컨텍스트에 타이머를 붙인다.
 타이머 콜백에서 외부 동기화 없이 Spot 디스패치와 협력해야 할 때 사용한다.
+
+### 8.1 시나리오 — 게임룸 주기 틱
+
+게임룸(Spot)이 게임 루프 틱이나 타임아웃 처리를 위해 주기 타이머를 돌린다.
+from-spot 타이머는 Spot의 I/O 스레드에서 발화하므로, 타이머 콜백이 Spot 디스패치와
+같은 소유자 기준으로 협력한다 — 별도 락 없이 게임룸 상태를 갱신할 수 있다.
+
+```mermaid
+sequenceDiagram
+  participant Room as 게임룸 (Spot)
+  participant Timer as Spot 타이머
+  Room->>Timer: from-spot 타이머 생성 + start(50ms, 3회)
+  loop 50ms 간격 × 3
+    Timer-->>Room: OnFire(fireCount)
+    Note over Room: 틱 처리(게임 루프 진행/타임아웃 점검)
+  end
+```
+
+=== "C++"
+
+    --8<-- "bindings/cpp/samples/spot_timer_example.cpp"
+
+=== "C#/.NET"
+
+    --8<-- "bindings/dotnet/samples/SpotTimerExample/Program.cs"
+
+=== "Java"
+
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotTimerExample.java"
+
+=== "Kotlin"
+
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotTimerExample.kt"
+
+=== "Python"
+
+    --8<-- "bindings/python/samples/spot_timer_example.py"
+
+=== "Node/TypeScript"
+
+    --8<-- "bindings/node/samples/spot_timer_example.ts"
+
+=== "JavaScript"
+
+    --8<-- "bindings/javascript/samples/spot_timer_example.js"
+
+=== "Go"
+
+    --8<-- "bindings/go/samples/spot_timer_example/main.go"
+
+=== "Rust"
+
+    --8<-- "bindings/rust/samples/spot_timer_example.rs"
 
 ## 9. 라우팅 수신과 응답
 

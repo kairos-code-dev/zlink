@@ -303,7 +303,53 @@ int subscribe_parts(void *sock,
     }
 
     copy_routing_id(routing_id, source_rid);
-    return collect_recv_parts(sock, &first_part, has_more, parts);
+    if (!parts) {
+        zlink_msg_close(&first_part);
+        errno = EFAULT;
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
+    parts->clear();
+    if (!append_msg_move(parts, &first_part)) {
+        zlink_msg_close(&first_part);
+        errno = ENOMEM;
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
+    while (has_more) {
+        const zlink_routing_id_t *next_source_rid = NULL;
+        char next_topic[256];
+        size_t next_topic_len = 0;
+        zlink_msg_t next_part;
+        if (zlink_msg_init(&next_part) != 0) {
+            close_msg_vector(*parts);
+            parts->clear();
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+        zlink_part_flag_t more = ZLINK_PART_FINAL;
+        rc = zlink_subscribe_part(
+          sock,
+          &next_source_rid,
+          next_topic,
+          sizeof(next_topic),
+          &next_topic_len,
+          &next_part,
+          &more,
+          ZLINK_RECV_FLAGS_DONTWAIT);
+        if (rc != ZLINK_RECV_OK) {
+            zlink_msg_close(&next_part);
+            close_msg_vector(*parts);
+            parts->clear();
+            return rc;
+        }
+        if (!append_msg_move(parts, &next_part)) {
+            zlink_msg_close(&next_part);
+            close_msg_vector(*parts);
+            parts->clear();
+            errno = ENOMEM;
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+        has_more = more;
+    }
+    return ZLINK_RECV_OK;
 }
 
 int router_recv_parts(void *router,
@@ -342,7 +388,52 @@ int router_recv_parts(void *router,
 
     copy_routing_id(peer_rid, peer_rid_ptr);
     copy_routing_id(spot_rid, spot_rid_ptr);
-    return collect_recv_parts(router, &first_part, has_more, parts);
+    if (!parts) {
+        zlink_msg_close(&first_part);
+        errno = EFAULT;
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
+    parts->clear();
+    if (!append_msg_move(parts, &first_part)) {
+        zlink_msg_close(&first_part);
+        errno = ENOMEM;
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
+    while (has_more) {
+        const zlink_routing_id_t *next_peer_rid = NULL;
+        const zlink_routing_id_t *next_spot_rid = NULL;
+        uint64_t next_request_seq = 0;
+        zlink_msg_t next_part;
+        if (zlink_msg_init(&next_part) != 0) {
+            close_msg_vector(*parts);
+            parts->clear();
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+        zlink_part_flag_t more = ZLINK_PART_FINAL;
+        rc = zlink_router_recv_part(
+          router,
+          &next_peer_rid,
+          &next_spot_rid,
+          &next_request_seq,
+          &next_part,
+          &more,
+          ZLINK_RECV_FLAGS_DONTWAIT);
+        if (rc != ZLINK_RECV_OK) {
+            zlink_msg_close(&next_part);
+            close_msg_vector(*parts);
+            parts->clear();
+            return rc;
+        }
+        if (!append_msg_move(parts, &next_part)) {
+            zlink_msg_close(&next_part);
+            close_msg_vector(*parts);
+            parts->clear();
+            errno = ENOMEM;
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+        has_more = more;
+    }
+    return ZLINK_RECV_OK;
 }
 
 int send_parts(void *sock,

@@ -625,6 +625,22 @@ int zlink::part_helper_internal::prepare_send_step (
         *first_part_out_ = true;
     } else {
         if (!send_spec_equals (state->send.spec, spec_)) {
+            send_sequence_spec_t upgraded = state->send.spec;
+            upgraded.timeout_ms = spec_.timeout_ms;
+            upgraded.request_seq = spec_.request_seq;
+            upgraded.handler = spec_.handler;
+            upgraded.userdata = spec_.userdata;
+            const bool can_upgrade_staged_request =
+              state->send.spec.request_like && spec_.request_like
+              && state->send.spec.request_seq == 0
+              && spec_.request_seq != 0
+              && send_spec_equals (upgraded, spec_);
+            if (can_upgrade_staged_request) {
+                state->send.spec = spec_;
+                *first_part_out_ = false;
+                *state_out_ = state;
+                return 0;
+            }
             if (routed_part_debug_enabled ()) {
                 std::fprintf (stderr,
                               "[routed-part-debug] prepare_send_step spec "

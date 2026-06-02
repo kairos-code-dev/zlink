@@ -77,9 +77,11 @@ test('ZLinkChannelClient sends through public dealer/router binding sockets', as
 
     const received = new zlink.Received();
     assert.equal(router.recv(received), true);
-    const envelope = JSON.parse(received.singlePartOrThrow().data().toString());
-    assert.equal(envelope.packetName, 'Greeting');
-    assert.equal(Buffer.from(envelope.payload, 'base64').toString(), 'hello');
+    const envelope = decodeDotnetEnvelope(received.parts);
+    assert.equal(envelope.header.kind, 3);
+    assert.equal(envelope.header.channelName, 'api');
+    assert.equal(envelope.header.messageName, 'Greeting');
+    assert.equal(envelope.body, 'hello');
   } finally {
     dealer.close();
     router.close();
@@ -109,24 +111,29 @@ test('ZLinkChannelClient request/reply round-trips through public binding socket
       new framework.ZLinkDealerChannelClientTransport(dealer)
     );
 
-    const replyPromise = client.requestToChannel('api', 'ping').packetName('Ping').timeout(1000).submit();
-    const request = new zlink.Received();
-    router.recv(request);
-    const envelope = JSON.parse(request.singlePartOrThrow().data().toString());
-    assert.equal(envelope.packetName, 'Ping');
-    assert.equal(Buffer.from(envelope.payload, 'base64').toString(), 'ping');
+    const replyPromise = client.requestToChannel('api', { value: 'ping' }).packetName('Ping').timeout(1000).submit();
+    const request = await recvRouterMessage(router);
+    const envelope = decodeDotnetEnvelope(request.parts);
+    assert.equal(envelope.header.kind, 1);
+    assert.equal(envelope.header.channelName, 'api');
+    assert.equal(envelope.header.messageName, 'Ping');
+    assert.deepEqual(envelope.body, { value: 'ping' });
     assert.equal(typeof request.requestSeq, 'bigint');
-    router.reply(request.routingId, request.requestSeq).message('pong').submit();
+    submitMultipart(
+      router.reply(request.routingId, request.requestSeq),
+      encodeDotnetEnvelope({
+        ...envelope.header,
+        kind: 2,
+        deadline: null,
+        topic: null,
+        errorCode: null,
+        errorMessage: null
+      }, { value: 'pong' })
+    );
 
     const reply = await withTimeout(replyPromise, 1000, 'framework channel request reply');
-    try {
-      assert.equal(reply[0].data().toString(), 'pong');
-    } finally {
-      for (const part of reply) {
-        part.close();
-      }
-      request.close();
-    }
+    assert.deepEqual(reply, { value: 'pong' });
+    request.close();
   } finally {
     dealer.close();
     router.close();
@@ -156,19 +163,15 @@ test('ZLinkFanoutClient publishes through public pub/sub binding sockets', async
     );
 
     const received = new zlink.TopicMessage();
-    const deadline = Date.now() + 1000;
-    while (Date.now() < deadline) {
-      await fanout.publishToChannel('events', topic, 'published').packetName('Event').submit();
-      if (subscribeMaybe(sub, received)) {
-        assert.equal(received.topic, topic);
-        const envelope = JSON.parse(received.singlePartOrThrow().data().toString());
-        assert.equal(envelope.packetName, 'Event');
-        assert.equal(Buffer.from(envelope.payload, 'base64').toString(), 'published');
-        return;
-      }
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-    assert.fail('publish did not reach subscriber');
+    await fanout.publishToChannel('events', topic, 'published').packetName('Event').submit();
+    assert.equal(sub.subscribe(received), true);
+    assert.equal(received.topic, topic);
+    const envelope = decodeDotnetEnvelope(received.parts);
+    assert.equal(envelope.header.kind, 4);
+    assert.equal(envelope.header.channelName, 'events');
+    assert.equal(envelope.header.messageName, 'Event');
+    assert.equal(envelope.header.topic, topic);
+    assert.equal(envelope.body, 'published');
   } finally {
     dealer.close();
     sub.close();
@@ -203,7 +206,7 @@ test('ZLinkChannelRequestDispatcher invokes request handler and replies through 
       handlers: new Map([
         ['Ping', {
           async handle(payload) {
-            assert.equal(payload.toString(), 'ping');
+            assert.equal(JSON.parse(payload.toString()), 'ping');
             return 'pong';
           }
         }]
@@ -219,20 +222,13 @@ test('ZLinkChannelRequestDispatcher invokes request handler and replies through 
     });
 
     const replyPromise = client.requestToChannel('api', 'ping').packetName('Ping').timeout(1000).submit();
-    const received = new zlink.Received();
-    router.recv(received);
+    const received = await recvRouterMessage(router);
     await dispatcher.dispatch(received, router);
 
     const reply = await withTimeout(replyPromise, 1000, 'framework dispatcher reply');
-    try {
-      assert.equal(reply[0].data().toString(), 'pong');
-      assert.deepEqual(filterEvents, ['before', 'after']);
-    } finally {
-      for (const part of reply) {
-        part.close();
-      }
-      received.close();
-    }
+    assert.equal(reply, 'pong');
+    assert.deepEqual(filterEvents, ['before', 'after']);
+    received.close();
   } finally {
     dealer.close();
     router.close();
@@ -270,6 +266,29 @@ function subscribeMaybe(socket, received) {
     }
     throw error;
   }
+}
+
+function decodeDotnetEnvelope(parts) {
+  assert.equal(parts.length, 2);
+  return {
+    header: JSON.parse(parts[0].data().toString()),
+    body: JSON.parse(parts[1].data().toString())
+  };
+}
+
+function encodeDotnetEnvelope(header, body) {
+  return [
+    Buffer.from(JSON.stringify(header)),
+    Buffer.from(JSON.stringify(body))
+  ];
+}
+
+function submitMultipart(operation, parts) {
+  let current = operation.message(parts[0]);
+  for (let index = 1; index < parts.length; index++) {
+    current = current.message(parts[index]);
+  }
+  current.submit();
 }
 
 function withTimeout(promise, timeoutMs, label) {

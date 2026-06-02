@@ -7,6 +7,7 @@ import type {
   ZLinkRequestCall,
   ZLinkSendCall
 } from '../../contracts';
+import { randomUUID } from 'node:crypto';
 import { invokeZLinkHandlerFilters } from '../handlers';
 import type {
   DealerSocket,
@@ -16,7 +17,28 @@ import type {
 } from '@zlink-systems/zlink';
 import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
 
-const CHANNEL_ENVELOPE_FORMAT = 'zlink.channel.v1';
+const JSON_CONTENT_TYPE = 'application/json';
+
+const enum ZLinkChannelMessageKind {
+  Request = 1,
+  Response = 2,
+  Command = 3,
+  Publish = 4,
+  Error = 5
+}
+
+interface ZLinkChannelEnvelopeHeader {
+  readonly kind: ZLinkChannelMessageKind;
+  readonly channelName: string;
+  readonly messageName: string;
+  readonly contentType: string;
+  readonly correlationId: string | null;
+  readonly deadline: string | null;
+  readonly topic: string | null;
+  readonly errorCode: string | null;
+  readonly errorMessage: string | null;
+  readonly source?: string | null;
+}
 
 export interface ZLinkChannelClientTransport {
   send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void>;
@@ -36,28 +58,38 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     private readonly publisher?: PubSocket
   ) {}
 
-  async send(_channelName: string, _packetName: string | undefined, message: unknown): Promise<void> {
-    this.dealer.send().message(encodeChannelEnvelope(_packetName, message)).submit();
+  async send(channelName: string, packetName: string | undefined, message: unknown): Promise<void> {
+    appendParts(
+      this.dealer.send(),
+      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, channelName, packetName, message)
+    ).submit();
   }
 
   async request<TReply>(
-    _channelName: string,
-    _packetName: string | undefined,
+    channelName: string,
+    packetName: string | undefined,
     request: unknown,
     timeoutMs: number | undefined
   ): Promise<TReply> {
-    const operation = this.dealer.request().message(encodeChannelEnvelope(_packetName, request));
+    const operation = appendParts(
+      this.dealer.request(),
+      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, channelName, packetName, request, timeoutMs)
+    );
     if (timeoutMs !== undefined) {
       operation.timeout(timeoutMs);
     }
-    return operation.submitAsync() as Promise<TReply>;
+    const reply = await operation.submitAsync();
+    return decodeChannelReply<TReply>(reply);
   }
 
-  async publish(_channelName: string, topic: string, _packetName: string | undefined, event: unknown): Promise<void> {
+  async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown): Promise<void> {
     if (this.publisher === undefined) {
       throw new ZLinkConfigurationException('Channel publisher runtime is not started.');
     }
-    this.publisher.publish(topic).message(encodeChannelEnvelope(_packetName, event)).submit();
+    appendParts(
+      this.publisher.publish(topic),
+      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Publish, channelName, packetName, event, undefined, topic)
+    ).submit();
   }
 }
 
@@ -83,7 +115,7 @@ export class ZLinkChannelRequestDispatcher {
   }
 
   async dispatch(received: { parts: readonly Message[]; routingId: unknown; requestSeq: bigint | null }, router: {
-    reply(routingId: unknown, requestSeq: bigint): { message(message: MessageLike): { submit(): void } };
+    reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
   }): Promise<void> {
     const envelope = decodeChannelEnvelope(received.parts);
     const packetName = envelope.packetName;
@@ -104,7 +136,10 @@ export class ZLinkChannelRequestDispatcher {
       { context, handler },
       () => Promise.resolve(handler.handle(envelope.payload, context))
     );
-    router.reply(received.routingId, received.requestSeq).message(toMessageLike(reply ?? Buffer.alloc(0))).submit();
+    appendParts(
+      router.reply(received.routingId, received.requestSeq),
+      encodeChannelReplyParts(envelope.header, reply)
+    ).submit();
   }
 }
 
@@ -154,36 +189,124 @@ export class DefaultZLinkChannelClient implements ZLinkChannelClient {
   }
 }
 
+interface ZLinkMultipartOperation<TNext> {
+  message(message: MessageLike): TNext;
+}
+
+interface ZLinkMultipartSubmitOperation extends ZLinkMultipartOperation<ZLinkMultipartSubmitOperation> {
+  submit(): unknown;
+}
+
+interface ZLinkMultipartRequestOperation extends ZLinkMultipartOperation<ZLinkMultipartRequestOperation> {
+  timeout(timeoutMs: number): ZLinkMultipartRequestOperation;
+  submitAsync(): Promise<Message[]>;
+}
+
+type ZLinkMultipartReplyOperation = ZLinkMultipartSubmitOperation;
+
+function appendParts<TNext extends ZLinkMultipartOperation<TNext>>(
+  operation: ZLinkMultipartOperation<TNext>,
+  parts: readonly MessageLike[]
+): TNext {
+  if (parts.length === 0) {
+    throw new ZLinkConfigurationException('Channel multipart envelope must contain at least one part.');
+  }
+  let current: TNext = operation.message(parts[0]);
+  for (let index = 1; index < parts.length; index++) {
+    current = current.message(parts[index]);
+  }
+  return current;
+}
+
 function toMessageLike(value: unknown): MessageLike {
-  if (typeof value === 'string' || Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value)) {
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value)) {
     return value;
   }
-  throw new TypeError('ZLink channel payload must be a Message, Buffer, Uint8Array, or string until codecs are registered.');
+  return encodeJsonBytes(value);
 }
 
 function isMessage(value: unknown): value is Message {
   return typeof value === 'object' && value !== null && typeof (value as { data?: unknown }).data === 'function';
 }
 
-function encodeChannelEnvelope(packetName: string | undefined, payload: unknown): MessageLike {
-  const message = toMessageLike(payload);
-  const bytes = isMessage(message) ? message.data() : Buffer.from(message);
-  return JSON.stringify({
-    format: CHANNEL_ENVELOPE_FORMAT,
-    packetName,
-    payload: bytes.toString('base64')
-  });
+function encodeChannelEnvelopeParts(
+  kind: ZLinkChannelMessageKind,
+  channelName: string,
+  packetName: string | undefined,
+  payload: unknown,
+  timeoutMs?: number,
+  topic?: string
+): readonly MessageLike[] {
+  const header: ZLinkChannelEnvelopeHeader = {
+    kind,
+    channelName,
+    messageName: packetName ?? resolveChannelPacketName(payload),
+    contentType: JSON_CONTENT_TYPE,
+    correlationId: randomUUID().replaceAll('-', ''),
+    deadline: timeoutMs === undefined ? null : new Date(Date.now() + timeoutMs).toISOString(),
+    topic: topic ?? null,
+    errorCode: null,
+    errorMessage: null
+  };
+  return [encodeJsonBytes(header), toMessageLike(payload)];
 }
 
-function decodeChannelEnvelope(parts: readonly Message[]): ZLinkChannelEnvelope {
-  if (parts.length !== 1) {
-    throw new ZLinkConfigurationException('Channel envelope requires exactly one message part.');
+function encodeChannelReplyParts(request: ZLinkChannelEnvelopeHeader, payload: unknown): readonly MessageLike[] {
+  const header: ZLinkChannelEnvelopeHeader = {
+    kind: ZLinkChannelMessageKind.Response,
+    channelName: request.channelName,
+    messageName: request.messageName,
+    contentType: JSON_CONTENT_TYPE,
+    correlationId: request.correlationId,
+    deadline: null,
+    topic: null,
+    errorCode: null,
+    errorMessage: null
+  };
+  return [encodeJsonBytes(header), toMessageLike(payload ?? Buffer.alloc(0))];
+}
+
+function decodeChannelReply<TReply>(parts: readonly Message[]): TReply {
+  const header = decodeChannelHeader(parts);
+  if (header.kind === ZLinkChannelMessageKind.Error) {
+    throw new ZLinkConfigurationException(header.errorMessage ?? 'ZLink channel request failed.');
   }
-  const envelope = JSON.parse(parts[0].data().toString()) as { format?: string; packetName?: string; payload?: string };
-  if (envelope.format !== CHANNEL_ENVELOPE_FORMAT || typeof envelope.payload !== 'string') {
-    throw new ZLinkConfigurationException('Channel envelope header format is not supported.');
+  if (header.kind !== ZLinkChannelMessageKind.Response) {
+    throw new ZLinkConfigurationException(`Channel reply kind '${header.kind}' is not a response.`);
   }
-  return { packetName: envelope.packetName, payload: Buffer.from(envelope.payload, 'base64') };
+  if (parts.length < 2 || parts[1].data().length === 0) {
+    return undefined as TReply;
+  }
+  return JSON.parse(parts[1].data().toString()) as TReply;
+}
+
+function decodeChannelEnvelope(parts: readonly Message[]): ZLinkChannelEnvelope & { readonly header: ZLinkChannelEnvelopeHeader } {
+  const header = decodeChannelHeader(parts);
+  if (parts.length < 2) {
+    throw new ZLinkConfigurationException('Channel envelope body part is missing.');
+  }
+  return { header, packetName: header.messageName, payload: Buffer.from(parts[1].data()) };
+}
+
+function decodeChannelHeader(parts: readonly Message[]): ZLinkChannelEnvelopeHeader {
+  if (parts.length === 0) {
+    throw new ZLinkConfigurationException('Channel envelope header part is missing.');
+  }
+  return JSON.parse(parts[0].data().toString()) as ZLinkChannelEnvelopeHeader;
+}
+
+function encodeJsonBytes(value: unknown): Buffer {
+  return Buffer.from(JSON.stringify(value ?? null));
+}
+
+function resolveChannelPacketName(payload: unknown): string {
+  if (payload !== null && typeof payload === 'object' && 'constructor' in payload) {
+    const name = (payload as { constructor?: { name?: string } }).constructor?.name;
+    if (name !== undefined && name !== 'Object') {
+      return name;
+    }
+  }
+  throw new ZLinkConfigurationException('Channel packetName is required when the payload type cannot provide one.');
 }
 
 export class DefaultZLinkFanoutClient implements ZLinkFanoutClient {

@@ -15,11 +15,30 @@ async function main() {
 
     const result = await session.request({ command: 'run' });
     assert.equal(result.sameActor, true);
+    assert.equal(result.opponentActor, 'p2');
     assert.equal(result.staleAccepted, false);
-    assert.deepEqual(result.delivered.map((entry) => [entry.sessionId, entry.packetName, entry.cell]), [
+    assert.deepEqual(result.delivered.slice(0, 2).map((entry) => [entry.sessionId, entry.packetName, entry.cell]), [
       ['session-1', 'TurnPlaced', 0],
       ['session-2', 'TurnPlaced', 1]
     ]);
+    assert.equal(result.finalState.board, 'XXXOO....');
+    assert.equal(result.finalState.status, 'Won');
+    assert.equal(result.finalState.winnerActorId, 'p1');
+    assert.deepEqual(result.moves.map((state) => state.board), [
+      'X........',
+      'X..O.....',
+      'XX.O.....',
+      'XX.OO....',
+      'XXXOO....'
+    ]);
+
+    const pushedByPacket = result.delivered.reduce((counts, entry) => {
+      counts[entry.packetName] = (counts[entry.packetName] ?? 0) + 1;
+      return counts;
+    }, {});
+    assert.equal(pushedByPacket.OpponentJoinedNotify, 2);
+    assert.equal(pushedByPacket.TurnChangedNotify, 10);
+    assert.equal(pushedByPacket.GameEndedNotify, 2);
   } finally {
     await session.close();
     await play.close();

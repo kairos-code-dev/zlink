@@ -191,6 +191,39 @@ test('TicTacToe sample covers separated api play roles timer and push notificati
   assert.deepEqual(missing, []);
 });
 
+test('TicTacToe SessionGateway sample covers reconnect two-actor round and bound push', () => {
+  const client = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'client', 'self-check.js'), 'utf8');
+  const session = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'session-server', 'main.js'), 'utf8');
+  const round = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'session-server', 'tictactoe-round.js'), 'utf8');
+  const actor = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'play-server', 'session-actor.js'), 'utf8');
+  const readme = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'README.ko.md'), 'utf8');
+  const required = [
+    [session, "await gateway.bind('p2', 'session-o', 1)"],
+    [session, "new SessionGatewayRound('match-1', second, opponent)"],
+    [session, "await round.place('p1', 0)"],
+    [session, "await round.place('p2', 4)"],
+    [client, "assert.equal(result.finalState.board, 'XXXOO....')"],
+    [client, "assert.equal(result.finalState.winnerActorId, 'p1')"],
+    [client, 'pushedByPacket.OpponentJoinedNotify'],
+    [client, 'pushedByPacket.TurnChangedNotify'],
+    [client, 'pushedByPacket.GameEndedNotify'],
+    [round, 'class SessionGatewayRound'],
+    [actor, 'notifyOpponentJoined'],
+    [actor, 'notifyTurnChanged'],
+    [actor, 'notifyGameEnded'],
+    [actor, "packetName('TurnChangedNotify')"],
+    [actor, "packetName('GameEndedNotify')"],
+    [readme, '`p1`, `p2` 두 actor'],
+    [readme, '`XXXOO....`'],
+    [readme, 'winner 는 `p1`']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
+
+  assert.deepEqual(missing, []);
+});
+
 test('Bingo sample covers four-player host start guards and bound push fanout', () => {
   const client = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'client', 'self-check.js'), 'utf8');
   const api = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'api-server', 'main.js'), 'utf8');

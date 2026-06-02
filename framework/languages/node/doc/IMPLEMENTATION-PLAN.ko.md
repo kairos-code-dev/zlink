@@ -179,20 +179,20 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 [implementation-scope-and-nongoals](./internals/implementation-scope-and-nongoals.ko.md)
 를 따른다.
 
-**POSD 점검 항목(게이트 체크리스트):**
+**POSD 점검 기준:**
 
-- [ ] **Deep Module** — 각 모듈이 넓은 기능을 **좁은 인터페이스** 뒤에 숨기는가.
+- **Deep Module** — 각 모듈이 넓은 기능을 **좁은 인터페이스** 뒤에 숨기는가.
   얕은 wrapper·pass-through 남발이 없는가.
-- [ ] **정보 은닉** — 계층 간 지식 누수 최소화. backend 바인딩 타입·native
+- **정보 은닉** — 계층 간 지식 누수 최소화. backend 바인딩 타입·native
   detail 이 framework public surface 로 새지 않는가(backend-dependency-policy).
-- [ ] **변경 증폭 억제** — 한 변경이 여러 모듈로 번지지 않는가. 중복 로직·산탄총
+- **변경 증폭 억제** — 한 변경이 여러 모듈로 번지지 않는가. 중복 로직·산탄총
   수정(shotgun surgery) 신호가 없는가.
-- [ ] **공개 표면 유지** — 이번 리팩토링이 spec/handler-interfaces 의 계약을
+- **공개 표면 유지** — 이번 리팩토링이 spec/handler-interfaces 의 계약을
   바꾸지 않는가(내부만 정리). 바꿔야 하면 spec 을 먼저 고친다.
-- [ ] **명확성** — 이름·경계가 의도를 드러내는가. "special case → general case"
+- **명확성** — 이름·경계가 의도를 드러내는가. "special case → general case"
   로 단순화 여지가 없는가. 깨끗한 per-type API 를 struct+enum 류로 불필요하게
   통합하는 등 과잉 추상화를 넣지 않았는가.
-- [ ] **POSD 주석 정전화** — 모듈/공개 타입 주석이 repo POSD 주석 정책과
+- **POSD 주석 정전화** — 모듈/공개 타입 주석이 repo POSD 주석 정책과
   일치하는가(dotnet contracts 주석 템플릿과 동일 기준).
 
 **Phase별 POSD 중점:**
@@ -242,9 +242,9 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - Node 바인딩 위 wrapper 12 구현: context, dealer/router/publisher/subscriber socket, spotNode, spot, stream socket, registry, registryQueryClient, socket monitor
   - factory 가 5개 어댑터 생성
 - **DoD:**
-  - [ ] factory 가 channel/spot/stream/registry/monitoring 어댑터를 모두 생성
-  - [ ] 바인딩 객체(DealerSocket/SpotNode/Registry 등)가 public surface 로 새지 않음
-  - [ ] 허용 primitive(`RoutingId`=string, `Message`=Buffer, `SendFlags`)만 노출
+  - [x] factory 가 channel/spot/stream/registry/monitoring 어댑터를 모두 생성
+  - [x] 바인딩 객체(DealerSocket/SpotNode/Registry 등)가 public surface 로 새지 않음
+  - [x] 허용 primitive(`RoutingId`=string, `Message`=Buffer, `SendFlags`)만 노출
 - **검증:** backend-dependency-policy §9 미러 테스트(`backend-contract.test.js`,
   `backend-public-api-only.test.js`)
 
@@ -264,11 +264,11 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - stale native artifact 로 인한 smoke 실패를 막기 위해 실제 native addon
     산출물이 source 보다 최신인지 확인하는 guard 를 둔다.
 - **DoD:**
-  - [ ] P2~P8 에 필요한 binding public API gap list 가 닫힘
-  - [ ] ActorGateway attach, bound session send/disconnect, stream session,
+  - [x] P2~P8 에 필요한 binding public API gap list 가 닫힘
+  - [x] ActorGateway attach, bound session send/disconnect, stream session,
         registry query, socket monitor smoke 가 binding public API 로 통과
-  - [ ] framework runtime/adapter 코드가 binding internal 경로를 import 하지 않음
-  - [ ] stale native artifact guard 통과
+  - [x] framework runtime/adapter 코드가 binding internal 경로를 import 하지 않음
+  - [x] stale native artifact guard 통과
 - **검증:** `node-binding-parity.test.js`, `backend-public-api-only.test.js`,
   `native-artifact-freshness.test.js`
 
@@ -281,7 +281,7 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - context 타입, 결과/에러 타입, enum, options
   - decorator 팩토리(`@ZLinkRequest`/`@ZLinkSend`/`@ZLinkPublish`/`@ZLinkPacket`/`@ZLinkHandlerGroup`/spot·actor 계열/stream 계열)
   - client 인터페이스, module options 타입
-- **DoD:** [ ] 계약 타입 전부 컴파일 / [ ] handler-interfaces 의 카탈로그 항목 누락 없음
+- **DoD:** [x] 계약 타입 전부 컴파일 / [x] handler-interfaces 의 카탈로그 항목 누락 없음
 - **검증:** contract 테스트(`test/contract/**`) — regression-test-matrix 의 ContractSurface 미러
 
 ### Phase 3 — 호스트/모듈 부트스트랩 + lifecycle
@@ -294,9 +294,9 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - 런타임 시동/종료를 `onApplicationBootstrap`/`onApplicationShutdown` 에 연결, **시동 순서·graceful close** 준수
   - 레지스트리/모니터링 모듈 분리(`ZLinkRegistryModule`, `ZLinkRegistryQueryClientModule`)
 - **DoD:**
-  - [ ] 빈 옵션으로 모듈 부트/셧다운이 lifecycle 순서대로 동작
-  - [ ] 잘못된 등록이 forRoot 빌드 시 검증 예외
-  - [ ] capability 별 injectable client 토큰 노출 규칙 일치
+  - [x] 빈 옵션으로 모듈 부트/셧다운이 lifecycle 순서대로 동작
+  - [x] 잘못된 등록이 forRoot 빌드 시 검증 예외
+  - [x] capability 별 injectable client 토큰 노출 규칙 일치
 - **검증:** lifecycle/host e2e 미러(시동순서·실패롤백·종료순서)
 
 ### Phase 4 — channel messaging (슬라이스 1 완성)
@@ -311,10 +311,10 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - outbound client: `ZLinkChannelClient`/`ZLinkFanoutClient` fluent builder(`requestToChannel(...).submit(...)`, `sendToChannel(...).submit(...)`, `publish(...).submit(...)`), packet key 해석 순서
   - manual vs discovery 연결(같은 capability 에서 혼용 금지)
 - **DoD:**
-  - [ ] 서버 handler + 주입 client 로 **request/reply 1왕복 E2E** 통과
-  - [ ] send(one-way)·publish(fan-out) 동작
-  - [ ] scan≠노출 규칙(미등록 handler 가 자동 노출 안 됨)
-  - [ ] filter 전/후 실행 순서
+  - [x] 서버 handler + 주입 client 로 **request/reply 1왕복 E2E** 통과
+  - [x] send(one-way)·publish(fan-out) 동작
+  - [x] scan≠노출 규칙(미등록 handler 가 자동 노출 안 됨)
+  - [x] filter 전/후 실행 순서
 - **검증:** channels e2e 미러(ClientServer/DealerMesh/Fanout/RouteChannel/HandlerClients)
 
 ### Phase 5 — spot
@@ -329,9 +329,9 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - **단일 spot 실행 컨텍스트**(serial executor — 모든 packet/timer/subscription/channel-reply continuation 직렬화)
   - outbound(`context.outbound.*`: sendToSpot/requestToSpot/publish/sendToChannel/requestToChannel)
 - **DoD:**
-  - [ ] spot 생성/조회/제거 + lifecycle 콜백 순서
-  - [ ] handler·timer 가 동일 직렬 컨텍스트에서 실행(상태 보호)
-  - [ ] requestToChannel completion 이 같은 spot 컨텍스트에서 실행
+  - [x] spot 생성/조회/제거 + lifecycle 콜백 순서
+  - [x] handler·timer 가 동일 직렬 컨텍스트에서 실행(상태 보호)
+  - [x] requestToChannel completion 이 같은 spot 컨텍스트에서 실행
 - **검증:** spot e2e 미러(Manager/Timer/Route*/Entry*)
 
 ### Phase 6 — actor core
@@ -344,9 +344,9 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - **dispatch 순서 보장**: actor별 mailbox 턴 → location 스냅샷 후 Entry/user Spot 큐 선택
   - actor type mismatch, duplicate create, actor location 재확인 정책
 - **DoD:**
-  - [ ] 같은 actor 패킷 순서 보장, 서로 다른 actor 병행
-  - [ ] join 직후 패킷이 새 user Spot location 으로 라우팅(location 재확인)
-  - [ ] actor create/getOrCreate/find semantics 가 dotnet 과 일치
+  - [x] 같은 actor 패킷 순서 보장, 서로 다른 actor 병행
+  - [x] join 직후 패킷이 새 user Spot location 으로 라우팅(location 재확인)
+  - [x] actor create/getOrCreate/find semantics 가 dotnet 과 일치
 - **검증:** spot ActorLifecycle / actor dispatch ordering e2e 미러
 
 ### Phase 7 — stream + session relay + stream connector
@@ -363,11 +363,11 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - connector codec 패키지(json/msgpack/protobuf)는 connector 전용으로 분리한다.
     framework runtime codec registry 와 섞지 않는다.
 - **DoD:**
-  - [ ] 외부 client 연결 → session onDispatch 수신 → reply 왕복
-  - [ ] session→actor relay 동작
-  - [ ] bound session send / disconnect 동작
-  - [ ] stale binding token guard 동작
-  - [ ] connector 재연결/heartbeat 옵션 동작
+  - [x] 외부 client 연결 → session onDispatch 수신 → reply 왕복
+  - [x] session→actor relay 동작
+  - [x] bound session send / disconnect 동작
+  - [x] stale binding token guard 동작
+  - [x] connector 재연결/heartbeat 옵션 동작
 - **검증:** stream e2e 미러(Protocol/Disconnect/SessionRelay/ActorBinding) + connector 테스트
 
 ### Phase 8 — registry + monitoring + codecs
@@ -383,10 +383,10 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - framework runtime codec registry(json/msgpack/protobuf). connector codec package 와
     책임을 섞지 않는다.
 - **DoD:**
-  - [ ] registry 시동 + in-process/remote topology 조회
-  - [ ] socket/registry 이벤트가 handler 로 전달
-  - [ ] P5 이후 spot 이벤트가 handler 로 전달
-  - [ ] codec 등록·직렬화 왕복
+  - [x] registry 시동 + in-process/remote topology 조회
+  - [x] socket/registry 이벤트가 handler 로 전달
+  - [x] P5 이후 spot 이벤트가 handler 로 전달
+  - [x] codec 등록·직렬화 왕복
 - **검증:** registry e2e(Discovery/EmbeddedRegistry) + monitoring/events e2e 미러
 
 ### Phase 9 — 동등성 검증 + 사용성·샘플 동등성
@@ -406,13 +406,13 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
     Node↔C++/Java 중 최소 지정 경로).
   - guide/spec/internals/sample 문서 링크가 깨지지 않는지 문서 회귀 테스트를 추가한다.
 - **DoD:**
-  - [ ] regression matrix 의 모든 행이 green / multi-process topology 시나리오 통과
-  - [ ] NestJS sample smoke command 가 모든 필수 sample 을 실행하고 self-check 통과
-  - [ ] 사용자 guide 가 dotnet guide 의 주요 장과 1:1 대응한다
-  - [ ] cross-language smoke 가 Node↔dotnet request/reply, stream connector 왕복,
+  - [x] regression matrix 의 모든 행이 green / multi-process topology 시나리오 통과
+  - [x] NestJS sample smoke command 가 모든 필수 sample 을 실행하고 self-check 통과
+  - [x] 사용자 guide 가 dotnet guide 의 주요 장과 1:1 대응한다
+  - [x] cross-language smoke 가 Node↔dotnet request/reply, stream connector 왕복,
         actor/session relay 중 최소 필수 경로를 통과한다
-  - [ ] 문서 링크 회귀 테스트 통과
-  - [ ] §8 의 4축(구조·기능·사용성·샘플) 동등성 표가 전부 충족
+  - [x] 문서 링크 회귀 테스트 통과
+  - [x] §8 의 4축(구조·기능·사용성·샘플) 동등성 표가 전부 충족
 - **검증:** 전체 회귀 스위트 + §8 동등성 점검
 
 ---
@@ -444,18 +444,18 @@ TS 고유 제약(표면 한계): 런타임 타입 소거 → packet key 는 **�
 
 각 Phase 는 **(구현+DoD) → (POSD 게이트)** 두 박스를 모두 체크해야 완료다(§5.0).
 
-- [ ] **P0** 골격 — 빌드/테스트 러너/바인딩 스모크 · [ ] POSD 게이트
-- [ ] **P1** backend 어댑터 포트 — factory 5어댑터 + wrapper 12 + 누수 0 · [ ] POSD 게이트
-- [ ] **P1.5** Node binding parity — public API gap 0 + internal 우회 0 · [ ] POSD 게이트
-- [ ] **P2** 계약 TS 이식 — contract 테스트 green · [ ] POSD 게이트
-- [ ] **P3** 호스트/모듈/lifecycle — forRoot/forRootAsync + 시동·종료 순서 · [ ] POSD 게이트
-- [ ] **P4** channel messaging — request/reply E2E + send/publish + filter · [ ] POSD 게이트
-- [ ] **P5** spot — lifecycle + 단일 실행 컨텍스트 + manager · [ ] POSD 게이트
-- [ ] **P6** actor core — 순서 보장 + actor lifecycle · [ ] POSD 게이트
-- [ ] **P7** stream + session relay + connector — bound session + 외부 client 왕복 · [ ] POSD 게이트
-- [ ] **P8** registry/monitoring/codecs — query + typed event + codec · [ ] POSD 게이트
-- [ ] **P9** 동등성 검증 + 사용성·샘플 동등 — regression green + 가이드 + 샘플 · [ ] POSD 게이트(전체 정리)
-- [ ] **최종 완료** — §8 4축(구조·기능·사용성·샘플) 동등성 표 전부 충족 + cross-language 상호호출 확인
+- [x] **P0** 골격 — 빌드/테스트 러너/바인딩 스모크 · [x] POSD 게이트
+- [x] **P1** backend 어댑터 포트 — factory 5어댑터 + wrapper 12 + 누수 0 · [x] POSD 게이트
+- [x] **P1.5** Node binding parity — public API gap 0 + internal 우회 0 · [x] POSD 게이트
+- [x] **P2** 계약 TS 이식 — contract 테스트 green · [x] POSD 게이트
+- [x] **P3** 호스트/모듈/lifecycle — forRoot/forRootAsync + 시동·종료 순서 · [x] POSD 게이트
+- [x] **P4** channel messaging — request/reply E2E + send/publish + filter · [x] POSD 게이트
+- [x] **P5** spot — lifecycle + 단일 실행 컨텍스트 + manager · [x] POSD 게이트
+- [x] **P6** actor core — 순서 보장 + actor lifecycle · [x] POSD 게이트
+- [x] **P7** stream + session relay + connector — bound session + 외부 client 왕복 · [x] POSD 게이트
+- [x] **P8** registry/monitoring/codecs — query + typed event + codec · [x] POSD 게이트
+- [x] **P9** 동등성 검증 + 사용성·샘플 동등 — regression green + 가이드 + 샘플 · [x] POSD 게이트(전체 정리)
+- [x] **최종 완료** — §8 4축(구조·기능·사용성·샘플) 동등성 표 전부 충족 + cross-language 상호호출 확인
 
 ---
 

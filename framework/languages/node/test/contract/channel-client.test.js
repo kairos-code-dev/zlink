@@ -517,6 +517,71 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
   }
 });
 
+test('ZLinkModule routeMesh channel option dispatches inbound routed handlers after bootstrap', async () => {
+  const ctx = zlink.createContext();
+  const remoteDealer = zlink.createDealerSocket(ctx);
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const events = [];
+  const module = nestjs.ZLinkModule.forRoot({
+    channels: {
+      mesh: {
+        routeMesh: {
+          bind: endpoint,
+          routingId: 'node-a',
+          requestHandlers: [
+            {
+              packetName: 'RoutePing',
+              handler: {
+                async handle(payload, context) {
+                  events.push(`request:${context.channelName}:${context.packetName}:${context.requestSeq}:${JSON.parse(payload.toString()).value}`);
+                  return { value: 'pong' };
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  });
+  const container = await resolveModuleProviders(module, [nestjs.ZLINK_FRAMEWORK_RUNTIME]);
+  const runtime = container.get(nestjs.ZLINK_FRAMEWORK_RUNTIME);
+
+  try {
+    await runtime.start();
+    remoteDealer.setRoutingId(zlink.RoutingId.from('node-b'));
+    remoteDealer.options.probe = true;
+    remoteDealer.connect(endpoint);
+
+    const reply = await withTimeout(
+      submitRequestMultipart(
+        remoteDealer.request(),
+        encodeDotnetEnvelope({
+          kind: 1,
+          channelName: 'mesh',
+          messageName: 'RoutePing',
+          contentType: 'application/json',
+          correlationId: null,
+          deadline: null,
+          topic: null,
+          errorCode: null,
+          errorMessage: null
+        }, { value: 'ping' })
+      ),
+      1000,
+      'routeMesh option runtime handler reply'
+    );
+    const envelope = decodeDotnetEnvelope(reply);
+    assert.equal(envelope.header.kind, 2);
+    assert.deepEqual(envelope.body, { value: 'pong' });
+    assert.match(events[0], /^request:mesh:RoutePing:\d+:ping$/);
+    reply.forEach((part) => part.close());
+  } finally {
+    remoteDealer.close();
+    await runtime.stop();
+    ctx.close();
+  }
+});
+
 test('channel runtime waits for send-ready instead of failing backpressured sends', async () => {
   const socket = fakeBackpressuredDealer();
   const manager = new framework.ZLinkChannelRuntimeManager(

@@ -14,6 +14,7 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.time.Duration
 
+// --8<-- [start:doc]
 private fun uniqueTcp(): String =
     ServerSocket(0, 0, InetAddress.getByName("127.0.0.1")).use { "tcp://127.0.0.1:${it.localPort}" }
 
@@ -81,3 +82,4 @@ fun main() {
         }
     }
 }
+// --8<-- [end:doc]

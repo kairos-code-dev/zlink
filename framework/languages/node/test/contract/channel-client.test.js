@@ -20,7 +20,7 @@ test('ZLinkChannelClient fluent request call passes packet and timeout to transp
   const calls = [];
   const registration = framework.createFrameworkRegistration({
     channels: {
-      api: { client: {} }
+      api: { client: { manualConnections: ['inproc://api'] } }
     }
   });
   const client = new framework.DefaultZLinkChannelClient(registration, {
@@ -47,7 +47,7 @@ test('ZLinkChannelClient fluent request call passes packet and timeout to transp
 test('ZLinkModule.forRoot provides concrete channel and fanout clients', () => {
   const module = nestjs.ZLinkModule.forRoot({
     channels: {
-      api: { client: {}, publisher: { bind: 'inproc://pub' } }
+      api: { client: { manualConnections: ['inproc://api'] }, publisher: { bind: 'inproc://pub' } }
     }
   });
   const channelProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_CHANNEL_CLIENT);
@@ -67,7 +67,9 @@ test('ZLinkChannelClient sends through public dealer/router binding sockets', as
     router.bind(endpoint);
     dealer.connect(endpoint);
 
-    const registration = framework.createFrameworkRegistration({ channels: { api: { client: {} } } });
+    const registration = framework.createFrameworkRegistration({
+      channels: { api: { client: { manualConnections: [endpoint] } } }
+    });
     const client = new framework.DefaultZLinkChannelClient(
       registration,
       new framework.ZLinkDealerChannelClientTransport(dealer)
@@ -105,7 +107,9 @@ test('ZLinkChannelClient request/reply round-trips through public binding socket
     routerMonitor.close();
     dealerMonitor.close();
 
-    const registration = framework.createFrameworkRegistration({ channels: { api: { client: {} } } });
+    const registration = framework.createFrameworkRegistration({
+      channels: { api: { client: { manualConnections: [endpoint] } } }
+    });
     const client = new framework.DefaultZLinkChannelClient(
       registration,
       new framework.ZLinkDealerChannelClientTransport(dealer)
@@ -197,7 +201,9 @@ test('ZLinkChannelRequestDispatcher invokes request handler and replies through 
     routerMonitor.close();
     dealerMonitor.close();
 
-    const registration = framework.createFrameworkRegistration({ channels: { api: { client: {} } } });
+    const registration = framework.createFrameworkRegistration({
+      channels: { api: { client: { manualConnections: [endpoint] } } }
+    });
     const client = new framework.DefaultZLinkChannelClient(
       registration,
       new framework.ZLinkDealerChannelClientTransport(dealer)

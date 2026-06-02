@@ -4,6 +4,7 @@ import zlink
 from sample_support import tcp_endpoint, wait_socket_monitor_event
 
 
+# --8<-- [start:doc]
 def main():
     port, endpoint = tcp_endpoint()
 
@@ -31,3 +32,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+# --8<-- [end:doc]

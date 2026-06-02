@@ -3,6 +3,7 @@
 //   dotnet run --project samples/SpotTimerExample
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 using var ctx = Zlink.CreateContext();
 using var node = ctx.CreateSpotNode();
 using var room = node.CreateSpot();
@@ -25,3 +26,4 @@ if (final < 3)
     throw new Exception($"timer fired only {final} times");
 }
 Console.WriteLine($"[spot/timer] room tick fired {final} times");
+// --8<-- [end:doc]

@@ -2,6 +2,7 @@
 
 use zlink::{Context, Message, SocketMonitor};
 
+// --8<-- [start:doc]
 pub fn reserve_tcp_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -69,3 +70,4 @@ fn main() {
     assert_eq!(payload, "hello-pair");
     println!("[pair/recv] send: \"hello-pair\" → recv: \"{}\"", payload);
 }
+// --8<-- [end:doc]

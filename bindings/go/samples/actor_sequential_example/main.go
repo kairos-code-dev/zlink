@@ -14,6 +14,7 @@ import (
 	zlink "zlink.systems/zlink/contracts"
 )
 
+// --8<-- [start:doc]
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -117,3 +118,4 @@ func main() {
 	must(player.Close())
 	fmt.Println(`[actor/sequential] processed in order: move -> attack -> loot`)
 }
+// --8<-- [end:doc]

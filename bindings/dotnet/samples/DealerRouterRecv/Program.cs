@@ -1,6 +1,7 @@
 using SampleCommon;
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 if (!SampleSupport.IsNativeAvailable())
     return;
 
@@ -26,3 +27,4 @@ using var reply = Message.From("pong");
 received.Send().Message(reply).Submit();
 string payload = SampleSupport.ReceiveUtf8(dealer, 2000);
 Console.WriteLine($"[dealer-router/recv] send: \"ping\" -> recv: \"{payload}\"");
+// --8<-- [end:doc]

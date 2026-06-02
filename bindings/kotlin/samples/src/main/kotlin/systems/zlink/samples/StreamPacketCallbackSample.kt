@@ -9,6 +9,7 @@ import systems.zlink.contracts.sockets.SendFlags
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CountDownLatch
 
+// --8<-- [start:doc]
 private fun frameBytes(body: ByteArray): ByteArray {
     val frame = ByteArray(6 + body.size)
     frame[2] = (body.size ushr 24).toByte()
@@ -88,3 +89,4 @@ fun main() {
         }
     }
 }
+// --8<-- [end:doc]

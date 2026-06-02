@@ -51,39 +51,39 @@ sequenceDiagram
 
 === "C++"
     ```cpp
-    --8<-- "bindings/cpp/samples/spot_pubsub_example.cpp"
+    --8<-- "bindings/cpp/samples/spot_pubsub_example.cpp:doc"
     ```
 === "C#/.NET"
     ```csharp
-    --8<-- "bindings/dotnet/samples/SpotPubSubExample/Program.cs"
+    --8<-- "bindings/dotnet/samples/SpotPubSubExample/Program.cs:doc"
     ```
 === "Java"
     ```java
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotPubSubExample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotPubSubExample.java:doc"
     ```
 === "Kotlin"
     ```kotlin
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotPubSubExample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotPubSubExample.kt:doc"
     ```
 === "Python"
     ```python
-    --8<-- "bindings/python/samples/spot_pubsub_example.py"
+    --8<-- "bindings/python/samples/spot_pubsub_example.py:doc"
     ```
 === "Node/TypeScript"
     ```typescript
-    --8<-- "bindings/node/samples/spot_pubsub_example.ts"
+    --8<-- "bindings/node/samples/spot_pubsub_example.ts:doc"
     ```
 === "JavaScript"
     ```javascript
-    --8<-- "bindings/javascript/samples/spot_pubsub_example.js"
+    --8<-- "bindings/javascript/samples/spot_pubsub_example.js:doc"
     ```
 === "Go"
     ```go
-    --8<-- "bindings/go/samples/spot_pubsub_example/main.go"
+    --8<-- "bindings/go/samples/spot_pubsub_example/main.go:doc"
     ```
 === "Rust"
     ```rust
-    --8<-- "bindings/rust/samples/spot_pubsub_example.rs"
+    --8<-- "bindings/rust/samples/spot_pubsub_example.rs:doc"
     ```
 
 위 예제는 수동 peer 연결을 쓴다(`set_pub_bind`로 자기 발행 endpoint를 열고
@@ -359,39 +359,39 @@ sequenceDiagram
 
 === "C++"
 
-    --8<-- "bindings/cpp/samples/spot_channel_example.cpp"
+    --8<-- "bindings/cpp/samples/spot_channel_example.cpp:doc"
 
 === "C#/.NET"
 
-    --8<-- "bindings/dotnet/samples/SpotChannelExample/Program.cs"
+    --8<-- "bindings/dotnet/samples/SpotChannelExample/Program.cs:doc"
 
 === "Java"
 
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotChannelExample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotChannelExample.java:doc"
 
 === "Kotlin"
 
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotChannelExample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotChannelExample.kt:doc"
 
 === "Python"
 
-    --8<-- "bindings/python/samples/spot_channel_example.py"
+    --8<-- "bindings/python/samples/spot_channel_example.py:doc"
 
 === "Node/TypeScript"
 
-    --8<-- "bindings/node/samples/spot_channel_example.ts"
+    --8<-- "bindings/node/samples/spot_channel_example.ts:doc"
 
 === "JavaScript"
 
-    --8<-- "bindings/javascript/samples/spot_channel_example.js"
+    --8<-- "bindings/javascript/samples/spot_channel_example.js:doc"
 
 === "Go"
 
-    --8<-- "bindings/go/samples/spot_channel_example/main.go"
+    --8<-- "bindings/go/samples/spot_channel_example/main.go:doc"
 
 === "Rust"
 
-    --8<-- "bindings/rust/samples/spot_channel_example.rs"
+    --8<-- "bindings/rust/samples/spot_channel_example.rs:doc"
 
 ## 6. 디스패치 이벤트 핸들러로 통합 소비
 
@@ -550,39 +550,39 @@ sequenceDiagram
 
 === "C++"
 
-    --8<-- "bindings/cpp/samples/spot_timer_example.cpp"
+    --8<-- "bindings/cpp/samples/spot_timer_example.cpp:doc"
 
 === "C#/.NET"
 
-    --8<-- "bindings/dotnet/samples/SpotTimerExample/Program.cs"
+    --8<-- "bindings/dotnet/samples/SpotTimerExample/Program.cs:doc"
 
 === "Java"
 
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotTimerExample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotTimerExample.java:doc"
 
 === "Kotlin"
 
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotTimerExample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotTimerExample.kt:doc"
 
 === "Python"
 
-    --8<-- "bindings/python/samples/spot_timer_example.py"
+    --8<-- "bindings/python/samples/spot_timer_example.py:doc"
 
 === "Node/TypeScript"
 
-    --8<-- "bindings/node/samples/spot_timer_example.ts"
+    --8<-- "bindings/node/samples/spot_timer_example.ts:doc"
 
 === "JavaScript"
 
-    --8<-- "bindings/javascript/samples/spot_timer_example.js"
+    --8<-- "bindings/javascript/samples/spot_timer_example.js:doc"
 
 === "Go"
 
-    --8<-- "bindings/go/samples/spot_timer_example/main.go"
+    --8<-- "bindings/go/samples/spot_timer_example/main.go:doc"
 
 === "Rust"
 
-    --8<-- "bindings/rust/samples/spot_timer_example.rs"
+    --8<-- "bindings/rust/samples/spot_timer_example.rs:doc"
 
 ## 9. 라우팅 수신과 응답
 
@@ -646,39 +646,39 @@ sequenceDiagram
 
 === "C++"
     ```cpp
-    --8<-- "bindings/cpp/samples/spot_rpc_example.cpp"
+    --8<-- "bindings/cpp/samples/spot_rpc_example.cpp:doc"
     ```
 === "C#/.NET"
     ```csharp
-    --8<-- "bindings/dotnet/samples/SpotRpcExample/Program.cs"
+    --8<-- "bindings/dotnet/samples/SpotRpcExample/Program.cs:doc"
     ```
 === "Java"
     ```java
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotRpcExample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotRpcExample.java:doc"
     ```
 === "Kotlin"
     ```kotlin
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotRpcExample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotRpcExample.kt:doc"
     ```
 === "Python"
     ```python
-    --8<-- "bindings/python/samples/spot_rpc_example.py"
+    --8<-- "bindings/python/samples/spot_rpc_example.py:doc"
     ```
 === "Node/TypeScript"
     ```typescript
-    --8<-- "bindings/node/samples/spot_rpc_example.ts"
+    --8<-- "bindings/node/samples/spot_rpc_example.ts:doc"
     ```
 === "JavaScript"
     ```javascript
-    --8<-- "bindings/javascript/samples/spot_rpc_example.js"
+    --8<-- "bindings/javascript/samples/spot_rpc_example.js:doc"
     ```
 === "Go"
     ```go
-    --8<-- "bindings/go/samples/spot_rpc_example/main.go"
+    --8<-- "bindings/go/samples/spot_rpc_example/main.go:doc"
     ```
 === "Rust"
     ```rust
-    --8<-- "bindings/rust/samples/spot_rpc_example.rs"
+    --8<-- "bindings/rust/samples/spot_rpc_example.rs:doc"
     ```
 
 reply는 대상 Spot이 `reply_to_spot()`(C: `zlink_spot_reply_spot()`)으로 보낸다.

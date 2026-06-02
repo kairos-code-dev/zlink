@@ -7,6 +7,7 @@ import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.registry.RegistryQueryClient;
+// --8<-- [start:doc]
 public final class RegistryQuerySample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
@@ -51,3 +52,4 @@ public final class RegistryQuerySample {
         }
     }
 }
+// --8<-- [end:doc]

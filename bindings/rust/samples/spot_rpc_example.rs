@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use zlink::{Context, Message, Received, RecvFlags, RoutingId, SendFlags, SpotNode};
 
+// --8<-- [start:doc]
 fn unique_tcp() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -86,3 +87,4 @@ fn main() {
     }
     panic!("spot rpc: no reply");
 }
+// --8<-- [end:doc]

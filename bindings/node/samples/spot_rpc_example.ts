@@ -11,6 +11,7 @@ const net = require('node:net');
 const { once } = require('node:events');
 const zlink = require('@zlink-systems/zlink');
 
+// --8<-- [start:doc]
 async function reservePort(): Promise<number> {
   const server = net.createServer();
   server.listen(0, '127.0.0.1');
@@ -105,3 +106,4 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+// --8<-- [end:doc]

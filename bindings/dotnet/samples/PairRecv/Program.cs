@@ -1,6 +1,7 @@
 using SampleCommon;
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 if (!SampleSupport.IsNativeAvailable())
     return;
 
@@ -20,3 +21,4 @@ using (Message message = Message.From(payload))
 string receivedPayload = SampleSupport.ReceiveUtf8(receiver, 2000);
 Console.WriteLine(
     $"[pair/recv] send: \"hello-pair\" -> recv: \"{receivedPayload}\"");
+// --8<-- [end:doc]

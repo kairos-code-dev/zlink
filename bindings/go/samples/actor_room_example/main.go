@@ -11,6 +11,7 @@ import (
 	zlink "zlink.systems/zlink/contracts"
 )
 
+// --8<-- [start:doc]
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -130,3 +131,4 @@ func main() {
 	must(player2.Close())
 	fmt.Println(`[actor/room] player-1: "your-turn", player-2: "wait"`)
 }
+// --8<-- [end:doc]

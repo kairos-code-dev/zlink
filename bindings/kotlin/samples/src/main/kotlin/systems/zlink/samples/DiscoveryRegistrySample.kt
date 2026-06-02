@@ -13,6 +13,7 @@ import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
 
+// --8<-- [start:doc]
 fun main() {
     SampleSupport.ensureNative()
     val channelName = "sample"
@@ -79,3 +80,4 @@ fun main() {
         SampleSupport.closeQuietly(ctx)
     }
 }
+// --8<-- [end:doc]

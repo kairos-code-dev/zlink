@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using SampleCommon;
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 if (!SampleSupport.IsNativeAvailable())
     return;
 
@@ -33,3 +34,4 @@ string echoed = System.Text.Encoding.UTF8.GetString(
     SampleSupport.ReceiveExact(network, "hello-stream".Length));
 Console.WriteLine(
     $"[stream/recv] send: \"hello-stream\" -> recv: \"{echoed}\"");
+// --8<-- [end:doc]

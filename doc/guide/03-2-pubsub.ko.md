@@ -611,36 +611,36 @@ PUB로 토픽을 발행하고 SUB로 구독·수신하는 자립형 예제다(�
 
 === "C++"
 
-    --8<-- "bindings/cpp/samples/pubsub_recv_sample.cpp"
+    --8<-- "bindings/cpp/samples/pubsub_recv_sample.cpp:doc"
 
 === "C#/.NET"
 
-    --8<-- "bindings/dotnet/samples/PubSubRecv/Program.cs"
+    --8<-- "bindings/dotnet/samples/PubSubRecv/Program.cs:doc"
 
 === "Java"
 
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/PubSubRecvSample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/PubSubRecvSample.java:doc"
 
 === "Kotlin"
 
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/PubSubRecvSample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/PubSubRecvSample.kt:doc"
 
 === "Python"
 
-    --8<-- "bindings/python/samples/pubsub_recv_sample.py"
+    --8<-- "bindings/python/samples/pubsub_recv_sample.py:doc"
 
 === "Node/TypeScript"
 
-    --8<-- "bindings/node/samples/pubsub_recv_sample.ts"
+    --8<-- "bindings/node/samples/pubsub_recv_sample.ts:doc"
 
 === "JavaScript"
 
-    --8<-- "bindings/javascript/samples/pubsub_recv_sample.js"
+    --8<-- "bindings/javascript/samples/pubsub_recv_sample.js:doc"
 
 === "Go"
 
-    --8<-- "bindings/go/samples/pubsub_recv_sample/main.go"
+    --8<-- "bindings/go/samples/pubsub_recv_sample/main.go:doc"
 
 === "Rust"
 
-    --8<-- "bindings/rust/samples/pubsub_recv_sample.rs"
+    --8<-- "bindings/rust/samples/pubsub_recv_sample.rs:doc"

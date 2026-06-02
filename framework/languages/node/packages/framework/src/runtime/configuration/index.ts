@@ -16,6 +16,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly channels?: Readonly<Record<string, ZLinkChannelOptions>>;
+  readonly discovery?: ZLinkDiscoveryOptions;
   readonly routeChannels?: readonly string[];
   readonly spotNodes?: readonly string[];
   readonly spotPublisherClients?: readonly string[];
@@ -24,6 +25,10 @@ export interface ZLinkFrameworkRegistrationOptions {
     readonly namespace: string;
     readonly routerChannelId?: string;
   };
+}
+
+export interface ZLinkDiscoveryOptions {
+  readonly registries?: readonly string[];
 }
 
 export interface ZLinkChannelOptions {
@@ -62,11 +67,14 @@ export function createFrameworkRegistration(
     hasSpotRemoteAddressResolver: options.spotRemoteAddressResolver !== undefined,
     hasRegistrySpotRemoteAddresses: options.registrySpotRemoteAddresses !== undefined
   };
-  validateFrameworkRegistration(registration);
+  validateFrameworkRegistration(registration, options);
   return registration;
 }
 
-export function validateFrameworkRegistration(registration: ZLinkFrameworkRegistration): void {
+export function validateFrameworkRegistration(
+  registration: ZLinkFrameworkRegistration,
+  options: ZLinkFrameworkRegistrationOptions = {}
+): void {
   if (registration.actorFactories.size > 0 && registration.spotNodes.size === 0) {
     throw new ZLinkConfigurationException('Actor factory registration requires at least one SpotNode.');
   }
@@ -74,6 +82,8 @@ export function validateFrameworkRegistration(registration: ZLinkFrameworkRegist
   if (registration.hasRegistrySpotRemoteAddresses && registration.routeChannels.size === 0) {
     throw new ZLinkConfigurationException('Registry remote address resolver requires a route mesh channel.');
   }
+
+  validateChannelCapabilities(options.channels, hasDiscovery(options.discovery));
 }
 
 export function hasSpotNode(registration: ZLinkFrameworkRegistration): boolean {
@@ -113,4 +123,48 @@ function channelNamesWith(
     }
   }
   return names;
+}
+
+function validateChannelCapabilities(
+  channels: ZLinkFrameworkRegistrationOptions['channels'],
+  discoveryConfigured: boolean
+): void {
+  for (const [channelName, channel] of Object.entries(channels ?? {})) {
+    if (channel.server !== undefined) {
+      requireEndpoint(`channel '${channelName}' server`, channel.server.bind);
+    }
+    if (channel.publisher !== undefined) {
+      requireEndpoint(`channel '${channelName}' publisher`, channel.publisher.bind);
+    }
+    if (channel.client !== undefined) {
+      requirePeerSource(`channel '${channelName}' client`, channel.client.manualConnections, discoveryConfigured);
+    }
+    if (channel.subscriber !== undefined) {
+      requirePeerSource(`channel '${channelName}' subscriber`, channel.subscriber.manualConnections, discoveryConfigured);
+    }
+  }
+}
+
+function hasDiscovery(discovery: ZLinkDiscoveryOptions | undefined): boolean {
+  return (discovery?.registries ?? []).some((endpoint) => endpoint.trim().length > 0);
+}
+
+function requirePeerSource(
+  capabilityName: string,
+  manualConnections: readonly string[] | undefined,
+  discoveryConfigured: boolean
+): void {
+  if ((manualConnections ?? []).some((endpoint) => endpoint.trim().length === 0)) {
+    throw new ZLinkConfigurationException(`${capabilityName} manual connection endpoint must not be empty.`);
+  }
+  if ((manualConnections ?? []).length > 0 || discoveryConfigured) {
+    return;
+  }
+  throw new ZLinkConfigurationException(`${capabilityName} requires discovery or manual connections.`);
+}
+
+function requireEndpoint(capabilityName: string, endpoint: string | undefined): void {
+  if (endpoint === undefined || endpoint.trim().length === 0) {
+    throw new ZLinkConfigurationException(`${capabilityName} must define a bind endpoint.`);
+  }
 }

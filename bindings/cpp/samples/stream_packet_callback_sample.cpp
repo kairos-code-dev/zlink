@@ -2,6 +2,7 @@
 
 #include "sample_common.hpp"
 
+// --8<-- [start:doc]
 namespace {
 
 struct callback_result_t
@@ -80,3 +81,4 @@ int main ()
     client.close ();
     return 0;
 }
+// --8<-- [end:doc]

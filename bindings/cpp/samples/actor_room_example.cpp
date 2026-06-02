@@ -16,6 +16,7 @@
 #include <thread>
 #include <vector>
 
+// --8<-- [start:doc]
 int main ()
 {
     zlink::context_t ctx;
@@ -100,3 +101,4 @@ int main ()
       "[actor/room] player-1: \"your-turn\", player-2: \"wait\"\n");
     return 0;
 }
+// --8<-- [end:doc]

@@ -75,6 +75,43 @@ test('ZLinkModule.forRoot validates actor factory without spot node at registrat
   );
 });
 
+test('ZLinkModule.forRoot validates channel capability endpoints and peer acquisition', () => {
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({ channels: { api: { server: {} } } }),
+    /server must define a bind endpoint/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({ channels: { events: { publisher: {} } } }),
+    /publisher must define a bind endpoint/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({ channels: { api: { client: {} } } }),
+    /client requires discovery or manual connections/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({ channels: { events: { subscriber: {} } } }),
+    /subscriber requires discovery or manual connections/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({ channels: { api: { client: { manualConnections: [''] } } } }),
+    /manual connection endpoint must not be empty/
+  );
+
+  assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot({
+    channels: {
+      api: { client: {} },
+      events: { subscriber: {} }
+    },
+    discovery: { registries: ['tcp://127.0.0.1:5551'] }
+  }));
+  assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot({
+    channels: {
+      api: { client: { manualConnections: ['tcp://127.0.0.1:7001'] } },
+      events: { subscriber: { manualConnections: ['tcp://127.0.0.1:7002'] } }
+    }
+  }));
+});
+
 test('ZLinkModule.forRootAsync exposes capability providers after async registration resolves', async () => {
   class AsyncSpot {
     constructor(context) {

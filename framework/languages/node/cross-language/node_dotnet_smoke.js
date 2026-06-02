@@ -52,7 +52,7 @@ async function nodeClientToDotnetChannelServer(tempDir) {
 
     const registration = framework.createFrameworkRegistration({
       channels: {
-        profiles: { client: {} }
+        profiles: { client: { manualConnections: [endpoint] } }
       }
     });
     const client = new framework.DefaultZLinkChannelClient(

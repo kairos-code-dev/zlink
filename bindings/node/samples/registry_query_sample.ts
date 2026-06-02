@@ -7,6 +7,7 @@ const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
 
+// --8<-- [start:doc]
 const AUTO_CONNECT_SPOT_MESH = 5;
 
 async function reservePort() {
@@ -63,3 +64,4 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+// --8<-- [end:doc]

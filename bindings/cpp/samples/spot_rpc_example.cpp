@@ -21,6 +21,7 @@
 #include <thread>
 #include <vector>
 
+// --8<-- [start:doc]
 static std::string unique_tcp ()
 {
     int fd = ::socket (AF_INET, SOCK_STREAM, 0);
@@ -110,3 +111,4 @@ int main ()
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     return 0;
 }
+// --8<-- [end:doc]

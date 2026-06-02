@@ -1,6 +1,7 @@
 using SampleCommon;
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 if (!SampleSupport.IsNativeAvailable())
     return;
 
@@ -31,3 +32,4 @@ finally
     discovery.Dispose();
     registry.Dispose();
 }
+// --8<-- [end:doc]

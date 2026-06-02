@@ -1,6 +1,7 @@
 using SampleCommon;
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 if (!SampleSupport.IsNativeAvailable())
     return;
 
@@ -20,3 +21,4 @@ using (Message message = Message.From("101.25"))
 string payload = SampleSupport.SubscribeUtf8(subscriber, out string topic, 2000);
 Console.WriteLine(
     $"[pubsub/recv] publish: \"prices/101.25\" -> subscribe: \"{topic}/{payload}\"");
+// --8<-- [end:doc]

@@ -2,6 +2,7 @@
 
 #include "sample_common.hpp"
 
+// --8<-- [start:doc]
 int main ()
 {
     zlink::context_t ctx;
@@ -50,3 +51,4 @@ int main ()
       detail::k_spot_service);
     return 0;
 }
+// --8<-- [end:doc]

@@ -2,6 +2,7 @@
 
 #include "sample_common.hpp"
 
+// --8<-- [start:doc]
 int main ()
 {
     zlink::context_t ctx;
@@ -41,3 +42,4 @@ int main ()
                  topic.c_str (), sent.c_str (), topic.c_str (), received.c_str ());
     return 0;
 }
+// --8<-- [end:doc]

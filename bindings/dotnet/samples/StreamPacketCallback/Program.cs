@@ -2,6 +2,7 @@ using System.Threading;
 using SampleCommon;
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 if (!SampleSupport.IsNativeAvailable())
     return;
 
@@ -33,3 +34,4 @@ SampleSupport.WaitOrThrow(() => signal.IsSet, 2000,
     "stream packet callback timeout");
 Console.WriteLine(
     $"[stream/packet-callback] send: \"hello-stream\" -> recv: \"{callbackPayload}\"");
+// --8<-- [end:doc]

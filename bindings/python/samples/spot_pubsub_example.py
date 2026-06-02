@@ -10,6 +10,7 @@ import time
 import zlink
 
 
+# --8<-- [start:doc]
 def unique_tcp():
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
@@ -71,3 +72,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+# --8<-- [end:doc]

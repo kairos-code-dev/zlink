@@ -10,6 +10,7 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use zlink::{
+// --8<-- [start:doc]
     ActorReceived, Context, Message, RecvFlags, RequestResult, RoutingId, SendFlags, Spot,
     SpotDispatchEvent, SpotNode,
 };
@@ -106,3 +107,4 @@ fn main() {
     player.close().unwrap();
     println!("[actor/sequential] processed in order: move -> attack -> loot");
 }
+// --8<-- [end:doc]

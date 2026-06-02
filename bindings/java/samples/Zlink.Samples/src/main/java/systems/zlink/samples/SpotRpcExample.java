@@ -19,6 +19,7 @@ import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.List;
 
+// --8<-- [start:doc]
 public final class SpotRpcExample {
     public static void main(String[] args) throws Exception {
         try (Context ctx = Zlink.createContext();
@@ -96,3 +97,4 @@ public final class SpotRpcExample {
         throw new IllegalStateException("spot peer not connected");
     }
 }
+// --8<-- [end:doc]

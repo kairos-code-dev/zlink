@@ -2,6 +2,7 @@
 
 #include "sample_common.hpp"
 
+// --8<-- [start:doc]
 int main ()
 {
     zlink::context_t ctx;
@@ -40,3 +41,4 @@ int main ()
     client.close ();
     return 0;
 }
+// --8<-- [end:doc]

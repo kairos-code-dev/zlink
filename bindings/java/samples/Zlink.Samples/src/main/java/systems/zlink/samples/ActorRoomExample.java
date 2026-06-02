@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
+// --8<-- [start:doc]
 public final class ActorRoomExample {
     public static void main(String[] args) throws Exception {
         try (Context ctx = Zlink.createContext();
@@ -103,3 +104,4 @@ public final class ActorRoomExample {
         }
     }
 }
+// --8<-- [end:doc]

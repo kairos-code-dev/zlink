@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use zlink::{Context, SpotNode, Timer};
 
+// --8<-- [start:doc]
 fn main() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
@@ -34,3 +35,4 @@ fn main() {
     assert!(final_ticks >= 3, "timer fired only {final_ticks} times");
     println!("[spot/timer] room tick fired {final_ticks} times");
 }
+// --8<-- [end:doc]

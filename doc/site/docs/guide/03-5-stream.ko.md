@@ -286,39 +286,39 @@ STREAM 소켓으로 원시 바이트를 주고받는 자립형 예제다(모든 
 
 === "C++"
 
-    --8<-- "bindings/cpp/samples/stream_recv_sample.cpp"
+    --8<-- "bindings/cpp/samples/stream_recv_sample.cpp:doc"
 
 === "C#/.NET"
 
-    --8<-- "bindings/dotnet/samples/StreamRecv/Program.cs"
+    --8<-- "bindings/dotnet/samples/StreamRecv/Program.cs:doc"
 
 === "Java"
 
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/StreamRecvSample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/StreamRecvSample.java:doc"
 
 === "Kotlin"
 
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/StreamRecvSample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/StreamRecvSample.kt:doc"
 
 === "Python"
 
-    --8<-- "bindings/python/samples/stream_recv_sample.py"
+    --8<-- "bindings/python/samples/stream_recv_sample.py:doc"
 
 === "Node/TypeScript"
 
-    --8<-- "bindings/node/samples/stream_recv_sample.ts"
+    --8<-- "bindings/node/samples/stream_recv_sample.ts:doc"
 
 === "JavaScript"
 
-    --8<-- "bindings/javascript/samples/stream_recv_sample.js"
+    --8<-- "bindings/javascript/samples/stream_recv_sample.js:doc"
 
 === "Go"
 
-    --8<-- "bindings/go/samples/stream_recv_sample/main.go"
+    --8<-- "bindings/go/samples/stream_recv_sample/main.go:doc"
 
 === "Rust"
 
-    --8<-- "bindings/rust/samples/stream_recv_sample.rs"
+    --8<-- "bindings/rust/samples/stream_recv_sample.rs:doc"
 
 ### 패킷 콜백 방식
 
@@ -326,36 +326,36 @@ STREAM 소켓으로 원시 바이트를 주고받는 자립형 예제다(모든 
 
 === "C++"
 
-    --8<-- "bindings/cpp/samples/stream_packet_callback_sample.cpp"
+    --8<-- "bindings/cpp/samples/stream_packet_callback_sample.cpp:doc"
 
 === "C#/.NET"
 
-    --8<-- "bindings/dotnet/samples/StreamPacketCallback/Program.cs"
+    --8<-- "bindings/dotnet/samples/StreamPacketCallback/Program.cs:doc"
 
 === "Java"
 
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/StreamPacketCallbackSample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/StreamPacketCallbackSample.java:doc"
 
 === "Kotlin"
 
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/StreamPacketCallbackSample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/StreamPacketCallbackSample.kt:doc"
 
 === "Python"
 
-    --8<-- "bindings/python/samples/stream_packet_callback_sample.py"
+    --8<-- "bindings/python/samples/stream_packet_callback_sample.py:doc"
 
 === "Node/TypeScript"
 
-    --8<-- "bindings/node/samples/stream_packet_callback_sample.ts"
+    --8<-- "bindings/node/samples/stream_packet_callback_sample.ts:doc"
 
 === "JavaScript"
 
-    --8<-- "bindings/javascript/samples/stream_packet_callback_sample.js"
+    --8<-- "bindings/javascript/samples/stream_packet_callback_sample.js:doc"
 
 === "Go"
 
-    --8<-- "bindings/go/samples/stream_packet_callback_sample/main.go"
+    --8<-- "bindings/go/samples/stream_packet_callback_sample/main.go:doc"
 
 === "Rust"
 
-    --8<-- "bindings/rust/samples/stream_packet_callback_sample.rs"
+    --8<-- "bindings/rust/samples/stream_packet_callback_sample.rs:doc"

@@ -8,6 +8,7 @@ import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.SubSocket;
 import systems.zlink.contracts.messaging.TopicMessage;
+// --8<-- [start:doc]
 public final class PubSubRecvSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
@@ -45,3 +46,4 @@ public final class PubSubRecvSample {
         }
     }
 }
+// --8<-- [end:doc]

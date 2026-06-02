@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <thread>
 
+// --8<-- [start:doc]
 int main ()
 {
     zlink::context_t ctx;
@@ -31,3 +32,4 @@ int main ()
     std::printf ("[spot/timer] room tick fired %d times\n", ticks.load ());
     return 0;
 }
+// --8<-- [end:doc]

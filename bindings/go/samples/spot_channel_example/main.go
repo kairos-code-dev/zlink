@@ -12,6 +12,7 @@ import (
 	zlink "zlink.systems/zlink/contracts"
 )
 
+// --8<-- [start:doc]
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -88,3 +89,4 @@ func main() {
 	must(<-serverDone)
 	fmt.Printf("[spot/channel] request \"get-profile\" -> reply %q\n", reply)
 }
+// --8<-- [end:doc]

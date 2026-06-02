@@ -8,6 +8,7 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.contracts.messaging.TopicMessage
 import systems.zlink.contracts.sockets.RecvFlags
 
+// --8<-- [start:doc]
 fun main() {
     SampleSupport.ensureNative()
     val endpoint = SampleSupport.tcpEndpoint()
@@ -39,3 +40,4 @@ fun main() {
         }
     }
 }
+// --8<-- [end:doc]

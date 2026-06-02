@@ -5,6 +5,7 @@
 #include <future>
 #include <thread>
 
+// --8<-- [start:doc]
 namespace detail
 {
 
@@ -88,3 +89,4 @@ int main ()
     std::fflush (stdout);
     return 0;
 }
+// --8<-- [end:doc]

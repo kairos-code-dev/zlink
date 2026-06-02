@@ -42,7 +42,13 @@ BASE_PATHS = [SITE_DIR, REPO_ROOT]
 GUIDE_DIR = SITE_DIR / "docs" / "guide"
 
 
+def strip_section(rel: str) -> str:
+    """`path/to/file.ext:section` → `path/to/file.ext` (pymdownx snippet section)."""
+    return re.sub(r":[A-Za-z0-9_-]+$", "", rel)
+
+
 def resolve_snippet(rel: str) -> Path | None:
+    rel = strip_section(rel)
     for base in BASE_PATHS:
         p = (base / rel)
         if p.is_file():
@@ -137,7 +143,7 @@ def main() -> int:
                 if ext is None:
                     continue
                 for s in snips:
-                    if not s.endswith(ext):
+                    if not strip_section(s).endswith(ext):
                         errors.append(
                             f"{loc}: '{lbl}' 탭이 {ext} 아닌 파일 임베드: {s}")
 

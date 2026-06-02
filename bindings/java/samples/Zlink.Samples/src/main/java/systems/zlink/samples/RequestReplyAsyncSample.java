@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+// --8<-- [start:doc]
 public final class RequestReplyAsyncSample {
     public static void main(String[] args) throws Exception {
         SampleSupport.ensureNative();
@@ -87,3 +88,4 @@ public final class RequestReplyAsyncSample {
         }
     }
 }
+// --8<-- [end:doc]

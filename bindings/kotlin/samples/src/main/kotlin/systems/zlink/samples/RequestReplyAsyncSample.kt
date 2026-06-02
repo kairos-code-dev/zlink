@@ -13,6 +13,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
+// --8<-- [start:doc]
 fun main() {
     SampleSupport.ensureNative()
     val endpoint = SampleSupport.tcpEndpoint()
@@ -79,3 +80,4 @@ fun main() {
         }
     }
 }
+// --8<-- [end:doc]

@@ -18,6 +18,7 @@
 #include <string>
 #include <thread>
 
+// --8<-- [start:doc]
 // 빈 TCP 포트를 잡아 endpoint를 만든다.
 static std::string unique_tcp ()
 {
@@ -88,3 +89,4 @@ int main ()
     received.close ();
     return 0;
 }
+// --8<-- [end:doc]

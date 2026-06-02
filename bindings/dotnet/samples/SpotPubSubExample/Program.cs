@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 // 빈 TCP 포트를 잡아 endpoint를 만든다.
 static string UniqueTcp()
 {
@@ -66,3 +67,4 @@ if (!delivered)
     throw new Exception("spot delivery did not arrive");
 
 Console.WriteLine($"[spot/pubsub] topic \"{received.Topic}\" -> recv: \"{received.SinglePartOrThrow().GetString()}\"");
+// --8<-- [end:doc]

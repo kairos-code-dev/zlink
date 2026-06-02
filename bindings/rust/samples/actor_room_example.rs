@@ -8,6 +8,7 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use zlink::{
+// --8<-- [start:doc]
     Actor, ActorReceived, Context, Message, RecvFlags, RequestResult, RoutingId, SendFlags, Spot,
     SpotDispatchEvent, SpotNode, StreamSocket,
 };
@@ -125,3 +126,4 @@ fn main() {
     player2.close().unwrap();
     println!("[actor/room] player-1: \"your-turn\", player-2: \"wait\"");
 }
+// --8<-- [end:doc]

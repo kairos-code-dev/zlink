@@ -13,6 +13,7 @@ import systems.zlink.contracts.sockets.SpotDispatchEvent
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 
+// --8<-- [start:doc]
 fun main() {
     Zlink.createContext().use { ctx ->
         ctx.createSpotNode().use { node ->
@@ -78,3 +79,4 @@ fun main() {
         }
     }
 }
+// --8<-- [end:doc]

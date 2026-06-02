@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
+// --8<-- [start:doc]
 public final class DiscoveryRegistrySample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
@@ -84,3 +85,4 @@ public final class DiscoveryRegistrySample {
         }
     }
 }
+// --8<-- [end:doc]

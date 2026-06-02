@@ -18,6 +18,7 @@
 #include <thread>
 #include <vector>
 
+// --8<-- [start:doc]
 static std::string unique_tcp ()
 {
     int fd = ::socket (AF_INET, SOCK_STREAM, 0);
@@ -87,3 +88,4 @@ int main ()
                  reply.empty () ? "" : reply[0].to_string ().c_str ());
     return 0;
 }
+// --8<-- [end:doc]

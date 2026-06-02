@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use zlink::{Context, SocketMonitor};
 
+// --8<-- [start:doc]
 fn write_stream_packet(stream: &mut TcpStream, body: &[u8]) {
     let mut frame = Vec::with_capacity(6 + body.len());
     frame.extend_from_slice(&0u16.to_be_bytes());
@@ -93,3 +94,4 @@ fn main() {
         recv_str
     );
 }
+// --8<-- [end:doc]

@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 static string UniqueTcp()
 {
     var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -75,3 +76,4 @@ IReadOnlyList<Message> reply = await client
     .SubmitAsync();
 Console.WriteLine($"[spot/rpc] request \"ping\" -> reply \"{reply[0].GetString()}\"");
 Zlink.MultipartClose(reply);
+// --8<-- [end:doc]

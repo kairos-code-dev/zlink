@@ -5,6 +5,7 @@
 //   dotnet run --project samples/ActorSequentialExample
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 using var ctx = Zlink.CreateContext();
 using var node = ctx.CreateSpotNode();
 using var room = node.CreateSpot();
@@ -68,3 +69,4 @@ if (!processed.SequenceEqual(commands))
 
 Zlink.MultipartClose(await player.Leave(room).Timeout(TimeSpan.FromSeconds(2)).SubmitAsync());
 Console.WriteLine("[actor/sequential] processed in order: move -> attack -> loot");
+// --8<-- [end:doc]

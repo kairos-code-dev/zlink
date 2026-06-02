@@ -6,6 +6,7 @@ import (
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
+// --8<-- [start:doc]
 func main() {
 	ctx, err := zlink.NewContext()
 	samplecommon.MustStep("NewContext", err)
@@ -45,3 +46,4 @@ func main() {
 
 	fmt.Println("[registry-query] service: \"sample\" -> snapshot: found")
 }
+// --8<-- [end:doc]

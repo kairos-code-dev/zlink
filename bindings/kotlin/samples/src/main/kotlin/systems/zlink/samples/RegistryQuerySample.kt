@@ -9,6 +9,7 @@ import systems.zlink.contracts.service.registry.Registry
 import systems.zlink.contracts.service.registry.RegistryQueryClient
 import systems.zlink.contracts.sockets.PubSocket
 
+// --8<-- [start:doc]
 fun main() {
     SampleSupport.ensureNative()
     val channelName = "sample"
@@ -50,3 +51,4 @@ fun main() {
         SampleSupport.closeQuietly(ctx)
     }
 }
+// --8<-- [end:doc]

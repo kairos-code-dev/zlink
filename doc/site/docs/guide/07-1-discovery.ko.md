@@ -403,39 +403,39 @@ Discovery가 하나의 Registry에만 연결해도 다른 Registry에 등록된 
 
 === "C++"
 
-    --8<-- "bindings/cpp/samples/discovery_registry_sample.cpp"
+    --8<-- "bindings/cpp/samples/discovery_registry_sample.cpp:doc"
 
 === "C#/.NET"
 
-    --8<-- "bindings/dotnet/samples/DiscoveryRegistry/Program.cs"
+    --8<-- "bindings/dotnet/samples/DiscoveryRegistry/Program.cs:doc"
 
 === "Java"
 
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/DiscoveryRegistrySample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/DiscoveryRegistrySample.java:doc"
 
 === "Kotlin"
 
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/DiscoveryRegistrySample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/DiscoveryRegistrySample.kt:doc"
 
 === "Python"
 
-    --8<-- "bindings/python/samples/discovery_registry_sample.py"
+    --8<-- "bindings/python/samples/discovery_registry_sample.py:doc"
 
 === "Node/TypeScript"
 
-    --8<-- "bindings/node/samples/discovery_registry_sample.ts"
+    --8<-- "bindings/node/samples/discovery_registry_sample.ts:doc"
 
 === "JavaScript"
 
-    --8<-- "bindings/javascript/samples/discovery_registry_sample.js"
+    --8<-- "bindings/javascript/samples/discovery_registry_sample.js:doc"
 
 === "Go"
 
-    --8<-- "bindings/go/samples/discovery_registry_sample/main.go"
+    --8<-- "bindings/go/samples/discovery_registry_sample/main.go:doc"
 
 === "Rust"
 
-    --8<-- "bindings/rust/samples/discovery_registry_sample.rs"
+    --8<-- "bindings/rust/samples/discovery_registry_sample.rs:doc"
 
 ## 7. 다음 단계
 

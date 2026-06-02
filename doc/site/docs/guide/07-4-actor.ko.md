@@ -75,39 +75,39 @@ sequenceDiagram
 
 === "C++"
     ```cpp
-    --8<-- "bindings/cpp/samples/actor_room_example.cpp"
+    --8<-- "bindings/cpp/samples/actor_room_example.cpp:doc"
     ```
 === "C#/.NET"
     ```csharp
-    --8<-- "bindings/dotnet/samples/ActorRoomExample/Program.cs"
+    --8<-- "bindings/dotnet/samples/ActorRoomExample/Program.cs:doc"
     ```
 === "Java"
     ```java
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/ActorRoomExample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/ActorRoomExample.java:doc"
     ```
 === "Kotlin"
     ```kotlin
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/ActorRoomExample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/ActorRoomExample.kt:doc"
     ```
 === "Python"
     ```python
-    --8<-- "bindings/python/samples/actor_room_example.py"
+    --8<-- "bindings/python/samples/actor_room_example.py:doc"
     ```
 === "Node/TypeScript"
     ```typescript
-    --8<-- "bindings/node/samples/actor_room_example.ts"
+    --8<-- "bindings/node/samples/actor_room_example.ts:doc"
     ```
 === "JavaScript"
     ```javascript
-    --8<-- "bindings/javascript/samples/actor_room_example.js"
+    --8<-- "bindings/javascript/samples/actor_room_example.js:doc"
     ```
 === "Go"
     ```go
-    --8<-- "bindings/go/samples/actor_room_example/main.go"
+    --8<-- "bindings/go/samples/actor_room_example/main.go:doc"
     ```
 === "Rust"
     ```rust
-    --8<-- "bindings/rust/samples/actor_room_example.rs"
+    --8<-- "bindings/rust/samples/actor_room_example.rs:doc"
     ```
 
 ## 시나리오 2 — STREAM 메시지 순차 처리
@@ -133,39 +133,39 @@ sequenceDiagram
 
 === "C++"
     ```cpp
-    --8<-- "bindings/cpp/samples/actor_sequential_example.cpp"
+    --8<-- "bindings/cpp/samples/actor_sequential_example.cpp:doc"
     ```
 === "C#/.NET"
     ```csharp
-    --8<-- "bindings/dotnet/samples/ActorSequentialExample/Program.cs"
+    --8<-- "bindings/dotnet/samples/ActorSequentialExample/Program.cs:doc"
     ```
 === "Java"
     ```java
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/ActorSequentialExample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/ActorSequentialExample.java:doc"
     ```
 === "Kotlin"
     ```kotlin
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/ActorSequentialExample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/ActorSequentialExample.kt:doc"
     ```
 === "Python"
     ```python
-    --8<-- "bindings/python/samples/actor_sequential_example.py"
+    --8<-- "bindings/python/samples/actor_sequential_example.py:doc"
     ```
 === "Node/TypeScript"
     ```typescript
-    --8<-- "bindings/node/samples/actor_sequential_example.ts"
+    --8<-- "bindings/node/samples/actor_sequential_example.ts:doc"
     ```
 === "JavaScript"
     ```javascript
-    --8<-- "bindings/javascript/samples/actor_sequential_example.js"
+    --8<-- "bindings/javascript/samples/actor_sequential_example.js:doc"
     ```
 === "Go"
     ```go
-    --8<-- "bindings/go/samples/actor_sequential_example/main.go"
+    --8<-- "bindings/go/samples/actor_sequential_example/main.go:doc"
     ```
 === "Rust"
     ```rust
-    --8<-- "bindings/rust/samples/actor_sequential_example.rs"
+    --8<-- "bindings/rust/samples/actor_sequential_example.rs:doc"
     ```
 
 ## 더 보기

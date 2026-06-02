@@ -19,6 +19,7 @@ import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.List;
 
+// --8<-- [start:doc]
 public final class SpotChannelExample {
     public static void main(String[] args) throws Exception {
         try (Context ctx = Zlink.createContext();
@@ -73,3 +74,4 @@ public final class SpotChannelExample {
         }
     }
 }
+// --8<-- [end:doc]

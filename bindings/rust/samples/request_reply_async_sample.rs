@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use zlink::{Context, Message, RoutingId, SocketMonitor};
 
+// --8<-- [start:doc]
 fn noop_waker() -> Waker {
     unsafe fn clone(_: *const ()) -> RawWaker {
         RawWaker::new(std::ptr::null(), &VTABLE)
@@ -94,3 +95,4 @@ fn main() {
 
     println!("[dealer-router/request-reply/async] send: \"ping\" -> recv: \"pong\"");
 }
+// --8<-- [end:doc]

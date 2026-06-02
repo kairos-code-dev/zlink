@@ -7,6 +7,7 @@ import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
+// --8<-- [start:doc]
 public final class PairRecvSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
@@ -39,3 +40,4 @@ public final class PairRecvSample {
         }
     }
 }
+// --8<-- [end:doc]

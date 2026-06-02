@@ -9,6 +9,7 @@ import time
 import zlink
 
 
+# --8<-- [start:doc]
 def main():
     with zlink.create_context() as ctx, \
          zlink.create_spot_node(ctx) as node, \
@@ -89,3 +90,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+# --8<-- [end:doc]

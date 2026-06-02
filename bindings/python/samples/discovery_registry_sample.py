@@ -4,6 +4,7 @@ import zlink
 from sample_support import tcp_endpoint, wait_until
 
 
+# --8<-- [start:doc]
 SERVICE_NAME = "sample"
 
 
@@ -40,3 +41,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+# --8<-- [end:doc]

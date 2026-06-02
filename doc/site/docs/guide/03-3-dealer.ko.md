@@ -335,39 +335,39 @@ DEALER가 ROUTER로 보내고 응답을 받는 자립형 예제다(모든 바인
 
 === "C++"
 
-    --8<-- "bindings/cpp/samples/dealer_router_recv_sample.cpp"
+    --8<-- "bindings/cpp/samples/dealer_router_recv_sample.cpp:doc"
 
 === "C#/.NET"
 
-    --8<-- "bindings/dotnet/samples/DealerRouterRecv/Program.cs"
+    --8<-- "bindings/dotnet/samples/DealerRouterRecv/Program.cs:doc"
 
 === "Java"
 
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/DealerRouterRecvSample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/DealerRouterRecvSample.java:doc"
 
 === "Kotlin"
 
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/DealerRouterRecvSample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/DealerRouterRecvSample.kt:doc"
 
 === "Python"
 
-    --8<-- "bindings/python/samples/dealer_router_recv_sample.py"
+    --8<-- "bindings/python/samples/dealer_router_recv_sample.py:doc"
 
 === "Node/TypeScript"
 
-    --8<-- "bindings/node/samples/dealer_router_recv_sample.ts"
+    --8<-- "bindings/node/samples/dealer_router_recv_sample.ts:doc"
 
 === "JavaScript"
 
-    --8<-- "bindings/javascript/samples/dealer_router_recv_sample.js"
+    --8<-- "bindings/javascript/samples/dealer_router_recv_sample.js:doc"
 
 === "Go"
 
-    --8<-- "bindings/go/samples/dealer_router_recv_sample/main.go"
+    --8<-- "bindings/go/samples/dealer_router_recv_sample/main.go:doc"
 
 === "Rust"
 
-    --8<-- "bindings/rust/samples/dealer_router_recv_sample.rs"
+    --8<-- "bindings/rust/samples/dealer_router_recv_sample.rs:doc"
 
 ### 비동기 요청/응답
 
@@ -375,36 +375,36 @@ DEALER→ROUTER 요청을 비동기 콜백으로 받는 변형이다.
 
 === "C++"
 
-    --8<-- "bindings/cpp/samples/request_reply_async_sample.cpp"
+    --8<-- "bindings/cpp/samples/request_reply_async_sample.cpp:doc"
 
 === "C#/.NET"
 
-    --8<-- "bindings/dotnet/samples/RequestReplyAsync/Program.cs"
+    --8<-- "bindings/dotnet/samples/RequestReplyAsync/Program.cs:doc"
 
 === "Java"
 
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/RequestReplyAsyncSample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/RequestReplyAsyncSample.java:doc"
 
 === "Kotlin"
 
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/RequestReplyAsyncSample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/RequestReplyAsyncSample.kt:doc"
 
 === "Python"
 
-    --8<-- "bindings/python/samples/request_reply_async_sample.py"
+    --8<-- "bindings/python/samples/request_reply_async_sample.py:doc"
 
 === "Node/TypeScript"
 
-    --8<-- "bindings/node/samples/request_reply_async_sample.ts"
+    --8<-- "bindings/node/samples/request_reply_async_sample.ts:doc"
 
 === "JavaScript"
 
-    --8<-- "bindings/javascript/samples/request_reply_async_sample.js"
+    --8<-- "bindings/javascript/samples/request_reply_async_sample.js:doc"
 
 === "Go"
 
-    --8<-- "bindings/go/samples/request_reply_async_sample/main.go"
+    --8<-- "bindings/go/samples/request_reply_async_sample/main.go:doc"
 
 === "Rust"
 
-    --8<-- "bindings/rust/samples/request_reply_async_sample.rs"
+    --8<-- "bindings/rust/samples/request_reply_async_sample.rs:doc"

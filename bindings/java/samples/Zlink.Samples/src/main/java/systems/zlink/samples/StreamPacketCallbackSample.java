@@ -9,6 +9,7 @@ import systems.zlink.contracts.sockets.StreamSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 
+// --8<-- [start:doc]
 public final class StreamPacketCallbackSample {
     public static void main(String[] args) throws Exception {
         SampleSupport.ensureNative();
@@ -92,3 +93,4 @@ public final class StreamPacketCallbackSample {
         return Message.from(frame);
     }
 }
+// --8<-- [end:doc]

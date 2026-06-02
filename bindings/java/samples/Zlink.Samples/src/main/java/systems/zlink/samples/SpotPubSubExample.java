@@ -16,6 +16,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.time.Duration;
 
+// --8<-- [start:doc]
 public final class SpotPubSubExample {
     public static void main(String[] args) throws Exception {
         String topic = "room:lobby";
@@ -78,3 +79,4 @@ public final class SpotPubSubExample {
         throw new IllegalStateException("spot peer not connected");
     }
 }
+// --8<-- [end:doc]

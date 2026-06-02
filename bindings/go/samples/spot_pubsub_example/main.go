@@ -11,6 +11,7 @@ import (
 	zlink "zlink.systems/zlink/contracts"
 )
 
+// --8<-- [start:doc]
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -100,3 +101,4 @@ func main() {
 	must(err)
 	fmt.Printf("[spot/pubsub] topic %q -> recv: %q\n", received.Topic(), string(part.Data()))
 }
+// --8<-- [end:doc]

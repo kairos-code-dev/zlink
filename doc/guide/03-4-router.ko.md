@@ -788,36 +788,36 @@ ROUTER가 DEALER 요청을 수신하고 source 라우팅 ID로 응답하는 자�
 
 === "C++"
 
-    --8<-- "bindings/cpp/samples/dealer_router_recv_sample.cpp"
+    --8<-- "bindings/cpp/samples/dealer_router_recv_sample.cpp:doc"
 
 === "C#/.NET"
 
-    --8<-- "bindings/dotnet/samples/DealerRouterRecv/Program.cs"
+    --8<-- "bindings/dotnet/samples/DealerRouterRecv/Program.cs:doc"
 
 === "Java"
 
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/DealerRouterRecvSample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/DealerRouterRecvSample.java:doc"
 
 === "Kotlin"
 
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/DealerRouterRecvSample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/DealerRouterRecvSample.kt:doc"
 
 === "Python"
 
-    --8<-- "bindings/python/samples/dealer_router_recv_sample.py"
+    --8<-- "bindings/python/samples/dealer_router_recv_sample.py:doc"
 
 === "Node/TypeScript"
 
-    --8<-- "bindings/node/samples/dealer_router_recv_sample.ts"
+    --8<-- "bindings/node/samples/dealer_router_recv_sample.ts:doc"
 
 === "JavaScript"
 
-    --8<-- "bindings/javascript/samples/dealer_router_recv_sample.js"
+    --8<-- "bindings/javascript/samples/dealer_router_recv_sample.js:doc"
 
 === "Go"
 
-    --8<-- "bindings/go/samples/dealer_router_recv_sample/main.go"
+    --8<-- "bindings/go/samples/dealer_router_recv_sample/main.go:doc"
 
 === "Rust"
 
-    --8<-- "bindings/rust/samples/dealer_router_recv_sample.rs"
+    --8<-- "bindings/rust/samples/dealer_router_recv_sample.rs:doc"

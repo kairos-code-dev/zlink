@@ -11,6 +11,7 @@ import (
 	zlink "zlink.systems/zlink/contracts"
 )
 
+// --8<-- [start:doc]
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -125,3 +126,4 @@ func main() {
 		panic("spot rpc: no reply")
 	}
 }
+// --8<-- [end:doc]

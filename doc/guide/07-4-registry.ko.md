@@ -630,39 +630,39 @@ registry 스냅샷을 질의해 서비스 엔드포인트를 조회하는 자립
 
 === "C++"
 
-    --8<-- "bindings/cpp/samples/registry_query_sample.cpp"
+    --8<-- "bindings/cpp/samples/registry_query_sample.cpp:doc"
 
 === "C#/.NET"
 
-    --8<-- "bindings/dotnet/samples/RegistryQuery/Program.cs"
+    --8<-- "bindings/dotnet/samples/RegistryQuery/Program.cs:doc"
 
 === "Java"
 
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/RegistryQuerySample.java"
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/RegistryQuerySample.java:doc"
 
 === "Kotlin"
 
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/RegistryQuerySample.kt"
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/RegistryQuerySample.kt:doc"
 
 === "Python"
 
-    --8<-- "bindings/python/samples/registry_query_sample.py"
+    --8<-- "bindings/python/samples/registry_query_sample.py:doc"
 
 === "Node/TypeScript"
 
-    --8<-- "bindings/node/samples/registry_query_sample.ts"
+    --8<-- "bindings/node/samples/registry_query_sample.ts:doc"
 
 === "JavaScript"
 
-    --8<-- "bindings/javascript/samples/registry_query_sample.js"
+    --8<-- "bindings/javascript/samples/registry_query_sample.js:doc"
 
 === "Go"
 
-    --8<-- "bindings/go/samples/registry_query_sample/main.go"
+    --8<-- "bindings/go/samples/registry_query_sample/main.go:doc"
 
 === "Rust"
 
-    --8<-- "bindings/rust/samples/registry_query_sample.rs"
+    --8<-- "bindings/rust/samples/registry_query_sample.rs:doc"
 
 ## 9. 다음 단계
 

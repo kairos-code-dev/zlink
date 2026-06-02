@@ -8,6 +8,7 @@ import systems.zlink.contracts.core.Zlink
 import java.time.Duration
 import java.util.concurrent.atomic.AtomicInteger
 
+// --8<-- [start:doc]
 fun main() {
     Zlink.createContext().use { ctx ->
         ctx.createSpotNode().use { node ->
@@ -30,3 +31,4 @@ fun main() {
         }
     }
 }
+// --8<-- [end:doc]

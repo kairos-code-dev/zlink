@@ -18,6 +18,7 @@
 #include <thread>
 #include <vector>
 
+// --8<-- [start:doc]
 int main ()
 {
     zlink::context_t ctx;
@@ -90,3 +91,4 @@ int main ()
       "[actor/sequential] processed in order: move -> attack -> loot\n");
     return 0;
 }
+// --8<-- [end:doc]

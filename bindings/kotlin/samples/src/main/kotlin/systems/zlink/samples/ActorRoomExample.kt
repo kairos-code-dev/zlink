@@ -14,6 +14,7 @@ import systems.zlink.contracts.sockets.StreamSocket
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 
+// --8<-- [start:doc]
 private fun join(actor: Actor, room: Spot) {
     val done = CountDownLatch(1)
     Message.from("enter-room").use { m ->
@@ -92,3 +93,4 @@ fun main() {
         }
     }
 }
+// --8<-- [end:doc]

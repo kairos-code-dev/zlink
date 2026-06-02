@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using SampleCommon;
 using Systems.Zlink;
 
+// --8<-- [start:doc]
 if (!SampleSupport.IsNativeAvailable())
     return;
 
@@ -53,3 +54,4 @@ for (int i = 1; i < replyReceived.Count; i++)
 SampleSupport.WaitOrThrow(() => requestHandled.IsSet, 2000, "request/reply async sample");
 await serverTask;
 Console.WriteLine("[dealer-router/request-reply/async] send: \"ping\" -> recv: \"pong\"");
+// --8<-- [end:doc]

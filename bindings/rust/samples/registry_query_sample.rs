@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use zlink::{AutoConnectType, Context, Discovery, Registry, RegistryQueryClient};
 
+// --8<-- [start:doc]
 const SERVICE_NAME: &str = "sample";
 
 fn main() {
@@ -53,3 +54,4 @@ fn main() {
 
     println!("[registry-query] service: \"sample\" -> snapshot: found");
 }
+// --8<-- [end:doc]

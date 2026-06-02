@@ -188,6 +188,7 @@ markdown_extensions:
         kwds:
           case: lower
   - pymdownx.snippets:
+      dedent_subsections: true
       # base_path는 mkdocs 실행 cwd(doc/site) 기준. repo 루트를 포함시켜
       # 가이드가 bindings/<lang>/samples/의 실제 예제 파일을 그대로 임베드한다.
       base_path:

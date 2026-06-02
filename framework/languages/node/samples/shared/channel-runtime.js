@@ -42,15 +42,45 @@ async function createChannelClient({ channelName, peers }) {
   await runtime.start();
   const client = new framework.DefaultZLinkChannelClient(registration, runtime.channelTransport);
   return {
+    requestToChannel(targetChannelName, payload) {
+      return retryableRequestCall(() => client.requestToChannel(targetChannelName, payload));
+    },
     async request(packetName, payload, timeoutMs = 1000) {
-      return await retry(() => client
+      return await this
         .requestToChannel(channelName, payload)
         .packetName(packetName)
         .timeout(timeoutMs)
-        .submit());
+        .submit();
     },
     async stop() {
       await stopRuntime(runtime);
+    }
+  };
+}
+
+function retryableRequestCall(createCall) {
+  let packetNameValue;
+  let timeoutMs;
+  return {
+    packetName(packetName) {
+      packetNameValue = packetName;
+      return this;
+    },
+    timeout(value) {
+      timeoutMs = value;
+      return this;
+    },
+    async submit(signal) {
+      return await retry(() => {
+        const call = createCall();
+        if (packetNameValue !== undefined) {
+          call.packetName(packetNameValue);
+        }
+        if (timeoutMs !== undefined) {
+          call.timeout(timeoutMs);
+        }
+        return call.submit(signal);
+      });
     }
   };
 }

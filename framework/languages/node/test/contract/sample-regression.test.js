@@ -323,7 +323,11 @@ test('Bingo sample covers four-player host start guards and bound push fanout', 
     [apiFactory, 'createChannelClient'],
     [apiFactory, "channelName: 'bingo.play'"],
     [authenticate, 'Access token must be a sample player id.'],
-    [match, "this.playClient.request('AllocateBingoRoom'"],
+    [match, "this.playClient"],
+    [match, ".requestToChannel('bingo.play'"],
+    [match, ".packetName('AllocateBingoRoom')"],
+    [match, '.timeout(10000)'],
+    [match, '.submit()'],
     [match, "{ actorId: 'p1', numbers: [7] }"],
     [match, "{ actorId: 'p4', numbers: [11] }"],
     [roomMain, 'buildPlayServerHost'],
@@ -351,6 +355,7 @@ test('Bingo sample covers four-player host start guards and bound push fanout', 
 
   assert.deepEqual(missing, []);
   assert.equal(apiFactory.includes('createRouteClient'), false);
+  assert.equal(match.includes('this.playClient.request('), false);
   assert.equal(match.includes("'RunBingoRoom'"), false);
   assert.equal(apiMain.includes("packetName: 'RunBingo'"), false);
   assert.equal(roomMain.includes('const requiredPlayers'), false);

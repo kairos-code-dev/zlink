@@ -1,6 +1,7 @@
 import { ZLinkNodeBackendAdapterFactory } from '../backend';
 import type { ZLinkBackendAdapterFactory, ZLinkBackendContext } from '../backend';
 import type { ZLinkFrameworkRegistration } from '../configuration';
+import { DefaultZLinkBoundSessionFactory, ZLinkStreamBindingRuntime } from '../streams';
 
 export interface ZLinkFrameworkRuntime {
   readonly isStarted: boolean;
@@ -17,6 +18,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   private readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   private readonly lifecycleSink?: string[];
   private context?: ZLinkBackendContext;
+  readonly streamBindingRuntime = new ZLinkStreamBindingRuntime();
+  readonly boundSessionFactory = new DefaultZLinkBoundSessionFactory(this.streamBindingRuntime);
 
   constructor(readonly options: ZLinkFrameworkRuntimeHostOptions, internalOptions?: unknown) {
     this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);

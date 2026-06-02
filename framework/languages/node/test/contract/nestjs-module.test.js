@@ -52,10 +52,9 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
       instanceof framework.DefaultZLinkRouteClient,
     true
   );
-  assert.equal(
-    module.providers.find((provider) => provider.provide === nestjs.ZLINK_BOUND_SESSION_FACTORY).useValue
-      instanceof framework.DefaultZLinkBoundSessionFactory,
-    true
+  assert.deepEqual(
+    module.providers.find((provider) => provider.provide === nestjs.ZLINK_BOUND_SESSION_FACTORY).inject,
+    [nestjs.ZLINK_FRAMEWORK_RUNTIME]
   );
   assert.equal(
     module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_OUTBOUND).useValue
@@ -74,15 +73,23 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
     routeChannels: ['mesh'],
     spotPublisherClients: ['spot-events']
   });
+  const container = await resolveModuleProviders(module, [
+    nestjs.ZLINK_FRAMEWORK_RUNTIME,
+    nestjs.ZLINK_ROUTE_CLIENT,
+    nestjs.ZLINK_BOUND_SESSION_FACTORY,
+    nestjs.ZLINK_SPOT_PUBLISHER_CLIENT
+  ]);
 
-  const routeClient = module.providers.find((provider) => provider.provide === nestjs.ZLINK_ROUTE_CLIENT).useValue;
-  const boundSessionFactory = module.providers.find((provider) => provider.provide === nestjs.ZLINK_BOUND_SESSION_FACTORY).useValue;
-  const spotPublisher = module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_PUBLISHER_CLIENT).useValue;
+  const runtime = container.get(nestjs.ZLINK_FRAMEWORK_RUNTIME);
+  const routeClient = container.get(nestjs.ZLINK_ROUTE_CLIENT);
+  const boundSessionFactory = container.get(nestjs.ZLINK_BOUND_SESSION_FACTORY);
+  const spotPublisher = container.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT);
 
   assert.equal(typeof routeClient.send, 'function');
   assert.equal(typeof routeClient.request, 'function');
   assert.equal(typeof boundSessionFactory.create, 'function');
   assert.equal(typeof spotPublisher.publishSpot, 'function');
+  assert.equal(boundSessionFactory, runtime.boundSessionFactory);
 
   await assert.rejects(
     () => routeClient.send('missing', 'node-a', { ok: true }).packetName('Ping').submit(),

@@ -146,7 +146,8 @@ function alwaysAvailableClientProviders(registration?: ZLinkFrameworkRegistratio
       },
       {
         provide: ZLINK_BOUND_SESSION_FACTORY,
-        useFactory: () => new framework.DefaultZLinkBoundSessionFactory(new framework.ZLinkStreamBindingRuntime())
+        inject: [ZLINK_FRAMEWORK_RUNTIME],
+        useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) => runtime.boundSessionFactory
       },
       { provide: ZLINK_MESSAGE_METADATA_POLICY, useValue: Object.freeze({ forward: true }) }
     ];
@@ -158,7 +159,8 @@ function alwaysAvailableClientProviders(registration?: ZLinkFrameworkRegistratio
     { provide: ZLINK_ROUTE_CLIENT, useValue: new framework.DefaultZLinkRouteClient(registration) },
     {
       provide: ZLINK_BOUND_SESSION_FACTORY,
-      useValue: new framework.DefaultZLinkBoundSessionFactory(new framework.ZLinkStreamBindingRuntime())
+      inject: [ZLINK_FRAMEWORK_RUNTIME],
+      useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) => runtime.boundSessionFactory
     },
     { provide: ZLINK_MESSAGE_METADATA_POLICY, useValue: Object.freeze({ forward: true }) }
   ];

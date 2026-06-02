@@ -86,6 +86,31 @@ test('node spec and internals documentation do not depend on legacy draft links'
   assert.deepEqual(offenders.sort(), []);
 });
 
+test('node documentation keeps fanout and route client public surface aligned with contracts', () => {
+  const files = [
+    path.join(docRoot, 'spec', 'nestjs-channel-messaging.ko.md'),
+    path.join(docRoot, 'spec', 'handler-interfaces.ko.md'),
+    path.join(docRoot, 'internals', 'di-capability-exposure-policy.ko.md')
+  ];
+  const offenders = [];
+
+  for (const file of files) {
+    const content = fs.readFileSync(file, 'utf8');
+    const relative = path.relative(workspaceRoot, file);
+    if (/ZLinkFanoutClient\.publish\(channelName/.test(content)) {
+      offenders.push(`${relative}: old fanout publish signature`);
+    }
+    if (/publisher\.publish\(ch, topic, evt\)/.test(content)) {
+      offenders.push(`${relative}: old fanout publish example`);
+    }
+    if (/public client 로 노출하지 않는다|internal-only/.test(content)) {
+      offenders.push(`${relative}: route client described as internal-only`);
+    }
+  }
+
+  assert.deepEqual(offenders.sort(), []);
+});
+
 function allMarkdownFiles(root) {
   const files = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {

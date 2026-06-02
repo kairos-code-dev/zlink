@@ -1328,18 +1328,19 @@ export interface ZLinkSpotPublisherClient {
 ```ts
 export interface ZLinkPublishCall {
   packetName(packetName: string): ZLinkPublishCall;
-  submit(): Promise<void>;
+  submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkFanoutClient {
-  publish<TEvent>(channelName: string, topic: string, message: TEvent): ZLinkPublishCall;
+  publish<TEvent>(topic: string, message: TEvent): ZLinkPublishCall;
+  publishToChannel<TEvent>(channelName: string, topic: string, message: TEvent): ZLinkPublishCall;
 }
 ```
 
 - `channelName` 은 publish 할 논리 channel 의 PUB/SUB mesh 를 지정한다.
 - `topic` 은 그 channel 안에서 어떤 subscriber 집합이 수신할지를 지정한다.
 
-`publish('profile', 'profile.cache-refreshed', evt)` 는 `profile` channel 안의
+`publishToChannel('profile', 'profile.cache-refreshed', evt)` 는 `profile` channel 안의
 `profile.cache-refreshed` topic 으로 fan-out 한다. publish 도 timeout 을 두지 않고, packet
 이름 override 만 둘 수 있다. `submit()` 의 비동기 의미는 remote 처리 완료 대기가 아니라
 local publish transport 에 submit 되는 시점까지의 대기다.

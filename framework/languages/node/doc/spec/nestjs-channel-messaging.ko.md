@@ -753,7 +753,7 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 | `client.RequestToChannel(ch, req).SubmitAsync<T>(ct)` | `await client.requestToChannel(ch, req).submit<T>()` |
 | `client.RequestToChannel(ch, req).Timeout(t).SubmitAsync<T>(ct)` | `await client.requestToChannel(ch, req).timeout(timeoutMs).submit<T>()` |
 | `client.SendToChannel(ch, msg).PacketName(n).Submit(ct)` | `await client.sendToChannel(ch, msg).packetName(n).submit()` |
-| `publisher.Publish(ch, topic, evt).Submit(ct)` | `await publisher.publish(ch, topic, evt).submit()` |
+| `publisher.Publish(ch, topic, evt).Submit(ct)` | `await publisher.publishToChannel(ch, topic, evt).submit()` |
 
 ### 5.2 ZLinkChannelClient
 
@@ -795,12 +795,8 @@ fanout channel(`publisher`/`subscriber`)에 event 를 publish 할 때 쓴다. �
 
 ```ts
 export interface ZLinkFanoutClient {
-  publish<TEvent>(
-    channelName: string,
-    topic: string,
-    message: TEvent,
-    options?: ZLinkSendOptions,    // { packetName? }
-  ): Promise<void>;
+  publish<TEvent>(topic: string, message: TEvent): ZLinkPublishCall;
+  publishToChannel<TEvent>(channelName: string, topic: string, message: TEvent): ZLinkPublishCall;
 }
 ```
 
@@ -821,11 +817,11 @@ export class ProfileRefreshController {
 
   @Post('refresh')
   async refresh(@Body() request: RefreshProfileHttpRequest) {
-    await this.publisher.publish(
+    await this.publisher.publishToChannel(
       'api.events',
       'profile.cache-refreshed',
       new ProfileCacheRefreshedEvent(request.accountId),
-    );
+    ).submit();
     return; // 202 Accepted
   }
 }
@@ -834,13 +830,21 @@ export class ProfileRefreshController {
 ### 5.4 routed channel transport helper
 
 route mesh channel(`channels[name].routeMesh`)의 위치는 actor, spot,
-session actor dispatch[^session-actor-dispatch] 같은 framework 기능이 내부 transport 로
-쓴다(dotnet `IZLinkRouteClient` 대응).
+session actor dispatch[^session-actor-dispatch] 같은 framework 기능이 transport 로
+쓴다(dotnet `IZLinkRouteClient` 대응). `ZLinkRouteClient` 는 provider token 으로
+항상 등록되며, 호출자는 `routerChannelId + targetNodeRid` 를 넘긴다. route channel 이
+등록되지 않았거나 runtime 이 아직 시작되지 않았으면 `ZLinkConfigurationException` 으로
+실패한다.
 
-이 경로는 `routerChannelId + targetNodeRid` 를 알아야 동작한다. 따라서 application 의
-public client 로 노출하지 않는다(dotnet 에서 `IZLinkRouteClient` 가 internal-only 인
-것과 동일하다). application code 는 다른 표면을 통해 위치값을 안에서 숨긴다. 즉 다음과
-같은 표면을 사용한다.
+```ts
+export interface ZLinkRouteClient {
+  send<TMessage>(routerChannelId: string, targetNodeRid: RoutingId, message: TMessage): ZLinkSendCall;
+  request<TRequest>(routerChannelId: string, targetNodeRid: RoutingId, request: TRequest): ZLinkRequestCall;
+}
+```
+
+Spot 과 bound session 경로는 application 이 직접 위치값을 계산하지 않도록 다음 표면을
+제공한다.
 
 - `ZLinkSpotOutbound` (= dotnet `IZLinkSpotOutbound`)
 - `ZLinkBoundSession` (= dotnet `IZLinkBoundSession`)

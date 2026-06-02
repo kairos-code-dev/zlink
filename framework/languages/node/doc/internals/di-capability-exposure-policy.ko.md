@@ -235,7 +235,7 @@ configuration error 로 표현한다.
 |------|-----------|------|
 | `ZLinkChannelClient.requestToChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
 | `ZLinkChannelClient.sendToChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
-| `ZLinkFanoutClient.publish(channelName, ...)` | channel 이 없거나 publisher capability 가 없음 | `ZLinkConfigurationException` |
+| `ZLinkFanoutClient.publishToChannel(channelName, ...)` | channel 이 없거나 publisher capability 가 없음 | `ZLinkConfigurationException` |
 | `ZLinkRouteClient.send(routerChannelId, ...)` | route mesh channel 이 없음 | `ZLinkConfigurationException` |
 
 capability 누락은 NestJS 일반 `Error` 가 아니라 위 예외로 처리한다.

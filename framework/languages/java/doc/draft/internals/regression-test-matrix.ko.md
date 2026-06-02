@@ -71,8 +71,8 @@ connector 테스트 이름은 `Systems.Zlink.Stream.Connector.Tests`의 메서�
 | connector request timeout | unit | `LifecycleTest.heartbeatTimeoutFailsPendingRequestsWithTimeoutCause` | pending request 정리 |
 | connector reconnect | integration-single-process | `LifecycleTest.reconnectRestoresConnectionAfterTransportClose` | backoff와 max attempts 의미 유지 |
 | reserved packet name 거부 | contract | `ZLinkStreamConnectorTest.reservedPacketNamesAreRejectedForUserHandlers` | 예약 packet 이름 거부 |
-| connector codec helper | contract | `ConnectorCodecTest.jsonMsgpackProtobuf_typedHelperRoundtrip` | JSON/MessagePack/Protobuf typed helper roundtrip |
-| Kotlin connector wrapper | contract | `KotlinConnectorWrapperTest.suspendFlowWrapper_preservesConnectorSemantics` | suspend/Flow wrapper가 Java connector 의미를 바꾸지 않음 |
+| connector codec helper | contract | `ConnectorCodecContractTest.jsonMsgpackProtobufTypedHelperRoundtrip` | JSON/MessagePack/Protobuf typed helper roundtrip |
+| Kotlin connector wrapper | contract | `KotlinConnectorWrapperTest.suspendWrapperPreservesConnectorSemantics` | suspend wrapper가 Java connector 의미를 바꾸지 않음 |
 
 ## 5. Registry/Monitoring regression
 

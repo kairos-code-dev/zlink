@@ -229,6 +229,9 @@ public final class ZLinkStreamJson {
 auto codec helper는 payload type이나 annotation을 보고 codec을 고른다. codec을 고를
 수 없으면 configuration error로 실패한다. typed helper가 만드는 packet name도 core
 connector의 name resolver를 그대로 사용한다.
+첫 구현의 typed helper는 core connector smoke와 같은 `String`, `byte[]`, `Message`
+payload를 지원한다. 복합 DTO 직렬화는 JSON/MessagePack/Protobuf 라이브러리 선택과
+schema 정책이 닫힌 뒤 확장한다.
 
 Kotlin extension은 typed helper 위에 얇게 얹는다.
 
@@ -314,12 +317,13 @@ Kotlin module은 Java connector 위의 thin wrapper다.
 
 ```kotlin
 suspend fun ZLinkStreamConnector.connect()
-suspend fun ZLinkStreamConnector.close()
+suspend fun ZLinkStreamConnector.disconnect()
+suspend fun ZLinkStreamConnector.reconnect()
+suspend fun ZLinkStreamConnector.closeConnector()
 suspend fun ZLinkStreamSendCall.submit()
 suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload
 
-fun ZLinkStreamConnector.messages(name: String): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
-fun ZLinkStreamConnector.connectionStates(): Flow<ZLinkStreamConnectionStateChanged>
+// Flow wrapper는 kotlinx.coroutines 의존성 정책이 닫힌 뒤 추가한다.
 ```
 
 Kotlin wrapper는 Java connector와 다른 상태 전이나 buffering 정책을 만들지 않는다.

@@ -6,5 +6,6 @@ plugins {
 description = "ZLink Java STREAM connector Protobuf codec"
 
 dependencies {
+    api(project(":zlink-stream-connector"))
     api(project(":zlink-stream-connector-codecs"))
 }

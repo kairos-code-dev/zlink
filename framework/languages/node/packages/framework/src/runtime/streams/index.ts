@@ -27,6 +27,7 @@ import type {
   ZLinkBackendContext,
   ZLinkBackendSocketMonitor,
   ZLinkBackendSendFlags,
+  ZLinkBackendSpotNode,
   ZLinkBackendStreamSocket
 } from '../backend/contracts';
 import {
@@ -102,6 +103,7 @@ export interface ZLinkStreamRuntimeManagerOptions {
   readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   readonly context: ZLinkBackendContext;
   readonly bindingRuntime: ZLinkStreamBindingRuntime;
+  readonly spotNodes?: ReadonlyMap<string, ZLinkBackendSpotNode>;
 }
 
 interface ZLinkStartedStreamNode {
@@ -122,12 +124,13 @@ export class ZLinkStreamRuntimeManager {
     const streamAdapter = this.options.backendAdapterFactory.createStreamAdapter();
     const monitoringAdapter = this.options.backendAdapterFactory.createMonitoringAdapter();
     for (const [nodeName, streamNode] of this.options.registration.streamNodes.entries()) {
-      if (streamNode.attachActorGateway !== undefined) {
-        throw new ZLinkConfigurationException(
-          `STREAM node '${nodeName}' cannot attach ActorGateway before SpotNode runtime is started.`
-        );
-      }
+      const actorGatewayNode = streamNode.attachActorGateway === undefined
+        ? undefined
+        : this.requireActorGatewayNode(nodeName, streamNode.attachActorGateway);
       const socket = streamAdapter.createStreamSocket(this.options.context);
+      if (actorGatewayNode !== undefined) {
+        socket.attachActorGateway(actorGatewayNode);
+      }
       socket.bind(streamNode.bind!);
       const monitor = monitoringAdapter.openSocketMonitor(socket);
       const sessionType = streamNode.session!;
@@ -154,6 +157,16 @@ export class ZLinkStreamRuntimeManager {
       await node.monitor.dispose();
       await node.socket.dispose();
     }
+  }
+
+  private requireActorGatewayNode(nodeName: string, spotNodeName: string): ZLinkBackendSpotNode {
+    const node = this.options.spotNodes?.get(spotNodeName);
+    if (node !== undefined) {
+      return node;
+    }
+    throw new ZLinkConfigurationException(
+      `STREAM node '${nodeName}' references unavailable ActorGateway target SpotNode '${spotNodeName}'.`
+    );
   }
 }
 

@@ -524,6 +524,137 @@ test('framework runtime host starts registered stream nodes and disposes their r
   ]);
 });
 
+test('framework runtime host attaches stream ActorGateway to registered SpotNode runtime', async () => {
+  class ClientHeaderSession {
+    constructor(context) {
+      this.context = context;
+    }
+  }
+  const calls = [];
+  const spotNode = {
+    nativeInstance: {},
+    routingId: 'game.spot',
+    setRoutingId() {},
+    setRouterBind() {},
+    setPubBind() {},
+    attachDiscovery() {},
+    connectPeer() {},
+    disconnectPeer() {},
+    connectRouterChannelPeer() {},
+    connectRouterChannelPeerRid() {},
+    disconnectRouterChannelPeer() {},
+    disconnectRouterChannelPeerRid() {},
+    attachSpotRouteChannelDiscovery() {},
+    createSpot() {},
+    getOrCreateSpot() {},
+    status() {},
+    peers() { return []; },
+    subjects() { return []; },
+    attachChannelDealer() {},
+    attachChannelDealerManual() {},
+    entrySpot() {},
+    createActor() {},
+    actorLookup() {},
+    joinActor() { return true; },
+    joinActorEntrySpot() { return true; },
+    async destroyActor() {},
+    sendActorBoundSession() { return true; },
+    async closeActorBoundSession() {},
+    async dispose() {
+      calls.push('spot:dispose');
+    }
+  };
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      spotNodes: ['game.spot'],
+      streamNodes: {
+        'client.stream': {
+          bind: 'tcp://0.0.0.0:9100',
+          attachActorGateway: 'game.spot',
+          session: ClientHeaderSession
+        }
+      }
+    })
+  }, {
+    backendAdapterFactory: {
+      createChannelAdapter() {
+        return {
+          createContext() {
+            return {
+              nativeInstance: {},
+              shutdown() {},
+              async dispose() {
+                calls.push('context:dispose');
+              }
+            };
+          }
+        };
+      },
+      createSpotAdapter() {
+        return {
+          createSpotNode(_context, mode) {
+            calls.push(`spot:create:${mode}`);
+            return spotNode;
+          }
+        };
+      },
+      createStreamAdapter() {
+        return {
+          createStreamSocket() {
+            return {
+              nativeInstance: {},
+              bind(endpoint) {
+                calls.push(`stream:bind:${endpoint}`);
+              },
+              setChannelName() {},
+              onFramedPacket() {},
+              send() { return true; },
+              disconnectPeer() {},
+              attachActorGateway(node) {
+                assert.equal(node, spotNode);
+                calls.push('stream:attachActorGateway');
+              },
+              async bindActor() {},
+              async unbindActor() {},
+              sendBoundActor() { return true; },
+              async dispose() {
+                calls.push('stream:dispose');
+              }
+            };
+          }
+        };
+      },
+      createMonitoringAdapter() {
+        return {
+          openSocketMonitor() {
+            return {
+              nativeInstance: {},
+              onEvent() {},
+              recv() { return {}; },
+              async dispose() {
+                calls.push('monitor:dispose');
+              }
+            };
+          }
+        };
+      }
+    }
+  });
+
+  await runtime.start();
+  await runtime.stop();
+
+  assert.deepEqual(calls, [
+    'spot:create:3',
+    'stream:attachActorGateway',
+    'stream:bind:tcp://0.0.0.0:9100',
+    'monitor:dispose',
+    'stream:dispose',
+    'spot:dispose',
+    'context:dispose'
+  ]);
+});
+
 function providerTokens(module) {
   return new Set(module.providers.map((provider) => provider.provide));
 }

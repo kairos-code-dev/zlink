@@ -27,6 +27,7 @@ import type {
 export type ZLinkBackendSendFlags = SendFlagsValue;
 export type ZLinkBackendRecvFlags = RecvFlagsValue;
 export type ZLinkBackendSpotNodeMode = SpotNodeModeValue;
+export const ZLINK_BACKEND_SPOT_NODE_MODE_ALL = 3 as ZLinkBackendSpotNodeMode;
 
 export enum ZLinkBackendSpotDispatchEvent {
   Internal = 0,

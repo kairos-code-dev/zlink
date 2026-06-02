@@ -7,6 +7,7 @@ import {
   ZLinkRuntimeRouteTransport
 } from '../channels';
 import { ZLinkFrameworkRuntimeState } from '../execution';
+import { ZLinkSpotNodeRuntimeManager } from '../spots';
 import {
   DefaultZLinkBoundSessionFactory,
   ZLinkStreamBindingRuntime,
@@ -29,6 +30,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   private readonly lifecycleSink?: string[];
   private state?: ZLinkFrameworkRuntimeState;
   private channelRuntime?: ZLinkChannelRuntimeManager;
+  private spotNodeRuntime?: ZLinkSpotNodeRuntimeManager;
   private streamRuntime?: ZLinkStreamRuntimeManager;
   readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
   readonly routeTransport = new ZLinkRuntimeRouteTransport(() => this.channelRuntime);
@@ -65,23 +67,33 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
     const channelAdapter = this.backendAdapterFactory.createChannelAdapter();
     const context = channelAdapter.createContext();
     let channelRuntime: ZLinkChannelRuntimeManager | undefined;
+    let spotNodeRuntime: ZLinkSpotNodeRuntimeManager | undefined;
     let streamRuntime: ZLinkStreamRuntimeManager | undefined;
     try {
       this.state = new ZLinkFrameworkRuntimeState(context);
       channelRuntime = new ZLinkChannelRuntimeManager(this.options.registration, channelAdapter, context);
       this.state.listenerTasks.push(...channelRuntime.start(this.state.taskRunner));
       this.channelRuntime = channelRuntime;
+      spotNodeRuntime = new ZLinkSpotNodeRuntimeManager({
+        registration: this.options.registration,
+        backendAdapterFactory: this.backendAdapterFactory,
+        context
+      });
+      spotNodeRuntime.start();
+      this.spotNodeRuntime = spotNodeRuntime;
       streamRuntime = new ZLinkStreamRuntimeManager({
         registration: this.options.registration,
         backendAdapterFactory: this.backendAdapterFactory,
         context,
-        bindingRuntime: this.streamBindingRuntime
+        bindingRuntime: this.streamBindingRuntime,
+        spotNodes: spotNodeRuntime.nodesByName
       });
       streamRuntime.start();
       this.streamRuntime = streamRuntime;
       this.lifecycleSink?.push('framework:started');
     } catch (error) {
       await streamRuntime?.dispose();
+      await spotNodeRuntime?.dispose();
       await channelRuntime?.dispose();
       await context.dispose();
       throw error;
@@ -95,12 +107,15 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
     }
 
     const channelRuntime = this.channelRuntime;
+    const spotNodeRuntime = this.spotNodeRuntime;
     const streamRuntime = this.streamRuntime;
     this.state = undefined;
     this.channelRuntime = undefined;
+    this.spotNodeRuntime = undefined;
     this.streamRuntime = undefined;
     this.lifecycleSink?.push('framework:stop');
     await streamRuntime?.dispose();
+    await spotNodeRuntime?.dispose();
     await channelRuntime?.dispose();
     await state.dispose();
     this.lifecycleSink?.push('framework:stopped');

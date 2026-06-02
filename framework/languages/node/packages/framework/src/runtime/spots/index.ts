@@ -22,7 +22,13 @@ import type {
   ZLinkTimerTick
 } from '../../contracts';
 import { ZLinkTimerOverrunPolicy } from '../../contracts';
-import { ZLinkConfigurationException } from '../configuration';
+import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
+import type {
+  ZLinkBackendAdapterFactory,
+  ZLinkBackendContext,
+  ZLinkBackendSpotNode
+} from '../backend/contracts';
+import { ZLINK_BACKEND_SPOT_NODE_MODE_ALL } from '../backend/contracts';
 
 export interface ZLinkSpotManagerOptions {
   readonly spotFactories: readonly Type<ZLinkSpot>[];
@@ -31,6 +37,41 @@ export interface ZLinkSpotManagerOptions {
   readonly fanoutClient?: ZLinkFanoutClient;
   readonly remoteAddressResolver?: ZLinkSpotRemoteAddressResolver;
   readonly routedTransport?: ZLinkSpotRoutedTransport;
+}
+
+export interface ZLinkSpotNodeRuntimeManagerOptions {
+  readonly registration: ZLinkFrameworkRegistration;
+  readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
+  readonly context: ZLinkBackendContext;
+}
+
+export class ZLinkSpotNodeRuntimeManager {
+  private readonly nodes = new Map<string, ZLinkBackendSpotNode>();
+
+  constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {}
+
+  start(): void {
+    if (this.options.registration.spotNodes.size === 0) {
+      return;
+    }
+    const spotAdapter = this.options.backendAdapterFactory.createSpotAdapter();
+    for (const spotNodeName of this.options.registration.spotNodes) {
+      const node = spotAdapter.createSpotNode(this.options.context, ZLINK_BACKEND_SPOT_NODE_MODE_ALL);
+      this.nodes.set(spotNodeName, node);
+    }
+  }
+
+  get nodesByName(): ReadonlyMap<string, ZLinkBackendSpotNode> {
+    return this.nodes;
+  }
+
+  async dispose(): Promise<void> {
+    const nodes = [...this.nodes.values()];
+    this.nodes.clear();
+    for (const node of nodes.reverse()) {
+      await node.dispose();
+    }
+  }
 }
 
 interface SpotActivation {

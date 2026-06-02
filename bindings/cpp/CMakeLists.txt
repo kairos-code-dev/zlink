@@ -441,6 +441,39 @@ if(ZLINK_CPP_BUILD_TESTS)
     target_link_libraries(test_cpp_contract_codec_protobuf PRIVATE
       zlink::cpp_codec_protobuf)
   endif()
+
+  set(ZLINK_CPP_CODEC_TARGET_CONTRACT_REPORT
+    "${CMAKE_CURRENT_BINARY_DIR}/codec-target-contract.txt")
+  get_target_property(ZLINK_CPP_BASE_LINKS zlink_cpp INTERFACE_LINK_LIBRARIES)
+  if(NOT ZLINK_CPP_BASE_LINKS)
+    set(ZLINK_CPP_BASE_LINKS "")
+  endif()
+  file(WRITE "${ZLINK_CPP_CODEC_TARGET_CONTRACT_REPORT}"
+    "base_links=${ZLINK_CPP_BASE_LINKS}\n")
+  foreach(codec json messagepack protobuf)
+    if(TARGET zlink_cpp_codec_${codec})
+      get_target_property(ZLINK_CPP_CODEC_LINKS
+        zlink_cpp_codec_${codec}
+        INTERFACE_LINK_LIBRARIES)
+      if(NOT ZLINK_CPP_CODEC_LINKS)
+        set(ZLINK_CPP_CODEC_LINKS "")
+      endif()
+      file(APPEND "${ZLINK_CPP_CODEC_TARGET_CONTRACT_REPORT}"
+        "codec_${codec}_links=${ZLINK_CPP_CODEC_LINKS}\n")
+      if(NOT "${ZLINK_CPP_CODEC_LINKS}" MATCHES "zlink_cpp")
+        file(APPEND "${ZLINK_CPP_CODEC_TARGET_CONTRACT_REPORT}"
+          "codec_target_without_base=${codec}\n")
+      endif()
+    endif()
+  endforeach()
+
+  add_test(
+    NAME test_cpp_contract_codec_target_boundary
+    COMMAND ${CMAKE_COMMAND}
+      -D ZLINK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/contract/verify_codec_target_contract.cmake)
+  set_tests_properties(test_cpp_contract_codec_target_boundary PROPERTIES
+    LABELS contract)
 endif()
 
 option(ZLINK_CPP_BUILD_BENCHMARKS "Build C++ binding benchmarks" OFF)

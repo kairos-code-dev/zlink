@@ -83,6 +83,60 @@ test('stream connector send builder writes a dotnet-compatible send frame once',
   );
 });
 
+test('stream connector disconnected send fails before transport write', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory
+  });
+
+  await assert.rejects(
+    () => instance.send({
+      codec: connector.ZlinkStreamCodec.Raw,
+      payload: new TextEncoder().encode('b')
+    }).packetName('h').submit(),
+    (error) => error.error?.code === connector.ZlinkStreamErrorCode.Disconnected
+  );
+  assert.equal(transportFactory.connection.frames.length, 0);
+});
+
+test('stream connector send and request enforce payload limit before transport write', async () => {
+  const sendTransportFactory = new MemoryTransportFactory();
+  const sendInstance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory: sendTransportFactory,
+    maxSendPayloadSize: 1
+  });
+  await sendInstance.connect();
+
+  await assert.rejects(
+    () => sendInstance.send({
+      codec: connector.ZlinkStreamCodec.Raw,
+      payload: new TextEncoder().encode('bb')
+    }).packetName('h').submit(),
+    (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameTooLarge
+  );
+  assert.equal(sendTransportFactory.connection.frames.length, 0);
+
+  const requestTransportFactory = new MemoryTransportFactory();
+  const requestInstance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory: requestTransportFactory,
+    maxSendPayloadSize: 1
+  });
+  await requestInstance.connect();
+
+  await assert.rejects(
+    () => requestInstance.request({
+      codec: connector.ZlinkStreamCodec.Raw,
+      payload: new TextEncoder().encode('bb')
+    }).packetName('h').timeout(1000).submit(),
+    (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameTooLarge
+  );
+  assert.equal(requestTransportFactory.connection.frames.length, 0);
+  assert.equal(requestInstance.pendingDispatchCount, 0);
+});
+
 test('stream connector request resolves when dispatch reads matching response frame', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({

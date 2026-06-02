@@ -111,6 +111,61 @@ test('node documentation keeps fanout and route client public surface aligned wi
   assert.deepEqual(offenders.sort(), []);
 });
 
+test('node interface catalog names resolve in public package declarations', () => {
+  const frameworkDeclarations = packageDeclarations('framework');
+  const nestjsDeclarations = packageDeclarations('nestjs');
+  const connectorDeclarations = packageDeclarations('stream-connector');
+  const missing = [];
+
+  for (const name of [
+    'ZLinkChannelClient',
+    'ZLinkFanoutClient',
+    'ZLinkSendCall',
+    'ZLinkRequestCall',
+    'ZLinkPublishCall',
+    'ZLinkSpot',
+    'ZLinkSpotContext',
+    'ZLinkSpotManager',
+    'ZLinkActor',
+    'ZLinkActorContext',
+    'ZLinkBoundSession',
+    'ZLinkSession',
+    'ZLinkSessionContext',
+    'ZLinkSessionClient'
+  ]) {
+    if (!declarationHasSymbol(frameworkDeclarations, name)) {
+      missing.push(`@zlink-systems/framework:${name}`);
+    }
+  }
+
+  for (const name of [
+    'ZLinkModule',
+    'ZLinkRegistryModule',
+    'ZLinkRegistryQueryClientModule',
+    'ZLINK_CHANNEL_CLIENT',
+    'ZLINK_FANOUT_CLIENT',
+    'ZLINK_SPOT_MANAGER',
+    'ZLINK_ACTOR_MANAGER',
+    'ZLINK_REGISTRY_QUERY'
+  ]) {
+    if (!declarationHasSymbol(nestjsDeclarations, name)) {
+      missing.push(`@zlink-systems/nestjs:${name}`);
+    }
+  }
+
+  for (const name of [
+    'ZlinkStreamConnector',
+    'ZlinkStreamHeaderCodec',
+    'ZlinkStreamFrameCodec'
+  ]) {
+    if (!declarationHasSymbol(connectorDeclarations, name)) {
+      missing.push(`@zlink-systems/stream-connector:${name}`);
+    }
+  }
+
+  assert.deepEqual(missing, []);
+});
+
 function allMarkdownFiles(root) {
   const files = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
@@ -122,6 +177,30 @@ function allMarkdownFiles(root) {
     }
   }
   return files;
+}
+
+function packageDeclarations(packageName) {
+  const distRoot = path.join(workspaceRoot, 'packages', packageName, 'dist');
+  return allDeclarationFiles(distRoot)
+    .map((file) => fs.readFileSync(file, 'utf8'))
+    .join('\n');
+}
+
+function allDeclarationFiles(root) {
+  const files = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...allDeclarationFiles(fullPath));
+    } else if (entry.isFile() && entry.name.endsWith('.d.ts')) {
+      files.push(fullPath);
+    }
+  }
+  return files;
+}
+
+function declarationHasSymbol(declarations, name) {
+  return new RegExp(`\\b(?:export\\s+)?(?:declare\\s+)?(?:interface|class|const|type|function)\\s+${name}\\b`).test(declarations);
 }
 
 function markdownLinks(content) {

@@ -535,6 +535,8 @@ export interface ZLinkRouteMeshChannelBuilder extends ZLinkRouteChannelBuilder {
 
 export interface ZLinkStreamNodeBuilder {
   bind(endpoint: string): this;
+  attachActorGateway(spotNodeName: string): this;
+  registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession>): this;
 }
 
 export interface ZLinkEndpointConnections {

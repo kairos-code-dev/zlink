@@ -220,6 +220,55 @@ test('ZLinkModule.forRoot maps dealer and route mesh channel options into runtim
   );
 });
 
+test('ZLinkModule.forRoot maps stream node options into runtime registration', () => {
+  class ClientHeaderSession {
+    constructor(context) {
+      this.context = context;
+    }
+  }
+  const module = nestjs.ZLinkModule.forRoot({
+    spotNodes: ['game.spot'],
+    streamNodes: {
+      'client.stream': {
+        bind: 'tcp://0.0.0.0:9100',
+        attachActorGateway: 'game.spot',
+        session: ClientHeaderSession
+      }
+    }
+  });
+  const registration = module.providers.find((provider) => provider.provide === nestjs.ZLINK_FRAMEWORK_REGISTRATION).useValue;
+  const streamNode = registration.streamNodes.get('client.stream');
+
+  assert.equal(streamNode.bind, 'tcp://0.0.0.0:9100');
+  assert.equal(streamNode.attachActorGateway, 'game.spot');
+  assert.equal(streamNode.session, ClientHeaderSession);
+
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      streamNodes: { 'missing-bind': { session: ClientHeaderSession } }
+    }),
+    /STREAM node 'missing-bind' must define a bind endpoint/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      streamNodes: { 'missing-session': { bind: 'tcp://0.0.0.0:9101' } }
+    }),
+    /STREAM node 'missing-session' must register a header stream session/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      streamNodes: {
+        'client.stream': {
+          bind: 'tcp://0.0.0.0:9100',
+          attachActorGateway: 'unknown.spot',
+          session: ClientHeaderSession
+        }
+      }
+    }),
+    /references unknown ActorGateway target SpotNode 'unknown.spot'/
+  );
+});
+
 test('ZLinkModule.forRoot registers registry spot remote address resolver by default', async () => {
   const module = nestjs.ZLinkModule.forRoot({
     discovery: { registries: ['tcp://127.0.0.1:5551'] },

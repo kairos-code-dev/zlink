@@ -8,6 +8,7 @@ export interface ZLinkFrameworkRegistration {
   readonly fanoutPublishers: ReadonlySet<string>;
   readonly routeChannels: ReadonlySet<string>;
   readonly routeChannelOptions: ReadonlyMap<string, ZLinkRouteChannelOptions>;
+  readonly streamNodes: ReadonlyMap<string, ZLinkStreamNodeOptions>;
   readonly spotNodes: ReadonlySet<string>;
   readonly spotPublisherClients: ReadonlySet<string>;
   readonly hasSpotRemoteAddressResolver: boolean;
@@ -28,6 +29,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly channels?: Readonly<Record<string, ZLinkChannelOptions>>;
   readonly discovery?: ZLinkDiscoveryOptions;
   readonly routeChannels?: readonly (string | ZLinkRouteChannelOptions)[];
+  readonly streamNodes?: Readonly<Record<string, ZLinkStreamNodeOptions>>;
   readonly spotNodes?: readonly string[];
   readonly spotPublisherClients?: readonly string[];
   readonly spotRemoteAddressResolver?: Type;
@@ -82,6 +84,12 @@ export interface ZLinkRouteChannelOptions {
   readonly handlers?: readonly ZLinkRouteChannelHandlerOptions[];
 }
 
+export interface ZLinkStreamNodeOptions {
+  readonly bind?: string;
+  readonly attachActorGateway?: string;
+  readonly session?: Type;
+}
+
 export interface ZLinkRouteChannelHandlerOptions {
   readonly kind: 'send' | 'request';
   readonly packetName: string;
@@ -125,6 +133,7 @@ export function createFrameworkRegistration(
     fanoutPublishers: channelNamesWith(options.channels, (channel) => channel.publisher !== undefined),
     routeChannels: new Set(routeChannelOptions.keys()),
     routeChannelOptions,
+    streamNodes: toStreamNodeMap(options.streamNodes),
     spotNodes: new Set(options.spotNodes ?? []),
     spotPublisherClients: new Set(options.spotPublisherClients ?? []),
     hasSpotRemoteAddressResolver: options.spotRemoteAddressResolver !== undefined,
@@ -138,6 +147,10 @@ export function createFrameworkRegistration(
 
 function toChannelMap(channels: ZLinkFrameworkRegistrationOptions['channels']): Map<string, ZLinkChannelOptions> {
   return new Map(Object.entries(channels ?? {}).map(([name, channel]) => [name, { ...channel }]));
+}
+
+function toStreamNodeMap(streamNodes: ZLinkFrameworkRegistrationOptions['streamNodes']): Map<string, ZLinkStreamNodeOptions> {
+  return new Map(Object.entries(streamNodes ?? {}).map(([name, streamNode]) => [name, { ...streamNode }]));
 }
 
 function toRouteChannelOptions(
@@ -191,6 +204,7 @@ export function validateFrameworkRegistration(
   validateRegistryRouteChannel(registration);
   validateChannelCapabilities(options.channels, hasDiscovery(options.discovery));
   validateRouteChannels(registration.routeChannelOptions);
+  validateStreamNodes(registration);
 }
 
 export function hasSpotNode(registration: ZLinkFrameworkRegistration): boolean {
@@ -331,6 +345,25 @@ function requirePeerSource(
 function requireEndpoint(capabilityName: string, endpoint: string | undefined): void {
   if (endpoint === undefined || endpoint.trim().length === 0) {
     throw new ZLinkConfigurationException(`${capabilityName} must define a bind endpoint.`);
+  }
+}
+
+function validateStreamNodes(registration: ZLinkFrameworkRegistration): void {
+  for (const [streamNodeName, streamNode] of registration.streamNodes.entries()) {
+    requireEndpoint(`STREAM node '${streamNodeName}'`, streamNode.bind);
+    if (streamNode.session === undefined) {
+      throw new ZLinkConfigurationException(
+        `STREAM node '${streamNodeName}' must register a header stream session.`
+      );
+    }
+    if (streamNode.attachActorGateway === undefined || streamNode.attachActorGateway.trim().length === 0) {
+      continue;
+    }
+    if (!registration.spotNodes.has(streamNode.attachActorGateway)) {
+      throw new ZLinkConfigurationException(
+        `STREAM node '${streamNodeName}' references unknown ActorGateway target SpotNode '${streamNode.attachActorGateway}'.`
+      );
+    }
   }
 }
 

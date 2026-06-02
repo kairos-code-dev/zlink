@@ -357,6 +357,15 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', (
   assert.equal(registration.spotNodes.get('game.spot').router.bind, 'tcp://0.0.0.0:9110');
 
   assert.throws(
+    () => framework.createFrameworkOptions((builder) => {
+      builder.streamNode('client.stream')
+        .bind('tcp://0.0.0.0:9100')
+        .registerSession(ClientHeaderSession)
+        .registerSession(ClientHeaderSession);
+    }),
+    /STREAM node cannot register more than one header stream session/
+  );
+  assert.throws(
     () => nestjs.ZLinkModule.forRoot({
       streamNodes: { 'missing-bind': { session: ClientHeaderSession } }
     }),

@@ -412,6 +412,9 @@ class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
   }
 
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession>): this {
+    if (this.streamNode.session !== undefined) {
+      throw new ZLinkConfigurationException('STREAM node cannot register more than one header stream session.');
+    }
     this.streamNode.session = sessionType;
     return this;
   }

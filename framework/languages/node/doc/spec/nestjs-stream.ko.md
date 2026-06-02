@@ -490,6 +490,7 @@ STREAM 문서의 항목이 확인해야 하는 것은 다음이다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `nodesAndServices.throwsWhenStreamNodeRegistersMultipleSessions` | 같은 node에 session을 중복 등록하면 startup validation 예외가 발생한다. |
+| `ZLinkModule.forRoot maps stream node options into runtime registration` | Node builder 표면에서도 같은 stream node 에 session 을 두 번 등록하면 startup validation 예외가 발생한다. |
 | `protocol.streamSessionRuntimeOnlyExposesEnqueueCallbackEntrypoints` | transport 진입점은 public enqueue API만 노출한다. |
 | `headerStreamSession.receivesRepliesAndTracksLifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대한 순서대로 실행된다. |
 | `headerStreamSession.canCloseCurrentClientStream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |

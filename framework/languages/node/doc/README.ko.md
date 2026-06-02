@@ -10,9 +10,8 @@
 > 이 소유한다. dotnet 문서와 표기가 어긋나면 dotnet **코드**가 기능의 최종
 > 기준이다.
 >
-> 이 묶음은 **구현용 draft 문서**다. 사용자 가이드(usability) 계층은 표면이
-> 확정된 뒤에 별도로 작성한다. 지금 문서들은 "구현에 필요한 계약과 정책"만
-> 다룬다.
+> 이 묶음은 **구현 기준 문서**다. 사용자 가이드(usability), 정식 계약(spec),
+> 내부 정책(internals), 샘플 실행 기준을 분리해서 다룬다.
 
 ## 0. 먼저 읽어야 하는 문서
 
@@ -24,7 +23,8 @@
   Phase 9 의 사용자 guide, sample, cross-language smoke 완료 기준
 - [.NET → Node.js 표면 매핑 정책](./internals/dotnet-to-node-surface-mapping.ko.md)
   — 모든 문서가 따르는 번역 규칙(호스트/언어/백엔드 매핑)
-- [기존 드래프트](./draft/README.ko.md) — NestJS 표면 초안(이 문서 묶음의 출발점)
+- [기존 드래프트](./draft/README.ko.md) — 초기 표면 설계 기록. 구현 기준은 `spec/`,
+  `internals/`, `guide/`, `sample-implementation-plan` 이다.
 
 ## 1. 정식 계약 (`spec/`)
 

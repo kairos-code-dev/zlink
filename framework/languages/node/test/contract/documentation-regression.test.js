@@ -65,6 +65,27 @@ test('node documentation relative markdown links resolve', () => {
   assert.deepEqual(broken.sort(), []);
 });
 
+test('node spec and internals documentation do not depend on legacy draft links', () => {
+  const checkedRoots = [
+    path.join(docRoot, 'spec'),
+    path.join(docRoot, 'internals')
+  ];
+  const offenders = [];
+
+  for (const root of checkedRoots) {
+    for (const file of allMarkdownFiles(root)) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const link of markdownLinks(content)) {
+        if (link.includes('../draft/') || link.includes('/draft/')) {
+          offenders.push(`${path.relative(workspaceRoot, file)} -> ${link}`);
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(offenders.sort(), []);
+});
+
 function allMarkdownFiles(root) {
   const files = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {

@@ -2,14 +2,13 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Node.js Behavior Matrix](./behavior-matrix.ko.md) | [다음: ZLink Framework Node.js Lifecycle And Failure Semantics](./lifecycle-and-failure-semantics.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../README.ko.md)
 
-[Node.js 묶음](../README.ko.md) | [표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [인터페이스](../draft/handler-interfaces.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md)
+[Node.js 묶음](../README.ko.md) | [표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md)
 
 # ZLink Framework Node.js DI Capability Exposure Policy
 
-> 이 문서는 아직 정식 공개 계약 문서로 승격되지 않은 draft 이다.
-> `Node.js` `ZLink Framework`(NestJS)에서 DI 로 노출되는 public service 표면을 어떤
+> 이 문서는 `Node.js` `ZLink Framework`(NestJS)에서 DI 로 노출되는 public service 표면을 어떤
 > capability 구성과 묶는지 정리하고, 현재 .NET 코드에 반영된 정책을 그대로 옮겨
 > 기록한다. 개념·의미론은 .NET 과 동일하며, 표면(IServiceCollection → DynamicModule,
 > constructor injection → provider token 주입)만 NestJS 로 바꾼다. 표기가 어긋나면

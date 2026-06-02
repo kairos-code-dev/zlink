@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS Monitoring](./nestjs-monitoring.ko.md) | [다음: ZLink Framework Node.js Channel Messaging Samples](../draft/channel-messaging-samples.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS Monitoring](./nestjs-monitoring.ko.md) | [다음: ZLink Framework Node.js Sample Implementation Plan](../sample-implementation-plan.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../README.ko.md)
 
 [Node.js 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./nestjs-channel-messaging.ko.md) | [SPOT](./nestjs-spot.ko.md) | [STREAM](./nestjs-stream.ko.md)
 

@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: 드래프트 묶음](../draft/README.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework Node.js DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../README.ko.md)
 
-[Node 묶음](../README.ko.md) | [표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [인터페이스](../draft/handler-interfaces.ko.md) | [channel](../draft/nestjs-channel-messaging.ko.md) | [SPOT](../draft/nestjs-spot.ko.md) | [STREAM](../draft/nestjs-stream.ko.md)
+[Node 묶음](../README.ko.md) | [표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/nestjs-channel-messaging.ko.md) | [SPOT](../spec/nestjs-spot.ko.md) | [STREAM](../spec/nestjs-stream.ko.md)
 
 # ZLink Framework Node.js Behavior Matrix
 

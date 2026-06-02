@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js Implementation Scope And Non-Goals](./implementation-scope-and-nongoals.ko.md) | [다음: Draft -- ZLink Framework Node.js STREAM Decisions](../draft/stream-open-items.ko.md)
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js Implementation Scope And Non-Goals](./implementation-scope-and-nongoals.ko.md) | [다음: ZLink Framework Node Regression Test Matrix](./regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)

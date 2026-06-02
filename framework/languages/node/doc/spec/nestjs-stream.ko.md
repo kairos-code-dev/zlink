@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS SPOT](../draft/nestjs-spot.ko.md) | [다음: ZLink Framework NestJS Actor](./nestjs-actor.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS SPOT](./nestjs-spot.ko.md) | [다음: ZLink Framework NestJS Actor](./nestjs-actor.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../README.ko.md)
 
-[Node.js 묶음](../README.ko.md) | [인터페이스](../draft/handler-interfaces.ko.md) | [STREAM 샘플](../draft/stream-samples.ko.md) | [STREAM Decisions](../draft/stream-open-items.ko.md) | [channel](../draft/nestjs-channel-messaging.ko.md) | [SPOT](../draft/nestjs-spot.ko.md)
+[Node.js 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [샘플 계획](../sample-implementation-plan.ko.md) | [channel](./nestjs-channel-messaging.ko.md) | [SPOT](./nestjs-spot.ko.md)
 
 > 이 문서는 **이식 기준 스펙**이다. `framework/languages/dotnet` 의 STREAM 정식
 > 계약([aspnet-core-stream.ko.md](../../../dotnet/doc/spec/aspnet-core-stream.ko.md))
@@ -60,9 +60,7 @@ packet session 방식으로 정리하는 것이다.
 을 함께 올리는 쪽이다. raw chunk[^raw-chunk] 직접 처리와 사용자 정의 Header
 framing 은 MVP[^mvp] 범위에 넣지 않는다.
 
-> **packet session vs raw session.** 초기 node 드래프트
-> ([nestjs-stream.ko.md](../draft/nestjs-stream.ko.md),
-> [stream-samples.ko.md](../draft/stream-samples.ko.md))는
+> **packet session vs raw session.** 초기 node 드래프트는
 > `ZLinkPacketStreamSession`(`onPacket`)과 `ZLinkRawStreamSession`(`onRaw`)을
 > 두 축으로 그렸고, `ZLinkStream` 에 `write` 와 `writePacket` 을 함께 두었다.
 > 그러나 dotnet **코드**의 공개 계약에는 raw session 표면과 `writePacket` 이
@@ -74,13 +72,13 @@ framing 은 MVP[^mvp] 범위에 넣지 않는다.
 > chunk 직접 처리 표면은 §7 의 결정에 따라 공개 계약에 넣지 않는다(드래프트의
 > `onRaw`/`writePacket` 은 채택하지 않는다).
 
-## 3. 인터페이스 초안
+## 3. 인터페이스 기준
 
 이 절은 STREAM 표면이 노출하는 핵심 타입을 정리한다.
 
-인터페이스 전체 기준은 [handler-interfaces.ko.md](../draft/handler-interfaces.ko.md)
+인터페이스 전체 기준은 [handler-interfaces.ko.md](./handler-interfaces.ko.md)
 를 참고한다. TypeScript 에서는 C# 의 `I` prefix 관례를 쓰지 않으므로
-`IZLinkX` 는 `ZLinkX` 로 옮긴다. `STREAM` 쪽 핵심 초안은 다음과 같다.
+`IZLinkX` 는 `ZLinkX` 로 옮긴다. `STREAM` 쪽 핵심 기준은 다음과 같다.
 
 ```ts
 export interface ZLinkStream {
@@ -105,7 +103,7 @@ export enum ZLinkStreamSessionError {
   Internal = 0,
   TransportError = 1,
   // onError 로 전달되지 않는다. handshake 실패는 runtime monitoring 에만 남긴다.
-  // stream-open-items.ko.md 의 onError 매핑 항목 참고.
+  // onError 로 전달하지 않는다는 정책은 아래 결정된 기준을 따른다.
   HandshakeFailed = 2,
 }
 
@@ -332,7 +330,7 @@ context 타입에 맞는 handler 구현을 provider 로 자동 등록한다.
 - server-to-client 압축은 `ZLinkSessionSendCall.compress()` 또는
   `ZLinkSessionReplyCall.compress()` builder 호출로 활성화한다.
 
-## 4. 등록 모델 초안
+## 4. 등록 모델 기준
 
 이 절은 STREAM node 를 framework 에 어떻게 등록하는지를 정리한다.
 
@@ -439,8 +437,7 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
 
 ## 7. 결정된 기준
 
-이 절은 STREAM 표면이 따르는 고정된 결정 사항을 모아둔 것이다. 세부 결정 근거는
-[stream-open-items.ko.md](../draft/stream-open-items.ko.md) 에 정리한다.
+이 절은 STREAM 표면이 따르는 고정된 결정 사항을 모아둔 것이다.
 
 - stream session 등록은 decorator 기반으로 열지 않는다.
   `streamNodes[name].session = T`(dotnet `AddStreamNode(...).RegisterSession<T>()`)

@@ -491,7 +491,8 @@ TS 고유 제약(표면 한계): 런타임 타입 소거 → packet key 는 **�
 
 ## 10. 현재 문서 상태
 
-- ✅ 구현용 draft 완비: `spec/`(11) + `internals/`(7) + 이 plan — 모두 dotnet 코드 검증 기반.
+- ✅ 구현 기준 문서 완비: `spec/`(11) + `internals/` + `guide/` + 이 plan — 모두 dotnet 코드 검증 기반.
 - ✅ 사용성(가이드)·샘플 실행 기준: [sample-implementation-plan](./sample-implementation-plan.ko.md) 에서 P9 산출물로 고정.
-- 참고: 기존 `draft/`(NestJS 표면 초안)은 출발점이며, 충돌 시 `spec/` 우선.
+- 참고: 기존 `draft/`는 초기 설계 기록이다. 구현 기준은 `spec/`, `internals/`,
+  `guide/`, `sample-implementation-plan` 이다.
 - 전체 인덱스: [README](./README.ko.md).

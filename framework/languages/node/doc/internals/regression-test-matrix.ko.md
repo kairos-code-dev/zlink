@@ -314,14 +314,13 @@ backend gate 와 별도로 유지한다.
 
 ## 9. 문서별 회귀 테스트 단락
 
-이 디렉토리(및 `spec/`)의 각 구현용 draft 문서는, 자기 항목이 어떤 테스트로
+이 디렉토리(및 `spec/`)의 각 구현 기준 문서는, 자기 항목이 어떤 테스트로
 고정되어 있는지 짧은 `회귀 테스트` 단락을 갖고 있어야 한다. 중앙 matrix 만
 갱신해서는 곤란하다. 세부 문서의 독자가 어떤 테스트를 봐야 하는지 놓치기 쉽기
 때문이다.
 
-dotnet 의 `RegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection`
-/ `RegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` 두
-`Documentation/Regression.cs` 테스트를 Node 에서 동일하게 미러링한다.
+dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가 자기 회귀 테스트
+단락을 유지하는지 확인한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
@@ -330,7 +329,7 @@ dotnet 의 `RegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection`
 
 > dotnet 의 narrative guide 와 case-study 문서가 strict 집합에서 제외되는 것과
 > 동일하게, node 의 사용자 가이드(usability) 계층은 strict 집합 대상이 아니다.
-> 현재 node 묶음은 구현용 문서(`spec/`, `internals/`, root plan, sample draft)만
+> 현재 node 묶음은 구현 기준 문서(`spec/`, `internals/`, root plan, sample plan)만
 > strict 집합으로 둔다.
 
 대상 문서는 현재 `framework/languages/node/doc` 아래에 실제 존재하는 구현용 문서다.

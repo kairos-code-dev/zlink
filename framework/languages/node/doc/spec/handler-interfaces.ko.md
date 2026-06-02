@@ -2,7 +2,7 @@
 [문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework NestJS Channel Messaging](./nestjs-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[Node.js 묶음](../README.ko.md) | [channel](./nestjs-channel-messaging.ko.md) | [channel 샘플](../draft/channel-messaging-samples.ko.md) | [SPOT](./nestjs-spot.ko.md) | [SPOT 샘플](../draft/spot-samples.ko.md) | [STREAM](./nestjs-stream.ko.md) | [STREAM 샘플](../draft/stream-samples.ko.md) | [Actor](./nestjs-actor.ko.md) | [Monitoring](./nestjs-monitoring.ko.md) | [Registry](./nestjs-registry.ko.md)
+[Node.js 묶음](../README.ko.md) | [channel](./nestjs-channel-messaging.ko.md) | [SPOT](./nestjs-spot.ko.md) | [STREAM](./nestjs-stream.ko.md) | [Actor](./nestjs-actor.ko.md) | [Monitoring](./nestjs-monitoring.ko.md) | [Registry](./nestjs-registry.ko.md) | [샘플 계획](../sample-implementation-plan.ko.md)
 
 # ZLink Framework Node.js Interface Catalog
 
@@ -40,11 +40,11 @@ framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, �
 사용 예시나 프로그래밍 모델 설명은 여기 넣지 않는다. 실제 사용법은 아래 문서를 참고한다.
 
 - 서버 간 messaging 프로그래밍 모델 → [nestjs-channel-messaging.ko.md](./nestjs-channel-messaging.ko.md)
-- 서버 간 messaging 샘플 → [channel-messaging-samples.ko.md](../draft/channel-messaging-samples.ko.md)
+- 서버 간 messaging 샘플 → [sample-implementation-plan.ko.md](../sample-implementation-plan.ko.md)
 - SPOT 통합 → [nestjs-spot.ko.md](./nestjs-spot.ko.md)
-- SPOT 샘플 → [spot-samples.ko.md](../draft/spot-samples.ko.md)
+- SPOT 샘플 → [sample-implementation-plan.ko.md](../sample-implementation-plan.ko.md)
 - STREAM 통합 → [nestjs-stream.ko.md](./nestjs-stream.ko.md)
-- STREAM 샘플 → [stream-samples.ko.md](../draft/stream-samples.ko.md)
+- STREAM 샘플 → [sample-implementation-plan.ko.md](../sample-implementation-plan.ko.md)
 - Actor 통합 → [nestjs-actor.ko.md](./nestjs-actor.ko.md)
 - Registry 통합 → [nestjs-registry.ko.md](./nestjs-registry.ko.md)
 

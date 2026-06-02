@@ -2,9 +2,9 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS SPOT Integration](./nestjs-spot.ko.md) | [다음: ZLink Framework NestJS STREAM Integration](./nestjs-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../README.ko.md)
 
-[Node.js 묶음](../README.ko.md) | [SPOT](./nestjs-spot.ko.md) | [SPOT 샘플](../draft/spot-samples.ko.md) | [인터페이스](./handler-interfaces.ko.md)
+[Node.js 묶음](../README.ko.md) | [SPOT](./nestjs-spot.ko.md) | [샘플 계획](../sample-implementation-plan.ko.md) | [인터페이스](./handler-interfaces.ko.md)
 
 # Stage Wrapper On SPOT
 

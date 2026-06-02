@@ -265,9 +265,9 @@ public final class NativeDealerRequestSupport {
                 int rc = Native.dealerRequestPart(
                     InternalAccess.socketHandle(socket), nativeMsg,
                     nativeFlags, partFlag,
-                    i + 1 < payload.size() ? 0 : timeout,
-                    i + 1 < payload.size() ? MemorySegment.NULL : handler,
-                    i + 1 < payload.size() ? MemorySegment.NULL : userData);
+                    timeout,
+                    handler,
+                    userData);
                 if (rc != SubmitResult.OK.value()) {
                     throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }

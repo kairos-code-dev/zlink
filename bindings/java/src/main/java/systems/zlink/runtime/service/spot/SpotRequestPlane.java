@@ -93,9 +93,8 @@ final class SpotRequestPlane {
                 int partFlag = last ? Native.PART_FINAL : Native.PART_MORE;
                 while (true) {
                     int rc = requestChannelPartOnce(service, payload.get(i),
-                        last ? handler : MemorySegment.NULL,
-                        last ? userData : MemorySegment.NULL, flags, partFlag,
-                        last ? timeoutMs : 0, arena);
+                        handler, userData, flags, partFlag,
+                        timeoutMs, arena);
                     if (rc == 0)
                         break;
                     int errno = Native.errno();

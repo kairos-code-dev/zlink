@@ -172,10 +172,8 @@ final class NativeRouterSpotSupport {
                 ? Native.PART_MORE : Native.PART_FINAL;
             while (true) {
                 int rc = routerRequestSpotPartOnce(socket, destNodeRid,
-                    destSpotRid, payload.get(i), i + 1 < payload.size()
-                        ? MemorySegment.NULL : handler,
-                    i + 1 < payload.size() ? MemorySegment.NULL : userData,
-                    flags, partFlag, i + 1 < payload.size() ? 0 : timeoutMs);
+                    destSpotRid, payload.get(i), handler, userData,
+                    flags, partFlag, timeoutMs);
                 if (rc == 0)
                     break;
                 int errno = Native.errno();

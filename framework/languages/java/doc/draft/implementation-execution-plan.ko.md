@@ -24,6 +24,8 @@
 아래 표가 Gradle artifact 이름과 Java package 이름의 **단일 정규 매핑**이다. 다른
 draft 문서(Porting Plan §2, README)에서 이름이 어긋나면 이 표를 따른다. Phase 0 DoD는
 이 표대로 module/package 경계가 만들어졌는지 확인한다. binding group은 `systems.zlink`.
+Maven package 좌표도 같은 group을 쓴다. 즉 공개 artifact는
+`systems.zlink:<Gradle artifact>:<version>` 형식으로 배포한다.
 
 | Gradle artifact | Java package | `.NET` 대응 | 역할 |
 |-----------------|--------------|-------------|------|
@@ -36,6 +38,22 @@ draft 문서(Porting Plan §2, README)에서 이름이 어긋나면 이 표를 �
 | `zlink-stream-connector-protobuf` | `systems.zlink.stream.connector.protobuf` | `Systems.Zlink.Stream.Connector.Protobuf` | Protobuf codec |
 | `zlink-framework-kotlin` | `systems.zlink.framework.kotlin` | (없음) | coroutine/DSL extension. core runtime을 다시 구현하지 않는다 |
 | `zlink-framework-testkit` | `systems.zlink.framework.testkit` | `tests/` fixture | in-process test host, fake backend, contract fixture |
+
+배포 repository URL은 Gradle property가 아니라 환경변수로 결정한다. 기본 순서는
+아래와 같다.
+
+1. `MAVEN_REPOSITORY_URL` 이 있으면 그 URL을 사용한다. 사내 Nexus, Artifactory,
+   GitHub Packages 외부 조직 저장소처럼 명시 대상이 있을 때 이 값을 쓴다.
+2. `MAVEN_REPOSITORY_URL` 이 없고 `GITHUB_REPOSITORY` 가 있으면
+   `https://maven.pkg.github.com/${GITHUB_REPOSITORY}` 를 사용한다. 이 저장소의 기본
+   CI 배포 경로다.
+3. 둘 다 없으면 `build/repo` 아래 로컬 Maven repository로 publish한다. 로컬 검증에서
+   외부 저장소 credentials가 없어도 publish task를 확인하기 위한 fallback이다.
+
+credentials도 같은 원칙을 따른다. `MAVEN_REPOSITORY_USERNAME` /
+`MAVEN_REPOSITORY_PASSWORD` 를 우선 사용하고, 없으면 GitHub Actions의
+`GITHUB_ACTOR` / `GITHUB_TOKEN` 을 사용한다. 따라서 package URL은 코드나 문서에
+고정하지 않고, CI 환경이 배포 대상을 주입한다.
 
 `zlink-framework-core` 내부 package(= `.NET` `Runtime/` 미러):
 `systems.zlink.framework.{channels, spots, actors, streams, registry, monitoring,

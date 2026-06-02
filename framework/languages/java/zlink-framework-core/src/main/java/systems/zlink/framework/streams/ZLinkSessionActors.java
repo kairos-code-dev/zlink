@@ -1,0 +1,17 @@
+package systems.zlink.framework.streams;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorRef;
+
+public interface ZLinkSessionActors {
+    List<ZLinkSessionActor> bound();
+
+    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActor actor);
+
+    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActorRef actor);
+
+    Optional<ZLinkSessionActor> find(String actorId);
+}

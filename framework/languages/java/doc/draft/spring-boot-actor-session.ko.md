@@ -96,14 +96,14 @@ public interface ZLinkSessionActors {
 
     CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActor actor);
 
-    CompletionStage<ZLinkSessionActor> bindAsync(ActorRef actor);
+    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActorRef actor);
 
     Optional<ZLinkSessionActor> find(String actorId);
 }
 
 public interface ZLinkSessionActor {
     String actorId();
-    ActorRef ref();
+    ZLinkActorRef ref();
 
     CompletionStage<Void> relayAsync(
         ZLinkStreamHeader header,
@@ -113,9 +113,10 @@ public interface ZLinkSessionActor {
 }
 ```
 
-session은 local actor instance 또는 remote `ActorRef`에 bind할 수 있다. remote
-binding은 actor route snapshot을 session public 입력으로 받지 않고, core
-ActorGateway와 logical actor handle을 사용한다.
+session은 local actor instance 또는 framework actor locator인 `ZLinkActorRef`에
+bind할 수 있다. remote binding은 binding 내부의 `ActorRef`나 actor route snapshot을
+session public 입력으로 받지 않고, core ActorGateway와 logical actor handle을
+사용한다.
 
 ## 5. Bound Session
 

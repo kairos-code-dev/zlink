@@ -142,9 +142,9 @@ final class NativeRouterRequestSupport {
                 InternalAccess.messageCopyTo(payload.get(i), nativeMsg);
                 int rc = Native.routerRequestPart(
                     InternalAccess.socketHandle(socket), nativeRid, nativeMsg,
-                    nativeFlags, partFlag, i + 1 < payload.size() ? 0 : timeout,
-                    i + 1 < payload.size() ? MemorySegment.NULL : handler,
-                    i + 1 < payload.size() ? MemorySegment.NULL : userData);
+                    nativeFlags, partFlag, timeout,
+                    handler,
+                    userData);
                 if (rc != SubmitResult.OK.value()) {
                     throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }

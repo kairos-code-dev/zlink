@@ -82,6 +82,7 @@ application event 모델 위에 zlink runtime을 자연스럽게 얹는 것이�
 | [implementation-execution-plan.ko.md](./implementation-execution-plan.ko.md) | 실제 구현 phase, 산출물, gate, release 순서 |
 | [handler-interfaces.ko.md](./handler-interfaces.ko.md) | `Java` 공용 인터페이스, annotation, options, context를 한 곳에 모은 기준 문서 |
 | [internals/dotnet-to-java-surface-mapping.ko.md](./internals/dotnet-to-java-surface-mapping.ko.md) | `.NET` 표면을 Java/Kotlin/Spring Boot로 옮기는 번역 규칙 |
+| [java-framework-completion-prompt.ko.md](./java-framework-completion-prompt.ko.md) | 이 문서 묶음으로 Java/Kotlin framework 포팅을 끝까지 수행하기 위한 실행 프롬프트 |
 
 ### 2.2 주제 문서
 

@@ -184,7 +184,7 @@ public interface ZLinkSessionActors {
 
     CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActor actor);
 
-    CompletionStage<ZLinkSessionActor> bindAsync(ActorRef actor);
+    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActorRef actor);
 
     Optional<ZLinkSessionActor> find(String actorId);
 }
@@ -220,7 +220,7 @@ public interface ZLinkSessionReplyCall {
 
 public interface ZLinkSessionActor {
     String actorId();
-    ActorRef ref();
+    ZLinkActorRef ref();
     CompletionStage<Void> relayAsync(ZLinkStreamHeader header, Message payload);
     CompletionStage<Void> notifyDisconnectedAsync();
 }

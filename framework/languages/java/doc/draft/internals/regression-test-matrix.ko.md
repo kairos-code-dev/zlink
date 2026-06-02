@@ -66,11 +66,11 @@ connector 테스트 이름은 `Systems.Zlink.Stream.Connector.Tests`의 메서�
 | session connected/dispatch/reply | integration-single-process | `StreamSessionTest.headerSession_connectedDispatchReply_succeeds` | header session callback 성공 |
 | session serial dispatch | fake backend | `StreamSessionTest.sameSessionCallbacks_runSerially` | 같은 session callback 순서 보장 |
 | payload borrowed lifetime | contract | `StreamPayloadTest.borrowedPayload_requiresCopyOutsideCallback` | callback 밖 보관 시 copy 필요 정책 일치 |
-| connector transport inference | unit | `LifecycleTest.uriSchemeAndTransportMismatch_isRejected` | URI scheme과 transport mismatch 차단 |
+| connector transport inference | unit | `ZLinkStreamConnectorTest.uriSchemeAndTransportMismatchIsRejected` | URI scheme과 transport mismatch 차단 |
 | connector manual dispatch | integration-single-process | `ConnectorDispatchTest.dispatch_invokesCallback` | `dispatchAsync()` 호출 시 callback 실행 |
 | connector request timeout | unit | `LifecycleTest.heartbeatTimeoutFailsPendingRequestsWithTimeoutCause` | pending request 정리 |
 | connector reconnect | integration-single-process | `LifecycleTest.reconnectRestoresConnectionAfterTransportClose` | backoff와 max attempts 의미 유지 |
-| reserved packet name 거부 | contract | `LifecycleTest.reservedPacketNamesAreRejectedForUserHandlers` | 예약 packet 이름 거부 |
+| reserved packet name 거부 | contract | `ZLinkStreamConnectorTest.reservedPacketNamesAreRejectedForUserHandlers` | 예약 packet 이름 거부 |
 | connector codec helper | contract | `ConnectorCodecTest.jsonMsgpackProtobuf_typedHelperRoundtrip` | JSON/MessagePack/Protobuf typed helper roundtrip |
 | Kotlin connector wrapper | contract | `KotlinConnectorWrapperTest.suspendFlowWrapper_preservesConnectorSemantics` | suspend/Flow wrapper가 Java connector 의미를 바꾸지 않음 |
 
@@ -105,7 +105,15 @@ snapshot/query로만 관찰). 따라서 "socket/registry/spot" event만 둔다.
 | `TicTacToe` | direct STREAM + Spot + channel 흐름 성공 |
 | `TicTacToe.SessionGateway` | reconnect 후 같은 actor id로 새 session binding |
 | `Bingo` | 4 connector client, matching, timer, bound push 성공 |
-| `StreamingClient` | connector send/request/on/manual dispatch/reconnect smoke |
+| `StreamingClient` | connector send/request/on/manual dispatch/lifecycle event/reconnect smoke |
+
+sample source와 runner 구조는
+`SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints`,
+`sampleSourcesUseOnlyPublicFrameworkAndConnectorApi`,
+`ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator`,
+`bingoMirrorsFourClientMatchingTimerAndBoundPushGate`,
+`streamingClientMirrorsConnectorSmokeGate`가 고정한다. 실제 실행 self-check는 아래
+release gate command가 담당한다.
 
 release gate command:
 

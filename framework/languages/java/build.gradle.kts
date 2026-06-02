@@ -1,0 +1,143 @@
+plugins {
+    id("org.jetbrains.kotlin.jvm") version "2.1.0" apply false
+}
+
+group = "systems.zlink"
+version = "0.1.0-SNAPSHOT"
+
+val junitVersion = "5.10.2"
+
+subprojects {
+    group = rootProject.group
+    version = rootProject.version
+
+    plugins.withType<JavaPlugin> {
+        extensions.configure<JavaPluginExtension> {
+            toolchain {
+                languageVersion.set(JavaLanguageVersion.of(22))
+            }
+        }
+
+        extensions.configure<SourceSetContainer> {
+            val main by getting
+            val test by getting
+
+            val contractTest by creating {
+                java.srcDir("src/contractTest/java")
+                resources.srcDir("src/contractTest/resources")
+                compileClasspath += main.output + test.compileClasspath
+                runtimeClasspath += output + compileClasspath + test.runtimeClasspath
+            }
+
+            val fakeBackendTest by creating {
+                java.srcDir("src/fakeBackendTest/java")
+                resources.srcDir("src/fakeBackendTest/resources")
+                compileClasspath += main.output + test.compileClasspath
+                runtimeClasspath += output + compileClasspath + test.runtimeClasspath
+            }
+
+            val integrationTest by creating {
+                java.srcDir("src/integrationTest/java")
+                resources.srcDir("src/integrationTest/resources")
+                compileClasspath += main.output + test.compileClasspath
+                runtimeClasspath += output + compileClasspath + test.runtimeClasspath
+            }
+
+            val sampleTest by creating {
+                java.srcDir("src/sampleTest/java")
+                resources.srcDir("src/sampleTest/resources")
+                compileClasspath += main.output + test.compileClasspath
+                runtimeClasspath += output + compileClasspath + test.runtimeClasspath
+            }
+        }
+
+        configurations.named("contractTestImplementation") {
+            extendsFrom(configurations.getByName("testImplementation"))
+        }
+        configurations.named("contractTestRuntimeOnly") {
+            extendsFrom(configurations.getByName("testRuntimeOnly"))
+        }
+        configurations.named("fakeBackendTestImplementation") {
+            extendsFrom(configurations.getByName("testImplementation"))
+        }
+        configurations.named("fakeBackendTestRuntimeOnly") {
+            extendsFrom(configurations.getByName("testRuntimeOnly"))
+        }
+        configurations.named("integrationTestImplementation") {
+            extendsFrom(configurations.getByName("testImplementation"))
+        }
+        configurations.named("integrationTestRuntimeOnly") {
+            extendsFrom(configurations.getByName("testRuntimeOnly"))
+        }
+        configurations.named("sampleTestImplementation") {
+            extendsFrom(configurations.getByName("testImplementation"))
+        }
+        configurations.named("sampleTestRuntimeOnly") {
+            extendsFrom(configurations.getByName("testRuntimeOnly"))
+        }
+
+        dependencies {
+            add("testImplementation", platform("org.junit:junit-bom:$junitVersion"))
+            add("testImplementation", "org.junit.jupiter:junit-jupiter")
+            add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")
+        }
+
+        tasks.withType<Test>().configureEach {
+            useJUnitPlatform()
+            jvmArgs("--enable-native-access=ALL-UNNAMED")
+        }
+
+        fun registerSourceSetTestTask(taskName: String, sourceSetName: String) {
+            val sourceSets = extensions.getByType<SourceSetContainer>()
+            val sourceSet = sourceSets.getByName(sourceSetName)
+            tasks.register<Test>(taskName) {
+                description = "Runs the $sourceSetName source set."
+                group = LifecycleBasePlugin.VERIFICATION_GROUP
+                testClassesDirs = sourceSet.output.classesDirs
+                classpath = sourceSet.runtimeClasspath
+                shouldRunAfter(tasks.named("test"))
+                useJUnitPlatform()
+            }
+            tasks.named("check") {
+                dependsOn(taskName)
+            }
+        }
+
+        registerSourceSetTestTask("contractTest", "contractTest")
+        registerSourceSetTestTask("fakeBackendTest", "fakeBackendTest")
+        registerSourceSetTestTask("integrationTest", "integrationTest")
+        registerSourceSetTestTask("sampleTest", "sampleTest")
+    }
+
+    plugins.withId("maven-publish") {
+        extensions.configure<PublishingExtension> {
+            publications {
+                create<MavenPublication>("mavenJava") {
+                    from(components["java"])
+                    groupId = project.group.toString()
+                    artifactId = project.name
+                    version = project.version.toString()
+                }
+            }
+            repositories {
+                maven {
+                    name = "releaseRepo"
+                    val configuredUrl = providers.environmentVariable("MAVEN_REPOSITORY_URL")
+                    val githubRepo = providers.environmentVariable("GITHUB_REPOSITORY")
+                    val repoUrl = configuredUrl.orElse(
+                        githubRepo.map { "https://maven.pkg.github.com/$it" }
+                    ).orElse(layout.buildDirectory.dir("repo").map { it.asFile.toURI().toString() })
+                    url = uri(repoUrl.get())
+                    credentials {
+                        val configuredUser = providers.environmentVariable("MAVEN_REPOSITORY_USERNAME")
+                        val configuredPassword = providers.environmentVariable("MAVEN_REPOSITORY_PASSWORD")
+                        val githubActor = providers.environmentVariable("GITHUB_ACTOR")
+                        val githubToken = providers.environmentVariable("GITHUB_TOKEN")
+                        username = configuredUser.orElse(githubActor).orNull
+                        password = configuredPassword.orElse(githubToken).orNull
+                    }
+                }
+            }
+        }
+    }
+}

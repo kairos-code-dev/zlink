@@ -161,6 +161,115 @@ public class SocketContractTest {
     }
 
     @Test
+    public void requestReplyWrapperSupportsMultipartDealerRequest() throws Exception {
+        TestSupport.assumeNative();
+
+        try (Context ctx = Zlink.createContext();
+             RouterSocket routerSocket = ctx.createRouterSocket();
+             DealerSocket dealerSocket = ctx.createDealerSocket();
+             ExecutorService serverExecutor =
+                 daemonExecutor("zlink-socket-contract-multipart-request")) {
+            String endpoint = TestSupport.inprocEndpoint(
+                "request-reply-multipart");
+            routerSocket.bind(endpoint);
+            dealerSocket.connect(endpoint);
+
+            CompletableFuture<Void> server = CompletableFuture.runAsync(() -> {
+                try (systems.zlink.contracts.messaging.Received received =
+                         new systems.zlink.contracts.messaging.Received()) {
+
+                    routerSocket.recv(received,
+                        systems.zlink.contracts.sockets.RecvFlags.NONE);
+                    assertEquals(2, received.parts().size());
+                    assertArrayEquals("Packet".getBytes(StandardCharsets.UTF_8),
+                        received.parts().get(0).toByteArray());
+                    assertArrayEquals("payload".getBytes(StandardCharsets.UTF_8),
+                        received.parts().get(1).toByteArray());
+                    received.reply()
+                        .message(Message.from("ok"))
+                        .submit();
+                }
+            }, serverExecutor);
+
+            try (Message packet = Message.from("Packet");
+                 Message payload = Message.from("payload")) {
+                List<Message> reply = dealerSocket.request()
+                    .message(packet)
+                    .message(payload)
+                    .timeout(Duration.ofSeconds(2))
+                    .submitAsync()
+                    .get(2, TimeUnit.SECONDS);
+                try {
+                    assertArrayEquals("ok".getBytes(StandardCharsets.UTF_8),
+                        reply.get(0).toByteArray());
+                } finally {
+                    Message.closeAll(reply);
+                }
+            }
+            server.get(2, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void requestReplyCallbackSupportsMultipartDealerRequest() throws Exception {
+        TestSupport.assumeNative();
+
+        try (Context ctx = Zlink.createContext();
+             RouterSocket routerSocket = ctx.createRouterSocket();
+             DealerSocket dealerSocket = ctx.createDealerSocket();
+             ExecutorService serverExecutor =
+                 daemonExecutor("zlink-socket-contract-multipart-callback")) {
+            String endpoint = TestSupport.inprocEndpoint(
+                "request-reply-multipart-callback");
+            routerSocket.bind(endpoint);
+            dealerSocket.connect(endpoint);
+
+            CompletableFuture<Void> server = CompletableFuture.runAsync(() -> {
+                try (systems.zlink.contracts.messaging.Received received =
+                         new systems.zlink.contracts.messaging.Received()) {
+
+                    routerSocket.recv(received,
+                        systems.zlink.contracts.sockets.RecvFlags.NONE);
+                    assertEquals(2, received.parts().size());
+                    assertArrayEquals("Packet".getBytes(StandardCharsets.UTF_8),
+                        received.parts().get(0).toByteArray());
+                    assertArrayEquals("payload".getBytes(StandardCharsets.UTF_8),
+                        received.parts().get(1).toByteArray());
+                    received.reply()
+                        .message(Message.from("ok"))
+                        .submit();
+                }
+            }, serverExecutor);
+
+            CountDownLatch done = new CountDownLatch(1);
+            AtomicReference<RequestResult> resultRef = new AtomicReference<>();
+            AtomicReference<List<Message>> replyRef = new AtomicReference<>();
+            try (Message packet = Message.from("Packet");
+                 Message payload = Message.from("payload")) {
+                dealerSocket.request()
+                    .message(packet)
+                    .message(payload)
+                    .timeout(Duration.ofSeconds(2))
+                    .submit((result, reply) -> {
+                        resultRef.set(result);
+                        replyRef.set(reply);
+                        done.countDown();
+                    });
+                assertTrue(done.await(2, TimeUnit.SECONDS));
+                assertEquals(RequestResult.OK, resultRef.get());
+                List<Message> reply = replyRef.get();
+                try {
+                    assertArrayEquals("ok".getBytes(StandardCharsets.UTF_8),
+                        reply.get(0).toByteArray());
+                } finally {
+                    Message.closeAll(reply);
+                }
+            }
+            server.get(2, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
     public void requestReplyWrapperPreservesDataReceiveSurface() {
         TestSupport.assumeNative();
 

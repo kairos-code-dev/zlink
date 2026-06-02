@@ -93,38 +93,36 @@ framework/languages/java/samples/
   run_samples.sh
   TicTacToe/
     build.gradle.kts
+    settings.gradle.kts
     README.md
-    Client/
-    Server/
-    Shared/
+    run_sample.sh
+    src/main/java/systems/zlink/samples/tictactoe/
   TicTacToe.SessionGateway/
     build.gradle.kts
+    settings.gradle.kts
     README.md
-    Client/
-    Server/Api/
-    Server/Play/
-    Server/Session/
-    Server/Registry/
-    Shared/
+    run_sample.sh
+    src/main/java/systems/zlink/samples/tictactoe/sessiongateway/
   Bingo/
     build.gradle.kts
+    settings.gradle.kts
     README.md
-    Client/
-    Server/Api/
-    Server/Play/
-    Server/Session/
-    Server/Registry/
-    Shared/
+    run_sample.sh
+    src/main/java/systems/zlink/samples/bingo/
   StreamingClient/
     build.gradle.kts
+    settings.gradle.kts
     README.md
-    Client/
-    Server/
-    Shared/
+    run_sample.sh
+    src/main/java/systems/zlink/samples/streamingclient/
 ```
 
 각 sample은 aggregate build entry point와 `run_sample.sh`를 가진다. `run_samples.sh`는
 필수 sample을 모두 실행한다.
+Java sample은 Gradle 표준 source layout을 따른다. `.NET` sample의 `Client`,
+`Server`, `Shared` 역할 구분은 Java에서는 package와 class 이름으로 표현한다. 이렇게
+해야 standalone Gradle application으로 빌드·실행하면서도 Java package 규칙을
+흐트러뜨리지 않는다.
 
 ## 4. TicTacToe Direct
 
@@ -191,8 +189,12 @@ StreamingClient sample은 connector 자체의 사용성을 보여 준다.
 - TCP와 WebSocket 중 하나 이상으로 server에 연결
 - `MANUAL` dispatch mode에서 game loop처럼 `dispatchAsync()` 호출
 - `send(...)`, `request(...)`, `on(...)` 사용
+- `onConnectionStateChanged(...)`, `onDisconnected(...)` 로 lifecycle event 관찰
 - packet name override와 metadata 사용
-- request timeout과 error event 처리
+- request timeout과 error event 처리는 connector runtime의 pending request/error model이
+  닫힌 뒤 sample self-check에 포함한다. 이 항목은 sample runner가 통과하더라도 전체
+  release 판정에서는 regression-test-matrix의 connector timeout/error 행이 닫혀야
+  완료로 본다.
 - Kotlin coroutine client 예시
 
 ## 8. 검증 기준

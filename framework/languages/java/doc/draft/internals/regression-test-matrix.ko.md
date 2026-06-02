@@ -101,15 +101,8 @@ filter 전달은 실제 binding public API 경로로 검증한다.
 | remote registry query client | integration-multi-process | `EmbeddedRegistryTest.remoteRegistryQueryClient_canReadTopologySnapshot` | remote topology snapshot 조회 |
 | monitoring source validation | unit | `RegistryAndMonitoringTest.addZLinkMonitoring_throws_whenSocketSourceIsUnknownOnStartup` | source 이름 불일치 차단 |
 | socket event | unit | `MonitoringEventsTest.socketMonitoring_emitsConnectedEvent` | typed event handler 호출 |
+| registry/spot snapshot diff | unit | `MonitoringEventsTest.registryMonitoring_emitsStatusChanged_forEmbeddedRegistry` / `spotMonitoring_emitsSubjectsChanged_whenSpotIsCreated` | 명시 `pollSnapshots()`가 변경분만 typed event handler로 발행 |
 | handler failure policy | unit | `MonitoringRunnerTest.handlerFailure_recordsDiagnostic_withoutStopping` | monitoring runner 중단 없이 diagnostic 기록 |
-
-monitoring public event contract와 socket event runner는 존재하지만, registry/spot
-snapshot polling runner는 아직 실제 runtime gate로 닫히지 않았다. 아래 행은 Phase
-4/5 snapshot polling 구현을 마친 뒤 release gate로 승격한다.
-
-| 항목 | 계층 | JUnit 테스트 | 통과 기준 |
-|------|------|--------------|-----------|
-| registry/spot snapshot diff | integration-single-process | `MonitoringEventsTest.registryMonitoring_emitsStatusChanged_forEmbeddedRegistry` | snapshot diff typed event handler 호출 |
 
 ## 5.1 Lifecycle regression
 

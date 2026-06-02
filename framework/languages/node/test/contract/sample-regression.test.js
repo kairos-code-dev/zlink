@@ -73,6 +73,9 @@ test('node topology samples run server roles as separate processes', () => {
   const cases = [
     ['TicTacToe', 'server/main.js', 'server/main.js'],
     ['TicTacToe.SessionGateway', 'session-server/main.js', 'session-server/main.js'],
+    ['TicTacToe.SessionGateway', 'api-server/main.js', 'api-server/main.js'],
+    ['TicTacToe.SessionGateway', 'play-server/main.js', 'play-server/main.js'],
+    ['TicTacToe.SessionGateway', 'registry-server/main.js', 'registry-server/main.js'],
     ['Bingo', 'api-server/main.js', 'api-server/main.js'],
     ['Bingo', 'play-server/main.js', 'play-server/main.js'],
     ['Bingo', 'session-server/main.js', 'session-server/main.js'],

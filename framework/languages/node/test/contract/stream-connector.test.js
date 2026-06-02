@@ -268,50 +268,7 @@ test('stream connector TLS transport sends frame with skipped certificate valida
 });
 
 test('stream connector default WebSocket transport sends request and dispatches binary response frame', async () => {
-  const server = net.createServer((socket) => {
-    let buffer = Buffer.alloc(0);
-    let accepted = false;
-    socket.on('data', (chunk) => {
-      buffer = Buffer.concat([buffer, chunk]);
-      if (!accepted) {
-        const headerEnd = buffer.indexOf('\r\n\r\n');
-        if (headerEnd < 0) {
-          return;
-        }
-        const header = buffer.subarray(0, headerEnd).toString('utf8');
-        buffer = buffer.subarray(headerEnd + 4);
-        socket.write(createWebSocketAcceptResponse(header));
-        accepted = true;
-      }
-
-      while (true) {
-        const websocketFrame = tryReadWebSocketFrame(buffer);
-        if (websocketFrame === undefined) {
-          return;
-        }
-        buffer = buffer.subarray(websocketFrame.length);
-        if (websocketFrame.opcode !== 0x2) {
-          continue;
-        }
-        const decoded = connector.ZlinkStreamFrameCodec.decode(websocketFrame.payload);
-        const header = connector.ZlinkStreamHeaderCodec.decode(decoded.header);
-        if (header.kind !== connector.ZlinkStreamMessageKind.Request) {
-          continue;
-        }
-        socket.write(createWebSocketBinaryFrame(connector.ZlinkStreamFrameCodec.encode(
-          connector.ZlinkStreamHeaderCodec.encode({
-            kind: connector.ZlinkStreamMessageKind.Response,
-            codec: connector.ZlinkStreamCodec.Json,
-            flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
-            requestSeq: header.requestSeq,
-            name: 'WsReply',
-            metadata: connector.ZlinkStreamMetadataMap.empty
-          }),
-          new TextEncoder().encode('{"ws":true}')
-        )));
-      }
-    });
-  });
+  const server = net.createServer((socket) => handleWebSocketEcho(socket, 'WsReply', '{"ws":true}'));
 
   await listen(server);
   const { port } = server.address();
@@ -329,6 +286,33 @@ test('stream connector default WebSocket transport sends request and dispatches 
     await instance.dispatch();
     const reply = await pending;
     assert.equal(new TextDecoder().decode(reply.payload), '{"ws":true}');
+  } finally {
+    await instance.close();
+    await closeServer(server);
+  }
+});
+
+test('stream connector secure WebSocket transport sends request and dispatches binary response frame', async () => {
+  const credentials = createTestTlsCredentials();
+  const server = tls.createServer(credentials, (socket) => handleWebSocketEcho(socket, 'WssReply', '{"wss":true}'));
+
+  await listen(server);
+  const { port } = server.address();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: `wss://127.0.0.1:${port}/zlink`,
+    skipServerCertificateValidation: true
+  });
+
+  try {
+    await instance.connect();
+    const pending = instance.request({
+      codec: connector.ZlinkStreamCodec.Json,
+      payload: new TextEncoder().encode('{"wss":1}')
+    }).packetName('WssRequest').timeout(1000).submit();
+
+    await instance.dispatch();
+    const reply = await pending;
+    assert.equal(new TextDecoder().decode(reply.payload), '{"wss":true}');
   } finally {
     await instance.close();
     await closeServer(server);
@@ -528,6 +512,51 @@ function listen(server) {
 
 function closeServer(server) {
   return new Promise((resolve) => server.close(resolve));
+}
+
+function handleWebSocketEcho(socket, replyName, replyBody) {
+  let buffer = Buffer.alloc(0);
+  let accepted = false;
+  socket.on('data', (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    if (!accepted) {
+      const headerEnd = buffer.indexOf('\r\n\r\n');
+      if (headerEnd < 0) {
+        return;
+      }
+      const header = buffer.subarray(0, headerEnd).toString('utf8');
+      buffer = buffer.subarray(headerEnd + 4);
+      socket.write(createWebSocketAcceptResponse(header));
+      accepted = true;
+    }
+
+    while (true) {
+      const websocketFrame = tryReadWebSocketFrame(buffer);
+      if (websocketFrame === undefined) {
+        return;
+      }
+      buffer = buffer.subarray(websocketFrame.length);
+      if (websocketFrame.opcode !== 0x2) {
+        continue;
+      }
+      const decoded = connector.ZlinkStreamFrameCodec.decode(websocketFrame.payload);
+      const header = connector.ZlinkStreamHeaderCodec.decode(decoded.header);
+      if (header.kind !== connector.ZlinkStreamMessageKind.Request) {
+        continue;
+      }
+      socket.write(createWebSocketBinaryFrame(connector.ZlinkStreamFrameCodec.encode(
+        connector.ZlinkStreamHeaderCodec.encode({
+          kind: connector.ZlinkStreamMessageKind.Response,
+          codec: connector.ZlinkStreamCodec.Json,
+          flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+          requestSeq: header.requestSeq,
+          name: replyName,
+          metadata: connector.ZlinkStreamMetadataMap.empty
+        }),
+        new TextEncoder().encode(replyBody)
+      )));
+    }
+  });
 }
 
 class MemoryConnection {

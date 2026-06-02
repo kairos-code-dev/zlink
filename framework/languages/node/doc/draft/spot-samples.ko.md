@@ -4,41 +4,42 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[Node.js 묶음](./README.ko.md) | [SPOT](./nestjs-spot.ko.md)
+[Node.js 묶음](./README.ko.md) | [SPOT](../spec/nestjs-spot.ko.md)
 
 # Draft -- ZLink Framework Node.js SPOT Samples
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `Node.js` `SPOT` 초안을 샘플로 보기 위한 문서다.
 
-## 1. 등록과 `spotName`
+## 1. 등록과 Spot type
 
 ```ts
 ZLinkModule.forRoot({
-  spotDiscovery: {
+  spotMeshes: {
     'game.stage': {
-      registries: ['tcp://registry1:5551'],
-    },
-  },
-  spotNodes: {
-    'stage-node': {
-      bind: 'tcp://0.0.0.0:9000',
-      router: {},
-      pubSub: {},
-      channelClients: {
-        profile: {},
+      discovery: {
+        registries: ['tcp://registry1:5551'],
       },
-      spotPublishers: {
-        'game.stage': {},
+      nodes: {
+        'stage-node': {
+          router: { bind: 'tcp://0.0.0.0:9000' },
+          pubSub: { pubBind: 'tcp://0.0.0.0:9001' },
+          channelClients: {
+            profile: {},
+          },
+          spotPublishers: {
+            'game.stage': {},
+          },
+          entrySpot: GameEntrySpot,
+          spotFactories: [StageSpot, RoomSpot],
+        },
       },
-      spotFactories: [
-        { spotName: 'stage', spotType: StageSpot },
-        { spotName: 'room', spotType: RoomSpot },
-      ],
     },
   },
 });
 ```
+
+Spot factory는 문자열 이름이 아니라 Spot type 기준으로 등록한다.
 
 ## 2. manager로 생성과 조회
 
@@ -48,9 +49,9 @@ export class StageBootstrap {
   constructor(private readonly spotManager: ZLinkSpotManager) {}
 
   async warmup(): Promise<void> {
-    const created = await this.spotManager.create('stage');
+    const created = await this.spotManager.create(StageSpot);
     const createdWithRid = await this.spotManager.create(
-      'room',
+      RoomSpot,
       '01HZZSPOT...',
     );
     const info = await this.spotManager.get(created.spotRid);
@@ -63,18 +64,13 @@ export class StageBootstrap {
 
 ```ts
 export class StageSpot implements ZLinkSpot {
-  constructor(readonly spotRid: string) {}
+  constructor(readonly context: ZLinkSpotContext) {}
 
-  async initialize(): Promise<void> {
-    await this.addTimer('heartbeat', 1000, StageHeartbeatHandler);
-  }
-
-  async addTimer(
-    name: string,
-    periodMs: number,
-    handlerType: Function,
-  ): Promise<ZLinkTimer> {
-    throw new Error('sample');
+  configure(): void {
+    this.context.timers.addTimer('heartbeat', {
+      periodMs: 1000,
+      handler: StageHeartbeatHandler,
+    });
   }
 }
 ```
@@ -84,19 +80,16 @@ export class StageSpot implements ZLinkSpot {
 ```ts
 @Injectable()
 export class StageHandlers {
-  constructor(private readonly spotClient: ZLinkSpotClient) {}
-
   @ZLinkSpotRequest()
   async getStageState(
     request: GetStageStateRequest,
     context: ZLinkSpotRequestContext,
   ): Promise<GetStageStateReply> {
-    const profile = await this.spotClient.requestChannel<GetProfileReply>(
-      'profile',
-      new GetProfileRequest(request.accountId),
-    );
+    const profile = await context.outbound
+      .requestToChannel('profile', new GetProfileRequest(request.accountId))
+      .submit<GetProfileReply>();
 
-    return new GetStageStateReply(context.self.spotRid, profile.nickname);
+    return new GetStageStateReply(context.spotRid, profile.nickname);
   }
 
   @ZLinkSpotSubscription('stage.state.updated')
@@ -108,8 +101,8 @@ export class StageHandlers {
 }
 ```
 
-다른 channel 호출은 `spotClient.requestChannel('profile', ...)` 같은 표면으로
-설명하는 편이 맞다.
+다른 channel 호출은 `context.outbound.requestToChannel('profile', ...)` 같은
+Spot outbound 표면으로 설명한다.
 
 ## 5. 외부 노드에서 `SPOT` publish
 
@@ -122,11 +115,22 @@ export class StagePublishController {
 
   @Post('publish')
   async publish(@Body() request: PublishStageStateHttpRequest) {
-    await this.spotPublisherClient.publish(
-      'game.stage',
-      'stage.state.updated',
-      new StageStateUpdated(request.stageRid, request.userCount),
-    );
+    await this.spotPublisherClient
+      .publishSpot(
+        'game.stage',
+        'stage.state.updated',
+        new StageStateUpdated(request.stageRid, request.userCount),
+      )
+      .submit();
   }
 }
 ```
+
+## 6. 회귀 테스트
+
+이 샘플 문서는 아래 회귀 항목과 함께 유지한다.
+
+| 테스트 | 확인 기준 |
+|--------|-----------|
+| duplicate Spot factory type | Spot factory가 type key 기준으로 등록된다. |
+| spot context channel request 경로 | channel request가 `context.outbound.requestToChannel(...).submit()`으로 호출된다. |

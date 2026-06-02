@@ -57,14 +57,13 @@ endpoint 를 바꾸는 별도 연결 관리 API 를 제공하지 않는다.
 ```ts
 @Controller('profiles')
 export class ProfileController {
-  constructor(private readonly client: ZLinkClient) {}
+  constructor(private readonly client: ZLinkChannelClient) {}
 
   @Post('get')
   async get(@Body() request: GetProfileHttpRequest) {
-    return this.client.request<GetProfileReply>(
-      'profile',
-      new GetProfileRequest(request.accountId),
-    );
+    return this.client
+      .requestToChannel('profile', new GetProfileRequest(request.accountId))
+      .submit<GetProfileReply>();
   }
 }
 ```
@@ -72,11 +71,10 @@ export class ProfileController {
 ## 3. Options 예시
 
 ```ts
-await client.send(
-  'profile',
-  new RefreshProfileCacheCommand(accountId),
-  { packetName: 'profile.refresh-cache' },
-);
+await client
+  .sendToChannel('profile', new RefreshProfileCacheCommand(accountId))
+  .packetName('profile.refresh-cache')
+  .submit();
 ```
 
 기본은 payload 타입 이름이고, `packetName`은 override 용도다.
@@ -84,10 +82,21 @@ await client.send(
 ## 4. 일반 event publish
 
 ```ts
-await eventPublisher.publish(
-  'profile',
-  'profile.cache-refreshed',
-  new ProfileCacheRefreshed(accountId),
-  { packetName: 'profile.cache-refreshed' },
-);
+await fanoutClient
+  .publish(
+    'profile',
+    'profile.cache-refreshed',
+    new ProfileCacheRefreshed(accountId),
+  )
+  .packetName('profile.cache-refreshed')
+  .submit();
 ```
+
+## 5. 회귀 테스트
+
+이 샘플 문서는 아래 회귀 항목과 함께 유지한다.
+
+| 테스트 | 확인 기준 |
+|--------|-----------|
+| channel handler에서 client 사용 | handler와 HTTP controller가 같은 `ZLinkChannelClient` fluent 표면을 사용한다. |
+| event handler group mapping | publish 샘플이 `ZLinkFanoutClient.publish(...).submit()` 표면을 사용한다. |

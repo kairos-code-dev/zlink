@@ -38,8 +38,8 @@ module/provider/decorator 구조 안에서 zlink runtime을 자연스럽게 설�
 - send/publish는 기본 async submit으로 설명한다. backpressure는 public
   non-blocking 옵션이 아니라 framework 내부의 nonblocking send, pending queue,
   ready notification으로 처리한다.
-- `SPOT`을 지원하는 문서는 named spot factory 등록, `spotName` 기준 생성,
-  `spotRid -> spotName` 조회, lifecycle timer, 외부 spot publish 표면을
+- `SPOT`을 지원하는 문서는 Spot type 기준 factory 등록, `spotRid` 기준 조회,
+  lifecycle timer, 외부 spot publish 표면을
   공통 정책과 맞춰 설명해야 한다.
 - monitoring을 지원하는 문서는 socket/discovery/registry/spot runtime event를
   typed event와 등록 표면으로 설명해야 한다.
@@ -58,7 +58,7 @@ module/provider/decorator 구조 안에서 zlink runtime을 자연스럽게 설�
 |------|------------|
 | [nestjs-channel-messaging.ko.md](./nestjs-channel-messaging.ko.md) | module 등록, outbound client, request/send handler, dispatch, filter |
 | [nestjs-spot.ko.md](./nestjs-spot.ko.md) | `SPOT` lifecycle, publish/subscribe, channel attach |
-| [nestjs-stream.ko.md](./nestjs-stream.ko.md) | stream packet/raw session, registration, lifecycle |
+| [nestjs-stream.ko.md](./nestjs-stream.ko.md) | 초기 stream 초안. 현재 구현 기준은 `spec/nestjs-stream.ko.md`의 header session |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | stream 미결 항목 |
 | [nestjs-monitoring.ko.md](./nestjs-monitoring.ko.md) | runtime monitoring 등록, typed event, 운영 샘플 |
 | [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | stage 같은 상위 모델을 `SPOT` 위에 감쌀 때의 조건 |
@@ -70,7 +70,7 @@ module/provider/decorator 구조 안에서 zlink runtime을 자연스럽게 설�
 |------|------------|
 | [channel-messaging-samples.ko.md](./channel-messaging-samples.ko.md) | module 등록, controller, outbound client 샘플 |
 | [spot-samples.ko.md](./spot-samples.ko.md) | `SPOT` request/subscribe/publish 샘플 |
-| [stream-samples.ko.md](./stream-samples.ko.md) | stream packet/raw session 샘플 |
+| [stream-samples.ko.md](./stream-samples.ko.md) | header session과 actor relay 샘플 |
 
 ## 3. 핵심 방향
 

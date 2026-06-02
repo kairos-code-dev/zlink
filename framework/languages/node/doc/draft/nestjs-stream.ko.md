@@ -4,39 +4,40 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[Node.js 묶음](./README.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [STREAM open items](./stream-open-items.ko.md)
+[Node.js 묶음](./README.ko.md) | [정식 STREAM spec](../spec/nestjs-stream.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
 
 # Draft -- ZLink Framework NestJS STREAM
 
 > 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `NestJS`에서 `STREAM`을 어떤 표면으로 올릴지 정리한다.
+> 현재 구현 기준은 [정식 STREAM spec](../spec/nestjs-stream.ko.md)이다.
+> STREAM public session은 header 기반 단일 `onDispatch(header, payload)` 표면을 쓴다.
 
-## 1. 방향
-
-`STREAM`은 packet session과 raw session 두 축으로 설명한다.
-recv loop를 application 표면에 직접 올리지 않는 편을 기본으로 본다.
-
-## 2. Session 예시
+## 1. 기준 표면
 
 ```ts
-export interface ZLinkStream {
-  sessionId: string;
-  write(payload: Message, flags?: SendFlags): Promise<void>;
-  writePacket(header: Message, payload: Message, flags?: SendFlags): Promise<void>;
-}
+export interface ZLinkSession {
+  readonly context: ZLinkSessionContext;
 
-export interface ZLinkPacketStreamSession {
-  onPacket(
-    stream: ZLinkStream,
-    header: Message,
-    payload: Message,
-  ): Promise<void>;
-}
+  onConnected(signal?: AbortSignal): Promise<void>;
+  onDisconnected(signal?: AbortSignal): Promise<void>;
+  onError(error: ZLinkStreamError, signal?: AbortSignal): Promise<void>;
 
-export interface ZLinkRawStreamSession {
-  onRaw(
-    stream: ZLinkStream,
+  onDispatch(
+    header: ZlinkStreamHeader,
     payload: Message,
+    signal?: AbortSignal,
   ): Promise<void>;
 }
 ```
+
+raw session public type은 채택하지 않는다. raw stream write는 `ZLinkStream.write(...)`
+하나로 제한한다.
+
+## 2. 회귀 테스트
+
+이 draft는 아래 회귀 항목과 함께 유지한다.
+
+| 테스트 | 확인 기준 |
+|--------|-----------|
+| header session node | `onDispatch(header, payload)`가 호출된다. |
+| 같은 node에 session 중복 등록 | 한 node에 session type을 중복 등록하면 startup validation 오류다. |

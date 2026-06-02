@@ -4,44 +4,45 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[Node.js 묶음](./README.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md)
+[Node.js 묶음](./README.ko.md) | [정식 SPOT spec](../spec/nestjs-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md)
 
 # Draft -- ZLink Framework NestJS SPOT
 
 > 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `NestJS`에서 `SPOT`을 어떤 표면으로 통합할지 정리한다.
+> 현재 구현 기준은 [정식 SPOT spec](../spec/nestjs-spot.ko.md)이다.
+> Spot factory는 문자열 이름이 아니라 Spot type 기준으로 등록한다.
 
-## 1. 방향
+## 1. 기준 표면
 
-`SPOT`은 module lifecycle 안에서 등록하고, high-level 표면은 아래 세 축을 먼저
-설명한다.
+```ts
+ZLinkModule.forRoot({
+  spotMeshes: {
+    'game.stage': {
+      nodes: {
+        'stage-node': {
+          router: { bind: 'tcp://0.0.0.0:9000' },
+          pubSub: { pubBind: 'tcp://0.0.0.0:9001' },
+          entrySpot: GameEntrySpot,
+          spotFactories: [StageSpot, RoomSpot],
+        },
+      },
+    },
+  },
+});
+```
 
-- current channel publish/subscribe
-- attach된 channel client를 통한 다른 channel send/request
-- local spot 인스턴스가 없는 외부 노드용 spot publisher client
-- 필요할 때만 spot-to-spot routed 호출
+Spot 생성과 조회는 type과 `spotRid`를 기준으로 한다.
 
-현재 공통 정책 기준으로는 아래를 같이 지켜야 한다.
+```ts
+const room = await spotManager.create(RoomSpot, roomRid);
+const found = await spotManager.get(room.spotRid);
+```
 
-- active channel 범위는 node 생성이 아니라 attach된 discovery view가 정한다.
-- capability는 `router`, `pub/sub`, attach된 channel client, attach된 spot
-  publisher client로 나눠서 설명한다.
-- spot factory는 `spotName`과 함께 등록하고, 같은 이름 재등록은 덮어쓰지 않고
-  예외로 본다.
-- spot 생성은 `spotName` 기준으로 설명하고, 운영 코드가 `spotRid -> spotName`
-  매핑을 다시 볼 수 있어야 한다.
-- timer는 공용 scheduler보다 spot lifecycle registration 표면으로 두는 편이
-  자연스럽다.
+## 2. 회귀 테스트
 
-## 2. Public surface
+이 draft는 아래 회귀 항목과 함께 유지한다.
 
-- `ZLinkSpotManager`
-- `ZLinkSpotClient`
-- `ZLinkSpotPublisherClient`
-- `@ZLinkSpotRequest()`
-- `@ZLinkSpotSubscription(topic)`
-
-일반 channel messaging과 달리 `rid` 직접 지정은 `SPOT`에서만 남긴다.
-다만 이것도 current channel publish나 attach된 channel 호출보다 앞에 두지는 않는다.
-또한 `spotName` 기준 생성과 `spotRid -> spotName` 조회는 `ZLinkSpotManager`가
-같이 맡는 편이 맞다.
+| 테스트 | 확인 기준 |
+|--------|-----------|
+| duplicate Spot factory type | Spot factory가 type key 기준으로 등록된다. |
+| Registry Spot RID route | 생성된 Spot은 `spotRid` 기준으로 조회된다. |

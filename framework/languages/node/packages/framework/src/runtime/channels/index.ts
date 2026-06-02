@@ -29,6 +29,7 @@ import type {
   ZLinkChannelBackendAdapter
 } from '../backend/contracts';
 import type { ZLinkRuntimeTaskRunner } from '../execution';
+import { ZLinkAsyncSubmitter } from '../messaging';
 
 const JSON_CONTENT_TYPE = 'application/json';
 
@@ -173,6 +174,8 @@ export class ZLinkChannelRuntimeManager {
   private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
   private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
   private readonly routeReceiveLoops: ZLinkRouteReceiveLoop[] = [];
+  private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
+  private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
 
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
@@ -205,13 +208,12 @@ export class ZLinkChannelRuntimeManager {
 
   async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    const queued = this.getOrCreateClientDealer(channelName).send(
-      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, channelName, packetName, message) as readonly Message[],
-      0
+    const dealer = this.getOrCreateClientDealer(channelName);
+    const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, channelName, packetName, message) as readonly Message[];
+    await this.requireSubmitter(dealer).submitCommand(
+      () => dealer.send(parts, 0),
+      signal
     );
-    if (!queued) {
-      throw new ZLinkConfigurationException(`Channel '${channelName}' send was not queued.`);
-    }
   }
 
   async request<TReply>(
@@ -222,9 +224,11 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<TReply> {
     throwIfAborted(signal);
-    return new Promise<TReply>((resolve, reject) => {
-      const queued = this.getOrCreateClientDealer(channelName).request(
-        encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, channelName, packetName, request, timeoutMs) as readonly Message[],
+    const dealer = this.getOrCreateClientDealer(channelName);
+    const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, channelName, packetName, request, timeoutMs) as readonly Message[];
+    return this.requireSubmitter(dealer).submitRequest(
+      (resolve, reject) => dealer.request(
+        parts,
         (result, parts) => {
           try {
             if (result !== 0) {
@@ -240,23 +244,23 @@ export class ZLinkChannelRuntimeManager {
         },
         0,
         timeoutMs
-      );
-      if (!queued) {
-        reject(new ZLinkConfigurationException(`Channel '${channelName}' request was not queued.`));
-      }
-    });
+      ),
+      signal
+    );
   }
 
   async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    const queued = this.getOrCreatePublisher(channelName).publish(
-      topic,
-      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Publish, channelName, packetName, event, undefined, topic) as readonly Message[],
-      0
+    const publisher = this.getOrCreatePublisher(channelName);
+    const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Publish, channelName, packetName, event, undefined, topic) as readonly Message[];
+    await this.requireSubmitter(publisher).submitCommand(
+      () => publisher.publish(
+        topic,
+        parts,
+        0
+      ),
+      signal
     );
-    if (!queued) {
-      throw new ZLinkConfigurationException(`Channel '${channelName}' publish was not queued.`);
-    }
   }
 
   async routeSend(
@@ -267,14 +271,12 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
-    const queued = this.getOrCreateRouteRouter(routerChannelId).send(
-      targetNodeRid,
-      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, routerChannelId, packetName, message) as readonly Message[],
-      0
+    const router = this.getOrCreateRouteRouter(routerChannelId);
+    const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, routerChannelId, packetName, message) as readonly Message[];
+    await this.requireSubmitter(router).submitCommand(
+      () => router.send(targetNodeRid, parts, 0),
+      signal
     );
-    if (!queued) {
-      throw new ZLinkConfigurationException(`Route channel '${routerChannelId}' send was not queued.`);
-    }
   }
 
   async routeRequest<TReply>(
@@ -286,10 +288,12 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<TReply> {
     throwIfAborted(signal);
-    return new Promise<TReply>((resolve, reject) => {
-      const queued = this.getOrCreateRouteRouter(routerChannelId).request(
+    const router = this.getOrCreateRouteRouter(routerChannelId);
+    const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, routerChannelId, packetName, request, timeoutMs) as readonly Message[];
+    return this.requireSubmitter(router).submitRequest(
+      (resolve, reject) => router.request(
         targetNodeRid,
-        encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, routerChannelId, packetName, request, timeoutMs) as readonly Message[],
+        parts,
         (result, parts) => {
           try {
             if (result !== 0) {
@@ -305,11 +309,9 @@ export class ZLinkChannelRuntimeManager {
         },
         0,
         timeoutMs
-      );
-      if (!queued) {
-        reject(new ZLinkConfigurationException(`Route channel '${routerChannelId}' request was not queued.`));
-      }
-    });
+      ),
+      signal
+    );
   }
 
   async routeSendToSpot(
@@ -319,15 +321,12 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
-    const queued = this.getOrCreateRouteRouter(remoteAddress.routerChannelId).sendToSpot(
-      remoteAddress.targetNodeRid,
-      remoteAddress.spotRid,
-      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, remoteAddress.routerChannelId, packetName, message) as readonly Message[],
-      0
+    const router = this.getOrCreateRouteRouter(remoteAddress.routerChannelId);
+    const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, remoteAddress.routerChannelId, packetName, message) as readonly Message[];
+    await this.requireSubmitter(router).submitCommand(
+      () => router.sendToSpot(remoteAddress.targetNodeRid, remoteAddress.spotRid, parts, 0),
+      signal
     );
-    if (!queued) {
-      throw new ZLinkConfigurationException(`Route channel '${remoteAddress.routerChannelId}' spot send was not queued.`);
-    }
   }
 
   async routeRequestToSpot<TReply>(
@@ -338,11 +337,13 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<TReply> {
     throwIfAborted(signal);
-    return new Promise<TReply>((resolve, reject) => {
-      const queued = this.getOrCreateRouteRouter(remoteAddress.routerChannelId).requestToSpot(
+    const router = this.getOrCreateRouteRouter(remoteAddress.routerChannelId);
+    const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, remoteAddress.routerChannelId, packetName, request, timeoutMs) as readonly Message[];
+    return this.requireSubmitter(router).submitRequest(
+      (resolve, reject) => router.requestToSpot(
         remoteAddress.targetNodeRid,
         remoteAddress.spotRid,
-        encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, remoteAddress.routerChannelId, packetName, request, timeoutMs) as readonly Message[],
+        parts,
         (result, parts) => {
           try {
             if (result !== 0) {
@@ -358,11 +359,9 @@ export class ZLinkChannelRuntimeManager {
         },
         0,
         timeoutMs
-      );
-      if (!queued) {
-        reject(new ZLinkConfigurationException(`Route channel '${remoteAddress.routerChannelId}' spot request was not queued.`));
-      }
-    });
+      ),
+      signal
+    );
   }
 
   async dispose(): Promise<void> {
@@ -375,6 +374,10 @@ export class ZLinkChannelRuntimeManager {
     for (const loop of loops) {
       loop.stop();
     }
+    for (const submitter of this.ownedSubmitters) {
+      submitter.dispose();
+    }
+    this.ownedSubmitters.clear();
     await new Promise<void>((resolve) => setImmediate(resolve));
     await Promise.all(sockets.map((socket) => socket.dispose()));
   }
@@ -392,6 +395,7 @@ export class ZLinkChannelRuntimeManager {
 
     const dealer = this.adapter.createDealerSocket(this.context);
     dealer.setChannelName(channelName);
+    this.trackSubmitter(dealer);
     for (const endpoint of channel.client.manualConnections ?? []) {
       dealer.connect(endpoint);
     }
@@ -415,6 +419,7 @@ export class ZLinkChannelRuntimeManager {
 
     const publisher = this.adapter.createPublisherSocket(this.context);
     publisher.setChannelName(channelName);
+    this.trackSubmitter(publisher);
     publisher.bind(channel.publisher.bind);
     this.publishers.set(channelName, publisher);
     return publisher;
@@ -436,6 +441,7 @@ export class ZLinkChannelRuntimeManager {
 
     const router = this.adapter.createRouterSocket(this.context);
     router.setChannelName(routerChannelId);
+    this.trackSubmitter(router);
     if (
       (routeChannel.manualConnections?.length ?? 0) > 0 &&
       'options' in router &&
@@ -454,6 +460,20 @@ export class ZLinkChannelRuntimeManager {
     }
     this.routeRouters.set(routerChannelId, router);
     return router;
+  }
+
+  private trackSubmitter(socket: ZLinkBackendDealerSocket | ZLinkBackendPublisherSocket | ZLinkBackendRouterSocket): void {
+    const submitter = new ZLinkAsyncSubmitter((handler) => socket.onSendReady(handler));
+    this.submitters.set(socket, submitter);
+    this.ownedSubmitters.add(submitter);
+  }
+
+  private requireSubmitter(socket: ZLinkBackendDealerSocket | ZLinkBackendPublisherSocket | ZLinkBackendRouterSocket): ZLinkAsyncSubmitter {
+    const submitter = this.submitters.get(socket);
+    if (submitter === undefined) {
+      throw new ZLinkConfigurationException('Channel submit runtime is not started.');
+    }
+    return submitter;
   }
 }
 

@@ -517,6 +517,65 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
   }
 });
 
+test('channel runtime waits for send-ready instead of failing backpressured sends', async () => {
+  const socket = fakeBackpressuredDealer();
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      channels: { api: { client: { manualConnections: ['tcp://peer:7101'] } } }
+    }),
+    fakeChannelAdapter({ dealer: socket }),
+    fakeContext()
+  );
+
+  const pending = manager.send('api', 'Notice', { ready: true });
+  await Promise.resolve();
+
+  assert.equal(socket.sendAttempts, 2);
+  assert.equal(socket.sentParts, undefined);
+
+  socket.writable = true;
+  socket.ready();
+  await pending;
+
+  assert.equal(socket.sendAttempts, 3);
+  assert.equal(decodeDotnetEnvelope(socket.sentParts).header.messageName, 'Notice');
+  await manager.dispose();
+});
+
+test('channel runtime drains backpressured requests from send-ready callback', async () => {
+  const socket = fakeBackpressuredDealer();
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      channels: { api: { client: { manualConnections: ['tcp://peer:7101'] } } }
+    }),
+    fakeChannelAdapter({ dealer: socket }),
+    fakeContext()
+  );
+
+  const pending = manager.request('api', 'Ping', { value: 'ping' }, 1000);
+  await Promise.resolve();
+
+  assert.equal(socket.requestAttempts, 2);
+
+  socket.writable = true;
+  socket.replyParts = encodeDotnetEnvelope({
+    kind: 2,
+    channelName: 'api',
+    messageName: 'Ping',
+    contentType: 'application/json',
+    correlationId: null,
+    deadline: null,
+    topic: null,
+    errorCode: null,
+    errorMessage: null
+  }, { value: 'pong' }).map(fakeMessagePart);
+  socket.ready();
+
+  assert.deepEqual(await pending, { value: 'pong' });
+  assert.equal(socket.requestAttempts, 3);
+  await manager.dispose();
+});
+
 test('ZLinkFanoutClient publishes through public pub/sub binding sockets', async () => {
   const ctx = zlink.createContext();
   const pub = zlink.createPubSocket(ctx);
@@ -760,6 +819,79 @@ function createMultipartRequestOperation() {
     async submitAsync() {
       return [];
     }
+  };
+}
+
+function fakeContext() {
+  return {
+    nativeInstance: {},
+    shutdown() {},
+    async dispose() {}
+  };
+}
+
+function fakeChannelAdapter({ dealer }) {
+  return {
+    createDealerSocket() {
+      return dealer;
+    },
+    createPublisherSocket() {
+      throw new Error('publisher not used');
+    },
+    createRouterSocket() {
+      throw new Error('router not used');
+    }
+  };
+}
+
+function fakeBackpressuredDealer() {
+  let readyHandler = () => undefined;
+  return {
+    nativeInstance: {},
+    writable: false,
+    sendAttempts: 0,
+    requestAttempts: 0,
+    sentParts: undefined,
+    replyParts: undefined,
+    setChannelName(channelName) {
+      this.channelName = channelName;
+    },
+    connect(endpoint) {
+      this.endpoint = endpoint;
+    },
+    onSendReady(handler) {
+      readyHandler = handler;
+    },
+    ready() {
+      readyHandler();
+    },
+    send(parts) {
+      this.sendAttempts++;
+      if (!this.writable) {
+        return false;
+      }
+      this.sentParts = parts.map(fakeMessagePart);
+      return true;
+    },
+    request(parts, callback) {
+      this.requestAttempts++;
+      if (!this.writable) {
+        return false;
+      }
+      callback(0, this.replyParts);
+      return true;
+    },
+    async dispose() {}
+  };
+}
+
+function fakeMessagePart(part) {
+  const payload = Buffer.from(part);
+  return {
+    data() {
+      return payload;
+    },
+    close() {}
   };
 }
 

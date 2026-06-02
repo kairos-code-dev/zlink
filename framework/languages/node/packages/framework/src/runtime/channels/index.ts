@@ -389,14 +389,15 @@ export class ZLinkChannelRuntimeManager {
     }
 
     const channel = this.registration.channels.get(channelName);
-    if (channel?.client === undefined) {
+    const client = channel?.client ?? channel?.dealerMesh?.client;
+    if (client === undefined) {
       throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
     }
 
     const dealer = this.adapter.createDealerSocket(this.context);
     dealer.setChannelName(channelName);
     this.trackSubmitter(dealer);
-    for (const endpoint of channel.client.manualConnections ?? []) {
+    for (const endpoint of client.manualConnections ?? []) {
       dealer.connect(endpoint);
     }
     this.clientDealers.set(channelName, dealer);

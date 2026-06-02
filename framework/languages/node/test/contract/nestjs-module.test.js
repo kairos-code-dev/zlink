@@ -174,6 +174,52 @@ test('ZLinkModule.forRoot validates channel capability endpoints and peer acquis
   }));
 });
 
+test('ZLinkModule.forRoot maps dealer and route mesh channel options into runtime registration', () => {
+  const module = nestjs.ZLinkModule.forRoot({
+    channels: {
+      mesh: {
+        dealerMesh: {
+          client: { manualConnections: ['tcp://127.0.0.1:7011'] }
+        }
+      },
+      route: {
+        routeMesh: {
+          bind: 'tcp://0.0.0.0:7012',
+          routingId: 'node-a',
+          manualConnections: ['tcp://127.0.0.1:7013']
+        }
+      }
+    }
+  });
+  const registration = module.providers.find((provider) => provider.provide === nestjs.ZLINK_FRAMEWORK_REGISTRATION).useValue;
+
+  assert.equal(registration.channelClients.has('mesh'), true);
+  assert.equal(registration.routeChannels.has('route'), true);
+  assert.equal(registration.routeChannelOptions.get('route').bind, 'tcp://0.0.0.0:7012');
+  assert.deepEqual(registration.routeChannelOptions.get('route').manualConnections, ['tcp://127.0.0.1:7013']);
+
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      channels: {
+        mesh: {
+          client: { manualConnections: ['tcp://127.0.0.1:7011'] },
+          dealerMesh: { client: { manualConnections: ['tcp://127.0.0.1:7012'] } }
+        }
+      }
+    }),
+    /cannot define both client and dealerMesh/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      routeChannels: ['route'],
+      channels: {
+        route: { routeMesh: { bind: 'tcp://0.0.0.0:7012' } }
+      }
+    }),
+    /already registered/
+  );
+});
+
 test('ZLinkModule.forRoot registers registry spot remote address resolver by default', async () => {
   const module = nestjs.ZLinkModule.forRoot({
     discovery: { registries: ['tcp://127.0.0.1:5551'] },

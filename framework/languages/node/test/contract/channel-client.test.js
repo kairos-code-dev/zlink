@@ -542,6 +542,31 @@ test('channel runtime waits for send-ready instead of failing backpressured send
   await manager.dispose();
 });
 
+test('channel runtime uses dealer mesh client capability for channel sends', async () => {
+  const socket = fakeBackpressuredDealer();
+  socket.writable = true;
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      channels: {
+        mesh: {
+          dealerMesh: {
+            client: { manualConnections: ['tcp://peer:7109'] }
+          }
+        }
+      }
+    }),
+    fakeChannelAdapter({ dealer: socket }),
+    fakeContext()
+  );
+
+  await manager.send('mesh', 'MeshNotice', { id: 'mesh-send' });
+
+  assert.equal(socket.endpoint, 'tcp://peer:7109');
+  assert.equal(decodeDotnetEnvelope(socket.sentParts).header.channelName, 'mesh');
+  assert.equal(decodeDotnetEnvelope(socket.sentParts).header.messageName, 'MeshNotice');
+  await manager.dispose();
+});
+
 test('channel runtime drains backpressured requests from send-ready callback', async () => {
   const socket = fakeBackpressuredDealer();
   const manager = new framework.ZLinkChannelRuntimeManager(

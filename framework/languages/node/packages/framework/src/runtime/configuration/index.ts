@@ -43,7 +43,9 @@ export interface ZLinkDiscoveryOptions {
 
 export interface ZLinkChannelOptions {
   readonly client?: ZLinkClientCapabilityOptions;
+  readonly dealerMesh?: ZLinkDealerMeshChannelOptions;
   readonly publisher?: ZLinkPublisherCapabilityOptions;
+  readonly routeMesh?: ZLinkRouteMeshChannelOptions;
   readonly server?: { readonly bind?: string };
   readonly subscriber?: ZLinkClientCapabilityOptions;
 }
@@ -52,8 +54,22 @@ export interface ZLinkClientCapabilityOptions {
   readonly manualConnections?: readonly string[];
 }
 
+export interface ZLinkDealerMeshChannelOptions {
+  readonly bind?: string;
+  readonly client?: ZLinkClientCapabilityOptions;
+}
+
 export interface ZLinkPublisherCapabilityOptions {
   readonly bind?: string;
+}
+
+export interface ZLinkRouteMeshChannelOptions {
+  readonly bind?: string;
+  readonly manualConnections?: readonly string[];
+  readonly routingId?: string;
+  readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
+  readonly requestHandlers?: readonly ZLinkRouteChannelRequestHandlerRegistration[];
+  readonly handlers?: readonly ZLinkRouteChannelHandlerOptions[];
 }
 
 export interface ZLinkRouteChannelOptions {
@@ -100,14 +116,15 @@ export class ZLinkConfigurationException extends Error {
 export function createFrameworkRegistration(
   options: ZLinkFrameworkRegistrationOptions = {}
 ): ZLinkFrameworkRegistration {
+  const routeChannelOptions = toRouteChannelOptions(options);
   const registration: ZLinkFrameworkRegistration = {
     actorFactories: toTypeMap(options.actorFactories),
     spotFactories: new Set(options.spotFactories ?? []),
     channels: toChannelMap(options.channels),
-    channelClients: channelNamesWith(options.channels, (channel) => channel.client !== undefined),
+    channelClients: channelNamesWith(options.channels, (channel) => channel.client !== undefined || channel.dealerMesh?.client !== undefined),
     fanoutPublishers: channelNamesWith(options.channels, (channel) => channel.publisher !== undefined),
-    routeChannels: routeChannelNames(options.routeChannels),
-    routeChannelOptions: toRouteChannelOptions(options.routeChannels),
+    routeChannels: new Set(routeChannelOptions.keys()),
+    routeChannelOptions,
     spotNodes: new Set(options.spotNodes ?? []),
     spotPublisherClients: new Set(options.spotPublisherClients ?? []),
     hasSpotRemoteAddressResolver: options.spotRemoteAddressResolver !== undefined,
@@ -123,26 +140,30 @@ function toChannelMap(channels: ZLinkFrameworkRegistrationOptions['channels']): 
   return new Map(Object.entries(channels ?? {}).map(([name, channel]) => [name, { ...channel }]));
 }
 
-function routeChannelNames(routeChannels: ZLinkFrameworkRegistrationOptions['routeChannels']): Set<string> {
-  const names = new Set<string>();
-  for (const routeChannel of routeChannels ?? []) {
-    names.add(typeof routeChannel === 'string' ? routeChannel : routeChannel.routerChannelId);
-  }
-  return names;
-}
-
 function toRouteChannelOptions(
-  routeChannels: ZLinkFrameworkRegistrationOptions['routeChannels']
+  options: ZLinkFrameworkRegistrationOptions
 ): Map<string, ZLinkRouteChannelOptions> {
-  const options = new Map<string, ZLinkRouteChannelOptions>();
-  for (const routeChannel of routeChannels ?? []) {
+  const routeOptions = new Map<string, ZLinkRouteChannelOptions>();
+  for (const routeChannel of options.routeChannels ?? []) {
     if (typeof routeChannel === 'string') {
-      options.set(routeChannel, { routerChannelId: routeChannel });
+      routeOptions.set(routeChannel, { routerChannelId: routeChannel });
       continue;
     }
-    options.set(routeChannel.routerChannelId, { ...routeChannel });
+    routeOptions.set(routeChannel.routerChannelId, { ...routeChannel });
   }
-  return options;
+  for (const [channelName, channel] of Object.entries(options.channels ?? {})) {
+    if (channel.routeMesh === undefined) {
+      continue;
+    }
+    if (routeOptions.has(channelName)) {
+      throw new ZLinkConfigurationException(`Route mesh channel '${channelName}' is already registered.`);
+    }
+    routeOptions.set(channelName, {
+      routerChannelId: channelName,
+      ...channel.routeMesh
+    });
+  }
+  return routeOptions;
 }
 
 export function validateFrameworkRegistration(
@@ -225,8 +246,23 @@ function validateChannelCapabilities(
     if (channel.client !== undefined) {
       requirePeerSource(`channel '${channelName}' client`, channel.client.manualConnections, discoveryConfigured);
     }
+    if (channel.dealerMesh !== undefined) {
+      if (channel.client !== undefined) {
+        throw new ZLinkConfigurationException(`Channel '${channelName}' cannot define both client and dealerMesh client capability.`);
+      }
+      if (channel.dealerMesh.bind !== undefined) {
+        requireEndpoint(`channel '${channelName}' dealer mesh`, channel.dealerMesh.bind);
+      }
+      requirePeerSource(`channel '${channelName}' dealer mesh client`, channel.dealerMesh.client?.manualConnections, discoveryConfigured);
+    }
     if (channel.subscriber !== undefined) {
       requirePeerSource(`channel '${channelName}' subscriber`, channel.subscriber.manualConnections, discoveryConfigured);
+    }
+    if (channel.routeMesh !== undefined) {
+      requireEndpoint(`channel '${channelName}' route mesh`, channel.routeMesh.bind);
+      if ((channel.routeMesh.manualConnections ?? []).some((endpoint) => endpoint.trim().length === 0)) {
+        throw new ZLinkConfigurationException(`channel '${channelName}' route mesh manual connection endpoint must not be empty.`);
+      }
     }
   }
 }

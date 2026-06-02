@@ -44,6 +44,26 @@ NestJS 표면의 **정식 계약**이다. 구현은 이 문서를 직접 보면�
 | [spot-node](./spec/spot-node.ko.md) | SpotNode 등록·관리 표면 |
 | [stage-wrapper-on-spot](./spec/stage-wrapper-on-spot.ko.md) | stage 상위 모델을 SPOT 위에 감싸는 조건 |
 
+## 1.5 사용자 가이드 (`guide/`)
+
+NestJS 애플리케이션 개발자를 위한 사용법 문서다. 내부 구현 설명은 넣지 않고,
+public API를 어떤 상황에서 어떻게 쓰는지 설명한다.
+
+| 문서 | 범위 |
+|------|------|
+| [01-overview](./guide/01-overview.ko.md) | Node framework 개요 |
+| [02-getting-started](./guide/02-getting-started.ko.md) | NestJS 등록과 provider 사용 |
+| [03-concepts](./guide/03-concepts.ko.md) | channel, Spot, actor, stream 개념 |
+| [04-feature-map](./guide/04-feature-map.ko.md) | .NET 기능 이름의 Node 대응 |
+| [05-channel-messaging](./guide/05-channel-messaging.ko.md) | request, send, publish 사용 |
+| [06-spot](./guide/06-spot.ko.md) | Spot manager, outbound, timer |
+| [07-actor-session](./guide/07-actor-session.ko.md) | actor bind, relay, bound session |
+| [08-stream](./guide/08-stream.ko.md) | stream session 과 connector |
+| [09-registry](./guide/09-registry.ko.md) | embedded registry 와 topology query |
+| [10-monitoring](./guide/10-monitoring.ko.md) | typed runtime event 관찰 |
+| [11-interface-catalog](./guide/11-interface-catalog.ko.md) | 주요 public interface 목록 |
+| [12-cross-language](./guide/12-cross-language.ko.md) | cross-language smoke 기준 |
+
 ## 2. 내부 정책 (`internals/`)
 
 framework 경계, backend 의존, lifecycle, 회귀 기준을 정의한다. spec 만으로

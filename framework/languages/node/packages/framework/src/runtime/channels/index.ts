@@ -9,6 +9,7 @@ import type {
   ZLinkRequestCall,
   ZLinkRouteClient,
   ZLinkSendCall,
+  ZLinkSpotRemoteAddress,
   ZLinkSpotPublisherClient
 } from '../../contracts';
 import { randomUUID } from 'node:crypto';
@@ -134,6 +135,28 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     signal?: AbortSignal
   ): Promise<TReply> {
     return this.requireManager().routeRequest(routerChannelId, targetNodeRid, packetName, request, timeoutMs, signal);
+  }
+
+  async sendToSpot(
+    remoteAddress: ZLinkSpotRemoteAddress,
+    message: unknown,
+    options: { readonly packetName?: string; readonly signal?: AbortSignal }
+  ): Promise<void> {
+    return this.requireManager().routeSendToSpot(remoteAddress, options.packetName, message, options.signal);
+  }
+
+  async requestToSpot<TRequest, TReply = unknown>(
+    remoteAddress: ZLinkSpotRemoteAddress,
+    request: TRequest,
+    options: { readonly packetName?: string; readonly timeoutMs?: number; readonly signal?: AbortSignal }
+  ): Promise<TReply> {
+    return this.requireManager().routeRequestToSpot<TReply>(
+      remoteAddress,
+      options.packetName,
+      request,
+      options.timeoutMs,
+      options.signal
+    );
   }
 
   private requireManager(): ZLinkChannelRuntimeManager {
@@ -285,6 +308,59 @@ export class ZLinkChannelRuntimeManager {
       );
       if (!queued) {
         reject(new ZLinkConfigurationException(`Route channel '${routerChannelId}' request was not queued.`));
+      }
+    });
+  }
+
+  async routeSendToSpot(
+    remoteAddress: ZLinkSpotRemoteAddress,
+    packetName: string | undefined,
+    message: unknown,
+    signal?: AbortSignal
+  ): Promise<void> {
+    throwIfAborted(signal);
+    const queued = this.getOrCreateRouteRouter(remoteAddress.routerChannelId).sendToSpot(
+      remoteAddress.targetNodeRid,
+      remoteAddress.spotRid,
+      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, remoteAddress.routerChannelId, packetName, message) as readonly Message[],
+      0
+    );
+    if (!queued) {
+      throw new ZLinkConfigurationException(`Route channel '${remoteAddress.routerChannelId}' spot send was not queued.`);
+    }
+  }
+
+  async routeRequestToSpot<TReply>(
+    remoteAddress: ZLinkSpotRemoteAddress,
+    packetName: string | undefined,
+    request: unknown,
+    timeoutMs: number | undefined,
+    signal?: AbortSignal
+  ): Promise<TReply> {
+    throwIfAborted(signal);
+    return new Promise<TReply>((resolve, reject) => {
+      const queued = this.getOrCreateRouteRouter(remoteAddress.routerChannelId).requestToSpot(
+        remoteAddress.targetNodeRid,
+        remoteAddress.spotRid,
+        encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, remoteAddress.routerChannelId, packetName, request, timeoutMs) as readonly Message[],
+        (result, parts) => {
+          try {
+            if (result !== 0) {
+              reject(new ZLinkConfigurationException(`Route channel '${remoteAddress.routerChannelId}' spot request failed with result ${result}.`));
+              return;
+            }
+            resolve(decodeChannelReply<TReply>(parts as readonly Message[]));
+          } catch (error) {
+            reject(error);
+          } finally {
+            closeMessages(parts as readonly Message[]);
+          }
+        },
+        0,
+        timeoutMs
+      );
+      if (!queued) {
+        reject(new ZLinkConfigurationException(`Route channel '${remoteAddress.routerChannelId}' spot request was not queued.`));
       }
     });
   }

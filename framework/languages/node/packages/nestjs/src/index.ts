@@ -4,7 +4,8 @@ import type {
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
   ZLinkRegistryOptions,
-  ZLinkRegistryQueryClientOptions
+  ZLinkRegistryQueryClientOptions,
+  ZLinkSpotRemoteAddressResolver
 } from '@zlink-systems/framework';
 
 type FrameworkModule = typeof import('@zlink-systems/framework');
@@ -206,7 +207,12 @@ function conditionalClientProviders(registration: ZLinkFrameworkRegistration): P
   if (framework.hasSpotNode(registration)) {
     providers.push(
       { provide: ZLINK_SPOT_MANAGER, useValue: createSpotManager(registration) },
-      { provide: ZLINK_SPOT_OUTBOUND, useValue: createSpotOutbound(registration) }
+      {
+        provide: ZLINK_SPOT_OUTBOUND,
+        inject: [ZLINK_FRAMEWORK_RUNTIME],
+        useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
+          createSpotOutbound(registration, runtime)
+      }
     );
   }
 
@@ -229,7 +235,7 @@ function conditionalClientProviders(registration: ZLinkFrameworkRegistration): P
   if (framework.hasSpotRemoteAddressResolver(registration)) {
     providers.push({
       provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
-      useValue: new framework.DefaultZLinkUnavailableSpotRemoteAddressResolver()
+      useFactory: () => createSpotRemoteAddressResolver(registration)
     });
   }
 
@@ -248,10 +254,13 @@ function conditionalClientProvidersForAsync(): Provider[] {
     },
     {
       provide: ZLINK_SPOT_OUTBOUND,
-      inject: [ZLINK_FRAMEWORK_REGISTRATION],
-      useFactory: (registration: ZLinkFrameworkRegistration) => {
+      inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
+      useFactory: (
+        registration: ZLinkFrameworkRegistration,
+        runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
+      ) => {
         ensureCapability(framework.hasSpotNode(registration), ZLINK_SPOT_OUTBOUND);
-        return createSpotOutbound(registration);
+        return createSpotOutbound(registration, runtime);
       }
     },
     {
@@ -278,7 +287,7 @@ function conditionalClientProvidersForAsync(): Provider[] {
       inject: [ZLINK_FRAMEWORK_REGISTRATION],
       useFactory: (registration: ZLinkFrameworkRegistration) => {
         ensureCapability(framework.hasSpotRemoteAddressResolver(registration), ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER);
-        return new framework.DefaultZLinkUnavailableSpotRemoteAddressResolver();
+        return createSpotRemoteAddressResolver(registration);
       }
     }
   ];
@@ -304,8 +313,32 @@ function createSpotManager(registration: ZLinkFrameworkRegistration): InstanceTy
   return new framework.DefaultZLinkSpotManager({ spotFactories: [...registration.spotFactories] });
 }
 
-function createSpotOutbound(_registration: ZLinkFrameworkRegistration): InstanceType<FrameworkModule['DefaultZLinkSpotOutbound']> {
-  return new framework.DefaultZLinkSpotOutbound(new framework.ZLinkSpotSerialExecutor());
+function createSpotOutbound(
+  registration: ZLinkFrameworkRegistration,
+  runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
+): InstanceType<FrameworkModule['DefaultZLinkSpotOutbound']> {
+  const resolver = framework.hasSpotRemoteAddressResolver(registration)
+    ? createSpotRemoteAddressResolver(registration)
+    : undefined;
+  return new framework.DefaultZLinkSpotOutbound(
+    new framework.ZLinkSpotSerialExecutor(),
+    undefined,
+    undefined,
+    resolver,
+    runtime.routeTransport
+  );
+}
+
+function createSpotRemoteAddressResolver(
+  registration: ZLinkFrameworkRegistration
+): ZLinkSpotRemoteAddressResolver {
+  if (registration.spotRemoteAddressResolverType !== undefined) {
+    return new (registration.spotRemoteAddressResolverType as new () => ZLinkSpotRemoteAddressResolver)();
+  }
+  if (registration.registrySpotRemoteAddresses !== undefined) {
+    return new framework.ZLinkRegistrySpotRemoteAddressResolver({ registration });
+  }
+  return new framework.DefaultZLinkUnavailableSpotRemoteAddressResolver();
 }
 
 function loadFramework(): FrameworkModule {

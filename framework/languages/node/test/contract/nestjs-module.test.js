@@ -49,6 +49,7 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
   );
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_ROUTE_CLIENT,
+    nestjs.ZLINK_SPOT_OUTBOUND,
     nestjs.ZLINK_SPOT_PUBLISHER_CLIENT,
     nestjs.ZLINK_BOUND_SESSION_FACTORY
   ]);
@@ -58,8 +59,7 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
     [nestjs.ZLINK_FRAMEWORK_RUNTIME]
   );
   assert.equal(
-    module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_OUTBOUND).useValue
-      instanceof framework.DefaultZLinkSpotOutbound,
+    container.get(nestjs.ZLINK_SPOT_OUTBOUND) instanceof framework.DefaultZLinkSpotOutbound,
     true
   );
   assert.equal(container.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT) instanceof framework.DefaultZLinkSpotPublisherClient, true);
@@ -172,6 +172,56 @@ test('ZLinkModule.forRoot validates channel capability endpoints and peer acquis
       events: { subscriber: { manualConnections: ['tcp://127.0.0.1:7002'] } }
     }
   }));
+});
+
+test('ZLinkModule.forRoot registers registry spot remote address resolver by default', async () => {
+  const module = nestjs.ZLinkModule.forRoot({
+    discovery: { registries: ['tcp://127.0.0.1:5551'] },
+    routeChannels: ['play'],
+    registrySpotRemoteAddresses: { namespace: 'bingo' }
+  });
+  const resolverProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER);
+
+  assert.notEqual(resolverProvider, undefined);
+  assert.equal(typeof resolverProvider.useFactory, 'function');
+});
+
+test('ZLinkModule.forRoot validates registry spot remote address resolver requirements', () => {
+  class CustomSpotRemoteAddressResolver {
+    async resolve() {
+      return {
+        routerChannelId: 'play',
+        targetNodeRid: 'node-a',
+        spotRid: 'spot-a',
+        spotKind: framework.ZLinkSpotKind.User
+      };
+    }
+  }
+
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      routeChannels: ['play'],
+      registrySpotRemoteAddresses: { namespace: 'bingo' }
+    }),
+    /requires discovery endpoints/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      discovery: { registries: ['tcp://127.0.0.1:5551'] },
+      routeChannels: ['play-a', 'play-b'],
+      registrySpotRemoteAddresses: { namespace: 'bingo' }
+    }),
+    /requires RouterChannelId/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      discovery: { registries: ['tcp://127.0.0.1:5551'] },
+      routeChannels: ['play'],
+      spotRemoteAddressResolver: CustomSpotRemoteAddressResolver,
+      registrySpotRemoteAddresses: { namespace: 'bingo' }
+    }),
+    /SPOT remote address resolver/
+  );
 });
 
 test('ZLinkModule.forRootAsync exposes capability providers after async registration resolves', async () => {

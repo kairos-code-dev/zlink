@@ -12,6 +12,14 @@ export interface ZLinkFrameworkRegistration {
   readonly spotPublisherClients: ReadonlySet<string>;
   readonly hasSpotRemoteAddressResolver: boolean;
   readonly hasRegistrySpotRemoteAddresses: boolean;
+  readonly spotRemoteAddressResolverType?: Type;
+  readonly registrySpotRemoteAddresses?: ZLinkRegistrySpotRemoteAddressesRegistration;
+}
+
+export interface ZLinkRegistrySpotRemoteAddressesRegistration {
+  readonly namespace: string;
+  readonly routerChannelId?: string;
+  readonly registryEndpoint: string;
 }
 
 export interface ZLinkFrameworkRegistrationOptions {
@@ -103,7 +111,9 @@ export function createFrameworkRegistration(
     spotNodes: new Set(options.spotNodes ?? []),
     spotPublisherClients: new Set(options.spotPublisherClients ?? []),
     hasSpotRemoteAddressResolver: options.spotRemoteAddressResolver !== undefined,
-    hasRegistrySpotRemoteAddresses: options.registrySpotRemoteAddresses !== undefined
+    hasRegistrySpotRemoteAddresses: options.registrySpotRemoteAddresses !== undefined,
+    spotRemoteAddressResolverType: options.spotRemoteAddressResolver,
+    registrySpotRemoteAddresses: normalizeRegistrySpotRemoteAddresses(options.registrySpotRemoteAddresses, options.discovery)
   };
   validateFrameworkRegistration(registration, options);
   return registration;
@@ -147,6 +157,17 @@ export function validateFrameworkRegistration(
     throw new ZLinkConfigurationException('Registry remote address resolver requires a route mesh channel.');
   }
 
+  if (registration.hasRegistrySpotRemoteAddresses && registration.hasSpotRemoteAddressResolver) {
+    throw new ZLinkConfigurationException('SPOT remote address resolver is already registered.');
+  }
+
+  if (registration.hasRegistrySpotRemoteAddresses && !hasDiscovery(options.discovery)) {
+    throw new ZLinkConfigurationException(
+      'Registry remote address resolver requires discovery endpoints from discovery.registries.'
+    );
+  }
+
+  validateRegistryRouteChannel(registration);
   validateChannelCapabilities(options.channels, hasDiscovery(options.discovery));
   validateRouteChannels(registration.routeChannelOptions);
 }
@@ -212,6 +233,49 @@ function validateChannelCapabilities(
 
 function hasDiscovery(discovery: ZLinkDiscoveryOptions | undefined): boolean {
   return (discovery?.registries ?? []).some((endpoint) => endpoint.trim().length > 0);
+}
+
+function normalizeRegistrySpotRemoteAddresses(
+  value: ZLinkFrameworkRegistrationOptions['registrySpotRemoteAddresses'],
+  discovery: ZLinkDiscoveryOptions | undefined
+): ZLinkRegistrySpotRemoteAddressesRegistration | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value.namespace.trim().length === 0 || value.namespace.trim() !== value.namespace) {
+    throw new ZLinkConfigurationException('Registry route namespace must not be empty or padded.');
+  }
+  if (value.routerChannelId !== undefined && (value.routerChannelId.trim().length === 0 || value.routerChannelId.trim() !== value.routerChannelId)) {
+    throw new ZLinkConfigurationException('Registry route RouterChannelId must not be empty or padded.');
+  }
+  const registryEndpoint = (discovery?.registries ?? []).find((endpoint) => endpoint.trim().length > 0);
+  return {
+    namespace: value.namespace,
+    routerChannelId: value.routerChannelId,
+    registryEndpoint: registryEndpoint ?? ''
+  };
+}
+
+function validateRegistryRouteChannel(registration: ZLinkFrameworkRegistration): void {
+  if (!registration.hasRegistrySpotRemoteAddresses) {
+    return;
+  }
+
+  const routerChannelId = registration.registrySpotRemoteAddresses?.routerChannelId;
+  if (routerChannelId !== undefined) {
+    if (!registration.routeChannels.has(routerChannelId)) {
+      throw new ZLinkConfigurationException(
+        `Registry SPOT remote address resolver references unknown route mesh channel '${routerChannelId}'.`
+      );
+    }
+    return;
+  }
+
+  if (registration.routeChannels.size > 1) {
+    throw new ZLinkConfigurationException(
+      'Registry SPOT remote address resolver requires RouterChannelId when more than one route mesh channel is registered.'
+    );
+  }
 }
 
 function requirePeerSource(

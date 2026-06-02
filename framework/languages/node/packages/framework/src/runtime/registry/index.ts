@@ -6,6 +6,7 @@ import type {
   ZLinkBackendRegistryQueryClient
 } from '../backend';
 import type {
+  RoutingId,
   ZLinkMemberPeerEntry,
   ZLinkRegistryOptions,
   ZLinkRegistryQuery,
@@ -15,9 +16,18 @@ import type {
   ZLinkRegistryServiceSummaryFilter,
   ZLinkRegistryStatus,
   ZLinkRegistryTopologyEntry,
-  ZLinkRegistryTopologyFilter
+  ZLinkRegistryTopologyFilter,
+  ZLinkSpotRemoteAddress,
+  ZLinkSpotRemoteAddressResolver
 } from '../../contracts';
-import { ZLinkConfigurationException } from '../configuration';
+import {
+  ZLinkAutoConnectType,
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
+  ZLinkSpotKind
+} from '../../contracts';
+import type { ZLinkBackendDiscovery } from '../backend';
+import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
 
 export interface ZLinkRegistryRuntimeOptions {
   readonly registration: ZLinkRegistryOptions;
@@ -185,6 +195,73 @@ export class DefaultZLinkRegistryQueryClient implements ZLinkRegistryQueryClient
   }
 }
 
+export interface ZLinkRegistrySpotRemoteAddressResolverOptions {
+  readonly registration: ZLinkFrameworkRegistration;
+}
+
+export class ZLinkRegistrySpotRemoteAddressResolver implements ZLinkSpotRemoteAddressResolver {
+  private readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
+  private readonly registration: ZLinkFrameworkRegistration;
+  private readonly routerChannelId: string;
+  private readonly context: ZLinkBackendContext;
+  private readonly discovery: ZLinkBackendDiscovery;
+  private disposed = false;
+
+  constructor(options: ZLinkRegistrySpotRemoteAddressResolverOptions, internalOptions?: unknown) {
+    this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
+    this.registration = options.registration;
+    const registryOptions = this.registration.registrySpotRemoteAddresses
+      ?? failConfiguration('Registry SPOT routes are not configured.');
+    this.routerChannelId = resolveRouterChannelId(this.registration, registryOptions.routerChannelId);
+
+    const channelAdapter = this.backendAdapterFactory.createChannelAdapter();
+    this.context = channelAdapter.createContext();
+    this.discovery = channelAdapter.createDiscovery(
+      this.context,
+      ZLinkAutoConnectType.ClientServer,
+      registryOptions.namespace
+    );
+    this.discovery.spotOwnerSyncEnabled = true;
+    this.discovery.connectRegistry(registryOptions.registryEndpoint);
+  }
+
+  async resolve(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotRemoteAddress> {
+    throwIfAborted(signal);
+    if (this.disposed) {
+      throw new ZLinkConfigurationException('Registry SPOT remote address resolver is disposed.');
+    }
+
+    try {
+      const route = this.discovery.resolveSpot(spotRid);
+      return {
+        routerChannelId: this.routerChannelId,
+        targetNodeRid: String(route.ownerNodeRid),
+        spotRid: String(route.spotRid),
+        spotKind: route.spotKind as ZLinkSpotKind
+      };
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.SpotRouteNotFound,
+          `SPOT route was not found for '${spotRid}'.`,
+          true,
+          error
+        );
+      }
+      throw error;
+    }
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    await this.discovery.dispose();
+    await this.context.dispose();
+  }
+}
+
 function resolveBackendAdapterFactory(internalOptions: unknown): ZLinkBackendAdapterFactory {
   if (
     typeof internalOptions === 'object'
@@ -242,6 +319,35 @@ function normalizeRegistryQueryClientOptions(
     throw new ZLinkConfigurationException('Registry query client endpoint is required.');
   }
   return options;
+}
+
+function resolveRouterChannelId(
+  registration: ZLinkFrameworkRegistration,
+  configuredRouterChannelId: string | undefined
+): string {
+  if (configuredRouterChannelId !== undefined) {
+    return configuredRouterChannelId;
+  }
+  const [routerChannelId] = registration.routeChannels;
+  if (routerChannelId === undefined || registration.routeChannels.size !== 1) {
+    throw new ZLinkConfigurationException(
+      'Registry SPOT remote address resolver requires RouterChannelId when more than one route mesh channel is registered.'
+    );
+  }
+  return routerChannelId;
+}
+
+function failConfiguration(message: string): never {
+  throw new ZLinkConfigurationException(message);
+}
+
+function isNotFoundError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const errno = (error as { readonly internalErrno?: unknown; readonly errno?: unknown }).internalErrno
+    ?? (error as { readonly errno?: unknown }).errno;
+  return errno === 2;
 }
 
 function validatePositive(name: string, value: number): void {

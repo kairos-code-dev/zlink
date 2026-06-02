@@ -65,6 +65,36 @@ test('registry query client owns backend context and exposes topologyAsync only'
   ]);
 });
 
+test('registry spot remote address resolver resolves spot owner route through discovery', async () => {
+  const calls = [];
+  const registration = framework.createFrameworkRegistration({
+    discovery: { registries: ['tcp://127.0.0.1:5551'] },
+    routeChannels: ['play'],
+    registrySpotRemoteAddresses: { namespace: 'bingo' }
+  });
+  const resolver = new framework.ZLinkRegistrySpotRemoteAddressResolver({ registration }, {
+    backendAdapterFactory: fakeSpotRouteBackend(calls).factory
+  });
+
+  const route = await resolver.resolve('spot-a');
+  await resolver.dispose();
+
+  assert.deepEqual(route, {
+    routerChannelId: 'play',
+    targetNodeRid: 'node-a',
+    spotRid: 'spot-a',
+    spotKind: framework.ZLinkSpotKind.User
+  });
+  assert.deepEqual(calls, [
+    ['context:create'],
+    ['discovery:create', framework.ZLinkAutoConnectType.ClientServer, 'bingo'],
+    ['discovery:connectRegistry', 'tcp://127.0.0.1:5551'],
+    ['discovery:resolveSpot', 'spot-a'],
+    ['discovery:dispose'],
+    ['context:dispose']
+  ]);
+});
+
 test('registry modules expose runtime query and remote query client providers', () => {
   const registryModule = nestjs.ZLinkRegistryModule.forRoot({
     pubEndpoint: 'tcp://0.0.0.0:5550',
@@ -135,6 +165,60 @@ function fakeRegistryBackend(calls) {
           createRegistryQueryClient() {
             calls.push(['query:create']);
             return fakeRegistryQueryClient(calls);
+          }
+        };
+      }
+    }
+  };
+}
+
+function fakeSpotRouteBackend(calls) {
+  return {
+    factory: {
+      createChannelAdapter() {
+        return {
+          createContext() {
+            calls.push(['context:create']);
+            return {
+              nativeInstance: {},
+              shutdown() {},
+              async dispose() {
+                calls.push(['context:dispose']);
+              }
+            };
+          },
+          createDiscovery(_context, autoConnectType, channelName) {
+            calls.push(['discovery:create', autoConnectType, channelName]);
+            return {
+              nativeInstance: {},
+              spotOwnerSyncEnabled: false,
+              actorRouteSyncEnabled: false,
+              connectRegistry(endpoint) {
+                calls.push(['discovery:connectRegistry', endpoint]);
+              },
+              memberPeers() {
+                return [];
+              },
+              resolveSpot(spotRid) {
+                calls.push(['discovery:resolveSpot', spotRid]);
+                return {
+                  spotRid,
+                  ownerNodeRid: 'node-a',
+                  spotKind: framework.ZLinkSpotKind.User
+                };
+              },
+              resolveActor() {
+                throw new Error('not implemented');
+              },
+              bindRoute() {},
+              unbindRoute() {},
+              resolveRoute() {
+                throw new Error('not implemented');
+              },
+              async dispose() {
+                calls.push(['discovery:dispose']);
+              }
+            };
           }
         };
       }

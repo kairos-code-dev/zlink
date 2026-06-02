@@ -49,6 +49,9 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 - Phase 순서를 지킨다. P0 → P1 → P1.5 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9.
 - 각 Phase 는 구현, DoD 검증, POSD 리팩토링 게이트, 재검증을 모두 통과해야 완료다.
 - 게이트에서 이슈가 남으면 다음 Phase 로 넘어가지 말고 같은 Phase 안에서 수정한다.
+- provider token 만 노출하고 실제 기능이 unavailable placeholder 로 남아 있으면 완료가 아니다.
+  DI 에서 꺼낸 client, manager, resolver, outbound 가 dotnet 과 같은 실제 동작 경로에
+  연결되는지 테스트로 증명한다.
 - backend 의존은 adapter 한 층에만 둔다.
 - framework public surface 에 bindings/node concrete type, native detail, generated internal 경로를 노출하지 않는다.
 - 필요한 binding 기능이 없으면 bindings/node public API 를 추가하고 framework 에서 우회하지 않는다.

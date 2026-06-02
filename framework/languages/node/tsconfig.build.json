@@ -1,0 +1,23 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/framework"
+    },
+    {
+      "path": "./packages/nestjs"
+    },
+    {
+      "path": "./packages/stream-connector"
+    },
+    {
+      "path": "./packages/stream-connector-json"
+    },
+    {
+      "path": "./packages/stream-connector-msgpack"
+    },
+    {
+      "path": "./packages/stream-connector-protobuf"
+    }
+  ]
+}

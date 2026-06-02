@@ -225,7 +225,7 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 - **입력:** [surface-mapping §2](./internals/dotnet-to-node-surface-mapping.ko.md), bindings/node 가이드
 - **산출물:** §3 의 패키지 스캐폴드, tsconfig, 빌드/테스트 러너, 바인딩 의존 연결
 - **작업:**
-  - monorepo workspace + 5개 패키지 스캐폴드
+  - monorepo workspace + 6개 구현 패키지 스캐폴드
   - `tsconfig`(strict, decorators, `emitDecoratorMetadata`), lint, 테스트 러너
   - `@zlink-systems/zlink` 의존 연결, 스모크 테스트(`version()` 호출 등)
 - **DoD:** 전체 빌드 통과 / 빈 테스트 스위트 실행 / 바인딩 스모크 1개 green

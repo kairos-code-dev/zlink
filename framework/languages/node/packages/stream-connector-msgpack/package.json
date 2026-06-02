@@ -1,0 +1,10 @@
+{
+  "name": "@zlink-systems/stream-connector-msgpack",
+  "version": "0.1.0-SNAPSHOT",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@zlink-systems/stream-connector": "0.1.0-SNAPSHOT"
+  }
+}

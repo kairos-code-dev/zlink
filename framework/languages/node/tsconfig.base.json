@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "declaration": true,
+    "sourceMap": false,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "typeRoots": [
+      "../../../bindings/node/node_modules/@types"
+    ],
+    "types": [
+      "node"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@zlink-systems/framework": [
+        "packages/framework/src"
+      ],
+      "@zlink-systems/nestjs": [
+        "packages/nestjs/src"
+      ],
+      "@zlink-systems/stream-connector": [
+        "packages/stream-connector/src"
+      ],
+      "@zlink-systems/stream-connector-json": [
+        "packages/stream-connector-json/src"
+      ],
+      "@zlink-systems/stream-connector-msgpack": [
+        "packages/stream-connector-msgpack/src"
+      ],
+      "@zlink-systems/stream-connector-protobuf": [
+        "packages/stream-connector-protobuf/src"
+      ],
+      "@zlink-systems/zlink": [
+        "../../../bindings/node/dist/index.d.ts"
+      ]
+    }
+  }
+}

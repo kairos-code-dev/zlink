@@ -1,0 +1,20 @@
+{
+  "name": "@zlink-systems/node-framework-workspace",
+  "version": "0.1.0-SNAPSHOT",
+  "private": true,
+  "description": "ZLink Framework Node.js/NestJS port workspace",
+  "scripts": {
+    "clean": "rm -rf dist packages/*/dist",
+    "build": "node ../../../bindings/node/node_modules/typescript/bin/tsc -b tsconfig.build.json",
+    "typecheck": "node ../../../bindings/node/node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/**/*.test.js",
+    "verify:p0": "npm run build && npm run typecheck && node --test test/**/*.test.js"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "typescript": "^5.8.3"
+  }
+}

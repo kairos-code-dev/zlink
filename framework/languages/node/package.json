@@ -8,7 +8,9 @@
     "build": "node ../../../bindings/node/node_modules/typescript/bin/tsc -b tsconfig.build.json",
     "typecheck": "node ../../../bindings/node/node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/**/*.test.js",
-    "verify:p0": "npm run build && npm run typecheck && node --test test/**/*.test.js"
+    "verify:p0": "npm run build && npm run typecheck && node --test test/**/*.test.js",
+    "verify:runtime-matrix": "node scripts/verify_node_runtime_matrix.js",
+    "verify:cross-language": "./cross-language/run_cross_language_smoke.sh"
   },
   "workspaces": [
     "packages/*"

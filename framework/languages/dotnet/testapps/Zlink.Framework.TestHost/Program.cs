@@ -67,6 +67,28 @@ internal sealed class ChannelStartupPublishHostedService(
     }
 }
 
+internal sealed class ChannelClientStartupRequestHostedService(
+    IZLinkChannelClient client,
+    TestHostEventSink sink,
+    string channelName,
+    string value) : IHostedService
+{
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        var reply = await client
+            .RequestToChannel(channelName, new TestHostProfileRequest(value))
+            .PacketName("TestHostProfileRequest")
+            .Timeout(TimeSpan.FromSeconds(5))
+            .SubmitAsync<TestHostProfileReply>(cancellationToken);
+        sink.Append($"channel-client|{reply.Value}");
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+}
+
 internal sealed class SpotStartupPublishHostedService(
     IZLinkSpotPublisherClient publisher,
     string channelName,
@@ -198,6 +220,44 @@ internal sealed class TestHostRawStreamRecorder(TestHostEventSink sink)
     public void RecordDisconnected(IZLinkSessionContext context)
     {
         sink.Append($"disconnected|{context.SessionId}");
+    }
+}
+
+internal sealed class StreamClientStartupRequestHostedService(
+    TestHostEventSink sink,
+    string endpoint,
+    string value) : IHostedService
+{
+    private IZlinkStreamConnector? _connector;
+
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        _connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(endpoint),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false },
+            RequestTimeout = TimeSpan.FromSeconds(5),
+        });
+        await _connector.ConnectAsync(cancellationToken);
+        var pending = _connector
+            .Request(new ZlinkStreamEncodedPayload(
+                ZlinkStreamCodec.Json,
+                Encoding.UTF8.GetBytes($"\"{value}\"")))
+            .PacketName("RawPing")
+            .Timeout(TimeSpan.FromSeconds(5))
+            .SubmitAsync(cancellationToken);
+        await _connector.DispatchAsync(cancellationToken);
+        var reply = await pending;
+        sink.Append($"stream-client|{Encoding.UTF8.GetString(reply.Payload.Span)}");
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        if (_connector is not null)
+        {
+            await _connector.DisposeAsync();
+        }
     }
 }
 

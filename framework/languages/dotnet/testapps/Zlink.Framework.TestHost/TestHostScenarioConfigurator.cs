@@ -16,6 +16,9 @@ internal static class TestHostScenarioConfigurator
             case "channel-server":
                 ConfigureChannelServer(services, options);
                 return;
+            case "channel-client":
+                ConfigureChannelClient(services, options);
+                return;
             case "channel-subscriber":
                 ConfigureChannelSubscriber(services, options);
                 return;
@@ -27,6 +30,9 @@ internal static class TestHostScenarioConfigurator
                 return;
             case "stream-raw":
                 ConfigureStreamRawNode(services, options);
+                return;
+            case "stream-client":
+                ConfigureStreamClient(services, options);
                 return;
             default:
                 throw new InvalidOperationException($"Unsupported test host mode '{options.Mode}'.");
@@ -74,6 +80,34 @@ internal static class TestHostScenarioConfigurator
                     channel.AddRequestHandler<TestHostProfileRequestHandler, TestHostProfileRequest, TestHostProfileReply>();
                 });
         });
+    }
+
+    private static void ConfigureChannelClient(IServiceCollection services, TestHostOptions options)
+    {
+        services.AddSingleton(new TestHostEventSink(options.EventFilePath));
+        services.AddZLinkFramework(framework =>
+        {
+            framework.AddClientServerChannel(
+                options.ChannelName
+                    ?? throw new InvalidOperationException("Channel client mode requires --channel-name."),
+                channel =>
+                {
+                    channel.EnableClient(client =>
+                    {
+                        client.UseManualConnections(connections =>
+                        {
+                            connections.Connect(options.ServerEndpoint
+                                ?? throw new InvalidOperationException("Channel client mode requires --server-endpoint."));
+                        });
+                    });
+                });
+        });
+        services.AddHostedService(provider =>
+            new ChannelClientStartupRequestHostedService(
+                provider.GetRequiredService<IZLinkChannelClient>(),
+                provider.GetRequiredService<TestHostEventSink>(),
+                options.ChannelName!,
+                options.PublishValue ?? "dotnet-to-node"));
     }
 
     private static void ConfigureChannelSubscriber(IServiceCollection services, TestHostOptions options)
@@ -220,5 +254,16 @@ internal static class TestHostScenarioConfigurator
                 stream.RegisterSession<TestHostRawStreamSession>();
             });
         });
+    }
+
+    private static void ConfigureStreamClient(IServiceCollection services, TestHostOptions options)
+    {
+        services.AddSingleton(new TestHostEventSink(options.EventFilePath));
+        services.AddHostedService(provider =>
+            new StreamClientStartupRequestHostedService(
+                provider.GetRequiredService<TestHostEventSink>(),
+                options.StreamEndpoint
+                    ?? throw new InvalidOperationException("STREAM client mode requires --stream-endpoint."),
+                options.PublishValue ?? "dotnet-to-node"));
     }
 }

@@ -2,29 +2,33 @@ package systems.zlink.stream.connector;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
 
 final class StreamPayloadTest {
     @Test
-    void borrowedPayload_requiresCopyOutsideCallback() {
-        try (ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options())) {
-            connector.on("Echo", message -> {
-                message.payload().payload().close();
-                return java.util.concurrent.CompletableFuture.completedFuture(null);
-            });
-
+    void responsePayload_requiresCopyOutsideTransportBuffer() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
             connector.connectAsync().toCompletableFuture().join();
 
-            ZLinkStreamEncodedPayload reply = connector.request(payload("Echo", "copy-me"))
+            var requestFrame = server.readFrameAsync();
+            var replyFuture = connector.request(payload("Echo", "copy-me"))
                 .submitAsync()
                 .toCompletableFuture()
-                .join();
+                .thenApply(reply -> reply);
+
+            TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
+            server.sendAsync(TcpStreamConnectorTestServer.responseTo(
+                    request,
+                    "Echo",
+                    Map.of()),
+                TcpStreamConnectorTestServer.bytes("copy-me")).join();
+
+            ZLinkStreamEncodedPayload reply = replyFuture.join();
             try {
                 assertEquals("copy-me", new String(
                     reply.payload().toByteArray(),
@@ -33,14 +37,6 @@ final class StreamPayloadTest {
                 reply.payload().close();
             }
         }
-    }
-
-    private static ZLinkStreamConnectorOptions options() {
-        return new ZLinkStreamConnectorOptions(
-            URI.create("tcp://127.0.0.1:7000"),
-            ZLinkStreamDispatchMode.MANUAL,
-            Duration.ofSeconds(1),
-            1);
     }
 
     private static ZLinkStreamEncodedPayload payload(String packetName, String body) {

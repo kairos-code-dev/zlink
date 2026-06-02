@@ -138,6 +138,17 @@ Node가 만든 response frame을 Java가 다시 decode해야 한다. 이 테스�
 **audit → implementation → verification → review** 순서로 닫는다. 이 네 단계가 모두
 끝나지 않으면 다음 phase로 넘어가지 않는다.
 
+이 프로토콜은 **사용자 승인 대기 없이 진행**하는 실행 규칙이다. 작업자는 각 phase의
+audit 결과를 남긴 뒤, `부분`, `미완료`, `미검증` 항목을 같은 phase 안에서 바로
+구현하고 검증한다. phase gate가 닫히면 작업자가 evidence table을 기준으로
+**스스로 리뷰하고 승인**한 뒤, §1.4 조건에 맞춰 커밋·push하고 다음 phase로 진행한다.
+사용자 확인을 기다리는 경우는 아래처럼 실제 작업을 계속할 수 없는 때로 한정한다.
+
+- `.NET` 기준 코드와 이 문서의 요구가 서로 충돌하고, 코드만으로 선택할 수 없는 경우
+- public API의 의미를 바꾸는 두 개 이상의 대안이 모두 큰 호환성·사용성 영향을 갖는 경우
+- 외부 권한, credential, 원격 저장소 상태처럼 작업자가 해결할 수 없는 상태가 필요한 경우
+- unrelated dirty change와 필요한 변경이 같은 파일에서 충돌해 임의 병합이 위험한 경우
+
 1. **audit**: `.NET` 대응 코드와 현재 Java/Kotlin 코드를 비교해 완료 조건을 표로
    만든다. 표에는 `.NET` 파일, Java/Kotlin 파일, 테스트 파일, 판정을 모두 적는다.
 2. **implementation**: audit에서 `미완료` 또는 `부분`으로 판정된 항목만 구현한다.
@@ -146,6 +157,10 @@ Node가 만든 response frame을 Java가 다시 decode해야 한다. 이 테스�
    `미검증`으로 남기고 완료로 세지 않는다.
 4. **review**: no-op, fake, sample 우회, public API 누수, POSD 위험 신호가 남아
    있는지 다시 검색한다. 하나라도 남으면 phase는 닫히지 않는다.
+5. **self-approval**: 작업자가 phase evidence table, gate 결과, 완료 금지 패턴 검색,
+   POSD 리뷰 결과를 근거로 phase 닫힘 여부를 직접 판정한다. 모든 항목이 `완료`이고
+   검증 결과가 green일 때만 phase를 승인한다. 사용자 승인 대기를 phase 닫힘 조건으로
+   넣지 않는다.
 
 각 phase가 닫힐 때 아래 형식의 **phase evidence table**을 남긴다. 코드 리뷰와
 커밋 메시지는 이 표를 기준으로 작성한다.
@@ -640,6 +655,26 @@ P0 빌드 골격 (정규 모듈/패키지 표)
   (STREAM/Connector regression)의 connector/codec 행 미러
 - Phase 8 POSD 리팩토링 체크 통과
 
+### Phase 8 audit evidence
+
+아래 표는 Phase 8 진행 중 현재 코드와 `.NET` 기준을 다시 대조한 결과다. 이 표가
+모두 `완료`가 되기 전에는 Phase 8을 자체 승인하지 않는다.
+
+| 항목 | `.NET` 기준 | Java/Kotlin 구현 | 검증 | 판정 |
+|------|-------------|------------------|------|------|
+| TCP frame transport | `ZlinkStreamTransportFactory.ConnectStreamAsync`, `ZlinkStreamFrameSender`, `ZlinkStreamReceiveLoop`, `TransportTests.TcpSendUsesHeaderPayloadFrame` | `DefaultZLinkStreamConnector`가 `AsynchronousSocketChannel`로 `tcp://` endpoint에 연결하고 STREAM frame prefix/header/payload를 실제 socket에 쓰고 읽음 | `gradle :zlink-stream-connector:test --rerun-tasks` (`ZLinkStreamConnectorTest.requestWritesFrameAndCorrelatesResponse`, `ConnectorDispatchTest.dispatch_invokesCallback`) | 완료 |
+| request pending correlation | `ZlinkStreamPendingRequests`, `TypedRequestTests.TcpTypedRequestCorrelatesResponse` | request sequence를 생성해 pending map에 등록하고 같은 sequence의 RESPONSE frame으로 `CompletionStage`를 완료함 | `gradle :zlink-stream-connector:test --rerun-tasks` (`requestWritesFrameAndCorrelatesResponse`) | 완료 |
+| request timeout cleanup | `ZlinkStreamPendingRequests.WaitAsync`, `ErrorAndModeTests.RequestTimeoutRemovesPendingRequest` | response가 없으면 scheduled timeout으로 pending request를 제거하고 future를 실패시킴 | `gradle :zlink-stream-connector:test --rerun-tasks` (`requestTimeoutFailsPendingRequestsWithTimeoutCause`, `requestWithoutReplyFailsWithTimeoutCause`) | 완료 |
+| manual dispatch over transport | `ZlinkStreamConnectorCallbacks`, `DispatchTests.ManualDispatchQueuesCallbackUntilDispatchAsync` | inbound SEND frame을 manual queue에 넣고 `dispatchAsync()`에서 등록 handler를 실행함 | `gradle :zlink-stream-connector:test --rerun-tasks` (`dispatch_invokesCallback`) | 완료 |
+| TLS transport | `ZlinkStreamTransportFactory.ConnectStreamAsync` TLS branch, `TransportTests.TlsSendWorksWithSkippedCertificateValidation` | `tls://` endpoint는 Netty `SslHandler` 기반 비동기 transport로 연결하고, `.NET`의 `SkipServerCertificateValidation`에 대응하는 `skipServerCertificateValidation` 옵션으로 self-signed test endpoint를 통과함 | `timeout 180s gradle :zlink-stream-connector:test --rerun-tasks` (`tlsRequestUsesEncryptedFrameAndSkippedCertificateValidation`, `skipServerCertificateValidationDefaultsToFalseAndCanBeEnabled`) | 완료 |
+| WebSocket transport | `ZlinkStreamTransportFactory.ConnectWebSocketAsync`, `TransportTests.WebSocketSendUsesBinaryFrames` | `ws://`와 `wss://` endpoint 모두 Java `HttpClient` WebSocket async API로 연결하고 STREAM frame을 binary message로 송수신한다. `wss://`는 `skipServerCertificateValidation`용 SSL context로 self-signed test endpoint를 통과함 | `timeout 180s gradle :zlink-stream-connector:test --rerun-tasks` (`webSocketRequestUsesBinaryFrameAndCorrelatesResponse`, `wssRequestUsesBinaryFrameAndSkippedCertificateValidation`, `skipServerCertificateValidationDefaultsToFalseAndCanBeEnabled`) | 완료 |
+| heartbeat control packets | `HeartbeatSendsReservedControlPing`, `InboundHeartbeatPingReceivesPongWhenHeartbeatDisabled`, `HeartbeatTimeoutFailsPendingRequestsWithTimeoutCause` | heartbeat option, ping/pong control frame, heartbeat timeout pending failure를 connector lifecycle에 연결함 | `timeout 180s gradle :zlink-stream-connector:test --rerun-tasks` (`heartbeatSendsReservedControlPing`, `inboundHeartbeatPingReceivesPongWhenHeartbeatDisabled`, `heartbeatTimeoutFailsPendingRequestsWithTimeoutCause`) | 완료 |
+| reconnect backoff/max attempts | `ZlinkStreamConnectorLifecycle`, `ReconnectRestoresConnectionAfterTransportClose`, `ConnectAsyncWhileReconnectingFailsWhenClosed` | `reconnectAsync()`가 initial delay, backoff factor, max delay, max attempts를 사용해 재시도하고 실패 시 DISCONNECTED로 전환한다. transport read failure도 reconnect 경로로 진입하고, reconnect 지연 중 close가 들어오면 CLOSED 상태를 유지한다 | `timeout 180s gradle :zlink-stream-connector:test --rerun-tasks` (`reconnectRestoresConnectionAfterTransportClose`, `reconnectFailsAfterMaxAttemptsWhenEndpointUnavailable`, `closeWhileReconnectingKeepsConnectorClosed`) | 완료 |
+| callback request API | `IZlinkStreamConnectorInternal.RequestEncoded(... callback ...)` | Java public API는 `CompletionStage` 기본 표면만 제공한다. callback request helper는 Java/Kotlin async 정책상 별도 public helper로 추가하지 않고 `CompletionStage.whenComplete(...)`와 Kotlin `await()`를 표준 사용성으로 둔다 | `timeout 300s gradle check`, `timeout 300s ./samples/run_samples.sh` | 완료 |
+| codec module separation | `.Codecs`, `.Json`, `.MessagePack`, `.Protobuf` | connector core와 JSON/MessagePack/Protobuf helper 모듈이 분리되어 있고, JSON typed helper는 실제 TCP connector `send/request/on` 표면 위에서 검증됨 | `timeout 120s gradle :zlink-framework-testkit:contractTest --tests systems.zlink.framework.testkit.ConnectorCodecContractTest --rerun-tasks`, `timeout 300s gradle check` | 완료 |
+| POSD connector responsibility split | `Runtime/Transport/*`, pending request, callback dispatch, codec 책임 분리 | TCP/TLS/WebSocket transport는 `ZLinkStreamTransportConnection` 구현으로 분리하고, request timeout/correlation은 `ZLinkStreamPendingRequests`, manual dispatch queue는 `ZLinkStreamDispatchQueue`가 맡는다. connector public API는 transport 종류나 pending map을 노출하지 않음 | `timeout 180s gradle :zlink-stream-connector:test --rerun-tasks`, 완료 금지 패턴 검색 | 완료 |
+| connector sample self-check | `StreamingClient` sample의 connector send/request/on/manual dispatch/lifecycle/reconnect smoke | Java/Kotlin `StreamingClient`와 Bingo connector client가 loopback TCP endpoint를 통해 실제 STREAM frame을 주고받음 | `timeout 300s ./samples/run_samples.sh` | 완료 |
+
 ## 13. Phase 9 -- Kotlin wrapper
 
 ### 산출물
@@ -828,6 +863,132 @@ serial execution queue와 lifecycle을 우회하지 않는다.
 전체 작업을 한 번에 완료 선언하지 않고, phase마다 audit과 evidence table을 먼저
 작성한 뒤 구현, 검증, 재검토, 커밋, push까지 순서대로 닫는 것이다.
 
+### 18.1 Goal 시작 프롬프트
+
+Codex goal을 시작할 때는 아래 블록을 그대로 사용한다. `Goal objective`는 goal
+도구가 추적할 최종 상태만 담는다. 구현 순서, 감사 방식, 검증, 자체 승인, 커밋과
+push 규칙은 `Goal start prompt`에 둔다. `Goal start prompt`는 goal 생성 직후 바로
+실행할 첫 지시이며, 단순 안내문이 아니다.
+
+이미 같은 objective의 goal이 있으면 새 goal을 만들지 않고 기존 goal을 이어서
+진행한다. goal 도구가 없는 환경에서는 `Goal objective`를 장기 작업의 고정 목표로
+삼고, `Goal start prompt`를 실행 지시로 해석한다.
+
+이 프롬프트는 **사용자 개입 없이 끝까지 진행**하는 작업을 전제로 한다. 작업자는 phase
+전환, 구현 착수, 테스트 실행, 리뷰, 자체 승인, 커밋, push를 위해 사용자 확인을
+기다리지 않는다. 질문은 §1.2의 예외처럼 작업자가 해결할 수 없는 실제 충돌이나 외부
+상태가 있을 때만 허용한다. 이전 응답, 이전 커밋 메시지, 이전 문서의 완료 표현은 현재
+코드와 검증 증거로 다시 확인하기 전에는 완료 근거로 쓰지 않는다.
+
+```text
+Goal objective:
+/home/hep7/project/kairos/zlink/framework/languages/java/doc/draft/implementation-execution-plan.ko.md 를 단일 실행 기준으로 삼아, 사용자 승인 대기 없이 framework/languages/dotnet 과 동등한 아키텍처, 기능, 사용성, 폴더구조, 파일분류, 샘플 수준의 Java/Kotlin ZLink framework 포팅을 끝까지 완료한다. 각 phase는 audit, 구현, 검증, POSD 리뷰, 자체 승인, phase 단위 커밋과 push까지 증거 기반으로 닫는다.
+
+Goal start prompt:
+/home/hep7/project/kairos/zlink 에서 작업해. 이 요청은 장기 실행 goal이다. 아래 지시를 goal 시작 직후 실행해.
+
+Goal 처리:
+1. goal 도구가 있고 같은 objective의 goal이 없으면 위 Goal objective로 goal을 생성해.
+2. 이미 같은 objective의 goal이 있으면 새 goal을 만들지 말고 기존 goal을 이어서 진행해.
+3. goal 도구가 없으면 Goal objective를 현재 작업의 고정 최종 목표로 삼아.
+4. goal을 만들거나 기존 goal을 확인한 직후, 사용자에게 다시 묻지 말고 Phase 0 audit부터 시작해.
+5. goal complete는 Phase 0부터 Phase 11까지 모두 자체 승인되고, 필요한 phase 단위 커밋과 push가 끝난 뒤에만 표시해.
+6. context 압축, 중단, 재개가 발생해도 처음부터 다시 시작하지 말고, 마지막 evidence table, 테스트 결과, git 상태를 확인한 뒤 미완료 phase에서 이어서 진행해.
+7. 시간이 오래 걸리거나 토큰을 많이 썼다는 이유로 중단하지 마. 실제 blocker가 아니면 현재 phase의 다음 미완료 항목을 계속 처리해.
+
+단일 기준:
+1. 실행 기준은 framework/languages/java/doc/draft/implementation-execution-plan.ko.md 하나다.
+2. 다른 계획 문서, README, draft, 이전 대화, 이전 응답, 이전 커밋 메시지가 이 문서와 어긋나면 이 문서의 phase 순서, gate, 완료 조건을 우선해.
+3. 이 문서가 실제 .NET framework와 어긋나면 framework/languages/dotnet/src, framework/languages/dotnet/tests, framework/languages/dotnet/samples 를 최종 기준으로 삼고 Java/Kotlin 코드와 이 문서를 함께 고쳐.
+4. 완료 근거는 현재 코드, 실제 실행한 검증 명령, evidence table만 인정해. 이전에 "완료"라고 말했거나 문서에 완료처럼 적혀 있어도 다시 검증하기 전에는 완료로 보지 마.
+5. AGENTS.md의 문서 디렉토리 책임, 금지 표현, ASCII diagram 규칙, binding public API 사용 규칙, POSD 절차를 이 문서와 함께 적용해.
+
+사용자 개입 없는 진행:
+1. Phase 0부터 Phase 11까지 사용자 승인 대기 없이 계속 진행해.
+2. phase 전환, 구현 착수, 테스트 실행, 리뷰, 자체 승인, 커밋, push를 위해 사용자에게 묻지 마.
+3. 구현 선택, 리팩토링 선택, 테스트 순서, phase 전환, 자체 승인, phase 단위 커밋과 push는 작업자가 직접 판단해.
+4. 질문은 문서 §1.2의 예외처럼 작업자가 해결할 수 없는 실제 충돌, public API 의미 변경의 큰 선택지 충돌, 외부 권한/credential/원격 저장소 문제, unrelated dirty change와 필요한 변경이 같은 파일에서 위험하게 충돌하는 경우로 제한해.
+5. 질문해야 하는 예외가 생기면 phase, 파일, 충돌 내용, 선택지, 지금까지 확보한 증거를 짧게 보고해.
+6. 이전 응답이나 이전 커밋에서 완료라고 표현된 내용이 실제 코드와 맞지 않으면 그 표현을 방어하지 말고, 현재 phase의 gap으로 등록한 뒤 수정해.
+7. 진행 중 사용자가 새 지시를 주면 최신 지시가 우선이다. 최신 지시가 이 goal을 중단하라는 뜻이 아니면 goal의 현재 phase를 계속 진행해.
+
+최종 완료 조건:
+1. Java/Kotlin 포팅은 framework/languages/dotnet 과 동등한 아키텍처, 기능, 사용성, 폴더구조, 파일분류, 샘플 수준을 만족해야 한다.
+2. 이름만 비슷하거나 compile만 되는 scaffold는 완료가 아니다.
+3. public API 흐름, runtime 배선, lifecycle, 오류 의미, 테스트, sample 동작이 .NET과 다르면 완료가 아니다.
+4. Java는 .NET의 Contracts, Runtime, samples, tests 역할을 추적 가능하게 나누고, 같은 카테고리의 여러 파일은 같은 package/folder로 묶어.
+5. Java sample과 Kotlin sample은 각각 samples/java와 samples/kotlin 아래에 Bingo, TicTacToe, TicTacToe.SessionGateway, StreamingClient, Async를 같은 구조와 같은 기능 수준으로 제공해야 한다.
+6. Java sample과 Kotlin sample 중 하나만 되거나, sample이 framework/connector public API를 우회하면 완료가 아니다.
+7. framework core, Spring Boot starter, connector, connector codec 모듈, Kotlin wrapper, testkit, Java/Kotlin sample, 문서, release gate가 모두 같은 phase evidence 안에서 추적되어야 한다.
+
+phase 실행 순서:
+1. 각 phase는 audit -> implementation -> verification -> review -> self-approval 순서로 닫아.
+2. phase 시작 전에는 코드 수정부터 하지 말고 .NET 기준 파일, Java/Kotlin 대응 파일, 테스트 파일, sample 파일, 5축 동등성 판정(아키텍처, 기능, 사용성, 폴더구조, 파일분류), 완료/부분/미완료/미검증 판정을 phase evidence table로 먼저 남겨.
+3. 기존 구현이 있어도 완료로 가정하지 말고 실제 .NET 기준과 다시 대조해.
+4. 부분, 미완료, 미검증 항목만 구현하고 unrelated 변경은 하지 마.
+5. phase 중간에 새 gap이 발견되면 같은 phase의 evidence table에 추가하고, 그 항목까지 닫은 뒤에만 자체 승인해.
+6. phase evidence table은 임시 메모로 끝내지 말고 관련 draft 또는 regression matrix에 반영해 다음 재개 시 기준으로 사용할 수 있게 해.
+7. 구현보다 audit이 느리더라도 audit을 생략하지 마. audit 없는 구현은 phase 완료 증거로 인정하지 마.
+8. 의존성이 허용해 병행 가능한 작업도 phase evidence를 섞지 말고, 어떤 phase의 어떤 gate를 닫는지 분리해 기록해.
+
+self-approval 규칙:
+1. self-approval은 작업자가 직접 수행한다.
+2. phase evidence table의 모든 항목이 완료이고, phase gate test, 연결 회귀, sample self-check, 완료 금지 패턴 검색, POSD 리뷰가 모두 green일 때만 phase를 승인해.
+3. self-approval은 단순 선언이 아니라 evidence table, 실행한 명령, 실패 후 수정 내역, 남은 위험 신호 0개를 근거로 판정해.
+4. 부분, 미완료, 미검증, 실행하지 않은 test, 실패 후 재검증하지 않은 test가 하나라도 있으면 승인하지 말고 같은 phase 안에서 수정과 검증을 반복해.
+5. 자체 승인 직전에는 `.NET` 기준과 Java/Kotlin 구현을 다시 코드 리뷰하고, 완료 금지 패턴 검색과 POSD red flag 점검을 다시 실행해.
+6. 자체 승인 결과는 관련 draft나 regression matrix에 남겨 다음 작업자가 같은 판단을 재현할 수 있게 해.
+
+완료 금지 패턴:
+1. scaffold, no-op builder, fake runtime 우회, recording sample, in-memory route/store 우회, 직접 객체 호출, Catalog 우회, sample 전용 UnsupportedOperationException, blocking helper, readiness sleep은 완료로 인정하지 마.
+2. sample은 framework/connector public API만 사용해서 실제 실행되어야 한다.
+3. sample이 domain object, Spot, Catalog, route store, metadata store를 직접 호출하면 실패로 처리해.
+4. testkit fixture는 testkit 안에서만 허용하고 sample이나 production runtime에서 import되지 않게 forbidden dependency test로 막아.
+5. Java/Kotlin 코드가 compile은 되지만 실제 네트워크, runtime, dispatch, lifecycle 경로를 타지 않으면 완료가 아니다.
+
+binding과 비동기 API 규칙:
+1. Java framework는 bindings/java public API만 사용해. framework 안에서 binding internal/private member를 reflection으로 호출하지 마.
+2. 필요한 binding 기능이 없으면 bindings/java에 public API를 추가하고 테스트한 뒤 framework adapter에서 그 public API를 호출해.
+3. Java public API는 CompletionStage 기반 비동기 표면을 기본으로 하고, Java public API에 thread blocking helper를 추가하지 마.
+4. Kotlin은 Java runtime 의미를 바꾸지 않는 suspend/Flow wrapper만 제공해.
+5. bindings/java 수정이 필요한 경우에는 bindings/java public API, 테스트, 문서까지 함께 닫아. Java framework 안에서 임시 adapter, reflection, blocking wrapper로 binding gap을 숨기지 마.
+6. Kotlin coroutine 지원은 Java CompletionStage를 suspend/Flow로 감싸는 thin wrapper로 구현하고, runtime 의미나 callback 실행 순서를 Kotlin wrapper가 새로 정의하지 않게 해.
+
+검증 규칙:
+1. 전체 검증은 반드시 실제로 실행한 명령과 결과로만 판단해.
+2. gradle check, sample self-check, forbidden pattern search, git diff --check를 실행하지 않았거나 실패한 상태면 green으로 기록하지 마.
+3. test hang, killed worker, skipped test, flaky retry 미완료는 미검증 또는 실패로 남겨.
+4. 실패를 고친 뒤에는 같은 명령을 다시 실행해 성공 결과를 남겨.
+5. 넓은 검증 명령은 동시에 여러 개 실행하지 말고, 실패 원인이 섞이지 않게 순서대로 실행해.
+6. 검증 결과를 요약할 때는 실행한 명령, 성공/실패, 실패 후 재실행 여부를 함께 적어.
+7. `git diff --check -- framework/languages/java`를 phase 커밋 전에 실행해 whitespace 오류를 먼저 제거해.
+
+문서 동기화:
+1. sample, public API, runtime 의미를 바꾸면 관련 guide, draft, regression-test-matrix를 함께 갱신해.
+2. 문서에는 구현된 사실만 적고, 구현되지 않은 계약은 정식 spec에 섞지 마.
+3. 문서 본문에는 AGENTS.md에서 금지한 표현을 쓰지 마.
+4. draft 문서에 완료라고 쓰려면 대응 코드와 테스트 명령이 같은 표에 있어야 한다.
+
+커밋과 push:
+1. 커밋과 push는 문서 §1.4 조건을 만족하는 phase 단위에서만 수행해.
+2. 커밋 전에는 git status와 staged diff를 확인해서 해당 phase 변경만 포함되었는지 검증해.
+3. unrelated dirty change는 stage하지 마.
+4. §1.4 조건을 하나라도 만족하지 못하면 커밋하거나 push하지 말고, 남은 항목을 같은 phase 안에서 계속 해결해.
+5. phase 전체가 승인되지 않았는데 일부 구현만 먼저 커밋하지 마.
+6. push가 원격 권한, 네트워크, 인증 문제로 실패하면 재시도 가능한 범위는 직접 재시도하고, 권한이나 credential 입력이 필요한 상태임을 증거와 함께 보고해.
+7. 커밋 메시지는 phase 번호와 닫은 gap을 드러내고, 검증하지 않은 내용을 포함하지 마.
+8. 커밋 후 push가 성공하면 해당 phase evidence에 commit hash와 push 결과를 남겨.
+
+진행 보고:
+1. Phase 11까지 모두 닫히고 full regression, sample self-check, .NET 동등성 evidence가 green이 되기 전에는 최종 완료라고 말하지 마.
+2. 토큰이나 시간이 많이 들었다는 이유로 완료를 선언하지 마.
+3. 검증하지 못한 것은 미검증으로 남기고 같은 phase 안에서 계속 해결해.
+4. 중간 응답에서는 현재 phase, 닫힌 evidence, 실패 또는 남은 gap만 보고해.
+5. 최종 응답에는 닫힌 phase 목록, 검증 명령, sample 결과, 커밋/push 결과, 남은 위험 0개 판정을 간단히 적어.
+```
+
+### 18.2 일반 실행 요청 프롬프트
+
 ```text
 /home/hep7/project/kairos/zlink 에서 작업해.
 
@@ -853,7 +1014,7 @@ framework/languages/dotnet 의 ZLink framework와 동일한 아키텍처, 기능
 - unrelated dirty change는 건드리지 마.
 
 진행 방식:
-1. Phase 0부터 Phase 11까지 순서대로 진행해. 의존성이 허용하는 병행 작업도 먼저
+1. 사용자 승인 대기 없이 Phase 0부터 Phase 11까지 순서대로 진행해. 의존성이 허용하는 병행 작업도 먼저
    phase별 audit을 분리해서 남겨.
 2. 각 phase 시작 전에는 코드 수정하지 말고 .NET 기준 폴더/파일, Java/Kotlin 현재
    폴더/파일, 테스트 파일, 완료/부분/미완료/미검증 판정을 phase evidence table로
@@ -864,12 +1025,14 @@ framework/languages/dotnet 의 ZLink framework와 동일한 아키텍처, 기능
 5. phase 구현 후에는 gate test, 연결 회귀, 완료 금지 패턴 검색을 실행해.
 6. 검증 후 POSD red flag, no-op/fake/sample 우회, public API 누수, 문서와 코드 이름
    불일치를 다시 리뷰해. 하나라도 남으면 같은 phase 안에서 수정과 검증을 반복해.
-7. phase evidence table의 모든 항목이 완료가 되면 그 phase를 닫고, §1.4 조건에 맞춰
-   작은 주제 단위로 커밋하고 push해.
+7. phase evidence table의 모든 항목이 완료가 되면 스스로 리뷰하고 승인한 뒤 그 phase를
+   닫아. 사용자 승인을 기다리지 말고, §1.4 조건에 맞춰 작은 주제 단위로 커밋하고 push해.
 8. Phase 11까지 모두 닫히기 전에는 최종 완료라고 말하지 마. 부분/미완료/미검증이
    하나라도 있으면 원인과 다음 수정 범위를 적고 계속 수정해.
 9. 최종 완료 선언은 .NET framework와 아키텍처, 기능, 사용성, 폴더구조, 파일분류,
    샘플이 모두 동등하고 full regression과 sample self-check가 통과한 뒤에만 해.
+10. 사용자에게 다시 물어보는 것은 §1.2의 예외 상황에 한정해. 단순히 phase 전환,
+    구현 착수, 테스트 실행, 리뷰, 승인, 커밋·push를 위해 멈추지 마.
 
 검증:
 - 가능한 한 자동 테스트와 sample self-check를 실행해.

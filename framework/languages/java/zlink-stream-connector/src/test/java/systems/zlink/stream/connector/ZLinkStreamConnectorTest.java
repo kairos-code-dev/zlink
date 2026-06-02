@@ -18,9 +18,10 @@ import systems.zlink.contracts.messaging.Message;
 
 final class ZLinkStreamConnectorTest {
     @Test
-    void manualDispatchInvokesRegisteredHandlerOnlyWhenDispatched() {
-        try (ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options(ZLinkStreamDispatchMode.MANUAL))) {
+    void manualDispatchInvokesRegisteredHandlerOnlyWhenDispatched() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
             AtomicInteger handled = new AtomicInteger();
             connector.on("Ping", message -> {
                 handled.incrementAndGet();
@@ -31,12 +32,17 @@ final class ZLinkStreamConnectorTest {
             });
 
             connector.connectAsync().toCompletableFuture().join();
-            connector.send(payload("Ping", "hello"))
-                .metadata("seq", "42")
-                .submitAsync()
-                .toCompletableFuture()
-                .join();
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_SEND,
+                    ZLinkStreamWireProtocol.CODEC_RAW,
+                    ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
+                    null,
+                    "Ping",
+                    Map.of("seq", "42")),
+                TcpStreamConnectorTestServer.bytes("hello")).join();
 
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> connector.pendingDispatchCount() == 1);
             assertEquals(1, connector.pendingDispatchCount());
             assertEquals(0, handled.get());
 
@@ -48,25 +54,36 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
-    void requestReturnsPayloadCopyAndQueuesManualDispatch() {
-        try (ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options(ZLinkStreamDispatchMode.MANUAL))) {
-            connector.on("EchoOverride", message ->
-                java.util.concurrent.CompletableFuture.completedFuture(null));
+    void requestWritesFrameAndCorrelatesResponse() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
             connector.connectAsync().toCompletableFuture().join();
 
-            ZLinkStreamEncodedPayload reply = connector.request(payload("Echo", "hello"))
+            var requestFrame = server.readFrameAsync();
+            var replyFuture = connector.request(payload("Echo", "hello"))
                 .packetName("EchoOverride")
                 .timeout(Duration.ofMillis(500))
                 .submitAsync()
-                .toCompletableFuture()
-                .join();
+                .toCompletableFuture();
+
+            TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
+            assertEquals(ZLinkStreamWireProtocol.KIND_REQUEST, request.header().kind());
+            assertEquals("EchoOverride", request.header().name());
+            assertEquals("hello", new String(request.payload(), StandardCharsets.UTF_8));
+
+            server.sendAsync(TcpStreamConnectorTestServer.responseTo(
+                    request,
+                    "EchoOverride",
+                    Map.of()),
+                TcpStreamConnectorTestServer.bytes("reply")).join();
+
+            ZLinkStreamEncodedPayload reply = replyFuture.join();
             try {
                 assertEquals("EchoOverride", reply.packetName());
-                assertEquals("hello", new String(
+                assertEquals("reply", new String(
                     reply.payload().toByteArray(),
                     StandardCharsets.UTF_8));
-                assertEquals(1, connector.pendingDispatchCount());
             } finally {
                 reply.payload().close();
             }
@@ -74,9 +91,119 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
-    void requestWithoutReplyHandlerFailsWithTimeoutCause() {
-        try (ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options(ZLinkStreamDispatchMode.MANUAL))) {
+    void webSocketRequestUsesBinaryFrameAndCorrelatesResponse() throws Exception {
+        try (WebSocketStreamConnectorTestServer server = new WebSocketStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            var requestFrame = server.readFrameAsync();
+            var replyFuture = connector.request(payload("Echo", "hello"))
+                .timeout(Duration.ofMillis(500))
+                .submitAsync()
+                .toCompletableFuture();
+
+            TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
+            assertEquals(ZLinkStreamWireProtocol.KIND_REQUEST, request.header().kind());
+            assertEquals("Echo", request.header().name());
+            assertEquals("hello", new String(request.payload(), StandardCharsets.UTF_8));
+
+            server.sendAsync(TcpStreamConnectorTestServer.responseTo(
+                    request,
+                    "Echo",
+                    Map.of()),
+                TcpStreamConnectorTestServer.bytes("reply")).join();
+
+            ZLinkStreamEncodedPayload reply = replyFuture.join();
+            try {
+                assertEquals("Echo", reply.packetName());
+                assertEquals("reply", new String(
+                    reply.payload().toByteArray(),
+                    StandardCharsets.UTF_8));
+            } finally {
+                reply.payload().close();
+            }
+        }
+    }
+
+    @Test
+    void tlsRequestUsesEncryptedFrameAndSkippedCertificateValidation() throws Exception {
+        try (TlsStreamConnectorTestServer server = new TlsStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            var requestFrame = server.readFrameAsync();
+            var replyFuture = connector.request(payload("Echo", "hello"))
+                .timeout(Duration.ofMillis(500))
+                .submitAsync()
+                .toCompletableFuture();
+
+            TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
+            assertEquals(ZLinkStreamWireProtocol.KIND_REQUEST, request.header().kind());
+            assertEquals("Echo", request.header().name());
+            assertEquals("hello", new String(request.payload(), StandardCharsets.UTF_8));
+
+            server.sendAsync(TcpStreamConnectorTestServer.responseTo(
+                    request,
+                    "Echo",
+                    Map.of()),
+                TcpStreamConnectorTestServer.bytes("reply")).join();
+
+            ZLinkStreamEncodedPayload reply = replyFuture.join();
+            try {
+                assertEquals("Echo", reply.packetName());
+                assertEquals("reply", new String(
+                    reply.payload().toByteArray(),
+                    StandardCharsets.UTF_8));
+            } finally {
+                reply.payload().close();
+            }
+        }
+    }
+
+    @Test
+    void wssRequestUsesBinaryFrameAndSkippedCertificateValidation() throws Exception {
+        try (SecureWebSocketStreamConnectorTestServer server =
+                 new SecureWebSocketStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            var requestFrame = server.readFrameAsync();
+            var replyFuture = connector.request(payload("Echo", "hello"))
+                .timeout(Duration.ofMillis(500))
+                .submitAsync()
+                .toCompletableFuture();
+
+            TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
+            assertEquals(ZLinkStreamWireProtocol.KIND_REQUEST, request.header().kind());
+            assertEquals("Echo", request.header().name());
+            assertEquals("hello", new String(request.payload(), StandardCharsets.UTF_8));
+
+            server.sendAsync(TcpStreamConnectorTestServer.responseTo(
+                    request,
+                    "Echo",
+                    Map.of()),
+                TcpStreamConnectorTestServer.bytes("reply")).join();
+
+            ZLinkStreamEncodedPayload reply = replyFuture.join();
+            try {
+                assertEquals("Echo", reply.packetName());
+                assertEquals("reply", new String(
+                    reply.payload().toByteArray(),
+                    StandardCharsets.UTF_8));
+            } finally {
+                reply.payload().close();
+            }
+        }
+    }
+
+    @Test
+    void requestWithoutReplyFailsWithTimeoutCause() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
             connector.connectAsync().toCompletableFuture().join();
 
             CompletionException ex = assertThrows(CompletionException.class, () ->
@@ -92,9 +219,10 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
-    void connectAndCloseUpdateState() {
-        try (ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options(ZLinkStreamDispatchMode.AUTO))) {
+    void connectAndCloseUpdateState() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.AUTO))) {
             assertFalse(connector.isConnected());
             assertEquals(ZLinkStreamDispatchMode.AUTO, connector.options().dispatchMode());
             connector.connectAsync().toCompletableFuture().join();
@@ -105,9 +233,10 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
-    void reconnectRestoresConnectionAfterTransportDisconnect() {
-        try (ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options(ZLinkStreamDispatchMode.AUTO))) {
+    void reconnectRestoresConnectionAfterTransportDisconnect() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.AUTO))) {
             List<ZLinkStreamConnectionState> states = new ArrayList<>();
             connector.onConnectionStateChanged(state -> {
                 states.add(state);
@@ -131,8 +260,9 @@ final class ZLinkStreamConnectorTest {
 
     @Test
     void lifecycleHandlersObserveStateChangesAndDisconnect() throws Exception {
-        try (ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options(ZLinkStreamDispatchMode.AUTO))) {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.AUTO))) {
             List<ZLinkStreamConnectionState> states = new ArrayList<>();
             AtomicInteger disconnected = new AtomicInteger();
 
@@ -212,13 +342,29 @@ final class ZLinkStreamConnectorTest {
                 1)));
     }
 
-    private static ZLinkStreamConnectorOptions options(
-        ZLinkStreamDispatchMode dispatchMode) {
-        return new ZLinkStreamConnectorOptions(
-            URI.create("tcp://127.0.0.1:7000"),
-            dispatchMode,
+    @Test
+    void skipServerCertificateValidationDefaultsToFalseAndCanBeEnabled() {
+        assertFalse(new ZLinkStreamConnectorOptions(
+            URI.create("wss://127.0.0.1:7000"),
+            ZLinkStreamDispatchMode.MANUAL,
             Duration.ofSeconds(1),
-            1);
+            1).skipServerCertificateValidation());
+
+        assertTrue(new ZLinkStreamConnectorOptions(
+            URI.create("wss://127.0.0.1:7000"),
+            ZLinkStreamDispatchMode.MANUAL,
+            Duration.ofSeconds(1),
+            1,
+            Duration.ofSeconds(1),
+            64 * 1024,
+            false,
+            Duration.ofMillis(25),
+            Duration.ofMillis(500),
+            true,
+            Duration.ofMillis(10),
+            Duration.ofMillis(250),
+            2.0,
+            true).skipServerCertificateValidation());
     }
 
     private static ZLinkStreamEncodedPayload payload(String packetName, String body) {
@@ -226,5 +372,14 @@ final class ZLinkStreamConnectorTest {
             packetName,
             Message.from(body),
             Map.of());
+    }
+
+    private static ZLinkStreamConnectorOptions options(
+        ZLinkStreamDispatchMode dispatchMode) {
+        return new ZLinkStreamConnectorOptions(
+            URI.create("tcp://127.0.0.1:1"),
+            dispatchMode,
+            Duration.ofSeconds(1),
+            1);
     }
 }

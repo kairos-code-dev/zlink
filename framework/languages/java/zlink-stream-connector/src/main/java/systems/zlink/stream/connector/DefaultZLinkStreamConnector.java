@@ -1,30 +1,55 @@
 package systems.zlink.stream.connector;
 
-import java.time.Duration;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.http.HttpClient;
+import java.net.StandardSocketOptions;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
+import java.nio.channels.AsynchronousSocketChannel;
+import java.nio.channels.CompletionHandler;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import systems.zlink.contracts.messaging.Message;
 
 final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private static final String RESERVED_PACKET_NAME_PREFIX = "__zlink.";
+    private static final String HEARTBEAT_PING_NAME = "$zlink.heartbeat.ping";
+    private static final String HEARTBEAT_PONG_NAME = "$zlink.heartbeat.pong";
     private static final int MAX_PACKET_NAME_BYTES = 255;
+    private static final ScheduledExecutorService TIMEOUTS =
+        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory());
 
     private final ZLinkStreamConnectorOptions options;
     private final Map<String, List<ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>>> handlers =
-        new HashMap<>();
+        new ConcurrentHashMap<>();
     private final List<ZLinkStreamDisconnectedHandler> disconnectedHandlers = new ArrayList<>();
     private final List<ZLinkStreamConnectionStateHandler> stateHandlers = new ArrayList<>();
-    private final Queue<Runnable> dispatchQueue = new ArrayDeque<>();
-    private ZLinkStreamConnectionState state = ZLinkStreamConnectionState.DISCONNECTED;
+    private final ZLinkStreamDispatchQueue dispatchQueue = new ZLinkStreamDispatchQueue();
+    private final AtomicLong nextRequestSeq = new AtomicLong();
+    private final ZLinkStreamPendingRequests pendingRequests = new ZLinkStreamPendingRequests();
+
+    private volatile ZLinkStreamConnectionState state = ZLinkStreamConnectionState.DISCONNECTED;
+    private volatile ZLinkStreamTransportConnection connection;
+    private volatile ScheduledFuture<?> heartbeatTask;
+    private volatile long lastInboundNanos = System.nanoTime();
+    private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
 
     DefaultZLinkStreamConnector(ZLinkStreamConnectorOptions options) {
         this.options = validate(options);
@@ -32,7 +57,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     @Override
     public boolean isConnected() {
-        return state == ZLinkStreamConnectionState.CONNECTED;
+        return state == ZLinkStreamConnectionState.CONNECTED
+            && connection != null
+            && connection.isOpen();
     }
 
     @Override
@@ -55,8 +82,76 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (state == ZLinkStreamConnectionState.CLOSED) {
             throw new IllegalStateException("connector is closed");
         }
+        if (isConnected()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return connectOnceAsync();
+    }
+
+    private CompletionStage<Void> connectOnceAsync() {
+        if (isWebSocketEndpoint()) {
+            return connectWebSocketAsync();
+        }
+        if (isTlsEndpoint()) {
+            return ZLinkTlsTransportConnection.connectAsync(
+                options.endpoint(),
+                options.connectTimeout(),
+                options.skipServerCertificateValidation()).thenAccept(this::activateConnection);
+        }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        AsynchronousSocketChannel channel;
+        try {
+            channel = AsynchronousSocketChannel.open();
+            channel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
+        } catch (IOException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+
+        var timeout = TIMEOUTS.schedule(
+            () -> result.completeExceptionally(
+                new TimeoutException("connect timed out after " + options.connectTimeout())),
+            options.connectTimeout().toMillis(),
+            TimeUnit.MILLISECONDS);
+
+        InetSocketAddress address = new InetSocketAddress(
+            options.endpoint().getHost(),
+            resolvePort(options.endpoint()));
+        channel.connect(address, null, new CompletionHandler<Void, Void>() {
+            @Override
+            public void completed(Void ignored, Void attachment) {
+                timeout.cancel(false);
+                if (state == ZLinkStreamConnectionState.CLOSED) {
+                    closeRawQuietly(channel);
+                    result.completeExceptionally(new IllegalStateException("connector is closed"));
+                    return;
+                }
+                ZLinkTcpTransportConnection tcp = new ZLinkTcpTransportConnection(channel);
+                activateConnection(tcp);
+                result.complete(null);
+            }
+
+            @Override
+            public void failed(Throwable exc, Void attachment) {
+                timeout.cancel(false);
+                closeRawQuietly(channel);
+                result.completeExceptionally(exc);
+            }
+        });
+        result.whenComplete((ignored, ex) -> {
+            if (ex != null) {
+                closeRawQuietly(channel);
+            }
+        });
+        return result;
+    }
+
+    private void activateConnection(ZLinkStreamTransportConnection transport) {
+        connection = transport;
+        lastInboundNanos = System.nanoTime();
         transitionTo(ZLinkStreamConnectionState.CONNECTED);
-        return CompletableFuture.completedFuture(null);
+        startReceiveLoop(transport);
+        startHeartbeat();
     }
 
     @Override
@@ -65,8 +160,13 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             throw new IllegalStateException("connector is closed");
         }
         boolean wasConnected = isConnected();
-        transitionTo(ZLinkStreamConnectionState.DISCONNECTED);
+        ZLinkStreamTransportConnection current = connection;
+        connection = null;
+        stopHeartbeat();
+        closeQuietly(current);
+        failPending(new IOException("connector disconnected"));
         dispatchQueue.clear();
+        transitionTo(ZLinkStreamConnectionState.DISCONNECTED);
         if (wasConnected) {
             notifyDisconnected();
         }
@@ -81,20 +181,24 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (isConnected()) {
             return CompletableFuture.completedFuture(null);
         }
-        if (options.maxReconnectAttempts() == 0) {
+        if (!options.reconnectEnabled() || options.maxReconnectAttempts() == 0) {
             return CompletableFuture.failedFuture(
                 new IllegalStateException("reconnect attempts are disabled"));
         }
         transitionTo(ZLinkStreamConnectionState.RECONNECTING);
-        transitionTo(ZLinkStreamConnectionState.CONNECTED);
-        return CompletableFuture.completedFuture(null);
+        return reconnectAttemptAsync(1, options.reconnectInitialDelay());
     }
 
     @Override
     public CompletionStage<Void> closeAsync() {
         boolean wasConnected = isConnected();
-        transitionTo(ZLinkStreamConnectionState.CLOSED);
+        ZLinkStreamTransportConnection current = connection;
+        connection = null;
+        stopHeartbeat();
+        closeQuietly(current);
+        failPending(new IOException("connector closed"));
         dispatchQueue.clear();
+        transitionTo(ZLinkStreamConnectionState.CLOSED);
         if (wasConnected) {
             notifyDisconnected();
         }
@@ -103,9 +207,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     @Override
     public CompletionStage<Void> dispatchAsync() {
-        while (!dispatchQueue.isEmpty()) {
-            dispatchQueue.remove().run();
-        }
+        dispatchQueue.drain();
         return CompletableFuture.completedFuture(null);
     }
 
@@ -145,31 +247,152 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     @Override
     public void close() {
-        closeAsync().toCompletableFuture().join();
+        closeAsync();
     }
 
-    private void transitionTo(ZLinkStreamConnectionState next) {
-        if (state == next) {
+    private CompletionStage<Void> submit(ZLinkStreamEncodedPayload payload) {
+        ensureConnected();
+        byte[] body = drainPayload(payload);
+        ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
+            ZLinkStreamWireProtocol.KIND_SEND,
+            ZLinkStreamWireProtocol.CODEC_RAW,
+            payload.metadata().isEmpty() ? 0 : ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
+            null,
+            payload.packetName(),
+            payload.metadata());
+        return sendFrame(header, body);
+    }
+
+    private CompletionStage<ZLinkStreamEncodedPayload> submitRequest(
+        ZLinkStreamEncodedPayload payload,
+        Duration timeout) {
+        ensureConnected();
+        long requestSeq = nextRequestSeq();
+        CompletableFuture<ZLinkStreamEncodedPayload> pending =
+            pendingRequests.add(requestSeq, timeout, TIMEOUTS);
+
+        byte[] body = drainPayload(payload);
+        ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
+            ZLinkStreamWireProtocol.KIND_REQUEST,
+            ZLinkStreamWireProtocol.CODEC_RAW,
+            ZLinkStreamWireProtocol.FLAG_HAS_REQUEST_SEQ
+                | (payload.metadata().isEmpty() ? 0 : ZLinkStreamWireProtocol.FLAG_HAS_METADATA),
+            requestSeq,
+            payload.packetName(),
+            payload.metadata());
+
+        sendFrame(header, body).whenComplete((ignored, ex) -> {
+            if (ex != null) {
+                pendingRequests.fail(requestSeq, ex);
+            }
+        });
+        return pending;
+    }
+
+    private CompletionStage<Void> sendFrame(
+        ZLinkStreamWireProtocol.Header header,
+        byte[] payload) {
+        byte[] encodedHeader = ZLinkStreamWireProtocol.encodeHeader(header);
+        byte[] frame = ZLinkStreamWireProtocol.encodeFrame(
+            encodedHeader,
+            payload,
+            options.maxSendPayloadSize());
+        synchronized (this) {
+            sendChain = sendChain.thenCompose(ignored -> writeFrame(frame));
+            return sendChain;
+        }
+    }
+
+    private CompletionStage<Void> writeFrame(byte[] frame) {
+        ZLinkStreamTransportConnection current = connection;
+        if (current == null) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("connector is not connected"));
+        }
+        return current.writeAsync(frame);
+    }
+
+    private void startReceiveLoop(ZLinkStreamTransportConnection transport) {
+        readNextFrame(transport);
+    }
+
+    private void readNextFrame(ZLinkStreamTransportConnection transport) {
+        transport.readFrameAsync().whenComplete((frame, ex) -> {
+            if (ex != null) {
+                handleReceiveFailure(transport, ex);
+                return;
+            }
+            try {
+                dispatchInbound(frame.header(), frame.payload());
+                if (connection == transport && state == ZLinkStreamConnectionState.CONNECTED) {
+                    readNextFrame(transport);
+                }
+            } catch (RuntimeException dispatchEx) {
+                handleReceiveFailure(transport, dispatchEx);
+            }
+        });
+    }
+
+    private void dispatchInbound(byte[] encodedHeader, byte[] payload) {
+        ZLinkStreamWireProtocol.Header header =
+            ZLinkStreamWireProtocol.decodeHeader(encodedHeader);
+        lastInboundNanos = System.nanoTime();
+        if (header.kind() == ZLinkStreamWireProtocol.KIND_CONTROL) {
+            dispatchControl(header, payload);
             return;
         }
-        state = next;
-        for (ZLinkStreamConnectionStateHandler handler : List.copyOf(stateHandlers)) {
-            handler.handleAsync(next).toCompletableFuture().join();
+        if (header.kind() == ZLinkStreamWireProtocol.KIND_RESPONSE) {
+            pendingRequests.complete(
+                header.requestSeq(),
+                new ZLinkStreamEncodedPayload(
+                    header.name(),
+                    Message.from(payload),
+                    header.metadata()));
+            return;
+        }
+        if (header.kind() == ZLinkStreamWireProtocol.KIND_ERROR
+            && header.requestSeq() != null) {
+            pendingRequests.fail(
+                header.requestSeq(),
+                new IllegalStateException(new String(payload, StandardCharsets.UTF_8)));
+            return;
+        }
+        if (header.kind() == ZLinkStreamWireProtocol.KIND_SEND
+            || header.kind() == ZLinkStreamWireProtocol.KIND_REQUEST) {
+            dispatchToHandlers(header, payload);
         }
     }
 
-    private void submit(ZLinkStreamEncodedPayload payload) {
-        ensureConnected();
+    private void dispatchControl(ZLinkStreamWireProtocol.Header header, byte[] payload) {
+        if (payload.length != 0) {
+            throw new IllegalArgumentException("control packet payload must be empty");
+        }
+        if (HEARTBEAT_PING_NAME.equals(header.name())) {
+            sendControl(HEARTBEAT_PONG_NAME);
+            return;
+        }
+        if (HEARTBEAT_PONG_NAME.equals(header.name())) {
+            return;
+        }
+        throw new IllegalArgumentException("unknown control packet");
+    }
+
+    private void dispatchToHandlers(ZLinkStreamWireProtocol.Header header, byte[] payload) {
         List<ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>> registered =
-            List.copyOf(handlers.getOrDefault(payload.packetName(), List.of()));
+            List.copyOf(handlers.getOrDefault(header.name(), List.of()));
+        if (registered.isEmpty()) {
+            return;
+        }
         Runnable dispatch = () -> {
             for (ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler : registered) {
                 handler.handleAsync(new ZLinkStreamMessage<>(
-                    payload.packetName(),
-                    copyPayload(payload),
-                    payload.metadata())).toCompletableFuture().join();
+                    header.name(),
+                    new ZLinkStreamEncodedPayload(
+                        header.name(),
+                        Message.from(payload),
+                        header.metadata()),
+                    header.metadata())).exceptionally(ex -> null);
             }
-            payload.payload().close();
         };
         if (options.dispatchMode() == ZLinkStreamDispatchMode.AUTO) {
             dispatch.run();
@@ -178,18 +401,160 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
     }
 
-    private CompletionStage<ZLinkStreamEncodedPayload> submitRequest(
-        ZLinkStreamEncodedPayload payload,
-        Duration timeout) {
-        ensureConnected();
-        if (!handlers.containsKey(payload.packetName())
-            || handlers.get(payload.packetName()).isEmpty()) {
-            payload.payload().close();
-            return CompletableFuture.failedFuture(
-                new TimeoutException("request timed out after " + timeout));
+    private void handleReceiveFailure(ZLinkStreamTransportConnection failed, Throwable ex) {
+        if (connection != failed || state != ZLinkStreamConnectionState.CONNECTED) {
+            return;
         }
-        submit(copyPayload(payload));
-        return CompletableFuture.completedFuture(copyPayload(payload));
+        connection = null;
+        stopHeartbeat();
+        closeQuietly(failed);
+        failPending(ex);
+        transitionTo(options.reconnectEnabled() && options.maxReconnectAttempts() > 0
+            ? ZLinkStreamConnectionState.RECONNECTING
+            : ZLinkStreamConnectionState.DISCONNECTED);
+        notifyDisconnected();
+        if (state == ZLinkStreamConnectionState.RECONNECTING) {
+            reconnectAttemptAsync(1, options.reconnectInitialDelay());
+        }
+    }
+
+    private CompletionStage<Void> connectWebSocketAsync() {
+        HttpClient.Builder clientBuilder = HttpClient.newBuilder()
+            .connectTimeout(options.connectTimeout());
+        if (options.skipServerCertificateValidation()) {
+            clientBuilder.sslContext(insecureSslContext());
+        }
+        return ZLinkWebSocketTransportConnection.connectAsync(
+            clientBuilder.build(),
+            options.endpoint()).thenAccept(ws -> {
+                if (state == ZLinkStreamConnectionState.CLOSED) {
+                    closeQuietly(ws);
+                    throw new IllegalStateException("connector is closed");
+                }
+                activateConnection(ws);
+            });
+    }
+
+    private static SSLContext insecureSslContext() {
+        try {
+            TrustManager[] trustAllManagers = new TrustManager[] {
+                new X509TrustManager() {
+                    @Override
+                    public void checkClientTrusted(
+                        java.security.cert.X509Certificate[] chain,
+                        String authType) {
+                    }
+
+                    @Override
+                    public void checkServerTrusted(
+                        java.security.cert.X509Certificate[] chain,
+                        String authType) {
+                    }
+
+                    @Override
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                        return new java.security.cert.X509Certificate[0];
+                    }
+                }
+            };
+            SSLContext context = SSLContext.getInstance("TLS");
+            context.init(null, trustAllManagers, new java.security.SecureRandom());
+            return context;
+        } catch (java.security.GeneralSecurityException ex) {
+            throw new IllegalStateException("failed to create insecure TLS context", ex);
+        }
+    }
+
+    private CompletableFuture<Void> reconnectAttemptAsync(int attempt, Duration delay) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        TIMEOUTS.schedule(() -> {
+            if (state == ZLinkStreamConnectionState.CLOSED) {
+                result.completeExceptionally(new IllegalStateException("connector is closed"));
+                return;
+            }
+            connectOnceAsync().whenComplete((ignored, ex) -> {
+                if (ex == null) {
+                    result.complete(null);
+                    return;
+                }
+                if (attempt >= options.maxReconnectAttempts()) {
+                    transitionTo(ZLinkStreamConnectionState.DISCONNECTED);
+                    result.completeExceptionally(ex);
+                    return;
+                }
+                reconnectAttemptAsync(attempt + 1, nextReconnectDelay(delay))
+                    .whenComplete((retryIgnored, retryEx) -> {
+                        if (retryEx == null) {
+                            result.complete(null);
+                        } else {
+                            result.completeExceptionally(retryEx);
+                        }
+                    });
+            });
+        }, delay.toMillis(), TimeUnit.MILLISECONDS);
+        return result;
+    }
+
+    private Duration nextReconnectDelay(Duration current) {
+        long nextMillis = Math.round(current.toMillis() * options.reconnectBackoffFactor());
+        if (nextMillis <= 0) {
+            nextMillis = options.reconnectInitialDelay().toMillis();
+        }
+        return Duration.ofMillis(Math.min(nextMillis, options.reconnectMaxDelay().toMillis()));
+    }
+
+    private void startHeartbeat() {
+        stopHeartbeat();
+        if (!options.heartbeatEnabled()) {
+            return;
+        }
+        heartbeatTask = TIMEOUTS.scheduleAtFixedRate(
+            this::heartbeatTick,
+            options.heartbeatInterval().toMillis(),
+            options.heartbeatInterval().toMillis(),
+            TimeUnit.MILLISECONDS);
+    }
+
+    private void stopHeartbeat() {
+        ScheduledFuture<?> current = heartbeatTask;
+        heartbeatTask = null;
+        if (current != null) {
+            current.cancel(false);
+        }
+    }
+
+    private void heartbeatTick() {
+        ZLinkStreamTransportConnection current = connection;
+        if (current == null || state != ZLinkStreamConnectionState.CONNECTED) {
+            return;
+        }
+        long idleNanos = System.nanoTime() - lastInboundNanos;
+        if (idleNanos > options.heartbeatTimeout().toNanos()) {
+            handleReceiveFailure(current, new TimeoutException("Heartbeat timed out"));
+            return;
+        }
+        sendControl(HEARTBEAT_PING_NAME);
+    }
+
+    private CompletionStage<Void> sendControl(String name) {
+        ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
+            ZLinkStreamWireProtocol.KIND_CONTROL,
+            ZLinkStreamWireProtocol.CODEC_RAW,
+            0,
+            null,
+            name,
+            Map.of());
+        return sendFrame(header, new byte[0]);
+    }
+
+    private void transitionTo(ZLinkStreamConnectionState next) {
+        if (state == next) {
+            return;
+        }
+        state = next;
+        for (ZLinkStreamConnectionStateHandler handler : List.copyOf(stateHandlers)) {
+            handler.handleAsync(next).exceptionally(ex -> null);
+        }
     }
 
     private void ensureConnected() {
@@ -198,28 +563,43 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
     }
 
+    private void notifyDisconnected() {
+        for (ZLinkStreamDisconnectedHandler handler : List.copyOf(disconnectedHandlers)) {
+            handler.handleAsync().exceptionally(ex -> null);
+        }
+    }
+
+    private void failPending(Throwable ex) {
+        pendingRequests.failAll(ex);
+    }
+
     private static ZLinkStreamConnectorOptions validate(
         ZLinkStreamConnectorOptions options) {
         Objects.requireNonNull(options, "options");
         Objects.requireNonNull(options.endpoint(), "endpoint");
         requireSupportedEndpointScheme(options.endpoint().getScheme());
         Objects.requireNonNull(options.dispatchMode(), "dispatchMode");
-        Duration timeout = Objects.requireNonNull(
-            options.requestTimeout(),
-            "requestTimeout");
-        if (timeout.isZero() || timeout.isNegative()) {
-            throw new IllegalArgumentException("requestTimeout must be positive");
+        requirePositive(options.connectTimeout(), "connectTimeout");
+        requirePositive(options.requestTimeout(), "requestTimeout");
+        requirePositive(options.heartbeatInterval(), "heartbeatInterval");
+        requirePositive(options.heartbeatTimeout(), "heartbeatTimeout");
+        if (options.heartbeatEnabled()
+            && !options.heartbeatTimeout().minus(options.heartbeatInterval()).isPositive()) {
+            throw new IllegalArgumentException(
+                "heartbeatTimeout must be greater than heartbeatInterval");
+        }
+        requirePositive(options.reconnectInitialDelay(), "reconnectInitialDelay");
+        requirePositive(options.reconnectMaxDelay(), "reconnectMaxDelay");
+        if (options.reconnectBackoffFactor() < 1.0) {
+            throw new IllegalArgumentException("reconnectBackoffFactor must be at least 1.0");
         }
         if (options.maxReconnectAttempts() < 0) {
             throw new IllegalArgumentException("maxReconnectAttempts must be >= 0");
         }
-        return options;
-    }
-
-    private void notifyDisconnected() {
-        for (ZLinkStreamDisconnectedHandler handler : List.copyOf(disconnectedHandlers)) {
-            handler.handleAsync().toCompletableFuture().join();
+        if (options.maxSendPayloadSize() <= 0) {
+            throw new IllegalArgumentException("maxSendPayloadSize must be positive");
         }
+        return options;
     }
 
     private static void requireSupportedEndpointScheme(String scheme) {
@@ -228,6 +608,37 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
         if (!List.of("tcp", "tls", "ws", "wss").contains(scheme)) {
             throw new IllegalArgumentException("unsupported endpoint URI scheme: " + scheme);
+        }
+    }
+
+    private static void requirePositive(Duration value, String name) {
+        Objects.requireNonNull(value, name);
+        if (value.isZero() || value.isNegative()) {
+            throw new IllegalArgumentException(name + " must be positive");
+        }
+    }
+
+    static int resolvePort(java.net.URI endpoint) {
+        if (endpoint.getPort() > 0) {
+            return endpoint.getPort();
+        }
+        throw new IllegalArgumentException("endpoint port is required");
+    }
+
+    private boolean isWebSocketEndpoint() {
+        String scheme = options.endpoint().getScheme();
+        return "ws".equals(scheme) || "wss".equals(scheme);
+    }
+
+    private boolean isTlsEndpoint() {
+        return "tls".equals(options.endpoint().getScheme());
+    }
+
+    private static byte[] drainPayload(ZLinkStreamEncodedPayload payload) {
+        try {
+            return payload.payload().toByteArray();
+        } finally {
+            payload.payload().close();
         }
     }
 
@@ -253,6 +664,35 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         return packetName;
     }
 
+    private static long nextRequestSeq(AtomicLong source) {
+        while (true) {
+            long value = source.incrementAndGet();
+            if (value != 0) {
+                return value;
+            }
+        }
+    }
+
+    private long nextRequestSeq() {
+        return nextRequestSeq(nextRequestSeq);
+    }
+
+    private static void closeQuietly(ZLinkStreamTransportConnection connection) {
+        if (connection != null) {
+            connection.close();
+        }
+    }
+
+    private static void closeRawQuietly(AsynchronousSocketChannel channel) {
+        if (channel == null) {
+            return;
+        }
+        try {
+            channel.close();
+        } catch (IOException ignored) {
+        }
+    }
+
     private record SendCall(
         DefaultZLinkStreamConnector connector,
         ZLinkStreamEncodedPayload payload) implements ZLinkStreamSendCall {
@@ -271,13 +711,12 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             return new SendCall(connector, new ZLinkStreamEncodedPayload(
                 payload.packetName(),
                 payload.payload(),
-                metadata));
+                Map.copyOf(metadata)));
         }
 
         @Override
         public CompletionStage<Void> submitAsync() {
-            connector.submit(payload);
-            return CompletableFuture.completedFuture(null);
+            return connector.submit(payload);
         }
     }
 
@@ -300,20 +739,27 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             return new RequestCall(connector, new ZLinkStreamEncodedPayload(
                 payload.packetName(),
                 payload.payload(),
-                metadata), timeout);
+                Map.copyOf(metadata)), timeout);
         }
 
         @Override
         public ZLinkStreamRequestCall timeout(Duration timeout) {
-            if (timeout == null || timeout.isZero() || timeout.isNegative()) {
-                throw new IllegalArgumentException("timeout must be positive");
-            }
+            requirePositive(timeout, "timeout");
             return new RequestCall(connector, payload, timeout);
         }
 
         @Override
         public CompletionStage<ZLinkStreamEncodedPayload> submitAsync() {
             return connector.submitRequest(payload, timeout);
+        }
+    }
+
+    private static final class DaemonThreadFactory implements ThreadFactory {
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "zlink-stream-connector-timeouts");
+            thread.setDaemon(true);
+            return thread;
         }
     }
 }

@@ -5,20 +5,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
 
 final class LifecycleTest {
     @Test
-    void heartbeatTimeoutFailsPendingRequestsWithTimeoutCause() {
-        try (ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options(ZLinkStreamDispatchMode.MANUAL))) {
+    void requestTimeoutFailsPendingRequestsWithTimeoutCause() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
             connector.connectAsync().toCompletableFuture().join();
 
             CompletionException ex = assertThrows(CompletionException.class, () ->
@@ -34,9 +35,10 @@ final class LifecycleTest {
     }
 
     @Test
-    void reconnectRestoresConnectionAfterTransportClose() {
-        try (ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options(ZLinkStreamDispatchMode.AUTO))) {
+    void reconnectRestoresConnectionAfterTransportClose() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.AUTO))) {
             List<ZLinkStreamConnectionState> states = new ArrayList<>();
             connector.onConnectionStateChanged(state -> {
                 states.add(state);
@@ -58,19 +60,149 @@ final class LifecycleTest {
         }
     }
 
-    private static ZLinkStreamConnectorOptions options(
-        ZLinkStreamDispatchMode dispatchMode) {
-        return new ZLinkStreamConnectorOptions(
-            URI.create("tcp://127.0.0.1:7000"),
-            dispatchMode,
-            Duration.ofSeconds(1),
-            1);
+    @Test
+    void heartbeatSendsReservedControlPing() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(server.options(
+                 ZLinkStreamDispatchMode.AUTO,
+                 Duration.ofSeconds(1),
+                 1,
+                 true,
+                 Duration.ofMillis(25),
+                 Duration.ofMillis(500),
+                 Duration.ofMillis(10)))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            TcpStreamConnectorTestServer.ReceivedFrame frame =
+                server.readFrameAsync().get(1, TimeUnit.SECONDS);
+
+            assertEquals(ZLinkStreamWireProtocol.KIND_CONTROL, frame.header().kind());
+            assertEquals("$zlink.heartbeat.ping", frame.header().name());
+            assertEquals(0, frame.payload().length);
+        }
+    }
+
+    @Test
+    void inboundHeartbeatPingReceivesPongWhenHeartbeatDisabled() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(server.options(
+                 ZLinkStreamDispatchMode.AUTO,
+                 Duration.ofSeconds(1),
+                 1,
+                 false,
+                 Duration.ofMillis(25),
+                 Duration.ofMillis(500),
+                 Duration.ofMillis(10)))) {
+            connector.connectAsync().toCompletableFuture().join();
+            server.sendAsync(control("$zlink.heartbeat.ping"), new byte[0]).join();
+
+            TcpStreamConnectorTestServer.ReceivedFrame frame =
+                server.readFrameAsync().get(1, TimeUnit.SECONDS);
+
+            assertEquals(ZLinkStreamWireProtocol.KIND_CONTROL, frame.header().kind());
+            assertEquals("$zlink.heartbeat.pong", frame.header().name());
+            assertEquals(0, frame.payload().length);
+        }
+    }
+
+    @Test
+    void heartbeatTimeoutFailsPendingRequestsWithTimeoutCause() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(server.options(
+                 ZLinkStreamDispatchMode.AUTO,
+                 Duration.ofSeconds(5),
+                 1,
+                 true,
+                 Duration.ofMillis(20),
+                 Duration.ofMillis(60),
+                 Duration.ofMillis(10)))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            CompletionException ex = assertThrows(CompletionException.class, () ->
+                connector.request(payload("MissingReply", "hello"))
+                    .submitAsync()
+                    .toCompletableFuture()
+                    .join());
+
+            assertTrue(ex.getCause() instanceof java.util.concurrent.TimeoutException);
+            assertTrue(ex.getCause().getMessage().contains("Heartbeat"));
+        }
+    }
+
+    @Test
+    void reconnectFailsAfterMaxAttemptsWhenEndpointUnavailable() {
+        ZLinkStreamConnectorOptions options = new ZLinkStreamConnectorOptions(
+            java.net.URI.create("tcp://127.0.0.1:1"),
+            ZLinkStreamDispatchMode.AUTO,
+            Duration.ofMillis(100),
+            2,
+            Duration.ofMillis(100),
+            64 * 1024,
+            false,
+            Duration.ofMillis(25),
+            Duration.ofMillis(100),
+            true,
+            Duration.ofMillis(10),
+            Duration.ofMillis(20),
+            2.0);
+        try (ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(options)) {
+            List<ZLinkStreamConnectionState> states = new ArrayList<>();
+            connector.onConnectionStateChanged(state -> {
+                states.add(state);
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            });
+
+            assertThrows(CompletionException.class, () ->
+                connector.reconnectAsync().toCompletableFuture().join());
+
+            assertEquals(List.of(
+                ZLinkStreamConnectionState.RECONNECTING,
+                ZLinkStreamConnectionState.DISCONNECTED), states);
+        }
+    }
+
+    @Test
+    void closeWhileReconnectingKeepsConnectorClosed() {
+        ZLinkStreamConnectorOptions options = new ZLinkStreamConnectorOptions(
+            java.net.URI.create("tcp://127.0.0.1:1"),
+            ZLinkStreamDispatchMode.AUTO,
+            Duration.ofMillis(100),
+            2,
+            Duration.ofMillis(100),
+            64 * 1024,
+            false,
+            Duration.ofMillis(25),
+            Duration.ofMillis(100),
+            true,
+            Duration.ofMillis(100),
+            Duration.ofMillis(100),
+            2.0);
+        try (ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(options)) {
+            var reconnect = connector.reconnectAsync().toCompletableFuture();
+
+            connector.closeAsync().toCompletableFuture().join();
+
+            CompletionException ex = assertThrows(CompletionException.class, reconnect::join);
+            assertTrue(ex.getCause() instanceof IllegalStateException);
+            assertEquals(ZLinkStreamConnectionState.CLOSED, connector.state());
+            assertFalse(connector.isConnected());
+        }
     }
 
     private static ZLinkStreamEncodedPayload payload(String packetName, String body) {
         return new ZLinkStreamEncodedPayload(
             packetName,
             Message.from(body),
+            Map.of());
+    }
+
+    private static ZLinkStreamWireProtocol.Header control(String name) {
+        return new ZLinkStreamWireProtocol.Header(
+            ZLinkStreamWireProtocol.KIND_CONTROL,
+            ZLinkStreamWireProtocol.CODEC_RAW,
+            0,
+            null,
+            name,
             Map.of());
     }
 }

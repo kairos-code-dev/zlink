@@ -2,9 +2,7 @@ package systems.zlink.stream.connector;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -13,9 +11,10 @@ import systems.zlink.contracts.messaging.Message;
 
 final class ConnectorDispatchTest {
     @Test
-    void dispatch_invokesCallback() {
-        try (ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options(ZLinkStreamDispatchMode.MANUAL))) {
+    void dispatch_invokesCallback() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
             AtomicInteger handled = new AtomicInteger();
             connector.on("Ping", message -> {
                 handled.incrementAndGet();
@@ -29,12 +28,17 @@ final class ConnectorDispatchTest {
             });
 
             connector.connectAsync().toCompletableFuture().join();
-            connector.send(payload("Ping", "hello"))
-                .metadata("seq", "42")
-                .submitAsync()
-                .toCompletableFuture()
-                .join();
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_SEND,
+                    ZLinkStreamWireProtocol.CODEC_RAW,
+                    ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
+                    null,
+                    "Ping",
+                    Map.of("seq", "42")),
+                TcpStreamConnectorTestServer.bytes("hello")).join();
 
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> connector.pendingDispatchCount() == 1);
             assertEquals(1, connector.pendingDispatchCount());
             assertEquals(0, handled.get());
 
@@ -43,15 +47,6 @@ final class ConnectorDispatchTest {
             assertEquals(0, connector.pendingDispatchCount());
             assertEquals(1, handled.get());
         }
-    }
-
-    private static ZLinkStreamConnectorOptions options(
-        ZLinkStreamDispatchMode dispatchMode) {
-        return new ZLinkStreamConnectorOptions(
-            URI.create("tcp://127.0.0.1:7000"),
-            dispatchMode,
-            Duration.ofSeconds(1),
-            1);
     }
 
     private static ZLinkStreamEncodedPayload payload(String packetName, String body) {

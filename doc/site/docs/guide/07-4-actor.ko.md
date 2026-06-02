@@ -74,38 +74,55 @@ sequenceDiagram
 ```
 
 === "C++"
+
     ```cpp
     --8<-- "bindings/cpp/samples/actor_room_example.cpp:doc"
     ```
+
 === "C#/.NET"
+
     ```csharp
     --8<-- "bindings/dotnet/samples/ActorRoomExample/Program.cs:doc"
     ```
+
 === "Java"
+
     ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/ActorRoomExample.java:doc"
     ```
+
 === "Kotlin"
+
     ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/ActorRoomExample.kt:doc"
     ```
+
 === "Python"
+
     ```python
     --8<-- "bindings/python/samples/actor_room_example.py:doc"
     ```
+
 === "Node/TypeScript"
+
     ```typescript
     --8<-- "bindings/node/samples/actor_room_example.ts:doc"
     ```
+
 === "JavaScript"
+
     ```javascript
     --8<-- "bindings/javascript/samples/actor_room_example.js:doc"
     ```
+
 === "Go"
+
     ```go
     --8<-- "bindings/go/samples/actor_room_example/main.go:doc"
     ```
+
 === "Rust"
+
     ```rust
     --8<-- "bindings/rust/samples/actor_room_example.rs:doc"
     ```
@@ -132,38 +149,55 @@ sequenceDiagram
 ```
 
 === "C++"
+
     ```cpp
     --8<-- "bindings/cpp/samples/actor_sequential_example.cpp:doc"
     ```
+
 === "C#/.NET"
+
     ```csharp
     --8<-- "bindings/dotnet/samples/ActorSequentialExample/Program.cs:doc"
     ```
+
 === "Java"
+
     ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/ActorSequentialExample.java:doc"
     ```
+
 === "Kotlin"
+
     ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/ActorSequentialExample.kt:doc"
     ```
+
 === "Python"
+
     ```python
     --8<-- "bindings/python/samples/actor_sequential_example.py:doc"
     ```
+
 === "Node/TypeScript"
+
     ```typescript
     --8<-- "bindings/node/samples/actor_sequential_example.ts:doc"
     ```
+
 === "JavaScript"
+
     ```javascript
     --8<-- "bindings/javascript/samples/actor_sequential_example.js:doc"
     ```
+
 === "Go"
+
     ```go
     --8<-- "bindings/go/samples/actor_sequential_example/main.go:doc"
     ```
+
 === "Rust"
+
     ```rust
     --8<-- "bindings/rust/samples/actor_sequential_example.rs:doc"
     ```

@@ -611,36 +611,55 @@ PUB로 토픽을 발행하고 SUB로 구독·수신하는 자립형 예제다(�
 
 === "C++"
 
+    ```cpp
     --8<-- "bindings/cpp/samples/pubsub_recv_sample.cpp:doc"
+    ```
 
 === "C#/.NET"
 
+    ```csharp
     --8<-- "bindings/dotnet/samples/PubSubRecv/Program.cs:doc"
+    ```
 
 === "Java"
 
+    ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/PubSubRecvSample.java:doc"
+    ```
 
 === "Kotlin"
 
+    ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/PubSubRecvSample.kt:doc"
+    ```
 
 === "Python"
 
+    ```python
     --8<-- "bindings/python/samples/pubsub_recv_sample.py:doc"
+    ```
 
 === "Node/TypeScript"
 
+    ```typescript
     --8<-- "bindings/node/samples/pubsub_recv_sample.ts:doc"
+    ```
 
 === "JavaScript"
 
+    ```javascript
     --8<-- "bindings/javascript/samples/pubsub_recv_sample.js:doc"
+    ```
 
 === "Go"
 
+    ```go
     --8<-- "bindings/go/samples/pubsub_recv_sample/main.go:doc"
+    ```
 
 === "Rust"
 
+    ```rust
     --8<-- "bindings/rust/samples/pubsub_recv_sample.rs:doc"
+    ```
+

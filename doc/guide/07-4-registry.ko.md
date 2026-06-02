@@ -630,39 +630,57 @@ registry 스냅샷을 질의해 서비스 엔드포인트를 조회하는 자립
 
 === "C++"
 
+    ```cpp
     --8<-- "bindings/cpp/samples/registry_query_sample.cpp:doc"
+    ```
 
 === "C#/.NET"
 
+    ```csharp
     --8<-- "bindings/dotnet/samples/RegistryQuery/Program.cs:doc"
+    ```
 
 === "Java"
 
+    ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/RegistryQuerySample.java:doc"
+    ```
 
 === "Kotlin"
 
+    ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/RegistryQuerySample.kt:doc"
+    ```
 
 === "Python"
 
+    ```python
     --8<-- "bindings/python/samples/registry_query_sample.py:doc"
+    ```
 
 === "Node/TypeScript"
 
+    ```typescript
     --8<-- "bindings/node/samples/registry_query_sample.ts:doc"
+    ```
 
 === "JavaScript"
 
+    ```javascript
     --8<-- "bindings/javascript/samples/registry_query_sample.js:doc"
+    ```
 
 === "Go"
 
+    ```go
     --8<-- "bindings/go/samples/registry_query_sample/main.go:doc"
+    ```
 
 === "Rust"
 
+    ```rust
     --8<-- "bindings/rust/samples/registry_query_sample.rs:doc"
+    ```
 
 ## 9. 다음 단계
 

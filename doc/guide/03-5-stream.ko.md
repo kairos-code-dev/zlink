@@ -286,39 +286,57 @@ STREAM 소켓으로 원시 바이트를 주고받는 자립형 예제다(모든 
 
 === "C++"
 
+    ```cpp
     --8<-- "bindings/cpp/samples/stream_recv_sample.cpp:doc"
+    ```
 
 === "C#/.NET"
 
+    ```csharp
     --8<-- "bindings/dotnet/samples/StreamRecv/Program.cs:doc"
+    ```
 
 === "Java"
 
+    ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/StreamRecvSample.java:doc"
+    ```
 
 === "Kotlin"
 
+    ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/StreamRecvSample.kt:doc"
+    ```
 
 === "Python"
 
+    ```python
     --8<-- "bindings/python/samples/stream_recv_sample.py:doc"
+    ```
 
 === "Node/TypeScript"
 
+    ```typescript
     --8<-- "bindings/node/samples/stream_recv_sample.ts:doc"
+    ```
 
 === "JavaScript"
 
+    ```javascript
     --8<-- "bindings/javascript/samples/stream_recv_sample.js:doc"
+    ```
 
 === "Go"
 
+    ```go
     --8<-- "bindings/go/samples/stream_recv_sample/main.go:doc"
+    ```
 
 === "Rust"
 
+    ```rust
     --8<-- "bindings/rust/samples/stream_recv_sample.rs:doc"
+    ```
 
 ### 패킷 콜백 방식
 
@@ -326,36 +344,55 @@ STREAM 소켓으로 원시 바이트를 주고받는 자립형 예제다(모든 
 
 === "C++"
 
+    ```cpp
     --8<-- "bindings/cpp/samples/stream_packet_callback_sample.cpp:doc"
+    ```
 
 === "C#/.NET"
 
+    ```csharp
     --8<-- "bindings/dotnet/samples/StreamPacketCallback/Program.cs:doc"
+    ```
 
 === "Java"
 
+    ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/StreamPacketCallbackSample.java:doc"
+    ```
 
 === "Kotlin"
 
+    ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/StreamPacketCallbackSample.kt:doc"
+    ```
 
 === "Python"
 
+    ```python
     --8<-- "bindings/python/samples/stream_packet_callback_sample.py:doc"
+    ```
 
 === "Node/TypeScript"
 
+    ```typescript
     --8<-- "bindings/node/samples/stream_packet_callback_sample.ts:doc"
+    ```
 
 === "JavaScript"
 
+    ```javascript
     --8<-- "bindings/javascript/samples/stream_packet_callback_sample.js:doc"
+    ```
 
 === "Go"
 
+    ```go
     --8<-- "bindings/go/samples/stream_packet_callback_sample/main.go:doc"
+    ```
 
 === "Rust"
 
+    ```rust
     --8<-- "bindings/rust/samples/stream_packet_callback_sample.rs:doc"
+    ```
+

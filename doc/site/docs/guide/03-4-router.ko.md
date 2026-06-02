@@ -362,7 +362,6 @@ DEALER ↔ ROUTER 조합의 핵심 장점:
   |   (D2)   |
   +----------+
 
-
   ROUTER가 요청한 DEALER에 응답:
 
   +----------+    ① send         +----------+
@@ -408,7 +407,6 @@ DEALER → ROUTER는 라운드 로빈이 고정되어 분배 비율을 제어할
   |          |     1/3      +----------+
   |          |-------------->| ROUTER C |
   +----------+              +----------+
-
 
   ROUTER ↔ ROUTER (애플리케이션이 대상 직접 선택):
 
@@ -768,36 +766,55 @@ ROUTER가 DEALER 요청을 수신하고 source 라우팅 ID로 응답하는 자�
 
 === "C++"
 
+    ```cpp
     --8<-- "bindings/cpp/samples/dealer_router_recv_sample.cpp:doc"
+    ```
 
 === "C#/.NET"
 
+    ```csharp
     --8<-- "bindings/dotnet/samples/DealerRouterRecv/Program.cs:doc"
+    ```
 
 === "Java"
 
+    ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/DealerRouterRecvSample.java:doc"
+    ```
 
 === "Kotlin"
 
+    ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/DealerRouterRecvSample.kt:doc"
+    ```
 
 === "Python"
 
+    ```python
     --8<-- "bindings/python/samples/dealer_router_recv_sample.py:doc"
+    ```
 
 === "Node/TypeScript"
 
+    ```typescript
     --8<-- "bindings/node/samples/dealer_router_recv_sample.ts:doc"
+    ```
 
 === "JavaScript"
 
+    ```javascript
     --8<-- "bindings/javascript/samples/dealer_router_recv_sample.js:doc"
+    ```
 
 === "Go"
 
+    ```go
     --8<-- "bindings/go/samples/dealer_router_recv_sample/main.go:doc"
+    ```
 
 === "Rust"
 
+    ```rust
     --8<-- "bindings/rust/samples/dealer_router_recv_sample.rs:doc"
+    ```
+

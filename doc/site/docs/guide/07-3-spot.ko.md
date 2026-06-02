@@ -50,38 +50,55 @@ sequenceDiagram
 ```
 
 === "C++"
+
     ```cpp
     --8<-- "bindings/cpp/samples/spot_pubsub_example.cpp:doc"
     ```
+
 === "C#/.NET"
+
     ```csharp
     --8<-- "bindings/dotnet/samples/SpotPubSubExample/Program.cs:doc"
     ```
+
 === "Java"
+
     ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotPubSubExample.java:doc"
     ```
+
 === "Kotlin"
+
     ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotPubSubExample.kt:doc"
     ```
+
 === "Python"
+
     ```python
     --8<-- "bindings/python/samples/spot_pubsub_example.py:doc"
     ```
+
 === "Node/TypeScript"
+
     ```typescript
     --8<-- "bindings/node/samples/spot_pubsub_example.ts:doc"
     ```
+
 === "JavaScript"
+
     ```javascript
     --8<-- "bindings/javascript/samples/spot_pubsub_example.js:doc"
     ```
+
 === "Go"
+
     ```go
     --8<-- "bindings/go/samples/spot_pubsub_example/main.go:doc"
     ```
+
 === "Rust"
+
     ```rust
     --8<-- "bindings/rust/samples/spot_pubsub_example.rs:doc"
     ```
@@ -359,39 +376,57 @@ sequenceDiagram
 
 === "C++"
 
+    ```cpp
     --8<-- "bindings/cpp/samples/spot_channel_example.cpp:doc"
+    ```
 
 === "C#/.NET"
 
+    ```csharp
     --8<-- "bindings/dotnet/samples/SpotChannelExample/Program.cs:doc"
+    ```
 
 === "Java"
 
+    ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotChannelExample.java:doc"
+    ```
 
 === "Kotlin"
 
+    ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotChannelExample.kt:doc"
+    ```
 
 === "Python"
 
+    ```python
     --8<-- "bindings/python/samples/spot_channel_example.py:doc"
+    ```
 
 === "Node/TypeScript"
 
+    ```typescript
     --8<-- "bindings/node/samples/spot_channel_example.ts:doc"
+    ```
 
 === "JavaScript"
 
+    ```javascript
     --8<-- "bindings/javascript/samples/spot_channel_example.js:doc"
+    ```
 
 === "Go"
 
+    ```go
     --8<-- "bindings/go/samples/spot_channel_example/main.go:doc"
+    ```
 
 === "Rust"
 
+    ```rust
     --8<-- "bindings/rust/samples/spot_channel_example.rs:doc"
+    ```
 
 ## 6. 디스패치 이벤트 핸들러로 통합 소비
 
@@ -550,39 +585,57 @@ sequenceDiagram
 
 === "C++"
 
+    ```cpp
     --8<-- "bindings/cpp/samples/spot_timer_example.cpp:doc"
+    ```
 
 === "C#/.NET"
 
+    ```csharp
     --8<-- "bindings/dotnet/samples/SpotTimerExample/Program.cs:doc"
+    ```
 
 === "Java"
 
+    ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotTimerExample.java:doc"
+    ```
 
 === "Kotlin"
 
+    ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotTimerExample.kt:doc"
+    ```
 
 === "Python"
 
+    ```python
     --8<-- "bindings/python/samples/spot_timer_example.py:doc"
+    ```
 
 === "Node/TypeScript"
 
+    ```typescript
     --8<-- "bindings/node/samples/spot_timer_example.ts:doc"
+    ```
 
 === "JavaScript"
 
+    ```javascript
     --8<-- "bindings/javascript/samples/spot_timer_example.js:doc"
+    ```
 
 === "Go"
 
+    ```go
     --8<-- "bindings/go/samples/spot_timer_example/main.go:doc"
+    ```
 
 === "Rust"
 
+    ```rust
     --8<-- "bindings/rust/samples/spot_timer_example.rs:doc"
+    ```
 
 ## 9. 라우팅 수신과 응답
 
@@ -645,38 +698,55 @@ sequenceDiagram
 ```
 
 === "C++"
+
     ```cpp
     --8<-- "bindings/cpp/samples/spot_rpc_example.cpp:doc"
     ```
+
 === "C#/.NET"
+
     ```csharp
     --8<-- "bindings/dotnet/samples/SpotRpcExample/Program.cs:doc"
     ```
+
 === "Java"
+
     ```java
     --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotRpcExample.java:doc"
     ```
+
 === "Kotlin"
+
     ```kotlin
     --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotRpcExample.kt:doc"
     ```
+
 === "Python"
+
     ```python
     --8<-- "bindings/python/samples/spot_rpc_example.py:doc"
     ```
+
 === "Node/TypeScript"
+
     ```typescript
     --8<-- "bindings/node/samples/spot_rpc_example.ts:doc"
     ```
+
 === "JavaScript"
+
     ```javascript
     --8<-- "bindings/javascript/samples/spot_rpc_example.js:doc"
     ```
+
 === "Go"
+
     ```go
     --8<-- "bindings/go/samples/spot_rpc_example/main.go:doc"
     ```
+
 === "Rust"
+
     ```rust
     --8<-- "bindings/rust/samples/spot_rpc_example.rs:doc"
     ```

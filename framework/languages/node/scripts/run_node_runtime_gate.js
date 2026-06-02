@@ -23,7 +23,10 @@ run(process.execPath, [
   'tsconfig.json',
   '--noEmit'
 ]);
-run(process.execPath, ['--test', ...listTestFiles(path.join(nodeRoot, 'test'))]);
+for (const testFile of listTestFiles(path.join(nodeRoot, 'test'))) {
+  console.log(`-- ${path.relative(nodeRoot, testFile)}`);
+  run(process.execPath, ['--test', testFile]);
+}
 
 function run(command, args) {
   const result = childProcess.spawnSync(command, args, {

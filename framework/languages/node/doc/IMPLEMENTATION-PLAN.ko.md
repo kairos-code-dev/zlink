@@ -415,6 +415,11 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - [x] §8 의 4축(구조·기능·사용성·샘플) 동등성 표가 전부 충족
 - **검증:** 전체 회귀 스위트 + §8 동등성 점검
 
+> 2026-06-02 최종 재검토: `npm run verify:release` 로 ABI 선언 gate, P0 전체
+> 회귀, sample smoke, Node 20/22 runtime matrix, cross-language smoke 를 통과했다.
+> 샘플 host 는 ready 이후 역할 process 종료와 orphan process 를 실패로 드러내도록
+> 보강했으며, P9 POSD gate 에서 추가 red flag 는 남기지 않았다.
+
 ---
 
 ## 6. 반드시 지킬 코드-검증 결정 (드래프트 함정)

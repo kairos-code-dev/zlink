@@ -1,5 +1,8 @@
 # zlink 문서 탭 통합 개편 계획 (v2)
 
+> **상태: 완료 (2026-06-02).** P1~P7 전 단계 + 완료 판정 7항목 모두 충족.
+> 상세는 [§6 완료 로그](#6-완료-로그).
+
 > 이 문서는 [documentation-overhaul-plan](./documentation-overhaul-plan.ko.md)(v1)의
 > **개정**이다. v1은 "언어별 바인딩 가이드 6문서 × 7언어"를 만드는 방향이었으나,
 > 실제 사용 경험에서 두 가지 문제가 드러났다:
@@ -112,7 +115,7 @@ bindings/javascript/samples/     신규 (.js, node, @zlink-systems/zlink)
 | 단계 | 작업 | 산출물 | 비고 |
 |------|------|--------|------|
 | **P1** | 정책·원칙에 v2 구조 반영 | SAMPLE_POLICY + documentation-principles 갱신 | SAMPLE_POLICY: Kotlin/JS 런타임공유 샘플 규칙(현재 없음). documentation-principles: bindings 가이드 1장 축소 규칙·탭 언어 분류(탭 원칙 자체는 이미 있음) |
-| **P2** | 샘플 통일 (네이티브 8언어) | actor 3종 + 검증 | 진행 중. 현 상태: 차이 스캔 완료(불일치는 dotnet/java/node/python actor id·payload). cpp/go/rust가 정책 기준 |
+| **P2** | 샘플 통일 (네이티브 8언어) | actor 3종 + 검증 | ✅ 완료(§6). 차이 스캔 후 dotnet/java/node/python actor id·payload를 cpp/go/rust 정책 기준으로 통일 |
 | **P3** | Kotlin/JS 샘플 신규 | `bindings/{kotlin,javascript}/samples/` | canonical 세트, 정책 값. 빌드: kotlin gradle / js node 러너 |
 | **P4** | 코어 guide 탭 확대 | 07-*, 03-* 등 패턴·서비스 문서 | actor는 site에 파일럿 1개 존재(통일 **전** 값으로 작성됨 → P2 통일 후 파일럿 코드도 갱신). 나머지 문서로 확대. 문서별 탭 칸 수는 용어 표 기준. 탭 코드는 P2/P3 통일 샘플에서 가져옴 |
 | **P5** | bindings 가이드 1장 축소 | `bindings/<lang>.md`(+.ko.md) | 6문서→1장. 설치·소유권·대응표·배포 잔류, 02~04+05일부 삭제 |
@@ -140,14 +143,18 @@ actor 파일럿은 통일 전 값이라, P2 완료 후 그 파일럿 코드도 �
 
 ## 4. 완료 판정 기준
 
-- [ ] 코어 guide 패턴·서비스 문서가 언어 탭으로 통합됨 (개념 1번 + 언어별 코드,
+- [x] 코어 guide 패턴·서비스 문서가 언어 탭으로 통합됨 (개념 1번 + 언어별 코드,
   문서별 탭 칸 수는 용어 표 기준 9~10칸).
-- [ ] 모든 탭 코드가 실제 샘플/contract와 일치 (추측 0).
-- [ ] 네이티브 8언어 + Kotlin/JS 샘플이 canonical 시나리오·값을 동일하게 따름.
-- [ ] bindings 가이드가 언어당 1장(설치·소유권·대응표·배포)으로 축소됨.
-- [ ] 탭 누락·소실·API 부재를 CI가 잡음.
-- [ ] `mkdocs serve`로 탭 렌더(전 언어 칸) 확인.
-- [ ] mkdocs nav·미러·README가 새 구조 반영.
+- [x] 모든 탭 코드가 실제 샘플/contract와 일치 (추측 0). — `--8<--` 스니펫으로
+  실제 빌드·실행 검증된 샘플을 그대로 임베드(하드코딩 코드 없음).
+- [x] 네이티브 8언어 + Kotlin/JS 샘플이 canonical 시나리오·값을 동일하게 따름.
+- [x] bindings 가이드가 언어당 1장(설치·소유권·대응표·배포)으로 축소됨.
+  Kotlin/JS는 Java·Node 1장의 전용 절(D2/D4).
+- [x] 탭 누락·소실·API 부재를 CI가 잡음. — `doc/site/scripts/check_doc_tabs.py`,
+  `docs.yml`의 mkdocs build 전 게이트.
+- [x] `mkdocs serve`로 탭 렌더(전 언어 칸) 확인. — 19개 페이지 135개 샘플 블록
+  전부 9개 언어 탭, syntax 하이라이트, col 0 균일 정렬, `<p>` 깨짐 0.
+- [x] mkdocs nav·미러·README가 새 구조 반영.
 
 ---
 
@@ -158,3 +165,34 @@ actor 파일럿은 통일 전 값이라, P2 완료 후 그 파일럿 코드도 �
 - v1에서 만든 7언어 6문서 가이드는 P5에서 1장으로 축소되며 흡수된다.
 - v1에서 만든 코어 신규 문서(reliability/design-rationale/zmp/glossary/scenarios)는
   그대로 유지된다(언어 무관 개념·레퍼런스라 탭 불필요).
+
+---
+
+## 6. 완료 로그
+
+(2026-06-02 완료)
+
+| 단계 | 상태 | 결과 |
+|------|------|------|
+| P1 정책·원칙 반영 | ✅ | SAMPLE_POLICY/원칙에 v2 구조 반영 |
+| P2 네이티브 샘플 통일 | ✅ | actor 3종 + canonical 세트 8언어 통일·검증 |
+| P3 Kotlin/JS 샘플 | ✅ | canonical 세트 신규(.kt/.js), 빌드·실행 검증. Kotlin 11종 gradle 태스크 등록 |
+| P4 코어 guide 탭 확대 | ✅ | 03-1~03-5 + 07-1/07-3/07-4(actor)/07-4-registry에 9언어 탭, 정본 샘플 임베드 |
+| P5 bindings 가이드 1장 | ✅ | 7개 바인딩 5장→1장 축소, 챕터 35개 삭제. Kotlin/JS는 Java·Node 절(D2/D4) |
+| P6 탭 CI 강제 | ✅ | `check_doc_tabs.py`(탭 언어 누락·스니펫 부재·확장자 불일치 검출) + docs.yml 게이트 |
+| P7 진입·미러·mkdocs | ✅ | nav 단일장 구조, 미러 동기화, README·정본 탭 반영 |
+
+**샘플 표시 품질 (후속 다듬기):**
+- 임베드 14개 샘플 × 9언어에 `--8<-- [start:doc]` 섹션 마커 → import/include·main
+  시그니처·헬퍼 스캐폴딩(unique_tcp/reservePort 등) 숨기고 **본문만** 노출.
+- 탭을 펜스 형식(`=== "Lang"` + 빈 줄 + `` ```lang ``)으로 정규화 → col 0 샘플의
+  `<p>` 깨짐 해소. `dedent_subsections`로 전 언어 col 0 균일 정렬.
+
+**최종 검증:** 19개 가이드 페이지 / 135개 샘플 코드 블록 — 9언어 탭, syntax
+하이라이트, col 0 균일, `<p>` 깨짐 0, `check_doc_tabs.py` 통과. `mkdocs serve`
+라이브 확인 완료.
+
+**남은 사항 (별도):** 코어 가이드 일부(`07-3-spot`/`07-4-actor`)의 정본 `doc/guide`
+↔ 미러 `doc/site/docs/guide` 양방향 drift는 수동 병합 대상 — 서빙되는 `/ko`
+미러본은 전 작업을 담고 있어 사이트에는 영향 없음. (참고: 이 계획의 산출물 자체는
+양 트리에 동기화 반영됨.)

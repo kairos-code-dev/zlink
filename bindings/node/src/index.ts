@@ -40,6 +40,7 @@ import {
   asPublicContract,
   asRuntimeContext,
   asRuntimeSocket,
+  asRuntimeSpot,
 } from './zlink/runtime/public_bridge';
 import type {
   AtomicCounter,
@@ -54,6 +55,7 @@ import type {
   Registry,
   RegistryQueryClient,
   RouterSocket,
+  Spot,
   SpotNode,
   Stopwatch,
   StreamSocket,
@@ -131,6 +133,10 @@ export function createPollEvents(capacity: number): PollEvents {
 
 export function createTimer(): Timer {
   return asPublicContract<Timer>(new RuntimeTimer());
+}
+
+export function createTimerFromSpot(spot: Spot): Timer {
+  return asPublicContract<Timer>(RuntimeTimer.fromSpot(asRuntimeSpot(spot)));
 }
 
 export function createThread(handler: () => void): Thread {

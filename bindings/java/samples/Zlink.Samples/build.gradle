@@ -39,7 +39,8 @@ def sampleMainClasses = [
     runActorSequentialExample: 'systems.zlink.samples.ActorSequentialExample',
     runSpotPubSubExample: 'systems.zlink.samples.SpotPubSubExample',
     runSpotRpcExample: 'systems.zlink.samples.SpotRpcExample',
-    runSpotChannelExample: 'systems.zlink.samples.SpotChannelExample'
+    runSpotChannelExample: 'systems.zlink.samples.SpotChannelExample',
+    runSpotTimerExample: 'systems.zlink.samples.SpotTimerExample'
 ]
 
 sampleMainClasses.each { taskName, mainClassName ->

@@ -106,3 +106,7 @@ path = "samples/spot_rpc_example.rs"
 [[example]]
 name = "spot_channel_example"
 path = "samples/spot_channel_example.rs"
+
+[[example]]
+name = "spot_timer_example"
+path = "samples/spot_timer_example.rs"

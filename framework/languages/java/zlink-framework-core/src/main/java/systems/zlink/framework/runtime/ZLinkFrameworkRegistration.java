@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 final class ZLinkFrameworkRegistration {
     private final List<String> registryEndpoints = new ArrayList<>();
@@ -49,6 +50,10 @@ final class ZLinkFrameworkRegistration {
     }
 
     void validate() {
+        if (!actorFactories.isEmpty() && spotNodes.isEmpty()) {
+            throw new ZLinkConfigurationException(
+                "actor factories require at least one SpotNode");
+        }
         for (ChannelRegistration channel : channels) {
             channel.validate(discoveryEnabled());
         }

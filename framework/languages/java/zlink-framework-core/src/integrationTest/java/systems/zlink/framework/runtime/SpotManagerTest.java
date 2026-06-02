@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.CompletableFuture;
@@ -12,9 +13,9 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 
-final class SpotRuntimeIntegrationTest {
+final class SpotManagerTest {
     @Test
-    void localSpotManagerCreateListRemoveUsesJavaBindingPublicApi() {
+    void spotManager_createListRemoveAndPublish_workThroughFrameworkRuntime() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
@@ -43,6 +44,29 @@ final class SpotRuntimeIntegrationTest {
                 .removeAsync(spotRid)
                 .toCompletableFuture()
                 .join());
+        }
+    }
+
+    @Test
+    void spotManager_getOrCreate_createsOnceAndReusesExistingSpot() {
+        Zlink.version();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
+        RoutingId spotRid = RoutingId.from("game-once");
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+            assertTrue(runtime.spotManager()
+                .getOrCreateAsync(GameSpot.class, spotRid)
+                .toCompletableFuture()
+                .join()
+                .created());
+            assertFalse(runtime.spotManager()
+                .getOrCreateAsync(GameSpot.class, spotRid)
+                .toCompletableFuture()
+                .join()
+                .created());
         }
     }
 

@@ -56,7 +56,7 @@ multi-process smoke는 release gate에서 같은 테스트 이름의 의미를 �
 | actor manager DI 노출 | unit | `NodesAndServicesTest.addZLinkFramework_registersActorManager_whenSpotNodeAndActorFactoryExist` | SpotNode + actor factory 시 등록 |
 | local-only SpotNode | integration-single-process | `NodesAndServicesTest.addZLinkFramework_allowsStandaloneLocalSpotNode` | discovery 없이 local Spot 생성 |
 | Spot create/get/list/remove | integration-single-process | `SpotManagerTest.spotManager_createListRemoveAndPublish_workThroughFrameworkRuntime` | lifecycle callback과 조회 일관 |
-| Spot getOrCreate 1회 초기화 | integration-single-process | `SpotManagerTest.spotManager_getOrCreate_initializesOnceWithFirstCreatePayload` | 첫 create payload로 한 번만 초기화 |
+| Spot getOrCreate 1회 생성 | integration-single-process | `SpotManagerTest.spotManager_getOrCreate_createsOnceAndReusesExistingSpot` | 첫 호출은 생성하고 같은 rid의 두 번째 호출은 기존 Spot 재사용 |
 | Spot timer/publish/remove | integration-single-process | `SpotManagerTest.spot_publishTimerAndRemove_stopCallbacksWork` | timer/publish/remove 의미 유지 |
 | actor manager factory | integration-single-process | `ActorManagerTest.actorManager_createGetOrCreateFind_work` | create/getOrCreate/find 동작 |
 | session actor relay | integration-single-process | `SessionActorRelayTest.bindAndRelay_work` | `bindAsync`와 `relayAsync` 동작 |

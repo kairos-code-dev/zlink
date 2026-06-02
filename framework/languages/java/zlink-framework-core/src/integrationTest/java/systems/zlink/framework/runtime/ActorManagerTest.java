@@ -15,9 +15,9 @@ import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 
-final class ActorRuntimeIntegrationTest {
+final class ActorManagerTest {
     @Test
-    void localActorManagerCreateGetOrCreateFindUsesJavaBindingPublicApi() {
+    void actorManager_createGetOrCreateFind_work() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->

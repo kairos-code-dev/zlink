@@ -2,64 +2,288 @@
 
 # .NET 바인딩 가이드 (`Systems.Zlink`)
 
-이 묶음은 **.NET(`Systems.Zlink`)에서 zlink를 사용하는 방법**을 기능별로, 실제
-예제 중심으로 설명합니다. .NET 사용자가 가장 먼저 보는 진입 문서입니다.
+**.NET(`Systems.Zlink`)에서 zlink를 사용하는 방법**을 설치·핵심 타입·소유권·에러 처리·배포까지 한 챕터로 정리합니다. 메시징 개념(소켓 패턴, 서비스, 운영)의 깊은 설명은 [더 보기](#더-보기)의 코어 가이드를 참고하세요.
 
-메시징 **개념의 깊은 설명**(왜 DEALER인지, PUB/SUB 시맨틱, 라우팅 ID 정책 등)은
-언어 중립적으로 [코어 가이드](../../01-overview.ko.md)가 소유합니다. 이 가이드는
-각 기능을 **.NET API로 어떻게 쓰는지**에 집중하고, 개념이 필요한 지점마다 코어
-챕터로 링크합니다.
+---
 
-## 이 가이드 읽는 법
+## 설치
 
-- **바로 쓰려는 사람** → [01 시작하기](./01-getting-started.ko.md)에서 설치하고 5분
-  예제를 띄운 뒤, 필요한 기능 문서로 이동하세요.
-- **메시징이 처음인 사람** → 코어 가이드 [개요](../../01-overview.ko.md)와
-  [소켓 패턴](../../03-0-socket-patterns.ko.md)을 먼저 본 뒤 여기로 돌아오세요.
-- **무엇을 만들 수 있는지 감을 잡으려는 사람** → 코어
-  [활용 시나리오](../../../usecase/spot/README.md) — MMORPG 존·실시간 시세·분산
-  메트릭·마이크로서비스 이벤트·채팅 등 실제 사례를 패턴과 함께 봅니다.
-- **API 멤버를 찾는 사람** → 생성형 [API 레퍼런스](./05-reference.ko.md#api-레퍼런스).
-- **메인테이너** → 구현 계약 [`doc/spec/bindings/dotnet`](../../../spec/bindings/dotnet/README.ko.md).
+단일 NuGet 패키지 **`Systems.Zlink`** 로 제공되며, 네이티브 코어가 함께 번들됩니다.
 
-## 문서 구성
+```bash
+dotnet add package Systems.Zlink
+```
 
-| 문서 | 내용 |
-|------|------|
-| [01 시작하기](./01-getting-started.ko.md) | 설치, 5분 예제, 핵심 타입(Context·Message·Received·RoutingId), 소유권 규칙 |
-| [02 메시징](./02-messaging.ko.md) | 소켓 패턴별 사용법 — PAIR / DEALER·ROUTER / PUB·SUB / XPUB·XSUB / STREAM / Proxy |
-| [03 서비스](./03-services.ko.md) | Registry · Discovery · SpotNode·Spot · Actor |
-| [04 운영](./04-operations.ko.md) | 소켓 옵션 · TLS · 모니터링 · 폴러/타이머 · 스레딩 · 네이티브 라이브러리 |
-| [05 레퍼런스](./05-reference.ko.md) | 에러 처리 · 직렬화(코덱) · C API↔.NET 대응표 · API 레퍼런스 · 샘플 |
+- **.NET 8.0** 이상 (`net8.0`).
+- 네이티브 설치 불필요 — RID별 바이너리를 자동 로드합니다.
+  ([네이티브 라이브러리](#네이티브-라이브러리--배포) 참고)
 
-## 기능 지도
+```csharp
+using Systems.Zlink;   // 모든 공개 API는 이 네임스페이스에 있습니다
+```
 
-이 바인딩이 제공하는 기능 전체입니다. 각 항목은 위 문서에서 예제와 함께 설명됩니다.
+---
 
-| 기능 | .NET 타입 / 진입점 | 한 줄 설명 | 가이드 | 개념(core) |
-|---|---|---|---|---|
-| 컨텍스트 | `Zlink.CreateContext()` → `IContext` | 런타임 진입점, I/O 스레드 소유 | [01](./01-getting-started.ko.md) | [02](../../02-core-api.ko.md) |
-| 메시지 | `Message` | 페이로드 프레임(단일/멀티파트) | [01](./01-getting-started.ko.md) | [09](../../09-message-api.ko.md) |
-| 수신 버퍼 | `Received` | 재사용 가능한 수신 봉투 | [01](./01-getting-started.ko.md) | [09](../../09-message-api.ko.md) |
-| 라우팅 ID | `RoutingId` | 피어/스팟 식별 값 | [01](./01-getting-started.ko.md) | [08](../../08-routing-id.ko.md) |
-| PAIR | `ctx.CreatePairSocket()` | 1:1 배타적 연결 | [02](./02-messaging.ko.md#pair) | [03-1](../../03-1-pair.ko.md) |
-| DEALER/ROUTER | `ctx.CreateDealerSocket()` / `CreateRouterSocket()` | 비동기 요청/응답·라우팅 | [02](./02-messaging.ko.md#dealer--router) | [03-3](../../03-3-dealer.ko.md) / [03-4](../../03-4-router.ko.md) |
-| PUB/SUB | `ctx.CreatePubSocket()` / `CreateSubSocket()` | 토픽 발행/구독 | [02](./02-messaging.ko.md#pub--sub) | [03-2](../../03-2-pubsub.ko.md) |
-| XPUB/XSUB | `ctx.CreateXPubSocket()` / `CreateXSubSocket()` | 구독 이벤트 가시화 | [02](./02-messaging.ko.md#xpub--xsub) | [03-2](../../03-2-pubsub.ko.md) |
-| STREAM | `ctx.CreateStreamSocket()` | 원시 TCP·패킷 프레이밍 | [02](./02-messaging.ko.md#stream) | [03-5](../../03-5-stream.ko.md) |
-| 프록시 | `Zlink.Proxy(...)` | 프론트/백엔드 중계 | [02](./02-messaging.ko.md#프록시-proxy) | [03-6](../../03-6-proxy.ko.md) |
-| Registry | `ctx.CreateRegistry()` | 클러스터 서비스 카탈로그 | [03](./03-services.ko.md#registry-레지스트리) | [07-4r](../../07-4-registry.ko.md) |
-| Discovery | `ctx.CreateDiscovery(...)` | 서비스 발견·라우트 해석 | [03](./03-services.ko.md#discovery-디스커버리) | [07-1](../../07-1-discovery.ko.md) |
-| SpotNode/Spot | `ctx.CreateSpotNode()` | 메시 노드와 메시징 엔드포인트 | [03](./03-services.ko.md#spotnode--spot) | [07-3](../../07-3-spot.ko.md) |
-| Actor | `node.CreateActor(...)` | 상태 보유 엔티티(세션·플레이어 등) | [03](./03-services.ko.md#actor-액터) | [07-4](../../07-4-actor.ko.md) |
-| 소켓 옵션 | `socket.Options` | HWM·타임아웃·하트비트 등 | [04](./04-operations.ko.md#소켓-옵션) | [12](../../12-socket-options.ko.md) |
-| TLS 보안 | `SetTlsServer/SetTlsClient` | 전송 암호화 | [04](./04-operations.ko.md#tls-보안) | [05](../../05-tls-security.ko.md) |
-| 모니터링 | `socket.MonitorOpen(...)` | 연결 수명 이벤트 | [04](./04-operations.ko.md#모니터링-monitor) | [06](../../06-monitoring.ko.md) |
-| 폴러/타이머 | `Zlink.CreatePoller()` / `CreateTimer()` | 다중 소켓 폴링·타이머 | [04](./04-operations.ko.md#폴러--타이머) | [02](../../02-core-api.ko.md) |
-| 스레딩 | — | 컨텍스트 공유, 소켓 단일 스레드 | [04](./04-operations.ko.md#스레딩) | [11](../../11-thread-safety.ko.md) |
-| 직렬화(코덱) | `Systems.Zlink.Codecs.*` | JSON/MessagePack/Protobuf | [05](./05-reference.ko.md#직렬화-코덱) | — |
-| 에러 처리 | `ZlinkException` 계층 | 작업별 타입 예외 | [05](./05-reference.ko.md#에러-처리) | — |
+## 5분 예제
 
-> 전송 방식(`tcp`/`ipc`/`inproc`/`ws`/`tls`)은 모든 소켓에 공통이며
-> [트랜스포트](../../04-transports.ko.md), 성능 튜닝은 [성능](../../10-performance.ko.md)을
-> 참고하세요.
+`Pair` 소켓으로 한쪽이 `PING`을 보내고 다른 쪽이 `ACK`로 답하는 최소 예제입니다.
+서버는 bind, 클라이언트는 connect 합니다.
+
+```csharp
+// 서버
+using var ctx = Zlink.CreateContext();
+using var server = ctx.CreatePairSocket();
+using var mon = server.MonitorOpen(SocketEvent.ConnectionReady);
+server.Bind("tcp://127.0.0.1:5555");
+mon.Recv();   // 연결될 때까지 대기
+
+using var received = Received.Create();
+server.Recv(received);
+Console.WriteLine(received.FirstPart().GetString());   // PING
+
+using var reply = Message.From("ACK");
+server.Send().Message(reply).Submit();
+```
+
+```csharp
+// 클라이언트
+using var ctx = Zlink.CreateContext();
+using var client = ctx.CreatePairSocket();
+using var mon = client.MonitorOpen(SocketEvent.ConnectionReady);
+client.Connect("tcp://127.0.0.1:5555");
+mon.Recv();
+
+using var ping = Message.From("PING");
+client.Send().Message(ping).Submit();
+
+using var received = Received.Create();
+client.Recv(received);
+Console.WriteLine(received.FirstPart().GetString());   // ACK
+```
+
+---
+
+## 핵심 타입
+
+모든 기능이 공유하는 4가지 기본 타입입니다.
+
+### 1. 컨텍스트 (Context)
+
+프로세스의 런타임 진입점입니다. 보통 하나만 만들고 모든 소켓·서비스를 여기서
+생성합니다.
+
+```csharp
+using var ctx = Zlink.CreateContext();
+ctx.Options.IoThreads  = 4;     // I/O 스레드 수
+ctx.Options.MaxSockets = 1024;  // 최대 소켓 수
+// 옵션은 소켓을 만들기 전에 설정하세요.
+```
+
+`IContext`는 `IDisposable`/`IAsyncDisposable`입니다. 종료 시 `Shutdown()`으로
+진행 중인 작업을 멈출 수 있고, `using`으로 자동 해제됩니다.
+
+### 2. 메시지 (Message)
+
+하나의 페이로드 프레임입니다. 문자열·바이트·미리 할당 버퍼로 만들 수 있습니다.
+
+```csharp
+byte[] buffer = GetPayload();
+
+using var fromText  = Message.From("payload");      // 문자열(UTF-8)
+using var fromBytes = Message.From(buffer);         // byte[] / ReadOnlySpan<byte> 복사
+using var sized     = new Message(1024);            // 미리 할당 후 AsSpan()에 채움
+
+int    size = fromText.Size;
+string text = fromText.GetString();                  // UTF-8 디코딩
+ReadOnlySpan<byte> view = fromText.AsReadOnlySpan();  // 복사 없이 읽기
+byte[] copy             = fromText.ToArray();         // 복사해서 꺼내기
+```
+
+`Message`는 네이티브 저장소를 소유하므로 `IDisposable`입니다. `AsSpan()` /
+`AsReadOnlySpan()`이 주는 span은 메시지가 살아있는 동안만 유효합니다. 메시지 모델
+개념은 [메시지 API](../../09-message-api.ko.md)를 참고하세요.
+
+### 3. 수신 (Received)
+
+수신 결과를 담는 **재사용 가능한 봉투**입니다. 핫 패스에서 한 번 만들어
+`Recv(...)` 루프에서 재사용하면 할당이 사라집니다.
+
+```csharp
+using var received = Received.Create();
+socket.Recv(received);
+
+Message      first = received.FirstPart();   // 첫 파트(소유권 이전 없음)
+string       body  = first.GetString();
+RoutingId?   from  = received.RoutingId;     // 라우팅 경로가 있으면
+ulong?       seq   = received.RequestSeq;    // 요청/응답이면
+IReadOnlyList<Message> parts = received.Parts;  // 멀티파트 전체
+```
+
+### 4. 라우팅 ID (RoutingId)
+
+피어·스팟·액터를 식별하는 바이너리 안전 값 타입입니다. 정적 팩토리로만 만듭니다.
+개념과 정책은 [라우팅 ID](../../08-routing-id.ko.md)를 참고하세요.
+
+```csharp
+RoutingId a = RoutingId.From("order-client");       // UTF-8 문자열
+RoutingId b = RoutingId.From(0xC0FFEEu);             // uint32(빅엔디안)
+RoutingId c = RoutingId.From(Guid.NewGuid());        // 16바이트 UUID
+RoutingId d = RoutingId.FromHex("0a1b2c");           // 원시 hex
+string    s = a.ToString();                          // 표시용 문자열
+string    h = a.ToHex();                             // 원시 바이트 보존용
+```
+
+---
+
+## 소유권과 수명
+
+`IContext`·소켓·`Message`·`Received`는 모두 네이티브 리소스를 감싸며
+`IDisposable`(및 대부분 `IAsyncDisposable`)을 구현합니다. **만든 것은 반드시
+해제하세요** — 항상 `using`(또는 `await using`).
+
+- 소켓은 그것을 만든 컨텍스트보다 **먼저** dispose 하세요.
+- `Request().SubmitAsync()`·`Join(...).SubmitAsync()`로 받은 `Message`는
+  **호출자 소유**입니다 — 사용 후 dispose 하세요.
+- span 보관이 필요하면 `ToArray()`/`CopyTo(...)`로 복사하세요.
+
+스레드 안전성 규칙은 [스레드 안전성](../../11-thread-safety.ko.md)을 참고하세요.
+`IContext`는 여러 스레드에서 공유해도 안전합니다. **소켓은 안전하지 않습니다** —
+같은 소켓을 둘 이상의 스레드에서 동시에 호출하지 마세요.
+
+---
+
+## 에러 처리
+
+하드 실패는 작업별 타입 예외로 표면화됩니다. 모두 `ZlinkException`을 상속하며
+`Code`(정수 코드)와 작업별 `Result`(열거형)를 노출합니다.
+
+```csharp
+try
+{
+    socket.Bind("tcp://127.0.0.1:5555");
+}
+catch (ZlinkBindException ex) when (ex.Result == ZlinkBindException.ErrorCode.AddrInUse)
+{
+    Console.Error.WriteLine("포트가 이미 사용 중입니다.");
+}
+catch (ZlinkException ex)
+{
+    Console.Error.WriteLine($"zlink 오류 {ex.Code}: {ex.Message}");
+    throw;
+}
+```
+
+| 예외 | 발생 작업 |
+|---|---|
+| `ZlinkSubmitException` | 송신/발행 (`Submit`) |
+| `ZlinkRequestException` | 요청/응답 (`Request`) — `TimedOut` 등 |
+| `ZlinkRecvException` | 수신 (`Recv`) |
+| `ZlinkBindException` / `ZlinkConnectException` | 바인드/연결 |
+| `ZlinkConfigException` | 옵션/설정 |
+| `ZlinkCloseException` / `ZlinkHandlerException` | 종료/콜백 |
+
+**데이터 없음·일시적 백프레셔는 예외가 아닙니다.** 논블로킹 수신은 `Recv(...)`가
+`false`를, 논블로킹 송신은 `Submit()`이 `false`를 반환하는 것으로 구분하세요:
+
+```csharp
+if (!socket.Recv(received, RecvFlags.DontWait)) { /* 데이터 없음 */ }
+if (!socket.Send().Message(m).Flags(SendFlags.DontWait).Submit()) { /* 백프레셔 */ }
+```
+
+---
+
+## C API 대응표
+
+C 코어(`zlink.h`)에서 넘어오거나 다른 언어 바인딩과 비교할 때 쓰는 압축 매핑입니다.
+.NET은 raw 함수 대신 객체와 플루언트 빌더로 감싸므로 1:1은 아니지만, 개념 단위로는
+대응합니다. 전체 C 함수 목록은 [코어 C API 가이드](../../02-core-api.ko.md)를
+참고하세요.
+
+| 영역 | C API (`zlink_*`) | .NET |
+|------|-------------------|------|
+| 컨텍스트 | `zlink_ctx_new` / `zlink_ctx_term` | `Zlink.CreateContext()` / `IContext.Dispose()` |
+| 컨텍스트 옵션 | `zlink_ctx_set` / `zlink_ctx_get` | `IContext.Options` (`IoThreads`, `MaxSockets`, …) |
+| 소켓 생성 | `zlink_socket(ctx, TYPE)` | `ctx.Create<Type>Socket()` (`CreatePairSocket()` 등) |
+| 바인드 / 연결 | `zlink_bind` / `zlink_connect` | `socket.Bind(...)` / `socket.Connect(...)` |
+| 연결 해제 | `zlink_disconnect` / `zlink_disconnect_rid` | `socket.Disconnect(string)` / `socket.DisconnectRid(RoutingId)` |
+| 소켓 옵션 | `zlink_set_option` / `zlink_get_option` | 소켓별 강타입 속성(`socket.Options`) |
+| routing id | `zlink_set_routing_id` / `zlink_get_routing_id` | `socket.SetRoutingId(RoutingId)` / `RoutingId` |
+| 메시지 생성 | `zlink_msg_init` / `_init_size` / `_init_data` | `new Message(size)` / `Message.From(...)` |
+| 메시지 접근 | `zlink_msg_data` / `zlink_msg_size` | `Message.AsReadOnlySpan()` / `Message.Size` |
+| 메시지 해제 | `zlink_msg_close` / `zlink_multipart_close` | `Message.Dispose()` / `Zlink.MultipartClose(parts)` |
+| 송신 | `zlink_send_part` (+`_rid`) | `socket.Send().Message(...).Submit()` |
+| 수신 | `zlink_recv_part` | `socket.Recv(Received)` |
+| 요청 / 응답 | `zlink_dealer_request_part` / `zlink_router_reply_part` | `dealer.Request()....SubmitAsync()` / `router.Reply(...)` |
+| 구독 | `zlink_spot_subscribe_part` / `zlink_sub_*` | `socket.SetSubscription(...)` / `socket.Subscribe(TopicMessage)` |
+| 모니터 | `zlink_socket_monitor_open` / `_recv` | `socket.MonitorOpen(...)` / `monitor.Recv()` |
+| 폴러 / 타이머 | `zlink_poller_*` / `zlink_timer_*` | `Zlink.CreatePoller()` / `Zlink.CreateTimer()` |
+| discovery | `zlink_discovery_new` / `_connect_registry` | `ctx.CreateDiscovery(...)` / `IDiscovery.ConnectRegistry(...)` |
+| spot node | `zlink_spot_node_new` / `_set_router_bind` | `ctx.CreateSpotNode()` / `node.SetRouterBind(...)` |
+| spot | `zlink_spot_new` / `zlink_spot_publish_part` | `node.CreateSpot()` / `spot.Publish(topic)...` |
+| actor | `zlink_spot_node_actor_new` / `_actor_join_spot` | `node.CreateActor(id)` / `actor.Join(spot)...` |
+| registry | `zlink_registry_new` / `_bind` | `ctx.CreateRegistry()` / `IRegistry.Bind(...)` |
+| 프록시 | `zlink_proxy` / `zlink_proxy_steerable` | `Zlink.Proxy(...)` / `Zlink.ProxySteerable(...)` |
+
+> **이름 규칙**: C의 `snake_case`는 .NET에서 `PascalCase`가 됩니다. C의 `*_part`
+> 계열(멀티파트 substrate)은 .NET에서 플루언트 빌더의 `.Message(...)` 누적으로
+> 표현됩니다 — public 모양은 언어 관례를 따르되 의미 계약은 동일합니다.
+
+---
+
+## 네이티브 라이브러리 / 배포
+
+`Systems.Zlink`는 네이티브 코어를 `runtimes/<rid>/native` 아래 번들하므로 일반
+빌드에서는 추가 설정이 필요 없습니다. 환경변수 `ZLINK_LIBRARY_PATH`로 로드 경로를
+지정할 수 있습니다. **self-contained**/single-file/**Native AOT** 게시 시에는 대상
+RID 자산이 출력에 포함되는지 확인하세요 (`dotnet publish -r <rid>`).
+
+스레딩: `IContext`는 스레드 안전하며 여러 스레드에서 공유 가능합니다. 소켓은
+단일 스레드 소유 — 전체 규칙은 [스레드 안전성](../../11-thread-safety.ko.md) 참고.
+
+---
+
+## 샘플
+
+`bindings/dotnet/samples/`에 기능별 실행 가능한 예제가 있습니다.
+
+| 샘플 | 다루는 기능 |
+|---|---|
+| `PairRecv` | PAIR 송수신 |
+| `DealerRouterRecv` | DEALER/ROUTER 라우팅 |
+| `RequestReplyAsync` | 비동기 요청/응답 |
+| `PubSubRecv` | PUB/SUB 토픽 |
+| `MonitorRecv` | 소켓 모니터 |
+| `StreamRecv`, `StreamPacketCallback` | STREAM + 패킷 콜백 |
+| `DiscoveryRegistry`, `RegistryQuery` | 레지스트리/디스커버리 |
+| `SpotRecv`, `SpotRequestAsync` | SpotNode/Spot |
+| `ActorRoomServer`, `ActorSinglePlayerQueue`, `ActorGatewayRelay` | 액터 |
+
+실행: `./samples/run_samples.sh` (또는 `run_samples.ps1`).
+
+---
+
+## 더 보기
+
+**소켓 패턴**
+- [소켓 패턴 개요](../../03-0-socket-patterns.ko.md)
+  - [PAIR](../../03-1-pair.ko.md)
+  - [PUB/SUB](../../03-2-pubsub.ko.md)
+  - [DEALER](../../03-3-dealer.ko.md)
+  - [ROUTER](../../03-4-router.ko.md)
+  - [STREAM](../../03-5-stream.ko.md)
+  - [프록시](../../03-6-proxy.ko.md)
+
+**서비스**
+- [서비스 개요](../../07-0-services.ko.md)
+  - [Discovery](../../07-1-discovery.ko.md)
+  - [SPOT](../../07-3-spot.ko.md)
+  - [Actor](../../07-4-actor.ko.md)
+  - [Registry](../../07-4-registry.ko.md)
+
+**운영**
+- [소켓 옵션](../../12-socket-options.ko.md)
+- [TLS 보안](../../05-tls-security.ko.md)
+- [모니터링](../../06-monitoring.ko.md)
+- [스레드 안전성](../../11-thread-safety.ko.md)
+- [메시지 API](../../09-message-api.ko.md)
+- [라우팅 ID](../../08-routing-id.ko.md)

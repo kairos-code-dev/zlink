@@ -54,8 +54,8 @@ Boost.Asio 기반으로 I/O **완료** 이벤트를 핸들러로 전달한다(Pr
 
 **사용자에게 의미**: 콜백은 Context가 소유한 I/O 스레드에서 실행된다 — 콜백은 짧고
 lock 없이 유지하고, 그 안에서 핸들을 닫지 않는다. 다중 소켓을 한 루프에서 다루려면
-폴러를 쓴다([운영 — 폴러/타이머](./bindings/dotnet/04-operations.ko.md#폴러--타이머)는
-언어별, 개념은 [02 Core API](./02-core-api.ko.md)).
+폴러를 쓴다(개념은 [02 Core API](./02-core-api.ko.md), 언어 표면은 각
+[바인딩 가이드](./bindings/README.ko.md)).
 
 ### Protocol Agnostic — Transport와 Protocol의 분리
 

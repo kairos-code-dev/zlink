@@ -28,7 +28,7 @@ SPOT은 `SpotNode`와 `Spot` 두 층으로 나뉜다.
 5. `Spot`으로 publish/subscribe 또는 채널 호출을 사용한다.
 
 `zlink_spot_new()`가 성공하면 해당 `Spot`의 routed recv 평면은 이미 준비된 상태다.
-따라서 첫 `zlink_spot_recv()` 호출이 숨겨진 activation이나 자원 생성을 수행한다고
+첫 `zlink_spot_recv()` 호출이 숨겨진 activation이나 자원 생성을 수행한다고
 가정하면 안 된다.
 
 ## 2. 시나리오 — 토픽 pub/sub
@@ -549,7 +549,7 @@ Actor 생성, Spot join/leave, 종료, STREAM session bind, C sample은
 즉 `Spot`을 폴러에 등록해서 디스패치 콜백과 같은 의미를 받는 인터페이스는
 아직 없다.
 
-따라서 SPOT의 구독, 라우팅 수신, 채널 응답, 타이머를 하나의 소유자 기준으로
+SPOT의 구독, 라우팅 수신, 채널 응답, 타이머를 하나의 소유자 기준으로
 순차 처리하려면 `zlink_spot_dispatch_event_handler()`를 사용해야 한다.
 `Spot` 진행(progress) 하나만으로 채널 응답 완료를 포함한 모든 작업이 진전된다.
 

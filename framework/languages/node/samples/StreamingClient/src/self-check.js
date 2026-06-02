@@ -4,16 +4,13 @@ const json = require('../../../packages/stream-connector-json/dist');
 
 async function main() {
   const connection = new InMemoryStreamConnection();
+  const transportFactory = new ReconnectingInMemoryTransportFactory(connection);
   const client = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://sample-stream',
     dispatchMode: connector.ZlinkStreamDispatchMode.Manual,
     heartbeat: { enabled: false },
-    reconnect: { enabled: false },
-    transportFactory: {
-      async connect() {
-        return connection;
-      }
-    }
+    reconnect: { enabled: true, initialDelayMs: 1, maxDelayMs: 1, backoffFactor: 1, maxAttempts: 2 },
+    transportFactory
   });
 
   const states = [];
@@ -42,8 +39,25 @@ async function main() {
 
   assert.deepEqual(reply, { accepted: true, playerId: 'p1' });
   assert.deepEqual(notifications, ['welcome']);
+  assert.equal(transportFactory.connectAttempts, 2);
   assert.equal(states.includes(connector.ZlinkStreamConnectionState.Connected), true);
+  assert.equal(states.includes(connector.ZlinkStreamConnectionState.Reconnecting), true);
   console.log('PASS StreamingClient');
+}
+
+class ReconnectingInMemoryTransportFactory {
+  constructor(connection) {
+    this.connection = connection;
+    this.connectAttempts = 0;
+  }
+
+  async connect() {
+    this.connectAttempts += 1;
+    if (this.connectAttempts === 1) {
+      throw new Error('sample reconnect attempt');
+    }
+    return this.connection;
+  }
 }
 
 class InMemoryStreamConnection {

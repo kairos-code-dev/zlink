@@ -16,6 +16,7 @@ node framework/languages/node/samples/StreamingClient/src/self-check.js
 ## Success Condition
 
 - connector 가 connected 상태로 전환된다.
+- 첫 connect 실패 뒤 reconnect 상태를 거쳐 두 번째 connect 에 성공한다.
 - request frame 에 대해 response frame 이 도착한다.
 - manual dispatch 로 notification handler 가 실행된다.
 

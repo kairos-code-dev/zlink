@@ -153,6 +153,21 @@ test('node run_samples.sh executes every sample self-check', () => {
   }
 });
 
+test('StreamingClient sample covers reconnect request reply and manual notification dispatch', () => {
+  const sample = fs.readFileSync(path.join(samplesRoot, 'StreamingClient', 'src', 'self-check.js'), 'utf8');
+  const required = [
+    'ReconnectingInMemoryTransportFactory',
+    'connectAttempts',
+    'ZlinkStreamConnectionState.Reconnecting',
+    'dispatchMode: connector.ZlinkStreamDispatchMode.Manual',
+    ".request(json.toJson({ playerId: 'p1' }))",
+    "client.on('ServerNotice'"
+  ];
+  const missing = required.filter((text) => !sample.includes(text));
+
+  assert.deepEqual(missing, []);
+});
+
 test('node cross-language smoke covers channel send publish and stream connector paths', () => {
   const smoke = fs.readFileSync(path.join(workspaceRoot, 'cross-language', 'node_dotnet_smoke.js'), 'utf8');
   const required = [

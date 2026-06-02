@@ -44,6 +44,57 @@ test('stream session node runtime dispatches framed packets through one session 
   ]);
 });
 
+test('stream session node runtime serializes dispatch and disconnect callbacks per session', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  let releaseFirst;
+  const firstCanFinish = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  let firstStarted;
+  const firstStartedPromise = new Promise((resolve) => {
+    firstStarted = resolve;
+  });
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    headerDecoder: (header) => ({ name: header.getString() }),
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch(header, payload) {
+          events.push(['dispatch:start', header.name, payload.getString()]);
+          if (header.name === 'First') {
+            firstStarted();
+            await firstCanFinish;
+          }
+          events.push(['dispatch:end', header.name]);
+        },
+        async onDisconnected(ctx) {
+          events.push(['disconnected', ctx.sessionId]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-serial', fakeMessage('First'), fakeMessage('one'));
+  await firstStartedPromise;
+  socket.emitPacket('session-serial', fakeMessage('Second'), fakeMessage('two'));
+  runtime.markDisconnected('session-serial');
+  assert.deepEqual(events, [['dispatch:start', 'First', 'one']]);
+
+  releaseFirst();
+  await runtime.dispose();
+
+  assert.deepEqual(events, [
+    ['dispatch:start', 'First', 'one'],
+    ['dispatch:end', 'First'],
+    ['dispatch:start', 'Second', 'two'],
+    ['dispatch:end', 'Second'],
+    ['disconnected', 'session-serial']
+  ]);
+});
+
 test('stream session runtime rejects sessions that do not expose provided context', () => {
   const socket = new FakeStreamSocket();
 

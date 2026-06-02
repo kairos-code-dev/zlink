@@ -541,6 +541,41 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
   );
 });
 
+test('ZLinkSpotActorDispatcher does not fallback actor requests to send handlers', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class MoveSendHandler {
+    async handle(_spot, actor, context, message) {
+      events.push(`send:${actor.actorId}:${context.packetName}:${message}`);
+    }
+  }
+  const registry = new framework.ZLinkSpotActorHandlerRegistryRuntime()
+    .addPacket({
+      kind: framework.ZLinkActorPacketKind.Send,
+      packetName: 'move',
+      actorType: PlayerActor,
+      handlerType: MoveSendHandler
+    });
+  const dispatcher = new framework.ZLinkSpotActorDispatcher({
+    registry,
+    spot: {}
+  });
+  const actor = new PlayerActor('alice', {});
+
+  await assert.rejects(
+    () => dispatcher.dispatchRequest(actor, 'move', 'right'),
+    (error) =>
+      error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound
+  );
+  assert.deepEqual(events, []);
+});
+
 test('ZLinkSpotActorDispatcher serializes user spot actor handlers on provided serial executor', async () => {
   const events = [];
   class PlayerActor {

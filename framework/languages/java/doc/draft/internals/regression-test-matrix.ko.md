@@ -106,6 +106,13 @@ filter 전달은 실제 binding public API 경로로 검증한다.
 
 ## 5.1 Lifecycle regression
 
+`StreamRuntimeFakeBackendTest.onError_reportsTransportError_forRemoteDisconnect`는
+이미 생성된 session에 매칭되는 transport error만 `onErrorAsync(...)`로 전달하고,
+session이 없는 transport error나 application dispatch 오류는 session error로
+올리지 않는 정책을 fake backend로 고정한다. 실제 remote disconnect를 native
+integration에서 닫으려면 Java binding `StreamSocket`에 session-correlatable
+transport error callback public API가 추가되어야 한다.
+
 | 항목 | 계층 | JUnit 테스트 | 통과 기준 |
 |------|------|--------------|-----------|
 | host start/stop | integration-single-process | `HostTest.host_startsAndStops_frameworkRuntimeContext` | `SmartLifecycle` 시작·종료에 맞춰 runtime context 생성·정리 |

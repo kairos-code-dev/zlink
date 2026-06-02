@@ -47,6 +47,7 @@ final class StreamRuntimeFakeBackendTest {
                 "create.stream",
                 "stream.bind.inproc://gateway",
                 "stream.onPacket",
+                "stream.onTransportError",
                 "stream.attachActorGateway.spotNode",
                 "close.context",
                 "close.stream",
@@ -78,6 +79,32 @@ final class StreamRuntimeFakeBackendTest {
         assertEquals(1, GameSession.disconnectedCount);
     }
 
+    @Test
+    void onError_reportsTransportError_forRemoteDisconnect() {
+        GameSession.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addStreamNode("gateway", stream -> {
+            stream.bind("inproc://gateway");
+            stream.registerSession(GameSession.class);
+        });
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+            backendFactory.dispatchStreamTransportError(111, "before-session");
+            assertEquals(List.of(), GameSession.errors);
+
+            backendFactory.dispatchStreamPacket("Join", "hello");
+            backendFactory.dispatchStreamTransportError(222, "remote-disconnect");
+
+            assertEquals(List.of("TRANSPORT_ERROR:222:remote-disconnect"), GameSession.errors);
+            assertEquals(0, GameSession.disconnectedCount);
+        }
+
+        assertEquals(1, GameSession.disconnectedCount);
+    }
+
     public static final class GameSpot implements ZLinkSpot {
         @Override
         public ZLinkSpotContext context() {
@@ -89,11 +116,13 @@ final class StreamRuntimeFakeBackendTest {
         static int connectedCount;
         static int disconnectedCount;
         static List<String> dispatches = new java.util.ArrayList<>();
+        static List<String> errors = new java.util.ArrayList<>();
 
         static void reset() {
             connectedCount = 0;
             disconnectedCount = 0;
             dispatches = new java.util.ArrayList<>();
+            errors = new java.util.ArrayList<>();
         }
 
         @Override
@@ -115,6 +144,9 @@ final class StreamRuntimeFakeBackendTest {
 
         @Override
         public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
+            errors.add(error.error()
+                + ":" + error.diagnostic().map(systems.zlink.framework.streams.ZLinkStreamDiagnostic::nativeCode).orElse(0)
+                + ":" + error.diagnostic().map(systems.zlink.framework.streams.ZLinkStreamDiagnostic::message).orElse(""));
             return CompletableFuture.completedFuture(null);
         }
 

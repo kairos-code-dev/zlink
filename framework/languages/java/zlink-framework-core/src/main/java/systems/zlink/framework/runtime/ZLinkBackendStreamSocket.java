@@ -8,6 +8,8 @@ import systems.zlink.contracts.sockets.SendFlags;
 public interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
     void onPacket(ZLinkBackendStreamPacketHandler handler);
 
+    void onTransportError(ZLinkBackendStreamErrorHandler handler);
+
     boolean send(RoutingId routingId, List<Message> parts, SendFlags flags);
 
     void attachActorGateway(ZLinkBackendSpotNode node);

@@ -10,7 +10,10 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
+import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkStreamSessionError;
 
 public final class ZLinkStreamRuntime implements AutoCloseable {
     private final ZLinkBackendContext context;
@@ -40,6 +43,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             stream.bind(streamNode.bindEndpoint());
             stream.onPacket((routingId, header, payload) ->
                 dispatchToSession(streamNode, routingId, header, payload));
+            stream.onTransportError((routingId, nativeCode, message) ->
+                reportTransportError(streamNode, routingId, nativeCode, message));
             if (streamNode.actorGatewaySpotNodeName() != null) {
                 ZLinkBackendSpotNode spotNode =
                     spotNodes.get(streamNode.actorGatewaySpotNodeName());
@@ -73,7 +78,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         Message header,
         Message payload) {
         ZLinkSession session = sessions.computeIfAbsent(
-            streamNode.name() + ":" + routingId.toString(),
+            sessionKey(streamNode, routingId),
             ignored -> createSession(streamNode));
         ZLinkStreamHeader streamHeader = new ZLinkStreamHeader(
             header.toUtf8String(),
@@ -89,6 +94,22 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
     }
 
+    private void reportTransportError(
+        StreamNodeRegistration streamNode,
+        RoutingId routingId,
+        int nativeCode,
+        String message) {
+        ZLinkSession session = sessions.get(sessionKey(streamNode, routingId));
+        if (session == null) {
+            return;
+        }
+        session.onErrorAsync(new ZLinkStreamError(
+                ZLinkStreamSessionError.TRANSPORT_ERROR,
+                Optional.of(new ZLinkStreamDiagnostic(nativeCode, message))))
+            .toCompletableFuture()
+            .join();
+    }
+
     private ZLinkSession createSession(StreamNodeRegistration streamNode) {
         try {
             ZLinkSession session = streamNode.sessionType()
@@ -101,6 +122,10 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 "stream session type must expose a public no-arg constructor: "
                     + streamNode.sessionType().getName());
         }
+    }
+
+    private static String sessionKey(StreamNodeRegistration streamNode, RoutingId routingId) {
+        return streamNode.name() + ":" + routingId.toString();
     }
 
     @Override

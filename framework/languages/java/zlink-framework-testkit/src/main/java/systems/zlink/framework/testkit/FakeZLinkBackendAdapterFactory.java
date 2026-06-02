@@ -44,6 +44,7 @@ import systems.zlink.framework.runtime.ZLinkBackendSpotNodePeerEntry;
 import systems.zlink.framework.runtime.ZLinkBackendSpotNodeStatus;
 import systems.zlink.framework.runtime.ZLinkBackendSpotNodeSubjectEntry;
 import systems.zlink.framework.runtime.ZLinkBackendSpotRoute;
+import systems.zlink.framework.runtime.ZLinkBackendStreamErrorHandler;
 import systems.zlink.framework.runtime.ZLinkBackendStreamPacketHandler;
 import systems.zlink.framework.runtime.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.ZLinkBackendSubscriberSocket;
@@ -70,6 +71,16 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             RoutingId.from("fake-session"),
             Message.from(packetName),
             Message.from(payload));
+    }
+
+    public void dispatchStreamTransportError(int nativeCode, String message) {
+        if (streams.isEmpty()) {
+            throw new IllegalStateException("no fake stream socket is available");
+        }
+        streams.get(0).dispatchTransportError(
+            RoutingId.from("fake-session"),
+            nativeCode,
+            message);
     }
 
     @Override
@@ -430,12 +441,14 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
     private static final class FakeStreamSocket extends FakeSocket implements ZLinkBackendStreamSocket {
         private ZLinkBackendStreamPacketHandler packetHandler;
+        private ZLinkBackendStreamErrorHandler errorHandler;
 
         FakeStreamSocket(List<String> calls) {
             super(calls, "stream");
         }
 
         @Override public void onPacket(ZLinkBackendStreamPacketHandler handler) { packetHandler = handler; record("onPacket"); }
+        @Override public void onTransportError(ZLinkBackendStreamErrorHandler handler) { errorHandler = handler; record("onTransportError"); }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { record("send"); return true; }
         @Override public void attachActorGateway(ZLinkBackendSpotNode node) { record("attachActorGateway." + node.name()); }
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) { record("bindActor." + actor.actorId()); return timeout -> CompletableFuture.completedFuture(null); }
@@ -447,6 +460,13 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 throw new IllegalStateException("stream packet handler is not registered");
             }
             packetHandler.handle(routingId, header, payload);
+        }
+
+        void dispatchTransportError(RoutingId routingId, int nativeCode, String message) {
+            if (errorHandler == null) {
+                throw new IllegalStateException("stream error handler is not registered");
+            }
+            errorHandler.handle(routingId, nativeCode, message);
         }
     }
 

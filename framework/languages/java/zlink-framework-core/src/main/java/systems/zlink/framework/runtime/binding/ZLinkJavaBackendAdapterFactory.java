@@ -68,6 +68,7 @@ import systems.zlink.framework.runtime.ZLinkBackendSpotNodeStatus;
 import systems.zlink.framework.runtime.ZLinkBackendSpotNodeSubjectEntry;
 import systems.zlink.framework.runtime.ZLinkBackendSpotRoute;
 import systems.zlink.framework.runtime.ZLinkBackendStreamPacketHandler;
+import systems.zlink.framework.runtime.ZLinkBackendStreamErrorHandler;
 import systems.zlink.framework.runtime.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.ZLinkBackendSubscriberSocket;
 import systems.zlink.framework.runtime.ZLinkBackendTopicMessage;
@@ -236,6 +237,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public String name() { return "stream"; }
         @Override public void bind(String endpoint) { socket.bind(endpoint); }
         @Override public void onPacket(ZLinkBackendStreamPacketHandler handler) { socket.onPacket(handler::handle); }
+        @Override public void onTransportError(ZLinkBackendStreamErrorHandler handler) { }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { return submit(socket.send(routingId), parts, flags); }
         @Override public void attachActorGateway(ZLinkBackendSpotNode node) { socket.attachActorGateway(((JavaSpotNode) node).spotNode()); }
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) {

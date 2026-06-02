@@ -58,7 +58,7 @@ fun main() {
                             }
                             stream.bindActor(sessionRid, actorRef)
                                 .timeout(Duration.ofSeconds(2))
-                                .submitAsync().join().forEach(Message::close)
+                                .submitAsync().toCompletableFuture().join().forEach(Message::close)
 
                             Message.from("enter-room").use { request ->
                                 actor.join(spot).message(request).timeout(Duration.ofSeconds(2))
@@ -79,7 +79,7 @@ fun main() {
                             }
                             SampleSupport.waitUntil("actor payload") { payloads.contains("move:north") }
 
-                            actor.leave(spot).submitAsync().join().forEach(Message::close)
+                            actor.leave(spot).submitAsync().toCompletableFuture().join().forEach(Message::close)
                             actor.close()
                         }
                         println("[actor/room] stream payload: \"move:north\" -> actor: \"move:north\"")

@@ -120,7 +120,11 @@ connector.connectAsync()
 
 // 게임 루프/메인 스레드에서 주기적으로 콜백 실행
 while (running) {
-    connector.dispatchAsync().toCompletableFuture().join();
+    connector.dispatchAsync().whenComplete((ignored, error) -> {
+        if (error != null) {
+            reportDispatchError(error);
+        }
+    });
 }
 ```
 

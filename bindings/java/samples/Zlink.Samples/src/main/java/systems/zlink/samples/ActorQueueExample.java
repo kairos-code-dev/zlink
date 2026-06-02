@@ -36,7 +36,7 @@ public final class ActorQueueExample {
             stream.attachActorGateway(node);
             RoutingId session = RoutingId.from("single-player-session");
             stream.bindActor(session, actor.ref())
-                .timeout(Duration.ofSeconds(2)).submitAsync().join().forEach(Message::close);
+                .timeout(Duration.ofSeconds(2)).submitAsync().toCompletableFuture().join().forEach(Message::close);
 
             // dispatch 핸들러: join 요청을 수락하고, actor에게 온 메시지를 모은다.
             spot.setDispatchHandler(info -> {
@@ -59,7 +59,7 @@ public final class ActorQueueExample {
 
             join(actor, spot, "join-first");                          // actor가 spot에 합류
             send(stream, session, "before");                          // joined 상태에서 도착
-            actor.leave(spot).submitAsync().join().forEach(Message::close); // 처리 위치 이탈
+            actor.leave(spot).submitAsync().toCompletableFuture().join().forEach(Message::close); // 처리 위치 이탈
             send(stream, session, "between");                         // leave 사이에 도착 → 큐잉
             join(actor, spot, "join-second");                         // rejoin → 큐된 메시지 배달
 
@@ -71,7 +71,7 @@ public final class ActorQueueExample {
                 throw new IllegalStateException("queued payloads were not preserved: " + payloads);
             }
 
-            actor.leave(spot).submitAsync().join().forEach(Message::close);
+            actor.leave(spot).submitAsync().toCompletableFuture().join().forEach(Message::close);
             actor.close();
             System.out.println(
                 "[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"");

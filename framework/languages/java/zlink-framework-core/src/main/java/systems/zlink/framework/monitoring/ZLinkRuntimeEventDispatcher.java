@@ -43,8 +43,11 @@ public final class ZLinkRuntimeEventDispatcher {
         try {
             registration.handler()
                 .handleAsync(registration.eventType().cast(event))
-                .toCompletableFuture()
-                .join();
+                .whenComplete((ignored, error) -> {
+                    if (error != null) {
+                        handlerFailureCount.incrementAndGet();
+                    }
+                });
         } catch (RuntimeException ex) {
             handlerFailureCount.incrementAndGet();
         }

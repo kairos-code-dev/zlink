@@ -7,7 +7,7 @@ import systems.zlink.contracts.sockets.RequestCallback;
 import systems.zlink.contracts.sockets.SendFlags;
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /** Accepts further parts, timeout, flags, and the terminal submit of a request. */
 public interface RequestSubmitOperation {
@@ -21,7 +21,7 @@ public interface RequestSubmitOperation {
     RequestSubmitOperation message(Message part);
 
     /**
-     * Sets how long the submit awaits a reply before timing out.
+     * Sets how long the request may remain pending before timing out.
      *
      * @param timeout the request timeout; replaces any previous value
      * @return this operation for chaining
@@ -44,7 +44,7 @@ public interface RequestSubmitOperation {
      *
      * @return a future that completes with the reply message list
      */
-    CompletableFuture<List<Message>> submitAsync();
+    CompletionStage<List<Message>> submitAsync();
 
     /**
      * Submits the request; the result and reply parts are delivered to

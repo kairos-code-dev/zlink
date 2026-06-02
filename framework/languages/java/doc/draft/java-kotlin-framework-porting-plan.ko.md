@@ -25,6 +25,9 @@ Java/Kotlin 포팅은 두 표면을 함께 제공한다.
 
 - Java 표면은 `CompletionStage`, `AutoCloseable`, Spring bean, annotation을 기준으로
   잡는다.
+- Java binding도 public async 반환은 `CompletionStage`를 기준으로 둔다. 내부 완료
+  제어에는 `CompletableFuture`를 쓸 수 있지만, public contract에서 blocking 대기를
+  쉽게 유도하지 않는다.
 - Kotlin 표면은 Java API 위에 얇은 extension을 얹어 `suspend`, `Flow`,
   DSL builder를 제공한다. Kotlin 전용 런타임을 따로 만들지 않는다.
 
@@ -65,7 +68,20 @@ contract만 의존하고 구체 codec은 선택적으로 얹는다. 하나의 co
 | `systems.zlink.framework.monitoring` | runtime event, event mapper, polling runner |
 | `systems.zlink.framework.configuration` | option builders and validators |
 | `systems.zlink.framework.execution` | serial execution queue (`.NET` `Runtime/Execution/` 미러 — Phase 5 산출, Phase 6/7 재사용) |
-| `systems.zlink.framework.runtime` | internal runtime managers and backend adapters |
+| `systems.zlink.framework.runtime` | internal runtime namespace only |
+| `systems.zlink.framework.runtime.host` | framework runtime host composition |
+| `systems.zlink.framework.runtime.configuration` | runtime registration model and builder adapters |
+| `systems.zlink.framework.runtime.backend` | backend adapter ports between framework runtime and Java binding |
+| `systems.zlink.framework.runtime.actors` | actor runtime, session actor binding, bound session support |
+| `systems.zlink.framework.runtime.channels` | channel runtime, channel registrations, channel builder adapters |
+| `systems.zlink.framework.runtime.spots` | spot runtime and spot node registrations |
+| `systems.zlink.framework.runtime.streams` | stream runtime and stream node registrations |
+| `systems.zlink.framework.runtime.registry` | embedded registry runtime and remote registry query client |
+| `systems.zlink.framework.runtime.monitoring` | monitoring runtime and monitoring option model |
+| `systems.zlink.framework.runtime.messaging` | message serializer and runtime message helpers |
+
+runtime 루트에는 개별 구현 파일을 두지 않고, `.NET` `Runtime/*` 카테고리에 대응하는
+하위 package가 실제 구현을 가진다.
 
 ## 3. Public Surface 대응표
 
@@ -243,7 +259,10 @@ connector sample은 `ZLinkStreamConnectorFactory.create(...)`로 직접 생성�
 
 ## 6. Kotlin 표면
 
-Kotlin은 Java contract를 감싸는 편의 계층이다. 아래 정도만 제공한다.
+Kotlin은 Java contract를 감싸는 편의 계층이다. core runtime을 다시 만들지 않는다.
+Java runtime은 handler와 submit 결과를 `CompletionStage`로만 본다. Kotlin adapter는
+사용자가 작성한 `suspend` handler를 framework가 소유한 coroutine 안에서 실행하고,
+그 결과를 다시 `CompletionStage`로 돌려준다.
 
 ```kotlin
 suspend fun <TReply> ZLinkClient.request(
@@ -256,7 +275,35 @@ fun ZLinkFrameworkOptions.zlink(block: ZLinkFrameworkDsl.() -> Unit)
 ```
 
 Kotlin DSL은 Java builder를 호출하는 thin wrapper다. Java와 다른 설정 의미를 만들지
-않는다.
+않는다. 구현은 아래 규칙을 따른다.
+
+- Kotlin adapter는 `GlobalScope`를 쓰지 않는다. framework host가 소유한
+  `CoroutineScope`를 만들고, host shutdown 때 먼저 cancel한 뒤 Java runtime을
+  닫는다. 이렇게 해야 진행 중인 handler가 host lifecycle 밖에 남지 않는다.
+- 기본 dispatcher는 설정으로 받는다. 기본값은 application callback용 dispatcher이고,
+  blocking 파일 I/O 같은 작업은 사용자가 별도 dispatcher를 명시해야 한다. zlink
+  request 자체는 `CompletionStage.await()`로 suspend되므로 dispatcher thread를
+  오래 점유하지 않는다.
+- `suspend` request/send/publish helper는 Java builder의 `submitAsync()`를 호출한 뒤
+  `kotlinx-coroutines-jdk8`의 `await()`로 변환한다. Java public API에
+  `submitAwait` 같은 blocking/parking helper를 추가하지 않는다.
+- `suspend` handler 등록은 Java handler interface로 변환한다. 변환된 handler는
+  `scope.future(dispatcher) { ... }` 형태로 실행되어 `CompletionStage`를 반환한다.
+  `runBlocking`은 현재 thread를 막으므로 금지한다.
+- channel, Spot, actor, session처럼 순서가 필요한 경로는 coroutine을 동시에 띄워
+  순서를 맡기지 않는다. Java core의 serial execution queue가 이전
+  `CompletionStage` 완료를 기준으로 다음 dispatch를 시작한다.
+- request timeout, session close, host shutdown은 Kotlin coroutine cancellation로
+  전달되어야 한다. 반대로 coroutine이 cancel되면 Java `CompletionStage`는 취소 또는
+  exceptional completion으로 끝나고 pending reply 정리 정책을 따라야 한다.
+- `suspend` handler가 던진 예외는 Java `CompletionStage` exceptional completion으로
+  변환한다. reply error, monitoring event, retry 가능 여부는 Java core의 handler
+  failure policy가 한 곳에서 결정한다.
+- Spring Boot adapter와 함께 쓸 때 MDC, tracing, security context 같은 thread-local
+  값은 자동 보장을 전제로 하지 않는다. 필요한 경우 Kotlin adapter가 명시적 context
+  propagation hook을 제공하고, 기본 동작은 문서화한다.
+- Java handler와 Kotlin suspend handler가 같은 `kind + packetName`으로 등록되면
+  중복 등록 오류로 처리한다. 언어가 다르다는 이유로 우선순위를 만들지 않는다.
 
 ## 7. 검증 계획
 
@@ -265,6 +312,8 @@ Kotlin DSL은 Java builder를 호출하는 thin wrapper다. Java와 다른 설�
 1. contract compile: Java public API와 Kotlin extension compile
 2. unit tests: handler scanner, packet name resolver, builder validator
 3. fake backend tests: submit queue, reply correlation, session serial dispatch
+4. Kotlin adapter tests: suspend handler completion, cancellation, exception mapping,
+   duplicate registration, dispatcher 설정
 4. native backend smoke: channel request/send, fanout, registry query
 5. SPOT smoke: create/getOrCreate, route send/request, timer
 6. STREAM smoke: session connected, dispatch, reply, close
@@ -334,6 +383,12 @@ bind/accept/close 실패는 session callback이 아니라 monitoring event로 �
 - compatibility shim은 기본으로 만들지 않는다. 초기 포팅은 작고 명확한 public
   surface를 우선한다.
 - request/send/publish submit은 thread를 오래 막지 않는 async submit 경로로 둔다.
+- Java public API에는 `submitAwait`, `awaitBlocking` 같은 blocking/parking helper를
+  두지 않는다. Java 사용자는 `CompletionStage` continuation을 쓰고, 절차식 표현은
+  Kotlin `suspend` wrapper에서 제공한다.
+- Kotlin adapter는 Java runtime의 lifecycle, validation, ordering 의미를 바꾸지
+  않는다. adapter 안에서 별도 mailbox, 별도 pending request tracker, 별도 retry
+  policy를 만들지 않는다.
 - STREAM inbound payload는 callback 동안 framework가 빌려준 값으로 취급한다.
 - ActorGateway relay를 application route mesh packet으로 흉내 내지 않는다.
 - Registry는 actor-session binding 저장소가 아니다.
@@ -362,5 +417,8 @@ bind/accept/close 실패는 session callback이 아니라 monitoring event로 �
   request timeout을 지원한다.
 - Kotlin 모듈은 Java API 위의 coroutine/DSL wrapper로 동작하며 별도 runtime 의미를
   만들지 않는다.
-- `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient` sample이
-  실제 connector와 framework public API만 사용해 self-check를 통과한다.
+- Kotlin `suspend` handler는 framework-owned `CoroutineScope`에서 실행되고,
+  shutdown/cancellation/exception/serial ordering이 Java core와 같은 의미로 test된다.
+- `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`,
+  `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient`, `Async` sample이 실제
+  connector와 framework public API만 사용해 self-check를 통과한다.

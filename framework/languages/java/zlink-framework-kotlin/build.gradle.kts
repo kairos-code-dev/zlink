@@ -13,4 +13,6 @@ kotlin {
 dependencies {
     api(project(":zlink-framework-core"))
     api(project(":zlink-stream-connector"))
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.9.0")
 }

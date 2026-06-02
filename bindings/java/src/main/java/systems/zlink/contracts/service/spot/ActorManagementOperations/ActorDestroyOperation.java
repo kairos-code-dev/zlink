@@ -5,14 +5,14 @@ package systems.zlink.contracts.service.spot;
 import systems.zlink.contracts.messaging.Message;
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /** Builds an actor destroy operation. */
 public interface ActorDestroyOperation {
     /** Sets the operation timeout, replacing any previous value. */
     ActorDestroyOperation timeout(Duration timeout);
     /** Submits the operation and asynchronously returns the reply parts. */
-    CompletableFuture<List<Message>> submitAsync();
+    CompletionStage<List<Message>> submitAsync();
     /** Submits the operation; the result is delivered to {@code callback}. */
     boolean submit(ReplyHandler callback);
 }

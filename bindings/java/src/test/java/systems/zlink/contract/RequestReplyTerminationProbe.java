@@ -92,6 +92,7 @@ public final class RequestReplyTerminationProbe {
                     .message(request)
                     .timeout(Duration.ofSeconds(2))
                     .submitAsync()
+                    .toCompletableFuture()
                     .get(2, TimeUnit.SECONDS);
                 try {
                     log("dealer request complete");

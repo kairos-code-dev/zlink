@@ -5,11 +5,11 @@ package systems.zlink.contracts.service.spot;
 import systems.zlink.contracts.messaging.Message;
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /** Builds an actor-from-session unbind operation. */
 public interface ActorUnbindOperation {
     ActorUnbindOperation timeout(Duration timeout);
-    CompletableFuture<List<Message>> submitAsync();
+    CompletionStage<List<Message>> submitAsync();
     boolean submit(ReplyHandler callback);
 }

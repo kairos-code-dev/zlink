@@ -7,8 +7,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
-import systems.zlink.framework.runtime.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 
 @AutoConfiguration

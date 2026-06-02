@@ -1,5 +1,7 @@
 package systems.zlink.framework.testkit;
 
+import systems.zlink.framework.runtime.backend.*;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
@@ -11,8 +13,8 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.runtime.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.ZLinkFrameworkRuntime;
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 

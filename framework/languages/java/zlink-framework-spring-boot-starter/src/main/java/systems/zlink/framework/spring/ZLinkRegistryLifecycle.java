@@ -3,8 +3,8 @@ package systems.zlink.framework.spring;
 import java.util.Objects;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
-import systems.zlink.framework.runtime.ZLinkBackendAdapterFactory;
-import systems.zlink.framework.runtime.ZLinkRegistryRuntime;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 
 public final class ZLinkRegistryLifecycle implements SmartLifecycle {
     public static final int PHASE = -100;

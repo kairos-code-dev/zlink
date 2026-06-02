@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime;
 
+import systems.zlink.framework.runtime.backend.*;
+
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -10,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.registry.ZLinkRegistryQueryFilter;
+import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
+import systems.zlink.framework.runtime.registry.ZLinkRemoteRegistryQueryClient;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 
 final class EmbeddedRegistryTest {

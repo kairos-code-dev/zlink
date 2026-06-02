@@ -4,15 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
-import systems.zlink.framework.runtime.ZLinkBackendAutoConnectType;
-import systems.zlink.framework.runtime.ZLinkBackendAdapterOptions;
-import systems.zlink.framework.runtime.ZLinkBackendContext;
-import systems.zlink.framework.runtime.ZLinkBackendDealerSocket;
-import systems.zlink.framework.runtime.ZLinkBackendDiscovery;
-import systems.zlink.framework.runtime.ZLinkBackendSpotNodeMode;
-import systems.zlink.framework.runtime.ZLinkBackendSpotNode;
-import systems.zlink.framework.runtime.ZLinkBackendStreamSocket;
-import systems.zlink.framework.runtime.ZLinkChannelBackendAdapter;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAutoConnectType;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
+import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.backend.ZLinkBackendDiscovery;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
+import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
 
 final class FakeZLinkBackendAdapterTest {
     @Test

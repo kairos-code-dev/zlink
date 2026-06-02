@@ -126,14 +126,12 @@ var reply = client.requestToChannel(
 ## 6. 일반 event publish
 
 ```java
-fanoutClient.publish(
+CompletionStage<Void> submitted = fanoutClient.publish(
     "profile",
     "profile.cache-refreshed",
     new ProfileCacheRefreshed(accountId)
 ).packetName("profile.cache-refreshed")
- .submitAsync()
- .toCompletableFuture()
- .join();
+ .submitAsync();
 ```
 
 ## 7. Routed channel 호출

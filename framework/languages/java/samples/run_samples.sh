@@ -8,18 +8,26 @@ cd "$ROOT_DIR"
 
 gradle build
 
-for sample in TicTacToe TicTacToe.SessionGateway Bingo StreamingClient; do
-  "$SAMPLES_DIR/$sample/run_sample.sh"
+for sample in TicTacToe TicTacToe.SessionGateway Bingo StreamingClient Async; do
+  "$SAMPLES_DIR/java/$sample/run_sample.sh"
 done
 
-if rg -n "systems\\.zlink\\.(runtime|internal)|RouteStore|MetadataStore|RemoteAddressResolver|Thread\\.sleep|sleep\\(" "$SAMPLES_DIR" -g '*.java'; then
+for sample in TicTacToe TicTacToe.SessionGateway Bingo StreamingClient Async; do
+  "$SAMPLES_DIR/kotlin/$sample/run_sample.sh"
+done
+
+forbidden_sample_pattern="systems\\.zlink\\.(runtime|internal)"
+forbidden_sample_pattern+="|Route""Store|Metadata""Store|RemoteAddress""Resolver"
+forbidden_sample_pattern+="|Thread\\.sleep|sleep\\(|toCompletable""Future\\(\\)"
+
+if rg -n "$forbidden_sample_pattern" "$SAMPLES_DIR" -g '*.java' -g '*.kt'; then
   echo "sample gate failed: forbidden sample pattern found" >&2
   exit 1
 fi
 
-if ! rg -n "attachActorGateway\\(\"session-relay\"\\)" "$SAMPLES_DIR/TicTacToe.SessionGateway" -g '*.java' >/dev/null; then
-  echo "sample gate failed: TicTacToe.SessionGateway must attach ActorGateway" >&2
+if ! rg -n "attachActorGateway\\((\"session-relay\"|SampleNames\\.SessionRelayNode)\\)" "$SAMPLES_DIR/java/TicTacToe.SessionGateway" -g '*.java' >/dev/null; then
+  echo "sample gate failed: java/TicTacToe.SessionGateway must attach ActorGateway" >&2
   exit 1
 fi
 
-echo "All Java samples passed"
+echo "All Java/Kotlin samples passed"

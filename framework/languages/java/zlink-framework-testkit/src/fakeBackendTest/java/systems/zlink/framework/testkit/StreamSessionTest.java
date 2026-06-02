@@ -1,5 +1,7 @@
 package systems.zlink.framework.testkit;
 
+import systems.zlink.framework.runtime.backend.*;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.List;
@@ -7,8 +9,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.runtime.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.ZLinkFrameworkRuntime;
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;

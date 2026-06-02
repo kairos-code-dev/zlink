@@ -72,6 +72,7 @@ public final class ActorGatewayRelaySample {
                 stream.bindActor(sessionRid, actorRef)
                   .timeout(Duration.ofSeconds(2))
                   .submitAsync()
+                  .toCompletableFuture()
                   .join()
                   .forEach(Message::close);
                 try (Message request = Message.from("join-play")) {
@@ -95,7 +96,7 @@ public final class ActorGatewayRelaySample {
                 if (!List.of("client-input").equals(payloads)) {
                     throw new IllegalStateException("unexpected actor payload");
                 }
-                actor.leave(spot).submitAsync().join().forEach(Message::close);
+                actor.leave(spot).submitAsync().toCompletableFuture().join().forEach(Message::close);
                 actor.close();
             }
             System.out.println("[actor/gateway] stream payload: \"client-input\" -> actor: \"client-input\"");

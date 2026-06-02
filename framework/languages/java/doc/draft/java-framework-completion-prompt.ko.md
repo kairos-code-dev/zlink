@@ -46,7 +46,8 @@
    manual dispatch, request timeout, reconnect 의미를 구현한다.
 7. Kotlin coroutine/Flow wrapper를 Java connector/framework 의미가 바뀌지 않게 구현한다.
 8. sample-implementation-plan의 TicTacToe, TicTacToe.SessionGateway, Bingo,
-   StreamingClient sample을 public API만 사용해서 구현한다.
+   StreamingClient, Async sample을 `samples/java/*`와 `samples/kotlin/*` 양쪽에
+   public API만 사용해서 구현한다.
 9. regression-test-matrix의 unit, contract, fake backend, integration-single-process,
    integration-multi-process, sample regression 행을 실제 테스트로 닫는다.
 10. Java 서비스와 `.NET`/C++/Node 서비스 중 최소 한 경로의 cross-language 상호호출

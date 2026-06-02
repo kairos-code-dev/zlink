@@ -1,0 +1,70 @@
+package systems.zlink.framework.runtime.configuration;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.runtime.channels.ChannelRegistration;
+import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
+import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
+
+public final class ZLinkFrameworkRegistration {
+    private final List<String> registryEndpoints = new ArrayList<>();
+    private final List<ChannelRegistration> channels = new ArrayList<>();
+    private final List<SpotNodeRegistration> spotNodes = new ArrayList<>();
+    private final List<StreamNodeRegistration> streamNodes = new ArrayList<>();
+    private final Map<String, Class<? extends ZLinkActorFactory>> actorFactories =
+        new LinkedHashMap<>();
+    private Duration defaultTimeout = Duration.ofSeconds(30);
+
+    public Duration defaultTimeout() {
+        return defaultTimeout;
+    }
+
+    void setDefaultTimeout(Duration defaultTimeout) {
+        this.defaultTimeout = defaultTimeout;
+    }
+
+    public List<String> registryEndpoints() {
+        return registryEndpoints;
+    }
+
+    public List<ChannelRegistration> channels() {
+        return channels;
+    }
+
+    public List<SpotNodeRegistration> spotNodes() {
+        return spotNodes;
+    }
+
+    public List<StreamNodeRegistration> streamNodes() {
+        return streamNodes;
+    }
+
+    public Map<String, Class<? extends ZLinkActorFactory>> actorFactories() {
+        return actorFactories;
+    }
+
+    public boolean discoveryEnabled() {
+        return !registryEndpoints.isEmpty();
+    }
+
+    void validate() {
+        if (!actorFactories.isEmpty() && spotNodes.isEmpty()) {
+            throw new ZLinkConfigurationException(
+                "actor factories require at least one SpotNode");
+        }
+        for (ChannelRegistration channel : channels) {
+            channel.validate(discoveryEnabled());
+        }
+        for (SpotNodeRegistration spotNode : spotNodes) {
+            spotNode.validate();
+        }
+        for (StreamNodeRegistration streamNode : streamNodes) {
+            streamNode.validate(spotNodes);
+        }
+    }
+}

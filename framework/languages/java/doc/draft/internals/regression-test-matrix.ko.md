@@ -137,14 +137,22 @@ transport error callback public API가 추가되어야 한다.
 | `TicTacToe.SessionGateway` | reconnect 후 같은 actor id로 새 session binding |
 | `Bingo` | 4 connector client, matching, timer, bound push 성공 |
 | `StreamingClient` | connector send/request/on/manual dispatch/lifecycle event/reconnect smoke |
+| `Async` | Java `CompletionStage` continuation과 Kotlin `suspend` wrapper smoke |
 
-sample source와 runner 구조는
+위 sample은 `samples/java/*`와 `samples/kotlin/*` 양쪽에 있어야 한다. sample source와 runner 구조는
 `SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints`,
 `sampleSourcesUseOnlyPublicFrameworkAndConnectorApi`,
 `ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator`,
+`ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout`,
 `bingoMirrorsFourClientMatchingTimerAndBoundPushGate`,
+`bingoKotlinSampleMirrorsJavaRoleLayout`,
 `streamingClientMirrorsConnectorSmokeGate`가 고정한다. 실제 실행 self-check는 아래
 release gate command가 담당한다.
+
+`TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`의 sample release gate는 단일 entry
+file만 확인하지 않는다. Java/Kotlin 양쪽에서 `.NET` sample의 역할 package, handler,
+model, player-client 파일이 존재하는지 함께 검사한다. 이렇게 해야 sample이 smoke
+check로 축소되는 회귀를 막을 수 있다.
 
 release gate command:
 

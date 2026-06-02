@@ -7,9 +7,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.registry.ZLinkRegistryQueryFilter;
-import systems.zlink.framework.runtime.ZLinkBackendAdapterOptions;
-import systems.zlink.framework.runtime.ZLinkRegistryRuntime;
-import systems.zlink.framework.runtime.ZLinkRemoteRegistryQueryClient;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
+import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
+import systems.zlink.framework.runtime.registry.ZLinkRemoteRegistryQueryClient;
 
 final class RegistryRuntimeFakeBackendTest {
     @Test

@@ -3,11 +3,11 @@
 package systems.zlink.contracts.service.spot;
 
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /** Builds an actor join to an entry spot. */
 public interface ActorJoinEntrySpotOperation {
     ActorJoinEntrySpotOperation timeout(Duration timeout);
-    CompletableFuture<ActorJoinEntrySpotCompletion> submitAsync();
+    CompletionStage<ActorJoinEntrySpotCompletion> submitAsync();
     boolean submit(ActorJoinEntrySpotHandler callback);
 }

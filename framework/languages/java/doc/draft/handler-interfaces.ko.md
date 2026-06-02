@@ -23,6 +23,9 @@
   `sendTo`, `requestTo`, `sendChannel`, `requestChannel` 같은 action 이름을
   유지한다.
 - blocking과 non-blocking을 별도 동사 이름으로 나누지 않는다.
+- Java handler와 submit 표면은 `CompletionStage`를 기준으로 한다. Kotlin
+  `suspend` 표면은 이 Java handler를 감싸는 adapter이며, 별도 runtime 의미를 만들지
+  않는다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다.
 
@@ -135,6 +138,11 @@ public interface ZLinkRouteRequestHandler<TRequest, TReply> {
         ZLinkRouteRequestContext context);
 }
 ```
+
+Kotlin adapter는 `suspend` handler를 위 Java handler interface로 변환한다. adapter는
+framework-owned `CoroutineScope`에서 handler를 실행하고 `CompletionStage`를 반환해야
+한다. `runBlocking`으로 현재 dispatch thread를 막거나, Java core의 serial execution
+queue를 우회하는 별도 coroutine queue를 만들지 않는다.
 
 stream은 `.NET` 기준과 같이 header session 하나로 설명한다. 이전 초안의
 `packet session`/`raw session` 분리는 현재 포팅 기준이 아니다. callback으로 전달된

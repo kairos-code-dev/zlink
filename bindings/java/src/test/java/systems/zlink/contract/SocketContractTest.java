@@ -148,6 +148,7 @@ public class SocketContractTest {
                     .message(request)
                     .timeout(Duration.ofSeconds(2))
                     .submitAsync()
+                    .toCompletableFuture()
                     .get(2, TimeUnit.SECONDS);
                 try {
                     assertArrayEquals("pong".getBytes(StandardCharsets.UTF_8),
@@ -198,6 +199,7 @@ public class SocketContractTest {
                     .message(payload)
                     .timeout(Duration.ofSeconds(2))
                     .submitAsync()
+                    .toCompletableFuture()
                     .get(2, TimeUnit.SECONDS);
                 try {
                     assertArrayEquals("ok".getBytes(StandardCharsets.UTF_8),
@@ -668,7 +670,8 @@ public class SocketContractTest {
                 future = dealerSocket.request()
                     .message(request)
                     .timeout(Duration.ofMillis(50))
-                    .submitAsync();
+                    .submitAsync()
+                    .toCompletableFuture();
             }
 
             try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {

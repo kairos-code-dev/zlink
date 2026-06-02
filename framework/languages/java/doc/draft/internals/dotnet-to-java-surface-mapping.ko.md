@@ -23,9 +23,14 @@
 framework는 새로운 wire 의미를 만들지 않는다. `.NET`과 같은 channel과 packet으로
 붙으면 양쪽이 그대로 통신해야 한다.
 
-> async 표면 결정: framework public async 반환은 `CompletionStage<T>`로 고정한다.
+> async 표면 결정: binding과 framework public async 반환은 `CompletionStage<T>`로
+> 고정한다.
 > Reactor `Mono`/`Flux`(또는 RxJava) 표면을 자동으로 노출하는 것은 비목표다.
 > 필요하면 Kotlin coroutine wrapper처럼 별도 thin wrapper에서 다룬다.
+> Java public API에는 `submitAwait` 같은 blocking/parking helper를 두지 않는다.
+> Kotlin wrapper는 Java runtime을 다시 구현하지 않는다. `suspend` handler는
+> framework-owned coroutine에서 실행하고 결과를 `CompletionStage<T>`로 돌려주며,
+> ordering, timeout, cancellation, exception mapping은 Java core 정책을 따른다.
 
 ## 2. 패키지와 네이밍
 
@@ -91,7 +96,7 @@ handler 콜백은 `ZLinkPublishHandler`/`ZLinkPublishContext`/`@ZLinkPublish`
 | `RoutingId` | `RoutingId`(`bindings/java` 재사용) | transport identity primitive |
 | `Message` / `ReadOnlyMemory<byte>` | `Message`(`bindings/java` 재사용) | payload primitive |
 | `SendFlags` | `SendFlags` | submit option primitive |
-| `ValueTask` / `ValueTask<T>` / `Task<T>` | `CompletionStage<Void>` / `CompletionStage<T>` | async submit 기본 |
+| `ValueTask` / `ValueTask<T>` / `Task<T>` | `CompletionStage<Void>` / `CompletionStage<T>` | binding/framework async submit 기본 |
 | `TimeSpan` | `java.time.Duration` | 기간/주기 |
 | `ulong` | `long`(unsigned 의미 주석) 또는 의미상 필요하면 `BigInteger` | 부호 없는 정수 |
 | `record` / `readonly record struct` | `record` 또는 불변 class | DTO |
@@ -117,6 +122,20 @@ suspend fun <TReply : Any> ZLinkClient.request(
     replyType: KClass<TReply>
 ): TReply
 ```
+
+Kotlin adapter의 cancellation은 `.NET`의 `CancellationToken`을 새 파라미터로 복사하는
+방식이 아니다. Java context가 노출하는 shutdown/request/session 신호를 coroutine
+`Job` cancellation으로 연결한다. coroutine이 취소되면 해당 handler의
+`CompletionStage`도 취소 또는 exceptional completion으로 끝나야 하며, pending request
+정리는 Java core가 담당한다.
+
+Kotlin handler registration은 Java handler registration과 같은 key 공간을 쓴다.
+같은 channel/Spot/session 안에서 `kind + packetName`이 겹치면 Java handler와 Kotlin
+handler 사이에도 duplicate mapping 오류를 낸다. 언어별 우선순위는 만들지 않는다.
+
+Kotlin handler exception은 adapter에서 삼키지 않는다. `scope.future { ... }`의
+exceptional completion으로 Java core에 전달하고, reply error와 monitoring event는
+Java core의 handler failure policy가 결정한다.
 
 ## 3. Spring Boot host 매핑
 

@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime;
 
+import systems.zlink.framework.runtime.backend.*;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.ArrayList;
@@ -14,6 +16,8 @@ import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
 import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
+import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
+import systems.zlink.framework.runtime.monitoring.ZLinkMonitoringRuntime;
 
 final class MonitoringEventsTest {
     @Test

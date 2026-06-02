@@ -35,7 +35,8 @@
 - connector codec helper: JSON, MessagePack, Protobuf, auto codec
 - Kotlin coroutine/DSL wrapper
 - testkit: fake backend, in-process host, sample fixture
-- samples: `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient`
+- samples: `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`,
+  `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient`, `Async`
 
 구현은 단계적으로 나눌 수 있다. 그러나 위 항목을 기본 범위 밖으로 밀어 두면
 `.NET`과 같은 수준의 포팅으로 보지 않는다.
@@ -56,9 +57,9 @@
 
 필요하면 별도 extension package나 후속 문서에서 다룬다.
 
-## 3. 완료 판정
+## 3. 판정 기준
 
-구현 완료는 아래를 모두 만족하는 상태다.
+이 구현 범위는 아래를 모두 만족할 때 끝난 것으로 본다.
 
 - 구현 범위 항목이 코드와 테스트로 존재한다.
 - `regression-test-matrix.ko.md`의 release gate를 통과한다.

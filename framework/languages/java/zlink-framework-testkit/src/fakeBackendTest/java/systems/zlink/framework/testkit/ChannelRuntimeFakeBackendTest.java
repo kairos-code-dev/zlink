@@ -1,10 +1,12 @@
 package systems.zlink.framework.testkit;
 
+import systems.zlink.framework.runtime.backend.*;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
-import systems.zlink.framework.runtime.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.ZLinkFrameworkRuntime;
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
 final class ChannelRuntimeFakeBackendTest {
     @Test

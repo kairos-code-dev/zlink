@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
+import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
+import systems.zlink.framework.runtime.monitoring.ZLinkMonitoringRuntime;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 
 final class RegistryAndMonitoringTest {

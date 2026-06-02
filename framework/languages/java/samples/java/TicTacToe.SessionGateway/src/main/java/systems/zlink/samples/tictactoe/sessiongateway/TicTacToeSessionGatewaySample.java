@@ -1,0 +1,29 @@
+package systems.zlink.samples.tictactoe.sessiongateway;
+
+import systems.zlink.framework.ZLinkFramework;
+import systems.zlink.samples.tictactoe.sessiongateway.client.SessionActorDispatchClient;
+import systems.zlink.samples.tictactoe.sessiongateway.client.SessionActorDispatchClientOptions;
+import systems.zlink.samples.tictactoe.sessiongateway.server.api.ApiServer;
+import systems.zlink.samples.tictactoe.sessiongateway.server.play.PlayServer;
+import systems.zlink.samples.tictactoe.sessiongateway.server.registry.RegistryServer;
+import systems.zlink.samples.tictactoe.sessiongateway.server.session.SessionServer;
+
+public final class TicTacToeSessionGatewaySample {
+    private TicTacToeSessionGatewaySample() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        SessionActorDispatchClient client = new SessionActorDispatchClient();
+        try (ZLinkFramework framework = ZLinkFramework.start(options -> {
+            RegistryServer.configure(options);
+            ApiServer.configure(options);
+            PlayServer.configure(options);
+            SessionServer.configure(options);
+        })) {
+            client.verifyFrameworkActorCreation(framework.actorManager());
+        }
+
+        client.runReconnectScenario(new SessionActorDispatchClientOptions("player-1"));
+        System.out.println("TicTacToe.SessionGateway sample self-check passed");
+    }
+}

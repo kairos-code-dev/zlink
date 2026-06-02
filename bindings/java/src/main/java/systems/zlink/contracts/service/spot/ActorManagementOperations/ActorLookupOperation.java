@@ -4,11 +4,11 @@ package systems.zlink.contracts.service.spot;
 
 
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /** Builds a remote actor lookup operation. */
 public interface ActorLookupOperation {
     ActorLookupOperation timeout(Duration timeout);
-    CompletableFuture<ActorLookupResult> submitAsync();
+    CompletionStage<ActorLookupResult> submitAsync();
     boolean submit(ActorLookupHandler callback);
 }

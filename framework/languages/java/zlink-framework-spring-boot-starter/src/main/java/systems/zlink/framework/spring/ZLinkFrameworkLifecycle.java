@@ -6,9 +6,9 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.ZLinkBackendAdapterFactory;
-import systems.zlink.framework.runtime.ZLinkFrameworkRuntime;
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
 public final class ZLinkFrameworkLifecycle implements SmartLifecycle, ZLinkClient {
     private final DefaultZLinkFrameworkOptions options;

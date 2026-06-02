@@ -66,11 +66,19 @@ POM의 project URL과 SCM URL은 저장소를 가리키는 안정 메타데이�
 repository URL과 다르다. repository URL은 위 환경변수 규칙으로 정하고, POM URL은
 사용자가 artifact의 소스 저장소를 찾기 위한 식별자로 유지한다.
 
-`zlink-framework-core` 내부 package(= `.NET` `Runtime/` 미러):
+`zlink-framework-core` 내부 package(= `.NET` `Contracts/*` + `Runtime/*` 미러):
 `systems.zlink.framework.{channels, spots, actors, streams, registry, monitoring,
-configuration}`, internal `systems.zlink.framework.runtime`(backend adapter 격리),
-그리고 **`systems.zlink.framework.execution`(serial execution queue 등 — §0.0
-참조)**.
+configuration}`은 public contract 표면이다. internal runtime은
+`systems.zlink.framework.runtime` 아래에서 `.NET` `Runtime/*` 카테고리에 맞춰
+`runtime.host`, `runtime.configuration`, `runtime.backend`, `runtime.actors`,
+`runtime.channels`, `runtime.spots`, `runtime.streams`, `runtime.registry`,
+`runtime.monitoring`, `runtime.messaging`처럼
+주제별 package로 분리한다. 공통 직렬 실행 primitive는 **`systems.zlink.framework.execution`(serial
+execution queue 등 — §2.3 참조)**에 둔다.
+
+`systems.zlink.framework.runtime` 루트 package는 하위 runtime package를 묶는
+namespace 역할만 맡긴다. host 조립, option registration, spot runtime, stream runtime은
+각각 `runtime.host`, `runtime.configuration`, `runtime.spots`, `runtime.streams`에 둔다.
 
 > 코드 모듈은 `.NET` `Runtime/Codecs/`(framework 내장 `ZLinkCodecRegistryBuilder`)와
 > connector codec 모듈을 구분한다. framework 내장 codec registry는
@@ -97,7 +105,8 @@ configuration}`, internal `systems.zlink.framework.runtime`(backend adapter 격�
 - framework는 Java binding의 public API만 호출한다.
 - `.NET`과 같은 channel, Spot, actor/session, stream, registry, monitoring 의미를
   제공한다.
-- `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient` sample이 실제
+- `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`,
+  `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient`, `Async` sample이 실제
   framework/connector public API만 사용해 실행된다.
 - [regression-test-matrix](./internals/regression-test-matrix.ko.md)의 release gate가
   통과한다.
@@ -566,16 +575,29 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 
 ### 작업
 
-1. Java `CompletionStage`를 `suspend`로 감싼다.
-2. Java builder를 호출하는 DSL을 만든다.
-3. connector message stream을 `Flow`로 노출한다.
-4. Kotlin wrapper가 Java와 다른 error/lifecycle 의미를 만들지 않도록 test한다.
+1. Java binding/framework `CompletionStage`를 `suspend`로 감싼다.
+2. framework host가 소유하는 `CoroutineScope`와 설정 가능한 dispatcher를 만든다.
+   `GlobalScope`와 `runBlocking`은 금지한다.
+3. `suspend` handler를 Java handler interface로 변환한다. adapter는
+   `scope.future(dispatcher) { ... }`로 `CompletionStage`를 반환한다.
+4. Java builder를 호출하는 DSL을 만든다.
+5. connector message stream을 `Flow`로 노출한다.
+6. shutdown, request timeout, session close가 coroutine cancellation로 이어지는지
+   구현한다.
+7. `suspend` handler exception이 Java core의 handler failure policy로 모이는지
+   구현한다.
+8. Kotlin wrapper가 Java와 다른 error/lifecycle/ordering 의미를 만들지 않도록
+   test한다.
 
 ### Gate
 
 - Kotlin compile
 - coroutine request/send/publish smoke 통과
 - connector Flow smoke 통과
+- framework-owned `CoroutineScope` cancellation test 통과
+- same channel/Spot/actor/session serial ordering test 통과
+- suspend handler exception mapping test 통과
+- Java handler와 Kotlin handler의 duplicate registration validation test 통과
 - Java API와 다른 validation 의미가 없는지 contract test 통과
 - Phase 9 POSD 리팩토링 체크 통과
 
@@ -583,10 +605,16 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 
 ### 산출물
 
-- `framework/languages/java/samples/TicTacToe`
-- `framework/languages/java/samples/TicTacToe.SessionGateway`
-- `framework/languages/java/samples/Bingo`
-- `framework/languages/java/samples/StreamingClient`
+- `framework/languages/java/samples/java/TicTacToe`
+- `framework/languages/java/samples/java/TicTacToe.SessionGateway`
+- `framework/languages/java/samples/java/Bingo`
+- `framework/languages/java/samples/java/StreamingClient`
+- `framework/languages/java/samples/java/Async`
+- `framework/languages/java/samples/kotlin/TicTacToe`
+- `framework/languages/java/samples/kotlin/TicTacToe.SessionGateway`
+- `framework/languages/java/samples/kotlin/Bingo`
+- `framework/languages/java/samples/kotlin/StreamingClient`
+- `framework/languages/java/samples/kotlin/Async`
 - `framework/languages/java/samples/run_samples.sh`
 
 ### 작업
@@ -595,7 +623,13 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 2. `TicTacToe` direct sample을 구현한다.
 3. `TicTacToe.SessionGateway`로 ActorGateway relay와 reconnect를 검증한다.
 4. `Bingo`로 matching room, timer, bound push를 검증한다.
-5. sample regression self-check를 만든다.
+5. Java `CompletionStage`와 Kotlin `suspend` 표면을 검증하는 `Async` sample을 구현한다.
+6. 같은 sample set을 `samples/java/*`, `samples/kotlin/*` 양쪽에 배치한다.
+7. `.NET`의 `Client`, `Server/Api`, `Server/Play`, `Server/Registry`,
+   `Server/Session`, `Shared/*` 역할을 Java/Kotlin package와 파일로 나누어 둔다.
+   `TicTacToe.SessionGateway`와 `Bingo`는 actor joined/left, Spot created, room model,
+   player client 역할 파일을 생략하지 않는다.
+8. sample regression self-check를 만든다.
 
 ### Gate
 
@@ -606,6 +640,8 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 sample gate는 아래를 자동 확인해야 한다.
 
 - sample이 framework/connector public API만 사용한다.
+- `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`가 Java/Kotlin 양쪽에서 `.NET`
+  sample의 역할 package와 주요 handler/model/player-client 파일을 가진다.
 - session sample에 route/metadata store가 없다.
 - Session server가 ActorGateway attach를 사용한다.
 - connector client가 manual dispatch mode에서 request/reply와 notification을 처리한다.
@@ -676,6 +712,9 @@ sample gate는 아래를 자동 확인해야 한다.
 
 Kotlin/JVM 표면 제약: `CompletionStage`→`suspend`, monitoring stream→`Flow`,
 Java builder를 호출하는 thin DSL만 둔다. Kotlin 전용 runtime 의미를 만들지 않는다.
+Java public API에는 blocking/parking helper를 추가하지 않는다.
+Kotlin handler 실행은 framework-owned coroutine adapter에서만 이루어지고, Java core의
+serial execution queue와 lifecycle을 우회하지 않는다.
 
 ## 17. 권장 구현 순서 요약 (phase 1:1 매핑)
 

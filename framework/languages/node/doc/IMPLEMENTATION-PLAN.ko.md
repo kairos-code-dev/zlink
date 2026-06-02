@@ -120,8 +120,10 @@ workspace.
 `runtime/execution/`(serial executor 등).
 
 공통 toolchain: TypeScript `strict`, `reflect-metadata`(decorator 메타데이터),
-Node 20+, 테스트는 `node:test` 기반 `*.test.js` 파일로 작성한다. CI release gate 는
-`npm run verify:runtime-matrix` 로 `node20` 과 `node22` 를 모두 돌린다.
+Node 20+, 테스트는 `node:test` 기반 `*.test.js` 파일로 작성한다. 로컬 최종
+release gate 는 `npm run verify:release` 이고, CI 는 같은 기준을 OS/ABI matrix 와
+cross-language job 으로 나누어 실행한다. `node20` 과 `node22` 양쪽 runtime 은
+`npm run verify:runtime-matrix` 로 확인한다.
 
 ---
 

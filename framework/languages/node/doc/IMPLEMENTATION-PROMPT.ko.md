@@ -112,10 +112,15 @@ Phase 별 핵심 완료 조건:
 - P9: regression matrix, user guide, samples, cross-language smoke, doc link tests, ABI release gate 가 모두 통과한다.
 
 최종 gate:
+- `npm run verify:release`
+
+`verify:release` 는 아래 gate 를 순서대로 묶어 실행해야 한다.
+
 - `npm run build`
 - `npm run typecheck`
 - `npm run verify:abi-matrix`
 - `npm run verify:p0`
+- `npm run verify:samples`
 - `npm run verify:cross-language`
 - `npm run verify:runtime-matrix`
 - `./samples/run_samples.sh`

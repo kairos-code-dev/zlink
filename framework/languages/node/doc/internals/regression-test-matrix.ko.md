@@ -279,7 +279,9 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 
 ## 8. Release Gate
 
-릴리스로 보내려면 다음 여섯 가지를 모두 만족해야 한다.
+릴리스로 보내려면 다음 여섯 가지를 모두 만족해야 한다. 로컬에서는
+`npm run verify:release` 가 아래 필수 gate 를 한 번에 실행한다. CI 는 같은 기준을
+runtime/ABI matrix job 과 cross-language job 으로 나누어 실행한다.
 
 1. `unit`, `integration-single-process`, `integration-multi-process` 전부 통과
 2. `npm run verify:runtime-matrix` 로 `node20`, `node22` 양쪽 모두 통과
@@ -304,7 +306,8 @@ backend gate 와 별도로 유지한다.
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| `run_samples.sh` 전체 실행 | `integration-multi-process` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo 가 모두 self-check 통과 |
+| `npm run verify:release` | `integration-multi-process` | ABI 선언, P0 회귀, sample smoke, Node runtime matrix, cross-language smoke 를 순서대로 실행한다 |
+| `npm run verify:samples` | `integration-multi-process` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo 가 모두 self-check 통과 |
 | `npm run verify:runtime-matrix` | `integration-multi-process` | 현재 runner 가 Node 20 과 Node 22 에서 build, typecheck, 전체 contract test 를 모두 통과시킨다 |
 | `npm run verify:abi-matrix` | `unit` | `framework-node` CI workflow, release 문서, package script 가 `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64` 와 Node 20/22 gate 를 같은 목록으로 유지한다 |
 | `npm run verify:cross-language` | `integration-multi-process` | Node 와 dotnet TestHost 가 channel/stream 필수 경로 여섯 가지를 같은 프로토콜 의미로 통과시킨다 |

@@ -9,9 +9,11 @@
     "typecheck": "node ../../../bindings/node/node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/**/*.test.js",
     "verify:p0": "npm run build && npm run typecheck && node --test test/**/*.test.js",
+    "verify:samples": "./samples/run_samples.sh",
     "verify:runtime-matrix": "node scripts/verify_node_runtime_matrix.js",
     "verify:abi-matrix": "node scripts/verify_node_abi_matrix.js",
-    "verify:cross-language": "./cross-language/run_cross_language_smoke.sh"
+    "verify:cross-language": "./cross-language/run_cross_language_smoke.sh",
+    "verify:release": "npm run verify:abi-matrix && npm run verify:p0 && npm run verify:samples && npm run verify:runtime-matrix && npm run verify:cross-language"
   },
   "workspaces": [
     "packages/*"

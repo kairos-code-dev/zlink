@@ -95,6 +95,21 @@ test('ZLinkSpotManager getOrCreate is keyed by spot type and spotRid', async () 
   );
 });
 
+test('ZLinkSpotManager list returns spot infos ordered by routing id', async () => {
+  class StageSpot {}
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
+
+  await manager.getOrCreate(StageSpot, 'stage-c');
+  await manager.getOrCreate(StageSpot, 'stage-a');
+  await manager.getOrCreate(StageSpot, 'stage-b');
+
+  assert.deepEqual(await manager.list(), [
+    { spotRid: 'stage-a' },
+    { spotRid: 'stage-b' },
+    { spotRid: 'stage-c' }
+  ]);
+});
+
 test('ZLinkSpotManager concurrent getOrCreate initializes once with the first create payload', async () => {
   const payloads = [];
   const entered = createDeferred();

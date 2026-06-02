@@ -104,7 +104,9 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   }
 
   async list(): Promise<readonly ZLinkSpotInfo[]> {
-    return [...this.activations.keys()].map((spotRid) => ({ spotRid }));
+    return [...this.activations.keys()]
+      .sort((left, right) => left.localeCompare(right))
+      .map((spotRid) => ({ spotRid }));
   }
 
   async remove(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean> {

@@ -11,13 +11,15 @@ node framework/languages/node/samples/TicTacToe.SessionGateway/client/self-check
 
 ## Topology
 
-- session-server: client stream session 을 받는 역할
+- client: session server process 를 시작하고 `ready` 이벤트를 기다린 뒤 reconnect scenario command 를 보낸다.
+- session-server: actor bound session binding token 을 갱신하고 push 를 기록하는 역할
 - play-server: actor 와 game Spot 을 호스팅하는 역할
 - api-server: match 시작 요청을 받는 역할
 - registry-server: 실제 배포에서는 topology 를 제공한다
 
 이 self-check 는 현재 public framework API 위에서 actor bound session 의미와 reconnect
-token 갱신을 deterministic 하게 검증한다.
+token 갱신을 deterministic 하게 검증한다. server role 은 별도 process 로 실행되고,
+client 는 관찰 가능한 `ready` 이벤트를 받은 뒤 scenario 를 시작한다.
 
 ## Success Condition
 

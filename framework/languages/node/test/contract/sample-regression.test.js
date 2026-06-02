@@ -56,6 +56,49 @@ test('node samples use only framework and connector public APIs', () => {
   assert.deepEqual(violations, []);
 });
 
+test('node framework samples exercise the NestJS module surface', () => {
+  const missing = [];
+  for (const sample of ['TicTacToe', 'TicTacToe.SessionGateway', 'Bingo']) {
+    const usesNestModule = sampleSourceFiles(path.join(samplesRoot, sample))
+      .some((file) => fs.readFileSync(file, 'utf8').includes('packages/nestjs/dist'));
+    if (!usesNestModule) {
+      missing.push(sample);
+    }
+  }
+
+  assert.deepEqual(missing, []);
+});
+
+test('node topology samples run server roles as separate processes', () => {
+  const cases = [
+    ['TicTacToe', 'server/main.js', 'server/main.js'],
+    ['TicTacToe.SessionGateway', 'session-server/main.js', 'session-server/main.js'],
+    ['Bingo', 'api-server/main.js', 'api-server/main.js']
+  ];
+
+  for (const [sample, serverRelative, clientReference] of cases) {
+    const serverEntry = path.join(samplesRoot, sample, serverRelative);
+    const clientEntry = path.join(samplesRoot, sample, 'client', 'self-check.js');
+    const serverContent = fs.readFileSync(serverEntry, 'utf8');
+    const clientContent = fs.readFileSync(clientEntry, 'utf8');
+
+    assert.equal(fs.existsSync(serverEntry), true);
+    assert.match(serverContent, /runRoleServer/);
+    assert.match(clientContent, /withRoleProcess/);
+    assert.match(clientContent, new RegExp(escapeRegExp(clientReference)));
+  }
+});
+
+test('node topology samples keep role process protocol in the shared helper', () => {
+  const protocolFiles = sampleSourceFiles(samplesRoot)
+    .filter((file) => fs.readFileSync(file, 'utf8').includes('childProcess.spawn'));
+
+  assert.deepEqual(
+    protocolFiles.map((file) => path.relative(samplesRoot, file)),
+    ['shared/role-process.js']
+  );
+});
+
 test('node samples do not hide readiness with sleep calls', () => {
   const violations = [];
   for (const file of sampleSourceFiles(samplesRoot)) {

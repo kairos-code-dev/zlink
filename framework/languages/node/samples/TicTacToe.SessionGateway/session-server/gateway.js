@@ -1,10 +1,15 @@
 const framework = require('../../../packages/framework/dist');
+const nestjs = require('../../../packages/nestjs/dist');
 const { SessionBindingTable } = require('../shared/session-binding');
 const { SessionPlayerActorFactory } = require('../play-server/session-actor');
 
 function createSessionGateway() {
   const bindings = new SessionBindingTable();
   let currentToken = 'session-1';
+  nestjs.ZLinkModule.forRoot({
+    spotNodes: ['session-gateway'],
+    actorFactories: { player: SessionPlayerActorFactory }
+  });
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['player', SessionPlayerActorFactory]]),
     boundSessionFactory(actorId) {

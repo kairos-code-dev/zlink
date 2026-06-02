@@ -1,4 +1,5 @@
 const framework = require('../../../packages/framework/dist');
+const nestjs = require('../../../packages/nestjs/dist');
 const { TicTacToeBoard } = require('../shared/game');
 
 class PlayerActor {
@@ -42,11 +43,13 @@ class GameSpot {
 
 function createGameServer() {
   const channelEvents = [];
-  const registration = framework.createFrameworkRegistration({
+  const module = nestjs.ZLinkModule.forRoot({
     channels: { match: { client: { manualConnections: ['in-memory'] } } },
     spotNodes: ['game'],
+    spotFactories: [GameSpot],
     actorFactories: { player: PlayerActorFactory }
   });
+  const registration = getProvider(module, nestjs.ZLINK_FRAMEWORK_REGISTRATION);
   const channelClient = new framework.DefaultZLinkChannelClient(registration, {
     async send(channelName, packetName, message) {
       channelEvents.push({ kind: 'send', channelName, packetName, message: message.toString() });
@@ -59,15 +62,18 @@ function createGameServer() {
       channelEvents.push({ kind: 'publish', channelName, topic, packetName, event: event.toString() });
     }
   });
-  const spots = new framework.DefaultZLinkSpotManager({
-    spotFactories: [GameSpot],
-    channelClient
-  });
-  const actors = new framework.DefaultZLinkActorManager({
-    actorFactories: new Map([['player', PlayerActorFactory]])
-  });
+  const spots = getProvider(module, nestjs.ZLINK_SPOT_MANAGER);
+  const actors = getProvider(module, nestjs.ZLINK_ACTOR_MANAGER);
 
   return { actors, channelClient, channelEvents, spots, GameSpot };
+}
+
+function getProvider(module, token) {
+  const provider = module.providers.find((entry) => entry.provide === token);
+  if (provider === undefined || provider.useValue === undefined) {
+    throw new Error(`Sample provider is not registered: ${String(token)}`);
+  }
+  return provider.useValue;
 }
 
 module.exports = { createGameServer };

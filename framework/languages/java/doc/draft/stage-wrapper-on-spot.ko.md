@@ -28,6 +28,6 @@
 
 - 상태와 도메인 메서드: `Stage`
 - packet handler: 별도 bean
-- 다른 channel 호출: `ZLinkSpotClient`
+- 다른 channel 호출: `ZLinkSpotOutbound`
 
 즉 `Stage` 안에 모든 packet 처리와 외부 호출을 몰아 넣지 않는 편이 맞다.

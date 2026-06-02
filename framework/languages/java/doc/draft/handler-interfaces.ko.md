@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[Java 묶음](./README.ko.md) | [channel](./spring-boot-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./spring-boot-spot.ko.md) | [STREAM](./spring-boot-stream.ko.md) | [Monitoring](./spring-boot-monitoring.ko.md) | [Registry](./spring-boot-registry.ko.md)
+[Java 묶음](./README.ko.md) | [포팅 계획](./java-kotlin-framework-porting-plan.ko.md) | [channel](./spring-boot-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./spring-boot-spot.ko.md) | [Actor/session](./spring-boot-actor-session.ko.md) | [STREAM](./spring-boot-stream.ko.md) | [Monitoring](./spring-boot-monitoring.ko.md) | [Registry](./spring-boot-registry.ko.md)
 
 # Draft -- ZLink Framework Java Interface Catalog
 
@@ -33,23 +33,35 @@
 | context | `ZLinkHandlerContext` | 모든 handler context의 공통 기반 |
 | handler | `ZLinkRequestHandler<TReq, TRep>` | request-response handler |
 | handler | `ZLinkSendHandler<TMsg>` | one-way send handler |
-| handler | `ZLinkEventHandler<TEvent>` | event handler |
-| handler | `ZLinkPacketStreamSession` | packet stream session lifecycle + packet callback |
-| handler | `ZLinkRawStreamSession` | raw stream session lifecycle + raw callback |
-| stream | `ZLinkStream` | stream I/O와 peer 식별 |
+| handler | `ZLinkPublishHandler<TMsg>` | pub/sub publish handler |
+| handler | `ZLinkRouteSendHandler<TMsg>` | routed channel one-way handler |
+| handler | `ZLinkRouteRequestHandler<TReq, TRep>` | routed channel request-response handler |
+| handler | `ZLinkSession` | stream session lifecycle + framework header dispatch |
+| context | `ZLinkSessionContext` | stream session identity, client 응답, actor binding |
+| context | `ZLinkSessionClient` | session에서 client stream으로 send/reply |
+| context | `ZLinkSessionActors` | session에서 actor handle bind와 lookup 수행 |
+| value | `ZLinkSessionActor` | session이 들고 있는 actor dispatch handle |
+| handler | `ZLinkActor` | actor runtime 안에서 생성되는 application actor |
+| factory | `ZLinkActorFactory` | actor type별 actor 생성 |
+| management | `ZLinkActorManager` | actor id/type 기준 생성, 조회, 재사용 |
+| context | `ZLinkActorContext` | actor 상태, Spot join, bound session 호출 표면 |
+| client | `ZLinkBoundSession` | 현재 actor에서 현재 client session으로 보내는 표면 |
+| stream | `ZLinkStreamConnector` | client 측 STREAM connector |
 | value | `ZLinkStreamSessionError`, `ZLinkStreamError` | stream error kind + detail |
 | handler | `ZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler |
 | options | `ZLinkMonitoringOptions` | runtime monitoring source 등록 |
 | value | `ZLinkSocketEventKind`, `ZLinkSocketEvent` | socket runtime event |
-| value | `ZLinkDiscoveryEventKind`, `ZLinkDiscoveryEvent` | discovery runtime event |
 | value | `ZLinkRegistryEventKind`, `ZLinkRegistryEvent` | registry runtime event |
 | value | `ZLinkSpotEventKind`, `ZLinkSpotEvent` | spot runtime event |
 | serializer | `ZLinkMessageSerializer` | payload codec 추상화 |
+| options | `ZLinkCodecRegistryBuilder` | JSON/MessagePack/Protobuf codec 등록 |
+| options | `ZLinkDispatchOptions` | Spot/Stream dispatch mode, unhandled policy, diagnostics |
 | client | `ZLinkClient` | channel messaging outbound client |
-| client | `ZLinkSpotClient` | `SPOT` outbound client |
-| client | `ZLinkEventPublisher` | event publisher |
+| client | `ZLinkSpotOutbound` | `SPOT` outbound client |
+| client | `ZLinkFanoutClient` | pub/sub fanout publisher |
+| client | `ZLinkRouteClient` | route mesh channel target 호출 |
 | client | `ZLinkSpotPublisherClient` | 외부 노드용 `SPOT` publish client |
-| management | `ZLinkSpotManager` | `spotName` 기준 생성/조회/삭제 |
+| management | `ZLinkSpotManager` | Spot type 기준 생성, `spotRid` 기준 조회/삭제 |
 | timer | `ZLinkTimer` | `SPOT` lifecycle timer handle |
 | filter | `ZLinkHandlerFilter` | handler 전후 공통 처리 |
 | marker | `ZLinkRequest<TReply>` | request/reply 타입 연결 marker |
@@ -62,19 +74,32 @@ public interface ZLinkHandlerContext {
     @Nullable String channelName();
     @Nullable String packetName();
     @Nullable String contentType();
-    @Nullable String correlationId();
-    @Nullable Instant deadline();
-    ApplicationContext services();
+    CancellationToken cancellationToken();
 }
 ```
+
+handler context는 Spring `ApplicationContext`를 노출하지 않는다. handler가 service를
+필요로 하면 constructor injection으로 받는다. context를 service locator로 만들면
+framework와 application 코드의 책임 경계가 흐려진다.
 
 파생 context는 아래처럼 나눈다.
 
 - `ZLinkRequestContext`
 - `ZLinkSendContext`
-- `ZLinkEventContext`
-- `ZLinkSpotRequestContext`
-- `ZLinkSpotSubscriptionContext`
+- `ZLinkPublishContext` (`topic`, `source` 추가)
+- `ZLinkRouteSendContext`
+- `ZLinkRouteRequestContext`
+- `ZLinkSpotActorSendContext`
+- `ZLinkSpotActorRequestContext`
+
+`ZLinkPublishContext`는 공통 필드에 더해 publish 고유 정보를 노출한다.
+
+```java
+public interface ZLinkPublishContext extends ZLinkHandlerContext {
+    String topic();
+    @Nullable String source();
+}
+```
 
 ## 3. Handler
 
@@ -91,29 +116,77 @@ public interface ZLinkSendHandler<TMessage> {
         ZLinkSendContext context);
 }
 
-public interface ZLinkEventHandler<TEvent> {
+public interface ZLinkPublishHandler<TMessage> {
     CompletionStage<Void> handleAsync(
-        TEvent message,
-        ZLinkEventContext context);
+        TMessage message,
+        ZLinkPublishContext context);
+}
+
+public interface ZLinkRouteSendHandler<TMessage> {
+    CompletionStage<Void> handleAsync(
+        TMessage message,
+        ZLinkRouteSendContext context);
+}
+
+public interface ZLinkRouteRequestHandler<TRequest, TReply> {
+    CompletionStage<TReply> handleAsync(
+        TRequest request,
+        ZLinkRouteRequestContext context);
 }
 ```
 
-stream은 packet path와 raw path를 나눌 수 있지만, 둘 다 session lifecycle 위에서
-설명하는 방향을 기본으로 본다.
+stream은 `.NET` 기준과 같이 header session 하나로 설명한다. 이전 초안의
+`packet session`/`raw session` 분리는 현재 포팅 기준이 아니다. callback으로 전달된
+payload는 framework가 빌려준 값이므로 callback 밖에서 보관해야 하면 별도 copy를
+만든다.
 
 ```java
-public interface ZLinkStream {
+public interface ZLinkSession {
+    ZLinkSessionContext context();
+
+    CompletionStage<Void> onConnectedAsync();
+
+    CompletionStage<Void> onDisconnectedAsync();
+
+    CompletionStage<Void> onErrorAsync(ZLinkStreamError error);
+
+    default CompletionStage<Void> onDispatchAsync(
+        ZLinkStreamHeader header,
+        Message payload) {
+        return CompletableFuture.completedFuture(null);
+    }
+}
+
+public interface ZLinkSessionContext {
     String sessionId();
 
-    @Nullable RoutingId routingId();
+    Optional<RoutingId> routingId();
 
-    @Nullable String localAddr();
+    Optional<String> localAddr();
 
-    @Nullable String remoteAddr();
+    Optional<String> remoteAddr();
 
-    boolean write(Message payload, SendFlags flags);
+    ZLinkSessionClient client();
 
-    boolean write(Message header, Message payload, SendFlags flags);
+    ZLinkSessionActors actors();
+
+    CompletionStage<Void> closeAsync();
+}
+
+public interface ZLinkSessionClient {
+    <TMessage> ZLinkSessionSendCall send(TMessage message);
+
+    <TMessage> ZLinkSessionReplyCall reply(TMessage message);
+}
+
+public interface ZLinkSessionActors {
+    List<ZLinkSessionActor> bound();
+
+    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActor actor);
+
+    CompletionStage<ZLinkSessionActor> bindAsync(ActorRef actor);
+
+    Optional<ZLinkSessionActor> find(String actorId);
 }
 
 public enum ZLinkStreamSessionError {
@@ -122,46 +195,74 @@ public enum ZLinkStreamSessionError {
     HANDSHAKE_FAILED
 }
 
+public record ZLinkStreamDiagnostic(
+    int nativeCode,
+    @Nullable String message) {
+}
+
 public record ZLinkStreamError(
     ZLinkStreamSessionError error,
-    int internalErrno) {
+    @Nullable ZLinkStreamDiagnostic diagnostic) {
+}
 
-    public ErrorCode getErrorCode() {
-        return ZlinkException.mapErrorCode(internalErrno);
-    }
+public interface ZLinkSessionSendCall {
+    ZLinkSessionSendCall metadata(String key, String value);
+    ZLinkSessionSendCall packetName(String messageName);
+    ZLinkSessionSendCall compress();
+    CompletionStage<Void> submitAsync();
+}
 
-    public String getErrorMessage() {
-        return Zlink.strerror(internalErrno);
+public interface ZLinkSessionReplyCall {
+    ZLinkSessionReplyCall metadata(String key, String value);
+    ZLinkSessionReplyCall compress();
+    CompletionStage<Void> submitAsync();
+}
+
+public interface ZLinkSessionActor {
+    String actorId();
+    ActorRef ref();
+    CompletionStage<Void> relayAsync(ZLinkStreamHeader header, Message payload);
+    CompletionStage<Void> notifyDisconnectedAsync();
+}
+
+public interface ZLinkActor {
+    String actorId();
+    ZLinkActorContext context();
+    default void configure() {
     }
 }
 
-public interface ZLinkPacketStreamSession {
-    CompletionStage<Void> onConnectedAsync(ZLinkStream stream);
-
-    CompletionStage<Void> onDisconnectedAsync(ZLinkStream stream);
-
-    CompletionStage<Void> onErrorAsync(
-        ZLinkStream stream,
-        ZLinkStreamError error);
-
-    CompletionStage<Void> onPacketAsync(
-        ZLinkStream stream,
-        Message header,
-        Message payload);
+public interface ZLinkActorFactory {
+    CompletionStage<ZLinkActor> createAsync(
+        String actorId,
+        ZLinkActorContext context);
 }
 
-public interface ZLinkRawStreamSession {
-    CompletionStage<Void> onConnectedAsync(ZLinkStream stream);
+public interface ZLinkActorManager {
+    CompletionStage<ZLinkActor> createAsync(String actorId, String actorType);
+    CompletionStage<Optional<ZLinkActor>> findAsync(String actorId);
+    CompletionStage<ZLinkActor> getOrCreateAsync(String actorId, String actorType);
+}
 
-    CompletionStage<Void> onDisconnectedAsync(ZLinkStream stream);
+public interface ZLinkActorContext {
+    Optional<RoutingId> spotRid();
+    boolean isJoined();
+    ZLinkBoundSession boundSession();
+    ZLinkSpot getSpot();
+    <TSpot extends ZLinkSpot> TSpot getSpot(Class<TSpot> spotType);
+    ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Object request);
+    ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid);
+}
 
-    CompletionStage<Void> onErrorAsync(
-        ZLinkStream stream,
-        ZLinkStreamError error);
+public interface ZLinkBoundSession {
+    <TMessage> ZLinkBoundSessionSendCall send(TMessage message);
+    CompletionStage<Void> disconnectAsync();
+}
 
-    CompletionStage<Void> onRawAsync(
-        ZLinkStream stream,
-        Message payload);
+public interface ZLinkBoundSessionSendCall {
+    ZLinkBoundSessionSendCall packetName(String packetName);
+    ZLinkBoundSessionSendCall metadata(String key, String value);
+    CompletionStage<Void> submitAsync();
 }
 ```
 
@@ -185,14 +286,16 @@ public interface ClientCapabilityBuilder {
 }
 
 public interface SubscriberCapabilityBuilder {
-    void useManualConnections(Consumer<List<String>> configure);
+    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
 }
 
 public interface SpotRouterCapabilityBuilder {
+    void setRouterBind(String endpoint);
     void useManualConnections(Consumer<ManualRouterPeerListBuilder> configure);
 }
 
 public interface SpotPubSubCapabilityBuilder {
+    void setPubBind(String endpoint);
     void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
 }
 
@@ -205,7 +308,6 @@ public interface SpotPublisherClientCapabilityBuilder {
 }
 
 public interface ZLinkSpotNodeBuilder {
-    void bind(String endpoint);
     void enableRouter();
     void enableRouter(Consumer<SpotRouterCapabilityBuilder> configure);
     void enablePubSub();
@@ -218,16 +320,91 @@ public interface ZLinkSpotNodeBuilder {
     void attachSpotPublisherClient(
         String channelName,
         Consumer<SpotPublisherClientCapabilityBuilder> configure);
-    void addSpotFactory(String spotName, Class<? extends ZLinkSpot> spotType);
+    void acceptSpotRoutesFromChannel(String channelName);
+    void acceptSpotRoutesFromChannel(
+        String channelName,
+        Consumer<ZLinkSpotRouteChannelAcceptanceBuilder> configure);
+    void configureEntrySpot(Consumer<ZLinkEntrySpotOptions> configure);
+    void addSpotFactory(Class<? extends ZLinkSpot> spotType);
+    void addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType);
 }
 
-public interface ChannelBuilder {
+public interface ZLinkSpotRouteChannelAcceptanceBuilder {
+    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
+}
+
+public interface ZLinkEntrySpotOptions {
+    RoutingId routingId();
+    void setRoutingId(RoutingId routingId);
+}
+
+public interface ZLinkStreamNodeBuilder {
+    void bind(String endpoint);
+    void attachActorGateway(String spotNodeName);
+    void registerSession(Class<? extends ZLinkSession> sessionType);
+}
+
+public interface ChannelServerCapabilityBuilder {
+    void bind(String endpoint);
+}
+
+public interface ChannelPublisherCapabilityBuilder {
+    void bind(String endpoint);
+}
+
+public interface ClientServerChannelBuilder {
     void enableServer();
+    void enableServer(Consumer<ChannelServerCapabilityBuilder> configure);
     void enableClient();
     void enableClient(Consumer<ClientCapabilityBuilder> configure);
+    void addHandlerGroup(String groupName);
+    <THandler extends ZLinkSendHandler<TMessage>, TMessage> void addSendHandler(
+        Class<THandler> handlerType,
+        Class<TMessage> messageType,
+        @Nullable String packetName);
+    <THandler extends ZLinkRequestHandler<TRequest, TReply>, TRequest, TReply>
+    void addRequestHandler(
+        Class<THandler> handlerType,
+        Class<TRequest> requestType,
+        Class<TReply> replyType,
+        @Nullable String packetName);
+    void enableSpotRouteEgress(String targetSpotNodeChannelName);
+}
+
+public interface FanoutChannelBuilder {
     void enablePublisher();
+    void enablePublisher(Consumer<ChannelPublisherCapabilityBuilder> configure);
     void enableSubscriber();
     void enableSubscriber(Consumer<SubscriberCapabilityBuilder> configure);
+    void addHandlerGroup(String groupName);
+    <THandler extends ZLinkPublishHandler<TMessage>, TMessage> void addPublishHandler(
+        Class<THandler> handlerType,
+        Class<TMessage> messageType,
+        @Nullable String packetName);
+    void addPublishHandler(Class<?> handlerType, @Nullable String packetName);
+}
+
+public interface DealerMeshChannelBuilder {
+    void enableClient();
+    void enableClient(Consumer<ClientCapabilityBuilder> configure);
+    void addHandlerGroup(String groupName);
+}
+
+public interface RouteMeshChannelBuilder {
+    void bind(String endpoint);
+    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
+    void addHandlerGroup(String groupName);
+    <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage> void addSendHandler(
+        Class<THandler> handlerType,
+        Class<TMessage> messageType,
+        @Nullable String packetName);
+    <THandler extends ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply>
+    void addRequestHandler(
+        Class<THandler> handlerType,
+        Class<TRequest> requestType,
+        Class<TReply> replyType,
+        @Nullable String packetName);
+    void enableSpotRouteEgress(String targetSpotNodeChannelName);
 }
 
 public interface RegistryBuilder {
@@ -235,115 +412,282 @@ public interface RegistryBuilder {
 }
 
 public interface ZLinkFrameworkOptions {
-    void addChannel(String channelName, Consumer<ChannelBuilder> configure);
+    Duration defaultTimeout();
+    void setDefaultTimeout(Duration timeout);
+    ZLinkCodecRegistryBuilder codecs();
+    void addHandlersFromPackageOf(Class<?> markerType);
+    void configureMetadata(Consumer<ZLinkMetadataPolicyBuilder> configure);
     void useDiscovery(Consumer<RegistryBuilder> configure);
-    void useSpotDiscovery(
+    void addClientServerChannel(
         String channelName,
-        Consumer<RegistryBuilder> configure);
-    void addSpotNode(
-        String spotNodeName,
-        Consumer<ZLinkSpotNodeBuilder> configure);
+        Consumer<ClientServerChannelBuilder> configure);
+    void addFanoutChannel(
+        String channelName,
+        Consumer<FanoutChannelBuilder> configure);
+    void addDealerMeshChannel(
+        String channelName,
+        Consumer<DealerMeshChannelBuilder> configure);
+    void addRouteMeshChannel(
+        String channelName,
+        Consumer<RouteMeshChannelBuilder> configure);
+    void addSpotMesh(
+        String channelName,
+        Consumer<ZLinkSpotMeshBuilder> configure);
+    void addStreamNode(
+        String streamNodeName,
+        Consumer<ZLinkStreamNodeBuilder> configure);
+    void addActorFactory(
+        String actorType,
+        Class<? extends ZLinkActorFactory> factoryType);
+    void addSpotRemoteAddressResolver(
+        Class<? extends ZLinkSpotRemoteAddressResolver> resolverType);
+    void useRegistrySpotRemoteAddresses(String namespaceName);
+    void useRegistrySpotRemoteAddresses(
+        String namespaceName,
+        Consumer<ZLinkRegistrySpotRemoteAddressesOptions> configure);
+    void useFilter(Class<? extends ZLinkHandlerFilter> filterType);
+    void configureDispatch(Consumer<ZLinkDispatchOptions> configure);
 }
 
-public final class ZLinkSendOptions {
-    @Nullable private String packetName;
-
-    public ZLinkSendOptions setPacketName(String packetName);
+public interface ZLinkSpotMeshBuilder {
+    void useDiscovery(Consumer<RegistryBuilder> configure);
+    void addNode(String spotNodeName, Consumer<ZLinkSpotNodeBuilder> configure);
 }
 
-public final class ZLinkRequestOptions {
-    @Nullable private String packetName;
-    @Nullable private Duration timeout;
+public interface ZLinkCodecRegistryBuilder {
+    void addJson();
+    void addMessagePack();
+    void addProtobuf();
+}
 
-    public ZLinkRequestOptions setPacketName(String packetName);
-    public ZLinkRequestOptions setTimeout(Duration timeout);
+public interface ZLinkMetadataPolicyBuilder {
+    void forward(String key);
+}
+
+public interface ZLinkRegistrySpotRemoteAddressesOptions {
+    void setRouterChannelId(String routerChannelId);
+}
+
+public interface ZLinkDispatchOptions {
+    ZLinkDispatchMode spotDispatchMode();
+    void setSpotDispatchMode(ZLinkDispatchMode mode);
+    ZLinkDispatchMode streamDispatchMode();
+    void setStreamDispatchMode(ZLinkDispatchMode mode);
+    ZLinkUnhandledDispatchOptions unhandled();
+    ZLinkDiagnosticsOptions diagnostics();
+}
+
+public enum ZLinkDispatchMode {
+    COMPILED,
+    DYNAMIC
+}
+
+public interface ZLinkUnhandledDispatchOptions {
+    void setRequest(ZLinkUnhandledDispatchAction action);
+    void setSend(ZLinkUnhandledDispatchAction action);
+    void setPublish(ZLinkUnhandledDispatchAction action);
+    void setSendLogLevel(LogLevel level);
+    void setPublishLogLevel(LogLevel level);
+}
+
+public enum ZLinkUnhandledDispatchAction {
+    REPLY_ERROR,
+    LOG_AND_DROP,
+    DROP,
+    THROW
+}
+
+public interface ZLinkDiagnosticsOptions {
+    void setMessageFlow(ZLinkMessageFlowLogMode mode);
+    void setSampleRate(double sampleRate);
+    void setIncludeMessageSizes(boolean enabled);
+    void setIncludeNativeDiagnostics(boolean enabled);
+}
+
+public enum ZLinkMessageFlowLogMode {
+    OFF,
+    ERRORS_ONLY,
+    KEY_TRANSITIONS,
+    VERBOSE,
+    DIAGNOSTIC
 }
 
 public interface ZLinkClient {
-    <TMessage> CompletionStage<Void> sendAsync(
+    <TMessage> ZLinkSendCall sendToChannel(
         String channelName,
-        TMessage message,
-        @Nullable ZLinkSendOptions options);
+        TMessage message);
 
-    <TReply> CompletionStage<TReply> requestAsync(
+    <TMessage> ZLinkRequestCall requestToChannel(
         String channelName,
-        ZLinkRequest<TReply> request,
-        @Nullable ZLinkRequestOptions options);
+        TMessage request);
 }
 
-public interface ZLinkSpotClient {
-    <TMessage> CompletionStage<Void> sendChannelAsync(
-        String channelName,
-        TMessage message,
-        @Nullable ZLinkSendOptions options);
+public interface ZLinkSendCall {
+    ZLinkSendCall packetName(String messageName);
+    CompletionStage<Void> submitAsync();
+}
 
-    <TReply> CompletionStage<TReply> requestChannelAsync(
-        String channelName,
-        ZLinkRequest<TReply> request,
-        @Nullable ZLinkRequestOptions options);
+public interface ZLinkRequestCall {
+    ZLinkRequestCall packetName(String messageName);
+    ZLinkRequestCall timeout(Duration timeout);
+    <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType);
+}
 
-    <TMessage> CompletionStage<Void> sendToAsync(
-        RoutingId targetRid,
+public interface ZLinkSpotOutbound {
+    <TMessage> ZLinkSendCall sendToSpot(
         RoutingId spotRid,
-        TMessage message,
-        @Nullable ZLinkSendOptions options);
+        TMessage message);
 
-    <TReply> CompletionStage<TReply> requestToAsync(
-        RoutingId targetRid,
+    <TMessage> ZLinkRequestCall requestToSpot(
         RoutingId spotRid,
-        ZLinkRequest<TReply> request,
-        @Nullable ZLinkRequestOptions options);
+        TMessage request);
 
-    <TEvent> CompletionStage<Void> publishAsync(
+    <TEvent> ZLinkPublishCall publish(
         String topic,
-        TEvent message,
-        @Nullable ZLinkSendOptions options);
+        TEvent message);
+
+    <TMessage> ZLinkSendCall sendToChannel(
+        String channelName,
+        TMessage message);
+
+    <TMessage> ZLinkRequestCall requestToChannel(
+        String channelName,
+        TMessage request);
+}
+
+// 코드 기준: .NET `IZLinkActorHandlerRegistry`는 actor packet/lifecycle 등록을
+// `<THandler, TActor>` 제네릭 쌍으로 묶는다. Java는 타입 소거 때문에 `TActor`를
+// `Class<? extends ZLinkActor> actorType` 인자로 받아 같은 actor-type 바인딩을 유지한다.
+public interface ZLinkActorHandlerRegistry {
+    void addHandler(Class<?> handlerType);
+    void addHandler(Class<?> handlerType, String packetName);
+    void addActorPacket(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
+    void addActorPacket(
+        Class<?> handlerType,
+        Class<? extends ZLinkActor> actorType,
+        String packetName);
+    void addPostActorJoined(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
+    void addActorLeft(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
+    void addActorDisconnected(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
+}
+
+public interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
+    void addPacket(Class<?> handlerType);
+    void addSubscribe(Class<?> handlerType, String topic);
+    void addActorJoin(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
+    void addActorJoin(Class<?> handlerType);
+}
+
+public interface ZLinkSpotContext {
+    RoutingId spotRid();
+    RoutingId nodeRid();
+    ZLinkSpotHandlerRegistry handlers();
+    ZLinkSpotOutbound outbound();
+    CompletionStage<Void> leaveActorAsync(ZLinkActor actor);
+    CompletionStage<ZLinkTimer> addTimer(
+        String name,
+        Duration period,
+        Class<?> handlerType,
+        @Nullable ZLinkTimerOptions options);
+}
+
+public interface ZLinkEntrySpotContext {
+    RoutingId spotRid();
+    RoutingId nodeRid();
+    ZLinkSpotHandlerRegistry handlers();
+    ZLinkSpotOutbound outbound();
+    CompletionStage<ZLinkTimer> addTimer(
+        String name,
+        Duration period,
+        Class<?> handlerType,
+        @Nullable ZLinkTimerOptions options);
+}
+
+public interface ZLinkRouteClient {
+    <TMessage> ZLinkSendCall send(
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        TMessage message);
+
+    <TMessage> ZLinkRequestCall request(
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        TMessage request);
 }
 
 public interface ZLinkSpotPublisherClient {
-    <TEvent> CompletionStage<Void> publishAsync(
+    <TEvent> ZLinkPublishCall publishSpot(
         String channelName,
         String topic,
-        TEvent message,
-        @Nullable ZLinkSendOptions options);
+        TEvent message);
 }
 
-public interface ZLinkEventPublisher {
-    <TEvent> CompletionStage<Void> publishAsync(
+public interface ZLinkFanoutClient {
+    <TEvent> ZLinkPublishCall publish(
         String channelName,
         String topic,
-        TEvent message,
-        @Nullable ZLinkSendOptions options);
+        TEvent message);
+}
+
+public interface ZLinkPublishCall {
+    ZLinkPublishCall packetName(String messageName);
+    CompletionStage<Void> submitAsync();
 }
 
 public record ZLinkSpotCreateResult(
     RoutingId spotRid,
-    String spotName,
     boolean created) {
 }
 
 public record ZLinkSpotInfo(
-    RoutingId spotRid,
-    String spotName) {
+    RoutingId spotRid) {
 }
 
 public interface ZLinkSpotManager {
-    CompletionStage<ZLinkSpotCreateResult> createAsync(String spotName);
     CompletionStage<ZLinkSpotCreateResult> createAsync(
-        String spotName,
+        Class<? extends ZLinkSpot> spotType);
+
+    CompletionStage<ZLinkSpotCreateResult> createAsync(
+        Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid);
-    CompletionStage<Optional<ZLinkSpotInfo>> getAsync(RoutingId spotRid);
+
+    CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+        Class<? extends ZLinkSpot> spotType,
+        RoutingId spotRid);
+
+    CompletionStage<Optional<ZLinkSpotInfo>> findAsync(RoutingId spotRid);
     CompletionStage<List<ZLinkSpotInfo>> listAsync();
     CompletionStage<Boolean> removeAsync(RoutingId spotRid);
 }
 
-public abstract class ZLinkSpot {
-    public abstract RoutingId spotRid();
+public interface ZLinkSpot {
+    ZLinkSpotContext context();
 
-    public abstract CompletionStage<ZLinkTimer> addTimer(
-        String name,
-        Duration period,
-        Class<?> handlerType);
+    default void configure() {
+    }
+
+    default CompletionStage<Void> onCreateAsync(List<Message> createParts) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    default CompletionStage<Void> onInitializeAsync() {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    default CompletionStage<Void> onClosingAsync() {
+        return CompletableFuture.completedFuture(null);
+    }
+}
+
+public interface ZLinkEntrySpot {
+    ZLinkEntrySpotContext context();
+
+    default void configure() {
+    }
+
+    default CompletionStage<Void> onInitializeAsync() {
+        return CompletableFuture.completedFuture(null);
+    }
 }
 
 public interface ChannelClientConnections {
@@ -386,19 +730,62 @@ public interface ZLinkTimer extends AutoCloseable {
     boolean isDisposed();
     CompletionStage<Void> cancelAsync();
 }
+
+public final class ZLinkTimerOptions {
+    ZLinkTimerOverrunPolicy overrunPolicy();
+    int maxCatchUpTicks();
+    boolean stopOnUnhandledException();
+}
+
+public enum ZLinkTimerOverrunPolicy {
+    SKIP_LATE_TICKS,
+    CATCH_UP_BOUNDED,
+    DELAY_NEXT_TICK
+}
+
+public record ZLinkTimerTick(
+    String name,
+    long deliveryIndex,
+    long scheduledIndex,
+    Duration period,
+    Instant scheduledAt,
+    Instant startedAt,
+    Duration scheduledElapsed,
+    Duration startedElapsed,
+    Duration delay,
+    long skippedTicks) {
+}
+```
+
+client 측 STREAM connector는 server session과 별도 모듈로 둔다.
+
+```java
+public interface ZLinkStreamConnector extends AutoCloseable {
+    boolean isConnected();
+    ZLinkStreamConnectionState state();
+    int pendingDispatchCount();
+
+    CompletionStage<Void> connectAsync();
+    CompletionStage<Void> closeAsync();
+    CompletionStage<Void> dispatchAsync();
+
+    ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload);
+    ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);
+
+    AutoCloseable on(
+        String name,
+        ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler);
+}
 ```
 
 ## 4.1 runtime monitoring
 
-runtime monitoring은 socket/discovery의 하부 monitor와 registry/spot의 snapshot
+runtime monitoring은 socket의 하부 monitor와 registry/spot의 snapshot
 diff를 함께 감싸는 운영 표면이다.
 
 ```java
 public interface ZLinkMonitoringOptions {
-    void addSocketEvents(String sourceName, SocketEvent events);
-    void addDiscoveryEvents(
-        String sourceName,
-        ServiceMonitorEventMask... events);
+    void addSocketEvents(String sourceName, ZLinkSocketEventKind... events);
     void addRegistryEvents(String sourceName, Duration interval);
     void addSpotEvents(String sourceName, Duration interval);
 }
@@ -422,40 +809,19 @@ public enum ZLinkSocketEventKind {
     INTERNAL
 }
 
+public record ZLinkSocketDiagnostic(
+    ZLinkSocketNativeEventType nativeEvent,
+    long nativeValue) {
+}
+
 public record ZLinkSocketEvent(
     String sourceName,
     Instant timestamp,
     ZLinkSocketEventKind event,
-    MonitorEventType nativeEvent,
-    long value,
     @Nullable RoutingId routingId,
     String localAddr,
-    String remoteAddr) implements ZLinkRuntimeEvent {
-}
-
-public enum ZLinkDiscoveryEventKind {
-    SERVICE_UP,
-    SERVICE_DOWN,
-    PROVIDERS_CHANGED,
-    PEER_ADMISSION_CHANGED,
-    ERROR,
-    CLOSED,
-    INTERNAL
-}
-
-public record ZLinkDiscoveryEvent(
-    String sourceName,
-    Instant timestamp,
-    ZLinkDiscoveryEventKind event,
-    ServiceEventType nativeEventType,
-    long status,
-    long errorCode,
-    long value,
-    long detailFlags,
-    String serviceName,
-    String endpoint,
-    @Nullable RoutingId routingId,
-    String subject) implements ZLinkRuntimeEvent {
+    String remoteAddr,
+    @Nullable ZLinkSocketDiagnostic diagnostic) implements ZLinkRuntimeEvent {
 }
 
 public enum ZLinkRegistryEventKind {
@@ -468,23 +834,27 @@ public record ZLinkRegistryEvent(
     String sourceName,
     Instant timestamp,
     ZLinkRegistryEventKind event,
-    @Nullable RegistryStatus status,
-    @Nullable List<RegistryTopologyEntry> topology) implements ZLinkRuntimeEvent {
+    @Nullable ZLinkRegistryStatus status,
+    @Nullable List<ZLinkRegistryTopologyEntry> topology,
+    @Nullable List<ZLinkRegistryServiceSummaryEntry> serviceSummary) implements ZLinkRuntimeEvent {
 }
 
 public enum ZLinkSpotEventKind {
     STATUS_CHANGED,
     PEERS_CHANGED,
-    SUBJECTS_CHANGED
+    SUBJECTS_CHANGED,
+    TIMER_HANDLER_FAILED,
+    TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION
 }
 
 public record ZLinkSpotEvent(
     String sourceName,
     Instant timestamp,
     ZLinkSpotEventKind event,
-    @Nullable SpotNodeStatus status,
-    @Nullable List<SpotNodePeerEntry> peers,
-    @Nullable List<SpotNodeSubjectEntry> subjects) implements ZLinkRuntimeEvent {
+    @Nullable ZLinkSpotNodeStatus status,
+    @Nullable List<ZLinkSpotNodePeerEntry> peers,
+    @Nullable List<ZLinkSpotNodeSubjectEntry> subjects,
+    @Nullable ZLinkSpotTimerDiagnostic timerDiagnostic) implements ZLinkRuntimeEvent {
 }
 ```
 
@@ -503,10 +873,9 @@ public record ZLinkSpotEvent(
 등록하고, 이 초안에서는 `connect(...)` 호출 시 remote router id를 따로 받지
 않는다.
 
-`ZLinkSpotManager`는 등록된 `spotName`으로 factory를 고르고, 생성 결과와 조회
-표면에서 `spotRid -> spotName` 매핑을 다시 볼 수 있게 한다. 같은 `SpotNode`
-안에서 이미 등록된 `spotName`을 다시 등록하면 조용히 덮어쓰지 않고 예외를
-던지는 편을 기본으로 본다.
+`ZLinkSpotManager`는 등록된 Spot type으로 factory를 고르고, 생성 결과와 조회
+표면에서 `spotRid`를 다시 볼 수 있게 한다. 같은 `SpotNode` 안에서 이미 등록된
+Spot type을 다시 등록하면 조용히 덮어쓰지 않고 예외를 던지는 편을 기본으로 본다.
 
 send/publish는 기본 async submit이다. blocking send를 async 호출로 감싸는 것이
 아니라, nonblocking send와 ready notification을 이용해 backpressure 동안 호출
@@ -528,26 +897,84 @@ public @interface ZLinkPacket {
     String value();
 }
 
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ZLinkHandlerGroup {
+    String value();
+}
+
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface ZLinkRequestMapping {
+public @interface ZLinkRequest {
     String packetName() default "";
 }
 
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface ZLinkSendMapping {
+public @interface ZLinkSend {
     String packetName() default "";
 }
 
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface ZLinkEventMapping {
+public @interface ZLinkPublish {
     String packetName() default "";
 }
 ```
 
-`SPOT`, `STREAM`용 annotation도 같은 방식으로 분리한다.
+`SPOT`, `STREAM`용 annotation도 `.NET` `[ZLinkX]` 이름에 맞춰 `Mapping` 접미사 없이 둔다.
+
+```java
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ZLinkSpotRequest {
+    String packetName() default "";
+}
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ZLinkSpotSubscription {
+    String spotNodeName();
+    String topic();
+}
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ZLinkSpotActorRequest {
+    String packetName() default "";
+}
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ZLinkSpotActorSend {
+    String packetName() default "";
+}
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ZLinkSpotActorJoin {
+}
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ZLinkSpotPostActorJoined {
+}
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ZLinkSpotActorLeft {
+}
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ZLinkSpotActorDisconnected {
+}
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ZLinkStreamPacket {
+}
+```
 
 ## 6. Filter
 
@@ -570,3 +997,5 @@ public interface ZLinkHandlerFilter {
 - manual capability는 startup 등록뿐 아니라 런타임 `connect`, `disconnect`,
   `listConnections`도 지원해야 한다.
 - `ROUTER -> DEALER` 임의 push는 channel messaging 공용 계약에 넣지 않는다.
+- stream session은 header 기반 `ZLinkSession` 하나로 둔다.
+- actor/session relay는 ActorGateway와 `ZLinkBoundSession`을 기준으로 구현한다.

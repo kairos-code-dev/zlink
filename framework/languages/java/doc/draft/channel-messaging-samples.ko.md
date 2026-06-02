@@ -20,15 +20,17 @@
 public class ZLinkConfig implements ZLinkFrameworkOptionsCustomizer {
     @Override
     public void customize(ZLinkFrameworkOptions options) {
-        options.addChannel("api", channel -> {
-            channel.enableServer();
+        options.addClientServerChannel("api", channel -> {
+            channel.enableServer(server -> {
+                server.bind("tcp://0.0.0.0:7100");
+            });
         });
 
-        options.addChannel("profile", channel -> {
+        options.addClientServerChannel("profile", channel -> {
             channel.enableClient();
         });
 
-        options.addChannel("account", channel -> {
+        options.addClientServerChannel("account", channel -> {
             channel.enableClient();
         });
 
@@ -43,7 +45,7 @@ public class ZLinkConfig implements ZLinkFrameworkOptionsCustomizer {
 ## 2. 수동 연결 샘플
 
 ```java
-options.addChannel("profile", channel -> {
+options.addClientServerChannel("profile", channel -> {
     channel.enableClient(client -> {
         client.useManualConnections(peers -> {
             peers.connect("tcp://10.0.10.15:7101");
@@ -74,11 +76,10 @@ public final class ProfileController {
 
     @PostMapping("/get")
     public CompletionStage<GetProfileReply> get(@RequestBody GetProfileHttpRequest request) {
-        return client.requestAsync(
+        return client.requestToChannel(
             "profile",
-            new GetProfileRequest(request.accountId()),
-            null
-        );
+            new GetProfileRequest(request.accountId())
+        ).submitAsync(GetProfileReply.class);
     }
 }
 ```
@@ -94,15 +95,14 @@ public final class UserHandlers {
         this.client = client;
     }
 
-    @ZLinkRequestMapping
+    @ZLinkRequest
     public CompletionStage<GetUserReply> getUserAsync(
         GetUserRequest request,
         ZLinkRequestContext context) {
-        return client.requestAsync(
+        return client.requestToChannel(
             "account",
-            new GetAccountRequest(request.accountId()),
-            null
-        ).thenApply(account -> new GetUserReply(
+            new GetAccountRequest(request.accountId())
+        ).submitAsync(GetAccountReply.class).thenApply(account -> new GetUserReply(
             request.accountId(),
             account.nickname()
         ));
@@ -113,13 +113,12 @@ public final class UserHandlers {
 ## 5. Options 예시
 
 ```java
-var reply = client.requestAsync(
+var reply = client.requestToChannel(
     "profile",
-    new GetProfileRequest(accountId),
-    new ZLinkRequestOptions()
-        .setTimeout(Duration.ofMillis(200))
-        .setPacketName("profile.get")
-);
+    new GetProfileRequest(accountId)
+).timeout(Duration.ofMillis(200))
+ .packetName("profile.get")
+ .submitAsync(GetProfileReply.class);
 ```
 
 기본은 payload 타입 이름이고, `packetName`은 정말 필요할 때만 override한다.
@@ -127,10 +126,26 @@ var reply = client.requestAsync(
 ## 6. 일반 event publish
 
 ```java
-eventPublisher.publishAsync(
+fanoutClient.publish(
     "profile",
     "profile.cache-refreshed",
-    new ProfileCacheRefreshed(accountId),
-    new ZLinkSendOptions().setPacketName("profile.cache-refreshed")
-).toCompletableFuture().join();
+    new ProfileCacheRefreshed(accountId)
+).packetName("profile.cache-refreshed")
+ .submitAsync()
+ .toCompletableFuture()
+ .join();
 ```
+
+## 7. Routed channel 호출
+
+```java
+routeClient.request(
+    "play-route",
+    targetNodeRid,
+    new InspectRoomRequest(roomId)
+).timeout(Duration.ofSeconds(1))
+ .submitAsync(InspectRoomReply.class);
+```
+
+routed channel은 target node를 직접 지정하는 application route 용도다. session actor
+dispatch는 이 샘플 경로가 아니라 `STREAM`의 ActorGateway attach 경로를 사용한다.

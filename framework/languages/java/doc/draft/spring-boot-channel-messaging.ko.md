@@ -18,7 +18,7 @@
 
 - channel 이름 기준 direct call
 - bean으로 주입되는 공용 outbound client
-- bean으로 주입되는 일반 event publisher
+- bean으로 주입되는 `ZLinkFanoutClient`와 `ZLinkRouteClient`
 - annotation 기반 request/send handler
 - HTTP controller 안에서도 같은 `ZLinkClient` 사용
 
@@ -32,16 +32,25 @@
 public class ZLinkConfig implements ZLinkFrameworkOptionsCustomizer {
     @Override
     public void customize(ZLinkFrameworkOptions options) {
-        options.addChannel("api", channel -> {
-            channel.enableServer();
+        options.addClientServerChannel("api", channel -> {
+            channel.enableServer(server -> {
+                server.bind("tcp://0.0.0.0:7100");
+            });
         });
 
-        options.addChannel("profile", channel -> {
+        options.addClientServerChannel("profile", channel -> {
             channel.enableClient();
         });
 
-        options.addChannel("account", channel -> {
+        options.addClientServerChannel("account", channel -> {
             channel.enableClient();
+        });
+
+        options.addFanoutChannel("profile-events", channel -> {
+            channel.enablePublisher(publisher -> {
+                publisher.bind("tcp://0.0.0.0:7200");
+            });
+            channel.enableSubscriber();
         });
 
         options.useDiscovery(registry -> {
@@ -55,7 +64,7 @@ public class ZLinkConfig implements ZLinkFrameworkOptionsCustomizer {
 수동 연결은 아래처럼 둔다.
 
 ```java
-options.addChannel("profile", channel -> {
+options.addClientServerChannel("profile", channel -> {
     channel.enableClient(client -> {
         client.useManualConnections(peers -> {
             peers.connect("tcp://10.0.10.15:7101");
@@ -78,8 +87,8 @@ startup과 런타임 제어 모두 endpoint 집합만 관리하면 된다.
 manual capability는 startup 등록만이 아니라 런타임 `connect`, `disconnect`,
 `listConnections` 제어도 지원해야 한다.
 
-일반 `PUB/SUB` event publish는 `ZLinkEventPublisher` 같은 별도 surface로 설명하는
-편이 맞다. 이 표면도 `channel name + topic` 기준으로 동작한다.
+일반 `PUB/SUB` event publish는 `ZLinkFanoutClient` 같은 별도 surface로 설명한다.
+이 표면도 `channel name + topic` 기준으로 동작한다.
 
 ## 3. Handler 모델
 
@@ -92,15 +101,14 @@ public final class UserHandlers {
         this.client = client;
     }
 
-    @ZLinkRequestMapping
+    @ZLinkRequest
     public CompletionStage<GetUserReply> getUserAsync(
         GetUserRequest request,
         ZLinkRequestContext context) {
-        return client.requestAsync(
+        return client.requestToChannel(
             "account",
-            new GetAccountRequest(request.accountId()),
-            null
-        ).thenApply(account -> new GetUserReply(
+            new GetAccountRequest(request.accountId())
+        ).submitAsync(GetAccountReply.class).thenApply(account -> new GetUserReply(
             request.accountId(),
             account.nickname()
         ));
@@ -127,7 +135,7 @@ local handler 없이 client만 쓰는 앱도 가능해야 한다.
 public class OutboundOnlyConfig implements ZLinkFrameworkOptionsCustomizer {
     @Override
     public void customize(ZLinkFrameworkOptions options) {
-        options.addChannel("profile", channel -> {
+        options.addClientServerChannel("profile", channel -> {
             channel.enableClient();
         });
         options.useDiscovery(registry -> registry.add("tcp://registry1:5551"));
@@ -136,3 +144,29 @@ public class OutboundOnlyConfig implements ZLinkFrameworkOptionsCustomizer {
 ```
 
 이 경우 local `ROUTER(server)`는 열지 않고 outbound `DEALER(client)`만 만든다.
+
+## 6. Dealer mesh와 route mesh
+
+Java framework도 `.NET`과 같이 channel을 네 종류로 나눈다.
+
+| Builder | 용도 |
+|---------|------|
+| `addClientServerChannel(...)` | 일반 server/client request-send |
+| `addFanoutChannel(...)` | pub/sub fanout |
+| `addDealerMeshChannel(...)` | dealer끼리 직접 연결되는 mesh client |
+| `addRouteMeshChannel(...)` | target node `RoutingId`를 지정하는 routed channel |
+
+route mesh는 session actor relay를 대체하지 않는다. application이 특정 node로
+route send/request를 보내야 할 때 쓰며, session actor relay는 stream node의
+`attachActorGateway(...)`와 core ActorGateway 경로를 사용한다.
+
+```java
+options.addRouteMeshChannel("play-route", route -> {
+    route.bind("tcp://0.0.0.0:7300");
+    route.enableSpotRouteEgress("game.stage");
+});
+```
+
+Registry-backed Spot remote address 기본 구현을 쓰려면 route mesh channel이 필요하다.
+route mesh channel이 둘 이상이면 `useRegistrySpotRemoteAddresses(...)`에서 router
+channel id를 명시해야 한다.

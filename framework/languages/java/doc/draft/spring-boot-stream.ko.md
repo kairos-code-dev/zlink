@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[Java 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [STREAM open items](./stream-open-items.ko.md)
+[Java 묶음](./README.ko.md) | [포팅 계획](./java-kotlin-framework-porting-plan.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [Actor/session](./spring-boot-actor-session.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [STREAM open items](./stream-open-items.ko.md)
 
 # Draft -- ZLink Framework Spring Boot STREAM
 
@@ -14,10 +14,15 @@
 
 ## 1. 방향
 
-`STREAM`은 일반 request handler와 다른 전용 session 그룹으로 설명한다.
+`STREAM`은 일반 request handler와 다른 전용 session 모델로 설명한다. 현재
+포팅 기준은 `.NET` framework와 같은 header 기반 session 하나다.
 
-- packet session
-- raw session
+- stream node는 bind endpoint와 session type을 등록한다.
+- session callback은 `ZLinkSessionContext`를 통해 peer 정보, client 응답,
+  actor binding, close 제어를 사용한다.
+- inbound payload는 callback 동안 framework가 빌려준 값이다.
+- 같은 session 안의 callback은 직렬로 실행한다.
+- 서로 다른 session은 독립적으로 진행될 수 있다.
 
 recv loop를 application 표면에 직접 노출하지 않는 편을 기본으로 본다.
 
@@ -27,29 +32,116 @@ recv loop를 application 표면에 직접 노출하지 않는 편을 기본으�
 @Configuration
 public class StreamConfig {
     @Bean
-    ZLinkStreamCustomizer gameStream() {
+    ZLinkFrameworkOptionsCustomizer streamOptions() {
         return options -> {
-            options.bind("tcp://0.0.0.0:7201");
-            options.addPacketSession(GameStreamSession.class);
+            options.addSpotMesh("game.stage", mesh -> {
+                mesh.useDiscovery(registry -> {
+                    registry.add("tcp://registry1:5551");
+                });
+                mesh.addNode("play", node -> {
+                    node.enableRouter();
+                    node.addEntrySpot(GameEntrySpot.class);
+                    node.addSpotFactory(GameRoomSpot.class);
+                });
+            });
+
+            options.addStreamNode("gateway", stream -> {
+                stream.bind("tcp://0.0.0.0:7201");
+                stream.attachActorGateway("play");
+                stream.registerSession(GameStreamSession.class);
+            });
         };
     }
 }
 ```
 
-## 3. Session
+한 stream node에는 session type을 하나만 등록한다. 여러 session type을 같은 node에
+나란히 붙이는 방식은 기본 표면으로 두지 않는다.
+
+## 3. Session 계약
 
 ```java
 @Component
-public final class GameStreamSession implements ZLinkPacketStreamSession {
+public final class GameStreamSession implements ZLinkSession {
+    private final ZLinkSessionContext context;
+    private final ZLinkActorManager actors;
+
+    public GameStreamSession(
+        ZLinkSessionContext context,
+        ZLinkActorManager actors) {
+        this.context = context;
+        this.actors = actors;
+    }
+
     @Override
-    public CompletionStage<Void> onPacketAsync(
-        ZLinkStream stream,
-        Message header,
-        Message payload) {
+    public ZLinkSessionContext context() {
+        return context;
+    }
+
+    @Override
+    public CompletionStage<Void> onConnectedAsync() {
         return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletionStage<Void> onDispatchAsync(
+        ZLinkStreamHeader header,
+        Message payload) {
+        return actors.getOrCreateAsync("player-42", "player")
+            .thenCompose(actor -> context.actors().bindAsync(actor))
+            .thenCompose(bound -> bound.relayAsync(header, payload));
     }
 }
 ```
 
-stream 객체가 write와 peer metadata를 같이 들고 있고, packet/raw path는 session
-lifecycle 위에서 설명하는 편을 기본으로 본다.
+session 객체는 stream 객체를 직접 인자로 받지 않는다. session 정보와 client
+응답은 `context()`로 접근한다.
+
+```java
+context.client()
+    .send(new Welcome("player-42"))
+    .packetName("Welcome")
+    .submitAsync();
+```
+
+## 4. ActorGateway attach
+
+session에서 actor로 relay하려면 stream node가 SpotNode의 ActorGateway에 attach되어
+있어야 한다.
+
+```java
+options.addStreamNode("gateway", stream -> {
+    stream.bind("tcp://0.0.0.0:7201");
+    stream.attachActorGateway("play");
+    stream.registerSession(GameStreamSession.class);
+});
+```
+
+이 설정은 session relay용 route mesh channel을 만든다는 뜻이 아니다. application
+Spot route egress가 필요하면 별도 route channel을 등록하고, session actor relay는
+ActorGateway 경로로 보낸다.
+
+## 5. Client Connector
+
+client 측 STREAM connector는 Spring server session과 별도 모듈이다. Java 포팅은
+`.NET`의 `Systems.Zlink.Stream.Connector` 역할을 아래 표면으로 제공한다.
+
+```java
+ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(
+    ZLinkStreamConnectorOptions.builder()
+        .endpoint(URI.create("ws://127.0.0.1:7201"))
+        .transport(ZLinkStreamTransport.WEB_SOCKET)
+        .requestTimeout(Duration.ofSeconds(30))
+        .build());
+
+connector.on("MatchFound", (message) -> {
+    return CompletableFuture.completedFuture(null);
+});
+
+connector.connectAsync()
+    .thenCompose(ignored -> connector.send(encodedPayload).submitAsync());
+```
+
+connector는 heartbeat, reconnect, manual dispatch, request timeout, compression,
+packet name resolver를 option으로 받는다. Kotlin 표면은 이 Java connector 위에
+`suspend`와 `Flow` extension을 얹는다.

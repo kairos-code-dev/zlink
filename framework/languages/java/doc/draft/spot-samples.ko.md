@@ -11,7 +11,7 @@
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `Java` `SPOT` 초안을 코드 흐름으로 보기 위한 샘플 문서다.
 
-## 1. 등록과 `spotName`
+## 1. 등록과 Spot type
 
 ```java
 @Configuration
@@ -19,24 +19,30 @@
 public class SpotConfig implements ZLinkFrameworkOptionsCustomizer {
     @Override
     public void customize(ZLinkFrameworkOptions options) {
-        options.useSpotDiscovery("game.stage", registry -> {
-            registry.add("tcp://registry1:5551");
-        });
+        options.addSpotMesh("game.stage", mesh -> {
+            mesh.useDiscovery(registry -> {
+                registry.add("tcp://registry1:5551");
+            });
 
-        options.addSpotNode("stage-node", spot -> {
-            spot.bind("tcp://0.0.0.0:9000");
-            spot.enableRouter();
-            spot.enablePubSub();
-            spot.attachChannelClient("profile");
-            spot.attachSpotPublisherClient("game.stage");
-            spot.addSpotFactory("stage", StageSpot.class);
-            spot.addSpotFactory("room", RoomSpot.class);
+            mesh.addNode("stage-node", spot -> {
+                spot.enableRouter(router -> {
+                    router.setRouterBind("tcp://0.0.0.0:9000");
+                });
+                spot.enablePubSub(pubsub -> {
+                    pubsub.setPubBind("tcp://0.0.0.0:9001");
+                });
+                spot.attachChannelClient("profile");
+                spot.attachSpotPublisherClient("game.stage");
+                spot.addEntrySpot(GameEntrySpot.class);
+                spot.addSpotFactory(StageSpot.class);
+                spot.addSpotFactory(RoomSpot.class);
+            });
         });
     }
 }
 ```
 
-같은 `SpotNode` 안에서 같은 `spotName`을 다시 등록하면 조용히 덮어쓰지 않고
+같은 `SpotNode` 안에서 같은 Spot type을 다시 등록하면 조용히 덮어쓰지 않고
 예외를 던지는 편을 기본으로 본다.
 
 ## 2. manager로 생성과 조회
@@ -51,12 +57,11 @@ public final class StageBootstrap {
     }
 
     public CompletionStage<Void> warmupAsync() {
-        return spotManager.createAsync("stage")
-            .thenCompose(created -> spotManager.getAsync(created.spotRid())
+        return spotManager.createAsync(StageSpot.class)
+            .thenCompose(created -> spotManager.findAsync(created.spotRid())
                 .thenCompose(info -> spotManager.listAsync()
                     .thenAccept(all -> {
-                        // 운영 코드에서는 created.spotRid()가 어떤 spotName으로
-                        // 생성됐는지 다시 확인할 수 있어야 한다.
+                        // 운영 코드에서는 created.spotRid()를 다시 조회할 수 있어야 한다.
                     })));
     }
 }
@@ -65,20 +70,26 @@ public final class StageBootstrap {
 ## 3. spot 객체와 timer
 
 ```java
-public final class StageSpot extends ZLinkSpot {
-    private RoutingId spotRid;
+public final class StageSpot implements ZLinkSpot {
+    private final ZLinkSpotContext context;
     private ZLinkTimer heartbeat;
 
-    @Override
-    public RoutingId spotRid() {
-        return spotRid;
+    public StageSpot(ZLinkSpotContext context) {
+        this.context = context;
     }
 
-    public CompletionStage<Void> initializeAsync() {
-        return addTimer(
+    @Override
+    public ZLinkSpotContext context() {
+        return context;
+    }
+
+    @Override
+    public CompletionStage<Void> onInitializeAsync() {
+        return context.addTimer(
             "heartbeat",
             Duration.ofSeconds(1),
-            StageHeartbeatHandler.class
+            StageHeartbeatHandler.class,
+            null
         ).thenAccept(timer -> this.heartbeat = timer);
     }
 }
@@ -92,27 +103,21 @@ timer는 공용 scheduler가 아니라 spot lifecycle 안에서 이름과 함께
 ```java
 @Component
 public final class StageHandlers {
-    private final ZLinkSpotClient spotClient;
-
-    public StageHandlers(ZLinkSpotClient spotClient) {
-        this.spotClient = spotClient;
-    }
-
-    @ZLinkSpotRequestMapping
+    @ZLinkSpotRequest
     public CompletionStage<GetStageStateReply> getStageStateAsync(
+        StageSpot spot,
         GetStageStateRequest request,
         ZLinkSpotRequestContext context) {
-        return spotClient.requestChannelAsync(
+        return spot.context().outbound().requestToChannel(
             "profile",
-            new GetProfileRequest(request.accountId()),
-            null
-        ).thenApply(profile -> new GetStageStateReply(
-            context.self().spotRid(),
+            new GetProfileRequest(request.accountId())
+        ).submitAsync(GetProfileReply.class).thenApply(profile -> new GetStageStateReply(
+            spot.context().spotRid(),
             profile.nickname()
         ));
     }
 
-    @ZLinkSpotSubscription(topic = "stage.state.updated")
+    @ZLinkSpotSubscription(spotNodeName = "stage-node", topic = "stage.state.updated")
     public CompletionStage<Void> onStageStateAsync(
         StageStateUpdated event,
         ZLinkSpotSubscriptionContext context) {
@@ -139,12 +144,11 @@ public final class StagePublishController {
     @PostMapping("/publish")
     public CompletionStage<ResponseEntity<Void>> publish(
         @RequestBody PublishStageStateHttpRequest request) {
-        return spotPublisherClient.publishAsync(
+        return spotPublisherClient.publishSpot(
             "game.stage",
             "stage.state.updated",
-            new StageStateUpdated(request.stageRid(), request.userCount()),
-            null
-        ).thenApply(submitted -> ResponseEntity.accepted().build());
+            new StageStateUpdated(request.stageRid(), request.userCount())
+        ).submitAsync().thenApply(submitted -> ResponseEntity.accepted().build());
     }
 }
 ```

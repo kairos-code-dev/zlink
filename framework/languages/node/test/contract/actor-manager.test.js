@@ -576,6 +576,45 @@ test('ZLinkSpotActorDispatcher does not fallback actor requests to send handlers
   assert.deepEqual(events, []);
 });
 
+test('ZLinkSpotActorDispatcher exposes dotnet actor reply metadata and compression options', async () => {
+  let replyOptions;
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class MoveRequestHandler {
+    async handle(_spot, _actor, context, request) {
+      assert.equal(context.packetName, 'move');
+      assert.equal(context.reply.metadata('reply-trace-id', `reply:${request}`), context.reply);
+      assert.equal(context.reply.compress(), context.reply);
+      replyOptions = context.reply;
+      return { accepted: true };
+    }
+  }
+  const registry = new framework.ZLinkSpotActorHandlerRegistryRuntime()
+    .addPacket({
+      kind: framework.ZLinkActorPacketKind.Request,
+      packetName: 'move',
+      actorType: PlayerActor,
+      handlerType: MoveRequestHandler
+    });
+  const dispatcher = new framework.ZLinkSpotActorDispatcher({
+    registry,
+    spot: {}
+  });
+  const actor = new PlayerActor('alice', {});
+
+  const reply = await dispatcher.dispatchRequest(actor, 'move', 'trace-101');
+
+  assert.deepEqual(reply, { accepted: true });
+  assert.equal(replyOptions instanceof framework.DefaultZLinkSpotActorReplyOptions, true);
+  const snapshot = replyOptions.snapshot();
+  assert.equal(snapshot.compressPayload, true);
+  assert.deepEqual([...snapshot.metadata.entries()], [['reply-trace-id', 'reply:trace-101']]);
+});
+
 test('ZLinkSpotActorDispatcher serializes user spot actor handlers on provided serial executor', async () => {
   const events = [];
   class PlayerActor {

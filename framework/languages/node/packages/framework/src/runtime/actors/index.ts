@@ -17,6 +17,7 @@ import type {
   ZLinkSpotActorLeftHandler,
   ZLinkSpotActorRequestContext,
   ZLinkSpotActorRequestHandler,
+  ZLinkSpotActorReplyOptions,
   ZLinkSpotActorSendContext,
   ZLinkSpotActorSendHandler,
   ZLinkSpotPostActorJoinedHandler
@@ -650,6 +651,33 @@ export interface ZLinkSpotActorDispatcherOptions {
   readonly serial?: { execute<T>(operation: () => Promise<T> | T): Promise<T> };
 }
 
+export class DefaultZLinkSpotActorReplyOptions implements ZLinkSpotActorReplyOptions {
+  private readonly selectedMetadata = new Map<string, string>();
+  private compressionEnabled = false;
+
+  metadata(key: string, value: string): this {
+    this.selectedMetadata.set(key, value);
+    return this;
+  }
+
+  compress(enabled = true): this {
+    this.compressionEnabled = enabled;
+    return this;
+  }
+
+  snapshot(): ZLinkSpotActorReplyOptionsSnapshot {
+    return {
+      metadata: new Map(this.selectedMetadata),
+      compressPayload: this.compressionEnabled
+    };
+  }
+}
+
+export interface ZLinkSpotActorReplyOptionsSnapshot {
+  readonly metadata: ReadonlyMap<string, string>;
+  readonly compressPayload: boolean;
+}
+
 export class ZLinkSpotActorDispatcher {
   constructor(private readonly options: ZLinkSpotActorDispatcherOptions) {}
 
@@ -771,7 +799,7 @@ export class ZLinkSpotActorDispatcher {
   ): ZLinkSpotActorRequestContext {
     return {
       ...this.createSendContext(packetName, context),
-      reply: context.reply ?? { metadata() { return this; } }
+      reply: context.reply ?? new DefaultZLinkSpotActorReplyOptions()
     } as ZLinkSpotActorRequestContext;
   }
 }

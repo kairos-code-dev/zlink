@@ -176,7 +176,8 @@ export interface ZLinkSpotActorChangeResult {
 }
 
 export interface ZLinkSpotActorReplyOptions {
-  metadata(policy: ZLinkMessageMetadataPolicy): this;
+  metadata(key: string, value: string): this;
+  compress(enabled?: boolean): this;
 }
 
 export interface ZLinkStream {

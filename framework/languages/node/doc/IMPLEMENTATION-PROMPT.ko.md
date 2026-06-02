@@ -4,6 +4,11 @@
 ZLink Framework 를 dotnet framework 와 같은 구조, 기능, 사용성, 샘플 수준까지
 완료하기 위해 새 작업 세션에 그대로 전달할 수 있는 프롬프트다.
 
+이 프롬프트의 목적은 단일 기능 구현이 아니라, plan 문서가 요구하는 모든 작업을 끝까지
+닫는 것이다. 따라서 중간 Phase 가 통과해도 전체 완료로 보지 않는다. 구현, 테스트, 문서,
+샘플, cross-language smoke, release gate, dotnet 대비 parity 감사가 모두 끝났을 때만
+완료로 판단한다.
+
 ## 실행 프롬프트
 
 ```text
@@ -19,6 +24,8 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
   sample, guide, cross-language smoke 까지 닫혀야 완료다.
 - 작업이 길어져도 중간 상태를 완료로 보고하지 않는다. 남은 항목을 계속 추적하고,
   검증 가능한 단위로 구현, 테스트, 리뷰, 문서 갱신, 커밋, 푸시를 반복한다.
+- 한 번의 세션에서 전부 끝나지 않으면, 마지막 보고에 완료한 Phase, 통과한 gate,
+  남은 Phase, 다음에 바로 실행할 명령을 남긴다. 다음 세션은 그 지점부터 이어서 진행한다.
 
 반드시 먼저 읽을 문서:
 1. framework/languages/node/doc/IMPLEMENTATION-PLAN.ko.md
@@ -73,6 +80,8 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 10. 이슈가 0 이면 IMPLEMENTATION-PLAN.ko.md 의 진행 체크리스트를 갱신한다.
 11. Phase 완료 커밋을 만든 뒤 원격에 푸시한다. 단, unrelated dirty changes 는
     스테이징하지 않는다.
+12. 아직 P9 최종 gate 와 dotnet 대비 4축 감사가 끝나지 않았으면, 다음 Phase 로 이동해서
+    같은 루프를 반복한다.
 
 backend dependency guard:
 - `rg -n "runtime/native|src/zlink/runtime|bindings/node|require\\(" framework/languages/node/packages/framework/src/runtime/streams framework/languages/node/packages/framework/src/runtime/backend/node framework/languages/node/packages/framework/src/runtime/actors framework/languages/node/packages/framework/src/index.ts`

@@ -334,3 +334,172 @@ test('spot timer rejects invalid options', async () => {
     framework.ZLinkConfigurationException
   );
 });
+
+test('spot managed timer overrun policies follow dotnet skip catch-up and fixed-delay semantics', async () => {
+  await withFakeTimerClock(async (clock) => {
+    const skipLateTicks = [];
+    const skipLateTimer = new framework.ZLinkManagedTimer(
+      'skip-late',
+      10,
+      {
+        overrunPolicy: framework.ZLinkTimerOverrunPolicy.SkipLateTicks,
+        maxCatchUpTicks: 1,
+        stopOnUnhandledException: false
+      },
+      async (tick) => {
+        skipLateTicks.push(tick);
+        if (skipLateTicks.length === 1) {
+          clock.advanceBy(35);
+        }
+      }
+    );
+
+    await clock.runNext();
+    await clock.runNext();
+    await skipLateTimer.cancel();
+
+    assert.deepEqual(skipLateTicks.map((tick) => tick.scheduledIndex), [1n, 4n]);
+    assert.equal(skipLateTicks[1].skippedTicks, 2n);
+  });
+
+  await withFakeTimerClock(async (clock) => {
+    const catchUpTicks = [];
+    const catchUpTimer = new framework.ZLinkManagedTimer(
+      'catch-up',
+      10,
+      {
+        overrunPolicy: framework.ZLinkTimerOverrunPolicy.CatchUpBounded,
+        maxCatchUpTicks: 2,
+        stopOnUnhandledException: false
+      },
+      async (tick) => {
+        catchUpTicks.push(tick);
+        if (catchUpTicks.length === 1) {
+          clock.advanceBy(35);
+        }
+      }
+    );
+
+    await clock.runNext();
+    await clock.runNext();
+    await clock.runNext();
+    await catchUpTimer.cancel();
+
+    assert.deepEqual(catchUpTicks.map((tick) => tick.scheduledIndex), [1n, 3n, 4n]);
+    assert.equal(catchUpTicks[1].skippedTicks, 1n);
+    assert.equal(catchUpTicks[2].skippedTicks, 0n);
+  });
+
+  await withFakeTimerClock(async (clock) => {
+    const delayNextTicks = [];
+    const delayNextTimer = new framework.ZLinkManagedTimer(
+      'delay-next',
+      10,
+      {
+        overrunPolicy: framework.ZLinkTimerOverrunPolicy.DelayNextTick,
+        maxCatchUpTicks: 1,
+        stopOnUnhandledException: false
+      },
+      async (tick) => {
+        delayNextTicks.push(tick);
+        if (delayNextTicks.length === 1) {
+          clock.advanceBy(35);
+        }
+      }
+    );
+
+    await clock.runNext();
+    assert.deepEqual(clock.pendingDelays(), [10]);
+    await clock.runNext();
+    await delayNextTimer.cancel();
+
+    assert.deepEqual(delayNextTicks.map((tick) => tick.scheduledIndex), [1n, 2n]);
+    assert.equal(delayNextTicks[1].skippedTicks, 0n);
+  });
+});
+
+test('spot managed timer stopOnUnhandledException stops after handler failure', async () => {
+  await withFakeTimerClock(async (clock) => {
+    let attempts = 0;
+    const timer = new framework.ZLinkManagedTimer(
+      'failing',
+      10,
+      {
+        overrunPolicy: framework.ZLinkTimerOverrunPolicy.SkipLateTicks,
+        maxCatchUpTicks: 1,
+        stopOnUnhandledException: true
+      },
+      async () => {
+        attempts += 1;
+        throw new Error('timer failed');
+      }
+    );
+
+    await clock.runNext();
+
+    assert.equal(attempts, 1);
+    assert.equal(timer.isDisposed, true);
+    assert.deepEqual(clock.pendingDelays(), []);
+  });
+});
+
+async function withFakeTimerClock(run) {
+  const originalNow = Date.now;
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  let now = 0;
+  let nextId = 1;
+  const timers = [];
+
+  Date.now = () => now;
+  global.setTimeout = (callback, delay) => {
+    const timer = {
+      id: nextId++,
+      callback,
+      delay: Number(delay) || 0,
+      cleared: false
+    };
+    timers.push(timer);
+    return timer;
+  };
+  global.clearTimeout = (timer) => {
+    if (timer && typeof timer === 'object') {
+      timer.cleared = true;
+      return;
+    }
+    const found = timers.find((entry) => entry.id === timer);
+    if (found !== undefined) {
+      found.cleared = true;
+    }
+  };
+
+  const clock = {
+    advanceBy(ms) {
+      now += ms;
+    },
+    async runNext() {
+      const timer = timers.shift();
+      assert.ok(timer, 'expected a scheduled timer callback');
+      if (timer.cleared) {
+        return;
+      }
+      now += timer.delay;
+      timer.callback();
+      await Promise.resolve();
+      await Promise.resolve();
+    },
+    pendingDelays() {
+      return timers
+        .filter((timer) => !timer.cleared)
+        .map((timer) => timer.delay);
+    }
+  };
+
+  try {
+    await run(clock);
+  } finally {
+    Date.now = originalNow;
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+  }
+}

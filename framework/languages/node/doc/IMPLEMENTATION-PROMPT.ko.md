@@ -17,6 +17,8 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 - 기준 구현은 framework/languages/dotnet/src 이다. 문서와 코드가 다르면 dotnet 코드를 따른다.
 - 단순히 일부 테스트가 통과했다고 완료하지 않는다. plan 의 모든 Phase, regression matrix,
   sample, guide, cross-language smoke 까지 닫혀야 완료다.
+- 작업이 길어져도 중간 상태를 완료로 보고하지 않는다. 남은 항목을 계속 추적하고,
+  검증 가능한 단위로 구현, 테스트, 리뷰, 문서 갱신, 커밋, 푸시를 반복한다.
 
 반드시 먼저 읽을 문서:
 1. framework/languages/node/doc/IMPLEMENTATION-PLAN.ko.md
@@ -69,6 +71,8 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 8. POSD red flag 를 리뷰한다.
 9. red flag 가 있으면 리팩토링하고 3~8 을 반복한다.
 10. 이슈가 0 이면 IMPLEMENTATION-PLAN.ko.md 의 진행 체크리스트를 갱신한다.
+11. Phase 완료 커밋을 만든 뒤 원격에 푸시한다. 단, unrelated dirty changes 는
+    스테이징하지 않는다.
 
 backend dependency guard:
 - `rg -n "runtime/native|src/zlink/runtime|bindings/node|require\\(" framework/languages/node/packages/framework/src/runtime/streams framework/languages/node/packages/framework/src/runtime/backend/node framework/languages/node/packages/framework/src/runtime/actors framework/languages/node/packages/framework/src/index.ts`
@@ -132,6 +136,19 @@ ABI release gate 필수 runtime:
 - 완료 보고에는 구현/문서 수정 요약, 통과한 gate 목록, dotnet 대비 구조·기능·사용성·샘플
   parity 확인 결과를 포함한다. 남은 이슈가 없으면 명시적으로 "남은 이슈 없음"이라고 적는다.
 
+완료 직전 최종 감사:
+- `IMPLEMENTATION-PLAN.ko.md` §7 의 모든 Phase 체크박스가 실제 코드와 테스트 결과로
+  뒷받침되는지 확인한다.
+- `internals/regression-test-matrix.ko.md` 의 각 행이 자동 테스트, 샘플 실행, 또는
+  cross-language smoke 중 하나로 검증되는지 표로 대조한다.
+- dotnet `src`, `tests`, `samples`, `doc/guide` 와 Node `packages`, `test`,
+  `samples`, `doc/guide` 를 나란히 비교한다.
+- backend concrete type, native detail, generated internal 경로가 framework public
+  surface 로 새지 않는지 다시 검색한다.
+- 문서 링크, 샘플 명령, package export, public decorator 이름이 실제 파일과 맞는지
+  확인한다.
+- 빠진 항목이 하나라도 있으면 완료 선언 대신 다음 수정 항목으로 되돌아간다.
+
 커밋 규칙:
 - 관련 Phase 단위로 작은 커밋을 만든다.
 - unrelated dirty changes 는 건드리지 않는다.
@@ -139,6 +156,9 @@ ABI release gate 필수 runtime:
 - 푸시는 검증 가능한 커밋 단위로 수행한다.
 - 여러 주제가 섞였으면 커밋을 나눈다. 예: runtime 구현, connector POSD split,
   tests/docs 보강.
+- 이미 원격보다 앞선 커밋이 있으면 `git log --oneline origin/main..HEAD` 로 내용을
+  확인한 뒤 함께 푸시한다. 확인하지 않은 unrelated working tree 변경은 새 커밋에
+  섞지 않는다.
 ```
 
 ## 완료 전 자체 점검 질문

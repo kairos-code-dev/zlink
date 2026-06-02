@@ -761,3 +761,43 @@ ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 
 ---
 [← DEALER](./03-3-dealer.ko.md) | [STREAM →](./03-5-stream.ko.md)
+
+## 언어별 완전한 예제
+
+ROUTER가 DEALER 요청을 수신하고 source 라우팅 ID로 응답하는 자립형 예제다(모든 바인딩, 빌드·실행 검증됨).
+
+=== "C++"
+
+    --8<-- "bindings/cpp/samples/dealer_router_recv_sample.cpp"
+
+=== "C#/.NET"
+
+    --8<-- "bindings/dotnet/samples/DealerRouterRecv/Program.cs"
+
+=== "Java"
+
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/DealerRouterRecvSample.java"
+
+=== "Kotlin"
+
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/DealerRouterRecvSample.kt"
+
+=== "Python"
+
+    --8<-- "bindings/python/samples/dealer_router_recv_sample.py"
+
+=== "Node/TypeScript"
+
+    --8<-- "bindings/node/samples/dealer_router_recv_sample.ts"
+
+=== "JavaScript"
+
+    --8<-- "bindings/javascript/samples/dealer_router_recv_sample.js"
+
+=== "Go"
+
+    --8<-- "bindings/go/samples/dealer_router_recv_sample/main.go"
+
+=== "Rust"
+
+    --8<-- "bindings/rust/samples/dealer_router_recv_sample.rs"

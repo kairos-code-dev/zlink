@@ -10,7 +10,6 @@ async function main() {
   const sessionEndpoint = await reserveTcpEndpoint();
   const playEndpoint = await reserveTcpEndpoint();
   const apiEndpoint = await reserveTcpEndpoint();
-  const apiClientEndpoint = await reserveTcpEndpoint();
   const clientEndpoint = await reserveTcpEndpoint();
   assertNestModule({
     routeChannels: [{
@@ -29,7 +28,6 @@ async function main() {
       entry: path.resolve(__dirname, '../Server/Api/main.js'),
       env: {
         BINGO_API_ENDPOINT: apiEndpoint,
-        BINGO_API_CLIENT_ENDPOINT: apiClientEndpoint,
         BINGO_PLAY_ENDPOINT: playEndpoint
       }
     }

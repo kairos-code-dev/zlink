@@ -1,6 +1,6 @@
 const { BingoCard } = require('../../../Shared/Contracts/bingo-card');
 
-class RunBingoRoomHandler {
+class AllocateBingoRoomHandler {
   handle(request) {
     const players = request.players;
     const requiredPlayers = 4;
@@ -41,4 +41,4 @@ function broadcast(notifications, players, packetName, payload) {
   }
 }
 
-module.exports = { RunBingoRoomHandler };
+module.exports = { AllocateBingoRoomHandler };

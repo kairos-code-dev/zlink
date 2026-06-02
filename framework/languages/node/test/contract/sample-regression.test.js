@@ -60,7 +60,7 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Api/Handlers/match-bingo-handler.js',
       'Server/Api/api-server-host-factory.js',
       'Server/Api/main.js',
-      'Server/Play/Handlers/run-bingo-room-handler.js',
+      'Server/Play/Handlers/allocate-bingo-room-handler.js',
       'Server/Play/play-server-host-factory.js',
       'Server/Play/main.js',
       'Server/Registry/registry-host-factory.js',
@@ -314,17 +314,22 @@ test('Bingo sample covers four-player host start guards and bound push fanout', 
   const match = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'Handlers', 'match-bingo-handler.js'), 'utf8');
   const roomMain = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'main.js'), 'utf8');
   const playFactory = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'play-server-host-factory.js'), 'utf8');
-  const room = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'Handlers', 'run-bingo-room-handler.js'), 'utf8');
+  const room = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'Handlers', 'allocate-bingo-room-handler.js'), 'utf8');
   const readme = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'README.ko.md'), 'utf8');
   const required = [
     [apiMain, 'buildApiServerHost'],
     [apiFactory, 'AuthenticatePlayerHandler'],
     [apiFactory, 'MatchBingoHandler'],
+    [apiFactory, 'createChannelClient'],
+    [apiFactory, "channelName: 'bingo.play'"],
     [authenticate, 'Access token must be a sample player id.'],
+    [match, "this.playClient.request('AllocateBingoRoom'"],
     [match, "{ actorId: 'p1', numbers: [7] }"],
     [match, "{ actorId: 'p4', numbers: [11] }"],
     [roomMain, 'buildPlayServerHost'],
-    [playFactory, 'RunBingoRoomHandler'],
+    [playFactory, 'AllocateBingoRoomHandler'],
+    [playFactory, "channelName: 'bingo.play'"],
+    [playFactory, "packetName: 'AllocateBingoRoom'"],
     [room, 'const requiredPlayers = 4'],
     [room, 'earlyHostStartRejected'],
     [room, 'nonHostStartRejected'],
@@ -345,6 +350,8 @@ test('Bingo sample covers four-player host start guards and bound push fanout', 
     .map(([, text]) => text);
 
   assert.deepEqual(missing, []);
+  assert.equal(apiFactory.includes('createRouteClient'), false);
+  assert.equal(match.includes("'RunBingoRoom'"), false);
   assert.equal(apiMain.includes("packetName: 'RunBingo'"), false);
   assert.equal(roomMain.includes('const requiredPlayers'), false);
 });

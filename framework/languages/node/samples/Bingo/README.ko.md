@@ -14,9 +14,10 @@ node framework/languages/node/samples/Bingo/Client/self-check.js
 - `Client/`: Registry, Session, Play, API 서버 process 를 시작하고 API 서버의 실제
   TCP route endpoint 로 Bingo scenario request 를 보낸다.
 - `Server/Api/`: `api-server-host-factory.js` 가 route 서버를 구성하고,
-  `Handlers/` 의 authenticate/match handler 가 요청을 처리한다.
-- `Server/Play/`: `play-server-host-factory.js` 가 route 서버를 구성하고,
-  `Handlers/run-bingo-room-handler.js` 가 Bingo room 흐름을 실행한다.
+  `Handlers/` 의 authenticate/match handler 가 요청을 처리한다. match handler 는
+  `.NET` sample 과 같이 Play channel 로 `AllocateBingoRoom` request 를 보낸다.
+- `Server/Play/`: `play-server-host-factory.js` 가 `bingo.play` channel 서버를 구성하고,
+  `Handlers/allocate-bingo-room-handler.js` 가 Bingo room 흐름을 실행한다.
 - `Server/Session/`: `session-server-host-factory.js` 가 session 역할 서버를 구성한다.
 - `Server/Registry/`: `registry-host-factory.js` 가 registry 역할 서버를 구성한다.
 - `Shared/`: Bingo card 계약을 공유한다.

@@ -3,7 +3,6 @@ const { buildApiServerHost } = require('./api-server-host-factory');
 async function main() {
   await buildApiServerHost({
     apiEndpoint: process.env.BINGO_API_ENDPOINT,
-    apiClientEndpoint: process.env.BINGO_API_CLIENT_ENDPOINT,
     playEndpoint: process.env.BINGO_PLAY_ENDPOINT
   });
 }

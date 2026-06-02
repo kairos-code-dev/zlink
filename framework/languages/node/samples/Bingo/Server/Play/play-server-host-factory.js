@@ -1,12 +1,12 @@
-const { startRouteServer } = require('../../../shared/route-runtime');
-const { RunBingoRoomHandler } = require('./Handlers/run-bingo-room-handler');
+const { startChannelServer } = require('../../../shared/channel-runtime');
+const { AllocateBingoRoomHandler } = require('./Handlers/allocate-bingo-room-handler');
 
 async function buildPlayServerHost(options) {
-  const runBingoRoom = new RunBingoRoomHandler();
-  return await startRouteServer({
+  const allocateBingoRoom = new AllocateBingoRoomHandler();
+  return await startChannelServer({
     endpoint: options.playEndpoint,
-    routingId: 'play-server',
-    handlers: [{ packetName: 'RunBingoRoom', handle: (request) => runBingoRoom.handle(request) }]
+    channelName: 'bingo.play',
+    handlers: [{ packetName: 'AllocateBingoRoom', handle: (request) => allocateBingoRoom.handle(request) }]
   });
 }
 

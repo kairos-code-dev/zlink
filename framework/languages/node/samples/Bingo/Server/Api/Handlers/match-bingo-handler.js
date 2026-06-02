@@ -3,8 +3,9 @@ class MatchBingoHandler {
     this.playClient = playClient;
   }
 
-  async handle() {
-    return await this.playClient.request('play-server', 'RunBingoRoom', {
+  async handle(request) {
+    return await this.playClient.request('AllocateBingoRoom', {
+      mode: request.mode ?? 'sample',
       players: [
         { actorId: 'p1', numbers: [7] },
         { actorId: 'p2', numbers: [9] },
@@ -12,7 +13,7 @@ class MatchBingoHandler {
         { actorId: 'p4', numbers: [11] }
       ],
       draws: [7, 9, 11]
-    });
+    }, 10000);
   }
 }
 

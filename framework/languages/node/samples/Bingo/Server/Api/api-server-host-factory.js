@@ -1,11 +1,11 @@
-const { createRouteClient, startRouteServer } = require('../../../shared/route-runtime');
+const { createChannelClient } = require('../../../shared/channel-runtime');
+const { startRouteServer } = require('../../../shared/route-runtime');
 const { AuthenticatePlayerHandler } = require('./Handlers/authenticate-player-handler');
 const { MatchBingoHandler } = require('./Handlers/match-bingo-handler');
 
 async function buildApiServerHost(options) {
-  const playClient = await createRouteClient({
-    endpoint: options.apiClientEndpoint,
-    routingId: 'api-client',
+  const playClient = await createChannelClient({
+    channelName: 'bingo.play',
     peers: [options.playEndpoint]
   });
   const authenticatePlayer = new AuthenticatePlayerHandler();
@@ -14,7 +14,6 @@ async function buildApiServerHost(options) {
   const server = await startRouteServer({
     endpoint: options.apiEndpoint,
     routingId: 'api-server',
-    peers: [options.playEndpoint],
     handlers: [
       { packetName: 'AuthenticatePlayer', handle: (request) => authenticatePlayer.handle(request) },
       { packetName: 'RunBingo', handle: (request) => matchBingo.handle(request) }

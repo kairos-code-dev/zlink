@@ -145,7 +145,10 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
         return target;
       }
       if (property === 'dispose') {
-        return async () => target.close();
+        return async () => {
+          disableSocketLinger(target);
+          await closeWithBusyRetry(target);
+        };
       }
       return Reflect.get(target, property, receiver);
     }
@@ -153,13 +156,45 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
 }
 
 function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBackendObject {
+  const boundEndpoints = new Set<string>();
+  const connectedEndpoints = new Set<string>();
+  const peerRoutingIds = new Set<unknown>();
   return new Proxy(nativeInstance, {
     get(target, property, receiver) {
       if (property === 'nativeInstance') {
         return target;
       }
       if (property === 'dispose') {
-        return async () => target.close();
+        return async () => {
+          closeSocketRoutes(target, peerRoutingIds);
+          closeSocketEndpoints(target, boundEndpoints, connectedEndpoints);
+          disableSocketLinger(target);
+          await closeWithBusyRetry(target);
+        };
+      }
+      if (property === 'bind') {
+        return (endpoint: string) => {
+          (target as unknown as { bind(endpoint: string): void }).bind(endpoint);
+          boundEndpoints.add(endpoint);
+        };
+      }
+      if (property === 'unbind') {
+        return (endpoint: string) => {
+          (target as unknown as { unbind(endpoint: string): void }).unbind(endpoint);
+          boundEndpoints.delete(endpoint);
+        };
+      }
+      if (property === 'connect') {
+        return (endpoint: string) => {
+          (target as unknown as { connect(endpoint: string): void }).connect(endpoint);
+          connectedEndpoints.add(endpoint);
+        };
+      }
+      if (property === 'disconnect') {
+        return (endpoint: string) => {
+          (target as unknown as { disconnect(endpoint: string): void }).disconnect(endpoint);
+          connectedEndpoints.delete(endpoint);
+        };
       }
       if (property === 'setChannelName' && typeof Reflect.get(target, property, receiver) !== 'function') {
         return () => undefined;
@@ -176,6 +211,7 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
         return (...args: unknown[]) => {
           if (args.length >= 3) {
             const [routingId, payload, flags] = args as [unknown, unknown, number];
+            peerRoutingIds.add(routingId);
             return submitBindingSend(
               (target as unknown as { send(routingId: unknown): ZLinkBindingSendOperation }).send(toNativeRoutingId(routingId)),
               payload,
@@ -194,25 +230,48 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
         return (...args: unknown[]) => {
           if (args.length >= 5) {
             const [routingId, payload, callback, flags, timeoutMs] = args as [unknown, unknown, unknown, number, number | undefined];
-            return submitBindingRequest(
+            void flags;
+            peerRoutingIds.add(routingId);
+            return submitBindingRequestAsync(
               (target as unknown as { request(routingId: unknown): ZLinkBindingRequestOperation }).request(toNativeRoutingId(routingId)),
               payload,
               callback,
-              flags,
               timeoutMs
             );
           }
           if (args.length >= 4) {
             const [payload, callback, flags, timeoutMs] = args as [unknown, unknown, number, number | undefined];
-            return submitBindingRequest(
+            void flags;
+            return submitBindingRequestAsync(
               (target as unknown as { request(): ZLinkBindingRequestOperation }).request(),
               payload,
               callback,
-              flags,
               timeoutMs
             );
           }
           return (Reflect.get(target, property, receiver) as (...values: unknown[]) => unknown)(...args);
+        };
+      }
+      if (property === 'reply') {
+        return (...args: unknown[]) => {
+          const [routingId, requestSeq, payload] = args as [unknown, bigint, unknown];
+          peerRoutingIds.add(routingId);
+          const operation = (target as unknown as {
+            reply(routingId: unknown, requestSeq: bigint): ZLinkBindingSendOperation;
+          }).reply(toNativeRoutingId(routingId), requestSeq);
+          if (args.length < 3) {
+            return operation;
+          }
+          return submitBindingSend(operation, payload, 0);
+        };
+      }
+      if (property === 'recv') {
+        return (flags?: number) => {
+          const received = new zlink.Received();
+          const ok = (target as unknown as {
+            recv(result: unknown, flags?: number): boolean;
+          }).recv(received, flags);
+          return ok ? received : undefined;
         };
       }
       if (property === 'publish') {
@@ -282,14 +341,79 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
   }) as T & ZLinkBackendObject;
 }
 
+function closeSocketRoutes(target: unknown, peerRoutingIds: Set<unknown>): void {
+  if (peerRoutingIds.size === 0 || !hasDisconnectRid(target)) {
+    return;
+  }
+  for (const routingId of peerRoutingIds) {
+    target.disconnectRid(toNativeRoutingId(routingId));
+    peerRoutingIds.delete(routingId);
+  }
+}
+
+function hasDisconnectRid(target: unknown): target is { disconnectRid(routingId: unknown): void } {
+  return target !== null && typeof target === 'object' && 'disconnectRid' in target &&
+    typeof (target as { disconnectRid: unknown }).disconnectRid === 'function';
+}
+
+function closeSocketEndpoints(target: unknown, boundEndpoints: Set<string>, connectedEndpoints: Set<string>): void {
+  for (const endpoint of connectedEndpoints) {
+    (target as { disconnect(endpoint: string): void }).disconnect(endpoint);
+    connectedEndpoints.delete(endpoint);
+  }
+  for (const endpoint of boundEndpoints) {
+    (target as { unbind(endpoint: string): void }).unbind(endpoint);
+    boundEndpoints.delete(endpoint);
+  }
+}
+
+async function closeWithBusyRetry(target: { close(): void }): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      target.close();
+      return;
+    } catch (error) {
+      if (!isBusyCloseError(error)) {
+        throw error;
+      }
+      lastError = error;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+  throw lastError;
+}
+
+function isBusyCloseError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && (error as { code: unknown }).code === 401;
+}
+
+function disableSocketLinger(target: unknown): void {
+  if (
+    target !== null &&
+    typeof target === 'object' &&
+    'options' in target &&
+    typeof target.options === 'object' &&
+    target.options !== null &&
+    'linger' in target.options
+  ) {
+    (target.options as { linger: number }).linger = 0;
+  }
+}
+
 interface ZLinkBindingSendOperation {
   message(message: unknown): ZLinkBindingSendOperation;
   flags(flags: number): { submit(): boolean };
 }
 
 interface ZLinkBindingRequestOperation {
-  message(message: unknown): ZLinkBindingRequestOperation;
-  timeout(timeoutMs: number): ZLinkBindingRequestOperation;
+  message(message: unknown): ZLinkBindingRequestSubmitOperation;
+}
+
+interface ZLinkBindingRequestSubmitOperation {
+  message(message: unknown): ZLinkBindingRequestSubmitOperation;
+  timeout(timeoutMs: number): ZLinkBindingRequestSubmitOperation;
+  submitAsync(): Promise<unknown[]>;
   flags(flags: number): { submit(callback: unknown): boolean };
 }
 
@@ -305,25 +429,38 @@ function submitBindingSend(operation: ZLinkBindingSendOperation, payload: unknow
   return current.flags(flags).submit();
 }
 
-function submitBindingRequest(
+function submitBindingRequestAsync(
   operation: ZLinkBindingRequestOperation,
   payload: unknown,
   callback: unknown,
-  flags: number,
   timeoutMs: number | undefined
 ): boolean {
-  let current = operation;
+  let current: ZLinkBindingRequestSubmitOperation | undefined;
   if (Array.isArray(payload)) {
     for (const part of payload) {
-      current = current.message(part);
+      current = current === undefined ? operation.message(part) : current.message(part);
     }
   } else {
-    current = current.message(payload);
+    current = operation.message(payload);
+  }
+  if (current === undefined) {
+    current = operation.message(Buffer.alloc(0));
   }
   if (timeoutMs !== undefined) {
     current = current.timeout(timeoutMs);
   }
-  return current.flags(flags).submit(callback);
+  current.submitAsync().then(
+    (parts: unknown[]) => {
+      (callback as (result: number, parts: unknown[]) => void)(0, parts);
+    },
+    (error: unknown) => {
+      const result = typeof error === 'object' && error !== null && 'result' in error
+        ? Number((error as { result: unknown }).result)
+        : -1;
+      (callback as (result: number, parts: unknown[]) => void)(result, []);
+    }
+  );
+  return true;
 }
 
 function wrapMonitorSocket(nativeInstance: { close(): void; recv(flags?: number): MonitorEvent | null }): ZLinkBackendSocketMonitor {

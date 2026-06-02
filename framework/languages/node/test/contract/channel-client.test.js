@@ -278,8 +278,10 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
     remoteRouter.setRoutingId(zlink.RoutingId.from('node-b'));
     remoteRouter.connect(endpoint);
 
-    await routeClient.send('mesh', 'node-b', { value: 'one-way' }).packetName('RouteNotice').submit();
-    const sent = await recvRouterMessage(remoteRouter);
+    await submitWhenRouteReachable(() =>
+      routeClient.send('mesh', 'node-b', { value: 'one-way' }).packetName('RouteNotice').submit()
+    );
+    const sent = await recvRoutedEnvelopeMessage(remoteRouter);
     const sentEnvelope = decodeDotnetEnvelope(sent.parts);
     assert.equal(sentEnvelope.header.kind, 3);
     assert.equal(sentEnvelope.header.channelName, 'mesh');
@@ -288,7 +290,7 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
     sent.close();
 
     const replyPromise = routeClient.request('mesh', 'node-b', { value: 'ping' }).packetName('RoutePing').timeout(1000).submit();
-    const request = await recvRouterMessage(remoteRouter);
+    const request = await recvRoutedEnvelopeMessage(remoteRouter);
     const envelope = decodeDotnetEnvelope(request.parts);
     assert.equal(envelope.header.kind, 1);
     assert.equal(envelope.header.channelName, 'mesh');
@@ -313,6 +315,97 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
   } finally {
     await runtime.stop();
     remoteRouter.close();
+    ctx.close();
+  }
+});
+
+test('ZLinkRoutePacketDispatcher invokes routed send and request handlers', async () => {
+  const ctx = zlink.createContext();
+  const localRouter = zlink.createRouterSocket(ctx);
+  const remoteDealer = zlink.createDealerSocket(ctx);
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const events = [];
+
+  try {
+    localRouter.setRoutingId(zlink.RoutingId.from('node-a'));
+    remoteDealer.setRoutingId(zlink.RoutingId.from('node-b'));
+    localRouter.options.probe = true;
+    remoteDealer.options.probe = true;
+    localRouter.bind(endpoint);
+    remoteDealer.connect(endpoint);
+    const probe = await recvRouterMessage(localRouter);
+    probe.close();
+    const dispatcher = new framework.ZLinkRoutePacketDispatcher({
+      routerChannelId: 'mesh',
+      handlers: [
+        {
+          kind: 'send',
+          packetName: 'RouteNotice',
+          handler: {
+            async handle(payload, context) {
+              events.push(`send:${context.channelName}:${context.packetName}:${JSON.parse(payload.toString()).value}`);
+            }
+          }
+        },
+        {
+          kind: 'request',
+          packetName: 'RoutePing',
+          handler: {
+            async handle(payload, context) {
+              events.push(`request:${context.channelName}:${context.packetName}:${context.requestSeq}:${JSON.parse(payload.toString()).value}`);
+              return { value: 'pong' };
+            }
+          }
+        }
+      ]
+    });
+
+    submitMultipart(
+      remoteDealer.send(),
+      encodeDotnetEnvelope({
+        kind: 3,
+        channelName: 'mesh',
+        messageName: 'RouteNotice',
+        contentType: 'application/json',
+        correlationId: null,
+        deadline: null,
+        topic: null,
+        errorCode: null,
+        errorMessage: null
+      }, { value: 'one-way' })
+    );
+    const sent = await recvRouterMessage(localRouter);
+    await dispatcher.dispatch(sent, localRouter);
+    sent.close();
+
+    const replyPromise = submitRequestMultipart(
+      remoteDealer.request(),
+      encodeDotnetEnvelope({
+        kind: 1,
+        channelName: 'mesh',
+        messageName: 'RoutePing',
+        contentType: 'application/json',
+        correlationId: null,
+        deadline: null,
+        topic: null,
+        errorCode: null,
+        errorMessage: null
+      }, { value: 'ping' })
+    );
+    const request = await recvRouterMessage(localRouter);
+    await dispatcher.dispatch(request, localRouter);
+    request.close();
+
+    const reply = await withTimeout(replyPromise, 1000, 'route dispatcher reply');
+    const envelope = decodeDotnetEnvelope(reply);
+    assert.equal(envelope.header.kind, 2);
+    assert.deepEqual(envelope.body, { value: 'pong' });
+    assert.equal(events[0], 'send:mesh:RouteNotice:one-way');
+    assert.match(events[1], /^request:mesh:RoutePing:\d+:ping$/);
+    reply.forEach((part) => part.close());
+  } finally {
+    remoteDealer.close();
+    localRouter.close();
     ctx.close();
   }
 });
@@ -426,6 +519,43 @@ async function recvRouterMessage(router) {
   assert.fail('router did not receive request');
 }
 
+async function recvRoutedEnvelopeMessage(router) {
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    const received = new zlink.Received();
+    if (router.recv(received, zlink.RecvFlags.DontWait)) {
+      if (received.parts.length >= 2 && received.parts[0].data().length > 0) {
+        return received;
+      }
+      received.close();
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.fail('router did not receive routed envelope');
+}
+
+async function submitWhenRouteReachable(submit) {
+  const deadline = Date.now() + 1000;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      await submit();
+      return;
+    } catch (error) {
+      if (!isHostUnreachable(error)) {
+        throw error;
+      }
+      lastError = error;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+  throw lastError;
+}
+
+function isHostUnreachable(error) {
+  return error instanceof Error && error.code === 2 && /Host unreachable/.test(error.message);
+}
+
 async function reservePort() {
   const server = net.createServer();
   server.listen(0, '127.0.0.1');
@@ -467,6 +597,14 @@ function submitMultipart(operation, parts) {
     current = current.message(parts[index]);
   }
   current.submit();
+}
+
+function submitRequestMultipart(operation, parts) {
+  let current = operation.message(parts[0]);
+  for (let index = 1; index < parts.length; index++) {
+    current = current.message(parts[index]);
+  }
+  return current.submitAsync();
 }
 
 function withTimeout(promise, timeoutMs, label) {

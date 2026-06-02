@@ -882,6 +882,18 @@ handler 쪽에서 source `RoutingId` 가 필요한 backend adapter 는, 다음 �
 다만 일반 application handler 의 기본 모델은, channel name, actor id, spot key 를
 중심으로 둔다.
 
+route mesh channel 이 handler group 을 노출하면 runtime 은 host-owned `ROUTER` 에서
+들어온 routed packet 을 dispatch 한다. `Command` packet 은 같은 route channel 에
+등록된 route send handler 로 전달한다. 등록된 handler 가 없으면 application 에 노출하지
+않고 버린다. `Request` packet 은 같은 route channel 에 등록된 route request handler 로
+전달하고, handler 의 반환값을 reply frame 으로 돌려준다.
+
+request handler 가 없거나 handler 실행 중 오류가 나면 runtime 은 `Error` reply 를 보낸다.
+이렇게 해야 caller 가 timeout 으로 실패 원인을 추측하지 않고, dotnet framework 와 같은
+request/reply 의미로 오류를 받을 수 있다. ROUTER/DEALER 연결 준비 과정에서 들어올 수
+있는 빈 probe frame 은 application handler 로 넘기지 않고 runtime dispatch 단계에서
+무시한다.
+
 ### 5.5 HTTP handler에서의 사용
 
 §5.2 – 5.3 의 두 client 는, ZLink handler 안에서만 쓰는 것이 아니다. 기존 `NestJS`

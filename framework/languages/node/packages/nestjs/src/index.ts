@@ -70,11 +70,13 @@ export class ZLinkModule {
           inject: [ZLINK_FRAMEWORK_REGISTRATION],
           useFactory: (registration: ZLinkFrameworkRegistration) => new framework.ZLinkFrameworkRuntimeHost({ registration })
         },
-        ...alwaysAvailableClientProviders()
+        ...alwaysAvailableClientProviders(),
+        ...conditionalClientProvidersForAsync()
       ],
       exports: [
         ZLINK_FRAMEWORK_RUNTIME,
-        ...alwaysAvailableClientTokens()
+        ...alwaysAvailableClientTokens(),
+        ...conditionalClientTokens()
       ]
     };
   }
@@ -167,7 +169,7 @@ function conditionalClientProviders(registration: ZLinkFrameworkRegistration): P
 
   if (framework.hasSpotNode(registration)) {
     providers.push(
-      { provide: ZLINK_SPOT_MANAGER, useValue: new framework.DefaultZLinkSpotManager({ spotFactories: [] }) },
+      { provide: ZLINK_SPOT_MANAGER, useValue: createSpotManager(registration) },
       { provide: ZLINK_SPOT_OUTBOUND, useValue: placeholderClient(ZLINK_SPOT_OUTBOUND) }
     );
   }
@@ -188,6 +190,71 @@ function conditionalClientProviders(registration: ZLinkFrameworkRegistration): P
   }
 
   return providers;
+}
+
+function conditionalClientProvidersForAsync(): Provider[] {
+  return [
+    {
+      provide: ZLINK_SPOT_MANAGER,
+      inject: [ZLINK_FRAMEWORK_REGISTRATION],
+      useFactory: (registration: ZLinkFrameworkRegistration) => {
+        ensureCapability(framework.hasSpotNode(registration), ZLINK_SPOT_MANAGER);
+        return createSpotManager(registration);
+      }
+    },
+    {
+      provide: ZLINK_SPOT_OUTBOUND,
+      inject: [ZLINK_FRAMEWORK_REGISTRATION],
+      useFactory: (registration: ZLinkFrameworkRegistration) => {
+        ensureCapability(framework.hasSpotNode(registration), ZLINK_SPOT_OUTBOUND);
+        return placeholderClient(ZLINK_SPOT_OUTBOUND);
+      }
+    },
+    {
+      provide: ZLINK_SPOT_PUBLISHER_CLIENT,
+      inject: [ZLINK_FRAMEWORK_REGISTRATION],
+      useFactory: (registration: ZLinkFrameworkRegistration) => {
+        ensureCapability(framework.hasSpotPublisherClient(registration), ZLINK_SPOT_PUBLISHER_CLIENT);
+        return placeholderClient(ZLINK_SPOT_PUBLISHER_CLIENT);
+      }
+    },
+    {
+      provide: ZLINK_ACTOR_MANAGER,
+      inject: [ZLINK_FRAMEWORK_REGISTRATION],
+      useFactory: (registration: ZLinkFrameworkRegistration) => {
+        ensureCapability(framework.hasActorManager(registration), ZLINK_ACTOR_MANAGER);
+        return new framework.DefaultZLinkActorManager({ actorFactories: registration.actorFactories });
+      }
+    },
+    {
+      provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
+      inject: [ZLINK_FRAMEWORK_REGISTRATION],
+      useFactory: (registration: ZLinkFrameworkRegistration) => {
+        ensureCapability(framework.hasSpotRemoteAddressResolver(registration), ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER);
+        return placeholderClient(ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER);
+      }
+    }
+  ];
+}
+
+function conditionalClientTokens(): InjectionToken[] {
+  return [
+    ZLINK_SPOT_MANAGER,
+    ZLINK_SPOT_OUTBOUND,
+    ZLINK_SPOT_PUBLISHER_CLIENT,
+    ZLINK_ACTOR_MANAGER,
+    ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER
+  ];
+}
+
+function ensureCapability(enabled: boolean, token: InjectionToken): void {
+  if (!enabled) {
+    throw new framework.ZLinkConfigurationException(`Provider ${String(token)} requires a matching ZLink capability.`);
+  }
+}
+
+function createSpotManager(registration: ZLinkFrameworkRegistration): InstanceType<FrameworkModule['DefaultZLinkSpotManager']> {
+  return new framework.DefaultZLinkSpotManager({ spotFactories: [...registration.spotFactories] });
 }
 
 function placeholderClient(token: InjectionToken): object {

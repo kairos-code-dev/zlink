@@ -20,8 +20,14 @@ test('ZLinkModule.forRoot registers always-available providers for empty options
 
 test('ZLinkModule.forRoot exposes capability providers only when registration enables them', () => {
   class ActorFactory {}
+  class StageSpot {
+    constructor(context) {
+      this.context = context;
+    }
+  }
   const module = nestjs.ZLinkModule.forRoot({
     spotNodes: ['game'],
+    spotFactories: [StageSpot],
     actorFactories: { player: ActorFactory },
     spotPublisherClients: ['events']
   });
@@ -36,6 +42,28 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
       instanceof framework.DefaultZLinkActorManager,
     true
   );
+  assert.equal(
+    module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_MANAGER).useValue
+      instanceof framework.DefaultZLinkSpotManager,
+    true
+  );
+});
+
+test('ZLinkModule.forRoot passes registered spot factories to the spot manager', async () => {
+  class StageSpot {
+    constructor(context) {
+      this.context = context;
+    }
+  }
+  const module = nestjs.ZLinkModule.forRoot({
+    spotNodes: ['game'],
+    spotFactories: [StageSpot]
+  });
+  const spotManager = module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_MANAGER).useValue;
+
+  const created = await spotManager.create(StageSpot);
+
+  assert.equal(created.created, true);
 });
 
 test('ZLinkModule.forRoot validates actor factory without spot node at registration time', () => {
@@ -43,6 +71,54 @@ test('ZLinkModule.forRoot validates actor factory without spot node at registrat
 
   assert.throws(
     () => nestjs.ZLinkModule.forRoot({ actorFactories: { player: ActorFactory } }),
+    framework.ZLinkConfigurationException
+  );
+});
+
+test('ZLinkModule.forRootAsync exposes capability providers after async registration resolves', async () => {
+  class AsyncSpot {
+    constructor(context) {
+      this.context = context;
+    }
+  }
+  class ActorFactory {
+    async create(actorId, context) {
+      return { actorId, context };
+    }
+  }
+  const module = nestjs.ZLinkModule.forRootAsync({
+    async useFactory() {
+      return {
+        spotNodes: ['game'],
+        spotFactories: [AsyncSpot],
+        actorFactories: { player: ActorFactory },
+        spotPublisherClients: ['game-events']
+      };
+    }
+  });
+  const container = await resolveModuleProviders(module, [
+    nestjs.ZLINK_SPOT_MANAGER,
+    nestjs.ZLINK_ACTOR_MANAGER,
+    nestjs.ZLINK_SPOT_PUBLISHER_CLIENT
+  ]);
+  const actorManager = container.get(nestjs.ZLINK_ACTOR_MANAGER);
+
+  assert.equal(container.get(nestjs.ZLINK_SPOT_MANAGER) instanceof framework.DefaultZLinkSpotManager, true);
+  assert.equal(actorManager instanceof framework.DefaultZLinkActorManager, true);
+  assert.equal((await container.get(nestjs.ZLINK_SPOT_MANAGER).create(AsyncSpot)).created, true);
+  assert.equal((await actorManager.getOrCreate('p1', 'player')).actorId, 'p1');
+  assert.equal(container.has(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT), true);
+});
+
+test('ZLinkModule.forRootAsync rejects capability provider resolution when capability is absent', async () => {
+  const module = nestjs.ZLinkModule.forRootAsync({
+    async useFactory() {
+      return {};
+    }
+  });
+
+  await assert.rejects(
+    () => resolveModuleProviders(module, [nestjs.ZLINK_SPOT_MANAGER]),
     framework.ZLinkConfigurationException
   );
 });
@@ -86,4 +162,41 @@ test('framework runtime host start and stop are idempotent and ordered', async (
 
 function providerTokens(module) {
   return new Set(module.providers.map((provider) => provider.provide));
+}
+
+async function resolveModuleProviders(module, requestedTokens) {
+  const values = new Map();
+  const providers = new Map(module.providers.map((provider) => [provider.provide, provider]));
+
+  for (const token of requestedTokens) {
+    await resolveToken(token);
+  }
+
+  return values;
+
+  async function resolveToken(token) {
+    if (values.has(token)) {
+      return values.get(token);
+    }
+    const provider = providers.get(token);
+    if (provider === undefined) {
+      throw new Error(`Could not find provider: ${String(token)}`);
+    }
+    if ('useValue' in provider && provider.useValue !== undefined) {
+      values.set(provider.provide, provider.useValue);
+      return provider.useValue;
+    }
+
+    if ('useFactory' in provider && provider.useFactory !== undefined) {
+      const dependencies = [];
+      for (const dependency of provider.inject ?? []) {
+        dependencies.push(await resolveToken(dependency));
+      }
+      const value = await provider.useFactory(...dependencies);
+      values.set(provider.provide, value);
+      return value;
+    }
+
+    throw new Error(`Provider ${String(token)} has no supported value or factory.`);
+  }
 }

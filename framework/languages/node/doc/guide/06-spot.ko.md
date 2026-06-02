@@ -5,11 +5,23 @@ Spot 안의 작업을 하나의 실행 문맥에서 순서대로 처리한다는
 
 ## 1. Spot manager
 
-`ZLinkSpotManager` 는 Spot 생성, 조회, 제거를 맡는다.
+`ZLinkSpotManager` 는 Spot 생성, 조회, 제거를 맡는다. NestJS 앱에서는 먼저
+`SpotNode` 와 그 노드가 만들 수 있는 Spot 클래스를 함께 등록한다.
+
+```ts
+ZLinkModule.forRoot({
+  spotNodes: ['game'],
+  spotFactories: [GameSpot],
+});
+```
+
+`ZLINK_SPOT_MANAGER` provider 는 `SpotNode` 가 있을 때만 등록된다. 등록한 Spot
+factory 는 module 이 만든 manager 로 전달되므로, sample 처럼 framework class 를
+직접 조립하지 않고도 Spot 을 만들 수 있다.
 
 ```ts
 const result = await manager.create(GameSpot);
-const game = manager.find(GameSpot, result.spotRid);
+const game = await manager.find(result.spotRid);
 ```
 
 `getOrCreate` 는 Spot 타입과 `spotRid` 를 함께 본다. 같은 `spotRid` 라도 타입이

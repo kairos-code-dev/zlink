@@ -26,6 +26,10 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
   검증 가능한 단위로 구현, 테스트, 리뷰, 문서 갱신, 커밋, 푸시를 반복한다.
 - 한 번의 세션에서 전부 끝나지 않으면, 마지막 보고에 완료한 Phase, 통과한 gate,
   남은 Phase, 다음에 바로 실행할 명령을 남긴다. 다음 세션은 그 지점부터 이어서 진행한다.
+- 계획 문서의 체크박스는 진행 단서일 뿐 최종 증거가 아니다. 체크되어 있어도 실제 코드,
+  dotnet 대응 코드, 테스트, 샘플 실행 결과로 다시 검증한다.
+- "현재 가능한 수준"이나 "대체로 완료"로 멈추지 않는다. dotnet 대비 빠진 항목이 0 이
+  될 때까지 구현, 리뷰, 수정, 검증을 반복한다.
 
 반드시 먼저 읽을 문서:
 1. framework/languages/node/doc/IMPLEMENTATION-PLAN.ko.md
@@ -49,6 +53,8 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 - Phase 순서를 지킨다. P0 → P1 → P1.5 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9.
 - 각 Phase 는 구현, DoD 검증, POSD 리팩토링 게이트, 재검증을 모두 통과해야 완료다.
 - 게이트에서 이슈가 남으면 다음 Phase 로 넘어가지 말고 같은 Phase 안에서 수정한다.
+- review-only 상태로 끝내지 않는다. 명확한 이슈가 발견되면 같은 턴에서 수정하고,
+  수정 후 같은 기준으로 다시 리뷰한다. 이슈가 0 이 될 때까지 이 루프를 반복한다.
 - provider token 만 노출하고 실제 기능이 unavailable placeholder 로 남아 있으면 완료가 아니다.
   DI 에서 꺼낸 client, manager, resolver, outbound 가 dotnet 과 같은 실제 동작 경로에
   연결되는지 테스트로 증명한다.
@@ -80,10 +86,13 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 7. backend dependency guard 를 실행해 framework runtime 이 binding internal 경로를 직접 참조하지 않는지 확인한다.
 8. POSD red flag 를 리뷰한다.
 9. red flag 가 있으면 리팩토링하고 3~8 을 반복한다.
-10. 이슈가 0 이면 IMPLEMENTATION-PLAN.ko.md 의 진행 체크리스트를 갱신한다.
-11. Phase 완료 커밋을 만든 뒤 원격에 푸시한다. 단, unrelated dirty changes 는
+10. dotnet 대응 테스트와 Node 테스트를 대조해 빠진 회귀 케이스를 추가한다. 특히 동시성,
+    lifecycle 완료 시점, 실패 후 정리, backpressure, cross-language 경계는 테스트 없이
+    완료로 보지 않는다.
+11. 이슈가 0 이면 IMPLEMENTATION-PLAN.ko.md 의 진행 체크리스트를 갱신한다.
+12. Phase 완료 커밋을 만든 뒤 원격에 푸시한다. 단, unrelated dirty changes 는
     스테이징하지 않는다.
-12. 아직 P9 최종 gate 와 dotnet 대비 4축 감사가 끝나지 않았으면, 다음 Phase 로 이동해서
+13. 아직 P9 최종 gate 와 dotnet 대비 4축 감사가 끝나지 않았으면, 다음 Phase 로 이동해서
     같은 루프를 반복한다.
 
 backend dependency guard:
@@ -153,6 +162,8 @@ ABI release gate 필수 runtime:
   뒷받침되는지 확인한다.
 - `internals/regression-test-matrix.ko.md` 의 각 행이 자동 테스트, 샘플 실행, 또는
   cross-language smoke 중 하나로 검증되는지 표로 대조한다.
+- dotnet 테스트 이름과 Node 테스트 이름을 나란히 놓고, 의도는 같지만 Node 쪽에 없는
+  케이스를 찾아 추가한다. 이름이 달라도 동작 증거가 있어야 한다.
 - dotnet `src`, `tests`, `samples`, `doc/guide` 와 Node `packages`, `test`,
   `samples`, `doc/guide` 를 나란히 비교한다.
 - backend concrete type, native detail, generated internal 경로가 framework public

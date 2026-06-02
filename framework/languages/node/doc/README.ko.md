@@ -18,6 +18,8 @@
 
 - [**구현 작업 Plan**](./IMPLEMENTATION-PLAN.ko.md) — 참조 파일·작업 순서·코드
   검증 결정. **구현은 여기서 시작한다.**
+- [끝까지 구현하는 실행 프롬프트](./IMPLEMENTATION-PROMPT.ko.md) — 새 작업 세션에
+  그대로 전달할 수 있는 구현 완료 지시문
 - [Sample and Guide Implementation Plan](./sample-implementation-plan.ko.md) —
   Phase 9 의 사용자 guide, sample, cross-language smoke 완료 기준
 - [.NET → Node.js 표면 매핑 정책](./internals/dotnet-to-node-surface-mapping.ko.md)

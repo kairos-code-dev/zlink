@@ -126,10 +126,14 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     if (frameBytes === undefined) {
       return;
     }
-    const frame = ZlinkStreamFrameCodec.decode(frameBytes);
-    const header = ZlinkStreamHeaderCodec.decode(frame.header);
-    this.lastInboundAt = Date.now();
-    await this.dispatchFrame(header, frame.payload, signal);
+    try {
+      const frame = ZlinkStreamFrameCodec.decode(frameBytes);
+      const header = ZlinkStreamHeaderCodec.decode(frame.header);
+      this.lastInboundAt = Date.now();
+      await this.dispatchFrame(header, frame.payload, signal);
+    } catch (cause) {
+      await this.publishError(toStreamError(cause, ZlinkStreamErrorCode.FrameDecodeFailed, 'Frame decode failed.'), signal);
+    }
   }
 
   send(payload: ZlinkStreamEncodedPayload): ZlinkStreamSendCall {
@@ -219,7 +223,14 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       }
       return;
     }
+    if (header.kind === ZlinkStreamMessageKind.Error) {
+      await this.publishError({ code: ZlinkStreamErrorCode.RemoteError, message: utf8Decode(payload) }, signal);
+      return;
+    }
     if (header.kind === ZlinkStreamMessageKind.Control) {
+      if (payload.length !== 0) {
+        throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Control packet payload must be empty.');
+      }
       if (header.name === DefaultZlinkStreamConnector.heartbeatPingName) {
         await this.sendControl(DefaultZlinkStreamConnector.heartbeatPongName, signal);
         return;
@@ -233,7 +244,17 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       const handlers = this.handlers.get(header.name);
       if (handlers !== undefined) {
         const message = { name: header.name, metadata: header.metadata, payload: { codec: header.codec, payload } };
-        await Promise.all([...handlers].map((handler) => handler(message, signal)));
+        for (const handler of handlers) {
+          try {
+            await handler(message, signal);
+          } catch (cause) {
+            await this.publishError({
+              code: ZlinkStreamErrorCode.UserCallbackFailed,
+              message: 'Typed message handler failed.',
+              cause
+            }, signal);
+          }
+        }
       }
     }
   }
@@ -366,8 +387,12 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     const change = { previous, current, error };
     await Promise.all([...this.stateHandlers].map((handler) => handler(change, signal)));
     if (error !== undefined) {
-      await Promise.all([...this.errorHandlers].map((handler) => handler(error, signal)));
+      await this.publishError(error, signal);
     }
+  }
+
+  private async publishError(error: ZlinkStreamError, signal?: AbortSignal): Promise<void> {
+    await Promise.all([...this.errorHandlers].map((handler) => handler(error, signal)));
   }
 }
 

@@ -220,6 +220,109 @@ test('stream connector dispatch invokes typed handlers for send frames', async (
   ]);
 });
 
+test('stream connector dispatch publishes decode errors for invalid header frames', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory
+  });
+  const errors = [];
+  instance.onErrorReceived((error) => {
+    errors.push(error);
+  });
+
+  await instance.connect();
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      new TextEncoder().encode('invalid-header'),
+      new TextEncoder().encode('payload')
+    )
+  );
+
+  await instance.dispatch();
+
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].code, connector.ZlinkStreamErrorCode.FrameDecodeFailed);
+});
+
+test('stream connector dispatch publishes uncorrelated remote error packets', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory
+  });
+  const errors = [];
+  instance.onErrorReceived((error) => {
+    errors.push(error);
+  });
+
+  await instance.connect();
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Error,
+        codec: connector.ZlinkStreamCodec.Json,
+        flags: connector.ZlinkStreamHeaderFlags.None,
+        name: 'RemoteError',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      new TextEncoder().encode('remote failed')
+    )
+  );
+
+  await instance.dispatch();
+
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].code, connector.ZlinkStreamErrorCode.RemoteError);
+  assert.equal(errors[0].message, 'remote failed');
+});
+
+test('stream connector dispatch publishes user callback failures without throwing', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory
+  });
+  const errors = [];
+  instance.onErrorReceived((error) => {
+    errors.push(error);
+  });
+  instance.on('Notice', () => {
+    throw new Error('handler failed');
+  });
+
+  await instance.connect();
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Send,
+        codec: connector.ZlinkStreamCodec.Json,
+        flags: connector.ZlinkStreamHeaderFlags.None,
+        name: 'Notice',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      new TextEncoder().encode('{"notice":1}')
+    )
+  );
+
+  await instance.dispatch();
+
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].code, connector.ZlinkStreamErrorCode.UserCallbackFailed);
+});
+
+test('stream connector rejects reserved packet names for user handlers', () => {
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory: new MemoryTransportFactory()
+  });
+
+  assert.throws(
+    () => instance.on('$zlink.user', () => {}),
+    (error) => error.error?.code === connector.ZlinkStreamErrorCode.ValidationFailed
+  );
+});
+
 test('stream connector default TCP transport sends request and dispatches response frame', async () => {
   const server = net.createServer((socket) => {
     let buffer = Buffer.alloc(0);

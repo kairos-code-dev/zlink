@@ -80,6 +80,7 @@ connector 테스트 이름은 `Systems.Zlink.Stream.Connector.Tests`의 메서�
 | connector request timeout | unit | `LifecycleTest.heartbeatTimeoutFailsPendingRequestsWithTimeoutCause` | pending request 정리 |
 | connector reconnect | unit | `LifecycleTest.reconnectRestoresConnectionAfterTransportClose` | backoff와 max attempts 의미 유지 |
 | reserved packet name 거부 | contract | `ZLinkStreamConnectorTest.reservedPacketNamesAreRejectedForUserHandlers` | 예약 packet 이름 거부 |
+| stream wire protocol golden vector | contract | `ZLinkStreamWireProtocolTest.headerProtocol_matchesDotnetAndNodeGoldenVector` / `frameProtocol_matchesDotnetAndNodePrefixLayout` | `.NET`/Node와 같은 STREAM header/frame byte layout |
 | connector codec helper | contract | `ConnectorCodecContractTest.jsonMsgpackProtobufTypedHelperRoundtrip` | JSON/MessagePack/Protobuf typed helper roundtrip |
 | Kotlin connector wrapper | contract | `KotlinConnectorWrapperTest.suspendWrapperPreservesConnectorSemantics` | suspend wrapper가 Java connector 의미를 바꾸지 않음 |
 

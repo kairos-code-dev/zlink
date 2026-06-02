@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import type {
+  Type,
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
   ZLinkRegistryOptions,
@@ -17,6 +18,7 @@ export type InjectionToken = string | symbol | Function;
 export interface Provider<T = unknown> {
   readonly provide: InjectionToken;
   readonly useValue?: T;
+  readonly useClass?: Type<T>;
   readonly useFactory?: (...args: never[]) => T | Promise<T>;
   readonly inject?: readonly InjectionToken[];
 }
@@ -233,10 +235,7 @@ function conditionalClientProviders(registration: ZLinkFrameworkRegistration): P
   }
 
   if (framework.hasSpotRemoteAddressResolver(registration)) {
-    providers.push({
-      provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
-      useFactory: () => createSpotRemoteAddressResolver(registration)
-    });
+    providers.push(...spotRemoteAddressResolverProviders(registration));
   }
 
   return providers;
@@ -338,7 +337,25 @@ function createSpotRemoteAddressResolver(
   if (registration.registrySpotRemoteAddresses !== undefined) {
     return new framework.ZLinkRegistrySpotRemoteAddressResolver({ registration });
   }
-  return new framework.DefaultZLinkUnavailableSpotRemoteAddressResolver();
+  throw new framework.ZLinkConfigurationException('Spot remote address resolver is not registered.');
+}
+
+function spotRemoteAddressResolverProviders(registration: ZLinkFrameworkRegistration): Provider[] {
+  const resolverType = registration.spotRemoteAddressResolverType;
+  if (resolverType !== undefined) {
+    return [
+      { provide: resolverType, useClass: resolverType },
+      {
+        provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
+        inject: [resolverType],
+        useFactory: (resolver: ZLinkSpotRemoteAddressResolver) => resolver
+      }
+    ];
+  }
+  return [{
+    provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
+    useFactory: () => createSpotRemoteAddressResolver(registration)
+  }];
 }
 
 function loadFramework(): FrameworkModule {

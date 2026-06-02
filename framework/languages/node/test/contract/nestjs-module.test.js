@@ -224,6 +224,33 @@ test('ZLinkModule.forRoot validates registry spot remote address resolver requir
   );
 });
 
+test('ZLinkModule.forRoot registers custom spot remote address resolver as concrete provider', async () => {
+  class CustomSpotRemoteAddressResolver {
+    async resolve() {
+      return {
+        routerChannelId: 'play',
+        targetNodeRid: 'node-a',
+        spotRid: 'spot-a',
+        spotKind: framework.ZLinkSpotKind.User
+      };
+    }
+  }
+  const module = nestjs.ZLinkModule.forRoot({
+    spotRemoteAddressResolver: CustomSpotRemoteAddressResolver
+  });
+  const tokens = providerTokens(module);
+  const container = await resolveModuleProviders(module, [
+    CustomSpotRemoteAddressResolver,
+    nestjs.ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER
+  ]);
+
+  assert.equal(tokens.has(CustomSpotRemoteAddressResolver), true);
+  assert.equal(
+    container.get(nestjs.ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER),
+    container.get(CustomSpotRemoteAddressResolver)
+  );
+});
+
 test('ZLinkModule.forRootAsync exposes capability providers after async registration resolves', async () => {
   class AsyncSpot {
     constructor(context) {
@@ -343,6 +370,12 @@ async function resolveModuleProviders(module, requestedTokens) {
         dependencies.push(await resolveToken(dependency));
       }
       const value = await provider.useFactory(...dependencies);
+      values.set(provider.provide, value);
+      return value;
+    }
+
+    if ('useClass' in provider && provider.useClass !== undefined) {
+      const value = new provider.useClass();
       values.set(provider.provide, value);
       return value;
     }

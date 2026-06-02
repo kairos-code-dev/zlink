@@ -14,9 +14,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
@@ -120,6 +123,36 @@ final class ChannelMessagingTest {
         }
     }
 
+    @Test
+    void routeMesh_requestByRoutingIdSucceeds() {
+        String sourceEndpoint = tcpEndpoint();
+        String targetEndpoint = tcpEndpoint();
+        RoutingId sourceRid = RoutingId.from("source-node");
+        RoutingId targetRid = RoutingId.from("target-node");
+
+        DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
+        sourceOptions.addRouteMeshChannel("route", channel -> {
+            channel.bind(sourceEndpoint);
+            channel.configureRouting(route -> route.setRoutingId(sourceRid));
+            channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
+        });
+
+        DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
+        targetOptions.addRouteMeshChannel("route", channel -> {
+            channel.bind(targetEndpoint);
+            channel.configureRouting(route -> route.setRoutingId(targetRid));
+            channel.useManualConnections(endpoints -> endpoints.connect(sourceEndpoint));
+            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo");
+        });
+
+        try (ZLinkFrameworkRuntime ignoredSource =
+                 ZLinkFrameworkRuntime.start(sourceOptions, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime target =
+                 ZLinkFrameworkRuntime.start(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
+            assertEquals("route:hello", awaitRouteReply(ignoredSource, targetRid));
+        }
+    }
+
     private static String awaitDiscoveryReply(ZLinkFrameworkRuntime client) {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         RuntimeException lastFailure = null;
@@ -151,6 +184,26 @@ final class ChannelMessagingTest {
                 .join();
             Thread.onSpinWait();
         }
+    }
+
+    private static String awaitRouteReply(ZLinkFrameworkRuntime source, RoutingId targetRid) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        RuntimeException lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                return source.route()
+                    .requestTo("route", targetRid, "hello")
+                    .packetName("Echo")
+                    .timeout(Duration.ofMillis(100))
+                    .submitAsync(String.class)
+                    .toCompletableFuture()
+                    .join();
+            } catch (RuntimeException ex) {
+                lastFailure = ex;
+                Thread.onSpinWait();
+            }
+        }
+        throw new AssertionError("route mesh request did not succeed", lastFailure);
     }
 
     private static String tcpEndpoint() {
@@ -190,6 +243,13 @@ final class ChannelMessagingTest {
             FANOUT_TOPIC.set(context.topic());
             FANOUT_LATCH.get().countDown();
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class RouteEchoHandler implements ZLinkRouteRequestHandler<String, String> {
+        @Override
+        public CompletionStage<String> handleAsync(String request, ZLinkRouteRequestContext context) {
+            return CompletableFuture.completedFuture("route:" + request);
         }
     }
 }

@@ -22,9 +22,9 @@ JUnit 테스트 이름은 `.NET` 테스트 메서드를 camelCase로 옮긴 대�
 Java 구현에서 이미 고정된 이름이 있으면 현재 JUnit 이름을 그대로 쓴다. 확인
 기준(의미)은 그대로 유지하며 `.NET` 코드가 최종 기준이다.
 
-아래 표의 "필수 예정 gate"는 Java public API나 runtime 구현이 아직 충분하지 않아
-현재 release 완료 증거로 사용할 수 없는 항목이다. 이 항목은 sample release gate를
-완료했다고 판단하기 전에 실제 구현과 테스트 이름을 확정해야 한다.
+아래 표의 항목은 현재 Java 구현에서 실제 JUnit 이름과 gate 의미를 함께 고정한다.
+새 항목을 "필수 예정 gate"로 추가할 때는 sample release gate를 완료했다고 판단하기
+전에 실제 구현과 테스트 이름을 확정해야 한다.
 
 ## 2. Channel regression
 
@@ -45,9 +45,9 @@ server runtime, client runtime을 나누어 시작한 뒤 `useDiscovery(...)`로
 | manual client/server request | integration-single-process | `ChannelMessagingTest.manualClientServer_requestReplySucceeds` | request/reply 성공 |
 | discovery client/server request | integration-single-process | `ChannelMessagingTest.discoveryClientServer_requestReplySucceeds` | registry discovery 기반 request/reply 성공 |
 | fanout publish/subscribe | integration-single-process | `ChannelMessagingTest.publisherAndSubscriber_workAcrossHosts` | publish 수신 |
-| route mesh request | 필수 예정 gate | `RouteMeshTest.routeMesh_requestByRoutingIdSucceeds` | target `RoutingId` request 성공. Java builder에 own `RoutingId` 설정/조회 표면을 먼저 확정해야 한다 |
-| send/publish async submit | 필수 예정 gate | `ZLinkAsyncSubmitterTest.submitAsync_drainsPendingItemFromReadyCallback` | ready 전 caller thread를 막지 않음 |
-| pending request cleanup | 필수 예정 gate | `ZLinkAsyncSubmitterTest.submitAsync_failsPendingItemWhenSendTimeoutExpires` / `disposeAsync_failsPendingItems` | timeout, cancellation, stop에서 pending 제거 |
+| route mesh request | integration-single-process | `ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds` | `configureRouting(...)`으로 지정한 target `RoutingId` request 성공 |
+| send/publish async submit | fake backend | `ZLinkAsyncSubmitterTest.submitAsync_drainsPendingItemFromReadyCallback` | ready 전 caller thread를 막지 않음 |
+| pending request cleanup | unit | `ZLinkAsyncSubmitterTest.submitAsync_failsPendingItemWhenSendTimeoutExpires` / `disposeAsync_failsPendingItems` | timeout, cancellation, stop에서 pending 제거 |
 
 ## 3. Spot/Actor regression
 
@@ -65,7 +65,7 @@ multi-process smoke는 release gate에서 같은 테스트 이름의 의미를 �
 | local-only SpotNode | integration-single-process | `NodesAndServicesTest.addZLinkFramework_allowsStandaloneLocalSpotNode` | discovery 없이 local Spot 생성 |
 | Spot create/get/list/remove | integration-single-process | `SpotManagerTest.spotManager_createListRemoveAndPublish_workThroughFrameworkRuntime` | lifecycle callback과 조회 일관 |
 | Spot getOrCreate 1회 생성 | integration-single-process | `SpotManagerTest.spotManager_getOrCreate_createsOnceAndReusesExistingSpot` | 첫 호출은 생성하고 같은 rid의 두 번째 호출은 기존 Spot 재사용 |
-| Spot timer/publish/remove | 필수 예정 gate | `SpotManagerTest.spot_publishTimerAndRemove_stopCallbacksWork` | timer/publish/remove 의미 유지 |
+| Spot timer/publish/remove | integration-single-process | `SpotManagerTest.spot_publishTimerAndRemove_stopCallbacksWork` | timer/publish/remove 의미 유지 |
 | actor manager factory | integration-single-process | `ActorManagerTest.actorManager_createGetOrCreateFind_work` | create/getOrCreate/find 동작 |
 | session actor relay | integration-single-process | `SessionActorsRuntimeIntegrationTest.bindAsyncUsesStreamActorGatewayBindingPath` | `bindAsync`와 ActorGateway binding path 동작 |
 | remote ActorGateway relay | integration-multi-process | `RemoteActorGatewayTest.sessionAndPlayServers_relaySucceeds` | Session 서버와 Play 서버 사이 relay 성공 |

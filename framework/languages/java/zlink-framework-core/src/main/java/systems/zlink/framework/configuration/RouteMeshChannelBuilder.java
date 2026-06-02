@@ -7,6 +7,8 @@ import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 public interface RouteMeshChannelBuilder {
     void bind(String endpoint);
 
+    void configureRouting(Consumer<ZLinkRouteConfigBuilder> configure);
+
     void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
 
     void addHandlerGroup(String groupName);

@@ -26,6 +26,7 @@ import systems.zlink.framework.configuration.ZLinkLogLevel;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder;
 import systems.zlink.framework.configuration.ZLinkRegistrySpotRemoteAddressesOptions;
+import systems.zlink.framework.configuration.ZLinkRouteConfigBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkStreamNodeBuilder;
@@ -102,6 +103,9 @@ final class NoopBuilders {
 
     private static final class NoopRouteMeshChannelBuilder implements RouteMeshChannelBuilder {
         @Override public void bind(String endpoint) { }
+        @Override public void configureRouting(Consumer<ZLinkRouteConfigBuilder> configure) {
+            configure.accept(routingId -> { });
+        }
         @Override public void useManualConnections(Consumer<ManualEndpointListBuilder> configure) {
             configure.accept(endpoint -> { });
         }

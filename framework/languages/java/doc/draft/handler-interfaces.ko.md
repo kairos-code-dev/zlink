@@ -393,6 +393,7 @@ public interface DealerMeshChannelBuilder {
 
 public interface RouteMeshChannelBuilder {
     void bind(String endpoint);
+    void configureRouting(Consumer<ZLinkRouteConfigBuilder> configure);
     void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
     void addHandlerGroup(String groupName);
     <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage> void addSendHandler(
@@ -406,6 +407,10 @@ public interface RouteMeshChannelBuilder {
         Class<TReply> replyType,
         @Nullable String packetName);
     void enableSpotRouteEgress(String targetSpotNodeChannelName);
+}
+
+public interface ZLinkRouteConfigBuilder {
+    void setRoutingId(RoutingId routingId);
 }
 
 public interface RegistryBuilder {

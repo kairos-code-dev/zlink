@@ -94,7 +94,9 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
         String channelName,
         Consumer<RouteMeshChannelBuilder> configure) {
         addChannel(channelName);
-        configure.accept(NoopBuilders.ROUTE_MESH_CHANNEL);
+        ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.ROUTE_MESH);
+        registration.channels().add(channel);
+        configure.accept(ChannelBuilders.routeMesh(channel));
     }
 
     @Override

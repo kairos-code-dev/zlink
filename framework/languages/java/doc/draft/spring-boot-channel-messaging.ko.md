@@ -163,6 +163,7 @@ route send/request를 보내야 할 때 쓰며, session actor relay는 stream no
 ```java
 options.addRouteMeshChannel("play-route", route -> {
     route.bind("tcp://0.0.0.0:7300");
+    route.configureRouting(routing -> routing.setRoutingId(RoutingId.from("play-node")));
     route.enableSpotRouteEgress("game.stage");
 });
 ```

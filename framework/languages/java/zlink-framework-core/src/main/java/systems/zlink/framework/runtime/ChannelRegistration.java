@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 final class ChannelRegistration {
@@ -13,12 +14,17 @@ final class ChannelRegistration {
     private final List<String> clientManualEndpoints = new ArrayList<>();
     private final List<String> publisherBinds = new ArrayList<>();
     private final List<String> subscriberManualEndpoints = new ArrayList<>();
+    private final List<String> routeBinds = new ArrayList<>();
+    private final List<String> routeManualEndpoints = new ArrayList<>();
     private final List<ChannelRequestHandlerRegistration<?, ?, ?>> requestHandlers = new ArrayList<>();
     private final List<ChannelPublishHandlerRegistration<?, ?>> publishHandlers = new ArrayList<>();
+    private final List<ChannelRouteRequestHandlerRegistration<?, ?, ?>> routeRequestHandlers =
+        new ArrayList<>();
     private boolean clientEnabled;
     private boolean serverEnabled;
     private boolean publisherEnabled;
     private boolean subscriberEnabled;
+    private RoutingId routeRoutingId;
 
     ChannelRegistration(String name, ChannelKind kind) {
         this.name = name;
@@ -55,6 +61,22 @@ final class ChannelRegistration {
 
     List<ChannelPublishHandlerRegistration<?, ?>> publishHandlers() {
         return publishHandlers;
+    }
+
+    List<String> routeBinds() {
+        return routeBinds;
+    }
+
+    List<String> routeManualEndpoints() {
+        return routeManualEndpoints;
+    }
+
+    List<ChannelRouteRequestHandlerRegistration<?, ?, ?>> routeRequestHandlers() {
+        return routeRequestHandlers;
+    }
+
+    RoutingId routeRoutingId() {
+        return routeRoutingId;
     }
 
     boolean clientEnabled() {
@@ -101,6 +123,18 @@ final class ChannelRegistration {
         subscriberManualEndpoints.add(requireEndpoint(endpoint));
     }
 
+    void setRouteRoutingId(RoutingId routingId) {
+        routeRoutingId = routingId;
+    }
+
+    void addRouteBind(String endpoint) {
+        routeBinds.add(requireEndpoint(endpoint));
+    }
+
+    void addRouteManualEndpoint(String endpoint) {
+        routeManualEndpoints.add(requireEndpoint(endpoint));
+    }
+
     void addRequestHandler(ChannelRequestHandlerRegistration<?, ?, ?> handler) {
         if (handler.packetName() == null || handler.packetName().isBlank()) {
             throw new ZLinkConfigurationException(
@@ -117,11 +151,21 @@ final class ChannelRegistration {
         publishHandlers.add(handler);
     }
 
+    void addRouteRequestHandler(ChannelRouteRequestHandlerRegistration<?, ?, ?> handler) {
+        if (handler.packetName() == null || handler.packetName().isBlank()) {
+            throw new ZLinkConfigurationException(
+                "route mesh request handler packet name is required: " + name);
+        }
+        routeRequestHandlers.add(handler);
+    }
+
     void validate(boolean discoveryEnabled) {
         if (kind == ChannelKind.CLIENT_SERVER) {
             validateClientServer(discoveryEnabled);
         } else if (kind == ChannelKind.FANOUT) {
             validateFanout(discoveryEnabled);
+        } else if (kind == ChannelKind.ROUTE_MESH) {
+            validateRouteMesh(discoveryEnabled);
         }
     }
 
@@ -174,6 +218,29 @@ final class ChannelRegistration {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate fanout publish handler packet name: "
+                        + name + "/" + handler.packetName());
+            }
+        }
+    }
+
+    private void validateRouteMesh(boolean discoveryEnabled) {
+        if (routeBinds.isEmpty()) {
+            throw new ZLinkConfigurationException(
+                "route mesh channel requires at least one bind endpoint: " + name);
+        }
+        if (!discoveryEnabled && routeManualEndpoints.isEmpty()) {
+            throw new ZLinkConfigurationException(
+                "route mesh channel requires discovery or manual connections: " + name);
+        }
+        if (discoveryEnabled && !routeManualEndpoints.isEmpty()) {
+            throw new ZLinkConfigurationException(
+                "route mesh channel cannot mix discovery and manual connections: " + name);
+        }
+        Set<String> packetNames = new HashSet<>();
+        for (ChannelRouteRequestHandlerRegistration<?, ?, ?> handler : routeRequestHandlers) {
+            if (!packetNames.add(handler.packetName())) {
+                throw new ZLinkConfigurationException(
+                    "duplicate route mesh request handler packet name: "
                         + name + "/" + handler.packetName());
             }
         }

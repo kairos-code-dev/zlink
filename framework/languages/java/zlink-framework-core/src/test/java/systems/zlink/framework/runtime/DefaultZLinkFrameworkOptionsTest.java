@@ -173,6 +173,52 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void routeMeshChannelWithoutBindIsRejected() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addRouteMeshChannel("route", channel ->
+            channel.useManualConnections(endpoints -> endpoints.connect("inproc://route")));
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void routeMeshChannelWithoutPeerAcquisitionPathIsRejected() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addRouteMeshChannel("route", channel -> channel.bind("inproc://route"));
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void routeMeshChannelCannotMixDiscoveryAndManualConnections() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:17001"));
+        options.addRouteMeshChannel("route", channel -> {
+            channel.bind("inproc://route");
+            channel.useManualConnections(endpoints -> endpoints.connect("inproc://route-peer"));
+        });
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void routeMeshChannelRejectsDuplicateRequestHandlerPacketName() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addRouteMeshChannel("route", channel -> {
+            channel.bind("inproc://route");
+            channel.useManualConnections(endpoints -> endpoints.connect("inproc://route-peer"));
+            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo");
+            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo");
+        });
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
     void streamNodeRejectsMultipleSessionTypes() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
@@ -223,6 +269,16 @@ final class DefaultZLinkFrameworkOptionsTest {
         @Override
         public CompletionStage<Void> handleAsync(String message, ZLinkPublishContext context) {
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class RouteEchoHandler
+        implements systems.zlink.framework.channels.ZLinkRouteRequestHandler<String, String> {
+        @Override
+        public CompletionStage<String> handleAsync(
+            String request,
+            systems.zlink.framework.channels.ZLinkRouteRequestContext context) {
+            return CompletableFuture.completedFuture(request);
         }
     }
 

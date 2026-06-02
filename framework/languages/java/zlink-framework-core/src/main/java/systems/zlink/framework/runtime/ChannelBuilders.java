@@ -3,6 +3,8 @@ package systems.zlink.framework.runtime;
 import java.util.function.Consumer;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
+import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.configuration.ChannelServerCapabilityBuilder;
 import systems.zlink.framework.configuration.ChannelPublisherCapabilityBuilder;
@@ -10,7 +12,9 @@ import systems.zlink.framework.configuration.ClientCapabilityBuilder;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
 import systems.zlink.framework.configuration.ManualEndpointListBuilder;
+import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.SubscriberCapabilityBuilder;
+import systems.zlink.framework.configuration.ZLinkRouteConfigBuilder;
 
 final class ChannelBuilders {
     private ChannelBuilders() {
@@ -22,6 +26,10 @@ final class ChannelBuilders {
 
     static FanoutChannelBuilder fanout(ChannelRegistration registration) {
         return new Fanout(registration);
+    }
+
+    static RouteMeshChannelBuilder routeMesh(ChannelRegistration registration) {
+        return new RouteMesh(registration);
     }
 
     private record ClientServer(ChannelRegistration registration) implements ClientServerChannelBuilder {
@@ -124,6 +132,52 @@ final class ChannelBuilders {
                 handlerType,
                 String.class,
                 packetName));
+        }
+    }
+
+    private record RouteMesh(ChannelRegistration registration) implements RouteMeshChannelBuilder {
+        @Override
+        public void bind(String endpoint) {
+            registration.addRouteBind(endpoint);
+        }
+
+        @Override
+        public void configureRouting(Consumer<ZLinkRouteConfigBuilder> configure) {
+            configure.accept(registration::setRouteRoutingId);
+        }
+
+        @Override
+        public void useManualConnections(Consumer<ManualEndpointListBuilder> configure) {
+            configure.accept(registration::addRouteManualEndpoint);
+        }
+
+        @Override
+        public void addHandlerGroup(String groupName) {
+        }
+
+        @Override
+        public <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage> void addSendHandler(
+            Class<THandler> handlerType,
+            Class<TMessage> messageType,
+            String packetName) {
+        }
+
+        @Override
+        public <THandler extends ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply>
+        void addRequestHandler(
+            Class<THandler> handlerType,
+            Class<TRequest> requestType,
+            Class<TReply> replyType,
+            String packetName) {
+            registration.addRouteRequestHandler(new ChannelRouteRequestHandlerRegistration<>(
+                handlerType,
+                requestType,
+                replyType,
+                packetName));
+        }
+
+        @Override
+        public void enableSpotRouteEgress(String targetSpotNodeChannelName) {
         }
     }
 }

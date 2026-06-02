@@ -122,6 +122,21 @@ test('node run_samples.sh executes every sample self-check', () => {
   }
 });
 
+test('node cross-language smoke covers channel send publish and stream connector paths', () => {
+  const smoke = fs.readFileSync(path.join(workspaceRoot, 'cross-language', 'node_dotnet_smoke.js'), 'utf8');
+  const required = [
+    'requestToChannel',
+    'sendToChannel',
+    'publishToChannel',
+    'nodePublisherToDotnetFanoutSubscriber',
+    'nodeConnectorToDotnetStreamServer',
+    'dotnetConnectorToNodeStreamServer'
+  ];
+  const missing = required.filter((text) => !smoke.includes(text));
+
+  assert.deepEqual(missing, []);
+});
+
 function sampleSourceFiles(root) {
   const files = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {

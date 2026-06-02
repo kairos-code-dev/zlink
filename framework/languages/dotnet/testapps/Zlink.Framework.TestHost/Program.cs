@@ -168,6 +168,8 @@ internal sealed record TestHostProfileRequest(string Value);
 
 internal sealed record TestHostProfileReply(string Value);
 
+internal sealed record TestHostProfileSend(string Value);
+
 internal sealed class TestHostProfileRequestHandler
     : IZLinkRequestHandler<TestHostProfileRequest, TestHostProfileReply>
 {
@@ -179,6 +181,21 @@ internal sealed class TestHostProfileRequestHandler
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(new TestHostProfileReply(request.Value));
+    }
+}
+
+internal sealed class TestHostProfileSendHandler(TestHostEventSink sink)
+    : IZLinkSendHandler<TestHostProfileSend>
+{
+    public ValueTask HandleAsync(
+        TestHostProfileSend message,
+        ZLinkSendContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        sink.Append($"channel-server-send|{message.Value}");
+        return ValueTask.CompletedTask;
     }
 }
 

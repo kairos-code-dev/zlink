@@ -18,7 +18,8 @@ const dotnetTestHostProject = path.join(
 async function main() {
   const results = [];
   await runInTempDir(async (tempDir) => {
-    results.push(await nodeClientToDotnetChannelServer(tempDir));
+    results.push(...await nodeClientToDotnetChannelServer(tempDir));
+    results.push(await nodePublisherToDotnetFanoutSubscriber(tempDir));
     results.push(await dotnetClientToNodeChannelServer(tempDir));
     results.push(await nodeConnectorToDotnetStreamServer(tempDir));
     results.push(await dotnetConnectorToNodeStreamServer(tempDir));
@@ -32,10 +33,12 @@ async function main() {
 async function nodeClientToDotnetChannelServer(tempDir) {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
+  const eventFile = path.join(tempDir, 'node-client-dotnet-channel.events');
   const host = startDotnetHost(tempDir, 'node-client-dotnet-channel', [
     'channel-server',
     '--channel-name', 'profiles',
-    '--server-endpoint', endpoint
+    '--server-endpoint', endpoint,
+    '--event-file', eventFile
   ]);
   const ctx = zlink.createContext();
   const dealer = zlink.createDealerSocket(ctx);
@@ -44,7 +47,7 @@ async function nodeClientToDotnetChannelServer(tempDir) {
     await host.ready;
     const monitor = dealer.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     dealer.connect(endpoint);
-    monitor.recv();
+    await waitForMonitorEvent(monitor, zlink.MonitorEventType.ConnectionReady, 7000, 'Node dealer -> dotnet channel server');
     monitor.close();
 
     const registration = framework.createFrameworkRegistration({
@@ -67,11 +70,75 @@ async function nodeClientToDotnetChannelServer(tempDir) {
     );
 
     assert.deepEqual(reply, { value: 'node-to-dotnet' });
-    return 'Node client -> dotnet channel server';
+    await client
+      .sendToChannel('profiles', { value: 'node-send-to-dotnet' })
+      .packetName('TestHostProfileSend')
+      .submit();
+    await waitForFileText(eventFile, (text) => text.includes('channel-server-send|node-send-to-dotnet'), 7000);
+    return [
+      'Node client -> dotnet channel server request/reply',
+      'Node client -> dotnet channel server one-way send'
+    ];
   } finally {
     dealer.close();
     ctx.close();
     await host.stop();
+  }
+}
+
+async function nodePublisherToDotnetFanoutSubscriber(tempDir) {
+  const port = await reservePort();
+  const endpoint = `tcp://127.0.0.1:${port}`;
+  const eventFile = path.join(tempDir, 'node-publisher-dotnet-subscriber.events');
+  const topic = 'profile.changed';
+  const ctx = zlink.createContext();
+  const publisher = zlink.createPubSocket(ctx);
+  const dealer = zlink.createDealerSocket(ctx);
+  const monitor = publisher.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
+
+  try {
+    publisher.bind(endpoint);
+    const host = startDotnetHost(tempDir, 'node-publisher-dotnet-subscriber', [
+      'channel-subscriber',
+      '--channel-name', 'profiles',
+      '--publisher-endpoint', endpoint,
+      '--event-file', eventFile
+    ]);
+    try {
+      await host.ready;
+      await waitForMonitorEvent(monitor, zlink.MonitorEventType.ConnectionReady, 7000, 'Node publisher -> dotnet fanout subscriber');
+      monitor.close();
+
+      const registration = framework.createFrameworkRegistration({
+        channels: {
+          profiles: { publisher: { bind: endpoint } }
+        }
+      });
+      const fanout = new framework.DefaultZLinkFanoutClient(
+        registration,
+        new framework.ZLinkDealerChannelClientTransport(dealer, publisher)
+      );
+
+      await fanout
+        .publishToChannel('profiles', topic, { value: 'node-publish-to-dotnet' })
+        .packetName('TestHostPublishedEvent')
+        .submit();
+      await waitForFileText(
+        eventFile,
+        (text) => text.includes(`${topic}:node-publish-to-dotnet`),
+        7000
+      );
+    } finally {
+      await host.stop();
+    }
+    return 'Node publisher -> dotnet fanout subscriber';
+  } finally {
+    try {
+      monitor.close();
+    } catch {}
+    dealer.close();
+    publisher.close();
+    ctx.close();
   }
 }
 
@@ -319,6 +386,18 @@ async function waitForFileText(filePath, predicate, timeoutMs) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`expected event text did not appear in ${filePath}`);
+}
+
+async function waitForMonitorEvent(monitor, eventType, timeoutMs, label) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const event = monitor.recv(zlink.RecvFlags.DontWait);
+    if (event !== null && event.event === eventType) {
+      return event;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`${label} monitor event timed out`);
 }
 
 async function pollExit(exit) {

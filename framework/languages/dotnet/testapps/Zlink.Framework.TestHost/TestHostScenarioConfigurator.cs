@@ -57,6 +57,7 @@ internal static class TestHostScenarioConfigurator
 
     private static void ConfigureChannelServer(IServiceCollection services, TestHostOptions options)
     {
+        services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddZLinkFramework(framework =>
         {
             if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
@@ -78,6 +79,7 @@ internal static class TestHostScenarioConfigurator
                             ?? throw new InvalidOperationException("Channel server mode requires --server-endpoint."));
                     });
                     channel.AddRequestHandler<TestHostProfileRequestHandler, TestHostProfileRequest, TestHostProfileReply>();
+                    channel.AddSendHandler<TestHostProfileSendHandler, TestHostProfileSend>();
                 });
         });
     }
@@ -116,18 +118,30 @@ internal static class TestHostScenarioConfigurator
         services.AddZLinkFramework(framework =>
         {
             framework.AddHandlersFromAssemblyOf<Program>();
-            framework.UseDiscovery(discovery =>
+            if (string.IsNullOrWhiteSpace(options.PublisherEndpoint))
             {
-                discovery.Add(options.DiscoveryEndpoint
-                    ?? throw new InvalidOperationException("Channel subscriber mode requires --discovery-endpoint."));
-            });
+                framework.UseDiscovery(discovery =>
+                {
+                    discovery.Add(options.DiscoveryEndpoint
+                        ?? throw new InvalidOperationException("Channel subscriber mode requires --discovery-endpoint."));
+                });
+            }
 
             framework.AddFanoutChannel(
                 options.ChannelName
                     ?? throw new InvalidOperationException("Channel subscriber mode requires --channel-name."),
                 channel =>
                 {
-                    channel.EnableSubscriber();
+                    channel.EnableSubscriber(subscriber =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(options.PublisherEndpoint))
+                        {
+                            subscriber.UseManualConnections(connections =>
+                            {
+                                connections.Connect(options.PublisherEndpoint);
+                            });
+                        }
+                    });
                     channel.AddHandlerGroup("testhost-channel-events");
                 });
         });

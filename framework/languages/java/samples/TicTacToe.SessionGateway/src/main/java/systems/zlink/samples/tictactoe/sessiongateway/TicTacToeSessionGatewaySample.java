@@ -7,13 +7,15 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkFramework;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
-import systems.zlink.framework.configuration.ZLinkStreamNodeBuilder;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionActors;
@@ -26,11 +28,26 @@ import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 public final class TicTacToeSessionGatewaySample {
     public static void main(String[] args) {
-        RecordingStreamNodeBuilder streamNode = new RecordingStreamNodeBuilder();
-        streamNode.bind("tcp://127.0.0.1:29010");
-        streamNode.attachActorGateway("session-relay");
-        streamNode.registerSession(PlayerSession.class);
-        require(streamNode.actorGatewayAttached(), "stream node did not attach ActorGateway");
+        try (ZLinkFramework framework = ZLinkFramework.start(options -> {
+            options.useRegistrySpotRemoteAddresses("tictactoe");
+            options.addSpotMesh("tictactoe", mesh -> {
+                mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class));
+                mesh.addNode("session-relay", node -> node.addSpotFactory(SessionRelaySpot.class));
+            });
+            options.addActorFactory("player", PlayerActorFactory.class);
+            options.addStreamNode("gateway", stream -> {
+                stream.bind("inproc://zlink-java-sample-session-gateway");
+                stream.attachActorGateway("session-relay");
+                stream.registerSession(PlayerSession.class);
+            });
+        })) {
+            ZLinkActor created = framework.actorManager()
+                .createAsync("player-1", "player")
+                .toCompletableFuture()
+                .join();
+            require(created.actorId().equals("player-1"),
+                "framework actor manager did not create expected actor");
+        }
 
         ZLinkActorRef actorRef = new ZLinkActorRef(RoutingId.from("play-node"), "player-1", 1);
         RecordingSessionActors primaryActors = new RecordingSessionActors();
@@ -67,6 +84,10 @@ public final class TicTacToeSessionGatewaySample {
     public static final class PlayerSession implements ZLinkSession {
         private final RecordingSessionActors actors;
 
+        public PlayerSession() {
+            this(new RecordingSessionActors());
+        }
+
         PlayerSession(RecordingSessionActors actors) {
             this.actors = actors;
         }
@@ -93,6 +114,15 @@ public final class TicTacToeSessionGatewaySample {
         @Override
         public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class PlayerActorFactory implements ZLinkActorFactory {
+        @Override
+        public CompletionStage<ZLinkActor> createAsync(
+            String actorId,
+            ZLinkActorContext context) {
+            return CompletableFuture.completedFuture(new PlayerActor(actorId));
         }
     }
 
@@ -164,6 +194,20 @@ public final class TicTacToeSessionGatewaySample {
         }
     }
 
+    public static final class GameSpot implements ZLinkSpot {
+        @Override
+        public ZLinkSpotContext context() {
+            return null;
+        }
+    }
+
+    public static final class SessionRelaySpot implements ZLinkSpot {
+        @Override
+        public ZLinkSpotContext context() {
+            return null;
+        }
+    }
+
     private static final class RecordingActorContext implements ZLinkActorContext {
         private final List<String> pushes = new ArrayList<>();
 
@@ -231,29 +275,6 @@ public final class TicTacToeSessionGatewaySample {
         public CompletionStage<Void> submitAsync() {
             pushes.add(packetName + ":" + message);
             return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    private static final class RecordingStreamNodeBuilder implements ZLinkStreamNodeBuilder {
-        private boolean actorGatewayAttached;
-
-        @Override
-        public void bind(String endpoint) {
-            require(endpoint.startsWith("tcp://"), "session endpoint must be tcp");
-        }
-
-        @Override
-        public void attachActorGateway(String spotNodeName) {
-            actorGatewayAttached = "session-relay".equals(spotNodeName);
-        }
-
-        @Override
-        public void registerSession(Class<? extends ZLinkSession> sessionType) {
-            require(sessionType == PlayerSession.class, "unexpected session type");
-        }
-
-        boolean actorGatewayAttached() {
-            return actorGatewayAttached;
         }
     }
 

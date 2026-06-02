@@ -77,6 +77,12 @@ final class SampleReleaseGateContractTest {
 
         assertTrue(source.contains("attachActorGateway(\"session-relay\")"),
             "SessionGateway sample must attach stream node to local ActorGateway SpotNode");
+        assertTrue(source.contains("ZLinkFramework.start"),
+            "SessionGateway sample must start the framework through the public facade");
+        assertTrue(source.contains("useRegistrySpotRemoteAddresses(\"tictactoe\")"),
+            "SessionGateway sample must use registry-backed Spot remote addresses");
+        assertFalse(source.contains("RecordingStreamNodeBuilder"),
+            "SessionGateway sample must not replace stream node configuration with a recording builder");
         assertTrue(source.contains("new ZLinkActorRef("),
             "SessionGateway sample must bind by framework actor locator");
         assertFalse(source.contains("systems.zlink.contracts.service.spot.ActorRef"),
@@ -85,6 +91,24 @@ final class SampleReleaseGateContractTest {
             "SessionGateway sample must not construct binding ActorRef");
         assertFalse(source.contains("ZLinkSpotRemoteAddressResolver"),
             "session handler must not call actor remote address resolver");
+    }
+
+    @Test
+    void ticTacToeDirectSampleUsesFrameworkRuntimePublicFacade() throws IOException {
+        String source = sampleJavaSource(
+            "TicTacToe",
+            "systems/zlink/samples/tictactoe/TicTacToeSample.java");
+
+        assertTrue(source.contains("ZLinkFramework.start"),
+            "TicTacToe direct sample must start the framework through the public facade");
+        assertTrue(source.contains(".requestToChannel("),
+            "TicTacToe direct sample must use framework channel request path");
+        assertTrue(source.contains(".spotManager()"),
+            "TicTacToe direct sample must create the room through framework Spot manager");
+        assertTrue(source.contains(".addStreamNode("),
+            "TicTacToe direct sample must register the STREAM entry point");
+        assertFalse(source.contains("new CreateGameHandler("),
+            "TicTacToe direct sample must not bypass framework dispatch by constructing the handler");
     }
 
     @Test

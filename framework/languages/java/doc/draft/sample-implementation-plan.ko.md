@@ -128,6 +128,8 @@ Java sample은 Gradle 표준 source layout을 따른다. `.NET` sample의 `Clien
 
 direct sample은 아래를 보여 준다.
 
+- Spring Boot 밖의 standalone 실행에서는 `ZLinkFramework.start(...)` public facade로
+  framework host를 시작
 - API server와 Play server 분리
 - API server가 Play server channel로 game 생성 요청
 - Play server가 game room Spot 생성
@@ -145,6 +147,9 @@ SessionGateway sample은 아래를 반드시 보여 준다.
 - Registry, Api, Play, primary Session, reconnect Session을 별도 process로 실행
 - service channel은 registry discovery 기반으로 연결
 - actor/session relay는 application route channel을 새로 만들지 않고 ActorGateway 경로 사용
+- standalone sample self-check는 `ZLinkFramework.start(...)` public facade로 Play/Session
+  runtime 설정을 시작하고, stream node의 ActorGateway attach 설정을 실제 runtime
+  startup 경로에서 검증
 - Play server는 `useRegistrySpotRemoteAddresses("tictactoe")`에 대응하는 Java API 사용
 - Session server는 relay ingress용 local SpotNode를 만들고 stream node는 그 SpotNode에
   `attachActorGateway(...)`
@@ -214,6 +219,8 @@ contract, fake backend, integration gate를 대체하지 않는다. 특히 `.NET
 sample gate는 최소한 아래를 자동 확인한다.
 
 - sample이 framework/connector public API만 사용한다.
+- direct sample이 handler를 직접 생성하지 않고 framework channel request와 Spot
+  manager 경로를 사용한다.
 - session sample에 route/metadata store가 없다.
 - Session server가 ActorGateway attach를 사용한다.
 - session handler가 actor remote address resolver를 직접 호출하지 않는다.

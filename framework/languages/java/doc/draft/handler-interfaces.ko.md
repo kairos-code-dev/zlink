@@ -61,6 +61,7 @@
 | client | `ZLinkFanoutClient` | pub/sub fanout publisher |
 | client | `ZLinkRouteClient` | route mesh channel target 호출 |
 | client | `ZLinkSpotPublisherClient` | 외부 노드용 `SPOT` publish client |
+| host | `ZLinkFramework` | Spring Boot 밖에서 framework host를 시작하는 public facade |
 | management | `ZLinkSpotManager` | Spot type 기준 생성, `spotRid` 기준 조회/삭제 |
 | timer | `ZLinkTimer` | `SPOT` lifecycle timer handle |
 | filter | `ZLinkHandlerFilter` | handler 전후 공통 처리 |

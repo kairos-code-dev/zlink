@@ -21,6 +21,10 @@ dependencies {
 
 버전과 artifact id는 구현 시점의 빌드 정책에 맞춰 확정한다.
 
+Spring Boot 앱이 아니면 `ZLinkFramework.start(...)` public facade로 같은 option
+builder를 넘겨 framework host를 시작한다. sample runner는 이 경로를 사용해
+channel request와 Spot manager가 실제 runtime을 통과하는지 확인한다.
+
 ## 2. 토폴로지
 
 이 예제는 두 개의 Spring Boot 앱과 Registry 하나로 구성한다.

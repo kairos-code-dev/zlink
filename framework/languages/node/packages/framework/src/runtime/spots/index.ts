@@ -41,10 +41,16 @@ interface SpotActivation {
   readonly timers: ZLinkSpotTimerRegistry;
 }
 
+interface PendingSpotActivation {
+  readonly spotType: Type<ZLinkSpot>;
+  readonly ready: Promise<void>;
+}
+
 export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   private nextId = 1;
   private readonly factories: ReadonlySet<Type<ZLinkSpot>>;
   private readonly activations = new Map<RoutingId, SpotActivation>();
+  private readonly pending = new Map<RoutingId, PendingSpotActivation>();
 
   constructor(private readonly options: ZLinkSpotManagerOptions) {
     this.factories = new Set(options.spotFactories);
@@ -74,7 +80,22 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       return { spotRid, created: false };
     }
 
-    await this.createActivation(spotType, spotRid, createParts, signal);
+    const pending = this.pending.get(spotRid);
+    if (pending !== undefined) {
+      if (pending.spotType !== spotType) {
+        throw new ZLinkConfigurationException(`Spot '${spotRid}' is being created with a different spot type.`);
+      }
+      await pending.ready;
+      return { spotRid, created: false };
+    }
+
+    const ready = Promise.resolve().then(() => this.createActivation(spotType, spotRid, createParts, signal));
+    this.pending.set(spotRid, { spotType, ready });
+    try {
+      await ready;
+    } finally {
+      this.pending.delete(spotRid);
+    }
     return { spotRid, created: true };
   }
 
@@ -131,7 +152,6 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     });
 
     const activation: SpotActivation = { spotRid, spotType, spot, serial, timers };
-    this.activations.set(spotRid, activation);
 
     try {
       spot.configure?.();
@@ -139,8 +159,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         await spot.onCreate?.(createParts, signal);
         await spot.onInitialize?.(signal);
       });
+      this.activations.set(spotRid, activation);
     } catch (error) {
-      this.activations.delete(spotRid);
       await this.closeActivation(activation, signal);
       throw error;
     }

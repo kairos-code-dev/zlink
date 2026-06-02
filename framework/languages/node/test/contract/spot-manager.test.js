@@ -95,6 +95,49 @@ test('ZLinkSpotManager getOrCreate is keyed by spot type and spotRid', async () 
   );
 });
 
+test('ZLinkSpotManager concurrent getOrCreate initializes once with the first create payload', async () => {
+  const payloads = [];
+  const entered = createDeferred();
+  const release = createDeferred();
+  class StageSpot {
+    async onCreate(parts) {
+      payloads.push(parts.map((part) => part.data().toString()));
+      entered.resolve();
+      await release.promise;
+    }
+  }
+
+  const firstA = zlink.Message.from('first-a');
+  const firstB = zlink.Message.from('first-b');
+  const second = zlink.Message.from('second');
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
+
+  try {
+    const first = manager.getOrCreate(StageSpot, 'payload-room', [firstA, firstB]);
+    await entered.promise;
+    let secondSettled = false;
+    const secondResult = manager.getOrCreate(StageSpot, 'payload-room', [second]).finally(() => {
+      secondSettled = true;
+    });
+    await Promise.resolve();
+
+    assert.equal(secondSettled, false);
+
+    release.resolve();
+
+    const results = await Promise.all([first, secondResult]);
+
+    assert.equal(results.filter((result) => result.created).length, 1);
+    assert.equal(results.filter((result) => !result.created).length, 1);
+    assert.deepEqual(results.map((result) => result.spotRid), ['payload-room', 'payload-room']);
+    assert.deepEqual(payloads, [['first-a', 'first-b']]);
+  } finally {
+    firstA.close();
+    firstB.close();
+    second.close();
+  }
+});
+
 test('ZLinkSpotManager rejects unregistered spot factories', async () => {
   class StageSpot {}
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [] });
@@ -502,4 +545,14 @@ async function withFakeTimerClock(run) {
     global.setTimeout = originalSetTimeout;
     global.clearTimeout = originalClearTimeout;
   }
+}
+
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }

@@ -371,6 +371,43 @@ test('stream connector default TCP transport sends request and dispatches respon
   }
 });
 
+test('stream connector immediate dispatch invokes handlers without manual dispatch', async () => {
+  const server = net.createServer((socket) => {
+    socket.write(connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Send,
+        codec: connector.ZlinkStreamCodec.Raw,
+        flags: connector.ZlinkStreamHeaderFlags.None,
+        name: 'Immediate',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      new Uint8Array()
+    ));
+  });
+
+  await listen(server);
+  const { port } = server.address();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: `tcp://127.0.0.1:${port}`,
+    dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
+    heartbeat: { enabled: false }
+  });
+  const received = new Promise((resolve) => {
+    instance.on('Immediate', () => {
+      resolve();
+    });
+  });
+
+  try {
+    await instance.connect();
+    await withTimeout(received, 1000, 'immediate dispatch');
+    assert.equal(instance.pendingDispatchCount, 0);
+  } finally {
+    await instance.close();
+    await closeServer(server);
+  }
+});
+
 test('stream connector TLS transport sends frame with skipped certificate validation', async () => {
   const credentials = createTestTlsCredentials();
   let resolveReceived;
@@ -669,6 +706,16 @@ function listen(server) {
 
 function closeServer(server) {
   return new Promise((resolve) => server.close(resolve));
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timeout;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timeout)),
+    new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+    })
+  ]);
 }
 
 function handleWebSocketEcho(socket, replyName, replyBody) {

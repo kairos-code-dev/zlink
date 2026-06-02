@@ -7,6 +7,7 @@ import {
   ZlinkStreamConnectionStateChanged,
   ZlinkStreamConnector,
   ZlinkStreamConnectorOptions,
+  ZlinkStreamDispatchMode,
   ZlinkStreamEncodedPayload,
   ZlinkStreamError,
   ZlinkStreamErrorCode,
@@ -44,6 +45,8 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   private nextRequestSeq = 1n;
   private readonly pendingRequests = new Map<bigint, PendingRequest>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
+  private receiveLoopAbort: AbortController | undefined;
+  private receiveLoop: Promise<void> | undefined;
   private lastInboundAt = 0;
 
   readonly options: RequiredZlinkStreamConnectorOptions;
@@ -94,6 +97,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       this.lastInboundAt = Date.now();
       await this.setState(ZlinkStreamConnectionState.Connected, undefined, signal);
       this.startHeartbeat();
+      this.startReceiveLoop();
     } catch (cause) {
       const error = toStreamError(cause, ZlinkStreamErrorCode.ConnectTimeout, 'Connect failed.');
       await this.setState(ZlinkStreamConnectionState.Disconnected, error, signal);
@@ -108,6 +112,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     const connection = this.connection;
     this.connection = undefined;
     this.stopHeartbeat();
+    this.stopReceiveLoop();
     if (connection !== undefined) {
       await connection.close(signal);
     }
@@ -117,14 +122,18 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   }
 
   async dispatch(signal?: AbortSignal): Promise<void> {
+    await this.dispatchAvailable(signal);
+  }
+
+  private async dispatchAvailable(signal?: AbortSignal): Promise<boolean> {
     throwIfAborted(signal);
     const connection = this.connection;
     if (connection?.read === undefined) {
-      return;
+      return false;
     }
     const frameBytes = await connection.read(signal);
     if (frameBytes === undefined) {
-      return;
+      return false;
     }
     try {
       const frame = ZlinkStreamFrameCodec.decode(frameBytes);
@@ -134,6 +143,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     } catch (cause) {
       await this.publishError(toStreamError(cause, ZlinkStreamErrorCode.FrameDecodeFailed, 'Frame decode failed.'), signal);
     }
+    return true;
   }
 
   send(payload: ZlinkStreamEncodedPayload): ZlinkStreamSendCall {
@@ -310,6 +320,44 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     if (this.heartbeatTimer !== undefined) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
+    }
+  }
+
+  private startReceiveLoop(): void {
+    if (this.options.dispatchMode !== ZlinkStreamDispatchMode.Immediate || this.connection?.read === undefined) {
+      return;
+    }
+    this.stopReceiveLoop();
+    const abort = new AbortController();
+    const connection = this.connection;
+    this.receiveLoopAbort = abort;
+    this.receiveLoop = this.runReceiveLoop(connection, abort.signal);
+  }
+
+  private stopReceiveLoop(): void {
+    this.receiveLoopAbort?.abort();
+    this.receiveLoopAbort = undefined;
+    this.receiveLoop = undefined;
+  }
+
+  private async runReceiveLoop(connection: ZlinkStreamConnection | undefined, signal: AbortSignal): Promise<void> {
+    try {
+      while (!signal.aborted && this.currentState === ZlinkStreamConnectionState.Connected && this.connection === connection) {
+        const dispatched = await this.dispatchAvailable(signal);
+        if (!dispatched && !signal.aborted && this.currentState === ZlinkStreamConnectionState.Connected && this.connection === connection) {
+          await delay(1, signal);
+        }
+      }
+    } catch (cause) {
+      if (signal.aborted) {
+        return;
+      }
+      const error = toStreamError(cause, ZlinkStreamErrorCode.FrameDecodeFailed, 'Receive loop failed.');
+      this.stopHeartbeat();
+      this.failPending(error);
+      await this.connection?.close();
+      this.connection = undefined;
+      await this.setState(ZlinkStreamConnectionState.Disconnected, error);
     }
   }
 

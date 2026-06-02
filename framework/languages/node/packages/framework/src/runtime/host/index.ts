@@ -80,7 +80,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         backendAdapterFactory: this.backendAdapterFactory,
         context
       });
-      spotNodeRuntime.start();
+      await spotNodeRuntime.start();
       this.spotNodeRuntime = spotNodeRuntime;
       streamRuntime = new ZLinkStreamRuntimeManager({
         registration: this.options.registration,

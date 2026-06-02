@@ -3,6 +3,8 @@ import type {
   RoutingId,
   Type,
   ZLinkChannelClient,
+  ZLinkEntrySpot,
+  ZLinkEntrySpotContext,
   ZLinkFanoutClient,
   ZLinkPublishCall,
   ZLinkRequestCall,
@@ -57,12 +59,13 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
 
 export class ZLinkSpotNodeRuntimeManager {
   private readonly nodes = new Map<string, ZLinkBackendSpotNode>();
+  private readonly entryActivations = new Map<string, ZLinkEntrySpotActivation>();
   private readonly ownedObjects: ZLinkOwnedBackendObject[] = [];
   private readonly publisherBundles = new Map<string, ZLinkSpotPublisherBundle>();
 
   constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {}
 
-  start(): void {
+  async start(): Promise<void> {
     if (this.options.registration.spotNodes.size === 0) {
       return;
     }
@@ -74,6 +77,7 @@ export class ZLinkSpotNodeRuntimeManager {
       this.attachChannelClients(channelAdapter, node, spotNode);
       this.attachSpotRouteChannels(channelAdapter, node, spotNode);
       this.initializeSpotPublisherClients(node, spotNode);
+      await this.initializeEntrySpot(spotNodeName, node, spotNode);
       this.nodes.set(spotNodeName, node);
     }
   }
@@ -85,7 +89,9 @@ export class ZLinkSpotNodeRuntimeManager {
   async dispose(): Promise<void> {
     const nodes = [...this.nodes.values()];
     const ownedObjects = [...this.ownedObjects];
+    const entryActivations = [...this.entryActivations.values()];
     this.nodes.clear();
+    this.entryActivations.clear();
     this.ownedObjects.length = 0;
     for (const bundle of this.publisherBundles.values()) {
       bundle.submitter.dispose();
@@ -93,6 +99,9 @@ export class ZLinkSpotNodeRuntimeManager {
     this.publisherBundles.clear();
     for (const object of ownedObjects.reverse()) {
       await object.dispose();
+    }
+    for (const activation of entryActivations.reverse()) {
+      await activation.dispose();
     }
     for (const node of nodes.reverse()) {
       await node.dispose();
@@ -172,6 +181,31 @@ export class ZLinkSpotNodeRuntimeManager {
     }
   }
 
+  private async initializeEntrySpot(
+    spotNodeName: string,
+    node: ZLinkBackendSpotNode,
+    spotNode: ZLinkSpotNodeOptions
+  ): Promise<void> {
+    if (spotNode.entrySpotType === undefined) {
+      return;
+    }
+    const nativeSpot = node.entrySpot();
+    const activation = new ZLinkEntrySpotActivation({
+      entrySpotType: spotNode.entrySpotType,
+      nativeSpot,
+      nodeRid: node.routingId,
+      spotNodeName
+    });
+    try {
+      activation.configure();
+      await activation.initialize();
+    } catch (error) {
+      await activation.dispose();
+      throw error;
+    }
+    this.entryActivations.set(spotNodeName, activation);
+  }
+
   private createDiscovery(
     channelAdapter: ZLinkChannelBackendAdapter,
     channelName: string,
@@ -223,6 +257,82 @@ interface ZLinkOwnedBackendObject {
 interface ZLinkSpotPublisherBundle {
   readonly spot: ZLinkBackendSpot;
   readonly submitter: ZLinkAsyncSubmitter;
+}
+
+interface ZLinkEntrySpotActivationOptions {
+  readonly entrySpotType: Type<ZLinkEntrySpot>;
+  readonly nativeSpot: ZLinkBackendSpot;
+  readonly nodeRid: RoutingId;
+  readonly spotNodeName: string;
+}
+
+export class ZLinkEntrySpotActivation {
+  private readonly serial = new ZLinkSpotSerialExecutor();
+  private readonly timers = new ZLinkSpotTimerRegistry();
+  private readonly handlers = new DefaultZLinkSpotHandlerRegistry();
+  private readonly outbound = new DefaultZLinkSpotOutbound(new ZLinkSpotSerialExecutor());
+  private initialized = false;
+
+  readonly entrySpot: ZLinkEntrySpot;
+  readonly context: ZLinkEntrySpotContext;
+
+  constructor(private readonly options: ZLinkEntrySpotActivationOptions) {
+    this.context = this.createContext();
+    this.entrySpot = new (options.entrySpotType as new (context: ZLinkEntrySpotContext) => ZLinkEntrySpot)(this.context);
+    Object.defineProperty(this.entrySpot, 'context', {
+      configurable: true,
+      enumerable: false,
+      value: this.context
+    });
+  }
+
+  configure(): void {
+    this.entrySpot.configure?.();
+  }
+
+  async initialize(): Promise<void> {
+    await this.serial.execute(() => this.entrySpot.onInitialize?.());
+    this.initialized = true;
+  }
+
+  async dispose(): Promise<void> {
+    if (this.initialized) {
+      await this.serial.execute(() => this.entrySpot.onClosing?.());
+    }
+    await this.timers.dispose();
+    await this.options.nativeSpot.dispose();
+  }
+
+  private createContext(): ZLinkEntrySpotContext {
+    const activation = this;
+    return {
+      spotRid: this.options.nativeSpot.routingId,
+      nodeRid: this.options.nodeRid,
+      routingId: this.options.nativeSpot.routingId,
+      handlers: this.handlers,
+      outbound: this.outbound,
+      async leaveActor() {
+        throw new ZLinkConfigurationException('Entry Spot actor leave is handled by the actor runtime.');
+      },
+      addTimer<THandler extends ZLinkSpotTimerHandler<ZLinkSpot>>(
+        name: string,
+        periodMs: number,
+        handlerType: Type<THandler>,
+        options?: ZLinkTimerOptions,
+        signal?: AbortSignal
+      ) {
+        return activation.timers.add(
+          name,
+          periodMs,
+          options,
+          handlerType,
+          new ZLinkSpotSerialExecutor(),
+          activation.entrySpot,
+          signal
+        );
+      }
+    };
+  }
 }
 
 export class ZLinkRuntimeSpotPublisherTransport implements ZLinkSpotPublisherClientTransport {

@@ -1080,6 +1080,143 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
   ]);
 });
 
+test('framework runtime host initializes registered Entry Spot lifecycle and handlers', async () => {
+  const calls = [];
+  let registry;
+  class PacketHandler {}
+  class SubscribeHandler {}
+  class ActorPacketHandler {}
+  class PlayerActor {}
+  class EntrySpot {
+    constructor(context) {
+      this.context = context;
+    }
+    configure() {
+      calls.push(`entry:configure:${this.context.spotRid}:${this.context.nodeRid}`);
+      this.context.handlers.addPacket(PacketHandler, 'entry.packet');
+      this.context.handlers.addSubscribe(SubscribeHandler, 'entry.topic');
+      this.context.handlers.addActorPacket(ActorPacketHandler, PlayerActor, 'actor.packet');
+      registry = this.context.handlers;
+    }
+    async onInitialize() {
+      calls.push('entry:onInitialize');
+    }
+    async onClosing() {
+      calls.push('entry:onClosing');
+    }
+  }
+  const entrySpotFacade = {
+    nativeInstance: {},
+    routingId: 'entry-rid',
+    setRoutingId() {},
+    setSubscription() {},
+    subscribe() { return true; },
+    recvRoute() { return true; },
+    onDispatchEvent() {},
+    onSendReady() {},
+    requestToChannel() { return true; },
+    sendToChannel() { return true; },
+    publish() { return true; },
+    sendToSpot() { return true; },
+    requestToSpot() { return true; },
+    recvActorJoin() {},
+    replyActorJoin() {},
+    async dispose() {
+      calls.push('entry:dispose');
+    }
+  };
+  const spotNode = {
+    nativeInstance: {},
+    routingId: 'node-entry',
+    setRoutingId() {},
+    setRouterBind(endpoint) { calls.push(`spot:setRouterBind:${endpoint}`); },
+    setPubBind() {},
+    attachDiscovery() {},
+    connectPeer() {},
+    disconnectPeer() {},
+    connectRouterChannelPeer() {},
+    connectRouterChannelPeerRid() {},
+    disconnectRouterChannelPeer() {},
+    disconnectRouterChannelPeerRid() {},
+    attachSpotRouteChannelDiscovery() {},
+    createSpot() { throw new Error('not used'); },
+    getOrCreateSpot() {},
+    status() {},
+    peers() { return []; },
+    subjects() { return []; },
+    attachChannelDealer() {},
+    attachChannelDealerManual() {},
+    entrySpot() {
+      calls.push('spot:entrySpot');
+      return entrySpotFacade;
+    },
+    createActor() {},
+    actorLookup() {},
+    joinActor() { return true; },
+    joinActorEntrySpot() { return true; },
+    async destroyActor() {},
+    sendActorBoundSession() { return true; },
+    async closeActorBoundSession() {},
+    async dispose() {
+      calls.push('spot:dispose');
+    }
+  };
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      spotNodes: {
+        entry: {
+          router: { bind: 'tcp://0.0.0.0:9501' },
+          entrySpotType: EntrySpot
+        }
+      }
+    })
+  }, {
+    backendAdapterFactory: {
+      createChannelAdapter() {
+        return {
+          createContext() {
+            return {
+              nativeInstance: {},
+              shutdown() {},
+              async dispose() {
+                calls.push('context:dispose');
+              }
+            };
+          }
+        };
+      },
+      createSpotAdapter() {
+        return {
+          createSpotNode() {
+            calls.push('spot:create');
+            return spotNode;
+          }
+        };
+      }
+    }
+  });
+
+  await runtime.start();
+  await runtime.stop();
+
+  assert.deepEqual(registry.snapshot(), [
+    { kind: 'packet', handlerType: PacketHandler, packetName: 'entry.packet' },
+    { kind: 'subscribe', handlerType: SubscribeHandler, topic: 'entry.topic' },
+    { kind: 'actorPacket', handlerType: ActorPacketHandler, actorType: PlayerActor, packetName: 'actor.packet' }
+  ]);
+  assert.deepEqual(calls, [
+    'spot:create',
+    'spot:setRouterBind:tcp://0.0.0.0:9501',
+    'spot:entrySpot',
+    'entry:configure:entry-rid:node-entry',
+    'entry:onInitialize',
+    'entry:onClosing',
+    'entry:dispose',
+    'spot:dispose',
+    'context:dispose'
+  ]);
+});
+
 function providerTokens(module) {
   return new Set(module.providers.map((provider) => provider.provide));
 }

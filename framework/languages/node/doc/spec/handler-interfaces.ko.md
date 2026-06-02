@@ -788,7 +788,6 @@ export interface ZLinkStream {
 }
 
 export enum ZLinkStreamSessionError {
-  Internal = 'internal',
   TransportError = 'transportError',
   /**
    * onError 로 전달되지 않는다. handshake 실패는 runtime monitoring 에만 남긴다.

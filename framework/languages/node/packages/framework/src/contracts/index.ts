@@ -189,7 +189,6 @@ export interface ZLinkStream {
 }
 
 export enum ZLinkStreamSessionError {
-  Internal = 'internal',
   TransportError = 'transportError',
   HandshakeFailed = 'handshakeFailed'
 }

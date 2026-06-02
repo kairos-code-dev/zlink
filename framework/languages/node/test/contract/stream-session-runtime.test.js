@@ -152,12 +152,12 @@ test('stream session node runtime closes rejected packets after dispose', async 
   assert.equal(payload.closed, true);
 });
 
-test('stream session runtime reports dispatch errors through session onError and runtime sink', async () => {
+test('stream session runtime replies to dispatch errors without session onError callback', async () => {
   const socket = new FakeStreamSocket();
   const errors = [];
   const runtime = new framework.ZLinkStreamSessionNodeRuntime({
     socket,
-    headerDecoder: (header) => header.getString(),
+    headerDecoder: (header) => JSON.parse(header.getString(), streamHeaderReviver),
     onError(error) {
       errors.push(['sink', error.message]);
     },
@@ -168,20 +168,31 @@ test('stream session runtime reports dispatch errors through session onError and
           throw new Error('dispatch failed');
         },
         async onError(_context, error) {
-          errors.push(['session', error.diagnostic.message]);
+          errors.push(['session', error.error]);
         }
       };
     }
   });
 
   runtime.start();
-  socket.emitPacket('session-e', fakeMessage('h'), fakeMessage('p'));
+  socket.emitPacket('session-e', fakeMessage(JSON.stringify(streamHeaderJson({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    requestSeq: 7n,
+    name: 'Move'
+  }))), fakeMessage('p'));
   await runtime.dispose();
 
-  assert.deepEqual(errors, [
-    ['sink', 'dispatch failed'],
-    ['session', 'dispatch failed']
-  ]);
+  assert.deepEqual(errors, [['sink', 'dispatch failed']]);
+  assert.equal(socket.sent.length, 1);
+  const frame = connector.ZlinkStreamFrameCodec.decode(socket.sent[0].payload.data());
+  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  assert.equal(header.kind, connector.ZlinkStreamMessageKind.Error);
+  assert.equal(header.requestSeq, 7n);
+  assert.equal(header.name, 'Move');
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), {
+    code: 'Error',
+    message: 'dispatch failed'
+  });
 });
 
 test('stream session runtime completes pending responses before session dispatch', async () => {

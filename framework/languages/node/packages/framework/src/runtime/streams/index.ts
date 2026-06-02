@@ -234,18 +234,44 @@ export class ZLinkStreamSessionRuntime {
       await this.session.onDispatch?.(decodedHeader, payload);
     } catch (error) {
       this.options.onError?.(error);
-      await this.session.onError?.(this.context, {
-        error: 'internal' as never,
-        diagnostic: {
-          message: error instanceof Error ? error.message : String(error)
-        }
-      });
+      await this.replyDispatchError(decodedHeader, error);
     } finally {
       if (decodedHeader !== undefined) {
         this.context.exitDispatch();
       }
       header.close();
       payload.close();
+    }
+  }
+
+  private async replyDispatchError(header: ZlinkStreamHeader | undefined, error: unknown): Promise<void> {
+    const decoded = tryGetStreamFrameHeader(header);
+    if (decoded?.requestSeq === undefined) {
+      return;
+    }
+    const frame = encodeStreamFrame(
+      {
+        kind: ZLinkStreamMessageKind.Error,
+        codec: ZLinkStreamCodec.Json,
+        flags: ZLinkStreamHeaderFlags.HasRequestSeq,
+        requestSeq: decoded.requestSeq,
+        name: decoded.name,
+        metadata: new Map()
+      },
+      utf8Encode(JSON.stringify({
+        code: error instanceof Error ? error.constructor.name : undefined,
+        message: error instanceof Error ? error.message : String(error)
+      }))
+    );
+    const message = simpleMessage(frame) as Message;
+    try {
+      if (!this.context.stream.write(message)) {
+        throw new Error('Client stream error reply send failed.');
+      }
+    } catch (replyError) {
+      this.options.onError?.(replyError);
+    } finally {
+      message.close();
     }
   }
 

@@ -713,6 +713,19 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 - Java API와 다른 validation 의미가 없는지 contract test 통과
 - Phase 9 POSD 리팩토링 체크 통과
 
+### Phase 9 audit evidence
+
+아래 표는 Kotlin wrapper가 Java runtime 위의 thin wrapper로만 동작하는지 대조한
+결과다. Kotlin wrapper는 Java와 다른 lifecycle, ordering, error 의미를 만들지 않는다.
+
+| 항목 | `.NET`/Java 기준 | Kotlin 구현 | 검증 | 판정 |
+|------|------------------|-------------|------|------|
+| `CompletionStage` suspend wrapper | Java framework/connector async public API는 `CompletionStage`를 반환 | `ZLinkConnectorExtensions.kt`, `ZLinkFrameworkExtensions.kt`가 `await()`로 Java stage를 suspend 함수로 감쌈 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`suspendWrapperPreservesConnectorSemantics`, `frameworkSubmitAndRequestWrappersAwaitCompletionStage`) | 완료 |
+| framework-owned coroutine runtime | suspend handler는 Java handler interface로 돌아가며 `CompletionStage`로 완료 | `ZLinkCoroutineRuntime`이 `SupervisorJob` + dispatcher 소유 scope에서 `scope.future(dispatcher)`로 handler stage를 생성함 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`coroutineRuntimeMapsSuspendHandlerToCompletionStage`, `closingCoroutineRuntimeCancelsInFlightHandler`) | 완료 |
+| exception/cancellation mapping | Java handler failure policy는 exceptional `CompletionStage`를 받음 | suspend handler exception과 close cancellation이 Java stage exceptional/cancel completion으로 전달됨 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`coroutineRuntimeCompletesStageExceptionallyWhenHandlerThrows`, `closingCoroutineRuntimeCancelsInFlightHandler`) | 완료 |
+| connector `Flow` wrapper | Java connector `on(...)`, dispatch mode, handler ordering 의미를 유지 | `messages(packetName)`가 Java connector handler를 `callbackFlow`로 감싸고 별도 receive loop를 만들지 않음 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`connectorMessagesFlowUsesJavaManualDispatchSemantics`) | 완료 |
+| forbidden coroutine scope | runtime 의미를 `GlobalScope`나 runtime `runBlocking`으로 만들지 않음 | production Kotlin wrapper에 `GlobalScope`/`runBlocking` 없음. `runBlocking`은 sample/test entry point에서만 사용 | 완료 금지 패턴 검색 | 완료 |
+
 ## 14. Phase 10 -- Samples와 release gate
 
 ### 산출물

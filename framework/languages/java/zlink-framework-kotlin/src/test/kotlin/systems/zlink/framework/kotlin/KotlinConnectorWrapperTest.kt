@@ -1,15 +1,27 @@
 package systems.zlink.framework.kotlin
 
 import java.net.URI
+import java.net.ServerSocket
+import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.time.Duration.ofSeconds
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
 import java.util.concurrent.CompletionStage
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.Optional
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.assertThrows
@@ -27,23 +39,36 @@ import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 final class KotlinConnectorWrapperTest {
     @Test
     fun suspendWrapperPreservesConnectorSemantics() = runBlocking {
-            ZLinkStreamConnectorFactory.create(options()).use { connector ->
-                val handled = mutableListOf<String>()
-                connector.on("Echo") { message ->
-                    handled.add(message.payload().payload().toUtf8String())
-                    CompletableFuture.completedFuture(null)
-                }
-
+        TcpServer().use { server ->
+            ZLinkStreamConnectorFactory.create(options(server.endpoint())).use { connector ->
                 connector.connect()
                 assertTrue(connector.isConnected)
 
                 connector.send(payload("Echo", "send")).submit()
-                connector.dispatch()
-                assertEquals(listOf("send"), handled)
+                val sent = server.readFrame()
+                assertEquals(1, sent.kind)
+                assertEquals("Echo", sent.name)
+                assertEquals("send", sent.payload.toString(StandardCharsets.UTF_8))
 
-                val reply = connector.request(payload("Echo", "request")).await()
+                val replyFuture = async(Dispatchers.IO) {
+                    connector.request(payload("Echo", "request")).await()
+                }
+                val request = server.readFrame()
+                assertEquals(2, request.kind)
+                assertEquals("Echo", request.name)
+                assertEquals("request", request.payload.toString(StandardCharsets.UTF_8))
+                server.sendFrame(
+                    Frame(
+                        kind = 3,
+                        requestSeq = request.requestSeq,
+                        name = "Echo",
+                        payload = "reply".toByteArray(StandardCharsets.UTF_8),
+                    ),
+                )
+
+                val reply = replyFuture.await()
                 try {
-                    assertEquals("request", reply.payload().toUtf8String())
+                    assertEquals("reply", reply.payload().toUtf8String())
                 } finally {
                     reply.payload().close()
                 }
@@ -52,6 +77,36 @@ final class KotlinConnectorWrapperTest {
                 connector.reconnect()
                 assertTrue(connector.isConnected)
             }
+        }
+    }
+
+    @Test
+    fun connectorMessagesFlowUsesJavaManualDispatchSemantics() = runBlocking {
+        TcpServer().use { server ->
+            ZLinkStreamConnectorFactory.create(options(server.endpoint())).use { connector ->
+                connector.connect()
+
+                val received = CompletableDeferred<ZLinkStreamEncodedPayload>()
+                val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+                    connector.messages("Push").collect { message ->
+                        received.complete(message.payload())
+                    }
+                }
+
+                sendAndDispatchUntilReceived(server, connector, received)
+
+                val payload = withTimeout(1_000) {
+                    received.await()
+                }
+                try {
+                    assertEquals("Push", payload.packetName())
+                    assertEquals("event", payload.payload().toUtf8String())
+                } finally {
+                    payload.payload().close()
+                    collector.cancel()
+                }
+            }
+        }
     }
 
     @Test
@@ -122,9 +177,9 @@ final class KotlinConnectorWrapperTest {
         assertTrue(future.isCancelled || future.isCompletedExceptionally)
     }
 
-    private fun options() =
+    private fun options(endpoint: URI = URI.create("tcp://127.0.0.1:7200")) =
         ZLinkStreamConnectorOptions(
-            URI.create("tcp://127.0.0.1:7200"),
+            endpoint,
             ZLinkStreamDispatchMode.MANUAL,
             ofSeconds(1),
             1,
@@ -141,4 +196,132 @@ final class KotlinConnectorWrapperTest {
             override fun cancellationToken(): CancellationToken =
                 CancellationToken { false }
         }
+
+    private suspend fun sendAndDispatchUntilReceived(
+        server: TcpServer,
+        connector: systems.zlink.stream.connector.ZLinkStreamConnector,
+        received: CompletableDeferred<*>,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            server.sendFrame(
+                Frame(
+                    kind = 1,
+                    requestSeq = null,
+                    name = "Push",
+                    payload = "event".toByteArray(StandardCharsets.UTF_8),
+                ),
+            )
+            connector.dispatch()
+            yield()
+            if (received.isCompleted) {
+                return
+            }
+            Thread.onSpinWait()
+        }
+        throw AssertionError("flow message was not received within 5s")
+    }
+
+    private class TcpServer : AutoCloseable {
+        private val server = ServerSocket(0)
+        private val sockets = LinkedBlockingQueue<Socket>()
+        @Volatile
+        private var current: Socket? = null
+        private val acceptThread = Thread {
+            while (!server.isClosed) {
+                try {
+                    sockets.add(server.accept())
+                } catch (_: Exception) {
+                    if (!server.isClosed) {
+                        throw RuntimeException("accept failed")
+                    }
+                }
+            }
+        }.apply {
+            name = "zlink-kotlin-connector-test-server"
+            isDaemon = true
+            start()
+        }
+
+        fun endpoint(): URI = URI.create("tcp://127.0.0.1:${server.localPort}")
+
+        fun readFrame(): Frame {
+            val input = socket().getInputStream()
+            val prefix = input.readNBytes(6)
+            val headerLength = ((prefix[0].toInt() and 0xff) shl 8) or
+                (prefix[1].toInt() and 0xff)
+            val payloadLength = ByteBuffer.wrap(prefix, 2, 4).int
+            val header = input.readNBytes(headerLength)
+            val payload = input.readNBytes(payloadLength)
+            return decodeHeader(header).copy(payload = payload)
+        }
+
+        fun sendFrame(frame: Frame) {
+            val header = encodeHeader(frame)
+            val output = socket().getOutputStream()
+            val prefix = ByteBuffer.allocate(6)
+                .putShort(header.size.toShort())
+                .putInt(frame.payload.size)
+                .array()
+            output.write(prefix)
+            output.write(header)
+            output.write(frame.payload)
+            output.flush()
+        }
+
+        override fun close() {
+            current?.close()
+            server.close()
+            acceptThread.interrupt()
+        }
+
+        private fun socket(): Socket {
+            val existing = current
+            if (existing != null && !existing.isClosed) {
+                return existing
+            }
+            return sockets.poll(5, TimeUnit.SECONDS)
+                ?.also { current = it }
+                ?: throw AssertionError("client did not connect within 5s")
+        }
+
+        private fun decodeHeader(header: ByteArray): Frame {
+            val buffer = ByteBuffer.wrap(header)
+            val kind = buffer.get().toInt() and 0xff
+            buffer.get()
+            val flags = buffer.get().toInt() and 0xff
+            val requestSeq = if ((flags and 0x01) != 0) buffer.long else null
+            val nameLength = buffer.get().toInt() and 0xff
+            val nameBytes = ByteArray(nameLength)
+            buffer.get(nameBytes)
+            return Frame(
+                kind = kind,
+                requestSeq = requestSeq,
+                name = String(nameBytes, StandardCharsets.UTF_8),
+                payload = ByteArray(0),
+            )
+        }
+
+        private fun encodeHeader(frame: Frame): ByteArray {
+            val name = frame.name.toByteArray(StandardCharsets.UTF_8)
+            val flags = if (frame.requestSeq == null) 0 else 0x01
+            val buffer = ByteBuffer.allocate(3 + (if (frame.requestSeq == null) 0 else 8) + 1 + name.size)
+            buffer.put(frame.kind.toByte())
+            buffer.put(0)
+            buffer.put(flags.toByte())
+            if (frame.requestSeq != null) {
+                buffer.putLong(frame.requestSeq)
+            }
+            buffer.put(name.size.toByte())
+            buffer.put(name)
+            return buffer.array()
+        }
+    }
+
+    private data class Frame(
+        val kind: Int,
+        val requestSeq: Long?,
+        val name: String,
+        val payload: ByteArray,
+    )
 }

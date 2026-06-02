@@ -9,25 +9,51 @@ async function main() {
 }
 
 async function runDeterministicBingo(server) {
-  await server.bindSession('p1', 'session-p1', 1);
-  await server.bindSession('p2', 'session-p2', 1);
+  const players = [
+    { actorId: 'p1', numbers: [7] },
+    { actorId: 'p2', numbers: [9] },
+    { actorId: 'p3', numbers: [7] },
+    { actorId: 'p4', numbers: [11] }
+  ];
+
+  for (const player of players) {
+    await server.bindSession(player.actorId, `session-${player.actorId}`, 1);
+  }
+
   const room = await server.spots.create(server.BingoRoomSpot);
-  let winnerTask;
-  await server.spots.executeOnSpot(room.spotRid, (spot) => {
-    spot.join('p1', [7], server.boundSessionFor('p1'));
-    spot.join('p2', [9], server.boundSessionFor('p2'));
-    winnerTask = spot.start([7, 9]);
+  let earlyHostStartRejected = false;
+  let nonHostStartRejected = false;
+  let endedTask;
+  await server.spots.executeOnSpot(room.spotRid, async (spot) => {
+    spot.join(players[0].actorId, players[0].numbers, server.boundSessionFor(players[0].actorId));
+    earlyHostStartRejected = await isRejected(() => spot.start(players[0].actorId, [7, 9, 11]));
+    for (const player of players.slice(1)) {
+      spot.join(player.actorId, player.numbers, server.boundSessionFor(player.actorId));
+    }
+    nonHostStartRejected = await isRejected(() => spot.start(players[1].actorId, [7, 9, 11]));
+    endedTask = spot.start(players[0].actorId, [7, 9, 11]);
   });
-  const winner = await winnerTask;
+  const ended = await endedTask;
 
   return {
-    winner,
+    room: ended,
+    earlyHostStartRejected,
+    nonHostStartRejected,
     notifications: server.boundSessions.delivered.map((message) => ({
       actorId: message.actorId,
       packetName: message.packetName,
       payload: message.payload
     }))
   };
+}
+
+async function isRejected(action) {
+  try {
+    await action();
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 main().catch((error) => {

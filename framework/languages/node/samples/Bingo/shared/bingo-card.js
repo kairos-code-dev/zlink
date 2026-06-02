@@ -14,6 +14,10 @@ class BingoCard {
   isComplete() {
     return this.numbers.every((number) => this.marked.has(number));
   }
+
+  marks() {
+    return this.numbers.map((number) => this.marked.has(number));
+  }
 }
 
 module.exports = { BingoCard };

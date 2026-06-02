@@ -191,6 +191,36 @@ test('TicTacToe sample covers separated api play roles timer and push notificati
   assert.deepEqual(missing, []);
 });
 
+test('Bingo sample covers four-player host start guards and bound push fanout', () => {
+  const client = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'client', 'self-check.js'), 'utf8');
+  const api = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'api-server', 'main.js'), 'utf8');
+  const room = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'play-server', 'bingo-room.js'), 'utf8');
+  const readme = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'README.ko.md'), 'utf8');
+  const required = [
+    [api, "{ actorId: 'p1', numbers: [7] }"],
+    [api, "{ actorId: 'p4', numbers: [11] }"],
+    [api, 'earlyHostStartRejected'],
+    [api, 'nonHostStartRejected'],
+    [room, 'this.requiredPlayers = 4'],
+    [room, "'BingoGameStarted'"],
+    [room, "'BingoNumberDrawn'"],
+    [room, "'BingoGameEnded'"],
+    [room, 'hostActorId()'],
+    [client, "assert.deepEqual(result.room.winners, ['p1', 'p3'])"],
+    [client, "message.packetName === 'BingoGameStarted'"],
+    [client, "message.packetName === 'BingoNumberDrawn'"],
+    [client, "message.packetName === 'BingoGameEnded'"],
+    [readme, '네 player'],
+    [readme, 'non-host start 요청은 거부된다'],
+    [readme, '`p1`, `p3`']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
+
+  assert.deepEqual(missing, []);
+});
+
 test('node cross-language smoke covers channel send publish and stream connector paths', () => {
   const smoke = fs.readFileSync(path.join(workspaceRoot, 'cross-language', 'node_dotnet_smoke.js'), 'utf8');
   const required = [

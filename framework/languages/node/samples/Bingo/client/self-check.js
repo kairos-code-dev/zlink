@@ -14,12 +14,19 @@ async function main() {
     assert.equal((await play.request({ command: 'ping' })).role, 'play-server');
 
     const result = await api.request({ command: 'run' });
-    assert.equal(result.winner, 'p1');
-    assert.deepEqual(result.notifications, [{
-      actorId: 'p1',
-      packetName: 'BingoWinner',
-      payload: { winner: 'p1', number: 7 }
-    }]);
+    assert.equal(result.room.status, 'Finished');
+    assert.equal(result.room.hostActorId, 'p1');
+    assert.deepEqual(result.room.winners, ['p1', 'p3']);
+    assert.equal(result.earlyHostStartRejected, true);
+    assert.equal(result.nonHostStartRejected, true);
+    assert.deepEqual(result.room.players.map((player) => player.actorId), ['p1', 'p2', 'p3', 'p4']);
+
+    const started = result.notifications.filter((message) => message.packetName === 'BingoGameStarted');
+    const drawn = result.notifications.filter((message) => message.packetName === 'BingoNumberDrawn');
+    const ended = result.notifications.filter((message) => message.packetName === 'BingoGameEnded');
+    assert.deepEqual(started.map((message) => message.actorId), ['p1', 'p2', 'p3', 'p4']);
+    assert.deepEqual(drawn.map((message) => message.actorId), ['p1', 'p2', 'p3', 'p4']);
+    assert.deepEqual(ended.map((message) => message.actorId), ['p1', 'p2', 'p3', 'p4']);
   } finally {
     await api.close();
     await play.close();

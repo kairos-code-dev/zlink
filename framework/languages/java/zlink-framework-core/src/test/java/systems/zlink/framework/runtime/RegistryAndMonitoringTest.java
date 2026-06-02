@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 
 final class RegistryAndMonitoringTest {
@@ -23,5 +24,33 @@ final class RegistryAndMonitoringTest {
         options.setPubEndpoint("inproc://registry-pub");
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void addZLinkMonitoring_throws_whenSocketSourceIsUnknownOnStartup() {
+        DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
+
+        options.addSocketEvents("missing-profile", ZLinkSocketEventKind.CONNECTED);
+
+        assertThrows(ZLinkConfigurationException.class, () ->
+            new ZLinkMonitoringRuntime(
+                options,
+                socket -> null,
+                java.util.Map.of(),
+                new systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher()));
+    }
+
+    @Test
+    void addZLinkMonitoring_throws_whenRegistryOrSpotPollingIsRequestedBeforeRuntimeSupport() {
+        DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
+
+        options.addRegistryEvents("registry", java.time.Duration.ofSeconds(1));
+
+        assertThrows(ZLinkConfigurationException.class, () ->
+            new ZLinkMonitoringRuntime(
+                options,
+                socket -> null,
+                java.util.Map.of(),
+                new systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher()));
     }
 }

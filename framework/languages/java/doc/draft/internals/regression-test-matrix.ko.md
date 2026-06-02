@@ -72,13 +72,13 @@ connector 테스트 이름은 `Systems.Zlink.Stream.Connector.Tests`의 메서�
 | 항목 | 계층 | JUnit 테스트 | 통과 기준 |
 |------|------|--------------|-----------|
 | stream node duplicate session | unit | `NodesAndServicesTest.addZLinkFramework_throws_whenStreamNodeRegistersMultipleSessions` | startup validation 오류 |
-| session connected/dispatch/reply | integration-single-process | `StreamSessionTest.headerSession_connectedDispatchReply_succeeds` | header session callback 성공 |
+| session connected/dispatch/reply | fake backend | `StreamSessionTest.headerSession_connectedDispatchReply_succeeds` | header session callback 성공 |
 | session serial dispatch | fake backend | `StreamSessionTest.sameSessionCallbacks_runSerially` | 같은 session callback 순서 보장 |
 | payload borrowed lifetime | contract | `StreamPayloadTest.borrowedPayload_requiresCopyOutsideCallback` | callback 밖 보관 시 copy 필요 정책 일치 |
 | connector transport inference | unit | `ZLinkStreamConnectorTest.uriSchemeAndTransportMismatchIsRejected` | URI scheme과 transport mismatch 차단 |
-| connector manual dispatch | integration-single-process | `ConnectorDispatchTest.dispatch_invokesCallback` | `dispatchAsync()` 호출 시 callback 실행 |
+| connector manual dispatch | unit | `ConnectorDispatchTest.dispatch_invokesCallback` | `dispatchAsync()` 호출 시 callback 실행 |
 | connector request timeout | unit | `LifecycleTest.heartbeatTimeoutFailsPendingRequestsWithTimeoutCause` | pending request 정리 |
-| connector reconnect | integration-single-process | `LifecycleTest.reconnectRestoresConnectionAfterTransportClose` | backoff와 max attempts 의미 유지 |
+| connector reconnect | unit | `LifecycleTest.reconnectRestoresConnectionAfterTransportClose` | backoff와 max attempts 의미 유지 |
 | reserved packet name 거부 | contract | `ZLinkStreamConnectorTest.reservedPacketNamesAreRejectedForUserHandlers` | 예약 packet 이름 거부 |
 | connector codec helper | contract | `ConnectorCodecContractTest.jsonMsgpackProtobufTypedHelperRoundtrip` | JSON/MessagePack/Protobuf typed helper roundtrip |
 | Kotlin connector wrapper | contract | `KotlinConnectorWrapperTest.suspendWrapperPreservesConnectorSemantics` | suspend wrapper가 Java connector 의미를 바꾸지 않음 |
@@ -106,7 +106,7 @@ filter 전달은 실제 binding public API 경로로 검증한다.
 
 ## 5.1 Lifecycle regression
 
-`StreamRuntimeFakeBackendTest.onError_reportsTransportError_forRemoteDisconnect`는
+`StreamSessionTest.onError_reportsTransportError_forRemoteDisconnect`는
 이미 생성된 session에 매칭되는 transport error만 `onErrorAsync(...)`로 전달하고,
 session이 없는 transport error나 application dispatch 오류는 session error로
 올리지 않는 정책을 fake backend로 고정한다. 실제 remote disconnect를 native
@@ -117,7 +117,7 @@ transport error callback public API가 추가되어야 한다.
 |------|------|--------------|-----------|
 | host start/stop | integration-single-process | `HostTest.host_startsAndStops_frameworkRuntimeContext` | `SmartLifecycle` 시작·종료에 맞춰 runtime context 생성·정리 |
 | registry before framework | integration-single-process | `HostTest.host_startsEmbeddedRegistry_beforeFrameworkRuntime` | embedded registry가 framework runtime보다 먼저 시동 |
-| stream transport error scope | integration-multi-process | `StreamSessionTest.onError_reportsTransportError_forRemoteDisconnect` | remote disconnect만 session `onError`로 보고 |
+| stream transport error scope | fake backend | `StreamSessionTest.onError_reportsTransportError_forRemoteDisconnect` | remote disconnect만 session `onError`로 보고 |
 
 ## 6. Sample release gate
 

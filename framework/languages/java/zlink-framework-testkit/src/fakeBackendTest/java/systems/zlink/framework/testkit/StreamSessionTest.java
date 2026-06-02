@@ -15,7 +15,7 @@ import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
-final class StreamRuntimeFakeBackendTest {
+final class StreamSessionTest {
     @Test
     void streamNodeBindsAndAttachesConfiguredActorGatewaySpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
@@ -58,7 +58,7 @@ final class StreamRuntimeFakeBackendTest {
     }
 
     @Test
-    void streamPacketDispatchCreatesSessionAndRunsLifecycleCallbacks() {
+    void headerSession_connectedDispatchReply_succeeds() {
         GameSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addStreamNode("gateway", stream -> {
@@ -77,6 +77,28 @@ final class StreamRuntimeFakeBackendTest {
         }
 
         assertEquals(1, GameSession.disconnectedCount);
+    }
+
+    @Test
+    void sameSessionCallbacks_runSerially() {
+        GameSession.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addStreamNode("gateway", stream -> {
+            stream.bind("inproc://gateway");
+            stream.registerSession(GameSession.class);
+        });
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+            backendFactory.dispatchStreamPacket("First", "one");
+            backendFactory.dispatchStreamPacket("Second", "two");
+
+            assertEquals(List.of("First:one", "Second:two"), GameSession.dispatches);
+            assertEquals(1, GameSession.connectedCount);
+            assertEquals(0, GameSession.disconnectedCount);
+        }
     }
 
     @Test

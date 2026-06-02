@@ -16,6 +16,9 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
+import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class NodesAndServicesTest {
     @Test
@@ -76,6 +79,18 @@ final class NodesAndServicesTest {
         assertDoesNotThrow(options::validate);
     }
 
+    @Test
+    void addZLinkFramework_throws_whenStreamNodeRegistersMultipleSessions() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        assertThrows(ZLinkConfigurationException.class, () ->
+            options.addStreamNode("gateway", stream -> {
+                stream.bind("inproc://gateway");
+                stream.registerSession(GameSession.class);
+                stream.registerSession(GameSession.class);
+            }));
+    }
+
     private static DefaultZLinkFrameworkOptions optionsWithSpotNodeAndActorFactory() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
@@ -131,6 +146,28 @@ final class NodesAndServicesTest {
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+        }
+    }
+
+    public static final class GameSession implements ZLinkSession {
+        @Override
+        public ZLinkSessionContext context() {
+            return null;
+        }
+
+        @Override
+        public CompletionStage<Void> onConnectedAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onDisconnectedAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

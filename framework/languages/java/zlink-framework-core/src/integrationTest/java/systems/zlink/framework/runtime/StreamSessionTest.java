@@ -11,7 +11,7 @@ import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
-final class StreamRuntimeIntegrationTest {
+final class StreamSessionTest {
     @Test
     void streamNodeAttachActorGatewayUsesJavaBindingPublicApi() {
         Zlink.version();

@@ -29,6 +29,8 @@ import {
   encodeStreamFrame,
   encodeStreamHeader,
   ensureSingleSubmit,
+  lz4Pickle,
+  lz4Unpickle,
   messageToBytes,
   requireStreamFrameHeader,
   resolvePacketName,
@@ -226,13 +228,15 @@ export class ZLinkStreamSessionRuntime {
 
   private async dispatchPacket(header: Message, payload: Message): Promise<void> {
     let decodedHeader: ZlinkStreamHeader | undefined;
+    let dispatchPayload = payload;
     try {
       decodedHeader = this.options.headerDecoder?.(header) ?? header;
-      if (this.context.tryCompleteResponse(decodedHeader, payload)) {
+      dispatchPayload = this.context.payloadForHeader(decodedHeader, payload);
+      if (this.context.tryCompleteResponse(decodedHeader, dispatchPayload)) {
         return;
       }
       this.context.enterDispatch(decodedHeader);
-      await this.session.onDispatch?.(decodedHeader, payload);
+      await this.session.onDispatch?.(decodedHeader, dispatchPayload);
     } catch (error) {
       this.options.onError?.(error);
       await this.replyDispatchError(decodedHeader, error);
@@ -241,6 +245,9 @@ export class ZLinkStreamSessionRuntime {
         this.context.exitDispatch();
       }
       header.close();
+      if (dispatchPayload !== payload) {
+        dispatchPayload.close();
+      }
       payload.close();
     }
   }
@@ -559,7 +566,10 @@ export class ZLinkStreamBindingRuntime {
     requestSeq: bigint | undefined,
     payload: unknown
   ): Message {
-    const body = utf8Encode(JSON.stringify(payload));
+    let body = utf8Encode(JSON.stringify(payload));
+    if (compressed) {
+      body = lz4Pickle(body);
+    }
     const flags = compressed ? ZLinkStreamHeaderFlags.PayloadCompressed : ZLinkStreamHeaderFlags.None;
     const frame = encodeStreamFrame(
       {
@@ -725,6 +735,14 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
       return false;
     }
     return this.requests.complete(decoded.requestSeq, payload);
+  }
+
+  payloadForHeader(header: ZlinkStreamHeader, payload: Message): Message {
+    const decoded = tryGetStreamFrameHeader(header);
+    if (decoded === undefined || (decoded.flags & ZLinkStreamHeaderFlags.PayloadCompressed) === 0) {
+      return payload;
+    }
+    return simpleMessage(lz4Unpickle(messageToBytes(payload))) as Message;
   }
 
   get boundActors(): readonly DefaultZLinkSessionActor[] {

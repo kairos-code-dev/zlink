@@ -227,6 +227,59 @@ test('stream session runtime completes pending responses before session dispatch
   assert.deepEqual(events, []);
 });
 
+test('stream session runtime decompresses response frames before completing pending requests', async () => {
+  const socket = new FakeStreamSocket();
+  let pending;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    headerDecoder: (header) => JSON.parse(header.getString(), streamHeaderReviver),
+    sessionFactory(context) {
+      pending = context.startRequest(1000);
+      return { context };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-compressed-response', fakeMessage(JSON.stringify(streamHeaderJson({
+    kind: connector.ZlinkStreamMessageKind.Response,
+    flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+    requestSeq: 1n,
+    name: 'Move'
+  }))), fakeMessageBytes(Buffer.from('40551F41010047504141414141', 'hex')));
+
+  const response = await pending.promise;
+  await runtime.dispose();
+
+  assert.equal(response.getString(), 'A'.repeat(96));
+});
+
+test('stream session runtime decompresses dispatch payloads before session handlers', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    headerDecoder: (header) => JSON.parse(header.getString(), streamHeaderReviver),
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch(header, payload) {
+          events.push(['dispatch', header.name, payload.getString()]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-compressed-dispatch', fakeMessage(JSON.stringify(streamHeaderJson({
+    kind: connector.ZlinkStreamMessageKind.Send,
+    flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+    name: 'Move'
+  }))), fakeMessageBytes(Buffer.from('40551F41010047504141414141', 'hex')));
+  await runtime.dispose();
+
+  assert.deepEqual(events, [['dispatch', 'Move', 'A'.repeat(96)]]);
+});
+
 test('stream session pending request timeout removes request sequence', async () => {
   const context = new framework.ZLinkStreamBindingRuntime().createSessionContext({
     sessionId: 'session-timeout',
@@ -398,6 +451,26 @@ function fakeMessage(text) {
     closed: false,
     getString() {
       return text;
+    },
+    close() {
+      this.closed = true;
+    }
+  };
+}
+
+function fakeMessageBytes(bytes) {
+  const payload = new Uint8Array(bytes);
+  return {
+    closed: false,
+    bytes: payload,
+    toBytes() {
+      return new Uint8Array(payload);
+    },
+    data() {
+      return payload;
+    },
+    getString() {
+      return new TextDecoder().decode(payload);
     },
     close() {
       this.closed = true;

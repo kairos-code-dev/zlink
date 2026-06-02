@@ -216,6 +216,26 @@ test('session client send writes dotnet-compatible JSON stream frame through inj
   assert.equal(closed.length, 1);
 });
 
+test('session client send compress writes dotnet LZ4-pickled stream payload', async () => {
+  const written = [];
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory()
+  });
+  const context = runtime.createSessionContext({
+    ...fakeStream('session-compress-send', 'rid-compress-send'),
+    write(message) {
+      written.push(message.bytes);
+      return true;
+    }
+  });
+
+  await context.client.send({ ok: true }).packetName('Ready').compress().submit();
+
+  const frame = decodeFrame(written[0]);
+  assert.equal((frame.header.flags & connector.ZlinkStreamHeaderFlags.PayloadCompressed) !== 0, true);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(unpickleLz4(frame.payload))), { ok: true });
+});
+
 test('session client reply writes response frame only while dispatching request packet', async () => {
   const written = [];
   const runtime = new framework.ZLinkStreamBindingRuntime({
@@ -255,6 +275,40 @@ test('session client reply writes response frame only while dispatching request 
   assert.equal(frame.header.name, 'Move');
   assert.equal(frame.header.metadata.get('trace'), 'reply-1');
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { accepted: true });
+});
+
+test('session client reply compress writes dotnet LZ4-pickled response payload', async () => {
+  const written = [];
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory()
+  });
+  const context = runtime.createSessionContext({
+    ...fakeStream('session-compress-reply', 'rid-compress-reply'),
+    write(message) {
+      written.push(message.bytes);
+      return true;
+    }
+  });
+
+  context.enterDispatch({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+    requestSeq: 43n,
+    name: 'Move',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  });
+  try {
+    await context.client.reply({ accepted: true }).compress().submit();
+  } finally {
+    context.exitDispatch();
+  }
+
+  const frame = decodeFrame(written[0]);
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
+  assert.equal(frame.header.requestSeq, 43n);
+  assert.equal((frame.header.flags & connector.ZlinkStreamHeaderFlags.PayloadCompressed) !== 0, true);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(unpickleLz4(frame.payload))), { accepted: true });
 });
 
 test('session client send fails retriably when message factory is not started', async () => {
@@ -303,6 +357,14 @@ function decodeFrame(bytes) {
     header: connector.ZlinkStreamHeaderCodec.decode(frame.header),
     payload: frame.payload
   };
+}
+
+function unpickleLz4(payload) {
+  if (payload.length === 0) {
+    return new Uint8Array();
+  }
+  assert.equal(payload[0], 0);
+  return payload.slice(1);
 }
 
 class FakeStreamSocket {

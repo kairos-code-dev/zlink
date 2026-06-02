@@ -18,6 +18,12 @@ import type {
   PubSocket
 } from '@zlink-systems/zlink';
 import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
+import type {
+  ZLinkBackendContext,
+  ZLinkBackendDealerSocket,
+  ZLinkBackendPublisherSocket,
+  ZLinkChannelBackendAdapter
+} from '../backend/contracts';
 
 const JSON_CONTENT_TYPE = 'application/json';
 
@@ -70,6 +76,205 @@ export interface ZLinkRouteClientTransport {
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply>;
+}
+
+export class ZLinkRuntimeChannelTransport implements ZLinkChannelClientTransport {
+  constructor(private readonly manager: () => ZLinkChannelRuntimeManager | undefined) {}
+
+  async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
+    return this.requireManager().send(channelName, packetName, message, signal);
+  }
+
+  async request<TReply>(
+    channelName: string,
+    packetName: string | undefined,
+    request: unknown,
+    timeoutMs: number | undefined,
+    signal?: AbortSignal
+  ): Promise<TReply> {
+    return this.requireManager().request(channelName, packetName, request, timeoutMs, signal);
+  }
+
+  async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void> {
+    return this.requireManager().publish(channelName, topic, packetName, event, signal);
+  }
+
+  private requireManager(): ZLinkChannelRuntimeManager {
+    const manager = this.manager();
+    if (manager === undefined) {
+      throw new ZLinkConfigurationException('Channel runtime is not started.');
+    }
+    return manager;
+  }
+}
+
+export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
+  constructor(private readonly manager: () => ZLinkChannelRuntimeManager | undefined) {}
+
+  async send(
+    routerChannelId: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    message: unknown,
+    signal?: AbortSignal
+  ): Promise<void> {
+    return this.requireManager().routeSend(routerChannelId, targetNodeRid, packetName, message, signal);
+  }
+
+  async request<TReply>(
+    routerChannelId: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    request: unknown,
+    timeoutMs: number | undefined,
+    signal?: AbortSignal
+  ): Promise<TReply> {
+    return this.requireManager().routeRequest(routerChannelId, targetNodeRid, packetName, request, timeoutMs, signal);
+  }
+
+  private requireManager(): ZLinkChannelRuntimeManager {
+    const manager = this.manager();
+    if (manager === undefined) {
+      throw new ZLinkConfigurationException('Route channel runtime is not started.');
+    }
+    return manager;
+  }
+}
+
+export class ZLinkChannelRuntimeManager {
+  private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
+  private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
+
+  constructor(
+    private readonly registration: ZLinkFrameworkRegistration,
+    private readonly adapter: ZLinkChannelBackendAdapter,
+    private readonly context: ZLinkBackendContext
+  ) {}
+
+  async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    const queued = this.getOrCreateClientDealer(channelName).send(
+      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, channelName, packetName, message) as readonly Message[],
+      0
+    );
+    if (!queued) {
+      throw new ZLinkConfigurationException(`Channel '${channelName}' send was not queued.`);
+    }
+  }
+
+  async request<TReply>(
+    channelName: string,
+    packetName: string | undefined,
+    request: unknown,
+    timeoutMs: number | undefined,
+    signal?: AbortSignal
+  ): Promise<TReply> {
+    throwIfAborted(signal);
+    return new Promise<TReply>((resolve, reject) => {
+      const queued = this.getOrCreateClientDealer(channelName).request(
+        encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, channelName, packetName, request, timeoutMs) as readonly Message[],
+        (result, parts) => {
+          if (result !== 0) {
+            reject(new ZLinkConfigurationException(`Channel '${channelName}' request failed with result ${result}.`));
+            return;
+          }
+          try {
+            resolve(decodeChannelReply<TReply>(parts as readonly Message[]));
+          } catch (error) {
+            reject(error);
+          }
+        },
+        0,
+        timeoutMs
+      );
+      if (!queued) {
+        reject(new ZLinkConfigurationException(`Channel '${channelName}' request was not queued.`));
+      }
+    });
+  }
+
+  async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    const queued = this.getOrCreatePublisher(channelName).publish(
+      topic,
+      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Publish, channelName, packetName, event, undefined, topic) as readonly Message[],
+      0
+    );
+    if (!queued) {
+      throw new ZLinkConfigurationException(`Channel '${channelName}' publish was not queued.`);
+    }
+  }
+
+  async routeSend(
+    _routerChannelId: string,
+    _targetNodeRid: string,
+    _packetName: string | undefined,
+    _message: unknown,
+    signal?: AbortSignal
+  ): Promise<void> {
+    throwIfAborted(signal);
+    throw new ZLinkConfigurationException('Route channel runtime is not started.');
+  }
+
+  async routeRequest<TReply>(
+    _routerChannelId: string,
+    _targetNodeRid: string,
+    _packetName: string | undefined,
+    _request: unknown,
+    _timeoutMs: number | undefined,
+    signal?: AbortSignal
+  ): Promise<TReply> {
+    throwIfAborted(signal);
+    throw new ZLinkConfigurationException('Route channel runtime is not started.');
+  }
+
+  async dispose(): Promise<void> {
+    const sockets = [...this.clientDealers.values(), ...this.publishers.values()];
+    this.clientDealers.clear();
+    this.publishers.clear();
+    await Promise.all(sockets.map((socket) => socket.dispose()));
+  }
+
+  private getOrCreateClientDealer(channelName: string): ZLinkBackendDealerSocket {
+    const existing = this.clientDealers.get(channelName);
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const channel = this.registration.channels.get(channelName);
+    if (channel?.client === undefined) {
+      throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
+    }
+
+    const dealer = this.adapter.createDealerSocket(this.context);
+    dealer.setChannelName(channelName);
+    for (const endpoint of channel.client.manualConnections ?? []) {
+      dealer.connect(endpoint);
+    }
+    this.clientDealers.set(channelName, dealer);
+    return dealer;
+  }
+
+  private getOrCreatePublisher(channelName: string): ZLinkBackendPublisherSocket {
+    const existing = this.publishers.get(channelName);
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const channel = this.registration.channels.get(channelName);
+    if (channel?.publisher === undefined) {
+      throw new ZLinkConfigurationException(`Channel publisher '${channelName}' is not registered.`);
+    }
+    if (channel.publisher.bind === undefined) {
+      throw new ZLinkConfigurationException(`Channel publisher '${channelName}' does not define a bind endpoint.`);
+    }
+
+    const publisher = this.adapter.createPublisherSocket(this.context);
+    publisher.setChannelName(channelName);
+    publisher.bind(channel.publisher.bind);
+    this.publishers.set(channelName, publisher);
+    return publisher;
+  }
 }
 
 export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTransport {

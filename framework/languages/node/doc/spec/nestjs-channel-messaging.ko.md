@@ -310,6 +310,10 @@ ZLinkModule.forRoot({
 - `ZLinkChannelClient` 는 provider token 으로 주입받는다.
 - 호출 대상은 gateway 주소가 아니라 **channel 이름**이다.
 - runtime 은 등록된 channel capability 를 보고, 필요한 만큼만 runtime 을 만든다.
+- provider 로 노출되는 outbound client 는 framework host 가 소유한 channel
+  runtime transport 를 사용한다. 사용자는 socket 이나 transport 를 직접 만들지 않고,
+  host startup 이후 같은 DI client 로 수동 연결 channel 에 request/send/publish 를
+  보낸다.
 - client capability 가 있는 channel 은, 그 channel 전용 Discovery 뷰와 outbound DEALER
   를 하나씩 가진다.
 

@@ -126,6 +126,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | `addHandlerGroup`이 가리키는 그룹 없음 | `unit` | 매핑한 그룹에 handler가 하나도 없으면 startup validation 오류 |
 | event handler group mapping | `unit` | `channel.addHandlerGroup('...')`로 매핑한 그룹의 publish handler만 해당 subscriber channel에서 dispatch된다 |
 | HTTP(REST controller) handler에서 `ZLinkChannelClient` 사용 | `integration-single-process` | route handler와 동일한 NestJS DI[^di] 컨테이너에서 정상 동작 |
+| DI channel client host transport | `integration-single-process` | `ZLinkModule.forRoot(...)`가 노출한 `ZLinkChannelClient`가 framework runtime host 시작 이후 host-owned DEALER transport로 manual channel request/reply를 수행한다 |
 | channel handler에서 `ZLinkChannelClient` 사용 | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `ZLinkChannelClient`로 다른 channel 에 request 하고 reply 를 받는다 |
 | dealer mesh channel client | `integration-single-process` | `ZLinkChannelClient.sendToChannel(...)`와 `requestToChannel(...)`가 `registerDealerMeshChannel(...)` 등록의 DEALER socket 을 통해 동작한다 |
 | channel handler에서 fanout publish | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `ZLinkFanoutClient`로 fanout event 를 publish 하고 subscriber handler가 수신한다 |

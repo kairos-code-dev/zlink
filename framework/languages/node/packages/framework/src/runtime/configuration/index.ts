@@ -3,6 +3,7 @@ import type { Type, ZLinkSpot } from '../../contracts';
 export interface ZLinkFrameworkRegistration {
   readonly actorFactories: ReadonlyMap<string, Type>;
   readonly spotFactories: ReadonlySet<Type<ZLinkSpot>>;
+  readonly channels: ReadonlyMap<string, ZLinkChannelOptions>;
   readonly channelClients: ReadonlySet<string>;
   readonly fanoutPublishers: ReadonlySet<string>;
   readonly routeChannels: ReadonlySet<string>;
@@ -59,6 +60,7 @@ export function createFrameworkRegistration(
   const registration: ZLinkFrameworkRegistration = {
     actorFactories: toTypeMap(options.actorFactories),
     spotFactories: new Set(options.spotFactories ?? []),
+    channels: toChannelMap(options.channels),
     channelClients: channelNamesWith(options.channels, (channel) => channel.client !== undefined),
     fanoutPublishers: channelNamesWith(options.channels, (channel) => channel.publisher !== undefined),
     routeChannels: new Set(options.routeChannels ?? []),
@@ -69,6 +71,10 @@ export function createFrameworkRegistration(
   };
   validateFrameworkRegistration(registration, options);
   return registration;
+}
+
+function toChannelMap(channels: ZLinkFrameworkRegistrationOptions['channels']): Map<string, ZLinkChannelOptions> {
+  return new Map(Object.entries(channels ?? {}).map(([name, channel]) => [name, { ...channel }]));
 }
 
 export function validateFrameworkRegistration(

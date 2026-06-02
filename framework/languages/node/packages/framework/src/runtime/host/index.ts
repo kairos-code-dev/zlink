@@ -1,6 +1,11 @@
 import { ZLinkNodeBackendAdapterFactory } from '../backend';
 import type { ZLinkBackendAdapterFactory, ZLinkBackendContext } from '../backend';
 import type { ZLinkFrameworkRegistration } from '../configuration';
+import {
+  ZLinkChannelRuntimeManager,
+  ZLinkRuntimeChannelTransport,
+  ZLinkRuntimeRouteTransport
+} from '../channels';
 import { ZLinkFrameworkRuntimeState } from '../execution';
 import { DefaultZLinkBoundSessionFactory, ZLinkStreamBindingRuntime } from '../streams';
 
@@ -19,6 +24,9 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   private readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   private readonly lifecycleSink?: string[];
   private state?: ZLinkFrameworkRuntimeState;
+  private channelRuntime?: ZLinkChannelRuntimeManager;
+  readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
+  readonly routeTransport = new ZLinkRuntimeRouteTransport(() => this.channelRuntime);
   readonly streamBindingRuntime = new ZLinkStreamBindingRuntime();
   readonly boundSessionFactory = new DefaultZLinkBoundSessionFactory(this.streamBindingRuntime);
 
@@ -53,6 +61,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
     const context = channelAdapter.createContext();
     try {
       this.state = new ZLinkFrameworkRuntimeState(context);
+      this.channelRuntime = new ZLinkChannelRuntimeManager(this.options.registration, channelAdapter, context);
       this.lifecycleSink?.push('framework:started');
     } catch (error) {
       await context.dispose();
@@ -66,8 +75,11 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
       return;
     }
 
+    const channelRuntime = this.channelRuntime;
     this.state = undefined;
+    this.channelRuntime = undefined;
     this.lifecycleSink?.push('framework:stop');
+    await channelRuntime?.dispose();
     await state.dispose();
     this.lifecycleSink?.push('framework:stopped');
   }

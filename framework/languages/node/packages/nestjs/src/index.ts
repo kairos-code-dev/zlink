@@ -131,18 +131,27 @@ function alwaysAvailableClientProviders(registration?: ZLinkFrameworkRegistratio
     return [
       {
         provide: ZLINK_CHANNEL_CLIENT,
-        inject: [ZLINK_FRAMEWORK_REGISTRATION],
-        useFactory: (resolved: ZLinkFrameworkRegistration) => new framework.DefaultZLinkChannelClient(resolved)
+        inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
+        useFactory: (
+          resolved: ZLinkFrameworkRegistration,
+          runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
+        ) => new framework.DefaultZLinkChannelClient(resolved, runtime.channelTransport)
       },
       {
         provide: ZLINK_FANOUT_CLIENT,
-        inject: [ZLINK_FRAMEWORK_REGISTRATION],
-        useFactory: (resolved: ZLinkFrameworkRegistration) => new framework.DefaultZLinkFanoutClient(resolved)
+        inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
+        useFactory: (
+          resolved: ZLinkFrameworkRegistration,
+          runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
+        ) => new framework.DefaultZLinkFanoutClient(resolved, runtime.channelTransport)
       },
       {
         provide: ZLINK_ROUTE_CLIENT,
-        inject: [ZLINK_FRAMEWORK_REGISTRATION],
-        useFactory: (resolved: ZLinkFrameworkRegistration) => new framework.DefaultZLinkRouteClient(resolved)
+        inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
+        useFactory: (
+          resolved: ZLinkFrameworkRegistration,
+          runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
+        ) => new framework.DefaultZLinkRouteClient(resolved, runtime.routeTransport)
       },
       {
         provide: ZLINK_BOUND_SESSION_FACTORY,
@@ -154,9 +163,24 @@ function alwaysAvailableClientProviders(registration?: ZLinkFrameworkRegistratio
   }
 
   return [
-    { provide: ZLINK_CHANNEL_CLIENT, useValue: new framework.DefaultZLinkChannelClient(registration) },
-    { provide: ZLINK_FANOUT_CLIENT, useValue: new framework.DefaultZLinkFanoutClient(registration) },
-    { provide: ZLINK_ROUTE_CLIENT, useValue: new framework.DefaultZLinkRouteClient(registration) },
+    {
+      provide: ZLINK_CHANNEL_CLIENT,
+      inject: [ZLINK_FRAMEWORK_RUNTIME],
+      useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
+        new framework.DefaultZLinkChannelClient(registration, runtime.channelTransport)
+    },
+    {
+      provide: ZLINK_FANOUT_CLIENT,
+      inject: [ZLINK_FRAMEWORK_RUNTIME],
+      useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
+        new framework.DefaultZLinkFanoutClient(registration, runtime.channelTransport)
+    },
+    {
+      provide: ZLINK_ROUTE_CLIENT,
+      inject: [ZLINK_FRAMEWORK_RUNTIME],
+      useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
+        new framework.DefaultZLinkRouteClient(registration, runtime.routeTransport)
+    },
     {
       provide: ZLINK_BOUND_SESSION_FACTORY,
       inject: [ZLINK_FRAMEWORK_RUNTIME],
@@ -189,7 +213,9 @@ function conditionalClientProviders(registration: ZLinkFrameworkRegistration): P
   if (framework.hasSpotPublisherClient(registration)) {
     providers.push({
       provide: ZLINK_SPOT_PUBLISHER_CLIENT,
-      useValue: new framework.DefaultZLinkSpotPublisherClient(registration)
+      inject: [ZLINK_FRAMEWORK_RUNTIME],
+      useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
+        new framework.DefaultZLinkSpotPublisherClient(registration, runtime.channelTransport)
     });
   }
 
@@ -230,10 +256,13 @@ function conditionalClientProvidersForAsync(): Provider[] {
     },
     {
       provide: ZLINK_SPOT_PUBLISHER_CLIENT,
-      inject: [ZLINK_FRAMEWORK_REGISTRATION],
-      useFactory: (registration: ZLinkFrameworkRegistration) => {
+      inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
+      useFactory: (
+        registration: ZLinkFrameworkRegistration,
+        runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
+      ) => {
         ensureCapability(framework.hasSpotPublisherClient(registration), ZLINK_SPOT_PUBLISHER_CLIENT);
-        return new framework.DefaultZLinkSpotPublisherClient(registration);
+        return new framework.DefaultZLinkSpotPublisherClient(registration, runtime.channelTransport);
       }
     },
     {

@@ -74,6 +74,11 @@ lifecycle hook(`onApplicationBootstrap()`) 안에서 일어나는 실제 시동�
   hook 은 framework / registry runtime 을 (idempotent 하게) 먼저 시동시켜
   source 가 존재함을 보장한 다음, polling source preflight 를 거쳐 마지막에
   socket monitor 를 붙인다.
+- DI 로 주입되는 channel / fanout / route outbound client 는 transport 를 직접
+  소유하지 않는다. framework runtime host 가 channel runtime state 를 만들고,
+  client provider 는 그 host-owned transport 를 참조한다. 그래서 startup 전 호출은
+  runtime-not-started 오류가 되고, startup 이후 호출은 같은 provider 인스턴스로
+  host 가 관리하는 socket bundle 을 사용한다.
 
 > NestJS 매핑 노트: 위 약속을 만족시키려면 시동이 **runtime 별로 분리된 hook**
 > 으로 구성되어야 한다. dotnet 은 `ZLinkRegistryHostedService`,

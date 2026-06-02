@@ -18,7 +18,7 @@ test('ZLinkModule.forRoot registers always-available providers for empty options
   assert.equal(tokens.has(nestjs.ZLINK_ACTOR_MANAGER), false);
 });
 
-test('ZLinkModule.forRoot exposes capability providers only when registration enables them', () => {
+test('ZLinkModule.forRoot exposes capability providers only when registration enables them', async () => {
   class ActorFactory {}
   class StageSpot {
     constructor(context) {
@@ -47,11 +47,12 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
       instanceof framework.DefaultZLinkSpotManager,
     true
   );
-  assert.equal(
-    module.providers.find((provider) => provider.provide === nestjs.ZLINK_ROUTE_CLIENT).useValue
-      instanceof framework.DefaultZLinkRouteClient,
-    true
-  );
+  const container = await resolveModuleProviders(module, [
+    nestjs.ZLINK_ROUTE_CLIENT,
+    nestjs.ZLINK_SPOT_PUBLISHER_CLIENT,
+    nestjs.ZLINK_BOUND_SESSION_FACTORY
+  ]);
+  assert.equal(container.get(nestjs.ZLINK_ROUTE_CLIENT) instanceof framework.DefaultZLinkRouteClient, true);
   assert.deepEqual(
     module.providers.find((provider) => provider.provide === nestjs.ZLINK_BOUND_SESSION_FACTORY).inject,
     [nestjs.ZLINK_FRAMEWORK_RUNTIME]
@@ -61,11 +62,7 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
       instanceof framework.DefaultZLinkSpotOutbound,
     true
   );
-  assert.equal(
-    module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_PUBLISHER_CLIENT).useValue
-      instanceof framework.DefaultZLinkSpotPublisherClient,
-    true
-  );
+  assert.equal(container.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT) instanceof framework.DefaultZLinkSpotPublisherClient, true);
 });
 
 test('ZLinkModule.forRoot public DI clients expose callable framework contracts', async () => {
@@ -105,7 +102,7 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
   );
   await assert.rejects(
     () => spotPublisher.publishSpot('spot-events', 'topic', { ok: true }).packetName('Event').submit(),
-    /SPOT publisher runtime is not started/
+    /Channel runtime is not started/
   );
   await assert.rejects(
     () => boundSessionFactory.create('actor-1').send({ ok: true }).packetName('Push').submit(),

@@ -113,8 +113,10 @@ test('ZLinkModule.forRoot provides concrete channel and fanout clients', () => {
   const channelProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_CHANNEL_CLIENT);
   const fanoutProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_FANOUT_CLIENT);
 
-  assert.equal(channelProvider.useValue instanceof framework.DefaultZLinkChannelClient, true);
-  assert.equal(fanoutProvider.useValue instanceof framework.DefaultZLinkFanoutClient, true);
+  assert.deepEqual(channelProvider.inject, [nestjs.ZLINK_FRAMEWORK_RUNTIME]);
+  assert.deepEqual(fanoutProvider.inject, [nestjs.ZLINK_FRAMEWORK_RUNTIME]);
+  assert.equal(typeof channelProvider.useFactory, 'function');
+  assert.equal(typeof fanoutProvider.useFactory, 'function');
 });
 
 test('ZLinkChannelClient sends through public dealer/router binding sockets', async () => {
@@ -200,6 +202,54 @@ test('ZLinkChannelClient request/reply round-trips through public binding socket
     request.close();
   } finally {
     dealer.close();
+    router.close();
+    ctx.close();
+  }
+});
+
+test('ZLinkModule channel client uses runtime host channel transport after bootstrap', async () => {
+  const ctx = zlink.createContext();
+  const router = zlink.createRouterSocket(ctx);
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const module = nestjs.ZLinkModule.forRoot({
+    channels: { api: { client: { manualConnections: [endpoint] } } }
+  });
+  const container = await resolveModuleProviders(module, [
+    nestjs.ZLINK_FRAMEWORK_RUNTIME,
+    nestjs.ZLINK_CHANNEL_CLIENT
+  ]);
+  const runtime = container.get(nestjs.ZLINK_FRAMEWORK_RUNTIME);
+  const client = container.get(nestjs.ZLINK_CHANNEL_CLIENT);
+
+  try {
+    router.bind(endpoint);
+    await runtime.start();
+
+    const replyPromise = client.requestToChannel('api', { value: 'ping' }).packetName('Ping').timeout(1000).submit();
+    const request = await recvRouterMessage(router);
+    const envelope = decodeDotnetEnvelope(request.parts);
+    assert.equal(envelope.header.kind, 1);
+    assert.equal(envelope.header.channelName, 'api');
+    assert.equal(envelope.header.messageName, 'Ping');
+    assert.deepEqual(envelope.body, { value: 'ping' });
+
+    submitMultipart(
+      router.reply(request.routingId, request.requestSeq),
+      encodeDotnetEnvelope({
+        ...envelope.header,
+        kind: 2,
+        deadline: null,
+        topic: null,
+        errorCode: null,
+        errorMessage: null
+      }, { value: 'pong' })
+    );
+
+    const reply = await withTimeout(replyPromise, 1000, 'DI framework channel request reply');
+    assert.deepEqual(reply, { value: 'pong' });
+    request.close();
+  } finally {
+    await runtime.stop();
     router.close();
     ctx.close();
   }
@@ -393,4 +443,41 @@ function createMultipartRequestOperation() {
       return [];
     }
   };
+}
+
+async function resolveModuleProviders(module, requestedTokens) {
+  const values = new Map();
+  const providers = new Map(module.providers.map((provider) => [provider.provide, provider]));
+
+  for (const token of requestedTokens) {
+    await resolveToken(token);
+  }
+
+  return values;
+
+  async function resolveToken(token) {
+    if (values.has(token)) {
+      return values.get(token);
+    }
+    const provider = providers.get(token);
+    if (provider === undefined) {
+      throw new Error(`Could not find provider: ${String(token)}`);
+    }
+    if ('useValue' in provider && provider.useValue !== undefined) {
+      values.set(provider.provide, provider.useValue);
+      return provider.useValue;
+    }
+
+    if ('useFactory' in provider && provider.useFactory !== undefined) {
+      const dependencies = [];
+      for (const dependency of provider.inject ?? []) {
+        dependencies.push(await resolveToken(dependency));
+      }
+      const value = await provider.useFactory(...dependencies);
+      values.set(provider.provide, value);
+      return value;
+    }
+
+    throw new Error(`Provider ${String(token)} has no supported value or factory.`);
+  }
 }

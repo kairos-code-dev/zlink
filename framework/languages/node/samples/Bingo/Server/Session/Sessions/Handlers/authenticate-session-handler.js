@@ -27,6 +27,8 @@ class AuthenticateSessionHandler {
       .submit();
 
     await context.actors.bind(ensured.actor);
+    context.actorId = ensured.actorId;
+    context.displayName = authenticated.displayName;
     return {
       actorId: ensured.actorId,
       displayName: authenticated.displayName

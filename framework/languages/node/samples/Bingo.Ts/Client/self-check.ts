@@ -1,11 +1,26 @@
-const assert = require('node:assert/strict');
-const path = require('node:path');
-const nestjs = require('../../../packages/nestjs/dist');
-const { assertNestModule } = require('../../shared/nestjs-smoke');
-const { reserveTcpEndpoint, withServers } = require('../../shared/process-host');
-const { BingoClientApp } = require('./bingo-client-app');
+import assert from 'node:assert/strict';
+import path from 'node:path';
 
-async function main() {
+const nestjs = require('../../../../packages/nestjs/dist');
+const { assertNestModule } = require('../../../shared/nestjs-smoke');
+const { reserveTcpEndpoint, withServers } = require('../../../shared/process-host');
+const { BingoClientApp } = require('../../../Bingo/Client/bingo-client-app');
+
+interface BingoRunResult {
+  ended: {
+    status: string;
+    hostActorId: string;
+    winners: string[];
+    players: Array<{ actorId: string }>;
+  };
+  earlyHostStartRejected: boolean;
+  nonHostStartRejected: boolean;
+  startedPushCounts: number[];
+  drawnPushCounts: number[];
+  endedPushCounts: number[];
+}
+
+async function main(): Promise<void> {
   const registryEndpoint = await reserveTcpEndpoint();
   const sessionEndpoint = await reserveTcpEndpoint();
   const playEndpoint = await reserveTcpEndpoint();
@@ -18,25 +33,25 @@ async function main() {
   }, nestjs);
 
   await withServers([
-    { entry: path.resolve(__dirname, '../Server/Registry/main.js'), env: { BINGO_REGISTRY_ENDPOINT: registryEndpoint } },
+    { entry: path.resolve(__dirname, '../../../Bingo/Server/Registry/main.js'), env: { BINGO_REGISTRY_ENDPOINT: registryEndpoint } },
     {
-      entry: path.resolve(__dirname, '../Server/Session/main.js'),
+      entry: path.resolve(__dirname, '../../../Bingo/Server/Session/main.js'),
       env: {
         BINGO_SESSION_ENDPOINT: sessionEndpoint,
         BINGO_API_ENDPOINT: apiEndpoint,
         BINGO_PLAY_ENDPOINT: playEndpoint
       }
     },
-    { entry: path.resolve(__dirname, '../Server/Play/main.js'), env: { BINGO_PLAY_ENDPOINT: playEndpoint } },
+    { entry: path.resolve(__dirname, '../../../Bingo/Server/Play/main.js'), env: { BINGO_PLAY_ENDPOINT: playEndpoint } },
     {
-      entry: path.resolve(__dirname, '../Server/Api/main.js'),
+      entry: path.resolve(__dirname, '../../../Bingo/Server/Api/main.js'),
       env: {
         BINGO_API_ENDPOINT: apiEndpoint,
         BINGO_PLAY_ENDPOINT: playEndpoint
       }
     }
   ], async () => {
-    const result = await new BingoClientApp().run({ sessionEndpoint, playEndpoint });
+    const result = await new BingoClientApp().run({ sessionEndpoint, playEndpoint }) as BingoRunResult;
     assert.equal(result.ended.status, 'Finished');
     assert.equal(result.ended.hostActorId, 'player-1');
     assert.deepEqual(result.ended.winners, ['player-1', 'player-3']);
@@ -48,10 +63,10 @@ async function main() {
     assert.equal(result.endedPushCounts.length, 4);
   });
 
-  console.log('PASS Bingo');
+  console.log('PASS Bingo.Ts');
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -12,8 +12,9 @@ node framework/languages/node/samples/Bingo/Client/self-check.js
 ## Topology
 
 - `Client/`: Registry, Session, Play, API 서버 process 를 시작하고 네 player client 를
-  만든다. 각 client 는 API channel 로 인증하고 Play channel 의 actor/room request 로
-  match, start, timer 결과를 검증한다.
+  만든다. 각 client 는 Session 서버에 `AuthenticateReq`, `MatchBingoReq`,
+  `StartBingoGameReq` 를 보내고, Session 서버가 API/Play channel 로 인증과 actor relay 를
+  수행한다.
 - `Server/Api/`: `api-server-host-factory.js` 가 `bingo.api` channel 서버를 구성하고
   `handlerGroups: ['api']` 로 API handler group 을 노출한다. match handler 는
   `.NET` sample 과 같이 Play channel 로 `AllocateBingoRoom` request 를 보낸다.
@@ -34,7 +35,8 @@ node framework/languages/node/samples/Bingo/Client/self-check.js
 - host start 뒤 room timer 가 draw tick 을 실행한다.
 - timer draw 뒤 같은 draw sequence 에서 `player-1`, `player-3` 이 winner 가 된다.
 - started, drawn, ended notification 이 모든 bound session 으로 전달된다.
-- client 가 Server process 의 관찰 가능한 준비 신호를 받은 뒤 실제 TCP channel request 를 보낸다.
+- client 가 Server process 의 관찰 가능한 준비 신호를 받은 뒤 실제 TCP route/channel
+  request 를 보낸다.
 
 ## 회귀 테스트
 

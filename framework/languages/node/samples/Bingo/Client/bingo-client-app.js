@@ -1,20 +1,28 @@
 const { createChannelClient } = require('../../shared/channel-runtime');
+const { createRouteClient } = require('../../shared/route-runtime');
+const { reserveTcpEndpoint } = require('../../shared/process-host');
 const { BingoPlayerClient } = require('./bingo-player-client');
 const { SampleNames, SampleTimings } = require('../Shared/Configuration/sample-names');
 
 class BingoClientApp {
   async run(options) {
-    const apiClient = await createChannelClient({
-      channelName: SampleNames.apiChannel,
-      peers: [options.apiEndpoint]
-    });
     const playClient = await createChannelClient({
       channelName: SampleNames.playChannel,
       peers: [options.playEndpoint]
     });
+    const routeClients = [];
 
     try {
-      const clients = SampleNames.actorIds.map((actorId) => new BingoPlayerClient(actorId, apiClient, playClient));
+      const clients = [];
+      for (const actorId of SampleNames.actorIds) {
+        const routeClient = await createRouteClient({
+          endpoint: await reserveTcpEndpoint(),
+          routingId: `bingo-client-${actorId}`,
+          peers: [options.sessionEndpoint]
+        });
+        routeClients.push(routeClient);
+        clients.push(new BingoPlayerClient(actorId, routeClient));
+      }
       const authentications = [];
       for (const client of clients) {
         authentications.push(await client.authenticate());
@@ -52,8 +60,10 @@ class BingoClientApp {
       validate(result);
       return result;
     } finally {
+      for (const routeClient of routeClients.reverse()) {
+        await routeClient.stop();
+      }
       await playClient.stop();
-      await apiClient.stop();
     }
   }
 }

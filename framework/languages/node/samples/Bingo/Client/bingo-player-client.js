@@ -3,24 +3,16 @@ const { actorDisplayName } = require('../Shared/Contracts/messages');
 const { SampleTimings } = require('../Shared/Configuration/sample-names');
 
 class BingoPlayerClient {
-  constructor(actorId, apiClient, playClient) {
+  constructor(actorId, sessionClient) {
     this.actorId = actorId;
     this.displayName = actorDisplayName(actorId);
-    this.apiClient = apiClient;
-    this.playClient = playClient;
+    this.sessionClient = sessionClient;
     this.notifications = new BingoNotificationInbox(actorId);
   }
 
   async authenticate() {
-    const authenticated = await this.apiClient.request('AuthenticatePlayerReq', {
+    const authenticated = await this.sessionClient.request('session-server', 'AuthenticateReq', {
       accessToken: this.actorId
-    }, SampleTimings.requestTimeout);
-    if (!authenticated.accepted) {
-      throw new Error(authenticated.reason);
-    }
-    await this.playClient.request('EnsurePlayerActorReq', {
-      actorId: authenticated.actorId,
-      displayName: authenticated.displayName
     }, SampleTimings.requestTimeout);
     this.displayName = authenticated.displayName;
     return {
@@ -30,18 +22,14 @@ class BingoPlayerClient {
   }
 
   async match() {
-    return await this.playClient.request('MatchBingoReq', {
-      actorId: this.actorId,
-      displayName: this.displayName,
+    return await this.sessionClient.request('session-server', 'MatchBingoReq', {
       mode: 'four-player'
     }, SampleTimings.requestTimeout);
   }
 
   async start(roomId) {
-    const result = await this.playClient.request('StartBingoGameReq', {
-      roomId,
-      actorId: this.actorId,
-      displayName: this.displayName
+    const result = await this.sessionClient.request('session-server', 'StartBingoGameReq', {
+      roomId
     }, SampleTimings.requestTimeout);
     if (result.rejected) {
       throw new Error(result.reason);

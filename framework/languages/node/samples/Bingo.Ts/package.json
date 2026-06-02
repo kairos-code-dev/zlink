@@ -1,0 +1,10 @@
+{
+  "name": "@zlink-systems/sample-bingo-ts",
+  "version": "0.1.0-SNAPSHOT",
+  "private": true,
+  "main": "dist/Client/self-check.js",
+  "scripts": {
+    "build": "node ../../../../../bindings/node/node_modules/typescript/bin/tsc -p tsconfig.json",
+    "start": "node dist/Client/self-check.js"
+  }
+}

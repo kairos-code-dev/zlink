@@ -10,7 +10,8 @@ const requiredSamples = [
   'StreamingClient',
   'TicTacToe',
   'TicTacToe.SessionGateway',
-  'Bingo'
+  'Bingo',
+  'Bingo.Ts'
 ];
 
 test('node samples define the required sample directories and README files', () => {
@@ -138,13 +139,38 @@ test('node samples use only framework and connector public APIs', () => {
 
 test('node framework samples exercise the NestJS module surface', () => {
   const missing = [];
-  for (const sample of ['TicTacToe', 'TicTacToe.SessionGateway', 'Bingo']) {
+  for (const sample of ['TicTacToe', 'TicTacToe.SessionGateway', 'Bingo', 'Bingo.Ts']) {
     const usesNestModule = sampleSourceFiles(path.join(samplesRoot, sample))
       .some((file) => fs.readFileSync(file, 'utf8').includes('packages/nestjs/dist'));
     if (!usesNestModule) {
       missing.push(sample);
     }
   }
+
+  assert.deepEqual(missing, []);
+});
+
+test('Bingo TypeScript sample builds and delegates to separated Bingo JS servers', () => {
+  const packageJson = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'package.json'), 'utf8');
+  const tsconfig = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'tsconfig.json'), 'utf8');
+  const client = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'self-check.ts'), 'utf8');
+  const readme = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'README.ko.md'), 'utf8');
+  const runSamples = fs.readFileSync(path.join(samplesRoot, 'run_samples.sh'), 'utf8');
+  const required = [
+    [packageJson, '@zlink-systems/sample-bingo-ts'],
+    [packageJson, 'tsc -p tsconfig.json'],
+    [tsconfig, '"outDir": "dist"'],
+    [client, "require('../../../Bingo/Client/bingo-client-app')"],
+    [client, "../../../Bingo/Server/Api/main.js"],
+    [client, 'PASS Bingo.Ts'],
+    [readme, 'TypeScript client entrypoint'],
+    [runSamples, 'samples/Bingo.Ts'],
+    [runSamples, 'npm run build'],
+    [runSamples, 'npm run start']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
 
   assert.deepEqual(missing, []);
 });
@@ -366,10 +392,11 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [clientApp, 'startedPushCounts.every'],
     [clientApp, 'drawnPushCounts.every'],
     [clientApp, 'endedPushCounts.every'],
-    [playerClient, "apiClient.request('AuthenticatePlayerReq'"],
-    [playerClient, "playClient.request('EnsurePlayerActorReq'"],
-    [playerClient, "playClient.request('MatchBingoReq'"],
-    [playerClient, "playClient.request('StartBingoGameReq'"],
+    [clientApp, 'createRouteClient'],
+    [clientApp, 'sessionEndpoint'],
+    [playerClient, "sessionClient.request('session-server', 'AuthenticateReq'"],
+    [playerClient, "sessionClient.request('session-server', 'MatchBingoReq'"],
+    [playerClient, "sessionClient.request('session-server', 'StartBingoGameReq'"],
     [inbox, 'PlayerJoinedNotify'],
     [inbox, 'BingoGameStartedNotify'],
     [inbox, 'BingoNumberDrawnNotify'],
@@ -397,8 +424,12 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [match, '.timeout(10000)'],
     [match, '.submit()'],
     [sessionFactory, 'AuthenticateSessionHandler'],
+    [sessionFactory, 'sessionContexts'],
     [sessionFactory, "channelName: 'bingo.api'"],
     [sessionFactory, "channelName: 'bingo.play'"],
+    [sessionFactory, "packetName: 'MatchBingoReq'"],
+    [sessionFactory, "packetName: 'StartBingoGameReq'"],
+    [sessionFactory, 'relayToPlay'],
     [session, 'class BingoSession'],
     [session, 'requireSingleBoundActor'],
     [authenticateSession, ".packetName('AuthenticatePlayerReq')"],
@@ -437,6 +468,8 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
   assert.deepEqual(missing, []);
   assert.equal(apiFactory.includes('createRouteClient'), false);
   assert.equal(client.includes('createRouteClient'), false);
+  assert.equal(playerClient.includes('apiClient.request('), false);
+  assert.equal(playerClient.includes('playClient.request('), false);
   assert.equal(client.includes("'RunBingo'"), false);
   assert.equal(match.includes('this.playClient.request('), false);
   assert.equal(match.includes("'RunBingoRoom'"), false);

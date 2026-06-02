@@ -82,9 +82,11 @@ as public import paths. Do not create capitalized `src/zlink/Contracts` or
 `src/zlink/Runtime`; Python package names stay lower-case. The following tree
 is the aligned implementation structure. Public classes, functions, exceptions,
 enums, type aliases, and builder contracts belong in `contracts/` and are
-re-exported intentionally from `zlink`. Native extension calls, `ctypes`/CFFI
-declarations, handle owners, callback trampolines, marshalling, and request
-progress helpers belong under `_runtime` or `_native`.
+re-exported intentionally from `zlink`. Native extension calls, handle owners,
+callback trampolines, marshalling, and request progress helpers belong under
+`_runtime` or `_native`. Data-plane hot paths should not loop through core
+functions part by part from Python through `ctypes` or CFFI; they should call a
+private compiled extension module that batches the core C API work.
 
 File granularity follows the common policy in `../README.md`: keep one file
 per independent public concept or tight operation/model group. Very small
@@ -164,6 +166,7 @@ bindings/python/
 |   |   |   +-- options/
 |   |   |   |   +-- option_mapping.py
 |   |   +-- _native/
+|   |   |   +-- _zlink_native.*
 |   |   +-- native/
 +-- codecs/
 +-- tests/
@@ -319,6 +322,84 @@ runtime files. The package root may instantiate runtime implementations in
 factories, but it must export contract names, not private implementation
 modules.
 
+## Native Bridge Implementation Rules
+
+The target Python implementation is a thin public Python surface backed by a
+private compiled native bridge. The `zlink` package and `contracts/` own the
+public API, while the compiled extension module under `_native` owns
+performance-sensitive calls into the core C API.
+
+`ctypes` or CFFI ABI mode is allowed only for low-frequency paths such as
+platform loading, diagnostics, or temporary fallback during migration. Paths
+that repeat per message, such as send, routed send, publish, recv, subscribe,
+router recv, request/reply, and SPOT data-plane operations, must go through the
+compiled extension module. This reduces Python call count, dynamic marshalling,
+and per-part object creation.
+
+The compiled extension module is not public API. Module names, capsule types,
+native owner types, and error helper functions must not appear in
+`zlink.__init__`, type hints, API reference output, samples, or perf code.
+Users continue to use only public `zlink` factories and public objects.
+
+### Hot Path Bridge
+
+The native bridge must perform at least the following work inside a single
+Python extension call.
+
+- Validate payloads supporting the Python buffer protocol and convert them into
+  a `zlink_msg_t` part array.
+- Call `zlink_send_part`, `zlink_send_part_rid`, and `zlink_publish_part` family
+  functions in a native loop for every part.
+- Call `zlink_recv_part`, `zlink_subscribe_part`, and `zlink_router_recv_part`
+  family functions in a native loop and return one result containing the
+  private receive owner and metadata.
+- Close remaining native parts on failed send/recv and return enough
+  errno/result information for the Python runtime to raise the public exception
+  domain.
+- Release the GIL while blocking send/recv/request work does not touch Python
+  objects.
+
+The Python runtime layer wraps this private result in public objects such as
+`Received`, `TopicMessage`, `SubscriptionEvent`, or request results. Public
+objects manage the private receive owner's lifetime. That owner may be
+native-backed or bytes-backed, but raw pointers and capsules must not be
+user-accessible.
+
+### Buffer And Copy Policy
+
+Send payloads accept values that support the Python buffer protocol, such as
+`bytes`, `bytearray`, and `memoryview`. The native bridge checks contiguity and
+readonly state, copying only when required. Calls where core takes message
+ownership must make native part lifetime explicit. Calls that borrow Python
+buffers must keep the Python owner alive until native submission is complete.
+
+Receive payloads should be exposable as buffer views that remain valid while
+the public received object is open. A native-backed owner may expose the core
+buffer directly; a bytes-backed owner may expose private immutable bytes
+storage. `to_bytes()` is either the explicit copy path or the bytes-backed
+storage return path. After a public `Received` object is closed, accessing its
+received parts must fail as before.
+
+### Callback And Threading
+
+Native callback trampolines belong at the private boundary between `_runtime`
+and `_native`. They acquire the GIL only when they need to call a Python
+handler, and handler execution follows the existing dispatcher rules. Callback
+paths should let public received objects manage lifetime through a private
+owner.
+
+### Build And Packaging
+
+Python wheels must include the compiled extension module. The extension module
+must use the same runtime lookup rules as the packaged `libzlink` artifact so a
+default wheel works without extra environment variables.
+
+Source builds may lack the required C/C++ compiler or Python development
+headers. In that case the build must fail clearly. It must not silently fall
+back to a pure Python hot path and distort performance measurements. If a
+fallback is needed, perf runners must print that the fallback is active and must
+not treat those results as official performance numbers.
+
 ## Construction Entry Points
 
 Public construction is provided by package-root factories and public owner
@@ -468,8 +549,13 @@ logical spot.
 - Hot paths must not use reflection-style attribute lookup, dynamic dispatch by
   string, avoidable allocation, avoidable `bytes` copies, hidden sleeps, busy
   waits, broad locks, or thread joins.
-- Native extension or FFI code should materialize public Python values
-  directly from the core part substrate.
+- Per-message hot paths must go through the private compiled extension module.
+  Repeating `ctypes`/CFFI ABI calls from a per-part Python loop is not the
+  official performance implementation.
+- Native extension code should materialize public Python values directly from
+  the core part substrate.
+- Blocking native work should be separated from Python object access and should
+  release the GIL while possible.
 - Avoid one polling thread or timer per request when progress can be shared by
   handle.
 - Perf, samples, and tests use public `zlink` exports only.
@@ -493,6 +579,8 @@ logical spot.
 - Tests, samples, examples, and perf do not import underscore modules.
 - Native-backed resources are created through package-root factories or
   contract methods and are typed as contract classes/protocols.
+- Official perf paths use the compiled extension module, and fallback paths do
+  not silently mix into performance results.
 - No old aliases, duplicate operation-start names, or deprecated wrappers are
   kept only for compatibility.
 

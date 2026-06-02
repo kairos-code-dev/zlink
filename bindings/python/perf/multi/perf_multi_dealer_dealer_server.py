@@ -3,6 +3,7 @@ import threading
 import time
 
 import zlink
+from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     apply_multi_auto_hwm_msg_unit,
@@ -56,6 +57,45 @@ def main(argv=None):
                     poll_events = zlink.create_poll_events(1)
                     start_event.wait()
                     if stop_event.is_set():
+                        return
+                    native_result = _native_bridge.recv_count_active(
+                        dealer._handle,
+                        args.msg_size,
+                        max(1, int(args.duration)),
+                        run_id,
+                    )
+                    if native_result is not None:
+                        (
+                            count,
+                            throughput,
+                            bandwidth,
+                            mean_ms,
+                            p95_ms,
+                            p99_ms,
+                            native_errno,
+                        ) = native_result
+                        if native_errno != 0:
+                            raise RuntimeError(
+                                "native multi dealer-dealer receive failed: "
+                                f"errno={native_errno}"
+                            )
+                        if count <= 0:
+                            raise RuntimeError(
+                                "multi dealer-dealer server did not receive any active message"
+                            )
+                        metrics = {
+                            "throughput": throughput,
+                            "bandwidth": bandwidth,
+                            "latency": mean_ms,
+                            "latency_p95": p95_ms,
+                            "latency_p99": p99_ms,
+                        }
+                        print_result_lines(
+                            "MULTI_DEALER_DEALER",
+                            args.transport,
+                            args.msg_size,
+                            metrics,
+                        )
                         return
                     active_deadline = time.perf_counter() + active_duration_s
                     latencies = []

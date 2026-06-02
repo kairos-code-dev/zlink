@@ -51,6 +51,7 @@ from ...._native.ffi import (
     ZlinkSpotNodeSubjectFilter,
     lib,
 )
+from ...._native import bridge as _native_bridge
 from ...messaging.message_materializer import Message
 from ...handles.native_support import (
     CloseError,
@@ -275,6 +276,22 @@ def _timeout_to_ms(timeout):
     return max(1, int(float(timeout) * 1000))
 
 
+def _payload_can_use_native_bridge(payload):
+    parts = payload if isinstance(payload, (list, tuple)) else (payload,)
+    if not parts:
+        return False
+    for part in parts:
+        if isinstance(part, Message):
+            return False
+        try:
+            view = memoryview(part)
+        except TypeError:
+            return False
+        if not view.c_contiguous:
+            return False
+    return True
+
+
 
 def _make_spot_routed_reply_sender(spot, node_rid, spot_rid, seq):
     """Return a zero-arg factory that yields a fresh ReplyOp for this routed
@@ -402,6 +419,18 @@ class Spot(SpotActorJoinMixin):
         try:
             _ensure_not_in_callback("blocking publish")
             topic_bytes = _validated_c_string_value(topic, field="topic", max_length=255)
+            if _payload_can_use_native_bridge(parts):
+                bridged = _native_bridge.spot_publish_submit_parts(
+                    self._handle,
+                    topic_bytes,
+                    parts,
+                    flags,
+                )
+                if bridged is not None:
+                    rc, err = bridged
+                    if int(rc) != 0:
+                        _raise_result_error(SubmitError, SubmitResult, rc, err)
+                    return True
             native_parts = self._native_parts_from_payload(parts)
             rc, err = _submit_parts(
                 native_parts,
@@ -435,6 +464,18 @@ class Spot(SpotActorJoinMixin):
             channel_bytes = _validated_c_string_value(
                 channel_name, field="channel_name", max_length=255
             )
+            if _payload_can_use_native_bridge(parts):
+                bridged = _native_bridge.spot_send_channel_parts(
+                    self._handle,
+                    channel_bytes,
+                    parts,
+                    flags,
+                )
+                if bridged is not None:
+                    rc, err = bridged
+                    if int(rc) != 0:
+                        _raise_result_error(SubmitError, SubmitResult, rc, err)
+                    return True
             native_parts = self._native_parts_from_payload(parts)
             _submit_channel_send(self._handle, channel_bytes, native_parts, flags)
             return True
@@ -454,9 +495,24 @@ class Spot(SpotActorJoinMixin):
     def _send_to_spot_submit(self, dest_node_rid, dest_spot_rid, parts, flags=0):
         try:
             _ensure_not_in_callback("blocking send")
+            node_rid_bytes = _validated_routing_id_bytes(dest_node_rid)
+            spot_rid_bytes = _validated_routing_id_bytes(dest_spot_rid)
+            if _payload_can_use_native_bridge(parts):
+                bridged = _native_bridge.spot_send_spot_parts(
+                    self._handle,
+                    node_rid_bytes,
+                    spot_rid_bytes,
+                    parts,
+                    flags,
+                )
+                if bridged is not None:
+                    rc, err = bridged
+                    if int(rc) != 0:
+                        _raise_result_error(SubmitError, SubmitResult, rc, err)
+                    return True
             native_parts = self._native_parts_from_payload(parts)
-            native_node = _copy_routing_id(dest_node_rid)
-            native_spot = _copy_routing_id(dest_spot_rid)
+            native_node = _copy_routing_id(node_rid_bytes)
+            native_spot = _copy_routing_id(spot_rid_bytes)
             _submit_spot_send(
                 self._handle,
                 native_node,

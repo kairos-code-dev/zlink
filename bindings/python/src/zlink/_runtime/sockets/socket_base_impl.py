@@ -10,6 +10,7 @@ from ...contracts.sockets.socket_options import (
     create_router_socket_options,
 )
 from ..buffers.payload_buffers import _read_int32
+from ..._native import bridge as _native_bridge
 from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
 from ..handles.native_support import (
     _copy_routing_id,
@@ -17,6 +18,7 @@ from ..handles.native_support import (
     _msg_to_bytes,
     _REPLY_HANDLER,
     _ROUTER_HANDLER,
+    _BytesReceivedPartsOwner,
     _ReceivedPartsOwner,
     ZlinkRoutingId,
     _is_eagain,
@@ -82,6 +84,7 @@ from .socket_base import (
     _SubscriberOptionSocket,
     _SubscriberSocket,
     _close_native_parts,
+    _in_callback,
     _part_flag,
     _submit_parts,
 )
@@ -90,7 +93,9 @@ from .socket_base import (
 class PairSocket(_SendReadySocket, _EndpointSocket, _MessageSocket):
     _socket_type_value = SocketType.PAIR
 
-    def send(self):
+    def send(self, payload=None, *, flags=0):
+        if payload is not None:
+            return _MessageSocket.send(self, payload, flags=flags)
         from ..service.spot import SendOp
 
         return SendOp(
@@ -118,7 +123,9 @@ class DealerSocket(
             lambda: bool(self._pending_requests),
         )
 
-    def send(self):
+    def send(self, payload=None, *, flags=0):
+        if payload is not None:
+            return _MessageSocket.send(self, payload, flags=flags)
         from ..service.spot import SendOp
 
         return SendOp(
@@ -240,7 +247,9 @@ class RouterSocket(
     def router_options(self):
         return create_router_socket_options(self)
 
-    def send(self, routing_id):
+    def send(self, routing_id, payload=None, *, flags=0):
+        if payload is not None:
+            return _RoutedMessageSocket.send(self, routing_id, payload, flags=flags)
         from ..service.spot import SendOp
 
         return SendOp(
@@ -302,6 +311,58 @@ class RouterSocket(
         if rc != 0:
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
+    def _recv_parts_via_native_bridge(self, flags):
+        if _in_callback():
+            return None
+        result = _native_bridge.router_recv_parts(self._handle, flags)
+        if result is None:
+            return None
+        rc, err, routing, spot_routing, request_seq, parts = result
+        if int(rc) != 0:
+            _raise_result_error(RecvError, RecvResult, rc, err)
+        routing_id = RoutingId.from_(routing) if routing is not None else None
+        spot_rid = RoutingId.from_(spot_routing) if spot_routing is not None else None
+        return (
+            _BytesReceivedPartsOwner(parts),
+            routing_id,
+            spot_rid,
+            int(request_seq),
+        )
+
+    def _replace_router_received(
+        self, received, owner, routing_id, spot_rid, request_seq_value
+    ):
+        socket = self
+        request_seq_for_reply = request_seq_value
+
+        def _make_router_send_op():
+            from ..service.spot import SendOp
+
+            return SendOp(
+                socket,
+                lambda parts, flags: socket._send_op_submit(
+                    routing_id, spot_rid, parts, flags
+                ),
+            )
+
+        def _make_router_reply_op():
+            from ..service.spot import ReplyOp
+
+            return ReplyOp(
+                lambda parts, flags: socket._reply_from_receive_context(
+                    routing_id, spot_rid, request_seq_for_reply, parts, flags=flags
+                )
+            )
+
+        received._replace(
+            owner,
+            routing_id=routing_id,
+            spot_rid=spot_rid,
+            request_seq=request_seq_value if request_seq_value != 0 else None,
+            send_sender=_make_router_send_op,
+            reply_sender=_make_router_reply_op,
+        )
+
     def recv_into(self, received, *, flags=0):
         """Canonical caller-provided storage routed recv.
 
@@ -316,6 +377,18 @@ class RouterSocket(
         if received is None:
             raise TypeError("received must be a Received")
         try:
+            bridged = self._recv_parts_via_native_bridge(flags)
+            if bridged is not None:
+                owner, routing_id, spot_rid, request_seq_value = bridged
+                self._replace_router_received(
+                    received,
+                    owner,
+                    routing_id,
+                    spot_rid,
+                    request_seq_value,
+                )
+                return True
+
             source_node_rid = ctypes.POINTER(ZlinkRoutingId)()
             source_spot_rid = ctypes.POINTER(ZlinkRoutingId)()
             request_seq = ctypes.c_uint64()
@@ -377,35 +450,12 @@ class RouterSocket(
         routing_id = RoutingId(source_node) if source_node else None
         spot_rid = RoutingId(source_spot) if source_spot else None
         request_seq_value = int(request_seq.value)
-        socket = self
-        request_seq_for_reply = request_seq_value
-
-        def _make_router_send_op():
-            from ..service.spot import SendOp
-
-            return SendOp(
-                socket,
-                lambda parts, flags: socket._send_op_submit(
-                    routing_id, spot_rid, parts, flags
-                ),
-            )
-
-        def _make_router_reply_op():
-            from ..service.spot import ReplyOp
-
-            return ReplyOp(
-                lambda parts, flags: socket._reply_from_receive_context(
-                    routing_id, spot_rid, request_seq_for_reply, parts, flags=flags
-                )
-            )
-
-        received._replace(
+        self._replace_router_received(
+            received,
             _ReceivedPartsOwner(parts_array, part_count),
-            routing_id=routing_id,
-            spot_rid=spot_rid,
-            request_seq=request_seq_value if request_seq_value != 0 else None,
-            send_sender=_make_router_send_op,
-            reply_sender=_make_router_reply_op,
+            routing_id,
+            spot_rid,
+            request_seq_value,
         )
         return True
 
@@ -877,7 +927,9 @@ class PubSocket(
     def pub_options(self):
         return create_pub_socket_options(self)
 
-    def publish(self, topic):
+    def publish(self, topic, payload=None, *, flags=0):
+        if payload is not None:
+            return _PublisherSocket.publish(self, topic, payload, flags=flags)
         from ..service.spot import SendOp
 
         return SendOp(
@@ -909,7 +961,9 @@ class XPubSocket(
     def pub_options(self):
         return create_pub_socket_options(self)
 
-    def publish(self, topic):
+    def publish(self, topic, payload=None, *, flags=0):
+        if payload is not None:
+            return _PublisherSocket.publish(self, topic, payload, flags=flags)
         from ..service.spot import SendOp
 
         return SendOp(

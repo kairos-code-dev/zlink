@@ -4,6 +4,7 @@ import errno
 from collections import deque
 
 import zlink
+from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     apply_multi_auto_hwm_msg_unit,
@@ -15,6 +16,7 @@ from perf_multi_common import (
     safe_poll,
     send_nonblocking,
 )
+from perf_stop_token import STOP_TOKEN
 
 
 def main(argv=None):
@@ -41,16 +43,24 @@ def main(argv=None):
             server.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
 
-            def packet_handler(routing_id, header, body):
-                # C perf_multi_stream_session.hpp stream_packet_handler_
-                # callback: the installed packet handler is the measured
-                # POLLIN drain surface; queue the framed echo for POLLOUT
-                # backpressure draining.
-                frame = build_packet_frame(header, body)
-                with pending_lock:
-                    pending.append((bytes(routing_id), frame))
+            native_stream_session = None
+            if _native_bridge.available():
+                native_stream_session = _native_bridge.stream_echo_install(
+                    server._handle,
+                    STOP_TOKEN,
+                )
 
-            server.on_packet(packet_handler)
+            if native_stream_session is None:
+                def packet_handler(routing_id, header, body):
+                    # C perf_multi_stream_session.hpp stream_packet_handler_
+                    # callback: the installed packet handler is the measured
+                    # POLLIN drain surface; queue the framed echo for POLLOUT
+                    # backpressure draining.
+                    frame = build_packet_frame(header, body)
+                    with pending_lock:
+                        pending.append((bytes(routing_id), frame))
+
+                server.on_packet(packet_handler)
 
             def drain_pending():
                 while True:
@@ -78,11 +88,23 @@ def main(argv=None):
             # the pending deque with the bounded aux poll wait
             # (perf_aux_poll_wait_ms == 100ms); idle poll when empty. The
             # POLLIN data path is the installed packet handler above.
-            aux_wait_ms = 100
+            aux_wait_ms = 10 if native_stream_session is not None else 100
             with zlink.create_poller() as poller:
                 poller.add_socket(server, zlink.PollEventFlag.POLLOUT, 0)
                 poll_events = zlink.create_poll_events(1)
                 while not stop.is_set():
+                    if native_stream_session is not None:
+                        stopped, pending_count = _native_bridge.stream_echo_drain(
+                            native_stream_session
+                        )
+                        if stopped:
+                            stop.set()
+                            break
+                        if not pending_count:
+                            stop.wait(aux_wait_ms / 1000.0)
+                            continue
+                        safe_poll(poller, poll_events, aux_wait_ms)
+                        continue
                     with pending_lock:
                         has_pending = bool(pending)
                     if has_pending:

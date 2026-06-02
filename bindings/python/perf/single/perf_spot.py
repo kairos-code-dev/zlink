@@ -4,6 +4,7 @@ import threading
 import time
 
 import zlink
+from zlink._native import bridge as _native_bridge
 
 from perf_common import (
     HEADER_SIZE,
@@ -130,6 +131,15 @@ def main(argv=None):
                                 publisher_node.last_endpoint()
                             )
                             subscriber.set_subscription(TOPIC)
+                            native_count_session = (
+                                _native_bridge.spot_count_install(
+                                    subscriber._handle,
+                                    TOPIC.encode("utf-8"),
+                                    STOP_TOKEN,
+                                    args.msg_size,
+                                    run_id,
+                                )
+                            )
 
                             def on_dispatch(current_spot, info):
                                 if (
@@ -194,16 +204,25 @@ def main(argv=None):
                                     finally:
                                         received_message.close()
 
-                            subscriber.on_dispatch_event(on_dispatch)
+                            if native_count_session is None:
+                                subscriber.on_dispatch_event(on_dispatch)
 
                             ready_deadline = time.monotonic() + (
                                 resolve_single_connect_ready_timeout_ms()
                                 / 1000.0
                             )
                             while (
-                                not probe_ready.is_set()
-                                and time.monotonic() < ready_deadline
-                            ):
+                                (
+                                    native_count_session is None
+                                    and not probe_ready.is_set()
+                                )
+                                or (
+                                    native_count_session is not None
+                                    and not _native_bridge.spot_count_stats(
+                                        native_count_session, 1
+                                    )[0]
+                                )
+                            ) and time.monotonic() < ready_deadline:
                                 _spot_publish_blocking(
                                     publisher,
                                     TOPIC,
@@ -217,8 +236,19 @@ def main(argv=None):
                                 # event wait (start gate, not shutdown
                                 # synchronization) per
                                 # PERF_SINGLE_TEST_POLICY § 1.4.
-                                probe_ready.wait(0.05)
-                            if not probe_ready.is_set():
+                                if native_count_session is None:
+                                    probe_ready.wait(0.05)
+                                else:
+                                    poll_idle_ms(50)
+                            if native_count_session is None:
+                                ready = probe_ready.is_set()
+                            else:
+                                ready = bool(
+                                    _native_bridge.spot_count_stats(
+                                        native_count_session, 1
+                                    )[0]
+                                )
+                            if not ready:
                                 raise RuntimeError(
                                     "spot benchmark probe-ready timeout"
                                 )
@@ -228,22 +258,106 @@ def main(argv=None):
                             active_deadline[0] = (
                                 time.perf_counter() + args.duration
                             )
-                            while time.perf_counter() < active_deadline[0]:
-                                _spot_publish_blocking(
-                                    publisher,
-                                    TOPIC,
-                                    stamp_payload(
-                                        active_payload,
-                                        phase=1,
-                                        run_id=run_id,
-                                    ),
+                            if native_count_session is not None:
+                                _native_bridge.spot_count_start(
+                                    native_count_session,
+                                    max(1, int(args.duration)),
                                 )
-                            # C perf_spot.cpp: publish the wire stop token
-                            # through the dedicated stop publisher on the
-                            # subscriber node, not the active publisher.
-                            _spot_publish_blocking(
-                                stop_publisher, TOPIC, STOP_TOKEN
+                            native_publish = _native_bridge.spot_publish_active(
+                                publisher._handle,
+                                stop_publisher._handle,
+                                TOPIC.encode("utf-8"),
+                                STOP_TOKEN,
+                                args.msg_size,
+                                max(1, int(args.duration)),
+                                run_id,
                             )
+                            if native_publish is None:
+                                while time.perf_counter() < active_deadline[0]:
+                                    _spot_publish_blocking(
+                                        publisher,
+                                        TOPIC,
+                                        stamp_payload(
+                                            active_payload,
+                                            phase=1,
+                                            run_id=run_id,
+                                        ),
+                                    )
+                                # C perf_spot.cpp: publish the wire stop
+                                # token through the dedicated stop publisher
+                                # on the subscriber node, not the active
+                                # publisher.
+                                _spot_publish_blocking(
+                                    stop_publisher, TOPIC, STOP_TOKEN
+                                )
+                            else:
+                                _sent_count, native_errno = native_publish
+                                if native_errno != 0:
+                                    raise RuntimeError(
+                                        "native spot publish active phase "
+                                        f"failed: errno={native_errno}"
+                                    )
+
+                            if native_count_session is not None:
+                                wait_deadline = time.monotonic() + (
+                                    _env_int(
+                                        "PERF_SINGLE_STOP_WAIT_MS", 2000
+                                    )
+                                    / 1000.0
+                                )
+                                native_stats = None
+                                while time.monotonic() < wait_deadline:
+                                    native_stats = (
+                                        _native_bridge.spot_count_stats(
+                                            native_count_session,
+                                            max(1, int(args.duration)),
+                                        )
+                                    )
+                                    if native_stats[1] or native_stats[2]:
+                                        break
+                                    poll_idle_ms(10)
+                                if native_stats is None:
+                                    native_stats = (
+                                        _native_bridge.spot_count_stats(
+                                            native_count_session,
+                                            max(1, int(args.duration)),
+                                        )
+                                    )
+                                (
+                                    _ready,
+                                    _stopped,
+                                    failed,
+                                    total,
+                                    throughput,
+                                    bandwidth,
+                                    mean_ms,
+                                    p95_ms,
+                                    p99_ms,
+                                    native_errno,
+                                ) = native_stats
+                                if failed:
+                                    raise RuntimeError(
+                                        "native spot count failed: "
+                                        f"errno={native_errno}"
+                                    )
+                                if total == 0:
+                                    raise RuntimeError(
+                                        "spot benchmark did not receive any active message"
+                                    )
+                                metrics = {
+                                    "throughput": throughput,
+                                    "bandwidth": bandwidth,
+                                    "latency": mean_ms,
+                                    "latency_p95": p95_ms,
+                                    "latency_p99": p99_ms,
+                                }
+                                print_result_lines(
+                                    "SPOT",
+                                    args.transport,
+                                    args.msg_size,
+                                    metrics,
+                                )
+                                return
 
                             # Stop can be delayed behind saturated SPOT data
                             # queues on slow binding paths. Keep the measured

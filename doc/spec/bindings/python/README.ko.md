@@ -74,8 +74,10 @@ API 레퍼런스가 계약의 Python 패키지 프로젝션이다. `zlink.Contra
 `src/zlink/Contracts`나 `src/zlink/Runtime`을 만들지 않는다. Python 패키지 이름은
 소문자를 유지한다. 다음 트리가 정렬된 구현 구조다. 공개 클래스, 함수, 예외, enum,
 타입 alias, 빌더 계약은 `contracts/`에 속하며 `zlink`에서 의도적으로 재-export된다.
-네이티브 확장 호출, `ctypes`/CFFI 선언, 핸들 소유자, 콜백 트램폴린, marshalling,
-request 진행 헬퍼는 `_runtime`이나 `_native` 아래에 둔다.
+네이티브 확장 호출, 핸들 소유자, 콜백 트램폴린, marshalling, request 진행 헬퍼는
+`_runtime`이나 `_native` 아래에 둔다. 데이터 전송 핵심 경로는 Python 코드가
+`ctypes`나 CFFI로 part마다 코어 함수를 반복 호출하는 구조가 아니라, 비공개
+컴파일된 확장 모듈이 코어 C API를 묶어서 호출하는 구조를 목표로 한다.
 
 파일 단위는 `../README.md`의 공통 정책을 따른다. 독립적인 공개 개념 하나 또는
 긴밀한 operation/model 그룹마다 파일 하나를 유지한다. 매우 작은 프로토콜, 콜백,
@@ -155,6 +157,7 @@ bindings/python/
 |   |   |   +-- options/
 |   |   |   |   +-- option_mapping.py
 |   |   +-- _native/
+|   |   |   +-- _zlink_native.*
 |   |   +-- native/
 +-- codecs/
 +-- tests/
@@ -287,6 +290,76 @@ Python에서 빠르게 찾을 수 있도록 동일한 개념적 파일 그룹화
 런타임 파일은 계약 타입을 import할 수 있지만, 계약 파일은 런타임 파일을
 import하지 않는다. 패키지 루트는 팩토리에서 런타임 구현을 인스턴스화할 수
 있지만, 비공개 구현 모듈이 아니라 계약 이름을 export한다.
+
+## 네이티브 브리지 구현 규칙
+
+Python 바인딩의 목표 구현은 얇은 Python 공개 표면과 비공개 컴파일된 네이티브
+브리지다. 공개 API는 `zlink` 패키지와 `contracts/`가 소유하고, 성능에 민감한
+코어 호출 경계는 `_native` 아래의 컴파일된 확장 모듈이 소유한다.
+
+`ctypes`나 CFFI ABI 모드는 플랫폼 로딩, 진단, 전이 기간의 대체 경로처럼 낮은 빈도
+경로에만 허용한다. send, routed send, publish, recv, subscribe, router recv,
+request/reply, SPOT data-plane처럼 메시지 수에 비례해 반복되는 경로는 컴파일된
+확장 모듈을 통해야 한다. 이 규칙은 Python 호출 횟수, 동적 marshalling, part별
+객체 생성을 줄이기 위한 것이다.
+
+컴파일된 확장 모듈은 공개 API가 아니다. 모듈 이름, capsule 타입, 네이티브 소유자
+타입, 에러 보조 함수는 `zlink.__init__`, 타입 힌트, API 레퍼런스, 샘플, perf에
+노출하지 않는다. 사용자는 계속 `zlink` 공개 팩토리와 공개 객체만 사용한다.
+
+### 핵심 경로 브리지
+
+네이티브 브리지는 최소한 아래 작업을 한 번의 Python 확장 호출 안에서 처리해야
+한다.
+
+- Python buffer protocol을 지원하는 payload를 검증하고 `zlink_msg_t` part 배열로
+  변환한다.
+- `zlink_send_part`, `zlink_send_part_rid`, `zlink_publish_part` 계열을 part 수만큼
+  native 루프에서 호출한다.
+- `zlink_recv_part`, `zlink_subscribe_part`, `zlink_router_recv_part` 계열을 native
+  루프에서 호출하고, 비공개 수신 소유자와 메타데이터를 하나의 결과로 반환한다.
+- 실패한 send/recv 시 남은 native part를 닫고 errno/result를 Python 공개 예외
+  도메인으로 변환할 수 있는 정보를 반환한다.
+- blocking send/recv/request 구간에서 Python 객체를 만지지 않는 동안 GIL을
+  release한다.
+
+Python 런타임 계층은 이 비공개 결과를 `Received`, `TopicMessage`,
+`SubscriptionEvent`, request 결과 같은 공개 객체로 감싼다. 비공개 수신 소유자는
+native-backed owner나 bytes-backed owner가 될 수 있지만 공개 객체의 lifetime
+규칙은 같아야 한다. raw pointer나 capsule을 사용자가 만질 수 있게 하지 않는다.
+
+### 버퍼와 복사 정책
+
+송신 payload는 `bytes`, `bytearray`, `memoryview`처럼 Python buffer protocol을
+지원하는 값을 기본 입력으로 받는다. 네이티브 브리지는 메모리가 연속인지와 읽기
+전용인지 검사하고 필요한 경우에만 복사한다. core가 메시지 소유권을 가져가는
+호출에서는 native part lifetime을 명확히 하고, Python buffer를 빌려 쓰는 경우에는
+Python 객체 lifetime이 native 제출 완료 시점까지 유지되도록 소유자가 보존해야
+한다.
+
+수신 payload는 공개 수신 객체가 열려 있는 동안 유효한 buffer view로 노출할 수
+있어야 한다. native-backed owner는 core buffer를 직접 노출할 수 있고,
+bytes-backed owner는 비공개 bytes 저장소를 노출할 수 있다. `to_bytes()`는 명시적
+복사 또는 bytes-backed 저장소 반환 경로다. 공개 `Received` 객체가 닫힌 뒤에는
+기존과 같이 수신 part 접근이 실패해야 한다.
+
+### 콜백과 스레드 정책
+
+네이티브 callback trampoline은 `_runtime`과 `_native` 사이의 비공개 경계에 둔다.
+callback에서 Python handler를 호출해야 할 때만 GIL을 획득하고, handler 실행은
+기존 dispatcher 규칙을 따른다. callback 경로도 비공개 소유자를 통해 공개 수신
+객체가 lifetime을 관리하게 한다.
+
+### 빌드와 패키징
+
+Python 패키지는 컴파일된 확장 모듈을 wheel에 포함해야 한다. 확장 모듈은 패키징된
+`libzlink` artifact와 같은 runtime lookup 규칙을 사용해야 하며, 사용자가 별도의
+환경 변수를 설정하지 않아도 기본 wheel이 동작해야 한다.
+
+소스 빌드에서는 필요한 C/C++ compiler와 Python 개발 헤더가 없을 수 있다. 이 경우
+명확한 빌드 오류를 내야 하며, 조용히 순수 Python 핵심 경로로 떨어져 성능 수치를
+왜곡하면 안 된다. 대체 경로가 필요한 경우에도 perf runner는 대체 경로 사용 여부를
+출력하고, 공식 성능 수치로 취급하지 않는다.
 
 ## 생성 진입점
 
@@ -431,8 +504,12 @@ Python은 `SpotNode.get_or_create_spot(spot_rid)`를 노출한다. 이 메서드
 - hot path는 reflection 스타일의 attribute lookup, 문자열 기반 동적 dispatch,
   회피 가능한 allocation, 회피 가능한 `bytes` 복사, 숨은 sleep, busy wait, 넓은
   lock, thread join을 사용하지 않는다.
-- 네이티브 확장이나 FFI 코드는 공개 Python 값을 코어 part 기반에서 직접
-  materialize한다.
+- 메시지 수에 비례하는 핵심 경로는 비공개 컴파일된 확장 모듈을 통과한다.
+  `ctypes`/CFFI ABI 호출을 part별 Python 루프에서 반복하는 구조는 공식 성능
+  구현으로 보지 않는다.
+- 네이티브 확장 코드는 공개 Python 값을 코어 part 기반에서 직접 materialize한다.
+- blocking native 작업은 Python 객체 접근 구간과 분리하고, 가능한 동안 GIL을
+  release한다.
 - 핸들 단위로 진행을 공유할 수 있는 경우, 요청마다 별도의 polling 스레드나
   타이머를 사용하지 않는다.
 - perf, 샘플, 테스트는 공개 `zlink` export만 사용한다.
@@ -455,6 +532,8 @@ Python은 `SpotNode.get_or_create_spot(spot_rid)`를 노출한다. 이 메서드
 - 테스트, 샘플, examples, perf는 언더스코어 모듈을 import하지 않는다.
 - 네이티브 기반 리소스는 패키지 루트 팩토리나 계약 메서드를 통해 생성되며
   계약 클래스/프로토콜로 타이핑된다.
+- 공식 perf 경로가 컴파일된 확장 모듈을 사용하며, 대체 경로가 조용히 성능
+  결과에 섞이지 않는다.
 - 호환성만을 위한 옛 별칭, 중복된 operation-start 이름, deprecated 래퍼가
   남아있지 않다.
 

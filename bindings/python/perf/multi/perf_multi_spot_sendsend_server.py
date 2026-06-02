@@ -4,6 +4,7 @@ import threading
 import time
 
 import zlink
+from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     TOPIC,
@@ -153,13 +154,21 @@ def main(argv=None):
         ):
             raise RuntimeError("spot sendsend control start publish timeout")
 
+        native_echo = None
+        if _native_bridge.available():
+            native_echo = _native_bridge.spot_routed_echo_install(
+                replier._handle,
+                reply_mode=False,
+            )
+
         idle_seconds = max(
             1.0,
             float(os.environ.get("PERF_MULTI_DURATION_SECONDS", str(args.duration))),
         ) + float(os.environ.get("PERF_MULTI_SPOT_SERVER_IDLE_S", "2.0"))
         idle_deadline = time.perf_counter() + idle_seconds
         while not stop.is_set() and time.perf_counter() < idle_deadline:
-            _drain_replier(replier)
+            if native_echo is None:
+                _drain_replier(replier)
             if stop.wait(0):
                 break
             poller.wait(poll_events, 1)

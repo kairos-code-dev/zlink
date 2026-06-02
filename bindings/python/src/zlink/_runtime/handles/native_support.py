@@ -520,6 +520,47 @@ class _ReceivedPartsOwner:
         self._closed = True
 
 
+class _BytesReceivedPartsOwner:
+    def __init__(self, parts):
+        self._parts = tuple(bytes(part) for part in parts)
+        self._part_count = len(self._parts)
+        self._closed = False
+        self._open_parts = [True] * self._part_count
+
+    def _check_open(self, index):
+        if self._closed or not self._open_parts[index]:
+            raise RuntimeError("received message is closed")
+
+    def msg(self, index):
+        self._check_open(index)
+        raise RuntimeError("received message does not own a native zlink_msg_t")
+
+    def size(self, index):
+        self._check_open(index)
+        return len(self._parts[index])
+
+    def data(self, index):
+        self._check_open(index)
+        return memoryview(self._parts[index])
+
+    def to_bytes(self, index):
+        self._check_open(index)
+        return self._parts[index]
+
+    def close_part(self, index):
+        if self._closed or not self._open_parts[index]:
+            return
+        self._open_parts[index] = False
+        if not any(self._open_parts):
+            self.close()
+
+    def close(self):
+        if self._closed:
+            return
+        self._open_parts = [False] * self._part_count
+        self._closed = True
+
+
 def _recv_native_parts(handle, flags):
     # Fast path for single-part messages (the common case): allocate the
     # owner's `ZlinkMsg * 1` array directly and read into its first slot.

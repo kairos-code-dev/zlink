@@ -3,6 +3,7 @@ import threading
 import time
 
 import zlink
+from zlink._native import bridge as _native_bridge
 
 from perf_common import (
     STOP_TOKEN,
@@ -45,6 +46,32 @@ def _send_stop_token(sock):
             poll_idle_ms(1)
 
 
+def _native_one_way_metrics(sender, receiver, *, msg_size, duration_s, run_id):
+    native_result = _native_bridge.single_socket_one_way(
+        sender._handle,
+        receiver._handle,
+        msg_size,
+        max(1, int(duration_s)),
+        run_id,
+    )
+    if native_result is None:
+        return None
+    received, throughput, bandwidth, latency, latency_p95, latency_p99, err = (
+        native_result
+    )
+    if err != 0 or received == 0:
+        raise RuntimeError(
+            f"native dealer-dealer benchmark active phase failed: errno={err}"
+        )
+    return {
+        "throughput": throughput,
+        "bandwidth": bandwidth,
+        "latency": latency,
+        "latency_p95": latency_p95,
+        "latency_p99": latency_p99,
+    }
+
+
 def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="dealer_dealer")
     run_id = benchmark_run_id()
@@ -80,31 +107,39 @@ def main(argv=None):
                     )
 
                 active_end = time.perf_counter() + args.duration
-                sender = threading.Thread(
-                    target=send_loop, args=(client, active_end), daemon=True
-                )
-                sender.start()
-                # C perf_single_one_way.hpp run_active_phase receiver.
-                received = run_one_way_receiver_public_recv(
+                metrics = _native_one_way_metrics(
+                    client,
                     server,
                     msg_size=args.msg_size,
+                    duration_s=args.duration,
                     run_id=run_id,
-                    active_end=active_end,
-                    received=received,
-                    latencies=latencies,
                 )
-
-                sender.join()
-                if received == 0:
-                    raise RuntimeError(
-                        "dealer-dealer benchmark did not receive any active message"
+                if metrics is None:
+                    sender = threading.Thread(
+                        target=send_loop, args=(client, active_end), daemon=True
                     )
-                metrics = result_metrics(
-                    count=received,
-                    msg_size=args.msg_size,
-                    elapsed_s=args.duration,
-                    latencies_ns=latencies,
-                )
+                    sender.start()
+                    # C perf_single_one_way.hpp run_active_phase receiver.
+                    received = run_one_way_receiver_public_recv(
+                        server,
+                        msg_size=args.msg_size,
+                        run_id=run_id,
+                        active_end=active_end,
+                        received=received,
+                        latencies=latencies,
+                    )
+
+                    sender.join()
+                    if received == 0:
+                        raise RuntimeError(
+                            "dealer-dealer benchmark did not receive any active message"
+                        )
+                    metrics = result_metrics(
+                        count=received,
+                        msg_size=args.msg_size,
+                        elapsed_s=args.duration,
+                        latencies_ns=latencies,
+                    )
                 print_result_lines("DEALER_DEALER", args.transport, args.msg_size, metrics)
 
 

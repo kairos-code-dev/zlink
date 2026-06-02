@@ -391,8 +391,10 @@ def _dont_wait_flag():
 def send_nonblocking(sock, payload, *, routing_id=None):
     zlink_mod = _require_zlink()
     try:
-        op = sock.send() if routing_id is None else sock.send(routing_id)
-        return bool(op.message(payload).flags(zlink_mod.SendFlags.DONT_WAIT).submit())
+        flags = zlink_mod.SendFlags.DONT_WAIT
+        if routing_id is None:
+            return bool(sock.send(payload, flags=flags))
+        return bool(sock.send(routing_id, payload, flags=flags))
     except zlink_mod.SubmitError as exc:
         if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
             return False
@@ -402,12 +404,7 @@ def send_nonblocking(sock, payload, *, routing_id=None):
 def publish_nonblocking(sock, topic, payload):
     zlink_mod = _require_zlink()
     try:
-        return bool(
-            sock.publish(topic)
-            .message(payload)
-            .flags(zlink_mod.SendFlags.DONT_WAIT)
-            .submit()
-        )
+        return bool(sock.publish(topic, payload, flags=zlink_mod.SendFlags.DONT_WAIT))
     except zlink_mod.SubmitError as exc:
         if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
             return False

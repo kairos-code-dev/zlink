@@ -2,6 +2,7 @@ import importlib
 import math
 import os
 import platform
+import socket
 import struct
 import sys
 import tempfile
@@ -19,8 +20,6 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 HEADER_MAGIC_BYTES = struct.pack("<I", HEADER_MAGIC)
 _zlink = None
 _seq = 0
-_port_counter = 0
-_port_seed = uuid.uuid4().int % 30000
 _tls_assets = None
 
 
@@ -183,9 +182,9 @@ def unique_endpoint(prefix):
 
 
 def _reserve_tcp_port():
-    global _port_counter
-    _port_counter = (_port_counter + 1) % 300
-    return 20000 + ((_port_seed + _port_counter) % 30000)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 def tcp_endpoint(prefix="perf"):

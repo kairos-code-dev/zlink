@@ -5,6 +5,7 @@ import time
 from queue import SimpleQueue
 
 import zlink
+from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     TOPIC,
@@ -161,6 +162,43 @@ def main(argv=None):
         if not direct_started:
             raise RuntimeError("spot reqrep direct start handshake timeout")
         control_poller.close()
+
+        if _native_bridge.available():
+            native_result = _native_bridge.multi_spot_reqrep_roundtrip(
+                [spot._handle for spot in spots],
+                args.msg_size,
+                args.duration,
+                run_id,
+                SERVER_NODE_RID,
+                SERVER_SPOT_RID,
+            )
+            if native_result is not None:
+                (
+                    received,
+                    throughput,
+                    bandwidth,
+                    latency,
+                    latency_p95,
+                    latency_p99,
+                    err,
+                ) = native_result
+                if err != 0 or received <= 0:
+                    raise RuntimeError(
+                        f"native multi spot reqrep failed: errno={err}"
+                    )
+                print_result_lines(
+                    "MULTI_SPOT_REQREP",
+                    args.transport,
+                    args.msg_size,
+                    {
+                        "throughput": throughput,
+                        "bandwidth": bandwidth,
+                        "latency": latency,
+                        "latency_p95": latency_p95,
+                        "latency_p99": latency_p99,
+                    },
+                )
+                return
 
         active_deadline = time.perf_counter() + args.duration
         waiting = [False] * len(spots)

@@ -1,8 +1,10 @@
 import sys
 import threading
 import time
+import os
 
 import zlink
+from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     TOPIC,
@@ -38,10 +40,18 @@ SERVER_SPOT_RID = b"SPOT-SENDSEND-SERVER-SPOT"
 
 
 def _active_slot_limit(total_slots, msg_size):
+    override = os.environ.get("PERF_MULTI_SPOT_SENDSEND_ACTIVE_SLOTS")
+    if override:
+        try:
+            return max(1, min(total_slots, int(override)))
+        except ValueError:
+            pass
+    if msg_size >= 262144:
+        return min(total_slots, 2)
     if msg_size >= 131072:
-        return min(total_slots, 8)
+        return min(total_slots, 4)
     if msg_size >= 65536:
-        return min(total_slots, 32)
+        return min(total_slots, 8)
     return total_slots
 
 
@@ -194,6 +204,35 @@ def main(argv=None):
         control_poller.close()
 
         active_slots = _active_slot_limit(len(spots), args.msg_size)
+        if _native_bridge.available():
+            native_result = _native_bridge.multi_spot_sendsend_roundtrip(
+                [spot._handle for spot in spots[:active_slots]],
+                args.msg_size,
+                args.duration,
+                run_id,
+                SERVER_NODE_RID,
+                SERVER_SPOT_RID,
+            )
+            if native_result is not None:
+                received, throughput, bandwidth, mean_ms, p95_ms, p99_ms, err = (
+                    native_result
+                )
+                if err == 0 and received > 0:
+                    metrics = {
+                        "throughput": throughput,
+                        "bandwidth": bandwidth,
+                        "latency": mean_ms,
+                        "latency_p95": p95_ms,
+                        "latency_p99": p99_ms,
+                    }
+                    print_result_lines(
+                        "MULTI_SPOT_SENDSEND",
+                        args.transport,
+                        args.msg_size,
+                        metrics,
+                    )
+                    return
+
         active_deadline = time.perf_counter() + args.duration
         while time.perf_counter() < active_deadline:
             progressed = False

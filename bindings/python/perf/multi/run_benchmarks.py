@@ -81,6 +81,19 @@ POLICY_TRANSPORTS = {
 RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
 
 
+def _require_native_bridge():
+    src_path = str(DEFAULT_PYTHONPATH.resolve())
+    if src_path not in sys.path:
+        sys.path.insert(0, src_path)
+    from zlink._native import bridge as _native_bridge
+
+    if not _native_bridge.available():
+        raise SystemExit(
+            "Python native bridge extension is required for official perf runs. "
+            "Run `python3 setup.py build_ext --inplace --force` in bindings/python."
+        )
+
+
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog="run_benchmarks_multi.sh")
     parser.add_argument("--pattern", default="ALL")
@@ -609,7 +622,15 @@ def _wait_for_control_line(proc, prefixes, *, timeout_s, stdout_chunks):
         if text.startswith(prefix_tuple):
             return text
     wanted = ", ".join(prefixes)
-    raise SystemExit(f"missing control line: {wanted}")
+    details = []
+    if proc.poll() is not None:
+        details.append(f"process exited with code {proc.returncode}")
+        if proc.stderr:
+            stderr_text = proc.stderr.read().strip()
+            if stderr_text:
+                details.append(stderr_text)
+    detail_text = ": " + "\n".join(details) if details else ""
+    raise SystemExit(f"missing control line: {wanted}{detail_text}")
 
 
 def _drain_stdout_queue(proc, stdout_chunks):
@@ -1116,6 +1137,7 @@ def _meta_lines(args, clients):
 def main(argv=None):
     start_time = time.perf_counter()
     args = parse_args(argv or sys.argv[1:])
+    _require_native_bridge()
     if args.pin_cpu and not pin_current_process_cpu0():
         print("warning: cpu pinning requested but could not pin to cpu 0", file=sys.stderr)
     patterns = _parse_patterns(args.pattern)

@@ -4,6 +4,7 @@ import threading
 import time
 
 import zlink
+from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     TOPIC,
@@ -93,8 +94,6 @@ def main(argv=None):
                         *(part.data for part in received.parts)
                     ).submit()
 
-        replier.on_dispatch_event(on_dispatch)
-
         data_node.set_router_bind(
             benchmark_endpoint(args.transport, "multi-spot-reqrep-router")
         )
@@ -145,6 +144,15 @@ def main(argv=None):
             control_pub, f"START,{args.msg_size}", timeout_s=handshake_timeout_s
         ):
             raise RuntimeError("spot reqrep control start publish timeout")
+
+        native_echo = None
+        if _native_bridge.available():
+            native_echo = _native_bridge.spot_routed_echo_install(
+                replier._handle,
+                reply_mode=True,
+            )
+        if native_echo is None:
+            replier.on_dispatch_event(on_dispatch)
 
         idle_seconds = max(
             1.0,

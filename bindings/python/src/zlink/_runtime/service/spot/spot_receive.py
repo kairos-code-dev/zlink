@@ -10,16 +10,18 @@ from ...messaging.message_materializer import (
     TopicMessage,
 )
 from ...._native.ffi import ZLINK_PART_FINAL, ZlinkMsg, ZlinkRoutingId, lib
+from ...._native import bridge as _native_bridge
 from ...handles.native_support import (
     RecvError,
     RecvResult,
+    _BytesReceivedPartsOwner,
     _ReceivedPartsOwner,
     _clone_native_msg,
     _decode_topic_text,
     _raise_result_error,
     _routing_id_bytes,
 )
-from ...sockets.socket_base import _clone_received_owner
+from ...sockets.socket_base import _clone_received_owner, _in_callback
 from .native_parts import (
     clone_payload as _clone_payload_parts,
     close_native_parts as _close_native_parts,
@@ -138,6 +140,18 @@ def _make_message_list(parts_ptr, part_count):
 
 
 def _recv_spot_subscribed(handle, flags):
+    if not _in_callback():
+        bridged = _native_bridge.spot_subscribe_parts(handle, flags)
+        if bridged is not None:
+            rc, err, routing, topic_raw, parts = bridged
+            if int(rc) != 0:
+                _raise_result_error(RecvError, RecvResult, rc, err)
+            return TopicMessage(
+                _decode_topic_text(topic_raw),
+                _BytesReceivedPartsOwner(parts),
+                routing,
+            )
+
     routing_id = None
     native_parts = []
     topic_buf = ctypes.create_string_buffer(256)
@@ -295,6 +309,31 @@ def _recv_spot_subscription_event(handle, flags):
 
 
 def _recv_spot_routed(handle, flags, *, reply_sender_factory=None, send_sender_factory=None):
+    if not _in_callback():
+        bridged = _native_bridge.spot_recv_parts(handle, flags)
+        if bridged is not None:
+            rc, err, node_rid, spot_rid, request_seq, parts = bridged
+            if int(rc) != 0:
+                _raise_result_error(RecvError, RecvResult, rc, err)
+            request_seq = int(request_seq)
+            reply_sender = None
+            if reply_sender_factory is not None:
+                reply_sender = reply_sender_factory(node_rid, spot_rid, request_seq)
+            send_sender = None
+            if send_sender_factory is not None:
+                send_sender = send_sender_factory(node_rid, spot_rid)
+            received = Received(
+                _BytesReceivedPartsOwner(parts),
+                routing_id=node_rid,
+                request_seq=request_seq,
+                spot_rid=spot_rid,
+                reply_sender=reply_sender,
+                send_sender=send_sender,
+            )
+            received.source_node_rid = node_rid
+            received.source_spot_rid = received.spot_rid
+            return received
+
     source_node_rid = None
     source_spot_rid = None
     request_seq = 0

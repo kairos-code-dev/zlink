@@ -49,7 +49,7 @@ from perf_metrics import (
 
 
 TOPIC = b"bench"
-PYTHON_MULTI_DEFAULT_IO_THREADS = 1
+PYTHON_MULTI_DEFAULT_IO_THREADS = 4
 
 
 def received_has_stop_token(received):

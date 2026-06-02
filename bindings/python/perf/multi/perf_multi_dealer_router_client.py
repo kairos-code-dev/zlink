@@ -3,6 +3,7 @@ import time
 from contextlib import ExitStack
 
 import zlink
+from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     apply_multi_auto_hwm_msg_unit,
@@ -61,6 +62,46 @@ def main(argv=None):
                         timeout_ms=resolve_multi_connect_ready_timeout_ms(),
                     )
 
+                native_result = _native_bridge.multi_echo_roundtrip(
+                    [sock._handle for sock in sockets],
+                    args.msg_size,
+                    max(1, int(args.duration)),
+                    run_id,
+                    router_mode=False,
+                )
+                if native_result is not None:
+                    (
+                        count,
+                        throughput,
+                        bandwidth,
+                        mean_ms,
+                        p95_ms,
+                        p99_ms,
+                        native_errno,
+                    ) = native_result
+                    if native_errno != 0:
+                        raise RuntimeError(
+                            "native multi dealer-router echo failed: "
+                            f"errno={native_errno}"
+                        )
+                    if count == 0:
+                        raise RuntimeError(
+                            "multi dealer-router benchmark did not receive any active reply"
+                        )
+                    print_result_lines(
+                        "MULTI_DEALER_ROUTER",
+                        args.transport,
+                        args.msg_size,
+                        {
+                            "throughput": throughput,
+                            "bandwidth": bandwidth,
+                            "latency": mean_ms,
+                            "latency_p95": p95_ms,
+                            "latency_p99": p99_ms,
+                        },
+                    )
+                    return
+
                 active_deadline = time.perf_counter() + args.duration
                 recv_storage = [zlink.create_received() for _ in sockets]
                 with zlink.create_poller() as poller:
@@ -103,11 +144,10 @@ def main(argv=None):
                                     send_pending[i] = True
                             continue
 
-                        # C uses perf_socket_poll(..., -1). The Poller has all
-                        # sockets registered for POLLIN|POLLOUT; -1 wait is
-                        # signal-driven and the result identifies ready
-                        # sources for dispatch.
-                        ready_count = safe_poll(poller, poll_events, -1)
+                        remaining_ms = int((active_deadline - time.perf_counter()) * 1000)
+                        if remaining_ms <= 0:
+                            break
+                        ready_count = safe_poll(poller, poll_events, max(1, remaining_ms))
                         if not ready_count:
                             continue
                         for offset in range(ready_count):

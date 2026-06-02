@@ -237,6 +237,7 @@ bindings/**/CMakeCache.txt
 bindings/**/cmake_install.cmake
 bindings/**/Makefile
 bindings/**/compile_commands.json
+bindings/python/src/zlink/_native/_zlink_native*.so
 !bindings/java/gradle/wrapper/gradle-wrapper.jar
 
 ## buildenv (auto-generated)

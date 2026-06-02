@@ -23,9 +23,10 @@ class PubSocket(_socket_contract._SocketContract, Protocol):
         """Disconnect the connection previously established to ``endpoint``."""
         ...
 
-    def publish(self, topic):
-        """Begin publishing under ``topic``; parts are consumed on a successful
-        submit."""
+    def publish(self, topic, payload=None, *, flags=0):
+        """Begin publishing under ``topic`` when ``payload`` is omitted, or
+        submit one payload immediately when ``payload`` is provided. Parts are
+        consumed on a successful submit."""
         ...
 
 
@@ -79,9 +80,10 @@ class XPubSocket(_socket_contract._SocketContract, Protocol):
         """Disconnect the connection previously established to ``endpoint``."""
         ...
 
-    def publish(self, topic):
-        """Begin publishing under ``topic``; parts are consumed on a successful
-        submit."""
+    def publish(self, topic, payload=None, *, flags=0):
+        """Begin publishing under ``topic`` when ``payload`` is omitted, or
+        submit one payload immediately when ``payload`` is provided. Parts are
+        consumed on a successful submit."""
         ...
 
     def receive_subscription_event_into(self, event, *, flags=0):

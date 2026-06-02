@@ -87,6 +87,84 @@ def test_runtime_source_does_not_depend_on_reflective_or_dynamic_ffi_helpers():
     assert "setattr(lib()" not in text
 
 
+def test_python_hot_paths_prefer_private_native_bridge():
+    socket_base = SRC / "_runtime" / "sockets" / "socket_base.py"
+    bridge = SRC / "_native" / "bridge.py"
+    extension = SRC / "_native" / "_zlink_native.c"
+    setup = ROOT / "setup.py"
+
+    socket_text = socket_base.read_text(encoding="utf-8")
+    assert "from ..._native import bridge as _native_bridge" in socket_text
+    assert "_send_payload_via_native_bridge" in socket_text
+    assert "_send_routed_payload_via_native_bridge" in socket_text
+    assert "_publish_payload_via_native_bridge" in socket_text
+    assert "_recv_parts_via_native_bridge" in socket_text
+    assert "_subscribe_parts_via_native_bridge" in socket_text
+
+    socket_impl = SRC / "_runtime" / "sockets" / "socket_base_impl.py"
+    socket_impl_text = socket_impl.read_text(encoding="utf-8")
+    assert "from ..._native import bridge as _native_bridge" in socket_impl_text
+    assert "_recv_parts_via_native_bridge" in socket_impl_text
+    assert "router_recv_parts(" in socket_impl_text
+
+    bridge_text = bridge.read_text(encoding="utf-8")
+    assert "from . import _zlink_native" in bridge_text
+    assert "def send_parts(" in bridge_text
+    assert "def send_parts_rid(" in bridge_text
+    assert "def publish_parts(" in bridge_text
+    assert "def spot_publish_submit_parts(" in bridge_text
+    assert "def spot_send_channel_parts(" in bridge_text
+    assert "def spot_send_spot_parts(" in bridge_text
+    assert "def recv_parts(" in bridge_text
+    assert "def subscribe_parts(" in bridge_text
+    assert "def router_recv_parts(" in bridge_text
+    assert "def spot_subscribe_parts(" in bridge_text
+    assert "def spot_recv_parts(" in bridge_text
+    assert "def single_socket_one_way(" in bridge_text
+    assert "def multi_spot_sendsend_roundtrip(" in bridge_text
+    assert "def multi_spot_reqrep_roundtrip(" in bridge_text
+    assert "def stream_echo_install(" in bridge_text
+    assert "def stream_echo_drain(" in bridge_text
+
+    extension_text = extension.read_text(encoding="utf-8")
+    assert "Py_BEGIN_ALLOW_THREADS" in extension_text
+    assert "zlink_send_part" in extension_text
+    assert "zlink_send_part_rid" in extension_text
+    assert "zlink_publish_part" in extension_text
+    assert "zlink_recv_part" in extension_text
+    assert "zlink_subscribe_part" in extension_text
+    assert "zlink_router_recv_part" in extension_text
+    assert "zlink_spot_subscribe_part" in extension_text
+    assert "zlink_spot_recv_part" in extension_text
+    assert "zlink_spot_publish_part" in extension_text
+    assert "zlink_spot_send_channel_part" in extension_text
+    assert "zlink_spot_send_spot_part" in extension_text
+    assert "py_multi_spot_sendsend_roundtrip" in extension_text
+    assert "py_multi_spot_reqrep_roundtrip" in extension_text
+    assert "py_single_socket_one_way" in extension_text
+    assert "zlink_stream_packet_handler" in extension_text
+    assert "stream_echo_packet_handler" in extension_text
+    assert "for (Py_ssize_t j = i; j < prepared.count; ++j)" in extension_text
+    assert "for (Py_ssize_t j = i + 1; j < prepared.count; ++j)" not in extension_text
+
+    spot_receive = SRC / "_runtime" / "service" / "spot" / "spot_receive.py"
+    spot_receive_text = spot_receive.read_text(encoding="utf-8")
+    assert "from ...._native import bridge as _native_bridge" in spot_receive_text
+    assert "spot_subscribe_parts(" in spot_receive_text
+    assert "spot_recv_parts(" in spot_receive_text
+
+    setup_text = setup.read_text(encoding="utf-8")
+    assert "Extension(" in setup_text
+    assert '"zlink._native._zlink_native"' in setup_text
+
+    single_runner = ROOT / "perf" / "single" / "run_benchmarks.py"
+    multi_runner = ROOT / "perf" / "multi" / "run_benchmarks.py"
+    for runner in (single_runner, multi_runner):
+        runner_text = runner.read_text(encoding="utf-8")
+        assert "_require_native_bridge" in runner_text
+        assert "_native_bridge.available()" in runner_text
+
+
 def test_public_helpers_remain_canonical_facade_objects():
     import zlink
 

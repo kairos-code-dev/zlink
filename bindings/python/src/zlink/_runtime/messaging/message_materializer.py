@@ -42,18 +42,21 @@ class ReceivedMessage:
         return self._msg
 
     def __len__(self):
+        if self._owner is not None and hasattr(self._owner, "size"):
+            return self._owner.size(self._index)
         return _msg_size(self._native_msg())
 
     @property
     def data(self):
-        """Zero-copy ``memoryview`` over this received part's native buffer.
+        """Memoryview over this received part's owner buffer.
 
-        Mirrors :pyattr:`Message.data` (which wraps the same C
-        ``zlink_msg_data`` contract) so callers can inspect a received
-        payload — e.g. decode a fixed header — without copying it via
-        :meth:`to_bytes`. The view borrows the native buffer and is only
-        valid until the owning message is closed.
+        Native-backed owners expose the core receive buffer directly.
+        Bytes-backed owners expose their private immutable bytes storage. In
+        both cases the view is only valid while this received message remains
+        open.
         """
+        if self._owner is not None and hasattr(self._owner, "data"):
+            return self._owner.data(self._index)
         native = self._native_msg()
         ptr = _msg_data_ptr(native)
         size = _msg_size(native)
@@ -62,6 +65,8 @@ class ReceivedMessage:
         return memoryview((ctypes.c_ubyte * size).from_address(ptr)).cast("B")
 
     def to_bytes(self):
+        if self._owner is not None and hasattr(self._owner, "to_bytes"):
+            return self._owner.to_bytes(self._index)
         return _msg_to_bytes(self._native_msg())
 
     def close(self):
@@ -131,6 +136,11 @@ class _BaseReceived:
 
     def to_bytes_list(self):
         if self._owner is not None:
+            if hasattr(self._owner, "to_bytes"):
+                return [
+                    self._owner.to_bytes(index)
+                    for index in range(self._owner._part_count)
+                ]
             return [
                 _msg_to_bytes(self._owner.msg(index))
                 for index in range(self._owner._part_count)

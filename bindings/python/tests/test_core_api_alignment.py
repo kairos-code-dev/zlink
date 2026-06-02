@@ -247,6 +247,25 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         self.assertEqual(received.first_part().to_bytes(), b"payload")
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
 
+    def test_pair_send_accepts_direct_payload(self):
+        ctx = zlink.create_context()
+
+        with ctx:
+            with zlink.create_pair_socket(ctx) as sender:
+                with zlink.create_pair_socket(ctx) as receiver:
+                    endpoint = "inproc://py-pair-direct-payload"
+                    sender.bind(endpoint)
+                    receiver.connect(endpoint)
+                    self.assertTrue(
+                        sender.send(b"direct", flags=zlink.SendFlags.DONT_WAIT)
+                    )
+                    received = zlink.create_received()
+                    self.assertTrue(
+                        receiver.recv_into(received, flags=zlink.RecvFlags.NONE)
+                    )
+                    with received:
+                        self.assertEqual(received.to_bytes_list(), [b"direct"])
+
     def test_poller_wait_uses_reusable_event_buffer(self):
         ctx = zlink.create_context()
 
@@ -391,6 +410,18 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     ).submit()
                 self.assertEqual(cm.exception.result, zlink.SubmitResult.NOT_CONNECTED)
 
+    def test_router_send_accepts_direct_payload(self):
+        ctx = zlink.create_context()
+
+        with ctx:
+            with zlink.create_router_socket(ctx) as router:
+                router.options.mandatory = True
+                with self.assertRaises(zlink.SubmitError) as cm:
+                    router.send(
+                        b"UNKNOWN", b"payload", flags=zlink.SendFlags.DONT_WAIT
+                    )
+                self.assertEqual(cm.exception.result, zlink.SubmitResult.NOT_CONNECTED)
+
     def test_pubsub_canonical_roundtrip(self):
         ctx = zlink.create_context()
 
@@ -411,6 +442,31 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     with received:
                         self.assertEqual(received.topic, "topic")
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
+
+    def test_pubsub_publish_accepts_direct_payload(self):
+        ctx = zlink.create_context()
+
+        with ctx:
+            with zlink.create_pub_socket(ctx) as publisher:
+                with zlink.create_sub_socket(ctx) as subscriber:
+                    endpoint = "inproc://py-pubsub-direct-payload"
+                    publisher.bind(endpoint)
+                    subscriber.connect(endpoint)
+                    subscriber.set_subscription(b"topic")
+                    self.assertTrue(
+                        publisher.publish(
+                            b"topic", b"direct", flags=zlink.SendFlags.DONT_WAIT
+                        )
+                    )
+                    received = zlink.create_topic_message()
+                    self.assertTrue(
+                        subscriber.subscribe_into(received, flags=zlink.RecvFlags.NONE)
+                    )
+                    with received:
+                        self.assertEqual(received.topic, "topic")
+                        self.assertEqual(
+                            received.single_part_or_throw().to_bytes(), b"direct"
+                        )
 
     def test_monitor_surface_uses_recv_and_status(self):
         ctx = zlink.create_context()

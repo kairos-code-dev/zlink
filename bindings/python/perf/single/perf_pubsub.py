@@ -3,6 +3,7 @@ import threading
 import time
 
 import zlink
+from zlink._native import bridge as _native_bridge
 
 from perf_common import (
     STOP_TOKEN,
@@ -42,6 +43,33 @@ def _publish_stop_token(publisher):
             if exc.result != zlink.SubmitResult.BACKPRESSURED:
                 raise
             poll_idle_ms(1)
+
+
+def _native_one_way_metrics(sender, receiver, *, msg_size, duration_s, run_id):
+    native_result = _native_bridge.single_socket_one_way(
+        sender._handle,
+        receiver._handle,
+        msg_size,
+        max(1, int(duration_s)),
+        run_id,
+        send_mode=2,
+        recv_mode=2,
+        aux=TOPIC,
+    )
+    if native_result is None:
+        return None
+    received, throughput, bandwidth, latency, latency_p95, latency_p99, err = (
+        native_result
+    )
+    if err != 0 or received == 0:
+        raise RuntimeError(f"native pubsub benchmark active phase failed: errno={err}")
+    return {
+        "throughput": throughput,
+        "bandwidth": bandwidth,
+        "latency": latency,
+        "latency_p95": latency_p95,
+        "latency_p99": latency_p99,
+    }
 
 
 def main(argv=None):
@@ -85,30 +113,40 @@ def main(argv=None):
                     time.sleep(wait_seconds)
 
                 active_end = time.perf_counter() + args.duration
-                sender = threading.Thread(
-                    target=send_loop, args=(publisher, active_end), daemon=True
-                )
-                sender.start()
-                # C perf_pubsub.cpp run_active_phase receiver.
-                received = run_one_way_subscriber_public_subscribe(
+                metrics = _native_one_way_metrics(
+                    publisher,
                     subscriber,
-                    topic=TOPIC,
                     msg_size=args.msg_size,
+                    duration_s=args.duration,
                     run_id=run_id,
-                    active_end=active_end,
-                    received=received,
-                    latencies=latencies,
                 )
+                if metrics is None:
+                    sender = threading.Thread(
+                        target=send_loop, args=(publisher, active_end), daemon=True
+                    )
+                    sender.start()
+                    # C perf_pubsub.cpp run_active_phase receiver.
+                    received = run_one_way_subscriber_public_subscribe(
+                        subscriber,
+                        topic=TOPIC,
+                        msg_size=args.msg_size,
+                        run_id=run_id,
+                        active_end=active_end,
+                        received=received,
+                        latencies=latencies,
+                    )
 
-                sender.join()
-                if received == 0:
-                    raise RuntimeError("pubsub benchmark did not receive any active message")
-                metrics = result_metrics(
-                    count=received,
-                    msg_size=args.msg_size,
-                    elapsed_s=args.duration,
-                    latencies_ns=latencies,
-                )
+                    sender.join()
+                    if received == 0:
+                        raise RuntimeError(
+                            "pubsub benchmark did not receive any active message"
+                        )
+                    metrics = result_metrics(
+                        count=received,
+                        msg_size=args.msg_size,
+                        elapsed_s=args.duration,
+                        latencies_ns=latencies,
+                    )
                 print_result_lines("PUBSUB", args.transport, args.msg_size, metrics)
 
 

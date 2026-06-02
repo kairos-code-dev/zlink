@@ -1,9 +1,7 @@
-const { startRouteServer } = require('../../../shared/route-runtime');
+const { buildSessionServerHost } = require('./session-server-host-factory');
 
-startRouteServer({
-  endpoint: process.env.BINGO_SESSION_ENDPOINT,
-  routingId: 'session-server',
-  handlers: [{ packetName: 'Ping', handle: () => ({ role: 'session-server' }) }]
+buildSessionServerHost({
+  sessionEndpoint: process.env.BINGO_SESSION_ENDPOINT
 }).catch((error) => {
   console.error(error);
   process.exitCode = 1;

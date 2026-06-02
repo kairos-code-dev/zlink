@@ -56,9 +56,16 @@ test('node topology samples mirror dotnet role layout', () => {
     ],
     Bingo: [
       'Client/self-check.js',
+      'Server/Api/Handlers/authenticate-player-handler.js',
+      'Server/Api/Handlers/match-bingo-handler.js',
+      'Server/Api/api-server-host-factory.js',
       'Server/Api/main.js',
+      'Server/Play/Handlers/run-bingo-room-handler.js',
+      'Server/Play/play-server-host-factory.js',
       'Server/Play/main.js',
+      'Server/Registry/registry-host-factory.js',
       'Server/Registry/main.js',
+      'Server/Session/session-server-host-factory.js',
       'Server/Session/main.js',
       'Shared/Contracts/bingo-card.js'
     ]
@@ -301,12 +308,23 @@ test('TicTacToe SessionGateway sample covers reconnect two-actor round and bound
 
 test('Bingo sample covers four-player host start guards and bound push fanout', () => {
   const client = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Client', 'self-check.js'), 'utf8');
-  const api = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'main.js'), 'utf8');
-  const room = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'main.js'), 'utf8');
+  const apiMain = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'main.js'), 'utf8');
+  const apiFactory = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'api-server-host-factory.js'), 'utf8');
+  const authenticate = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'Handlers', 'authenticate-player-handler.js'), 'utf8');
+  const match = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'Handlers', 'match-bingo-handler.js'), 'utf8');
+  const roomMain = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'main.js'), 'utf8');
+  const playFactory = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'play-server-host-factory.js'), 'utf8');
+  const room = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'Handlers', 'run-bingo-room-handler.js'), 'utf8');
   const readme = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'README.ko.md'), 'utf8');
   const required = [
-    [api, "{ actorId: 'p1', numbers: [7] }"],
-    [api, "{ actorId: 'p4', numbers: [11] }"],
+    [apiMain, 'buildApiServerHost'],
+    [apiFactory, 'AuthenticatePlayerHandler'],
+    [apiFactory, 'MatchBingoHandler'],
+    [authenticate, 'Access token must be a sample player id.'],
+    [match, "{ actorId: 'p1', numbers: [7] }"],
+    [match, "{ actorId: 'p4', numbers: [11] }"],
+    [roomMain, 'buildPlayServerHost'],
+    [playFactory, 'RunBingoRoomHandler'],
     [room, 'const requiredPlayers = 4'],
     [room, 'earlyHostStartRejected'],
     [room, 'nonHostStartRejected'],
@@ -327,6 +345,8 @@ test('Bingo sample covers four-player host start guards and bound push fanout', 
     .map(([, text]) => text);
 
   assert.deepEqual(missing, []);
+  assert.equal(apiMain.includes("packetName: 'RunBingo'"), false);
+  assert.equal(roomMain.includes('const requiredPlayers'), false);
 });
 
 test('node cross-language smoke covers channel send publish and stream connector paths', () => {

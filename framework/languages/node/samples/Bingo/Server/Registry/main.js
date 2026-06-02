@@ -1,9 +1,7 @@
-const { startRouteServer } = require('../../../shared/route-runtime');
+const { buildRegistryHost } = require('./registry-host-factory');
 
-startRouteServer({
-  endpoint: process.env.BINGO_REGISTRY_ENDPOINT,
-  routingId: 'registry-server',
-  handlers: [{ packetName: 'Ping', handle: () => ({ role: 'registry-server' }) }]
+buildRegistryHost({
+  registryEndpoint: process.env.BINGO_REGISTRY_ENDPOINT
 }).catch((error) => {
   console.error(error);
   process.exitCode = 1;

@@ -45,4 +45,48 @@ final class ChannelRuntimeFakeBackendTest {
                 "close.context"),
             backendFactory.calls());
     }
+
+    @Test
+    void discoveryClientServerAttachesDealerAndRouterToRegistryDiscovery() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:5552"));
+        options.addClientServerChannel("profile", channel -> {
+            channel.enableServer(server -> server.bind("tcp://127.0.0.1:7100"));
+            channel.enableClient();
+            channel.addRequestHandler(
+                ChannelMessagingFakeHandler.class,
+                String.class,
+                String.class,
+                "Question");
+        });
+        FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored = ZLinkFrameworkRuntime.start(options, backendFactory)) {
+        }
+
+        assertEquals(
+            java.util.List.of(
+                "factory.channel",
+                "create.context",
+                "create.discovery.profile",
+                "discovery.profile.connectRegistry.tcp://127.0.0.1:5552",
+                "create.dealer",
+                "dealer.attachDiscovery.discovery.profile",
+                "create.router",
+                "router.attachDiscovery.discovery.profile",
+                "router.bind.tcp://127.0.0.1:7100",
+                "close.discovery.profile",
+                "close.context"),
+            backendFactory.calls());
+    }
+
+    public static final class ChannelMessagingFakeHandler
+        implements systems.zlink.framework.channels.ZLinkRequestHandler<String, String> {
+        @Override
+        public java.util.concurrent.CompletionStage<String> handleAsync(
+            String request,
+            systems.zlink.framework.channels.ZLinkRequestContext context) {
+            return java.util.concurrent.CompletableFuture.completedFuture(request);
+        }
+    }
 }

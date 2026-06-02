@@ -24,6 +24,10 @@ JUnit 테스트 이름은 `.NET` 테스트 메서드를 camelCase로 옮긴 대�
 
 ## 2. Channel regression
 
+`ChannelMessagingTest.discoveryClientServer_requestReplySucceeds`는 embedded registry,
+server runtime, client runtime을 나누어 시작한 뒤 `useDiscovery(...)`로 registry에
+붙은 DEALER client가 ROUTER server를 찾아 request/reply 하는 경로를 검증한다.
+
 | 항목 | 계층 | JUnit 테스트 | 통과 기준 |
 |------|------|--------------|-----------|
 | duplicate channel name | unit | `ChannelsTest.addZLinkFramework_throws_whenChannelNameIsDuplicated` | startup validation 오류 |

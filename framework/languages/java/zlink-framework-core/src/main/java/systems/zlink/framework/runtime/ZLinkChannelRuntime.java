@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime;
 
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +27,9 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
     private final ZLinkBackendContext context;
     private final Map<String, ZLinkBackendDealerSocket> clients = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> servers = new HashMap<>();
+    private final List<ZLinkBackendDealerSocket> manualClients = new ArrayList<>();
+    private final List<ZLinkBackendRouterSocket> manualServers = new ArrayList<>();
+    private final List<ZLinkBackendDiscovery> discoveries = new ArrayList<>();
     private final Map<String, Map<String, ChannelRequestHandlerRegistration<?, ?, ?>>> requestHandlers =
         new HashMap<>();
     private final ZLinkMessageSerializer serializer;
@@ -45,15 +49,26 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
         this.defaultTimeout = registration.defaultTimeout();
         this.context = backend.createContext();
         for (ChannelRegistration channel : registration.channels()) {
+            ZLinkBackendDiscovery discovery = discoveryFor(backend, registration, channel);
             if (channel.kind() == ChannelKind.CLIENT_SERVER && channel.clientEnabled()) {
                 ZLinkBackendDealerSocket dealer = backend.createDealerSocket(context);
-                for (String endpoint : channel.clientManualEndpoints()) {
-                    dealer.connect(endpoint);
+                if (discovery == null) {
+                    for (String endpoint : channel.clientManualEndpoints()) {
+                        dealer.connect(endpoint);
+                    }
+                    manualClients.add(dealer);
+                } else {
+                    dealer.attachDiscovery(discovery);
                 }
                 clients.put(channel.name(), dealer);
             }
             if (channel.kind() == ChannelKind.CLIENT_SERVER && !channel.serverBinds().isEmpty()) {
                 ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
+                if (discovery != null) {
+                    router.attachDiscovery(discovery);
+                } else {
+                    manualServers.add(router);
+                }
                 for (String endpoint : channel.serverBinds()) {
                     router.bind(endpoint);
                 }
@@ -62,6 +77,24 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
                 startRequestLoop(channel.name(), router);
             }
         }
+    }
+
+    private ZLinkBackendDiscovery discoveryFor(
+        ZLinkChannelBackendAdapter backend,
+        ZLinkFrameworkRegistration registration,
+        ChannelRegistration channel) {
+        if (!registration.discoveryEnabled() || channel.kind() != ChannelKind.CLIENT_SERVER) {
+            return null;
+        }
+        ZLinkBackendDiscovery discovery = backend.createDiscovery(
+            context,
+            ZLinkBackendAutoConnectType.CLIENT_SERVER,
+            channel.name());
+        for (String endpoint : registration.registryEndpoints()) {
+            discovery.connectRegistry(endpoint);
+        }
+        discoveries.add(discovery);
+        return discovery;
     }
 
     @Override
@@ -77,8 +110,9 @@ public final class ZLinkChannelRuntime implements ZLinkClient, AutoCloseable {
     @Override
     public void close() {
         running = false;
-        clients.values().forEach(ZLinkBackendDealerSocket::close);
-        servers.values().forEach(ZLinkBackendRouterSocket::close);
+        discoveries.forEach(ZLinkBackendDiscovery::close);
+        manualClients.forEach(ZLinkBackendDealerSocket::close);
+        manualServers.forEach(ZLinkBackendRouterSocket::close);
         receiveExecutor.shutdownNow();
         context.close();
     }

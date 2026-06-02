@@ -854,6 +854,8 @@ ZLinkModule.forRoot({
     bind: 'tcp://0.0.0.0:7105',
     routingId: 'play-node-a',
     manualConnections: ['tcp://127.0.0.1:7106'],
+    sendHandlers: [{ packetName: 'RouteNotice', handler: routeNoticeHandler }],
+    requestHandlers: [{ packetName: 'RoutePing', handler: routePingHandler }],
   }],
 });
 ```
@@ -887,6 +889,11 @@ route mesh channel 이 handler group 을 노출하면 runtime 은 host-owned `RO
 등록된 route send handler 로 전달한다. 등록된 handler 가 없으면 application 에 노출하지
 않고 버린다. `Request` packet 은 같은 route channel 에 등록된 route request handler 로
 전달하고, handler 의 반환값을 reply frame 으로 돌려준다.
+
+명시 등록 표면은 `sendHandlers` 와 `requestHandlers` 를 사용한다. 두 목록은 channel
+등록 시점에 고정되며, 같은 route channel 안에서 `kind + packetName` 이 중복되면 startup
+validation 오류로 처리한다. handler group 기반 노출은 같은 registry 로 정규화된 뒤
+dispatch 대상이 된다.
 
 request handler 가 없거나 handler 실행 중 오류가 나면 runtime 은 `Error` reply 를 보낸다.
 이렇게 해야 caller 가 timeout 으로 실패 원인을 추측하지 않고, dotnet framework 와 같은

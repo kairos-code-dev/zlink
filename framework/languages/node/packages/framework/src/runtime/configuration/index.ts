@@ -1,4 +1,4 @@
-import type { Type, ZLinkSpot } from '../../contracts';
+import type { Type, ZLinkRouteRequestContext, ZLinkRouteSendContext, ZLinkSpot } from '../../contracts';
 
 export interface ZLinkFrameworkRegistration {
   readonly actorFactories: ReadonlyMap<string, Type>;
@@ -53,6 +53,33 @@ export interface ZLinkRouteChannelOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
+  readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
+  readonly requestHandlers?: readonly ZLinkRouteChannelRequestHandlerRegistration[];
+  readonly handlers?: readonly ZLinkRouteChannelHandlerOptions[];
+}
+
+export interface ZLinkRouteChannelHandlerOptions {
+  readonly kind: 'send' | 'request';
+  readonly packetName: string;
+  readonly handler: ZLinkRouteChannelSendHandler | ZLinkRouteChannelRequestHandler;
+}
+
+export interface ZLinkRouteChannelSendHandlerRegistration {
+  readonly packetName: string;
+  readonly handler: ZLinkRouteChannelSendHandler;
+}
+
+export interface ZLinkRouteChannelRequestHandlerRegistration {
+  readonly packetName: string;
+  readonly handler: ZLinkRouteChannelRequestHandler;
+}
+
+export interface ZLinkRouteChannelSendHandler {
+  handle(payload: Buffer, context: ZLinkRouteSendContext): Promise<void> | void;
+}
+
+export interface ZLinkRouteChannelRequestHandler {
+  handle(payload: Buffer, context: ZLinkRouteRequestContext): Promise<unknown> | unknown;
 }
 
 export class ZLinkConfigurationException extends Error {
@@ -121,6 +148,7 @@ export function validateFrameworkRegistration(
   }
 
   validateChannelCapabilities(options.channels, hasDiscovery(options.discovery));
+  validateRouteChannels(registration.routeChannelOptions);
 }
 
 export function hasSpotNode(registration: ZLinkFrameworkRegistration): boolean {
@@ -204,4 +232,18 @@ function requireEndpoint(capabilityName: string, endpoint: string | undefined): 
   if (endpoint === undefined || endpoint.trim().length === 0) {
     throw new ZLinkConfigurationException(`${capabilityName} must define a bind endpoint.`);
   }
+}
+
+function validateRouteChannels(routeChannels: ReadonlyMap<string, ZLinkRouteChannelOptions>): void {
+  for (const routeChannel of routeChannels.values()) {
+    if (routeChannelHandlerCount(routeChannel) > 0) {
+      requireEndpoint(`route channel '${routeChannel.routerChannelId}' router`, routeChannel.bind);
+    }
+  }
+}
+
+function routeChannelHandlerCount(routeChannel: ZLinkRouteChannelOptions): number {
+  return (routeChannel.handlers ?? []).length +
+    (routeChannel.sendHandlers ?? []).length +
+    (routeChannel.requestHandlers ?? []).length;
 }

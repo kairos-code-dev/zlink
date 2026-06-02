@@ -19,7 +19,7 @@ import type {
   MessageLike,
   PubSocket
 } from '@zlink-systems/zlink';
-import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
+import { ZLinkConfigurationException, type ZLinkFrameworkRegistration, type ZLinkRouteChannelOptions } from '../configuration';
 import type {
   ZLinkBackendContext,
   ZLinkBackendDealerSocket,
@@ -27,6 +27,7 @@ import type {
   ZLinkBackendRouterSocket,
   ZLinkChannelBackendAdapter
 } from '../backend/contracts';
+import type { ZLinkRuntimeTaskRunner } from '../execution';
 
 const JSON_CONTENT_TYPE = 'application/json';
 
@@ -148,6 +149,7 @@ export class ZLinkChannelRuntimeManager {
   private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
   private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
   private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
+  private readonly routeReceiveLoops: ZLinkRouteReceiveLoop[] = [];
 
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
@@ -155,12 +157,27 @@ export class ZLinkChannelRuntimeManager {
     private readonly context: ZLinkBackendContext
   ) {}
 
-  start(): void {
+  start(taskRunner?: ZLinkRuntimeTaskRunner): Promise<void>[] {
+    const tasks: Promise<void>[] = [];
     for (const routeChannel of this.registration.routeChannelOptions.values()) {
       if (routeChannel.bind !== undefined) {
-        this.getOrCreateRouteRouter(routeChannel.routerChannelId);
+        const router = this.getOrCreateRouteRouter(routeChannel.routerChannelId);
+        const handlers = collectRouteChannelHandlers(routeChannel);
+        if (handlers.length > 0) {
+          if (taskRunner === undefined) {
+            throw new ZLinkConfigurationException(`Route channel '${routeChannel.routerChannelId}' handler dispatch requires a runtime task runner.`);
+          }
+          const dispatcher = new ZLinkRoutePacketDispatcher({
+            routerChannelId: routeChannel.routerChannelId,
+            handlers
+          });
+          const loop = new ZLinkRouteReceiveLoop(router, dispatcher);
+          this.routeReceiveLoops.push(loop);
+          tasks.push(taskRunner.run(`route:${routeChannel.routerChannelId}`, (signal) => loop.run(signal)));
+        }
       }
     }
+    return tasks;
   }
 
   async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
@@ -274,9 +291,14 @@ export class ZLinkChannelRuntimeManager {
 
   async dispose(): Promise<void> {
     const sockets = [...this.clientDealers.values(), ...this.publishers.values(), ...this.routeRouters.values()];
+    const loops = [...this.routeReceiveLoops];
     this.clientDealers.clear();
     this.publishers.clear();
     this.routeRouters.clear();
+    this.routeReceiveLoops.length = 0;
+    for (const loop of loops) {
+      loop.stop();
+    }
     await new Promise<void>((resolve) => setImmediate(resolve));
     await Promise.all(sockets.map((socket) => socket.dispose()));
   }
@@ -474,6 +496,22 @@ export class ZLinkChannelRequestDispatcher {
 export interface ZLinkRoutePacketDispatcherOptions {
   readonly routerChannelId: string;
   readonly handlers: readonly ZLinkRouteHandlerRegistration[];
+}
+
+function collectRouteChannelHandlers(routeChannel: ZLinkRouteChannelOptions): ZLinkRouteHandlerRegistration[] {
+  return [
+    ...(routeChannel.handlers ?? []),
+    ...(routeChannel.sendHandlers ?? []).map((handler): ZLinkRouteHandlerRegistration => ({
+      kind: 'send',
+      packetName: handler.packetName,
+      handler: handler.handler
+    })),
+    ...(routeChannel.requestHandlers ?? []).map((handler): ZLinkRouteHandlerRegistration => ({
+      kind: 'request',
+      packetName: handler.packetName,
+      handler: handler.handler
+    }))
+  ];
 }
 
 export class ZLinkRoutePacketDispatcher {

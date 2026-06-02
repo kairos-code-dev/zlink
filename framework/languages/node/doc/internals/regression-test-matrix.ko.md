@@ -120,6 +120,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | incompatible handler group mapping | `unit` | channel type 과 맞지 않는 handler 가 group 안에 섞이면 일부만 제외하지 않고 startup validation 오류로 실패한다 |
 | route mesh handler group mapping | `integration-single-process` | route mesh channel 의 `addHandlerGroup(...)`은 route send/request handler group 을 실제 routed dispatch 대상으로 노출한다 |
 | route mesh packet dispatcher | `integration-single-process` | route mesh `ROUTER` 로 들어온 routed send/request packet 을 handler 로 dispatch 하고 request reply/error 를 돌려주며 빈 probe frame 은 application handler 로 넘기지 않는다 |
+| DI route channel inbound handler dispatch | `integration-single-process` | `ZLinkModule.forRoot(...)` route channel 의 `sendHandlers`/`requestHandlers`가 runtime host 시작 후 host-owned `ROUTER` receive loop 에 연결되어 routed send/request 를 처리한다 |
 | DI route client host transport | `integration-single-process` | `ZLinkModule.forRoot(...)`가 노출한 `ZLinkRouteClient`가 framework runtime host 시작 이후 host-owned ROUTER transport로 target node RID에 routed send/request/reply를 수행한다 |
 | Spot route transport 전용 channel | `integration-single-process` | `acceptSpotRoutesFromChannel(...)`으로만 참조된 router-capable channel 은 handler group 없이도 Spot route transport 로 동작하지만 application handler 를 열지 않는다 |
 | 같은 channel server에 handler 중복 | `unit` | 같은 `kind + packetName` handler가 둘 이상이면 startup validation 예외 |

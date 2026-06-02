@@ -154,6 +154,12 @@ export interface ZLinkBackendDealerSocket extends ZLinkBackendConnectableSocket 
   recv(flags?: ZLinkBackendRecvFlags): Received | undefined;
 }
 
+export interface ZLinkBackendReplyOperation {
+  message(message: unknown): ZLinkBackendReplyOperation;
+  submit(): void;
+  flags(flags: ZLinkBackendSendFlags): { submit(): void };
+}
+
 export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket {
   attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   onSendReady(handler: () => void): void;
@@ -185,6 +191,7 @@ export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
     flags: ZLinkBackendSendFlags,
     timeoutMs?: number
   ): boolean;
+  reply(routingId: RoutingId, requestSeq: bigint): ZLinkBackendReplyOperation;
   reply(routingId: RoutingId, requestSeq: bigint, message: Message | readonly Message[]): void;
 }
 

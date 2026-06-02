@@ -26,6 +26,10 @@ add_tictactoe_api_server (zlink::framework::app_t &app,
         .server (topology.api_endpoint)
         .handler_group ("api");
 
+      options.http ()
+        .listen (topology.api_http_endpoint)
+        .map_post<create_match_handler_t> ("/games");
+
       options.client_server_channel (sample_names_t::play_channel)
         .client ();
     });

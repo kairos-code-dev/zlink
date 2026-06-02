@@ -197,6 +197,7 @@ tradeoff라고 판단하더라도, public 복잡성이 늘지 않는 이유와 �
 cmake -S framework/languages/cpp -B framework/languages/cpp/build
 cmake --build framework/languages/cpp/build
 ctest --test-dir framework/languages/cpp/build -L framework-contract
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_tooling_contract
 git diff --check -- framework/languages/cpp
 ```
 
@@ -961,6 +962,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-sample-log
 구현 항목:
 
 - full CTest regression
+- C++ framework runtime line coverage 70% 이상
 - zlink `.NET` parity e2e regression
 - public header compile contract
 - install/package consumer test
@@ -980,6 +982,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-sample-log
 - C++ framework는 `.NET` framework와 동일 수준의 사용성을 제공한다.
 - Goal 1부터 Goal 22까지 완료 기준이 충족된다.
 - CTest label 전체가 통과한다.
+- coverage build의 runtime line coverage가 70% 이상이다.
 - Goal 1부터 Goal 22까지 각 goal에서 POSD 기반 리팩토링을 최소 한 번씩 수행했다.
 - POSD 리팩토링 기록이 22개 이상 남아 있다.
 - framework, connector, HTTP client, Unreal connector public header가 runtime implementation
@@ -1012,6 +1015,9 @@ ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-fa
 ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-package --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-extension --output-on-failure
+cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70
+cmake --build framework/languages/cpp/build-coverage
+ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure
 git diff --check -- framework/languages/cpp bindings/cpp
 ```
 

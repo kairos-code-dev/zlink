@@ -12,6 +12,9 @@ option(ZLINK_STREAM_CONNECTOR_WITH_JSON "Enable Stream Connector JSON helpers" O
 option(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK "Enable Stream Connector MessagePack helpers" OFF)
 option(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF "Enable Stream Connector Protobuf helpers" OFF)
 option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 "Enable Stream Connector LZ4 compression" ON)
+option(ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE "Enable C++ framework gcov coverage instrumentation" OFF)
+set(ZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD 70 CACHE STRING
+  "Minimum C++ framework runtime line coverage percentage")
 
 set(ZLINK_FRAMEWORK_CPP_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(ZLINK_FRAMEWORK_CPP_REPO_ROOT "${ZLINK_FRAMEWORK_CPP_DIR}/../../.." CACHE PATH
@@ -75,6 +78,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/configuration/services.cpp
   framework/src/runtime/codecs/serializer.cpp
   framework/src/runtime/diagnostics/logging.cpp
+  framework/src/runtime/diagnostics/health.cpp
   framework/src/runtime/diagnostics/monitoring_runtime.cpp
   framework/src/runtime/dispatch/coroutine_executor.cpp
   framework/src/runtime/dispatch/offload_executor.cpp
@@ -82,6 +86,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/handlers/handler_registry.cpp
   framework/src/runtime/dispatch/projection.cpp
   framework/src/runtime/host/app.cpp
+  framework/src/runtime/http/http_host_service.cpp
   framework/src/runtime/host/framework_runtime.cpp
   framework/src/runtime/messaging/client_call_codec.cpp
   framework/src/runtime/messaging/envelope_codec.cpp
@@ -124,9 +129,79 @@ if(NOT nlohmann_json_FOUND)
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   FetchContent_MakeAvailable(nlohmann_json)
 endif()
+find_package(OpenSSL QUIET)
 target_include_directories(zlink_framework PUBLIC
   $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/codecs/zlink-codec-json/include>)
 target_link_libraries(zlink_framework PUBLIC nlohmann_json::nlohmann_json)
+if(OpenSSL_FOUND)
+  target_compile_definitions(zlink_framework PRIVATE
+    ZLINK_FRAMEWORK_HTTP_WITH_OPENSSL)
+  target_link_libraries(zlink_framework PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+endif()
+
+add_library(zlink_http_client STATIC
+  http-client/src/client.cpp
+  http-client/src/runtime/http_client_runtime.cpp)
+add_library(zlink::http_client ALIAS zlink_http_client)
+set_target_properties(zlink_http_client PROPERTIES EXPORT_NAME http_client)
+target_compile_features(zlink_http_client PUBLIC cxx_std_20)
+target_include_directories(zlink_http_client PUBLIC
+  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/http-client/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_include_directories(zlink_http_client PRIVATE
+  ${ZLINK_FRAMEWORK_CPP_DIR}/http-client/src)
+target_link_libraries(zlink_http_client PUBLIC
+  zlink::framework
+  nlohmann_json::nlohmann_json)
+target_link_libraries(zlink_http_client PRIVATE Threads::Threads)
+if(Boost_FOUND AND Boost_INCLUDE_DIRS)
+  target_include_directories(zlink_http_client PRIVATE ${Boost_INCLUDE_DIRS})
+elseif(Boost_FOUND AND Boost_INCLUDE_DIR)
+  target_include_directories(zlink_http_client PRIVATE ${Boost_INCLUDE_DIR})
+elseif(EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/core/external/boost/boost/asio.hpp")
+  target_include_directories(zlink_http_client PRIVATE
+    "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/core/external/boost")
+endif()
+if(OpenSSL_FOUND)
+  target_compile_definitions(zlink_http_client PRIVATE
+    ZLINK_HTTP_CLIENT_WITH_OPENSSL)
+  target_link_libraries(zlink_http_client PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+  set(ZLINK_HTTP_CLIENT_EXPORT_OPENSSL_DEPENDENCY
+    "find_dependency(OpenSSL)")
+else()
+  set(ZLINK_HTTP_CLIENT_EXPORT_OPENSSL_DEPENDENCY "")
+endif()
+find_program(ZLINK_OPENSSL_EXECUTABLE openssl)
+if(OpenSSL_FOUND AND ZLINK_OPENSSL_EXECUTABLE)
+  set(ZLINK_HTTP_CLIENT_TEST_CERT_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/http-client-test-certs")
+  set(ZLINK_HTTP_CLIENT_TEST_CERT
+    "${ZLINK_HTTP_CLIENT_TEST_CERT_DIR}/server.crt")
+  set(ZLINK_HTTP_CLIENT_TEST_KEY
+    "${ZLINK_HTTP_CLIENT_TEST_CERT_DIR}/server.key")
+  file(MAKE_DIRECTORY "${ZLINK_HTTP_CLIENT_TEST_CERT_DIR}")
+  if(NOT EXISTS "${ZLINK_HTTP_CLIENT_TEST_CERT}" OR
+      NOT EXISTS "${ZLINK_HTTP_CLIENT_TEST_KEY}")
+    execute_process(
+      COMMAND ${ZLINK_OPENSSL_EXECUTABLE}
+        req -x509 -newkey rsa:2048 -nodes -days 7
+        -subj /CN=localhost
+        -addext subjectAltName=DNS:localhost,IP:127.0.0.1
+        -keyout "${ZLINK_HTTP_CLIENT_TEST_KEY}"
+        -out "${ZLINK_HTTP_CLIENT_TEST_CERT}"
+      RESULT_VARIABLE ZLINK_HTTP_CLIENT_CERT_RESULT
+      OUTPUT_QUIET
+      ERROR_QUIET)
+    if(NOT ZLINK_HTTP_CLIENT_CERT_RESULT EQUAL 0)
+      message(WARNING
+        "Could not generate HTTP client HTTPS test certificate; HTTPS e2e test will be disabled.")
+    endif()
+  endif()
+  if(EXISTS "${ZLINK_HTTP_CLIENT_TEST_CERT}" AND
+      EXISTS "${ZLINK_HTTP_CLIENT_TEST_KEY}")
+    set(ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL ON)
+  endif()
+endif()
 
 add_library(zlink_stream_connector STATIC
   connector/src/runtime/calls/zlink_stream_calls.cpp
@@ -225,6 +300,23 @@ endif()
 target_compile_definitions(zlink_unreal_stream_connector PRIVATE
   $<$<BOOL:${ZLINK_STREAM_CONNECTOR_WITH_LZ4}>:ZLINK_UNREAL_STREAM_CONNECTOR_WITH_LZ4>)
 
+function(zlink_enable_coverage target_name)
+  if(ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      target_compile_options(${target_name} PRIVATE -O0 -g --coverage)
+      target_link_options(${target_name} PUBLIC --coverage)
+    else()
+      message(FATAL_ERROR
+        "ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE requires GCC or Clang compatible coverage flags.")
+    endif()
+  endif()
+endfunction()
+
+zlink_enable_coverage(zlink_framework)
+zlink_enable_coverage(zlink_http_client)
+zlink_enable_coverage(zlink_stream_connector)
+zlink_enable_coverage(zlink_unreal_stream_connector)
+
 function(add_zlink_framework_extension target_name alias_name)
   add_library(${target_name} INTERFACE)
   add_library(${alias_name} ALIAS ${target_name})
@@ -274,6 +366,7 @@ add_zlink_framework_extension(
 
 install(TARGETS
   zlink_framework
+  zlink_http_client
   zlink_framework_extension_metrics
   zlink_framework_extension_tracing
   zlink_framework_extension_kafka_bridge
@@ -291,6 +384,9 @@ install(TARGETS
   zlink_stream_connector_codecs
   EXPORT zlink_stream_connector_cppTargets)
 install(DIRECTORY framework/include/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  FILES_MATCHING PATTERN "*.hpp")
+install(DIRECTORY http-client/include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.hpp")
 install(DIRECTORY
@@ -396,17 +492,35 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
       TIMEOUT 30)
   endfunction()
 
+  function(add_zlink_http_client_test target_name source_file labels)
+    add_executable(${target_name} ${source_file})
+    target_link_libraries(${target_name} PRIVATE zlink::http_client)
+    target_link_zlink_test_harness(${target_name})
+    target_include_directories(${target_name} PRIVATE
+      ${ZLINK_FRAMEWORK_CPP_DIR}/http-client/src)
+    add_test(NAME ${target_name} COMMAND ${target_name})
+    set_tests_properties(${target_name} PROPERTIES
+      LABELS "${labels}"
+      TIMEOUT 30)
+  endfunction()
+
   add_executable(test_cpp_framework_contract_headers
     tests/Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp)
   target_link_libraries(test_cpp_framework_contract_headers PRIVATE
     zlink::framework
+    zlink::http_client
     zlink::stream_connector
     GTest::gtest
     GTest::gmock)
   add_test(NAME test_cpp_framework_contract_headers
     COMMAND test_cpp_framework_contract_headers)
   set_tests_properties(test_cpp_framework_contract_headers PROPERTIES
-    LABELS "framework-contract"
+    LABELS "framework-contract;http-client-contract;http-client-unit;http-client-e2e;http-client-https;http-client-regression"
+    TIMEOUT 30)
+  add_test(NAME test_cpp_framework_async_contract
+    COMMAND test_cpp_framework_contract_headers)
+  set_tests_properties(test_cpp_framework_async_contract PROPERTIES
+    LABELS "framework-contract;framework-unit;async"
     TIMEOUT 30)
 
   add_executable(test_cpp_framework_sample_parity
@@ -421,6 +535,11 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_sample_parity PROPERTIES
     LABELS "framework-contract;framework-sample-parity"
     TIMEOUT 30)
+  add_test(NAME test_cpp_framework_parity_contract
+    COMMAND test_cpp_framework_sample_parity)
+  set_tests_properties(test_cpp_framework_parity_contract PROPERTIES
+    LABELS "framework-regression;framework-sample-parity;parity"
+    TIMEOUT 30)
 
   add_executable(test_cpp_framework_layout_contract
     tests/Zlink.Framework.ContractTests/test_cpp_framework_layout_contract.cpp)
@@ -433,11 +552,52 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_layout_contract PROPERTIES
     LABELS "framework-contract"
     TIMEOUT 30)
+  add_test(
+    NAME test_cpp_framework_tooling_contract
+    COMMAND ${CMAKE_COMMAND}
+      -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.ContractTests/verify_tooling_contract.cmake)
+  set_tests_properties(test_cpp_framework_tooling_contract PROPERTIES
+    LABELS "framework-contract;framework-package"
+    TIMEOUT 30)
 
   add_zlink_framework_test(
     test_cpp_framework_app_host
     tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp
-    "framework-unit;framework-host;framework-config;framework-http")
+    "framework-unit;framework-host;framework-config;framework-http;framework-http-e2e")
+  target_link_libraries(test_cpp_framework_app_host PRIVATE zlink::http_client)
+  if(ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE)
+    set(ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT "http://127.0.0.1:18180")
+    set(ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT "https://127.0.0.1:18543")
+    set(ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_ENDPOINT "https://127.0.0.1:18544")
+    set(ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL "https://localhost:18544")
+  else()
+    set(ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT "http://127.0.0.1:18080")
+    set(ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT "https://127.0.0.1:18443")
+    set(ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_ENDPOINT "https://127.0.0.1:18444")
+    set(ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL "https://localhost:18444")
+  endif()
+  target_compile_definitions(test_cpp_framework_app_host PRIVATE
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT="${ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT}"
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT="${ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT}"
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_ENDPOINT="${ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_ENDPOINT}"
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL="${ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL}")
+  if(ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL)
+    target_compile_definitions(test_cpp_framework_app_host PRIVATE
+      ZLINK_FRAMEWORK_HTTP_TEST_WITH_OPENSSL
+      ZLINK_FRAMEWORK_HTTP_TEST_CERT="${ZLINK_HTTP_CLIENT_TEST_CERT}"
+      ZLINK_FRAMEWORK_HTTP_TEST_KEY="${ZLINK_HTTP_CLIENT_TEST_KEY}")
+  endif()
+  add_test(NAME test_cpp_framework_http_integration
+    COMMAND test_cpp_framework_app_host)
+  set_tests_properties(test_cpp_framework_http_integration PROPERTIES
+    LABELS "framework-integration;framework-http;framework-http-e2e;http"
+    TIMEOUT 30)
+  set_tests_properties(
+    test_cpp_framework_app_host
+    test_cpp_framework_http_integration
+    PROPERTIES
+      RESOURCE_LOCK zlink_cpp_framework_http_ports)
   add_zlink_framework_test(
     test_cpp_framework_DI_scope
     tests/Zlink.Framework.UnitTests/test_cpp_framework_di.cpp
@@ -545,6 +705,21 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     "connector-unit;connector-integration;connector-e2e")
   target_link_libraries(test_cpp_stream_connector PRIVATE
     zlink::stream_connector_codecs)
+  add_zlink_http_client_test(
+    test_cpp_http_client
+    tests/Zlink.HttpClient.Tests/test_cpp_http_client.cpp
+    "http-client-unit;http-client-e2e;http-client-regression")
+  if(ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL)
+    target_compile_definitions(test_cpp_http_client PRIVATE
+      ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL
+      ZLINK_HTTP_CLIENT_TEST_CERT="${ZLINK_HTTP_CLIENT_TEST_CERT}"
+      ZLINK_HTTP_CLIENT_TEST_KEY="${ZLINK_HTTP_CLIENT_TEST_KEY}")
+    target_link_libraries(test_cpp_http_client PRIVATE
+      OpenSSL::SSL
+      OpenSSL::Crypto)
+    set_tests_properties(test_cpp_http_client PROPERTIES
+      LABELS "http-client-unit;http-client-e2e;http-client-https;http-client-regression")
+  endif()
 
   add_executable(test_unreal_stream_connector
     tests/Zlink.Unreal.Stream.Connector.Tests/test_unreal_stream_connector.cpp)
@@ -626,6 +801,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     samples/TicTacToe/Client/main.cpp
     "framework-sample-tictactoe;framework-sample-client"
     zlink::framework
+    zlink::http_client
     zlink::stream_connector
     zlink::stream_connector_codecs)
 
@@ -669,4 +845,21 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     PROPERTIES
       LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;connector-e2e"
       TIMEOUT 30)
+endif()
+
+if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS AND ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE)
+  find_program(ZLINK_GCOV_EXECUTABLE gcov REQUIRED)
+  get_property(ZLINK_FRAMEWORK_CPP_TESTS DIRECTORY PROPERTY TESTS)
+  add_test(
+    NAME test_cpp_framework_coverage_threshold
+    COMMAND ${CMAKE_COMMAND}
+      -D ZLINK_FRAMEWORK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+      -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
+      -D ZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=${ZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD}
+      -D ZLINK_GCOV_EXECUTABLE=${ZLINK_GCOV_EXECUTABLE}
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.Coverage/coverage_threshold.cmake)
+  set_tests_properties(test_cpp_framework_coverage_threshold PROPERTIES
+    LABELS "framework-coverage;framework-regression"
+    DEPENDS "${ZLINK_FRAMEWORK_CPP_TESTS}"
+    TIMEOUT 120)
 endif()

@@ -450,7 +450,7 @@ public:
 } // namespace zlink::framework
 ```
 
-`app_advanced_t`는 framework extension, contract test, 아직 상위 options로 승격되지 않은
+`app_advanced_t`는 framework extension, contract test, 상위 options로 승격하지 않은
 낮은 수준 기능을 위한 탈출구다. Bingo, TicTacToe 같은 일반 샘플은 이 표면을 사용하지
 않고 `add_zlink_framework(...)`만 사용해야 한다.
 
@@ -1506,7 +1506,7 @@ app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &option
 이 구조에서는 샘플 `main.cpp`, role `*HostFactory`, 일반 사용자 설정 예제가 handler member
 function pointer, handler용 DI factory lambda, monitoring channel 문자열, serializer smoke 검증,
 message type을 모두 나열하는 codec 등록 같은 세부 구현을 직접 알 필요가 없다. 그런 내용이 보이면
-framework options builder가 아직 충분히 깊지 않은 것으로 본다.
+framework options builder가 충분히 깊지 않은 것으로 본다.
 
 `zlink_framework_options_t`의 사용자 표면은 fluent options builder로 제한한다. 람다 기반
 `add_client_server_channel(...)`, `enable_server(...)`, `enable_client(...)` 같은 우회 API는
@@ -1571,6 +1571,23 @@ public:
 
     template <typename TMiddleware>
     http_options_builder_t &use();
+
+    http_options_builder_t &map_health(std::string path);
+    http_options_builder_t &map_readiness(std::string path);
+    http_options_builder_t &map_liveness(std::string path);
+};
+
+struct http_context_t {
+    http_method_t method;
+    std::string path;
+    std::string correlation_id;
+    std::map<std::string, std::string> request_headers;
+    std::map<std::string, std::string> response_headers;
+    std::optional<std::string> response_body;
+    int response_status;
+
+    http_context_t &response_header(std::string name, std::string value);
+    http_context_t &json_response(int status, std::string body);
 };
 
 class zlink_framework_options_t {
@@ -1631,6 +1648,12 @@ route handler 사용성을 따르기 위한 규칙이다.
 `use<TMiddleware>()`는 exception, logging, validation, auth, correlation id 같은
 cross-cutting 처리를 route handler 앞뒤에 연결한다. middleware/filter는 Beast나 Asio
 타입을 받지 않고 `http_context_t`와 framework DTO만 다룬다.
+middleware가 `before(http_context_t&)` 또는 `after(http_context_t&)`를 제공하면 runtime은
+route handler 전후에 호출한다. request의 `X-Correlation-Id` 또는 `X-Request-Id`는
+`http_context_t::correlation_id`로 들어가고 response의 `X-Correlation-Id`로 전파된다.
+middleware가 `before(...)`에서 `json_response(...)`를 설정하면 runtime은 handler를 호출하지
+않고 해당 JSON response를 반환한다. `map_health(...)`, `map_readiness(...)`,
+`map_liveness(...)`는 `app.health()` report를 HTTP endpoint로 노출한다.
 
 `listen(...)`은 `http://`와 `https://` endpoint를 모두 받는다. `https://` endpoint를
 사용하면 `tls(...)`로 server certificate와 private key를 설정해야 한다. TLS 설정 public

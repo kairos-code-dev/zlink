@@ -291,6 +291,24 @@ main ()
     return 32;
   }
 
+  zlink::framework::detail::task_completion_source_t<int> completion;
+  auto first_complete_wins = completion.task ();
+  int callback_count = 0;
+  int callback_value = 0;
+  zlink::framework::detail::observe_task_completion (
+    first_complete_wins,
+    [&callback_count, &callback_value](
+      const zlink::framework::result_t<int> &result) {
+      ++callback_count;
+      callback_value = result.value ();
+    });
+  completion.complete (zlink::framework::result_t<int>::success (100));
+  completion.complete (zlink::framework::result_t<int>::success (200));
+  if (first_complete_wins.result ().value () != 100 ||
+      callback_count != 1 || callback_value != 100) {
+    return 33;
+  }
+
   auto missing_result = handlers.invoke (
     "game",
     "missing",

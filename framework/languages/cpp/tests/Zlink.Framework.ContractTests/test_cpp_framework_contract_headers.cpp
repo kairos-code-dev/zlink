@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/framework.hpp>
+#include <zlink/framework/health.hpp>
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/assembly/assembly.hpp>
 #include <zlink/framework/contracts/channels/channel.hpp>
@@ -16,6 +17,7 @@
 #include <zlink/framework/contracts/errors/error.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/eventing/events.hpp>
+#include <zlink/framework/contracts/eventing/health.hpp>
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/configuration/transport.hpp>
@@ -30,6 +32,8 @@
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
+#include <zlink/http_client.hpp>
+#include <zlink/http_client/contracts/client.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp>
 #include <zlink/stream_connector/contracts/codec_registry.hpp>
@@ -49,6 +53,7 @@
 #include <type_traits>
 
 static_assert (zlink::framework::version_major == 0);
+static_assert (zlink::http_client::version_major == 0);
 static_assert (zlink::stream_connector::version_major == 0);
 static_assert (
   !std::is_same_v<zlink::framework::task_t<int>, std::future<int>>);
@@ -69,6 +74,15 @@ concept has_future_get = requires (T value) {
 
 static_assert (!has_blocking_wait<zlink::framework::task_t<int>>);
 static_assert (!has_future_get<zlink::framework::task_t<int>>);
+
+static_assert (
+  std::is_same_v<
+    decltype (zlink::http_client::client_t::create ()
+                .base_url ("http://127.0.0.1:18080")
+                .json ()
+                .build ()
+                .post ("/sample")),
+    zlink::http_client::request_builder_t>);
 
 namespace
 {

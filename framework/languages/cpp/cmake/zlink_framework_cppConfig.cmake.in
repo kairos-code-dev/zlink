@@ -1,7 +1,9 @@
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)
+find_dependency(Threads)
 find_dependency(nlohmann_json CONFIG)
+@ZLINK_HTTP_CLIENT_EXPORT_OPENSSL_DEPENDENCY@
 
 if(NOT TARGET zlink-native)
   if(WIN32)

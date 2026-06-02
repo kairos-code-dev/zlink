@@ -9,7 +9,8 @@ main ()
 
   const auto result =
     tictactoe_client_t {}.run (tictactoe_client_options_t {});
-  if (!result.connected || result.requests.size () != 9 ||
+  if (!result.connected || !result.http_game_created ||
+      result.requests.size () != 9 ||
       result.requests.front ().packet_name != "AuthenticateReq" ||
       result.requests.back ().packet_name != "PlaceMarkReq") {
     return 1;

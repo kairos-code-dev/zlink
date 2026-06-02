@@ -292,13 +292,18 @@ framework는 cross-cutting concern을 handler 안에 반복하지 않도록 midd
 필수 기능:
 
 - HTTP middleware
-- HTTP route filter
 - zlink message filter
 - handler filter
 - logging filter
 - validation filter
 - auth filter
 - exception filter
+
+HTTP의 초기 core 구현은 `options.http().use<TMiddleware>()`와 `http_context_t` 기반
+before/after hook이다. route별 HTTP filter 타입은 별도 public API로 만들지 않고,
+middleware가 method/path를 보고 필요한 route에만 적용한다. middleware는
+`http_context_t::json_response(...)`로 handler 호출을 건너뛰는 short-circuit response를
+만들 수 있다.
 
 초기 구현 순서:
 
@@ -308,8 +313,8 @@ framework는 cross-cutting concern을 handler 안에 반복하지 않도록 midd
 4. auth filter
 5. custom filter registration
 
-filter는 DI를 사용할 수 있어야 한다. filter가 native socket, Beast request, CAPI handle을
-직접 받으면 안 된다.
+filter와 middleware는 DI를 사용할 수 있어야 한다. filter가 native socket, Beast request,
+CAPI handle을 직접 받으면 안 된다.
 
 ## 10. Logging
 
@@ -356,7 +361,8 @@ HTTP health endpoint는 선택적으로 제공한다.
 ```cpp
 options.http()
   .map_health("/health")
-  .map_readiness("/ready");
+  .map_readiness("/ready")
+  .map_liveness("/live");
 ```
 
 health는 HTTP만의 상태가 아니라 zlink channel, discovery, registry, STREAM endpoint,

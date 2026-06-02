@@ -3,6 +3,7 @@
 #include <zlink/framework/contracts/configuration/app.hpp>
 
 #include "runtime/dispatch/coroutine_executor.hpp"
+#include "runtime/http/http_host_service.hpp"
 
 #include <atomic>
 #include <csignal>
@@ -41,6 +42,7 @@ public:
   config_builder_t config;
   logging_builder_t logging;
   monitoring_builder_t monitoring;
+  health_builder_t health;
   zlink_builder_t zlink;
   serializer_registry_t serializers;
   std::vector<std::unique_ptr<hosted_service_t>> hosted_services;
@@ -121,6 +123,12 @@ app_t::monitoring () noexcept
   return _state->monitoring;
 }
 
+health_builder_t &
+app_t::health () noexcept
+{
+  return _state->health;
+}
+
 app_advanced_t
 app_t::advanced () noexcept
 {
@@ -166,7 +174,13 @@ app_t::add_zlink_framework (
   if (configure) {
     configure (options);
   }
+  const auto http_snapshot = options.http ().snapshot ();
   options.apply ();
+  if (!http_snapshot.endpoints.empty ()) {
+    add_hosted_service (
+      std::make_unique<runtime::http_host_service_t> (http_snapshot,
+                                                      _state->health));
+  }
   runtime::configure_handler_coroutine_executor (
     options.handler_coroutine_workers ());
   return *this;

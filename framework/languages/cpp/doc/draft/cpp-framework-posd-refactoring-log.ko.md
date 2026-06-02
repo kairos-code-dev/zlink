@@ -59,7 +59,7 @@ git diff --check -- framework/languages/cpp
 
 ### 발견한 위험 신호
 
-- `zlink::stream_connector` target이 아직 public header에서 사용하지 않는 codec build
+- `zlink::stream_connector` target이 당시 public header에서 사용하지 않는 codec build
   option을 public compile definition으로 노출하고 있었다.
 - 샘플 `main`이 version 값을 검사해 성공 여부를 정하고 있었다. include compile smoke에는
   필요 없는 조건이고, 나중에 version 정책이 바뀌면 샘플 smoke가 엉뚱한 이유로 실패할 수
@@ -72,14 +72,14 @@ git diff --check -- framework/languages/cpp
 
 | 대안 | 장점 | 단점 |
 |------|------|------|
-| public compile definition 유지 | 나중에 codec option을 header에서 바로 쓸 수 있다 | 아직 결정되지 않은 build 세부가 소비자 컴파일 표면에 노출된다 |
-| generated config header로 숨김 | 필요해질 때 명시적인 public config 표면을 만들 수 있다 | Goal 1에서는 아직 실제 codec 구현이 없어 과하다 |
+| public compile definition 유지 | 나중에 codec option을 header에서 바로 쓸 수 있다 | 당시 결정되지 않은 build 세부가 소비자 컴파일 표면에 노출된다 |
+| generated config header로 숨김 | 필요해질 때 명시적인 public config 표면을 만들 수 있다 | Goal 1에서는 당시 실제 codec 구현이 없어 과하다 |
 | compile definition 제거 | 빌드 경계만 남기고 불필요한 public 표면을 만들지 않는다 | 이후 codec goal에서 option 전달 방식을 다시 설계해야 한다 |
 | facade header만 유지 | 기존 include 사용성이 가장 단순하다 | `.NET`식 contract/runtime 분리가 실제 구조에 반영되지 않는다 |
 | contract header owner를 만들고 facade는 include wrapper로 유지 | 기존 include를 유지하면서 public 계약 owner를 분리한다 | Goal 1에서 디렉토리와 layout test가 추가된다 |
 
 선택은 compile definition 제거다. Goal 1은 target 경계와 include compile 확인이 목적이므로,
-아직 사용하지 않는 codec option을 public compile 표면에 올릴 이유가 없다.
+당시 사용하지 않는 codec option을 public compile 표면에 올릴 이유가 없다.
 
 샘플은 version 조건 검사를 제거하고, include 가능한지만 확인하는 형태로 유지했다.
 
@@ -191,7 +191,7 @@ git diff --check -- bindings/cpp framework/languages/cpp
 | call helper를 `src/runtime/*`로 이동 | public header가 가장 얇다 | template result type 때문에 Goal 3의 generic call surface를 구현하기 어렵다 |
 | value-only call facade helper를 `contracts/detail/*`로 분리 | native/runtime 지식 없이 template forwarding만 숨길 수 있다 | runtime submitter가 붙기 전까지 즉시 완료 상태 helper가 public include tree에 남는다 |
 
-선택은 세 번째 방식이다. Goal 3의 call object는 아직 runtime queue나 native submitter를
+선택은 세 번째 방식이다. Goal 3의 call object는 당시 runtime queue나 native submitter를
 소유하지 않는다. `contracts/detail/call_facade.hpp`에는 result 값을 callback submit과
 coroutine submit으로 같은 error kind에 연결하는 value-only helper만 둔다. pending queue,
 executor, CAPI dispatch, native handle owner는 포함하지 않는다.
@@ -207,21 +207,26 @@ executor, CAPI dispatch, native handle owner는 포함하지 않는다.
   `wait()`/`get()` 부재 검사를 추가했다.
 - timeout 실패와 shutdown 실패가 callback/coroutine submit에서 같은 error kind로 보이는지
   contract test로 확인했다.
+- handler registry 단위 테스트에 `task_t<T>` 다중 await와 first-complete-wins 회귀를
+  추가했다. 같은 task를 여러 coroutine이 await할 수 있고, 완료 상태와 callback은 첫 완료로만
+  확정된다.
+- layout contract에 handler dispatch가 coroutine executor와 `await_task_result`를 통과하는지
+  검사하고, route handler dispatch가 `.result()` blocking bridge로 후퇴하지 않도록 고정했다.
 
 ### 남은 tradeoff
 
 - `contracts/detail/call_facade.hpp`의 즉시 완료 helper는 template call object 계약을
   검증하기 위한 value-only helper다. runtime submitter, pending queue, shutdown drain은
   Goal 6과 Goal 9에서 `src/runtime/*` 구현으로 붙인다.
-- `framework-unit` label은 아직 unit test executable이 없어 CTest가 "No tests were found"를
+- `framework-unit` label은 당시 unit test executable이 없어 CTest가 "No tests were found"를
   출력한다. Goal 5 이후 DI/runtime 단위 테스트가 추가되면 이 label에 실제 테스트가 붙는다.
 
 ### 재실행한 검증 명령
 
 ```bash
-cmake --build framework/languages/cpp/build
-ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-unit --output-on-failure
+cmake --build framework/languages/cpp/build --target test_cpp_framework_handler_registry test_cpp_framework_layout_contract
+ctest --test-dir framework/languages/cpp/build -R "handler_registry|layout_contract" --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-unit -R async --output-on-failure
 git diff --check -- framework/languages/cpp bindings/cpp
 ```
 
@@ -266,9 +271,9 @@ runtime 구현을 둘 수 있는 library target이어야 한다. public header�
 
 ### 남은 tradeoff
 
-- signal handling과 실제 graceful shutdown drain은 아직 native runtime이 없어서 Goal 6과
+- signal handling과 실제 graceful shutdown drain은 당시 native runtime이 없어서 Goal 6과
   Goal 11에서 구현한다. Goal 4에서는 public app/host 계약과 내부 구현 경계를 먼저 닫았다.
-- `framework-regression` label은 아직 regression executable이 없어 CTest가
+- `framework-regression` label은 당시 regression executable이 없어 CTest가
   "No tests were found"를 출력한다. Goal 20에서 전체 regression gate로 확장한다.
 
 ### 재실행한 검증 명령
@@ -834,7 +839,7 @@ git diff --check -- framework/languages/cpp
 
 ### 남은 tradeoff
 
-- 일반 Spot subscription의 실제 publish pump e2e는 아직 별도 확장 검증이 필요하다. 이번
+- 일반 Spot subscription의 실제 publish pump e2e는 당시 별도 확장 검증이 필요하다. 이번
   변경은 public registration과 typed invocation shape를 맞춘 범위다.
 - EntrySpot actor packet handler는 sample-local room directory/room 객체를 DI로 받는다.
   실제 actor context의 `JoinSpot`까지 포함한 완전한 gateway e2e는 다음 actor gateway
@@ -1539,7 +1544,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 
 ### 발견한 위험 신호
 
-- Goal 1 placeholder README가 남아 있으면 샘플을 열어도 현재 리뷰 범위를 알기 어렵다.
+- Goal 1 초기 README가 남아 있으면 샘플을 열어도 현재 리뷰 범위를 알기 어렵다.
 - Bingo에서 `.NET` Bingo의 session stream 역할을 빼면 처리 packet 수와 역할 구성이 달라져
   sample parity를 검토할 수 없다.
 - TicTacToe에서 ActorGateway 대신 route mesh channel이나 sample-only metadata store를 쓰면
@@ -1571,7 +1576,7 @@ TicTacToe는 STREAM/ActorGateway 중심으로 둔다.
 - 샘플 이름은 `Bingo`, `TicTacToe` 그대로 유지하고 별도 접미사를 붙이지 않았다.
 - Bingo에도 `.NET` Bingo와 같은 `Server/Session` 역할을 두고 session stream 흐름을
   포함했다.
-- POSD 리팩토링으로 placeholder README를 제거하고 각 샘플의 리뷰 목적과 포함 범위를
+- POSD 리팩토링으로 초기 README를 제거하고 각 샘플의 리뷰 목적과 포함 범위를
   현재 코드와 맞게 갱신했다.
 
 ### 남은 tradeoff
@@ -1717,7 +1722,7 @@ git diff --check -- framework/languages/cpp
 | request path만 timed non-blocking read로 보정 | public API를 바꾸지 않고 무기한 block을 제거한다 | background receive loop 수준의 완전한 async runtime은 아니다 |
 | heartbeat 전용 thread 추가 | 주기 전송이 정확하다 | 사용자가 쓰지 않는 connector에도 thread 비용이 생긴다 |
 | `dispatch()` 경로에서 interval이 지난 heartbeat만 전송 | background thread 없이 manual dispatch 모델과 맞는다 | dispatch가 호출될 때 heartbeat가 진행된다 |
-| reconnect를 connect retry loop로 구현 | 현재 sync connect contract 안에서 재시도 의미를 닫는다 | async backoff cancellation은 아직 없다 |
+| reconnect를 connect retry loop로 구현 | 현재 sync connect contract 안에서 재시도 의미를 닫는다 | async backoff cancellation은 당시 없다 |
 
 선택은 timed non-blocking request read, connect retry loop, opportunistic heartbeat다. 이렇게 하면
 현재 connector의 sync/coroutine facade와 manual dispatch 모델을 유지하면서 무기한 block과
@@ -1981,7 +1986,7 @@ git diff --check -- framework/languages/cpp
 | native leakage | layout contract test와 public header 검색으로 runtime implementation header include 누출이 없음을 확인했다. |
 | detail 사용 | `contracts/detail/*`에는 call object forwarding helper만 있고 queue, executor, frame codec, dispatch projection 구현은 없다. |
 | state hiding | framework, connector, Unreal connector facade는 private/opaque state 또는 private implementation owner를 사용한다. |
-| validation | full build, 전체 CTest 20개, public header dependency 검색, `git diff --check`를 실행했다. |
+| validation | full build, 당시 전체 CTest, public header dependency 검색, `git diff --check`를 실행했다. |
 
 ### 발견한 위험 신호
 
@@ -2000,17 +2005,17 @@ git diff --check -- framework/languages/cpp
 | Goal 20을 Goal 1-19 회귀 게이트로 정리하고 Goal 21 뒤 최종 감사를 다시 수행 | 순서대로 진행하면서 충돌을 없앤다 | Goal 20 문서 완료 기준을 수정해야 한다 |
 
 선택은 Goal 20을 Goal 1-19 회귀 게이트로 정리하는 것이다. Goal 21에서 extension boundary를
-닫은 뒤 전체 21개 goal 최종 감사와 commit/push를 수행한다.
+닫은 뒤 당시 계획의 전체 goal 최종 감사와 commit/push를 수행한다.
 
 ### 적용한 리팩토링
 
 - `cpp-framework-implementation-plan.ko.md`의 Goal 20 완료 기준을 Goal 1-19 회귀 게이트로
   정리했다.
-- Goal 21 extension boundary 항목은 Goal 21에서 닫고 그 뒤 전체 21개 goal 최종 감사를 다시
+- Goal 21 extension boundary 항목은 Goal 21에서 닫고 그 뒤 당시 계획의 전체 goal 최종 감사를 다시
   수행한다고 문서화했다.
 - `cmake --build framework/languages/cpp/build`로 framework, connector, Unreal connector,
   samples, tests 전체 target을 빌드했다.
-- `ctest --test-dir framework/languages/cpp/build --output-on-failure`로 현재 등록된 20개
+- `ctest --test-dir framework/languages/cpp/build --output-on-failure`로 당시 등록된
   테스트 전체를 실행했다.
 - public header에서 테스트 라이브러리, 외부 extension dependency, runtime/private include
   누출을 검색했다.
@@ -2400,7 +2405,7 @@ ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_channel_mes
 ### 남은 tradeoff
 
 - native adapter는 구현됐지만 runtime manager가 route channel별 router socket owner를 만들고
-  discovery attach까지 자동 연결하는 단계는 아직 남아 있다.
+  discovery attach까지 자동 연결하는 단계는 당시 남아 있다.
 
 ### 재실행한 검증 명령
 
@@ -2451,7 +2456,7 @@ registry로 변환한다.
 
 ### 남은 tradeoff
 
-- public route client facade는 추가됐지만 request는 아직 remote `TReply` completion까지
+- public route client facade는 추가됐지만 request는 당시 remote `TReply` completion까지
   가지 않고 request sequence submission을 반환한다. native router socket adapter와 reply
   completion 연결이 끝나면 `.NET`의 `ZLinkRouteRequestCall<TRequest>.SubmitAsync<TReply>`
   의미로 확장한다.
@@ -2669,7 +2674,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 ### 남은 tradeoff
 
 - 이번 구현은 route runtime owner와 correlation semantics를 닫았고, 실제 CAPI
-  `router_socket_t` send/request 호출은 아직 backend substrate 뒤에 붙여야 한다.
+  `router_socket_t` send/request 호출은 당시 backend substrate 뒤에 붙여야 한다.
 - 다음 반복에서는 `.NET`의 `ZLinkChannelBundleFactory`, `ZLinkChannelRuntimeManager`,
   `ZLinkRouteReceivePump`, `ZLinkRoutePacketDispatcher`와 대조해 runtime manager와 route
   receive dispatch 파일 분리를 추가로 맞춘다.
@@ -3002,7 +3007,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 
 - 일부 새 파일은 기존 구현을 감싸는 얇은 role header다. 이는 `.NET`과 같은 리뷰 단위를
   먼저 만들기 위한 단계이며, 다음 구현 goal에서 내부 로직을 해당 owner 파일로 더 옮긴다.
-- connector transport 경로는 아직 `.NET` frame protocol로 전환되지 않았다. 다만
+- connector transport 경로는 당시 `.NET` frame protocol로 전환되지 않았다. 다만
   connector private runtime에 `.NET` byte layout과 같은 header/frame codec owner를 두고,
   다음 반복에서 전송 경로를 그 codec으로 교체한다.
 
@@ -3158,7 +3163,7 @@ ctest --test-dir framework/languages/cpp/build -R test_unreal_stream_connector -
   metadata를 전달할 방법이 없었다.
 - 일반 C++ connector는 metadata를 STREAM header에 encode/decode하지만 Unreal connector는
   수신 frame의 metadata를 callback packet에 채우지 않았다.
-- compression 같은 아직 구현되지 않은 option을 public options에 섞으면 호출자가 실제로
+- compression 같은 당시 구현되지 않은 option을 public options에 섞으면 호출자가 실제로
   동작하지 않는 기능을 믿게 된다.
 
 ### 비교한 대안
@@ -3175,7 +3180,7 @@ options로 동작하고, metadata가 필요한 호출만 `WithOptions` overload�
 ### 적용한 리팩토링
 
 - `FZLinkStreamSendOptions`를 public Unreal contract에 추가하고 `Metadata`만 노출했다.
-  아직 구현하지 않은 compression option은 넣지 않았다.
+  당시 구현하지 않은 compression option은 넣지 않았다.
 - `SendJsonWithOptions`와 `RequestJsonWithOptions`를 Blueprint-callable API로 추가했다.
 - Unreal private frame encoder가 metadata를 일반 C++ connector와 같은 metadata payload
   구조로 header에 싣고 `has_metadata` flag를 설정하게 했다.
@@ -3196,15 +3201,186 @@ ctest --test-dir framework/languages/cpp/build -R test_unreal_stream_connector -
 ctest --test-dir framework/languages/cpp/build --output-on-failure
 ```
 
-## 추가 리뷰. 현재 21개 Goal 검증 label과 HTTP/sample e2e 보정
+## 추가 리뷰. 22개 Goal 계획과 HTTP 검증 label 보정
 
 ### 발견한 위험 신호
 
-- 현재 implementation plan의 검증 명령은 `framework-zlink-*`, `framework-http`,
+- 최신 실행 계획은 Goal 18 `ZLink HTTP Client`, Goal 19 `HTTP Hosting`, Goal 22
+  `Final Regression`까지 총 22개 goal을 기준으로 한다. 이 로그의 앞선 Goal 20/21 항목은
+  HTTP client goal을 추가하기 전의 이력이라, 현재 실행 순서로 읽으면 최종 gate 범위를
+  잘못 이해할 수 있다.
+- 실행 계획은 `http-client-contract`, `http-client-unit`, `http-client-e2e`,
+  `http-client-https`, `http-client-regression`, `framework-http-e2e` label을 요구하지만
+  CMake test 등록에는 해당 label이 없었다. 이 상태에서는 계획 문서의 CTest 명령이 0개
+  테스트로 통과하거나 실행 가드 역할을 하지 못한다.
+- HTTP hosting draft의 결정 전 항목처럼 보이는 표현은 이미 선택이 끝난 구현 기준을 결정 전
+  항목처럼 보이게 만든다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| label을 Goal 18 구현 때까지 비워 둠 | 현재 코드 변경이 없다 | 계획 문서의 회귀 명령이 empty test selection를 잡을 수 있다 |
+| 지금 별도 dummy HTTP client test target을 만듦 | label별 test target이 생긴다 | 실제 client 구현 없이 얕은 테스트 target만 늘어난다 |
+| 현재 contract/host test에 초기 실행 label을 연결 | 계획 명령이 즉시 실행 가드를 갖는다 | Goal 18 구현 때 실제 client test로 확장해야 한다 |
+
+선택은 현재 contract/host test에 label을 연결하는 방식이다. 당시 `zlink::http_client` 구현이
+없으므로 contract header test는 HTTP client 계획 label의 최소 실행 가드로만 사용한다. Goal 18
+구현이 들어오면 실제 client unit/e2e/HTTPS/regression test target을 추가하고 이 초기 label
+분배를 더 세분화해야 한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_contract_headers`에 `http-client-*` label을 붙여 Goal 18 계획의
+  CTest 명령이 현재 빌드에서도 테스트를 찾도록 했다.
+- `test_cpp_framework_app_host`에 `framework-http-e2e` label을 붙여 HTTP hosting e2e
+  gate가 기존 HTTP route/TLS validation smoke를 실행하도록 했다.
+- `cpp-http-hosting.ko.md`의 결정 표를 “결정된 구현 기준”으로 바꿔 결정 전 항목처럼
+  읽히지 않게 했다.
+- 이 로그의 앞선 Goal 20/21 항목은 과거 실행 기록으로 유지하고, 현재 기준은
+  `cpp-framework-implementation-plan.ko.md`의 22개 goal이라고 명시했다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -L http-client-contract --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-unit --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-https --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-regression --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## Goal 18. ZLink HTTP Client 실제 산출물 추가
+
+### 발견한 위험 신호
+
+- plan과 HTTP client draft는 `framework/languages/cpp/http-client`,
+  `zlink/http_client.hpp`, `zlink::http_client` target을 요구했지만 실제 산출물이 없었다.
+  label만 contract test에 붙이면 CTest는 실행되지만 샘플과 HTTP handler e2e가 사용할
+  public client가 없다.
+- 샘플마다 Boost.Beast wrapper를 만들면 URL parsing, TLS trust, timeout, JSON decode,
+  HTTP status mapping 지식이 여러 곳으로 새어 나간다.
+- HTTPS 지원을 public API에서 OpenSSL context나 SSL stream으로 노출하면 사용자가 낮은
+  수준 TLS 설정을 알아야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 샘플별 Beast helper를 둠 | 구현을 빠르게 시작할 수 있다 | HTTP/TLS/JSON 정책이 샘플마다 흩어진다 |
+| framework HTTP hosting target에 client를 붙임 | HTTP 기능이 한 target에 모인다 | server core가 client-side dependency까지 떠안는다 |
+| 별도 `zlink::http_client` target을 둠 | client 정책을 한 모듈에 숨기고 framework core dependency를 늘리지 않는다 | package/export/test target을 추가해야 한다 |
+
+선택은 별도 `zlink::http_client` target이다. public header는 `client_t`, builder, request
+call object만 보여 주고, Boost.Beast와 OpenSSL 타입은 `http-client/src/runtime/*` 안에
+둔다.
+
+### 적용한 리팩토링
+
+- `http-client/include/zlink/http_client.hpp`와
+  `http-client/include/zlink/http_client/contracts/client.hpp`를 추가했다.
+- `zlink_http_client` static target과 `zlink::http_client` alias를 추가하고 install/export에
+  포함했다.
+- `client_t::create().base_url(...).json().timeout(...).trust_certificate_file(...).build()`
+  fluent builder를 추가했다.
+- `get`, `post`, `put`, `delete_` request builder와 typed JSON `body(...)`,
+  `submit<T>()`, callback `submit<T>(...)`, `submit_raw()`를 추가했다.
+- private runtime은 Boost.Beast로 HTTP를 처리하고, OpenSSL이 있으면 HTTPS handshake,
+  certificate verification, hostname verification, explicit test certificate trust를 처리한다.
+- `test_cpp_http_client`가 HTTP JSON request/response, callback submit, GET/POST/PUT/DELETE,
+  404 status mapping, decode error, timeout, HTTPS success, untrusted certificate failure를
+  검증한다.
+- install consumer test가 `zlink::http_client` target과 `<zlink/http_client.hpp>`를 함께
+  소비하도록 확장했다.
+
+### 수정 후 점검
+
+- public HTTP client header에는 Boost.Beast, Boost.Asio, OpenSSL, socket, resolver, SSL
+  stream 타입이 노출되지 않는다.
+- HTTPS trust는 `trust_certificate_file(...)`로만 전달한다. verification을 묵시적으로 끄는
+  public option은 추가하지 않았다.
+- `http-client-*` label은 실제 `test_cpp_http_client`와 contract header test를 실행한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+cmake --build framework/languages/cpp/build --target test_cpp_http_client test_cpp_framework_contract_headers
+ctest --test-dir framework/languages/cpp/build -L http-client-contract --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-unit --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-https --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-regression --output-on-failure
+```
+
+## Goal 19. HTTP Hosting runtime과 HTTP client e2e 연결
+
+### 발견한 위험 신호
+
+- `options.http().listen(...).map_*<THandler>(...)` public API와 route metadata는 있었지만
+  app lifecycle에서 실제 HTTP listener를 시작하지 않았다. 이 상태에서는 HTTP hosting 문서의
+  handler e2e 요구를 충족할 수 없다.
+- HTTP handler e2e가 framework 내부 metadata만 확인하면 실제 사용자가 호출하는 client path를
+  검증하지 못한다.
+- 첫 구현에서 route invoker 함수를 `http_route_t` public field로 노출하면 handler invocation
+  결정이 public metadata에 새어 나간다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| test-local HTTP server로 hosting을 흉내 냄 | 테스트를 빠르게 만들 수 있다 | framework hosting runtime이 여전히 없다 |
+| app host 밖에 별도 `start_http(...)` API를 둠 | lifecycle 제어가 명시적이다 | 사용자가 app lifecycle과 HTTP lifecycle을 따로 알아야 한다 |
+| `options.http()` snapshot을 app hosted service로 자동 등록 | 기존 fluent API를 유지하고 app lifecycle에 묶인다 | internal listener/runtime owner가 필요하다 |
+
+선택은 `hosted_service_t` 기반 HTTP host service다. 사용자는 기존처럼
+`add_zlink_framework(... options.http() ...)`만 호출하고, runtime은 app start/stop에 맞춰
+listener를 관리한다.
+
+### 적용한 리팩토링
+
+- `framework/src/runtime/http/http_host_service.*`를 추가해 HTTP endpoint별 Beast listener를
+  app lifecycle에 묶었다.
+- `add_zlink_framework`가 HTTP endpoint snapshot을 가진 경우 `http_host_service_t`를
+  hosted service로 자동 등록하게 했다.
+- route matching은 exact path와 `{id}` 같은 단일 segment parameter pattern을 지원한다.
+- handler request body는 typed JSON으로 decode하고, handler reply는 JSON response로 encode한다.
+- `test_cpp_framework_app_host`가 `zlink::http_client`로 `POST /games`, `GET /games/{id}`,
+  `PUT /games/{id}`, `DELETE /games/{id}`를 실제 HTTP listener에 호출한다.
+- route invoker는 `http_route_t` private member와 runtime friend accessor 뒤에 숨겼다.
+  public metadata에는 method, path, handler name만 남긴다.
+
+### 수정 후 점검
+
+- HTTP hosting public header에는 Boost.Beast, Boost.Asio, OpenSSL socket/stream 타입이
+  노출되지 않는다.
+- `framework-http`와 `framework-http-e2e` label은 실제 app host HTTP listener와
+  `zlink::http_client` 호출을 실행한다.
+- app 재실행 smoke는 HTTP listener가 없는 별도 app으로 분리해 HTTP e2e lifecycle과 섞지
+  않았다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host
+ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure
+```
+
+## 추가 리뷰. 이전 계획 검증 label과 HTTP/sample e2e 보정
+
+### 발견한 위험 신호
+
+- 당시 implementation plan의 검증 명령은 `framework-zlink-*`, `framework-http`,
   `framework-config`, `framework-host`, `framework-observability`,
   `framework-sample-e2e` label을 기준으로 한다. 하지만 CTest 등록은 일반
   `framework-integration`, `framework-regression`, `channel`, `spot` 같은 label에만
-  걸려 있어서 문서 기준 검증 명령이 0개 테스트를 반환할 수 있었다.
+  걸려 있어서 문서 기준 검증 명령이 empty test selection를 반환할 수 있었다.
 - HTTP hosting draft에는 `options.http().listen(...).map_post<T>()`와 HTTPS TLS 검증
   표면이 있는데 public contract owner가 없었다. 이 상태에서는 TicTacToe HTTP 시작 흐름을
   C++ framework 표면으로 검증할 수 없다.
@@ -3342,7 +3518,7 @@ git diff --check -- framework/languages/cpp
 
 ### 남은 tradeoff
 
-- C++ framework에는 아직 `.NET`의 `AddHandlersFromAssemblyOf(...)`와 같은 자동 discovery가
+- C++ framework에는 당시 `.NET`의 `AddHandlersFromAssemblyOf(...)`와 같은 자동 discovery가
   없다. C++에서는 reflection이 없으므로 typed registration helper나 module 단위 registration
   표면을 더 정리해야 한다.
 - TicTacToe API와 다른 role sample도 같은 기준으로 다시 리뷰해야 한다. 이번 항목은 Bingo
@@ -3407,7 +3583,7 @@ reflection이 없다는 차이는 `AddHandlersFromAssemblyOf(...)`를
   읽어 DI에 owner를 등록하므로, sample 설정에 handler용 factory lambda가 노출되지 않는다.
 - module, handler용 DI factory, handler member function pointer, monitoring channel 문자열은
   낮은 수준 구현 세부로 분류했다. 이것들이 `main.cpp`, role `*HostFactory`, 일반 사용자 설정
-  예제에 노출되면 아직 목표 수준에 도달하지 못한 것으로 본다.
+  예제에 노출되면 당시 목표 수준에 도달하지 못한 것으로 본다.
 - Bingo API `main.cpp`는 topology 생성과 `run(...)`만 남긴 상태를 유지했다.
 
 ### 남은 tradeoff
@@ -3528,7 +3704,7 @@ reply type을 template 인자로 받되, payload decode와 owner resolve는 runt
 
 ### 남은 tradeoff
 
-- 일부 sample lifecycle handler는 아직 `.NET`처럼 Spot instance와 actor change result를
+- 일부 sample lifecycle handler는 당시 `.NET`처럼 Spot instance와 actor change result를
   모두 받는 완성형 시그니처가 아니다. 현재 registry는 실행 가능한 handler shape는 실제
   호출하고, 불일치 shape는 protocol error로 보고한다. 다음 단계에서는 lifecycle handler
   shape와 actor context/result 모델을 `.NET`과 더 맞춰야 한다.
@@ -3569,7 +3745,7 @@ git diff --check -- framework/languages/cpp
 ### 적용한 리팩토링
 
 - `tests/Zlink.Framework.PackageTests/install_consumer.cmake`를 추가했다.
-- 새 CTest `test_cpp_framework_install_consumer`가 현재 build tree를 임시 prefix에 설치하고,
+- 새 CTest `test_cpp_framework_install_consumer`가 현재 build tree를 격리 prefix에 설치하고,
   별도 consumer project를 생성해 `find_package(zlink_framework_cpp)`와
   `find_package(zlink_stream_connector_cpp)`를 실행한다.
 - consumer는 `zlink::framework`, `zlink::framework_extension_metrics`,
@@ -4051,4 +4227,508 @@ git diff --check -- framework/languages/cpp
 cmake --build framework/languages/cpp/build --target test_unreal_stream_connector
 ctest --test-dir framework/languages/cpp/build -R test_unreal_stream_connector --output-on-failure
 ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## Goal 22. Runtime coverage regression gate 추가
+
+### 발견한 위험 신호
+
+- CTest 전체가 통과해도 framework runtime 소스가 충분히 실행됐는지 수치로 확인하는 gate가
+  없었다. 이 상태에서는 regression test가 많아 보여도 HTTP client, HTTP hosting,
+  connector runtime의 누락 경로가 조용히 남을 수 있다.
+- coverage 계산에 tests, samples, generated install consumer를 섞으면 실제 runtime 품질보다
+  테스트 코드 실행량이 숫자를 올린다.
+- 현재 개발 환경에는 `lcov`나 `gcovr`가 없었다. 특정 외부 도구에만 의존하면 coverage
+  regression이 환경마다 실행되지 않을 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| CTest 통과만 최종 gate로 둠 | 추가 도구가 필요 없다 | 테스트가 runtime을 얼마나 덮는지 모른다 |
+| `lcov`나 `gcovr`를 필수 도구로 요구 | 보고서 생성이 편하다 | 현재 workspace에서 바로 실행되지 않고 환경 의존성이 늘어난다 |
+| CMake coverage build와 `gcov` 기반 threshold script를 둠 | 기본 toolchain만으로 CTest gate를 만들 수 있다 | HTML 보고서는 별도 도구가 있을 때 추가해야 한다 |
+
+선택은 CMake coverage build와 `gcov` 기반 threshold script다. coverage 대상은
+`framework/src`, `http-client/src`, `connector/src`, Unreal connector private source로
+제한하고, 테스트와 샘플은 계산에서 제외한다.
+
+### 적용한 리팩토링
+
+- `ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE`와 `ZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD` CMake
+  option을 추가했다.
+- coverage build에서 `zlink_framework`, `zlink_http_client`, `zlink_stream_connector`,
+  `zlink_unreal_stream_connector` runtime target에 coverage compile/link option을 붙였다.
+- `tests/Zlink.Framework.Coverage/coverage_threshold.cmake`를 추가해 `.gcda`를 `gcov`로
+  읽고 runtime source line coverage를 계산하게 했다.
+- `test_cpp_framework_coverage_threshold` CTest를 추가하고 기존 regression test 뒤에 실행되게
+  했다.
+- Goal 22 완료 기준과 검증 명령에 runtime line coverage 70% 이상 기준을 추가했다.
+
+### 수정 후 점검
+
+- coverage script는 tests, samples, external dependency, build generated source를 coverage
+  분모에 넣지 않는다.
+- 현재 coverage build 기준 runtime line coverage는 77.35%다.
+- 기준값 70% 미만이면 CTest가 실패하므로 이후 회귀 테스트 추가/삭제가 숫자로 검증된다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70
+cmake --build framework/languages/cpp/build-coverage
+ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. Goal 검증 명령 empty-selection gate 제거
+
+### 발견한 위험 신호
+
+- plan의 Goal 3, Goal 6, Goal 19 검증 명령은 각각 `-R async`, `-R parity`, `-R http`를
+  함께 사용한다. CTest label은 존재했지만 test name이 해당 정규식과 맞지 않아 조합 실행 시
+  empty test selection가 선택됐다.
+- 이미 같은 executable이 async contract, sample parity, HTTP hosting integration을 검증하고
+  있었지만 CTest 이름으로 그 의미가 드러나지 않았다. 이 상태는 테스트 의도가 CMake 내부
+  label 지식에 숨어 있는 정보 은닉 실패다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| plan의 `-R` 조건을 제거 | 문서 수정만으로 empty selection을 없앨 수 있다 | Goal별로 어떤 테스트를 의도했는지 약해진다 |
+| 기존 executable 이름을 바꿈 | 이름과 의도가 맞아진다 | 기존 test name을 쓰는 회귀 명령과 로그가 흔들린다 |
+| 같은 executable을 의미 있는 CTest alias로 추가 | 기존 이름을 유지하면서 Goal별 gate가 실제 테스트를 실행한다 | CTest 항목 수가 늘어난다 |
+
+선택은 CTest alias 추가다. 새 binary를 만들지 않고 기존 executable을 다른 test name으로
+등록해 plan의 검증 명령이 empty selection 없이 실행되게 했다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_async_contract`를 추가해 `test_cpp_framework_contract_headers`를
+  `framework-unit;async` gate로도 실행하게 했다.
+- `test_cpp_framework_parity_contract`를 추가해 `test_cpp_framework_sample_parity`를
+  `framework-regression;parity` gate로도 실행하게 했다.
+- `test_cpp_framework_http_integration`을 추가해 `test_cpp_framework_app_host`를
+  `framework-integration;http` gate로도 실행하게 했다.
+
+### 수정 후 점검
+
+- plan에 적힌 `ctest -L framework-unit -R async`,
+  `ctest -L framework-regression -R parity`,
+  `ctest -L framework-integration -R http`는 모두 1개 이상의 테스트를 선택한다.
+- alias는 기존 executable을 재사용하므로 테스트 구현 지식은 한 곳에 남는다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -N -L framework-unit -R async
+ctest --test-dir framework/languages/cpp/build -N -L framework-regression -R parity
+ctest --test-dir framework/languages/cpp/build -N -L framework-integration -R http
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. HTTP client public boundary contract 보강
+
+### 발견한 위험 신호
+
+- Goal 18과 Goal 22는 HTTP client public header가 runtime 구현과 Boost.Beast, Boost.Asio,
+  OpenSSL 타입을 노출하지 않아야 한다고 요구한다. 하지만 layout contract는 framework와
+  connector public include만 검사했고, HTTP client public include tree는 같은 강도로 보지
+  않았다.
+- `test_cpp_framework_contract_headers`는 `<zlink/http_client.hpp>` facade만 include했다.
+  `http-client/include/zlink/http_client/contracts/*`가 직접 include 가능한지 검증하지
+  않으면 contract owner가 facade 뒤에 숨어도 테스트가 통과할 수 있다.
+- public dependency 검색이 수동 `rg`에만 의존하면 이후 header 추가 때 회귀가 자동으로
+  잡히지 않는다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 수동 `rg` 검증만 유지 | 구현 변경이 없다 | 새 public header 추가 시 자동 회귀가 없다 |
+| HTTP client 전용 새 테스트 executable 추가 | 책임이 분리된다 | layout boundary 검사가 여러 파일로 흩어진다 |
+| 기존 layout/contract test에 HTTP client public tree를 포함 | 같은 public surface gate에서 framework, connector, HTTP client를 함께 본다 | layout contract가 조금 커진다 |
+
+선택은 기존 layout/contract test 확장이다. public surface gate는 산출물별로 같은 규칙을
+적용해야 하므로, HTTP client도 같은 테스트에서 확인한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_contract_headers`가
+  `<zlink/http_client/contracts/client.hpp>`를 직접 include하도록 보강했다.
+- `test_cpp_framework_layout_contract`가 `http-client/include`, `http-client/src/runtime`,
+  `http_client_runtime.*` 존재를 확인하게 했다.
+- layout contract가 framework, connector, HTTP client, Unreal public header에서
+  Boost/Beast/Asio/OpenSSL/GoogleTest/GoogleMock/spdlog/fmt runtime/test 타입 노출을
+  자동 검색하게 했다.
+- HTTP client public headers도 runtime include 금지와 contract compile coverage 검사를
+  통과해야 한다.
+
+### 수정 후 점검
+
+- `logging_backend_t::spdlog`는 public 설정 enum 값이므로 `spdlog::` 타입이나
+  `<spdlog/...>` header 노출로 보지 않는다.
+- JSON DTO 변환을 위해 사용하는 선택 codec 또는 `nlohmann::json` template helper는 이번
+  runtime dependency 검색 대상이 아니다. codec dependency 분리는 Goal 2와 HTTP client JSON
+  계약의 별도 기준으로 유지한다.
+- 새 boundary 검사는 `framework-contract` label에서 실행된다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_layout_contract test_cpp_framework_contract_headers
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(layout_contract|contract_headers|async_contract)' --output-on-failure
+```
+
+## 추가 리뷰. HTTP hosting HTTPS e2e와 병렬 포트 충돌 보정
+
+### 발견한 위험 신호
+
+- HTTP hosting draft는 HTTPS loopback에서 test certificate로 JSON request/response가 성공해야
+  한다고 적고 있었다. 하지만 app host test는 HTTPS endpoint의 TLS option validation만
+  확인했고, 실제 HTTPS listener를 시작해 `zlink::http_client`로 호출하지 않았다.
+- `test_cpp_framework_app_host`와 CTest alias인 `test_cpp_framework_http_integration`은 같은
+  executable과 같은 fixed port를 사용한다. 별도 build tree나 `ctest -j`가 동시에 실행되면
+  bind 충돌로 실패할 수 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| HTTPS validation만 유지 | 테스트가 빠르다 | TLS handshake와 HTTP client trust path를 검증하지 못한다 |
+| HTTPS 전용 새 executable 추가 | 포트 분리가 쉽다 | HTTP hosting lifecycle 테스트가 둘로 나뉜다 |
+| 기존 app host test에 HTTPS loopback을 추가하고 CTest resource lock/포트 분리를 적용 | HTTP/HTTPS hosting lifecycle을 한 곳에서 검증하고 병렬 실행도 안정화한다 | test compile definition이 늘어난다 |
+
+선택은 기존 app host test 보강이다. HTTP hosting lifecycle은 같은 app host runtime owner를
+통과하므로 하나의 e2e 안에서 HTTP와 HTTPS를 함께 검증한다.
+
+### 적용한 리팩토링
+
+- OpenSSL과 test certificate가 있는 빌드에서 `test_cpp_framework_app_host`가 HTTPS listener를
+  시작하고, `zlink::http_client`의 `trust_certificate_file(...)`로 `GET` readiness와
+  `POST /games` JSON response를 검증하게 했다.
+- normal build와 coverage build가 동시에 실행되어도 충돌하지 않도록 app host test endpoint를
+  CMake compile definition으로 주입하고 coverage build에는 별도 port를 사용하게 했다.
+- `test_cpp_framework_app_host`와 `test_cpp_framework_http_integration`에 같은 CTest
+  `RESOURCE_LOCK`을 걸어 한 CTest 프로세스 안의 병렬 실행에서도 같은 port를 동시에 잡지
+  않게 했다.
+
+### 수정 후 점검
+
+- HTTP handler e2e는 HTTP와 HTTPS 모두 `zlink::http_client`를 사용한다.
+- TLS certificate/private key 누락 validation과 HTTPS listener handshake/request/response를
+  같은 `framework-http`/`framework-http-e2e` label에서 검증한다.
+- normal build와 coverage build의 `framework-http` label을 동시에 실행해도 port 충돌 없이
+  통과한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70
+cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host
+cmake --build framework/languages/cpp/build-coverage --target test_cpp_framework_app_host
+ctest --test-dir framework/languages/cpp/build -L framework-http -j2 --output-on-failure
+ctest --test-dir framework/languages/cpp/build-coverage -L framework-http -j2 --output-on-failure
+```
+
+## Goal 1. Tooling contract smoke 보강
+
+### 발견한 위험 신호
+
+- Goal 1은 CMake presets, vcpkg manifest, CLion/Visual Studio configure 가능성을 완료 조건으로
+  둔다. 파일은 있었지만 `framework-contract` label이 해당 파일의 필수 preset과 dependency를
+  자동 검증하지 않았다.
+- tooling 조건을 수동 확인에만 맡기면 preset 이름 변경이나 Visual Studio generator 누락이
+  plan 검증에서 빠질 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 문서 검증 명령만 유지 | 추가 테스트가 없다 | CMakePresets/vcpkg drift를 자동으로 잡지 못한다 |
+| 실제 Windows Visual Studio configure를 Linux CTest에서 실행 | 가장 직접적인 검증이다 | 현재 Linux/WSL 환경에서는 Visual Studio generator를 실행할 수 없다 |
+| preset/manifest contract와 `cmake --list-presets=all` smoke를 CTest로 추가 | 현재 환경에서 실행 가능하고 CLion/Visual Studio/WSL preset drift를 잡는다 | 플랫폼별 실제 generator configure는 해당 플랫폼 CI가 담당해야 한다 |
+
+선택은 tooling contract smoke다. Linux/WSL에서도 preset 파일의 구조와 CMake preset 인식은
+검증할 수 있고, Windows generator 실제 configure는 Windows 환경에서 같은 preset을 사용한다.
+
+### 적용한 리팩토링
+
+- `tests/Zlink.Framework.ContractTests/verify_tooling_contract.cmake`를 추가했다.
+- tooling contract가 `CMakePresets.json`의 Linux Ninja, Linux vcpkg, Windows MSVC preset과
+  `Visual Studio 17 2022` generator, C++20/test/sample 기본 option을 확인한다.
+- `vcpkg.json`의 `boost-asio`, `gtest`, `lz4`, `nlohmann-json` dependency를 확인한다.
+- `cmake --list-presets=all`이 주요 configure/build/test preset을 실제로 나열하는지
+  확인한다.
+- `test_cpp_framework_tooling_contract`를 `framework-contract;framework-package` label로
+  등록했다.
+
+### 수정 후 점검
+
+- Goal 1의 tooling 조건이 `framework-contract` label 안에서 실행된다.
+- Goal 22의 package/tooling regression도 `framework-package` label에서 같은 smoke를 포함한다.
+- Linux CTest에서 Visual Studio generator 자체를 실행하지는 않는다. 대신 preset 존재와 CMake
+  인식 여부를 고정하고, Windows 실제 configure는 Windows 환경의 같은 preset으로 실행한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on-failure
+cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70
+ctest --test-dir framework/languages/cpp/build-coverage -L framework-contract --output-on-failure
+```
+
+## Goal 2. Codec boundary와 sample JSON 사용 gate 보강
+
+### 발견한 위험 신호
+
+- Goal 2는 base C++ binding이 JSON, MessagePack, Protobuf dependency를 끌고 오지 않아야
+  한다고 요구한다. codec roundtrip test는 있었지만, base `zlink_cpp` target의 link interface가
+  codec dependency를 갖지 않는다는 gate는 없었다.
+- framework sample application code가 직접 JSON parser로 field를 꺼내지 않는다는 조건도 수동
+  검색에 가까웠다. DTO serializer hook은 `nlohmann::json`을 사용할 수 있지만, handler/client
+  application code가 `nlohmann::json::parse`나 `json.at(...)`를 쓰면 Goal 2 사용성 기준을
+  우회한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 codec roundtrip test만 유지 | 테스트 수가 늘지 않는다 | base target dependency 누출과 sample 직접 JSON parsing을 잡지 못한다 |
+| sample 코드 리뷰를 수동으로 반복 | 의도를 사람이 판단하기 쉽다 | 회귀 자동화가 없다 |
+| target boundary report와 layout contract 검색을 추가 | CTest가 dependency와 sample 사용 규칙을 자동으로 검증한다 | contract test가 파일 구조를 더 많이 읽는다 |
+
+선택은 자동 gate 추가다. Goal 2는 dependency isolation과 사용성 규칙이 핵심이므로, 테스트가
+둘 다 직접 확인해야 한다.
+
+### 적용한 리팩토링
+
+- `bindings/cpp/tests/contract/verify_codec_target_contract.cmake`를 추가했다.
+- `bindings/cpp/CMakeLists.txt`가 configure 단계에서 `codec-target-contract.txt`를 만들고,
+  base `zlink_cpp` link interface와 선택 codec target link interface를 기록하게 했다.
+- `test_cpp_contract_codec_target_boundary`가 base target에 `nlohmann_json`, `msgpack`,
+  `protobuf` dependency가 없는지 확인한다. 선택 codec target은 base `zlink_cpp`를 링크해야
+  한다.
+- `test_cpp_framework_layout_contract`가 sample application code에서
+  `nlohmann::json::parse`와 DTO serializer hook 외부 `json.at(...)` 사용을 금지하게 했다.
+
+### 수정 후 점검
+
+- `ctest --test-dir bindings/cpp/build -R codec`은 JSON, MessagePack, Protobuf roundtrip과
+  codec target boundary를 함께 실행한다.
+- sample DTO `to_json`/`from_json` hook은 허용된다. handler/client application code는
+  `message_t::from_json`, `message.parse_json<T>()`, stream connector codec helper를 사용한다.
+- framework sample layout contract가 이 규칙을 `framework-contract` label 안에서 고정한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake -S bindings/cpp -B bindings/cpp/build -DZLINK_CPP_BUILD_TESTS=ON
+cmake --build bindings/cpp/build --target test_cpp_contract_codec_json test_cpp_contract_codec_messagepack test_cpp_contract_codec_protobuf
+ctest --test-dir bindings/cpp/build -R codec --output-on-failure
+cmake --build framework/languages/cpp/build --target test_cpp_framework_layout_contract
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_layout_contract --output-on-failure
+```
+
+## Goal 16. Health readiness/liveness 표면 보강
+
+### 발견한 위험 신호
+
+- Goal 16은 monitoring, health, readiness, liveness를 함께 완료 조건으로 둔다. 기존 구현은
+  typed runtime event와 `health_status_t` enum은 제공했지만, 사용자가 runtime 상태를
+  health/readiness/liveness report로 읽는 public 표면이 없었다.
+- health를 monitoring event payload의 필드로만 두면 호출자는 health check 등록, 상태 갱신,
+  readiness/liveness 집계를 직접 반복해야 한다. 이는 복잡성을 호출자에게 올리는 얕은 표면이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| monitoring event의 `health` 필드만 사용 | 새 API가 없다 | readiness/liveness 집계 책임이 사용자에게 넘어간다 |
+| HTTP `/health` route만 추가 | HTTP sample에서 확인하기 쉽다 | health가 HTTP 전용처럼 보이고 zlink/registry/stream/hosted service 상태를 담기 어렵다 |
+| `health_builder_t`를 별도 contract로 추가 | health/readiness/liveness 집계를 하나의 깊은 모듈에 숨긴다 | 작은 public API가 추가된다 |
+
+선택은 `health_builder_t` 추가다. health는 HTTP endpoint보다 넓은 운영 표면이므로 app host의
+독립 contract로 두고, HTTP endpoint 매핑은 후속 확장으로 연결할 수 있게 둔다.
+
+### 적용한 리팩토링
+
+- `contracts/eventing/health.hpp`를 추가하고 `app_t::health()`에서 접근하게 했다.
+- `health_builder_t`가 zlink runtime, channel, registry, stream endpoint, hosted service check를
+  등록하고 `health_report_t`로 전체 status, readiness, liveness를 집계한다.
+- 집계 구현은 `src/runtime/diagnostics/health.cpp`에 숨겨 public header가 runtime 자료구조를
+  노출하지 않게 했다.
+- `test_cpp_framework_monitoring`에 healthy, channel unhealthy readiness, hosted service
+  unhealthy liveness 회귀 테스트를 추가했다.
+
+### 수정 후 점검
+
+- Goal 16의 health/readiness/liveness 완료 조건은 `framework-observability` label에서 실행된다.
+- health check는 HTTP에 종속되지 않고 zlink channel, registry, STREAM endpoint, hosted service를
+  같은 report에 담는다.
+- HTTP `map_health`/`map_readiness`/`map_liveness` route sugar는 Goal 19 pass에서
+  `app.health()` report를 읽는 system route로 연결했다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_monitoring test_cpp_framework_contract_headers
+ctest --test-dir framework/languages/cpp/build -L framework-observability --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-unit -R monitoring --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## Goal 19. HTTP route/query binding 보강
+
+### 발견한 위험 신호
+
+- HTTP host runtime은 `"/games/{id}"` 같은 route pattern을 매칭할 수 있었지만, `{id}` 값을
+  handler `request_type` DTO에 전달하지 않았다. 이 상태는 route parameter binding 완료 조건을
+  매칭 성공과 혼동하게 만든다.
+- query string은 route 선택에서 제거만 되고 DTO에 반영되지 않았다. 사용자는 handler 안에서
+  raw target을 다시 파싱해야 하므로 HTTP parser 세부 지식이 호출자에게 새는 얕은 모듈이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| handler에 raw HTTP target/context를 넘김 | 모든 정보를 직접 볼 수 있다 | Beast/HTTP parser 지식이 handler 표면으로 올라온다 |
+| route/query 전용 request context를 별도 인자로 추가 | 타입이 명확하다 | 기존 `handle(const request_type&)` 규칙이 흔들린다 |
+| route/query/body를 DTO JSON으로 병합 | handler 규칙을 유지한다 | 문자열 기반 query 값은 DTO serializer가 최종 타입 변환을 맡는다 |
+
+선택은 DTO JSON 병합이다. Goal 19는 message handler와 같은 `request_type`/`reply_type` 규칙을
+요구하므로, route/query binding은 runtime 아래에서 흡수한다.
+
+### 적용한 리팩토링
+
+- HTTP runtime이 route match 결과로 route parameter map과 query map을 함께 만든다.
+- request body JSON, query string, route parameter를 하나의 JSON object로 병합한 뒤
+  `request_type` deserialize에 넘긴다. 우선순위는 route, query, body 순서다.
+- `test_cpp_framework_app_host`가 `GET /games/1?filter=active`와 `PUT /games/1` body를
+  ZLink HTTP client로 호출해 route/query/body binding을 확인한다.
+
+### 수정 후 점검
+
+- handler는 `Boost.Beast` request나 raw target을 보지 않는다.
+- route/query binding은 HTTP hosted service 내부에서 처리되고, public HTTP API는
+  `map_get<THandler>`, `map_post<THandler>` 형태를 유지한다.
+- middleware/filter는 당시 type registration과 pipeline extension point 수준이다. 실제 auth/
+  validation middleware chaining은 후속 HTTP extension에서 넓히되, Beast/Asio 타입을 public
+  표면에 올리지 않는 원칙은 layout contract가 고정한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host
+ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure
+```
+
+## Goal 19. HTTP middleware/correlation pipeline 보강
+
+### 발견한 위험 신호
+
+- `use<TMiddleware>()`가 middleware type 이름만 snapshot에 저장하고 request 처리 경로에서는
+  호출되지 않았다. 이 상태는 middleware/filter pipeline 완료 조건을 등록 API 존재와 혼동하게
+  만든다.
+- correlation id는 문서에서 cross-cutting 처리 대상으로 언급됐지만 request header에서 읽어
+  handler와 response로 전파하는 runtime 경로가 없었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| raw Beast request/response를 middleware에 넘김 | 구현이 직접적이다 | Boost.Beast 타입이 public 표면으로 새고 Goal 19 public 경계와 충돌한다 |
+| middleware를 이름 등록만 하는 extension point로 유지 | API가 작다 | 실제 pipeline 회귀 테스트를 만들 수 없다 |
+| `http_context_t`를 추가하고 before/after hook만 노출 | HTTP 문맥을 framework 타입으로 숨긴다 | 작은 public context 타입이 추가된다 |
+
+선택은 `http_context_t` 기반 pipeline이다. middleware가 필요한 correlation/header/status 정보만
+보고, socket/parser/runtime 타입은 HTTP hosted service 내부에 둔다.
+
+### 적용한 리팩토링
+
+- `contracts/http/http.hpp`에 `http_context_t`와 `http_middleware_t`를 추가했다.
+- `use<TMiddleware>()`가 `before(http_context_t&)`, `after(http_context_t&)` 또는
+  service-aware overload를 request 전후에 호출하도록 했다.
+- HTTP runtime이 `X-Correlation-Id` 또는 `X-Request-Id`를 `http_context_t::correlation_id`로
+  읽고 response `X-Correlation-Id`에 전파한다.
+- handler가 `handle(request, http_context_t&)`를 제공하면 context를 받고, 기존
+  `handle(request)` handler는 그대로 지원한다.
+- `test_cpp_framework_app_host`가 ZLink HTTP client로 correlation header와 middleware response
+  header를 확인한다.
+
+### 수정 후 점검
+
+- middleware/filter는 Beast/Asio/OpenSSL 타입을 받지 않는다.
+- 기존 HTTP handler signature와 sample은 깨지지 않는다.
+- auth/validation/logging middleware의 구체 정책은 이 pipeline 위의 사용자 middleware로
+  확장할 수 있다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host test_cpp_framework_contract_headers
+ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-integration -R http --output-on-failure
+```
+
+## Goal 16/19. HTTP health route와 middleware short-circuit 보강
+
+### 발견한 위험 신호
+
+- `app.health()`는 readiness/liveness report를 제공했지만 HTTP app 사용자가 `/health`,
+  `/ready`, `/live` endpoint를 만들려면 별도 handler와 DTO를 직접 작성해야 했다. 이는 운영
+  endpoint라는 반복 규칙을 호출자에게 넘기는 얕은 모듈이다.
+- HTTP middleware는 before/after hook과 correlation propagation을 제공했지만, validation/auth
+  같은 middleware가 handler 실행을 멈추고 JSON response를 반환하는 경로가 없었다. 이 상태는
+  cross-cutting concern을 handler 안에 다시 넣게 만든다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 사용자 handler로 health endpoint를 만들게 함 | framework API가 늘지 않는다 | 모든 app이 health DTO와 status mapping을 반복한다 |
+| HTTP runtime이 고정 경로 `/health`만 자동 노출 | 설정이 가장 작다 | app별 route 정책과 충돌하고 readiness/liveness 분리가 어렵다 |
+| `map_health`/`map_readiness`/`map_liveness`를 system route로 제공 | route 정책은 사용자가 정하고 집계 규칙은 framework가 숨긴다 | 작은 HTTP builder API가 추가된다 |
+
+선택은 system route builder 추가다. health 집계는 `app.health()`가 계속 소유하고, HTTP는 같은
+report를 JSON으로 노출하는 얇은 transport adapter만 맡는다.
+
+middleware short-circuit은 raw Beast response를 넘기는 대신 `http_context_t::json_response`로
+표현했다. 이렇게 하면 middleware가 socket/parser 타입을 모르면서도 auth/validation 실패
+응답을 만들 수 있다.
+
+### 적용한 리팩토링
+
+- `http_options_builder_t`에 `map_health`, `map_readiness`, `map_liveness`를 추가했다.
+- `http_host_service_t`가 app의 `health_builder_t`를 받아 system health route를 먼저 처리한다.
+- readiness/liveness가 `unhealthy`이면 HTTP status를 `503 Service Unavailable`로 반환한다.
+- `http_context_t::json_response(...)`를 추가하고 middleware before hook에서 설정하면 handler
+  호출을 건너뛰도록 했다.
+- `test_cpp_framework_app_host`가 ZLink HTTP client로 `/ready`, `/health`, `/live`와
+  middleware short-circuit response를 검증한다.
+
+### 수정 후 점검
+
+- health route는 Beast/Asio/OpenSSL 타입을 public header에 노출하지 않는다.
+- health 집계 규칙은 `contracts/eventing/health.hpp`와 diagnostics runtime에 남아 있고,
+  HTTP runtime은 JSON 노출만 담당한다.
+- route별 filter 타입은 별도 public API로 만들지 않고, middleware가 method/path를 읽어
+  필요한 route에만 적용한다. 현재 Goal 19 범위에서 남은 POSD 리팩토링 이슈는 0개다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host
+ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-observability --output-on-failure
 ```

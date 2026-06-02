@@ -210,5 +210,40 @@ main ()
     return 4;
   }
 
+  app.health ()
+    .add_zlink_runtime_check ()
+    .add_channel_check ("profile.server")
+    .add_registry_check ("registry")
+    .add_stream_endpoint_check ("game.stream")
+    .add_hosted_service_check ("worker");
+  auto healthy = app.health ().report ();
+  if (healthy.status != zlink::framework::health_status_t::healthy ||
+      !healthy.ready () || !healthy.live () ||
+      healthy.checks.size () != 5) {
+    return 6;
+  }
+
+  app.health ().set_status (
+    "profile.server",
+    zlink::framework::health_status_t::unhealthy,
+    "channel disconnected");
+  auto not_ready = app.health ().report ();
+  if (not_ready.status != zlink::framework::health_status_t::unhealthy ||
+      not_ready.readiness != zlink::framework::health_status_t::unhealthy ||
+      not_ready.liveness != zlink::framework::health_status_t::healthy ||
+      not_ready.ready () || !not_ready.live ()) {
+    return 7;
+  }
+
+  app.health ().set_status (
+    "worker",
+    zlink::framework::health_status_t::unhealthy,
+    "hosted service stopped");
+  auto not_live = app.health ().report ();
+  if (not_live.liveness != zlink::framework::health_status_t::unhealthy ||
+      not_live.live ()) {
+    return 8;
+  }
+
   return 0;
 }

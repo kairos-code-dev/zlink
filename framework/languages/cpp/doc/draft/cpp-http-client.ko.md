@@ -8,15 +8,15 @@
 
 # Draft -- ZLink HTTP Client For C++
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, C++ 샘플과 framework HTTP handler e2e 테스트가 사용할
-> `zlink::http_client` 독립 산출물의 방향을 정리한다.
+> 이 문서는 **draft 계약**이다.
+> `zlink::http_client` 산출물의 현재 구현 범위와 다음 구현 범위를 함께 정리한다.
+> 정식 spec으로 승격하기 전까지는 `core/include/zlink.h` 기준 공개 계약이 아니다.
 
 ## 1. 목적
 
 `zlink::http_client`는 C++ 샘플과 테스트에서 HTTP/JSON request를 보내기 위한 별도
 client-side 산출물이다. C++ HTTP client 구현은 보통 낮은 수준 타입과 설정이 많으므로,
-샘플마다 임시 wrapper를 만들지 않고 zlink의 call object와 fluent builder 스타일로
+샘플마다 별도 wrapper를 만들지 않고 zlink의 call object와 fluent builder 스타일로
 복잡성을 흡수한다.
 
 이 client는 framework HTTP hosting을 검증하는 소비자다. `zlink::framework` core target의
@@ -35,6 +35,15 @@ public contract와 runtime 구현은 아래처럼 나눈다.
 
 public header에는 `Boost.Beast`, `Boost.Asio`, OpenSSL, socket, resolver, request parser,
 response parser, SSL stream, SSL context 타입을 노출하지 않는다.
+
+현재 구현된 public 산출물은 아래와 같다.
+
+- `zlink/http_client.hpp`
+- `zlink/http_client/contracts/client.hpp`
+- `zlink::http_client` CMake target
+- `client_t::create().base_url(...).json().timeout(...).trust_certificate_file(...).build()`
+- `get`, `post`, `put`, `delete_` request builder
+- typed JSON `body(...)`, `submit<T>()`, callback `submit<T>(...)`, `submit_raw()`
 
 ## 3. Public API Shape
 
@@ -114,7 +123,7 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
 이 규칙은 두 가지를 보장하기 위한 것이다.
 
 - HTTP hosting handler가 실제 public client로 검증된다.
-- 샘플과 테스트가 서로 다른 임시 HTTP wrapper를 갖지 않는다.
+- 샘플과 테스트가 서로 다른 HTTP wrapper를 갖지 않는다.
 
 ## 7. 회귀 테스트
 
@@ -132,6 +141,10 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
   성공한다
 - TLS failure: 신뢰하지 않은 certificate와 hostname mismatch는 명시적인 client error로
   실패한다
+
+현재 회귀 테스트는 `test_cpp_http_client`와 `test_cpp_framework_contract_headers`가 담당한다.
+OpenSSL을 찾은 빌드에서는 configure 단계에서 테스트 인증서를 생성하고
+`test_cpp_http_client` 안에서 HTTPS success와 untrusted certificate failure를 함께 검증한다.
 
 검증 label은 아래와 같다.
 

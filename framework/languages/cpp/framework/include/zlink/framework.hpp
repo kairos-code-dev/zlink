@@ -10,6 +10,7 @@
 #include <zlink/framework/error.hpp>
 #include <zlink/framework/execution.hpp>
 #include <zlink/framework/handlers.hpp>
+#include <zlink/framework/health.hpp>
 #include <zlink/framework/http.hpp>
 #include <zlink/framework/logging.hpp>
 #include <zlink/framework/monitoring.hpp>

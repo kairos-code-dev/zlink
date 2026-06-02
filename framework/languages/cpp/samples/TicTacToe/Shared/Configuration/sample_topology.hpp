@@ -13,6 +13,7 @@ struct sample_topology_t
   std::string registry_pub_endpoint = "tcp://127.0.0.1:48101";
   std::string registry_router_endpoint = "tcp://127.0.0.1:48102";
   std::string api_endpoint = "tcp://127.0.0.1:48103";
+  std::string api_http_endpoint = "http://127.0.0.1:48113";
   std::string play_endpoint = "tcp://127.0.0.1:48104";
   std::string session_spot_endpoint = "tcp://127.0.0.1:48105";
   std::string session_router_endpoint = "tcp://127.0.0.1:48106";

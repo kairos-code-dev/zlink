@@ -29,6 +29,14 @@ trace hook 저장 구조를 공개하지 않는다.
 monitoring event는 내부 구현 상태를 그대로 공개하지 않는다. payload는 운영자가 이해할 수
 있는 안정적인 field만 담고, native handle이나 private runtime pointer를 포함하지 않는다.
 
+health public contract는 `contracts/eventing/health.hpp`가 소유한다. 사용자는
+`app.health()`에서 zlink runtime, channel, registry, STREAM endpoint, hosted service check를
+등록하고 `report()`로 전체 health, readiness, liveness를 읽는다. check 저장 구조와 집계
+규칙은 `src/runtime/diagnostics/health.cpp`에 둔다.
+HTTP를 사용하는 app은 `options.http().map_health(...)`,
+`map_readiness(...)`, `map_liveness(...)`로 같은 report를 JSON endpoint로 노출할 수 있다.
+이 endpoint는 health 집계를 새로 계산하지 않고 `app.health()` 표면을 읽는다.
+
 ## 1. 방향
 
 - event kind는 enum으로 둔다.
@@ -89,3 +97,35 @@ publisher.publish(actor_event_payload_t{
 publisher는 event timestamp를 publish 시점으로 보정한다. 사용자가 만든 payload가
 handler로 전달되기 전에 trace hook이 먼저 호출된다. 이 순서는 `.NET` monitoring event
 publisher와 같은 의미로, 운영자가 전체 event stream을 먼저 볼 수 있게 하기 위한 것이다.
+
+## 5. Health 예시
+
+```cpp
+auto report = app.health()
+  .add_zlink_runtime_check()
+  .add_channel_check("profile.server")
+  .add_registry_check("registry")
+  .add_stream_endpoint_check("game.stream")
+  .add_hosted_service_check("worker")
+  .report();
+
+if (!report.ready()) {
+  return 1;
+}
+```
+
+readiness는 외부 요청을 받을 준비가 되었는지를 나타내고, liveness는 process를 계속 살려 둘
+수 있는지를 나타낸다. channel, registry, STREAM endpoint는 readiness에 반영하고, hosted
+service와 zlink runtime은 readiness와 liveness에 함께 반영한다.
+
+HTTP endpoint를 함께 열면 아래처럼 health route를 매핑한다.
+
+```cpp
+app.add_zlink_framework([](auto &options) {
+  options.http()
+    .listen("http://0.0.0.0:8080")
+    .map_health("/health")
+    .map_readiness("/ready")
+    .map_liveness("/live");
+});
+```

@@ -35,6 +35,7 @@ add_executable(consumer main.cpp)
 target_link_libraries(consumer PRIVATE
   zlink::framework
   zlink::framework_extension_metrics
+  zlink::http_client
   zlink::stream_connector
   zlink::stream_connector_codecs)
 ]=])
@@ -42,6 +43,7 @@ target_link_libraries(consumer PRIVATE
 file(WRITE "${consumer_source_dir}/main.cpp" [=[
 #include <zlink/framework.hpp>
 #include <zlink/framework/extensions.hpp>
+#include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
 
@@ -63,6 +65,11 @@ main ()
 {
   auto app = zlink::framework::app_t::create ();
   (void) app;
+  auto client = zlink::http_client::client_t::create ()
+                  .base_url ("http://127.0.0.1:18080")
+                  .json ()
+                  .build ();
+  (void) client;
   auto packet =
     zlink::stream_connector::codecs::encode_packet (login_request_t {});
   return packet.name == login_request_t::packet_name ? 0 : 1;

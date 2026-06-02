@@ -170,6 +170,23 @@ public:
 
     template <typename TMiddleware>
     http_options_builder_t &use();
+
+    http_options_builder_t &map_health(std::string path);
+    http_options_builder_t &map_readiness(std::string path);
+    http_options_builder_t &map_liveness(std::string path);
+};
+
+struct http_context_t {
+    http_method_t method;
+    std::string path;
+    std::string correlation_id;
+    std::map<std::string, std::string> request_headers;
+    std::map<std::string, std::string> response_headers;
+    std::optional<std::string> response_body;
+    int response_status;
+
+    http_context_t &response_header(std::string name, std::string value);
+    http_context_t &json_response(int status, std::string body);
 };
 
 } // namespace zlink::framework
@@ -206,6 +223,8 @@ options.http()
 - request마다 DI scope를 만들고 `THandler`를 resolve한다.
 - `handle(...)`을 framework handler coroutine executor에서 실행한다.
 - 결과 DTO를 JSON response body로 직렬화한다.
+- handler가 `handle(request, http_context_t&)`를 제공하면 correlation id와 header 같은 HTTP
+  문맥을 함께 받을 수 있다. `handle(request)`만 제공하는 기존 handler도 그대로 동작한다.
 
 route parameter와 query string binding은 ASP.NET Core model binding을 단순화해서 따른다.
 
@@ -218,6 +237,20 @@ options.http()
 handler request DTO에는 body, route, query에서 온 값이 합쳐진다. 충돌이 있으면
 route parameter, query string, body 순서로 우선순위를 둔다. 이 우선순위는 startup
 validation 문서와 테스트에서 고정한다.
+
+`use<TMiddleware>()`는 `TMiddleware::before(http_context_t&)`와
+`TMiddleware::after(http_context_t&)`를 route handler 앞뒤로 호출한다. middleware는 raw
+Beast request나 socket을 받지 않고, `http_context_t`의 correlation id와 framework header
+map만 사용한다. request에 `X-Correlation-Id` 또는 `X-Request-Id`가 있으면 그 값을 response
+`X-Correlation-Id`로 되돌려 보내고, 없으면 runtime이 request correlation id를 만든다.
+middleware가 `before(...)`에서 `json_response(status, body)`를 호출하면 HTTP runtime은
+handler를 호출하지 않고 해당 JSON response를 반환한다. 이 short-circuit 경로도 `after(...)`
+middleware를 거치므로 logging/correlation 처리를 한 곳에 둘 수 있다.
+
+`map_health(path)`, `map_readiness(path)`, `map_liveness(path)`는 `app.health()` report를
+HTTP JSON endpoint로 노출한다. readiness 또는 liveness가 `unhealthy`면 해당 endpoint는
+`503 Service Unavailable`을 반환한다. 이 route는 사용자가 별도 handler를 만들지 않아도 되고,
+health 집계 규칙은 `contracts/eventing/health.hpp`와 runtime diagnostics 구현이 소유한다.
 
 ## 5. Request / Response 계약
 
@@ -281,10 +314,14 @@ HTTP hosted service는 zlink channel runtime보다 뒤에 시작해야 한다. �
 HTTP request가 들어왔을 때 handler가 주입받은 channel client를 바로 사용할 수 있다.
 정지는 반대로 HTTP server를 먼저 닫고 zlink runtime을 drain한다.
 
-## 7.1 Middleware / Filter
+## 7.1 Middleware
 
-HTTP middleware와 route filter는 ASP.NET Core의 middleware/filter 개념을 C++ 형태로
-투영한다. 필수 축은 아래와 같다.
+HTTP middleware는 ASP.NET Core의 cross-cutting pipeline 개념을 C++ 형태로 투영한다.
+초기 core 범위는 `options.http().use<TMiddleware>()`와 `http_context_t` 기반 before/after
+hook이다. route별 filter 타입은 별도 public API로 두지 않고, middleware에서 method/path를
+확인해 처리한다.
+
+필수 축은 아래와 같다.
 
 - exception filter
 - logging filter
@@ -293,10 +330,9 @@ HTTP middleware와 route filter는 ASP.NET Core의 middleware/filter 개념을 C
 - correlation id filter
 - custom middleware registration
 
-middleware와 filter는 DI를 사용할 수 있다. public API에 `boost::beast` request/response를
-노출하지 않고 framework의 `http_context_t` 같은 추상 타입을 사용한다. `http_context_t`는
-request id, method, path, header 조회, response status 설정, user principal/context를
-제공한다.
+middleware는 DI를 사용할 수 있다. public API에 `boost::beast` request/response를 노출하지
+않고 framework의 `http_context_t` 같은 추상 타입을 사용한다. `http_context_t`는 request id,
+method, path, header 조회, response status 설정, short-circuit JSON response 설정을 제공한다.
 
 ## 8. Runtime 구현 경계
 
@@ -336,7 +372,7 @@ framework host가 소유한 별도 ingress이고, zlink messaging으로 들어�
 | request body model binding | JSON serializer로 `request_type` 생성 |
 | route/query model binding | route parameter와 query string을 `request_type`에 병합 |
 | method parameter DI | `dependency_types` 기반 생성자 주입 |
-| middleware/filter | `options.http().use<TMiddleware>()`, route filter |
+| middleware/filter | `options.http().use<TMiddleware>()`와 `http_context_t` |
 | `CancellationToken` | C++ host shutdown/drain 정책. public handler signature에는 기본 노출하지 않음 |
 | `Results.Ok(dto)` | handler가 `reply_type` DTO 반환 |
 | `HttpClient.PostAsJsonAsync(...)` | `zlink::http_client`가 JSON POST 수행 |
@@ -363,12 +399,12 @@ C++ TicTacToe sample은 `.NET` TicTacToe와 같은 HTTP 시작 흐름을 가져�
 Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP path를 억지로 추가하지
 않는다. Bingo는 기존 session stream 중심 검증을 유지한다.
 
-## 11. 결정해야 할 이슈
+## 11. 결정된 구현 기준
 
-아래 항목은 구현 전에 닫아야 한다.
+아래 항목은 구현 전에 따를 기준으로 닫았다.
 
-| 이슈 | 권장 결정 |
-|------|-----------|
+| 항목 | 결정 |
+|------|------|
 | HTTP를 core framework에 둘지 extension에 둘지 | core framework에 둔다. `.NET` sample parity와 “이 framework 하나로 충분해야 한다”는 요구 때문이다 |
 | 구현 라이브러리 | `Boost.Beast`를 runtime private dependency로 사용한다 |
 | public API에 Beast/Asio 노출 여부 | 노출하지 않는다 |

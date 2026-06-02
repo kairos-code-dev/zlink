@@ -60,6 +60,60 @@ public_headers_do_not_include_runtime (const std::filesystem::path &root)
 }
 
 bool
+public_headers_do_not_expose_runtime_dependencies (
+  const std::filesystem::path &root)
+{
+  bool ok = true;
+  const std::string forbidden[] = {
+    "#include <boost",
+    "#include \"boost",
+    "boost::asio",
+    "boost::beast",
+    "#include <openssl",
+    "#include <OpenSSL",
+    "SSL_CTX",
+    "SSL_CTX_",
+    "SSL *",
+    "SSL*",
+    "ssl::stream",
+    "#include <gtest",
+    "#include <gmock",
+    "testing::",
+    "#include <spdlog",
+    "spdlog::",
+    "#include <fmt",
+    "fmt::"
+  };
+
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator (root)) {
+    if (!entry.is_regular_file ()) {
+      continue;
+    }
+    const auto ext = entry.path ().extension ();
+    if (ext != ".hpp" && ext != ".h") {
+      continue;
+    }
+
+    std::ifstream input (entry.path ());
+    std::string line;
+    std::size_t line_no = 0;
+    while (std::getline (input, line)) {
+      ++line_no;
+      for (const auto &needle : forbidden) {
+        if (line.find (needle) != std::string::npos) {
+          std::cerr << "public header exposes runtime/test dependency: "
+                    << entry.path () << ':' << line_no << " contains "
+                    << needle << '\n';
+          ok = false;
+        }
+      }
+    }
+  }
+  return ok;
+}
+
+bool
 file_contains (const std::filesystem::path &path, const std::string &needle)
 {
   std::ifstream input (path);
@@ -95,6 +149,49 @@ contract_headers_have_compile_coverage (const std::filesystem::path &root,
       std::cerr << "public contract header lacks direct compile coverage: "
                 << entry.path () << '\n';
       ok = false;
+    }
+  }
+  return ok;
+}
+
+bool
+sample_application_code_uses_message_codec (const std::filesystem::path &root)
+{
+  bool ok = true;
+  const auto samples_root = root / "samples";
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator (samples_root)) {
+    if (!entry.is_regular_file ()) {
+      continue;
+    }
+    const auto ext = entry.path ().extension ();
+    if (ext != ".hpp" && ext != ".cpp") {
+      continue;
+    }
+
+    const auto relative =
+      std::filesystem::relative (entry.path (), samples_root).generic_string ();
+    const bool dto_contract_file =
+      relative.find ("/Shared/Contracts/") != std::string::npos;
+
+    std::ifstream input (entry.path ());
+    std::string line;
+    std::size_t line_no = 0;
+    while (std::getline (input, line)) {
+      ++line_no;
+      if (line.find ("nlohmann::json::parse") != std::string::npos) {
+        std::cerr << "sample application code must use message_t/serializer "
+                     "instead of direct JSON parse: "
+                  << entry.path () << ':' << line_no << '\n';
+        ok = false;
+      }
+      if (!dto_contract_file &&
+          line.find ("json.at") != std::string::npos) {
+        std::cerr << "sample application code must not extract JSON fields "
+                     "outside DTO serializer hooks: "
+                  << entry.path () << ':' << line_no << '\n';
+        ok = false;
+      }
     }
   }
   return ok;
@@ -328,6 +425,14 @@ main ()
   ok &= require_exists (
     root / "connector/src/runtime/transport/websocket_connection.cpp");
   ok &= require_exists (root / "connector/src/runtime/backend/contracts");
+  ok &= require_exists (root / "http-client/include/zlink/http_client.hpp");
+  ok &= require_exists (
+    root / "http-client/include/zlink/http_client/contracts/client.hpp");
+  ok &= require_exists (root / "http-client/src/runtime");
+  ok &= require_exists (
+    root / "http-client/src/runtime/http_client_runtime.hpp");
+  ok &= require_exists (
+    root / "http-client/src/runtime/http_client_runtime.cpp");
   ok &= require_exists (root / "tests/Zlink.Framework.UnitTests");
   ok &= require_exists (root / "tests/Zlink.Framework.ContractTests");
   ok &= require_exists (root / "tests/Zlink.Framework.E2ETests");
@@ -517,6 +622,20 @@ main ()
     root / "connector/src/runtime/connector_runtime.hpp",
     "recv(",
     "C++ connector runtime must not expose raw recv state");
+  ok &= file_contains (
+    root / "framework/src/runtime/handlers/handler_registry.cpp",
+    "runtime::handler_coroutine_executor ().submit");
+  ok &= file_contains (
+    root / "framework/src/runtime/handlers/handler_registry.cpp",
+    "co_await runtime::await_task_result");
+  ok &= file_does_not_contain (
+    root / "framework/src/runtime/channels/route_handler_invoker.cpp",
+    ".result (",
+    "route handler dispatch must await task_t instead of blocking with result()");
+  ok &= file_does_not_contain (
+    root / "framework/src/runtime/channels/route_handler_invoker.cpp",
+    ".result(",
+    "route handler dispatch must await task_t instead of blocking with result()");
   ok &= file_does_not_contain (
     root /
       "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
@@ -561,6 +680,17 @@ main ()
     root / "framework/include");
   ok &= public_headers_do_not_include_runtime (
     root / "connector/include");
+  ok &= public_headers_do_not_include_runtime (
+    root / "http-client/include");
+  ok &= public_headers_do_not_expose_runtime_dependencies (
+    root / "framework/include");
+  ok &= public_headers_do_not_expose_runtime_dependencies (
+    root / "connector/include");
+  ok &= public_headers_do_not_expose_runtime_dependencies (
+    root / "http-client/include");
+  ok &= public_headers_do_not_expose_runtime_dependencies (
+    root / "unreal-connector/Source/ZLinkStreamConnector/Public");
+  ok &= sample_application_code_uses_message_codec (root);
   ok &= contract_headers_have_compile_coverage (
     root,
     "framework/include/zlink/framework/contracts",
@@ -569,6 +699,10 @@ main ()
     root,
     "connector/include/zlink/stream_connector/contracts",
     "zlink/stream_connector/contracts/");
+  ok &= contract_headers_have_compile_coverage (
+    root,
+    "http-client/include/zlink/http_client/contracts",
+    "zlink/http_client/contracts/");
 
   return ok ? 0 : 1;
 }

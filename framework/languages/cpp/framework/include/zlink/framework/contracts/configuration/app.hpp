@@ -8,6 +8,7 @@
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 #include <zlink/framework/contracts/eventing/events.hpp>
+#include <zlink/framework/contracts/eventing/health.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
 #include <functional>
@@ -54,6 +55,7 @@ public:
   config_builder_t &config () noexcept;
   logging_builder_t &logging () noexcept;
   monitoring_builder_t &monitoring () noexcept;
+  health_builder_t &health () noexcept;
   app_advanced_t advanced () noexcept;
 
   app_t &add_module (module_t &module);

@@ -10,6 +10,7 @@
     "test": "npm run build && node --test test/**/*.test.js",
     "verify:p0": "npm run build && npm run typecheck && node --test test/**/*.test.js",
     "verify:runtime-matrix": "node scripts/verify_node_runtime_matrix.js",
+    "verify:abi-matrix": "node scripts/verify_node_abi_matrix.js",
     "verify:cross-language": "./cross-language/run_cross_language_smoke.sh"
   },
   "workspaces": [

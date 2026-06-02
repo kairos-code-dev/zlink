@@ -302,6 +302,7 @@ backend gate 와 별도로 유지한다.
 |------|------|-----------|
 | `run_samples.sh` 전체 실행 | `integration-multi-process` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo 가 모두 self-check 통과 |
 | `npm run verify:runtime-matrix` | `integration-multi-process` | 현재 runner 가 Node 20 과 Node 22 에서 build, typecheck, 전체 contract test 를 모두 통과시킨다 |
+| `npm run verify:abi-matrix` | `unit` | `framework-node` CI workflow, release 문서, package script 가 `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64` 와 Node 20/22 gate 를 같은 목록으로 유지한다 |
 | `npm run verify:cross-language` | `integration-multi-process` | Node 와 dotnet TestHost 가 channel/stream 필수 경로 네 가지를 같은 프로토콜 의미로 통과시킨다 |
 | guide chapter map | `unit` | Node guide 12개 장이 dotnet guide 주요 장과 1:1로 매핑된다 |
 | sample public API import guard | `unit` | sample 이 framework/connector public API만 import하고 binding internal/native 경로를 직접 쓰지 않는다 |

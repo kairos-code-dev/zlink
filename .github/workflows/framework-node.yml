@@ -1,0 +1,111 @@
+name: Framework Node
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/framework-node.yml"
+      - "framework/languages/node/**"
+      - "bindings/node/**"
+      - "framework/languages/dotnet/testapps/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/framework-node.yml"
+      - "framework/languages/node/**"
+      - "bindings/node/**"
+      - "framework/languages/dotnet/testapps/**"
+  workflow_dispatch:
+
+jobs:
+  framework-node:
+    name: ${{ matrix.target.name }} / node${{ matrix.node-version }}
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 20
+          - 22
+        target:
+          - name: win-x64
+            runner: windows-latest
+          - name: win-arm64
+            runner: windows-11-arm
+          - name: linux-x64
+            runner: ubuntu-24.04
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+          - name: darwin-x64
+            runner: macos-15-intel
+          - name: darwin-arm64
+            runner: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install binding dependencies
+        run: npm --prefix bindings/node install
+
+      - name: Build Node binding JavaScript surface
+        run: npm --prefix bindings/node run build
+
+      - name: Build Node binding native addon
+        run: npm --prefix bindings/node run rebuild-native
+
+      - name: Run Node framework release gate
+        run: npm --prefix framework/languages/node run verify:p0
+
+  framework-node-cross-language:
+    name: cross-language smoke
+    runs-on: ubuntu-24.04
+    needs:
+      - framework-node
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install binding dependencies
+        run: npm --prefix bindings/node install
+
+      - name: Build Node binding JavaScript surface
+        run: npm --prefix bindings/node run build
+
+      - name: Build Node binding native addon
+        run: npm --prefix bindings/node run rebuild-native
+
+      - name: Run Node framework cross-language smoke
+        run: npm --prefix framework/languages/node run verify:cross-language
+
+  framework-node-gate:
+    name: release-gate
+    runs-on: ubuntu-24.04
+    needs:
+      - framework-node
+      - framework-node-cross-language
+    steps:
+      - name: Confirm matrix completed
+        run: |
+          echo "Framework Node release gate passed."
+          echo "ABI matrix: win-x64, win-arm64, linux-x64, linux-arm64, darwin-x64, darwin-arm64"
+          echo "Node runtime matrix: node20, node22"
+          echo "Cross-language smoke: Node <-> dotnet channel and stream paths"

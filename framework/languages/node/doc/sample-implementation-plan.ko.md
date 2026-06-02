@@ -65,39 +65,45 @@ Node sample 은 `framework/languages/node/samples/` 아래에 둔다.
 ```text
 samples/
 |-- StreamingClient/
-|   |-- src/
+|   |-- client/
+|   |-- server/
 |   |-- README.ko.md
 |   `-- package.json
 |-- TicTacToe/
 |   |-- client/
 |   |-- server/
+|   |   |-- api/
+|   |   `-- play/
 |   |-- shared/
 |   |-- README.ko.md
 |   `-- package.json
 |-- TicTacToe.SessionGateway/
 |   |-- client/
-|   |-- api-server/
-|   |-- play-server/
-|   |-- session-server/
-|   |-- registry-server/
+|   |-- server/
+|   |   |-- api/
+|   |   |-- play/
+|   |   |-- registry/
+|   |   `-- session/
 |   |-- shared/
 |   |-- README.ko.md
 |   `-- package.json
 |-- Bingo/
 |   |-- client/
-|   |-- api-server/
-|   |-- play-server/
-|   |-- session-server/
-|   |-- registry-server/
+|   |-- server/
+|   |   |-- api/
+|   |   |-- play/
+|   |   |-- registry/
+|   |   `-- session/
 |   |-- shared/
 |   |-- README.ko.md
 |   `-- package.json
 `-- run_samples.sh
 ```
 
-다이어그램의 이름은 실제 디렉토리 역할만 나타낸다. 각 sample 은 NestJS app 과
-일반 TypeScript client 를 함께 둘 수 있지만, framework public API와 stream connector
-public API만 사용해야 한다.
+다이어그램의 이름은 실제 디렉토리 역할만 나타낸다. dotnet sample 과 같은 역할을
+제공하되, Node.js 관례에 맞춰 디렉토리는 소문자와 kebab-case 로 작성한다. 각 sample 은
+NestJS app 과 일반 TypeScript client 를 함께 둘 수 있지만, framework public API와
+stream connector public API만 사용해야 한다.
 
 ## 4. Sample Self-Check 기준
 

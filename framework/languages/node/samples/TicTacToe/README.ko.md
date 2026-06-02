@@ -10,16 +10,18 @@ node framework/languages/node/samples/TicTacToe/client/self-check.js
 
 ## Topology
 
-- client: api server 와 play server process 를 시작하고 `ready` 이벤트를 기다린 뒤 game command 를 보낸다.
-- api-server: self-check 에서 인증/API 역할의 준비 상태를 노출한다.
-- play-server: `ZLinkModule.forRoot(...)` 로 provider 를 만들고 `ZLinkSpotManager` 로 game Spot 을 만든다.
-- shared: board 규칙과 message shape 를 공유한다.
+- `client/`: API 서버와 Play 서버 process 를 시작하고, API 서버의 실제 TCP channel
+  endpoint 로 `RunTicTacToe` request 를 보낸다.
+- `server/api/`: client 요청을 받고 `ZLinkChannelClient` 로 Play 서버에 `CreateGame`
+  request 를 보낸다.
+- `server/play/`: channel handler 에서 deterministic game 을 실행하고 reply 를 돌려준다.
+- `shared/`: board 규칙과 message shape 를 공유한다.
 
 ## Success Condition
 
 - 두 player 가 같은 game Spot 에 join 한다.
 - `p1` 이 deterministic move 순서로 승리한다.
-- channel request 기록이 남는다.
+- client → api → play request/reply 가 실제 TCP channel endpoint 를 통과한다.
 - game Spot 이 timer 를 등록한다.
 - `PlayerJoinedNotify` 와 `GameStateNotify` push 결과가 deterministic 순서로 남는다.
 - client 가 server process 의 관찰 가능한 준비 신호를 받은 뒤 self-check 를 진행한다.

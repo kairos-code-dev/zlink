@@ -1,38 +1,59 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { startRoleProcess } = require('../../shared/role-process');
+const nestjs = require('../../../packages/nestjs/dist');
+const { createRouteClient } = require('../../shared/route-runtime');
+const { assertNestModule } = require('../../shared/nestjs-smoke');
+const { reserveTcpEndpoint, withServers } = require('../../shared/process-host');
 
 async function main() {
-  const registry = await startRoleProcess(path.resolve(__dirname, '../registry-server/main.js'));
-  const session = await startRoleProcess(path.resolve(__dirname, '../session-server/main.js'));
-  const play = await startRoleProcess(path.resolve(__dirname, '../play-server/main.js'));
-  const api = await startRoleProcess(path.resolve(__dirname, '../api-server/main.js'));
+  const registryEndpoint = await reserveTcpEndpoint();
+  const sessionEndpoint = await reserveTcpEndpoint();
+  const playEndpoint = await reserveTcpEndpoint();
+  const apiEndpoint = await reserveTcpEndpoint();
+  const apiClientEndpoint = await reserveTcpEndpoint();
+  const clientEndpoint = await reserveTcpEndpoint();
+  assertNestModule({
+    routeChannels: [{
+      routerChannelId: 'sample-route',
+      bind: clientEndpoint,
+      routingId: 'sample-client',
+      manualConnections: [apiEndpoint]
+    }]
+  }, nestjs);
 
-  try {
-    assert.equal((await registry.request({ command: 'ping' })).role, 'registry-server');
-    assert.equal((await session.request({ command: 'ping' })).role, 'session-server');
-    assert.equal((await play.request({ command: 'ping' })).role, 'play-server');
-
-    const result = await api.request({ command: 'run' });
-    assert.equal(result.room.status, 'Finished');
-    assert.equal(result.room.hostActorId, 'p1');
-    assert.deepEqual(result.room.winners, ['p1', 'p3']);
-    assert.equal(result.earlyHostStartRejected, true);
-    assert.equal(result.nonHostStartRejected, true);
-    assert.deepEqual(result.room.players.map((player) => player.actorId), ['p1', 'p2', 'p3', 'p4']);
-
-    const started = result.notifications.filter((message) => message.packetName === 'BingoGameStarted');
-    const drawn = result.notifications.filter((message) => message.packetName === 'BingoNumberDrawn');
-    const ended = result.notifications.filter((message) => message.packetName === 'BingoGameEnded');
-    assert.deepEqual(started.map((message) => message.actorId), ['p1', 'p2', 'p3', 'p4']);
-    assert.deepEqual(drawn.map((message) => message.actorId), ['p1', 'p2', 'p3', 'p4']);
-    assert.deepEqual(ended.map((message) => message.actorId), ['p1', 'p2', 'p3', 'p4']);
-  } finally {
-    await api.close();
-    await play.close();
-    await session.close();
-    await registry.close();
-  }
+  await withServers([
+    { entry: path.resolve(__dirname, '../server/registry/main.js'), env: { BINGO_REGISTRY_ENDPOINT: registryEndpoint } },
+    { entry: path.resolve(__dirname, '../server/session/main.js'), env: { BINGO_SESSION_ENDPOINT: sessionEndpoint } },
+    { entry: path.resolve(__dirname, '../server/play/main.js'), env: { BINGO_PLAY_ENDPOINT: playEndpoint } },
+    {
+      entry: path.resolve(__dirname, '../server/api/main.js'),
+      env: {
+        BINGO_API_ENDPOINT: apiEndpoint,
+        BINGO_API_CLIENT_ENDPOINT: apiClientEndpoint,
+        BINGO_PLAY_ENDPOINT: playEndpoint
+      }
+    }
+  ], async () => {
+    const client = await createRouteClient({
+      endpoint: clientEndpoint,
+      routingId: 'sample-client',
+      peers: [apiEndpoint]
+    });
+    try {
+      const result = await client.request('api-server', 'RunBingo', {});
+      assert.equal(result.room.status, 'Finished');
+      assert.equal(result.room.hostActorId, 'p1');
+      assert.deepEqual(result.room.winners, ['p1', 'p3']);
+      assert.equal(result.earlyHostStartRejected, true);
+      assert.equal(result.nonHostStartRejected, true);
+      assert.deepEqual(result.room.players.map((player) => player.actorId), ['p1', 'p2', 'p3', 'p4']);
+      assert.equal(result.notifications.filter((message) => message.packetName === 'BingoGameStarted').length, 4);
+      assert.equal(result.notifications.filter((message) => message.packetName === 'BingoNumberDrawn').length, 4);
+      assert.equal(result.notifications.filter((message) => message.packetName === 'BingoGameEnded').length, 4);
+    } finally {
+      await client.stop();
+    }
+  });
 
   console.log('PASS Bingo');
 }

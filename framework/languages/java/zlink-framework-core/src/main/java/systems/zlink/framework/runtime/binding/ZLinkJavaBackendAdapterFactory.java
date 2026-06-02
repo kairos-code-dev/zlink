@@ -17,6 +17,8 @@ import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.registry.RegistryQueryClient;
+import systems.zlink.contracts.service.registry.RegistryServiceSummaryFilter;
+import systems.zlink.contracts.service.registry.RegistryTopologyFilter;
 import systems.zlink.contracts.service.spot.ActorBindOperation;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ActorUnbindOperation;
@@ -255,8 +257,8 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void bind(String pubEndpoint, String routerEndpoint) { registry.bind(pubEndpoint, routerEndpoint); }
         @Override public void connectPeer(String pubEndpoint, String routerEndpoint) { registry.addPeer(pubEndpoint); }
         @Override public ZLinkBackendRegistryStatus status() { var status = registry.status(); return new ZLinkBackendRegistryStatus(status.state().name(), status.topologyEntryCount()); }
-        @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) { return registry.serviceSummary().stream().map(entry -> new ZLinkBackendRegistryServiceSummaryEntry(entry.channelName(), entry.serviceRole().name(), entry.totalCount())).toList(); }
-        @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) { return registry.topology().stream().map(entry -> new ZLinkBackendRegistryTopologyEntry(entry.channelName(), entry.serviceKind().name(), entry.endpoint())).toList(); }
+        @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) { return registry.serviceSummary(serviceSummaryFilter(filter)).stream().map(entry -> new ZLinkBackendRegistryServiceSummaryEntry(entry.channelName(), entry.serviceRole().name(), entry.totalCount())).toList(); }
+        @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) { return registry.topology(topologyFilter(filter)).stream().map(entry -> new ZLinkBackendRegistryTopologyEntry(entry.channelName(), entry.serviceKind().name(), entry.endpoint())).toList(); }
         @Override public void close() { registry.close(); }
     }
 
@@ -264,7 +266,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public String name() { return "registryQueryClient"; }
         @Override public void connect(String endpoint) { client.connect(endpoint); }
         @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) { return List.of(); }
-        @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) { return client.topology().stream().map(entry -> new ZLinkBackendRegistryTopologyEntry(entry.channelName(), entry.serviceKind().name(), entry.endpoint())).toList(); }
+        @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) { return client.topology(topologyFilter(filter)).stream().map(entry -> new ZLinkBackendRegistryTopologyEntry(entry.channelName(), entry.serviceKind().name(), entry.endpoint())).toList(); }
         @Override public void close() { client.close(); }
     }
 
@@ -340,6 +342,26 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             case ROUTED -> SpotNodeMode.ROUTED;
             case ALL -> SpotNodeMode.ALL;
         };
+    }
+
+    private static RegistryServiceSummaryFilter serviceSummaryFilter(
+        ZLinkBackendRegistryQueryFilter filter) {
+        return new RegistryServiceSummaryFilter(
+            null,
+            null,
+            filter.channelName().orElse(null));
+    }
+
+    private static RegistryTopologyFilter topologyFilter(
+        ZLinkBackendRegistryQueryFilter filter) {
+        return new RegistryTopologyFilter(
+            null,
+            null,
+            null,
+            filter.channelName().orElse(null),
+            null,
+            null,
+            null);
     }
 
     private static RecvFlags map(ZLinkBackendRecvMode mode) {

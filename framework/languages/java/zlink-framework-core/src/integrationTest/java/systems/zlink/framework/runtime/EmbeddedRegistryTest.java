@@ -12,12 +12,12 @@ import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.registry.ZLinkRegistryQueryFilter;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 
-final class RegistryRuntimeIntegrationTest {
+final class EmbeddedRegistryTest {
     private static final AtomicInteger NEXT_PORT =
         new AtomicInteger(30_000 + (int) (ProcessHandle.current().pid() % 10_000));
 
     @Test
-    void embeddedRegistryQuerySmokeUsesJavaBindingPublicApi() {
+    void embeddedRegistry_queryService_resolvesAndReadsStatus() {
         Zlink.version();
         ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
         options.setPubEndpoint(tcpEndpoint());
@@ -36,6 +36,30 @@ final class RegistryRuntimeIntegrationTest {
                 .join()
                 .isEmpty());
             assertTrue(runtime.topologyAsync(null)
+                .toCompletableFuture()
+                .join()
+                .isEmpty());
+        }
+    }
+
+    @Test
+    void remoteRegistryQueryClient_canReadTopologySnapshot() {
+        Zlink.version();
+        ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
+        options.setPubEndpoint(tcpEndpoint());
+        String routerEndpoint = tcpEndpoint();
+        options.setRouterEndpoint(routerEndpoint);
+
+        try (ZLinkRegistryRuntime ignored = new ZLinkRegistryRuntime(
+                 options,
+                 new ZLinkJavaBackendAdapterFactory(),
+                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
+             ZLinkRemoteRegistryQueryClient client =
+                 new ZLinkRemoteRegistryQueryClient(
+                     routerEndpoint,
+                     new ZLinkJavaBackendAdapterFactory(),
+                     new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
+            assertTrue(client.topologyAsync(ZLinkRegistryQueryFilter.channel("profile"))
                 .toCompletableFuture()
                 .join()
                 .isEmpty());

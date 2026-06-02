@@ -68,7 +68,7 @@ final class RegistryRuntimeFakeBackendTest {
                      backendFactory,
                      new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
             assertEquals("tcp://127.0.0.1:7100",
-                client.topologyAsync(null)
+                client.topologyAsync(ZLinkRegistryQueryFilter.channel("profile"))
                     .toCompletableFuture()
                     .join()
                     .get(0)
@@ -82,7 +82,7 @@ final class RegistryRuntimeFakeBackendTest {
                 "create.context",
                 "create.registryQueryClient",
                 "registryQueryClient.connect.tcp://127.0.0.1:5552",
-                "registryQueryClient.topology.*",
+                "registryQueryClient.topology.profile",
                 "close.registryQueryClient",
                 "close.context"),
             backendFactory.calls());

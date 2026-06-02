@@ -83,6 +83,11 @@ connector 테스트 이름은 `Systems.Zlink.Stream.Connector.Tests`의 메서�
 
 monitoring은 discovery source를 노출하지 않는다(discovery 상태는 registry
 snapshot/query로만 관찰). 따라서 "socket/registry/spot" event만 둔다.
+`EmbeddedRegistryTest.remoteRegistryQueryClient_canReadTopologySnapshot`은
+embedded registry의 router endpoint에 remote query client가 연결해 topology
+snapshot API를 호출하는 native integration gate다. 현재 channel discovery 등록은
+별도 행에서 닫기 전이므로 snapshot 내용은 비어 있을 수 있지만, query client 연결과
+filter 전달은 실제 binding public API 경로로 검증한다.
 
 | 항목 | 계층 | JUnit 테스트 | 통과 기준 |
 |------|------|--------------|-----------|

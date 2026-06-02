@@ -59,7 +59,7 @@ try (Context ctx = Zlink.createContext();
         System.out.println(text); // PING
 
         try (Message reply = Message.from("ACK")) {
-            received.send().message(reply).submit();
+            server.send().message(reply).submit();
         }
     }
 }
@@ -167,7 +167,7 @@ try (Received received = new Received()) {
 
 ```java
 RoutingId rid = RoutingId.from("server-01".getBytes(StandardCharsets.UTF_8));
-RoutingId rid = RoutingId.from(RoutingId.fromString("server-01"));
+RoutingId rid = RoutingId.from("server-01");
 ```
 
 ---

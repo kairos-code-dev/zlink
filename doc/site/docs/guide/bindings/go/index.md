@@ -165,7 +165,7 @@ rid := zlink.NewRoutingID([]byte("server-01"))
 rid := zlink.NewRoutingIDString("server-01")
 rid := zlink.NewRoutingIDUint32(1)          // 4바이트 big-endian
 rid := zlink.NewRoutingIDUUIDBytes(uuid)    // 16바이트 UUID
-rid, err := zlink.ParseRoutingIDHex("0102...")   // 16진수 파싱
+rid, err := zlink.NewRoutingIDFromHex("0102...")   // 16진수 파싱
 
 fmt.Println(rid.String())  // 사람이 읽기 좋은 형태로 출력
 ```

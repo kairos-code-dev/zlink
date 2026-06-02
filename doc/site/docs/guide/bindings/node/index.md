@@ -98,8 +98,8 @@ const received = new zlink.Received();
 socket.recv(received);                  // 동기 블로킹
 try {
   const parts = received.parts;         // Message[]
-  const rid = received.routingId;       // RoutingId 또는 undefined
-  const seq = received.requestSeq;      // bigint 또는 undefined
+  const rid = received.routingId;       // RoutingId 또는 null
+  const seq = received.requestSeq;      // bigint 또는 null
 } finally {
   received.close();
 }

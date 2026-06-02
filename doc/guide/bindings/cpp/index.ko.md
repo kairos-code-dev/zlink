@@ -40,7 +40,7 @@ std::printf ("%s\n", inbound.parts ()[0].to_string ().c_str ()); // PING
 inbound.close ();
 
 zlink::message_t ack = zlink::message_t::from ("ACK");
-inbound.send ().message (ack).submit ();
+server.send ().message (ack).submit ();
 ```
 
 ```cpp

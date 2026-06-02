@@ -40,7 +40,7 @@ server.recv(&mut received, RecvFlags::NONE).unwrap();
 println!("{}", received.parts()[0].as_str().unwrap()); // PING
 
 let ack = Message::try_from(b"ACK").unwrap();
-received.send().message(ack).submit().unwrap();
+server.send().message(ack).submit().unwrap();
 ```
 
 ```rust
@@ -130,7 +130,7 @@ Rust의 소유권 시스템이 대부분을 컴파일 타임에 강제합니다.
 // 에러 처리 패턴
 let msg = Message::try_from(b"data").unwrap();
 match socket.send().message(msg).submit() {
-    Ok(()) => { /* 전송됨 */ }
+    Ok(_) => { /* 전송됨 */ }
     Err(e) => eprintln!("send failed: {e}"),
 }
 ```
@@ -143,8 +143,8 @@ Rust 바인딩은 작업별 에러 타입을 `Result`로 반환합니다.
 
 ```rust
 match socket.send().message(msg).submit() {
-    Ok(()) => {}
-    Err(e) => match e.result() {
+    Ok(_) => {}
+    Err(e) => match e.code() {
         zlink::SubmitResult::Backpressured => { /* 재시도 */ }
         zlink::SubmitResult::NotConnected => { /* 연결 없음 */ }
         _ => return Err(e.into()),
@@ -154,7 +154,7 @@ match socket.send().message(msg).submit() {
 
 에러 타입: `SubmitError`, `RequestError`, `RecvError`, `BindError`,
 `ConnectError`, `ConfigError`, `CloseError`, `HandlerError`.
-각 타입은 `result()` 메서드로 결과 코드 enum을 노출합니다.
+각 타입은 `code()` 메서드로 결과 코드 enum을 노출합니다.
 
 ---
 

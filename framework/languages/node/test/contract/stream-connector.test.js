@@ -1,6 +1,11 @@
 const assert = require('node:assert/strict');
+const childProcess = require('node:child_process');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const net = require('node:net');
+const os = require('node:os');
+const path = require('node:path');
+const tls = require('node:tls');
 const test = require('node:test');
 
 const connector = require('../../packages/stream-connector/dist');
@@ -203,6 +208,59 @@ test('stream connector default TCP transport sends request and dispatches respon
     await instance.dispatch();
     const reply = await pending;
     assert.equal(new TextDecoder().decode(reply.payload), '{"tcp":true}');
+  } finally {
+    await instance.close();
+    await closeServer(server);
+  }
+});
+
+test('stream connector TLS transport sends frame with skipped certificate validation', async () => {
+  const credentials = createTestTlsCredentials();
+  let resolveReceived;
+  let rejectReceived;
+  const received = new Promise((resolve, reject) => {
+    resolveReceived = resolve;
+    rejectReceived = reject;
+  });
+  const server = tls.createServer(credentials, (socket) => {
+    let buffer = Buffer.alloc(0);
+    socket.on('data', (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      const frame = tryReadFrame(buffer);
+      if (frame === undefined) {
+        return;
+      }
+      const decoded = connector.ZlinkStreamFrameCodec.decode(frame.bytes);
+      const header = connector.ZlinkStreamHeaderCodec.decode(decoded.header);
+      resolveReceived({
+        name: header.name,
+        codec: header.codec,
+        payload: new TextDecoder().decode(decoded.payload)
+      });
+    });
+    socket.on('error', rejectReceived);
+  });
+
+  await listen(server);
+  const { port } = server.address();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: `tls://127.0.0.1:${port}`,
+    heartbeat: { enabled: false },
+    skipServerCertificateValidation: true
+  });
+
+  try {
+    await instance.connect();
+    await instance.send({
+      codec: connector.ZlinkStreamCodec.Raw,
+      payload: new TextEncoder().encode('tls-body')
+    }).packetName('TlsPacket').submit();
+
+    assert.deepEqual(await received, {
+      name: 'TlsPacket',
+      codec: connector.ZlinkStreamCodec.Raw,
+      payload: 'tls-body'
+    });
   } finally {
     await instance.close();
     await closeServer(server);
@@ -522,5 +580,34 @@ class FlakyTransportFactory {
       throw new Error('connect failed');
     }
     return this.connection;
+  }
+}
+
+function createTestTlsCredentials() {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-node-tls-'));
+  const keyPath = path.join(directory, 'key.pem');
+  const certPath = path.join(directory, 'cert.pem');
+  try {
+    childProcess.execFileSync('openssl', [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-keyout',
+      keyPath,
+      '-out',
+      certPath,
+      '-days',
+      '3650',
+      '-subj',
+      '/CN=localhost'
+    ], { stdio: 'ignore' });
+    return {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath)
+    };
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
   }
 }

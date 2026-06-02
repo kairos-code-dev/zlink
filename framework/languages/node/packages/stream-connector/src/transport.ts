@@ -415,7 +415,7 @@ async function connectWebSocket(
     ? await connectSocket(endpoint, options.connectTimeoutMs, signal, (port, host) => tls.connect({
       port,
       host,
-      servername: host,
+      servername: tlsServerName(host),
       rejectUnauthorized: !options.skipServerCertificateValidation
     }), 443)
     : await connectSocket(endpoint, options.connectTimeoutMs, signal, (port, host) => net.connect({ port, host, keepAlive: true }), 80);
@@ -435,9 +435,13 @@ async function connectTls(
   return await connectSocket(endpoint, options.connectTimeoutMs, signal, (port, host) => tls.connect({
     port,
     host,
-    servername: host,
+    servername: tlsServerName(host),
     rejectUnauthorized: !options.skipServerCertificateValidation
   }));
+}
+
+function tlsServerName(host: string): string | undefined {
+  return net.isIP(host) === 0 ? host : undefined;
 }
 
 async function connectSocket<TSocket extends net.Socket>(

@@ -139,9 +139,9 @@ backend 의존 정책은 framework 의 public API 와 adapter factory 두 축으
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `scaffold-smoke.spec.ts` › `public surface does not expose backend concrete types` | 허용한 값 타입(`RoutingId`/`Message`/`SendFlags`)을 제외하면, backend concrete type(`DealerSocket`/`RouterSocket`/`SpotNode`/`Spot`/`Registry` 등)이 public surface 에 나타나지 않는다. |
-| `backend-adapter-factory.spec.ts` › `backend factory creates channel, registry, spot and stream wrappers` | backend factory 가 channel, Registry, SPOT, STREAM wrapper 를 모두 만들어 낸다. |
-| `backend-adapter-factory.spec.ts` › `backend factory creates monitoring adapter` | monitoring adapter 생성 경로가 backend 내부 안에 머문다. |
+| `backend-public-api-only.test.js` › `framework contract surface does not alias binding concrete types` | 허용한 값 타입(`RoutingId`/`Message`/`SendFlags`)을 제외하면, backend concrete type(`DealerSocket`/`RouterSocket`/`SpotNode`/`Spot`/`Registry` 등)이 public surface 에 나타나지 않는다. |
+| `backend-contract.test.js` › `backend adapter factory exposes the five backend adapters` | backend factory 가 channel, Registry, SPOT, STREAM, monitoring adapter 를 모두 만들어 낸다. |
+| `backend-public-api-only.test.js` › `framework packages only depend on binding public entry points` | monitoring adapter 생성 경로를 포함해 framework 가 binding public entry point 만 사용한다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^backend]: backend 는 framework 가 실제 동작을 위임하는 저수준 구현체를 가리킨다. 여기서는 `@zlink-systems/zlink`(Node 바인딩) 가 backend 다.

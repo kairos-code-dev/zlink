@@ -103,6 +103,6 @@ framework 경계, backend 의존, lifecycle, 회귀 기준을 정의한다. spec
 
 | 테스트 | 확인 기준 |
 |--------|-----------|
-| `regression.spec.ts › node 문서가 모두 회귀 테스트 단락을 노출한다` | `README.ko.md`가 명시적인 `회귀 테스트` 단락을 가진다. |
-| `regression.spec.ts › README implementation order matches plan` | 구현 순서 요약이 `IMPLEMENTATION-PLAN.ko.md`의 phase 의존성과 어긋나지 않는다. |
-| `regression.spec.ts › README links sample implementation plan` | Phase 9 guide/sample/cross-language smoke 기준 문서가 README 에서 연결된다. |
+| `documentation-regression.test.js › node README links every guide chapter` | `README.ko.md`가 12개 guide 장을 모두 연결한다. |
+| `documentation-regression.test.js › node documentation relative markdown links resolve` | 구현 순서와 참조 문서 링크가 깨지지 않는다. |
+| `sample-regression.test.js › node samples define the required sample directories and README files` | Phase 9 guide/sample/cross-language smoke 기준 문서가 README 에서 연결된다. |

@@ -10,7 +10,7 @@
 
 > 이 문서는 [표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md)을 따른다.
 > 회귀 항목의 **의미·통과 기준·커버리지는 dotnet 과 동일**하고, 테스트 표면만
-> Node.js(`vitest`/`jest` 스타일 `*.spec.ts`, `describe`/`it`)로 옮긴다. 정식
+> Node.js(`node:test` 기반 `*.test.js`, `test(...)`)로 옮긴다. 정식
 > 기준은 `framework/languages/dotnet` 의 코드와 dotnet 회귀 matrix 다. 이
 > 문서대로 테스트를 구현하면 Node 구현이 .NET 버전과 **동등함을 증명**하는
 > 테스트 묶음이 나온다.
@@ -26,9 +26,9 @@ dotnet 테스트 프로젝트는 다음 세 묶음이다. Node 테스트 패키�
 
 | dotnet 프로젝트 | node 테스트 패키지 | 계층 매핑 |
 |------|------|------|
-| `Zlink.Framework.ContractTests` | `@zlink-systems/framework` contract 테스트(`test/contract/**/*.spec.ts`) | `unit` 계약 표면 + 일부 `contract` |
-| `Zlink.Framework.UnitTests` | unit 테스트(`test/unit/**/*.spec.ts`) | `unit` |
-| `Zlink.Framework.E2ETests` | e2e 테스트(`test/e2e/**/*.spec.ts`) | `integration-single-process` + `integration-multi-process` |
+| `Zlink.Framework.ContractTests` | `@zlink-systems/framework` contract 테스트(`test/contract/**/*.test.js`) | `unit` 계약 표면 + 일부 `contract` |
+| `Zlink.Framework.UnitTests` | unit 테스트(`test/unit/**/*.test.js`) | `unit` |
+| `Zlink.Framework.E2ETests` | e2e 테스트(`test/e2e/**/*.test.js`) | `integration-single-process` + `integration-multi-process` |
 
 > dotnet `ContractTests` 의 `Channels/Handlers/Spots/Streams/Configuration/
 > Registry/Actors/Timers/Eventing/Codecs` 하위 묶음, `UnitTests` 의
@@ -330,8 +330,8 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `regression.spec.ts › node 문서가 모두 회귀 테스트 단락을 노출한다` | 아래 문서가 모두 `회귀 테스트` 단락을 가진다. |
-| `regression.spec.ts › regression matrix가 모든 node 문서를 참조한다` | 이 matrix가 아래 문서 파일명을 모두 참조한다. |
+| `documentation-regression.test.js › node guide exposes the 12 required guide chapters` | 아래 guide 문서가 모두 `회귀 테스트` 단락을 가진다. |
+| `documentation-regression.test.js › node documentation relative markdown links resolve` | 이 matrix를 포함한 Node 문서의 상대 링크가 모두 유효하다. |
 
 > dotnet 의 narrative guide 와 case-study 문서가 strict 집합에서 제외되는 것과
 > 동일하게, node 의 사용자 가이드(usability) 계층은 strict 집합 대상이 아니다.

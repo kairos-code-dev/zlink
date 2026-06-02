@@ -181,6 +181,6 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
 
 | 테스트 | 확인 기준 |
 |--------|-----------|
-| `regression.spec.ts › node sample plan defines required samples` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo, run_samples.sh 가 명시되어 있다. |
-| `regression.spec.ts › node sample plan defines cross-language smoke` | Node↔dotnet channel request/send/publish, Node connector→dotnet stream, dotnet connector→Node stream 경로가 명시되어 있다. |
-| `regression.spec.ts › node guide plan maps dotnet guide chapters` | guide 12개 장과 dotnet guide 대응이 빠지지 않는다. |
+| `sample-regression.test.js › node samples define the required sample directories and README files` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo, run_samples.sh 가 존재한다. |
+| `sample-regression.test.js › node cross-language smoke covers channel send publish and stream connector paths` | Node↔dotnet channel request/send/publish, Node connector→dotnet stream, dotnet connector→Node stream 경로가 명시되어 있다. |
+| `documentation-regression.test.js › node guide exposes the 12 required guide chapters` | guide 12개 장이 빠지지 않는다. |

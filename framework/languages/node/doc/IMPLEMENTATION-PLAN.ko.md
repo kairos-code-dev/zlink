@@ -120,8 +120,8 @@ workspace.
 `runtime/execution/`(serial executor 등).
 
 공통 toolchain: TypeScript `strict`, `reflect-metadata`(decorator 메타데이터),
-Node 20+, 테스트 vitest 또는 jest. CI release gate 는 `npm run verify:runtime-matrix`
-로 `node20` 과 `node22` 를 모두 돌린다.
+Node 20+, 테스트는 `node:test` 기반 `*.test.js` 파일로 작성한다. CI release gate 는
+`npm run verify:runtime-matrix` 로 `node20` 과 `node22` 를 모두 돌린다.
 
 ---
 
@@ -243,7 +243,8 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - [ ] factory 가 channel/spot/stream/registry/monitoring 어댑터를 모두 생성
   - [ ] 바인딩 객체(DealerSocket/SpotNode/Registry 등)가 public surface 로 새지 않음
   - [ ] 허용 primitive(`RoutingId`=string, `Message`=Buffer, `SendFlags`)만 노출
-- **검증:** backend-dependency-policy §9 미러 테스트(`backend-adapter-factory.spec.ts`, `scaffold-smoke.spec.ts`)
+- **검증:** backend-dependency-policy §9 미러 테스트(`backend-contract.test.js`,
+  `backend-public-api-only.test.js`)
 
 ### Phase 1.5 — Node binding parity
 - **선행:** P1
@@ -266,8 +267,8 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
         registry query, socket monitor smoke 가 binding public API 로 통과
   - [ ] framework runtime/adapter 코드가 binding internal 경로를 import 하지 않음
   - [ ] stale native artifact guard 통과
-- **검증:** `node-binding-parity.spec.ts`, `backend-public-api-only.spec.ts`,
-  `native-artifact-freshness.spec.ts`
+- **검증:** `node-binding-parity.test.js`, `backend-public-api-only.test.js`,
+  `native-artifact-freshness.test.js`
 
 ### Phase 2 — 계약(Contracts) TS 이식 (backend 독립)
 - **선행:** P1.5(일부 타입 공유) — 실질 병행 가능
@@ -484,10 +485,9 @@ TS 고유 제약(표면 한계): 런타임 타입 소거 → packet key 는 **�
 
 | 테스트 | 확인 기준 |
 |--------|-----------|
-| `regression.spec.ts › node 문서가 모두 회귀 테스트 단락을 노출한다` | `IMPLEMENTATION-PLAN.ko.md`가 명시적인 `회귀 테스트` 단락을 가진다. |
-| `regression.spec.ts › implementation plan phase order matches dependencies` | P6 actor core, P7 stream relay, P8 registry/monitoring 의존 순서가 이 문서와 regression matrix에서 어긋나지 않는다. |
-| `regression.spec.ts › implementation plan uses supported node runtime` | toolchain 기준이 `node20`/`node22` release gate와 일치한다. |
-| `regression.spec.ts › implementation plan includes binding parity and cross-language gates` | P1.5, P9, §8 이 binding public API gap과 cross-language smoke를 완료 기준으로 둔다. |
+| `documentation-regression.test.js › node documentation relative markdown links resolve` | `IMPLEMENTATION-PLAN.ko.md`의 상대 링크가 모두 유효하다. |
+| `release-gate.test.js › node framework release gate declares required ABI and runtime matrix` | toolchain 기준이 `node20`/`node22` release gate와 일치한다. |
+| `sample-regression.test.js › node cross-language smoke covers channel send publish and stream connector paths` | P1.5, P9, §8 이 binding public API gap과 cross-language smoke를 완료 기준으로 둔다. |
 
 ## 10. 현재 문서 상태
 

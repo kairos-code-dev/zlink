@@ -10,6 +10,7 @@ import type {
   ZLinkSessionActors,
   ZLinkSessionClient,
   ZLinkSessionContext,
+  ZLinkSession,
   ZLinkSessionReplyCall,
   ZLinkSessionSendCall,
   ZLinkStream
@@ -18,12 +19,21 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
+import type {
+  ZLinkBackendSendFlags,
+  ZLinkBackendStreamSocket
+} from '../backend/contracts';
 
 export interface ZLinkStreamBindingRuntimeOptions {
   readonly transport?: ZLinkBoundSessionTransport;
+  readonly messageFactory?: ZLinkStreamMessageFactory;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
   readonly relay?: (actor: ZLinkSessionActor, header: ZlinkStreamHeader, payload: Message, signal?: AbortSignal) => Promise<void>;
   readonly notifyDisconnected?: (actor: ZLinkSessionActor, signal?: AbortSignal) => Promise<void>;
+}
+
+export interface ZLinkStreamMessageFactory {
+  createTextMessage(payload: string): Message;
 }
 
 export interface ZLinkBoundSessionTransport {
@@ -47,6 +57,266 @@ interface ZLinkActorSessionRoute {
   readonly context: DefaultZLinkSessionContext;
   readonly actor: DefaultZLinkSessionActor;
   readonly bindingToken: string;
+}
+
+export interface ZLinkStreamSessionRuntimeOptions {
+  readonly socket: ZLinkBackendStreamSocket;
+  readonly sessionFactory: (context: DefaultZLinkSessionContext) => ZLinkSession;
+  readonly bindingRuntime?: ZLinkStreamBindingRuntime;
+  readonly headerDecoder?: (header: Message) => ZlinkStreamHeader;
+  readonly onError?: (error: unknown) => void;
+}
+
+export interface ZLinkStreamSessionNodeRuntimeOptions extends ZLinkStreamSessionRuntimeOptions {
+  readonly nodeName?: string;
+}
+
+export class ZLinkManagedStream implements ZLinkStream {
+  private currentLocalAddr: string | undefined;
+  private currentRemoteAddr: string | undefined;
+
+  constructor(
+    private readonly socket: ZLinkBackendStreamSocket,
+    private readonly backendSessionRoutingId: unknown,
+    private readonly publicSessionId = streamSessionIdFromRoutingId(backendSessionRoutingId)
+  ) {}
+
+  get sessionId(): string {
+    return this.publicSessionId;
+  }
+
+  get routingId(): RoutingId {
+    return this.publicSessionId;
+  }
+
+  get localAddr(): string | undefined {
+    return this.currentLocalAddr;
+  }
+
+  get remoteAddr(): string | undefined {
+    return this.currentRemoteAddr;
+  }
+
+  write(payload: Message, flags?: ZLinkBackendSendFlags): boolean {
+    return this.socket.send(this.backendRoutingId(), payload, flags ?? 0);
+  }
+
+  async close(signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    this.socket.disconnectPeer(this.backendRoutingId());
+  }
+
+  updateAddresses(localAddr: string | undefined, remoteAddr: string | undefined): void {
+    this.currentLocalAddr = localAddr;
+    this.currentRemoteAddr = remoteAddr;
+  }
+
+  private backendRoutingId(): never {
+    return this.backendSessionRoutingId as never;
+  }
+}
+
+export class ZLinkStreamSessionRuntime {
+  readonly stream: ZLinkManagedStream;
+  readonly context: DefaultZLinkSessionContext;
+  readonly session: ZLinkSession;
+  private readonly serial = new ZLinkStreamSessionSerialExecutor();
+  private connected = false;
+  private disconnected = false;
+  private disposed = false;
+
+  constructor(
+    private readonly options: ZLinkStreamSessionRuntimeOptions,
+    routingId: unknown,
+    private readonly removeSession: (sessionId: string) => void = () => {}
+  ) {
+    const bindingRuntime = options.bindingRuntime ?? new ZLinkStreamBindingRuntime();
+    this.stream = new ZLinkManagedStream(options.socket, routingId);
+    this.context = bindingRuntime.createSessionContext(this.stream, (signal) => this.close(signal));
+    this.session = options.sessionFactory(this.context);
+    if (this.session.context !== this.context) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RouteNotConnected,
+        'Session must expose the context provided by the stream runtime.'
+      );
+    }
+  }
+
+  enqueueConnected(localAddr?: string, remoteAddr?: string): void {
+    this.enqueue(async () => this.markConnected(localAddr, remoteAddr));
+  }
+
+  enqueuePacket(header: Message, payload: Message): void {
+    this.enqueue(
+      async () => this.dispatchPacket(header, payload),
+      () => {
+        header.close();
+        payload.close();
+      }
+    );
+  }
+
+  enqueueDisconnected(error?: unknown): void {
+    if (this.disconnected) {
+      return;
+    }
+    this.disconnected = true;
+    this.enqueue(async () => this.complete(error, true));
+  }
+
+  async close(signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    await this.stream.close(signal);
+    if (this.disconnected) {
+      return;
+    }
+    this.disconnected = true;
+    this.enqueue(async () => this.complete(undefined, true));
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    await this.serial.dispose();
+    if (!this.disconnected) {
+      this.disconnected = true;
+      await this.session.onDisconnected?.(this.context);
+    }
+    await this.cleanup();
+  }
+
+  private async markConnected(localAddr?: string, remoteAddr?: string): Promise<void> {
+    this.stream.updateAddresses(localAddr, remoteAddr);
+    if (this.connected) {
+      return;
+    }
+    this.connected = true;
+    await this.session.onConnected?.(this.context);
+  }
+
+  private async dispatchPacket(header: Message, payload: Message): Promise<void> {
+    try {
+      const decodedHeader = this.options.headerDecoder?.(header) ?? header;
+      await this.session.onDispatch?.(decodedHeader, payload);
+    } catch (error) {
+      this.options.onError?.(error);
+      await this.session.onError?.(this.context, {
+        error: 'internal' as never,
+        diagnostic: {
+          message: error instanceof Error ? error.message : String(error)
+        }
+      });
+    } finally {
+      header.close();
+      payload.close();
+    }
+  }
+
+  private async complete(error: unknown, notifyDisconnected: boolean): Promise<void> {
+    if (error !== undefined) {
+      await this.session.onError?.(this.context, {
+        error: 'transportError' as never,
+        diagnostic: {
+          message: error instanceof Error ? error.message : String(error)
+        }
+      });
+    }
+    if (notifyDisconnected) {
+      await this.session.onDisconnected?.(this.context);
+    }
+    await this.cleanup();
+  }
+
+  private async cleanup(): Promise<void> {
+    this.context.cleanupBindings();
+    this.removeSession(this.stream.sessionId);
+  }
+
+  private enqueue(work: () => Promise<void>, onRejected?: () => void): void {
+    if (!this.serial.enqueue(work)) {
+      onRejected?.();
+    }
+  }
+}
+
+export class ZLinkStreamSessionNodeRuntime {
+  private readonly sessions = new Map<string, ZLinkStreamSessionRuntime>();
+  private stopped = false;
+
+  constructor(private readonly options: ZLinkStreamSessionNodeRuntimeOptions) {}
+
+  start(): void {
+    this.options.socket.onFramedPacket((routingId, header, payload) => {
+      this.onFramedPacket(routingId, header, payload);
+    });
+  }
+
+  markConnected(routingId: unknown, localAddr?: string, remoteAddr?: string): void {
+    this.getOrCreateSession(routingId).enqueueConnected(localAddr, remoteAddr);
+  }
+
+  markDisconnected(routingId: unknown, error?: unknown): void {
+    this.sessions.get(streamSessionIdFromRoutingId(routingId))?.enqueueDisconnected(error);
+  }
+
+  findSession(routingId: unknown): ZLinkStreamSessionRuntime | undefined {
+    return this.sessions.get(streamSessionIdFromRoutingId(routingId));
+  }
+
+  async dispose(): Promise<void> {
+    this.stopped = true;
+    const sessions = [...this.sessions.values()];
+    this.sessions.clear();
+    for (const session of sessions) {
+      await session.dispose();
+    }
+  }
+
+  private onFramedPacket(routingId: unknown, header: Message, payload: Message): void {
+    if (this.stopped) {
+      header.close();
+      payload.close();
+      return;
+    }
+    this.getOrCreateSession(routingId).enqueuePacket(header, payload);
+  }
+
+  private getOrCreateSession(routingId: unknown): ZLinkStreamSessionRuntime {
+    const sessionId = streamSessionIdFromRoutingId(routingId);
+    const existing = this.sessions.get(sessionId);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const created = new ZLinkStreamSessionRuntime(
+      this.options,
+      routingId,
+      (sessionId) => this.sessions.delete(sessionId)
+    );
+    this.sessions.set(sessionId, created);
+    return created;
+  }
+}
+
+class ZLinkStreamSessionSerialExecutor {
+  private tail: Promise<void> = Promise.resolve();
+  private closed = false;
+
+  enqueue(work: () => Promise<void>): boolean {
+    if (this.closed) {
+      return false;
+    }
+    this.tail = this.tail
+      .then(work, work)
+      .catch(() => {});
+    return true;
+  }
+
+  async dispose(): Promise<void> {
+    this.closed = true;
+    await this.tail;
+  }
 }
 
 export class ZLinkStreamBindingRuntime {
@@ -148,6 +418,17 @@ export class ZLinkStreamBindingRuntime {
     await this.options.notifyDisconnected?.(actor, signal);
   }
 
+  createTextMessage(payload: string): Message {
+    if (this.options.messageFactory === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RouteNotConnected,
+        'Stream message factory is not started.',
+        true
+      );
+    }
+    return this.options.messageFactory.createTextMessage(payload);
+  }
+
   private resolveActorRef(actor: ZLinkActor): ActorRef {
     if (this.options.actorRefResolver !== undefined) {
       return this.options.actorRefResolver(actor);
@@ -231,6 +512,14 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   async close(signal?: AbortSignal): Promise<void> {
     this.runtime.cleanup(this);
     await this.closeSession(signal);
+  }
+
+  cleanupBindings(): void {
+    this.runtime.cleanup(this);
+  }
+
+  createTextMessage(payload: string): Message {
+    return this.runtime.createTextMessage(payload);
   }
 
   get boundActors(): readonly DefaultZLinkSessionActor[] {
@@ -381,7 +670,7 @@ class DefaultZLinkSessionSendCall<TMessage> implements ZLinkSessionSendCall {
       compressed: this.compressionEnabled,
       message: this.message
     });
-    const message = createJsonMessage(payload);
+    const message = this.context.createTextMessage(payload);
     try {
       this.context.stream.write(message);
     } finally {
@@ -417,7 +706,7 @@ class DefaultZLinkSessionReplyCall<TMessage> implements ZLinkSessionReplyCall {
       compressed: this.compressionEnabled,
       message: this.message
     });
-    const message = createJsonMessage(payload);
+    const message = this.context.createTextMessage(payload);
     try {
       this.context.stream.write(message);
     } finally {
@@ -440,9 +729,30 @@ function createBindingToken(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-function createJsonMessage(payload: string): Message {
-  const binding = require('@zlink-systems/zlink') as { Message: { from(value: string): Message } };
-  return binding.Message.from(payload);
+function streamSessionIdFromRoutingId(routingId: unknown): string {
+  if (typeof routingId === 'string') {
+    return routingId;
+  }
+  if (
+    typeof routingId === 'object'
+    && routingId !== null
+    && 'toHex' in routingId
+    && typeof (routingId as { toHex?: unknown }).toHex === 'function'
+  ) {
+    return (routingId as { toHex(): string }).toHex();
+  }
+  if (
+    typeof routingId === 'object'
+    && routingId !== null
+    && 'toString' in routingId
+    && typeof (routingId as { toString?: unknown }).toString === 'function'
+  ) {
+    return (routingId as { toString(): string }).toString();
+  }
+  throw new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.RouteNotConnected,
+    'Stream session routing id is invalid.'
+  );
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

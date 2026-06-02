@@ -1,0 +1,383 @@
+const assert = require('node:assert/strict');
+const net = require('node:net');
+const test = require('node:test');
+
+const connector = require('../../packages/stream-connector/dist');
+
+test('stream connector exposes dotnet-shaped enums factory and default options', () => {
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'ws://127.0.0.1:19000',
+    transportFactory: new MemoryTransportFactory()
+  });
+
+  assert.equal(instance.state, connector.ZlinkStreamConnectionState.Created);
+  assert.equal(instance.options.transport, connector.ZlinkStreamTransport.WebSocket);
+  assert.equal(instance.options.connectTimeoutMs, 5000);
+  assert.equal(instance.options.requestTimeoutMs, 30000);
+  assert.equal(instance.options.heartbeat.enabled, true);
+  assert.equal(instance.options.reconnect.maxAttempts, 3);
+});
+
+test('stream header and frame codec follow dotnet binary layout', () => {
+  const metadata = connector.ZlinkStreamMetadataMap.empty.with('trace', 'abc');
+  const header = {
+    kind: connector.ZlinkStreamMessageKind.Request,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+    requestSeq: 7n,
+    name: 'Join',
+    metadata
+  };
+
+  const encodedHeader = connector.ZlinkStreamHeaderCodec.encode(header);
+  assert.deepEqual([...encodedHeader.slice(0, 3)], [2, 1, 3]);
+  assert.equal(encodedHeader[11], 4);
+
+  const decodedHeader = connector.ZlinkStreamHeaderCodec.decode(encodedHeader);
+  assert.equal(decodedHeader.kind, connector.ZlinkStreamMessageKind.Request);
+  assert.equal(decodedHeader.codec, connector.ZlinkStreamCodec.Json);
+  assert.equal(decodedHeader.requestSeq, 7n);
+  assert.equal(decodedHeader.name, 'Join');
+  assert.equal(decodedHeader.metadata.get('trace'), 'abc');
+
+  const frame = connector.ZlinkStreamFrameCodec.encode(encodedHeader, new Uint8Array([1, 2, 3]));
+  assert.equal((frame[0] << 8) | frame[1], encodedHeader.length);
+  assert.equal(frame[5], 3);
+  const decodedFrame = connector.ZlinkStreamFrameCodec.decode(frame);
+  assert.deepEqual([...decodedFrame.payload], [1, 2, 3]);
+});
+
+test('stream connector send builder writes a dotnet-compatible send frame once', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory
+  });
+
+  await instance.connect();
+  await instance
+    .send({
+      codec: connector.ZlinkStreamCodec.Json,
+      payload: new TextEncoder().encode('{"ok":true}')
+    })
+    .packetName('Ready')
+    .metadata('trace', 'send-1')
+    .submit();
+
+  assert.equal(transportFactory.connection.frames.length, 1);
+  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  assert.equal(header.kind, connector.ZlinkStreamMessageKind.Send);
+  assert.equal(header.name, 'Ready');
+  assert.equal(header.metadata.get('trace'), 'send-1');
+
+  assert.throws(
+    () => instance.send({ codec: connector.ZlinkStreamCodec.Raw, payload: new Uint8Array() }).packetName('$zlink.bad'),
+    /reserved zlink prefix/
+  );
+});
+
+test('stream connector request resolves when dispatch reads matching response frame', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory
+  });
+
+  await instance.connect();
+  const pending = instance
+    .request({
+      codec: connector.ZlinkStreamCodec.Json,
+      payload: new TextEncoder().encode('{"join":true}')
+    })
+    .packetName('Join')
+    .timeout(1000)
+    .submit();
+
+  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  assert.equal(instance.pendingDispatchCount, 1);
+  assert.equal(requestHeader.kind, connector.ZlinkStreamMessageKind.Request);
+  assert.equal(requestHeader.requestSeq, 1n);
+
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Response,
+        codec: connector.ZlinkStreamCodec.Json,
+        flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+        requestSeq: requestHeader.requestSeq,
+        name: 'JoinReply',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      new TextEncoder().encode('{"accepted":true}')
+    )
+  );
+
+  await instance.dispatch();
+  const reply = await pending;
+  assert.equal(reply.codec, connector.ZlinkStreamCodec.Json);
+  assert.equal(new TextDecoder().decode(reply.payload), '{"accepted":true}');
+  assert.equal(instance.pendingDispatchCount, 0);
+});
+
+test('stream connector dispatch invokes typed handlers for send frames', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory
+  });
+  const received = [];
+  instance.on('Notice', (message) => {
+    received.push({
+      name: message.name,
+      trace: message.metadata.get('trace'),
+      payload: new TextDecoder().decode(message.payload.payload)
+    });
+  });
+
+  await instance.connect();
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Send,
+        codec: connector.ZlinkStreamCodec.Json,
+        flags: connector.ZlinkStreamHeaderFlags.HasMetadata,
+        name: 'Notice',
+        metadata: connector.ZlinkStreamMetadataMap.empty.with('trace', 'handler-1')
+      }),
+      new TextEncoder().encode('{"notice":1}')
+    )
+  );
+
+  await instance.dispatch();
+  assert.deepEqual(received, [
+    {
+      name: 'Notice',
+      trace: 'handler-1',
+      payload: '{"notice":1}'
+    }
+  ]);
+});
+
+test('stream connector default TCP transport sends request and dispatches response frame', async () => {
+  const server = net.createServer((socket) => {
+    let buffer = Buffer.alloc(0);
+    socket.on('data', (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      const frame = tryReadFrame(buffer);
+      if (frame === undefined) {
+        return;
+      }
+      buffer = buffer.subarray(frame.length);
+      const decoded = connector.ZlinkStreamFrameCodec.decode(frame.bytes);
+      const header = connector.ZlinkStreamHeaderCodec.decode(decoded.header);
+      socket.write(connector.ZlinkStreamFrameCodec.encode(
+        connector.ZlinkStreamHeaderCodec.encode({
+          kind: connector.ZlinkStreamMessageKind.Response,
+          codec: connector.ZlinkStreamCodec.Json,
+          flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+          requestSeq: header.requestSeq,
+          name: 'TcpReply',
+          metadata: connector.ZlinkStreamMetadataMap.empty
+        }),
+        new TextEncoder().encode('{"tcp":true}')
+      ));
+    });
+  });
+
+  await listen(server);
+  const { port } = server.address();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: `tcp://127.0.0.1:${port}`
+  });
+
+  try {
+    await instance.connect();
+    const pending = instance.request({
+      codec: connector.ZlinkStreamCodec.Json,
+      payload: new TextEncoder().encode('{"tcp":1}')
+    }).packetName('TcpRequest').timeout(1000).submit();
+
+    await instance.dispatch();
+    const reply = await pending;
+    assert.equal(new TextDecoder().decode(reply.payload), '{"tcp":true}');
+  } finally {
+    await instance.close();
+    await closeServer(server);
+  }
+});
+
+test('stream connector dispatch replies to heartbeat ping control frames with pong', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory
+  });
+
+  await instance.connect();
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Control,
+        codec: connector.ZlinkStreamCodec.Raw,
+        flags: connector.ZlinkStreamHeaderFlags.None,
+        name: '$zlink.heartbeat.ping',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      new Uint8Array()
+    )
+  );
+
+  await instance.dispatch();
+  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  assert.equal(header.kind, connector.ZlinkStreamMessageKind.Control);
+  assert.equal(header.name, '$zlink.heartbeat.pong');
+});
+
+test('stream connector validates endpoint and lifecycle options like dotnet transport factory', () => {
+  assert.throws(
+    () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'http://127.0.0.1:1' }),
+    /Endpoint scheme is not supported/
+  );
+  assert.throws(
+    () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'tcp://127.0.0.1:1', transport: connector.ZlinkStreamTransport.Tls }),
+    /conflicts with endpoint scheme/
+  );
+  assert.throws(
+    () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'tcp://127.0.0.1:1', heartbeat: { intervalMs: 5, timeoutMs: 5 } }),
+    /Heartbeat timeout must be greater/
+  );
+  assert.throws(
+    () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'tcp://127.0.0.1:1', reconnect: { backoffFactor: 0.5 } }),
+    /BackoffFactor/
+  );
+});
+
+test('stream connector heartbeat loop sends ping control frames after connect', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    heartbeat: { intervalMs: 1, timeoutMs: 1000 }
+  });
+
+  await instance.connect();
+  const frame = connector.ZlinkStreamFrameCodec.decode(await transportFactory.connection.nextWrite());
+  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  assert.equal(header.kind, connector.ZlinkStreamMessageKind.Control);
+  assert.equal(header.name, '$zlink.heartbeat.ping');
+  await instance.close();
+});
+
+test('stream connector connect retries through reconnect options before succeeding', async () => {
+  const transportFactory = new FlakyTransportFactory(1);
+  const states = [];
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    reconnect: { initialDelayMs: 1, maxDelayMs: 1, backoffFactor: 1, maxAttempts: 2 },
+    heartbeat: { enabled: false }
+  });
+  instance.onConnectionStateChanged((change) => {
+    states.push(change.current);
+  });
+
+  await instance.connect();
+
+  assert.equal(transportFactory.attempts, 2);
+  assert.equal(instance.isConnected, true);
+  assert.ok(states.includes(connector.ZlinkStreamConnectionState.Reconnecting));
+  await instance.close();
+});
+
+class MemoryTransportFactory {
+  constructor() {
+    this.connection = new MemoryConnection();
+  }
+
+  async connect() {
+    return this.connection;
+  }
+}
+
+function tryReadFrame(buffer) {
+  if (buffer.length < 6) {
+    return undefined;
+  }
+  const headerLength = (buffer[0] << 8) | buffer[1];
+  const payloadLength = buffer[2] * 0x1000000 + ((buffer[3] << 16) | (buffer[4] << 8) | buffer[5]);
+  const length = 6 + headerLength + payloadLength;
+  if (buffer.length < length) {
+    return undefined;
+  }
+  return { bytes: buffer.subarray(0, length), length };
+}
+
+function listen(server) {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
+}
+
+function closeServer(server) {
+  return new Promise((resolve) => server.close(resolve));
+}
+
+class MemoryConnection {
+  constructor() {
+    this.frames = [];
+    this.inbound = [];
+    this.closed = false;
+    this.writeWaiters = [];
+  }
+
+  async write(frame) {
+    this.frames.push(frame);
+    const waiter = this.writeWaiters.shift();
+    if (waiter !== undefined) {
+      waiter(frame);
+    }
+  }
+
+  async read() {
+    return this.inbound.shift();
+  }
+
+  async nextWrite() {
+    const frame = this.frames.shift();
+    if (frame !== undefined) {
+      return frame;
+    }
+    return await new Promise((resolve) => this.writeWaiters.push(resolve));
+  }
+
+  pushFrame(frame) {
+    this.inbound.push(frame);
+  }
+
+  async close() {
+    this.closed = true;
+  }
+}
+
+class FlakyTransportFactory {
+  constructor(failures) {
+    this.failures = failures;
+    this.attempts = 0;
+    this.connection = new MemoryConnection();
+  }
+
+  async connect() {
+    this.attempts += 1;
+    if (this.attempts <= this.failures) {
+      throw new Error('connect failed');
+    }
+    return this.connection;
+  }
+}

@@ -514,22 +514,67 @@ int rc = zlink_spot_recv(
 기본 경로는 `send_channel()` / `request_channel()`이지만, 특정 피어를 직접
 지목할 때는 아래 API를 사용한다.
 
-### 10.1 다른 Spot으로 요청 보내기
+### 10.1 다른 Spot으로 요청 보내기 (라우티드 RPC)
 
-```c
-zlink_spot_request_spot(
-  spot,
-  &dest_node_rid,    /* 대상 SpotNode의 routing id */
-  &dest_spot_rid,    /* 대상 Spot의 routing id */
-  &part,
-  1,
-  my_reply_handler,
-  my_userdata,
-  0,
-  2000);
+한 노드의 `Spot`이 다른 노드의 `Spot`에 직접 요청을 보내고 응답을 받는
+서버-대-서버 RPC다. 요청은 대상 노드·spot의 routing id로 주소 지정하고, 대상은
+자기 Spot의 dispatch에서 `recv_routed`로 받아 같은 라우티드 평면으로 응답한다.
+
+!!! note "라우티드 평면 준비"
+    pub/sub와 달리 라우티드 요청/응답은 **ROUTER 평면**을 쓴다. 노드는
+    `set_router_bind`를 (있다면 `set_pub_bind`보다 먼저) 호출하고, node·spot에
+    안정적인 routing id를 부여한 뒤 연결한다. spot owner route가 mesh로 전파되면
+    routing id로 주소 지정이 해석된다.
+
+```mermaid
+sequenceDiagram
+    participant C as 클라이언트 Spot
+    participant S as 서버 Spot (node+spot routing id)
+
+    C->>S: request_to_spot(serverNodeRid, serverSpotRid, "ping")
+    Note over S: dispatch RoutedReadable → recv_routed
+    S->>C: reply ("pong")
+    Note over C: 요청 콜백으로 reply 수신
 ```
 
-reply는 대상 Spot이 `zlink_spot_reply_spot()`으로 보낸다.
+=== "C++"
+    ```cpp
+    --8<-- "bindings/cpp/samples/spot_rpc_example.cpp"
+    ```
+=== "C#/.NET"
+    ```csharp
+    --8<-- "bindings/dotnet/samples/SpotRpcExample/Program.cs"
+    ```
+=== "Java"
+    ```java
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/SpotRpcExample.java"
+    ```
+=== "Kotlin"
+    ```kotlin
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/SpotRpcExample.kt"
+    ```
+=== "Python"
+    ```python
+    --8<-- "bindings/python/samples/spot_rpc_example.py"
+    ```
+=== "Node/TypeScript"
+    ```typescript
+    --8<-- "bindings/node/samples/spot_rpc_example.ts"
+    ```
+=== "JavaScript"
+    ```javascript
+    --8<-- "bindings/javascript/samples/spot_rpc_example.js"
+    ```
+=== "Go"
+    ```go
+    --8<-- "bindings/go/samples/spot_rpc_example/main.go"
+    ```
+=== "Rust"
+    ```rust
+    --8<-- "bindings/rust/samples/spot_rpc_example.rs"
+    ```
+
+reply는 대상 Spot이 `reply_to_spot()`(C: `zlink_spot_reply_spot()`)으로 보낸다.
 
 ### 10.2 Router 피어로 요청 보내기
 

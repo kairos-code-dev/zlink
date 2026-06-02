@@ -98,3 +98,7 @@ path = "samples/actor_gateway_relay_sample.rs"
 [[example]]
 name = "actor_single_player_queue_sample"
 path = "samples/actor_single_player_queue_sample.rs"
+
+[[example]]
+name = "spot_rpc_example"
+path = "samples/spot_rpc_example.rs"

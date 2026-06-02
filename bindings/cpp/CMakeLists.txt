@@ -362,6 +362,7 @@ if(ZLINK_CPP_BUILD_SAMPLES)
     actor_room_example.cpp
     actor_sequential_example.cpp
     spot_pubsub_example.cpp
+    spot_rpc_example.cpp
   )
   foreach(sample_source IN LISTS ZLINK_CPP_SAMPLE_SOURCES)
     get_filename_component(sample_name "${sample_source}" NAME_WE)

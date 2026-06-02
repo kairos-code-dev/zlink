@@ -22,11 +22,11 @@ async function main() {
   }, nestjs);
 
   await withServers([
-    { entry: path.resolve(__dirname, '../server/registry/main.js'), env: { BINGO_REGISTRY_ENDPOINT: registryEndpoint } },
-    { entry: path.resolve(__dirname, '../server/session/main.js'), env: { BINGO_SESSION_ENDPOINT: sessionEndpoint } },
-    { entry: path.resolve(__dirname, '../server/play/main.js'), env: { BINGO_PLAY_ENDPOINT: playEndpoint } },
+    { entry: path.resolve(__dirname, '../Server/Registry/main.js'), env: { BINGO_REGISTRY_ENDPOINT: registryEndpoint } },
+    { entry: path.resolve(__dirname, '../Server/Session/main.js'), env: { BINGO_SESSION_ENDPOINT: sessionEndpoint } },
+    { entry: path.resolve(__dirname, '../Server/Play/main.js'), env: { BINGO_PLAY_ENDPOINT: playEndpoint } },
     {
-      entry: path.resolve(__dirname, '../server/api/main.js'),
+      entry: path.resolve(__dirname, '../Server/Api/main.js'),
       env: {
         BINGO_API_ENDPOINT: apiEndpoint,
         BINGO_API_CLIENT_ENDPOINT: apiClientEndpoint,

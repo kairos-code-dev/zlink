@@ -8,7 +8,7 @@ async function main() {
   const endpoint = await reserveTcpEndpoint();
   await withServers([
     {
-      entry: path.resolve(__dirname, '../server/main.js'),
+      entry: path.resolve(__dirname, '../Server/main.js'),
       env: { STREAMING_CLIENT_ENDPOINT: endpoint }
     }
   ], async () => {

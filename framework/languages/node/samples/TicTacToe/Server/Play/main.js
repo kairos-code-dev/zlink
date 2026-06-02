@@ -1,5 +1,5 @@
 const { startChannelServer } = require('../../../shared/channel-runtime');
-const { CreateGameHandler } = require('./handlers/create-game-handler');
+const { CreateGameHandler } = require('./Handlers/create-game-handler');
 
 async function main() {
   const createGameHandler = new CreateGameHandler();

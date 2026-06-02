@@ -2,5 +2,5 @@
   "name": "@zlink-systems/sample-bingo",
   "version": "0.1.0-SNAPSHOT",
   "private": true,
-  "main": "client/self-check.js"
+  "main": "Client/self-check.js"
 }

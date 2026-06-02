@@ -6,18 +6,18 @@ deterministic 시나리오로 검증한다.
 ## 실행
 
 ```bash
-node framework/languages/node/samples/Bingo/client/self-check.js
+node framework/languages/node/samples/Bingo/Client/self-check.js
 ```
 
 ## Topology
 
-- `client/`: Registry, Session, Play, API 서버 process 를 시작하고 API 서버의 실제
+- `Client/`: Registry, Session, Play, API 서버 process 를 시작하고 API 서버의 실제
   TCP route endpoint 로 Bingo scenario request 를 보낸다.
-- `server/api/`: player matching 요청을 받고 Play 서버에 route request 를 보낸다.
-- `server/play/`: Bingo room 을 실행하고 deterministic draw 결과를 reply 한다.
-- `server/session/`: actor bound session push 를 client 로 전달하는 역할.
-- `server/registry/`: 실제 배포에서는 topology 를 제공한다.
-- `shared/`: Bingo card 계약을 공유한다.
+- `Server/Api/`: player matching 요청을 받고 Play 서버에 route request 를 보낸다.
+- `Server/Play/`: Bingo room 을 실행하고 deterministic draw 결과를 reply 한다.
+- `Server/Session/`: actor bound session push 를 client 로 전달하는 역할.
+- `Server/Registry/`: 실제 배포에서는 topology 를 제공한다.
+- `Shared/`: Bingo card 계약을 공유한다.
 
 ## Success Condition
 
@@ -27,7 +27,7 @@ node framework/languages/node/samples/Bingo/client/self-check.js
 - host start 뒤 room timer 가 draw tick 을 발생시킨다.
 - 같은 draw sequence 에서 `p1`, `p3` 이 deterministic winners 가 된다.
 - started, drawn, ended notification 이 모든 bound session 으로 전달된다.
-- client 가 server process 의 관찰 가능한 준비 신호를 받은 뒤 TCP route request 를 보낸다.
+- client 가 Server process 의 관찰 가능한 준비 신호를 받은 뒤 TCP route request 를 보낸다.
 - sample 이 별도 notification 저장소를 만들지 않고 framework bound session runtime 의
   transport 경로로 전송 결과를 관찰한다.
 

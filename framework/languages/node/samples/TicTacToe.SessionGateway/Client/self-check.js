@@ -21,10 +21,10 @@ async function main() {
   }, nestjs);
 
   await withServers([
-    { entry: path.resolve(__dirname, '../server/registry/main.js'), env: { TICTACTOE_SG_REGISTRY_ENDPOINT: registryEndpoint } },
-    { entry: path.resolve(__dirname, '../server/api/main.js'), env: { TICTACTOE_SG_API_ENDPOINT: apiEndpoint } },
-    { entry: path.resolve(__dirname, '../server/play/main.js'), env: { TICTACTOE_SG_PLAY_ENDPOINT: playEndpoint } },
-    { entry: path.resolve(__dirname, '../server/session/main.js'), env: { TICTACTOE_SG_SESSION_ENDPOINT: sessionEndpoint } }
+    { entry: path.resolve(__dirname, '../Server/Registry/main.js'), env: { TICTACTOE_SG_REGISTRY_ENDPOINT: registryEndpoint } },
+    { entry: path.resolve(__dirname, '../Server/Api/main.js'), env: { TICTACTOE_SG_API_ENDPOINT: apiEndpoint } },
+    { entry: path.resolve(__dirname, '../Server/Play/main.js'), env: { TICTACTOE_SG_PLAY_ENDPOINT: playEndpoint } },
+    { entry: path.resolve(__dirname, '../Server/Session/main.js'), env: { TICTACTOE_SG_SESSION_ENDPOINT: sessionEndpoint } }
   ], async () => {
     const client = await createRouteClient({
       endpoint: clientEndpoint,

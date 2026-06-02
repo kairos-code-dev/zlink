@@ -1,8 +1,8 @@
-const { TicTacToeGame } = require('../game-spots/tictactoe-game');
-const { PlayActorJoinGameHandler } = require('../entry-spot/handlers/play-actor-join-game-handler');
-const { PlayActorPlaceMarkHandler } = require('../game-spots/handlers/play-actor-place-mark-handler');
-const { TicTacToeGameJoinHandler } = require('../game-spots/handlers/tictactoe-game-join-handler');
-const { TicTacToeGameTimerHandler } = require('../game-spots/handlers/tictactoe-game-timer-handler');
+const { TicTacToeGame } = require('../GameSpots/tictactoe-game');
+const { PlayActorJoinGameHandler } = require('../EntrySpot/Handlers/play-actor-join-game-handler');
+const { PlayActorPlaceMarkHandler } = require('../GameSpots/Handlers/play-actor-place-mark-handler');
+const { TicTacToeGameJoinHandler } = require('../GameSpots/Handlers/tictactoe-game-join-handler');
+const { TicTacToeGameTimerHandler } = require('../GameSpots/Handlers/tictactoe-game-timer-handler');
 
 class CreateGameHandler {
   constructor() {

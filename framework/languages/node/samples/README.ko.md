@@ -3,7 +3,7 @@
 이 디렉토리는 Node.js/NestJS 버전 framework 의 사용자 흐름을 self-check 로 검증한다.
 각 sample 은 framework public API 또는 stream connector public API만 사용한다.
 `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo` 는 dotnet sample 과 같은 역할
-구조를 사용하되, Node.js 관례에 맞춰 `client/`, `server/`, `shared/` 디렉토리로
+구조를 사용하되, Node.js 관례에 맞춰 `Client/`, `Server/`, `Shared/` 디렉토리로
 나눈다. client self-check 는 서버 process 를 시작한 뒤 실제 TCP endpoint 로 channel
 또는 route request 를 보내며, stdin/stdout command protocol 로 application message 를
 주고받지 않는다.

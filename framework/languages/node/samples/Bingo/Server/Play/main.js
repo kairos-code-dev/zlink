@@ -1,5 +1,5 @@
 const { startRouteServer } = require('../../../shared/route-runtime');
-const { BingoCard } = require('../../shared/contracts/bingo-card');
+const { BingoCard } = require('../../Shared/Contracts/bingo-card');
 
 async function main() {
   await startRouteServer({

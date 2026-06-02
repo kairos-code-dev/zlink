@@ -65,44 +65,45 @@ Node sample 은 `framework/languages/node/samples/` 아래에 둔다.
 ```text
 samples/
 |-- StreamingClient/
-|   |-- client/
-|   |-- server/
+|   |-- Client/
+|   |-- Server/
 |   |-- README.ko.md
 |   `-- package.json
 |-- TicTacToe/
-|   |-- client/
-|   |-- server/
-|   |   |-- api/
-|   |   `-- play/
-|   |-- shared/
+|   |-- Client/
+|   |-- Server/
+|   |   |-- Api/
+|   |   `-- Play/
+|   |-- Shared/
 |   |-- README.ko.md
 |   `-- package.json
 |-- TicTacToe.SessionGateway/
-|   |-- client/
-|   |-- server/
-|   |   |-- api/
-|   |   |-- play/
-|   |   |-- registry/
-|   |   `-- session/
-|   |-- shared/
+|   |-- Client/
+|   |-- Server/
+|   |   |-- Api/
+|   |   |-- Play/
+|   |   |-- Registry/
+|   |   `-- Session/
+|   |-- Shared/
 |   |-- README.ko.md
 |   `-- package.json
 |-- Bingo/
-|   |-- client/
-|   |-- server/
-|   |   |-- api/
-|   |   |-- play/
-|   |   |-- registry/
-|   |   `-- session/
-|   |-- shared/
+|   |-- Client/
+|   |-- Server/
+|   |   |-- Api/
+|   |   |-- Play/
+|   |   |-- Registry/
+|   |   `-- Session/
+|   |-- Shared/
 |   |-- README.ko.md
 |   `-- package.json
 `-- run_samples.sh
 ```
 
 다이어그램의 이름은 실제 디렉토리 역할만 나타낸다. dotnet sample 과 같은 역할을
-제공하되, Node.js 관례에 맞춰 디렉토리는 소문자와 kebab-case 로 작성한다. 각 sample 은
-NestJS app 과 일반 TypeScript client 를 함께 둘 수 있지만, framework public API와
+제공하기 위해 샘플 최상위 역할 디렉토리는 dotnet sample 과 같은 `Client`, `Server`,
+`Shared` 형태를 사용한다. 파일명과 함수명은 Node.js 관례를 따른다. 각 sample 은
+NestJS app 과 일반 JavaScript client 를 함께 둘 수 있지만, framework public API와
 stream connector public API만 사용해야 한다.
 
 ## 4. Sample Self-Check 기준

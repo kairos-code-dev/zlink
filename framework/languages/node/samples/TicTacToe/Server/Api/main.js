@@ -1,5 +1,5 @@
 const { createChannelClient, startChannelServer } = require('../../../shared/channel-runtime');
-const { CreateGameHttpHandler } = require('./handlers/create-game-http-handler');
+const { CreateGameHttpHandler } = require('./Handlers/create-game-http-handler');
 
 async function main() {
   const playClient = await createChannelClient({

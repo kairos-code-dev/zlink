@@ -17,11 +17,11 @@ async function main() {
 
   await withServers([
     {
-      entry: path.resolve(__dirname, '../server/play/main.js'),
+      entry: path.resolve(__dirname, '../Server/Play/main.js'),
       env: { TICTACTOE_PLAY_ENDPOINT: playEndpoint }
     },
     {
-      entry: path.resolve(__dirname, '../server/api/main.js'),
+      entry: path.resolve(__dirname, '../Server/Api/main.js'),
       env: {
         TICTACTOE_API_ENDPOINT: apiEndpoint,
         TICTACTOE_PLAY_ENDPOINT: playEndpoint

@@ -1,8 +1,8 @@
 const framework = require('../../../../packages/framework/dist');
 const { startRouteServer } = require('../../../shared/route-runtime');
 const { SampleBoundSessionRuntime } = require('../../../shared/bound-session-runtime');
-const { SessionPlayerActorFactory } = require('../../shared/actors/player-actor');
-const { SessionGatewayRound } = require('../../shared/contracts/round');
+const { SessionPlayerActorFactory } = require('../../Shared/Actors/player-actor');
+const { SessionGatewayRound } = require('../../Shared/Contracts/round');
 
 async function main() {
   const gateway = createGateway();

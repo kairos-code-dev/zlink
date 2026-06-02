@@ -7,19 +7,19 @@ deterministic TicTacToe round 를 끝내는 시나리오까지 확인한다.
 ## 실행
 
 ```bash
-node framework/languages/node/samples/TicTacToe.SessionGateway/client/self-check.js
+node framework/languages/node/samples/TicTacToe.SessionGateway/Client/self-check.js
 ```
 
 ## Topology
 
-- `client/`: Registry, API, Play, Session 서버 process 를 시작하고 Session 서버의
+- `Client/`: Registry, API, Play, Session 서버 process 를 시작하고 Session 서버의
   실제 TCP route endpoint 로 reconnect scenario request 를 보낸다.
-- `server/session/`: `ZLinkStreamBindingRuntime` 으로 actor bound session 을 갱신하고
+- `Server/Session/`: `ZLinkStreamBindingRuntime` 으로 actor bound session 을 갱신하고
   push 를 관찰하는 역할.
-- `server/play/`: actor 와 game Spot 을 호스팅하는 역할.
-- `server/api/`: match 시작 요청을 받는 역할.
-- `server/registry/`: 실제 배포에서는 topology 를 제공한다.
-- `shared/`: actor 와 round 계약을 공유한다.
+- `Server/Play/`: actor 와 game Spot 을 호스팅하는 역할.
+- `Server/Api/`: match 시작 요청을 받는 역할.
+- `Server/Registry/`: 실제 배포에서는 topology 를 제공한다.
+- `Shared/`: actor 와 round 계약을 공유한다.
 
 이 self-check 는 현재 public framework API 위에서 actor bound session 의미와 reconnect
 token 갱신을 deterministic 하게 검증한다. sample 이 별도 actor-session 저장소를 만들지

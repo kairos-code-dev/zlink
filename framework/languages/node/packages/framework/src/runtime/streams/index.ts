@@ -335,16 +335,22 @@ export class ZLinkStreamSessionNodeRuntime {
 }
 
 class ZLinkStreamSessionSerialExecutor {
-  private tail: Promise<void> = Promise.resolve();
+  private tail: Promise<void> | undefined;
   private closed = false;
 
   enqueue(work: () => Promise<void>): boolean {
     if (this.closed) {
       return false;
     }
-    this.tail = this.tail
-      .then(work, work)
+    const previous = this.tail;
+    const next = (previous === undefined ? runNow(work) : previous.then(work, work))
       .catch(() => {});
+    this.tail = next;
+    next.finally(() => {
+      if (this.tail === next) {
+        this.tail = undefined;
+      }
+    });
     return true;
   }
 
@@ -352,6 +358,10 @@ class ZLinkStreamSessionSerialExecutor {
     this.closed = true;
     await this.tail;
   }
+}
+
+async function runNow(work: () => Promise<void>): Promise<void> {
+  await work();
 }
 
 export class ZLinkStreamBindingRuntime {

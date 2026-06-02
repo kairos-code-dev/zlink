@@ -3,6 +3,7 @@ const { once } = require('node:events');
 const net = require('node:net');
 const test = require('node:test');
 
+const zlink = require('../../../../../bindings/node/dist');
 const connector = require('../../packages/stream-connector/dist');
 const framework = require('../../packages/framework/dist');
 
@@ -198,11 +199,22 @@ test('stream session node runtime receives framed packets from public binding st
   const socket = factory.createStreamAdapter().createStreamSocket(context);
   let client;
   let runtime;
+  const bindingRuntime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: {
+      createTextMessage(payload) {
+        return zlink.Message.from(Buffer.from(payload));
+      },
+      createBinaryMessage(payload) {
+        return zlink.Message.from(Buffer.from(payload));
+      }
+    }
+  });
 
   const dispatched = new Promise((resolve) => {
     runtime = new framework.ZLinkStreamSessionNodeRuntime({
       socket,
-      headerDecoder: (header) => header.getString(),
+      bindingRuntime,
+      headerDecoder: (header) => connector.ZlinkStreamHeaderCodec.decode(header.data()),
       sessionFactory(sessionContext) {
         return {
           context: sessionContext,
@@ -210,9 +222,10 @@ test('stream session node runtime receives framed packets from public binding st
             resolve({
               sessionId: sessionContext.sessionId,
               routingId: sessionContext.routingId,
-              header,
+              header: header.name,
               payload: payload.getString()
             });
+            await sessionContext.client.reply('NativeReply').submit();
           }
         };
       }
@@ -224,19 +237,35 @@ test('stream session node runtime receives framed packets from public binding st
     socket.bind(endpoint);
     client = net.createConnection({ host: '127.0.0.1', port });
     await once(client, 'connect');
+    const response = once(client, 'data').then(([chunk]) => chunk);
+    const requestHeader = connector.ZlinkStreamHeaderCodec.encode({
+      kind: connector.ZlinkStreamMessageKind.Request,
+      codec: connector.ZlinkStreamCodec.Json,
+      flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+      requestSeq: 7n,
+      name: 'NativeHeader',
+      metadata: connector.ZlinkStreamMetadataMap.empty
+    });
     client.write(connector.ZlinkStreamFrameCodec.encode(
-      new TextEncoder().encode('NativeHeader'),
-      new TextEncoder().encode('NativePayload')
+      requestHeader,
+      new TextEncoder().encode('"NativePayload"')
     ));
 
     const received = await withTimeout(dispatched, 1000, 'native stream session dispatch');
     assert.equal(received.header, 'NativeHeader');
-    assert.equal(received.payload, 'NativePayload');
+    assert.equal(received.payload, '"NativePayload"');
     assert.equal(typeof received.sessionId, 'string');
     assert.equal(received.sessionId.length > 0, true);
     assert.equal(received.routingId, received.sessionId);
+    const responseFrame = connector.ZlinkStreamFrameCodec.decode(
+      await withTimeout(response, 1000, 'native stream session reply')
+    );
+    const responseHeader = connector.ZlinkStreamHeaderCodec.decode(responseFrame.header);
+    assert.equal(responseHeader.kind, connector.ZlinkStreamMessageKind.Response);
+    assert.equal(responseHeader.requestSeq, 7n);
+    assert.equal(new TextDecoder().decode(responseFrame.payload), '"NativeReply"');
   } finally {
-    client?.destroy();
+    await closeClient(client);
     await runtime?.dispose();
     await socket.dispose();
     await context.dispose();
@@ -293,6 +322,18 @@ async function reservePort() {
   const { port } = server.address();
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   return port;
+}
+
+async function closeClient(client) {
+  if (client === undefined) {
+    return;
+  }
+  if (client.destroyed) {
+    return;
+  }
+  const closed = once(client, 'close');
+  client.destroy();
+  await closed;
 }
 
 function withTimeout(promise, timeoutMs, label) {

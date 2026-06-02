@@ -165,6 +165,24 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
         return (handler: () => void) =>
           (target as unknown as { setSendReadyHandler(handler: () => void): void }).setSendReadyHandler(handler);
       }
+      if (property === 'send') {
+        return (...args: unknown[]) => {
+          if (args.length >= 3) {
+            const [routingId, payload, flags] = args as [unknown, unknown, number];
+            return submitBindingSend(
+              (target as unknown as { send(routingId: unknown): ZLinkBindingSendOperation }).send(routingId),
+              payload,
+              flags
+            );
+          }
+          const [payload, flags] = args as [unknown, number | undefined];
+          return submitBindingSend(
+            (target as unknown as { send(): ZLinkBindingSendOperation }).send(),
+            payload,
+            flags ?? 0
+          );
+        };
+      }
       if (property === 'disconnectPeer') {
         return (routingId: unknown) =>
           (target as unknown as { disconnectRid(routingId: unknown): void }).disconnectRid(routingId);
@@ -217,6 +235,23 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
       return Reflect.get(target, property, receiver);
     }
   }) as T & ZLinkBackendObject;
+}
+
+interface ZLinkBindingSendOperation {
+  message(message: unknown): ZLinkBindingSendOperation;
+  flags(flags: number): { submit(): boolean };
+}
+
+function submitBindingSend(operation: ZLinkBindingSendOperation, payload: unknown, flags: number): boolean {
+  let current = operation;
+  if (Array.isArray(payload)) {
+    for (const part of payload) {
+      current = current.message(part);
+    }
+  } else {
+    current = current.message(payload);
+  }
+  return current.flags(flags).submit();
 }
 
 function wrapMonitorSocket(nativeInstance: { close(): void; recv(flags?: number): MonitorEvent | null }): ZLinkBackendSocketMonitor {

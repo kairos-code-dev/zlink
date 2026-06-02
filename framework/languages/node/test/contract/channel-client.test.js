@@ -255,6 +255,52 @@ test('ZLinkModule channel client uses runtime host channel transport after boots
   }
 });
 
+test('ZLinkFrameworkRuntimeHost dispatches client-server channel request handlers', async () => {
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const calls = [];
+  const serverRegistration = framework.createFrameworkRegistration({
+    channels: {
+      play: {
+        server: { bind: endpoint },
+        requestHandlers: [{
+          packetName: 'CreateGame',
+          handler: {
+            handle(payload, context) {
+              assert.equal(context.channelName, 'play');
+              assert.equal(context.packetName, 'CreateGame');
+              const reply = { created: JSON.parse(payload.toString()).gameName };
+              calls.push(reply);
+              return reply;
+            }
+          }
+        }]
+      }
+    }
+  });
+  const clientRegistration = framework.createFrameworkRegistration({
+    channels: {
+      play: { client: { manualConnections: [endpoint] } }
+    }
+  });
+  const serverRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: serverRegistration });
+  const clientRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: clientRegistration });
+
+  try {
+    await serverRuntime.start();
+    await clientRuntime.start();
+    const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
+    const reply = await submitWhenReachable(() =>
+      client.requestToChannel('play', { gameName: 'sample' }).packetName('CreateGame').timeout(1000).submit()
+    );
+
+    assert.deepEqual(calls, [{ created: 'sample' }]);
+    assert.deepEqual(reply, { created: 'sample' });
+  } finally {
+    await clientRuntime.stop();
+    await serverRuntime.stop();
+  }
+});
+
 test('ZLinkModule route client uses runtime host route transport after bootstrap', async () => {
   const ctx = zlink.createContext();
   const remoteRouter = zlink.createRouterSocket(ctx);
@@ -797,6 +843,23 @@ async function submitWhenRouteReachable(submit) {
     try {
       await submit();
       return;
+    } catch (error) {
+      if (!isHostUnreachable(error)) {
+        throw error;
+      }
+      lastError = error;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+  throw lastError;
+}
+
+async function submitWhenReachable(submit) {
+  const deadline = Date.now() + 1000;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      return await submit();
     } catch (error) {
       if (!isHostUnreachable(error)) {
         throw error;

@@ -145,7 +145,6 @@ class ZLinkPendingSubmit<TReply> {
       () => this.reject(new ZLinkConfigurationException('ZLink async submit timed out.')),
       options.timeoutMs
     );
-    this.timeout.unref?.();
     if (options.signal !== undefined) {
       this.abortHandler = () => this.reject(new Error('The operation was aborted.'));
       options.signal.addEventListener('abort', this.abortHandler, { once: true });

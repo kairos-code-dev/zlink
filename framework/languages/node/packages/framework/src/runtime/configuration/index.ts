@@ -17,6 +17,7 @@ import type {
   ZLinkEntrySpotOptions,
   ZLinkFanoutChannelBuilder,
   ZLinkFrameworkOptions,
+  ZLinkRequestContext,
   ZLinkRouteChannelBuilder,
   ZLinkRouteMeshChannelBuilder,
   ZLinkRouteRequestContext,
@@ -80,6 +81,7 @@ export interface ZLinkChannelOptions {
   readonly dealerMesh?: ZLinkDealerMeshChannelOptions;
   readonly publisher?: ZLinkPublisherCapabilityOptions;
   readonly routeMesh?: ZLinkRouteMeshChannelOptions;
+  readonly requestHandlers?: readonly ZLinkChannelRequestHandlerRegistration[];
   readonly server?: { readonly bind?: string };
   readonly subscriber?: ZLinkClientCapabilityOptions;
 }
@@ -175,6 +177,13 @@ export interface ZLinkRouteChannelSendHandlerRegistration {
 export interface ZLinkRouteChannelRequestHandlerRegistration {
   readonly packetName: string;
   readonly handler: ZLinkRouteChannelRequestHandler;
+}
+
+export interface ZLinkChannelRequestHandlerRegistration {
+  readonly packetName: string;
+  readonly handler: {
+    handle(payload: Buffer, context: ZLinkRequestContext): Promise<unknown> | unknown;
+  };
 }
 
 export interface ZLinkRouteChannelSendHandler {
@@ -588,6 +597,7 @@ interface MutableChannelOptions {
   dealerMesh?: MutableDealerMeshChannelOptions;
   publisher?: MutablePublisherCapabilityOptions;
   routeMesh?: MutableRouteMeshChannelOptions;
+  requestHandlers?: ZLinkChannelRequestHandlerRegistration[];
   server?: { bind?: string };
   subscriber?: MutableClientCapabilityOptions;
 }

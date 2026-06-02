@@ -151,8 +151,10 @@ final class SampleReleaseGateContractTest {
             "StreamingClient sample must observe state changes");
         assertTrue(source.contains("onDisconnected"),
             "StreamingClient sample must observe disconnect");
-        assertTrue(source.contains("reconnected.connectAsync()"),
-            "StreamingClient sample must include reconnect smoke");
+        assertTrue(source.contains("disconnectAsync()"),
+            "StreamingClient sample must simulate transport disconnect");
+        assertTrue(source.contains("reconnectAsync()"),
+            "StreamingClient sample must reconnect the same connector");
     }
 
     private static Path samplesRoot() {

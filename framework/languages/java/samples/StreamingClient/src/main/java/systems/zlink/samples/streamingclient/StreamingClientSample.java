@@ -72,8 +72,14 @@ public final class StreamingClientSample {
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         });
         reconnected.connectAsync().toCompletableFuture().join();
-        require(reconnected.isConnected(), "reconnect smoke failed");
-        require(reconnectStates.equals(List.of(ZLinkStreamConnectionState.CONNECTED)),
+        reconnected.disconnectAsync().toCompletableFuture().join();
+        reconnected.reconnectAsync().toCompletableFuture().join();
+        require(reconnected.isConnected(), "same connector reconnect smoke failed");
+        require(reconnectStates.equals(List.of(
+                ZLinkStreamConnectionState.CONNECTED,
+                ZLinkStreamConnectionState.DISCONNECTED,
+                ZLinkStreamConnectionState.RECONNECTING,
+                ZLinkStreamConnectionState.CONNECTED)),
             "reconnect state event mismatch");
         reconnected.close();
         System.out.println("StreamingClient sample self-check passed");

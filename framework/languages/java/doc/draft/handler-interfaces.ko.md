@@ -764,9 +764,12 @@ client 측 STREAM connector는 server session과 별도 모듈로 둔다.
 public interface ZLinkStreamConnector extends AutoCloseable {
     boolean isConnected();
     ZLinkStreamConnectionState state();
+    ZLinkStreamConnectorOptions options();
     int pendingDispatchCount();
 
     CompletionStage<Void> connectAsync();
+    CompletionStage<Void> disconnectAsync();
+    CompletionStage<Void> reconnectAsync();
     CompletionStage<Void> closeAsync();
     CompletionStage<Void> dispatchAsync();
 
@@ -776,6 +779,8 @@ public interface ZLinkStreamConnector extends AutoCloseable {
     AutoCloseable on(
         String name,
         ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler);
+    AutoCloseable onDisconnected(ZLinkStreamDisconnectedHandler handler);
+    AutoCloseable onConnectionStateChanged(ZLinkStreamConnectionStateHandler handler);
 }
 ```
 

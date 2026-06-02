@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeoutException;
 import systems.zlink.contracts.messaging.Message;
 
 final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
@@ -59,14 +60,43 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     @Override
+    public CompletionStage<Void> disconnectAsync() {
+        if (state == ZLinkStreamConnectionState.CLOSED) {
+            throw new IllegalStateException("connector is closed");
+        }
+        boolean wasConnected = isConnected();
+        transitionTo(ZLinkStreamConnectionState.DISCONNECTED);
+        dispatchQueue.clear();
+        if (wasConnected) {
+            notifyDisconnected();
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletionStage<Void> reconnectAsync() {
+        if (state == ZLinkStreamConnectionState.CLOSED) {
+            throw new IllegalStateException("connector is closed");
+        }
+        if (isConnected()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        if (options.maxReconnectAttempts() == 0) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("reconnect attempts are disabled"));
+        }
+        transitionTo(ZLinkStreamConnectionState.RECONNECTING);
+        transitionTo(ZLinkStreamConnectionState.CONNECTED);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
     public CompletionStage<Void> closeAsync() {
         boolean wasConnected = isConnected();
         transitionTo(ZLinkStreamConnectionState.CLOSED);
         dispatchQueue.clear();
         if (wasConnected) {
-            for (ZLinkStreamDisconnectedHandler handler : List.copyOf(disconnectedHandlers)) {
-                handler.handleAsync().toCompletableFuture().join();
-            }
+            notifyDisconnected();
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -149,8 +179,15 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     private CompletionStage<ZLinkStreamEncodedPayload> submitRequest(
-        ZLinkStreamEncodedPayload payload) {
+        ZLinkStreamEncodedPayload payload,
+        Duration timeout) {
         ensureConnected();
+        if (!handlers.containsKey(payload.packetName())
+            || handlers.get(payload.packetName()).isEmpty()) {
+            payload.payload().close();
+            return CompletableFuture.failedFuture(
+                new TimeoutException("request timed out after " + timeout));
+        }
         submit(copyPayload(payload));
         return CompletableFuture.completedFuture(copyPayload(payload));
     }
@@ -177,6 +214,12 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             throw new IllegalArgumentException("maxReconnectAttempts must be >= 0");
         }
         return options;
+    }
+
+    private void notifyDisconnected() {
+        for (ZLinkStreamDisconnectedHandler handler : List.copyOf(disconnectedHandlers)) {
+            handler.handleAsync().toCompletableFuture().join();
+        }
     }
 
     private static void requireSupportedEndpointScheme(String scheme) {
@@ -270,7 +313,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
         @Override
         public CompletionStage<ZLinkStreamEncodedPayload> submitAsync() {
-            return connector.submitRequest(payload);
+            return connector.submitRequest(payload, timeout);
         }
     }
 }

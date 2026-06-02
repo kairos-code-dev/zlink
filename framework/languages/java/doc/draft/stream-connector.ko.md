@@ -42,6 +42,8 @@ public interface ZLinkStreamConnector extends AutoCloseable {
     int pendingDispatchCount();
 
     CompletionStage<Void> connectAsync();
+    CompletionStage<Void> disconnectAsync();
+    CompletionStage<Void> reconnectAsync();
     CompletionStage<Void> closeAsync();
     CompletionStage<Void> dispatchAsync();
 
@@ -191,6 +193,9 @@ public interface ZLinkStreamRequestCall {
 
 request timeout이 끝나면 pending request를 제거한다. response가 늦게 도착하면
 사용자 callback을 다시 호출하지 않는다.
+현재 in-memory smoke connector는 등록된 reply handler가 없는 request를 즉시 timeout
+실패로 드러낸다. 이 동작은 sample이 timeout을 sleep으로 숨기지 않고 pending request
+정리 의미를 검증하기 위한 첫 구현 기준이다.
 
 ## 8. Typed codec helper
 

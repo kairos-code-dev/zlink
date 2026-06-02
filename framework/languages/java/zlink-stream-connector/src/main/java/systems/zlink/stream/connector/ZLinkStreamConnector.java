@@ -13,6 +13,10 @@ public interface ZLinkStreamConnector extends AutoCloseable {
 
     CompletionStage<Void> connectAsync();
 
+    CompletionStage<Void> disconnectAsync();
+
+    CompletionStage<Void> reconnectAsync();
+
     CompletionStage<Void> closeAsync();
 
     CompletionStage<Void> dispatchAsync();

@@ -19,9 +19,9 @@ import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.List;
 
-// --8<-- [start:doc]
 public final class SpotRpcExample {
     public static void main(String[] args) throws Exception {
+// --8<-- [start:doc]
         try (Context ctx = Zlink.createContext();
              SpotNode serverNode = ctx.createSpotNode();
              SpotNode clientNode = ctx.createSpotNode();
@@ -73,11 +73,13 @@ public final class SpotRpcExample {
                 .message(Message.from("ping"))
                 .timeout(Duration.ofSeconds(3))
                 .submitAsync()
+                .toCompletableFuture()
                 .join();
             System.out.println(
                 "[spot/rpc] request \"ping\" -> reply \"" + reply.get(0).toUtf8String() + "\"");
             reply.forEach(Message::close);
         }
+// --8<-- [end:doc]
     }
 
     private static String uniqueTcp() throws Exception {
@@ -97,4 +99,3 @@ public final class SpotRpcExample {
         throw new IllegalStateException("spot peer not connected");
     }
 }
-// --8<-- [end:doc]

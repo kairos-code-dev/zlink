@@ -2,9 +2,9 @@
 
 #include "sample_common.hpp"
 
-// --8<-- [start:doc]
 int main ()
 {
+// --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::router_socket_t router (ctx);
     zlink::dealer_socket_t dealer (ctx);
@@ -42,5 +42,5 @@ int main ()
     std::printf ("[dealer-router/recv] send: \"%s\" → recv: \"%s\"\n",
                  sent.c_str (), received.c_str ());
     return 0;
-}
 // --8<-- [end:doc]
+}

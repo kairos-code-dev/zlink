@@ -9,8 +9,8 @@ import time
 import zlink
 
 
-# --8<-- [start:doc]
 def main():
+# --8<-- [start:doc]
     with zlink.create_context() as ctx, \
          zlink.create_spot_node(ctx) as node, \
          node.create_spot() as room, \
@@ -86,8 +86,8 @@ def main():
         player1.close()
         player2.close()
         print('[actor/room] player-1: "your-turn", player-2: "wait"')
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     main()
-# --8<-- [end:doc]

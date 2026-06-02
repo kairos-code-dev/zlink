@@ -5,8 +5,8 @@ import zlink
 from sample_support import tcp_endpoint, wait_connected
 
 
-# --8<-- [start:doc]
 async def main():
+# --8<-- [start:doc]
     _, endpoint = tcp_endpoint()
 
     with zlink.create_context() as ctx:
@@ -47,8 +47,8 @@ async def main():
                     print('[dealer-router/request-reply/async] send: "ping" -> recv: "pong"')
                 finally:
                     pass
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-# --8<-- [end:doc]

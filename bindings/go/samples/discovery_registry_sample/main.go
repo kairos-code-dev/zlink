@@ -6,8 +6,8 @@ import (
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
-// --8<-- [start:doc]
 func main() {
+// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	samplecommon.MustStep("NewContext", err)
 	defer func() { samplecommon.MustStep("ctx.Close", ctx.Close()) }()
@@ -36,5 +36,5 @@ func main() {
 	_ = samplecommon.WaitTopologyEntry(registry.Topology, "sample")
 
 	fmt.Println("[discovery-registry] service: \"sample\" -> discovered")
-}
 // --8<-- [end:doc]
+}

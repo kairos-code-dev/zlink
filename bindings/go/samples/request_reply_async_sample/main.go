@@ -8,8 +8,8 @@ import (
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
-// --8<-- [start:doc]
 func main() {
+// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	samplecommon.Must(err)
 	defer ctx.Close()
@@ -101,5 +101,5 @@ func main() {
 	samplecommon.Must(<-requestDone)
 
 	fmt.Printf("[dealer-router/request-reply/async] send: %q -> recv: %q\n", "ping", string(reply[0].Data()))
-}
 // --8<-- [end:doc]
+}

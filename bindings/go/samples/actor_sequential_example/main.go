@@ -14,7 +14,6 @@ import (
 	zlink "zlink.systems/zlink/contracts"
 )
 
-// --8<-- [start:doc]
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -28,6 +27,7 @@ func message(text string) *zlink.Message {
 }
 
 func main() {
+// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	must(err)
 	defer ctx.Close()
@@ -117,5 +117,5 @@ func main() {
 	zlink.MultipartClose((<-leaveCh).Parts)
 	must(player.Close())
 	fmt.Println(`[actor/sequential] processed in order: move -> attack -> loot`)
-}
 // --8<-- [end:doc]
+}

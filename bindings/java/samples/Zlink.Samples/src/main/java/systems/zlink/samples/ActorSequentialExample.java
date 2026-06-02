@@ -24,9 +24,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
-// --8<-- [start:doc]
 public final class ActorSequentialExample {
     public static void main(String[] args) throws Exception {
+// --8<-- [start:doc]
         try (Context ctx = Zlink.createContext();
              SpotNode node = ctx.createSpotNode();
              Spot room = node.createSpot();
@@ -38,7 +38,7 @@ public final class ActorSequentialExample {
             stream.attachActorGateway(node);
             RoutingId session = RoutingId.from("player-session");
             // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
-            stream.bindActor(session, player.ref()).submitAsync().join().forEach(Message::close);
+            stream.bindActor(session, player.ref()).submitAsync().toCompletableFuture().join().forEach(Message::close);
 
             // dispatch 핸들러: join을 수락하고, STREAM이 relay한 메시지를 모은다.
             room.setDispatchHandler(info -> {
@@ -86,10 +86,10 @@ public final class ActorSequentialExample {
                 throw new IllegalStateException("messages were not processed in order: " + processed);
             }
 
-            player.leave(room).submitAsync().join().forEach(Message::close);
+            player.leave(room).submitAsync().toCompletableFuture().join().forEach(Message::close);
             player.close();
             System.out.println("[actor/sequential] processed in order: move -> attack -> loot");
         }
+// --8<-- [end:doc]
     }
 }
-// --8<-- [end:doc]

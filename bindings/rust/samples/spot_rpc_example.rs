@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 
 use zlink::{Context, Message, Received, RecvFlags, RoutingId, SendFlags, SpotNode};
 
-// --8<-- [start:doc]
 fn unique_tcp() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -30,6 +29,7 @@ fn wait_peer(node: &SpotNode) {
 }
 
 fn main() {
+// --8<-- [start:doc]
     let ctx = Context::new().unwrap();
     let server_node = SpotNode::new(&ctx).unwrap();
     let client_node = SpotNode::new(&ctx).unwrap();
@@ -86,5 +86,5 @@ fn main() {
         sleep(Duration::from_millis(10));
     }
     panic!("spot rpc: no reply");
-}
 // --8<-- [end:doc]
+}

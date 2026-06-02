@@ -21,7 +21,6 @@
 #include <thread>
 #include <vector>
 
-// --8<-- [start:doc]
 static std::string unique_tcp ()
 {
     int fd = ::socket (AF_INET, SOCK_STREAM, 0);
@@ -49,6 +48,7 @@ static void wait_peer (zlink::service::spot_node_t &node)
 
 int main ()
 {
+// --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::service::spot_node_t server_node (ctx);
     zlink::service::spot_node_t client_node (ctx);
@@ -110,5 +110,5 @@ int main ()
     while (!done->load () && std::chrono::steady_clock::now () < deadline)
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     return 0;
-}
 // --8<-- [end:doc]
+}

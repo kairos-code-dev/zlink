@@ -7,9 +7,9 @@ import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.registry.RegistryQueryClient;
-// --8<-- [start:doc]
 public final class RegistryQuerySample {
     public static void main(String[] args) {
+// --8<-- [start:doc]
         SampleSupport.ensureNative();
         String channelName = "sample";
         String registryPub = SampleSupport.tcpEndpoint();
@@ -50,6 +50,6 @@ public final class RegistryQuerySample {
             SampleSupport.closeQuietly(registry);
             SampleSupport.closeQuietly(ctx);
         }
+// --8<-- [end:doc]
     }
 }
-// --8<-- [end:doc]

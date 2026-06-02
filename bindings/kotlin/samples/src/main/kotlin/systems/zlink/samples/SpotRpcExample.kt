@@ -14,7 +14,6 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.time.Duration
 
-// --8<-- [start:doc]
 private fun uniqueTcp(): String =
     ServerSocket(0, 0, InetAddress.getByName("127.0.0.1")).use { "tcp://127.0.0.1:${it.localPort}" }
 
@@ -28,6 +27,7 @@ private fun waitPeer(node: SpotNode) {
 }
 
 fun main() {
+// --8<-- [start:doc]
     Zlink.createContext().use { ctx ->
         ctx.createSpotNode().use { serverNode ->
             ctx.createSpotNode().use { clientNode ->
@@ -73,7 +73,7 @@ fun main() {
                         // 클라이언트 Spot이 서버 Spot으로 요청한다.
                         val reply = client.requestToSpot(
                             RoutingId.from("rpc-server-node"), RoutingId.from("rpc-server-spot")
-                        ).message(Message.from("ping")).timeout(Duration.ofSeconds(3)).submitAsync().join()
+                        ).message(Message.from("ping")).timeout(Duration.ofSeconds(3)).submitAsync().toCompletableFuture().join()
                         println("[spot/rpc] request \"ping\" -> reply \"${reply[0].toUtf8String()}\"")
                         reply.forEach(Message::close)
                     }
@@ -81,5 +81,5 @@ fun main() {
             }
         }
     }
-}
 // --8<-- [end:doc]
+}

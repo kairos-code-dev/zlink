@@ -15,9 +15,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-// --8<-- [start:doc]
 public final class RequestReplyAsyncSample {
     public static void main(String[] args) throws Exception {
+// --8<-- [start:doc]
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
         CountDownLatch requestHandled = new CountDownLatch(1);
@@ -61,7 +61,7 @@ public final class RequestReplyAsyncSample {
             }, "request-reply-async-router");
             routerThread.start();
 
-            CompletableFuture<Void> roundTrip;
+            java.util.concurrent.CompletionStage<Void> roundTrip;
             try (Message request = Message.from(SampleSupport.DEALER_REQUEST)) {
                 roundTrip = dealerSocket.request()
                     .message(request)
@@ -79,13 +79,13 @@ public final class RequestReplyAsyncSample {
                     });
             }
 
-            roundTrip.get(2, TimeUnit.SECONDS);
+            roundTrip.toCompletableFuture().get(2, TimeUnit.SECONDS);
             replyHandled.get(2, TimeUnit.SECONDS);
             SampleSupport.await(requestHandled, "request reply async");
             System.out.println("[dealer-router/request-reply/async] send: \""
                 + SampleSupport.DEALER_REQUEST + "\" -> recv: \""
                 + SampleSupport.DEALER_REPLY + "\"");
         }
+// --8<-- [end:doc]
     }
 }
-// --8<-- [end:doc]

@@ -5,7 +5,6 @@ using System.Net;
 using System.Net.Sockets;
 using Systems.Zlink;
 
-// --8<-- [start:doc]
 // 빈 TCP 포트를 잡아 endpoint를 만든다.
 static string UniqueTcp()
 {
@@ -28,6 +27,7 @@ static void WaitPeer(ISpotNode node)
     throw new TimeoutException("spot peer not connected");
 }
 
+// --8<-- [start:doc]
 string topic = "room:lobby";
 string pubEndpoint = UniqueTcp();
 string subEndpoint = UniqueTcp();

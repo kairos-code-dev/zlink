@@ -5,7 +5,6 @@ using System.Net;
 using System.Net.Sockets;
 using Systems.Zlink;
 
-// --8<-- [start:doc]
 static string UniqueTcp()
 {
     var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -15,6 +14,7 @@ static string UniqueTcp()
     return $"tcp://127.0.0.1:{port}";
 }
 
+// --8<-- [start:doc]
 using var ctx = Zlink.CreateContext();
 using var roomNode = ctx.CreateSpotNode();
 using var room = roomNode.CreateSpot();

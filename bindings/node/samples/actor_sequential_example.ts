@@ -10,7 +10,6 @@
 const assert = require('node:assert/strict');
 const zlink = require('@zlink-systems/zlink');
 
-// --8<-- [start:doc]
 function waitForJoin(spot) {
   for (let i = 0; i < 200; i += 1) {
     const request = spot.recvActorJoin(zlink.RecvFlags.DontWait);
@@ -21,6 +20,7 @@ function waitForJoin(spot) {
 }
 
 async function main() {
+// --8<-- [start:doc]
   const ctx = zlink.createContext();
   const node = zlink.createSpotNode(ctx);
   const room = node.createSpot();
@@ -70,10 +70,10 @@ async function main() {
     node.close();
     ctx.close();
   }
+// --8<-- [end:doc]
 }
 
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-// --8<-- [end:doc]

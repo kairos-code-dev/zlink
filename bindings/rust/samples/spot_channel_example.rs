@@ -9,7 +9,6 @@ use std::time::Duration;
 
 use zlink::{Context, Message, Received, RecvFlags, SpotNode};
 
-// --8<-- [start:doc]
 fn unique_tcp() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -17,6 +16,7 @@ fn unique_tcp() -> String {
 }
 
 fn main() {
+// --8<-- [start:doc]
     let ctx = Context::new().unwrap();
     let room_node = SpotNode::new(&ctx).unwrap();
     let room = room_node.create_spot().unwrap();
@@ -58,5 +58,5 @@ fn main() {
     let reply = rx.recv_timeout(Duration::from_secs(6)).expect("no reply");
     server.join().unwrap();
     println!("[spot/channel] request \"get-profile\" -> reply \"{reply}\"");
-}
 // --8<-- [end:doc]
+}

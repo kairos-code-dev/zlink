@@ -7,10 +7,10 @@ use std::time::Duration;
 
 use zlink::{AutoConnectType, Context, Discovery, Registry, RegistryQueryClient};
 
-// --8<-- [start:doc]
 const SERVICE_NAME: &str = "sample";
 
 fn main() {
+// --8<-- [start:doc]
     let ctx = Context::new().expect("context creation failed");
     let registry = Registry::new(&ctx).expect("registry creation failed");
     let discovery =
@@ -53,5 +53,5 @@ fn main() {
     );
 
     println!("[discovery-registry] service: \"sample\" -> discovered");
-}
 // --8<-- [end:doc]
+}

@@ -2,7 +2,6 @@
 
 use zlink::{Context, Message, RecvFlags, SocketMonitor, TopicMessage};
 
-// --8<-- [start:doc]
 pub fn reserve_tcp_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -42,6 +41,7 @@ pub fn wait_stream_connected(monitor: &zlink::SocketMonitor) {
 }
 
 fn main() {
+// --8<-- [start:doc]
     let ctx = Context::new().expect("context creation failed");
     let port = reserve_tcp_port();
     let endpoint = format!("tcp://127.0.0.1:{port}");
@@ -84,5 +84,5 @@ fn main() {
         topic_msg.topic(),
         topic_msg.parts()[0].as_str().unwrap()
     );
-}
 // --8<-- [end:doc]
+}

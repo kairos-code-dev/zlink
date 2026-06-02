@@ -7,7 +7,6 @@ const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
 
-// --8<-- [start:doc]
 async function reservePort() {
   const srv = net.createServer();
   srv.listen(0, '127.0.0.1');
@@ -24,6 +23,7 @@ function timeoutPromise(ms, label) {
 }
 
 async function main() {
+// --8<-- [start:doc]
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
   const ctx = zlink.createContext();
@@ -74,10 +74,10 @@ async function main() {
     routerSocket.close();
     ctx.close();
   }
+// --8<-- [end:doc]
 }
 
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-// --8<-- [end:doc]

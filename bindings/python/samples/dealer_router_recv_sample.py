@@ -2,8 +2,8 @@ import zlink
 from sample_support import tcp_endpoint, wait_connected
 
 
-# --8<-- [start:doc]
 def main():
+# --8<-- [start:doc]
     _, endpoint = tcp_endpoint()
 
     with zlink.create_context() as ctx:
@@ -34,8 +34,8 @@ def main():
                     if reply.to_bytes_list() != [b"pong"]:
                         raise AssertionError("unexpected dealer-router reply payload")
                 print('[dealer-router/recv] send: "ping" → recv: "pong"')
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     main()
-# --8<-- [end:doc]

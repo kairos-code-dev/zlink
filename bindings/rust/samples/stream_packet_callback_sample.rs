@@ -11,7 +11,6 @@ use std::time::Duration;
 
 use zlink::{Context, SocketMonitor};
 
-// --8<-- [start:doc]
 fn write_stream_packet(stream: &mut TcpStream, body: &[u8]) {
     let mut frame = Vec::with_capacity(6 + body.len());
     frame.extend_from_slice(&0u16.to_be_bytes());
@@ -60,6 +59,7 @@ pub fn wait_stream_connected(monitor: &zlink::SocketMonitor) {
 }
 
 fn main() {
+// --8<-- [start:doc]
     let ctx = Context::new().expect("context creation failed");
 
     let mut stream = ctx.stream_socket().expect("stream socket failed");
@@ -93,5 +93,5 @@ fn main() {
         "[stream/packet-callback] send: \"hello-stream\" → recv: \"{}\"",
         recv_str
     );
-}
 // --8<-- [end:doc]
+}

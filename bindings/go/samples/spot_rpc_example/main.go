@@ -11,7 +11,6 @@ import (
 	zlink "zlink.systems/zlink/contracts"
 )
 
-// --8<-- [start:doc]
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -45,6 +44,7 @@ func waitPeer(node *zlink.SpotNode) {
 }
 
 func main() {
+// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	must(err)
 	defer ctx.Close()
@@ -125,5 +125,5 @@ func main() {
 	case <-time.After(5 * time.Second):
 		panic("spot rpc: no reply")
 	}
-}
 // --8<-- [end:doc]
+}

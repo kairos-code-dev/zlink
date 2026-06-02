@@ -7,8 +7,8 @@ import (
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
-// --8<-- [start:doc]
 func main() {
+// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	samplecommon.Must(err)
 	defer ctx.Close()
@@ -54,5 +54,5 @@ func main() {
 	}
 
 	fmt.Printf("[pubsub/recv] publish: %q -> subscribe: %q\n", topic+"/"+payload, message.Topic()+"/"+string(part.Data()))
-}
 // --8<-- [end:doc]
+}

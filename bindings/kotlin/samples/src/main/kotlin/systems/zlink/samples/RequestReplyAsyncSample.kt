@@ -13,8 +13,8 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-// --8<-- [start:doc]
 fun main() {
+// --8<-- [start:doc]
     SampleSupport.ensureNative()
     val endpoint = SampleSupport.tcpEndpoint()
     val requestHandled = CountDownLatch(1)
@@ -51,7 +51,7 @@ fun main() {
                         }, "request-reply-async-router")
                         routerThread.start()
 
-                        val roundTrip: CompletableFuture<Void>
+                        val roundTrip: java.util.concurrent.CompletionStage<Void>
                         Message.from(SampleSupport.DEALER_REQUEST).use { request ->
                             roundTrip = dealerSocket.request()
                                 .message(request)
@@ -67,7 +67,7 @@ fun main() {
                                 }
                         }
 
-                        roundTrip.get(2, TimeUnit.SECONDS)
+                        roundTrip.toCompletableFuture().get(2, TimeUnit.SECONDS)
                         replyHandled.get(2, TimeUnit.SECONDS)
                         SampleSupport.await(requestHandled, "request reply async")
                         println(
@@ -79,5 +79,5 @@ fun main() {
             }
         }
     }
-}
 // --8<-- [end:doc]
+}

@@ -18,9 +18,9 @@
 #include <thread>
 #include <vector>
 
-// --8<-- [start:doc]
 int main ()
 {
+// --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::service::spot_node_t node (ctx);
     zlink::service::spot_t room = node.create_spot ();
@@ -90,5 +90,5 @@ int main ()
     std::printf (
       "[actor/sequential] processed in order: move -> attack -> loot\n");
     return 0;
-}
 // --8<-- [end:doc]
+}

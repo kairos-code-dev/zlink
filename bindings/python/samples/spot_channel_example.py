@@ -10,7 +10,6 @@ import time
 import zlink
 
 
-# --8<-- [start:doc]
 def unique_tcp():
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
@@ -20,6 +19,7 @@ def unique_tcp():
 
 
 def main():
+# --8<-- [start:doc]
     with zlink.create_context() as ctx, \
          zlink.create_spot_node(ctx) as room_node, \
          room_node.create_spot() as room, \
@@ -58,8 +58,8 @@ def main():
         if not replies:
             raise RuntimeError("spot channel: no reply")
         print(f'[spot/channel] request "get-profile" -> reply "{replies[0][0].decode()}"')
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     main()
-# --8<-- [end:doc]

@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 
 use zlink::{Context, Message, RecvFlags, SpotNode, TopicMessage};
 
-// --8<-- [start:doc]
 // 빈 TCP 포트를 잡아 endpoint를 만든다.
 fn unique_tcp() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -30,6 +29,7 @@ fn wait_peer(node: &SpotNode) {
 }
 
 fn main() {
+// --8<-- [start:doc]
     let ctx = Context::new().unwrap();
     // 토픽을 발행하는 노드와 구독하는 노드.
     let publisher_node = SpotNode::new(&ctx).unwrap();
@@ -73,5 +73,5 @@ fn main() {
         received.topic(),
         received.first_part().unwrap().as_str().unwrap()
     );
-}
 // --8<-- [end:doc]
+}

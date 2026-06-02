@@ -2,9 +2,9 @@
 
 #include "sample_common.hpp"
 
-// --8<-- [start:doc]
 int main ()
 {
+// --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::xpub_socket_t publisher (ctx);
     zlink::sub_socket_t subscriber (ctx);
@@ -41,5 +41,5 @@ int main ()
     std::printf ("[pubsub/recv] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
                  topic.c_str (), sent.c_str (), topic.c_str (), received.c_str ());
     return 0;
-}
 // --8<-- [end:doc]
+}

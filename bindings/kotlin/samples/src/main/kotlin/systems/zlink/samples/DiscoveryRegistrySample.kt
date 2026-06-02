@@ -13,8 +13,8 @@ import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
 
-// --8<-- [start:doc]
 fun main() {
+// --8<-- [start:doc]
     SampleSupport.ensureNative()
     val channelName = "sample"
     val registryPub = SampleSupport.tcpEndpoint()
@@ -79,5 +79,5 @@ fun main() {
         SampleSupport.closeQuietly(registry)
         SampleSupport.closeQuietly(ctx)
     }
-}
 // --8<-- [end:doc]
+}

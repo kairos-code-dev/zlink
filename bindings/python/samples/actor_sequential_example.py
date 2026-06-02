@@ -11,8 +11,8 @@ import time
 import zlink
 
 
-# --8<-- [start:doc]
 def main():
+# --8<-- [start:doc]
     with zlink.create_context() as ctx, \
          zlink.create_spot_node(ctx) as node, \
          node.create_spot() as room, \
@@ -74,8 +74,8 @@ def main():
             lambda result, messages: [m.close() for m in messages])
         player.close()
         print("[actor/sequential] processed in order: move -> attack -> loot")
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     main()
-# --8<-- [end:doc]

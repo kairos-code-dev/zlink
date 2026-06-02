@@ -7,7 +7,6 @@ const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
 
-// --8<-- [start:doc]
 const AUTO_CONNECT_SPOT_MESH = 5;
 
 async function reservePort() {
@@ -32,6 +31,7 @@ async function waitForTopologyEntry(registry, channelName, endpoint) {
 }
 
 async function main() {
+// --8<-- [start:doc]
   const ctx = zlink.createContext();
   const registry = zlink.createRegistry(ctx);
   const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'sample');
@@ -55,10 +55,10 @@ async function main() {
     registry.close();
     ctx.close();
   }
+// --8<-- [end:doc]
 }
 
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-// --8<-- [end:doc]

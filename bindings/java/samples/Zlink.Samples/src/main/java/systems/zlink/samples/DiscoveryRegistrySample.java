@@ -12,9 +12,9 @@ import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
-// --8<-- [start:doc]
 public final class DiscoveryRegistrySample {
     public static void main(String[] args) {
+// --8<-- [start:doc]
         SampleSupport.ensureNative();
         String channelName = "sample";
         String registryPub = SampleSupport.tcpEndpoint();
@@ -83,6 +83,6 @@ public final class DiscoveryRegistrySample {
             SampleSupport.closeQuietly(registry);
             SampleSupport.closeQuietly(ctx);
         }
+// --8<-- [end:doc]
     }
 }
-// --8<-- [end:doc]

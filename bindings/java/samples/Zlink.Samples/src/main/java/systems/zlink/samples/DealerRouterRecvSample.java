@@ -8,9 +8,9 @@ import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RouterSocket;
-// --8<-- [start:doc]
 public final class DealerRouterRecvSample {
     public static void main(String[] args) {
+// --8<-- [start:doc]
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
 
@@ -50,6 +50,6 @@ public final class DealerRouterRecvSample {
                     + SampleSupport.DEALER_REQUEST + "\" \u2192 recv: \"" + value + "\"");
             }
         }
+// --8<-- [end:doc]
     }
 }
-// --8<-- [end:doc]

@@ -5,7 +5,6 @@
 #include <future>
 #include <thread>
 
-// --8<-- [start:doc]
 namespace detail
 {
 
@@ -27,6 +26,7 @@ void run_request_round_trip (zlink::dealer_socket_t &dealer_)
 
 int main ()
 {
+// --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::router_socket_t router_socket (ctx);
     zlink::dealer_socket_t dealer_socket (ctx);
@@ -88,5 +88,5 @@ int main ()
       detail::k_dealer_router_request, detail::k_dealer_router_reply);
     std::fflush (stdout);
     return 0;
-}
 // --8<-- [end:doc]
+}

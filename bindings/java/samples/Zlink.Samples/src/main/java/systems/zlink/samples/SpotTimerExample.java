@@ -13,9 +13,9 @@ import systems.zlink.contracts.service.spot.SpotNode;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// --8<-- [start:doc]
 public final class SpotTimerExample {
     public static void main(String[] args) throws Exception {
+// --8<-- [start:doc]
         try (Context ctx = Zlink.createContext();
              SpotNode node = ctx.createSpotNode();
              Spot room = node.createSpot();
@@ -35,6 +35,6 @@ public final class SpotTimerExample {
             }
             System.out.printf("[spot/timer] room tick fired %d times%n", ticks.get());
         }
+// --8<-- [end:doc]
     }
 }
-// --8<-- [end:doc]

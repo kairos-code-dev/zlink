@@ -5,7 +5,6 @@ using System.Net;
 using System.Net.Sockets;
 using Systems.Zlink;
 
-// --8<-- [start:doc]
 static string UniqueTcp()
 {
     var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -27,6 +26,7 @@ static void WaitPeer(ISpotNode node)
     throw new TimeoutException("spot peer not connected");
 }
 
+// --8<-- [start:doc]
 using var ctx = Zlink.CreateContext();
 using var serverNode = ctx.CreateSpotNode();
 using var clientNode = ctx.CreateSpotNode();

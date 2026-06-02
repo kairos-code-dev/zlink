@@ -12,7 +12,6 @@ use std::time::Duration;
 
 use zlink::{Context, Message, RoutingId, SocketMonitor};
 
-// --8<-- [start:doc]
 fn noop_waker() -> Waker {
     unsafe fn clone(_: *const ()) -> RawWaker {
         RawWaker::new(std::ptr::null(), &VTABLE)
@@ -39,6 +38,7 @@ fn block_on<F: Future>(future: F) -> F::Output {
 }
 
 fn main() {
+// --8<-- [start:doc]
     let ctx = Context::new().expect("context creation failed");
     let endpoint = sample_support::tcp_endpoint();
 
@@ -94,5 +94,5 @@ fn main() {
         .expect("request handler timed out");
 
     println!("[dealer-router/request-reply/async] send: \"ping\" -> recv: \"pong\"");
-}
 // --8<-- [end:doc]
+}

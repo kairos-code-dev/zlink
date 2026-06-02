@@ -11,11 +11,11 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.time.Duration
 
-// --8<-- [start:doc]
 private fun uniqueTcp(): String =
     ServerSocket(0, 0, InetAddress.getByName("127.0.0.1")).use { "tcp://127.0.0.1:${it.localPort}" }
 
 fun main() {
+// --8<-- [start:doc]
     Zlink.createContext().use { ctx ->
         ctx.createSpotNode().use { roomNode ->
             roomNode.createSpot().use { room ->
@@ -53,7 +53,7 @@ fun main() {
                             }
                         }
 
-                        val reply = replyFuture.join()
+                        val reply = replyFuture.toCompletableFuture().join()
                         println("[spot/channel] request \"get-profile\" -> reply \"${reply[0].toUtf8String()}\"")
                         reply.forEach(Message::close)
                     }
@@ -61,5 +61,5 @@ fun main() {
             }
         }
     }
-}
 // --8<-- [end:doc]
+}

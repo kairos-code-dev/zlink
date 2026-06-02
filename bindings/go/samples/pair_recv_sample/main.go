@@ -7,8 +7,8 @@ import (
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
-// --8<-- [start:doc]
 func main() {
+// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	samplecommon.Must(err)
 	defer ctx.Close()
@@ -45,5 +45,5 @@ func main() {
 	}
 
 	fmt.Printf("[pair/recv] send: %q -> recv: %q\n", sent, string(part.Data()))
-}
 // --8<-- [end:doc]
+}

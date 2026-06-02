@@ -14,7 +14,6 @@ import systems.zlink.contracts.sockets.StreamSocket
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 
-// --8<-- [start:doc]
 private fun join(actor: Actor, room: Spot) {
     val done = CountDownLatch(1)
     Message.from("enter-room").use { m ->
@@ -42,6 +41,7 @@ private fun sendAndWait(
 }
 
 fun main() {
+// --8<-- [start:doc]
     Zlink.createContext().use { ctx ->
         ctx.createSpotNode().use { node ->
             node.createSpot().use { room ->
@@ -52,8 +52,8 @@ fun main() {
 
                     stream.attachActorGateway(node)
                     val session = RoutingId.from("game-room-session")
-                    stream.bindActor(session, player1.ref()).submitAsync().join().forEach(Message::close)
-                    stream.bindActor(session, player2.ref()).submitAsync().join().forEach(Message::close)
+                    stream.bindActor(session, player1.ref()).submitAsync().toCompletableFuture().join().forEach(Message::close)
+                    stream.bindActor(session, player2.ref()).submitAsync().toCompletableFuture().join().forEach(Message::close)
 
                     // dispatch 핸들러: join 요청을 수락하고, 도착한 메시지를 모은다.
                     room.setDispatchHandler { info ->
@@ -83,8 +83,8 @@ fun main() {
                         "messages were not routed per actor: $received"
                     }
 
-                    player1.leave(room).submitAsync().join().forEach(Message::close)
-                    player2.leave(room).submitAsync().join().forEach(Message::close)
+                    player1.leave(room).submitAsync().toCompletableFuture().join().forEach(Message::close)
+                    player2.leave(room).submitAsync().toCompletableFuture().join().forEach(Message::close)
                     player1.close()
                     player2.close()
                     println("[actor/room] player-1: \"your-turn\", player-2: \"wait\"")
@@ -92,5 +92,5 @@ fun main() {
             }
         }
     }
-}
 // --8<-- [end:doc]
+}

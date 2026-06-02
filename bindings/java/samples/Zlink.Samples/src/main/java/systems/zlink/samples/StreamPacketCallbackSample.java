@@ -9,9 +9,9 @@ import systems.zlink.contracts.sockets.StreamSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 
-// --8<-- [start:doc]
 public final class StreamPacketCallbackSample {
     public static void main(String[] args) throws Exception {
+// --8<-- [start:doc]
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
         CountDownLatch delivered = new CountDownLatch(1);
@@ -65,6 +65,7 @@ public final class StreamPacketCallbackSample {
                     echoed + "\"");
             }
         }
+// --8<-- [end:doc]
     }
 
     private static byte[] frameBytes(byte[] body) {
@@ -93,4 +94,3 @@ public final class StreamPacketCallbackSample {
         return Message.from(frame);
     }
 }
-// --8<-- [end:doc]

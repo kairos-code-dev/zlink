@@ -18,7 +18,6 @@
 #include <string>
 #include <thread>
 
-// --8<-- [start:doc]
 // 빈 TCP 포트를 잡아 endpoint를 만든다.
 static std::string unique_tcp ()
 {
@@ -48,6 +47,7 @@ static void wait_peer (zlink::service::spot_node_t &node)
 
 int main ()
 {
+// --8<-- [start:doc]
     zlink::context_t ctx;
     // 토픽을 발행하는 노드와 구독하는 노드.
     zlink::service::spot_node_t publisher_node (ctx);
@@ -88,5 +88,5 @@ int main ()
                  received.topic ().c_str (), received.parts ()[0].to_string ().c_str ());
     received.close ();
     return 0;
-}
 // --8<-- [end:doc]
+}

@@ -10,7 +10,6 @@ import time
 import zlink
 
 
-# --8<-- [start:doc]
 def unique_tcp():
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
@@ -30,6 +29,7 @@ def wait_peer(node):
 
 
 def main():
+# --8<-- [start:doc]
     with zlink.create_context() as ctx, \
          zlink.create_spot_node(ctx) as publisher_node, \
          zlink.create_spot_node(ctx) as subscriber_node:
@@ -68,8 +68,8 @@ def main():
             payload = received.to_bytes_list()[0].decode()
             received.close()
             print(f'[spot/pubsub] topic "{received_topic}" -> recv: "{payload}"')
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     main()
-# --8<-- [end:doc]

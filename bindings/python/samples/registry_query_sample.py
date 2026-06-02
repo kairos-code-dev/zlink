@@ -4,11 +4,11 @@ import zlink
 from sample_support import tcp_endpoint, wait_until
 
 
-# --8<-- [start:doc]
 SERVICE_NAME = "sample"
 
 
 def main():
+# --8<-- [start:doc]
     _, registry_pub_endpoint = tcp_endpoint()
     _, registry_router_endpoint = tcp_endpoint()
     _, service_endpoint = tcp_endpoint()
@@ -37,8 +37,8 @@ def main():
         for resource in (provider, query, discovery, registry, ctx):
             with suppress(Exception):
                 resource.close()
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     main()
-# --8<-- [end:doc]

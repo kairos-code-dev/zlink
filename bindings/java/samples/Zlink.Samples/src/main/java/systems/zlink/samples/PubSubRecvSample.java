@@ -8,9 +8,9 @@ import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.SubSocket;
 import systems.zlink.contracts.messaging.TopicMessage;
-// --8<-- [start:doc]
 public final class PubSubRecvSample {
     public static void main(String[] args) {
+// --8<-- [start:doc]
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
         String published = SampleSupport.PUBSUB_TOPIC + "/" + SampleSupport.PUBSUB_PAYLOAD;
@@ -44,6 +44,6 @@ public final class PubSubRecvSample {
                     + "\" \u2192 subscribe: \"" + value + "\"");
             }
         }
+// --8<-- [end:doc]
     }
 }
-// --8<-- [end:doc]

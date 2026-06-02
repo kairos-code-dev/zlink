@@ -16,9 +16,9 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.time.Duration;
 
-// --8<-- [start:doc]
 public final class SpotPubSubExample {
     public static void main(String[] args) throws Exception {
+// --8<-- [start:doc]
         String topic = "room:lobby";
         String pubEndpoint = uniqueTcp();
         String subEndpoint = uniqueTcp();
@@ -60,6 +60,7 @@ public final class SpotPubSubExample {
             System.out.println(
                 "[spot/pubsub] topic \"" + receivedTopic + "\" -> recv: \"" + payload + "\"");
         }
+// --8<-- [end:doc]
     }
 
     private static String uniqueTcp() throws Exception {
@@ -79,4 +80,3 @@ public final class SpotPubSubExample {
         throw new IllegalStateException("spot peer not connected");
     }
 }
-// --8<-- [end:doc]

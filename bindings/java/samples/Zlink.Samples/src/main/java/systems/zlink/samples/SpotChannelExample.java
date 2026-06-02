@@ -19,9 +19,9 @@ import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.List;
 
-// --8<-- [start:doc]
 public final class SpotChannelExample {
     public static void main(String[] args) throws Exception {
+// --8<-- [start:doc]
         try (Context ctx = Zlink.createContext();
              SpotNode roomNode = ctx.createSpotNode();
              Spot room = roomNode.createSpot();
@@ -61,11 +61,12 @@ public final class SpotChannelExample {
                 }
             }
 
-            List<Message> reply = replyFuture.join();
+            List<Message> reply = replyFuture.toCompletableFuture().join();
             System.out.println(
                 "[spot/channel] request \"get-profile\" -> reply \"" + reply.get(0).toUtf8String() + "\"");
             reply.forEach(Message::close);
         }
+// --8<-- [end:doc]
     }
 
     private static String uniqueTcp() throws Exception {
@@ -74,4 +75,3 @@ public final class SpotChannelExample {
         }
     }
 }
-// --8<-- [end:doc]

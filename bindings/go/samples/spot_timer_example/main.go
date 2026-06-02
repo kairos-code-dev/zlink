@@ -11,7 +11,6 @@ import (
 	zlink "zlink.systems/zlink/contracts"
 )
 
-// --8<-- [start:doc]
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -19,6 +18,7 @@ func must(err error) {
 }
 
 func main() {
+// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	must(err)
 	defer ctx.Close()
@@ -61,5 +61,5 @@ func main() {
 		panic(fmt.Sprintf("timer did not fire 3 times: %d", final))
 	}
 	fmt.Printf("[spot/timer] room tick fired %d times\n", final)
-}
 // --8<-- [end:doc]
+}

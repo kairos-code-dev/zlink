@@ -22,9 +22,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
-// --8<-- [start:doc]
 public final class ActorRoomExample {
     public static void main(String[] args) throws Exception {
+// --8<-- [start:doc]
         try (Context ctx = Zlink.createContext();
              SpotNode node = ctx.createSpotNode();
              Spot room = node.createSpot();
@@ -35,8 +35,8 @@ public final class ActorRoomExample {
 
             stream.attachActorGateway(node);
             RoutingId session = RoutingId.from("game-room-session");
-            stream.bindActor(session, player1.ref()).submitAsync().join().forEach(Message::close);
-            stream.bindActor(session, player2.ref()).submitAsync().join().forEach(Message::close);
+            stream.bindActor(session, player1.ref()).submitAsync().toCompletableFuture().join().forEach(Message::close);
+            stream.bindActor(session, player2.ref()).submitAsync().toCompletableFuture().join().forEach(Message::close);
 
             // dispatch 핸들러: join 요청을 수락하고, 도착한 메시지를 모은다.
             room.setDispatchHandler(info -> {
@@ -68,12 +68,13 @@ public final class ActorRoomExample {
                 throw new IllegalStateException("messages were not routed per actor: " + received);
             }
 
-            player1.leave(room).submitAsync().join().forEach(Message::close);
-            player2.leave(room).submitAsync().join().forEach(Message::close);
+            player1.leave(room).submitAsync().toCompletableFuture().join().forEach(Message::close);
+            player2.leave(room).submitAsync().toCompletableFuture().join().forEach(Message::close);
             player1.close();
             player2.close();
             System.out.println("[actor/room] player-1: \"your-turn\", player-2: \"wait\"");
         }
+// --8<-- [end:doc]
     }
 
     private static void join(Actor actor, Spot room) throws InterruptedException {
@@ -104,4 +105,3 @@ public final class ActorRoomExample {
         }
     }
 }
-// --8<-- [end:doc]

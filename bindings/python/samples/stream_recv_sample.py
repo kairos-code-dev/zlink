@@ -4,8 +4,8 @@ import zlink
 from sample_support import tcp_endpoint, wait_socket_monitor_event
 
 
-# --8<-- [start:doc]
 def main():
+# --8<-- [start:doc]
     port, endpoint = tcp_endpoint()
 
     with zlink.create_context() as ctx:
@@ -28,8 +28,8 @@ def main():
                     if reply != b"hello-stream":
                         raise AssertionError(f"unexpected stream reply: {reply!r}")
             print('[stream/recv] send: "hello-stream" → recv: "hello-stream"')
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     main()
-# --8<-- [end:doc]

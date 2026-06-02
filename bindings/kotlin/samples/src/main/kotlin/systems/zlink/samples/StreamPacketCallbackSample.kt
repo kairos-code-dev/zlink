@@ -9,7 +9,6 @@ import systems.zlink.contracts.sockets.SendFlags
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CountDownLatch
 
-// --8<-- [start:doc]
 private fun frameBytes(body: ByteArray): ByteArray {
     val frame = ByteArray(6 + body.size)
     frame[2] = (body.size ushr 24).toByte()
@@ -36,6 +35,7 @@ private fun frame(header: Message, body: Message): Message {
 }
 
 fun main() {
+// --8<-- [start:doc]
     SampleSupport.ensureNative()
     val endpoint = SampleSupport.tcpEndpoint()
     val delivered = CountDownLatch(1)
@@ -88,5 +88,5 @@ fun main() {
             }
         }
     }
-}
 // --8<-- [end:doc]
+}

@@ -18,7 +18,6 @@
 #include <thread>
 #include <vector>
 
-// --8<-- [start:doc]
 static std::string unique_tcp ()
 {
     int fd = ::socket (AF_INET, SOCK_STREAM, 0);
@@ -47,6 +46,7 @@ static void wait_connected (zlink::socket_monitor_t &monitor)
 
 int main ()
 {
+// --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::service::spot_node_t room_node (ctx);
     zlink::service::spot_t room = room_node.create_spot ();
@@ -87,5 +87,5 @@ int main ()
     std::printf ("[spot/channel] request \"get-profile\" -> reply \"%s\"\n",
                  reply.empty () ? "" : reply[0].to_string ().c_str ());
     return 0;
-}
 // --8<-- [end:doc]
+}

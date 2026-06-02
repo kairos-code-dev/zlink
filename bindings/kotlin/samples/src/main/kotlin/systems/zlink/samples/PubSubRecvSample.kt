@@ -8,8 +8,8 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.contracts.messaging.TopicMessage
 import systems.zlink.contracts.sockets.RecvFlags
 
-// --8<-- [start:doc]
 fun main() {
+// --8<-- [start:doc]
     SampleSupport.ensureNative()
     val endpoint = SampleSupport.tcpEndpoint()
     val published = "${SampleSupport.PUBSUB_TOPIC}/${SampleSupport.PUBSUB_PAYLOAD}"
@@ -39,5 +39,5 @@ fun main() {
             }
         }
     }
-}
 // --8<-- [end:doc]
+}

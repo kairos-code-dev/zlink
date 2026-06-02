@@ -7,9 +7,9 @@ import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
-// --8<-- [start:doc]
 public final class PairRecvSample {
     public static void main(String[] args) {
+// --8<-- [start:doc]
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
 
@@ -38,6 +38,6 @@ public final class PairRecvSample {
                     + "\" \u2192 recv: \"" + value + "\"");
             }
         }
+// --8<-- [end:doc]
     }
 }
-// --8<-- [end:doc]

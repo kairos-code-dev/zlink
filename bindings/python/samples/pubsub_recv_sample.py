@@ -2,8 +2,8 @@ import zlink
 from sample_support import tcp_endpoint, wait_connected
 
 
-# --8<-- [start:doc]
 def main():
+# --8<-- [start:doc]
     _, endpoint = tcp_endpoint()
 
     with zlink.create_context() as ctx:
@@ -30,8 +30,8 @@ def main():
                     if received.to_bytes_list() != [b"101.25"]:
                         raise AssertionError("unexpected pubsub payload")
                 print('[pubsub/recv] publish: "prices/101.25" → subscribe: "prices/101.25"')
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     main()
-# --8<-- [end:doc]

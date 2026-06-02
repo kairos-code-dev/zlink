@@ -9,8 +9,8 @@ import time
 import zlink
 
 
-# --8<-- [start:doc]
 def main():
+# --8<-- [start:doc]
     with zlink.create_context() as ctx, \
          zlink.create_spot_node(ctx) as node, \
          node.create_spot() as room:
@@ -28,8 +28,8 @@ def main():
         if ticks[0] < 3:
             raise RuntimeError(f"timer fired only {ticks[0]} times")
         print(f"[spot/timer] room tick fired {ticks[0]} times")
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     main()
-# --8<-- [end:doc]

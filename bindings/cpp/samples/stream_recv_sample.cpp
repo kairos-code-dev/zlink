@@ -2,9 +2,9 @@
 
 #include "sample_common.hpp"
 
-// --8<-- [start:doc]
 int main ()
 {
+// --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::stream_socket_t server (ctx);
     zlink::socket_monitor_t server_monitor = server.monitor_open ();
@@ -40,5 +40,5 @@ int main ()
 
     client.close ();
     return 0;
-}
 // --8<-- [end:doc]
+}

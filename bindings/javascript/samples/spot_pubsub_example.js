@@ -10,7 +10,6 @@ const net = require('node:net');
 const { once } = require('node:events');
 const zlink = require('@zlink-systems/zlink');
 
-// --8<-- [start:doc]
 async function reservePort() {
   const server = net.createServer();
   server.listen(0, '127.0.0.1');
@@ -30,6 +29,7 @@ async function waitPeer(node) {
 }
 
 async function main() {
+// --8<-- [start:doc]
   const ctx = zlink.createContext();
   const publisherNode = zlink.createSpotNode(ctx);
   const subscriberNode = zlink.createSpotNode(ctx);
@@ -73,10 +73,10 @@ async function main() {
     subscriberNode.close();
     ctx.close();
   }
+// --8<-- [end:doc]
 }
 
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-// --8<-- [end:doc]

@@ -2,9 +2,9 @@
 
 #include "sample_common.hpp"
 
-// --8<-- [start:doc]
 int main ()
 {
+// --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::service::registry_t registry (ctx);
     zlink::service::discovery_t provider_discovery (
@@ -50,5 +50,5 @@ int main ()
       "[discovery-registry] service: \"%s\" -> discovered\n",
       detail::k_spot_service);
     return 0;
-}
 // --8<-- [end:doc]
+}

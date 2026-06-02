@@ -9,9 +9,9 @@ import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.StreamSocket;
 import java.nio.charset.StandardCharsets;
 
-// --8<-- [start:doc]
 public final class StreamRecvSample {
     public static void main(String[] args) throws Exception {
+// --8<-- [start:doc]
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
 
@@ -53,6 +53,6 @@ public final class StreamRecvSample {
                     echoed + "\"");
             }
         }
+// --8<-- [end:doc]
     }
 }
-// --8<-- [end:doc]

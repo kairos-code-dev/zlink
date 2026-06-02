@@ -10,7 +10,6 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use zlink::{
-// --8<-- [start:doc]
     ActorReceived, Context, Message, RecvFlags, RequestResult, RoutingId, SendFlags, Spot,
     SpotDispatchEvent, SpotNode,
 };
@@ -32,6 +31,7 @@ fn accept(room: &Spot) {
 }
 
 fn main() {
+// --8<-- [start:doc]
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let mut room = node.create_spot().unwrap();
@@ -106,5 +106,5 @@ fn main() {
     leave_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
     player.close().unwrap();
     println!("[actor/sequential] processed in order: move -> attack -> loot");
-}
 // --8<-- [end:doc]
+}

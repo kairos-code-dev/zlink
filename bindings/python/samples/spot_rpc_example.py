@@ -10,7 +10,6 @@ import time
 import zlink
 
 
-# --8<-- [start:doc]
 def unique_tcp():
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
@@ -30,6 +29,7 @@ def wait_peer(node):
 
 
 def main():
+# --8<-- [start:doc]
     with zlink.create_context() as ctx, \
          zlink.create_spot_node(ctx) as server_node, \
          zlink.create_spot_node(ctx) as client_node:
@@ -83,8 +83,8 @@ def main():
                 raise RuntimeError("spot rpc: no reply")
             result, parts = replies[0]
             print(f'[spot/rpc] request "ping" -> reply "{parts[0].decode()}"')
+# --8<-- [end:doc]
 
 
 if __name__ == "__main__":
     main()
-# --8<-- [end:doc]

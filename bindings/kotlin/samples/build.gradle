@@ -32,7 +32,18 @@ def sampleMainClasses = [
     runSpotPubSubExample: 'systems.zlink.samples.SpotPubSubExampleKt',
     runSpotRpcExample: 'systems.zlink.samples.SpotRpcExampleKt',
     runSpotChannelExample: 'systems.zlink.samples.SpotChannelExampleKt',
-    runSpotTimerExample: 'systems.zlink.samples.SpotTimerExampleKt'
+    runSpotTimerExample: 'systems.zlink.samples.SpotTimerExampleKt',
+    runDealerRouterRecvSample: 'systems.zlink.samples.DealerRouterRecvSampleKt',
+    runDiscoveryRegistrySample: 'systems.zlink.samples.DiscoveryRegistrySampleKt',
+    runMonitorRecvSample: 'systems.zlink.samples.MonitorRecvSampleKt',
+    runPairRecvSample: 'systems.zlink.samples.PairRecvSampleKt',
+    runPubSubRecvSample: 'systems.zlink.samples.PubSubRecvSampleKt',
+    runRegistryQuerySample: 'systems.zlink.samples.RegistryQuerySampleKt',
+    runRequestReplyAsyncSample: 'systems.zlink.samples.RequestReplyAsyncSampleKt',
+    runSpotRecvSample: 'systems.zlink.samples.SpotRecvSampleKt',
+    runSpotRequestAsyncSample: 'systems.zlink.samples.SpotRequestAsyncSampleKt',
+    runStreamPacketCallbackSample: 'systems.zlink.samples.StreamPacketCallbackSampleKt',
+    runStreamRecvSample: 'systems.zlink.samples.StreamRecvSampleKt'
 ]
 
 sampleMainClasses.each { taskName, mainClassName ->

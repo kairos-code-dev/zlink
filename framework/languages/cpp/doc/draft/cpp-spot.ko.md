@@ -43,30 +43,24 @@ lifecycle 경로에 제한한다. 일반 handler와 client는 channel name, topi
 
 ## 2. Spot node 구성
 
-SPOT node는 `use_zlink(...)` 안에서 구성한다.
+SPOT node는 `add_zlink_framework(...)` 안의 options builder에서 구성한다. 사용자는 core
+builder의 channel, subscriber, discovery 람다를 직접 조립하지 않는다.
 
 ```cpp
-app.use_zlink([](auto &zlink) {
-    zlink.node("stage-node")
-      .discovery([](auto &discovery) {
-          discovery.connect_registry("tcp://registry:5551");
-      })
-      .channel("game.stage", [](auto &channel) {
-          channel.enable_publisher();
-          channel.enable_subscriber([](auto &subscriber) {
-              subscriber.use_discovery();
-          });
-      })
-      .spot_node("stage-spot-node", [](auto &spot_node) {
-          spot_node.bind("tcp://0.0.0.0:9000");
-          spot_node.enable_actor_gateway();
-          spot_node.use_discovery("game.stage");
-          spot_node.attach_channel_client("profile");
-          spot_node.attach_publisher("game.stage");
-          spot_node.add_entry_spot<player_entry_spot_t>();
-          spot_node.add_actor_factory<player_actor_factory_t>("player");
-          spot_node.add_spot<stage_spot_t>("stage");
-      });
+app.add_zlink_framework([](auto &options) {
+    options.discovery().add("tcp://registry:5551");
+    options.client_server_channel("profile")
+      .client();
+    options.publisher_channel("game.stage")
+      .bind("tcp://0.0.0.0:7001");
+    options.spot_mesh("game.stage")
+      .node("stage-spot-node")
+      .bind("tcp://0.0.0.0:9000")
+      .enable_actor_gateway()
+      .attach_channel_client("profile")
+      .add_entry_spot<player_entry_spot_t>()
+      .add_actor_factory<player_actor_factory_t>("player")
+      .add_spot<stage_spot_t>("stage");
 });
 ```
 
@@ -198,3 +192,31 @@ runtime 설정으로 닫고, 한도 초과는 `request_rejected` 같은 실패 r
   metadata, overrun policy, dispatch 경계를 추가해 맞춘다.
 - session actor relay는 ActorGateway 경로를 사용하고 application route mesh channel로
   우회하지 않는다.
+
+## 8. 회귀 테스트
+
+SPOT 회귀 테스트는 `.NET` framework의 Spot, actor, timer 기대값을 C++ host 모델로 고정한다.
+핵심은 Spot lifecycle, dispatch ordering, timer metadata, remote address resolution이 서로
+다른 API처럼 갈라지지 않는지 확인하는 것이다.
+
+필수 항목:
+
+- Spot node는 app host start/stop lifecycle에 묶여 생성되고 정리된다.
+- user Spot create/destroy, join/leave, actor join/left handler가 순서대로 호출된다.
+- 같은 user Spot 안의 packet, actor packet, subscription, timer callback은 core SPOT
+  dispatch boundary 기준 ordering을 따른다.
+- Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않고 같은 timer instance의 재진입만
+  막는다.
+- `publish(...)`, `request_to(...)`, actor packet handler가 typed DTO와 serializer registry를
+  사용한다.
+- Spot remote address lookup은 Registry/discovery 결과를 사용하고 stale address를 계속
+  사용하지 않는다.
+- duplicate resolver, ambiguous route channel, missing serializer는 startup validation에서
+  실패한다.
+- timer는 `fire_count` 기반 skipped tick, `scheduled_index`, overrun policy, cancel,
+  handler exception monitoring을 검증한다.
+- handler exception은 monitoring event와 log에 남고 runtime 전체를 죽이지 않는다.
+- CPU-bound handler offload를 설정한 경우 shutdown drain에 포함된다.
+
+CTest label은 `framework-zlink-spot`을 사용한다. timer 전용 항목은 `timer` label에도
+포함할 수 있다.

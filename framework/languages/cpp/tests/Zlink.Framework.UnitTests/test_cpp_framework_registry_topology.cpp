@@ -230,6 +230,7 @@ main ()
                      zlink::routing_id_t::from ("7301"))
     .accept_routes_from_channel ("game.route")
     .add_spot<stage_spot_t> ("stage");
+  options.apply ();
   if (framework_zlink.route_channels ().size () != 1 ||
       framework_zlink.route_channels ()[0] != "game.route") {
     return 17;
@@ -279,6 +280,7 @@ main ()
     .enable_pub_sub ("tcp://0.0.0.0:7501")
     .add_spot<stage_spot_t> ("stage");
   late_options.use_registry_spot_remote_addresses ("late.route");
+  late_options.apply ();
   const auto late_spots = late_registry_zlink.spot_nodes ();
   if (late_spots.size () != 1 ||
       late_spots[0].spot_names.size () != 1 ||

@@ -22,6 +22,22 @@ namespace detail
 class app_state_t;
 } // namespace detail
 
+class app_t;
+
+class app_advanced_t
+{
+public:
+  service_collection_t &services () noexcept;
+  handler_registry_t &handlers () noexcept;
+  app_t &use_zlink (std::function<void (zlink_builder_t &)> configure);
+
+private:
+  friend class app_t;
+  explicit app_advanced_t (app_t &app) noexcept;
+
+  app_t *_app;
+};
+
 class app_t
 {
 public:
@@ -35,13 +51,11 @@ public:
 
   static app_t create ();
 
-  service_collection_t &services () noexcept;
-  handler_registry_t &handlers () noexcept;
   config_builder_t &config () noexcept;
   logging_builder_t &logging () noexcept;
   monitoring_builder_t &monitoring () noexcept;
+  app_advanced_t advanced () noexcept;
 
-  app_t &use_zlink (std::function<void (zlink_builder_t &)> configure);
   app_t &add_module (module_t &module);
   app_t &add_zlink_framework (
     std::function<void (zlink_framework_options_t &)> configure);
@@ -50,9 +64,9 @@ public:
   app_t &add_zlink_framework (TArgs &&...args)
   {
     TModule module (std::forward<TArgs> (args)...);
-    module.configure_services (services ());
+    module.configure_services (_services ());
     module.configure_zlink (_zlink_builder ());
-    module.configure_handlers (handlers ());
+    module.configure_handlers (_handlers ());
     module.configure_monitoring (monitoring ());
     return *this;
   }
@@ -64,6 +78,10 @@ public:
   void request_stop () noexcept;
 
 private:
+  friend class app_advanced_t;
+
+  service_collection_t &_services () noexcept;
+  handler_registry_t &_handlers () noexcept;
   zlink_builder_t &_zlink_builder () noexcept;
   serializer_registry_t &_serializers () noexcept;
 

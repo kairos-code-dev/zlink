@@ -31,6 +31,7 @@ public:
     std::thread server_thread ([&server, endpoint = run_options.stream_endpoint] {
       std::ofstream log ("bingo-server.log", std::ios::trunc);
       log << "bind " << endpoint << '\n';
+      log << "monitor stream ready\n";
       int handled = 0;
       std::string buffer;
       while (handled < 10) {
@@ -56,6 +57,7 @@ public:
               state.status = "waiting";
               state.host_actor_id = "player-1";
               state.can_start = true;
+              log << "actor relay " << state.host_actor_id << '\n';
               zlink::samples::send_stream_reply_and_push (
                 inbound,
                 *frame,
@@ -114,6 +116,8 @@ public:
         }
         inbound.close ();
       }
+      log << "disconnect client\n";
+      log << "shutdown server\n";
     });
 
     std::array<bingo_player_client_t, 4> clients {

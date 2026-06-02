@@ -257,7 +257,8 @@ runtime 구현을 둘 수 있는 library target이어야 한다. public header�
   `framework/src/runtime/configuration/builders/configuration_builder.cpp`로 옮겼다.
 - `logging_builder_t::use_console`, `set_level` 구현을
   `framework/src/runtime/diagnostics/logging.cpp`로 옮겼다.
-- `app_t::create`, `services`, `handlers`, `config`, `logging`, `use_zlink`, `run`, `stop` 구현을
+- `app_t::create`, `advanced().services`, `advanced().handlers`, `config`, `logging`,
+  `advanced().use_zlink`, `run`, `stop` 구현을
   `framework/src/runtime/host/app.cpp`로 옮겼다.
 - `test_cpp_framework_app_host` unit test를 추가해 `run()` exit code, JSON/env/CLI가 같은
   configuration model에 합쳐지는지, logging facade가 외부 backend 타입 없이 동작하는지
@@ -1849,7 +1850,7 @@ git diff --check -- framework/languages/cpp
 
 ### 발견한 위험 신호
 
-- .NET TicTacToe SessionGateway sample의 Api/Play/Session host factory는 모두
+- `.NET` TicTacToe Api/Play/Session sample의 host factory는 모두
   `UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint))`를 사용한다.
   C++ TicTacToe sample은 registry endpoint가 topology에 없고, Api host가 Play channel client를
   직접 endpoint로 연결했다. 이 상태에서는 C++ sample이 discovery 기반 channel 구성이라는
@@ -2038,10 +2039,10 @@ git diff --check -- framework/languages/cpp bindings/cpp
 
 | 확인 항목 | 결정 |
 |-----------|------|
-| `.NET` 대응 확인 | extension은 core framework public API 위에 붙는 별도 산출물이다. `.NET` framework core와 같은 channel, monitoring, logging 계약을 사용하되 Kafka, gRPC, HTTP, YAML, FlatBuffers 구현 dependency는 core target에 넣지 않는다. |
+| `.NET` 대응 확인 | extension은 core framework public API 위에 붙는 별도 산출물이다. `.NET` framework core와 같은 channel, monitoring, logging 계약을 사용하되 Kafka, gRPC, YAML, FlatBuffers 구현 dependency는 core target에 넣지 않는다. HTTP hosting은 이후 application framework 기준에서 core 기능으로 재분류했다. |
 | contract owner | extension public contract는 `extensions/include/zlink/framework/extensions/*`가 소유한다. core framework contract owner를 새로 만들지 않는다. |
 | runtime owner | Goal 21은 implementation boundary를 닫는 goal이므로 extension target은 `INTERFACE` target으로 시작한다. 실제 bridge runtime이 필요해질 때는 extension별 private runtime owner를 둔다. |
-| public dependency | extension public header는 framework public contract header만 include하고 Kafka, gRPC, HTTP, YAML, FlatBuffers header를 include하지 않는다. |
+| public dependency | extension public header는 framework public contract header만 include하고 Kafka, gRPC, YAML, FlatBuffers header를 include하지 않는다. HTTP hosting public header도 Beast/Asio 타입을 노출하지 않는다. |
 | native leakage | extension public signature는 endpoint string, channel name, callback, policy value만 사용하고 native handle, socket, poller, dispatch token을 노출하지 않는다. |
 | detail 사용 | `contracts/detail/*`을 사용하지 않는다. extension boundary는 core public contract 위에서만 붙는다. |
 | state hiding | extension target은 외부 system client나 bridge runtime state를 public member로 노출하지 않는다. 현재 public object는 option/policy/builder boundary만 표현한다. |
@@ -2055,14 +2056,14 @@ git diff --check -- framework/languages/cpp bindings/cpp
   core diagnostics 정책을 우회하는 확장처럼 보일 수 있다.
 - advanced retry와 dead-letter가 ordering, duplicate delivery, idempotency key 의미를
   public policy에 드러내지 않으면 handler 작성자가 중복 처리 기준을 알기 어렵다.
-- extension public header가 실제 Kafka, gRPC, HTTP, YAML, FlatBuffers header를 include하면
+- extension public header가 실제 Kafka, gRPC, YAML, FlatBuffers header를 include하면
   core framework를 쓰는 사용자에게 불필요한 dependency가 번진다.
 
 ### 비교한 대안
 
 | 대안 | 장점 | 단점 |
 |------|------|------|
-| extension을 core framework target에 직접 구현 | 사용자가 target 하나만 링크한다 | Kafka, gRPC, HTTP, YAML, FlatBuffers dependency가 core에 섞인다 |
+| extension을 core framework target에 직접 구현 | 사용자가 target 하나만 링크한다 | Kafka, gRPC, YAML, FlatBuffers dependency가 core에 섞인다 |
 | extension을 별도 target으로 두고 core public API만 의존 | core 기본 사용성이 변하지 않는다 | extension target 목록과 install 경계를 관리해야 한다 |
 | extension header에서 umbrella framework header include | include가 단순하다 | extension boundary가 필요한 contract보다 넓어진다 |
 | extension header에서 필요한 contract header만 include | public dependency와 의도를 좁게 유지한다 | include 목록을 명시적으로 관리해야 한다 |
@@ -2087,7 +2088,7 @@ policy value에 ordering, duplicate delivery, idempotency key 의미를 명시�
 
 ### 남은 tradeoff
 
-- Goal 21은 extension boundary를 닫는 단계이므로 Kafka, gRPC, HTTP, YAML, FlatBuffers의
+- Goal 21은 extension boundary를 닫는 단계이므로 Kafka, gRPC, YAML, FlatBuffers의
   실제 외부 library 호출 구현은 포함하지 않는다. 이후 구현하더라도 각 extension private
   runtime target 안에 숨겨야 하며 core framework target에는 추가하지 않는다.
 
@@ -3195,6 +3196,112 @@ ctest --test-dir framework/languages/cpp/build -R test_unreal_stream_connector -
 ctest --test-dir framework/languages/cpp/build --output-on-failure
 ```
 
+## 추가 리뷰. 현재 21개 Goal 검증 label과 HTTP/sample e2e 보정
+
+### 발견한 위험 신호
+
+- 현재 implementation plan의 검증 명령은 `framework-zlink-*`, `framework-http`,
+  `framework-config`, `framework-host`, `framework-observability`,
+  `framework-sample-e2e` label을 기준으로 한다. 하지만 CTest 등록은 일반
+  `framework-integration`, `framework-regression`, `channel`, `spot` 같은 label에만
+  걸려 있어서 문서 기준 검증 명령이 0개 테스트를 반환할 수 있었다.
+- HTTP hosting draft에는 `options.http().listen(...).map_post<T>()`와 HTTPS TLS 검증
+  표면이 있는데 public contract owner가 없었다. 이 상태에서는 TicTacToe HTTP 시작 흐름을
+  C++ framework 표면으로 검증할 수 없다.
+- sample e2e 로그 검증은 request, reply, push만 확인했다. ActorGateway relay, monitoring
+  event, disconnect, shutdown을 보지 않으면 client 성공만으로 e2e를 완료 처리할 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 label을 유지하고 문서 검증 명령을 바꾼다 | 코드 변경이 적다 | goal별 검증 명령과 CTest taxonomy가 계속 어긋난다 |
+| 기존 테스트에 goal label을 추가한다 | 기능별 테스트를 재사용하면서 plan 검증 명령이 실제 테스트를 실행한다 | label 추가가 CMake에 반영된다 |
+| HTTP를 extension boundary에만 둔다 | core dependency를 줄일 수 있다 | Goal 18의 core HTTP hosting 표면과 TicTacToe `POST /games` 기준을 충족하지 못한다 |
+| HTTP contract owner를 core framework에 만들고 runtime 구현은 private owner에 붙인다 | public 표면과 startup validation을 먼저 닫고 Boost.Beast 타입 노출을 막을 수 있다 | 실제 socket accept loop는 runtime owner의 후속 구현 책임으로 남는다 |
+
+선택은 기존 테스트에 goal label을 추가하고, HTTP public contract owner를
+`contracts/http/http.hpp`로 두는 방식이다. 이렇게 하면 검증 명령은 문서와 일치하고,
+HTTP 세부 구현은 public header가 아니라 runtime owner에 붙일 수 있다.
+
+### 적용한 리팩토링
+
+- `framework-http`, `framework-host`, `framework-config`, `framework-observability`,
+  `framework-zlink-*`, `framework-sample-e2e`, `connector-e2e` label을 실제 CTest에
+  연결했다.
+- `zlink/framework/contracts/http/http.hpp`와 `zlink/framework/http.hpp`를 추가하고,
+  `zlink_framework_options_t::http()`에서 `listen`, `tls`, `map_get`, `map_post`,
+  `map_put`, `map_delete`, `use<TMiddleware>()` contract를 제공하게 했다.
+- HTTPS endpoint는 certificate/private key가 없으면 startup validation에서
+  `request_protocol_error`로 실패하게 했다.
+- app host test에 HTTP route 등록과 HTTPS TLS validation 회귀를 추가했다.
+- Bingo와 TicTacToe sample e2e log assertion에 monitoring marker, actor relay,
+  disconnect, shutdown 확인을 추가했다.
+
+### 남은 tradeoff
+
+- HTTP public surface와 TLS startup validation은 닫았지만, 실제 Boost.Beast accept loop와
+  request dispatcher는 runtime private owner에 붙을 후속 구현 영역으로 남아 있다. public
+  header에는 Boost.Beast, Boost.Asio, OpenSSL 타입이 노출되지 않는다.
+- sample e2e는 local stream server file log를 검증한다. 실제 다중 process server log와
+  monitoring sink 통합은 같은 log vocabulary를 유지하면서 별도 e2e runner로 확장해야 한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-zlink --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure
+ctest --test-dir bindings/cpp/build -R codec --output-on-failure
+git diff --check -- framework/languages/cpp bindings/cpp
+```
+
+## 추가 리뷰. Framework options builder action 누적 제거
+
+### 발견한 위험 신호
+
+- `client_server_channel`, `route_mesh_channel`, `publisher_channel`, `stream_node` builder가
+  체인 호출마다 runtime action을 vector에 추가하면 같은 channel 또는 stream 등록이 여러 번
+  실행될 수 있다.
+- 테스트가 마지막 등록 결과만 보게 되면 중복 등록 비용과 호출 순서 의존성이 숨어 남는다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| vector 누적을 유지 | 구현이 단순하다 | 중간 상태가 runtime에 반복 적용된다 |
+| builder별 최종 snapshot 객체를 따로 둠 | 상태 표현이 명확하다 | 작은 builder마다 별도 snapshot 타입이 늘어난다 |
+| key 기반 applier를 갱신 | 기존 builder 구조를 유지하면서 최종 선언만 적용한다 | action key 규칙을 state 내부에서 관리해야 한다 |
+
+선택은 key 기반 applier 갱신이다. 이름이 있는 channel, route channel, publisher channel,
+stream node 설정은 같은 key의 applier를 덮어써서 최종 상태만 한 번 적용한다.
+
+### 적용한 POSD 원칙
+
+- **정보 은닉**: builder 내부의 중간 상태와 호출 순서는 사용자에게 의미가 없어야 한다.
+- **복잡성을 아래로**: 사용자는 `server().client().handler_group(...)` 같은 선언만 하고,
+  framework가 최종 runtime 등록을 한 번으로 합쳐야 한다.
+
+### 적용한 리팩토링
+
+- `framework_options_state_t`에 key 기반 runtime action map을 추가했다.
+- `client_server_channel`, `route_mesh_channel`, `publisher_channel`, `stream_node`는 mutation마다
+  action을 추가하지 않고 같은 key의 applier를 갱신한다.
+- `apply()`는 일반 deferred action을 먼저 실행한 뒤 key 기반 applier를 한 번씩 실행한다.
+- `test_cpp_framework_module_hosted`에서 같은 `api-channel`에 server와 client를 함께 선언해도
+  최종 channel snapshot이 하나만 생기고 양쪽 capability가 모두 남는지 확인한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build --preset linux-ninja-debug
+ctest --preset linux-ninja-debug --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
 ## 추가 리뷰. Bingo Api Program/HostFactory 책임 분리 보정
 
 ### 발견한 위험 신호
@@ -3203,9 +3310,9 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
   monitoring, handler registration, serializer smoke 검증을 모두 직접 수행했다.
 - `app.logging().use_callback_sink(...)`는 샘플 앱 설정이 아니라 로그 검증용 in-memory sink다.
   이 코드가 `main.cpp`에 있으면 사용자가 실제 API server에 필요한 설정으로 오해한다.
-- `app.handlers().on_request<...>(...)` 자체는 C++에서 reflection이 없기 때문에 필요한 등록
-  표면일 수 있지만, `main.cpp`에 있으면 handler discovery/group 구성이 application entry
-  point로 새어 나온다.
+- `app.advanced().handlers().on_request<...>(...)`는 낮은 수준 extension/test 표면으로는 남을 수
+  있지만, 샘플 host factory에 있으면 handler discovery/group 구성이 application entry point로
+  새어 나온다.
 - `api_server_host_factory_t::build(...)`가 완성된 host가 아니라 `zlink_builder_t`만 반환해
   `.NET`의 `ApiServerHostFactory.Build(topology).RunAsync()` 구조와 달랐다.
 

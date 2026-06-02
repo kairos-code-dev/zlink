@@ -1,0 +1,10 @@
+{
+  "name": "zlink-framework-cpp",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "boost-asio",
+    "gtest",
+    "lz4",
+    "nlohmann-json"
+  ]
+}

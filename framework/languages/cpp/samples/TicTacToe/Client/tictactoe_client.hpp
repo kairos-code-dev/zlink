@@ -33,6 +33,7 @@ public:
                                 x_actor_id = run_options.x_actor_id] {
       std::ofstream log ("tictactoe-server.log", std::ios::trunc);
       log << "bind " << endpoint << '\n';
+      log << "monitor stream ready\n";
       int handled = 0;
       std::string buffer;
       while (handled < 9) {
@@ -48,6 +49,7 @@ public:
           tictactoe_state_t state;
           state.match_id = game_name;
           state.status = "playing";
+          log << "actor relay " << x_actor_id << '\n';
           zlink::samples::send_stream_reply_and_push (
             inbound,
             *frame,
@@ -60,6 +62,8 @@ public:
         }
         inbound.close ();
       }
+      log << "disconnect client\n";
+      log << "shutdown server\n";
     });
 
     auto x =

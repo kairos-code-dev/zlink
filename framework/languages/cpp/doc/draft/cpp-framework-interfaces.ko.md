@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md)
+[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
 
 # Draft -- ZLink Framework C++ Interface Design
 
@@ -412,7 +412,9 @@ class hosted_service_t;
 ## 4. App / Host
 
 `app_t`는 framework의 가장 바깥 public type이다. 사용자는 `app_t::create()`로 앱을
-만들고, services, handlers, zlink runtime을 구성한 뒤 `run`을 호출한다.
+만들고, `add_zlink_framework(...)`에서 services, handlers, zlink runtime을 한 번에
+구성한 뒤 `run`을 호출한다. 낮은 수준의 runtime builder는 일반 애플리케이션 표면에
+직접 노출하지 않는다.
 
 ```cpp
 namespace zlink::framework {
@@ -421,13 +423,11 @@ class app_t {
 public:
     static app_t create();
 
-    service_collection_t &services();
-    handler_registry_t &handlers();
     config_builder_t &config();
     logging_builder_t &logging();
     monitoring_builder_t &monitoring();
+    app_advanced_t advanced();
 
-    app_t &use_zlink(std::function<void(zlink_builder_t &)> configure);
     app_t &add_module(module_t &module);
     app_t &add_zlink_framework(
       std::function<void(zlink_framework_options_t &)> configure);
@@ -440,8 +440,19 @@ public:
     void request_stop();
 };
 
+class app_advanced_t {
+public:
+    service_collection_t &services();
+    handler_registry_t &handlers();
+    app_t &use_zlink(std::function<void(zlink_builder_t &)> configure);
+};
+
 } // namespace zlink::framework
 ```
+
+`app_advanced_t`는 framework extension, contract test, 아직 상위 options로 승격되지 않은
+낮은 수준 기능을 위한 탈출구다. Bingo, TicTacToe 같은 일반 샘플은 이 표면을 사용하지
+않고 `add_zlink_framework(...)`만 사용해야 한다.
 
 `run`은 `int`를 반환한다. 반환값은 process exit code로 사용할 수 있어야 한다.
 handler 예외, runtime 오류, signal shutdown은 host가 수집하고 종료 경로를 닫는다.
@@ -523,7 +534,7 @@ resolve하고, actor instance 자체는 actor runtime이 소유한다.
 예시는 아래와 같다.
 
 ```cpp
-app.services()
+options.services()
   .add_singleton<order_repository_t>()
   .add_transient<order_service_t, order_repository_t>()
   .add_transient<order_handler_t, order_service_t>();
@@ -928,16 +939,14 @@ public:
 } // namespace zlink::framework
 ```
 
-handler owner 타입은 service collection에서 resolve한다.
+handler owner 타입은 service collection에서 resolve한다. 일반 application은
+`add_zlink_framework(...)` 안에서 handler와 service를 함께 등록한다.
 
 ```cpp
-app.services().add_transient<order_handler_t>();
+options.services().add_transient<order_handler_t>();
 
-app.handlers()
-  .on_event<order_handler_t, order_created_t>(
-    "orders",
-    "orders.created",
-    &order_handler_t::on_created);
+options.handlers()
+  .add<order_created_handler_t>("orders-api");
 ```
 
 handler dispatch는 binding의 `zlink::message_t`와 `zlink::multipart_t`를 받은 뒤,
@@ -1109,7 +1118,7 @@ target_link_libraries(app PRIVATE zlink::cpp_codec_protobuf)
 ```
 
 ```cpp
-app.handlers()
+app.advanced().handlers()
   .send_raw("orders", "orders.raw", [](const zlink::message_t &message) {
       // raw payload path
   });
@@ -1531,6 +1540,107 @@ options.stream_node(sample_names_t::stream_name)
   .attach_actor_gateway(sample_names_t::spot_node);
 ```
 
+### 12.1 HTTP Hosting
+
+HTTP hosting은 ASP.NET Core Minimal API의 `MapGet`, `MapPost`, `MapPut`,
+`MapDelete`에 대응하는 C++ framework 표면이다. MVC controller, Razor page,
+template rendering, WebSocket transport는 범위에 넣지 않는다. 대신 route handler,
+DI scope, JSON binding, middleware/filter, logging, validation, error mapping,
+zlink channel 호출은 같은 application host 안에서 제공한다.
+
+```cpp
+namespace zlink::framework {
+
+class http_options_builder_t {
+public:
+    http_options_builder_t &listen(std::string endpoint);
+    http_options_builder_t &tls(
+      std::function<void(http_tls_options_builder_t &)> configure);
+
+    template <typename THandler>
+    http_options_builder_t &map_get(std::string path);
+
+    template <typename THandler>
+    http_options_builder_t &map_post(std::string path);
+
+    template <typename THandler>
+    http_options_builder_t &map_put(std::string path);
+
+    template <typename THandler>
+    http_options_builder_t &map_delete(std::string path);
+
+    template <typename TMiddleware>
+    http_options_builder_t &use();
+};
+
+class zlink_framework_options_t {
+public:
+    http_options_builder_t http();
+};
+
+} // namespace zlink::framework
+```
+
+사용 예시는 아래와 같다.
+
+```cpp
+app.add_zlink_framework([&](auto &options) {
+    options.discovery().add(topology.registry_router_endpoint);
+    options.codecs().add_json();
+
+    options.client_server_channel(sample_names_t::api_channel)
+      .server(topology.api_channel_endpoint)
+      .handler_group("api");
+    options.client_server_channel(sample_names_t::play_channel)
+      .client();
+
+    options.http()
+      .listen(topology.api_http_endpoint)
+      .map_post<create_game_http_handler_t>("/games");
+});
+```
+
+HTTP handler는 message handler와 같은 type alias 규칙을 사용한다.
+
+```cpp
+class create_game_http_handler_t {
+public:
+    using request_type = create_game_http_req_t;
+    using reply_type = create_game_http_res_t;
+    using dependency_types = dependency_list_t<request_client_t>;
+
+    explicit create_game_http_handler_t(request_client_t &client);
+
+    task_t<create_game_http_res_t> handle(
+      const create_game_http_req_t &request);
+};
+```
+
+`map_get<THandler>(...)`, `map_post<THandler>(...)`, `map_put<THandler>(...)`,
+`map_delete<THandler>(...)`는 handler type을 DI에 등록하고, `request_type`과
+`reply_type`의 JSON serializer를 등록하며, HTTP route table에 `method + path`를
+연결한다. request마다 DI scope를 만들고 handler를 resolve한다. handler가 반환한 DTO는
+JSON response body가 되고, 기본 status는 `200 OK`다.
+
+route parameter와 query string은 `request_type` DTO에 binding한다. 예를 들어
+`/games/{gameId}/moves?actorId=p1`로 들어온 값은 body DTO와 합쳐 handler request가 된다.
+같은 필드가 body, route, query에 동시에 있으면 route, query, body 순서로 우선한다. 이
+우선순위는 URL에 드러난 식별자가 request body보다 더 명시적인 입력이라는 ASP.NET Core식
+route handler 사용성을 따르기 위한 규칙이다.
+
+`use<TMiddleware>()`는 exception, logging, validation, auth, correlation id 같은
+cross-cutting 처리를 route handler 앞뒤에 연결한다. middleware/filter는 Beast나 Asio
+타입을 받지 않고 `http_context_t`와 framework DTO만 다룬다.
+
+`listen(...)`은 `http://`와 `https://` endpoint를 모두 받는다. `https://` endpoint를
+사용하면 `tls(...)`로 server certificate와 private key를 설정해야 한다. TLS 설정 public
+표면은 파일 경로, PEM data, reload policy 같은 framework 값만 사용하고 OpenSSL 또는
+Boost.Asio SSL 타입을 노출하지 않는다.
+
+HTTP runtime은 `hosted_service_t`로 app lifecycle에 묶인다. `Boost.Beast`, `Boost.Asio`,
+OpenSSL/SSL context 타입은 runtime 구현에만 있고 public header에는 나타나지 않는다. HTTP error response는
+`framework_error_kind_t`를 기반으로 `400`, `404`, `405`, `500`, `503`, `504`로 매핑한다.
+
 handler 안에서 다른 channel로 request를 보낼 때도 호출자는 낮은 수준의 request/reply template
 쌍이나 blocking wait를 보지 않아야 한다. `.NET`의 `await client.RequestAsync<TReply>(...)`와
 같은 읽기 수준을 C++에서는 아래처럼 표현한다.
@@ -1660,34 +1770,21 @@ int main(int argc, char **argv)
       .load_env("ZLINK_")
       .load_cli(argc, argv);
 
-    app.services()
-      .add_singleton<order_repository_t>()
-      .add_factory<order_handler_t>([](auto &services) {
-          return std::make_unique<order_handler_t>(
-            services.template get_required<order_repository_t>());
-      });
-
-    app.use_zlink([](auto &zlink) {
-        zlink.node("order-node")
-          .channel("orders", [](auto &channel) {
-              channel.enable_server([](auto &server) {
-                  server.bind("tcp://0.0.0.0:7001");
-              });
-              channel.enable_subscriber([](auto &subscriber) {
-                  subscriber.use_discovery();
-              });
-          })
-          .spot_node("orders-spot", [](auto &spot_node) {
-              spot_node.bind("tcp://0.0.0.0:7101");
-              spot_node.use_discovery("orders");
-          });
+    app.add_zlink_framework([](auto &options) {
+        options.discovery().add("tcp://registry:5551");
+        options.codecs().add_json();
+        options.services()
+          .add_singleton<order_repository_t>()
+          .add_singleton<order_handler_t, order_repository_t>();
+        options.client_server_channel("orders")
+          .server("tcp://0.0.0.0:7001")
+          .handler_group("orders-api");
+        options.spot_mesh("orders")
+          .node("orders-spot")
+          .bind("tcp://0.0.0.0:7101");
+        options.handlers()
+          .add<order_created_handler_t>("orders-api");
     });
-
-    app.handlers()
-      .subscribe<order_created_t, order_handler_t>(
-        "orders",
-        "orders.created",
-        &order_handler_t::on_created);
 
     return app.run(argc, argv);
 }
@@ -1702,7 +1799,8 @@ int main(int argc, char **argv)
 이 문서를 기준으로 기존 `C++` 세부 초안은 아래 방향으로 정리해야 한다.
 
 - 이전 bootstrap 표기는 `app_t::create()`로 맞춘다.
-- 이전 raw handler registration 중심 샘플은 `app.handlers()` 표면으로 맞춘다.
+- 이전 raw handler registration 중심 샘플은 `add_zlink_framework(...)` 안의
+  `options.handlers()` 표면으로 맞춘다.
 - raw `request_handler_t`, `send_handler_t`, `event_handler_t` 중심 표면은 고급 raw
   handler extension으로 내리고, 일반 샘플은 typed handler registry를 사용한다.
 - 이전 channel client와 event publisher 문서는 `message_bus_t`,

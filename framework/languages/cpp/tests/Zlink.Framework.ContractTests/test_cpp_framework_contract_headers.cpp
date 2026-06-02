@@ -21,9 +21,11 @@
 #include <zlink/framework/contracts/configuration/transport.hpp>
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 #include <zlink/framework/contracts/detail/call_facade.hpp>
+#include <zlink/framework/contracts/detail/handler_invocation.hpp>
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/detail/message_payload.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
+#include <zlink/framework/contracts/http/http.hpp>
 #include <zlink/framework/contracts/registry/registry.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>

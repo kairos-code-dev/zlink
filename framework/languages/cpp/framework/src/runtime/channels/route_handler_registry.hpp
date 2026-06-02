@@ -7,6 +7,7 @@
 #include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
+#include <zlink/framework/contracts/detail/handler_invocation.hpp>
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
@@ -18,22 +19,6 @@
 
 namespace zlink::framework::detail
 {
-
-inline result_t<zlink::message_t>
-route_current_exception_to_message_result ()
-{
-  try {
-    throw;
-  } catch (const framework_exception_t &error) {
-    return result_t<zlink::message_t>::failure (error.kind (),
-                                                error.what (),
-                                                error.is_retriable ());
-  } catch (...) {
-    return result_t<zlink::message_t>::failure (
-      framework_error_kind_t::request_failed,
-      "routed handler threw an exception");
-  }
-}
 
 struct route_handler_descriptor_t
 {
@@ -85,7 +70,8 @@ public:
             result_t<zlink::message_t>::success (zlink::message_t {}));
         } catch (...) {
           return task_t<zlink::message_t> (
-            route_current_exception_to_message_result ());
+            current_exception_to_message_result (
+              "routed handler threw an exception"));
         }
       });
   }
@@ -119,7 +105,8 @@ public:
           co_await (owner.*method) (payload, context);
           co_return result_t<zlink::message_t>::success (zlink::message_t {});
         } catch (...) {
-          co_return route_current_exception_to_message_result ();
+          co_return current_exception_to_message_result (
+            "routed handler threw an exception");
         }
       });
   }
@@ -150,13 +137,12 @@ public:
         try {
           auto &owner = services.get_required<TOwner> ();
           auto request = serializers.get<TRequest> ().deserialize (message);
-          auto reply = (owner.*method) (request, context);
-          return task_t<zlink::message_t> (
-            result_t<zlink::message_t>::success (
-              serializers.get<TReply> ().serialize (reply)));
+          return serialize_handler_result (
+            (owner.*method) (request, context), serializers);
         } catch (...) {
           return task_t<zlink::message_t> (
-            route_current_exception_to_message_result ());
+            current_exception_to_message_result (
+              "routed handler threw an exception"));
         }
       });
   }
@@ -191,7 +177,8 @@ public:
           co_return result_t<zlink::message_t>::success (
             serializers.get<TReply> ().serialize (reply));
         } catch (...) {
-          co_return route_current_exception_to_message_result ();
+          co_return current_exception_to_message_result (
+            "routed handler threw an exception");
         }
       });
   }

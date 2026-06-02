@@ -47,40 +47,25 @@ using namespace zlink::framework;
 
 auto app = app_t::create();
 
-app.use_zlink([](auto &zlink) {
-    zlink.node("api-node")
-      .discovery([](auto &discovery) {
-          discovery.connect_registry("tcp://registry1:5551");
-          discovery.connect_registry("tcp://registry2:5551");
-      })
-      .channel("api", [](auto &channel) {
-          channel.enable_server([](auto &server) {
-              server.bind("tcp://0.0.0.0:7100");
-          });
-      })
-      .channel("profile", [](auto &channel) {
-          channel.enable_client([](auto &client) {
-              client.use_discovery();
-          });
-      })
-      .channel("account", [](auto &channel) {
-          channel.enable_client([](auto &client) {
-              client.use_discovery();
-          });
-      });
+app.add_zlink_framework([](auto &options) {
+    options.discovery().add("tcp://registry1:5551");
+    options.discovery().add("tcp://registry2:5551");
+    options.client_server_channel("api")
+      .server("tcp://0.0.0.0:7100")
+      .handler_group("api");
+    options.client_server_channel("profile")
+      .client();
+    options.client_server_channel("account")
+      .client();
 });
 ```
 
 수동 연결은 아래처럼 둔다.
 
 ```cpp
-app.use_zlink([](auto &zlink) {
-    zlink.node("api-node")
-      .channel("profile", [](auto &channel) {
-          channel.enable_client([](auto &client) {
-              client.connect("tcp://10.0.10.15:7101");
-          });
-      });
+app.add_zlink_framework([](auto &options) {
+    options.client_server_channel("profile")
+      .client("tcp://10.0.10.15:7101");
 });
 ```
 
@@ -90,23 +75,18 @@ app.use_zlink([](auto &zlink) {
 
 ## 3. Handler 등록
 
-handler는 `app.handlers()` 아래 typed registry로 등록한다.
+handler는 `options.handlers()` 아래 typed registry로 등록한다. handler 타입은
+`request_type`, `reply_type`, `topic_name`, `handle(...)`로 메시지 계약을 설명한다.
 
 ```cpp
-app.services()
-  .add_transient<user_handler_t>();
-
-app.handlers()
-  .request<get_user_request_t, get_user_reply_t, user_handler_t>(
-    "api",
-    "GetUserRequest",
-    &user_handler_t::get_user);
-
-app.handlers()
-  .send<refresh_profile_cache_t, cache_handler_t>(
-    "api",
-    "RefreshProfileCacheCommand",
-    &cache_handler_t::refresh);
+app.add_zlink_framework([](auto &options) {
+    options.client_server_channel("api")
+      .server("tcp://0.0.0.0:7100")
+      .handler_group("api");
+    options.handlers()
+      .add<get_user_handler_t>("api")
+      .add<refresh_profile_cache_handler_t>("api");
+});
 ```
 
 기본 packet key는 payload 타입 이름에서 얻는다. 별도 이름이 필요하면
@@ -168,3 +148,34 @@ request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `s
 
 local handler 없이 outbound client만 쓰는 host도 가능해야 한다.
 이 경우 local server capability는 열지 않고 outbound client capability만 만든다.
+
+## 6. 회귀 테스트
+
+channel messaging 회귀 테스트는 `.NET` framework의 channel 동작과 같은 의미를 C++ 표면으로
+고정한다. C++에서는 callback submit과 coroutine submit을 모두 제공하지만, 완료 결과와 오류
+의미는 같아야 한다.
+
+필수 항목:
+
+- client/server request가 typed request DTO를 전달하고 typed reply DTO를 받는다.
+- handler가 없으면 caller는 handler not found 계열 error를 받고 runtime은 계속 동작한다.
+- request timeout은 callback submit과 coroutine submit에서 같은 error kind로 돌아온다.
+- payload decode failure와 reply serialization failure는 server log, monitoring event,
+  caller failure result에 모두 반영된다.
+- send/event는 reply 없이 handler dispatch만 수행하고, handler exception은 runtime을 죽이지
+  않는다.
+- pub/sub은 단일 subscriber, 여러 subscriber, topic mismatch, unsubscribe, subscriber
+  disconnect를 모두 검증한다.
+- slow subscriber나 disconnected subscriber가 publisher와 다른 subscriber를 같이 실패시키지
+  않는다.
+- pending request limit과 outbound queue limit을 넘으면 `request_rejected` 계열 결과를
+  반환한다.
+- manual connection과 Discovery connection을 같은 capability에 섞으면 startup validation이
+  실패한다.
+- route channel은 routing id 선택, routed request/reply, route handler not found, ambiguous
+  route validation을 검증한다.
+- shutdown 중 pending request는 drain 정책에 따라 완료되거나 shutdown error로 닫히며,
+  shutdown 이후 새 submit은 실패한다.
+
+CTest label은 `framework-zlink-channel`을 사용한다. 전체 zlink 회귀 묶음에서는
+`framework-zlink` label에도 포함한다.

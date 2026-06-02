@@ -33,7 +33,7 @@ surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리�
 
 | 기존 초안 표현 | 새 framework 기준 |
 |----------------|-------------------|
-| `app_t` builder chain 직접 조립 | `app_t::create()` 후 `services()`, `handlers()`, `use_zlink()`로 구성 |
+| `app_t` builder chain 직접 조립 | `app_t::create()` 후 `add_zlink_framework(...)`의 options builder로 구성 |
 | raw request/send/event handler class | `handler_registry_t`의 typed member function 등록 |
 | channel client 직접 주입 | `message_bus_t`, `request_client_t`, `publisher_t` DI 주입 |
 | event publisher 전용 타입 | `publisher_t::publish(channel, topic, event)` |
@@ -43,30 +43,26 @@ surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리�
 | session actor relay용 route mesh channel | `stream.attach_actor_gateway(...)`와 `session_actor_t::relay(...)` |
 | raw timer callback | `spot_context_t::add_timer(...)`와 `timer_tick_t` metadata |
 
-handler owner는 service collection에 등록된 타입이어야 한다. 등록되지 않은 owner를
-framework가 암묵적으로 생성하지 않는다. 이 규칙은 handler lifecycle과 shutdown 중
-resolve 금지 같은 host 정책을 한곳에서 닫기 위해 필요하다.
+handler owner는 `options.handlers().add<THandler>(...)`로 등록한 타입이어야 한다.
+생성자 주입이 필요하면 handler 타입의 `dependency_types`에 의존 타입을 적는다. 이 규칙은
+handler lifecycle과 shutdown 중 resolve 금지 같은 host 정책을 한곳에서 닫기 위해 필요하다.
 
 ## 3. Handler 등록 기준
 
-일반 사용자는 raw `message_t` handler class를 상속하지 않고, typed payload와 member
-function pointer를 등록한다.
+일반 사용자는 raw `message_t` handler class를 상속하지 않고, typed payload를 받는
+handler 타입만 등록한다. topic 이름과 payload 타입은 handler type alias와 `topic_name`
+상수에서 얻는다.
 
 ```cpp
-app.services()
-  .add_transient<order_handler_t>();
-
-app.handlers()
-  .subscribe<order_created_t, order_handler_t>(
-    "orders",
-    "orders.created",
-    &order_handler_t::on_created);
-
-app.handlers()
-  .request<get_order_status_t, order_status_reply_t, order_handler_t>(
-    "orders",
-    "orders.status",
-    &order_handler_t::get_status);
+app.add_zlink_framework([](auto &options) {
+    options.codecs().add_json();
+    options.client_server_channel("orders")
+      .server("tcp://0.0.0.0:7001")
+      .handler_group("orders-api");
+    options.handlers()
+      .add<order_created_handler_t>("orders-api")
+      .add<get_order_status_handler_t>("orders-api");
+});
 ```
 
 raw payload가 필요한 경우에만 `send_raw(...)` 같은 고급 extension을 사용한다. STREAM은
@@ -78,18 +74,13 @@ request handler는 `TReply`를 바로 반환하거나 `task_t<TReply>`를 반환
 request/relay를 기다려야 하면 blocking wait를 쓰지 않고 `co_await call.submit()`을
 사용한다.
 
-CPU-bound 또는 blocking 가능성이 있는 handler는 framework core의 offload 실행 정책을
-명시한다. 일반 handler 등록 표면은 그대로 유지하고, 실행 정책만 option으로 바꾼다.
+CPU-bound 또는 blocking 가능성이 있는 handler는 framework handler coroutine executor에서
+실행한다. `options.handlers().add<THandler>(...)`는 기본적으로 offload 실행 정책을 적용한다.
+사용자가 host factory에서 handler마다 실행 정책을 반복해서 쓰게 만들지 않는다.
 
 ```cpp
-app.handlers()
-  .request<match_request_t, match_reply_t, match_handler_t>(
-    "match",
-    "match.allocate",
-    &match_handler_t::allocate,
-    zlink::framework::handler_options_t{
-      .execution = zlink::framework::handler_execution_t::offload,
-    });
+options.handlers()
+  .add<match_handler_t>("match-api");
 ```
 
 ## 4. Messaging 주입 기준
@@ -132,29 +123,19 @@ publisher.publish(
 
 ## 5. Host 구성 기준
 
-runtime 구성은 `use_zlink(...)` 하나로 들어간다. channel 연결 설정은 channel 전체가
-아니라 capability builder에 둔다.
+runtime 구성은 `add_zlink_framework(...)` 하나로 들어간다. channel 연결 설정은 core
+capability builder를 직접 노출하지 않고, framework options의 channel builder가 필요한
+부분만 받는다.
 
 ```cpp
-app.use_zlink([](auto &zlink) {
-    zlink.node("order-node")
-      .discovery([](auto &discovery) {
-          discovery.connect_registry("tcp://registry:5551");
-      })
-      .channel("orders", [](auto &channel) {
-          channel.enable_server([](auto &server) {
-              server.bind("tcp://0.0.0.0:7001");
-          });
-          channel.enable_client([](auto &client) {
-              client.use_discovery();
-          });
-          channel.enable_publisher([](auto &publisher) {
-              publisher.bind("tcp://0.0.0.0:7002");
-          });
-          channel.enable_subscriber([](auto &subscriber) {
-              subscriber.use_discovery();
-          });
-      });
+app.add_zlink_framework([](auto &options) {
+    options.discovery().add("tcp://registry:5551");
+    options.client_server_channel("orders")
+      .server("tcp://0.0.0.0:7001")
+      .client()
+      .handler_group("orders-api");
+    options.publisher_channel("orders.events")
+      .bind("tcp://0.0.0.0:7002");
 });
 ```
 
@@ -167,24 +148,19 @@ app.use_zlink([](auto &zlink) {
 framework builder와 `spot_context_t`로 감싸서 제공한다.
 
 ```cpp
-app.use_zlink([](auto &zlink) {
-    zlink.node("stage-node")
-      .channel("game.stage", [](auto &channel) {
-          channel.enable_publisher();
-          channel.enable_subscriber([](auto &subscriber) {
-              subscriber.use_discovery();
-          });
-      })
-      .spot_node("stage-spot-node", [](auto &spot_node) {
-          spot_node.bind("tcp://0.0.0.0:9000");
-          spot_node.enable_actor_gateway();
-          spot_node.use_discovery("game.stage");
-          spot_node.attach_channel_client("profile");
-          spot_node.attach_publisher("game.stage");
-          spot_node.add_entry_spot<player_entry_spot_t>();
-          spot_node.add_actor_factory<player_actor_factory_t>("player");
-          spot_node.add_spot<stage_spot_t>("stage");
-      });
+app.add_zlink_framework([](auto &options) {
+    options.publisher_channel("game.stage")
+      .bind("tcp://0.0.0.0:7001");
+    options.client_server_channel("profile")
+      .client();
+    options.spot_mesh("game.stage")
+      .node("stage-spot-node")
+      .bind("tcp://0.0.0.0:9000")
+      .enable_actor_gateway()
+      .attach_channel_client("profile")
+      .add_entry_spot<player_entry_spot_t>()
+      .add_actor_factory<player_actor_factory_t>("player")
+      .add_spot<stage_spot_t>("stage");
 });
 ```
 

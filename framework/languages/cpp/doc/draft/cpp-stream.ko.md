@@ -141,28 +141,19 @@ serializer를 선택하는 방식은 core public 표면에 넣지 않는다.
 
 ## 3. Host 등록
 
-STREAM endpoint와 packet session은 `use_zlink(...)`와 `app.handlers()`에서 구성한다.
+STREAM endpoint와 packet session은 `add_zlink_framework(...)` 안의 options builder에서
+구성한다. packet 처리는 `packet_stream_session_t` 구현체의 `on_packet(...)`에서 담당한다.
 
 ```cpp
-app.use_zlink([](auto &zlink) {
-    zlink.node("stream-node")
-      .spot_node("session-actors", [](auto &spot_node) {
-          spot_node.bind("tcp://0.0.0.0:7101");
-          spot_node.enable_actor_gateway();
-      })
-      .stream("route-stream", [](auto &stream) {
-          stream.bind("tcp://0.0.0.0:9200");
-          stream.packet_session("route");
-          stream.attach_actor_gateway("session-actors");
-      });
+app.add_zlink_framework([](auto &options) {
+    options.spot_node("session-actors")
+      .bind("tcp://0.0.0.0:7101")
+      .enable_actor_gateway();
+    options.stream_node("route-stream")
+      .bind("tcp://0.0.0.0:9200")
+      .packet_session("route")
+      .attach_actor_gateway("session-actors");
 });
-
-app.handlers()
-  .packet_stream(
-    "route-stream",
-    [](auto &stream, const auto &header, const auto &payload) {
-        handle_route_packet(stream, header, payload);
-    });
 ```
 
 ## 4. Dispatch 기준
@@ -180,3 +171,28 @@ app.handlers()
   않고, attach된 ActorGateway와 `session_actor_t::relay(...)`를 사용한다.
 - session callback 동안 받은 `payload`는 framework가 빌려준 값이므로 relay 호출자가
   해제하거나 move로 소비하지 않는다.
+
+## 5. 회귀 테스트
+
+STREAM 회귀 테스트는 `.NET` framework의 packet session 동작과 같은 의미를 C++ 표면으로
+고정한다. raw byte stream 성공 여부만 보지 않고 header validation, session lifecycle,
+write backpressure, ActorGateway attach 경계를 함께 검증한다.
+
+필수 항목:
+
+- stream endpoint는 app host lifecycle에 묶여 bind/start/stop된다.
+- `on_connected`, `on_packet`, `on_disconnected`, `on_error` callback은 같은 session 안에서
+  직렬로 호출된다.
+- valid packet은 `stream_header_t`와 payload로 handler에 전달된다.
+- invalid header, unsupported codec, malformed metadata는 application handler에 전달되지
+  않고 error log와 monitoring event를 남긴다.
+- `stream_t::write_packet(...)`은 submit 전에는 실행되지 않고, submit 후 backpressure와
+  completion result를 반환한다.
+- pending write 중 disconnect가 발생하면 caller는 disconnected 계열 error를 받는다.
+- session-scoped service는 disconnect cleanup 뒤 해제된다.
+- session callback에서 받은 payload는 relay 후에도 framework ownership 규칙을 깨지 않는다.
+- `attach_actor_gateway(...)`가 설정된 stream은 route mesh channel을 만들지 않고
+  ActorGateway relay 경로를 사용한다.
+- shutdown 중 새 session accept를 멈추고 기존 session cleanup을 완료한다.
+
+CTest label은 `framework-zlink-stream`을 사용한다.

@@ -103,13 +103,27 @@ target_include_directories(zlink_framework PUBLIC
 target_include_directories(zlink_framework PRIVATE
   ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 target_link_libraries(zlink_framework PUBLIC zlink::cpp)
-find_package(Boost REQUIRED)
-if(Boost_INCLUDE_DIRS)
+find_package(Boost QUIET)
+if(Boost_FOUND AND Boost_INCLUDE_DIRS)
   target_include_directories(zlink_framework PRIVATE ${Boost_INCLUDE_DIRS})
-elseif(Boost_INCLUDE_DIR)
+elseif(Boost_FOUND AND Boost_INCLUDE_DIR)
   target_include_directories(zlink_framework PRIVATE ${Boost_INCLUDE_DIR})
+elseif(EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/core/external/boost/boost/asio.hpp")
+  target_include_directories(zlink_framework PRIVATE
+    "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/core/external/boost")
+else()
+  message(FATAL_ERROR
+    "Boost headers were not found. Install Boost, configure with vcpkg, "
+    "or make sure core/external/boost exists in the repository checkout.")
 endif()
-find_package(nlohmann_json REQUIRED)
+find_package(nlohmann_json QUIET)
+if(NOT nlohmann_json_FOUND)
+  FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  FetchContent_MakeAvailable(nlohmann_json)
+endif()
 target_include_directories(zlink_framework PUBLIC
   $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/codecs/zlink-codec-json/include>)
 target_link_libraries(zlink_framework PUBLIC nlohmann_json::nlohmann_json)
@@ -423,7 +437,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   add_zlink_framework_test(
     test_cpp_framework_app_host
     tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp
-    "framework-unit")
+    "framework-unit;framework-host;framework-config;framework-http")
   add_zlink_framework_test(
     test_cpp_framework_DI_scope
     tests/Zlink.Framework.UnitTests/test_cpp_framework_di.cpp
@@ -443,7 +457,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   add_zlink_framework_test(
     test_cpp_framework_channel_messaging
     tests/Zlink.Framework.UnitTests/test_cpp_framework_channel_messaging.cpp
-    "framework-integration;framework-regression;channel")
+    "framework-integration;framework-regression;framework-zlink;framework-zlink-channel;channel")
   add_zlink_framework_test(
     test_cpp_framework_backpressure_reliability
     tests/Zlink.Framework.UnitTests/test_cpp_framework_backpressure_reliability.cpp
@@ -451,27 +465,27 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   add_zlink_framework_test(
     test_cpp_framework_spot_runtime
     tests/Zlink.Framework.UnitTests/test_cpp_framework_spot_runtime.cpp
-    "framework-integration;framework-regression;spot")
+    "framework-integration;framework-regression;framework-zlink;framework-zlink-spot;spot")
   add_zlink_framework_test(
     test_cpp_framework_spot_timer
     tests/Zlink.Framework.UnitTests/test_cpp_framework_spot_timer.cpp
-    "framework-unit;framework-integration;framework-regression;timer")
+    "framework-unit;framework-integration;framework-regression;framework-zlink;framework-zlink-spot;timer")
   add_zlink_framework_test(
     test_cpp_framework_stream_framework
     tests/Zlink.Framework.UnitTests/test_cpp_framework_stream_framework.cpp
-    "framework-integration;framework-regression;stream")
+    "framework-integration;framework-regression;framework-zlink;framework-zlink-stream;stream")
   add_zlink_framework_test(
     test_cpp_framework_ActorGateway_actor_session_relay
     tests/Zlink.Framework.UnitTests/test_cpp_framework_actor_gateway.cpp
-    "framework-integration;framework-regression;ActorGateway;actor")
+    "framework-integration;framework-regression;framework-zlink;framework-zlink-actor-gateway;ActorGateway;actor")
   add_zlink_framework_test(
     test_cpp_framework_registry_topology
     tests/Zlink.Framework.UnitTests/test_cpp_framework_registry_topology.cpp
-    "framework-integration;framework-regression;registry")
+    "framework-integration;framework-regression;framework-zlink;framework-zlink-registry;registry")
   add_zlink_framework_test(
     test_cpp_framework_monitoring
     tests/Zlink.Framework.UnitTests/test_cpp_framework_monitoring.cpp
-    "framework-unit;framework-integration;monitoring")
+    "framework-unit;framework-integration;framework-observability;monitoring")
   add_zlink_framework_test(
     test_cpp_framework_execution
     tests/Zlink.Framework.UnitTests/test_cpp_framework_execution.cpp
@@ -528,7 +542,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   add_zlink_connector_test(
     test_cpp_stream_connector
     tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp
-    "connector-unit;connector-integration")
+    "connector-unit;connector-integration;connector-e2e")
   target_link_libraries(test_cpp_stream_connector PRIVATE
     zlink::stream_connector_codecs)
 
@@ -618,18 +632,18 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   set_tests_properties(
     sample_smoke_sample_cpp_framework_bingo_client
     PROPERTIES
-      LABELS "framework-sample-bingo;framework-sample-client;framework-sample-smoke;framework-sample-client-e2e")
+      LABELS "framework-sample-bingo;framework-sample-client;framework-sample-smoke;framework-sample-e2e;framework-sample-client-e2e")
   set_tests_properties(
     sample_smoke_sample_cpp_framework_tictactoe_client
     PROPERTIES
-      LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-smoke;framework-sample-client-e2e")
+      LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-smoke;framework-sample-e2e;framework-sample-client-e2e")
 
   add_test(
     NAME sample_e2e_log_sample_cpp_framework_bingo_client
     COMMAND ${CMAKE_COMMAND}
       -D SAMPLE_EXECUTABLE=$<TARGET_FILE:sample_cpp_framework_bingo_client>
       -D SAMPLE_LOG=${CMAKE_CURRENT_BINARY_DIR}/sample-e2e-logs/bingo-server.log
-      -D "EXPECTED_CONTAINS=bind |recv AuthenticateReq|recv MatchBingoReq|recv StartBingoGameReq|recv LeaveRoomReq|reply AuthenticateReq|reply MatchBingoReq|push PlayerJoinedNotify|push BingoGameStartedNotify|push BingoNumberDrawnNotify|push BingoGameEndedNotify"
+      -D "EXPECTED_CONTAINS=bind |monitor stream ready|recv AuthenticateReq|recv MatchBingoReq|recv StartBingoGameReq|recv LeaveRoomReq|reply AuthenticateReq|reply MatchBingoReq|push PlayerJoinedNotify|push BingoGameStartedNotify|push BingoNumberDrawnNotify|push BingoGameEndedNotify|actor relay player-1|disconnect client|shutdown server"
       -D MIN_RECV=10
       -D MIN_REPLY=9
       -D MIN_PUSH=8
@@ -637,7 +651,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   set_tests_properties(
     sample_e2e_log_sample_cpp_framework_bingo_client
     PROPERTIES
-      LABELS "framework-sample-bingo;framework-sample-client;framework-sample-client-e2e;framework-sample-log;connector-e2e"
+      LABELS "framework-sample-bingo;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;connector-e2e"
       TIMEOUT 30)
 
   add_test(
@@ -645,7 +659,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     COMMAND ${CMAKE_COMMAND}
       -D SAMPLE_EXECUTABLE=$<TARGET_FILE:sample_cpp_framework_tictactoe_client>
       -D SAMPLE_LOG=${CMAKE_CURRENT_BINARY_DIR}/sample-e2e-logs/tictactoe-server.log
-      -D "EXPECTED_CONTAINS=bind |recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply AuthenticateReq|reply PlaceMarkReq|push TurnChangedNotify"
+      -D "EXPECTED_CONTAINS=bind |monitor stream ready|recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply AuthenticateReq|reply PlaceMarkReq|push TurnChangedNotify|actor relay player-x|disconnect client|shutdown server"
       -D MIN_RECV=9
       -D MIN_REPLY=9
       -D MIN_PUSH=9
@@ -653,6 +667,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   set_tests_properties(
     sample_e2e_log_sample_cpp_framework_tictactoe_client
     PROPERTIES
-      LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-client-e2e;framework-sample-log;connector-e2e"
+      LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;connector-e2e"
       TIMEOUT 30)
 endif()

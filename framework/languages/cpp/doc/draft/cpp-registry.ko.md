@@ -76,3 +76,29 @@ session actor relay는 Registry actor route lookup을 hot path로 사용하지 �
 이 분리는 session relay가 Registry 조회 지연이나 sample 전용 저장소에 묶이지 않게
 하기 위한 것이다. Registry는 Spot remote address와 topology 관찰을 돕고, session
 packet relay는 ActorGateway 경로가 맡는다.
+
+## 4. 회귀 테스트
+
+Registry 회귀 테스트는 `.NET` framework의 discovery와 route lookup 보조 기능을 C++
+framework 표면으로 고정한다. Registry는 일반 request hot path의 필수 저장소가 아니므로,
+lookup 성공뿐 아니라 잘못된 의존이 생기지 않는지도 검증한다.
+
+필수 항목:
+
+- embedded registry bootstrap이 app host lifecycle에 맞춰 start/stop된다.
+- `use_registry_spot_remote_addresses(...)`는 Spot discovery 설정이 있을 때만 허용된다.
+- Registry Spot 기본값과 custom Spot resolver를 동시에 등록하면 startup validation이
+  실패한다.
+- route channel이 둘 이상이면 resolver channel 이름을 명시하지 않은 구성이 실패한다.
+- Spot RID directory와 remote address snapshot이 바뀌면 resolver cache가 stale address를
+  계속 사용하지 않는다.
+- duplicate resolver rejection과 ambiguous route channel validation은 `.NET`과 같은 의미의
+  framework error로 보고한다.
+- remote registry query client는 topology snapshot을 반환하고, query timeout과 disconnected
+  상태를 caller result와 monitoring event로 남긴다.
+- ActorGateway session binding은 Registry row나 sample-only metadata store에 저장하지
+  않는다.
+- Registry snapshot diff event는 설정된 interval을 따르고 file log와 monitoring event에
+  같은 correlation id를 남긴다.
+
+CTest label은 `framework-zlink-registry`를 사용한다.

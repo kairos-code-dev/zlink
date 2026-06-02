@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md)
+[C++ 묶음](./README.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
 
 # Draft -- ZLink Framework C++ Policy
 
@@ -20,34 +20,48 @@
 
 ## 1. 포지셔닝
 
-`ZLink Framework for C++`는 `HTTP` 또는 `Web` 프레임워크가 아니다. 이 프레임워크는
-실시간 메시징 애플리케이션을 만들기 위한 standalone host/runtime이다.
+`ZLink Framework for C++`는 `.NET Core`/`ASP.NET Core`, `Spring Boot`, `NestJS`와 같은
+포지션의 application framework다. 주 벤치마크는 `.NET Core`다. host, DI, configuration,
+logging, lifecycle은 `.NET Generic Host` 계열을 기준으로 삼고, HTTP routing과 handler
+표면은 `ASP.NET Core Minimal API`를 기준으로 삼는다. `Spring Boot`와 `NestJS`는
+module/provider/filter/configuration 같은 기능 축을 확인하는 보조 기준으로만 사용한다.
+이 프레임워크는 HTTP hosting, DI container, configuration, zlink messaging, logging,
+observability, validation, hosted service를 한 app model 안에서 제공한다.
 
 중심에 두는 개념은 아래와 같다.
 
 - 메시지 송수신
+- HTTP hosting
+- DI container
+- configuration
 - actor와 비슷하지만 네트워크와 라우팅을 먼저 고려하는 `SPOT`
 - STREAM session과 actor를 ActorGateway로 묶는 session relay
 - 여러 프로세스와 여러 노드를 전제로 하는 distributed runtime
 - channel, topic, routing id 기반 routing
 - 애플리케이션 lifecycle
+- ASP.NET Core Minimal API의 `MapGet`, `MapPost`, `MapPut`, `MapDelete`에 대응하는 HTTP hosting
+- middleware와 filter
+- logging과 observability
+- validation과 error handling
+- security/auth extension point
+- scheduling과 background work
 - handler 실행과 오류 격리
 - backpressure와 graceful shutdown
 
-따라서 `C++` 프레임워크는 `HTTP route`나 `controller`를 중심으로 설명하지 않는다.
-사용자가 raw socket, runtime event 처리, service discovery 배선을 직접 다루지 않고,
-서비스 등록, handler 등록, 메시징 client, spot, hosted service 같은 상위 개념으로
-분산 메시징 앱을 구성하게 만드는 것이 목표다.
+따라서 `C++` 프레임워크는 HTTP, zlink messaging, timer, hosted service가 따로 노는
+라이브러리 묶음이면 안 된다. 사용자는 raw socket, runtime event 처리, service discovery
+배선을 직접 다루지 않고, DI, configuration, handler, middleware/filter, logging, health,
+zlink runtime을 같은 application host 안에서 구성해야 한다.
 
 `C++` 문서는 기존 framework adapter 공통 초안을 그대로 반복하지 않는다. 공통 초안의
 상호작용 모델, 메시지 모델, channel topology, naming policy를 반영한 뒤, `C++`
 언어 특성에 맞는 세부 구현 사항을 이 문서와 하위 문서에서 구체화한다.
 
-특히 `C++`에는 `.NET`, `Java`, `Node.js`처럼 기준으로 삼을 메이저 애플리케이션
-프레임워크가 없으므로, 다른 언어보다 app, host, DI, handler registry, CAPI dispatch
-연결, lifecycle, ActorGateway attach 같은 기반 프레임워크 설계 내용을 더 많이 담는다.
-이 내용은 공통 정책을 대체하는 것이 아니라, 공통 정책에서 다루지 않은 `C++`
-standalone framework 세부 스펙을 채우기 위한 것이다.
+특히 `C++`에는 `ASP.NET Core`, `Spring Boot`, `NestJS`처럼 널리 쓰이는 단일 표준
+application framework가 없으므로, zlink framework가 app, host, DI, HTTP hosting,
+configuration, handler registry, CAPI dispatch 연결, lifecycle, ActorGateway attach 같은
+기반 프레임워크 설계 내용을 직접 제공한다. 이 내용은 공통 정책을 대체하는 것이 아니라,
+공통 정책에서 다루지 않은 `C++` application framework 세부 스펙을 채우기 위한 것이다.
 
 이 문서와 기존 `C++` 세부 초안의 bootstrap API가 다르면, 구현 전 정렬 작업에서 기존
 세부 초안을 이 문서의 `C++` 상세 방향에 맞춰 갱신한다. 다만 공통 framework 정책과
@@ -58,61 +72,72 @@ standalone framework 세부 스펙을 채우기 위한 것이다.
 `C++20` coroutine, callback submit, RAII, CMake/package 구조에 맞게 투영한다. 기능
 범위는 축소하지 않고, 언어별 표현과 구현 순서만 다르게 둔다.
 
+최종 완료 기준은 아래 세 가지다.
+
+- `.NET` framework와 동일한 구조를 가진다.
+- `.NET` framework와 동일한 기능을 제공한다.
+- `.NET` framework와 동일 수준의 사용성을 제공한다.
+
+따라서 구현 중 어떤 기능을 나중 goal에서 처리하더라도 최종 스펙 범위에서 빠진 것으로
+해석하지 않는다. 구현 순서가 다를 뿐이며, 최종 산출물은 `.NET` framework의 구조, 기능,
+사용성 기준을 C++ 방식으로 모두 만족해야 한다.
+
 ## 2. 사용자 목표 표면
 
-최종 사용자는 아래 수준의 코드로 메시징 앱을 시작할 수 있어야 한다.
+최종 사용자는 아래 수준의 코드로 HTTP와 zlink messaging을 함께 쓰는 application을 시작할 수
+있어야 한다.
 
 ```cpp
-struct order_created_t {
+struct create_order_http_req_t {
     std::string order_id;
 };
 
-class order_service_t {
-public:
-    void save_created(const order_created_t &event);
+struct create_order_http_res_t {
+    std::string order_id;
+    std::string state;
 };
 
-class order_handler_t final {
+class create_order_http_handler_t final {
 public:
-    explicit order_handler_t(order_service_t &service);
-    void on_created(const order_created_t &event);
+    using request_type = create_order_http_req_t;
+    using reply_type = create_order_http_res_t;
+    using dependency_types = zlink::framework::dependency_list_t<
+      zlink::framework::request_client_t>;
+
+    explicit create_order_http_handler_t(
+      zlink::framework::request_client_t &client);
+
+    zlink::framework::task_t<create_order_http_res_t> handle(
+      const create_order_http_req_t &request);
 };
 
 int main(int argc, char **argv)
 {
     auto app = zlink::framework::app_t::create();
 
-    app.use_zlink([](auto &zlink) {
-        zlink.node("order-node")
-          .discovery([](auto &discovery) {
-              discovery.connect_registry("tcp://registry:5551");
-          })
-          .channel("orders", [](auto &channel) {
-              channel.enable_server([](auto &server) {
-                  server.bind("tcp://0.0.0.0:7001");
-              });
-              channel.enable_subscriber([](auto &subscriber) {
-                  subscriber.use_discovery();
-              });
-          })
-          .spot_node("orders-spot", [](auto &spot_node) {
-              spot_node.bind("tcp://0.0.0.0:7101");
-              spot_node.use_discovery("orders");
-          });
+    app.config()
+      .load_json("appsettings.json")
+      .load_env("ORDER_")
+      .load_cli(argc, argv);
+
+    app.add_zlink_framework([](auto &options) {
+        options.discovery().add("tcp://registry:5551");
+        options.codecs().add_json();
+        options.services()
+          .add_singleton<order_repository_t>()
+          .add_scoped<order_service_t, order_repository_t>();
+
+        options.http()
+          .listen("http://0.0.0.0:8080")
+          .map_post<create_order_http_handler_t>("/orders");
+
+        options.client_server_channel("orders")
+          .server("tcp://0.0.0.0:7001")
+          .handler_group("orders-api");
+
+        options.handlers()
+          .add<create_order_handler_t>("orders-api");
     });
-
-    app.services()
-      .add_singleton<order_service_t>()
-      .add_factory<order_handler_t>([](auto &services) {
-          return std::make_unique<order_handler_t>(
-            services.template get_required<order_service_t>());
-      });
-
-    app.handlers()
-      .subscribe<order_created_t, order_handler_t>(
-        "orders",
-        "orders.created",
-        &order_handler_t::on_created);
 
     return app.run(argc, argv);
 }
@@ -122,10 +147,10 @@ int main(int argc, char **argv)
 
 - app 생성의 canonical 시작점은 `app_t::create()`다. 기존 세부 초안에 남아 있던
   이전 bootstrap 표기는 이 정책에 맞춰 정리한다.
-- handler 등록은 member function pointer와 handler owner 타입을 함께 받는 형태를
-  기본으로 한다. handler owner는 DI container에서 resolve한다.
-- handler owner 타입이 명시되지 않는 축약형은 handler가 이미 service로 등록된 경우에만
-  허용한다.
+- HTTP route, zlink channel handler, hosted service는 같은 DI, configuration, logging,
+  validation, error handling 모델을 사용한다.
+- handler 등록은 handler type을 명시하는 형태를 기본으로 한다. handler owner는 DI container에서
+  resolve한다.
 - `run`은 process exit code로 사용할 수 있는 `int`를 반환한다.
 - typed payload 이름에서 packet key를 얻는 규칙을 serializer 정책과 맞춘다.
 
@@ -446,6 +471,8 @@ dependency를 public API 밖에 숨기는 것이다. 사용자는 `zlink::framew
 |------|----------------|------|----------|------|
 | runtime / I/O | zlink C++ binding | 내부 binding | 필수 | framework runtime의 유일한 I/O 기반이다. `context_t`, socket, discovery, spot, stream binding을 내부 substrate로 사용한다. |
 | coroutine executor | `Boost.Asio` | <https://www.boost.org/doc/libs/latest/doc/html/boost_asio/overview/composition/cpp20_coroutines.html> | framework 내부 구현 | `boost::asio::awaitable`, `co_spawn`, `thread_pool`을 handler coroutine executor 내부에서 사용한다. public API에는 `boost::asio::awaitable`이나 executor 타입을 노출하지 않는다. |
+| HTTP hosting | `Boost.Beast` | <https://www.boost.org/doc/libs/latest/libs/beast/> | framework 내부 구현 | ASP.NET Core Minimal API의 route handler에 대응하는 HTTP/HTTPS 요청을 처리한다. public API에는 `boost::beast` request, response, socket 타입을 노출하지 않는다. |
+| HTTP TLS | OpenSSL / Boost.Asio SSL | framework 내부 구현 | framework 내부 구현 | HTTPS endpoint의 TLS handshake와 certificate/private key loading에 사용한다. public API에는 SSL context, SSL stream, OpenSSL 타입을 노출하지 않는다. |
 | JSON | `nlohmann/json` | <https://github.com/nlohmann/json> | framework 필수 | 설정 파일, framework JSON serializer, 테스트 fixture의 기준 JSON 구현으로 고정한다. binding base dependency는 아니다. |
 | logging backend | `spdlog` | <https://github.com/gabime/spdlog> | 내부 구현 | public logging API 뒤에 숨긴다. 사용자는 `app.logging()`만 사용하고 `spdlog` logger나 sink 타입을 직접 받지 않는다. |
 | string formatting | `{fmt}` | <https://github.com/fmtlib/fmt> | 내부 구현 | 내부 메시지 formatting에 사용한다. public API에는 `fmt::format_string` 같은 타입을 노출하지 않는다. |
@@ -471,7 +498,8 @@ dependency로만 추가한다. GoogleTest, GoogleMock, benchmark 라이브러리
 | 영역 | 라이브러리 | 제외 이유 |
 |------|------------|----------|
 | async I/O public surface | `Boost.Asio` 타입 직접 노출 | 사용자는 `task_t<T>`와 zlink call object만 보아야 한다. `boost::asio::awaitable`, executor, strand는 runtime 내부 구현으로 숨긴다. |
-| WebSocket 구현 | `Boost.Beast` | HTTP/Web framework로 오해될 수 있고, zlink transport 또는 integration 경계에서 다루는 편이 맞다. |
+| HTTP/Web public surface | `Boost.Beast`, SSL 타입 직접 노출 | HTTP/HTTPS hosting 구현에는 Beast와 SSL backend를 쓰지만, 사용자는 `options.http().listen(...).tls(...).map_get/map_post/map_put/map_delete<THandler>(...)`만 보아야 한다. |
+| WebSocket 구현 | `Boost.Beast` WebSocket 표면 | WebSocket transport는 STREAM Connector 또는 zlink transport 경계에서 다룬다. HTTP hosting의 route handler 기능과 섞지 않는다. |
 | event loop | `libuv` | zlink poller와 별도 event loop를 함께 운영하면 shutdown, timer, readiness 의미가 복잡해진다. |
 | DI | `Boost.Ext.DI` | framework 자체 container로 lifetime과 host shutdown 규칙을 직접 닫는다. |
 
@@ -503,9 +531,9 @@ DI container는 framework lifecycle과 handler wiring에 필요한 기능을 제
 필수 public 등록 표면은 아래 정도로 제한한다.
 
 ```cpp
-app.services().add_singleton<order_service_t>();
-app.services().add_transient<order_handler_t>();
-app.services().add_factory<clock_t>([](service_provider_t &services) {
+options.services().add_singleton<order_service_t>();
+options.services().add_transient<order_handler_t>();
+options.services().add_factory<clock_t>([](service_provider_t &services) {
     return std::make_unique<system_clock_t>();
 });
 ```
@@ -572,25 +600,24 @@ actor 객체와 `actor_context_t`에 명확히 둔다.
 
 runtime integration은 zlink core와 framework 사이의 가장 중요한 경계다.
 
-권장 표면은 아래와 같다.
+권장 표면은 `add_zlink_framework(...)` 안의 options builder다. 이 표면은 `.NET`
+framework의 host factory처럼 필요한 runtime 구성만 선언하게 만들고, core builder의
+세부 람다 조립은 framework 내부로 숨긴다.
 
 ```cpp
-app.use_zlink([](auto &zlink) {
-    zlink.node("order-node")
-      .discovery([](auto &discovery) {
-          discovery.connect_registry("tcp://registry:5551");
-      })
-      .channel("orders", [](auto &channel) {
-          channel.enable_server([](auto &server) {
-              server.bind("tcp://0.0.0.0:7001");
-          });
-      })
-      .spot_node("orders-spot", [](auto &spot_node) {
-          spot_node.bind("tcp://0.0.0.0:7101");
-          spot_node.use_discovery("orders");
-      });
+app.add_zlink_framework([](auto &options) {
+    options.discovery().add("tcp://registry:5551");
+    options.client_server_channel("orders")
+      .server("tcp://0.0.0.0:7001")
+      .handler_group("orders-api");
+    options.spot_mesh("orders")
+      .node("orders-spot")
+      .bind("tcp://0.0.0.0:7101");
 });
 ```
+
+`app.advanced().use_zlink(...)`는 framework extension이나 contract test에서만 사용한다.
+일반 application code와 공식 샘플은 이 낮은 수준 표면을 사용하지 않는다.
 
 이 계층은 아래 책임을 가진다.
 
@@ -738,31 +765,34 @@ handler framework는 사용자가 메시지를 함수 수준에서 처리하게 
 권장 등록 표면은 아래와 같다.
 
 ```cpp
-app.handlers()
-  .subscribe<order_created_t, order_handler_t>(
-    "orders",
-    "orders.created",
-    &order_handler_t::on_created);
+options.handlers()
+  .add<order_created_handler_t>("orders-api");
 
-app.handlers()
-  .request<get_order_status_t, order_status_reply_t, order_handler_t>(
-    "orders",
-    "orders.status",
-    &order_handler_t::get_status);
+options.handlers()
+  .add<get_order_status_handler_t>("orders-api");
 ```
 
-handler owner 타입을 명확히 드러내야 할 때는 아래 형태를 기본으로 본다.
+handler owner 타입은 handler class의 type alias와 `handle(...)` 함수로 드러낸다.
+일반 등록 표면에서 channel과 topic을 반복하지 않아야 host factory가 `.NET` 샘플처럼
+간결하게 유지된다.
 
 ```cpp
-app.handlers()
-  .subscribe<order_created_t, order_handler_t>(
-    "orders",
-    "orders.created",
-    &order_handler_t::on_created);
+class get_order_status_handler_t {
+public:
+    using request_type = get_order_status_t;
+    using reply_type = order_status_reply_t;
+    using dependency_types = dependency_list_t<order_service_t>;
+    static constexpr const char *topic_name = "GetOrderStatus";
+
+    explicit get_order_status_handler_t(order_service_t &orders);
+    task_t<order_status_reply_t> handle(const get_order_status_t &request);
+};
 ```
 
-이 경우 `order_handler_t`는 service collection에 등록되어 있어야 한다. 등록되지 않은
-handler owner를 framework가 암묵적으로 생성하지 않는다.
+이 경우 handler 타입은 `options.handlers().add<THandler>(...)`에서 service collection에
+자동 등록된다. 생성자 주입이 필요하면 `dependency_types`에 의존 타입을 적는다. framework가
+없는 타입을 임의로 추측해 생성하지 않도록, 생성자 후보와 의존성은 handler 타입 안에서
+명시해야 한다.
 
 내부 책임은 아래와 같다.
 
@@ -1123,7 +1153,8 @@ transport별 framing이나 raw stream read loop를 직접 다루지 않게 하�
 ### 4.16 Transport Abstraction
 
 transport abstraction은 zlink core가 제공하는 transport 의미를 framework 표면으로
-감싼다. framework core는 별도 network I/O stack을 추가하지 않는다.
+감싼다. HTTP hosting은 외부 HTTP client가 zlink runtime으로 들어오는 host 기능이고,
+zlink channel/STREAM transport와는 별도 개념이다.
 
 지원 범위는 zlink core 기준으로 아래와 같다.
 
@@ -1134,8 +1165,9 @@ transport abstraction은 zlink core가 제공하는 transport 의미를 framewor
 
 프레임워크는 transport를 숨긴다. 사용자는 endpoint URI와 보안 옵션을 설정할 수
 있지만, handler와 client 코드는 transport가 TCP인지 TLS인지 알 필요가 없어야 한다.
-WebSocket 계열 transport가 필요해도 `Boost.Beast`를 framework core에 붙이는 방식이
-아니라 zlink transport 또는 별도 integration 경계에서 다룬다.
+HTTP hosting은 `options.http().map_get/map_post/map_put/map_delete<THandler>(...)`로 다룬다. WebSocket 계열
+transport가 필요하면 HTTP hosting과 섞지 않고 STREAM Connector 또는 zlink transport
+경계에서 다룬다.
 PGM은 `C++` framework 지원 범위에 넣지 않는다.
 
 ### 4.17 Reliability Features
@@ -1176,10 +1208,11 @@ integration layer는 core framework 위의 확장 계층으로 둔다.
 
 - Kafka bridge
 - gRPC bridge
-- HTTP gateway
 
 구현 순서는 bridge보다 framework core를 먼저 안정화한다. 외부 시스템 bridge는
 messaging core, serialization, backpressure, observability가 정리된 뒤 추가한다.
+ASP.NET Core Minimal API의 route handler에 대응하는 HTTP hosting은 extension이 아니라
+framework core hosting 기능이다. Kafka, gRPC 같은 외부 system bridge와 같은 분류로 두지 않는다.
 
 ## 5. 구현 순서
 
@@ -1197,8 +1230,9 @@ messaging core, serialization, backpressure, observability가 정리된 뒤 추�
 | 7 | SPOT timer | tick metadata, overrun policy, timer failure monitoring |
 | 8 | actor/session relay | ActorGateway attach, session bind, relay, bound session push |
 | 9 | hosted services | start/stop lifecycle과 shutdown 연동 |
-| 10 | logging / health | runtime 오류, handler 예외, runtime 상태를 볼 수 있는 core 표면 |
-| 11 | graceful shutdown | drain, offload executor stop, socket close 순서 검증 |
+| 10 | HTTP hosting | ASP.NET Core Minimal API route handler 대응, JSON DTO binding, DI handler, status mapping |
+| 11 | logging / health | runtime 오류, handler 예외, runtime 상태를 볼 수 있는 core 표면 |
+| 12 | graceful shutdown | drain, offload executor stop, socket close 순서 검증 |
 
 core framework 밖의 확장 영역은 아래와 같다. 이 목록은 기능을 제외한다는 뜻이
 아니라, framework 본체의 필수 계약과 분리해도 사용자 모델이 깨지지 않는 영역을
@@ -1209,7 +1243,6 @@ core framework 밖의 확장 영역은 아래와 같다. 이 목록은 기능을
 - Kafka bridge
 - advanced retry
 - FlatBuffers integration
-- HTTP gateway
 - YAML configuration
 
 ## 5.1 Packaging / Public Header
@@ -1273,11 +1306,12 @@ coroutine submit, handler error mapping, user Spot, timer, monitoring, graceful 
 CPU-bound handler offload를 검토한다. packet 이름과 handler 흐름은 `.NET` Bingo 샘플과
 같은 수준으로 유지한다.
 
-`TicTacToe`는 STREAM과 ActorGateway 기반 actor/session relay 샘플이다. `.NET` 쪽에서
-session relay 구조로 검증한 TicTacToe와 같은 개념을 따르되, C++ 샘플 이름에는 별도
-접미사를 붙이지 않는다. 이 샘플은 STREAM endpoint, ActorGateway attach, Entry Spot,
-actor factory, session actor bind, relay, bound session push, actor join/move,
-disconnect cleanup을 검토한다.
+`TicTacToe`는 HTTP 시작 요청, STREAM, ActorGateway 기반 actor/session relay 샘플이다.
+`.NET` TicTacToe처럼 client가 먼저 HTTP `POST /games`를 호출하고, API handler가 Play
+channel로 `CreateGameReq`를 보낸 뒤, 응답의 STREAM endpoint에 connector가 연결된다.
+이 샘플은 HTTP hosting, STREAM endpoint, ActorGateway attach, Entry Spot, actor factory,
+session actor bind, relay, bound session push, actor join/move, disconnect cleanup을
+검토한다.
 
 권장 샘플 배치는 아래와 같다.
 
@@ -1383,16 +1417,20 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 |----|-----------|
 | app/host | startup, signal stop, graceful shutdown, shutdown 중 submit result |
 | DI/module | singleton/scoped/transient/factory, duplicate registration, shutdown 중 resolve 금지 |
-| channel messaging | request/reply, send, pub/sub, timeout, disconnected, queue full |
+| channel request/reply | typed request, typed reply, timeout, handler not found, payload decode failure, reply serialization failure, disconnected, queue full |
+| channel send/event | no-reply send, command dispatch, event dispatch, handler exception masking, topic mismatch, no subscriber |
+| pub/sub | single subscriber, multiple subscriber, unsubscribe, publisher close, subscriber disconnect, slow subscriber backpressure |
+| route channel | manual route connection, discovery route connection, routing id selection, routed request/reply, route handler not found, ambiguous route validation |
 | async surface | `submit(callback)`, `co_await submit()`, completion path, blocking wait 금지 |
 | handler execution | 기본 handler 실행, CPU-bound handler offload, concurrency 제한, shutdown drain |
-| STREAM | packet header validation, session ordering, write backpressure, close cleanup |
-| SPOT | spot create/destroy, publish, request_to, core SPOT dispatch ordering |
+| STREAM | connected/disconnected/error callback, packet header validation, session ordering, write backpressure, close cleanup, invalid packet drop |
+| SPOT | spot create/destroy, join/leave, actor handler, publish, request_to, route resolver, core SPOT dispatch ordering |
 | timer | CAPI timer projection, fire_count 기반 skipped tick 계산, tick metadata, overrun policy, exception event, cancel, Entry Spot timer non-global serialization |
-| ActorGateway relay | bind local/remote actor, relay request/reply, bound session push, disconnect cleanup |
-| Registry | Spot remote address lookup, duplicate resolver rejection, ambiguous route channel validation |
-| monitoring | typed event payload, immediate failure event, snapshot diff interval |
-| samples | `Bingo`, `TicTacToe` sample smoke |
+| ActorGateway relay | bind local/remote actor, relay request/reply, bound session push, actor generation round-trip, duplicate/type mismatch/missing actor, disconnect cleanup |
+| Registry | Spot remote address lookup, discovery update, duplicate resolver rejection, ambiguous route channel validation, stale address cleanup |
+| codec/serializer | raw message, JSON DTO, optional codec target on/off, serializer missing startup failure, invalid payload runtime failure |
+| monitoring/logging | typed event payload, immediate failure event, snapshot diff interval, correlation id, server/client file log |
+| samples | `Bingo`, `TicTacToe` sample smoke/e2e, zlink message log assertion |
 
 회귀 테스트 레이어는 아래처럼 나눈다.
 
@@ -1403,13 +1441,26 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 | integration | GoogleTest fixture와 core runtime을 사용해 channel, STREAM, SPOT, ActorGateway 흐름을 inproc/tcp로 검증 | `framework-integration` |
 | sample smoke | 문서 샘플과 실제 sample executable이 실행 가능한지 확인 | `framework-sample-smoke` |
 | regression | GoogleTest로 과거 버그와 `.NET` parity 항목을 명시적으로 고정 | `framework-regression` |
+| zlink channel | channel request/reply, send/event, pub/sub, route channel을 `.NET`과 같은 error/lifecycle 의미로 검증 | `framework-zlink-channel` |
+| zlink SPOT | Spot lifecycle, actor handler, timer, ordering, remote address resolution을 검증 | `framework-zlink-spot` |
+| zlink STREAM | packet session, header validation, write backpressure, session cleanup을 검증 | `framework-zlink-stream` |
+| zlink ActorGateway | session bind, relay, bound session push, actor failure mapping을 검증 | `framework-zlink-actor-gateway` |
+| zlink Registry | discovery/registry lookup, resolver validation, stale address cleanup을 검증 | `framework-zlink-registry` |
 
 필수 회귀 항목은 아래와 같다.
 
 - `submit(callback)`과 `co_await submit()`이 같은 timeout/error kind를 반환한다.
 - shutdown 이후 새 submit은 `shutdown`으로 실패한다.
 - pending queue 한도 초과는 `request_rejected`로 실패한다.
+- channel handler가 없으면 request는 `handler_not_found` 계열 error로 닫히고 runtime은 계속
+  동작한다.
 - handler decode 실패는 `payload_decode_failed`로 보고하고 runtime을 죽이지 않는다.
+- reply serialization 실패는 caller에게 실패 result로 돌아가고 server-side log와 monitoring
+  event를 남긴다.
+- pub/sub에서 subscriber 하나가 느리거나 끊겨도 publisher와 다른 subscriber를 같이 죽이지
+  않는다.
+- manual connection과 Discovery connection을 같은 capability에 섞으면 startup validation이
+  실패한다.
 - scoped service는 handler dispatch, stream session, Spot activation 경계를 넘지 않는다.
 - STREAM header validation 실패는 application handler로 전달되지 않는다.
 - STREAM session callback은 같은 session 안에서 직렬로 처리된다.
@@ -1419,6 +1470,10 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
   `actor_type_mismatch`로 보고한다.
 - user Spot timer는 core SPOT dispatch ordering을 따르고, Entry Spot timer는 Entry Spot
   전체를 전역 직렬화하지 않는다.
+- Registry remote address snapshot이 바뀌면 route resolver는 stale address를 계속 사용하지
+  않는다.
+- `Bingo`와 `TicTacToe` e2e는 client 결과뿐 아니라 server file log에서 request, reply,
+  push, disconnect, shutdown 이벤트를 확인한다.
 - CPU-bound handler를 `handler_execution_t::offload`로 등록하면 offload executor drain이
   graceful shutdown에 포함된다.
 

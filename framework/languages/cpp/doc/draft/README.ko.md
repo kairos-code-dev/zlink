@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[Framework Adapter 정책](../../../../doc/spec/README.ko.md) | [구현 계획](./cpp-framework-implementation-plan.ko.md) | [POSD 기록](./cpp-framework-posd-refactoring-log.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./cpp-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [ActorGateway relay](./actor-gateway-session-relay.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [STREAM decisions](./stream-open-items.ko.md) | [STREAM Connector](./cpp-stream-connector.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
+[Framework Adapter 정책](../../../../doc/spec/README.ko.md) | [구현 계획](./cpp-framework-implementation-plan.ko.md) | [POSD 기록](./cpp-framework-posd-refactoring-log.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./cpp-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [ActorGateway relay](./actor-gateway-session-relay.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [STREAM decisions](./stream-open-items.ko.md) | [STREAM Connector](./cpp-stream-connector.ko.md) | [HTTP Client](./cpp-http-client.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
 
 # Draft -- ZLink Framework For C++
 
@@ -183,6 +183,7 @@ host/runtime 표면으로만 구체화한다.
 | [cpp-framework-implementation-plan.ko.md](./cpp-framework-implementation-plan.ko.md) | draft 전체 내용을 goal 단위로 빠짐없이 구현하기 위한 실행 계획 |
 | [cpp-framework-posd-refactoring-log.ko.md](./cpp-framework-posd-refactoring-log.ko.md) | 각 goal에서 수행한 POSD 기반 리팩토링 기록 |
 | [cpp-framework-policy.ko.md](./cpp-framework-policy.ko.md) | `C++` standalone host/runtime의 제품 포지셔닝, 권장 모듈 구조, 라이브러리 정책, 구현 순서 |
+| [cpp-application-framework.ko.md](./cpp-application-framework.ko.md) | `.NET Core`를 주 벤치마크로 하고 `ASP.NET Core Minimal API`를 HTTP 기준으로 삼는 application framework 기능 축과 회귀 테스트 매트릭스 |
 | [cpp-framework-interfaces.ko.md](./cpp-framework-interfaces.ko.md) | C++ binding public API를 기반으로 한 framework public interface 설계 |
 | [handler-interfaces.ko.md](./handler-interfaces.ko.md) | 기존 `C++` adapter 세부 인터페이스 초안. standalone framework 정책에 맞춰 정렬해야 할 대상 |
 
@@ -196,6 +197,7 @@ host/runtime 표면으로만 구체화한다.
 | [cpp-stream.ko.md](./cpp-stream.ko.md) | framework Header 기반 packet stream과 handler 통합 |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM 결정 기록 |
 | [cpp-stream-connector.ko.md](./cpp-stream-connector.ko.md) | C++용 Stream Connector 별도 라이브러리와 배포 정책 |
+| [cpp-http-hosting.ko.md](./cpp-http-hosting.ko.md) | ASP.NET Core Minimal API에 대응하는 HTTP hosting과 zlink request 연동 |
 | [cpp-monitoring.ko.md](./cpp-monitoring.ko.md) | runtime monitoring 등록, typed event, 운영 샘플 |
 | [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | stage 같은 상위 모델을 `SPOT` 위에 감쌀 때의 조건 |
 | [cpp-registry.ko.md](./cpp-registry.ko.md) | embedded registry, query, topology 조회 |
@@ -215,11 +217,12 @@ C++ framework의 전반 동작 리뷰 샘플은 `Bingo`와 `TicTacToe` 두 개�
 | 샘플 | 역할 | 포함 범위 |
 |------|------|----------|
 | `Bingo` | channel/SPOT/session stream 기반 기본 실시간 메시징 샘플 | `Shared/Configuration`, `Shared/Contracts`, `Client`, `Server/Registry/*HostFactory`, `Server/Api/*HostFactory`, `Server/Api/Handlers`, `Server/Play/*HostFactory`, `Server/Play/Actors`, `Server/Play/Handlers`, `Server/Play/BingoRoomSpots`, `Server/Play/BingoRoomSpots/Handlers`, `Server/Play/EntrySpot`, `Server/Play/EntrySpot/Handlers`, `Server/Session/*HostFactory` 파일 분리, `.NET` Bingo packet 이름과 handler 흐름 |
-| `TicTacToe` | STREAM과 ActorGateway 기반 actor/session relay 샘플 | `Shared/Actors`, `Shared/Configuration`, `Shared/Contracts`, `Client`, `Server/Registry/*HostFactory`, `Server/Api/*HostFactory`, `Server/Api/Handlers`, `Server/Play/*HostFactory`, `Server/Play/EntrySpot`, `Server/Play/EntrySpot/Handlers`, `Server/Play/GameSpots`, `Server/Play/GameSpots/Handlers`, `Server/Play/Handlers`, `Server/Session/*HostFactory` 파일 분리, `.NET` TicTacToe packet 이름과 handler 흐름 |
+| `TicTacToe` | HTTP 시작 요청, STREAM, ActorGateway 기반 actor/session relay 샘플 | `Shared/Actors`, `Shared/Configuration`, `Shared/Contracts`, `Client`, `Server/Registry/*HostFactory`, `Server/Api/*HostFactory`, `Server/Api/Handlers`, `Server/Play/*HostFactory`, `Server/Play/EntrySpot`, `Server/Play/EntrySpot/Handlers`, `Server/Play/GameSpots`, `Server/Play/GameSpots/Handlers`, `Server/Play/Handlers`, `Server/Session/*HostFactory` 파일 분리, `.NET` TicTacToe의 `POST /games` HTTP 시작 흐름, packet 이름과 handler 흐름 |
 
-`Bingo`도 `.NET` Bingo와 같은 session stream 역할을 포함한다. `TicTacToe`는 STREAM과
-ActorGateway 기반 actor/session relay를 더 직접적으로 검토하는 기준 샘플이며, 별도
-접미사는 붙이지 않는다.
+`Bingo`도 `.NET` Bingo와 같은 session stream 역할을 포함한다. `TicTacToe`는 `.NET`
+TicTacToe처럼 HTTP `POST /games`로 게임을 만들고, 응답으로 받은 STREAM endpoint에
+connector가 붙는 흐름을 포함한다. STREAM과 ActorGateway 기반 actor/session relay를 더
+직접적으로 검토하는 기준 샘플이며, 별도 접미사는 붙이지 않는다.
 
 ## 3. 핵심 방향
 

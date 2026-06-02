@@ -2,6 +2,7 @@
 
 #include <zlink/framework.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <optional>
@@ -307,8 +308,10 @@ main ()
   options.discovery ().add ("tcp://127.0.0.1:9102");
   options.client_server_channel ("api-channel")
     .server ("tcp://127.0.0.1:9103")
+    .client ()
     .handler_group ("api");
   options.client_server_channel ("play-channel").client ();
+  options.apply ();
 
   const auto *descriptor = handlers.find (
     "api-channel",
@@ -342,12 +345,22 @@ main ()
     return 10;
   }
   const auto channels = zlink.channels ();
+  const auto api_channel = std::find_if (
+    channels.begin (), channels.end (), [](const auto &channel) {
+      return channel.name == "api-channel";
+    });
+  const auto play_channel = std::find_if (
+    channels.begin (), channels.end (), [](const auto &channel) {
+      return channel.name == "play-channel";
+    });
   if (channels.size () != 2 ||
-      channels[0].name != "api-channel" ||
-      !channels[0].server.enabled ||
-      channels[0].server.bind_endpoints.front () != "tcp://127.0.0.1:9103" ||
-      channels[1].name != "play-channel" ||
-      !channels[1].client.enabled) {
+      api_channel == channels.end () ||
+      play_channel == channels.end () ||
+      !api_channel->server.enabled ||
+      api_channel->server.bind_endpoints.front () !=
+        "tcp://127.0.0.1:9103" ||
+      !api_channel->client.enabled ||
+      !play_channel->client.enabled) {
     return 11;
   }
 

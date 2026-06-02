@@ -16,33 +16,21 @@
 ```cpp
 auto app = zlink::framework::app_t::create();
 
-app.use_zlink([](auto &zlink) {
-    zlink.node("stage-node")
-      .discovery([](auto &discovery) {
-          discovery.connect_registry("tcp://registry1:5551");
-      })
-      .channel("game.stage", [](auto &channel) {
-          channel.enable_publisher();
-          channel.enable_subscriber([](auto &subscriber) {
-              subscriber.use_discovery();
-          });
-      })
-      .channel("profile", [](auto &channel) {
-          channel.enable_client([](auto &client) {
-              client.use_discovery();
-          });
-      })
-      .spot_node("stage-spot-node", [](auto &spot_node) {
-          spot_node.bind("tcp://0.0.0.0:9000");
-          spot_node.enable_actor_gateway();
-          spot_node.use_discovery("game.stage");
-          spot_node.attach_channel_client("profile");
-          spot_node.attach_publisher("game.stage");
-          spot_node.add_entry_spot<player_entry_spot_t>();
-          spot_node.add_actor_factory<player_actor_factory_t>("player");
-          spot_node.add_spot<stage_spot_t>("stage");
-          spot_node.add_spot<room_spot_t>("room");
-      });
+app.add_zlink_framework([](auto &options) {
+    options.discovery().add("tcp://registry1:5551");
+    options.publisher_channel("game.stage")
+      .bind("tcp://0.0.0.0:7001");
+    options.client_server_channel("profile")
+      .client();
+    options.spot_mesh("game.stage")
+      .node("stage-spot-node")
+      .bind("tcp://0.0.0.0:9000")
+      .enable_actor_gateway()
+      .attach_channel_client("profile")
+      .add_entry_spot<player_entry_spot_t>()
+      .add_actor_factory<player_actor_factory_t>("player")
+      .add_spot<stage_spot_t>("stage")
+      .add_spot<room_spot_t>("room");
 });
 ```
 

@@ -26,9 +26,10 @@ ActorGateway frame codec이나 내부 relay packet 종류를 public API로 노�
 
 ## 1. 방향
 
-`C++`에는 `ASP.NET Core` 같은 기존 application framework가 없다. 따라서 session
-server, actor host, DI, handler dispatch, ActorGateway attach는 `ZLink Framework for
-C++`가 직접 제공해야 한다.
+`ZLink Framework for C++`는 `ASP.NET Core`처럼 application host, DI, HTTP hosting,
+handler dispatch, zlink channel runtime을 한 곳에서 제공하는 framework가 된다. 따라서
+session server, actor host, DI, handler dispatch, ActorGateway attach도 이 host 모델
+안에서 직접 제공해야 한다.
 
 핵심 결정은 다음과 같다.
 
@@ -45,18 +46,15 @@ C++`가 직접 제공해야 한다.
 Session 서버는 STREAM endpoint와 relay 대상 SpotNode를 함께 구성한다.
 
 ```cpp
-app.use_zlink([](auto &zlink) {
-    zlink.node("session-node")
-      .spot_node("session-actors", [](auto &spot_node) {
-          spot_node.bind("tcp://0.0.0.0:7101");
-          spot_node.enable_actor_gateway();
-          spot_node.add_entry_spot<player_entry_spot_t>();
-      })
-      .stream("client-stream", [](auto &stream) {
-          stream.bind("tcp://0.0.0.0:9200");
-          stream.packet_session("client");
-          stream.attach_actor_gateway("session-actors");
-      });
+app.add_zlink_framework([](auto &options) {
+    options.spot_node("session-actors")
+      .bind("tcp://0.0.0.0:7101")
+      .enable_actor_gateway()
+      .add_entry_spot<player_entry_spot_t>();
+    options.stream_node("client-stream")
+      .bind("tcp://0.0.0.0:9200")
+      .packet_session("client")
+      .attach_actor_gateway("session-actors");
 });
 ```
 
@@ -172,3 +170,30 @@ private:
 | session class 생성 방식 | `packet_stream_session_t` 구현체는 DI에서 resolve한다. handler registry callback은 낮은 수준 확장 표면으로만 둔다 |
 | remote ActorGateway locator codec | wire metadata는 runtime 내부 frame으로 숨기고, application에는 `actor_ref_t`와 `session_actor_t`만 보인다 |
 | actor factory duplicate 정책 | 같은 actor id 중복은 `actor_already_exists`, actor id/type 불일치는 `actor_type_mismatch`로 보고한다 |
+
+## 8. 회귀 테스트
+
+ActorGateway 회귀 테스트는 `.NET` framework의 session relay와 같은 기능 기대값을 C++
+framework에서 고정한다. 특히 session actor relay가 application route mesh channel로
+우회되지 않는지 확인해야 한다.
+
+필수 항목:
+
+- STREAM session이 local SpotNode에 `attach_actor_gateway(...)`로 붙은 뒤 actor bind를
+  수행한다.
+- `actor_ref_t`의 `node_rid`, `actor_id`, `generation`은 bind, relay, push round-trip에서
+  유지된다.
+- local actor relay request/reply와 remote actor relay request/reply가 같은 public
+  `session_actor_t::relay(...)` 표면으로 동작한다.
+- actor에서 client로 push할 때 `bound_session_t`를 사용하고, disconnected session에는
+  disconnected 계열 error를 반환한다.
+- duplicate actor는 `actor_already_exists`, actor type mismatch는 `actor_type_mismatch`,
+  missing actor는 actor not found 계열 error로 보고한다.
+- relay timeout은 caller result, monitoring event, server-side file log에 같은 correlation
+  id로 남는다.
+- session disconnect cleanup 후 bound session push와 relay는 실패해야 한다.
+- Registry는 Spot remote address 조회에는 쓰지만 session actor binding store로 쓰지 않는다.
+- TicTacToe e2e는 HTTP `POST /games`, Play channel request, STREAM connector connect,
+  ActorGateway bind, player move relay, game ended push를 server/client log로 검증한다.
+
+CTest label은 `framework-zlink-actor-gateway`를 사용한다.

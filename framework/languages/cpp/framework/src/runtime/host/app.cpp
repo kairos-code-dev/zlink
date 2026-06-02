@@ -82,16 +82,25 @@ app_t::create ()
   return {};
 }
 
+app_advanced_t::app_advanced_t (app_t &app) noexcept : _app (&app) {}
+
 service_collection_t &
-app_t::services () noexcept
+app_advanced_t::services () noexcept
 {
-  return _state->services;
+  return _app->_services ();
 }
 
 handler_registry_t &
-app_t::handlers () noexcept
+app_advanced_t::handlers () noexcept
 {
-  return _state->handlers;
+  return _app->_handlers ();
+}
+
+app_t &
+app_advanced_t::use_zlink (std::function<void (zlink_builder_t &)> configure)
+{
+  configure (_app->_zlink_builder ());
+  return *_app;
 }
 
 config_builder_t &
@@ -112,6 +121,24 @@ app_t::monitoring () noexcept
   return _state->monitoring;
 }
 
+app_advanced_t
+app_t::advanced () noexcept
+{
+  return app_advanced_t (*this);
+}
+
+service_collection_t &
+app_t::_services () noexcept
+{
+  return _state->services;
+}
+
+handler_registry_t &
+app_t::_handlers () noexcept
+{
+  return _state->handlers;
+}
+
 zlink_builder_t &
 app_t::_zlink_builder () noexcept
 {
@@ -122,13 +149,6 @@ serializer_registry_t &
 app_t::_serializers () noexcept
 {
   return _state->serializers;
-}
-
-app_t &
-app_t::use_zlink (std::function<void (zlink_builder_t &)> configure)
-{
-  configure (_state->zlink);
-  return *this;
 }
 
 app_t &
@@ -146,6 +166,7 @@ app_t::add_zlink_framework (
   if (configure) {
     configure (options);
   }
+  options.apply ();
   runtime::configure_handler_coroutine_executor (
     options.handler_coroutine_workers ());
   return *this;

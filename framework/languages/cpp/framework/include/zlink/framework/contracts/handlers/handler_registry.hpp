@@ -3,6 +3,7 @@
 
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
+#include <zlink/framework/contracts/detail/handler_invocation.hpp>
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
@@ -22,22 +23,6 @@ namespace zlink::framework
 namespace detail
 {
 class handler_registry_state_t;
-
-inline result_t<zlink::message_t>
-current_exception_to_message_result ()
-{
-  try {
-    throw;
-  } catch (const framework_exception_t &error) {
-    return result_t<zlink::message_t>::failure (error.kind (),
-                                                error.what (),
-                                                error.is_retriable ());
-  } catch (...) {
-    return result_t<zlink::message_t>::failure (
-      framework_error_kind_t::request_failed,
-      "handler threw an exception");
-  }
-}
 } // namespace detail
 
 enum class handler_kind_t
@@ -122,7 +107,8 @@ public:
               serializers.get<TReply> ().serialize (reply)));
         } catch (...) {
           return task_t<zlink::message_t> (
-            detail::current_exception_to_message_result ());
+            detail::current_exception_to_message_result (
+              "handler threw an exception"));
         }
       });
   }
@@ -154,7 +140,8 @@ public:
           co_return result_t<zlink::message_t>::success (
             serializers.get<TReply> ().serialize (reply));
         } catch (...) {
-          co_return detail::current_exception_to_message_result ();
+          co_return detail::current_exception_to_message_result (
+            "handler threw an exception");
         }
       });
   }
@@ -309,7 +296,8 @@ private:
             result_t<zlink::message_t>::success (zlink::message_t {}));
         } catch (...) {
           return task_t<zlink::message_t> (
-            detail::current_exception_to_message_result ());
+            detail::current_exception_to_message_result (
+              "handler threw an exception"));
         }
       });
   }
@@ -341,7 +329,8 @@ private:
           co_await (owner.*method) (payload);
           co_return result_t<zlink::message_t>::success (zlink::message_t {});
         } catch (...) {
-          co_return detail::current_exception_to_message_result ();
+          co_return detail::current_exception_to_message_result (
+            "handler threw an exception");
         }
       });
   }

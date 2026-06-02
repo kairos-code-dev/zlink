@@ -39,34 +39,17 @@ private:
 
 auto app = zlink::framework::app_t::create();
 
-app.services()
-  .add_factory<user_handler_t>([](auto &services) {
-      return std::make_unique<user_handler_t>(
-        services.template get_required<zlink::framework::request_client_t>());
-  });
-
-app.use_zlink([](auto &zlink) {
-    zlink.node("api-node")
-      .discovery([](auto &discovery) {
-          discovery.connect_registry("tcp://registry:5551");
-      })
-      .channel("api", [](auto &channel) {
-          channel.enable_server([](auto &server) {
-              server.bind("tcp://0.0.0.0:7100");
-          });
-      })
-      .channel("account", [](auto &channel) {
-          channel.enable_client([](auto &client) {
-              client.use_discovery();
-          });
-      });
+app.add_zlink_framework([](auto &options) {
+    options.discovery().add("tcp://registry:5551");
+    options.codecs().add_json();
+    options.client_server_channel("api")
+      .server("tcp://0.0.0.0:7100")
+      .handler_group("api");
+    options.client_server_channel("account")
+      .client();
+    options.handlers()
+      .add<user_handler_t>("api");
 });
-
-app.handlers()
-  .request<get_user_request_t, get_user_reply_t, user_handler_t>(
-    "api",
-    "GetUserRequest",
-    &user_handler_t::get_user);
 ```
 
 ## 2. Outbound-only
@@ -74,16 +57,10 @@ app.handlers()
 ```cpp
 auto app = zlink::framework::app_t::create();
 
-app.use_zlink([](auto &zlink) {
-    zlink.node("profile-client")
-      .discovery([](auto &discovery) {
-          discovery.connect_registry("tcp://registry:5551");
-      })
-      .channel("profile", [](auto &channel) {
-          channel.enable_client([](auto &client) {
-              client.use_discovery();
-          });
-      });
+app.add_zlink_framework([](auto &options) {
+    options.discovery().add("tcp://registry:5551");
+    options.client_server_channel("profile")
+      .client();
 });
 ```
 
@@ -92,14 +69,9 @@ app.use_zlink([](auto &zlink) {
 ## 3. 수동 연결
 
 ```cpp
-app.use_zlink([](auto &zlink) {
-    zlink.node("profile-client")
-      .channel("profile", [](auto &channel) {
-          channel.enable_client([](auto &client) {
-              client.connect("tcp://10.0.10.15:7101");
-              client.connect("tcp://10.0.10.17:7101");
-          });
-      });
+app.add_zlink_framework([](auto &options) {
+    options.client_server_channel("profile")
+      .client("tcp://10.0.10.15:7101");
 });
 ```
 

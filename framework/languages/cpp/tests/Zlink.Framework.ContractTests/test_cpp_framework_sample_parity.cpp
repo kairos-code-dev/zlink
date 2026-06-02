@@ -208,6 +208,7 @@ TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
     "app.use_zlink",
     "app.services ()",
     "app.handlers ()",
+    "app.advanced ()",
     "service_collection_t",
     "serializer_registry_t",
     "handler_registry_t",

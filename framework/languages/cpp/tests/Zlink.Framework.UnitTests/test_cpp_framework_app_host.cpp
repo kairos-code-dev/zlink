@@ -15,6 +15,28 @@
 static_assert (std::is_same_v<decltype (zlink::framework::app_t::create ()),
                               zlink::framework::app_t>);
 
+namespace
+{
+
+struct create_game_http_handler_t
+{
+  struct request_type
+  {
+  };
+
+  struct reply_type
+  {
+  };
+
+  reply_type handle (const request_type &) { return {}; }
+};
+
+struct correlation_middleware_t
+{
+};
+
+} // namespace
+
 int
 main ()
 {
@@ -47,8 +69,17 @@ main ()
   logger.trace ("filtered");
 
   bool zlink_configured = false;
-  app.use_zlink ([&](zlink::framework::zlink_builder_t &) {
+  app.advanced ().use_zlink ([&](zlink::framework::zlink_builder_t &) {
     zlink_configured = true;
+  });
+  app.add_zlink_framework ([](zlink::framework::zlink_framework_options_t &options) {
+    options.http ()
+      .listen ("http://127.0.0.1:18080")
+      .map_post<create_game_http_handler_t> ("/games")
+      .map_get<create_game_http_handler_t> ("/games/{id}")
+      .map_put<create_game_http_handler_t> ("/games/{id}")
+      .map_delete<create_game_http_handler_t> ("/games/{id}")
+      .use<correlation_middleware_t> ();
   });
 
   const char *argv_raw[] = { "app", "--node=alpha", "--dry-run" };
@@ -108,8 +139,8 @@ main ()
   struct singleton_service_t {
     int value = 7;
   };
-  app.services ().add_singleton<singleton_service_t> ();
-  auto provider = app.services ().build_provider ();
+  app.advanced ().services ().add_singleton<singleton_service_t> ();
+  auto provider = app.advanced ().services ().build_provider ();
   if (provider.get_required<singleton_service_t> ().value != 7) {
     return 8;
   }
@@ -118,6 +149,33 @@ main ()
   if (app.run (1, argv) != 0) {
     return 9;
   }
+
+  bool https_without_tls_rejected = false;
+  try {
+    auto invalid = zlink::framework::app_t::create ();
+    invalid.add_zlink_framework (
+      [](zlink::framework::zlink_framework_options_t &options) {
+        options.http ().listen ("https://127.0.0.1:18443");
+      });
+  } catch (const zlink::framework::framework_exception_t &error) {
+    https_without_tls_rejected =
+      error.kind () ==
+      zlink::framework::framework_error_kind_t::request_protocol_error;
+  }
+  if (!https_without_tls_rejected) {
+    return 12;
+  }
+
+  auto secure = zlink::framework::app_t::create ();
+  secure.add_zlink_framework (
+    [](zlink::framework::zlink_framework_options_t &options) {
+      options.http ()
+        .listen ("https://127.0.0.1:18443")
+        .tls ([](zlink::framework::http_tls_options_builder_t &tls) {
+          tls.certificate_file ("server.crt").private_key_file ("server.key");
+        })
+        .map_post<create_game_http_handler_t> ("/games");
+    });
 
   return 0;
 }

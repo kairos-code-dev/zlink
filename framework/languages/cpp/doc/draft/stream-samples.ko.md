@@ -16,37 +16,37 @@
 ```cpp
 auto app = zlink::framework::app_t::create();
 
-app.use_zlink([](auto &zlink) {
-    zlink.node("route-node")
-      .spot_node("session-actors", [](auto &spot_node) {
-          spot_node.bind("tcp://0.0.0.0:7101");
-          spot_node.enable_actor_gateway();
-      })
-      .stream("route-stream", [](auto &stream) {
-          stream.bind("tcp://0.0.0.0:9200");
-          stream.packet_session("route");
-          stream.attach_actor_gateway("session-actors");
-      });
+app.add_zlink_framework([](auto &options) {
+    options.spot_node("session-actors")
+      .bind("tcp://0.0.0.0:7101")
+      .enable_actor_gateway();
+    options.stream_node("route-stream")
+      .bind("tcp://0.0.0.0:9200")
+      .packet_session("route")
+      .attach_actor_gateway("session-actors");
 });
 ```
 
-## 2. Packet handler
+## 2. Packet session
 
 ```cpp
-app.handlers()
-  .packet_stream(
-    "route-stream",
-    [](zlink::framework::stream_t &stream,
-       const zlink::framework::stream_header_t &header,
-       const zlink::message_t &payload) {
+class route_session_t final : public zlink::framework::packet_stream_session_t {
+public:
+    zlink::framework::result_t<void> on_packet(
+      zlink::framework::stream_t &stream,
+      const zlink::framework::stream_header_t &header,
+      const zlink::message_t &payload) override
+    {
         route_packet_t packet{
-          .session_id = std::string(header.session_id()),
+          .session_id = stream.session_id(),
           .packet_name = std::string(header.packet_name()),
           .payload = decode_route_body(payload),
         };
 
         handle_route_packet(stream, packet);
-    });
+        return zlink::framework::result_t<void>::success();
+    }
+};
 ```
 
 ## 3. Packet reply

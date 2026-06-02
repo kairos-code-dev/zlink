@@ -1083,9 +1083,15 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
 test('framework runtime host initializes registered Entry Spot lifecycle and handlers', async () => {
   const calls = [];
   let registry;
+  class GenericHandler {}
   class PacketHandler {}
   class SubscribeHandler {}
   class ActorPacketHandler {}
+  class ActorJoinedHandler {}
+  class ActorLeftHandler {}
+  class ActorDisconnectedHandler {}
+  class ActorJoinHandler {}
+  class SpotHandler {}
   class PlayerActor {}
   class EntrySpot {
     constructor(context) {
@@ -1093,9 +1099,15 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
     }
     configure() {
       calls.push(`entry:configure:${this.context.spotRid}:${this.context.nodeRid}`);
+      this.context.handlers.addHandler(GenericHandler);
       this.context.handlers.addPacket(PacketHandler, 'entry.packet');
       this.context.handlers.addSubscribe(SubscribeHandler, 'entry.topic');
       this.context.handlers.addActorPacket(ActorPacketHandler, PlayerActor, 'actor.packet');
+      this.context.handlers.addPostActorJoined(ActorJoinedHandler, PlayerActor);
+      this.context.handlers.addActorLeft(ActorLeftHandler, PlayerActor);
+      this.context.handlers.addActorDisconnected(ActorDisconnectedHandler, PlayerActor);
+      this.context.handlers.addActorJoin(ActorJoinHandler, PlayerActor);
+      this.context.handlers.addSpotHandler(SpotHandler);
       registry = this.context.handlers;
     }
     async onInitialize() {
@@ -1200,9 +1212,15 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
   await runtime.stop();
 
   assert.deepEqual(registry.snapshot(), [
+    { kind: 'handler', handlerType: GenericHandler },
     { kind: 'packet', handlerType: PacketHandler, packetName: 'entry.packet' },
     { kind: 'subscribe', handlerType: SubscribeHandler, topic: 'entry.topic' },
-    { kind: 'actorPacket', handlerType: ActorPacketHandler, actorType: PlayerActor, packetName: 'actor.packet' }
+    { kind: 'actorPacket', handlerType: ActorPacketHandler, actorType: PlayerActor, packetName: 'actor.packet' },
+    { kind: 'postActorJoined', handlerType: ActorJoinedHandler, actorType: PlayerActor },
+    { kind: 'actorLeft', handlerType: ActorLeftHandler, actorType: PlayerActor },
+    { kind: 'actorDisconnected', handlerType: ActorDisconnectedHandler, actorType: PlayerActor },
+    { kind: 'actorJoin', handlerType: ActorJoinHandler, actorType: PlayerActor },
+    { kind: 'spotHandler', handlerType: SpotHandler }
   ]);
   assert.deepEqual(calls, [
     'spot:create',

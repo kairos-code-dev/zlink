@@ -102,7 +102,7 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
   );
   await assert.rejects(
     () => spotPublisher.publishSpot('spot-events', 'topic', { ok: true }).packetName('Event').submit(),
-    /Channel runtime is not started/
+    /SPOT publisher runtime is not started/
   );
   await assert.rejects(
     () => boundSessionFactory.create('actor-1').send({ ok: true }).packetName('Push').submit(),
@@ -823,7 +823,10 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
         onSendReady() {},
         requestToChannel() { return true; },
         sendToChannel() { return true; },
-        publish() { return true; },
+        publish(topic, parts) {
+          calls.push(`publisherSpot:publish:${topic}:${JSON.parse(parts[0].toString()).messageName}:${JSON.parse(parts[1].toString()).value}`);
+          return true;
+        },
         sendToSpot() { return true; },
         requestToSpot() { return true; },
         recvActorJoin() {},
@@ -925,6 +928,12 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
   });
 
   await runtime.start();
+  await runtime.spotPublisherTransport.publishSpot(
+    'game.events',
+    'room.events',
+    'GameEvent',
+    { value: 'published' }
+  );
   await runtime.stop();
 
   assert.deepEqual(calls, [
@@ -941,6 +950,7 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     'spot:connectRouterChannelPeer:api:tcp://127.0.0.1:9307',
     'spot:createPublisherSpot',
     'spot:connectPeer:tcp://127.0.0.1:9306',
+    'publisherSpot:publish:room.events:GameEvent:published',
     'publisherSpot:dispose',
     'dealer:dispose',
     'spot:dispose',

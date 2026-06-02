@@ -66,6 +66,10 @@ export interface ZLinkChannelClientTransport {
   publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void>;
 }
 
+export interface ZLinkSpotPublisherClientTransport {
+  publishSpot(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void>;
+}
+
 export interface ZLinkRouteClientTransport {
   send(
     routerChannelId: string,
@@ -986,13 +990,13 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
 export class DefaultZLinkSpotPublisherClient implements ZLinkSpotPublisherClient {
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
-    private readonly transport?: ZLinkChannelClientTransport
+    private readonly transport?: ZLinkSpotPublisherClientTransport
   ) {}
 
   publishSpot<TEvent>(channelName: string, topic: string, event: TEvent): ZLinkPublishCall {
     return new DefaultZLinkPublishCall(
       () => this.requireSpotPublisherChannel(channelName),
-      (packetName, signal) => this.requireTransport().publish(channelName, topic, packetName, event, signal)
+      (packetName, signal) => this.requireTransport().publishSpot(channelName, topic, packetName, event, signal)
     );
   }
 
@@ -1002,7 +1006,7 @@ export class DefaultZLinkSpotPublisherClient implements ZLinkSpotPublisherClient
     }
   }
 
-  private requireTransport(): ZLinkChannelClientTransport {
+  private requireTransport(): ZLinkSpotPublisherClientTransport {
     if (this.transport === undefined) {
       throw new ZLinkConfigurationException('SPOT publisher runtime is not started.');
     }

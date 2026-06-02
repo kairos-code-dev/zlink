@@ -32,9 +32,13 @@ import type {
   ZLinkChannelBackendAdapter,
   ZLinkBackendDiscovery,
   ZLinkBackendContext,
+  ZLinkBackendSpot,
   ZLinkBackendSpotNode
 } from '../backend/contracts';
 import { ZLINK_BACKEND_SPOT_NODE_MODE_ALL } from '../backend/contracts';
+import type { ZLinkSpotPublisherClientTransport } from '../channels';
+import { encodeChannelPublishEnvelopeParts } from '../channels/channel-envelope';
+import { ZLinkAsyncSubmitter } from '../messaging';
 
 export interface ZLinkSpotManagerOptions {
   readonly spotFactories: readonly Type<ZLinkSpot>[];
@@ -54,6 +58,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
 export class ZLinkSpotNodeRuntimeManager {
   private readonly nodes = new Map<string, ZLinkBackendSpotNode>();
   private readonly ownedObjects: ZLinkOwnedBackendObject[] = [];
+  private readonly publisherBundles = new Map<string, ZLinkSpotPublisherBundle>();
 
   constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {}
 
@@ -82,6 +87,10 @@ export class ZLinkSpotNodeRuntimeManager {
     const ownedObjects = [...this.ownedObjects];
     this.nodes.clear();
     this.ownedObjects.length = 0;
+    for (const bundle of this.publisherBundles.values()) {
+      bundle.submitter.dispose();
+    }
+    this.publisherBundles.clear();
     for (const object of ownedObjects.reverse()) {
       await object.dispose();
     }
@@ -149,9 +158,11 @@ export class ZLinkSpotNodeRuntimeManager {
   }
 
   private initializeSpotPublisherClients(node: ZLinkBackendSpotNode, spotNode: ZLinkSpotNodeOptions): void {
-    for (const attached of Object.values(spotNode.attachedSpotPublisherClients ?? {})) {
+    for (const [channelName, attached] of Object.entries(spotNode.attachedSpotPublisherClients ?? {})) {
       const publisher = node.createSpot();
+      const submitter = new ZLinkAsyncSubmitter((handler) => publisher.onSendReady(handler));
       this.ownedObjects.push(publisher);
+      this.publisherBundles.set(channelName, { spot: publisher, submitter });
       for (const endpoint of attached.manualConnections ?? []) {
         node.connectPeer(endpoint);
       }
@@ -177,10 +188,56 @@ export class ZLinkSpotNodeRuntimeManager {
     }
     return ZLinkAutoConnectType.ClientServer;
   }
+
+  publishSpot(
+    channelName: string,
+    topic: string,
+    packetName: string | undefined,
+    event: unknown,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const bundle = this.publisherBundles.get(channelName);
+    if (bundle === undefined) {
+      throw new ZLinkConfigurationException(`SPOT publisher channel '${channelName}' is not started.`);
+    }
+    const parts = encodeChannelPublishEnvelopeParts(
+      channelName,
+      topic,
+      packetName,
+      event
+    ) as readonly Message[];
+    return bundle.submitter.submitCommand(
+      () => bundle.spot.publish(topic, parts, 0),
+      signal
+    );
+  }
 }
 
 interface ZLinkOwnedBackendObject {
   dispose(): Promise<void>;
+}
+
+interface ZLinkSpotPublisherBundle {
+  readonly spot: ZLinkBackendSpot;
+  readonly submitter: ZLinkAsyncSubmitter;
+}
+
+export class ZLinkRuntimeSpotPublisherTransport implements ZLinkSpotPublisherClientTransport {
+  constructor(private readonly manager: () => ZLinkSpotNodeRuntimeManager | undefined) {}
+
+  publishSpot(
+    channelName: string,
+    topic: string,
+    packetName: string | undefined,
+    event: unknown,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const manager = this.manager();
+    if (manager === undefined) {
+      throw new ZLinkConfigurationException('SPOT publisher runtime is not started.');
+    }
+    return manager.publishSpot(channelName, topic, packetName, event, signal);
+  }
 }
 
 interface SpotActivation {

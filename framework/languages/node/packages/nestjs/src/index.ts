@@ -223,7 +223,7 @@ function conditionalClientProviders(registration: ZLinkFrameworkRegistration): P
       provide: ZLINK_SPOT_PUBLISHER_CLIENT,
       inject: [ZLINK_FRAMEWORK_RUNTIME],
       useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
-        new framework.DefaultZLinkSpotPublisherClient(registration, runtime.channelTransport)
+        new framework.DefaultZLinkSpotPublisherClient(registration, runtime.spotPublisherTransport)
     });
   }
 
@@ -270,7 +270,7 @@ function conditionalClientProvidersForAsync(): Provider[] {
         runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
       ) => {
         ensureCapability(framework.hasSpotPublisherClient(registration), ZLINK_SPOT_PUBLISHER_CLIENT);
-        return new framework.DefaultZLinkSpotPublisherClient(registration, runtime.channelTransport);
+        return new framework.DefaultZLinkSpotPublisherClient(registration, runtime.spotPublisherTransport);
       }
     },
     {

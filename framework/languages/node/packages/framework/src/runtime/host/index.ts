@@ -7,7 +7,7 @@ import {
   ZLinkRuntimeRouteTransport
 } from '../channels';
 import { ZLinkFrameworkRuntimeState } from '../execution';
-import { ZLinkSpotNodeRuntimeManager } from '../spots';
+import { ZLinkRuntimeSpotPublisherTransport, ZLinkSpotNodeRuntimeManager } from '../spots';
 import {
   DefaultZLinkBoundSessionFactory,
   ZLinkStreamBindingRuntime,
@@ -34,6 +34,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   private streamRuntime?: ZLinkStreamRuntimeManager;
   readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
   readonly routeTransport = new ZLinkRuntimeRouteTransport(() => this.channelRuntime);
+  readonly spotPublisherTransport = new ZLinkRuntimeSpotPublisherTransport(() => this.spotNodeRuntime);
   readonly streamBindingRuntime = new ZLinkStreamBindingRuntime();
   readonly boundSessionFactory = new DefaultZLinkBoundSessionFactory(this.streamBindingRuntime);
 

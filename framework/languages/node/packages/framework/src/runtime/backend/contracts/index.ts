@@ -1,11 +1,8 @@
 import type {
-  ActorRef,
   ActorRoute,
   Message,
   Received,
   RecvFlagsValue,
-  Registry,
-  RegistryQueryClient,
   RegistryServiceSummaryEntry,
   RegistryServiceSummaryFilter,
   RegistryStatus,
@@ -15,8 +12,6 @@ import type {
   RequestResult,
   RoutingId,
   SendFlagsValue,
-  Spot,
-  SpotNode,
   SpotNodeModeValue,
   SpotNodePeerEntry,
   SpotNodeStatus,
@@ -377,10 +372,3 @@ export interface ZLinkBackendAdapterFactory {
   createRegistryAdapter(): ZLinkRegistryBackendAdapter;
   createMonitoringAdapter(): ZLinkMonitoringBackendAdapter;
 }
-
-export type ZLinkNativeContext = unknown;
-export type ZLinkNativeRegistry = Registry;
-export type ZLinkNativeRegistryQueryClient = RegistryQueryClient;
-export type ZLinkNativeSpotNode = SpotNode;
-export type ZLinkNativeSpot = Spot;
-export type ZLinkNativeActorRef = ActorRef;

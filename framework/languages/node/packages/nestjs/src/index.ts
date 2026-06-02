@@ -1,3 +1,173 @@
-export interface ZLinkModuleOptions {
-  readonly serviceName?: string;
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import type {
+  ZLinkFrameworkRegistration,
+  ZLinkFrameworkRegistrationOptions
+} from '@zlink-systems/framework';
+
+type FrameworkModule = typeof import('@zlink-systems/framework');
+
+const framework = loadFramework();
+
+export type InjectionToken = string | symbol | Function;
+
+export interface Provider<T = unknown> {
+  readonly provide: InjectionToken;
+  readonly useValue?: T;
+  readonly useFactory?: (...args: never[]) => T | Promise<T>;
+  readonly inject?: readonly InjectionToken[];
+}
+
+export interface DynamicModule {
+  readonly module: Function;
+  readonly providers: readonly Provider[];
+  readonly exports: readonly InjectionToken[];
+}
+
+export interface ZLinkModuleAsyncOptions {
+  readonly useFactory: (...args: unknown[]) => ZLinkModuleOptions | Promise<ZLinkModuleOptions>;
+  readonly inject?: readonly InjectionToken[];
+}
+
+export type ZLinkModuleOptions = ZLinkFrameworkRegistrationOptions;
+
+export const ZLINK_FRAMEWORK_REGISTRATION = Symbol.for('@zlink-systems/framework:registration');
+export const ZLINK_FRAMEWORK_RUNTIME = Symbol.for('@zlink-systems/framework:runtime');
+export const ZLINK_CHANNEL_CLIENT = Symbol.for('@zlink-systems/framework:channel-client');
+export const ZLINK_ROUTE_CLIENT = Symbol.for('@zlink-systems/framework:route-client');
+export const ZLINK_FANOUT_CLIENT = Symbol.for('@zlink-systems/framework:fanout-client');
+export const ZLINK_BOUND_SESSION_FACTORY = Symbol.for('@zlink-systems/framework:bound-session-factory');
+export const ZLINK_MESSAGE_METADATA_POLICY = Symbol.for('@zlink-systems/framework:message-metadata-policy');
+export const ZLINK_SPOT_MANAGER = Symbol.for('@zlink-systems/framework:spot-manager');
+export const ZLINK_SPOT_OUTBOUND = Symbol.for('@zlink-systems/framework:spot-outbound');
+export const ZLINK_SPOT_PUBLISHER_CLIENT = Symbol.for('@zlink-systems/framework:spot-publisher-client');
+export const ZLINK_ACTOR_MANAGER = Symbol.for('@zlink-systems/framework:actor-manager');
+export const ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER = Symbol.for('@zlink-systems/framework:spot-remote-address-resolver');
+
+export class ZLinkModule {
+  static forRoot(options: ZLinkModuleOptions = {}): DynamicModule {
+    return createZLinkDynamicModule(framework.createFrameworkRegistration(options));
+  }
+
+  static forRootAsync(options: ZLinkModuleAsyncOptions): DynamicModule {
+    const registrationProvider: Provider<Promise<ZLinkFrameworkRegistration>> = {
+      provide: ZLINK_FRAMEWORK_REGISTRATION,
+      inject: options.inject,
+      useFactory: async (...args: unknown[]) => framework.createFrameworkRegistration(await options.useFactory(...args))
+    };
+
+    return {
+      module: ZLinkModule,
+      providers: [
+        registrationProvider,
+        {
+          provide: ZLINK_FRAMEWORK_RUNTIME,
+          inject: [ZLINK_FRAMEWORK_REGISTRATION],
+          useFactory: (registration: ZLinkFrameworkRegistration) => new framework.ZLinkFrameworkRuntimeHost({ registration })
+        },
+        ...alwaysAvailableClientProviders()
+      ],
+      exports: [
+        ZLINK_FRAMEWORK_RUNTIME,
+        ...alwaysAvailableClientTokens()
+      ]
+    };
+  }
+}
+
+export function createZLinkDynamicModule(registration: ZLinkFrameworkRegistration): DynamicModule {
+  const providers: Provider[] = [
+    { provide: ZLINK_FRAMEWORK_REGISTRATION, useValue: registration },
+    { provide: ZLINK_FRAMEWORK_RUNTIME, useValue: new framework.ZLinkFrameworkRuntimeHost({ registration }) },
+    ...alwaysAvailableClientProviders(registration),
+    ...conditionalClientProviders(registration)
+  ];
+
+  return {
+    module: ZLinkModule,
+    providers,
+    exports: providers.map((provider) => provider.provide)
+  };
+}
+
+function alwaysAvailableClientProviders(registration?: ZLinkFrameworkRegistration): Provider[] {
+  if (registration === undefined) {
+    return [
+      {
+        provide: ZLINK_CHANNEL_CLIENT,
+        inject: [ZLINK_FRAMEWORK_REGISTRATION],
+        useFactory: (resolved: ZLinkFrameworkRegistration) => new framework.DefaultZLinkChannelClient(resolved)
+      },
+      {
+        provide: ZLINK_FANOUT_CLIENT,
+        inject: [ZLINK_FRAMEWORK_REGISTRATION],
+        useFactory: (resolved: ZLinkFrameworkRegistration) => new framework.DefaultZLinkFanoutClient(resolved)
+      },
+      { provide: ZLINK_ROUTE_CLIENT, useValue: placeholderClient(ZLINK_ROUTE_CLIENT) },
+      { provide: ZLINK_BOUND_SESSION_FACTORY, useValue: placeholderClient(ZLINK_BOUND_SESSION_FACTORY) },
+      { provide: ZLINK_MESSAGE_METADATA_POLICY, useValue: Object.freeze({ forward: true }) }
+    ];
+  }
+
+  return [
+    { provide: ZLINK_CHANNEL_CLIENT, useValue: new framework.DefaultZLinkChannelClient(registration) },
+    { provide: ZLINK_FANOUT_CLIENT, useValue: new framework.DefaultZLinkFanoutClient(registration) },
+    { provide: ZLINK_ROUTE_CLIENT, useValue: placeholderClient(ZLINK_ROUTE_CLIENT) },
+    { provide: ZLINK_BOUND_SESSION_FACTORY, useValue: placeholderClient(ZLINK_BOUND_SESSION_FACTORY) },
+    { provide: ZLINK_MESSAGE_METADATA_POLICY, useValue: Object.freeze({ forward: true }) }
+  ];
+}
+
+function alwaysAvailableClientTokens(): InjectionToken[] {
+  return [
+    ZLINK_CHANNEL_CLIENT,
+    ZLINK_ROUTE_CLIENT,
+    ZLINK_FANOUT_CLIENT,
+    ZLINK_BOUND_SESSION_FACTORY,
+    ZLINK_MESSAGE_METADATA_POLICY
+  ];
+}
+
+function conditionalClientProviders(registration: ZLinkFrameworkRegistration): Provider[] {
+  const providers: Provider[] = [];
+
+  if (framework.hasSpotNode(registration)) {
+    providers.push(
+      { provide: ZLINK_SPOT_MANAGER, useValue: new framework.DefaultZLinkSpotManager({ spotFactories: [] }) },
+      { provide: ZLINK_SPOT_OUTBOUND, useValue: placeholderClient(ZLINK_SPOT_OUTBOUND) }
+    );
+  }
+
+  if (framework.hasSpotPublisherClient(registration)) {
+    providers.push({ provide: ZLINK_SPOT_PUBLISHER_CLIENT, useValue: placeholderClient(ZLINK_SPOT_PUBLISHER_CLIENT) });
+  }
+
+  if (framework.hasActorManager(registration)) {
+    providers.push({
+      provide: ZLINK_ACTOR_MANAGER,
+      useValue: new framework.DefaultZLinkActorManager({ actorFactories: registration.actorFactories })
+    });
+  }
+
+  if (framework.hasSpotRemoteAddressResolver(registration)) {
+    providers.push({ provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER, useValue: placeholderClient(ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER) });
+  }
+
+  return providers;
+}
+
+function placeholderClient(token: InjectionToken): object {
+  return Object.freeze({ token });
+}
+
+function loadFramework(): FrameworkModule {
+  const requireFramework = createRequire(__filename);
+  try {
+    return requireFramework('@zlink-systems/framework') as FrameworkModule;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND') {
+      throw error;
+    }
+    return requireFramework(path.resolve(__dirname, '../../framework/dist')) as FrameworkModule;
+  }
 }

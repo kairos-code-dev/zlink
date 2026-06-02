@@ -1,0 +1,564 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+
+const framework = require('../../packages/framework/dist');
+
+test('ZLinkActorManager create find and getOrCreate follow dotnet actor semantics', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+    configure() {
+      events.push(`configure:${this.actorId}`);
+    }
+  }
+  class PlayerFactory {
+    async create(actorId, context) {
+      events.push(`create:${actorId}`);
+      return new PlayerActor(actorId, context);
+    }
+  }
+
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]])
+  });
+
+  const actor = await manager.create('alice', 'player');
+  assert.equal(actor.actorId, 'alice');
+  assert.equal(actor.context.isJoined, false);
+  assert.equal(await manager.find('alice'), actor);
+  assert.equal(await manager.getOrCreate('alice', 'player'), actor);
+  assert.deepEqual(events, ['create:alice', 'configure:alice']);
+});
+
+test('ZLinkActorManager rejects duplicate create and actor type mismatch', async () => {
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  class SpectatorFactory extends PlayerFactory {}
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([
+      ['player', PlayerFactory],
+      ['spectator', SpectatorFactory]
+    ])
+  });
+
+  await manager.create('alice', 'player');
+  await assert.rejects(
+    () => manager.create('alice', 'player'),
+    (error) =>
+      error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.ActorAlreadyExists
+  );
+  await assert.rejects(
+    () => manager.getOrCreate('alice', 'spectator'),
+    (error) =>
+      error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.ActorTypeMismatch
+  );
+});
+
+test('ZLinkActorManager shares concurrent getOrCreate actor creation', async () => {
+  let releaseCreate;
+  const release = new Promise((resolve) => {
+    releaseCreate = resolve;
+  });
+  let createCount = 0;
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    async create(actorId, context) {
+      createCount += 1;
+      await release;
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]])
+  });
+
+  const first = manager.getOrCreate('alice', 'player');
+  const second = manager.getOrCreate('alice', 'player');
+  releaseCreate();
+  const [firstActor, secondActor] = await Promise.all([first, second]);
+
+  assert.equal(firstActor, secondActor);
+  assert.equal(createCount, 1);
+});
+
+test('ZLinkActorManager validates factory returned actor id and context', async () => {
+  class WrongIdFactory {
+    create(_actorId, context) {
+      return { actorId: 'other', context };
+    }
+  }
+  class WrongContextFactory {
+    create(actorId) {
+      return { actorId, context: {} };
+    }
+  }
+
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([
+      ['wrong-id', WrongIdFactory],
+      ['wrong-context', WrongContextFactory]
+    ])
+  });
+
+  for (const [actorId, actorType] of [['alice', 'wrong-id'], ['bob', 'wrong-context']]) {
+    await assert.rejects(
+      () => manager.create(actorId, actorType),
+      (error) =>
+        error instanceof framework.ZLinkFrameworkException
+        && error.kind === framework.ZLinkFrameworkErrorKind.ActorCreateFailed
+    );
+  }
+});
+
+test('ZLinkActorDispatchMailboxSet serializes same actor and allows different actors to proceed', async () => {
+  const events = [];
+  const mailboxes = new framework.ZLinkActorDispatchMailboxSet();
+  let releaseAlice;
+  let aliceStarted;
+  const aliceStartedPromise = new Promise((resolve) => {
+    aliceStarted = resolve;
+  });
+  const releaseAlicePromise = new Promise((resolve) => {
+    releaseAlice = resolve;
+  });
+
+  const aliceFirst = mailboxes.submit('alice', async () => {
+    events.push('alice:first:start');
+    aliceStarted();
+    await releaseAlicePromise;
+    events.push('alice:first:end');
+  });
+  await aliceStartedPromise;
+  const aliceSecond = mailboxes.submit('alice', async () => {
+    events.push('alice:second');
+  });
+  const bobFirst = mailboxes.submit('bob', async () => {
+    events.push('bob:first');
+  });
+
+  await bobFirst;
+  assert.deepEqual(events, ['alice:first:start', 'bob:first']);
+  releaseAlice();
+  await Promise.all([aliceFirst, aliceSecond]);
+  assert.deepEqual(events, ['alice:first:start', 'bob:first', 'alice:first:end', 'alice:second']);
+});
+
+test('ZLinkActorDispatchRouter rechecks actor location after queued mailbox turn starts', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]])
+  });
+  await manager.create('alice', 'player');
+  const router = new framework.ZLinkActorDispatchRouter(manager);
+  let releaseFirst;
+  const firstStarted = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  let allowFirstToFinish;
+  const firstCanFinish = new Promise((resolve) => {
+    allowFirstToFinish = resolve;
+  });
+
+  const first = router.submit('alice', async (snapshot) => {
+    events.push(`first:${snapshot.spotRid ?? 'entry'}`);
+    releaseFirst();
+    await firstCanFinish;
+  });
+  await firstStarted;
+  const second = router.submit('alice', async (snapshot) => {
+    events.push(`second:${snapshot.spotRid}`);
+  });
+
+  manager.getState('alice').setJoinedSpot('stage-1', { context: { spotRid: 'stage-1' } });
+  allowFirstToFinish();
+  await Promise.all([first, second]);
+
+  assert.deepEqual(events, ['first:entry', 'second:stage-1']);
+});
+
+test('ZLinkActorContext delegates join calls to coordinator with timeout', async () => {
+  const calls = [];
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const actorRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
+  const joinCoordinator = {
+    async joinSpot(actor, state, spotRid, request, timeoutMs) {
+      calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${request}:${timeoutMs}`);
+      return { resultCode: 0, actor: actorRef, reply: 'joined' };
+    },
+    async joinEntrySpot(actor, state, nodeRid, timeoutMs) {
+      calls.push(`joinEntry:${actor.actorId}:${state.actorId}:${nodeRid}:${timeoutMs}`);
+      return actorRef;
+    }
+  };
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    joinCoordinator
+  });
+  const actor = await manager.create('alice', 'player');
+
+  const joinResult = await actor.context.joinSpot('stage-1', 'hello').timeout(25).submit();
+  const entryResult = await actor.context.joinEntrySpot('node-a').timeout(10).submit();
+
+  assert.deepEqual(joinResult, { resultCode: 0, actor: actorRef, reply: 'joined' });
+  assert.equal(entryResult, actorRef);
+  assert.deepEqual(calls, [
+    'joinSpot:alice:alice:stage-1:hello:25',
+    'joinEntry:alice:alice:node-a:10'
+  ]);
+});
+
+test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined spot state', async () => {
+  const events = [];
+  const createdRef = { nodeRid: 'node-a', actorId: 'alice', generation: 1n };
+  const joinedRef = { nodeRid: 'node-a', actorId: 'alice', generation: 2n };
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    actorLookup(actorId) {
+      events.push(`lookup:${actorId}`);
+      return undefined;
+    },
+    createActor(actorId) {
+      events.push(`createNative:${actorId}`);
+      return createdRef;
+    },
+    joinActor(actorRef, targetNodeRid, targetSpotRid, payload, callback, timeoutMs) {
+      events.push(`join:${actorRef.generation}:${targetNodeRid}:${targetSpotRid}:${payload}:${timeoutMs}`);
+      callback({
+        result: 0,
+        joinResultCode: 7,
+        actor: joinedRef,
+        joinedSpotRid: targetSpotRid,
+        joinEpoch: 3n,
+        flags: 0
+      }, []);
+      return true;
+    }
+  });
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
+      node,
+      createJoinPayload: (request) => `payload:${request}`
+    })
+  });
+  const actor = await manager.create('alice', 'player');
+  const result = await actor.context.joinSpot('stage-1', 'hello').timeout(25).submit();
+
+  assert.deepEqual(result, { resultCode: 7, actor: joinedRef, reply: undefined });
+  assert.equal(actor.context.isJoined, true);
+  assert.equal(actor.context.spotRid, 'stage-1');
+  assert.equal(manager.getState('alice').nativeActorRef, joinedRef);
+  assert.deepEqual(events, [
+    'lookup:alice',
+    'createNative:alice',
+    'join:1:node-a:stage-1:payload:hello:25'
+  ]);
+});
+
+test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot state', async () => {
+  const events = [];
+  const createdRef = { nodeRid: 'node-a', actorId: 'alice', generation: 1n };
+  const entryRef = { nodeRid: 'node-b', actorId: 'alice', generation: 4n };
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    actorLookup() {
+      return undefined;
+    },
+    createActor() {
+      return createdRef;
+    },
+    joinActorEntrySpot(actorRef, nodeRid, callback, timeoutMs) {
+      events.push(`joinEntry:${actorRef.generation}:${nodeRid}:${timeoutMs}`);
+      callback({
+        result: 0,
+        actor: entryRef,
+        targetNodeRid: nodeRid,
+        joinEpoch: 5n,
+        flags: 0
+      });
+      return true;
+    }
+  });
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({ node })
+  });
+  const actor = await manager.create('alice', 'player');
+  manager.getState('alice').setJoinedSpot('stage-1');
+
+  const result = await actor.context.joinEntrySpot('node-b').timeout(50).submit();
+
+  assert.equal(result, entryRef);
+  assert.equal(actor.context.isJoined, false);
+  assert.equal(actor.context.spotRid, undefined);
+  assert.equal(manager.getState('alice').nativeActorRef, entryRef);
+  assert.deepEqual(events, ['joinEntry:1:node-b:50']);
+});
+
+test('ZLinkActorNativeJoinCoordinator maps native join failures to framework errors', async () => {
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    actorLookup() {
+      return { nodeRid: 'node-a', actorId: 'alice', generation: 1n };
+    },
+    joinActor(actorRef, targetNodeRid, targetSpotRid, payload, callback) {
+      callback({
+        result: 109,
+        joinResultCode: 0,
+        actor: actorRef,
+        joinedSpotRid: targetSpotRid,
+        joinEpoch: 0n,
+        flags: 0
+      }, []);
+      return true;
+    }
+  });
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({ node })
+  });
+  const actor = await manager.create('alice', 'player');
+
+  await assert.rejects(
+    () => actor.context.joinSpot('stage-1', 'hello').submit(),
+    (error) =>
+      error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.ActorRouteNotFound
+  );
+});
+
+test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers without fallback', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class MoveSendHandler {
+    async handle(spot, actor, context, message) {
+      events.push(`send:${spot.name}:${actor.actorId}:${context.packetName}:${message}`);
+    }
+  }
+  class MoveRequestHandler {
+    async handle(spot, actor, context, request) {
+      events.push(`request:${spot.name}:${actor.actorId}:${context.packetName}:${request}`);
+      return 'ok';
+    }
+  }
+  class JoinedHandler {
+    async handle(spot, actor, result) {
+      events.push(`joined:${spot.name}:${actor.actorId}:${result.kind}`);
+    }
+  }
+  class LeftHandler {
+    async handle(spot, actor, result) {
+      events.push(`left:${spot.name}:${actor.actorId}:${result.kind}`);
+    }
+  }
+  class DisconnectedHandler {
+    async handle(spot, actor) {
+      events.push(`disconnected:${spot.name}:${actor.actorId}`);
+    }
+  }
+  const registry = new framework.ZLinkSpotActorHandlerRegistryRuntime()
+    .addPacket({
+      kind: framework.ZLinkActorPacketKind.Send,
+      packetName: 'move',
+      actorType: PlayerActor,
+      handlerType: MoveSendHandler
+    })
+    .addPacket({
+      kind: framework.ZLinkActorPacketKind.Request,
+      packetName: 'move',
+      actorType: PlayerActor,
+      handlerType: MoveRequestHandler
+    })
+    .addPostActorJoined({ actorType: PlayerActor, handlerType: JoinedHandler })
+    .addActorLeft({ actorType: PlayerActor, handlerType: LeftHandler })
+    .addActorDisconnected({ actorType: PlayerActor, handlerType: DisconnectedHandler });
+  const actor = new PlayerActor('alice', {});
+  const dispatcher = new framework.ZLinkSpotActorDispatcher({
+    registry,
+    spot: { name: 'game' }
+  });
+
+  await dispatcher.dispatchSend(actor, 'move', 'left');
+  const reply = await dispatcher.dispatchRequest(actor, 'move', 'right');
+  await dispatcher.notifyPostActorJoined(actor, { kind: framework.ZLinkSpotActorChangeKind.Joined, actor: {} });
+  await dispatcher.notifyActorLeft(actor, { kind: framework.ZLinkSpotActorChangeKind.Left, actor: {} });
+  await dispatcher.notifyActorDisconnected(actor);
+
+  assert.equal(reply, 'ok');
+  assert.deepEqual(events, [
+    'send:game:alice:move:left',
+    'request:game:alice:move:right',
+    'joined:game:alice:joined',
+    'left:game:alice:left',
+    'disconnected:game:alice'
+  ]);
+  await assert.rejects(
+    () => dispatcher.dispatchRequest(actor, 'missing', 'payload'),
+    (error) =>
+      error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound
+  );
+});
+
+test('ZLinkSpotActorDispatcher serializes user spot actor handlers on provided serial executor', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class MoveSendHandler {
+    async handle(_spot, _actor, _context, message) {
+      events.push(`handler:${message}`);
+    }
+  }
+  const registry = new framework.ZLinkSpotActorHandlerRegistryRuntime()
+    .addPacket({
+      kind: framework.ZLinkActorPacketKind.Send,
+      packetName: 'move',
+      actorType: PlayerActor,
+      handlerType: MoveSendHandler
+    });
+  const serial = new framework.ZLinkSpotSerialExecutor();
+  const dispatcher = new framework.ZLinkSpotActorDispatcher({
+    registry,
+    spot: {},
+    serial
+  });
+  const actor = new PlayerActor('alice', {});
+
+  const first = serial.execute(async () => {
+    events.push('spot:start');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    events.push('spot:end');
+  });
+  const send = dispatcher.dispatchSend(actor, 'move', 'left');
+  await Promise.all([first, send]);
+
+  assert.deepEqual(events, ['spot:start', 'spot:end', 'handler:left']);
+});
+
+function createMockSpotNode(overrides) {
+  return {
+    routingId: 'node-a',
+    setRoutingId() {},
+    setRouterBind() {},
+    setPubBind() {},
+    attachDiscovery() {},
+    connectPeer() {},
+    disconnectPeer() {},
+    connectRouterChannelPeer() {},
+    connectRouterChannelPeerRid() {},
+    disconnectRouterChannelPeer() {},
+    disconnectRouterChannelPeerRid() {},
+    attachSpotRouteChannelDiscovery() {},
+    createSpot() { throw new Error('not used'); },
+    getOrCreateSpot() { throw new Error('not used'); },
+    status() { throw new Error('not used'); },
+    peers() { return []; },
+    subjects() { return []; },
+    attachChannelDealer() {},
+    attachChannelDealerManual() {},
+    entrySpot() { throw new Error('not used'); },
+    createActor(actorId) {
+      return { nodeRid: 'node-a', actorId, generation: 1n };
+    },
+    actorLookup() {
+      return undefined;
+    },
+    joinActor() {
+      throw new Error('not used');
+    },
+    joinActorEntrySpot() {
+      throw new Error('not used');
+    },
+    destroyActor() {
+      throw new Error('not used');
+    },
+    sendActorBoundSession() {
+      throw new Error('not used');
+    },
+    closeActorBoundSession() {
+      throw new Error('not used');
+    },
+    async dispose() {},
+    nativeInstance: {},
+    ...overrides
+  };
+}

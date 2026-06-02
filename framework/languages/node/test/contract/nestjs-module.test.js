@@ -300,9 +300,25 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
           bind: 'tcp://0.0.0.0:9203',
           routingId: 'node-a',
           manualConnections: ['tcp://127.0.0.1:9204']
+        },
+        attachedChannelClients: {
+          api: { manualConnections: ['tcp://127.0.0.1:9205'] }
+        },
+        attachedSpotPublisherClients: {
+          'game.events': { manualConnections: ['tcp://127.0.0.1:9206'] }
+        },
+        acceptedSpotRouteChannels: {
+          route: { manualConnections: ['tcp://127.0.0.1:9207'] }
         }
       }
-    }
+    },
+    channels: {
+      api: { server: { bind: 'tcp://0.0.0.0:9208' } }
+    },
+    routeChannels: [{
+      routerChannelId: 'route',
+      bind: 'tcp://0.0.0.0:9209'
+    }]
   });
   const registration = module.providers.find((provider) => provider.provide === nestjs.ZLINK_FRAMEWORK_REGISTRATION).useValue;
   const spotNode = registration.spotNodes.get('game');
@@ -312,6 +328,10 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
   assert.deepEqual(spotNode.router.manualConnections, ['tcp://127.0.0.1:9202']);
   assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9203');
   assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9204']);
+  assert.deepEqual(spotNode.attachedChannelClients.api.manualConnections, ['tcp://127.0.0.1:9205']);
+  assert.deepEqual(spotNode.attachedSpotPublisherClients['game.events'].manualConnections, ['tcp://127.0.0.1:9206']);
+  assert.deepEqual(spotNode.acceptedSpotRouteChannels.route.manualConnections, ['tcp://127.0.0.1:9207']);
+  assert.equal(registration.spotPublisherClients.has('game.events'), true);
 
   assert.throws(
     () => nestjs.ZLinkModule.forRoot({ spotNodes: [{ name: '', router: {} }] }),
@@ -336,6 +356,51 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
     }),
     /router and pubSub routingId must match/
   );
+});
+
+test('ZLinkModule.forRoot validates SpotNode attachment targets', () => {
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      spotNodes: {
+        game: {
+          attachedChannelClients: { missing: {} }
+        }
+      }
+    }),
+    /attached channel client 'missing' must reference a client-server channel/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      spotNodes: {
+        game: {
+          acceptedSpotRouteChannels: { missing: {} }
+        }
+      }
+    }),
+    /Accepted SPOT route channel 'missing' is not router-capable/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      spotNodes: {
+        game: {
+          attachedSpotPublisherClients: {
+            'game.events': { manualConnections: [''] }
+          }
+        }
+      }
+    }),
+    /attached SPOT publisher 'game.events' manual connection endpoint must not be empty/
+  );
+  assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot({
+    spotNodes: {
+      game: {
+        acceptedSpotRouteChannels: { api: {} }
+      }
+    },
+    channels: {
+      api: { server: { bind: 'tcp://0.0.0.0:9210' } }
+    }
+  }));
 });
 
 test('ZLinkModule.forRoot registers registry spot remote address resolver by default', async () => {
@@ -620,7 +685,7 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
     peers() { return []; },
     subjects() { return []; },
     attachChannelDealer() {},
-    attachChannelDealerManual() {},
+    attachChannelDealerManual(channelName) { calls.push(`spot:attachChannelDealerManual:${channelName}`); },
     entrySpot() {},
     createActor() {},
     actorLookup() {},
@@ -740,18 +805,40 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     attachDiscovery() {},
     connectPeer(endpoint) { calls.push(`spot:connectPeer:${endpoint}`); },
     disconnectPeer() {},
-    connectRouterChannelPeer() {},
+    connectRouterChannelPeer(channelName, endpoint) { calls.push(`spot:connectRouterChannelPeer:${channelName}:${endpoint}`); },
     connectRouterChannelPeerRid() {},
     disconnectRouterChannelPeer() {},
     disconnectRouterChannelPeerRid() {},
     attachSpotRouteChannelDiscovery() {},
-    createSpot() {},
+    createSpot() {
+      calls.push('spot:createPublisherSpot');
+      return {
+        nativeInstance: {},
+        routingId: 'publisher',
+        setRoutingId() {},
+        setSubscription() {},
+        subscribe() { return true; },
+        recvRoute() { return true; },
+        onDispatchEvent() {},
+        onSendReady() {},
+        requestToChannel() { return true; },
+        sendToChannel() { return true; },
+        publish() { return true; },
+        sendToSpot() { return true; },
+        requestToSpot() { return true; },
+        recvActorJoin() {},
+        replyActorJoin() {},
+        async dispose() {
+          calls.push('publisherSpot:dispose');
+        }
+      };
+    },
     getOrCreateSpot() {},
     status() {},
     peers() { return []; },
     subjects() { return []; },
     attachChannelDealer() {},
-    attachChannelDealerManual() {},
+    attachChannelDealerManual(channelName) { calls.push(`spot:attachChannelDealerManual:${channelName}`); },
     entrySpot() {},
     createActor() {},
     actorLookup() {},
@@ -777,8 +864,20 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
             bind: 'tcp://0.0.0.0:9303',
             routingId: 'node-a',
             manualConnections: ['tcp://127.0.0.1:9304']
+          },
+          attachedChannelClients: {
+            api: { manualConnections: ['tcp://127.0.0.1:9305'] }
+          },
+          attachedSpotPublisherClients: {
+            'game.events': { manualConnections: ['tcp://127.0.0.1:9306'] }
+          },
+          acceptedSpotRouteChannels: {
+            api: { manualConnections: ['tcp://127.0.0.1:9307'] }
           }
         }
+      },
+      channels: {
+        api: { server: { bind: 'tcp://0.0.0.0:9308' } }
       }
     })
   }, {
@@ -791,6 +890,24 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
               shutdown() {},
               async dispose() {
                 calls.push('context:dispose');
+              }
+            };
+          },
+          createDealerSocket() {
+            calls.push('dealer:create');
+            return {
+              nativeInstance: {},
+              bind() {},
+              setChannelName(channelName) { calls.push(`dealer:setChannelName:${channelName}`); },
+              connect(endpoint) { calls.push(`dealer:connect:${endpoint}`); },
+              disconnect() {},
+              attachDiscovery() {},
+              onSendReady() {},
+              send() { return true; },
+              request() { return true; },
+              recv() {},
+              async dispose() {
+                calls.push('dealer:dispose');
               }
             };
           }
@@ -817,6 +934,15 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     'spot:setPubBind:tcp://0.0.0.0:9303',
     'spot:connectPeer:tcp://127.0.0.1:9302',
     'spot:connectPeer:tcp://127.0.0.1:9304',
+    'dealer:create',
+    'dealer:setChannelName:api',
+    'dealer:connect:tcp://127.0.0.1:9305',
+    'spot:attachChannelDealerManual:api',
+    'spot:connectRouterChannelPeer:api:tcp://127.0.0.1:9307',
+    'spot:createPublisherSpot',
+    'spot:connectPeer:tcp://127.0.0.1:9306',
+    'publisherSpot:dispose',
+    'dealer:dispose',
     'spot:dispose',
     'context:dispose'
   ]);

@@ -37,7 +37,7 @@ ZLinkModule.forRoot({
       },
       acceptedSpotRouteChannels: {
         'game.route': {
-          connect: ['tcp://10.0.0.21:7501'],
+          manualConnections: ['tcp://10.0.0.21:7501'],
         },
       },
       entrySpot: { routingId: 'entry' },
@@ -72,10 +72,10 @@ dotnet builder 메서드와 options 키의 대응은 다음과 같다.
 | `ConfigureRouting(r => ...)` | `routing: {...}` | router routing 옵션 |
 | `ConfigurePublisherConfig(p => ...)` | `publisher: {...}` | pub/sub 전용 |
 | `ConfigureSubscriberConfig(s => ...)` | `subscriber: {...}` | pub/sub 전용 |
-| `UseManualConnections(c => c.Connect(ep))` | `connect: string[]` | 수동 연결 endpoint |
+| `UseManualConnections(c => c.Connect(ep))` | `manualConnections: string[]` | 수동 연결 endpoint |
 
 `acceptedSpotRouteChannels[name]` 은 dotnet `AcceptSpotRoutesFromChannel` 에
-대응하며, `UseManualConnections(...)` 는 `connect: string[]` 로 옮긴다. 같은
+대응하며, `UseManualConnections(...)` 는 `manualConnections: string[]` 로 옮긴다. 같은
 channel 이름을 중복 등록하면 dotnet 과 동일하게 startup 시점에 설정 예외를
 던진다(`Duplicate accepted SPOT route channel`).
 

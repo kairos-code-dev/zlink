@@ -10,6 +10,7 @@ export interface ZLinkFrameworkRegistration {
   readonly routeChannelOptions: ReadonlyMap<string, ZLinkRouteChannelOptions>;
   readonly streamNodes: ReadonlyMap<string, ZLinkStreamNodeOptions>;
   readonly spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>;
+  readonly discovery?: ZLinkDiscoveryOptions;
   readonly spotPublisherClients: ReadonlySet<string>;
   readonly hasSpotRemoteAddressResolver: boolean;
   readonly hasRegistrySpotRemoteAddresses: boolean;
@@ -98,6 +99,9 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 export interface ZLinkSpotNodeOptions {
   readonly router?: ZLinkSpotRouterCapabilityOptions;
   readonly pubSub?: ZLinkSpotPubSubCapabilityOptions;
+  readonly attachedChannelClients?: Readonly<Record<string, ZLinkSpotAttachedChannelClientOptions>>;
+  readonly attachedSpotPublisherClients?: Readonly<Record<string, ZLinkSpotPublisherClientOptions>>;
+  readonly acceptedSpotRouteChannels?: Readonly<Record<string, ZLinkSpotRouteChannelAcceptanceOptions>>;
 }
 
 export interface ZLinkSpotRouterCapabilityOptions {
@@ -110,6 +114,18 @@ export interface ZLinkSpotPubSubCapabilityOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
+}
+
+export interface ZLinkSpotAttachedChannelClientOptions {
+  readonly manualConnections?: readonly string[];
+}
+
+export interface ZLinkSpotPublisherClientOptions {
+  readonly manualConnections?: readonly string[];
+}
+
+export interface ZLinkSpotRouteChannelAcceptanceOptions {
+  readonly manualConnections?: readonly string[];
 }
 
 export interface ZLinkRouteChannelHandlerOptions {
@@ -147,6 +163,7 @@ export function createFrameworkRegistration(
   options: ZLinkFrameworkRegistrationOptions = {}
 ): ZLinkFrameworkRegistration {
   const routeChannelOptions = toRouteChannelOptions(options);
+  const spotNodes = toSpotNodeMap(options.spotNodes);
   const registration: ZLinkFrameworkRegistration = {
     actorFactories: toTypeMap(options.actorFactories),
     spotFactories: new Set(options.spotFactories ?? []),
@@ -156,8 +173,9 @@ export function createFrameworkRegistration(
     routeChannels: new Set(routeChannelOptions.keys()),
     routeChannelOptions,
     streamNodes: toStreamNodeMap(options.streamNodes),
-    spotNodes: toSpotNodeMap(options.spotNodes),
-    spotPublisherClients: new Set(options.spotPublisherClients ?? []),
+    spotNodes,
+    discovery: options.discovery,
+    spotPublisherClients: toSpotPublisherClientSet(options.spotPublisherClients, spotNodes),
     hasSpotRemoteAddressResolver: options.spotRemoteAddressResolver !== undefined,
     hasRegistrySpotRemoteAddresses: options.registrySpotRemoteAddresses !== undefined,
     spotRemoteAddressResolverType: options.spotRemoteAddressResolver,
@@ -225,7 +243,7 @@ export function validateFrameworkRegistration(
 
   validateRegistryRouteChannel(registration);
   validateChannelCapabilities(options.channels, hasDiscovery(options.discovery));
-  validateSpotNodes(registration.spotNodes);
+  validateSpotNodes(registration);
   validateRouteChannels(registration.routeChannelOptions);
   validateStreamNodes(registration);
 }
@@ -270,6 +288,19 @@ function toSpotNodeMap(value: ZLinkFrameworkRegistrationOptions['spotNodes']): M
     const { name, ...options } = spotNode;
     return [name, options];
   }));
+}
+
+function toSpotPublisherClientSet(
+  explicitClients: readonly string[] | undefined,
+  spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>
+): Set<string> {
+  const clients = new Set(explicitClients ?? []);
+  for (const spotNode of spotNodes.values()) {
+    for (const channelName of Object.keys(spotNode.attachedSpotPublisherClients ?? {})) {
+      clients.add(channelName);
+    }
+  }
+  return clients;
 }
 
 function channelNamesWith(
@@ -320,13 +351,16 @@ function validateChannelCapabilities(
   }
 }
 
-function validateSpotNodes(spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>): void {
-  for (const [spotNodeName, spotNode] of spotNodes.entries()) {
+function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
+  for (const [spotNodeName, spotNode] of registration.spotNodes.entries()) {
     if (spotNodeName.trim().length === 0 || spotNodeName.trim() !== spotNodeName) {
       throw new ZLinkConfigurationException('SpotNode name must not be empty or padded.');
     }
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' router`, spotNode.router);
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' pubSub`, spotNode.pubSub);
+    validateAttachedChannelClients(spotNodeName, spotNode, registration);
+    validateAttachedSpotPublisherClients(spotNodeName, spotNode);
+    validateAcceptedSpotRouteChannels(spotNodeName, spotNode, registration);
     if (
       spotNode.router?.routingId !== undefined &&
       spotNode.pubSub?.routingId !== undefined &&
@@ -336,6 +370,61 @@ function validateSpotNodes(spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>)
         `SpotNode '${spotNodeName}' router and pubSub routingId must match.`
       );
     }
+  }
+}
+
+function validateAttachedChannelClients(
+  spotNodeName: string,
+  spotNode: ZLinkSpotNodeOptions,
+  registration: ZLinkFrameworkRegistration
+): void {
+  for (const [channelName, attached] of Object.entries(spotNode.attachedChannelClients ?? {})) {
+    requireName(`SpotNode '${spotNodeName}' attached channel client name`, channelName);
+    if (registration.channels.get(channelName)?.server === undefined) {
+      throw new ZLinkConfigurationException(
+        `SpotNode '${spotNodeName}' attached channel client '${channelName}' must reference a client-server channel.`
+      );
+    }
+    validateManualConnections(
+      `SpotNode '${spotNodeName}' attached channel client '${channelName}'`,
+      attached.manualConnections
+    );
+  }
+}
+
+function validateAttachedSpotPublisherClients(
+  spotNodeName: string,
+  spotNode: ZLinkSpotNodeOptions
+): void {
+  for (const [channelName, attached] of Object.entries(spotNode.attachedSpotPublisherClients ?? {})) {
+    requireName(`SpotNode '${spotNodeName}' attached SPOT publisher channel name`, channelName);
+    validateManualConnections(
+      `SpotNode '${spotNodeName}' attached SPOT publisher '${channelName}'`,
+      attached.manualConnections
+    );
+  }
+}
+
+function validateAcceptedSpotRouteChannels(
+  spotNodeName: string,
+  spotNode: ZLinkSpotNodeOptions,
+  registration: ZLinkFrameworkRegistration
+): void {
+  for (const [channelName, acceptance] of Object.entries(spotNode.acceptedSpotRouteChannels ?? {})) {
+    requireName(`SpotNode '${spotNodeName}' accepted SPOT route channel name`, channelName);
+    validateManualConnections(
+      `SpotNode '${spotNodeName}' accepted SPOT route channel '${channelName}'`,
+      acceptance.manualConnections
+    );
+    if (registration.routeChannelOptions.has(channelName)) {
+      continue;
+    }
+    if (registration.channels.get(channelName)?.server !== undefined) {
+      continue;
+    }
+    throw new ZLinkConfigurationException(
+      `Accepted SPOT route channel '${channelName}' is not router-capable.`
+    );
   }
 }
 
@@ -354,6 +443,18 @@ function validateSpotNodeCapability(
   }
   if (capability.routingId !== undefined && (capability.routingId.trim().length === 0 || capability.routingId.trim() !== capability.routingId)) {
     throw new ZLinkConfigurationException(`${capabilityName} routingId must not be empty or padded.`);
+  }
+}
+
+function validateManualConnections(capabilityName: string, manualConnections: readonly string[] | undefined): void {
+  if ((manualConnections ?? []).some((endpoint) => endpoint.trim().length === 0)) {
+    throw new ZLinkConfigurationException(`${capabilityName} manual connection endpoint must not be empty.`);
+  }
+}
+
+function requireName(label: string, value: string): void {
+  if (value.trim().length === 0 || value.trim() !== value) {
+    throw new ZLinkConfigurationException(`${label} must not be empty or padded.`);
   }
 }
 

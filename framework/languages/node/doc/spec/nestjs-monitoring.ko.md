@@ -99,7 +99,7 @@ framework 등록은 module options 의 `monitoring` 키로 둔다. `.NET` 의
           discovery: { registries: ['tcp://registry-1:5551'] },
           nodes: {
             'stage-node': {
-              pubsub: { pubBind: 'tcp://0.0.0.0:9000' },
+              pubSub: { bind: 'tcp://0.0.0.0:9000' },
             },
           },
         },

@@ -164,7 +164,7 @@ ZLinkModule.forRoot({
     'game.rooms': {
       nodes: {
         'play-node': {
-          pubsub: { pubBind: 'tcp://127.0.0.1:9000' },
+          pubSub: { bind: 'tcp://127.0.0.1:9000' },
           entrySpot: GameEntrySpot,
         },
       },

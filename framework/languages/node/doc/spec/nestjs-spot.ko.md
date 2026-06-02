@@ -137,9 +137,9 @@ dotnet 의 `options.AddSpotMesh("game.stage", mesh => ...)` 람다는 NestJS 의
           nodes: {
             'stage-node': {
               router: { bind: 'tcp://0.0.0.0:9001' },
-              pubSub: { pubBind: 'tcp://0.0.0.0:9000' },
-              channelClients: { orders: {} },
-              spotPublishers: { 'game.stage': {} },
+              pubSub: { bind: 'tcp://0.0.0.0:9000' },
+              attachedChannelClients: { orders: {} },
+              attachedSpotPublisherClients: { 'game.stage': {} },
               entrySpot: StageEntrySpot,
               spotFactories: [StageSpot],
             },
@@ -199,10 +199,10 @@ discovery endpoint 가 없는 로컬 단일 노드도 `spotMeshes[channelName]` 
 - `pubSub: { bind }` (dotnet `EnablePubSub(p => p.SetPubBind(...))`)
   - 현재 SPOT channel 안의 publish / subscribe 축을 켠다. local spot 안에서
     `context.outbound.publish(...)` 를 쓰려면 이 capability 가 필요하다.
-- `channelClients: { orders: {} }` (dotnet `AttachChannelClient("orders")`)
+- `attachedChannelClients: { orders: {} }` (dotnet `AttachChannelClient("orders")`)
   - `orders` channel 로 outbound send / request 를 보낼 `DEALER(client)` 경로를
     붙인다.
-- `spotPublishers: { 'game.stage': {} }` (dotnet
+- `attachedSpotPublisherClients: { 'game.stage': {} }` (dotnet
   `AttachSpotPublisherClient("game.stage")`)
   - local spot 인스턴스를 갖지 않는 외부 노드가 `game.stage` SPOT channel 로
     publish 할 수 있도록 별도의 publisher client 를 붙인다.
@@ -259,7 +259,7 @@ ZLinkModule.forRoot({
     'game.stage': {
       nodes: {
         'stage-node': {
-          pubSub: { pubBind: 'tcp://0.0.0.0:9000' },
+          pubSub: { bind: 'tcp://0.0.0.0:9000' },
           entrySpotOptions: { routingId: 'entry' },
           entrySpot: StageEntrySpot,
           spotFactories: [StageSpot],
@@ -407,7 +407,7 @@ lifecycle handler 섹션을 기준으로 본다.
 SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 capability 단위로 나눠서 다뤄야
 한다. `router`, channel client, `pubSub`, spot publish client 는 각자 사용할
 endpoint 집합을 따로 관리한다. dotnet `UseManualConnections(peers => ...)` 는
-node 에서 capability 키 안의 `connect: [...]` 배열로 옮긴다.
+node 에서 capability 키 안의 `manualConnections: [...]` 배열로 옮긴다.
 
 ```ts
 ZLinkModule.forRoot({
@@ -416,19 +416,19 @@ ZLinkModule.forRoot({
       discovery: { registries: ['tcp://registry1:5551'] },
       nodes: {
         'stage-node': {
-          router: { connect: ['tcp://10.0.0.10:9000'] },
+          router: { manualConnections: ['tcp://10.0.0.10:9000'] },
           pubSub: {
-            pubBind: 'tcp://0.0.0.0:9000',
+            bind: 'tcp://0.0.0.0:9000',
             // 다른 SpotNode mesh 의 PUB bind 주소. local SUB 가 여기에 붙는다.
-            connect: ['tcp://10.0.0.20:9100'],
+            manualConnections: ['tcp://10.0.0.20:9100'],
           },
-          channelClients: {
+          attachedChannelClients: {
             // orders channel server endpoint
-            orders: { connect: ['tcp://10.0.0.30:9200'] },
+            orders: { manualConnections: ['tcp://10.0.0.30:9200'] },
           },
-          spotPublishers: {
+          attachedSpotPublisherClients: {
             // 외부 game.stage SPOT publish ingress endpoint
-            'game.stage': { connect: ['tcp://10.0.0.40:9300'] },
+            'game.stage': { manualConnections: ['tcp://10.0.0.40:9300'] },
           },
           entrySpot: StageEntrySpot,
           spotFactories: [StageSpot],
@@ -496,11 +496,11 @@ ZLinkModule.forRoot({
             routing: { requireKnownPeer: true, allowPeerHandover: true },
           },
           pubSub: {
-            pubBind: 'tcp://0.0.0.0:9000',
+            bind: 'tcp://0.0.0.0:9000',
             publisher: { sendHighWaterMark: 50_000, sendTimeoutMs: 100, noDrop: true },
             subscriber: { receiveHighWaterMark: 50_000, receiveTimeoutMs: 50, lingerMs: 0 },
           },
-          channelClients: {
+          attachedChannelClients: {
             orders: {
               socket: {
                 connectTimeoutMs: 3000,
@@ -512,7 +512,7 @@ ZLinkModule.forRoot({
               routing: { probeRouterOnConnect: true },
             },
           },
-          spotPublishers: {
+          attachedSpotPublisherClients: {
             'game.stage': {
               socket: { sendHighWaterMark: 20_000, sendTimeoutMs: 100, immediate: true },
             },
@@ -1048,13 +1048,13 @@ route 를 받으려면 node 옵션에 다음 구성을 둔다(dotnet
 ```ts
 'stage-node': {
   router: { bind: 'tcp://0.0.0.0:9001' },
-  acceptSpotRoutesFromChannels: {
+  acceptedSpotRouteChannels: {
     api: {},
   },
 }
 ```
 
-`acceptSpotRoutesFromChannels` 는 두 channel 종류를 router-capable 대상으로 본다.
+`acceptedSpotRouteChannels` 는 두 channel 종류를 router-capable 대상으로 본다.
 
 - client-server channel 의 server `ROUTER`
 - route mesh channel 의 route mesh `ROUTER`
@@ -1062,8 +1062,8 @@ route 를 받으려면 node 옵션에 다음 구성을 둔다(dotnet
 수동 endpoint 를 써야 하면 같은 표면 아래에서 명시한다.
 
 ```ts
-acceptSpotRoutesFromChannels: {
-  api: { connect: ['tcp://10.0.0.20:7000'] },
+acceptedSpotRouteChannels: {
+  api: { manualConnections: ['tcp://10.0.0.20:7000'] },
 }
 ```
 
@@ -1072,7 +1072,7 @@ route 수신 관계에서 수동 연결과 discovery 연결을 섞으면 startup
 오류다. fanout channel 과 dealer mesh channel 은 router capability 가 없으므로
 지정할 수 없다.
 
-`acceptSpotRoutesFromChannels` 는 application handler mapping 이 아니다. 이 설정은
+`acceptedSpotRouteChannels` 는 application handler mapping 이 아니다. 이 설정은
 target SpotNode 쪽 ingress channel 의 router-capable socket 과 SpotNode router
 사이에 transport peer 를 만든다. handler group 이 없어도 transport 전용 channel
 로 사용할 수 있고, 반대로 handler group 을 매핑해도 Spot route ingress 가 자동으로
@@ -1096,14 +1096,14 @@ query metadata 또는 같은 process 안의 명시적 route channel 등록으로
 ```ts
 channels: {
   'gateway.client': {
-    client: { connect: ['tcp://play-node-1:7201'] },
+    client: { manualConnections: ['tcp://play-node-1:7201'] },
     spotRouteEgress: 'play.route',
   },
 }
 ```
 
 `spotRouteEgress: 'play.route'` 의 값은 local channel 이름이 아니다. target
-SpotNode process 에서 `acceptSpotRoutesFromChannels.play.route` 로 연 ingress
+SpotNode process 에서 `acceptedSpotRouteChannels.play.route` 로 연 ingress
 channel 이름이다. target Spot 은 문자열 overload 없이 `RoutingId` 로 지정한다.
 
 ## 12. 회귀 테스트

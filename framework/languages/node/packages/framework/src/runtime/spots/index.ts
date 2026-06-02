@@ -21,7 +21,7 @@ import type {
   ZLinkTimerOptions,
   ZLinkTimerTick
 } from '../../contracts';
-import { ZLinkTimerOverrunPolicy } from '../../contracts';
+import { ZLinkAutoConnectType, ZLinkTimerOverrunPolicy } from '../../contracts';
 import {
   ZLinkConfigurationException,
   type ZLinkFrameworkRegistration,
@@ -29,6 +29,8 @@ import {
 } from '../configuration';
 import type {
   ZLinkBackendAdapterFactory,
+  ZLinkChannelBackendAdapter,
+  ZLinkBackendDiscovery,
   ZLinkBackendContext,
   ZLinkBackendSpotNode
 } from '../backend/contracts';
@@ -51,6 +53,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
 
 export class ZLinkSpotNodeRuntimeManager {
   private readonly nodes = new Map<string, ZLinkBackendSpotNode>();
+  private readonly ownedObjects: ZLinkOwnedBackendObject[] = [];
 
   constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {}
 
@@ -59,9 +62,13 @@ export class ZLinkSpotNodeRuntimeManager {
       return;
     }
     const spotAdapter = this.options.backendAdapterFactory.createSpotAdapter();
+    const channelAdapter = this.options.backendAdapterFactory.createChannelAdapter();
     for (const [spotNodeName, spotNode] of this.options.registration.spotNodes.entries()) {
       const node = spotAdapter.createSpotNode(this.options.context, ZLINK_BACKEND_SPOT_NODE_MODE_ALL);
       this.applySpotNodeOptions(node, spotNode);
+      this.attachChannelClients(channelAdapter, node, spotNode);
+      this.attachSpotRouteChannels(channelAdapter, node, spotNode);
+      this.initializeSpotPublisherClients(node, spotNode);
       this.nodes.set(spotNodeName, node);
     }
   }
@@ -72,7 +79,12 @@ export class ZLinkSpotNodeRuntimeManager {
 
   async dispose(): Promise<void> {
     const nodes = [...this.nodes.values()];
+    const ownedObjects = [...this.ownedObjects];
     this.nodes.clear();
+    this.ownedObjects.length = 0;
+    for (const object of ownedObjects.reverse()) {
+      await object.dispose();
+    }
     for (const node of nodes.reverse()) {
       await node.dispose();
     }
@@ -96,6 +108,79 @@ export class ZLinkSpotNodeRuntimeManager {
       node.connectPeer(endpoint);
     }
   }
+
+  private attachChannelClients(
+    channelAdapter: ZLinkChannelBackendAdapter,
+    node: ZLinkBackendSpotNode,
+    spotNode: ZLinkSpotNodeOptions
+  ): void {
+    for (const [channelName, attached] of Object.entries(spotNode.attachedChannelClients ?? {})) {
+      const dealer = channelAdapter.createDealerSocket(this.options.context);
+      dealer.setChannelName(channelName);
+      this.ownedObjects.push(dealer);
+      if ((attached.manualConnections ?? []).length > 0) {
+        for (const endpoint of attached.manualConnections ?? []) {
+          dealer.connect(endpoint);
+        }
+        node.attachChannelDealerManual(channelName, dealer);
+        continue;
+      }
+      const discovery = this.createDiscovery(channelAdapter, channelName, ZLinkAutoConnectType.ClientServer);
+      dealer.attachDiscovery(discovery);
+      node.attachChannelDealer(discovery, dealer);
+    }
+  }
+
+  private attachSpotRouteChannels(
+    channelAdapter: ZLinkChannelBackendAdapter,
+    node: ZLinkBackendSpotNode,
+    spotNode: ZLinkSpotNodeOptions
+  ): void {
+    for (const [channelName, acceptance] of Object.entries(spotNode.acceptedSpotRouteChannels ?? {})) {
+      if ((acceptance.manualConnections ?? []).length > 0) {
+        for (const endpoint of acceptance.manualConnections ?? []) {
+          node.connectRouterChannelPeer(channelName, endpoint);
+        }
+        continue;
+      }
+      const discovery = this.createDiscovery(channelAdapter, channelName, this.resolveSpotRouteAutoConnectType(channelName));
+      node.attachSpotRouteChannelDiscovery(channelName, discovery);
+    }
+  }
+
+  private initializeSpotPublisherClients(node: ZLinkBackendSpotNode, spotNode: ZLinkSpotNodeOptions): void {
+    for (const attached of Object.values(spotNode.attachedSpotPublisherClients ?? {})) {
+      const publisher = node.createSpot();
+      this.ownedObjects.push(publisher);
+      for (const endpoint of attached.manualConnections ?? []) {
+        node.connectPeer(endpoint);
+      }
+    }
+  }
+
+  private createDiscovery(
+    channelAdapter: ZLinkChannelBackendAdapter,
+    channelName: string,
+    autoConnectType: ZLinkAutoConnectType
+  ): ZLinkBackendDiscovery {
+    const discovery = channelAdapter.createDiscovery(this.options.context, autoConnectType, channelName);
+    for (const endpoint of this.options.registration.discovery?.registries ?? []) {
+      discovery.connectRegistry(endpoint);
+    }
+    this.ownedObjects.push(discovery);
+    return discovery;
+  }
+
+  private resolveSpotRouteAutoConnectType(channelName: string): ZLinkAutoConnectType {
+    if (this.options.registration.routeChannelOptions.has(channelName)) {
+      return ZLinkAutoConnectType.RouteMesh;
+    }
+    return ZLinkAutoConnectType.ClientServer;
+  }
+}
+
+interface ZLinkOwnedBackendObject {
+  dispose(): Promise<void>;
 }
 
 interface SpotActivation {

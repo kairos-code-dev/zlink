@@ -46,8 +46,9 @@ IMPLEMENTATION-PLAN (지금 문서)  ← 순서·참조지도·DoD·함정표·�
    코드보다 뒤처질 수 있다 — 막히면 코드를 본다.
 3. backend 의존은 어댑터 한 층에만 격리. 나머지는 backend 독립.
 
-**North Star(최종 완료 기준):** P0~P9 통과로 끝이 아니다. **dotnet framework 와
-구조·기능·사용성·샘플 4축이 동등**해야 비로소 완료다. 상세는 §8.
+**North Star(최종 완료 기준):** P0~P9(P1.5 포함) 통과로 끝이 아니다.
+**dotnet framework 와 구조·기능·사용성·샘플 4축이 동등**해야 비로소 완료다.
+상세는 §8.
 
 ---
 
@@ -65,7 +66,8 @@ IMPLEMENTATION-PLAN (지금 문서)  ← 순서·참조지도·DoD·함정표·�
 [di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) ·
 [behavior-matrix](./internals/behavior-matrix.ko.md) ·
 [implementation-scope-and-nongoals](./internals/implementation-scope-and-nongoals.ko.md) ·
-[regression-test-matrix](./internals/regression-test-matrix.ko.md)
+[regression-test-matrix](./internals/regression-test-matrix.ko.md) ·
+[sample-implementation-plan](./sample-implementation-plan.ko.md)
 
 ---
 
@@ -130,27 +132,31 @@ P0 skeleton
 |
 +-- P1 backend adapter
     |
-    +-- P2 contracts
+    +-- P1.5 node binding parity
         |
-        +-- P3 host lifecycle
+        +-- P2 contracts
             |
-            +-- P4 channel messaging
+            +-- P3 host lifecycle
                 |
-                +-- P5 spot
-                |   |
-                |   +-- P6 actor core
-                |   |   |
-                |   |   +-- P7 stream relay connector
-                |   |
-                |   +-- P8 registry monitoring codecs
-                |
-                +-- P9 parity validation
+                +-- P4 channel messaging
+                    |
+                    +-- P5 spot
+                    |   |
+                    |   +-- P6 actor core
+                    |   |   |
+                    |   |   +-- P7 stream relay connector
+                    |   |
+                    |   +-- P8 registry monitoring codecs
+                    |
+                    +-- P9 parity validation
 ```
 
-P4 까지가 임계 경로(슬라이스 1). P5~P8 은 P4 패턴을 따르며 일부 병행 가능하나,
-P6(actor core)은 P5 에 의존하고, P7(stream actor 바인딩)은 P6 에 의존한다.
-P8 은 base registry/monitoring 은 P4 이후 병행 가능하지만, spot monitoring source 는
-P5 이후에만 닫을 수 있다.
+P4 까지가 임계 경로(슬라이스 1). P1.5 는 P2~P8 구현에 필요한 Node binding
+public API gap 을 닫는 단계다. framework 는 binding internal/native detail 을
+직접 우회하지 않는다. P5~P8 은 P4 패턴을 따르며 일부 병행 가능하나, P6(actor
+core)은 P5 에 의존하고, P7(stream actor 바인딩)은 P6 에 의존한다. P8 은 base
+registry/monitoring 은 P4 이후 병행 가능하지만, spot monitoring source 는 P5
+이후에만 닫을 수 있다.
 
 ---
 
@@ -193,6 +199,7 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 |-------|----------------|---------------|----------------------|
 | P0 | package 구조가 역할을 숨김 | package와 test 계층을 contract/runtime/adapter/sample로 분리 | workspace 경계가 설명 가능 |
 | P1 | backend wrapper가 public API로 새어 나옴 | adapter port와 node wrapper를 internal에 격리 | public surface에 binding concrete type 없음 |
+| P1.5 | binding gap을 framework 우회 코드로 메움 | binding public API를 추가하고 adapter에서만 호출 | native/internal 직접 호출 없음 |
 | P2 | TypeScript 타입이 dotnet 의미를 재정의 | TS 표면만 바꾸고 의미는 dotnet contract에 맞춤 | spec과 contract export가 일치 |
 | P3 | NestJS context를 service locator로 사용 | provider token과 constructor injection으로 제한 | handler context가 DI container를 노출하지 않음 |
 | P4 | channel type별 submit/correlation 중복 | submit operation, dispatch pipeline, transport adapter를 분리 | caller API는 fluent builder 하나 |
@@ -238,8 +245,32 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - [ ] 허용 primitive(`RoutingId`=string, `Message`=Buffer, `SendFlags`)만 노출
 - **검증:** backend-dependency-policy §9 미러 테스트(`backend-adapter-factory.spec.ts`, `scaffold-smoke.spec.ts`)
 
+### Phase 1.5 — Node binding parity
+- **선행:** P1
+- **입력:** dotnet `Runtime/Backend/DotNet/`, dotnet `Runtime/Streams/`,
+  `Runtime/Spots/`, `Runtime/Actors/`, `Systems.Zlink.Stream.Connector/`,
+  `bindings/node` public API, [backend-dependency-policy](./internals/backend-dependency-policy.ko.md)
+- **산출물:** Node binding public API gap list, framework 에 필요한 binding public
+  API 추가분, adapter smoke test, stale native artifact guard
+- **작업:**
+  - channel/registry/monitoring/spot/stream/ActorGateway/bound session 에 필요한
+    binding API 를 dotnet adapter 사용 경로와 대조한다.
+  - binding 에 없는 기능은 `@zlink-systems/zlink` public API 로 추가한다.
+  - framework adapter 는 binding public API 만 호출한다. native addon symbol,
+    generated JS internal, private field, reflection-like 우회는 금지한다.
+  - stale native artifact 로 인한 smoke 실패를 막기 위해 실제 native addon
+    산출물이 source 보다 최신인지 확인하는 guard 를 둔다.
+- **DoD:**
+  - [ ] P2~P8 에 필요한 binding public API gap list 가 닫힘
+  - [ ] ActorGateway attach, bound session send/disconnect, stream session,
+        registry query, socket monitor smoke 가 binding public API 로 통과
+  - [ ] framework runtime/adapter 코드가 binding internal 경로를 import 하지 않음
+  - [ ] stale native artifact guard 통과
+- **검증:** `node-binding-parity.spec.ts`, `backend-public-api-only.spec.ts`,
+  `native-artifact-freshness.spec.ts`
+
 ### Phase 2 — 계약(Contracts) TS 이식 (backend 독립)
-- **선행:** P1(일부 타입 공유) — 실질 병행 가능
+- **선행:** P1.5(일부 타입 공유) — 실질 병행 가능
 - **입력:** [handler-interfaces](./spec/handler-interfaces.ko.md) / dotnet `Contracts/`
 - **산출물:** `contracts/` 의 모든 interface·decorator·context·enum·options·client·builder 타입
 - **작업:**
@@ -251,7 +282,7 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 - **검증:** contract 테스트(`test/contract/**`) — regression-test-matrix 의 ContractSurface 미러
 
 ### Phase 3 — 호스트/모듈 부트스트랩 + lifecycle
-- **선행:** P1, P2
+- **선행:** P1.5, P2
 - **입력:** [nestjs-overview §2~4](./spec/nestjs-overview.ko.md), [lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md), [di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) / dotnet `Runtime/Host/`, `Runtime/Configuration/`, `AspNetCore/`
 - **산출물:** `runtime/host/`, `runtime/configuration/`, `@zlink-systems/nestjs`(`ZLinkModule`)
 - **작업:**
@@ -318,13 +349,16 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 ### Phase 7 — stream + session relay + stream connector
 - **선행:** P6
 - **입력:** [nestjs-stream](./spec/nestjs-stream.ko.md) / dotnet `Runtime/Streams/`, `Systems.Zlink.Stream.Connector/`
-- **산출물:** `runtime/streams/` + `@zlink-systems/stream-connector`(+codec 패키지)
+- **산출물:** `runtime/streams/` + `@zlink-systems/stream-connector` +
+  connector codec 패키지(`@zlink-systems/stream-connector-{json,msgpack,protobuf}`)
 - **작업:**
   - stream node 등록(`session: T`, `attachActorGateway`)
   - session lifecycle(`onConnected/onDisconnected/onError/onDispatch`), session I/O(client.send/reply, stream.write/close)
   - session→actor bind/relay
   - bound session(`ZLinkBoundSession`) send/disconnect, message metadata policy, stale binding token guard
-  - 독립 client `ZlinkStreamConnector`(create→on→connect→send/request→dispatch pump), codec(json/msgpack/protobuf)
+  - 독립 client `ZlinkStreamConnector`(create→on→connect→send/request→dispatch pump)
+  - connector codec 패키지(json/msgpack/protobuf)는 connector 전용으로 분리한다.
+    framework runtime codec registry 와 섞지 않는다.
 - **DoD:**
   - [ ] 외부 client 연결 → session onDispatch 수신 → reply 왕복
   - [ ] session→actor relay 동작
@@ -337,12 +371,14 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 - **선행:** P4. 단, spot monitoring source 는 P5 이후
 - **입력:** [nestjs-registry](./spec/nestjs-registry.ko.md), [nestjs-monitoring](./spec/nestjs-monitoring.ko.md) / dotnet `Runtime/Registry/`, `Runtime/Diagnostics/`, `Runtime/Codecs/`
 - **산출물:** `runtime/registry/`, `runtime/diagnostics/`, `runtime/codecs/`
+  (framework runtime codec registry)
 - **작업:**
   - 임베디드 registry 시동(heartbeat 5000/timeout 15000/broadcast 30000 ms), discovery 등록
   - in-process query(status/serviceSummary/topology/memberPeers) + remote query(topology only)
   - monitoring source 등록(socket/registry), typed runtime event + handler provider (discovery 는 query 로 관찰 — §6)
   - P5 이후 spot snapshot polling-diff monitoring source 연결
-  - codec registry(json/msgpack/protobuf)
+  - framework runtime codec registry(json/msgpack/protobuf). connector codec package 와
+    책임을 섞지 않는다.
 - **DoD:**
   - [ ] registry 시동 + in-process/remote topology 조회
   - [ ] socket/registry 이벤트가 handler 로 전달
@@ -352,18 +388,26 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 
 ### Phase 9 — 동등성 검증 + 사용성·샘플 동등성
 - **선행:** P4~P8
-- **입력:** [regression-test-matrix](./internals/regression-test-matrix.ko.md), §8 최종 완료 기준, dotnet `tests/`, `samples/`, `doc/guide/`
+- **입력:** [regression-test-matrix](./internals/regression-test-matrix.ko.md),
+  [sample-implementation-plan](./sample-implementation-plan.ko.md), §8 최종 완료 기준,
+  dotnet `tests/`, `samples/`, `doc/guide/`
 - **산출물:** 전체 regression suite, NestJS 사용자 guide, NestJS sample apps, sample 실행 스크립트, 문서 링크 회귀 테스트
 - **작업:**
   - contract/unit/e2e/multi-process 미러를 채워 dotnet 동작 동등성 고정. 문서별 `회귀 테스트` 단락이 실제 테스트로 연결되는지 확인.
-  - **사용성 계층 동등화**: dotnet `doc/guide` 에 대응하는 node 사용자 가이드(NestJS) 작성(표면 확정 후) — 이 시점에 비로소 작성한다.
-  - **샘플 동등화**: dotnet `samples/`(TicTacToe, Bingo 등)와 동일 시나리오의 NestJS 샘플 앱 + 샘플 문서 제공.
+  - **사용성 계층 동등화**: dotnet `doc/guide` 에 대응하는 node 사용자 가이드(NestJS)를
+    `sample-implementation-plan` 의 장 매핑대로 작성한다.
+  - **샘플 동등화**: dotnet `samples/`(TicTacToe, TicTacToe.SessionGateway, Bingo)와
+    stream connector 단독 sample 을 같은 시나리오로 구현한다.
   - sample smoke command 를 만들고 CI release gate 에 연결한다.
+  - cross-language smoke 를 release gate 에 연결한다(Node↔dotnet, Node↔C++/Java 중
+    최소 지정 경로).
   - guide/spec/internals/sample 문서 링크가 깨지지 않는지 문서 회귀 테스트를 추가한다.
 - **DoD:**
   - [ ] regression matrix 의 모든 행이 green / multi-process topology 시나리오 통과
   - [ ] NestJS sample smoke command 가 모든 필수 sample 을 실행하고 self-check 통과
   - [ ] 사용자 guide 가 dotnet guide 의 주요 장과 1:1 대응한다
+  - [ ] cross-language smoke 가 Node↔dotnet request/reply, stream connector 왕복,
+        actor/session relay 중 최소 필수 경로를 통과한다
   - [ ] 문서 링크 회귀 테스트 통과
   - [ ] §8 의 4축(구조·기능·사용성·샘플) 동등성 표가 전부 충족
 - **검증:** 전체 회귀 스위트 + §8 동등성 점검
@@ -399,6 +443,7 @@ TS 고유 제약(표면 한계): 런타임 타입 소거 → packet key 는 **�
 
 - [ ] **P0** 골격 — 빌드/테스트 러너/바인딩 스모크 · [ ] POSD 게이트
 - [ ] **P1** backend 어댑터 포트 — factory 5어댑터 + wrapper 12 + 누수 0 · [ ] POSD 게이트
+- [ ] **P1.5** Node binding parity — public API gap 0 + internal 우회 0 · [ ] POSD 게이트
 - [ ] **P2** 계약 TS 이식 — contract 테스트 green · [ ] POSD 게이트
 - [ ] **P3** 호스트/모듈/lifecycle — forRoot/forRootAsync + 시동·종료 순서 · [ ] POSD 게이트
 - [ ] **P4** channel messaging — request/reply E2E + send/publish + filter · [ ] POSD 게이트
@@ -420,17 +465,18 @@ TS 고유 제약(표면 한계): 런타임 타입 소거 → packet key 는 **�
 | 축 | 동등 기준 | 비교 대상(dotnet) | 확인 방법 |
 |----|-----------|-------------------|-----------|
 | **구조(structure)** | 패키지·모듈 경계가 dotnet 을 미러. backend 어댑터 한 층으로 격리(나머지 backend 독립) | `src/` 디렉토리, `Runtime/*` | §3 패키지 구성 + backend-dependency-policy 회귀 |
-| **기능(functionality)** | 모든 서브시스템(channel/spot/actor/stream/registry/monitoring/codec)의 동작이 dotnet 과 동일 | `Runtime/*`, `tests/` | regression-test-matrix 전 행 green + cross-language(같은 channel) 상호호출 |
+| **기능(functionality)** | 모든 서브시스템(channel/spot/actor/stream/registry/monitoring/codec)의 동작이 dotnet 과 동일 | `Runtime/*`, `tests/` | regression-test-matrix 전 행 green + cross-language(같은 channel/stream/session) 상호호출 |
 | **사용성(usability)** | 같은 멘탈 모델·동사·등록 흐름. dotnet `doc/guide` 대응 NestJS 가이드 제공 | `doc/guide/01~12`, 케이스/샘플 가이드 | node 사용자 가이드 작성·동등 챕터 매핑 |
 | **샘플(samples)** | dotnet 샘플과 동일 시나리오의 실행 가능한 NestJS 샘플 + 샘플 문서 | `samples/`(TicTacToe, Bingo …), `doc/guide/samples/` | 샘플 앱 빌드·실행 + 샘플 문서 동등 |
 
 운영 규칙:
 
-- **사용성·샘플 축은 현재 draft 단계에서 의도적으로 보류**했다(표면 미확정). 그러나
-  **최종 완료에는 필수**다 — P9 에서 표면이 확정된 뒤 작성·구현한다(가이드 + 샘플 앱).
+- **사용성·샘플 축은 P9 의 필수 산출물**이다. 세부 대상과 실행 기준은
+  [sample-implementation-plan](./sample-implementation-plan.ko.md) 이 소유한다.
 - 4축 모두 충족 + §7 의 모든 Phase·게이트 박스 체크 = **최종 완료**.
-- cross-language 동등성: node 서비스가 dotnet/C++/Java 와 **같은 channel/packet**
-  위에서 상호 호출되는지까지 확인한다(언어 중립 wire 계약).
+- cross-language 동등성: node 서비스가 dotnet/C++/Java 와 **같은 channel,
+  stream header, session/actor packet** 위에서 상호 호출되는지까지 확인한다
+  (언어 중립 wire 계약).
 
 ## 9. 회귀 테스트
 
@@ -441,10 +487,11 @@ TS 고유 제약(표면 한계): 런타임 타입 소거 → packet key 는 **�
 | `regression.spec.ts › node 문서가 모두 회귀 테스트 단락을 노출한다` | `IMPLEMENTATION-PLAN.ko.md`가 명시적인 `회귀 테스트` 단락을 가진다. |
 | `regression.spec.ts › implementation plan phase order matches dependencies` | P6 actor core, P7 stream relay, P8 registry/monitoring 의존 순서가 이 문서와 regression matrix에서 어긋나지 않는다. |
 | `regression.spec.ts › implementation plan uses supported node runtime` | toolchain 기준이 `node20`/`node22` release gate와 일치한다. |
+| `regression.spec.ts › implementation plan includes binding parity and cross-language gates` | P1.5, P9, §8 이 binding public API gap과 cross-language smoke를 완료 기준으로 둔다. |
 
 ## 10. 현재 문서 상태
 
 - ✅ 구현용 draft 완비: `spec/`(11) + `internals/`(7) + 이 plan — 모두 dotnet 코드 검증 기반.
-- ⏳ 사용성(가이드)·샘플: **현재 보류, 최종 완료(§8)에는 필수** — P9 에서 작성.
+- ✅ 사용성(가이드)·샘플 실행 기준: [sample-implementation-plan](./sample-implementation-plan.ko.md) 에서 P9 산출물로 고정.
 - 참고: 기존 `draft/`(NestJS 표면 초안)은 출발점이며, 충돌 시 `spec/` 우선.
 - 전체 인덱스: [README](./README.ko.md).

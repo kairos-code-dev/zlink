@@ -75,6 +75,22 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 - macOS x64
 - macOS ARM64
 
+## 3.1 Node Binding Parity Regression 항목
+
+> framework 는 `@zlink-systems/zlink` public API 위에만 올라간다. dotnet
+> `Runtime/Backend/DotNet/` 이 `bindings/dotnet` public surface 를 쓰는 것처럼,
+> Node backend adapter 도 binding internal/native 경로를 직접 우회하지 않는다.
+
+| 항목 | 계층 | 통과 기준 |
+|------|------|-----------|
+| binding public API gap list | `unit` | P2~P8 에 필요한 channel/spot/stream/registry/monitoring/ActorGateway/bound session API가 목록화되고 gap이 0이다 |
+| framework public-api-only import guard | `unit` | framework runtime/adapter package가 binding internal path, native addon symbol, generated private helper를 import하지 않는다 |
+| ActorGateway attach public API smoke | `integration-single-process` | stream session relay가 binding public API만으로 ActorGateway에 attach된다 |
+| bound session public API smoke | `integration-single-process` | bound session send/disconnect가 binding public API만으로 동작한다 |
+| registry query public API smoke | `integration-single-process` | registry query client wrapper가 binding public API만 호출한다 |
+| socket monitor public API smoke | `integration-single-process` | socket monitoring source가 binding public API만 호출한다 |
+| native artifact freshness guard | `unit` | native addon 산출물이 source보다 오래되면 framework smoke가 실패한다 |
+
 ## 4. Channel Regression 항목
 
 > dotnet `ContractTests/Channels`, `ContractTests/Handlers`,
@@ -259,13 +275,15 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 
 ## 8. Release Gate
 
-릴리스로 보내려면 다음 다섯 가지를 모두 만족해야 한다.
+릴리스로 보내려면 다음 여섯 가지를 모두 만족해야 한다.
 
 1. `unit`, `integration-single-process`, `integration-multi-process` 전부 통과
 2. `node20`, `node22` 양쪽 모두 통과
 3. 위 여섯 플랫폼 ABI 전체에서 CI gate 통과
 4. happy-path 샘플과 대표 failure-path가 각각 한 번 이상 커버되어 있음
 5. `behavior-matrix.ko.md`에 정리한 비허용 조합이 모두 테스트로 고정되어 있음
+6. cross-language smoke 필수 경로가 통과되어 Node 구현이 dotnet/C++/Java 와 같은
+   wire 계약을 지킨다는 것을 확인함
 
 즉 샘플이 한 번 실행되는 것만으로는 충분하지 않다. startup validation 과
 runtime failure 의미까지 테스트로 같이 고정되어 있어야 한다.
@@ -273,6 +291,23 @@ runtime failure 의미까지 테스트로 같이 고정되어 있어야 한다.
 또한 native backend 가 이미 해당 플랫폼을 지원하더라도, framework 는 그 위에
 registration, lifecycle, DI, monitoring 계층을 더 쌓는다. 그래서 플랫폼 gate 는
 backend gate 와 별도로 유지한다.
+
+## 8.1 Sample / Guide / Cross-Language Release 항목
+
+> Phase 9 의 사용성·샘플 축은
+> [sample-implementation-plan](../sample-implementation-plan.ko.md)이 소유한다.
+> 아래 항목은 release gate 에서 반드시 실행한다.
+
+| 항목 | 계층 | 통과 기준 |
+|------|------|-----------|
+| `run_samples.sh` 전체 실행 | `integration-multi-process` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo 가 모두 self-check 통과 |
+| guide chapter map | `unit` | Node guide 12개 장이 dotnet guide 주요 장과 1:1로 매핑된다 |
+| sample public API import guard | `unit` | sample 이 framework/connector public API만 import하고 binding internal/native 경로를 직접 쓰지 않는다 |
+| sample readiness guard | `unit` | sample 이 sleep-only readiness masking을 사용하지 않고 observable readiness를 기다린다 |
+| Node client -> dotnet channel server | `integration-multi-process` | request/reply, send, publish가 같은 packet 의미로 처리된다 |
+| dotnet client -> Node channel server | `integration-multi-process` | Node handler가 dotnet client 요청에 같은 payload 의미로 reply한다 |
+| Node stream connector -> dotnet stream server | `integration-multi-process` | header session request/reply와 notification dispatch가 동작한다 |
+| external connector -> Node stream server | `integration-multi-process` | dotnet/C++/Java 중 하나의 connector가 Node `onDispatch`와 `reply` 경로를 통과한다 |
 
 ## 9. 문서별 회귀 테스트 단락
 
@@ -292,7 +327,8 @@ dotnet 의 `RegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection`
 
 > dotnet 의 narrative guide 와 case-study 문서가 strict 집합에서 제외되는 것과
 > 동일하게, node 의 사용자 가이드(usability) 계층은 strict 집합 대상이 아니다.
-> 현재 node 묶음은 구현용 draft(`spec/`, `internals/`)만 strict 집합으로 둔다.
+> 현재 node 묶음은 구현용 문서(`spec/`, `internals/`, root plan, sample draft)만
+> strict 집합으로 둔다.
 
 대상 문서는 현재 `framework/languages/node/doc` 아래에 실제 존재하는 구현용 문서다.
 dotnet `aspnet-core-*` 문서는 node 의 `nestjs-*` 대응 문서로 매핑한다.
@@ -319,6 +355,7 @@ dotnet `aspnet-core-*` 문서는 node 의 `nestjs-*` 대응 문서로 매핑한�
 - `channel-messaging-samples.ko.md`
 - `spot-samples.ko.md`
 - `stream-samples.ko.md`
+- `sample-implementation-plan.ko.md`
 - `IMPLEMENTATION-PLAN.ko.md`
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

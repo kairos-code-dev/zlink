@@ -18,6 +18,8 @@
 
 - [**구현 작업 Plan**](./IMPLEMENTATION-PLAN.ko.md) — 참조 파일·작업 순서·코드
   검증 결정. **구현은 여기서 시작한다.**
+- [Sample and Guide Implementation Plan](./sample-implementation-plan.ko.md) —
+  Phase 9 의 사용자 guide, sample, cross-language smoke 완료 기준
 - [.NET → Node.js 표면 매핑 정책](./internals/dotnet-to-node-surface-mapping.ko.md)
   — 모든 문서가 따르는 번역 규칙(호스트/언어/백엔드 매핑)
 - [기존 드래프트](./draft/README.ko.md) — NestJS 표면 초안(이 문서 묶음의 출발점)
@@ -63,13 +65,15 @@ framework 경계, backend 의존, lifecycle, 회귀 기준을 정의한다. spec
 1. `internals/dotnet-to-node-surface-mapping` 으로 번역 규칙을 고정한다.
 2. `spec/nestjs-overview` 의 backend 어댑터(포트 구현)부터 만든다 — 유일한
    backend 스왑 지점이다.
-3. `spec/handler-interfaces` 의 계약을 TypeScript 로 옮긴다(백엔드 독립).
-4. host lifecycle 을 붙인 뒤 channel messaging 으로 첫 수직 슬라이스를 닫는다.
-5. channel 이후에는 `spot` 과 `registry/base monitoring` 을 병행할 수 있다.
+3. Node binding public API gap 을 닫는다. framework 는 binding internal/native
+   경로를 직접 우회하지 않는다.
+4. `spec/handler-interfaces` 의 계약을 TypeScript 로 옮긴다(백엔드 독립).
+5. host lifecycle 을 붙인 뒤 channel messaging 으로 첫 수직 슬라이스를 닫는다.
+6. channel 이후에는 `spot` 과 `registry/base monitoring` 을 병행할 수 있다.
    다만 spot monitoring source 는 spot runtime 이 생긴 뒤에만 닫는다.
-6. actor core 를 구현한 뒤 stream/session relay 와 Stream Connector 를 붙인다.
-7. `internals/regression-test-matrix` 로 dotnet 과 동등성을 검증하고, P9 에서
-   사용자 guide 와 sample 동등성까지 닫는다.
+7. actor core 를 구현한 뒤 stream/session relay 와 Stream Connector 를 붙인다.
+8. `internals/regression-test-matrix` 와 `sample-implementation-plan` 으로 dotnet 과
+   동등성을 검증하고, P9 에서 사용자 guide, sample, cross-language smoke 까지 닫는다.
 
 ## 4. 회귀 테스트
 
@@ -79,3 +83,4 @@ framework 경계, backend 의존, lifecycle, 회귀 기준을 정의한다. spec
 |--------|-----------|
 | `regression.spec.ts › node 문서가 모두 회귀 테스트 단락을 노출한다` | `README.ko.md`가 명시적인 `회귀 테스트` 단락을 가진다. |
 | `regression.spec.ts › README implementation order matches plan` | 구현 순서 요약이 `IMPLEMENTATION-PLAN.ko.md`의 phase 의존성과 어긋나지 않는다. |
+| `regression.spec.ts › README links sample implementation plan` | Phase 9 guide/sample/cross-language smoke 기준 문서가 README 에서 연결된다. |

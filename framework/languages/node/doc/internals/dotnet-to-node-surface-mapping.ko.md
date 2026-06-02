@@ -140,7 +140,7 @@ provider token 으로 주입 가능하게 등록한다.
 | `record` / `readonly record struct` | `interface` 또는 `type`(불변 객체) | DTO |
 | `enum` | `enum`(문자열 값 권장) 또는 union 리터럴 | wire 값은 코드로 확인 |
 | `RoutingId(string)` | branded `string`(예: `type RoutingId = string`) | rid 는 문자열 |
-| `Message`, `ReadOnlyMemory<byte>` | `Buffer` / `Message`(바인딩 타입) | payload |
+| `Message`, `ReadOnlyMemory<byte>` | `Message`(payload 구조 타입) / `Buffer` | payload |
 | `TimeSpan period` | `periodMs: number` | 시간은 ms number |
 | `IReadOnlyList<Message> createParts` | `readonly Message[]` | multipart |
 | out 파라미터 / tuple | 반환 객체 | 바인딩 가이드와 일치 |
@@ -267,7 +267,7 @@ backend port 계약(dotnet `Runtime/Backend/Contracts`):
 - framework public contract 가 우선이다. 바인딩 객체(`DealerSocket`, `SpotNode`,
   `Registry` 등)를 public surface 에 직접 노출하지 않는다.
 - 바인딩 wrapper 생성은 **어댑터 내부에서만** 일어난다.
-- public 에 남겨도 되는 primitive: `RoutingId`(string), `Message`(Buffer),
+- public 에 남겨도 되는 primitive: `RoutingId`(string), `Message`(payload 구조 타입),
   `SendFlags`. 이들은 backend 가 바뀌어도 같은 의미를 유지한다.
 - 따라서 Node backend 어댑터 구현이
   `framework/languages/dotnet/src/Zlink.Framework/Runtime/Backend/DotNet` 의

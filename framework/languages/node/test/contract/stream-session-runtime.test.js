@@ -6,6 +6,7 @@ const test = require('node:test');
 const zlink = require('../../../../../bindings/node/dist');
 const connector = require('../../packages/stream-connector/dist');
 const framework = require('../../packages/framework/dist');
+const backend = require('../../packages/framework/dist/runtime/backend');
 
 test('stream session node runtime dispatches framed packets through one session context', async () => {
   const socket = new FakeStreamSocket();
@@ -194,7 +195,7 @@ test('stream session runtime dispatches unmatched response frames to the session
 test('stream session node runtime receives framed packets from public binding stream socket', async () => {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
-  const factory = new framework.ZLinkNodeBackendAdapterFactory();
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const context = factory.createChannelAdapter().createContext();
   const socket = factory.createStreamAdapter().createStreamSocket(context);
   let client;

@@ -7,6 +7,7 @@ const { spawn } = require('node:child_process');
 
 const zlink = require('../../../../bindings/node/dist');
 const framework = require('../packages/framework/dist');
+const backend = require('../packages/framework/dist/runtime/backend');
 const connector = require('../packages/stream-connector/dist');
 
 const repoRoot = path.resolve(__dirname, '../../../..');
@@ -250,7 +251,7 @@ async function dotnetConnectorToNodeStreamServer(tempDir) {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
   const eventFile = path.join(tempDir, 'dotnet-connector-node-stream.events');
-  const factory = new framework.ZLinkNodeBackendAdapterFactory();
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const context = factory.createChannelAdapter().createContext();
   const socket = factory.createStreamAdapter().createStreamSocket(context);
   const bindingRuntime = new framework.ZLinkStreamBindingRuntime({

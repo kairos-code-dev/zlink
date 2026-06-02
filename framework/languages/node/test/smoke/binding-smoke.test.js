@@ -11,7 +11,7 @@ test('binding public API exposes version', () => {
 });
 
 test('framework adapter reads binding version through public API', () => {
-  const framework = require('../../packages/framework/dist');
-  const info = framework.getNodeBindingInfo();
+  const backend = require('../../packages/framework/dist/runtime/backend');
+  const info = backend.getNodeBindingInfo();
   assert.deepEqual(info.version, zlink.version());
 });

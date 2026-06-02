@@ -369,7 +369,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     try {
       return {
         resultCode: result.joinResultCode,
-        actor: result.actor,
+        actor: toFrameworkActorRef(result.actor),
         reply: this.options.decodeJoinReply?.<TReply>(parts)
       };
     } finally {
@@ -412,7 +412,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
 
     state.setNativeActorRef(result.actor);
     state.clearJoinedSpot();
-    return result.actor;
+    return toFrameworkActorRef(result.actor);
   }
 
   private createJoinPayload(request: unknown): Message | readonly Message[] {
@@ -860,6 +860,14 @@ function toBackendRoutingId(routingId: RoutingId): ZLinkBackendActorRef['nodeRid
 
 function toFrameworkRoutingId(routingId: ZLinkBackendActorRef['nodeRid']): RoutingId {
   return routingId as unknown as RoutingId;
+}
+
+function toFrameworkActorRef(actor: ZLinkBackendActorRef): ActorRef {
+  return {
+    nodeRid: toFrameworkRoutingId(actor.nodeRid),
+    actorId: actor.actorId,
+    generation: actor.generation
+  };
 }
 
 function packetKey(kind: ZLinkActorPacketKind, actorType: Type<ZLinkActor>, packetName: string): string {

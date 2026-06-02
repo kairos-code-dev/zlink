@@ -1,6 +1,5 @@
 import type {
   ActorRoute,
-  Message,
   Received,
   RecvFlagsValue,
   RegistryServiceSummaryEntry,
@@ -10,7 +9,6 @@ import type {
   RegistryTopologyFilter,
   RequestCallback,
   RequestResult,
-  RoutingId,
   SendFlagsValue,
   SpotNodeModeValue,
   SpotNodePeerEntry,
@@ -21,6 +19,10 @@ import type {
   MemberPeerEntry,
   MonitorEventType
 } from '@zlink-systems/zlink';
+import type {
+  Message,
+  RoutingId
+} from '../../../contracts';
 
 export type ZLinkBackendSendFlags = SendFlagsValue;
 export type ZLinkBackendRecvFlags = RecvFlagsValue;

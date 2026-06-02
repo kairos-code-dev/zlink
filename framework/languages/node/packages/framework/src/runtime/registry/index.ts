@@ -21,7 +21,6 @@ import { ZLinkConfigurationException } from '../configuration';
 
 export interface ZLinkRegistryRuntimeOptions {
   readonly registration: ZLinkRegistryOptions;
-  readonly backendAdapterFactory?: ZLinkBackendAdapterFactory;
 }
 
 export class ZLinkRegistryRuntime {
@@ -31,8 +30,8 @@ export class ZLinkRegistryRuntime {
   private context?: ZLinkBackendContext;
   private registry?: ZLinkBackendRegistry;
 
-  constructor(options: ZLinkRegistryRuntimeOptions) {
-    this.backendAdapterFactory = options.backendAdapterFactory ?? new ZLinkNodeBackendAdapterFactory();
+  constructor(options: ZLinkRegistryRuntimeOptions, internalOptions?: unknown) {
+    this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
     this.registration = normalizeRegistryOptions(options.registration);
   }
 
@@ -148,7 +147,6 @@ export class DefaultZLinkRegistryQuery implements ZLinkRegistryQuery {
 
 export interface ZLinkRegistryQueryClientServiceOptions {
   readonly registration: ZLinkRegistryQueryClientOptions;
-  readonly backendAdapterFactory?: ZLinkBackendAdapterFactory;
 }
 
 export class DefaultZLinkRegistryQueryClient implements ZLinkRegistryQueryClient {
@@ -156,9 +154,9 @@ export class DefaultZLinkRegistryQueryClient implements ZLinkRegistryQueryClient
   private readonly client: ZLinkBackendRegistryQueryClient;
   private disposed = false;
 
-  constructor(options: ZLinkRegistryQueryClientServiceOptions) {
+  constructor(options: ZLinkRegistryQueryClientServiceOptions, internalOptions?: unknown) {
     const registration = normalizeRegistryQueryClientOptions(options.registration);
-    const backendAdapterFactory = options.backendAdapterFactory ?? new ZLinkNodeBackendAdapterFactory();
+    const backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
     const channelAdapter = backendAdapterFactory.createChannelAdapter();
     const registryAdapter = backendAdapterFactory.createRegistryAdapter();
     this.context = channelAdapter.createContext();
@@ -185,6 +183,20 @@ export class DefaultZLinkRegistryQueryClient implements ZLinkRegistryQueryClient
     await this.client.dispose();
     await this.context.dispose();
   }
+}
+
+function resolveBackendAdapterFactory(internalOptions: unknown): ZLinkBackendAdapterFactory {
+  if (
+    typeof internalOptions === 'object'
+    && internalOptions !== null
+    && 'backendAdapterFactory' in internalOptions
+  ) {
+    const factory = (internalOptions as { readonly backendAdapterFactory?: ZLinkBackendAdapterFactory }).backendAdapterFactory;
+    if (factory !== undefined) {
+      return factory;
+    }
+  }
+  return new ZLinkNodeBackendAdapterFactory();
 }
 
 interface NormalizedRegistryOptions {

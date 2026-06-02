@@ -13,7 +13,8 @@ test('registry runtime applies dotnet defaults and supports lazy in-process quer
       routerEndpoint: 'tcp://0.0.0.0:5551',
       registryId: 7,
       peers: ['tcp://registry-2:5550']
-    },
+    }
+  }, {
     backendAdapterFactory: backend.factory
   });
   const query = new framework.DefaultZLinkRegistryQuery(runtime);
@@ -45,7 +46,8 @@ test('registry query client owns backend context and exposes topologyAsync only'
   const calls = [];
   const backend = fakeRegistryBackend(calls);
   const client = new framework.DefaultZLinkRegistryQueryClient({
-    registration: { endpoint: 'tcp://registry:5551' },
+    registration: { endpoint: 'tcp://registry:5551' }
+  }, {
     backendAdapterFactory: backend.factory
   });
 

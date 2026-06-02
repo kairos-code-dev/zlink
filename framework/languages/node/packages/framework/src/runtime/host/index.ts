@@ -10,7 +10,6 @@ export interface ZLinkFrameworkRuntime {
 
 export interface ZLinkFrameworkRuntimeHostOptions {
   readonly registration: ZLinkFrameworkRegistration;
-  readonly backendAdapterFactory?: ZLinkBackendAdapterFactory;
   readonly lifecycleSink?: string[];
 }
 
@@ -19,8 +18,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   private readonly lifecycleSink?: string[];
   private context?: ZLinkBackendContext;
 
-  constructor(readonly options: ZLinkFrameworkRuntimeHostOptions) {
-    this.backendAdapterFactory = options.backendAdapterFactory ?? new ZLinkNodeBackendAdapterFactory();
+  constructor(readonly options: ZLinkFrameworkRuntimeHostOptions, internalOptions?: unknown) {
+    this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
     this.lifecycleSink = options.lifecycleSink;
   }
 
@@ -64,4 +63,18 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   async onApplicationShutdown(): Promise<void> {
     await this.stop();
   }
+}
+
+function resolveBackendAdapterFactory(internalOptions: unknown): ZLinkBackendAdapterFactory {
+  if (
+    typeof internalOptions === 'object'
+    && internalOptions !== null
+    && 'backendAdapterFactory' in internalOptions
+  ) {
+    const factory = (internalOptions as { readonly backendAdapterFactory?: ZLinkBackendAdapterFactory }).backendAdapterFactory;
+    if (factory !== undefined) {
+      return factory;
+    }
+  }
+  return new ZLinkNodeBackendAdapterFactory();
 }

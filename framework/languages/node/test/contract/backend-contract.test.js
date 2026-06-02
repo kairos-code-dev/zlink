@@ -1,10 +1,10 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const framework = require('../../packages/framework/dist');
+const backend = require('../../packages/framework/dist/runtime/backend');
 
 test('backend adapter factory exposes the five backend adapters', () => {
-  const factory = new framework.ZLinkNodeBackendAdapterFactory();
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
 
   assert.equal(typeof factory.createChannelAdapter, 'function');
   assert.equal(typeof factory.createSpotAdapter, 'function');
@@ -14,7 +14,7 @@ test('backend adapter factory exposes the five backend adapters', () => {
 });
 
 test('backend adapter creates context and core socket wrappers through public binding API', async () => {
-  const factory = new framework.ZLinkNodeBackendAdapterFactory();
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const channel = factory.createChannelAdapter();
   const context = channel.createContext();
   const disposables = [];

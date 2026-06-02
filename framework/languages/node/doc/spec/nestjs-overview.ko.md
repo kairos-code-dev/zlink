@@ -315,7 +315,7 @@ framework 의 **유일한** backend 의존은 .NET
   함수 타입으로 옮긴다.
 - `out bool created` 같은 out 파라미터는 **반환 객체**로 옮긴다
   (예: `{ spot, created }`).
-- `RoutingId`(string), `Message`(Buffer/바인딩 타입), `SendFlags`, `RecvFlags`
+- `RoutingId`(string), `Message`(payload 구조 타입), `SendFlags`, `RecvFlags`
   는 backend 가 바뀌어도 같은 의미를 유지하는 primitive 라 public 에 남는다.
 - 모든 backend 객체 인터페이스는 .NET 의 `IZLinkBackendObject`(`NativeInstance`)
   + `IAsyncDisposable` 을 따른다. Node 에서는 공통 base

@@ -1,5 +1,4 @@
 export * from './contracts';
-export * from './runtime/backend';
 export * from './runtime/channels';
 export * from './runtime/configuration';
 export * from './runtime/handlers';

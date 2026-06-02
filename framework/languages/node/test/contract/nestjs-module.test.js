@@ -166,7 +166,8 @@ test('framework runtime host start and stop are idempotent and ordered', async (
   let contextCreated = 0;
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration(),
-    lifecycleSink: lifecycle,
+    lifecycleSink: lifecycle
+  }, {
     backendAdapterFactory: {
       createChannelAdapter() {
         return {

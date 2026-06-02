@@ -1,10 +1,22 @@
-import type { ActorRef as BindingActorRef, Message as BindingMessage } from '@zlink-systems/zlink';
-
 export type Type<T = unknown> = new (...args: never[]) => T;
 export type RoutingId = string;
-export type Message = BindingMessage;
 export type ZlinkStreamHeader = unknown;
-export type ActorRef = BindingActorRef;
+
+export interface Message {
+  data(): Buffer;
+  toBytes(): Uint8Array;
+  copy(): Message;
+  size(): number;
+  isEmpty(): boolean;
+  getString(encoding?: BufferEncoding): string;
+  close(): void;
+}
+
+export interface ActorRef {
+  readonly nodeRid: RoutingId;
+  readonly actorId: string;
+  readonly generation: bigint;
+}
 
 export interface ZLinkHandlerContext {
   readonly channelName?: string;

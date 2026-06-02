@@ -50,12 +50,14 @@ API 가 곧 `@zlink-systems/zlink` 의 객체 모델 그대로여야 한다" 는
 현재 문서 기준에서 아래 타입은 public contract 에 그대로 남겨 둔다.
 
 - `RoutingId`(branded `string`)
-- `Message`(`Buffer`)
+- `Message`(payload 구조 타입, `Buffer` 기반)
 - `SendFlags`
 
 이 타입들은 특정 runtime 객체가 아니다. transport identity[^transport-identity],
-payload, submit option 처럼 의미가 분명한 기초 primitive 에 해당한다. 즉 나중에
-backend 가 교체되더라도 같은 의미를 유지하도록
+payload, submit option 처럼 의미가 분명한 기초 primitive 에 해당한다. 특히
+`Message` 는 `@zlink-systems/zlink` 의 concrete class 를 그대로 alias 하지 않고,
+payload 를 읽고 복사하고 해제할 수 있는 framework 소유 구조 타입으로 둔다.
+즉 나중에 backend 가 교체되더라도 같은 의미를 유지하도록
 compatibility layer[^compatibility-layer] 를 끼워 줄 수 있는 종류다.
 
 ## 5. Public API 에 직접 새어 나오면 안 되는 것

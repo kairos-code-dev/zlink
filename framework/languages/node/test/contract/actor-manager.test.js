@@ -414,7 +414,7 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
 
   const result = await actor.context.joinEntrySpot('node-b').timeout(50).submit();
 
-  assert.equal(result, entryRef);
+  assert.deepEqual(result, entryRef);
   assert.equal(actor.context.isJoined, false);
   assert.equal(actor.context.spotRid, undefined);
   assert.equal(manager.getState('alice').nativeActorRef, entryRef);

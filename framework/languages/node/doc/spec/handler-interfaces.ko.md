@@ -31,7 +31,7 @@ framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, �
 - `record` / `readonly record struct` → TS `interface` 또는 `type`
 - `enum` → TS string enum
 - `RoutingId(string)` → `type RoutingId = string`
-- `Message` / `ReadOnlyMemory<byte>` → `Buffer` / `Message`(바인딩 타입)
+- `Message` / `ReadOnlyMemory<byte>` → `Message`(payload 구조 타입) / `Buffer`
 - `TimeSpan period` → `periodMs: number`
 - generic 인자는 그대로 유지 (`<TSpot, TActor, TRequest, TReply>`)
 - attribute → decorator: `[ZLinkRequest]` → `@ZLinkRequest()`,
@@ -59,14 +59,26 @@ framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, �
 /** transport routing id. C# RoutingId(string) 의 TS 대응. */
 export type RoutingId = string;
 
-/** 바인딩 core 의 멀티파트 메시지 part. C# Message 의 TS 대응(@zlink-systems/zlink). */
-export type Message = import('@zlink-systems/zlink').Message;
+/** payload message. C# Message 의 TS 대응이며 framework 가 구조를 소유한다. */
+export interface Message {
+  data(): Buffer;
+  toBytes(): Uint8Array;
+  copy(): Message;
+  size(): number;
+  isEmpty(): boolean;
+  getString(encoding?: BufferEncoding): string;
+  close(): void;
+}
 
-/** stream wire header. C# ZlinkStreamHeader 의 TS 대응(바인딩 타입). */
-export type ZlinkStreamHeader = import('@zlink-systems/zlink').ZlinkStreamHeader;
+/** stream wire header. codec 가 해석하기 전까지는 framework 가 payload 로만 취급한다. */
+export type ZlinkStreamHeader = unknown;
 
 /** actor runtime handle ref. C# ActorRef 의 TS 대응. */
-export type ActorRef = import('@zlink-systems/zlink').ActorRef;
+export interface ActorRef {
+  readonly nodeRid: RoutingId;
+  readonly actorId: string;
+  readonly generation: bigint;
+}
 ```
 
 ## 2. 인터페이스 전체 목록

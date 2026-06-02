@@ -31,6 +31,44 @@ test('framework packages only depend on binding public entry points', () => {
   assert.deepEqual(offenders, []);
 });
 
+test('framework root public surface does not export backend adapter modules', () => {
+  const rootIndex = fs.readFileSync(path.join(packageRoot, 'framework', 'src', 'index.ts'), 'utf8');
+
+  assert.equal(rootIndex.includes("export * from './runtime/backend'"), false);
+  assert.equal(rootIndex.includes('export * from "./runtime/backend"'), false);
+});
+
+test('framework contract surface does not alias binding concrete types', () => {
+  const contracts = fs.readFileSync(path.join(packageRoot, 'framework', 'src', 'contracts', 'index.ts'), 'utf8');
+
+  assert.equal(contracts.includes('@zlink-systems/zlink'), false);
+  assert.equal(/import\('@zlink-systems\/zlink'\)/.test(contracts), false);
+  assert.equal(/Binding(Message|ActorRef)/.test(contracts), false);
+});
+
+test('framework public options do not expose backend adapter factories', () => {
+  const publicOptionFiles = [
+    path.join(packageRoot, 'framework', 'src', 'runtime', 'host', 'index.ts'),
+    path.join(packageRoot, 'framework', 'src', 'runtime', 'registry', 'index.ts')
+  ];
+  const offenders = [];
+
+  for (const file of publicOptionFiles) {
+    const content = fs.readFileSync(file, 'utf8');
+    for (const block of exportedInterfaces(content)) {
+      if (block.includes('backendAdapterFactory')) {
+        offenders.push(path.relative(workspaceRoot, file));
+      }
+    }
+  }
+
+  assert.deepEqual(offenders, []);
+});
+
+function exportedInterfaces(content) {
+  return content.match(/export interface\s+\w+\s*\{[\s\S]*?\n\}/g) ?? [];
+}
+
 function* sourceFiles(root) {
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     const absolute = path.join(root, entry.name);

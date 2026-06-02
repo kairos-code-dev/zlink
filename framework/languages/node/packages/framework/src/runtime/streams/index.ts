@@ -473,6 +473,7 @@ class ZLinkStreamSessionSerialExecutor {
 }
 
 async function runNow(work: () => Promise<void>): Promise<void> {
+  await Promise.resolve();
   await work();
 }
 

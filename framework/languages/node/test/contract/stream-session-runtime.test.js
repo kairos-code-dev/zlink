@@ -95,6 +95,30 @@ test('stream session node runtime serializes dispatch and disconnect callbacks p
   ]);
 });
 
+test('stream session node runtime does not invoke user callbacks inside transport callback', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    headerDecoder: (header) => ({ name: header.getString() }),
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch(header, payload) {
+          events.push(['dispatch', header.name, payload.getString()]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-deferred', fakeMessage('Deferred'), fakeMessage('body'));
+  assert.deepEqual(events, []);
+
+  await runtime.dispose();
+  assert.deepEqual(events, [['dispatch', 'Deferred', 'body']]);
+});
+
 test('stream session runtime rejects sessions that do not expose provided context', () => {
   const socket = new FakeStreamSocket();
 

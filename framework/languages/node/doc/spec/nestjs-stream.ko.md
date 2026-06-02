@@ -492,6 +492,7 @@ STREAM 문서의 항목이 확인해야 하는 것은 다음이다.
 | `nodesAndServices.throwsWhenStreamNodeRegistersMultipleSessions` | 같은 node에 session을 중복 등록하면 startup validation 예외가 발생한다. |
 | `ZLinkModule.forRoot maps stream node options into runtime registration` | Node builder 표면에서도 같은 stream node 에 session 을 두 번 등록하면 startup validation 예외가 발생한다. |
 | `protocol.streamSessionRuntimeOnlyExposesEnqueueCallbackEntrypoints` | transport 진입점은 public enqueue API만 노출한다. |
+| `stream session node runtime does not invoke user callbacks inside transport callback` | transport callback 은 user `onDispatch(...)` 를 같은 호출 스택에서 직접 실행하지 않고 managed queue 로 넘긴다. |
 | `headerStreamSession.receivesRepliesAndTracksLifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대한 순서대로 실행된다. |
 | `headerStreamSession.canCloseCurrentClientStream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |
 | `stream session and bound session require packetName for structural payloads` | 구조적 payload 는 stream session send 와 bound session send 양쪽에서 명시 packet name 없이 전송되지 않는다. |

@@ -255,6 +255,68 @@ test('ZLinkModule channel client uses runtime host channel transport after boots
   }
 });
 
+test('ZLinkModule route client uses runtime host route transport after bootstrap', async () => {
+  const ctx = zlink.createContext();
+  const remoteRouter = zlink.createRouterSocket(ctx);
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const module = nestjs.ZLinkModule.forRoot({
+    routeChannels: [{
+      routerChannelId: 'mesh',
+      bind: endpoint,
+      routingId: 'node-a'
+    }]
+  });
+  const container = await resolveModuleProviders(module, [
+    nestjs.ZLINK_FRAMEWORK_RUNTIME,
+    nestjs.ZLINK_ROUTE_CLIENT
+  ]);
+  const runtime = container.get(nestjs.ZLINK_FRAMEWORK_RUNTIME);
+  const routeClient = container.get(nestjs.ZLINK_ROUTE_CLIENT);
+
+  try {
+    await runtime.start();
+    remoteRouter.setRoutingId(zlink.RoutingId.from('node-b'));
+    remoteRouter.connect(endpoint);
+
+    await routeClient.send('mesh', 'node-b', { value: 'one-way' }).packetName('RouteNotice').submit();
+    const sent = await recvRouterMessage(remoteRouter);
+    const sentEnvelope = decodeDotnetEnvelope(sent.parts);
+    assert.equal(sentEnvelope.header.kind, 3);
+    assert.equal(sentEnvelope.header.channelName, 'mesh');
+    assert.equal(sentEnvelope.header.messageName, 'RouteNotice');
+    assert.deepEqual(sentEnvelope.body, { value: 'one-way' });
+    sent.close();
+
+    const replyPromise = routeClient.request('mesh', 'node-b', { value: 'ping' }).packetName('RoutePing').timeout(1000).submit();
+    const request = await recvRouterMessage(remoteRouter);
+    const envelope = decodeDotnetEnvelope(request.parts);
+    assert.equal(envelope.header.kind, 1);
+    assert.equal(envelope.header.channelName, 'mesh');
+    assert.equal(envelope.header.messageName, 'RoutePing');
+    assert.deepEqual(envelope.body, { value: 'ping' });
+
+    submitMultipart(
+      remoteRouter.reply(request.routingId, request.requestSeq),
+      encodeDotnetEnvelope({
+        ...envelope.header,
+        kind: 2,
+        deadline: null,
+        topic: null,
+        errorCode: null,
+        errorMessage: null
+      }, { value: 'pong' })
+    );
+
+    const reply = await withTimeout(replyPromise, 1000, 'DI framework route request reply');
+    assert.deepEqual(reply, { value: 'pong' });
+    request.close();
+  } finally {
+    await runtime.stop();
+    remoteRouter.close();
+    ctx.close();
+  }
+});
+
 test('ZLinkFanoutClient publishes through public pub/sub binding sockets', async () => {
   const ctx = zlink.createContext();
   const pub = zlink.createPubSocket(ctx);

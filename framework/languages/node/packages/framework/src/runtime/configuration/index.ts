@@ -7,6 +7,7 @@ export interface ZLinkFrameworkRegistration {
   readonly channelClients: ReadonlySet<string>;
   readonly fanoutPublishers: ReadonlySet<string>;
   readonly routeChannels: ReadonlySet<string>;
+  readonly routeChannelOptions: ReadonlyMap<string, ZLinkRouteChannelOptions>;
   readonly spotNodes: ReadonlySet<string>;
   readonly spotPublisherClients: ReadonlySet<string>;
   readonly hasSpotRemoteAddressResolver: boolean;
@@ -18,7 +19,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly channels?: Readonly<Record<string, ZLinkChannelOptions>>;
   readonly discovery?: ZLinkDiscoveryOptions;
-  readonly routeChannels?: readonly string[];
+  readonly routeChannels?: readonly (string | ZLinkRouteChannelOptions)[];
   readonly spotNodes?: readonly string[];
   readonly spotPublisherClients?: readonly string[];
   readonly spotRemoteAddressResolver?: Type;
@@ -47,6 +48,13 @@ export interface ZLinkPublisherCapabilityOptions {
   readonly bind?: string;
 }
 
+export interface ZLinkRouteChannelOptions {
+  readonly routerChannelId: string;
+  readonly bind?: string;
+  readonly manualConnections?: readonly string[];
+  readonly routingId?: string;
+}
+
 export class ZLinkConfigurationException extends Error {
   constructor(message: string) {
     super(message);
@@ -63,7 +71,8 @@ export function createFrameworkRegistration(
     channels: toChannelMap(options.channels),
     channelClients: channelNamesWith(options.channels, (channel) => channel.client !== undefined),
     fanoutPublishers: channelNamesWith(options.channels, (channel) => channel.publisher !== undefined),
-    routeChannels: new Set(options.routeChannels ?? []),
+    routeChannels: routeChannelNames(options.routeChannels),
+    routeChannelOptions: toRouteChannelOptions(options.routeChannels),
     spotNodes: new Set(options.spotNodes ?? []),
     spotPublisherClients: new Set(options.spotPublisherClients ?? []),
     hasSpotRemoteAddressResolver: options.spotRemoteAddressResolver !== undefined,
@@ -75,6 +84,28 @@ export function createFrameworkRegistration(
 
 function toChannelMap(channels: ZLinkFrameworkRegistrationOptions['channels']): Map<string, ZLinkChannelOptions> {
   return new Map(Object.entries(channels ?? {}).map(([name, channel]) => [name, { ...channel }]));
+}
+
+function routeChannelNames(routeChannels: ZLinkFrameworkRegistrationOptions['routeChannels']): Set<string> {
+  const names = new Set<string>();
+  for (const routeChannel of routeChannels ?? []) {
+    names.add(typeof routeChannel === 'string' ? routeChannel : routeChannel.routerChannelId);
+  }
+  return names;
+}
+
+function toRouteChannelOptions(
+  routeChannels: ZLinkFrameworkRegistrationOptions['routeChannels']
+): Map<string, ZLinkRouteChannelOptions> {
+  const options = new Map<string, ZLinkRouteChannelOptions>();
+  for (const routeChannel of routeChannels ?? []) {
+    if (typeof routeChannel === 'string') {
+      options.set(routeChannel, { routerChannelId: routeChannel });
+      continue;
+    }
+    options.set(routeChannel.routerChannelId, { ...routeChannel });
+  }
+  return options;
 }
 
 export function validateFrameworkRegistration(

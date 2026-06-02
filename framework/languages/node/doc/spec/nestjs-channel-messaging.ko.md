@@ -840,6 +840,24 @@ session actor dispatch[^session-actor-dispatch] 같은 framework 기능이 trans
 등록되지 않았거나 runtime 이 아직 시작되지 않았으면 `ZLinkConfigurationException` 으로
 실패한다.
 
+현재 Node options 표면에서는 host-owned route runtime 을 다음과 같이 선언한다.
+`routerChannelId` 는 route channel 이름이고, `bind` 는 local ROUTER endpoint,
+`routingId` 는 이 node 의 ROUTER routing id 다. `manualConnections` 가 있으면 startup
+시 같은 ROUTER socket 에 수동 peer 연결을 추가한다. framework public 표면은
+`RoutingId` 를 문자열로 받지만, backend adapter 가 binding public `RoutingId.from(...)`
+변환을 내부에서 처리하므로 사용자는 binding 객체를 만들 필요가 없다.
+
+```ts
+ZLinkModule.forRoot({
+  routeChannels: [{
+    routerChannelId: 'play.route',
+    bind: 'tcp://0.0.0.0:7105',
+    routingId: 'play-node-a',
+    manualConnections: ['tcp://127.0.0.1:7106'],
+  }],
+});
+```
+
 ```ts
 export interface ZLinkRouteClient {
   send<TMessage>(routerChannelId: string, targetNodeRid: RoutingId, message: TMessage): ZLinkSendCall;

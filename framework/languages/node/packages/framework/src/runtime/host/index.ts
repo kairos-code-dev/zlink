@@ -59,11 +59,15 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
     this.lifecycleSink?.push('framework:start');
     const channelAdapter = this.backendAdapterFactory.createChannelAdapter();
     const context = channelAdapter.createContext();
+    let channelRuntime: ZLinkChannelRuntimeManager | undefined;
     try {
       this.state = new ZLinkFrameworkRuntimeState(context);
-      this.channelRuntime = new ZLinkChannelRuntimeManager(this.options.registration, channelAdapter, context);
+      channelRuntime = new ZLinkChannelRuntimeManager(this.options.registration, channelAdapter, context);
+      channelRuntime.start();
+      this.channelRuntime = channelRuntime;
       this.lifecycleSink?.push('framework:started');
     } catch (error) {
+      await channelRuntime?.dispose();
       await context.dispose();
       throw error;
     }

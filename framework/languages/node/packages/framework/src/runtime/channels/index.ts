@@ -22,6 +22,7 @@ import type {
   ZLinkBackendContext,
   ZLinkBackendDealerSocket,
   ZLinkBackendPublisherSocket,
+  ZLinkBackendRouterSocket,
   ZLinkChannelBackendAdapter
 } from '../backend/contracts';
 
@@ -144,12 +145,21 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
 export class ZLinkChannelRuntimeManager {
   private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
   private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
+  private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
 
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
     private readonly adapter: ZLinkChannelBackendAdapter,
     private readonly context: ZLinkBackendContext
   ) {}
+
+  start(): void {
+    for (const routeChannel of this.registration.routeChannelOptions.values()) {
+      if (routeChannel.bind !== undefined) {
+        this.getOrCreateRouteRouter(routeChannel.routerChannelId);
+      }
+    }
+  }
 
   async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
@@ -206,32 +216,61 @@ export class ZLinkChannelRuntimeManager {
   }
 
   async routeSend(
-    _routerChannelId: string,
-    _targetNodeRid: string,
-    _packetName: string | undefined,
-    _message: unknown,
+    routerChannelId: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    message: unknown,
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
-    throw new ZLinkConfigurationException('Route channel runtime is not started.');
+    const queued = this.getOrCreateRouteRouter(routerChannelId).send(
+      targetNodeRid,
+      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, routerChannelId, packetName, message) as readonly Message[],
+      0
+    );
+    if (!queued) {
+      throw new ZLinkConfigurationException(`Route channel '${routerChannelId}' send was not queued.`);
+    }
   }
 
   async routeRequest<TReply>(
-    _routerChannelId: string,
-    _targetNodeRid: string,
-    _packetName: string | undefined,
-    _request: unknown,
-    _timeoutMs: number | undefined,
+    routerChannelId: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    request: unknown,
+    timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply> {
     throwIfAborted(signal);
-    throw new ZLinkConfigurationException('Route channel runtime is not started.');
+    return new Promise<TReply>((resolve, reject) => {
+      const queued = this.getOrCreateRouteRouter(routerChannelId).request(
+        targetNodeRid,
+        encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, routerChannelId, packetName, request, timeoutMs) as readonly Message[],
+        (result, parts) => {
+          if (result !== 0) {
+            reject(new ZLinkConfigurationException(`Route channel '${routerChannelId}' request failed with result ${result}.`));
+            return;
+          }
+          try {
+            resolve(decodeChannelReply<TReply>(parts as readonly Message[]));
+          } catch (error) {
+            reject(error);
+          }
+        },
+        0,
+        timeoutMs
+      );
+      if (!queued) {
+        reject(new ZLinkConfigurationException(`Route channel '${routerChannelId}' request was not queued.`));
+      }
+    });
   }
 
   async dispose(): Promise<void> {
-    const sockets = [...this.clientDealers.values(), ...this.publishers.values()];
+    const sockets = [...this.clientDealers.values(), ...this.publishers.values(), ...this.routeRouters.values()];
     this.clientDealers.clear();
     this.publishers.clear();
+    this.routeRouters.clear();
     await Promise.all(sockets.map((socket) => socket.dispose()));
   }
 
@@ -274,6 +313,33 @@ export class ZLinkChannelRuntimeManager {
     publisher.bind(channel.publisher.bind);
     this.publishers.set(channelName, publisher);
     return publisher;
+  }
+
+  private getOrCreateRouteRouter(routerChannelId: string): ZLinkBackendRouterSocket {
+    const existing = this.routeRouters.get(routerChannelId);
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const routeChannel = this.registration.routeChannelOptions.get(routerChannelId);
+    if (routeChannel === undefined) {
+      throw new ZLinkConfigurationException(`Route channel '${routerChannelId}' is not registered.`);
+    }
+    if (routeChannel.bind === undefined || routeChannel.bind.trim().length === 0) {
+      throw new ZLinkConfigurationException(`Route channel '${routerChannelId}' does not define a bind endpoint.`);
+    }
+
+    const router = this.adapter.createRouterSocket(this.context);
+    router.setChannelName(routerChannelId);
+    if (routeChannel.routingId !== undefined && routeChannel.routingId.length > 0) {
+      router.setRoutingId(routeChannel.routingId);
+    }
+    router.bind(routeChannel.bind);
+    for (const endpoint of routeChannel.manualConnections ?? []) {
+      router.connect(endpoint);
+    }
+    this.routeRouters.set(routerChannelId, router);
+    return router;
   }
 }
 

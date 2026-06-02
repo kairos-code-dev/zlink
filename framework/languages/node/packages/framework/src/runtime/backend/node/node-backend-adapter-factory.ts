@@ -161,6 +161,13 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
       if (property === 'dispose') {
         return async () => target.close();
       }
+      if (property === 'setChannelName' && typeof Reflect.get(target, property, receiver) !== 'function') {
+        return () => undefined;
+      }
+      if (property === 'setRoutingId') {
+        return (routingId: unknown) =>
+          (target as unknown as { setRoutingId(routingId: unknown): void }).setRoutingId(toNativeRoutingId(routingId));
+      }
       if (property === 'onSendReady') {
         return (handler: () => void) =>
           (target as unknown as { setSendReadyHandler(handler: () => void): void }).setSendReadyHandler(handler);
@@ -170,7 +177,7 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
           if (args.length >= 3) {
             const [routingId, payload, flags] = args as [unknown, unknown, number];
             return submitBindingSend(
-              (target as unknown as { send(routingId: unknown): ZLinkBindingSendOperation }).send(routingId),
+              (target as unknown as { send(routingId: unknown): ZLinkBindingSendOperation }).send(toNativeRoutingId(routingId)),
               payload,
               flags
             );
@@ -188,7 +195,7 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
           if (args.length >= 5) {
             const [routingId, payload, callback, flags, timeoutMs] = args as [unknown, unknown, unknown, number, number | undefined];
             return submitBindingRequest(
-              (target as unknown as { request(routingId: unknown): ZLinkBindingRequestOperation }).request(routingId),
+              (target as unknown as { request(routingId: unknown): ZLinkBindingRequestOperation }).request(toNativeRoutingId(routingId)),
               payload,
               callback,
               flags,
@@ -223,7 +230,7 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
       }
       if (property === 'disconnectPeer') {
         return (routingId: unknown) =>
-          (target as unknown as { disconnectRid(routingId: unknown): void }).disconnectRid(routingId);
+          (target as unknown as { disconnectRid(routingId: unknown): void }).disconnectRid(toNativeRoutingId(routingId));
       }
       if (property === 'onFramedPacket') {
         return (handler: unknown) =>
@@ -358,4 +365,11 @@ function wrapMonitorSocket(nativeInstance: { close(): void; recv(flags?: number)
       return Reflect.get(target, property, receiver);
     }
   }) as unknown as ZLinkBackendSocketMonitor;
+}
+
+function toNativeRoutingId(routingId: unknown): unknown {
+  if (typeof routingId === 'string') {
+    return zlink.RoutingId.from(routingId);
+  }
+  return routingId;
 }

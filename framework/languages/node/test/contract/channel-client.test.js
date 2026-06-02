@@ -44,6 +44,66 @@ test('ZLinkChannelClient fluent request call passes packet and timeout to transp
   ]);
 });
 
+test('ZLinkChannelClient and fanout client reject pre-aborted submit before transport dispatch', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const calls = [];
+  const registration = framework.createFrameworkRegistration({
+    channels: {
+      api: { client: { manualConnections: ['inproc://api'] } },
+      events: { publisher: { bind: 'inproc://events' } }
+    }
+  });
+  const transport = {
+    async send() {
+      calls.push('send');
+    },
+    async request() {
+      calls.push('request');
+      return { ok: true };
+    },
+    async publish() {
+      calls.push('publish');
+    }
+  };
+  const client = new framework.DefaultZLinkChannelClient(registration, transport);
+  const fanout = new framework.DefaultZLinkFanoutClient(registration, transport);
+
+  await assertAborted(() => client.sendToChannel('api', 'hello').packetName('Greeting').submit(controller.signal));
+  await assertAborted(() => client.requestToChannel('api', 'ping').packetName('Ping').submit(controller.signal));
+  await assertAborted(() => fanout.publishToChannel('events', 'topic', 'event').packetName('Event').submit(controller.signal));
+  assert.deepEqual(calls, []);
+});
+
+test('ZLinkDealerChannelClientTransport rejects pre-aborted signal before creating socket operations', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const calls = [];
+  const transport = new framework.ZLinkDealerChannelClientTransport(
+    {
+      send() {
+        calls.push('dealer.send');
+        return createMultipartSubmitOperation();
+      },
+      request() {
+        calls.push('dealer.request');
+        return createMultipartRequestOperation();
+      }
+    },
+    {
+      publish() {
+        calls.push('pub.publish');
+        return createMultipartSubmitOperation();
+      }
+    }
+  );
+
+  await assertAborted(() => transport.send('api', 'Greeting', 'hello', controller.signal));
+  await assertAborted(() => transport.request('api', 'Ping', 'ping', 250, controller.signal));
+  await assertAborted(() => transport.publish('events', 'topic', 'Event', 'event', controller.signal));
+  assert.deepEqual(calls, []);
+});
+
 test('ZLinkModule.forRoot provides concrete channel and fanout clients', () => {
   const module = nestjs.ZLinkModule.forRoot({
     channels: {
@@ -303,4 +363,34 @@ function withTimeout(promise, timeoutMs, label) {
     timeout = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
   });
   return Promise.race([promise, guard]).finally(() => clearTimeout(timeout));
+}
+
+async function assertAborted(action) {
+  await assert.rejects(
+    action,
+    (error) => error instanceof Error && error.message === 'The operation was aborted.'
+  );
+}
+
+function createMultipartSubmitOperation() {
+  return {
+    message() {
+      return this;
+    },
+    submit() {}
+  };
+}
+
+function createMultipartRequestOperation() {
+  return {
+    message() {
+      return this;
+    },
+    timeout() {
+      return this;
+    },
+    async submitAsync() {
+      return [];
+    }
+  };
 }

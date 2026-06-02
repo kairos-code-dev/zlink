@@ -58,7 +58,8 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     private readonly publisher?: PubSocket
   ) {}
 
-  async send(channelName: string, packetName: string | undefined, message: unknown): Promise<void> {
+  async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
     appendParts(
       this.dealer.send(),
       encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, channelName, packetName, message)
@@ -69,8 +70,10 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     channelName: string,
     packetName: string | undefined,
     request: unknown,
-    timeoutMs: number | undefined
+    timeoutMs: number | undefined,
+    signal?: AbortSignal
   ): Promise<TReply> {
+    throwIfAborted(signal);
     const operation = appendParts(
       this.dealer.request(),
       encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, channelName, packetName, request, timeoutMs)
@@ -82,7 +85,8 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     return decodeChannelReply<TReply>(reply);
   }
 
-  async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown): Promise<void> {
+  async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
     if (this.publisher === undefined) {
       throw new ZLinkConfigurationException('Channel publisher runtime is not started.');
     }
@@ -357,6 +361,7 @@ class DefaultZLinkSendCall implements ZLinkSendCall {
   }
 
   async submit(signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
     this.validate();
     await this.submitter(this.packet, signal);
   }
@@ -386,6 +391,7 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
   }
 
   async submit<TReply>(signal?: AbortSignal): Promise<TReply> {
+    throwIfAborted(signal);
     this.validate();
     return this.submitter<TReply>(this.packet, this.timeoutMs, signal);
   }
@@ -405,7 +411,14 @@ class DefaultZLinkPublishCall implements ZLinkPublishCall {
   }
 
   async submit(signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
     this.validate();
     await this.submitter(this.packet, signal);
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new Error('The operation was aborted.');
   }
 }

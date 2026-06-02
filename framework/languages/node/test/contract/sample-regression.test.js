@@ -73,7 +73,10 @@ test('node topology samples run server roles as separate processes', () => {
   const cases = [
     ['TicTacToe', 'server/main.js', 'server/main.js'],
     ['TicTacToe.SessionGateway', 'session-server/main.js', 'session-server/main.js'],
-    ['Bingo', 'api-server/main.js', 'api-server/main.js']
+    ['Bingo', 'api-server/main.js', 'api-server/main.js'],
+    ['Bingo', 'play-server/main.js', 'play-server/main.js'],
+    ['Bingo', 'session-server/main.js', 'session-server/main.js'],
+    ['Bingo', 'registry-server/main.js', 'registry-server/main.js']
   ];
 
   for (const [sample, serverRelative, clientReference] of cases) {
@@ -84,7 +87,7 @@ test('node topology samples run server roles as separate processes', () => {
 
     assert.equal(fs.existsSync(serverEntry), true);
     assert.match(serverContent, /runRoleServer/);
-    assert.match(clientContent, /withRoleProcess/);
+    assert.match(clientContent, /(?:withRoleProcess|startRoleProcess)/);
     assert.match(clientContent, new RegExp(escapeRegExp(clientReference)));
   }
 });

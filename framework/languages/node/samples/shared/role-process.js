@@ -30,6 +30,17 @@ async function runRoleServer(createState, handlers) {
 }
 
 async function withRoleProcess(entryFile, command, verify) {
+  const role = await startRoleProcess(entryFile);
+
+  try {
+    const result = await role.request(command);
+    await verify(result);
+  } finally {
+    await role.close();
+  }
+}
+
+async function startRoleProcess(entryFile) {
   const role = childProcess.spawn(process.execPath, [path.resolve(entryFile)], {
     stdio: ['pipe', 'pipe', 'inherit']
   });
@@ -38,23 +49,27 @@ async function withRoleProcess(entryFile, command, verify) {
     crlfDelay: Infinity
   });
 
-  try {
-    const ready = await readEvent(output);
-    if (ready.event !== 'ready') {
-      throw new Error(`Expected ready event but received '${ready.event}'.`);
-    }
-    role.stdin.write(`${JSON.stringify(command)}\n`);
-    const result = await readEvent(output);
-    if (result.event !== 'result') {
-      throw new Error(`Expected result event but received '${result.event}'.`);
-    }
-    await verify(result.result);
-  } finally {
-    role.stdin.write(`${JSON.stringify({ command: 'shutdown' })}\n`);
-    role.stdin.end();
-    await once(role, 'close');
-    output.close();
+  const ready = await readEvent(output);
+  if (ready.event !== 'ready') {
+    throw new Error(`Expected ready event but received '${ready.event}'.`);
   }
+
+  return {
+    async request(command) {
+      role.stdin.write(`${JSON.stringify(command)}\n`);
+      const result = await readEvent(output);
+      if (result.event !== 'result') {
+        throw new Error(`Expected result event but received '${result.event}'.`);
+      }
+      return result.result;
+    },
+    async close() {
+      role.stdin.write(`${JSON.stringify({ command: 'shutdown' })}\n`);
+      role.stdin.end();
+      await once(role, 'close');
+      output.close();
+    }
+  };
 }
 
 function send(message) {
@@ -74,4 +89,4 @@ function readEvent(output) {
   });
 }
 
-module.exports = { runRoleServer, withRoleProcess };
+module.exports = { runRoleServer, startRoleProcess, withRoleProcess };

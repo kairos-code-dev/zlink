@@ -36,7 +36,10 @@ import type {
 export interface ZLinkActorManagerOptions {
   readonly actorFactories: ReadonlyMap<string, Type | ZLinkActorFactory>;
   readonly joinCoordinator?: ZLinkActorJoinCoordinator;
+  readonly boundSessionFactory?: ZLinkActorBoundSessionFactory;
 }
+
+export type ZLinkActorBoundSessionFactory = (actorId: string) => ZLinkBoundSession;
 
 export interface ZLinkActorJoinCoordinator {
   joinSpot<TRequest, TReply>(
@@ -146,7 +149,10 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     signal?: AbortSignal
   ): Promise<ZLinkActor> {
     const factory = this.createFactory(actorType);
-    const context = state.ensureContext(this.options.joinCoordinator);
+    const context = state.ensureContext(
+      this.options.joinCoordinator,
+      this.options.boundSessionFactory
+    );
     const actor = await factory.create(actorId, context, signal);
     state.bindActor(actor, context);
     return actor;
@@ -211,9 +217,12 @@ export class ZLinkActorRuntimeState {
     return this.spotRidValue !== undefined;
   }
 
-  ensureContext(joinCoordinator: ZLinkActorJoinCoordinator | undefined): ZLinkActorContext {
+  ensureContext(
+    joinCoordinator: ZLinkActorJoinCoordinator | undefined,
+    boundSessionFactory: ZLinkActorBoundSessionFactory | undefined
+  ): ZLinkActorContext {
     if (this.context === undefined) {
-      this.context = new DefaultZLinkActorContext(this, joinCoordinator);
+      this.context = new DefaultZLinkActorContext(this, joinCoordinator, boundSessionFactory);
     }
     return this.context;
   }
@@ -418,12 +427,15 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
 }
 
 export class DefaultZLinkActorContext implements ZLinkActorContext {
-  readonly boundSession: ZLinkBoundSession = new UnboundZLinkSession();
+  readonly boundSession: ZLinkBoundSession;
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
-    private readonly joinCoordinator: ZLinkActorJoinCoordinator | undefined
-  ) {}
+    private readonly joinCoordinator: ZLinkActorJoinCoordinator | undefined,
+    boundSessionFactory: ZLinkActorBoundSessionFactory | undefined
+  ) {
+    this.boundSession = boundSessionFactory?.(state.actorId) ?? new UnboundZLinkSession();
+  }
 
   get spotRid(): RoutingId | undefined {
     return this.state.spotRid;
@@ -822,14 +834,16 @@ class UnboundZLinkSession implements ZLinkBoundSession {
   send(): never {
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.ActorSessionNotBound,
-      'Actor session is not bound.'
+      'Actor session is not bound.',
+      true
     );
   }
 
   async disconnect(): Promise<void> {
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.ActorSessionNotBound,
-      'Actor session is not bound.'
+      'Actor session is not bound.',
+      true
     );
   }
 }

@@ -131,6 +131,65 @@ test('stream session runtime reports dispatch errors through session onError and
   ]);
 });
 
+test('stream session runtime completes pending responses before session dispatch', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  let pending;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    headerDecoder: (header) => JSON.parse(header.getString(), streamHeaderReviver),
+    sessionFactory(context) {
+      pending = context.startRequest(1000);
+      return {
+        context,
+        async onDispatch(header, payload) {
+          events.push(['dispatch', header.name, payload.getString()]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-f', fakeMessage(JSON.stringify(streamHeaderJson({
+    kind: connector.ZlinkStreamMessageKind.Response,
+    requestSeq: 1n,
+    name: 'Move'
+  }))), fakeMessage('response-body'));
+
+  const response = await pending.promise;
+  await runtime.dispose();
+
+  assert.equal(response.getString(), 'response-body');
+  assert.deepEqual(events, []);
+});
+
+test('stream session runtime dispatches unmatched response frames to the session', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    headerDecoder: (header) => JSON.parse(header.getString(), streamHeaderReviver),
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch(header, payload) {
+          events.push(['dispatch', header.name, payload.getString()]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-g', fakeMessage(JSON.stringify(streamHeaderJson({
+    kind: connector.ZlinkStreamMessageKind.Response,
+    requestSeq: 99n,
+    name: 'Move'
+  }))), fakeMessage('unmatched'));
+  await runtime.dispose();
+
+  assert.deepEqual(events, [['dispatch', 'Move', 'unmatched']]);
+});
+
 test('stream session node runtime receives framed packets from public binding stream socket', async () => {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
@@ -242,4 +301,28 @@ function withTimeout(promise, timeoutMs, label) {
     timeout = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
   });
   return Promise.race([promise, guard]).finally(() => clearTimeout(timeout));
+}
+
+function streamHeaderJson(overrides) {
+  return {
+    kind: connector.ZlinkStreamMessageKind.Send,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: overrides.requestSeq === undefined
+      ? connector.ZlinkStreamHeaderFlags.None
+      : connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+    name: 'Packet',
+    metadata: { values: [] },
+    ...overrides,
+    requestSeq: overrides.requestSeq?.toString()
+  };
+}
+
+function streamHeaderReviver(key, value) {
+  if (key === 'requestSeq' && typeof value === 'string') {
+    return BigInt(value);
+  }
+  if (key === 'metadata' && value?.values !== undefined) {
+    return { values: new Map(value.values) };
+  }
+  return value;
 }

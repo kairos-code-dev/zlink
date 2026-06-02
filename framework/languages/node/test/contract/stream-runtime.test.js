@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+const connector = require('../../packages/stream-connector/dist');
 const framework = require('../../packages/framework/dist');
 
 test('stream runtime is exported from framework root surface', () => {
@@ -53,13 +54,80 @@ test('session actors bind actor refs, expose bound actors, and reject missing ro
   );
 });
 
+test('managed stream actor bind calls native ActorGateway before local binding is visible', async () => {
+  const socket = new FakeStreamSocket();
+  const runtime = new framework.ZLinkStreamBindingRuntime({ actorBindTimeoutMs: 1234 });
+  const context = runtime.createSessionContext(new framework.ZLinkManagedStream(socket, 'backend-rid', 'public-session'));
+  const actorRef = { nodeRid: 'node-a', actorId: 'actor-a', generation: 1n };
+
+  const actor = await context.actors.bind(actorRef);
+
+  assert.equal(actor.actorId, 'actor-a');
+  assert.equal(socket.boundActors.length, 1);
+  assert.deepEqual(socket.boundActors[0], {
+    sessionRid: 'backend-rid',
+    actor: actorRef,
+    timeoutMs: 1234
+  });
+  assert.equal(context.actors.find('actor-a'), actor);
+  assert.equal(runtime.find('actor-a'), actor);
+});
+
+test('managed stream actor bind failure does not create stale local binding', async () => {
+  const socket = new FakeStreamSocket();
+  socket.bindError = new Error('native bind failed');
+  const runtime = new framework.ZLinkStreamBindingRuntime();
+  const context = runtime.createSessionContext(new framework.ZLinkManagedStream(socket, 'backend-rid', 'public-session'));
+
+  await assert.rejects(
+    () => context.actors.bind({ nodeRid: 'node-a', actorId: 'actor-a', generation: 1n }),
+    /native bind failed/
+  );
+
+  assert.equal(context.actors.find('actor-a'), undefined);
+  assert.equal(runtime.find('actor-a'), undefined);
+});
+
+test('session actor relay sends header and payload through managed stream ActorGateway route', async () => {
+  const socket = new FakeStreamSocket();
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory()
+  });
+  const context = runtime.createSessionContext(new framework.ZLinkManagedStream(socket, 'backend-rid', 'public-session'));
+  const actor = await context.actors.bind({ nodeRid: 'node-a', actorId: 'actor-a', generation: 1n });
+
+  await actor.relay({
+    kind: connector.ZlinkStreamMessageKind.Send,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.None,
+    name: 'Move',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  }, {
+    bytes: new TextEncoder().encode('{"x":1}'),
+    toBytes() {
+      return this.bytes;
+    },
+    close() {}
+  });
+
+  assert.equal(socket.boundActorSends.length, 1);
+  assert.equal(socket.boundActorSends[0].sessionRid, 'backend-rid');
+  assert.equal(socket.boundActorSends[0].actorId, 'actor-a');
+  assert.equal(socket.boundActorSends[0].parts.length, 2);
+  const header = connector.ZlinkStreamHeaderCodec.decode(socket.boundActorSends[0].parts[0].bytes);
+  assert.equal(header.kind, connector.ZlinkStreamMessageKind.Send);
+  assert.equal(header.name, 'Move');
+  assert.equal(new TextDecoder().decode(socket.boundActorSends[0].parts[1].bytes), '{"x":1}');
+});
+
 test('bound session send and disconnect use current binding token and stale tokens cannot remove newer binding', async () => {
   const sent = [];
   const disconnected = [];
   const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory(),
     transport: {
       async send(actorId, message, options) {
-        sent.push({ actorId, message, token: options.bindingToken, packetName: options.packetName });
+        sent.push({ actorId, frame: decodeFrame(message.bytes), token: options.bindingToken, packetName: options.packetName });
       },
       async disconnect(actorId, options) {
         disconnected.push({ actorId, token: options.bindingToken });
@@ -80,6 +148,10 @@ test('bound session send and disconnect use current binding token and stale toke
   assert.equal(sent.length, 1);
   assert.equal(sent[0].actorId, 'actor-a');
   assert.equal(sent[0].packetName, 'Hello');
+  assert.equal(sent[0].frame.header.kind, connector.ZlinkStreamMessageKind.Send);
+  assert.equal(sent[0].frame.header.codec, connector.ZlinkStreamCodec.Json);
+  assert.equal(sent[0].frame.header.name, 'Hello');
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(sent[0].frame.payload)), { hello: 'world' });
   assert.equal(runtime.find('actor-a').ref.generation, 2);
 
   await runtime.createBoundSession('actor-a').disconnect();
@@ -101,7 +173,7 @@ test('bound session without binding is a retriable framework error', async () =>
   );
 });
 
-test('session client send uses injected message factory instead of binding internals', async () => {
+test('session client send writes dotnet-compatible JSON stream frame through injected message factory', async () => {
   const written = [];
   const closed = [];
   const runtime = new framework.ZLinkStreamBindingRuntime({
@@ -113,13 +185,21 @@ test('session client send uses injected message factory instead of binding inter
             closed.push(payload);
           }
         };
+      },
+      createBinaryMessage(payload) {
+        return {
+          bytes: payload,
+          close() {
+            closed.push(payload);
+          }
+        };
       }
     }
   });
   const context = runtime.createSessionContext({
     ...fakeStream('session-4', 'rid-4'),
     write(message) {
-      written.push(message.payload);
+      written.push(message.bytes);
       return true;
     }
   });
@@ -127,9 +207,54 @@ test('session client send uses injected message factory instead of binding inter
   await context.client.send({ ok: true }).packetName('Ready').metadata('trace', 'send-1').submit();
 
   assert.equal(written.length, 1);
-  assert.match(written[0], /"kind":"send"/);
-  assert.match(written[0], /"packetName":"Ready"/);
+  const frame = decodeFrame(written[0]);
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Send);
+  assert.equal(frame.header.codec, connector.ZlinkStreamCodec.Json);
+  assert.equal(frame.header.name, 'Ready');
+  assert.equal(frame.header.metadata.get('trace'), 'send-1');
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { ok: true });
   assert.equal(closed.length, 1);
+});
+
+test('session client reply writes response frame only while dispatching request packet', async () => {
+  const written = [];
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory()
+  });
+  const context = runtime.createSessionContext({
+    ...fakeStream('session-6', 'rid-6'),
+    write(message) {
+      written.push(message.bytes);
+      return true;
+    }
+  });
+
+  await assert.rejects(
+    () => context.client.reply({ ok: true }).submit(),
+    /Reply is only available/
+  );
+
+  context.enterDispatch({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+    requestSeq: 42n,
+    name: 'Move',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  });
+  try {
+    await context.client.reply({ accepted: true }).metadata('trace', 'reply-1').submit();
+  } finally {
+    context.exitDispatch();
+  }
+
+  assert.equal(written.length, 1);
+  const frame = decodeFrame(written[0]);
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
+  assert.equal(frame.header.requestSeq, 42n);
+  assert.equal(frame.header.name, 'Move');
+  assert.equal(frame.header.metadata.get('trace'), 'reply-1');
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { accepted: true });
 });
 
 test('session client send fails retriably when message factory is not started', async () => {
@@ -153,4 +278,61 @@ function fakeStream(sessionId, routingId) {
     },
     async close() {}
   };
+}
+
+function binaryMessageFactory() {
+  return {
+    createTextMessage(payload) {
+      return {
+        payload,
+        close() {}
+      };
+    },
+    createBinaryMessage(payload) {
+      return {
+        bytes: payload,
+        close() {}
+      };
+    }
+  };
+}
+
+function decodeFrame(bytes) {
+  const frame = connector.ZlinkStreamFrameCodec.decode(bytes);
+  return {
+    header: connector.ZlinkStreamHeaderCodec.decode(frame.header),
+    payload: frame.payload
+  };
+}
+
+class FakeStreamSocket {
+  constructor() {
+    this.boundActors = [];
+    this.boundActorSends = [];
+    this.bindError = undefined;
+  }
+
+  send() {
+    return true;
+  }
+
+  disconnectPeer() {}
+
+  async bindActor(sessionRid, actor, timeoutMs) {
+    if (this.bindError !== undefined) {
+      throw this.bindError;
+    }
+    this.boundActors.push({ sessionRid, actor, timeoutMs });
+  }
+
+  async unbindActor() {}
+
+  sendBoundActor(sessionRid, actorId, parts, flags) {
+    this.boundActorSends.push({ sessionRid, actorId, parts, flags });
+    return true;
+  }
+
+  onFramedPacket() {}
+  attachActorGateway() {}
+  async dispose() {}
 }

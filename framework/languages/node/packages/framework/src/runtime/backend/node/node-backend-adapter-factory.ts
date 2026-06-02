@@ -173,6 +173,47 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
         return (handler: unknown) =>
           (target as unknown as { setPacketHandler(handler: unknown): void }).setPacketHandler(handler);
       }
+      if (property === 'bindActor') {
+        return async (sessionRid: unknown, actor: unknown, timeoutMs: number) => {
+          const operation = (target as unknown as {
+            bindActor(sessionRid: unknown, actor: unknown): {
+              timeout(timeoutMs: number): { submitAsync(): Promise<Array<{ close(): void }>> };
+            };
+          }).bindActor(sessionRid, actor);
+          const replies = await operation.timeout(timeoutMs).submitAsync();
+          for (const reply of replies) {
+            reply.close();
+          }
+        };
+      }
+      if (property === 'unbindActor') {
+        return async (sessionRid: unknown, actorId: string, timeoutMs: number) => {
+          const operation = (target as unknown as {
+            unbindActor(sessionRid: unknown, actorId: string): {
+              timeout(timeoutMs: number): { submitAsync(): Promise<Array<{ close(): void }>> };
+            };
+          }).unbindActor(sessionRid, actorId);
+          const replies = await operation.timeout(timeoutMs).submitAsync();
+          for (const reply of replies) {
+            reply.close();
+          }
+        };
+      }
+      if (property === 'sendBoundActor') {
+        return (sessionRid: unknown, actorId: string, parts: readonly unknown[], flags: number) => {
+          const operation = (target as unknown as {
+            sendBoundActor(sessionRid: unknown, actorId: string): {
+              message(part: unknown): { message(part: unknown): unknown; flags(flags: number): { submit(): boolean } };
+              flags(flags: number): { submit(): boolean };
+            };
+          }).sendBoundActor(sessionRid, actorId);
+          let submitter = operation;
+          for (const part of parts) {
+            submitter = submitter.message(part) as typeof operation;
+          }
+          return submitter.flags(flags).submit();
+        };
+      }
       return Reflect.get(target, property, receiver);
     }
   }) as T & ZLinkBackendObject;

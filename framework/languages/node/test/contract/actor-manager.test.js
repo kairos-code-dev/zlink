@@ -33,6 +33,72 @@ test('ZLinkActorManager create find and getOrCreate follow dotnet actor semantic
   assert.deepEqual(events, ['create:alice', 'configure:alice']);
 });
 
+test('ZLinkActorManager wires actor context boundSession through runtime factory', async () => {
+  const sent = [];
+  const boundSession = {
+    send(message) {
+      return {
+        metadata() { return this; },
+        packetName() { return this; },
+        compress() { return this; },
+        async submit() {
+          sent.push(message);
+        }
+      };
+    },
+    async disconnect() {
+      sent.push('disconnect');
+    }
+  };
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    boundSessionFactory(actorId) {
+      assert.equal(actorId, 'alice');
+      return boundSession;
+    }
+  });
+
+  const actor = await manager.create('alice', 'player');
+  assert.equal(actor.context.boundSession, boundSession);
+
+  await actor.context.boundSession.send({ ready: true }).submit();
+  await actor.context.boundSession.disconnect();
+
+  assert.deepEqual(sent, [{ ready: true }, 'disconnect']);
+});
+
+test('unbound actor context boundSession fails retriably until a session is bound', async () => {
+  class PlayerFactory {
+    create(actorId, context) {
+      return { actorId, context };
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]])
+  });
+  const actor = await manager.create('alice', 'player');
+
+  assert.throws(
+    () => actor.context.boundSession.send({ ready: true }),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorSessionNotBound && error.isRetriable === true
+  );
+  await assert.rejects(
+    () => actor.context.boundSession.disconnect(),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorSessionNotBound && error.isRetriable === true
+  );
+});
+
 test('ZLinkActorManager rejects duplicate create and actor type mismatch', async () => {
   class PlayerActor {
     constructor(actorId, context) {

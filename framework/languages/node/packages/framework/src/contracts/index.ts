@@ -473,6 +473,9 @@ export interface ZLinkSpotRemoteAddress {
 }
 
 export interface ZLinkFrameworkOptions {
+  useDiscovery(): ZLinkDiscoveryBuilder;
+  spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+  addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
   clientServerChannel(name: string): ZLinkClientServerChannelBuilder;
   fanoutChannel(name: string): ZLinkFanoutChannelBuilder;
   dealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder;
@@ -573,20 +576,28 @@ export interface ZLinkSpotManager {
 export interface ZLinkSpotNodeBuilder {
   router(): SpotRouterCapabilityBuilder;
   pubSub(): SpotPubSubCapabilityBuilder;
+  attachChannelClient(channelName: string): SpotChannelClientCapabilityBuilder;
+  attachSpotPublisherClient(channelName: string): SpotPublisherClientCapabilityBuilder;
+  acceptSpotRoutesFromChannel(channelName: string): ZLinkSpotRouteChannelAcceptanceBuilder;
 }
 
 export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {}
 
 export interface ZLinkSpotMeshBuilder {
+  useDiscovery(): ZLinkDiscoveryBuilder;
   node(name: string): ZLinkSpotMeshNodeBuilder;
 }
 
 export interface SpotRouterCapabilityBuilder {
   bind(endpoint: string): this;
+  routingId(routingId: RoutingId): this;
+  connect(endpoint: string): this;
 }
 
 export interface SpotPubSubCapabilityBuilder {
   bind(endpoint: string): this;
+  routingId(routingId: RoutingId): this;
+  connect(endpoint: string): this;
 }
 
 export interface SpotPublisherClientCapabilityBuilder {
@@ -598,7 +609,7 @@ export interface SpotChannelClientCapabilityBuilder {
 }
 
 export interface ZLinkSpotRouteChannelAcceptanceBuilder {
-  accept(channelName: string): this;
+  connect(endpoint: string): this;
 }
 
 export interface ZLinkSocketConfig {

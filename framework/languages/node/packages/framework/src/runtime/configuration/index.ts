@@ -1,4 +1,32 @@
-import type { Type, ZLinkRouteRequestContext, ZLinkRouteSendContext, ZLinkSpot } from '../../contracts';
+import type {
+  ChannelClientCapabilityBuilder,
+  ChannelPublisherCapabilityBuilder,
+  ChannelServerCapabilityBuilder,
+  ChannelSubscriberCapabilityBuilder,
+  DealerMeshChannelClientCapabilityBuilder,
+  SpotChannelClientCapabilityBuilder,
+  SpotPubSubCapabilityBuilder,
+  SpotPublisherClientCapabilityBuilder,
+  SpotRouterCapabilityBuilder,
+  RoutingId,
+  Type,
+  ZLinkClientServerChannelBuilder,
+  ZLinkDealerMeshChannelBuilder,
+  ZLinkDiscoveryBuilder,
+  ZLinkFanoutChannelBuilder,
+  ZLinkFrameworkOptions,
+  ZLinkRouteChannelBuilder,
+  ZLinkRouteMeshChannelBuilder,
+  ZLinkRouteRequestContext,
+  ZLinkRouteSendContext,
+  ZLinkSpot,
+  ZLinkSpotMeshBuilder,
+  ZLinkSpotMeshNodeBuilder,
+  ZLinkSpotNodeBuilder,
+  ZLinkSpotRouteChannelAcceptanceBuilder,
+  ZLinkStreamNodeBuilder,
+  ZLinkSession
+} from '../../contracts';
 
 export interface ZLinkFrameworkRegistration {
   readonly actorFactories: ReadonlyMap<string, Type>;
@@ -183,6 +211,419 @@ export function createFrameworkRegistration(
   };
   validateFrameworkRegistration(registration, options);
   return registration;
+}
+
+export function createFrameworkOptions(
+  configure: (options: ZLinkFrameworkOptions) => void
+): ZLinkFrameworkRegistrationOptions {
+  const builder = new ZLinkFrameworkOptionsBuilder();
+  configure(builder);
+  return builder.build();
+}
+
+export function createFrameworkRegistrationWithBuilder(
+  configure: (options: ZLinkFrameworkOptions) => void
+): ZLinkFrameworkRegistration {
+  return createFrameworkRegistration(createFrameworkOptions(configure));
+}
+
+class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
+  private readonly spotMeshes = new Set<string>();
+  private readonly options: MutableFrameworkRegistrationOptions = {
+    channels: {},
+    discovery: { registries: [] },
+    routeChannels: [],
+    streamNodes: {},
+    spotNodes: {},
+    spotFactories: []
+  };
+
+  useDiscovery(): ZLinkDiscoveryBuilder {
+    return new DefaultDiscoveryBuilder(this.options.discovery);
+  }
+
+  spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
+    this.options.spotFactories.push(spotType);
+    return this;
+  }
+
+  addSpotMesh(channelName: string): ZLinkSpotMeshBuilder {
+    if (channelName.trim().length === 0 || channelName.trim() !== channelName) {
+      throw new ZLinkConfigurationException('SPOT mesh channel name must not be empty or padded.');
+    }
+    if (this.spotMeshes.has(channelName)) {
+      throw new ZLinkConfigurationException(`Duplicate SPOT mesh channel '${channelName}'.`);
+    }
+    this.spotMeshes.add(channelName);
+    return new DefaultSpotMeshBuilder(this);
+  }
+
+  clientServerChannel(name: string): ZLinkClientServerChannelBuilder {
+    return new DefaultClientServerChannelBuilder(this.channel(name));
+  }
+
+  fanoutChannel(name: string): ZLinkFanoutChannelBuilder {
+    return new DefaultFanoutChannelBuilder(this.channel(name));
+  }
+
+  dealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder {
+    return new DefaultDealerMeshChannelBuilder(this.channel(name));
+  }
+
+  routeChannel(name: string): ZLinkRouteChannelBuilder {
+    const routeChannel: MutableRouteChannelOptions = { routerChannelId: name };
+    this.options.routeChannels.push(routeChannel);
+    return new DefaultRouteChannelBuilder(routeChannel);
+  }
+
+  routeMeshChannel(name: string): ZLinkRouteMeshChannelBuilder {
+    const channel = this.channel(name);
+    channel.routeMesh ??= {};
+    return new DefaultRouteMeshChannelBuilder(channel.routeMesh);
+  }
+
+  streamNode(name: string): ZLinkStreamNodeBuilder {
+    const streamNode = this.streamNodeOptions(name);
+    return new DefaultStreamNodeBuilder(streamNode);
+  }
+
+  spotNode(name: string): ZLinkSpotNodeBuilder {
+    const spotNode = this.spotNodeOptions(name);
+    return new DefaultSpotNodeBuilder(spotNode);
+  }
+
+  build(): ZLinkFrameworkRegistrationOptions {
+    const discovery = this.options.discovery.registries.length === 0
+      ? undefined
+      : { registries: [...this.options.discovery.registries] };
+    return {
+      channels: this.options.channels,
+      discovery,
+      routeChannels: this.options.routeChannels,
+      streamNodes: this.options.streamNodes,
+      spotNodes: this.options.spotNodes,
+      spotFactories: this.options.spotFactories
+    };
+  }
+
+  private channel(name: string): MutableChannelOptions {
+    this.options.channels[name] ??= {};
+    return this.options.channels[name];
+  }
+
+  private streamNodeOptions(name: string): MutableStreamNodeOptions {
+    this.options.streamNodes[name] ??= {};
+    return this.options.streamNodes[name];
+  }
+
+  private spotNodeOptions(name: string): MutableSpotNodeOptions {
+    this.options.spotNodes[name] ??= {};
+    return this.options.spotNodes[name];
+  }
+}
+
+class DefaultDiscoveryBuilder implements ZLinkDiscoveryBuilder {
+  constructor(private readonly discovery: MutableDiscoveryOptions) {}
+
+  connectRegistry(endpoint: string): this {
+    this.discovery.registries.push(endpoint);
+    return this;
+  }
+}
+
+class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuilder {
+  constructor(private readonly channel: MutableChannelOptions) {}
+
+  server(): ChannelServerCapabilityBuilder {
+    this.channel.server ??= {};
+    return new DefaultBindCapabilityBuilder(this.channel.server);
+  }
+
+  client(): ChannelClientCapabilityBuilder {
+    this.channel.client ??= { manualConnections: [] };
+    return new DefaultConnectionCapabilityBuilder(this.channel.client);
+  }
+}
+
+class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
+  constructor(private readonly channel: MutableChannelOptions) {}
+
+  publisher(): ChannelPublisherCapabilityBuilder {
+    this.channel.publisher ??= {};
+    return new DefaultBindCapabilityBuilder(this.channel.publisher);
+  }
+
+  subscriber(): ChannelSubscriberCapabilityBuilder {
+    this.channel.subscriber ??= { manualConnections: [] };
+    return new DefaultConnectionCapabilityBuilder(this.channel.subscriber);
+  }
+}
+
+class DefaultDealerMeshChannelBuilder implements ZLinkDealerMeshChannelBuilder {
+  constructor(private readonly channel: MutableChannelOptions) {}
+
+  client(): DealerMeshChannelClientCapabilityBuilder {
+    this.channel.dealerMesh ??= {};
+    this.channel.dealerMesh.client ??= { manualConnections: [] };
+    return new DefaultConnectionCapabilityBuilder(this.channel.dealerMesh.client);
+  }
+}
+
+class DefaultRouteChannelBuilder implements ZLinkRouteChannelBuilder {
+  constructor(private readonly routeChannel: MutableRouteChannelOptions) {}
+
+  router(): ChannelServerCapabilityBuilder {
+    return new DefaultRouteBindCapabilityBuilder(this.routeChannel);
+  }
+
+  dealer(): ChannelClientCapabilityBuilder {
+    return new DefaultRouteConnectionCapabilityBuilder(this.routeChannel);
+  }
+}
+
+class DefaultRouteMeshChannelBuilder implements ZLinkRouteMeshChannelBuilder {
+  constructor(private readonly routeMesh: MutableRouteMeshChannelOptions) {}
+
+  router(): ChannelServerCapabilityBuilder {
+    return new DefaultRouteBindCapabilityBuilder(this.routeMesh);
+  }
+
+  dealer(): ChannelClientCapabilityBuilder {
+    return new DefaultRouteConnectionCapabilityBuilder(this.routeMesh);
+  }
+}
+
+class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
+  constructor(private readonly streamNode: MutableStreamNodeOptions) {}
+
+  bind(endpoint: string): this {
+    this.streamNode.bind = endpoint;
+    return this;
+  }
+
+  attachActorGateway(spotNodeName: string): this {
+    this.streamNode.attachActorGateway = spotNodeName;
+    return this;
+  }
+
+  registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession>): this {
+    this.streamNode.session = sessionType;
+    return this;
+  }
+}
+
+class DefaultSpotMeshBuilder implements ZLinkSpotMeshBuilder {
+  constructor(private readonly root: ZLinkFrameworkOptionsBuilder) {}
+
+  useDiscovery(): ZLinkDiscoveryBuilder {
+    return this.root.useDiscovery();
+  }
+
+  node(name: string): ZLinkSpotMeshNodeBuilder {
+    return this.root.spotNode(name);
+  }
+}
+
+class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
+  constructor(private readonly spotNode: MutableSpotNodeOptions) {}
+
+  router(): SpotRouterCapabilityBuilder {
+    this.spotNode.router ??= { manualConnections: [] };
+    return new DefaultSpotRouterCapabilityBuilder(this.spotNode.router);
+  }
+
+  pubSub(): SpotPubSubCapabilityBuilder {
+    this.spotNode.pubSub ??= { manualConnections: [] };
+    return new DefaultSpotPubSubCapabilityBuilder(this.spotNode.pubSub);
+  }
+
+  attachChannelClient(channelName: string): SpotChannelClientCapabilityBuilder {
+    this.spotNode.attachedChannelClients ??= {};
+    this.spotNode.attachedChannelClients[channelName] ??= { manualConnections: [] };
+    return new DefaultConnectionCapabilityBuilder(this.spotNode.attachedChannelClients[channelName]);
+  }
+
+  attachSpotPublisherClient(channelName: string): SpotPublisherClientCapabilityBuilder {
+    this.spotNode.attachedSpotPublisherClients ??= {};
+    this.spotNode.attachedSpotPublisherClients[channelName] ??= { manualConnections: [] };
+    return new DefaultConnectionCapabilityBuilder(this.spotNode.attachedSpotPublisherClients[channelName]);
+  }
+
+  acceptSpotRoutesFromChannel(channelName: string): ZLinkSpotRouteChannelAcceptanceBuilder {
+    this.spotNode.acceptedSpotRouteChannels ??= {};
+    this.spotNode.acceptedSpotRouteChannels[channelName] ??= { manualConnections: [] };
+    return new DefaultConnectionCapabilityBuilder(this.spotNode.acceptedSpotRouteChannels[channelName]);
+  }
+}
+
+class DefaultSpotRouterCapabilityBuilder implements SpotRouterCapabilityBuilder {
+  constructor(private readonly router: MutableSpotRouterCapabilityOptions) {}
+
+  bind(endpoint: string): this {
+    this.router.bind = endpoint;
+    return this;
+  }
+
+  routingId(routingId: RoutingId): this {
+    this.router.routingId = routingId;
+    return this;
+  }
+
+  connect(endpoint: string): this {
+    this.router.manualConnections ??= [];
+    this.router.manualConnections.push(endpoint);
+    return this;
+  }
+}
+
+class DefaultSpotPubSubCapabilityBuilder implements SpotPubSubCapabilityBuilder {
+  constructor(private readonly pubSub: MutableSpotPubSubCapabilityOptions) {}
+
+  bind(endpoint: string): this {
+    this.pubSub.bind = endpoint;
+    return this;
+  }
+
+  routingId(routingId: RoutingId): this {
+    this.pubSub.routingId = routingId;
+    return this;
+  }
+
+  connect(endpoint: string): this {
+    this.pubSub.manualConnections ??= [];
+    this.pubSub.manualConnections.push(endpoint);
+    return this;
+  }
+}
+
+class DefaultBindCapabilityBuilder implements ChannelServerCapabilityBuilder, ChannelPublisherCapabilityBuilder {
+  constructor(private readonly capability: { bind?: string }) {}
+
+  bind(endpoint: string): this {
+    this.capability.bind = endpoint;
+    return this;
+  }
+}
+
+class DefaultConnectionCapabilityBuilder implements
+  ChannelClientCapabilityBuilder,
+  ChannelSubscriberCapabilityBuilder,
+  DealerMeshChannelClientCapabilityBuilder,
+  SpotChannelClientCapabilityBuilder,
+  SpotPublisherClientCapabilityBuilder,
+  ZLinkSpotRouteChannelAcceptanceBuilder {
+  constructor(private readonly capability: { manualConnections?: string[] }) {}
+
+  connect(endpoint: string): this {
+    this.capability.manualConnections ??= [];
+    this.capability.manualConnections.push(endpoint);
+    return this;
+  }
+}
+
+class DefaultRouteBindCapabilityBuilder implements ChannelServerCapabilityBuilder {
+  constructor(private readonly capability: { bind?: string }) {}
+
+  bind(endpoint: string): this {
+    this.capability.bind = endpoint;
+    return this;
+  }
+}
+
+class DefaultRouteConnectionCapabilityBuilder implements ChannelClientCapabilityBuilder {
+  constructor(private readonly capability: { manualConnections?: string[] }) {}
+
+  connect(endpoint: string): this {
+    this.capability.manualConnections ??= [];
+    this.capability.manualConnections.push(endpoint);
+    return this;
+  }
+}
+
+interface MutableFrameworkRegistrationOptions {
+  channels: Record<string, MutableChannelOptions>;
+  discovery: MutableDiscoveryOptions;
+  routeChannels: MutableRouteChannelOptions[];
+  streamNodes: Record<string, MutableStreamNodeOptions>;
+  spotNodes: Record<string, MutableSpotNodeOptions>;
+  spotFactories: Type<ZLinkSpot>[];
+}
+
+interface MutableDiscoveryOptions {
+  registries: string[];
+}
+
+interface MutableChannelOptions {
+  client?: MutableClientCapabilityOptions;
+  dealerMesh?: MutableDealerMeshChannelOptions;
+  publisher?: MutablePublisherCapabilityOptions;
+  routeMesh?: MutableRouteMeshChannelOptions;
+  server?: { bind?: string };
+  subscriber?: MutableClientCapabilityOptions;
+}
+
+interface MutableClientCapabilityOptions {
+  manualConnections?: string[];
+}
+
+interface MutableDealerMeshChannelOptions {
+  bind?: string;
+  client?: MutableClientCapabilityOptions;
+}
+
+interface MutablePublisherCapabilityOptions {
+  bind?: string;
+}
+
+interface MutableRouteMeshChannelOptions {
+  bind?: string;
+  manualConnections?: string[];
+  routingId?: string;
+  sendHandlers?: ZLinkRouteChannelSendHandlerRegistration[];
+  requestHandlers?: ZLinkRouteChannelRequestHandlerRegistration[];
+  handlers?: ZLinkRouteChannelHandlerOptions[];
+}
+
+interface MutableRouteChannelOptions extends MutableRouteMeshChannelOptions {
+  routerChannelId: string;
+}
+
+interface MutableStreamNodeOptions {
+  bind?: string;
+  attachActorGateway?: string;
+  session?: Type;
+}
+
+interface MutableSpotNodeOptions {
+  router?: MutableSpotRouterCapabilityOptions;
+  pubSub?: MutableSpotPubSubCapabilityOptions;
+  attachedChannelClients?: Record<string, MutableSpotAttachedChannelClientOptions>;
+  attachedSpotPublisherClients?: Record<string, MutableSpotPublisherClientOptions>;
+  acceptedSpotRouteChannels?: Record<string, MutableSpotRouteChannelAcceptanceOptions>;
+}
+
+interface MutableSpotRouterCapabilityOptions {
+  bind?: string;
+  manualConnections?: string[];
+  routingId?: string;
+}
+
+interface MutableSpotPubSubCapabilityOptions {
+  bind?: string;
+  manualConnections?: string[];
+  routingId?: string;
+}
+
+interface MutableSpotAttachedChannelClientOptions {
+  manualConnections?: string[];
+}
+
+interface MutableSpotPublisherClientOptions {
+  manualConnections?: string[];
+}
+
+interface MutableSpotRouteChannelAcceptanceOptions {
+  manualConnections?: string[];
 }
 
 function toChannelMap(channels: ZLinkFrameworkRegistrationOptions['channels']): Map<string, ZLinkChannelOptions> {

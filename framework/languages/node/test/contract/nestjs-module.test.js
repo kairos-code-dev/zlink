@@ -220,6 +220,78 @@ test('ZLinkModule.forRoot maps dealer and route mesh channel options into runtim
   );
 });
 
+test('framework options builder maps dotnet-shaped registration flow into options', () => {
+  class GatewaySession {}
+  class StageSpot {
+    constructor(context) {
+      this.context = context;
+    }
+  }
+
+  const options = framework.createFrameworkOptions((builder) => {
+    builder.useDiscovery().connectRegistry('tcp://127.0.0.1:9400');
+    builder.clientServerChannel('api').server().bind('tcp://0.0.0.0:9401');
+    builder.clientServerChannel('api').client().connect('tcp://127.0.0.1:9401');
+    builder.fanoutChannel('events').publisher().bind('tcp://0.0.0.0:9402');
+    builder.fanoutChannel('events').subscriber().connect('tcp://127.0.0.1:9402');
+    builder.routeMeshChannel('route').router().bind('tcp://0.0.0.0:9403');
+    builder.routeMeshChannel('route').dealer().connect('tcp://127.0.0.1:9403');
+    builder.streamNode('gateway')
+      .bind('tcp://0.0.0.0:9404')
+      .attachActorGateway('stage-node')
+      .registerSession(GatewaySession);
+    builder.spotFactory(StageSpot);
+    const spot = builder.addSpotMesh('game.stage').node('stage-node');
+    spot.router()
+      .bind('tcp://0.0.0.0:9405')
+      .routingId('stage-node')
+      .connect('tcp://127.0.0.1:9406');
+    spot.pubSub()
+      .bind('tcp://0.0.0.0:9407')
+      .routingId('stage-node')
+      .connect('tcp://127.0.0.1:9408');
+    spot.attachChannelClient('api').connect('tcp://127.0.0.1:9401');
+    spot.attachSpotPublisherClient('game.stage').connect('tcp://127.0.0.1:9407');
+    spot.acceptSpotRoutesFromChannel('route').connect('tcp://127.0.0.1:9403');
+  });
+
+  const registration = framework.createFrameworkRegistration(options);
+  const spotNode = registration.spotNodes.get('stage-node');
+  const streamNode = registration.streamNodes.get('gateway');
+  const route = registration.routeChannelOptions.get('route');
+
+  assert.deepEqual(registration.discovery.registries, ['tcp://127.0.0.1:9400']);
+  assert.equal(registration.channels.get('api').server.bind, 'tcp://0.0.0.0:9401');
+  assert.deepEqual(registration.channels.get('api').client.manualConnections, ['tcp://127.0.0.1:9401']);
+  assert.equal(registration.channels.get('events').publisher.bind, 'tcp://0.0.0.0:9402');
+  assert.deepEqual(registration.channels.get('events').subscriber.manualConnections, ['tcp://127.0.0.1:9402']);
+  assert.equal(route.bind, 'tcp://0.0.0.0:9403');
+  assert.deepEqual(route.manualConnections, ['tcp://127.0.0.1:9403']);
+  assert.equal(streamNode.bind, 'tcp://0.0.0.0:9404');
+  assert.equal(streamNode.attachActorGateway, 'stage-node');
+  assert.equal(streamNode.session, GatewaySession);
+  assert.equal(registration.spotFactories.has(StageSpot), true);
+  assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9405');
+  assert.deepEqual(spotNode.router.manualConnections, ['tcp://127.0.0.1:9406']);
+  assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9407');
+  assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9408']);
+  assert.deepEqual(spotNode.attachedChannelClients.api.manualConnections, ['tcp://127.0.0.1:9401']);
+  assert.deepEqual(spotNode.attachedSpotPublisherClients['game.stage'].manualConnections, ['tcp://127.0.0.1:9407']);
+  assert.deepEqual(spotNode.acceptedSpotRouteChannels.route.manualConnections, ['tcp://127.0.0.1:9403']);
+
+  assert.throws(
+    () => framework.createFrameworkOptions((builder) => builder.addSpotMesh('')),
+    /SPOT mesh channel name must not be empty/
+  );
+  assert.throws(
+    () => framework.createFrameworkOptions((builder) => {
+      builder.addSpotMesh('game.stage');
+      builder.addSpotMesh('game.stage');
+    }),
+    /Duplicate SPOT mesh channel 'game.stage'/
+  );
+});
+
 test('ZLinkModule.forRoot maps stream node options into runtime registration', () => {
   class ClientHeaderSession {
     constructor(context) {

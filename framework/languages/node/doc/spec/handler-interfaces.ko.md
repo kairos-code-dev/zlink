@@ -331,7 +331,7 @@ channel 에 열지 않는다(dotnet 정책 동일).
 
 ### 4.2.1 routed channel handler
 
-route channel(`addRouteMeshChannel(...)`)이 수신하는 메시지를 처리하는 handler 다.
+route channel(`routeMeshChannel(...)`)이 수신하는 메시지를 처리하는 handler 다.
 일반 channel handler 와 달리 source `RoutingId` 를 포함한 라우팅 정보를 context 로 함께 노출한다.
 
 ```ts
@@ -1415,7 +1415,7 @@ export interface ZLinkSpotRemoteAddress {
 ```
 
 `routerChannelId` 는 실제 router-capable channel 이름이다. 이 값이 가리키는 channel 은
-`addClientServerChannel(...)` 의 server ROUTER 이거나 `addRouteMeshChannel(...)` 의 route mesh
+`clientServerChannel(...)` 의 server ROUTER 이거나 `routeMeshChannel(...)` 의 route mesh
 ROUTER 여야 한다. target `SpotNode` 는 같은 이름을 `acceptSpotRoutesFromChannel(...)` 로
 수락해야 하며, resolver 는 연결을 만들지 않는다.
 
@@ -1437,58 +1437,33 @@ dotnet 의 `AddZLinkFramework(options => ...)` 는 node 에서 `ZLinkModule.forR
 node options 키 한 개로 1:1 대응시키는 것을 기본으로 한다(표면 매핑 §5).
 
 두 가지 표면을 함께 둔다. (A) NestJS 선언적 module-options, (B) fluent builder. 둘은 같은
-등록을 표현한다. builder 는 dotnet `IZLinkFrameworkOptions` 와 1:1 대응한다.
+등록을 표현한다. builder 는 dotnet `IZLinkFrameworkOptions` 의 등록 흐름을 TypeScript
+fluent API 로 옮긴다.
 
 #### (B) fluent builder — `ZLinkFrameworkOptions`
 
 ```ts
+function createFrameworkOptions(
+  configure: (options: ZLinkFrameworkOptions) => void): ZLinkFrameworkRegistrationOptions;
+
+function createFrameworkRegistrationWithBuilder(
+  configure: (options: ZLinkFrameworkOptions) => void): ZLinkFrameworkRegistration;
+
 export interface ZLinkFrameworkOptions {
-  defaultTimeoutMs: number; // C# DefaultTimeout, 기본 30_000
-
-  readonly codecs: ZLinkCodecRegistryBuilder;
-
-  addHandlersFromModule(moduleType: Type<unknown>): void; // C# AddHandlersFromAssemblyOf<TMarker>
-  addHandlersFromModules(moduleTypes: readonly Type<unknown>[]): void;
-
-  configureMetadata(configure: (builder: ZLinkMetadataPolicyBuilder) => void): void;
-
-  addActorFactory<TFactory extends ZLinkActorFactory>(
-    actorType: string,
-    factoryType: Type<TFactory>,
-  ): void;
-
-  addSpotRemoteAddressResolver<TResolver extends ZLinkSpotRemoteAddressResolver>(
-    resolverType: Type<TResolver>,
-  ): void;
-
-  useRegistrySpotRemoteAddresses(namespaceName: string): void;
-  useRegistrySpotRemoteAddresses(
-    namespaceName: string,
-    configure: (options: ZLinkRegistrySpotRemoteAddressesOptions) => void,
-  ): void;
-
-  addClientServerChannel(channelName: string, configure: (ch: ZLinkClientServerChannelBuilder) => void): void;
-  addFanoutChannel(channelName: string, configure: (ch: ZLinkFanoutChannelBuilder) => void): void;
-  addDealerMeshChannel(channelName: string, configure: (ch: ZLinkDealerMeshChannelBuilder) => void): void;
-  addRouteMeshChannel(channelName: string, configure: (ch: ZLinkRouteMeshChannelBuilder) => void): void;
-
-  useDiscovery(configure: (builder: ZLinkDiscoveryBuilder) => void): void;
-
-  useFilter<TFilter extends ZLinkHandlerFilter>(filterType: Type<TFilter>): void;
-
-  configureDispatch(configure: (options: ZLinkDispatchOptions) => void): void;
-
-  addStreamNode(streamNodeName: string, configure: (st: ZLinkStreamNodeBuilder) => void): void;
-
-  addSpotMesh(channelName: string, configure: (mesh: ZLinkSpotMeshBuilder) => void): void;
-}
-
-export interface ZLinkRegistrySpotRemoteAddressesOptions {
-  routerChannelId?: string;
+  useDiscovery(): ZLinkDiscoveryBuilder;
+  spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+  addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
+  clientServerChannel(name: string): ZLinkClientServerChannelBuilder;
+  fanoutChannel(name: string): ZLinkFanoutChannelBuilder;
+  dealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder;
+  routeChannel(name: string): ZLinkRouteChannelBuilder;
+  routeMeshChannel(name: string): ZLinkRouteMeshChannelBuilder;
+  streamNode(name: string): ZLinkStreamNodeBuilder;
+  spotNode(name: string): ZLinkSpotNodeBuilder;
 }
 
 export interface ZLinkDiscoveryBuilder {
-  add(endpoint: string): void;
+  connectRegistry(endpoint: string): this;
 }
 
 export interface ZLinkMetadataPolicyBuilder {
@@ -1496,28 +1471,20 @@ export interface ZLinkMetadataPolicyBuilder {
 }
 ```
 
-> 코드 기준: dotnet `IZLinkFrameworkOptions` 는 위 메서드 전체를 가진다(스펙 문서가 일부만
-> 적었던 `AddClientServerChannel` 등 채널 등록 메서드 포함). `AddHandlersFromAssemblyOf` 는
-> node 에서 NestJS DiscoveryService 기반 `addHandlersFromModule(s)` 로 매핑한다.
-> `UseRegistrySpotRemoteAddresses` 는 코드에만 있던 표면이라 옮겼다.
+> 구현 기준: builder 는 현재 runtime registration 이 실제로 소비하는 channel,
+> stream node, SpotNode, discovery, spot factory 구성을 만든다. codec/filter/handler
+> discovery/registry remote address 표면은 선언적 module options 로 둔다.
 
-`defaultTimeoutMs` 기본값은 30초(30000)다. 각 메서드 의미:
+각 메서드 의미:
 
-- `defaultTimeoutMs`: request 가 별도 timeout 을 지정하지 않을 때 쓰는 기본값.
-- `codecs`: protobuf/json/messagepack codec provider 를 registry 에 등록(§4.5).
-- `configureMetadata(...)`: session actor dispatch / bound session 경로에서 전달할 metadata key 등록.
-- `addActorFactory(actorType, factoryType)`: actor type 문자열에 대응하는 factory 등록.
-- `addSpotRemoteAddressResolver(...)`: spot rid → user Spot route 조회 resolver 등록.
-- `useRegistrySpotRemoteAddresses(...)`: registry 기반 spot 주소 해소 namespace 등록.
-- `addClientServerChannel(...)`: request/send 용 client-server 채널 등록.
-- `addFanoutChannel(...)`: pub/sub fanout 채널 등록.
-- `addDealerMeshChannel(...)`: DEALER mesh 채널 등록.
-- `addRouteMeshChannel(...)`: route mesh 채널 등록.
-- `useDiscovery(...)`: 일반 channel capability 가 공유할 registry endpoint 집합 등록(루트에 한 번).
-- `useFilter(filterType)`: handler filter 타입 등록.
-- `configureDispatch(...)`: dispatch mode / unhandled / diagnostics 설정.
-- `addStreamNode(...)`: STREAM node 등록(한 node 에 session 하나만).
-- `addSpotMesh(channelName, ...)`: 여러 SpotNode 가 같은 SPOT mesh discovery view 를 공유하도록 묶어 등록.
+- `clientServerChannel(...)`: request/send 용 client-server 채널 등록.
+- `fanoutChannel(...)`: pub/sub fanout 채널 등록.
+- `dealerMeshChannel(...)`: DEALER mesh 채널 등록.
+- `routeChannel(...)` / `routeMeshChannel(...)`: route channel 등록.
+- `useDiscovery().connectRegistry(...)`: 일반 channel capability 가 공유할 registry endpoint 집합 등록.
+- `streamNode(...)`: STREAM node 등록(한 node 에 session 하나만).
+- `spotFactory(...)`: `ZLinkSpotManager` 가 사용할 spot factory 타입 등록.
+- `addSpotMesh(channelName).node(...)`: SPOT mesh 아래 SpotNode 등록.
 
 #### (A) NestJS module-options 대응
 
@@ -1556,13 +1523,13 @@ export class AppModule {}
 
 | dotnet builder 메서드 | node module options 키 | spec |
 |------|------|------|
-| `addClientServerChannel(name, ...)` | `channels[name] = { server, client, requestHandlers, sendHandlers, handlerGroups }` | nestjs-channel-messaging |
-| `addFanoutChannel(name, ...)` | `channels[name] = { publisher, subscriber, publishHandlers, handlerGroups }` | nestjs-channel-messaging |
-| `addDealerMeshChannel(name, ...)` | `channels[name] = { dealerMesh: {...} }` | nestjs-channel-messaging |
-| `addRouteMeshChannel(name, ...)` | `channels[name] = { routeMesh: {...} }` | nestjs-channel-messaging |
-| `addSpotMesh(name, ...)` | `spotMeshes[name] = {...}` | nestjs-spot |
-| `addStreamNode(name, ...)` | `streamNodes[name] = {...}` | nestjs-stream |
-| `useDiscovery(...)` | `discovery: { registries: [...] }` | nestjs-registry |
+| `clientServerChannel(name)` | `channels[name] = { server, client }` | nestjs-channel-messaging |
+| `fanoutChannel(name)` | `channels[name] = { publisher, subscriber }` | nestjs-channel-messaging |
+| `dealerMeshChannel(name)` | `channels[name] = { dealerMesh: {...} }` | nestjs-channel-messaging |
+| `routeMeshChannel(name)` | `channels[name] = { routeMesh: {...} }` | nestjs-channel-messaging |
+| `addSpotMesh(name).node(...)` | `spotNodes[name] = {...}` | nestjs-spot |
+| `streamNode(name)` | `streamNodes[name] = {...}` | nestjs-stream |
+| `useDiscovery().connectRegistry(...)` | `discovery: { registries: [...] }` | nestjs-registry |
 | `useFilter(...)` | `filters: [FilterClass]` | handler-interfaces §8 |
 | `configureDispatch(...)` | `dispatch: { spotDispatchMode, streamDispatchMode, unhandled, diagnostics }` | §4.4.3 |
 | `addHandlersFromModule(s)(...)` | `discover: { modules / include }` | 매핑 정책 §4.2 |
@@ -1575,29 +1542,21 @@ export class AppModule {}
 
 ```ts
 export interface ChannelServerCapabilityBuilder {
-  bind(endpoint: string): void;
-  configureSocket(configure: (socket: ZLinkSocketConfig) => void): void;
-  configureRouting(configure: (route: ZLinkRouteConfig) => void): void;
+  bind(endpoint: string): this;
 }
 
 export interface ChannelClientCapabilityBuilder {
-  configureSocket(configure: (socket: ZLinkSocketConfig) => void): void;
-  configureRouting(configure: (route: ZLinkOutboundRouteConfig) => void): void;
-  useManualConnections(configure: (connections: ZLinkEndpointConnections) => void): void;
+  connect(endpoint: string): this;
 }
 
-export interface DealerMeshChannelClientCapabilityBuilder extends ChannelClientCapabilityBuilder {
-  bind(endpoint: string): void;
-}
+export interface DealerMeshChannelClientCapabilityBuilder extends ChannelClientCapabilityBuilder {}
 
 export interface ChannelPublisherCapabilityBuilder {
-  bind(endpoint: string): void;
-  configureSocket(configure: (socket: ZLinkSocketConfig) => void): void;
+  bind(endpoint: string): this;
 }
 
 export interface ChannelSubscriberCapabilityBuilder {
-  configureSocket(configure: (socket: ZLinkSocketConfig) => void): void;
-  useManualConnections(configure: (connections: ZLinkEndpointConnections) => void): void;
+  connect(endpoint: string): this;
 }
 ```
 
@@ -1605,93 +1564,49 @@ export interface ChannelSubscriberCapabilityBuilder {
 
 ```ts
 export interface ZLinkClientServerChannelBuilder {
-  enableServer(configure?: (server: ChannelServerCapabilityBuilder) => void): void;
-  enableClient(configure?: (client: ChannelClientCapabilityBuilder) => void): void;
-
-  addHandlerGroup(groupName: string): void;
-
-  addSendHandler<THandler extends ZLinkSendHandler<TMessage>, TMessage>(
-    handlerType: Type<THandler>, packetName?: string): void;
-  addSendHandler<THandler>(handlerType: Type<THandler>, packetName?: string): void;
-
-  addRequestHandler<THandler extends ZLinkRequestHandler<TRequest, TReply>, TRequest, TReply>(
-    handlerType: Type<THandler>, packetName?: string): void;
-  addRequestHandler<THandler>(handlerType: Type<THandler>, packetName?: string): void;
-
-  enableSpotRouteEgress(targetSpotNodeChannelName: string): void;
+  server(): ChannelServerCapabilityBuilder;
+  client(): ChannelClientCapabilityBuilder;
 }
 
 export interface ZLinkFanoutChannelBuilder {
-  enablePublisher(configure?: (publisher: ChannelPublisherCapabilityBuilder) => void): void;
-  enableSubscriber(configure?: (subscriber: ChannelSubscriberCapabilityBuilder) => void): void;
-
-  addHandlerGroup(groupName: string): void;
-
-  addPublishHandler<THandler extends ZLinkPublishHandler<TMessage>, TMessage>(
-    handlerType: Type<THandler>, packetName?: string): void;
-  addPublishHandler<THandler>(handlerType: Type<THandler>, packetName?: string): void;
+  publisher(): ChannelPublisherCapabilityBuilder;
+  subscriber(): ChannelSubscriberCapabilityBuilder;
 }
 
 export interface ZLinkDealerMeshChannelBuilder {
-  enableClient(configure?: (client: DealerMeshChannelClientCapabilityBuilder) => void): void;
-
-  addHandlerGroup(groupName: string): void;
-
-  addSendHandler<THandler extends ZLinkSendHandler<TMessage>, TMessage>(
-    handlerType: Type<THandler>, packetName?: string): void;
-  addSendHandler<THandler>(handlerType: Type<THandler>, packetName?: string): void;
-
-  addRequestHandler<THandler extends ZLinkRequestHandler<TRequest, TReply>, TRequest, TReply>(
-    handlerType: Type<THandler>, packetName?: string): void;
-  addRequestHandler<THandler>(handlerType: Type<THandler>, packetName?: string): void;
+  client(): DealerMeshChannelClientCapabilityBuilder;
 }
 
 export interface ZLinkRouteChannelBuilder {
-  bind(endpoint: string): void;
-  configureSocket(configure: (socket: ZLinkSocketConfig) => void): void;
-  configureRouting(configure: (route: ZLinkRouteConfig) => void): void;
-  useManualConnections(configure: (connections: ZLinkEndpointConnections) => void): void;
-
-  addHandlerGroup(groupName: string): void;
-
-  addSendHandler<THandler extends ZLinkRouteSendHandler<TMessage>, TMessage>(
-    handlerType: Type<THandler>, packetName?: string): void;
-  addSendHandler<THandler>(handlerType: Type<THandler>, packetName?: string): void;
-
-  addRequestHandler<THandler extends ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply>(
-    handlerType: Type<THandler>, packetName?: string): void;
-  addRequestHandler<THandler>(handlerType: Type<THandler>, packetName?: string): void;
-
-  enableSpotRouteEgress(targetSpotNodeChannelName: string): void;
+  router(): ChannelServerCapabilityBuilder;
+  dealer(): ChannelClientCapabilityBuilder;
 }
 
 /** route mesh 는 route channel builder 를 그대로 확장한다. */
 export interface ZLinkRouteMeshChannelBuilder extends ZLinkRouteChannelBuilder {}
 
 export interface ZLinkStreamNodeBuilder {
-  bind(endpoint: string): void;
-  attachActorGateway(spotNodeName: string): void;
-  registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession>): void;
+  bind(endpoint: string): this;
+  attachActorGateway(spotNodeName: string): this;
+  registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession>): this;
 }
 ```
 
-> 코드 기준: `IZLinkDealerMeshChannelBuilder` 는 client capability 만이 아니라
-> `AddHandlerGroup` / `AddSendHandler` / `AddRequestHandler` 도 가진다(스펙 문서는 client 만
-> 적음). `IZLinkRouteMeshChannelBuilder` 는 `IZLinkRouteChannelBuilder` 를 그대로 상속한다.
-> `IZLinkStreamNodeBuilder` 는 `AttachActorGateway(spotNodeName)` 를 가진다.
+> builder 표면은 registration options 를 만드는 편의 표면이다. handler group 과 typed
+> handler 직접 등록은 현재 선언적 module options 에서 소유한다.
 
 채널 등록 규칙:
 
-- handler 는 자동으로 모든 channel 에 열리지 않는다. `addHandlerGroup(...)` 매핑 또는 명시
+- handler 는 자동으로 모든 channel 에 열리지 않는다. module options 의 handler 매핑 또는 명시
   등록이 노출을 정한다.
-- `enableServer(...)` / `enablePublisher(...)` capability 는 다른 프로세스가 접근할 local bind
+- `server()` / `publisher()` capability 는 다른 프로세스가 접근할 local bind
   endpoint 가 필요하므로 builder 안에서 `bind(...)` 를 같이 지정한다.
 - 수동 연결은 `channel + capability` 단위다. 같은 capability 안에서 discovery 와 manual 을
   섞지 않는다. `client` 와 `subscriber` 는 서로 다른 연결 집합으로 본다.
 
 ### 6.2 channel 수동 연결
 
-수동 연결은 capability builder 의 `useManualConnections(...)` 에서 등록한다. public 계약은
+수동 연결은 capability builder 의 `connect(...)` 에서 등록한다. public 계약은
 host 시작 뒤 endpoint 를 바꾸는 별도 runtime 연결 관리 표면을 제공하지 않는다.
 
 ```ts
@@ -1759,90 +1674,65 @@ export interface ZLinkSpotManager {
 
 ```ts
 export interface ZLinkSpotNodeBuilder {
-  enableRouter(configure?: (router: SpotRouterCapabilityBuilder) => void): void;
-  enablePubSub(configure?: (pubsub: SpotPubSubCapabilityBuilder) => void): void;
-
-  attachChannelClient(
-    channelName: string, configure?: (client: SpotChannelClientCapabilityBuilder) => void): void;
-  attachSpotPublisherClient(
-    channelName: string, configure?: (client: SpotPublisherClientCapabilityBuilder) => void): void;
-
-  acceptSpotRoutesFromChannel(
-    channelName: string, configure?: (acceptance: ZLinkSpotRouteChannelAcceptanceBuilder) => void): void;
-
-  configureEntrySpot(configure: (options: ZLinkEntrySpotOptions) => void): void;
-
-  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): void;
-  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): void;
+  router(): SpotRouterCapabilityBuilder;
+  pubSub(): SpotPubSubCapabilityBuilder;
+  attachChannelClient(channelName: string): SpotChannelClientCapabilityBuilder;
+  attachSpotPublisherClient(channelName: string): SpotPublisherClientCapabilityBuilder;
+  acceptSpotRoutesFromChannel(channelName: string): ZLinkSpotRouteChannelAcceptanceBuilder;
 }
 
 /** mesh node 는 spot node builder 를 그대로 확장한다. */
 export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {}
 
 export interface ZLinkSpotMeshBuilder {
-  useDiscovery(configure: (builder: ZLinkDiscoveryBuilder) => void): void;
-  addNode(spotNodeName: string, configure: (node: ZLinkSpotMeshNodeBuilder) => void): void;
+  useDiscovery(): ZLinkDiscoveryBuilder;
+  node(spotNodeName: string): ZLinkSpotMeshNodeBuilder;
 }
 
 export interface SpotRouterCapabilityBuilder {
-  setRouterBind(endpoint: string): void;
-  setRoutingId(routingId: RoutingId): void;
-  configureSocket(configure: (socket: ZLinkSocketConfig) => void): void;
-  configureRouting(configure: (route: ZLinkRouteConfig) => void): void;
-  useManualConnections(configure: (connections: ZLinkEndpointConnections) => void): void;
+  bind(endpoint: string): this;
+  routingId(routingId: RoutingId): this;
+  connect(endpoint: string): this;
 }
 
 export interface SpotPubSubCapabilityBuilder {
-  setPubBind(endpoint: string): void;
-  setRoutingId(routingId: RoutingId): void;
-  configurePublisherConfig(configure: (config: ZLinkSpotPublisherConfig) => void): void;
-  configureSubscriberConfig(configure: (config: ZLinkSpotSubscriberConfig) => void): void;
-  useManualConnections(configure: (connections: ZLinkEndpointConnections) => void): void;
+  bind(endpoint: string): this;
+  routingId(routingId: RoutingId): this;
+  connect(endpoint: string): this;
 }
 
 export interface SpotPublisherClientCapabilityBuilder {
-  configureSocket(configure: (socket: ZLinkSocketConfig) => void): void;
-  useManualConnections(configure: (connections: ZLinkEndpointConnections) => void): void;
+  connect(endpoint: string): this;
 }
 
 export interface SpotChannelClientCapabilityBuilder {
-  configureSocket(configure: (socket: ZLinkSocketConfig) => void): void;
-  configureRouting(configure: (route: ZLinkOutboundRouteConfig) => void): void;
-  useManualConnections(configure: (connections: ZLinkEndpointConnections) => void): void;
+  connect(endpoint: string): this;
 }
 
 export interface ZLinkSpotRouteChannelAcceptanceBuilder {
-  useManualConnections(configure: (connections: ZLinkEndpointConnections) => void): void;
+  connect(endpoint: string): this;
 }
 ```
 
-> 코드 기준(중요): dotnet `IZLinkSpotNodeBuilder` 에는 node 자체 `Bind(...)` 가 **없다**.
-> bind 는 capability 쪽에서 한다: router 는 `SetRouterBind(...)`, pub/sub 는 `SetPubBind(...)`.
-> `ISpotPubSubCapabilityBuilder` 는 `ConfigurePublisherConfig` / `ConfigureSubscriberConfig`
-> 이름을 쓴다(스펙 문서의 `ConfigurePublisherOptions` 가 아님). router/pubsub capability 는
-> `SetRoutingId(...)` 도 가진다. `IZLinkSpotMeshNodeBuilder` 는 `IZLinkSpotNodeBuilder` 를
-> 그대로 상속한다. `AddSpotFactory<TSpot>` 의 제약은 `where TSpot : IZLinkSpot` 이다.
+> Node builder 에서도 node 자체 `bind(...)` 는 없다. bind 는 router/pubSub capability
+> builder 에서 지정한다. spot factory 타입은 root `spotFactory(...)` 로 등록한다.
 
 builder 함수 의미:
 
-- `enableRouter(...)`: spot-to-spot routed packet 을 처리할 local router capability 활성화.
-- `enablePubSub(...)`: 현재 SPOT channel 의 publish/subscribe capability 활성화.
+- `router()`: spot-to-spot routed packet 을 처리할 local router capability 활성화.
+- `pubSub()`: 현재 SPOT channel 의 publish/subscribe capability 활성화.
 - `attachChannelClient(...)`: 다른 channel 로 send/request 할 outbound DEALER(client) 부착.
 - `attachSpotPublisherClient(...)`: 외부 노드가 특정 SPOT channel 로 publish 할 outbound publisher client 부착.
 - `acceptSpotRoutesFromChannel(...)`: 지정 channel 에서 들어오는 spot route 수락.
-- `configureEntrySpot(...)`: Entry Spot routing id 등 옵션 설정.
-- `addSpotFactory(spotType)`: 이 node 가 생성/소유할 spot factory 를 타입 기준 등록. 같은
+- `spotFactory(spotType)`: 이 runtime 이 생성/소유할 spot factory 를 타입 기준 등록. 같은
   `TSpot` 재등록은 예외. `create`/`getOrCreate` 는 이 타입과 정확히 일치하는 factory 를 고름.
-- `addEntrySpot(entrySpotType)`: 이 node 의 자동 Entry Spot registry 등록. node 당 하나. 두 번
-  등록하면 startup validation 오류. 미등록 시 빈 Entry Spot registry 를 쓰고, 매칭 handler
-  없는 actor packet 은 명확한 dispatch error.
 
-ActorGateway 는 별도 node builder 를 두지 않는다. `addNode(...)` 로 등록한 SpotNode 에
-`enableRouter(...)` 와 router bind 를 설정한 뒤, stream 이 `attachActorGateway(spotNodeName)`
+ActorGateway 는 별도 node builder 를 두지 않는다. `node(...)` 로 등록한 SpotNode 에
+`router()` 와 router bind 를 설정한 뒤, stream 이 `attachActorGateway(spotNodeName)`
 으로 그 local ingress node 를 참조한다(§6.1 `ZLinkStreamNodeBuilder`).
 
-`addSpotMesh(channelName, ...)` 는 SPOT channel 이름과 node 묶음을 함께 소유한다. 그래서
-`addNode(...)` 안에서 같은 channel 이름을 다시 받지 않는다.
+`addSpotMesh(channelName)` 는 SPOT channel 이름과 node 묶음을 함께 소유한다. 그래서
+`node(...)` 안에서 같은 channel 이름을 다시 받지 않는다.
 
 ### 6.4 socket / route / spot config
 

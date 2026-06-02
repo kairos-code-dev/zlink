@@ -50,17 +50,10 @@ public:
     const zlink::message_t &payload) override
   {
     if (_authenticate.can_handle (header)) {
-      auto authenticated = _authenticate.handle (
-        _actors, stream, header, payload);
-      if (!authenticated) {
-        return task_t<void> (
-          zlink::framework::result_t<void>::failure (
-            authenticated.error_kind (),
-            authenticated.error ()->what ()));
-      }
-      _bound_actor_id = std::string (authenticated.value ().actor_id ());
-      return task_t<void> (
-        zlink::framework::result_t<void>::success ());
+      auto authenticated =
+        co_await _authenticate.handle (_actors, stream, header, payload);
+      _bound_actor_id = std::string (authenticated.actor_id ());
+      co_return;
     }
 
     auto actor = require_bound_actor (std::string ("relaying packet '") +
@@ -70,8 +63,8 @@ public:
         zlink::framework::result_t<void>::failure (
           actor.error_kind (), actor.error ()->what ()));
     }
-    return task_t<void> (
-      actor.value ().relay (header, payload).submit ().result ());
+    co_await actor.value ().relay (header, payload).submit ();
+    co_return;
   }
 
 private:

@@ -97,4 +97,10 @@ serializer_registry_t::deserialize (std::type_index type,
   }
 }
 
+bool
+serializer_registry_t::contains (std::type_index type) const
+{
+  return _state->serializers.find (type) != _state->serializers.end ();
+}
+
 } // namespace zlink::framework

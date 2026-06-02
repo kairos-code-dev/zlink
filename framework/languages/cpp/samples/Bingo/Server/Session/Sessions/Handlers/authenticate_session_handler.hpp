@@ -31,7 +31,7 @@ public:
     return header.packet_name () == authenticate_req_t::packet_name;
   }
 
-  zlink::framework::result_t<zlink::framework::session_actor_t> handle (
+  zlink::framework::task_t<zlink::framework::session_actor_t> handle (
     zlink::framework::session_actor_manager_t &actors,
     zlink::framework::stream_t &stream,
     const zlink::framework::stream_header_t &header,
@@ -42,7 +42,7 @@ public:
       _authenticate.handle ({ request.access_token });
     if (!authenticated.accepted || authenticated.actor_id.empty () ||
         authenticated.display_name.empty ()) {
-      return zlink::framework::result_t<zlink::framework::session_actor_t>::
+      co_return zlink::framework::result_t<zlink::framework::session_actor_t>::
         failure (zlink::framework::framework_error_kind_t::request_failed,
                  authenticated.reason.empty ()
                    ? "Player authentication failed."
@@ -51,27 +51,17 @@ public:
 
     const auto ensured = _ensure_actor.handle (
       { authenticated.actor_id, authenticated.display_name });
-    auto bound = actors.bind (to_actor_ref (ensured)).submit ().result ();
-    if (!bound) {
-      return bound;
-    }
+    auto bound = co_await actors.bind (to_actor_ref (ensured)).submit ();
 
-    auto reply =
-      stream
-        .reply_packet (
-          header,
-          zlink::message_t::from_json (
-            authenticate_res_t { ensured.actor_id,
-                                 authenticated.display_name }))
-        .submit ()
-        .result ();
-    if (!reply) {
-      return zlink::framework::result_t<zlink::framework::session_actor_t>::
-        failure (reply.error_kind (), reply.error ()->what ());
-    }
+    co_await stream
+      .reply_packet (
+        header,
+        zlink::message_t::from_json (
+          authenticate_res_t { ensured.actor_id,
+                               authenticated.display_name }))
+      .submit ();
 
-    return zlink::framework::result_t<zlink::framework::session_actor_t>::
-      success (std::move (bound.value ()));
+    co_return bound;
   }
 
 private:

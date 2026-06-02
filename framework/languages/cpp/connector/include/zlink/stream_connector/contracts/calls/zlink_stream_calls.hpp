@@ -108,10 +108,8 @@ public:
 
   void submit (std::function<void (result_t<TReply>)> callback)
   {
-    auto result = submit ().result ();
-    if (callback) {
-      callback (std::move (result));
-    }
+    auto task = submit ();
+    task.on_completed (std::move (callback));
   }
 
 private:

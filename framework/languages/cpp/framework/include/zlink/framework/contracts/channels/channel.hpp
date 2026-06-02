@@ -404,8 +404,8 @@ public:
 
   pending_operation_t submit (std::function<void (result_t<TReply>)> callback)
   {
-    auto result = submit ().result ();
-    callback (result);
+    auto task = submit ();
+    detail::observe_task_completion (task, std::move (callback));
     return pending_operation_t::make_completed ();
   }
 

@@ -198,6 +198,46 @@ sample_application_code_uses_message_codec (const std::filesystem::path &root)
 }
 
 bool
+sample_server_code_does_not_block_on_task_result (
+  const std::filesystem::path &root)
+{
+  bool ok = true;
+  const auto samples_root = root / "samples";
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator (samples_root)) {
+    if (!entry.is_regular_file ()) {
+      continue;
+    }
+    const auto ext = entry.path ().extension ();
+    if (ext != ".hpp" && ext != ".cpp") {
+      continue;
+    }
+
+    const auto relative =
+      std::filesystem::relative (entry.path (), samples_root).generic_string ();
+    if (relative.find ("/Server/") == std::string::npos &&
+        relative.find ("/Shared/") == std::string::npos) {
+      continue;
+    }
+
+    std::ifstream input (entry.path ());
+    std::string line;
+    std::size_t line_no = 0;
+    while (std::getline (input, line)) {
+      ++line_no;
+      if (line.find (".result (") != std::string::npos ||
+          line.find (".result(") != std::string::npos) {
+        std::cerr << "sample server/shared code must use task_t await or "
+                     "callback completion instead of blocking result(): "
+                  << entry.path () << ':' << line_no << '\n';
+        ok = false;
+      }
+    }
+  }
+  return ok;
+}
+
+bool
 client_sample_uses_connector (const std::filesystem::path &root,
                               const std::filesystem::path &client_file)
 {
@@ -628,6 +668,24 @@ main ()
   ok &= file_contains (
     root / "framework/src/runtime/handlers/handler_registry.cpp",
     "co_await runtime::await_task_result");
+  ok &= file_contains (
+    root / "framework/src/runtime/http/http_host_service.cpp",
+    "handler_coroutine_executor ().submit");
+  ok &= file_contains (
+    root / "framework/src/runtime/http/http_host_service.cpp",
+    "co_await await_task_result");
+  ok &= file_contains (
+    root / "framework/src/runtime/spots/spot_runtime.cpp",
+    "runtime::handler_coroutine_executor ().submit");
+  ok &= file_contains (
+    root / "framework/src/runtime/spots/spot_runtime.cpp",
+    "co_await runtime::await_task_result");
+  ok &= file_contains (
+    root / "framework/src/runtime/streams/stream_runtime.cpp",
+    "runtime::handler_coroutine_executor ().submit");
+  ok &= file_contains (
+    root / "framework/src/runtime/streams/stream_runtime.cpp",
+    "co_await runtime::await_task_result");
   ok &= file_does_not_contain (
     root / "framework/src/runtime/channels/route_handler_invoker.cpp",
     ".result (",
@@ -636,6 +694,18 @@ main ()
     root / "framework/src/runtime/channels/route_handler_invoker.cpp",
     ".result(",
     "route handler dispatch must await task_t instead of blocking with result()");
+  ok &= file_does_not_contain (
+    root / "connector/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp",
+    ".result",
+    "connector callback submit must observe task completion instead of blocking");
+  ok &= file_does_not_contain (
+    root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp",
+    ".result",
+    "connector auto codec callback submit must observe task completion instead of blocking");
+  ok &= file_does_not_contain (
+    root / "connector/src/runtime/connector_runtime.cpp",
+    ".result",
+    "connector send callback submit must observe task completion instead of blocking");
   ok &= file_does_not_contain (
     root /
       "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
@@ -691,6 +761,7 @@ main ()
   ok &= public_headers_do_not_expose_runtime_dependencies (
     root / "unreal-connector/Source/ZLinkStreamConnector/Public");
   ok &= sample_application_code_uses_message_codec (root);
+  ok &= sample_server_code_does_not_block_on_task_result (root);
   ok &= contract_headers_have_compile_coverage (
     root,
     "framework/include/zlink/framework/contracts",

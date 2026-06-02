@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <functional>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -127,7 +128,12 @@ public:
 
   task_t<TReply> submit ()
   {
-    auto result = _inner.submit ().result ();
+    auto task = _inner.submit ();
+    std::optional<result_t<zlink::message_t>> completed;
+    task.on_completed ([&completed](result_t<zlink::message_t> result) {
+      completed = std::move (result);
+    });
+    const auto &result = *completed;
     if (!result) {
       return task_t<TReply> (result_t<TReply>::failure (
         result.error_code (),
@@ -139,10 +145,8 @@ public:
 
   void submit (std::function<void (result_t<TReply>)> callback)
   {
-    auto result = submit ().result ();
-    if (callback) {
-      callback (std::move (result));
-    }
+    auto task = submit ();
+    task.on_completed (std::move (callback));
   }
 
 private:

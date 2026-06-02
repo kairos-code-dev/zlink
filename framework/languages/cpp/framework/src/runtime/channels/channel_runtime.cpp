@@ -604,8 +604,8 @@ route_send_call_t::submit ()
 pending_operation_t
 route_send_call_t::submit (std::function<void (result_t<void>)> callback)
 {
-  auto result = submit ().result ();
-  callback (result);
+  auto task = submit ();
+  detail::observe_task_completion (task, std::move (callback));
   return pending_operation_t::make_completed ();
 }
 
@@ -644,8 +644,8 @@ pending_operation_t
 route_request_call_t::submit (
   std::function<void (result_t<std::uint64_t>)> callback)
 {
-  auto result = submit ().result ();
-  callback (result);
+  auto task = submit ();
+  detail::observe_task_completion (task, std::move (callback));
   return pending_operation_t::make_completed ();
 }
 

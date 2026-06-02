@@ -63,6 +63,9 @@ auto created = co_await client
 ```
 
 callback submit도 같은 call object에서 제공한다.
+typed submit은 내부에서 raw submit 결과를 `.result()`로 기다리지 않고 `task_t` 완료를
+await하거나 관찰한다. 이 규칙은 샘플 handler가 HTTP client를 사용할 때 runtime thread를
+막지 않도록 하기 위한 것이다.
 
 ```cpp
 client
@@ -134,7 +137,8 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
   드러나지 않는다
 - JSON request/response: typed DTO request를 JSON으로 보내고 reply DTO를 읽는다
 - callback submit: result에 HTTP status와 decode error가 전달된다
-- coroutine submit: `co_await submit<T>()`가 typed response를 반환한다
+- coroutine submit: `co_await submit<T>()`가 typed response를 반환하고 내부 raw submit을
+  blocking wait로 기다리지 않는다
 - HTTP status mapping: `400`, `404`, `500` 응답이 client result/error kind로 고정된다
 - timeout: 응답 지연은 timeout error로 닫힌다
 - HTTPS success: test certificate trust 설정이 있으면 `https://` JSON request/response가
@@ -144,7 +148,8 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
 
 현재 회귀 테스트는 `test_cpp_http_client`와 `test_cpp_framework_contract_headers`가 담당한다.
 OpenSSL을 찾은 빌드에서는 configure 단계에서 테스트 인증서를 생성하고
-`test_cpp_http_client` 안에서 HTTPS success와 untrusted certificate failure를 함께 검증한다.
+`test_cpp_http_client` 안에서 HTTPS success, untrusted certificate failure, hostname
+mismatch failure를 함께 검증한다.
 
 검증 label은 아래와 같다.
 

@@ -4,7 +4,9 @@
 #include <zlink/stream_connector/contracts/result.hpp>
 
 #include <coroutine>
+#include <functional>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 namespace zlink::stream_connector
@@ -31,7 +33,12 @@ public:
         error_code_t::user_callback_failed,
         "unhandled connector coroutine exception");
     }
+    void return_value (result_t<T> value)
+    {
+      result = std::move (value);
+    }
     template<typename U>
+      requires (!std::is_same_v<std::remove_cvref_t<U>, result_t<T>>)
     void return_value (U &&value)
     {
       result = result_t<T>::success (T (std::forward<U> (value)));
@@ -75,6 +82,17 @@ public:
       return *_handle.promise ().result;
     }
     return *_result;
+  }
+
+  void on_completed (std::function<void (result_t<T>)> callback)
+  {
+    if (callback) {
+      if (_handle) {
+        callback (std::move (*_handle.promise ().result));
+      } else {
+        callback (std::move (*_result));
+      }
+    }
   }
 
 private:
@@ -148,6 +166,17 @@ public:
       return _handle.promise ().result;
     }
     return *_result;
+  }
+
+  void on_completed (std::function<void (result_t<void>)> callback)
+  {
+    if (callback) {
+      if (_handle) {
+        callback (std::move (_handle.promise ().result));
+      } else {
+        callback (std::move (*_result));
+      }
+    }
   }
 
 private:

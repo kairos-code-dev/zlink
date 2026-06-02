@@ -2,6 +2,8 @@
 
 #include "runtime/http/http_host_service.hpp"
 
+#include "runtime/dispatch/coroutine_executor.hpp"
+
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -15,6 +17,7 @@
 #include <atomic>
 #include <cctype>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -24,12 +27,34 @@ namespace zlink::framework::runtime
 class http_route_invoker_access_t
 {
 public:
-  static std::string invoke (const http_route_t &route,
-                             service_provider_t &services,
-                             http_context_t &context,
-                             const std::string &body)
+  static task_t<std::string> invoke (const http_route_t &route,
+                                     service_provider_t &services,
+                                     http_context_t &context,
+                                     const std::string &body)
   {
-    return route.invoke_json (services, context, body);
+    auto owned_body = body;
+    return handler_coroutine_executor ().submit<std::string> (
+      [&route,
+       &services,
+       &context,
+       owned_body = std::move (owned_body)]()
+        -> boost::asio::awaitable<result_t<std::string>> {
+        try {
+          auto route_task = route.invoke_json (
+            services,
+            context,
+            owned_body);
+          co_return result_t<std::string>::success (
+            (co_await await_task_result (std::move (route_task))).value ());
+        } catch (const framework_exception_t &error) {
+          co_return result_t<std::string>::failure (
+            error.kind (), error.what (), error.is_retriable ());
+        } catch (...) {
+          co_return result_t<std::string>::failure (
+            framework_error_kind_t::request_failed,
+            "HTTP route handler threw an exception");
+        }
+      });
   }
 };
 
@@ -54,6 +79,13 @@ struct matched_route_t
   const http_route_t *route = nullptr;
   std::map<std::string, std::string> route_values;
   std::map<std::string, std::string> query_values;
+  bool method_not_allowed = false;
+};
+
+struct middleware_invocation_t
+{
+  const http_middleware_t *middleware = nullptr;
+  std::shared_ptr<void> instance;
 };
 
 enum class health_route_kind_t
@@ -88,13 +120,33 @@ parse_endpoint (const std::string &uri)
 
   const auto slash = rest.find ('/');
   const auto authority = slash == std::string::npos ? rest : rest.substr (0, slash);
-  const auto colon = authority.rfind (':');
-  if (colon == std::string::npos) {
-    parsed.host = authority;
-    parsed.port = parsed.scheme == "https" ? "443" : "80";
+  if (!authority.empty () && authority.front () == '[') {
+    const auto close = authority.find (']');
+    if (close == std::string::npos) {
+      throw framework_exception_t (
+        framework_error_kind_t::request_protocol_error,
+        "HTTP endpoint IPv6 host is missing ]");
+    }
+    parsed.host = authority.substr (1, close - 1);
+    if (close + 1 < authority.size ()) {
+      if (authority[close + 1] != ':') {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "HTTP endpoint has invalid IPv6 authority");
+      }
+      parsed.port = authority.substr (close + 2);
+    } else {
+      parsed.port = parsed.scheme == "https" ? "443" : "80";
+    }
   } else {
-    parsed.host = authority.substr (0, colon);
-    parsed.port = authority.substr (colon + 1);
+    const auto colon = authority.rfind (':');
+    if (colon == std::string::npos) {
+      parsed.host = authority;
+      parsed.port = parsed.scheme == "https" ? "443" : "80";
+    } else {
+      parsed.host = authority.substr (0, colon);
+      parsed.port = authority.substr (colon + 1);
+    }
   }
   if (parsed.host.empty () || parsed.port.empty ()) {
     throw framework_exception_t (
@@ -104,7 +156,7 @@ parse_endpoint (const std::string &uri)
   return parsed;
 }
 
-http_method_t
+std::optional<http_method_t>
 from_beast_method (http::verb method)
 {
   switch (method) {
@@ -117,7 +169,7 @@ from_beast_method (http::verb method)
   case http::verb::delete_:
     return http_method_t::delete_;
   default:
-    return http_method_t::get;
+    return std::nullopt;
   }
 }
 
@@ -267,22 +319,28 @@ route_matches (const std::string &pattern,
 
 matched_route_t
 find_route (const http_options_snapshot_t &options,
-            http_method_t method,
+            std::optional<http_method_t> method,
             const std::string &target)
 {
   const auto query = target.find ('?');
   const auto path = query == std::string::npos ? target : target.substr (0, query);
+  bool path_matches = false;
   for (const auto &route : options.routes) {
     std::map<std::string, std::string> route_values;
-    if (route.method == method &&
-        route_matches (route.path, path, route_values)) {
+    if (!route_matches (route.path, path, route_values)) {
+      continue;
+    }
+    path_matches = true;
+    if (method && route.method == *method) {
       return matched_route_t {
         &route,
         std::move (route_values),
         parse_query (target) };
     }
   }
-  return {};
+  matched_route_t match;
+  match.method_not_allowed = path_matches;
+  return match;
 }
 
 const char *
@@ -312,10 +370,10 @@ to_json (const health_check_result_t &check)
 
 std::optional<health_route_kind_t>
 match_health_route (const http_options_snapshot_t &options,
-                    http_method_t method,
+                    std::optional<http_method_t> method,
                     const std::string &target)
 {
-  if (method != http_method_t::get) {
+  if (!method || *method != http_method_t::get) {
     return std::nullopt;
   }
   const auto query = target.find ('?');
@@ -332,6 +390,17 @@ match_health_route (const http_options_snapshot_t &options,
   return std::nullopt;
 }
 
+bool
+system_route_path_exists (const http_options_snapshot_t &options,
+                          const std::string &target)
+{
+  const auto query = target.find ('?');
+  const auto path = query == std::string::npos ? target : target.substr (0, query);
+  return (options.health_path && *options.health_path == path) ||
+         (options.readiness_path && *options.readiness_path == path) ||
+         (options.liveness_path && *options.liveness_path == path);
+}
+
 std::string
 bind_http_request_body (
   const std::string &body,
@@ -340,11 +409,19 @@ bind_http_request_body (
 {
   nlohmann::json json = nlohmann::json::object ();
   if (!body.empty ()) {
-    json = nlohmann::json::parse (body);
-    if (!json.is_object ()) {
+    try {
+      json = nlohmann::json::parse (body);
+      if (!json.is_object ()) {
+        throw framework_exception_t (
+          framework_error_kind_t::payload_decode_failed,
+          "HTTP JSON body must be an object");
+      }
+    } catch (const framework_exception_t &) {
+      throw;
+    } catch (const std::exception &ex) {
       throw framework_exception_t (
         framework_error_kind_t::payload_decode_failed,
-        "HTTP JSON body must be an object");
+        ex.what ());
     }
   }
   for (const auto &[key, value] : query_values) {
@@ -368,12 +445,14 @@ copy_headers (const http::request<http::string_body> &request)
 }
 
 http_context_t
-make_context (http_method_t method,
+make_context (std::optional<http_method_t> method,
               const http::request<http::string_body> &request)
 {
   http_context_t context;
-  context.method = method;
-  context.path = std::string (request.target ());
+  context.method = method.value_or (http_method_t::get);
+  const auto target = std::string (request.target ());
+  const auto query = target.find ('?');
+  context.path = query == std::string::npos ? target : target.substr (0, query);
   context.request_headers = copy_headers (request);
   if (auto correlation_id =
         find_header (context.request_headers, "x-correlation-id")) {
@@ -392,14 +471,69 @@ make_context (http_method_t method,
 
 void
 apply_context_response (http::response<http::string_body> &response,
-                        const http_context_t &context)
+                        const http_context_t &context,
+                        bool allow_status_override = true)
 {
-  if (context.response_status >= 100 && context.response_status <= 599) {
+  if (allow_status_override &&
+      context.response_status >= 100 && context.response_status <= 599) {
     response.result (static_cast<unsigned> (context.response_status));
   }
   for (const auto &[name, value] : context.response_headers) {
     response.set (name, value);
   }
+}
+
+const char *
+error_kind_name (framework_error_kind_t kind) noexcept
+{
+  switch (kind) {
+  case framework_error_kind_t::payload_decode_failed:
+    return "payload_decode_failed";
+  case framework_error_kind_t::request_target_not_found:
+    return "request_target_not_found";
+  case framework_error_kind_t::request_protocol_error:
+    return "request_protocol_error";
+  case framework_error_kind_t::timeout:
+    return "timeout";
+  case framework_error_kind_t::shutdown:
+    return "shutdown";
+  case framework_error_kind_t::request_failed:
+    return "request_failed";
+  default:
+    return "request_failed";
+  }
+}
+
+http::status
+status_for_error (framework_error_kind_t kind) noexcept
+{
+  switch (kind) {
+  case framework_error_kind_t::payload_decode_failed:
+  case framework_error_kind_t::request_protocol_error:
+    return http::status::bad_request;
+  case framework_error_kind_t::request_target_not_found:
+    return http::status::not_found;
+  case framework_error_kind_t::timeout:
+    return http::status::gateway_timeout;
+  case framework_error_kind_t::shutdown:
+    return http::status::service_unavailable;
+  default:
+    return http::status::internal_server_error;
+  }
+}
+
+void
+apply_framework_error (http::response<http::string_body> &response,
+                       const framework_exception_t &error,
+                       const http_context_t &context)
+{
+  response.result (status_for_error (error.kind ()));
+  response.body () =
+    nlohmann::json {
+      { "error", error_kind_name (error.kind ()) },
+      { "message", error.what () }
+    }.dump ();
+  apply_context_response (response, context, false);
 }
 
 http::response<http::string_body>
@@ -435,7 +569,7 @@ make_health_response (health_builder_t &health,
   };
   response.set (http::field::content_type, "application/json");
   response.body () = body.dump ();
-  apply_context_response (response, context);
+  apply_context_response (response, context, false);
   response.prepare_payload ();
   return response;
 }
@@ -451,6 +585,14 @@ handle_request (const http_options_snapshot_t &options,
   response.set (http::field::content_type, "application/json");
   const auto method = from_beast_method (request.method ());
   auto context = make_context (method, request);
+  if ((!method || *method != http_method_t::get) &&
+      system_route_path_exists (options, std::string (request.target ()))) {
+    response.result (http::status::method_not_allowed);
+    response.body () = R"({"error":"method not allowed"})";
+    apply_context_response (response, context, false);
+    response.prepare_payload ();
+    return response;
+  }
   if (const auto health_route =
         match_health_route (options,
                             method,
@@ -461,14 +603,29 @@ handle_request (const http_options_snapshot_t &options,
                                  method,
                                  std::string (request.target ()));
   if (match.route == nullptr) {
-    response.result (http::status::not_found);
-    response.body () = R"({"error":"route not found"})";
-    apply_context_response (response, context);
+    if (match.method_not_allowed) {
+      response.result (http::status::method_not_allowed);
+      response.body () = R"({"error":"method not allowed"})";
+    } else {
+      response.result (http::status::not_found);
+      response.body () = R"({"error":"route not found"})";
+    }
+    apply_context_response (response, context, false);
   } else {
     try {
+      auto request_scope =
+        services.create_scope (service_scope_kind_t::handler_invocation);
+      auto &request_services = request_scope.provider ();
+      std::vector<middleware_invocation_t> middleware_invocations;
+      middleware_invocations.reserve (options.middleware.size ());
       for (const auto &middleware : options.middleware) {
+        auto &invocation = middleware_invocations.emplace_back ();
+        invocation.middleware = &middleware;
+        if (middleware.create_instance) {
+          invocation.instance = middleware.create_instance ();
+        }
         if (middleware.before) {
-          middleware.before (services, context);
+          middleware.before (request_services, context, invocation.instance);
         }
       }
       if (context.response_body) {
@@ -478,26 +635,35 @@ handle_request (const http_options_snapshot_t &options,
           request.body (),
           match.route_values,
           match.query_values);
-        response.body () =
+        auto route_result =
           http_route_invoker_access_t::invoke (
             *match.route,
-            services,
+            request_services,
             context,
-            bound_body);
+            bound_body).result ();
+        if (!route_result) {
+          throw *route_result.error ();
+        }
+        response.body () = route_result.value ();
       }
-      for (auto it = options.middleware.rbegin ();
-           it != options.middleware.rend ();
+      for (auto it = middleware_invocations.rbegin ();
+           it != middleware_invocations.rend ();
            ++it) {
-        if (it->after) {
-          it->after (services, context);
+        if (it->middleware != nullptr && it->middleware->after) {
+          it->middleware->after (request_services, context, it->instance);
         }
       }
       apply_context_response (response, context);
+    } catch (const framework_exception_t &ex) {
+      apply_framework_error (response, ex, context);
     } catch (const std::exception &ex) {
       response.result (http::status::internal_server_error);
       response.body () =
-        nlohmann::json { { "error", ex.what () } }.dump ();
-      apply_context_response (response, context);
+        nlohmann::json {
+          { "error", "request_failed" },
+          { "message", ex.what () }
+        }.dump ();
+      apply_context_response (response, context, false);
     }
   }
   response.prepare_payload ();

@@ -180,22 +180,19 @@ if(OpenSSL_FOUND AND ZLINK_OPENSSL_EXECUTABLE)
   set(ZLINK_HTTP_CLIENT_TEST_KEY
     "${ZLINK_HTTP_CLIENT_TEST_CERT_DIR}/server.key")
   file(MAKE_DIRECTORY "${ZLINK_HTTP_CLIENT_TEST_CERT_DIR}")
-  if(NOT EXISTS "${ZLINK_HTTP_CLIENT_TEST_CERT}" OR
-      NOT EXISTS "${ZLINK_HTTP_CLIENT_TEST_KEY}")
-    execute_process(
-      COMMAND ${ZLINK_OPENSSL_EXECUTABLE}
-        req -x509 -newkey rsa:2048 -nodes -days 7
-        -subj /CN=localhost
-        -addext subjectAltName=DNS:localhost,IP:127.0.0.1
-        -keyout "${ZLINK_HTTP_CLIENT_TEST_KEY}"
-        -out "${ZLINK_HTTP_CLIENT_TEST_CERT}"
-      RESULT_VARIABLE ZLINK_HTTP_CLIENT_CERT_RESULT
-      OUTPUT_QUIET
-      ERROR_QUIET)
-    if(NOT ZLINK_HTTP_CLIENT_CERT_RESULT EQUAL 0)
-      message(WARNING
-        "Could not generate HTTP client HTTPS test certificate; HTTPS e2e test will be disabled.")
-    endif()
+  execute_process(
+    COMMAND ${ZLINK_OPENSSL_EXECUTABLE}
+      req -x509 -newkey rsa:2048 -nodes -days 7
+      -subj /CN=localhost
+      -addext subjectAltName=DNS:localhost
+      -keyout "${ZLINK_HTTP_CLIENT_TEST_KEY}"
+      -out "${ZLINK_HTTP_CLIENT_TEST_CERT}"
+    RESULT_VARIABLE ZLINK_HTTP_CLIENT_CERT_RESULT
+    OUTPUT_QUIET
+    ERROR_QUIET)
+  if(NOT ZLINK_HTTP_CLIENT_CERT_RESULT EQUAL 0)
+    message(WARNING
+      "Could not generate HTTP client HTTPS test certificate; HTTPS e2e test will be disabled.")
   endif()
   if(EXISTS "${ZLINK_HTTP_CLIENT_TEST_CERT}" AND
       EXISTS "${ZLINK_HTTP_CLIENT_TEST_KEY}")

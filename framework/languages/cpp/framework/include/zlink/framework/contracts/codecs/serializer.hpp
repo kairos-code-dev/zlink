@@ -121,6 +121,7 @@ public:
   void deserialize (std::type_index type,
                     const zlink::message_t &message,
                     void *out) const;
+  bool contains (std::type_index type) const;
 
 private:
   serializer_registry_t &add_erased (std::type_index type,

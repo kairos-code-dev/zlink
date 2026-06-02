@@ -145,6 +145,21 @@ await_shared_reply (zlink::framework::task_t<reply_t> &task, int offset)
   co_return reply.value + offset;
 }
 
+zlink::framework::task_t<int>
+timeout_task ()
+{
+  co_return zlink::framework::result_t<int>::failure (
+    zlink::framework::framework_error_kind_t::timeout,
+    "timeout preserved");
+}
+
+zlink::framework::task_t<int>
+await_timeout_task ()
+{
+  auto task = timeout_task ();
+  co_return co_await task;
+}
+
 } // namespace
 
 int
@@ -307,6 +322,13 @@ main ()
   if (first_complete_wins.result ().value () != 100 ||
       callback_count != 1 || callback_value != 100) {
     return 33;
+  }
+
+  auto preserved_failure = await_timeout_task ().result ();
+  if (preserved_failure ||
+      preserved_failure.error_kind () !=
+        zlink::framework::framework_error_kind_t::timeout) {
+    return 34;
   }
 
   auto missing_result = handlers.invoke (

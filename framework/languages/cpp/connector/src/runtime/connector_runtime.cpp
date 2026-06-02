@@ -193,10 +193,8 @@ send_call_t::submit ()
 void
 send_call_t::submit (std::function<void (result_t<void>)> callback)
 {
-  auto result = submit ().result ();
-  if (callback) {
-    callback (std::move (result));
-  }
+  auto task = submit ();
+  task.on_completed (std::move (callback));
 }
 
 connector_t::connector_t ()

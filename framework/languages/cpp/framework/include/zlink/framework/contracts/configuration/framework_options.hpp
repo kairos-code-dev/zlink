@@ -27,11 +27,6 @@
 namespace zlink::framework
 {
 
-template<typename... T>
-struct dependency_list_t
-{
-};
-
 namespace detail
 {
 
@@ -49,39 +44,6 @@ handler_topic_name ()
     return message_name<typename T::request_type> ();
   }
 }
-
-template<typename T>
-concept static_dependency_types =
-  requires { typename T::dependency_types; };
-
-template<typename T>
-struct handler_dependencies_t
-{
-  using type = dependency_list_t<>;
-};
-
-template<static_dependency_types T>
-struct handler_dependencies_t<T>
-{
-  using type = typename T::dependency_types;
-};
-
-template<typename THandler, typename TDependencies>
-struct injected_handler_registrar_t;
-
-template<typename THandler, typename... TDependencies>
-struct injected_handler_registrar_t<THandler,
-                                    dependency_list_t<TDependencies...>>
-{
-  static void add (service_collection_t &services)
-  {
-    if constexpr (sizeof...(TDependencies) == 0) {
-      services.add_singleton<THandler> ();
-    } else {
-      services.add_singleton<THandler, TDependencies...> ();
-    }
-  }
-};
 
 struct handler_group_options_state_t
 {
@@ -189,11 +151,13 @@ public:
     auto state = _state;
     _state->add_json_serializer_installer ([serializers, state] {
       if (state->json_serializer_types.emplace (
-            std::type_index (typeid (request_type))).second) {
+            std::type_index (typeid (request_type))).second &&
+          !serializers->contains (std::type_index (typeid (request_type)))) {
         serializers->template add_json<request_type> ();
       }
       if (state->json_serializer_types.emplace (
-            std::type_index (typeid (reply_type))).second) {
+            std::type_index (typeid (reply_type))).second &&
+          !serializers->contains (std::type_index (typeid (reply_type)))) {
         serializers->template add_json<reply_type> ();
       }
     });
@@ -785,6 +749,7 @@ public:
         std::make_shared<detail::handler_group_options_state_t> ()),
       _options (std::make_shared<detail::framework_options_state_t> ())
   {
+    _options->http.bind_services (services, serializers);
   }
 
   handler_options_builder_t handlers ()

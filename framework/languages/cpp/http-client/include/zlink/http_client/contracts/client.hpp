@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include <zlink/codec/json.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 
@@ -12,8 +13,6 @@
 #include <sstream>
 #include <string>
 #include <utility>
-
-#include <nlohmann/json.hpp>
 
 namespace zlink::http_client
 {
@@ -110,7 +109,7 @@ public:
   template<typename T>
   request_builder_t &body (const T &value)
   {
-    _body = nlohmann::json (value).dump ();
+    _body = zlink::message_t::from_json (value).to_string ();
     _headers.try_emplace ("content-type", "application/json");
     return *this;
   }
@@ -120,37 +119,36 @@ public:
   template<typename T>
   zlink::framework::task_t<http_response_t<T>> submit () const
   {
-    auto raw = submit_raw ().result ();
-    if (!raw) {
-      return zlink::framework::task_t<http_response_t<T>> (
-        zlink::framework::result_t<http_response_t<T>>::failure (
-          raw.error ()->kind (), raw.error ()->what (), raw.error ()->is_retriable ()));
+    auto raw_task = submit_raw ();
+    raw_http_response_t raw;
+    try {
+      raw = co_await raw_task;
+    } catch (const zlink::framework::framework_exception_t &error) {
+      co_return zlink::framework::result_t<http_response_t<T>>::failure (
+        error.kind (), error.what (), error.is_retriable ());
     }
 
-    if (raw.value ().status >= 400) {
+    if (raw.status >= 400) {
       std::ostringstream message;
-      message << "HTTP request failed with status " << raw.value ().status;
-      return zlink::framework::task_t<http_response_t<T>> (
-        zlink::framework::result_t<http_response_t<T>>::failure (
-          zlink::framework::framework_error_kind_t::request_failed,
-          message.str ()));
+      message << "HTTP request failed with status " << raw.status;
+      co_return zlink::framework::result_t<http_response_t<T>>::failure (
+        zlink::framework::framework_error_kind_t::request_failed,
+        message.str ());
     }
 
     try {
       http_response_t<T> response {
-        .status = raw.value ().status,
-        .headers = raw.value ().headers,
-        .body = nlohmann::json::parse (raw.value ().body).template get<T> (),
-        .raw_body = raw.value ().body
+        .status = raw.status,
+        .headers = raw.headers,
+        .body = zlink::message_t::from (raw.body)
+                  .template parse_json<T> (),
+        .raw_body = raw.body
       };
-      return zlink::framework::task_t<http_response_t<T>> (
-        zlink::framework::result_t<http_response_t<T>>::success (
-          std::move (response)));
+      co_return response;
     } catch (const std::exception &ex) {
-      return zlink::framework::task_t<http_response_t<T>> (
-        zlink::framework::result_t<http_response_t<T>>::failure (
-          zlink::framework::framework_error_kind_t::payload_decode_failed,
-          ex.what ()));
+      co_return zlink::framework::result_t<http_response_t<T>>::failure (
+        zlink::framework::framework_error_kind_t::payload_decode_failed,
+        ex.what ());
     }
   }
 
@@ -158,7 +156,9 @@ public:
   void submit (TCallback &&callback) const
   {
     auto task = submit<T> ();
-    callback (task.result ());
+    zlink::framework::detail::observe_task_completion (
+      task,
+      std::forward<TCallback> (callback));
   }
 
 private:

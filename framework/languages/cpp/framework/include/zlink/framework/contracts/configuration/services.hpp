@@ -11,6 +11,11 @@
 namespace zlink::framework
 {
 
+template<typename... T>
+struct dependency_list_t
+{
+};
+
 namespace detail
 {
 class service_registry_t;
@@ -195,6 +200,7 @@ public:
   }
 
   service_provider_t build_provider () const;
+  bool contains (std::type_index type) const;
 
 private:
   template<typename T, typename... TDependencies>
@@ -217,5 +223,43 @@ private:
 
   std::shared_ptr<detail::service_registry_t> _registry;
 };
+
+namespace detail
+{
+
+template<typename T>
+concept static_dependency_types =
+  requires { typename T::dependency_types; };
+
+template<typename T>
+struct handler_dependencies_t
+{
+  using type = dependency_list_t<>;
+};
+
+template<static_dependency_types T>
+struct handler_dependencies_t<T>
+{
+  using type = typename T::dependency_types;
+};
+
+template<typename THandler, typename TDependencies>
+struct injected_handler_registrar_t;
+
+template<typename THandler, typename... TDependencies>
+struct injected_handler_registrar_t<THandler,
+                                    dependency_list_t<TDependencies...>>
+{
+  static void add (service_collection_t &services)
+  {
+    if constexpr (sizeof...(TDependencies) == 0) {
+      services.add_transient<THandler> ();
+    } else {
+      services.add_transient<THandler, TDependencies...> ();
+    }
+  }
+};
+
+} // namespace detail
 
 } // namespace zlink::framework

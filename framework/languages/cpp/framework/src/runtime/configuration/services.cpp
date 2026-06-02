@@ -41,6 +41,11 @@ public:
     return found->second;
   }
 
+  bool contains (std::type_index type) const
+  {
+    return descriptors.find (type) != descriptors.end ();
+  }
+
   std::map<std::type_index, service_descriptor_t> descriptors;
 };
 
@@ -214,6 +219,12 @@ service_collection_t::build_provider () const
     std::make_shared<detail::service_scope_state_t> (
       false,
       service_scope_kind_t::handler_invocation));
+}
+
+bool
+service_collection_t::contains (std::type_index type) const
+{
+  return _registry->contains (type);
 }
 
 } // namespace zlink::framework

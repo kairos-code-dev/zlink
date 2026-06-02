@@ -269,7 +269,7 @@ health 집계 규칙은 `contracts/eventing/health.hpp`와 runtime diagnostics �
 | route not found | `404 Not Found` |
 | method mismatch | `405 Method Not Allowed` |
 | invalid JSON | `400 Bad Request` |
-| serializer missing | startup validation 실패 |
+| serializer registration | `map_*<THandler>`가 request/reply JSON serializer를 등록한다 |
 | handler failure | error kind 기반 status mapping |
 
 HTTP response에는 `Content-Type: application/json`을 기본으로 둔다. error response도 JSON
@@ -346,9 +346,8 @@ framework/include/zlink/framework/http.hpp
 runtime 구현은 아래 위치에 둔다.
 
 ```text
-framework/src/runtime/http/http_hosted_service.cpp
-framework/src/runtime/http/http_route_registry.cpp
-framework/src/runtime/http/http_request_dispatcher.cpp
+framework/src/runtime/http/http_host_service.hpp
+framework/src/runtime/http/http_host_service.cpp
 ```
 
 `Boost.Beast`, `Boost.Asio`, OpenSSL/SSL context 타입은 runtime 구현 파일에서만 사용한다.
@@ -420,7 +419,7 @@ Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP pat
 최소 테스트는 아래 축으로 둔다.
 
 - contract header compile: `#include <zlink/framework/http.hpp>`
-- route registry: 같은 method/path 중복 등록은 startup validation 실패
+- route registry: 같은 method/path 중복 등록과 system route 충돌은 startup validation 실패
 - method별 route: `GET`, `POST`, `PUT`, `DELETE`
 - scheme별 listen: `http://`, `https://`
 - HTTPS TLS option: certificate/private key 누락은 startup validation 실패
@@ -442,7 +441,7 @@ Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP pat
 - body/route/query merge 우선순위 고정
 - JSON binding: request body를 DTO로 변환하고 reply DTO를 JSON으로 반환
 - DI: HTTP handler가 `request_client_t`를 생성자 주입으로 받는다
-- middleware/filter: logging, exception, validation filter 순서와 short-circuit
+- middleware: before hook 등록 순서, after hook 역순 실행, 요청 단위 상태 보존, short-circuit
 - error mapping: invalid JSON은 `400`, unknown route는 `404`, timeout은 `504`
 - lifecycle: `app.stop()`이 HTTP accept loop를 닫고 worker thread를 join한다
 - TicTacToe sample e2e: client가 `POST /games` 뒤 stream connector로 게임을 진행한다

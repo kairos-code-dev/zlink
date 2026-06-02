@@ -62,6 +62,12 @@ make_response (const http::request<http::string_body> &request)
   if (target == "/missing") {
     response.result (http::status::not_found);
     response.body () = R"({"error":"missing"})";
+  } else if (target == "/bad-request") {
+    response.result (http::status::bad_request);
+    response.body () = R"({"error":"bad request"})";
+  } else if (target == "/server-error") {
+    response.result (http::status::internal_server_error);
+    response.body () = R"({"error":"server error"})";
   } else if (target == "/invalid-json") {
     response.body () = "{";
   } else if (target == "/slow") {
@@ -191,6 +197,11 @@ public:
     return "https://localhost:" + std::to_string (_port);
   }
 
+  std::string mismatched_base_url () const
+  {
+    return "https://127.0.0.1:" + std::to_string (_port);
+  }
+
 private:
   void run ()
   {
@@ -305,6 +316,20 @@ TEST (ZLinkHttpClient, MapsStatusDecodeAndTimeoutFailures)
   EXPECT_EQ (missing.error_kind (),
              zlink::framework::framework_error_kind_t::request_failed);
 
+  const auto bad_request = client.get ("/bad-request")
+                             .submit<create_game_reply_t> ()
+                             .result ();
+  ASSERT_FALSE (bad_request);
+  EXPECT_EQ (bad_request.error_kind (),
+             zlink::framework::framework_error_kind_t::request_failed);
+
+  const auto server_error = client.get ("/server-error")
+                              .submit<create_game_reply_t> ()
+                              .result ();
+  ASSERT_FALSE (server_error);
+  EXPECT_EQ (server_error.error_kind (),
+             zlink::framework::framework_error_kind_t::request_failed);
+
   const auto invalid_json = client.get ("/invalid-json")
                               .submit<create_game_reply_t> ()
                               .result ();
@@ -345,6 +370,23 @@ TEST (ZLinkHttpClient, RejectsUntrustedHttpsCertificate)
   auto client = zlink::http_client::client_t::create ()
                   .base_url (server.base_url ())
                   .json ()
+                  .timeout (std::chrono::milliseconds (500))
+                  .build ();
+
+  auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
+
+  ASSERT_FALSE (result);
+  EXPECT_EQ (result.error_kind (),
+             zlink::framework::framework_error_kind_t::request_failed);
+}
+
+TEST (ZLinkHttpClient, RejectsHttpsHostnameMismatch)
+{
+  loopback_https_server_t server;
+  auto client = zlink::http_client::client_t::create ()
+                  .base_url (server.mismatched_base_url ())
+                  .json ()
+                  .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
                   .timeout (std::chrono::milliseconds (500))
                   .build ();
 

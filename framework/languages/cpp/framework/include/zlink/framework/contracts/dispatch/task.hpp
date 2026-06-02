@@ -139,9 +139,18 @@ public:
     std::suspend_never final_suspend () noexcept { return {}; }
     void unhandled_exception ()
     {
-      completion.complete (result_t<T>::failure (
-        framework_error_kind_t::request_failed,
-        "unhandled coroutine exception"));
+      try {
+        throw;
+      } catch (const framework_exception_t &error) {
+        completion.complete (result_t<T>::failure (
+          error.kind (),
+          error.what (),
+          error.is_retriable ()));
+      } catch (...) {
+        completion.complete (result_t<T>::failure (
+          framework_error_kind_t::request_failed,
+          "unhandled coroutine exception"));
+      }
     }
 
     void return_value (result_t<T> result)
@@ -207,9 +216,18 @@ public:
     std::suspend_never final_suspend () noexcept { return {}; }
     void unhandled_exception ()
     {
-      completion.complete (result_t<void>::failure (
-        framework_error_kind_t::request_failed,
-        "unhandled coroutine exception"));
+      try {
+        throw;
+      } catch (const framework_exception_t &error) {
+        completion.complete (result_t<void>::failure (
+          error.kind (),
+          error.what (),
+          error.is_retriable ()));
+      } catch (...) {
+        completion.complete (result_t<void>::failure (
+          framework_error_kind_t::request_failed,
+          "unhandled coroutine exception"));
+      }
     }
     void return_void () noexcept
     {

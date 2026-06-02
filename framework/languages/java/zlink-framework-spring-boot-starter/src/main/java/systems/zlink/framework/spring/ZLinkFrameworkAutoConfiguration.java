@@ -2,9 +2,11 @@ package systems.zlink.framework.spring;
 
 import java.util.List;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.runtime.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
@@ -34,6 +36,15 @@ public class ZLinkFrameworkAutoConfiguration {
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterFactory backendAdapterFactory) {
         return new ZLinkFrameworkLifecycle(options, backendAdapterFactory);
+    }
+
+    @Bean
+    @ConditionalOnBean(ZLinkEmbeddedRegistryOptions.class)
+    @ConditionalOnMissingBean
+    public ZLinkRegistryLifecycle zlinkRegistryLifecycle(
+        ZLinkEmbeddedRegistryOptions options,
+        ZLinkBackendAdapterFactory backendAdapterFactory) {
+        return new ZLinkRegistryLifecycle(options, backendAdapterFactory);
     }
 
     @Bean

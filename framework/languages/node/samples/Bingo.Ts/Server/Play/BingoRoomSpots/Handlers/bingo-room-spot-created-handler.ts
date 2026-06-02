@@ -1,3 +1,8 @@
-const { BingoRoomSpotCreatedHandler } = require('../../../../../../Bingo/Server/Play/BingoRoomSpots/Handlers/bingo-room-spot-created-handler');
+class BingoRoomSpotCreatedHandler {
+  [key: string]: any;
+  handle(room, settings) {
+    return { roomId: room.roomId, mode: settings.mode };
+  }
+}
 
 export { BingoRoomSpotCreatedHandler };

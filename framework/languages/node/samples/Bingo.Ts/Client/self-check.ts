@@ -1,26 +1,11 @@
-import assert from 'node:assert/strict';
-import path from 'node:path';
-
+const assert = require('node:assert/strict');
+const path = require('node:path');
 const nestjs = require('../../../../packages/nestjs/dist');
 const { assertNestModule } = require('../../../shared/nestjs-smoke');
 const { reserveTcpEndpoint, withServers } = require('../../../shared/process-host');
 import { BingoClientApp } from './bingo-client-app';
 
-interface BingoRunResult {
-  ended: {
-    status: string;
-    hostActorId: string;
-    winners: string[];
-    players: Array<{ actorId: string }>;
-  };
-  earlyHostStartRejected: boolean;
-  nonHostStartRejected: boolean;
-  startedPushCounts: number[];
-  drawnPushCounts: number[];
-  endedPushCounts: number[];
-}
-
-async function main(): Promise<void> {
+async function main() {
   const registryEndpoint = await reserveTcpEndpoint();
   const sessionEndpoint = await reserveTcpEndpoint();
   const playEndpoint = await reserveTcpEndpoint();
@@ -51,7 +36,7 @@ async function main(): Promise<void> {
       }
     }
   ], async () => {
-    const result = await new BingoClientApp().run({ sessionEndpoint, playEndpoint }) as BingoRunResult;
+    const result = await new BingoClientApp().run({ sessionEndpoint, playEndpoint });
     assert.equal(result.ended.status, 'Finished');
     assert.equal(result.ended.hostActorId, 'player-1');
     assert.deepEqual(result.ended.winners, ['player-1', 'player-3']);
@@ -66,7 +51,7 @@ async function main(): Promise<void> {
   console.log('PASS Bingo.Ts');
 }
 
-main().catch((error: unknown) => {
+main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -1,8 +1,14 @@
-import { buildPlayServerHost } from './play-server-host-factory';
+const { buildPlayServerHost } = require('./play-server-host-factory');
 
-buildPlayServerHost({
-  playEndpoint: process.env.BINGO_PLAY_ENDPOINT
-}).catch((error: unknown) => {
+async function main() {
+  await buildPlayServerHost({
+    playEndpoint: process.env.BINGO_PLAY_ENDPOINT
+  });
+}
+
+main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
+export {};

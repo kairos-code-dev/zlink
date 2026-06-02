@@ -221,8 +221,22 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
   const missing = required
     .filter(([content, text]) => !content.includes(text))
     .map(([, text]) => text);
+  const violations = [];
+  for (const file of sampleSourceFiles(path.join(samplesRoot, 'Bingo.Ts'))) {
+    if (!file.endsWith('.ts')) {
+      continue;
+    }
+    const content = fs.readFileSync(file, 'utf8');
+    if (/require\(['"][^'"]*\/Bingo\/|from ['"][^'"]*\/Bingo\//.test(content)) {
+      violations.push(`${path.relative(samplesRoot, file)} references the JavaScript Bingo sample`);
+    }
+    if (content.includes('@ts-nocheck')) {
+      violations.push(`${path.relative(samplesRoot, file)} disables TypeScript checking`);
+    }
+  }
 
   assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
 });
 
 test('node topology samples run server roles as separate processes over TCP route endpoints', () => {

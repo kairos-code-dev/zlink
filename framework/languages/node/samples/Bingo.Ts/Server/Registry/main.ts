@@ -1,8 +1,10 @@
-import { buildRegistryHost } from './registry-host-factory';
+const { buildRegistryHost } = require('./registry-host-factory');
 
 buildRegistryHost({
   registryEndpoint: process.env.BINGO_REGISTRY_ENDPOINT
-}).catch((error: unknown) => {
+}).catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
+export {};

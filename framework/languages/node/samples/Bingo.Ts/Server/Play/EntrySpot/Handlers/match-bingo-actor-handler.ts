@@ -1,3 +1,8 @@
-const { MatchBingoActorHandler } = require('../../../../../../Bingo/Server/Play/EntrySpot/Handlers/match-bingo-actor-handler');
+class MatchBingoActorHandler {
+  [key: string]: any;
+  async handle(entrySpot, actor, request) {
+    return await entrySpot.match(actor, request);
+  }
+}
 
 export { MatchBingoActorHandler };

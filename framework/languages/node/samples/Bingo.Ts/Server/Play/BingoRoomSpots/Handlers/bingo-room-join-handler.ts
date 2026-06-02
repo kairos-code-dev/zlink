@@ -1,3 +1,8 @@
-const { BingoRoomJoinHandler } = require('../../../../../../Bingo/Server/Play/BingoRoomSpots/Handlers/bingo-room-join-handler');
+class BingoRoomJoinHandler {
+  [key: string]: any;
+  async handle(room, actor, request) {
+    return await room.join(actor, request);
+  }
+}
 
 export { BingoRoomJoinHandler };

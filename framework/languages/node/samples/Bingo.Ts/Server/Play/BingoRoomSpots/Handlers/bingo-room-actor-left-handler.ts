@@ -1,3 +1,8 @@
-const { BingoRoomActorLeftHandler } = require('../../../../../../Bingo/Server/Play/BingoRoomSpots/Handlers/bingo-room-actor-left-handler');
+class BingoRoomActorLeftHandler {
+  [key: string]: any;
+  handle(room, actor) {
+    return { roomId: room.roomId, actorId: actor.actorId };
+  }
+}
 
 export { BingoRoomActorLeftHandler };

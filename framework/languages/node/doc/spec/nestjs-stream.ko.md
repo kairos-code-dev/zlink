@@ -245,6 +245,14 @@ raw write API 에 넘길 때는 framework 가 그 `Message` 의 소유권을 가
 session 응답은 `context.client.send(...)`, `context.client.reply(...)` 같은 typed
 builder 를 사용하므로 raw `Message` 수명을 직접 다룰 일이 적다.
 
+`context.client.send(...)` 와 `ZLinkBoundSession.send(...)` 의 packet name
+해석은 channel client 와 같은 규칙을 따른다. class instance 처럼 런타임 생성자
+이름이 의미 있는 payload 는 기본 packet name 으로 쓸 수 있다. 반대로 plain
+object, primitive, array, `Buffer`, `Uint8Array`, `Date` 처럼 구조적 값이거나
+내장 타입인 payload 는 packet 타입을 나타내지 못하므로 `packetName(...)` 을
+명시해야 한다. 이 제약은 TypeScript interface 가 런타임에 사라지는 언어 특성
+때문에 필요하다.
+
 session 이 일부 packet 만 직접 처리하고 나머지 정책을 스스로 정하고 싶을 때는
 `ZLinkSessionPacketHandler<TSessionContext>` 와
 `ZLinkSessionPacketDispatcher<TSessionContext>` 를 사용할 수 있다.
@@ -485,6 +493,7 @@ STREAM 문서의 항목이 확인해야 하는 것은 다음이다.
 | `protocol.streamSessionRuntimeOnlyExposesEnqueueCallbackEntrypoints` | transport 진입점은 public enqueue API만 노출한다. |
 | `headerStreamSession.receivesRepliesAndTracksLifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대한 순서대로 실행된다. |
 | `headerStreamSession.canCloseCurrentClientStream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |
+| `stream session and bound session require packetName for structural payloads` | 구조적 payload 는 stream session send 와 bound session send 양쪽에서 명시 packet name 없이 전송되지 않는다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^framing]: framing은 연속된 바이트 스트림에서 메시지의 시작과 끝을 구분하는 방식을 가리킨다. STREAM에서는 header와 body를 묶어 하나의 packet 단위로 자른다.

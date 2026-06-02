@@ -2,6 +2,7 @@ import type {
   Message,
   ZlinkStreamHeader
 } from '../../contracts';
+import { ZLinkConfigurationException } from '../configuration';
 
 export enum ZLinkStreamCodec {
   Json = 1
@@ -234,13 +235,28 @@ export function utf8Decode(value: Uint8Array): string {
 }
 
 function inferPacketName(message: unknown): string {
-  if (message !== null && message !== undefined) {
+  if (typeof message === 'object' && message !== null) {
     const constructor = (message as { constructor?: { name?: string } }).constructor;
-    if (constructor?.name !== undefined && constructor.name.length > 0) {
+    if (constructor?.name !== undefined && constructor.name.length > 0 && !isStructuralPayloadName(constructor.name)) {
       return constructor.name;
     }
   }
-  return 'Object';
+  throw new ZLinkConfigurationException('Stream packetName is required when the payload type cannot provide one.');
+}
+
+function isStructuralPayloadName(name: string): boolean {
+  return [
+    'Object',
+    'Array',
+    'Buffer',
+    'Uint8Array',
+    'String',
+    'Number',
+    'Boolean',
+    'BigInt',
+    'Symbol',
+    'Date'
+  ].includes(name);
 }
 
 function encodeStreamMetadata(metadata: ReadonlyMap<string, string>): Uint8Array {

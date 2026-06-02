@@ -159,6 +159,45 @@ test('bound session send and disconnect use current binding token and stale toke
   assert.equal(runtime.find('actor-a'), undefined);
 });
 
+test('stream session and bound session require packetName for structural payloads', async () => {
+  const written = [];
+  const sent = [];
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory(),
+    transport: {
+      async send(actorId, message, options) {
+        sent.push({ actorId, frame: decodeFrame(message.bytes), packetName: options.packetName });
+      },
+      async disconnect() {}
+    }
+  });
+  const context = runtime.createSessionContext({
+    ...fakeStream('session-structural-payload', 'rid-structural-payload'),
+    write(message) {
+      written.push(message.bytes);
+      return true;
+    }
+  });
+  await context.actors.bind({ nodeRid: 'node-a', actorId: 'actor-structural', generation: 1 });
+
+  await assert.rejects(
+    () => context.client.send({ ok: true }).submit(),
+    /Stream packetName is required when the payload type cannot provide one/
+  );
+  await assert.rejects(
+    () => runtime.createBoundSession('actor-structural').send({ ok: true }).submit(),
+    /Stream packetName is required when the payload type cannot provide one/
+  );
+  await context.client.send({ ok: true }).packetName('Ready').submit();
+  await runtime.createBoundSession('actor-structural').send({ ok: true }).packetName('ActorReady').submit();
+
+  assert.equal(written.length, 1);
+  assert.equal(decodeFrame(written[0]).header.name, 'Ready');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].packetName, 'ActorReady');
+  assert.equal(sent[0].frame.header.name, 'ActorReady');
+});
+
 test('bound session without binding is a retriable framework error', async () => {
   const runtime = new framework.ZLinkStreamBindingRuntime({
     transport: {
@@ -312,11 +351,12 @@ test('session client reply compress writes dotnet LZ4-pickled response payload',
 });
 
 test('session client send fails retriably when message factory is not started', async () => {
+  class ReadyPacket {}
   const runtime = new framework.ZLinkStreamBindingRuntime();
   const context = runtime.createSessionContext(fakeStream('session-5', 'rid-5'));
 
   await assert.rejects(
-    () => context.client.send({}).submit(),
+    () => context.client.send(new ReadyPacket()).submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected && error.isRetriable === true
   );
 });

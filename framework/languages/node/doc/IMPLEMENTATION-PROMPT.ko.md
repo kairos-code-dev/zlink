@@ -15,6 +15,8 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 - P0~P9 전체 Phase 와 각 Phase 의 POSD 게이트를 모두 통과시킨다.
 - 최종 완료 기준은 dotnet framework 와 구조, 기능, 사용성, 샘플 4축이 동등한 것이다.
 - 기준 구현은 framework/languages/dotnet/src 이다. 문서와 코드가 다르면 dotnet 코드를 따른다.
+- 단순히 일부 테스트가 통과했다고 완료하지 않는다. plan 의 모든 Phase, regression matrix,
+  sample, guide, cross-language smoke 까지 닫혀야 완료다.
 
 반드시 먼저 읽을 문서:
 1. framework/languages/node/doc/IMPLEMENTATION-PLAN.ko.md
@@ -23,6 +25,13 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 4. framework/languages/node/doc/internals/lifecycle-and-failure-semantics.ko.md
 5. 현재 Phase 가 지정한 spec 문서
 6. 모호한 부분의 dotnet 대응 코드
+
+시작 직후 상태 확인:
+- `git status --short` 로 dirty tree 를 확인한다.
+- unrelated dirty changes 는 사용자가 만든 것으로 보고 되돌리지 않는다.
+- Node 작업 범위는 기본적으로 `framework/languages/node` 이다. binding public API gap 을
+  닫아야 할 때만 `bindings/node` 를 함께 수정한다.
+- 이미 구현된 Phase 는 plan 의 체크리스트, 테스트, 실제 코드로 재검증한 뒤 이어서 진행한다.
 
 작업 규칙:
 - Phase 순서를 지킨다. P0 → P1 → P1.5 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9.
@@ -34,6 +43,10 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 - sample-only route store, 임시 metadata store, sleep 기반 readiness masking 을 넣지 않는다.
 - 외부 계약을 바꿔야 하면 spec 을 먼저 수정하고 구현과 테스트를 맞춘다.
 - 구현 변경 후 docs, samples, tests 중 public 이름이나 사용법에 영향받는 곳을 함께 갱신한다.
+- public API 를 새로 열 때는 dotnet 대응 개념이 있는지 확인한다. 내부 구현 편의를 위한
+  helper 는 root export 에 노출하지 않는다.
+- stream/session/actor relay 는 application route store 로 우회하지 않는다. native
+  ActorGateway, session context, backend adapter 경계를 따라 구현한다.
 
 검증 루프:
 1. 현재 Phase 의 입력 문서와 dotnet 대응 코드를 읽는다.
@@ -46,6 +59,9 @@ ZLink Framework 를 구현하는 코딩 에이전트다.
 8. POSD red flag 를 리뷰한다.
 9. red flag 가 있으면 리팩토링하고 3~8 을 반복한다.
 10. 이슈가 0 이면 IMPLEMENTATION-PLAN.ko.md 의 진행 체크리스트를 갱신한다.
+
+backend dependency guard:
+- `rg -n "runtime/native|src/zlink/runtime|bindings/node|require\\(" framework/languages/node/packages/framework/src/runtime/streams framework/languages/node/packages/framework/src/runtime/backend/node framework/languages/node/packages/framework/src/runtime/actors framework/languages/node/packages/framework/src/index.ts`
 
 Phase 별 핵심 완료 조건:
 - P0: workspace, build, test runner, binding smoke 가 동작한다.
@@ -66,12 +82,16 @@ Phase 별 핵심 완료 조건:
 - Node guide 는 dotnet guide 의 주요 장과 대응해야 한다.
 - cross-language smoke 로 Node 와 dotnet 사이의 channel/stream/session actor 경로를 확인해야 한다.
 - 모든 테스트와 문서 링크 회귀가 green 이 아니면 완료라고 말하지 않는다.
+- 완료 선언 전에는 dotnet framework 의 src, tests, samples, guide 와 Node 쪽 구현, tests,
+  samples, guide 를 표로 대조하고 빠진 항목이 0 인지 확인한다.
 
 커밋 규칙:
 - 관련 Phase 단위로 작은 커밋을 만든다.
 - unrelated dirty changes 는 건드리지 않는다.
 - 커밋 전에는 관련 검증 결과와 남은 이슈를 확인한다.
 - 푸시는 검증 가능한 커밋 단위로 수행한다.
+- 여러 주제가 섞였으면 커밋을 나눈다. 예: runtime 구현, connector POSD split,
+  tests/docs 보강.
 ```
 
 ## 완료 전 자체 점검 질문

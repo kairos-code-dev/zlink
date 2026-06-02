@@ -5,10 +5,8 @@ import systems.zlink.framework.actors.ZLinkActorContext
 
 class PlayerActor(
     private val actorId: String,
+    private val context: ZLinkActorContext,
 ) : ZLinkActor {
-    private val context = RecordingActorContext()
-
     override fun actorId(): String = actorId
     override fun context(): ZLinkActorContext = context
-    fun pushes(): List<String> = context.pushes()
 }

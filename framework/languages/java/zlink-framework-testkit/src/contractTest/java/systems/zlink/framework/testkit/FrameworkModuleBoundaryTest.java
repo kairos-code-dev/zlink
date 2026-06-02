@@ -135,6 +135,34 @@ final class FrameworkModuleBoundaryTest {
         }
     }
 
+    @Test
+    void javaBackendAdapterDoesNotUseReflectionToReachBindingInternals() throws IOException {
+        Path bindingAdapterRoot = frameworkJavaRoot()
+            .resolve("zlink-framework-core")
+            .resolve("src/main/java/systems/zlink/framework/runtime/binding");
+
+        if (!Files.isDirectory(bindingAdapterRoot)) {
+            return;
+        }
+
+        List<String> forbiddenSnippets = List.of(
+            "java.lang.reflect",
+            "getDeclared",
+            "setAccessible",
+            "MethodHandles",
+            "VarHandle");
+
+        try (Stream<Path> files = Files.walk(bindingAdapterRoot)) {
+            List<String> offenders = files
+                .filter(Files::isRegularFile)
+                .filter(path -> path.toString().endsWith(".java"))
+                .flatMap(path -> forbiddenReflectionUses(path, forbiddenSnippets).stream())
+                .toList();
+
+            assertTrue(offenders.isEmpty(), "reflection use in Java binding adapter: " + offenders);
+        }
+    }
+
     private static boolean importsBindingRuntimePackage(Path path) {
         try {
             String content = Files.readString(path);
@@ -150,6 +178,18 @@ final class FrameworkModuleBoundaryTest {
             return Files.readAllLines(path)
                 .stream()
                 .filter(line -> line.startsWith("import systems.zlink.contracts."))
+                .toList();
+        } catch (IOException ex) {
+            throw new IllegalStateException("failed to read " + path, ex);
+        }
+    }
+
+    private static List<String> forbiddenReflectionUses(Path path, List<String> forbiddenSnippets) {
+        try {
+            return Files.readAllLines(path)
+                .stream()
+                .filter(line -> forbiddenSnippets.stream().anyMatch(line::contains))
+                .map(line -> path + ": " + line.trim())
                 .toList();
         } catch (IOException ex) {
             throw new IllegalStateException("failed to read " + path, ex);

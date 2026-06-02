@@ -91,7 +91,7 @@ public final class TopologyController {
 ```java
 @Bean
 ZLinkRegistryQueryClientCustomizer queryClient() {
-    return options -> options.setRegistryEndpoint("tcp://127.0.0.1:5551");
+    return options -> options.setEndpoint("tcp://127.0.0.1:5551");
 }
 ```
 

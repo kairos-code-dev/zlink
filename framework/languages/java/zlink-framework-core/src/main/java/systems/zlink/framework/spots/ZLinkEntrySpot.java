@@ -12,4 +12,8 @@ public interface ZLinkEntrySpot {
     default CompletionStage<Void> onInitializeAsync() {
         return CompletableFuture.completedFuture(null);
     }
+
+    default CompletionStage<Void> onClosingAsync() {
+        return CompletableFuture.completedFuture(null);
+    }
 }

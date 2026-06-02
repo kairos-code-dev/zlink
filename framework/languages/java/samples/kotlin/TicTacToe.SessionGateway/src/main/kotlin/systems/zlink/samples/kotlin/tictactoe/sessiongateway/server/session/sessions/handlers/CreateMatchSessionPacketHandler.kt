@@ -1,5 +1,30 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.handlers
 
-class CreateMatchSessionPacketHandler {
-    fun create(actorId: String): String = "match-$actorId"
+import java.util.concurrent.CompletionStage
+import systems.zlink.contracts.messaging.Message
+import systems.zlink.framework.streams.ZLinkSessionActor
+import systems.zlink.framework.streams.ZLinkSessionContext
+import systems.zlink.framework.streams.ZLinkSessionPacketHandler
+import systems.zlink.framework.streams.ZLinkStreamHeader
+
+class CreateMatchSessionPacketHandler : ZLinkSessionPacketHandler<ZLinkSessionContext> {
+    override fun packetName(): String = "CreateMatchReq"
+
+    override fun handleAsync(
+        context: ZLinkSessionContext,
+        header: ZLinkStreamHeader,
+        payload: Message,
+    ): CompletionStage<Void> {
+        val actor = requireSingleBoundActor(context)
+        return context.client()
+            .reply("match-${actor.actorId()}")
+            .submitAsync()
+    }
+
+    private fun requireSingleBoundActor(context: ZLinkSessionContext): ZLinkSessionActor =
+        when (context.actors().bound().size) {
+            1 -> context.actors().bound()[0]
+            0 -> throw IllegalStateException("Client must authenticate before creating a match")
+            else -> throw IllegalStateException("Exactly one actor must be bound before creating a match")
+        }
 }

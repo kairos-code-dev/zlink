@@ -163,6 +163,9 @@ final class SampleReleaseGateContractTest {
         String playerClientSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
             "systems/zlink/samples/tictactoe/sessiongateway/client/SessionActorDispatchPlayerClient.java");
+        String playerSessionSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/PlayerSession.java");
         String mainSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
             "systems/zlink/samples/tictactoe/sessiongateway/TicTacToeSessionGatewaySample.java");
@@ -178,8 +181,11 @@ final class SampleReleaseGateContractTest {
             "SessionGateway sample must not replace stream node configuration with a recording builder");
         assertTrue(clientSource.contains("new ZLinkActorRef("),
             "SessionGateway sample must bind by framework actor locator");
-        assertTrue(playerClientSource.contains("context().actors().bindAsync"),
-            "SessionGateway sample must bind actors through ZLinkSessionContext public API");
+        assertTrue(playerClientSource.contains("framework.sessionActors("),
+            "SessionGateway sample must bind actors through the public framework session actor API");
+        assertTrue(playerSessionSource.contains("ZLinkSessionContext")
+                && playerSessionSource.contains("context.actors()"),
+            "SessionGateway sample session must use framework-owned ZLinkSessionContext");
         assertFalse(clientSource.contains("systems.zlink.contracts.service.spot.ActorRef"),
             "SessionGateway sample must not import binding ActorRef");
         assertFalse(clientSource.contains("new ActorRef("),
@@ -189,7 +195,7 @@ final class SampleReleaseGateContractTest {
     }
 
     @Test
-    void ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout() {
+    void ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout() throws IOException {
         assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/TicTacToeSessionGatewayKotlinSample.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorDispatchClient.kt",
@@ -224,6 +230,44 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared/configuration/SampleNames.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared/configuration/SampleTopology.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared/contracts/Messages.kt"));
+
+        String sessionServerSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/SessionServer.kt");
+        String mainSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/TicTacToeSessionGatewayKotlinSample.kt");
+        String playServerSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/PlayServer.kt");
+        String clientSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorDispatchClient.kt");
+        String playerClientSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorDispatchPlayerClient.kt");
+        String playerSessionSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/PlayerSession.kt");
+
+        assertTrue(sessionServerSource.contains("attachActorGateway(SampleNames.SessionRelayNode)")
+                || sessionServerSource.contains("attachActorGateway(\"session-relay\")"),
+            "Kotlin SessionGateway sample must attach stream node to local ActorGateway SpotNode");
+        assertTrue(mainSource.contains("ZLinkFramework.start"),
+            "Kotlin SessionGateway sample must start the framework through the public facade");
+        assertTrue(playServerSource.contains("useRegistrySpotRemoteAddresses"),
+            "Kotlin SessionGateway sample must use registry-backed Spot remote addresses");
+        assertTrue(clientSource.contains("ZLinkActorRef("),
+            "Kotlin SessionGateway sample must bind by framework actor locator");
+        assertTrue(playerClientSource.contains("framework.sessionActors("),
+            "Kotlin SessionGateway sample must bind actors through the public framework session actor API");
+        assertTrue(playerSessionSource.contains("ZLinkSessionContext")
+                && playerSessionSource.contains("context.actors()"),
+            "Kotlin SessionGateway sample session must use framework-owned ZLinkSessionContext");
+        assertFalse(clientSource.contains("systems.zlink.contracts.service.spot.ActorRef"),
+            "Kotlin SessionGateway sample must not import binding ActorRef");
+        assertFalse(clientSource.contains("ZLinkSpotRemoteAddressResolver"),
+            "Kotlin session handler must not call actor remote address resolver");
     }
 
     @Test
@@ -282,7 +326,7 @@ final class SampleReleaseGateContractTest {
     }
 
     @Test
-    void ticTacToeKotlinSampleMirrorsJavaRoleLayout() {
+    void ticTacToeKotlinSampleMirrorsJavaRoleLayout() throws IOException {
         assertSampleFilesExist("kotlin", "TicTacToe", "src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/tictactoe/TicTacToeKotlinSample.kt",
             "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClient.kt",
@@ -305,6 +349,32 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/server/play/handlers/CreateGameHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/sessions/PlaySession.kt",
             "systems/zlink/samples/kotlin/tictactoe/shared/contracts/Contracts.kt"));
+
+        String mainSource = sampleKotlinSource(
+            "TicTacToe",
+            "systems/zlink/samples/kotlin/tictactoe/TicTacToeKotlinSample.kt");
+        String clientSource = sampleKotlinSource(
+            "TicTacToe",
+            "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClient.kt");
+        String apiSource = sampleKotlinSource(
+            "TicTacToe",
+            "systems/zlink/samples/kotlin/tictactoe/server/api/ApiServer.kt");
+        String playSource = sampleKotlinSource(
+            "TicTacToe",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServer.kt");
+
+        assertTrue(mainSource.contains("ZLinkFramework.start"),
+            "Kotlin TicTacToe direct sample must start the framework through the public facade");
+        assertTrue(clientSource.contains(".requestToChannel("),
+            "Kotlin TicTacToe direct sample must use framework channel request path");
+        assertTrue(apiSource.contains(".addClientServerChannel("),
+            "Kotlin TicTacToe direct sample must expose the Api server role");
+        assertTrue(playSource.contains(".addSpotMesh("),
+            "Kotlin TicTacToe direct sample must expose the Play Spot role");
+        assertTrue(playSource.contains(".addStreamNode("),
+            "Kotlin TicTacToe direct sample must register the STREAM entry point");
+        assertFalse(mainSource.contains("CreateGameHandler"),
+            "Kotlin TicTacToe main must not collapse Play handler wiring into the entry point");
     }
 
     @Test
@@ -374,7 +444,7 @@ final class SampleReleaseGateContractTest {
     }
 
     @Test
-    void bingoKotlinSampleMirrorsJavaRoleLayout() {
+    void bingoKotlinSampleMirrorsJavaRoleLayout() throws IOException {
         assertSampleFilesExist("kotlin", "Bingo", "src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/BingoKotlinSample.kt",
             "systems/zlink/samples/kotlin/bingo/client/BingoClientApp.kt",
@@ -411,6 +481,33 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/shared/configuration/SampleNames.kt",
             "systems/zlink/samples/kotlin/bingo/shared/configuration/SampleTopology.kt",
             "systems/zlink/samples/kotlin/bingo/shared/contracts/Messages.kt"));
+
+        String mainSource = sampleKotlinSource(
+            "Bingo",
+            "systems/zlink/samples/kotlin/bingo/BingoKotlinSample.kt");
+        String clientSource = sampleKotlinSource(
+            "Bingo",
+            "systems/zlink/samples/kotlin/bingo/client/BingoPlayerClient.kt");
+        String roomSource = sampleKotlinSource(
+            "Bingo",
+            "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoRoomSpot.kt");
+        String publisherSource = sampleKotlinSource(
+            "Bingo",
+            "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoNotificationPublisher.kt");
+
+        assertTrue(mainSource.contains("BingoClientOptions(4)")
+                || mainSource.contains("BingoClientOptions(playerCount = 4)"),
+            "Kotlin Bingo sample must create four connector clients");
+        assertTrue(clientSource.contains("ZLinkStreamConnectorFactory.create"),
+            "Kotlin Bingo sample must use connector public factory");
+        assertTrue(clientSource.contains("ZLinkStreamDispatchMode.MANUAL"),
+            "Kotlin Bingo sample must verify manual dispatch connector path");
+        assertTrue(mainSource.contains("listOf(7, 11, 42, 42)"),
+            "Kotlin Bingo sample must use deterministic draw sequence");
+        assertTrue(roomSource.contains("\"player-2\", \"player-3\""),
+            "Kotlin Bingo sample must verify same-sequence winners");
+        assertTrue(publisherSource.contains("BingoWinner"),
+            "Kotlin Bingo sample must push bound client notification");
     }
 
     @Test
@@ -427,8 +524,9 @@ final class SampleReleaseGateContractTest {
             "StreamingClient sample must call request");
         assertTrue(source.contains(".on("),
             "StreamingClient sample must register handler");
-        assertTrue(source.contains("pendingDispatchCount() == 1"),
-            "StreamingClient sample must assert manual queueing");
+        assertTrue(source.contains("awaitPendingDispatch(connector)")
+                && source.contains("pendingDispatchCount() > 0"),
+            "StreamingClient sample must wait for manual queueing without sleep");
         assertTrue(source.contains("onConnectionStateChanged"),
             "StreamingClient sample must observe state changes");
         assertTrue(source.contains("onDisconnected"),
@@ -437,6 +535,33 @@ final class SampleReleaseGateContractTest {
             "StreamingClient sample must simulate transport disconnect");
         assertTrue(source.contains("reconnectAsync()"),
             "StreamingClient sample must reconnect the same connector");
+    }
+
+    @Test
+    void streamingClientKotlinMirrorsConnectorSmokeGate() throws IOException {
+        String source = sampleKotlinSource(
+            "StreamingClient",
+            "systems/zlink/samples/kotlin/streamingclient/StreamingClientKotlinSample.kt");
+
+        assertTrue(source.contains("ZLinkStreamDispatchMode.MANUAL"),
+            "Kotlin StreamingClient sample must use manual dispatch");
+        assertTrue(source.contains(".send("),
+            "Kotlin StreamingClient sample must call send");
+        assertTrue(source.contains(".request("),
+            "Kotlin StreamingClient sample must call request");
+        assertTrue(source.contains(".on("),
+            "Kotlin StreamingClient sample must register handler");
+        assertTrue(source.contains("awaitPendingDispatch(connector)")
+                && source.contains("pendingDispatchCount() > 0"),
+            "Kotlin StreamingClient sample must wait for manual queueing without sleep");
+        assertTrue(source.contains("onConnectionStateChanged"),
+            "Kotlin StreamingClient sample must observe state changes");
+        assertTrue(source.contains("onDisconnected"),
+            "Kotlin StreamingClient sample must observe disconnect");
+        assertTrue(source.contains(".disconnect()"),
+            "Kotlin StreamingClient sample must simulate transport disconnect");
+        assertTrue(source.contains(".reconnect()"),
+            "Kotlin StreamingClient sample must reconnect the same connector");
     }
 
     private static Path samplesRoot() {
@@ -452,6 +577,14 @@ final class SampleReleaseGateContractTest {
             .resolve("java")
             .resolve(sample)
             .resolve("src/main/java")
+            .resolve(relativePath));
+    }
+
+    private static String sampleKotlinSource(String sample, String relativePath) throws IOException {
+        return Files.readString(samplesRoot()
+            .resolve("kotlin")
+            .resolve(sample)
+            .resolve("src/main/kotlin")
             .resolve(relativePath));
     }
 

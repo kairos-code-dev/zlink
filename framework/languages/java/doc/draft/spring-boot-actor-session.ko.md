@@ -121,6 +121,10 @@ session public 입력으로 받지 않고, core ActorGateway와 logical actor ha
 ## 5. Bound Session
 
 actor에서 현재 client session으로 보내는 표면은 `ZLinkBoundSession`이다.
+STREAM session은 framework가 만든 `ZLinkSessionContext`를 constructor로 받을 수 있다.
+application session은 이 context의 `actors()`로 actor binding을 만들고, `client()`로
+client reply 또는 push를 보낸다. sample 안에서 별도 session context나 bound session
+stand-in을 만들어 이 경로를 대체하지 않는다.
 
 ```java
 public interface ZLinkActorContext {
@@ -135,15 +139,41 @@ public interface ZLinkActorContext {
     ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid);
 }
 
+public interface ZLinkActorJoinEntrySpotCall {
+    ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
+    CompletionStage<ZLinkActorRef> submitAsync();
+}
+
+public interface ZLinkActorJoinSpotCall {
+    ZLinkActorJoinSpotCall timeout(Duration timeout);
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submitAsync(
+        Class<TReply> replyType);
+}
+
+public record ZLinkActorJoinResult<TReply>(
+    int resultCode,
+    ZLinkActorRef actor,
+    TReply reply) {
+}
+
 public interface ZLinkBoundSession {
     <TMessage> ZLinkBoundSessionSendCall send(TMessage message);
     CompletionStage<Void> disconnectAsync();
 }
 ```
 
+`joinSpot(...)`은 actor가 Entry Spot 이후 실제 user Spot으로 들어가는 요청이다. 호출은
+`CompletionStage`로 완료되며 framework는 backend `SpotNode.joinActor(...)` 결과를
+받은 뒤 actor context의 `spotRid()`, `isJoined()`, `getSpot()` 상태를 갱신한다.
+이 경로는 thread blocking helper를 제공하지 않는다. Kotlin에서는 같은 Java
+`CompletionStage`를 `suspend` wrapper로 감싸서 사용한다.
+
 `ZLinkBoundSession`은 server-to-client request API를 제공하지 않는다. client
 request에 대한 응답은 actor request handler의 반환값과 원래 request correlation으로
 처리한다.
+`disconnectAsync()`는 현재 actor에 묶인 client session을 backend binding에서 해제하고
+actor context의 bound session을 비운다. 이 호출은 server가 session을 닫는 의미이므로
+`@ZLinkSpotActorDisconnected` handler를 대신 실행하지 않는다.
 
 actor가 join한 SPOT의 실행 문맥 상태가 필요하면 `context.getSpot()` 또는 typed
 `context.getSpot(MatchSpot.class)`로 현재 join된 user Spot 인스턴스를 가져온다. join
@@ -153,6 +183,14 @@ actor가 join한 SPOT의 실행 문맥 상태가 필요하면 `context.getSpot()
 ```java
 MatchSpot spot = actor.context().getSpot(MatchSpot.class);
 ```
+
+session actor의 `notifyDisconnectedAsync()`는 backend actor binding을 해제한 뒤,
+그 binding이 actor context의 현재 bound session과 일치할 때만 disconnected lifecycle을
+실행한다. 오래된 session binding에서 disconnect 알림이 늦게 도착해도 현재 bound
+session과 `@ZLinkSpotActorDisconnected` handler를 건드리지 않는다.
+`relayAsync(header, payload)`는 session이 받은 actor packet을 bound actor route로
+전달한다. framework는 payload copy를 만들어 전송하므로 호출자가 넘긴 `Message`의
+소유권은 호출자에게 남아 있다.
 
 ## 6. Handler
 

@@ -1,11 +1,11 @@
 package systems.zlink.samples.kotlin.bingo.client
 
-import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoRoomSpot
+import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoRoomState
 
 class BingoClientApp(
     private val options: BingoClientOptions,
 ) {
-    suspend fun run(room: BingoRoomSpot) {
+    suspend fun run(room: BingoRoomState) {
         val clients = (1..options.playerCount).map { index ->
             BingoPlayerClient("player-$index").also { it.connect() }
         }
@@ -20,10 +20,19 @@ class BingoClientApp(
             "same-sequence deterministic winners mismatch: $winners"
         }
         clients.forEach { client ->
-            client.dispatch()
-            require("Winner:player-2,player-3" in client.inbox.events()) {
-                "bound push did not arrive at ${client.playerId}"
-            }
+            awaitNotification(client, "Winner:player-2,player-3")
         }
+    }
+
+    private suspend fun awaitNotification(client: BingoPlayerClient, expected: String) {
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            client.dispatch()
+            if (expected in client.inbox.events()) {
+                return
+            }
+            Thread.onSpinWait()
+        }
+        error("bound push did not arrive at ${client.playerId}")
     }
 }

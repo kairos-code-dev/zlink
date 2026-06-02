@@ -1,6 +1,10 @@
 package systems.zlink.framework.runtime.backend;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.spots.ZLinkSpotKind;
 
-public record ZLinkBackendSpotRoute(RoutingId nodeRid, RoutingId spotRid) {
+public record ZLinkBackendSpotRoute(
+    RoutingId nodeRid,
+    RoutingId spotRid,
+    ZLinkSpotKind spotKind) {
 }

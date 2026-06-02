@@ -185,8 +185,11 @@ transport error callback public API가 추가되어야 한다.
 `ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout`,
 `bingoMirrorsFourClientMatchingTimerAndBoundPushGate`,
 `bingoKotlinSampleMirrorsJavaRoleLayout`,
-`streamingClientMirrorsConnectorSmokeGate`가 고정한다. 실제 실행 self-check는 아래
-release gate command가 담당한다.
+`streamingClientMirrorsConnectorSmokeGate`,
+`streamingClientKotlinMirrorsConnectorSmokeGate`가 고정한다. Kotlin mirror gate도
+파일 존재만 보지 않고 framework facade, ActorGateway attach, registry-backed remote
+address, public session actor binding, connector manual dispatch/reconnect 사용을
+검사한다. 실제 실행 self-check는 아래 release gate command가 담당한다.
 
 `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`의 sample release gate는 단일 entry
 file만 확인하지 않는다. Java/Kotlin 양쪽에서 `.NET` sample의 역할 package, handler,

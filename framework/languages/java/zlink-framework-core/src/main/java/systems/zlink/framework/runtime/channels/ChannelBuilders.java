@@ -10,6 +10,7 @@ import systems.zlink.framework.configuration.ChannelServerCapabilityBuilder;
 import systems.zlink.framework.configuration.ChannelPublisherCapabilityBuilder;
 import systems.zlink.framework.configuration.ClientCapabilityBuilder;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
+import systems.zlink.framework.configuration.DealerMeshChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
 import systems.zlink.framework.configuration.ManualEndpointListBuilder;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
@@ -26,6 +27,10 @@ public final class ChannelBuilders {
 
     public static FanoutChannelBuilder fanout(ChannelRegistration registration) {
         return new Fanout(registration);
+    }
+
+    public static DealerMeshChannelBuilder dealerMesh(ChannelRegistration registration) {
+        return new DealerMesh(registration);
     }
 
     public static RouteMeshChannelBuilder routeMesh(ChannelRegistration registration) {
@@ -58,6 +63,7 @@ public final class ChannelBuilders {
 
         @Override
         public void addHandlerGroup(String groupName) {
+            registration.addHandlerGroup(groupName);
         }
 
         @Override
@@ -65,6 +71,10 @@ public final class ChannelBuilders {
             Class<THandler> handlerType,
             Class<TMessage> messageType,
             String packetName) {
+            registration.addSendHandler(new ChannelSendHandlerRegistration<>(
+                handlerType,
+                messageType,
+                packetName));
         }
 
         @Override
@@ -83,6 +93,7 @@ public final class ChannelBuilders {
 
         @Override
         public void enableSpotRouteEgress(String targetSpotNodeChannelName) {
+            registration.enableSpotRouteEgress(targetSpotNodeChannelName);
         }
     }
 
@@ -112,6 +123,7 @@ public final class ChannelBuilders {
 
         @Override
         public void addHandlerGroup(String groupName) {
+            registration.addHandlerGroup(groupName);
         }
 
         @Override
@@ -135,6 +147,25 @@ public final class ChannelBuilders {
         }
     }
 
+    private record DealerMesh(ChannelRegistration registration) implements DealerMeshChannelBuilder {
+        @Override
+        public void enableClient() {
+            registration.enableClient();
+        }
+
+        @Override
+        public void enableClient(Consumer<ClientCapabilityBuilder> configure) {
+            enableClient();
+            configure.accept(clientConfigure ->
+                clientConfigure.accept((ManualEndpointListBuilder) registration::addClientManualEndpoint));
+        }
+
+        @Override
+        public void addHandlerGroup(String groupName) {
+            registration.addHandlerGroup(groupName);
+        }
+    }
+
     private record RouteMesh(ChannelRegistration registration) implements RouteMeshChannelBuilder {
         @Override
         public void bind(String endpoint) {
@@ -153,6 +184,7 @@ public final class ChannelBuilders {
 
         @Override
         public void addHandlerGroup(String groupName) {
+            registration.addHandlerGroup(groupName);
         }
 
         @Override
@@ -160,6 +192,10 @@ public final class ChannelBuilders {
             Class<THandler> handlerType,
             Class<TMessage> messageType,
             String packetName) {
+            registration.addRouteSendHandler(new ChannelRouteSendHandlerRegistration<>(
+                handlerType,
+                messageType,
+                packetName));
         }
 
         @Override
@@ -178,6 +214,7 @@ public final class ChannelBuilders {
 
         @Override
         public void enableSpotRouteEgress(String targetSpotNodeChannelName) {
+            registration.enableSpotRouteEgress(targetSpotNodeChannelName);
         }
     }
 }

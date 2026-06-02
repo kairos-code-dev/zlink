@@ -1,16 +1,21 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.client
 
+import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.ZLinkFramework
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.kotlin.bind
-import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.PlayerSession
-import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.RecordingSessionActors
+import systems.zlink.framework.streams.ZLinkSessionActors
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleNames
 
-class SessionActorDispatchPlayerClient {
-    private val actors = RecordingSessionActors()
-    private val session = PlayerSession(actors)
+class SessionActorDispatchPlayerClient(
+    framework: ZLinkFramework,
+    sessionRid: RoutingId,
+) {
+    private val actors: ZLinkSessionActors =
+        framework.sessionActors(SampleNames.GatewayStream, sessionRid)
 
     suspend fun bind(actorRef: ZLinkActorRef) {
-        session.context().actors().bind(actorRef)
+        actors.bind(actorRef)
     }
 
     fun boundActorId(): String = actors.bound()[0].actorId()

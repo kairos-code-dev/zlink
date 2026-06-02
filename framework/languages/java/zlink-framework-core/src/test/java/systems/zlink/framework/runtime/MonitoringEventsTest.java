@@ -212,6 +212,7 @@ final class MonitoringEventsTest {
             ZLinkBackendRegistryQueryFilter filter) {
             return List.of(new ZLinkBackendRegistryTopologyEntry(
                 "profile",
+                systems.zlink.contracts.core.RoutingId.from("profile-" + entryCount),
                 "SERVER",
                 "inproc://profile-" + entryCount));
         }
@@ -255,6 +256,16 @@ final class MonitoringEventsTest {
         }
 
         @Override
+        public void connectRouterChannelPeer(String channelName, String endpoint) {
+        }
+
+        @Override
+        public void attachSpotRouteChannelDiscovery(
+            String channelName,
+            ZLinkBackendDiscovery discovery) {
+        }
+
+        @Override
         public void attachChannelDealer(ZLinkBackendDiscovery discovery, ZLinkBackendDealerSocket dealer) {
         }
 
@@ -280,6 +291,26 @@ final class MonitoringEventsTest {
         @Override
         public ZLinkBackendActorRef actorLookup(String actorId) {
             return null;
+        }
+
+        @Override
+        public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinResult> joinActor(
+            ZLinkBackendActorRef actor,
+            systems.zlink.contracts.core.RoutingId targetNodeRid,
+            systems.zlink.contracts.core.RoutingId targetSpotRid,
+            List<systems.zlink.contracts.messaging.Message> parts,
+            java.time.Duration timeout) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                new UnsupportedOperationException("join actor is not used by this test"));
+        }
+
+        @Override
+        public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(
+            ZLinkBackendActorRef actor,
+            systems.zlink.contracts.core.RoutingId targetNodeRid,
+            java.time.Duration timeout) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                new UnsupportedOperationException("join entry spot is not used by this test"));
         }
 
         @Override

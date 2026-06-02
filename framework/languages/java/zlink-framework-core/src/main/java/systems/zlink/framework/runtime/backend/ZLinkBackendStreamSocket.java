@@ -12,6 +12,13 @@ public interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
 
     boolean send(RoutingId routingId, List<Message> parts, SendFlags flags);
 
+    boolean reply(
+        RoutingId routingId,
+        long requestSeq,
+        String packetName,
+        List<Message> parts,
+        SendFlags flags);
+
     void attachActorGateway(ZLinkBackendSpotNode node);
 
     ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor);

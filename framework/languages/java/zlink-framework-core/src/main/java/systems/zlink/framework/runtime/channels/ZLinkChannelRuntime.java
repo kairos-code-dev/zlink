@@ -2,14 +2,16 @@ package systems.zlink.framework.runtime.channels;
 
 import systems.zlink.framework.runtime.backend.*;
 
-import java.time.Duration;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,13 +33,24 @@ import systems.zlink.framework.channels.ZLinkPublishHandler;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
+import systems.zlink.framework.channels.ZLinkRouteSendContext;
+import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
+import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
+import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
+import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
+import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
+import systems.zlink.framework.runtime.spots.ZLinkRoutedSpotRelayPackets;
 
 public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, AutoCloseable {
     private final ZLinkBackendContext context;
@@ -46,23 +59,37 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private final Map<String, ZLinkBackendPublisherSocket> publishers = new HashMap<>();
     private final Map<String, ZLinkBackendSubscriberSocket> subscribers = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> routeRouters = new HashMap<>();
+    private final Map<String, ChannelRegistration> registrationsByName = new HashMap<>();
     private final List<ZLinkBackendDealerSocket> manualClients = new ArrayList<>();
     private final List<ZLinkBackendRouterSocket> manualServers = new ArrayList<>();
     private final List<ZLinkBackendPublisherSocket> manualPublishers = new ArrayList<>();
     private final List<ZLinkBackendSubscriberSocket> manualSubscribers = new ArrayList<>();
     private final List<ZLinkBackendRouterSocket> manualRouteRouters = new ArrayList<>();
     private final List<ZLinkBackendDiscovery> discoveries = new ArrayList<>();
+    private final Map<String, ZLinkBackendDiscovery> discoveriesByName = new HashMap<>();
     private final Map<String, Map<String, ChannelRequestHandlerRegistration<?, ?, ?>>> requestHandlers =
+        new HashMap<>();
+    private final Map<String, Map<String, ChannelSendHandlerRegistration<?, ?>>> sendHandlers =
         new HashMap<>();
     private final Map<String, Map<String, ChannelPublishHandlerRegistration<?, ?>>> publishHandlers =
         new HashMap<>();
     private final Map<String, Map<String, ChannelRouteRequestHandlerRegistration<?, ?, ?>>> routeRequestHandlers =
         new HashMap<>();
+    private final Map<String, Map<String, ChannelRouteSendHandlerRegistration<?, ?>>> routeSendHandlers =
+        new HashMap<>();
+    private final Map<String, RouteInternalRequestHandler> routeInternalRequestHandlers = new HashMap<>();
+    private final Map<String, ZLinkAsyncSerialQueue> sendDispatchQueues = new HashMap<>();
     private final Map<String, ZLinkAsyncSerialQueue> requestDispatchQueues = new HashMap<>();
     private final Map<String, ZLinkAsyncSerialQueue> publishDispatchQueues = new HashMap<>();
     private final Map<String, ZLinkAsyncSerialQueue> routeRequestDispatchQueues = new HashMap<>();
+    private final Map<String, ZLinkAsyncSerialQueue> routeSendDispatchQueues = new HashMap<>();
     private final ZLinkMessageSerializer serializer;
+    private final ZLinkHandlerFactory handlerFactory;
     private final Duration defaultTimeout;
+    private final ZLinkBackendAdapterFactory backendFactory;
+    private final ZLinkBackendAdapterOptions adapterOptions;
+    private final List<String> registryEndpoints;
+    private SpotRelayIngress spotRelayIngress;
     private final ExecutorService receiveExecutor = Executors.newCachedThreadPool(task -> {
         Thread thread = new Thread(task, "zlink-java-channel-runtime");
         thread.setDaemon(true);
@@ -80,10 +107,35 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkChannelBackendAdapter backend,
         ZLinkFrameworkRegistration registration,
         ZLinkMessageSerializer serializer) {
+        this(backend, registration, serializer, ZLinkHandlerFactory.reflection());
+    }
+
+    public ZLinkChannelRuntime(
+        ZLinkChannelBackendAdapter backend,
+        ZLinkFrameworkRegistration registration,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerFactory handlerFactory) {
+        this(backend, null, null, registration, serializer, handlerFactory);
+    }
+
+    public ZLinkChannelRuntime(
+        ZLinkChannelBackendAdapter backend,
+        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterOptions adapterOptions,
+        ZLinkFrameworkRegistration registration,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerFactory handlerFactory) {
         this.serializer = Objects.requireNonNull(serializer, "serializer");
+        this.handlerFactory = Objects.requireNonNull(handlerFactory, "handlerFactory");
         this.defaultTimeout = registration.defaultTimeout();
+        this.backendFactory = backendFactory;
+        this.adapterOptions = adapterOptions;
+        this.registryEndpoints = registration.registryEndpoints();
         this.context = backend.createContext();
+        ZLinkScannedHandlerCatalog handlerCatalog =
+            ZLinkHandlerScanner.scan(registration.handlerPackageMarkers());
         for (ChannelRegistration channel : registration.channels()) {
+            registrationsByName.put(channel.name(), channel);
             ZLinkBackendDiscovery discovery = discoveryFor(backend, registration, channel);
             if (channel.kind() == ChannelKind.CLIENT_SERVER && channel.clientEnabled()) {
                 ZLinkBackendDealerSocket dealer = backend.createDealerSocket(context);
@@ -108,7 +160,9 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     router.bind(endpoint);
                 }
                 servers.put(channel.name(), router);
-                requestHandlers.put(channel.name(), handlersByPacket(channel));
+                sendHandlers.put(channel.name(), sendHandlersByPacket(channel, handlerCatalog));
+                requestHandlers.put(channel.name(), handlersByPacket(channel, handlerCatalog));
+                sendDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
                 requestDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
                 startRequestLoop(channel.name(), router);
             }
@@ -136,7 +190,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 }
                 subscriber.setSubscription("");
                 subscribers.put(channel.name(), subscriber);
-                publishHandlers.put(channel.name(), publishHandlersByPacket(channel));
+                publishHandlers.put(channel.name(), publishHandlersByPacket(channel, handlerCatalog));
                 publishDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
                 startSubscribeLoop(channel.name(), subscriber);
             }
@@ -157,7 +211,9 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     router.bind(endpoint);
                 }
                 routeRouters.put(channel.name(), router);
-                routeRequestHandlers.put(channel.name(), routeHandlersByPacket(channel));
+                routeSendHandlers.put(channel.name(), routeSendHandlersByPacket(channel, handlerCatalog));
+                routeRequestHandlers.put(channel.name(), routeHandlersByPacket(channel, handlerCatalog));
+                routeSendDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
                 routeRequestDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
                 startRouteLoop(channel.name(), router);
             }
@@ -174,6 +230,20 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 && channel.kind() != ChannelKind.ROUTE_MESH)) {
             return null;
         }
+        if (channel.kind() == ChannelKind.CLIENT_SERVER
+            && channel.clientEnabled()
+            && !channel.clientManualEndpoints().isEmpty()) {
+            return null;
+        }
+        if (channel.kind() == ChannelKind.FANOUT
+            && channel.subscriberEnabled()
+            && !channel.subscriberManualEndpoints().isEmpty()) {
+            return null;
+        }
+        if (channel.kind() == ChannelKind.ROUTE_MESH
+            && !channel.routeManualEndpoints().isEmpty()) {
+            return null;
+        }
         ZLinkBackendDiscovery discovery = backend.createDiscovery(
             context,
             autoConnectType(channel),
@@ -182,6 +252,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             discovery.connectRegistry(endpoint);
         }
         discoveries.add(discovery);
+        discoveriesByName.put(channel.name(), discovery);
         return discovery;
     }
 
@@ -212,6 +283,90 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             target,
             serializer.serialize(message),
             defaultTimeout);
+    }
+
+    public void registerSpotRelayIngress(SpotRelayIngress spotRelayIngress) {
+        this.spotRelayIngress = Objects.requireNonNull(spotRelayIngress, "spotRelayIngress");
+    }
+
+    public void registerRouteInternalRequestHandler(
+        String packetName,
+        RouteInternalRequestHandler handler) {
+        if (packetName == null || packetName.isBlank()) {
+            throw new ZLinkConfigurationException("internal route packet name is required");
+        }
+        if (routeInternalRequestHandlers.putIfAbsent(packetName, Objects.requireNonNull(handler, "handler"))
+            != null) {
+            throw new ZLinkConfigurationException(
+                "duplicate internal route packet handler: " + packetName);
+        }
+    }
+
+    public CompletionStage<Void> sendToSpotViaEgressChannel(
+        String localEgressChannelName,
+        RoutingId targetSpotRid,
+        List<Message> spotParts) {
+        ChannelRegistration registration = requireSpotRouteEgress(localEgressChannelName);
+        List<Message> relayParts =
+            ZLinkRoutedSpotRelayPackets.createSendRelayParts(targetSpotRid, spotParts);
+        return CompletableFuture.runAsync(() -> {
+            try {
+                if (registration.kind() == ChannelKind.CLIENT_SERVER) {
+                    requireClient(localEgressChannelName).send(relayParts, SendFlags.NONE);
+                    return;
+                }
+                RoutingId targetPeerRid = resolveRouteEgressPeerRid(
+                    localEgressChannelName,
+                    registration.spotRouteEgressTarget());
+                requireRouteRouter(localEgressChannelName).send(targetPeerRid, relayParts, SendFlags.NONE);
+            } finally {
+                relayParts.forEach(Message::close);
+            }
+        });
+    }
+
+    public CompletionStage<List<Message>> requestToSpotViaEgressChannel(
+        String localEgressChannelName,
+        RoutingId targetSpotRid,
+        List<Message> spotParts,
+        Duration timeout) {
+        ChannelRegistration registration = requireSpotRouteEgress(localEgressChannelName);
+        CompletableFuture<List<Message>> result = new CompletableFuture<>();
+        trackPendingRequest(result, timeout);
+        List<Message> relayParts =
+            ZLinkRoutedSpotRelayPackets.createRequestRelayParts(targetSpotRid, spotParts);
+        try {
+            if (registration.kind() == ChannelKind.CLIENT_SERVER) {
+                requireClient(localEgressChannelName).request(relayParts, reply -> {
+                    try {
+                        result.complete(ZLinkRoutedSpotRelayPackets.copyReplyParts(reply.parts()));
+                    } catch (RuntimeException ex) {
+                        result.completeExceptionally(ex);
+                    } finally {
+                        reply.parts().forEach(Message::close);
+                    }
+                }, SendFlags.NONE, timeout);
+                return result;
+            }
+            RoutingId targetPeerRid = resolveRouteEgressPeerRid(
+                localEgressChannelName,
+                registration.spotRouteEgressTarget());
+            requireRouteRouter(localEgressChannelName).request(targetPeerRid, relayParts, reply -> {
+                try {
+                    result.complete(ZLinkRoutedSpotRelayPackets.copyReplyParts(reply.parts()));
+                } catch (RuntimeException ex) {
+                    result.completeExceptionally(ex);
+                } finally {
+                    reply.parts().forEach(Message::close);
+                }
+            }, SendFlags.NONE, timeout);
+            return result;
+        } catch (RuntimeException ex) {
+            result.completeExceptionally(ex);
+            return result;
+        } finally {
+            relayParts.forEach(Message::close);
+        }
     }
 
     @Override
@@ -264,6 +419,131 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         return router;
     }
 
+    private ChannelRegistration requireSpotRouteEgress(String channelName) {
+        ChannelRegistration registration = registrationsByName.get(channelName);
+        if (registration == null || registration.spotRouteEgressTarget() == null) {
+            throw new ZLinkConfigurationException(
+                "routed SPOT egress channel is not configured: " + channelName);
+        }
+        return registration;
+    }
+
+    private SpotRelayIngress requireSpotRelayIngress() {
+        if (spotRelayIngress == null) {
+            throw new ZLinkConfigurationException("routed SPOT relay ingress is not configured");
+        }
+        return spotRelayIngress;
+    }
+
+    private RoutingId resolveRouteEgressPeerRid(
+        String localEgressChannelName,
+        String targetSpotNodeChannelName) {
+        ChannelRegistration target = registrationsByName.get(targetSpotNodeChannelName);
+        if (target != null
+            && target.kind() == ChannelKind.ROUTE_MESH
+            && target.routeRoutingId() != null) {
+            return target.routeRoutingId();
+        }
+        RoutingId discoveryRid = resolveRouteEgressPeerRidFromDiscovery(
+            localEgressChannelName,
+            targetSpotNodeChannelName);
+        if (discoveryRid != null) {
+            return discoveryRid;
+        }
+        RoutingId registryRid = resolveRouteEgressPeerRidFromRegistry(targetSpotNodeChannelName);
+        if (registryRid != null) {
+            return registryRid;
+        }
+        throw new ZLinkConfigurationException(
+            "routed SPOT route mesh egress channel '"
+                + localEgressChannelName
+                + "' cannot find a target route peer routing id for target SPOT node channel '"
+                + targetSpotNodeChannelName
+                + "'");
+    }
+
+    private RoutingId resolveRouteEgressPeerRidFromDiscovery(
+        String localEgressChannelName,
+        String targetSpotNodeChannelName) {
+        ZLinkBackendDiscovery discovery = discoveriesByName.get(localEgressChannelName);
+        if (discovery == null) {
+            return null;
+        }
+        RoutingId matched = null;
+        boolean matchedWithoutRoutingId = false;
+        for (ZLinkBackendRegistryTopologyEntry peer : discovery.memberPeers()) {
+            if (!targetSpotNodeChannelName.equals(peer.channelName())) {
+                continue;
+            }
+            if (!"ROUTER".equalsIgnoreCase(peer.serviceKind())
+                && !"SOCKET".equalsIgnoreCase(peer.serviceKind())) {
+                continue;
+            }
+            if (peer.routingId() == null) {
+                matchedWithoutRoutingId = true;
+                continue;
+            }
+            if (matched != null && !matched.equals(peer.routingId())) {
+                throw new ZLinkConfigurationException(
+                    "routed SPOT route mesh egress found multiple discovery route peers for target channel: "
+                        + targetSpotNodeChannelName);
+            }
+            matched = peer.routingId();
+        }
+        if (matched == null && matchedWithoutRoutingId) {
+            throw new ZLinkConfigurationException(
+                "routed SPOT route mesh egress found discovery target channel without routing id: "
+                    + targetSpotNodeChannelName);
+        }
+        return matched;
+    }
+
+    private RoutingId resolveRouteEgressPeerRidFromRegistry(String targetSpotNodeChannelName) {
+        if (backendFactory == null || adapterOptions == null || registryEndpoints.isEmpty()) {
+            return null;
+        }
+        ZLinkRegistryBackendAdapter registryAdapter =
+            backendFactory.createRegistryAdapter(adapterOptions);
+        RoutingId matched = null;
+        boolean matchedWithoutRoutingId = false;
+        for (String endpoint : registryEndpoints) {
+            ZLinkBackendRegistryQueryClient client =
+                registryAdapter.createRegistryQueryClient(context);
+            try {
+                client.connect(endpoint);
+                for (ZLinkBackendRegistryTopologyEntry entry :
+                    client.topology(new ZLinkBackendRegistryQueryFilter(
+                        Optional.of(targetSpotNodeChannelName)))) {
+                    if (!targetSpotNodeChannelName.equals(entry.channelName())) {
+                        continue;
+                    }
+                    if (!"ROUTER".equalsIgnoreCase(entry.serviceKind())
+                        && !"SOCKET".equalsIgnoreCase(entry.serviceKind())) {
+                        continue;
+                    }
+                    if (entry.routingId() == null) {
+                        matchedWithoutRoutingId = true;
+                        continue;
+                    }
+                    if (matched != null && !matched.equals(entry.routingId())) {
+                        throw new ZLinkConfigurationException(
+                            "routed SPOT route mesh egress found multiple route peers for target channel: "
+                                + targetSpotNodeChannelName);
+                    }
+                    matched = entry.routingId();
+                }
+            } finally {
+                client.close();
+            }
+        }
+        if (matched == null && matchedWithoutRoutingId) {
+            throw new ZLinkConfigurationException(
+                "routed SPOT route mesh egress found target channel without routing id: "
+                    + targetSpotNodeChannelName);
+        }
+        return matched;
+    }
+
     private void startRequestLoop(String channelName, ZLinkBackendRouterSocket router) {
         receiveExecutor.submit(() -> {
             while (running) {
@@ -283,12 +563,22 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkBackendReceived received) {
         try {
             ParsedPacket packet = parsePacket(received.parts());
+            if (dispatchSpotRelaySendOrRequest(channelName, router, received, packet)) {
+                return;
+            }
             ChannelRequestHandlerRegistration<?, ?, ?> registration =
                 requestHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
-            if (registration == null || received.routingId().isEmpty() || received.requestSeq().isEmpty()) {
+            if (received.routingId().isEmpty()) {
                 return;
             }
             RoutingId routingId = received.routingId().get();
+            if (received.requestSeq().isEmpty()) {
+                dispatchSend(channelName, packet);
+                return;
+            }
+            if (registration == null) {
+                return;
+            }
             long requestSeq = received.requestSeq().get();
             Message payloadCopy = Message.from(packet.payload());
             requestDispatchQueues.get(channelName).enqueue(() ->
@@ -319,12 +609,25 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkBackendReceived received) {
         try {
             ParsedPacket packet = parsePacket(received.parts());
+            if (dispatchSpotRelaySendOrRequest(channelName, router, received, packet)) {
+                return;
+            }
             ChannelRouteRequestHandlerRegistration<?, ?, ?> registration =
                 routeRequestHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
-            if (registration == null || received.routingId().isEmpty() || received.requestSeq().isEmpty()) {
+            if (received.routingId().isEmpty()) {
                 return;
             }
             RoutingId routingId = received.routingId().get();
+            if (received.requestSeq().isEmpty()) {
+                dispatchRouteSend(channelName, routingId, packet);
+                return;
+            }
+            if (dispatchRouteInternalRequest(channelName, router, routingId, received.requestSeq().get(), packet)) {
+                return;
+            }
+            if (registration == null) {
+                return;
+            }
             long requestSeq = received.requestSeq().get();
             Message payloadCopy = Message.from(packet.payload());
             routeRequestDispatchQueues.get(channelName).enqueue(() ->
@@ -337,6 +640,24 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         } finally {
             received.parts().forEach(Message::close);
         }
+    }
+
+    private boolean dispatchRouteInternalRequest(
+        String channelName,
+        ZLinkBackendRouterSocket router,
+        RoutingId sourceRoutingId,
+        long requestSeq,
+        ParsedPacket packet) {
+        RouteInternalRequestHandler handler = routeInternalRequestHandlers.get(packet.packetName());
+        if (handler == null) {
+            return false;
+        }
+        Message payloadCopy = Message.from(packet.payload());
+        routeRequestDispatchQueues.get(channelName).enqueue(() ->
+            handler.handle(sourceRoutingId, payloadCopy)
+                .thenAccept(reply -> replyAndClose(router, sourceRoutingId, requestSeq, reply))
+                .whenComplete((ignored, error) -> payloadCopy.close()));
+        return true;
     }
 
     private void startSubscribeLoop(String channelName, ZLinkBackendSubscriberSocket subscriber) {
@@ -369,19 +690,97 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
     }
 
+    private void dispatchSend(String channelName, ParsedPacket packet) {
+        ChannelSendHandlerRegistration<?, ?> registration =
+            sendHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
+        if (registration == null) {
+            return;
+        }
+        Message payloadCopy = Message.from(packet.payload());
+        sendDispatchQueues.get(channelName).enqueue(() ->
+            invokeSendHandler(registration, payloadCopy)
+                .whenComplete((ignored, error) -> payloadCopy.close()));
+    }
+
+    private void dispatchRouteSend(
+        String channelName,
+        RoutingId sourceRoutingId,
+        ParsedPacket packet) {
+        ChannelRouteSendHandlerRegistration<?, ?> registration =
+            routeSendHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
+        if (registration == null) {
+            return;
+        }
+        Message payloadCopy = Message.from(packet.payload());
+        routeSendDispatchQueues.get(channelName).enqueue(() ->
+            invokeRouteSendHandler(registration, sourceRoutingId, payloadCopy)
+                .whenComplete((ignored, error) -> payloadCopy.close()));
+    }
+
+    private boolean dispatchSpotRelaySendOrRequest(
+        String channelName,
+        ZLinkBackendRouterSocket router,
+        ZLinkBackendReceived received,
+        ParsedPacket packet) {
+        if (ZLinkRoutedSpotRelayPackets.SEND_PACKET_NAME.equals(packet.packetName())) {
+            requireSpotRelayIngress().handleSend(channelName, router, received.parts());
+            return true;
+        }
+        if (ZLinkRoutedSpotRelayPackets.REQUEST_PACKET_NAME.equals(packet.packetName())) {
+            if (received.routingId().isEmpty() || received.requestSeq().isEmpty()) {
+                return true;
+            }
+            requireSpotRelayIngress()
+                .handleRequest(channelName, router, received.parts(), defaultTimeout)
+                .thenAccept(reply -> replyRawAndClose(
+                    router,
+                    received.routingId().get(),
+                    received.requestSeq().get(),
+                    reply));
+            return true;
+        }
+        return false;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private CompletionStage<Void> invokeSendHandler(
+        ChannelSendHandlerRegistration registration,
+        Message payload) {
+        try {
+            if (registration.handlerMethod() != null) {
+                Object message = serializer.deserialize(payload, registration.messageType());
+                return invokeVoidMethodHandler(
+                    registration.handlerType(),
+                    registration.handlerMethod(),
+                    message);
+            }
+            ZLinkSendHandler handler =
+                (ZLinkSendHandler) handlerFactory.create(registration.handlerType());
+            Object message = serializer.deserialize(payload, registration.messageType());
+            return handler.handleAsync(message, new DefaultSendContext(registration.packetName()));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     private CompletionStage<Message> invokeRequestHandler(
         ChannelRequestHandlerRegistration registration,
         Message payload) {
         try {
+            if (registration.handlerMethod() != null) {
+                Object request = serializer.deserialize(payload, registration.requestType());
+                return invokeReplyMethodHandler(
+                    registration.handlerType(),
+                    registration.handlerMethod(),
+                    request)
+                    .thenApply(serializer::serialize);
+            }
             ZLinkRequestHandler handler =
-                (ZLinkRequestHandler) registration.handlerType().getDeclaredConstructor().newInstance();
+                (ZLinkRequestHandler) handlerFactory.create(registration.handlerType());
             Object request = serializer.deserialize(payload, registration.requestType());
             return handler.handleAsync(request, new DefaultRequestContext(registration.packetName()))
                 .thenApply(serializer::serialize);
-        } catch (ReflectiveOperationException ex) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "failed to create request handler: " + registration.handlerType().getName()));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -393,13 +792,72 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         String topic,
         Message payload) {
         try {
+            if (registration.handlerMethod() != null) {
+                Object message = serializer.deserialize(payload, registration.messageType());
+                return invokeVoidMethodHandler(
+                    registration.handlerType(),
+                    registration.handlerMethod(),
+                    message);
+            }
             ZLinkPublishHandler handler =
-                (ZLinkPublishHandler) registration.handlerType().getDeclaredConstructor().newInstance();
+                (ZLinkPublishHandler) handlerFactory.create(registration.handlerType());
             Object message = serializer.deserialize(payload, registration.messageType());
             return handler.handleAsync(message, new DefaultPublishContext(registration.packetName(), topic));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    private CompletionStage<Void> invokeVoidMethodHandler(
+        Class<?> handlerType,
+        Method method,
+        Object message) {
+        try {
+            Object handler = handlerFactory.create(handlerType);
+            Object result = method.invoke(handler, message);
+            if (result instanceof CompletionStage<?> stage) {
+                return stage.thenApply(ignored -> null);
+            }
+            return CompletableFuture.completedFuture(null);
         } catch (ReflectiveOperationException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "failed to create publish handler: " + registration.handlerType().getName()));
+                "failed to invoke handler method: " + handlerType.getName() + "." + method.getName()));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    private CompletionStage<Object> invokeReplyMethodHandler(
+        Class<?> handlerType,
+        Method method,
+        Object message) {
+        try {
+            Object handler = handlerFactory.create(handlerType);
+            Object result = method.invoke(handler, message);
+            if (result instanceof CompletionStage<?> stage) {
+                return stage.thenApply(value -> value);
+            }
+            return CompletableFuture.completedFuture(result);
+        } catch (ReflectiveOperationException ex) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "failed to invoke handler method: " + handlerType.getName() + "." + method.getName()));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private CompletionStage<Void> invokeRouteSendHandler(
+        ChannelRouteSendHandlerRegistration registration,
+        RoutingId sourceRoutingId,
+        Message payload) {
+        try {
+            ZLinkRouteSendHandler handler =
+                (ZLinkRouteSendHandler) handlerFactory.create(registration.handlerType());
+            Object message = serializer.deserialize(payload, registration.messageType());
+            return handler.handleAsync(
+                message,
+                new DefaultRouteSendContext(registration.packetName(), sourceRoutingId));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -412,24 +870,55 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         Message payload) {
         try {
             ZLinkRouteRequestHandler handler =
-                (ZLinkRouteRequestHandler) registration.handlerType().getDeclaredConstructor().newInstance();
+                (ZLinkRouteRequestHandler) handlerFactory.create(registration.handlerType());
             Object request = serializer.deserialize(payload, registration.requestType());
             return handler.handleAsync(
                     request,
                     new DefaultRouteRequestContext(registration.packetName(), sourceRoutingId))
                 .thenApply(serializer::serialize);
-        } catch (ReflectiveOperationException ex) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "failed to create route request handler: " + registration.handlerType().getName()));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private static Map<String, ChannelRequestHandlerRegistration<?, ?, ?>> handlersByPacket(
-        ChannelRegistration channel) {
+        ChannelRegistration channel,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
         Map<String, ChannelRequestHandlerRegistration<?, ?, ?>> handlers = new HashMap<>();
+        for (ZLinkScannedHandler handler : handlerCatalog.matching(
+            Set.copyOf(channel.handlerGroups()),
+            ZLinkScannedHandlerSurface.CHANNEL,
+            ZLinkScannedHandlerKind.REQUEST)) {
+            handlers.put(handler.packetName(), new ChannelRequestHandlerRegistration(
+                handler.handlerType(),
+                handler.handlerMethod(),
+                handler.messageType(),
+                handler.replyType(),
+                handler.packetName()));
+        }
         for (ChannelRequestHandlerRegistration<?, ?, ?> handler : channel.requestHandlers()) {
+            handlers.put(handler.packetName(), handler);
+        }
+        return Map.copyOf(handlers);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Map<String, ChannelSendHandlerRegistration<?, ?>> sendHandlersByPacket(
+        ChannelRegistration channel,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
+        Map<String, ChannelSendHandlerRegistration<?, ?>> handlers = new HashMap<>();
+        for (ZLinkScannedHandler handler : handlerCatalog.matching(
+            Set.copyOf(channel.handlerGroups()),
+            ZLinkScannedHandlerSurface.CHANNEL,
+            ZLinkScannedHandlerKind.SEND)) {
+            handlers.put(handler.packetName(), new ChannelSendHandlerRegistration(
+                handler.handlerType(),
+                handler.handlerMethod(),
+                handler.messageType(),
+                handler.packetName()));
+        }
+        for (ChannelSendHandlerRegistration<?, ?> handler : channel.sendHandlers()) {
             handlers.put(handler.packetName(), handler);
         }
         return Map.copyOf(handlers);
@@ -447,19 +936,75 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
     }
 
+    private static void replyRawAndClose(
+        ZLinkBackendRouterSocket router,
+        RoutingId routingId,
+        long requestSeq,
+        List<Message> reply) {
+        try {
+            router.reply(routingId, requestSeq, reply);
+        } finally {
+            reply.forEach(Message::close);
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private static Map<String, ChannelPublishHandlerRegistration<?, ?>> publishHandlersByPacket(
-        ChannelRegistration channel) {
+        ChannelRegistration channel,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
         Map<String, ChannelPublishHandlerRegistration<?, ?>> handlers = new HashMap<>();
+        for (ZLinkScannedHandler handler : handlerCatalog.matching(
+            Set.copyOf(channel.handlerGroups()),
+            ZLinkScannedHandlerSurface.CHANNEL,
+            ZLinkScannedHandlerKind.PUBLISH)) {
+            handlers.put(handler.packetName(), new ChannelPublishHandlerRegistration(
+                handler.handlerType(),
+                handler.handlerMethod(),
+                handler.messageType(),
+                handler.packetName()));
+        }
         for (ChannelPublishHandlerRegistration<?, ?> handler : channel.publishHandlers()) {
             handlers.put(handler.packetName(), handler);
         }
         return Map.copyOf(handlers);
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private static Map<String, ChannelRouteRequestHandlerRegistration<?, ?, ?>> routeHandlersByPacket(
-        ChannelRegistration channel) {
+        ChannelRegistration channel,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
         Map<String, ChannelRouteRequestHandlerRegistration<?, ?, ?>> handlers = new HashMap<>();
+        for (ZLinkScannedHandler handler : handlerCatalog.matching(
+            Set.copyOf(channel.handlerGroups()),
+            ZLinkScannedHandlerSurface.ROUTE,
+            ZLinkScannedHandlerKind.REQUEST)) {
+            handlers.put(handler.packetName(), new ChannelRouteRequestHandlerRegistration(
+                handler.handlerType(),
+                handler.messageType(),
+                handler.replyType(),
+                handler.packetName()));
+        }
         for (ChannelRouteRequestHandlerRegistration<?, ?, ?> handler : channel.routeRequestHandlers()) {
+            handlers.put(handler.packetName(), handler);
+        }
+        return Map.copyOf(handlers);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Map<String, ChannelRouteSendHandlerRegistration<?, ?>> routeSendHandlersByPacket(
+        ChannelRegistration channel,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
+        Map<String, ChannelRouteSendHandlerRegistration<?, ?>> handlers = new HashMap<>();
+        for (ZLinkScannedHandler handler : handlerCatalog.matching(
+            Set.copyOf(channel.handlerGroups()),
+            ZLinkScannedHandlerSurface.ROUTE,
+            ZLinkScannedHandlerKind.SEND)) {
+            handlers.put(handler.packetName(), new ChannelRouteSendHandlerRegistration(
+                handler.handlerType(),
+                handler.messageType(),
+                handler.packetName()));
+        }
+        for (ChannelRouteSendHandlerRegistration<?, ?> handler : channel.routeSendHandlers()) {
             handlers.put(handler.packetName(), handler);
         }
         return Map.copyOf(handlers);
@@ -480,6 +1025,35 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         private final String packetName;
 
         DefaultRequestContext(String packetName) {
+            this.packetName = packetName;
+        }
+
+        @Override
+        public Optional<String> channelName() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> packetName() {
+            return Optional.ofNullable(packetName).filter(value -> !value.isBlank());
+        }
+
+        @Override
+        public Optional<String> contentType() {
+            return Optional.empty();
+        }
+
+        @Override
+        public CancellationToken cancellationToken() {
+            return NONE;
+        }
+    }
+
+    private static final class DefaultSendContext implements ZLinkSendContext {
+        private static final CancellationToken NONE = () -> false;
+        private final String packetName;
+
+        DefaultSendContext(String packetName) {
             this.packetName = packetName;
         }
 
@@ -551,6 +1125,42 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         private final RoutingId routingId;
 
         DefaultRouteRequestContext(String packetName, RoutingId routingId) {
+            this.packetName = packetName;
+            this.routingId = routingId;
+        }
+
+        @Override
+        public RoutingId routingId() {
+            return routingId;
+        }
+
+        @Override
+        public Optional<String> channelName() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> packetName() {
+            return Optional.ofNullable(packetName).filter(value -> !value.isBlank());
+        }
+
+        @Override
+        public Optional<String> contentType() {
+            return Optional.empty();
+        }
+
+        @Override
+        public CancellationToken cancellationToken() {
+            return NONE;
+        }
+    }
+
+    private static final class DefaultRouteSendContext implements ZLinkRouteSendContext {
+        private static final CancellationToken NONE = () -> false;
+        private final String packetName;
+        private final RoutingId routingId;
+
+        DefaultRouteSendContext(String packetName, RoutingId routingId) {
             this.packetName = packetName;
             this.routingId = routingId;
         }
@@ -829,5 +1439,25 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             return List.of(payload);
         }
         return List.of(Message.from(packetName.get().getBytes(StandardCharsets.UTF_8)), payload);
+    }
+
+    public interface SpotRelayIngress {
+        RoutingId resolveAcceptedSpotRouteNodeRid(String channelName);
+
+        void handleSend(
+            String channelName,
+            ZLinkBackendRouterSocket router,
+            List<Message> relayParts);
+
+        CompletionStage<List<Message>> handleRequest(
+            String channelName,
+            ZLinkBackendRouterSocket router,
+            List<Message> relayParts,
+            Duration timeout);
+    }
+
+    @FunctionalInterface
+    public interface RouteInternalRequestHandler {
+        CompletionStage<Message> handle(RoutingId sourceRoutingId, Message payload);
     }
 }

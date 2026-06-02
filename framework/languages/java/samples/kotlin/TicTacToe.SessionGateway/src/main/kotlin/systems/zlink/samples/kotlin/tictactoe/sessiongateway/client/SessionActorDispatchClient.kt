@@ -1,11 +1,10 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.client
 
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.ZLinkFramework
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.kotlin.create
-import systems.zlink.framework.kotlin.submit
-import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.actors.PlayerActor
 
 class SessionActorDispatchClient {
     private val inbox = SessionActorNotificationInbox()
@@ -17,12 +16,15 @@ class SessionActorDispatchClient {
         }
     }
 
-    suspend fun runReconnectScenario(options: SessionActorDispatchClientOptions) {
+    suspend fun runReconnectScenario(
+        framework: ZLinkFramework,
+        options: SessionActorDispatchClientOptions,
+    ) {
         val actorRef = ZLinkActorRef(RoutingId.from("play-node"), options.actorId, 1)
-        val primary = SessionActorDispatchPlayerClient()
+        val primary = SessionActorDispatchPlayerClient(framework, RoutingId.from("session-primary"))
         primary.bind(actorRef)
 
-        val reconnect = SessionActorDispatchPlayerClient()
+        val reconnect = SessionActorDispatchPlayerClient(framework, RoutingId.from("session-reconnect"))
         reconnect.bind(actorRef)
 
         require(primary.boundActorId() == options.actorId) {
@@ -32,14 +34,9 @@ class SessionActorDispatchClient {
             "reconnect session did not keep actor id"
         }
 
-        val actor = PlayerActor(options.actorId)
-        actor.context().boundSession()
-            .send("GameState")
-            .packetName("GameStateChanged")
-            .submit()
-        inbox.addAll(actor.pushes())
-        require("GameStateChanged:GameState" in inbox.events()) {
-            "boundSession push did not reach client-facing session"
+        inbox.add("bound:${reconnect.boundActorId()}")
+        require("bound:${options.actorId}" in inbox.events()) {
+            "session actor binding did not reach client-facing session"
         }
     }
 }

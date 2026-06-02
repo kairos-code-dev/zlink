@@ -2,6 +2,8 @@ package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session
 
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.PlayerSession
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.handlers.AuthenticateSessionPacketHandler
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.handlers.CreateMatchSessionPacketHandler
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleTopology
 
@@ -11,6 +13,8 @@ object SessionServer {
             stream.bind(SampleTopology.SessionEndpoint)
             stream.attachActorGateway(SampleNames.SessionRelayNode)
             stream.registerSession(PlayerSession::class.java)
+            stream.addSessionPacketHandler(AuthenticateSessionPacketHandler::class.java)
+            stream.addSessionPacketHandler(CreateMatchSessionPacketHandler::class.java)
         }
     }
 }

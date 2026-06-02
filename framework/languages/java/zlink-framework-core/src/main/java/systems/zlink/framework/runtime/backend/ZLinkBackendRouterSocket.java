@@ -23,4 +23,18 @@ public interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
         Duration timeout);
 
     void reply(RoutingId routingId, long requestSeq, List<Message> parts);
+
+    boolean sendToSpot(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        List<Message> parts,
+        SendFlags flags);
+
+    boolean requestToSpot(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        List<Message> parts,
+        ZLinkBackendRequestCallback callback,
+        SendFlags flags,
+        Duration timeout);
 }

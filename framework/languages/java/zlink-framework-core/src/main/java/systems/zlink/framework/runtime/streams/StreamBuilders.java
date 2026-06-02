@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.streams;
 
 import systems.zlink.framework.configuration.ZLinkStreamNodeBuilder;
 import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 
 public final class StreamBuilders {
     private StreamBuilders() {
@@ -26,6 +27,12 @@ public final class StreamBuilders {
         @Override
         public void registerSession(Class<? extends ZLinkSession> sessionType) {
             registration.registerSession(sessionType);
+        }
+
+        @Override
+        public void addSessionPacketHandler(
+            Class<? extends ZLinkSessionPacketHandler<?>> handlerType) {
+            registration.addSessionPacketHandler(handlerType);
         }
     }
 }

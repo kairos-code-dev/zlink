@@ -776,6 +776,22 @@ sample gate는 아래를 자동 확인해야 한다.
   (Sample release gate)의 모든 sample 행 미러
 - Phase 10 POSD 리팩토링 체크 통과
 
+### Phase 10 audit evidence
+
+아래 표는 `.NET` sample의 역할 구조와 Java/Kotlin sample release gate를 다시 대조한
+결과다. Java/Kotlin sample은 같은 sample set을 가지며, sample runner와 contract test가
+역할 package, public API 경로, forbidden pattern을 함께 검사한다.
+
+| 항목 | `.NET` 기준 | Java/Kotlin 구현 | 검증 | 판정 |
+|------|-------------|------------------|------|------|
+| sample set | `samples/TicTacToe`, `samples/TicTacToe.SessionGateway`, `samples/Bingo` | `samples/java/*`와 `samples/kotlin/*`에 `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient`, `Async` 배치 | `SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints` | 완료 |
+| direct TicTacToe 역할 구조 | `Client`, `Server/Api`, `Server/Play`, `Shared/Contracts` | Java/Kotlin `client`, `server/api`, `server/play`, `shared/contracts` package로 분리 | `ticTacToeDirectSampleUsesFrameworkRuntimePublicFacade`, `ticTacToeKotlinSampleMirrorsJavaRoleLayout` | 완료 |
+| SessionGateway 역할 구조 | `Client`, `Server/Api`, `Server/Play`, `Server/Registry`, `Server/Session`, `Shared/Actors`, `Shared/Contracts` | Java/Kotlin SessionGateway sample이 같은 역할 package와 actor/session handler 파일을 가짐 | `ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator`, `ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout` | 완료 |
+| Bingo 역할 구조 | `Client`, `Server/Api`, `Server/Play`, `Server/Registry`, `Server/Session`, `Shared/*` | Java/Kotlin Bingo sample이 matching, room, actor, session, notification 역할 파일을 가짐 | `bingoMirrorsFourClientMatchingTimerAndBoundPushGate`, `bingoKotlinSampleMirrorsJavaRoleLayout` | 완료 |
+| connector sample | `.NET` connector client는 manual dispatch, request/reply, lifecycle, reconnect를 검증 | Java/Kotlin `StreamingClient`가 loopback TCP endpoint와 public connector API로 같은 smoke를 실행 | `streamingClientMirrorsConnectorSmokeGate`, `streamingClientKotlinMirrorsConnectorSmokeGate`, `./samples/run_samples.sh` | 완료 |
+| async sample | `.NET` `Task` continuation 의미 | Java `CompletionStage`, Kotlin `suspend` wrapper로 같은 continuation smoke 실행 | `./samples/run_samples.sh` | 완료 |
+| release gate forbidden pattern | sample이 public framework/connector API만 사용 | aggregate runner와 contract test가 internal import, route/metadata store, recording/fake, direct `Catalog`, direct `new Spot`, readiness sleep을 금지 | `sampleSourcesUseOnlyPublicFrameworkAndConnectorApi`, `./samples/run_samples.sh` forbidden search | 완료 |
+
 ## 15. Phase 11 -- Documentation promotion
 
 ### 산출물
@@ -898,106 +914,95 @@ Goal objective:
 /home/hep7/project/kairos/zlink/framework/languages/java/doc/draft/implementation-execution-plan.ko.md 를 단일 실행 기준으로 삼아, 사용자 승인 대기 없이 framework/languages/dotnet 과 동등한 아키텍처, 기능, 사용성, 폴더구조, 파일분류, 샘플 수준의 Java/Kotlin ZLink framework 포팅을 끝까지 완료한다. 각 phase는 audit, 구현, 검증, POSD 리뷰, 자체 승인, phase 단위 커밋과 push까지 증거 기반으로 닫는다.
 
 Goal start prompt:
-/home/hep7/project/kairos/zlink 에서 작업해. 이 요청은 장기 실행 goal이다. 아래 지시를 goal 시작 직후 실행해.
+/home/hep7/project/kairos/zlink 에서 작업해. 이 요청은 장기 실행 goal이다. 같은 objective의 goal이 없으면 위 Goal objective로 goal을 생성하고, 이미 같은 objective의 goal이 있으면 새 goal을 만들지 말고 기존 goal을 이어서 진행해. goal 도구가 없는 환경에서는 Goal objective를 현재 작업의 고정 최종 목표로 삼아. goal 생성, goal 확인, context 압축, 중단 뒤 재개가 끝난 직후에는 사용자에게 다시 묻지 말고 마지막 evidence table, 테스트 결과, git 상태를 확인한 뒤 첫 미완료 phase부터 계속 진행해.
 
-Goal 처리:
-1. goal 도구가 있고 같은 objective의 goal이 없으면 위 Goal objective로 goal을 생성해.
-2. 이미 같은 objective의 goal이 있으면 새 goal을 만들지 말고 기존 goal을 이어서 진행해.
-3. goal 도구가 없으면 Goal objective를 현재 작업의 고정 최종 목표로 삼아.
-4. goal을 만들거나 기존 goal을 확인한 직후, 사용자에게 다시 묻지 말고 Phase 0 audit부터 시작해.
-5. goal complete는 Phase 0부터 Phase 11까지 모두 자체 승인되고, 필요한 phase 단위 커밋과 push가 끝난 뒤에만 표시해.
-6. context 압축, 중단, 재개가 발생해도 처음부터 다시 시작하지 말고, 마지막 evidence table, 테스트 결과, git 상태를 확인한 뒤 미완료 phase에서 이어서 진행해.
-7. 시간이 오래 걸리거나 토큰을 많이 썼다는 이유로 중단하지 마. 실제 blocker가 아니면 현재 phase의 다음 미완료 항목을 계속 처리해.
-
-단일 기준:
-1. 실행 기준은 framework/languages/java/doc/draft/implementation-execution-plan.ko.md 하나다.
-2. 다른 계획 문서, README, draft, 이전 대화, 이전 응답, 이전 커밋 메시지가 이 문서와 어긋나면 이 문서의 phase 순서, gate, 완료 조건을 우선해.
-3. 이 문서가 실제 .NET framework와 어긋나면 framework/languages/dotnet/src, framework/languages/dotnet/tests, framework/languages/dotnet/samples 를 최종 기준으로 삼고 Java/Kotlin 코드와 이 문서를 함께 고쳐.
-4. 완료 근거는 현재 코드, 실제 실행한 검증 명령, evidence table만 인정해. 이전에 "완료"라고 말했거나 문서에 완료처럼 적혀 있어도 다시 검증하기 전에는 완료로 보지 마.
-5. AGENTS.md의 문서 디렉토리 책임, 금지 표현, ASCII diagram 규칙, binding public API 사용 규칙, POSD 절차를 이 문서와 함께 적용해.
+실행 기준:
+1. 단일 실행 기준은 framework/languages/java/doc/draft/implementation-execution-plan.ko.md 이다.
+2. 이 문서가 다른 계획 문서, README, draft, 이전 대화, 이전 응답, 이전 커밋 메시지와 어긋나면 이 문서의 phase 순서, gate, 완료 조건을 우선한다.
+3. 이 문서가 실제 .NET framework와 어긋나면 framework/languages/dotnet/src, framework/languages/dotnet/tests, framework/languages/dotnet/samples 를 최종 기준으로 삼고 Java/Kotlin 코드와 이 문서를 함께 고친다.
+4. AGENTS.md의 문서 디렉토리 책임, 금지 표현, ASCII diagram 규칙, binding public API 사용 규칙, POSD 절차를 함께 적용한다.
+5. 완료 근거는 현재 코드, 실제 실행한 검증 명령, phase evidence table만 인정한다. 과거에 완료라고 말했거나 문서에 완료처럼 적힌 내용도 다시 검증하기 전에는 완료로 보지 않는다.
 
 사용자 개입 없는 진행:
-1. Phase 0부터 Phase 11까지 사용자 승인 대기 없이 계속 진행해.
-2. phase 전환, 구현 착수, 테스트 실행, 리뷰, 자체 승인, 커밋, push를 위해 사용자에게 묻지 마.
-3. 구현 선택, 리팩토링 선택, 테스트 순서, phase 전환, 자체 승인, phase 단위 커밋과 push는 작업자가 직접 판단해.
-4. 질문은 문서 §1.2의 예외처럼 작업자가 해결할 수 없는 실제 충돌, public API 의미 변경의 큰 선택지 충돌, 외부 권한/credential/원격 저장소 문제, unrelated dirty change와 필요한 변경이 같은 파일에서 위험하게 충돌하는 경우로 제한해.
-5. 질문해야 하는 예외가 생기면 phase, 파일, 충돌 내용, 선택지, 지금까지 확보한 증거를 짧게 보고해.
-6. 이전 응답이나 이전 커밋에서 완료라고 표현된 내용이 실제 코드와 맞지 않으면 그 표현을 방어하지 말고, 현재 phase의 gap으로 등록한 뒤 수정해.
-7. 진행 중 사용자가 새 지시를 주면 최신 지시가 우선이다. 최신 지시가 이 goal을 중단하라는 뜻이 아니면 goal의 현재 phase를 계속 진행해.
+1. Phase 0부터 Phase 11까지 사용자 승인 대기 없이 순서대로 진행한다.
+2. phase 전환, 구현 착수, 테스트 실행, 리뷰, 자체 승인, 커밋, push를 위해 사용자에게 묻지 않는다.
+3. 구현 선택, 리팩토링 선택, 테스트 순서, phase 전환, 자체 승인, phase 단위 커밋과 push는 작업자가 직접 판단한다.
+4. 질문은 문서 §1.2의 예외처럼 작업자가 해결할 수 없는 실제 충돌, public API 의미 변경의 큰 선택지 충돌, 외부 권한/credential/원격 저장소 문제, unrelated dirty change와 필요한 변경이 같은 파일에서 위험하게 충돌하는 경우에만 한다.
+5. 질문해야 하는 예외가 생기면 phase, 파일, 충돌 내용, 선택지, 지금까지 확보한 증거를 짧게 보고한다.
+6. 진행 중 사용자가 새 지시를 주면 최신 지시가 우선이다. 최신 지시가 goal 중단이 아니라면 현재 phase를 계속 진행한다.
 
 최종 완료 조건:
 1. Java/Kotlin 포팅은 framework/languages/dotnet 과 동등한 아키텍처, 기능, 사용성, 폴더구조, 파일분류, 샘플 수준을 만족해야 한다.
 2. 이름만 비슷하거나 compile만 되는 scaffold는 완료가 아니다.
 3. public API 흐름, runtime 배선, lifecycle, 오류 의미, 테스트, sample 동작이 .NET과 다르면 완료가 아니다.
-4. Java는 .NET의 Contracts, Runtime, samples, tests 역할을 추적 가능하게 나누고, 같은 카테고리의 여러 파일은 같은 package/folder로 묶어.
+4. Java는 .NET의 Contracts, Runtime, samples, tests 역할을 추적 가능하게 나누고, 같은 카테고리의 여러 파일은 같은 package/folder로 묶는다.
 5. Java sample과 Kotlin sample은 각각 samples/java와 samples/kotlin 아래에 Bingo, TicTacToe, TicTacToe.SessionGateway, StreamingClient, Async를 같은 구조와 같은 기능 수준으로 제공해야 한다.
-6. Java sample과 Kotlin sample 중 하나만 되거나, sample이 framework/connector public API를 우회하면 완료가 아니다.
-7. framework core, Spring Boot starter, connector, connector codec 모듈, Kotlin wrapper, testkit, Java/Kotlin sample, 문서, release gate가 모두 같은 phase evidence 안에서 추적되어야 한다.
+6. sample이 framework/connector public API를 우회하거나 Java/Kotlin 중 한쪽만 동작하면 완료가 아니다.
+7. framework core, Spring Boot starter, connector, connector codec 모듈, Kotlin wrapper, testkit, Java/Kotlin sample, 문서, release gate가 모두 evidence table로 추적되어야 한다.
 
-phase 실행 순서:
-1. 각 phase는 audit -> implementation -> verification -> review -> self-approval 순서로 닫아.
-2. phase 시작 전에는 코드 수정부터 하지 말고 .NET 기준 파일, Java/Kotlin 대응 파일, 테스트 파일, sample 파일, 5축 동등성 판정(아키텍처, 기능, 사용성, 폴더구조, 파일분류), 완료/부분/미완료/미검증 판정을 phase evidence table로 먼저 남겨.
-3. 기존 구현이 있어도 완료로 가정하지 말고 실제 .NET 기준과 다시 대조해.
-4. 부분, 미완료, 미검증 항목만 구현하고 unrelated 변경은 하지 마.
-5. phase 중간에 새 gap이 발견되면 같은 phase의 evidence table에 추가하고, 그 항목까지 닫은 뒤에만 자체 승인해.
-6. phase evidence table은 임시 메모로 끝내지 말고 관련 draft 또는 regression matrix에 반영해 다음 재개 시 기준으로 사용할 수 있게 해.
-7. 구현보다 audit이 느리더라도 audit을 생략하지 마. audit 없는 구현은 phase 완료 증거로 인정하지 마.
-8. 의존성이 허용해 병행 가능한 작업도 phase evidence를 섞지 말고, 어떤 phase의 어떤 gate를 닫는지 분리해 기록해.
+phase 실행 절차:
+1. 각 phase는 audit -> implementation -> verification -> review -> self-approval -> commit/push 순서로 닫는다.
+2. phase 시작 전에는 코드 수정부터 하지 말고 .NET 기준 파일, Java/Kotlin 대응 파일, 테스트 파일, sample 파일, 5축 동등성 판정(아키텍처, 기능, 사용성, 폴더구조, 파일분류), 완료/부분/미완료/미검증 판정을 phase evidence table로 먼저 남긴다.
+3. 기존 구현이 있어도 완료로 가정하지 말고 실제 .NET 기준과 다시 대조한다.
+4. 부분, 미완료, 미검증 항목만 구현하고 unrelated 변경은 하지 않는다.
+5. phase 중간에 새 gap이 발견되면 같은 phase의 evidence table에 추가하고, 그 항목까지 닫은 뒤에만 자체 승인한다.
+6. phase evidence table은 임시 메모로 끝내지 말고 관련 draft 또는 regression matrix에 반영해 다음 재개 시 기준으로 사용할 수 있게 한다.
+7. 의존성이 허용해 병행 가능한 작업도 phase evidence를 섞지 말고, 어떤 phase의 어떤 gate를 닫는지 분리해 기록한다.
 
-self-approval 규칙:
-1. self-approval은 작업자가 직접 수행한다.
-2. phase evidence table의 모든 항목이 완료이고, phase gate test, 연결 회귀, sample self-check, 완료 금지 패턴 검색, POSD 리뷰가 모두 green일 때만 phase를 승인해.
-3. self-approval은 단순 선언이 아니라 evidence table, 실행한 명령, 실패 후 수정 내역, 남은 위험 신호 0개를 근거로 판정해.
-4. 부분, 미완료, 미검증, 실행하지 않은 test, 실패 후 재검증하지 않은 test가 하나라도 있으면 승인하지 말고 같은 phase 안에서 수정과 검증을 반복해.
-5. 자체 승인 직전에는 `.NET` 기준과 Java/Kotlin 구현을 다시 코드 리뷰하고, 완료 금지 패턴 검색과 POSD red flag 점검을 다시 실행해.
-6. 자체 승인 결과는 관련 draft나 regression matrix에 남겨 다음 작업자가 같은 판단을 재현할 수 있게 해.
+self-review와 self-approval:
+1. phase 구현 뒤에는 .NET 기준과 Java/Kotlin 구현을 다시 코드 리뷰한다.
+2. POSD red flag, no-op/fake/sample 우회, public API 누수, 문서와 코드 이름 불일치, 완료 금지 패턴이 남아 있는지 검색한다.
+3. phase evidence table의 모든 항목이 완료이고, phase gate test, 연결 회귀, sample self-check, 완료 금지 패턴 검색, POSD 리뷰가 모두 green일 때만 작업자가 스스로 phase를 승인한다.
+4. 자체 승인은 단순 선언이 아니라 evidence table, 실행한 명령, 실패 후 수정 내역, 남은 위험 신호 0개를 근거로 판정한다.
+5. 부분, 미완료, 미검증, 실행하지 않은 test, 실패 후 재검증하지 않은 test가 하나라도 있으면 승인하지 말고 같은 phase 안에서 수정과 검증을 반복한다.
+6. 자체 승인 결과는 관련 draft나 regression matrix에 남겨 다음 작업자가 같은 판단을 재현할 수 있게 한다.
 
 완료 금지 패턴:
-1. scaffold, no-op builder, fake runtime 우회, recording sample, in-memory route/store 우회, 직접 객체 호출, Catalog 우회, sample 전용 UnsupportedOperationException, blocking helper, readiness sleep은 완료로 인정하지 마.
+1. scaffold, no-op builder, fake runtime 우회, recording sample, in-memory route/store 우회, 직접 객체 호출, Catalog 우회, sample 전용 UnsupportedOperationException, blocking helper, readiness sleep은 완료로 인정하지 않는다.
 2. sample은 framework/connector public API만 사용해서 실제 실행되어야 한다.
-3. sample이 domain object, Spot, Catalog, route store, metadata store를 직접 호출하면 실패로 처리해.
-4. testkit fixture는 testkit 안에서만 허용하고 sample이나 production runtime에서 import되지 않게 forbidden dependency test로 막아.
+3. sample이 domain object, Spot, Catalog, route store, metadata store를 직접 호출하면 실패로 처리한다.
+4. testkit fixture는 testkit 안에서만 허용하고 sample이나 production runtime에서 import되지 않게 forbidden dependency test로 막는다.
 5. Java/Kotlin 코드가 compile은 되지만 실제 네트워크, runtime, dispatch, lifecycle 경로를 타지 않으면 완료가 아니다.
 
-binding과 비동기 API 규칙:
-1. Java framework는 bindings/java public API만 사용해. framework 안에서 binding internal/private member를 reflection으로 호출하지 마.
-2. 필요한 binding 기능이 없으면 bindings/java에 public API를 추가하고 테스트한 뒤 framework adapter에서 그 public API를 호출해.
-3. Java public API는 CompletionStage 기반 비동기 표면을 기본으로 하고, Java public API에 thread blocking helper를 추가하지 마.
-4. Kotlin은 Java runtime 의미를 바꾸지 않는 suspend/Flow wrapper만 제공해.
-5. bindings/java 수정이 필요한 경우에는 bindings/java public API, 테스트, 문서까지 함께 닫아. Java framework 안에서 임시 adapter, reflection, blocking wrapper로 binding gap을 숨기지 마.
-6. Kotlin coroutine 지원은 Java CompletionStage를 suspend/Flow로 감싸는 thin wrapper로 구현하고, runtime 의미나 callback 실행 순서를 Kotlin wrapper가 새로 정의하지 않게 해.
+binding과 비동기 API:
+1. Java framework는 bindings/java public API만 사용한다. framework 안에서 binding internal/private member를 reflection으로 호출하지 않는다.
+2. 필요한 binding 기능이 없으면 bindings/java에 public API를 추가하고 테스트한 뒤 framework adapter에서 그 public API를 호출한다.
+3. Java public API는 CompletionStage 기반 비동기 표면을 기본으로 하고, Java public API에 thread blocking helper를 추가하지 않는다.
+4. Kotlin은 Java runtime 의미를 바꾸지 않는 suspend/Flow wrapper만 제공한다.
+5. bindings/java 수정이 필요한 경우에는 bindings/java public API, 테스트, 문서까지 함께 닫는다. Java framework 안에서 임시 adapter, reflection, blocking wrapper로 binding gap을 숨기지 않는다.
+6. Kotlin coroutine 지원은 Java CompletionStage를 suspend/Flow로 감싸는 thin wrapper로 구현하고, runtime 의미나 callback 실행 순서를 Kotlin wrapper가 새로 정의하지 않게 한다.
 
-검증 규칙:
-1. 전체 검증은 반드시 실제로 실행한 명령과 결과로만 판단해.
-2. gradle check, sample self-check, forbidden pattern search, git diff --check를 실행하지 않았거나 실패한 상태면 green으로 기록하지 마.
-3. test hang, killed worker, skipped test, flaky retry 미완료는 미검증 또는 실패로 남겨.
-4. 실패를 고친 뒤에는 같은 명령을 다시 실행해 성공 결과를 남겨.
-5. 넓은 검증 명령은 동시에 여러 개 실행하지 말고, 실패 원인이 섞이지 않게 순서대로 실행해.
-6. 검증 결과를 요약할 때는 실행한 명령, 성공/실패, 실패 후 재실행 여부를 함께 적어.
-7. `git diff --check -- framework/languages/java`를 phase 커밋 전에 실행해 whitespace 오류를 먼저 제거해.
+검증:
+1. 전체 검증은 반드시 실제로 실행한 명령과 결과로만 판단한다.
+2. gradle check, sample self-check, forbidden pattern search, git diff --check를 실행하지 않았거나 실패한 상태면 green으로 기록하지 않는다.
+3. test hang, killed worker, skipped test, flaky retry 미완료는 미검증 또는 실패로 남긴다.
+4. 실패를 고친 뒤에는 같은 명령을 다시 실행해 성공 결과를 남긴다.
+5. 넓은 검증 명령은 동시에 여러 개 실행하지 말고, 실패 원인이 섞이지 않게 순서대로 실행한다.
+6. 검증 결과를 요약할 때는 실행한 명령, 성공/실패, 실패 후 재실행 여부를 함께 적는다.
+7. phase 커밋 전에는 `git diff --check -- framework/languages/java`를 실행해 whitespace 오류를 먼저 제거한다.
 
 문서 동기화:
-1. sample, public API, runtime 의미를 바꾸면 관련 guide, draft, regression-test-matrix를 함께 갱신해.
-2. 문서에는 구현된 사실만 적고, 구현되지 않은 계약은 정식 spec에 섞지 마.
-3. 문서 본문에는 AGENTS.md에서 금지한 표현을 쓰지 마.
+1. sample, public API, runtime 의미를 바꾸면 관련 guide, draft, regression-test-matrix를 함께 갱신한다.
+2. 문서에는 구현된 사실만 적고, 구현되지 않은 계약은 정식 spec에 섞지 않는다.
+3. 문서 본문에는 AGENTS.md에서 금지한 표현을 쓰지 않는다.
 4. draft 문서에 완료라고 쓰려면 대응 코드와 테스트 명령이 같은 표에 있어야 한다.
 
 커밋과 push:
-1. 커밋과 push는 문서 §1.4 조건을 만족하는 phase 단위에서만 수행해.
-2. 커밋 전에는 git status와 staged diff를 확인해서 해당 phase 변경만 포함되었는지 검증해.
-3. unrelated dirty change는 stage하지 마.
-4. §1.4 조건을 하나라도 만족하지 못하면 커밋하거나 push하지 말고, 남은 항목을 같은 phase 안에서 계속 해결해.
-5. phase 전체가 승인되지 않았는데 일부 구현만 먼저 커밋하지 마.
-6. push가 원격 권한, 네트워크, 인증 문제로 실패하면 재시도 가능한 범위는 직접 재시도하고, 권한이나 credential 입력이 필요한 상태임을 증거와 함께 보고해.
-7. 커밋 메시지는 phase 번호와 닫은 gap을 드러내고, 검증하지 않은 내용을 포함하지 마.
-8. 커밋 후 push가 성공하면 해당 phase evidence에 commit hash와 push 결과를 남겨.
+1. 커밋과 push는 문서 §1.4 조건을 만족하는 phase 단위에서만 수행한다.
+2. 커밋 전에는 git status와 staged diff를 확인해서 해당 phase 변경만 포함되었는지 검증한다.
+3. unrelated dirty change는 stage하지 않는다.
+4. §1.4 조건을 하나라도 만족하지 못하면 커밋하거나 push하지 말고, 남은 항목을 같은 phase 안에서 계속 해결한다.
+5. phase 전체가 승인되지 않았는데 일부 구현만 먼저 커밋하지 않는다.
+6. push가 원격 권한, 네트워크, 인증 문제로 실패하면 재시도 가능한 범위는 직접 재시도하고, 권한이나 credential 입력이 필요한 상태임을 증거와 함께 보고한다.
+7. 커밋 메시지는 phase 번호와 닫은 gap을 드러내고, 검증하지 않은 내용을 포함하지 않는다.
+8. 커밋 후 push가 성공하면 해당 phase evidence에 commit hash와 push 결과를 남긴다.
 
 진행 보고:
-1. Phase 11까지 모두 닫히고 full regression, sample self-check, .NET 동등성 evidence가 green이 되기 전에는 최종 완료라고 말하지 마.
-2. 토큰이나 시간이 많이 들었다는 이유로 완료를 선언하지 마.
-3. 검증하지 못한 것은 미검증으로 남기고 같은 phase 안에서 계속 해결해.
-4. 중간 응답에서는 현재 phase, 닫힌 evidence, 실패 또는 남은 gap만 보고해.
-5. 최종 응답에는 닫힌 phase 목록, 검증 명령, sample 결과, 커밋/push 결과, 남은 위험 0개 판정을 간단히 적어.
+1. Phase 11까지 모두 닫히고 full regression, sample self-check, .NET 동등성 evidence가 green이 되기 전에는 최종 완료라고 말하지 않는다.
+2. 토큰이나 시간이 많이 들었다는 이유로 완료를 선언하지 않는다.
+3. 검증하지 못한 것은 미검증으로 남기고 같은 phase 안에서 계속 해결한다.
+4. 중간 응답에서는 현재 phase, 닫힌 evidence, 실패 또는 남은 gap만 보고한다.
+5. 최종 응답에는 닫힌 phase 목록, 검증 명령, sample 결과, 커밋/push 결과, 남은 위험 0개 판정을 간단히 적는다.
 ```
 
 ### 18.2 일반 실행 요청 프롬프트

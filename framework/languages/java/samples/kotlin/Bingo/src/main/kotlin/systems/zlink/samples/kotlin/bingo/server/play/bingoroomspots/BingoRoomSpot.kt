@@ -1,42 +1,18 @@
 package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots
 
-import systems.zlink.samples.kotlin.bingo.client.BingoPlayerClient
+import systems.zlink.framework.spots.ZLinkSpot
+import systems.zlink.framework.spots.ZLinkSpotContext
 
 class BingoRoomSpot(
-    private val roomId: String,
-    private val drawSequence: List<Int>,
-) {
-    private val publisher = BingoNotificationPublisher()
-    private val clients = mutableListOf<BingoPlayerClient>()
-    private val cards = mutableMapOf<String, BingoCard>()
-    var host = ""
-        private set
+    private val context: ZLinkSpotContext,
+) : ZLinkSpot {
+    override fun context(): ZLinkSpotContext = context
 
-    fun join(client: BingoPlayerClient) {
-        if (clients.isEmpty()) {
-            host = client.playerId
-        }
-        clients += client
-        cards[client.playerId] = cardFor(client.playerId)
+    companion object {
+        fun cardFor(playerId: String): BingoCard =
+            when (playerId) {
+                "player-2", "player-3" -> BingoCard(listOf(7, 11, 42))
+                else -> BingoCard(listOf(1, 2, 3))
+            }
     }
-
-    suspend fun start(playerId: String): Boolean {
-        if (host != playerId) {
-            return false
-        }
-        val winners = winners()
-        clients.forEach { client -> publisher.publishWinner(client, winners, roomId) }
-        return true
-    }
-
-    fun winners(): List<String> =
-        cards.filterValues { card -> drawSequence.containsAll(card.numbers) }
-            .keys
-            .sorted()
-
-    private fun cardFor(playerId: String): BingoCard =
-        when (playerId) {
-            "player-2", "player-3" -> BingoCard(listOf(7, 11, 42))
-            else -> BingoCard(listOf(1, 2, 3))
-        }
 }

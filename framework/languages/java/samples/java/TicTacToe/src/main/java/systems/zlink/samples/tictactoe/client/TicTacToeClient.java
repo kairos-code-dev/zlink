@@ -2,7 +2,7 @@ package systems.zlink.samples.tictactoe.client;
 
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.samples.tictactoe.server.play.gamespots.TicTacToeGameCatalog;
+import systems.zlink.samples.tictactoe.server.play.gamespots.TicTacToeGameDirectory;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
 import systems.zlink.samples.tictactoe.shared.contracts.GameState;
@@ -41,7 +41,7 @@ public final class TicTacToeClient {
     }
 
     private TicTacToeClientResult playScenario(CreateGameRes game, Players players) {
-        var room = TicTacToeGameCatalog.get(game.gameId());
+        var room = TicTacToeGameDirectory.get(game.gameId());
         GameState joined = room.join(players.host().actorId()).state();
         joined = room.join(players.guest().actorId()).state();
         joined = room.placeMark(players.host().actorId(), 0).state();

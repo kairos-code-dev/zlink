@@ -17,6 +17,13 @@ import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 
 public final class StreamingClientSample {
     public static void main(String[] args) throws Exception {
+        try (StreamingClientLoopbackServer server = new StreamingClientLoopbackServer(29200)) {
+            run();
+        }
+        System.out.println("StreamingClient sample self-check passed");
+    }
+
+    private static void run() throws Exception {
         List<String> events = new ArrayList<>();
         List<ZLinkStreamConnectionState> states = new ArrayList<>();
         ZLinkStreamConnector connector = createConnector();
@@ -40,7 +47,7 @@ public final class StreamingClientSample {
         awaitSample(connector.send(payload("GameInput", "move", Map.of("source", "send")))
             .packetName("GameInput")
             .submitAsync());
-        require(connector.pendingDispatchCount() == 1, "manual dispatch did not queue send");
+        awaitPendingDispatch(connector);
         awaitSample(connector.dispatchAsync());
         require(events.contains("GameInput:send"), "manual send handler not invoked");
 
@@ -54,6 +61,7 @@ public final class StreamingClientSample {
             .submitAsync();
         ZLinkStreamEncodedPayload reply = awaitSample(replyStage);
         require(reply.packetName().equals("GameInput"), "request packet name mismatch");
+        awaitPendingDispatch(connector);
         awaitSample(connector.dispatchAsync());
         require(events.contains("GameInput:request"), "manual request handler not invoked");
 
@@ -81,7 +89,6 @@ public final class StreamingClientSample {
                 ZLinkStreamConnectionState.CONNECTED)),
             "reconnect state event mismatch");
         reconnected.close();
-        System.out.println("StreamingClient sample self-check passed");
     }
 
     private static ZLinkStreamConnector createConnector() {
@@ -115,5 +122,16 @@ public final class StreamingClientSample {
             }
         });
         return done.get();
+    }
+
+    private static void awaitPendingDispatch(ZLinkStreamConnector connector) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (connector.pendingDispatchCount() > 0) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new IllegalStateException("manual dispatch did not queue inbound frame");
     }
 }

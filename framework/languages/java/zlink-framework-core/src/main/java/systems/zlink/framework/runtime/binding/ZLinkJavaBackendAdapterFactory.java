@@ -20,9 +20,14 @@ import systems.zlink.contracts.service.registry.RegistryQueryClient;
 import systems.zlink.contracts.service.registry.RegistryServiceSummaryFilter;
 import systems.zlink.contracts.service.registry.RegistryTopologyFilter;
 import systems.zlink.contracts.service.spot.ActorBindOperation;
+import systems.zlink.contracts.service.spot.ActorJoinCompletion;
+import systems.zlink.contracts.service.spot.ActorJoinRequest;
+import systems.zlink.contracts.service.spot.ActorJoinSubmitOperation;
+import systems.zlink.contracts.service.spot.ActorReceived;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ActorUnbindOperation;
 import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.service.spot.SpotActorLifecycleEvent;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeMode;
 import systems.zlink.contracts.sockets.DealerSocket;
@@ -31,10 +36,18 @@ import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
+import systems.zlink.contracts.sockets.SpotDispatchEvent;
+import systems.zlink.contracts.sockets.SpotDispatchInfo;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.sockets.SubSocket;
+import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorBindOperation;
+import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
+import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
+import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEvent;
+import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEventKind;
+import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleInfo;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRoute;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorUnbindOperation;
@@ -55,12 +68,16 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryServiceSummar
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryStatus;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryTopologyEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorEvent;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchEvent;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchHandler;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodePeerEntry;
@@ -156,13 +173,34 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public ZLinkBackendDiscoveryRoute resolveRoute(long kind, byte[] key) { return new ZLinkBackendDiscoveryRoute(Optional.empty(), Optional.empty()); }
         @Override public ZLinkBackendSpotRoute resolveSpot(RoutingId spotRid) {
             var route = nativeDiscovery.resolveSpot(spotRid);
-            return new ZLinkBackendSpotRoute(route.ownerNodeRid(), route.spotRid());
+            return new ZLinkBackendSpotRoute(
+                route.ownerNodeRid(),
+                route.spotRid(),
+                toFrameworkSpotKind(route.spotKind()));
         }
         @Override public ZLinkBackendActorRoute resolveActor(String actorId) {
             var route = nativeDiscovery.resolveActor(actorId);
             return new ZLinkBackendActorRoute(route.actor().nodeRid(), route.actor().actorId());
         }
+        @Override public List<ZLinkBackendRegistryTopologyEntry> memberPeers() {
+            return nativeDiscovery.memberPeers().stream()
+                .map(peer -> new ZLinkBackendRegistryTopologyEntry(
+                    peer.channelName(),
+                    peer.routingId(),
+                    peer.serviceRole().name(),
+                    peer.endpoint()))
+                .toList();
+        }
         @Override public void close() { nativeDiscovery.close(); }
+    }
+
+    private static systems.zlink.framework.spots.ZLinkSpotKind toFrameworkSpotKind(
+        systems.zlink.contracts.service.spot.SpotKind kind) {
+        return switch (kind) {
+            case ENTRY -> systems.zlink.framework.spots.ZLinkSpotKind.ENTRY;
+            case USER -> systems.zlink.framework.spots.ZLinkSpotKind.USER;
+            case INVALID -> systems.zlink.framework.spots.ZLinkSpotKind.INVALID;
+        };
     }
 
     private record JavaDealerSocket(DealerSocket socket) implements ZLinkBackendDealerSocket, JavaSocketBacked {
@@ -202,6 +240,12 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             return submitRequest(socket.request(routingId), parts, callback, flags, timeout);
         }
         @Override public void reply(RoutingId routingId, long requestSeq, List<Message> parts) { submitReply(socket.reply(routingId, requestSeq), parts); }
+        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) {
+            return submit(socket.sendToSpot(targetNodeRid, spotRid), parts, flags);
+        }
+        @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            return submitRequest(socket.requestToSpot(targetNodeRid, spotRid), parts, callback, flags, timeout);
+        }
         @Override public void close() { socket.close(); }
     }
 
@@ -239,6 +283,17 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void onPacket(ZLinkBackendStreamPacketHandler handler) { socket.onPacket(handler::handle); }
         @Override public void onTransportError(ZLinkBackendStreamErrorHandler handler) { }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { return submit(socket.send(routingId), parts, flags); }
+        @Override public boolean reply(RoutingId routingId, long requestSeq, String packetName, List<Message> parts, SendFlags flags) {
+            Message header = Message.from(encodeStreamHeader(3, packetName, requestSeq));
+            try {
+                List<Message> framed = new java.util.ArrayList<>(parts.size() + 1);
+                framed.add(header);
+                framed.addAll(parts);
+                return submit(socket.send(routingId), framed, flags);
+            } finally {
+                header.close();
+            }
+        }
         @Override public void attachActorGateway(ZLinkBackendSpotNode node) { socket.attachActorGateway(((JavaSpotNode) node).spotNode()); }
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) {
             ActorBindOperation operation = socket.bindActor(sessionRid, new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()));
@@ -260,7 +315,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void connectPeer(String pubEndpoint, String routerEndpoint) { registry.addPeer(pubEndpoint); }
         @Override public ZLinkBackendRegistryStatus status() { var status = registry.status(); return new ZLinkBackendRegistryStatus(status.state().name(), status.topologyEntryCount()); }
         @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) { return registry.serviceSummary(serviceSummaryFilter(filter)).stream().map(entry -> new ZLinkBackendRegistryServiceSummaryEntry(entry.channelName(), entry.serviceRole().name(), entry.totalCount())).toList(); }
-        @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) { return registry.topology(topologyFilter(filter)).stream().map(entry -> new ZLinkBackendRegistryTopologyEntry(entry.channelName(), entry.serviceKind().name(), entry.endpoint())).toList(); }
+        @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) { return registry.topology(topologyFilter(filter)).stream().map(entry -> new ZLinkBackendRegistryTopologyEntry(entry.channelName(), entry.routingId(), entry.serviceKind().name(), entry.endpoint())).toList(); }
         @Override public void close() { registry.close(); }
     }
 
@@ -268,7 +323,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public String name() { return "registryQueryClient"; }
         @Override public void connect(String endpoint) { client.connect(endpoint); }
         @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) { return List.of(); }
-        @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) { return client.topology(topologyFilter(filter)).stream().map(entry -> new ZLinkBackendRegistryTopologyEntry(entry.channelName(), entry.serviceKind().name(), entry.endpoint())).toList(); }
+        @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) { return client.topology(topologyFilter(filter)).stream().map(entry -> new ZLinkBackendRegistryTopologyEntry(entry.channelName(), entry.routingId(), entry.serviceKind().name(), entry.endpoint())).toList(); }
         @Override public void close() { client.close(); }
     }
 
@@ -280,17 +335,65 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setPubBind(String endpoint) { spotNode.setPubBind(endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { spotNode.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }
         @Override public void connectPeer(String endpoint) { spotNode.connectPeer(endpoint); }
+        @Override public void connectRouterChannelPeer(String channelName, String endpoint) { spotNode.connectRouterChannelPeer(channelName, endpoint); }
+        @Override public void attachSpotRouteChannelDiscovery(String channelName, ZLinkBackendDiscovery discovery) { spotNode.attachSpotRouteChannelDiscovery(channelName, ((JavaDiscovery) discovery).nativeDiscovery()); }
         @Override public void attachChannelDealer(ZLinkBackendDiscovery discovery, ZLinkBackendDealerSocket dealer) { spotNode.attachChannelDealer(((JavaDiscovery) discovery).nativeDiscovery(), ((JavaDealerSocket) dealer).socket()); }
         @Override public void attachChannelDealerManual(String channelName, ZLinkBackendDealerSocket dealer) { spotNode.attachChannelDealerManual(channelName, ((JavaDealerSocket) dealer).socket()); }
         @Override public ZLinkBackendSpot createSpot() { return new JavaSpot(spotNode.createSpot()); }
         @Override public ZLinkBackendSpot entrySpot() { return new JavaSpot(spotNode.entrySpot()); }
         @Override public ZLinkBackendActorRef createActor(String actorId) { return fromActorRef(spotNode.createActor(actorId).ref()); }
         @Override public ZLinkBackendActorRef actorLookup(String actorId) { return fromActorRef(spotNode.actorLookup(actorId)); }
+        @Override public CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, Duration timeout) {
+            if (parts.isEmpty()) {
+                throw new IllegalArgumentException("actor join request must contain at least one part");
+            }
+            ActorJoinSubmitOperation operation = spotNode.joinActor(
+                new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()),
+                targetNodeRid,
+                targetSpotRid)
+                .message(parts.get(0));
+            for (int i = 1; i < parts.size(); i++) {
+                Message part = parts.get(i);
+                operation = operation.message(part);
+            }
+            return operation.timeout(timeout)
+                .submitAsync()
+                .thenApply(JavaSpotNode::fromActorJoinCompletion);
+        }
+        @Override public CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Duration timeout) {
+            return spotNode.joinActorEntrySpot(
+                    new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()),
+                    targetNodeRid)
+                .timeout(timeout)
+                .submitAsync()
+                .thenApply(completion -> {
+                    var result = completion.result();
+                    return new ZLinkBackendActorJoinEntrySpotResult(
+                        ZLinkBackendRequestResult.valueOf(result.result().name()),
+                        fromActorRef(result.actor()),
+                        result.targetNodeRid(),
+                        result.joinEpoch(),
+                        result.flags());
+                });
+        }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return submit(spotNode.sendActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch())), parts, flags); }
         @Override public ZLinkBackendSpotNodeStatus status() { var status = spotNode.status(); return new ZLinkBackendSpotNodeStatus(status.state().name(), status.activePeerCount(), status.subjectCount()); }
         @Override public List<ZLinkBackendSpotNodePeerEntry> peers() { return spotNode.peers().stream().map(peer -> new ZLinkBackendSpotNodePeerEntry(RoutingId.from(peer.peerEndpoint()), peer.peerEndpoint(), peer.state().name())).toList(); }
         @Override public List<ZLinkBackendSpotNodeSubjectEntry> subjects() { return spotNode.subjects().stream().map(subject -> new ZLinkBackendSpotNodeSubjectEntry(subject.subject(), subject.subjectKind().name(), subject.readyPeerCount() > 0)).toList(); }
         @Override public void close() { spotNode.close(); }
+
+        private static ZLinkBackendActorJoinResult fromActorJoinCompletion(
+            ActorJoinCompletion completion) {
+            var result = completion.result();
+            return new ZLinkBackendActorJoinResult(
+                ZLinkBackendRequestResult.valueOf(result.result().name()),
+                result.joinResultCode(),
+                fromActorRef(result.actor()),
+                result.joinedSpotRid(),
+                result.joinEpoch(),
+                result.flags(),
+                completion.replyParts());
+        }
     }
 
     private record JavaSpot(Spot spot) implements ZLinkBackendSpot {
@@ -313,7 +416,34 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean sendToChannel(String channelName, List<Message> parts, SendFlags flags) { return submit(spot.sendToChannel(channelName), parts, flags); }
         @Override public boolean requestToChannel(String channelName, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { return submitRequest(spot.requestToChannel(channelName), parts, callback, flags, timeout); }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { return submit(spot.publish(topic), parts, flags); }
-        @Override public ZLinkBackendActorJoinRequest recvActorJoin(ZLinkBackendRecvMode mode) { return null; }
+        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) { return submit(spot.sendToSpot(targetNodeRid, spotRid), parts, flags); }
+        @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { return submitRequest(spot.requestToSpot(targetNodeRid, spotRid), parts, callback, flags, timeout); }
+        @Override public void onDispatchEvent(ZLinkBackendSpotDispatchHandler handler) {
+            spot.setDispatchHandler(info -> handler.handle(fromSpotDispatchInfo(info)));
+        }
+        @Override public ZLinkBackendActorJoinRequest recvActorJoin(ZLinkBackendRecvMode mode) {
+            ActorJoinRequest request = spot.recvActorJoin(map(mode));
+            if (request == null) {
+                return null;
+            }
+            return fromActorJoinRequest(request);
+        }
+        @Override public void replyActorJoin(
+            ZLinkBackendActorJoinRequest request,
+            int joinResultCode,
+            List<Message> parts) {
+            ActorJoinRequest nativeRequest = (ActorJoinRequest) request.nativeRequest();
+            var operation = spot.replyActorJoin(nativeRequest, joinResultCode);
+            for (Message part : parts) {
+                operation.message(part);
+            }
+            operation.submit();
+        }
+        @Override public ZLinkBackendActorLifecycleEvent recvActorLifecycle(
+            ZLinkBackendRecvMode mode) {
+            SpotActorLifecycleEvent event = spot.recvActorLifecycle(map(mode));
+            return event == null ? null : fromActorLifecycleEvent(event);
+        }
         @Override public void close() { spot.close(); }
     }
 
@@ -336,6 +466,60 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             case FANOUT -> AutoConnectType.FANOUT;
             case SPOT_MESH -> AutoConnectType.SPOT_MESH;
         };
+    }
+
+    private static ZLinkBackendSpotDispatchInfo fromSpotDispatchInfo(SpotDispatchInfo info) {
+        return new ZLinkBackendSpotDispatchInfo(
+            map(info.event()),
+            info.actorMessages().stream()
+                .map(ZLinkJavaBackendAdapterFactory::fromActorReceived)
+                .toList());
+    }
+
+    private static ZLinkBackendSpotDispatchEvent map(SpotDispatchEvent event) {
+        return switch (event) {
+            case SUBSCRIBE_READABLE -> ZLinkBackendSpotDispatchEvent.SUBSCRIBE_READABLE;
+            case ROUTED_READABLE -> ZLinkBackendSpotDispatchEvent.ROUTED_READABLE;
+            case TIMER_READABLE -> ZLinkBackendSpotDispatchEvent.TIMER_READABLE;
+            case CHANNEL_REPLY_READABLE -> ZLinkBackendSpotDispatchEvent.CHANNEL_REPLY_READABLE;
+            case ACTOR_READABLE -> ZLinkBackendSpotDispatchEvent.ACTOR_READABLE;
+            case ACTOR_JOIN_READABLE -> ZLinkBackendSpotDispatchEvent.ACTOR_JOIN_READABLE;
+            case ACTOR_LIFECYCLE_READABLE -> ZLinkBackendSpotDispatchEvent.ACTOR_LIFECYCLE_READABLE;
+        };
+    }
+
+    private static ZLinkBackendActorReceived fromActorReceived(ActorReceived received) {
+        var info = received.info();
+        return new ZLinkBackendActorReceived(
+            fromActorRef(info.actor()),
+            info.sourceNodeRid(),
+            info.sourceSessionRid(),
+            Optional.empty(),
+            info.flags(),
+            Message.from(received.message()),
+            received.hasMore());
+    }
+
+    private static ZLinkBackendActorJoinRequest fromActorJoinRequest(ActorJoinRequest request) {
+        return new ZLinkBackendActorJoinRequest(
+            fromActorRef(request.info().sourceActor()),
+            fromActorRef(request.info().targetActor()),
+            List.of(Message.from(request.message())),
+            request);
+    }
+
+    private static ZLinkBackendActorLifecycleEvent fromActorLifecycleEvent(
+        SpotActorLifecycleEvent event) {
+        var info = event.info();
+        return new ZLinkBackendActorLifecycleEvent(
+            ZLinkBackendActorLifecycleEventKind.valueOf(event.kind().name()),
+            new ZLinkBackendActorLifecycleInfo(
+                fromActorRef(info.previousActor()),
+                fromActorRef(info.currentActor()),
+                info.previousSpotRid(),
+                info.currentSpotRid(),
+                info.joinEpoch(),
+                info.flags()));
     }
 
     private static SpotNodeMode map(ZLinkBackendSpotNodeMode mode) {
@@ -376,6 +560,21 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             submit.message(parts.get(i));
         }
         return submit.flags(flags).submit();
+    }
+
+    private static byte[] encodeStreamHeader(
+        int kind,
+        String packetName,
+        long requestSeq) {
+        byte[] name = packetName.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate(3 + Long.BYTES + 1 + name.length);
+        buffer.put((byte) kind);
+        buffer.put((byte) 0);
+        buffer.put((byte) 0x01);
+        buffer.putLong(requestSeq);
+        buffer.put((byte) name.length);
+        buffer.put(name);
+        return buffer.array();
     }
 
     private static List<Message> copyParts(List<Message> parts) {

@@ -2,7 +2,7 @@ package systems.zlink.samples.kotlin.tictactoe.client
 
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.kotlin.awaitReply
-import systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.TicTacToeGameCatalog
+import systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.TicTacToeGameDirectory
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameRes
 
@@ -13,7 +13,7 @@ class TicTacToeClient(
         val host = authenticate(options.hostAccessToken)
         val guest = authenticate(options.guestAccessToken)
         val game = createGame(options.gameName)
-        val room = TicTacToeGameCatalog.get(game.gameId)
+        val room = TicTacToeGameDirectory.get(game.gameId)
 
         var state = room.join(host.actorId).state
         state = room.join(guest.actorId).state

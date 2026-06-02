@@ -8,5 +8,5 @@ import systems.zlink.framework.actors.ZLinkActorFactory
 
 class PlayerActorFactory : ZLinkActorFactory {
     override fun createAsync(actorId: String, context: ZLinkActorContext): CompletionStage<ZLinkActor> =
-        CompletableFuture.completedFuture(PlayerActor(actorId))
+        CompletableFuture.completedFuture(PlayerActor(actorId, context))
 }

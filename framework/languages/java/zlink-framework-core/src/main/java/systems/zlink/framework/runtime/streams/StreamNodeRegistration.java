@@ -1,15 +1,19 @@
 package systems.zlink.framework.runtime.streams;
 
 import java.util.List;
+import java.util.ArrayList;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 
 public final class StreamNodeRegistration {
     private final String name;
     private String bindEndpoint;
     private String actorGatewaySpotNodeName;
     private Class<? extends ZLinkSession> sessionType;
+    private final List<Class<? extends ZLinkSessionPacketHandler<?>>> sessionPacketHandlers =
+        new ArrayList<>();
 
     public StreamNodeRegistration(String name) {
         this.name = name;
@@ -29,6 +33,10 @@ public final class StreamNodeRegistration {
 
     public Class<? extends ZLinkSession> sessionType() {
         return sessionType;
+    }
+
+    public List<Class<? extends ZLinkSessionPacketHandler<?>>> sessionPacketHandlers() {
+        return List.copyOf(sessionPacketHandlers);
     }
 
     void bind(String endpoint) {
@@ -54,6 +62,15 @@ public final class StreamNodeRegistration {
                 "stream node registers multiple sessions: " + name);
         }
         sessionType = type;
+    }
+
+    void addSessionPacketHandler(
+        Class<? extends ZLinkSessionPacketHandler<?>> handlerType) {
+        if (handlerType == null) {
+            throw new ZLinkConfigurationException(
+                "session packet handler type is required: " + name);
+        }
+        sessionPacketHandlers.add(handlerType);
     }
 
     public void validate(List<SpotNodeRegistration> spotNodes) {

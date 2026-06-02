@@ -19,6 +19,9 @@ done
 forbidden_sample_pattern="systems\\.zlink\\.(runtime|internal)"
 forbidden_sample_pattern+="|Route""Store|Metadata""Store|RemoteAddress""Resolver"
 forbidden_sample_pattern+="|Thread\\.sleep|sleep\\(|toCompletable""Future\\(\\)"
+forbidden_sample_pattern+="|Fake[A-Za-z0-9_]*|Recording[A-Za-z0-9_]*|Catalog"
+forbidden_sample_pattern+="|UnsupportedOperationException\\(\"not needed by sample\"\\)"
+forbidden_sample_pattern+="|new [A-Za-z0-9_]*Spot\\("
 
 if rg -n "$forbidden_sample_pattern" "$SAMPLES_DIR" -g '*.java' -g '*.kt'; then
   echo "sample gate failed: forbidden sample pattern found" >&2
@@ -27,6 +30,11 @@ fi
 
 if ! rg -n "attachActorGateway\\((\"session-relay\"|SampleNames\\.SessionRelayNode)\\)" "$SAMPLES_DIR/java/TicTacToe.SessionGateway" -g '*.java' >/dev/null; then
   echo "sample gate failed: java/TicTacToe.SessionGateway must attach ActorGateway" >&2
+  exit 1
+fi
+
+if ! rg -n "attachActorGateway\\((\"session-relay\"|SampleNames\\.SessionRelayNode)\\)" "$SAMPLES_DIR/kotlin/TicTacToe.SessionGateway" -g '*.kt' >/dev/null; then
+  echo "sample gate failed: kotlin/TicTacToe.SessionGateway must attach ActorGateway" >&2
   exit 1
 fi
 

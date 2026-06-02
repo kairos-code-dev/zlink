@@ -2,6 +2,8 @@ package systems.zlink.samples.tictactoe.sessiongateway.server.session;
 
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.PlayerSession;
+import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.handlers.AuthenticateSessionPacketHandler;
+import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.handlers.CreateMatchSessionPacketHandler;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleTopology;
 
@@ -14,6 +16,8 @@ public final class SessionServer {
             stream.bind(SampleTopology.SessionEndpoint);
             stream.attachActorGateway(SampleNames.SessionRelayNode);
             stream.registerSession(PlayerSession.class);
+            stream.addSessionPacketHandler(AuthenticateSessionPacketHandler.class);
+            stream.addSessionPacketHandler(CreateMatchSessionPacketHandler.class);
         });
     }
 }

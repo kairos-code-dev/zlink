@@ -28,5 +28,28 @@ public interface ZLinkBackendSpot extends ZLinkBackendObject {
 
     boolean publish(String topic, List<Message> parts, SendFlags flags);
 
+    boolean sendToSpot(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        List<Message> parts,
+        SendFlags flags);
+
+    boolean requestToSpot(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        List<Message> parts,
+        ZLinkBackendRequestCallback callback,
+        SendFlags flags,
+        Duration timeout);
+
+    void onDispatchEvent(ZLinkBackendSpotDispatchHandler handler);
+
     ZLinkBackendActorJoinRequest recvActorJoin(ZLinkBackendRecvMode mode);
+
+    void replyActorJoin(
+        ZLinkBackendActorJoinRequest request,
+        int joinResultCode,
+        List<Message> parts);
+
+    ZLinkBackendActorLifecycleEvent recvActorLifecycle(ZLinkBackendRecvMode mode);
 }

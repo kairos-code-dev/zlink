@@ -44,6 +44,8 @@
 | context | `ZLinkSessionClient` | session에서 client stream으로 send/reply |
 | context | `ZLinkSessionActors` | session에서 actor handle bind와 lookup 수행 |
 | value | `ZLinkSessionActor` | session이 들고 있는 actor dispatch handle |
+| handler | `ZLinkSessionPacketHandler<TContext>` | stream packet 이름별 session handler |
+| dispatcher | `ZLinkSessionPacketDispatcher<TContext>` | 등록된 session packet handler 선택 실행 |
 | handler | `ZLinkActor` | actor runtime 안에서 생성되는 application actor |
 | factory | `ZLinkActorFactory` | actor type별 actor 생성 |
 | management | `ZLinkActorManager` | actor id/type 기준 생성, 조회, 재사용 |
@@ -64,7 +66,7 @@
 | client | `ZLinkFanoutClient` | pub/sub fanout publisher |
 | client | `ZLinkRouteClient` | route mesh channel target 호출 |
 | client | `ZLinkSpotPublisherClient` | 외부 노드용 `SPOT` publish client |
-| host | `ZLinkFramework` | Spring Boot 밖에서 framework host를 시작하는 public facade |
+| host | `ZLinkFramework` | Spring Boot 밖에서 framework host를 시작하고 session actor binding을 노출하는 public facade |
 | management | `ZLinkSpotManager` | Spot type 기준 생성, `spotRid` 기준 조회/삭제 |
 | timer | `ZLinkTimer` | `SPOT` lifecycle timer handle |
 | filter | `ZLinkHandlerFilter` | handler 전후 공통 처리 |
@@ -72,6 +74,20 @@
 | registry | `ZLinkRegistryQuery`, `ZLinkRegistryQueryClient` | registry 조회 |
 
 ## 2. Context
+
+Spring Boot 밖에서 framework를 직접 시작하면 `ZLinkFramework` facade가 channel, Spot,
+actor, session actor binding의 public entry point가 된다.
+
+```java
+public final class ZLinkFramework implements AutoCloseable {
+    ZLinkClient client();
+    ZLinkFanoutClient fanout();
+    ZLinkRouteClient route();
+    ZLinkSpotManager spotManager();
+    ZLinkActorManager actorManager();
+    ZLinkSessionActors sessionActors(String streamNodeName, RoutingId sessionRid);
+}
+```
 
 ```java
 public interface ZLinkHandlerContext {
@@ -164,6 +180,22 @@ public interface ZLinkSession {
         Message payload) {
         return CompletableFuture.completedFuture(null);
     }
+}
+
+public interface ZLinkSessionPacketHandler<TSessionContext extends ZLinkSessionContext> {
+    String packetName();
+
+    CompletionStage<Void> handleAsync(
+        TSessionContext context,
+        ZLinkStreamHeader header,
+        Message payload);
+}
+
+public interface ZLinkSessionPacketDispatcher<TSessionContext extends ZLinkSessionContext> {
+    CompletionStage<Boolean> tryHandleAsync(
+        TSessionContext context,
+        ZLinkStreamHeader header,
+        Message payload);
 }
 
 public interface ZLinkSessionContext {
@@ -263,6 +295,23 @@ public interface ZLinkActorContext {
     ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid);
 }
 
+public interface ZLinkActorJoinEntrySpotCall {
+    ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
+    CompletionStage<ZLinkActorRef> submitAsync();
+}
+
+public interface ZLinkActorJoinSpotCall {
+    ZLinkActorJoinSpotCall timeout(Duration timeout);
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submitAsync(
+        Class<TReply> replyType);
+}
+
+public record ZLinkActorJoinResult<TReply>(
+    int resultCode,
+    ZLinkActorRef actor,
+    TReply reply) {
+}
+
 public interface ZLinkBoundSession {
     <TMessage> ZLinkBoundSessionSendCall send(TMessage message);
     CompletionStage<Void> disconnectAsync();
@@ -275,6 +324,12 @@ public interface ZLinkBoundSessionSendCall {
 }
 ```
 
+`ZLinkSessionClient.reply(...)`는 현재 session dispatch가 request packet을 처리하는
+동안에만 사용할 수 있다. framework runtime은 inbound header의 request sequence를
+보관했다가 response 전송에 다시 넣는다. request sequence가 없는 send packet에서
+`reply(...)`를 호출하면 실패한 `CompletionStage`를 반환한다. 이 제한이 있어야 client
+request/reply correlation이 packet 이름만으로 섞이지 않는다.
+
 `onErrorAsync(...)`는 application handler 내부 예외를 받는 callback이 아니다.
 이 초안에서는 monitor에서 관찰 가능한 session-correlatable transport 오류만
 `ZLinkStreamError`로 다시 올리는 용도로 제한한다.
@@ -283,10 +338,6 @@ public interface ZLinkBoundSessionSendCall {
 
 ```java
 public interface ManualEndpointListBuilder {
-    void connect(String endpoint);
-}
-
-public interface ManualRouterPeerListBuilder {
     void connect(String endpoint);
 }
 
@@ -300,11 +351,13 @@ public interface SubscriberCapabilityBuilder {
 
 public interface SpotRouterCapabilityBuilder {
     void setRouterBind(String endpoint);
-    void useManualConnections(Consumer<ManualRouterPeerListBuilder> configure);
+    void setRoutingId(RoutingId routingId);
+    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
 }
 
 public interface SpotPubSubCapabilityBuilder {
     void setPubBind(String endpoint);
+    void setRoutingId(RoutingId routingId);
     void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
 }
 
@@ -351,6 +404,8 @@ public interface ZLinkStreamNodeBuilder {
     void bind(String endpoint);
     void attachActorGateway(String spotNodeName);
     void registerSession(Class<? extends ZLinkSession> sessionType);
+    void addSessionPacketHandler(
+        Class<? extends ZLinkSessionPacketHandler<?>> handlerType);
 }
 
 public interface ChannelServerCapabilityBuilder {
@@ -482,6 +537,24 @@ public interface ZLinkRegistrySpotRemoteAddressesOptions {
     void setRouterChannelId(String routerChannelId);
 }
 
+public interface ZLinkSpotRemoteAddressResolver {
+    CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(
+        RoutingId spotRid);
+}
+
+public record ZLinkSpotRemoteAddress(
+    String routerChannelId,
+    RoutingId targetNodeRid,
+    RoutingId spotRid,
+    ZLinkSpotKind spotKind) {
+}
+
+public enum ZLinkSpotKind {
+    INVALID,
+    ENTRY,
+    USER
+}
+
 public interface ZLinkDispatchOptions {
     ZLinkDispatchMode spotDispatchMode();
     void setSpotDispatchMode(ZLinkDispatchMode mode);
@@ -595,7 +668,6 @@ public interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
 public interface ZLinkSpotContext {
     RoutingId spotRid();
     RoutingId nodeRid();
-    ZLinkSpotHandlerRegistry handlers();
     ZLinkSpotOutbound outbound();
     CompletionStage<Void> leaveActorAsync(ZLinkActor actor);
     CompletionStage<ZLinkTimer> addTimer(
@@ -608,7 +680,6 @@ public interface ZLinkSpotContext {
 public interface ZLinkEntrySpotContext {
     RoutingId spotRid();
     RoutingId nodeRid();
-    ZLinkSpotHandlerRegistry handlers();
     ZLinkSpotOutbound outbound();
     CompletionStage<ZLinkTimer> addTimer(
         String name,
@@ -702,6 +773,10 @@ public interface ZLinkEntrySpot {
     default CompletionStage<Void> onInitializeAsync() {
         return CompletableFuture.completedFuture(null);
     }
+
+    default CompletionStage<Void> onClosingAsync() {
+        return CompletableFuture.completedFuture(null);
+    }
 }
 
 public interface ChannelClientConnections {
@@ -770,6 +845,12 @@ public record ZLinkTimerTick(
     long skippedTicks) {
 }
 ```
+
+등록된 Entry Spot은 framework startup에서 native Entry Spot 위에 activation으로
+생성된다. 생성된 activation은 `configure()`를 먼저 호출한 뒤 `onInitializeAsync()`를
+실행하고, framework shutdown에서는 `onClosingAsync()`를 호출한 뒤 timer와 native
+Entry Spot을 정리한다. actor join과 entry actor packet dispatch는 별도 runtime 경로로
+검증해야 한다.
 
 client 측 STREAM connector는 server session과 별도 모듈로 둔다.
 
@@ -992,6 +1073,31 @@ public @interface ZLinkSpotActorDisconnected {
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ZLinkStreamPacket {
+}
+```
+
+SPOT actor lifecycle handler는 actor와 change result를 받는다. change result는
+actor가 어떤 흐름으로 들어오거나 나갔는지 나타낸다.
+`ZLinkSpotActorDisconnected` handler는 actor만 받는다. session actor의 현재 binding이
+끊어졌거나 application이 actor disconnected 알림을 명시적으로 보낼 때 실행되며,
+actor가 들어오거나 나간 Spot 변경 결과를 만들지 않기 때문이다.
+
+```java
+public enum ZLinkSpotActorChangeKind {
+    JOIN_SPOT,
+    JOIN_ENTRY_SPOT,
+    LEAVE_SPOT
+}
+
+public record ZLinkSpotActorChangeResult(
+    ZLinkSpotActorChangeKind kind) {
+}
+
+public final class PlayerActorDisconnectedHandler {
+    @ZLinkSpotActorDisconnected
+    public CompletionStage<Void> disconnected(PlayerActor actor) {
+        return CompletableFuture.completedFuture(null);
+    }
 }
 ```
 

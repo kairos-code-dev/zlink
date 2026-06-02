@@ -50,17 +50,17 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
 
     @Override
     public ZLinkCodecRegistryBuilder codecs() {
-        return NoopBuilders.CODECS;
+        return registration.codecs();
     }
 
     @Override
     public void addHandlersFromPackageOf(Class<?> markerType) {
-        Objects.requireNonNull(markerType, "markerType");
+        registration.handlerPackageMarkers().add(Objects.requireNonNull(markerType, "markerType"));
     }
 
     @Override
     public void configureMetadata(Consumer<ZLinkMetadataPolicyBuilder> configure) {
-        configure.accept(NoopBuilders.METADATA);
+        configure.accept(registration.metadataPolicy());
     }
 
     @Override
@@ -93,7 +93,9 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
         String channelName,
         Consumer<DealerMeshChannelBuilder> configure) {
         addChannel(channelName);
-        configure.accept(NoopBuilders.DEALER_MESH_CHANNEL);
+        ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.DEALER_MESH);
+        registration.channels().add(channel);
+        configure.accept(ChannelBuilders.dealerMesh(channel));
     }
 
     @Override
@@ -151,12 +153,15 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     @Override
     public void addSpotRemoteAddressResolver(
         Class<? extends ZLinkSpotRemoteAddressResolver> resolverType) {
-        Objects.requireNonNull(resolverType, "resolverType");
+        registration.setSpotRemoteAddressResolverType(
+            Objects.requireNonNull(resolverType, "resolverType"));
     }
 
     @Override
     public void useRegistrySpotRemoteAddresses(String namespaceName) {
-        requireName(namespaceName, "namespaceName");
+        registration.setRegistrySpotRemoteAddresses(
+            new ZLinkRegistrySpotRemoteAddressesRegistration(
+                requireName(namespaceName, "namespaceName")));
     }
 
     @Override
@@ -164,17 +169,21 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
         String namespaceName,
         Consumer<ZLinkRegistrySpotRemoteAddressesOptions> configure) {
         useRegistrySpotRemoteAddresses(namespaceName);
-        configure.accept(NoopBuilders.REGISTRY_SPOT_REMOTE_ADDRESSES);
+        configure.accept(registration.registrySpotRemoteAddresses());
     }
 
     @Override
     public void useFilter(Class<? extends ZLinkHandlerFilter> filterType) {
-        Objects.requireNonNull(filterType, "filterType");
+        Class<? extends ZLinkHandlerFilter> type =
+            Objects.requireNonNull(filterType, "filterType");
+        if (!registration.filters().contains(type)) {
+            registration.filters().add(type);
+        }
     }
 
     @Override
     public void configureDispatch(Consumer<ZLinkDispatchOptions> configure) {
-        configure.accept(NoopBuilders.DISPATCH);
+        configure.accept(registration.dispatchOptions());
     }
 
     private void addChannel(String channelName) {

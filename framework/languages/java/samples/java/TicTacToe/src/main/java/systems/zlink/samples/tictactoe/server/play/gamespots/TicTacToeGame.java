@@ -7,6 +7,9 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.channels.ZLinkPublishCall;
+import systems.zlink.framework.channels.ZLinkRequestCall;
+import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
@@ -175,7 +178,7 @@ public final class TicTacToeGame implements ZLinkSpot {
 
         @Override
         public ZLinkSpotOutbound outbound() {
-            throw new UnsupportedOperationException("not needed by sample");
+            return CompletedSpotOutbound.INSTANCE;
         }
 
         @Override
@@ -189,7 +192,116 @@ public final class TicTacToeGame implements ZLinkSpot {
             java.time.Duration period,
             Class<?> handlerType,
             ZLinkTimerOptions options) {
-            throw new UnsupportedOperationException("not needed by sample");
+            return CompletableFuture.completedFuture(CompletedTimer.INSTANCE);
+        }
+    }
+
+    private enum CompletedTimer implements ZLinkTimer {
+        INSTANCE;
+
+        @Override
+        public boolean isDisposed() {
+            return false;
+        }
+
+        @Override
+        public CompletionStage<Void> cancelAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
+    private enum CompletedSpotOutbound implements ZLinkSpotOutbound {
+        INSTANCE;
+
+        @Override
+        public <TMessage> ZLinkSendCall sendToSpot(RoutingId spotRid, TMessage message) {
+            return CompletedSendCall.INSTANCE;
+        }
+
+        @Override
+        public <TMessage> ZLinkRequestCall requestToSpot(RoutingId spotRid, TMessage request) {
+            return CompletedRequestCall.INSTANCE;
+        }
+
+        @Override
+        public <TEvent> ZLinkPublishCall publish(String topic, TEvent message) {
+            return CompletedPublishCall.INSTANCE;
+        }
+
+        @Override
+        public <TMessage> ZLinkSendCall sendToChannel(String channelName, TMessage message) {
+            return CompletedSendCall.INSTANCE;
+        }
+
+        @Override
+        public <TMessage> ZLinkRequestCall requestToChannel(String channelName, TMessage request) {
+            return CompletedRequestCall.INSTANCE;
+        }
+    }
+
+    private enum CompletedSendCall implements ZLinkSendCall {
+        INSTANCE;
+
+        @Override
+        public ZLinkSendCall packetName(String packetName) {
+            return this;
+        }
+
+        @Override
+        public ZLinkSendCall metadata(String key, String value) {
+            return this;
+        }
+
+        @Override
+        public CompletionStage<Void> submitAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    private enum CompletedPublishCall implements ZLinkPublishCall {
+        INSTANCE;
+
+        @Override
+        public ZLinkPublishCall packetName(String packetName) {
+            return this;
+        }
+
+        @Override
+        public ZLinkPublishCall metadata(String key, String value) {
+            return this;
+        }
+
+        @Override
+        public CompletionStage<Void> submitAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    private enum CompletedRequestCall implements ZLinkRequestCall {
+        INSTANCE;
+
+        @Override
+        public ZLinkRequestCall packetName(String packetName) {
+            return this;
+        }
+
+        @Override
+        public ZLinkRequestCall metadata(String key, String value) {
+            return this;
+        }
+
+        @Override
+        public ZLinkRequestCall timeout(java.time.Duration timeout) {
+            return this;
+        }
+
+        @Override
+        public <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

@@ -3,6 +3,7 @@ package systems.zlink.framework;
 import systems.zlink.framework.runtime.backend.*;
 
 import java.util.function.Consumer;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
@@ -12,6 +13,7 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.spots.ZLinkSpotManager;
+import systems.zlink.framework.streams.ZLinkSessionActors;
 
 public final class ZLinkFramework implements AutoCloseable {
     private final ZLinkFrameworkRuntime runtime;
@@ -45,6 +47,10 @@ public final class ZLinkFramework implements AutoCloseable {
 
     public ZLinkActorManager actorManager() {
         return runtime.actorManager();
+    }
+
+    public ZLinkSessionActors sessionActors(String streamNodeName, RoutingId sessionRid) {
+        return runtime.sessionActors(streamNodeName, sessionRid);
     }
 
     @Override

@@ -7,15 +7,25 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionActors;
+import systems.zlink.framework.streams.ZLinkSessionClient;
+import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
+import systems.zlink.framework.streams.ZLinkSessionReplyCall;
+import systems.zlink.framework.streams.ZLinkSessionSendCall;
 import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
@@ -24,6 +34,8 @@ import systems.zlink.framework.streams.ZLinkStreamSessionError;
 public final class ZLinkStreamRuntime implements AutoCloseable {
     private final ZLinkBackendContext context;
     private final ZLinkMessageSerializer serializer;
+    private final ZLinkActorRuntime actors;
+    private final ZLinkHandlerFactory handlerFactory;
     private final List<ZLinkBackendStreamSocket> streams = new ArrayList<>();
     private final Map<String, ZLinkBackendStreamSocket> streamsByName = new HashMap<>();
     private final Map<String, SessionState> sessions = new HashMap<>();
@@ -33,11 +45,15 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         Map<String, ZLinkBackendSpotNode> spotNodes,
-        ZLinkMessageSerializer serializer) {
+        ZLinkMessageSerializer serializer,
+        ZLinkActorRuntime actors,
+        ZLinkHandlerFactory handlerFactory) {
         if (registration.streamNodes().isEmpty()) {
             throw new ZLinkConfigurationException("at least one stream node is required");
         }
         this.serializer = serializer;
+        this.actors = actors;
+        this.handlerFactory = handlerFactory;
         ZLinkChannelBackendAdapter channelAdapter =
             backendFactory.createChannelAdapter(adapterOptions);
         ZLinkStreamBackendAdapter streamAdapter =
@@ -83,17 +99,15 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         RoutingId routingId,
         Message header,
         Message payload) {
+        ZLinkBackendStreamSocket stream = streamsByName.get(streamNode.name());
         SessionState state = sessions.computeIfAbsent(
             sessionKey(streamNode, routingId),
-            ignored -> createSessionState(streamNode));
-        ZLinkStreamHeader streamHeader = new ZLinkStreamHeader(
-            header.toUtf8String(),
-            Map.of(),
-            Optional.empty());
+            ignored -> createSessionState(streamNode, stream, routingId));
+        ZLinkStreamHeader streamHeader =
+            ZLinkStreamHeaderCodec.decodeOrPlain(header.toByteArray());
         Message payloadCopy = Message.from(payload);
         state.queue().enqueue(() ->
-            state.session().onDispatchAsync(streamHeader, payloadCopy)
-                .whenComplete((ignored, error) -> payloadCopy.close()));
+            state.context().dispatchAsync(streamHeader, payloadCopy, state.session()));
     }
 
     private void reportTransportError(
@@ -110,17 +124,46 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 Optional.of(new ZLinkStreamDiagnostic(nativeCode, message)))));
     }
 
-    private SessionState createSessionState(StreamNodeRegistration streamNode) {
+    private SessionState createSessionState(
+        StreamNodeRegistration streamNode,
+        ZLinkBackendStreamSocket stream,
+        RoutingId routingId) {
+        DefaultSessionContext context = new DefaultSessionContext(
+            streamNode.name(),
+            stream,
+            routingId,
+            actors == null
+                ? null
+                : new ZLinkSessionActorsRuntime(stream, routingId, actors, serializer));
         try {
-            ZLinkSession session = streamNode.sessionType()
-                .getConstructor()
-                .newInstance();
+            ZLinkSession session;
+            ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher =
+                new ZLinkSessionPacketDispatcherRuntime<>(
+                    streamNode.sessionPacketHandlers(),
+                    handlerFactory);
+            try {
+                session = streamNode.sessionType()
+                    .getConstructor(
+                        ZLinkSessionContext.class,
+                        ZLinkSessionPacketDispatcher.class)
+                    .newInstance(context, dispatcher);
+            } catch (NoSuchMethodException ignored) {
+                try {
+                    session = streamNode.sessionType()
+                    .getConstructor(ZLinkSessionContext.class)
+                    .newInstance(context);
+                } catch (NoSuchMethodException ignoredAgain) {
+                    session = streamNode.sessionType()
+                        .getConstructor()
+                        .newInstance();
+                }
+            }
             ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
             queue.enqueue(session::onConnectedAsync);
-            return new SessionState(session, queue);
+            return new SessionState(session, queue, context);
         } catch (ReflectiveOperationException ex) {
             throw new ZLinkConfigurationException(
-                "stream session type must expose a public no-arg constructor: "
+                "stream session type must expose a public ZLinkSessionContext or no-arg constructor: "
                     + streamNode.sessionType().getName());
         }
     }
@@ -142,6 +185,207 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
 
     private record SessionState(
         ZLinkSession session,
-        ZLinkAsyncSerialQueue queue) {
+        ZLinkAsyncSerialQueue queue,
+        DefaultSessionContext context) {
+    }
+
+    private final class DefaultSessionContext implements ZLinkSessionContext {
+        private final String streamNodeName;
+        private final ZLinkBackendStreamSocket stream;
+        private final RoutingId routingId;
+        private final ZLinkSessionActors actors;
+        private ZLinkStreamHeader currentDispatchHeader;
+
+        DefaultSessionContext(
+            String streamNodeName,
+            ZLinkBackendStreamSocket stream,
+            RoutingId routingId,
+            ZLinkSessionActors actors) {
+            this.streamNodeName = streamNodeName;
+            this.stream = stream;
+            this.routingId = routingId;
+            this.actors = actors;
+        }
+
+        @Override
+        public String sessionId() {
+            return streamNodeName + ":" + routingId;
+        }
+
+        @Override
+        public Optional<RoutingId> routingId() {
+            return Optional.of(routingId);
+        }
+
+        @Override
+        public Optional<String> localAddr() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> remoteAddr() {
+            return Optional.empty();
+        }
+
+        @Override
+        public ZLinkSessionClient client() {
+            return new SessionClient(stream, routingId, this);
+        }
+
+        @Override
+        public ZLinkSessionActors actors() {
+            if (actors == null) {
+                throw new ZLinkConfigurationException(
+                    "stream node is not attached to an actor gateway");
+            }
+            return actors;
+        }
+
+        @Override
+        public CompletionStage<Void> closeAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletionStage<Void> dispatchAsync(
+            ZLinkStreamHeader header,
+            Message payload,
+            ZLinkSession session) {
+            currentDispatchHeader = header;
+            CompletionStage<Void> stage;
+            try {
+                stage = session.onDispatchAsync(header, payload);
+            } catch (RuntimeException ex) {
+                currentDispatchHeader = null;
+                payload.close();
+                return CompletableFuture.failedFuture(ex);
+            }
+            return stage.whenComplete((ignored, error) -> {
+                currentDispatchHeader = null;
+                payload.close();
+            });
+        }
+
+        Optional<ZLinkStreamHeader> currentDispatchHeader() {
+            return Optional.ofNullable(currentDispatchHeader);
+        }
+    }
+
+    private final class SessionClient implements ZLinkSessionClient {
+        private final ZLinkBackendStreamSocket stream;
+        private final RoutingId routingId;
+        private final DefaultSessionContext context;
+
+        SessionClient(
+            ZLinkBackendStreamSocket stream,
+            RoutingId routingId,
+            DefaultSessionContext context) {
+            this.stream = stream;
+            this.routingId = routingId;
+            this.context = context;
+        }
+
+        @Override
+        public <TMessage> ZLinkSessionSendCall send(TMessage message) {
+            return new SessionSendCall(
+                stream,
+                routingId,
+                serializer.serialize(message),
+                Optional.empty());
+        }
+
+        @Override
+        public <TMessage> ZLinkSessionReplyCall reply(TMessage message) {
+            return new SessionReplyCall(
+                stream,
+                routingId,
+                serializer.serialize(message),
+                context);
+        }
+    }
+
+    private record SessionSendCall(
+        ZLinkBackendStreamSocket stream,
+        RoutingId routingId,
+        Message payload,
+        Optional<String> packetName) implements ZLinkSessionSendCall {
+        @Override
+        public ZLinkSessionSendCall metadata(String key, String value) {
+            return this;
+        }
+
+        @Override
+        public ZLinkSessionSendCall packetName(String messageName) {
+            if (messageName == null || messageName.isBlank()) {
+                throw new IllegalArgumentException("messageName is required");
+            }
+            return new SessionSendCall(stream, routingId, payload, Optional.of(messageName));
+        }
+
+        @Override
+        public ZLinkSessionSendCall compress() {
+            return this;
+        }
+
+        @Override
+        public CompletionStage<Void> submitAsync() {
+            List<Message> parts = parts(packetName, payload);
+            try {
+                if (!stream.send(routingId, parts, SendFlags.NONE)) {
+                    return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                        "session send failed: " + routingId));
+                }
+                return CompletableFuture.completedFuture(null);
+            } finally {
+                parts.forEach(Message::close);
+            }
+        }
+    }
+
+    private record SessionReplyCall(
+        ZLinkBackendStreamSocket stream,
+        RoutingId routingId,
+        Message payload,
+        DefaultSessionContext context) implements ZLinkSessionReplyCall {
+        @Override
+        public ZLinkSessionReplyCall metadata(String key, String value) {
+            return this;
+        }
+
+        @Override
+        public ZLinkSessionReplyCall compress() {
+            return this;
+        }
+
+        @Override
+        public CompletionStage<Void> submitAsync() {
+            Optional<ZLinkStreamHeader> currentHeader = context.currentDispatchHeader();
+            if (currentHeader.isEmpty() || currentHeader.get().requestSequence().isEmpty()) {
+                payload.close();
+                return CompletableFuture.failedFuture(new IllegalStateException(
+                    "Reply is only available while handling a request packet."));
+            }
+            try {
+                ZLinkStreamHeader header = currentHeader.get();
+                if (!stream.reply(
+                    routingId,
+                    header.requestSequence().get(),
+                    header.packetName(),
+                    List.of(payload),
+                    SendFlags.NONE)) {
+                    return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                        "session reply failed: " + routingId));
+                }
+                return CompletableFuture.completedFuture(null);
+            } finally {
+                payload.close();
+            }
+        }
+    }
+
+    private static List<Message> parts(Optional<String> packetName, Message payload) {
+        if (packetName.isEmpty()) {
+            return List.of(payload);
+        }
+        return List.of(Message.from(packetName.get()), payload);
     }
 }

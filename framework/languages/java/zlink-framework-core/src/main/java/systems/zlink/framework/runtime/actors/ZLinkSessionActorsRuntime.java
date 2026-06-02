@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.actors;
 
 import systems.zlink.framework.runtime.backend.*;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,9 +11,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionActors;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
@@ -84,8 +87,15 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             .submitAsync(Duration.ofSeconds(30))
             .thenApply(ignored -> {
                 ZLinkBoundSessionRuntime boundSession =
-                    new ZLinkBoundSessionRuntime(stream, sessionRid, ref.actorId(), serializer);
+                    new ZLinkBoundSessionRuntime(
+                        stream,
+                        sessionRid,
+                        ref.actorId(),
+                        serializer,
+                        actors,
+                        actor);
                 long bindingToken = actors.bindSession(actor, boundSession);
+                boundSession.setBindingToken(bindingToken);
                 ZLinkSessionActor boundActor = new BoundActor(
                     stream,
                     sessionRid,
@@ -135,15 +145,42 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         public CompletionStage<Void> relayAsync(
             ZLinkStreamHeader header,
             Message payload) {
-            return CompletableFuture.completedFuture(null);
+            if (header == null) {
+                return CompletableFuture.failedFuture(new IllegalArgumentException(
+                    "header is required"));
+            }
+            if (payload == null) {
+                return CompletableFuture.failedFuture(new IllegalArgumentException(
+                    "payload is required"));
+            }
+            Message headerPart = Message.from(
+                header.packetName().getBytes(StandardCharsets.UTF_8));
+            Message payloadPart = Message.from(payload);
+            try {
+                if (!stream.sendBoundActor(
+                    sessionRid,
+                    ref.actorId(),
+                    List.of(headerPart, payloadPart),
+                    SendFlags.NONE)) {
+                    return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                        "actor session relay failed: " + ref.actorId()));
+                }
+                return CompletableFuture.completedFuture(null);
+            } finally {
+                headerPart.close();
+                payloadPart.close();
+            }
         }
 
         @Override
         public CompletionStage<Void> notifyDisconnectedAsync() {
             return stream.unbindActor(sessionRid, ref.actorId())
                 .submitAsync(Duration.ofSeconds(30))
-                .thenRun(() -> managedActor.ifPresent(actor ->
-                    actors.clearSessionBinding(actor, bindingToken)));
+                .thenCompose(ignored -> managedActor
+                    .map(actor -> actors.clearSessionBinding(actor, bindingToken)
+                        ? actors.notifyDisconnected(actor)
+                        : CompletableFuture.<Void>completedFuture(null))
+                    .orElseGet(() -> CompletableFuture.completedFuture(null)));
         }
     }
 }

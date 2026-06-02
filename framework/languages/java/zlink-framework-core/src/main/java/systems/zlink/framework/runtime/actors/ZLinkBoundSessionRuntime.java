@@ -11,24 +11,37 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkMessageSerializer;
+import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 
 final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
+    private static final java.time.Duration DEFAULT_TIMEOUT = java.time.Duration.ofSeconds(30);
     private final ZLinkBackendStreamSocket stream;
     private final RoutingId sessionRid;
     private final String actorId;
     private final ZLinkMessageSerializer serializer;
+    private final ZLinkActorRuntime actorRuntime;
+    private final ZLinkActor actor;
+    private long bindingToken;
 
     ZLinkBoundSessionRuntime(
         ZLinkBackendStreamSocket stream,
         RoutingId sessionRid,
         String actorId,
-        ZLinkMessageSerializer serializer) {
+        ZLinkMessageSerializer serializer,
+        ZLinkActorRuntime actorRuntime,
+        ZLinkActor actor) {
         this.stream = stream;
         this.sessionRid = sessionRid;
         this.actorId = actorId;
         this.serializer = serializer;
+        this.actorRuntime = actorRuntime;
+        this.actor = actor;
+    }
+
+    void setBindingToken(long bindingToken) {
+        this.bindingToken = bindingToken;
     }
 
     @Override
@@ -43,7 +56,9 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
 
     @Override
     public CompletionStage<Void> disconnectAsync() {
-        return CompletableFuture.completedFuture(null);
+        return stream.unbindActor(sessionRid, actorId)
+            .submitAsync(DEFAULT_TIMEOUT)
+            .thenRun(() -> actorRuntime.clearSessionBinding(actor, bindingToken));
     }
 
     private record SendCall(

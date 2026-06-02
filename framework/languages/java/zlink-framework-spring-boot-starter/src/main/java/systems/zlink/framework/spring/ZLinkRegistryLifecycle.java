@@ -1,12 +1,20 @@
 package systems.zlink.framework.spring;
 
 import java.util.Objects;
+import java.util.List;
+import java.util.concurrent.CompletionStage;
 import org.springframework.context.SmartLifecycle;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
+import systems.zlink.framework.registry.ZLinkRegistryQuery;
+import systems.zlink.framework.registry.ZLinkRegistryQueryFilter;
+import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry;
+import systems.zlink.framework.registry.ZLinkRegistryStatus;
+import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 
-public final class ZLinkRegistryLifecycle implements SmartLifecycle {
+public final class ZLinkRegistryLifecycle implements SmartLifecycle, ZLinkRegistryQuery {
     public static final int PHASE = -100;
 
     private final ZLinkEmbeddedRegistryOptions options;
@@ -67,5 +75,29 @@ public final class ZLinkRegistryLifecycle implements SmartLifecycle {
     @Override
     public int getPhase() {
         return PHASE;
+    }
+
+    @Override
+    public CompletionStage<ZLinkRegistryStatus> statusAsync() {
+        return requireRuntime().statusAsync();
+    }
+
+    @Override
+    public CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummaryAsync(
+        ZLinkRegistryQueryFilter filter) {
+        return requireRuntime().serviceSummaryAsync(filter);
+    }
+
+    @Override
+    public CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
+        ZLinkRegistryQueryFilter filter) {
+        return requireRuntime().topologyAsync(filter);
+    }
+
+    private synchronized ZLinkRegistryRuntime requireRuntime() {
+        if (!running || runtime == null) {
+            throw new ZLinkConfigurationException("ZLink registry runtime is not running");
+        }
+        return runtime;
     }
 }

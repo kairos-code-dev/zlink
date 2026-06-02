@@ -6,6 +6,10 @@ import java.util.List;
 public final class SessionActorNotificationInbox {
     private final List<String> events = new ArrayList<>();
 
+    public void add(String value) {
+        events.add(value);
+    }
+
     public void addAll(List<String> values) {
         events.addAll(values);
     }

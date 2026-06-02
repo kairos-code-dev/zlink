@@ -20,6 +20,13 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 
 fun main() = runBlocking {
+    StreamingClientLoopbackServer(29200).use {
+        runSample()
+    }
+    println("StreamingClient Kotlin sample self-check passed")
+}
+
+private suspend fun runSample() {
     val events = mutableListOf<String>()
     val states = mutableListOf<ZLinkStreamConnectionState>()
     val connector = createConnector()
@@ -44,7 +51,7 @@ fun main() = runBlocking {
     connector.send(payload("GameInput", "move", mapOf("source" to "send")))
         .packetName("GameInput")
         .submit()
-    require(connector.pendingDispatchCount() == 1) { "manual dispatch did not queue send" }
+    awaitPendingDispatch(connector)
     connector.dispatch()
     require("GameInput:send" in events) { "manual send handler not invoked" }
 
@@ -54,6 +61,7 @@ fun main() = runBlocking {
         .timeout(Duration.ofSeconds(2))
         .await()
     require(reply.packetName() == "GameInput") { "request packet name mismatch" }
+    awaitPendingDispatch(connector)
     connector.dispatch()
     require("GameInput:request" in events) { "manual request handler not invoked" }
 
@@ -83,7 +91,17 @@ fun main() = runBlocking {
         ),
     ) { "reconnect state event mismatch" }
     reconnected.close()
-    println("StreamingClient Kotlin sample self-check passed")
+}
+
+private fun awaitPendingDispatch(connector: ZLinkStreamConnector) {
+    val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+    while (System.nanoTime() < deadline) {
+        if (connector.pendingDispatchCount() > 0) {
+            return
+        }
+        Thread.onSpinWait()
+    }
+    error("manual dispatch did not queue inbound frame")
 }
 
 private fun createConnector(): ZLinkStreamConnector =

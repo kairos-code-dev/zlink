@@ -60,6 +60,11 @@ handler에서 받은 spot context로 호출한다.
 | `joinSpot(spotRid, request)` | user Spot으로 join. `.submitAsync(...)`로 종결 |
 | `joinEntrySpot(spotNodeRid)` | target SpotNode의 Entry Spot으로 이동 |
 
+`joinSpot(...).submitAsync(replyType)`는 backend actor join 요청을 보내고, join reply를
+`replyType`으로 역직렬화한 뒤 `CompletionStage`로 반환한다. 성공하면 actor context의
+`spotRid()`, `isJoined()`, `getSpot(Class)`가 join된 user Spot을 가리킨다. Java
+framework는 이 호출에 blocking helper를 제공하지 않는다.
+
 ## 3. Entry Spot과 user Spot의 actor handler
 
 actor handler와 lifecycle callback은 actor 클래스가 아니라 Entry Spot / user

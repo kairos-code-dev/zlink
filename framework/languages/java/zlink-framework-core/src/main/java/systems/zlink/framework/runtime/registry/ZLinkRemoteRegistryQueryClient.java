@@ -55,6 +55,7 @@ public final class ZLinkRemoteRegistryQueryClient implements ZLinkRegistryQueryC
             client.topology(backendFilter).stream()
                 .map(entry -> new ZLinkRegistryTopologyEntry(
                     entry.channelName(),
+                    entry.routingId(),
                     entry.serviceKind(),
                     entry.endpoint()))
                 .toList());

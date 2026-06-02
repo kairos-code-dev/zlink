@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
+import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
+import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 
 public final class ChannelRegistration {
     private final String name;
@@ -16,10 +19,15 @@ public final class ChannelRegistration {
     private final List<String> subscriberManualEndpoints = new ArrayList<>();
     private final List<String> routeBinds = new ArrayList<>();
     private final List<String> routeManualEndpoints = new ArrayList<>();
+    private final List<String> handlerGroups = new ArrayList<>();
+    private final List<ChannelSendHandlerRegistration<?, ?>> sendHandlers = new ArrayList<>();
     private final List<ChannelRequestHandlerRegistration<?, ?, ?>> requestHandlers = new ArrayList<>();
     private final List<ChannelPublishHandlerRegistration<?, ?>> publishHandlers = new ArrayList<>();
+    private final List<ChannelRouteSendHandlerRegistration<?, ?>> routeSendHandlers =
+        new ArrayList<>();
     private final List<ChannelRouteRequestHandlerRegistration<?, ?, ?>> routeRequestHandlers =
         new ArrayList<>();
+    private String spotRouteEgressTarget;
     private boolean clientEnabled;
     private boolean serverEnabled;
     private boolean publisherEnabled;
@@ -31,7 +39,7 @@ public final class ChannelRegistration {
         this.kind = kind;
     }
 
-    String name() {
+    public String name() {
         return name;
     }
 
@@ -49,6 +57,10 @@ public final class ChannelRegistration {
 
     List<ChannelRequestHandlerRegistration<?, ?, ?>> requestHandlers() {
         return requestHandlers;
+    }
+
+    List<ChannelSendHandlerRegistration<?, ?>> sendHandlers() {
+        return sendHandlers;
     }
 
     List<String> publisherBinds() {
@@ -75,7 +87,19 @@ public final class ChannelRegistration {
         return routeRequestHandlers;
     }
 
-    RoutingId routeRoutingId() {
+    List<ChannelRouteSendHandlerRegistration<?, ?>> routeSendHandlers() {
+        return routeSendHandlers;
+    }
+
+    public String spotRouteEgressTarget() {
+        return spotRouteEgressTarget;
+    }
+
+    public List<String> handlerGroups() {
+        return handlerGroups;
+    }
+
+    public RoutingId routeRoutingId() {
         return routeRoutingId;
     }
 
@@ -135,6 +159,22 @@ public final class ChannelRegistration {
         routeManualEndpoints.add(requireEndpoint(endpoint));
     }
 
+    void addHandlerGroup(String groupName) {
+        if (groupName == null || groupName.isBlank()) {
+            throw new ZLinkConfigurationException(
+                "channel handler group name is required: " + name);
+        }
+        handlerGroups.add(groupName);
+    }
+
+    void addSendHandler(ChannelSendHandlerRegistration<?, ?> handler) {
+        if (handler.packetName() == null || handler.packetName().isBlank()) {
+            throw new ZLinkConfigurationException(
+                "client/server channel send handler packet name is required: " + name);
+        }
+        sendHandlers.add(handler);
+    }
+
     void addRequestHandler(ChannelRequestHandlerRegistration<?, ?, ?> handler) {
         if (handler.packetName() == null || handler.packetName().isBlank()) {
             throw new ZLinkConfigurationException(
@@ -159,34 +199,74 @@ public final class ChannelRegistration {
         routeRequestHandlers.add(handler);
     }
 
+    void addRouteSendHandler(ChannelRouteSendHandlerRegistration<?, ?> handler) {
+        if (handler.packetName() == null || handler.packetName().isBlank()) {
+            throw new ZLinkConfigurationException(
+                "route mesh send handler packet name is required: " + name);
+        }
+        routeSendHandlers.add(handler);
+    }
+
+    void enableSpotRouteEgress(String targetSpotNodeChannelName) {
+        if (targetSpotNodeChannelName == null || targetSpotNodeChannelName.isBlank()) {
+            throw new ZLinkConfigurationException(
+                "spot route egress target SpotNode channel name is required: " + name);
+        }
+        spotRouteEgressTarget = targetSpotNodeChannelName;
+    }
+
     public void validate(boolean discoveryEnabled) {
+        validate(discoveryEnabled, new ZLinkScannedHandlerCatalog(List.of()));
+    }
+
+    public void validate(
+        boolean discoveryEnabled,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
+        validateHandlerGroups();
         if (kind == ChannelKind.CLIENT_SERVER) {
-            validateClientServer(discoveryEnabled);
+            validateClientServer(discoveryEnabled, handlerCatalog);
         } else if (kind == ChannelKind.FANOUT) {
-            validateFanout(discoveryEnabled);
+            validateFanout(discoveryEnabled, handlerCatalog);
+        } else if (kind == ChannelKind.DEALER_MESH) {
+            validateDealerMesh(discoveryEnabled, handlerCatalog);
         } else if (kind == ChannelKind.ROUTE_MESH) {
-            validateRouteMesh(discoveryEnabled);
+            validateRouteMesh(discoveryEnabled, handlerCatalog);
         }
     }
 
-    private void validateClientServer(boolean discoveryEnabled) {
+    private void validateClientServer(
+        boolean discoveryEnabled,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
         if (clientEnabled && !discoveryEnabled && clientManualEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "client/server channel client requires discovery or manual connections: " + name);
-        }
-        if (clientEnabled && discoveryEnabled && !clientManualEndpoints.isEmpty()) {
-            throw new ZLinkConfigurationException(
-                "client/server channel client cannot mix discovery and manual connections: " + name);
         }
         if (serverEnabled && serverBinds.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "client/server channel server requires at least one bind endpoint: " + name);
         }
-        if (serverEnabled && requestHandlers.isEmpty()) {
+        if (spotRouteEgressTarget != null && !clientEnabled) {
             throw new ZLinkConfigurationException(
-                "client/server channel server requires at least one request handler: " + name);
+                "client/server channel routed Spot egress requires client capability: " + name);
+        }
+        validateMappedGroups(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL,
+            Set.of(ZLinkScannedHandlerKind.SEND, ZLinkScannedHandlerKind.REQUEST));
+        boolean hasMappedHandlers =
+            hasMappedHandler(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.SEND)
+                || hasMappedHandler(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.REQUEST);
+        if (serverEnabled && requestHandlers.isEmpty() && sendHandlers.isEmpty() && !hasMappedHandlers) {
+            throw new ZLinkConfigurationException(
+                "client/server channel server requires a send/request handler or handler group: " + name);
         }
         Set<String> packetNames = new HashSet<>();
+        for (ChannelSendHandlerRegistration<?, ?> handler : sendHandlers) {
+            if (!packetNames.add(handler.packetName())) {
+                throw new ZLinkConfigurationException(
+                    "duplicate client/server send handler packet name: "
+                        + name + "/" + handler.packetName());
+            }
+        }
+        packetNames.clear();
         for (ChannelRequestHandlerRegistration<?, ?, ?> handler : requestHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
@@ -196,7 +276,9 @@ public final class ChannelRegistration {
         }
     }
 
-    private void validateFanout(boolean discoveryEnabled) {
+    private void validateFanout(
+        boolean discoveryEnabled,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
         if (publisherEnabled && publisherBinds.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "fanout channel publisher requires at least one bind endpoint: " + name);
@@ -205,13 +287,13 @@ public final class ChannelRegistration {
             throw new ZLinkConfigurationException(
                 "fanout channel subscriber requires discovery or manual connections: " + name);
         }
-        if (subscriberEnabled && discoveryEnabled && !subscriberManualEndpoints.isEmpty()) {
+        validateMappedGroups(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL,
+            Set.of(ZLinkScannedHandlerKind.PUBLISH));
+        boolean hasMappedPublishHandlers =
+            hasMappedHandler(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.PUBLISH);
+        if (subscriberEnabled && publishHandlers.isEmpty() && !hasMappedPublishHandlers) {
             throw new ZLinkConfigurationException(
-                "fanout channel subscriber cannot mix discovery and manual connections: " + name);
-        }
-        if (subscriberEnabled && publishHandlers.isEmpty()) {
-            throw new ZLinkConfigurationException(
-                "fanout channel subscriber requires at least one publish handler: " + name);
+                "fanout channel subscriber requires a publish handler or handler group: " + name);
         }
         Set<String> packetNames = new HashSet<>();
         for (ChannelPublishHandlerRegistration<?, ?> handler : publishHandlers) {
@@ -223,7 +305,9 @@ public final class ChannelRegistration {
         }
     }
 
-    private void validateRouteMesh(boolean discoveryEnabled) {
+    private void validateRouteMesh(
+        boolean discoveryEnabled,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
         if (routeBinds.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "route mesh channel requires at least one bind endpoint: " + name);
@@ -232,16 +316,46 @@ public final class ChannelRegistration {
             throw new ZLinkConfigurationException(
                 "route mesh channel requires discovery or manual connections: " + name);
         }
-        if (discoveryEnabled && !routeManualEndpoints.isEmpty()) {
-            throw new ZLinkConfigurationException(
-                "route mesh channel cannot mix discovery and manual connections: " + name);
-        }
+        validateMappedGroups(handlerCatalog, ZLinkScannedHandlerSurface.ROUTE,
+            Set.of(ZLinkScannedHandlerKind.SEND, ZLinkScannedHandlerKind.REQUEST));
         Set<String> packetNames = new HashSet<>();
+        for (ChannelRouteSendHandlerRegistration<?, ?> handler : routeSendHandlers) {
+            if (!packetNames.add(handler.packetName())) {
+                throw new ZLinkConfigurationException(
+                    "duplicate route mesh send handler packet name: "
+                        + name + "/" + handler.packetName());
+            }
+        }
         for (ChannelRouteRequestHandlerRegistration<?, ?, ?> handler : routeRequestHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate route mesh request handler packet name: "
                         + name + "/" + handler.packetName());
+            }
+        }
+    }
+
+    private void validateDealerMesh(
+        boolean discoveryEnabled,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
+        if (clientEnabled && !discoveryEnabled && clientManualEndpoints.isEmpty()) {
+            throw new ZLinkConfigurationException(
+                "dealer mesh channel client requires discovery or manual connections: " + name);
+        }
+        if (!clientEnabled && handlerGroups.isEmpty()) {
+            throw new ZLinkConfigurationException(
+                "dealer mesh channel requires client capability or handler groups: " + name);
+        }
+        validateMappedGroups(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL,
+            Set.of(ZLinkScannedHandlerKind.SEND, ZLinkScannedHandlerKind.REQUEST));
+    }
+
+    private void validateHandlerGroups() {
+        Set<String> groups = new HashSet<>();
+        for (String group : handlerGroups) {
+            if (!groups.add(group)) {
+                throw new ZLinkConfigurationException(
+                    "duplicate channel handler group: " + name + "/" + group);
             }
         }
     }
@@ -252,4 +366,28 @@ public final class ChannelRegistration {
         }
         return endpoint;
     }
+
+    private void validateMappedGroups(
+        ZLinkScannedHandlerCatalog handlerCatalog,
+        ZLinkScannedHandlerSurface surface,
+        Set<ZLinkScannedHandlerKind> allowedKinds) {
+        for (String group : handlerGroups) {
+            if (!handlerCatalog.containsGroup(group)) {
+                throw new ZLinkConfigurationException(
+                    "channel maps unknown handler group: " + name + "/" + group);
+            }
+            if (!handlerCatalog.groupHasOnly(group, surface, allowedKinds)) {
+                throw new ZLinkConfigurationException(
+                    "channel maps incompatible handler group: " + name + "/" + group);
+            }
+        }
+    }
+
+    private boolean hasMappedHandler(
+        ZLinkScannedHandlerCatalog handlerCatalog,
+        ZLinkScannedHandlerSurface surface,
+        ZLinkScannedHandlerKind kind) {
+        return !handlerCatalog.matching(Set.copyOf(handlerGroups), surface, kind).isEmpty();
+    }
+
 }

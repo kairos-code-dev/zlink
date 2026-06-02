@@ -1,15 +1,15 @@
 package systems.zlink.samples.tictactoe.sessiongateway.shared.actors;
 
-import java.util.List;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 
 public final class PlayerActor implements ZLinkActor {
     private final String actorId;
-    private final RecordingActorContext context = new RecordingActorContext();
+    private final ZLinkActorContext context;
 
-    public PlayerActor(String actorId) {
+    public PlayerActor(String actorId, ZLinkActorContext context) {
         this.actorId = actorId;
+        this.context = context;
     }
 
     @Override
@@ -20,9 +20,5 @@ public final class PlayerActor implements ZLinkActor {
     @Override
     public ZLinkActorContext context() {
         return context;
-    }
-
-    public List<String> pushes() {
-        return context.pushes();
     }
 }

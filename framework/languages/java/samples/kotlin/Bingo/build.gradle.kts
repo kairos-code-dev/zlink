@@ -4,6 +4,7 @@ plugins {
 }
 
 dependencies {
+    implementation(files("../../../zlink-framework-core/build/libs/zlink-framework-core-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../zlink-stream-connector/build/libs/zlink-stream-connector-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../zlink-framework-kotlin/build/libs/zlink-framework-kotlin-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../../../../bindings/java/build/libs/zlink-java-6.0.4.jar"))

@@ -74,6 +74,7 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
             registry.topology(toBackendFilter(filter)).stream()
                 .map(entry -> new ZLinkRegistryTopologyEntry(
                     entry.channelName(),
+                    entry.routingId(),
                     entry.serviceKind(),
                     entry.endpoint()))
                 .toList());

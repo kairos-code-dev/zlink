@@ -346,9 +346,20 @@ function closeSocketRoutes(target: unknown, peerRoutingIds: Set<unknown>): void 
     return;
   }
   for (const routingId of peerRoutingIds) {
-    target.disconnectRid(toNativeRoutingId(routingId));
+    try {
+      target.disconnectRid(toNativeRoutingId(routingId));
+    } catch (error) {
+      if (!isDisconnectRouteNotFoundError(error)) {
+        throw error;
+      }
+    }
     peerRoutingIds.delete(routingId);
   }
+}
+
+function isDisconnectRouteNotFoundError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error &&
+    (error as { code: unknown }).code === zlink.ConnectResult.NotFound;
 }
 
 function hasDisconnectRid(target: unknown): target is { disconnectRid(routingId: unknown): void } {

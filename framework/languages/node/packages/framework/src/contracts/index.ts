@@ -378,6 +378,9 @@ export function parseMessage<T>(_message: Message, _type: Type<T>): T {
 
 export interface ZLinkCodecRegistryBuilder {
   addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this;
+  addJson(): this;
+  addMessagePack(): this;
+  addProtobuf(): this;
 }
 
 export interface ZLinkSendCall {
@@ -441,8 +444,9 @@ export interface ZLinkSpotRemoteAddressResolver {
 }
 
 export enum ZLinkSpotKind {
-  Entry = 'entry',
-  User = 'user'
+  Invalid = 0,
+  Entry = 1,
+  User = 2
 }
 
 export interface ZLinkSpotRemoteAddress {
@@ -650,12 +654,23 @@ export interface ZLinkHandlerFilter {
 }
 
 export interface ZLinkRegistryQuery {
-  topology(filter?: ZLinkRegistryTopologyFilter): readonly ZLinkRegistryTopologyEntry[];
-  serviceSummary(filter?: ZLinkRegistryServiceSummaryFilter): readonly ZLinkRegistryServiceSummaryEntry[];
+  statusAsync(signal?: AbortSignal): Promise<ZLinkRegistryStatus>;
+  serviceSummaryAsync(
+    filter?: ZLinkRegistryServiceSummaryFilter,
+    signal?: AbortSignal
+  ): Promise<readonly ZLinkRegistryServiceSummaryEntry[]>;
+  topologyAsync(
+    filter?: ZLinkRegistryTopologyFilter,
+    signal?: AbortSignal
+  ): Promise<readonly ZLinkRegistryTopologyEntry[]>;
+  memberPeersAsync(channelName: string, signal?: AbortSignal): Promise<readonly ZLinkMemberPeerEntry[]>;
 }
 
 export interface ZLinkRegistryQueryClient {
-  topology(filter?: ZLinkRegistryTopologyFilter): Promise<readonly ZLinkRegistryTopologyEntry[]>;
+  topologyAsync(
+    filter?: ZLinkRegistryTopologyFilter,
+    signal?: AbortSignal
+  ): Promise<readonly ZLinkRegistryTopologyEntry[]>;
 }
 
 export interface ZLinkRegistryQueryClientOptions {
@@ -663,16 +678,34 @@ export interface ZLinkRegistryQueryClientOptions {
 }
 
 export interface ZLinkRegistryOptions {
-  pubEndpoint?: string;
-  routerEndpoint?: string;
+  pubEndpoint: string;
+  routerEndpoint: string;
+  registryId?: number;
+  heartbeatIntervalMs?: number;
+  heartbeatTimeoutMs?: number;
+  broadcastIntervalMs?: number;
+  peers?: readonly string[];
 }
 
 export interface ZLinkMonitoringOptions {
-  enabled?: boolean;
+  socket?: ZLinkSocketMonitoringRegistration[];
+  registry?: ZLinkPollingMonitoringRegistration[];
+  spot?: ZLinkPollingMonitoringRegistration[];
+}
+
+export interface ZLinkSocketMonitoringRegistration {
+  readonly sourceName: string;
+  readonly events?: readonly ZLinkSocketEventKind[];
+}
+
+export interface ZLinkPollingMonitoringRegistration {
+  readonly sourceName: string;
+  readonly intervalMs: number;
 }
 
 export interface ZLinkRuntimeEvent {
-  readonly timestampMs: number;
+  readonly sourceName: string;
+  readonly timestamp: Date;
 }
 
 export interface ZLinkRuntimeEventHandler<TEvent extends ZLinkRuntimeEvent> {
@@ -684,117 +717,209 @@ export interface ZLinkRuntimeEventPublisher {
 }
 
 export enum ZLinkSocketEventKind {
-  Connected = 'connected',
-  Disconnected = 'disconnected',
-  Error = 'error'
+  Connected = 0,
+  ConnectionReady = 1,
+  Disconnected = 2,
+  HandshakeFailed = 3,
+  PeerAdmissionChanged = 4,
+  Closed = 5,
+  Internal = 6
 }
 
 export enum ZLinkSocketNativeEventType {
-  Connected = 'connected',
-  ConnectDelayed = 'connectDelayed',
-  ConnectRetried = 'connectRetried',
-  Listening = 'listening',
-  BindFailed = 'bindFailed',
-  Accepted = 'accepted',
-  AcceptFailed = 'acceptFailed',
-  Closed = 'closed',
-  CloseFailed = 'closeFailed',
-  Disconnected = 'disconnected',
-  MonitorStopped = 'monitorStopped'
+  Connected = 0x0001,
+  ConnectDelayed = 0x0002,
+  ConnectRetried = 0x0004,
+  Listening = 0x0008,
+  BindFailed = 0x0010,
+  Accepted = 0x0020,
+  AcceptFailed = 0x0040,
+  Closed = 0x0080,
+  CloseFailed = 0x0100,
+  Disconnected = 0x0200,
+  MonitorStopped = 0x0400,
+  HandshakeFailedNoDetail = 0x0800,
+  ConnectionReady = 0x1000,
+  HandshakeFailedProtocol = 0x2000,
+  HandshakeFailedAuth = 0x4000,
+  PeerAdmissionChanged = 0x8000
 }
 
 export interface ZLinkSocketDiagnostic {
-  readonly nativeEvent?: ZLinkSocketNativeEventType;
-  readonly value?: number;
+  readonly nativeEvent: ZLinkSocketNativeEventType;
+  readonly nativeValue: number;
 }
 
 export interface ZLinkSocketEvent extends ZLinkRuntimeEvent {
-  readonly kind: ZLinkSocketEventKind;
+  readonly event: ZLinkSocketEventKind;
+  readonly routingId?: RoutingId;
+  readonly localAddr: string;
+  readonly remoteAddr: string;
   readonly diagnostic?: ZLinkSocketDiagnostic;
 }
 
 export enum ZLinkRegistryEventKind {
-  Started = 'started',
-  Stopped = 'stopped',
-  TopologyChanged = 'topologyChanged'
+  StatusChanged = 0,
+  TopologyChanged = 1,
+  ServiceSummaryChanged = 2
 }
 
 export interface ZLinkRegistryEvent extends ZLinkRuntimeEvent {
-  readonly kind: ZLinkRegistryEventKind;
+  readonly event: ZLinkRegistryEventKind;
+  readonly status?: ZLinkRegistryStatus;
+  readonly topology?: readonly ZLinkRegistryTopologyEntry[];
+  readonly serviceSummary?: readonly ZLinkRegistryServiceSummaryEntry[];
 }
 
 export enum ZLinkSpotEventKind {
-  Started = 'started',
-  Stopped = 'stopped',
-  TimerOverrun = 'timerOverrun'
+  StatusChanged = 0,
+  PeersChanged = 1,
+  SubjectsChanged = 2,
+  TimerHandlerFailed = 3,
+  TimerStoppedAfterUnhandledException = 4
 }
 
 export interface ZLinkSpotTimerDiagnostic {
-  readonly overrunMs: number;
+  readonly spotRid: RoutingId;
+  readonly isEntrySpot: boolean;
+  readonly timerName: string;
+  readonly handlerType: string;
+  readonly deliveryIndex: bigint;
+  readonly scheduledIndex: bigint;
+  readonly exceptionType: string;
+  readonly exceptionMessage: string;
 }
 
 export interface ZLinkSpotEvent extends ZLinkRuntimeEvent {
-  readonly kind: ZLinkSpotEventKind;
-  readonly timer?: ZLinkSpotTimerDiagnostic;
+  readonly event: ZLinkSpotEventKind;
+  readonly status?: ZLinkSpotNodeStatus;
+  readonly peers?: readonly ZLinkSpotNodePeerEntry[];
+  readonly subjects?: readonly ZLinkSpotNodeSubjectEntry[];
+  readonly timerDiagnostic?: ZLinkSpotTimerDiagnostic;
 }
 
 export enum ZLinkAutoConnectType {
-  RouteMesh = 'routeMesh',
-  ClientServer = 'clientServer',
-  DealerMesh = 'dealerMesh',
-  Fanout = 'fanout',
-  SpotMesh = 'spotMesh'
+  Invalid = 0,
+  RouteMesh = 1,
+  ClientServer = 2,
+  DealerMesh = 3,
+  Fanout = 4,
+  SpotMesh = 5
 }
 
-export enum ZLinkServiceKind { Discovery = 'discovery', SpotSub = 'spotSub', SpotPub = 'spotPub', Socket = 'socket' }
-export enum ZLinkServiceRole { Invalid = 'invalid', Spot = 'spot', Router = 'router', Dealer = 'dealer', Pub = 'pub', Sub = 'sub' }
-export enum ZLinkRegistryState { Idle = 'idle', Active = 'active', Degraded = 'degraded', Error = 'error' }
-export enum ZLinkTopologySource { Manual = 'manual', Discovery = 'discovery', Registry = 'registry' }
-export enum ZLinkTopologyState { Configured = 'configured', Connected = 'connected', Missing = 'missing' }
-export enum ZLinkAdmissionState { Serving = 'serving', Draining = 'draining' }
+export enum ZLinkServiceKind { Discovery = 1, SpotSub = 3, SpotPub = 4, Socket = 5 }
+export enum ZLinkServiceRole { Invalid = 0, Spot = 2, Router = 3, Dealer = 4, Pub = 5, Sub = 6 }
+export enum ZLinkRegistryState { Idle = 1, Active = 2, Degraded = 3, Error = 4 }
+export enum ZLinkTopologySource { Manual = 1, Discovery = 2, Registry = 3 }
+export enum ZLinkTopologyState { Discovered = 1, Connecting = 2, Ready = 3, Lost = 4, Error = 5, Stopped = 6 }
+export enum ZLinkAdmissionState { Serving = 1, Draining = 2 }
 
 export interface ZLinkRegistryServiceSummaryFilter {
-  readonly serviceName?: string;
-}
-
-export interface ZLinkRegistryTopologyFilter {
+  readonly autoConnectType?: ZLinkAutoConnectType;
+  readonly serviceRole?: ZLinkServiceRole;
   readonly channelName?: string;
 }
 
+export interface ZLinkRegistryTopologyFilter {
+  readonly autoConnectType?: ZLinkAutoConnectType;
+  readonly serviceKind?: ZLinkServiceKind;
+  readonly serviceRole?: ZLinkServiceRole;
+  readonly channelName?: string;
+  readonly routingId?: RoutingId;
+  readonly state?: ZLinkTopologyState;
+  readonly source?: ZLinkTopologySource;
+}
+
 export interface ZLinkRegistryStatus {
+  readonly registryId: number;
+  readonly bindEndpoint: string;
   readonly state: ZLinkRegistryState;
+  readonly topologyEntryCount: number;
+  readonly peerRegistryCount: number;
+  readonly connectedPeerRegistryCount: number;
+  readonly listSeq: bigint;
+  readonly lastError: number;
+  readonly lastChangedMs: bigint;
 }
 
 export interface ZLinkRegistryServiceSummaryEntry {
-  readonly serviceName: string;
+  readonly autoConnectType: ZLinkAutoConnectType;
+  readonly serviceRole: ZLinkServiceRole;
+  readonly channelName: string;
+  readonly totalCount: number;
+  readonly connectingCount: number;
+  readonly readyCount: number;
+  readonly errorCount: number;
+  readonly stoppedCount: number;
+  readonly lastReportedMs: bigint;
 }
 
 export interface ZLinkRegistryTopologyEntry {
+  readonly autoConnectType: ZLinkAutoConnectType;
+  readonly routingId?: RoutingId;
+  readonly serviceKind: ZLinkServiceKind;
+  readonly serviceRole: ZLinkServiceRole;
   readonly channelName: string;
+  readonly endpoint: string;
+  readonly source: ZLinkTopologySource;
+  readonly state: ZLinkTopologyState;
+  readonly desiredCount: number;
+  readonly readyCount: number;
+  readonly errorCode: number;
+  readonly lastReportedMs: bigint;
+  readonly spotKind: ZLinkSpotKind;
 }
 
 export interface ZLinkMemberPeerEntry {
+  readonly autoConnectType: ZLinkAutoConnectType;
+  readonly serviceRole: ZLinkServiceRole;
   readonly channelName: string;
   readonly endpoint: string;
+  readonly routingId?: RoutingId;
+  readonly value: bigint;
+  readonly weight: number;
 }
 
-export enum ZLinkSpotNodeState { Idle = 'idle', Connecting = 'connecting', PartialReady = 'partialReady', Ready = 'ready', Error = 'error' }
-export enum ZLinkSpotPeerSource { Manual = 'manual', Discovery = 'discovery', Mixed = 'mixed' }
-export enum ZLinkSpotPeerKind { SpotMesh = 'spotMesh', RouterChannel = 'routerChannel' }
-export enum ZLinkSpotPeerState { Configured = 'configured', Connecting = 'connecting', Connected = 'connected' }
-export enum ZLinkSubjectKind { None = 'none', Topic = 'topic', Pattern = 'pattern' }
-export enum ZLinkSpotRole { Pub = 'pub', Sub = 'sub' }
+export enum ZLinkSpotNodeState { Idle = 1, Connecting = 2, PartialReady = 3, Ready = 4, Error = 5 }
+export enum ZLinkSpotPeerSource { Manual = 1, Discovery = 2, Mixed = 3 }
+export enum ZLinkSpotPeerKind { SpotMesh = 1, RouterChannel = 2 }
+export enum ZLinkSpotPeerState { Configured = 1, Connecting = 2, Connected = 3 }
+export enum ZLinkSubjectKind { None = 0, Topic = 1, Pattern = 2 }
+export enum ZLinkSpotRole { Pub = 1, Sub = 2 }
 
 export interface ZLinkSpotNodeStatus {
+  readonly channelName: string;
+  readonly localEndpoint: string;
+  readonly nodeRoutingId?: RoutingId;
   readonly state: ZLinkSpotNodeState;
+  readonly configuredPeerCount: number;
+  readonly activePeerCount: number;
+  readonly connectedPeerCount: number;
+  readonly subjectCount: number;
+  readonly readySubjectCount: number;
+  readonly lastError: number;
+  readonly lastChangedMs: bigint;
 }
 
 export interface ZLinkSpotNodePeerEntry {
-  readonly endpoint: string;
+  readonly channelName: string;
+  readonly localEndpoint: string;
+  readonly peerEndpoint: string;
+  readonly source: ZLinkSpotPeerSource;
+  readonly kind: ZLinkSpotPeerKind;
+  readonly state: ZLinkSpotPeerState;
+  readonly weight: number;
+  readonly connectedSinceMs: bigint;
+  readonly lastChangedMs: bigint;
 }
 
 export interface ZLinkSpotNodeSubjectEntry {
+  readonly role: ZLinkSpotRole;
   readonly subject: string;
+  readonly subjectKind: ZLinkSubjectKind;
+  readonly readyPeerCount: number;
+  readonly activePeerCount: number;
+  readonly lastChangedMs: bigint;
 }
 
 export const ZLINK_DECORATOR_METADATA = Symbol.for('@zlink-systems/framework:decorator');

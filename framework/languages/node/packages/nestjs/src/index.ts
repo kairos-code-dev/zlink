@@ -2,7 +2,9 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import type {
   ZLinkFrameworkRegistration,
-  ZLinkFrameworkRegistrationOptions
+  ZLinkFrameworkRegistrationOptions,
+  ZLinkRegistryOptions,
+  ZLinkRegistryQueryClientOptions
 } from '@zlink-systems/framework';
 
 type FrameworkModule = typeof import('@zlink-systems/framework');
@@ -43,6 +45,9 @@ export const ZLINK_SPOT_OUTBOUND = Symbol.for('@zlink-systems/framework:spot-out
 export const ZLINK_SPOT_PUBLISHER_CLIENT = Symbol.for('@zlink-systems/framework:spot-publisher-client');
 export const ZLINK_ACTOR_MANAGER = Symbol.for('@zlink-systems/framework:actor-manager');
 export const ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER = Symbol.for('@zlink-systems/framework:spot-remote-address-resolver');
+export const ZLINK_REGISTRY_RUNTIME = Symbol.for('@zlink-systems/framework:registry-runtime');
+export const ZLINK_REGISTRY_QUERY = Symbol.for('@zlink-systems/framework:registry-query');
+export const ZLINK_REGISTRY_QUERY_CLIENT = Symbol.for('@zlink-systems/framework:registry-query-client');
 
 export class ZLinkModule {
   static forRoot(options: ZLinkModuleOptions = {}): DynamicModule {
@@ -71,6 +76,35 @@ export class ZLinkModule {
         ZLINK_FRAMEWORK_RUNTIME,
         ...alwaysAvailableClientTokens()
       ]
+    };
+  }
+}
+
+export class ZLinkRegistryModule {
+  static forRoot(options: ZLinkRegistryOptions): DynamicModule {
+    const runtime = new framework.ZLinkRegistryRuntime({ registration: options });
+    const query = new framework.DefaultZLinkRegistryQuery(runtime);
+    const providers: Provider[] = [
+      { provide: ZLINK_REGISTRY_RUNTIME, useValue: runtime },
+      { provide: ZLINK_REGISTRY_QUERY, useValue: query }
+    ];
+    return {
+      module: ZLinkRegistryModule,
+      providers,
+      exports: providers.map((provider) => provider.provide)
+    };
+  }
+}
+
+export class ZLinkRegistryQueryClientModule {
+  static forRoot(options: ZLinkRegistryQueryClientOptions): DynamicModule {
+    return {
+      module: ZLinkRegistryQueryClientModule,
+      providers: [{
+        provide: ZLINK_REGISTRY_QUERY_CLIENT,
+        useFactory: () => new framework.DefaultZLinkRegistryQueryClient({ registration: options })
+      }],
+      exports: [ZLINK_REGISTRY_QUERY_CLIENT]
     };
   }
 }

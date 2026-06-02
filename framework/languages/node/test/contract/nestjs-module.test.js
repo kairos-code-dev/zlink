@@ -227,7 +227,11 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', (
     }
   }
   const module = nestjs.ZLinkModule.forRoot({
-    spotNodes: ['game.spot'],
+    spotNodes: {
+      'game.spot': {
+        router: { bind: 'tcp://0.0.0.0:9110' }
+      }
+    },
     streamNodes: {
       'client.stream': {
         bind: 'tcp://0.0.0.0:9100',
@@ -242,6 +246,7 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', (
   assert.equal(streamNode.bind, 'tcp://0.0.0.0:9100');
   assert.equal(streamNode.attachActorGateway, 'game.spot');
   assert.equal(streamNode.session, ClientHeaderSession);
+  assert.equal(registration.spotNodes.get('game.spot').router.bind, 'tcp://0.0.0.0:9110');
 
   assert.throws(
     () => nestjs.ZLinkModule.forRoot({
@@ -257,6 +262,19 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', (
   );
   assert.throws(
     () => nestjs.ZLinkModule.forRoot({
+      spotNodes: ['game.spot'],
+      streamNodes: {
+        'client.stream': {
+          bind: 'tcp://0.0.0.0:9100',
+          attachActorGateway: 'game.spot',
+          session: ClientHeaderSession
+        }
+      }
+    }),
+    /does not enable router capability/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
       streamNodes: {
         'client.stream': {
           bind: 'tcp://0.0.0.0:9100',
@@ -266,6 +284,57 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', (
       }
     }),
     /references unknown ActorGateway target SpotNode 'unknown.spot'/
+  );
+});
+
+test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capability options', () => {
+  const module = nestjs.ZLinkModule.forRoot({
+    spotNodes: {
+      game: {
+        router: {
+          bind: 'tcp://0.0.0.0:9201',
+          routingId: 'node-a',
+          manualConnections: ['tcp://127.0.0.1:9202']
+        },
+        pubSub: {
+          bind: 'tcp://0.0.0.0:9203',
+          routingId: 'node-a',
+          manualConnections: ['tcp://127.0.0.1:9204']
+        }
+      }
+    }
+  });
+  const registration = module.providers.find((provider) => provider.provide === nestjs.ZLINK_FRAMEWORK_REGISTRATION).useValue;
+  const spotNode = registration.spotNodes.get('game');
+
+  assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9201');
+  assert.equal(spotNode.router.routingId, 'node-a');
+  assert.deepEqual(spotNode.router.manualConnections, ['tcp://127.0.0.1:9202']);
+  assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9203');
+  assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9204']);
+
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({ spotNodes: [{ name: '', router: {} }] }),
+    /SpotNode name must not be empty/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({ spotNodes: { game: { router: { bind: '' } } } }),
+    /SpotNode 'game' router must define a bind endpoint/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({ spotNodes: { game: { pubSub: { manualConnections: [''] } } } }),
+    /SpotNode 'game' pubSub manual connection endpoint must not be empty/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot({
+      spotNodes: {
+        game: {
+          router: { routingId: 'node-a' },
+          pubSub: { routingId: 'node-b' }
+        }
+      }
+    }),
+    /router and pubSub routingId must match/
   );
 });
 
@@ -535,7 +604,7 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
     nativeInstance: {},
     routingId: 'game.spot',
     setRoutingId() {},
-    setRouterBind() {},
+    setRouterBind(endpoint) { calls.push(`spot:setRouterBind:${endpoint}`); },
     setPubBind() {},
     attachDiscovery() {},
     connectPeer() {},
@@ -566,7 +635,11 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
   };
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
-      spotNodes: ['game.spot'],
+      spotNodes: {
+        'game.spot': {
+          router: { bind: 'tcp://0.0.0.0:9110' }
+        }
+      },
       streamNodes: {
         'client.stream': {
           bind: 'tcp://0.0.0.0:9100',
@@ -646,10 +719,104 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
 
   assert.deepEqual(calls, [
     'spot:create:3',
+    'spot:setRouterBind:tcp://0.0.0.0:9110',
     'stream:attachActorGateway',
     'stream:bind:tcp://0.0.0.0:9100',
     'monitor:dispose',
     'stream:dispose',
+    'spot:dispose',
+    'context:dispose'
+  ]);
+});
+
+test('framework runtime host applies SpotNode router and pubSub capability options', async () => {
+  const calls = [];
+  const spotNode = {
+    nativeInstance: {},
+    routingId: 'node-a',
+    setRoutingId(routingId) { calls.push(`spot:setRoutingId:${routingId}`); },
+    setRouterBind(endpoint) { calls.push(`spot:setRouterBind:${endpoint}`); },
+    setPubBind(endpoint) { calls.push(`spot:setPubBind:${endpoint}`); },
+    attachDiscovery() {},
+    connectPeer(endpoint) { calls.push(`spot:connectPeer:${endpoint}`); },
+    disconnectPeer() {},
+    connectRouterChannelPeer() {},
+    connectRouterChannelPeerRid() {},
+    disconnectRouterChannelPeer() {},
+    disconnectRouterChannelPeerRid() {},
+    attachSpotRouteChannelDiscovery() {},
+    createSpot() {},
+    getOrCreateSpot() {},
+    status() {},
+    peers() { return []; },
+    subjects() { return []; },
+    attachChannelDealer() {},
+    attachChannelDealerManual() {},
+    entrySpot() {},
+    createActor() {},
+    actorLookup() {},
+    joinActor() { return true; },
+    joinActorEntrySpot() { return true; },
+    async destroyActor() {},
+    sendActorBoundSession() { return true; },
+    async closeActorBoundSession() {},
+    async dispose() {
+      calls.push('spot:dispose');
+    }
+  };
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      spotNodes: {
+        game: {
+          router: {
+            bind: 'tcp://0.0.0.0:9301',
+            routingId: 'node-a',
+            manualConnections: ['tcp://127.0.0.1:9302']
+          },
+          pubSub: {
+            bind: 'tcp://0.0.0.0:9303',
+            routingId: 'node-a',
+            manualConnections: ['tcp://127.0.0.1:9304']
+          }
+        }
+      }
+    })
+  }, {
+    backendAdapterFactory: {
+      createChannelAdapter() {
+        return {
+          createContext() {
+            return {
+              nativeInstance: {},
+              shutdown() {},
+              async dispose() {
+                calls.push('context:dispose');
+              }
+            };
+          }
+        };
+      },
+      createSpotAdapter() {
+        return {
+          createSpotNode(_context, mode) {
+            calls.push(`spot:create:${mode}`);
+            return spotNode;
+          }
+        };
+      }
+    }
+  });
+
+  await runtime.start();
+  await runtime.stop();
+
+  assert.deepEqual(calls, [
+    'spot:create:3',
+    'spot:setRoutingId:node-a',
+    'spot:setRouterBind:tcp://0.0.0.0:9301',
+    'spot:setPubBind:tcp://0.0.0.0:9303',
+    'spot:connectPeer:tcp://127.0.0.1:9302',
+    'spot:connectPeer:tcp://127.0.0.1:9304',
     'spot:dispose',
     'context:dispose'
   ]);

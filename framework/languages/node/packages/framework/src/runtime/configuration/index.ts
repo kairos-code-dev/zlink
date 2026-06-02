@@ -9,7 +9,7 @@ export interface ZLinkFrameworkRegistration {
   readonly routeChannels: ReadonlySet<string>;
   readonly routeChannelOptions: ReadonlyMap<string, ZLinkRouteChannelOptions>;
   readonly streamNodes: ReadonlyMap<string, ZLinkStreamNodeOptions>;
-  readonly spotNodes: ReadonlySet<string>;
+  readonly spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>;
   readonly spotPublisherClients: ReadonlySet<string>;
   readonly hasSpotRemoteAddressResolver: boolean;
   readonly hasRegistrySpotRemoteAddresses: boolean;
@@ -30,7 +30,8 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly discovery?: ZLinkDiscoveryOptions;
   readonly routeChannels?: readonly (string | ZLinkRouteChannelOptions)[];
   readonly streamNodes?: Readonly<Record<string, ZLinkStreamNodeOptions>>;
-  readonly spotNodes?: readonly string[];
+  readonly spotNodes?: readonly (string | ZLinkSpotNodeRegistrationOptions)[] |
+    Readonly<Record<string, ZLinkSpotNodeOptions>>;
   readonly spotPublisherClients?: readonly string[];
   readonly spotRemoteAddressResolver?: Type;
   readonly registrySpotRemoteAddresses?: {
@@ -90,6 +91,27 @@ export interface ZLinkStreamNodeOptions {
   readonly session?: Type;
 }
 
+export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
+  readonly name: string;
+}
+
+export interface ZLinkSpotNodeOptions {
+  readonly router?: ZLinkSpotRouterCapabilityOptions;
+  readonly pubSub?: ZLinkSpotPubSubCapabilityOptions;
+}
+
+export interface ZLinkSpotRouterCapabilityOptions {
+  readonly bind?: string;
+  readonly manualConnections?: readonly string[];
+  readonly routingId?: string;
+}
+
+export interface ZLinkSpotPubSubCapabilityOptions {
+  readonly bind?: string;
+  readonly manualConnections?: readonly string[];
+  readonly routingId?: string;
+}
+
 export interface ZLinkRouteChannelHandlerOptions {
   readonly kind: 'send' | 'request';
   readonly packetName: string;
@@ -134,7 +156,7 @@ export function createFrameworkRegistration(
     routeChannels: new Set(routeChannelOptions.keys()),
     routeChannelOptions,
     streamNodes: toStreamNodeMap(options.streamNodes),
-    spotNodes: new Set(options.spotNodes ?? []),
+    spotNodes: toSpotNodeMap(options.spotNodes),
     spotPublisherClients: new Set(options.spotPublisherClients ?? []),
     hasSpotRemoteAddressResolver: options.spotRemoteAddressResolver !== undefined,
     hasRegistrySpotRemoteAddresses: options.registrySpotRemoteAddresses !== undefined,
@@ -203,6 +225,7 @@ export function validateFrameworkRegistration(
 
   validateRegistryRouteChannel(registration);
   validateChannelCapabilities(options.channels, hasDiscovery(options.discovery));
+  validateSpotNodes(registration.spotNodes);
   validateRouteChannels(registration.routeChannelOptions);
   validateStreamNodes(registration);
 }
@@ -231,6 +254,22 @@ function toTypeMap(value: ZLinkFrameworkRegistrationOptions['actorFactories']): 
     return new Map(value);
   }
   return new Map(Object.entries(value));
+}
+
+function toSpotNodeMap(value: ZLinkFrameworkRegistrationOptions['spotNodes']): Map<string, ZLinkSpotNodeOptions> {
+  if (value === undefined) {
+    return new Map();
+  }
+  if (!Array.isArray(value)) {
+    return new Map(Object.entries(value).map(([name, spotNode]) => [name, { ...spotNode }]));
+  }
+  return new Map(value.map((spotNode) => {
+    if (typeof spotNode === 'string') {
+      return [spotNode, {}];
+    }
+    const { name, ...options } = spotNode;
+    return [name, options];
+  }));
 }
 
 function channelNamesWith(
@@ -278,6 +317,43 @@ function validateChannelCapabilities(
         throw new ZLinkConfigurationException(`channel '${channelName}' route mesh manual connection endpoint must not be empty.`);
       }
     }
+  }
+}
+
+function validateSpotNodes(spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>): void {
+  for (const [spotNodeName, spotNode] of spotNodes.entries()) {
+    if (spotNodeName.trim().length === 0 || spotNodeName.trim() !== spotNodeName) {
+      throw new ZLinkConfigurationException('SpotNode name must not be empty or padded.');
+    }
+    validateSpotNodeCapability(`SpotNode '${spotNodeName}' router`, spotNode.router);
+    validateSpotNodeCapability(`SpotNode '${spotNodeName}' pubSub`, spotNode.pubSub);
+    if (
+      spotNode.router?.routingId !== undefined &&
+      spotNode.pubSub?.routingId !== undefined &&
+      spotNode.router.routingId !== spotNode.pubSub.routingId
+    ) {
+      throw new ZLinkConfigurationException(
+        `SpotNode '${spotNodeName}' router and pubSub routingId must match.`
+      );
+    }
+  }
+}
+
+function validateSpotNodeCapability(
+  capabilityName: string,
+  capability: ZLinkSpotRouterCapabilityOptions | ZLinkSpotPubSubCapabilityOptions | undefined
+): void {
+  if (capability === undefined) {
+    return;
+  }
+  if (capability.bind !== undefined) {
+    requireEndpoint(capabilityName, capability.bind);
+  }
+  if ((capability.manualConnections ?? []).some((endpoint) => endpoint.trim().length === 0)) {
+    throw new ZLinkConfigurationException(`${capabilityName} manual connection endpoint must not be empty.`);
+  }
+  if (capability.routingId !== undefined && (capability.routingId.trim().length === 0 || capability.routingId.trim() !== capability.routingId)) {
+    throw new ZLinkConfigurationException(`${capabilityName} routingId must not be empty or padded.`);
   }
 }
 
@@ -359,9 +435,15 @@ function validateStreamNodes(registration: ZLinkFrameworkRegistration): void {
     if (streamNode.attachActorGateway === undefined || streamNode.attachActorGateway.trim().length === 0) {
       continue;
     }
-    if (!registration.spotNodes.has(streamNode.attachActorGateway)) {
+    const spotNode = registration.spotNodes.get(streamNode.attachActorGateway);
+    if (spotNode === undefined) {
       throw new ZLinkConfigurationException(
         `STREAM node '${streamNodeName}' references unknown ActorGateway target SpotNode '${streamNode.attachActorGateway}'.`
+      );
+    }
+    if (spotNode.router === undefined) {
+      throw new ZLinkConfigurationException(
+        `STREAM node '${streamNodeName}' attaches ActorGateway to SpotNode '${streamNode.attachActorGateway}' but that SpotNode does not enable router capability.`
       );
     }
   }

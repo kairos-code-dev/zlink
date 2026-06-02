@@ -347,6 +347,11 @@ module options 객체로 옮긴다. dotnet builder 메서드 한 개 = node opti
 @Module({
   imports: [
     ZLinkModule.forRoot({
+      spotNodes: {
+        'game.spot': {
+          router: { bind: 'tcp://0.0.0.0:9110' },
+        },
+      },
       streamNodes: {
         'client.stream': {
           bind: 'tcp://0.0.0.0:9100',
@@ -381,7 +386,8 @@ context 와 함께 생성한다(생성자 주입 + framework 가 주는 `context
 - 등록 시점에 이 node 가 framework Header 기반 packet 경로라는 사실이 분명하게
   드러난다.
 - `attachActorGateway` 는 session→actor bind/relay 가 향할 SpotNode 이름을
-  연결한다. actor 로 relay 하지 않는 순수 stream node 는 이 키를 생략한다.
+  연결한다. 참조 대상 SpotNode 는 router capability 를 켜야 한다. actor 로 relay
+  하지 않는 순수 stream node 는 이 키를 생략한다.
 
 ## 5. serializer 계층
 

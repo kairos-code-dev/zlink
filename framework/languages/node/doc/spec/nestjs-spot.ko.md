@@ -196,7 +196,7 @@ discovery endpoint 가 없는 로컬 단일 노드도 `spotMeshes[channelName]` 
 - `router: { bind }` (dotnet `EnableRouter(r => r.SetRouterBind(...))`)
   - local `SpotNode.router` 경로를 켜고 routed ingress endpoint 를 명시한다.
     같은 channel 에 속한 다른 `SpotNode` 와 routed packet 을 주고받는 축이다.
-- `pubSub: { pubBind }` (dotnet `EnablePubSub(p => p.SetPubBind(...))`)
+- `pubSub: { bind }` (dotnet `EnablePubSub(p => p.SetPubBind(...))`)
   - 현재 SPOT channel 안의 publish / subscribe 축을 켠다. local spot 안에서
     `context.outbound.publish(...)` 를 쓰려면 이 capability 가 필요하다.
 - `channelClients: { orders: {} }` (dotnet `AttachChannelClient("orders")`)

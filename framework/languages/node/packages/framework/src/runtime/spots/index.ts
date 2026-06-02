@@ -22,7 +22,11 @@ import type {
   ZLinkTimerTick
 } from '../../contracts';
 import { ZLinkTimerOverrunPolicy } from '../../contracts';
-import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
+import {
+  ZLinkConfigurationException,
+  type ZLinkFrameworkRegistration,
+  type ZLinkSpotNodeOptions
+} from '../configuration';
 import type {
   ZLinkBackendAdapterFactory,
   ZLinkBackendContext,
@@ -55,8 +59,9 @@ export class ZLinkSpotNodeRuntimeManager {
       return;
     }
     const spotAdapter = this.options.backendAdapterFactory.createSpotAdapter();
-    for (const spotNodeName of this.options.registration.spotNodes) {
+    for (const [spotNodeName, spotNode] of this.options.registration.spotNodes.entries()) {
       const node = spotAdapter.createSpotNode(this.options.context, ZLINK_BACKEND_SPOT_NODE_MODE_ALL);
+      this.applySpotNodeOptions(node, spotNode);
       this.nodes.set(spotNodeName, node);
     }
   }
@@ -70,6 +75,25 @@ export class ZLinkSpotNodeRuntimeManager {
     this.nodes.clear();
     for (const node of nodes.reverse()) {
       await node.dispose();
+    }
+  }
+
+  private applySpotNodeOptions(node: ZLinkBackendSpotNode, spotNode: ZLinkSpotNodeOptions): void {
+    const routingId = spotNode.router?.routingId ?? spotNode.pubSub?.routingId;
+    if (routingId !== undefined) {
+      node.setRoutingId(routingId);
+    }
+    if (spotNode.router?.bind !== undefined) {
+      node.setRouterBind(spotNode.router.bind);
+    }
+    if (spotNode.pubSub?.bind !== undefined) {
+      node.setPubBind(spotNode.pubSub.bind);
+    }
+    for (const endpoint of spotNode.router?.manualConnections ?? []) {
+      node.connectPeer(endpoint);
+    }
+    for (const endpoint of spotNode.pubSub?.manualConnections ?? []) {
+      node.connectPeer(endpoint);
     }
   }
 }

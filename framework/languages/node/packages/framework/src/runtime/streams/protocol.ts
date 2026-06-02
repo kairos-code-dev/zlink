@@ -95,6 +95,46 @@ export function encodeStreamHeader(header: ZLinkStreamFrameHeader): Uint8Array {
   return buffer;
 }
 
+export function decodeStreamHeader(header: Uint8Array): ZLinkStreamFrameHeader {
+  let offset = 0;
+  if (header.length < 4) {
+    throw new Error('Stream header is incomplete.');
+  }
+  const kind = header[offset++] as ZLinkStreamMessageKind;
+  const codec = header[offset++] as ZLinkStreamCodec;
+  const flags = header[offset++] as ZLinkStreamHeaderFlags;
+  const hasRequestSeq = (flags & ZLinkStreamHeaderFlags.HasRequestSeq) !== 0;
+  const hasMetadata = (flags & ZLinkStreamHeaderFlags.HasMetadata) !== 0;
+  let requestSeq: bigint | undefined;
+  if (hasRequestSeq) {
+    if (header.length - offset < 8) {
+      throw new Error('Stream request sequence is incomplete.');
+    }
+    requestSeq = readBigUInt64BE(header, offset);
+    offset += 8;
+  }
+  const nameLength = header[offset++];
+  if (nameLength === 0 || header.length - offset < nameLength) {
+    throw new Error('Stream packet name is invalid.');
+  }
+  const name = utf8Decode(header.subarray(offset, offset + nameLength));
+  offset += nameLength;
+  const decodedMetadata = hasMetadata
+    ? decodeStreamMetadata(header, offset)
+    : { metadata: new Map<string, string>(), offset };
+  if (decodedMetadata.offset !== header.length) {
+    throw new Error('Stream header has trailing bytes.');
+  }
+  return {
+    kind,
+    codec,
+    flags,
+    requestSeq,
+    name,
+    metadata: decodedMetadata.metadata
+  };
+}
+
 export function tryGetStreamFrameHeader(header: ZlinkStreamHeader): ZLinkStreamFrameHeader | undefined {
   if (typeof header !== 'object' || header === null) {
     return undefined;
@@ -235,6 +275,48 @@ function encodeStreamMetadata(metadata: ReadonlyMap<string, string>): Uint8Array
   return buffer;
 }
 
+function decodeStreamMetadata(header: Uint8Array, offset: number): { metadata: Map<string, string>; offset: number } {
+  if (header.length - offset < 2) {
+    throw new Error('Stream metadata section is incomplete.');
+  }
+  const metadataLength = readUInt16BE(header, offset);
+  offset += 2;
+  if (header.length - offset < metadataLength) {
+    throw new Error('Stream metadata payload is incomplete.');
+  }
+  const end = offset + metadataLength;
+  if (offset >= end) {
+    throw new Error('Stream metadata entry count is missing.');
+  }
+  const count = header[offset++];
+  const metadata = new Map<string, string>();
+  for (let index = 0; index < count; index += 1) {
+    if (offset >= end) {
+      throw new Error('Stream metadata key length is missing.');
+    }
+    const keyLength = header[offset++];
+    if (keyLength === 0 || end - offset < keyLength) {
+      throw new Error('Stream metadata key is invalid.');
+    }
+    const key = utf8Decode(header.subarray(offset, offset + keyLength));
+    offset += keyLength;
+    if (end - offset < 2) {
+      throw new Error('Stream metadata value length is missing.');
+    }
+    const valueLength = readUInt16BE(header, offset);
+    offset += 2;
+    if (end - offset < valueLength) {
+      throw new Error('Stream metadata value is incomplete.');
+    }
+    metadata.set(key, utf8Decode(header.subarray(offset, offset + valueLength)));
+    offset += valueLength;
+  }
+  if (offset !== end) {
+    throw new Error('Stream metadata payload has trailing bytes.');
+  }
+  return { metadata, offset };
+}
+
 function validateStreamPacketName(name: string): void {
   const nameBytes = utf8Encode(name);
   if (name.trim().length === 0 || nameBytes.length > 255) {
@@ -332,6 +414,10 @@ function writeUInt16BE(buffer: Uint8Array, offset: number, value: number): void 
   buffer[offset + 1] = value & 0xff;
 }
 
+function readUInt16BE(buffer: Uint8Array, offset: number): number {
+  return (buffer[offset] << 8) | buffer[offset + 1];
+}
+
 function writeUInt32BE(buffer: Uint8Array, offset: number, value: number): void {
   buffer[offset] = (value >>> 24) & 0xff;
   buffer[offset + 1] = (value >>> 16) & 0xff;
@@ -344,4 +430,12 @@ function writeBigUInt64BE(buffer: Uint8Array, offset: number, value: bigint): vo
     buffer[offset + index] = Number(value & 0xffn);
     value >>= 8n;
   }
+}
+
+function readBigUInt64BE(buffer: Uint8Array, offset: number): bigint {
+  let value = 0n;
+  for (let index = 0; index < 8; index += 1) {
+    value = (value << 8n) | BigInt(buffer[offset + index]);
+  }
+  return value;
 }

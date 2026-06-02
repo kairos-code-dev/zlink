@@ -20,12 +20,17 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
+import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
 import type {
   ZLinkBackendActorRef,
+  ZLinkBackendAdapterFactory,
+  ZLinkBackendContext,
+  ZLinkBackendSocketMonitor,
   ZLinkBackendSendFlags,
   ZLinkBackendStreamSocket
 } from '../backend/contracts';
 import {
+  decodeStreamHeader,
   encodeStreamFrame,
   encodeStreamHeader,
   ensureSingleSubmit,
@@ -90,6 +95,66 @@ export interface ZLinkStreamSessionRuntimeOptions {
 
 export interface ZLinkStreamSessionNodeRuntimeOptions extends ZLinkStreamSessionRuntimeOptions {
   readonly nodeName?: string;
+}
+
+export interface ZLinkStreamRuntimeManagerOptions {
+  readonly registration: ZLinkFrameworkRegistration;
+  readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
+  readonly context: ZLinkBackendContext;
+  readonly bindingRuntime: ZLinkStreamBindingRuntime;
+}
+
+interface ZLinkStartedStreamNode {
+  readonly runtime: ZLinkStreamSessionNodeRuntime;
+  readonly socket: ZLinkBackendStreamSocket;
+  readonly monitor: ZLinkBackendSocketMonitor;
+}
+
+export class ZLinkStreamRuntimeManager {
+  private readonly nodes = new Map<string, ZLinkStartedStreamNode>();
+
+  constructor(private readonly options: ZLinkStreamRuntimeManagerOptions) {}
+
+  start(): void {
+    if (this.options.registration.streamNodes.size === 0) {
+      return;
+    }
+    const streamAdapter = this.options.backendAdapterFactory.createStreamAdapter();
+    const monitoringAdapter = this.options.backendAdapterFactory.createMonitoringAdapter();
+    for (const [nodeName, streamNode] of this.options.registration.streamNodes.entries()) {
+      if (streamNode.attachActorGateway !== undefined) {
+        throw new ZLinkConfigurationException(
+          `STREAM node '${nodeName}' cannot attach ActorGateway before SpotNode runtime is started.`
+        );
+      }
+      const socket = streamAdapter.createStreamSocket(this.options.context);
+      socket.bind(streamNode.bind!);
+      const monitor = monitoringAdapter.openSocketMonitor(socket);
+      const sessionType = streamNode.session!;
+      const runtime = new ZLinkStreamSessionNodeRuntime({
+        nodeName,
+        socket,
+        bindingRuntime: this.options.bindingRuntime,
+        headerDecoder: (header) => decodeStreamHeader(messageToBytes(header)),
+        sessionFactory: (context) => {
+          const ctor = sessionType as unknown as new (context: DefaultZLinkSessionContext) => ZLinkSession;
+          return new ctor(context);
+        }
+      });
+      runtime.start();
+      this.nodes.set(nodeName, { runtime, socket, monitor });
+    }
+  }
+
+  async dispose(): Promise<void> {
+    const nodes = [...this.nodes.values()];
+    this.nodes.clear();
+    for (const node of nodes.reverse()) {
+      await node.runtime.dispose();
+      await node.monitor.dispose();
+      await node.socket.dispose();
+    }
+  }
 }
 
 export class ZLinkManagedStream implements ZLinkStream {

@@ -432,6 +432,98 @@ test('framework runtime host start and stop are idempotent and ordered', async (
   assert.deepEqual(lifecycle, ['framework:start', 'framework:started', 'framework:stop', 'framework:stopped']);
 });
 
+test('framework runtime host starts registered stream nodes and disposes their resources', async () => {
+  class ClientHeaderSession {
+    constructor(context) {
+      this.context = context;
+    }
+  }
+  const calls = [];
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      streamNodes: {
+        'client.stream': {
+          bind: 'tcp://0.0.0.0:9100',
+          session: ClientHeaderSession
+        }
+      }
+    })
+  }, {
+    backendAdapterFactory: {
+      createChannelAdapter() {
+        return {
+          createContext() {
+            calls.push('context:create');
+            return {
+              nativeInstance: {},
+              shutdown() {},
+              async dispose() {
+                calls.push('context:dispose');
+              }
+            };
+          }
+        };
+      },
+      createStreamAdapter() {
+        return {
+          createStreamSocket() {
+            calls.push('stream:create');
+            return {
+              nativeInstance: {},
+              bind(endpoint) {
+                calls.push(`stream:bind:${endpoint}`);
+              },
+              setChannelName() {},
+              onFramedPacket(handler) {
+                assert.equal(typeof handler, 'function');
+                calls.push('stream:onFramedPacket');
+              },
+              send() { return true; },
+              disconnectPeer() {},
+              attachActorGateway() {},
+              async bindActor() {},
+              async unbindActor() {},
+              sendBoundActor() { return true; },
+              async dispose() {
+                calls.push('stream:dispose');
+              }
+            };
+          }
+        };
+      },
+      createMonitoringAdapter() {
+        return {
+          openSocketMonitor() {
+            calls.push('monitor:open');
+            return {
+              nativeInstance: {},
+              onEvent() {},
+              recv() { return {}; },
+              async dispose() {
+                calls.push('monitor:dispose');
+              }
+            };
+          }
+        };
+      }
+    }
+  });
+
+  await runtime.start();
+  await runtime.stop();
+
+  assert.deepEqual(calls, [
+    'context:create',
+    'stream:create',
+    'stream:bind:tcp://0.0.0.0:9100',
+    'monitor:open',
+    'stream:onFramedPacket',
+    'monitor:dispose',
+    'stream:dispose',
+    'context:dispose'
+  ]);
+});
+
 function providerTokens(module) {
   return new Set(module.providers.map((provider) => provider.provide));
 }

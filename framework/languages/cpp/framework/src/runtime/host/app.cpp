@@ -2,6 +2,10 @@
 
 #include <zlink/framework/contracts/configuration/app.hpp>
 
+#include <atomic>
+#include <csignal>
+#include <chrono>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -37,11 +41,26 @@ public:
   monitoring_builder_t monitoring;
   zlink_builder_t zlink;
   std::vector<std::unique_ptr<hosted_service_t>> hosted_services;
-  bool stop_requested = false;
+  std::atomic_bool stop_requested = false;
   int exit_code = 0;
 };
 
 } // namespace zlink::framework::detail
+
+namespace
+{
+
+std::atomic<zlink::framework::detail::app_state_t *> g_active_app { nullptr };
+
+void
+handle_process_signal (int) noexcept
+{
+  if (auto *state = g_active_app.load (std::memory_order_acquire)) {
+    state->stop_requested.store (true, std::memory_order_release);
+  }
+}
+
+} // namespace
 
 namespace zlink::framework
 {
@@ -123,25 +142,43 @@ int
 app_t::run (int argc, char **argv)
 {
   _state->config.load_cli (argc, argv);
+  _state->config.model ().set ("host.signal_handlers", "installed");
+  g_active_app.store (_state.get (), std::memory_order_release);
+  std::signal (SIGINT, handle_process_signal);
+  std::signal (SIGTERM, handle_process_signal);
+
   auto provider = _state->services.build_provider ();
   std::vector<hosted_service_t *> started;
   try {
     started = _state->start_hosted_services (provider);
+    while (!_state->stop_requested.load (std::memory_order_acquire)) {
+      std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
   } catch (...) {
     _state->stop_hosted_services (started);
     provider.close ();
+    auto *expected = _state.get ();
+    g_active_app.compare_exchange_strong (expected,
+                                          nullptr,
+                                          std::memory_order_acq_rel);
     throw;
   }
 
   _state->stop_hosted_services (started);
   provider.close ();
-  return _state->stop_requested ? 0 : _state->exit_code;
+  auto *expected = _state.get ();
+  g_active_app.compare_exchange_strong (expected,
+                                        nullptr,
+                                        std::memory_order_acq_rel);
+  return _state->stop_requested.load (std::memory_order_acquire)
+           ? 0
+           : _state->exit_code;
 }
 
 void
 app_t::stop () noexcept
 {
-  _state->stop_requested = true;
+  _state->stop_requested.store (true, std::memory_order_release);
 }
 
 void

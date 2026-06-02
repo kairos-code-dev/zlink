@@ -31,7 +31,7 @@ public:
   pending_operation_t submit (std::function<void (result_t<T>)> callback)
   {
     callback (_result);
-    return {};
+    return pending_operation_t::make_completed ();
   }
 
 private:
@@ -59,7 +59,7 @@ public:
   pending_operation_t submit (std::function<void (result_t<void>)> callback)
   {
     callback (_result);
-    return {};
+    return pending_operation_t::make_completed ();
   }
 
 private:

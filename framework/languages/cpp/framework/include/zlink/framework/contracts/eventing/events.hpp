@@ -101,6 +101,41 @@ struct runtime_event_base_t
   health_status_t health = health_status_t::healthy;
 };
 
+class runtime_event_publisher_t
+{
+public:
+  runtime_event_publisher_t ();
+  ~runtime_event_publisher_t ();
+
+  runtime_event_publisher_t (runtime_event_publisher_t &&) noexcept;
+  runtime_event_publisher_t &operator= (runtime_event_publisher_t &&) noexcept;
+  runtime_event_publisher_t (const runtime_event_publisher_t &) = default;
+  runtime_event_publisher_t &operator= (const runtime_event_publisher_t &) =
+    default;
+
+  template<typename TEvent>
+  void publish (TEvent event) const
+  {
+    event.timestamp = std::chrono::system_clock::now ();
+    publish_erased (
+      std::type_index (typeid (TEvent)),
+      event,
+      &event);
+  }
+
+private:
+  friend class monitoring_builder_t;
+  friend class detail::monitoring_runtime_t;
+
+  explicit runtime_event_publisher_t (
+    std::shared_ptr<detail::monitoring_runtime_state_t> state);
+  void publish_erased (std::type_index event_type,
+                       const runtime_event_base_t &base,
+                       const void *event) const;
+
+  std::shared_ptr<detail::monitoring_runtime_state_t> _state;
+};
+
 struct socket_event_payload_t : runtime_event_base_t
 {
   socket_event_kind_t event = socket_event_kind_t::internal;
@@ -187,6 +222,7 @@ public:
   monitoring_builder_t &add_actor_events (std::string source_name);
   monitoring_builder_t &on_trace (
     std::function<void (const runtime_event_base_t &)> hook);
+  runtime_event_publisher_t publisher () const;
 
   template<typename TEvent>
   monitoring_builder_t &on (

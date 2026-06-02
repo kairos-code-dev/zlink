@@ -35,6 +35,7 @@ main ()
   bool timer_failure_is_summary = false;
   bool stream_transport_distinct = false;
   bool stream_handler_distinct = false;
+  bool publisher_seen = false;
 
   app.monitoring ()
     .add_socket_events ("profile.server")
@@ -105,6 +106,10 @@ main ()
             event.event == zlink::framework::actor_event_kind_t::bound) {
           ++actor_events;
         }
+        if (event.actor_id == "bob" &&
+            event.event == zlink::framework::actor_event_kind_t::unbound) {
+          publisher_seen = true;
+        }
       });
 
   const auto runtime =
@@ -170,6 +175,14 @@ main ()
     "alice",
     "session-1",
     {} });
+  app.monitoring ().publisher ().publish (
+    zlink::framework::actor_event_payload_t {
+      zlink::framework::runtime_event_base_t { "game.actor" },
+      zlink::framework::actor_event_kind_t::unbound,
+      "player",
+      "bob",
+      "session-2",
+      "closed" });
   runtime.publish_timer_failure (
     "spot-timer",
     zlink::framework::spot_rid_t::from_string ("stage-rid"),
@@ -184,13 +197,16 @@ main ()
       spot_events != 1 || stream_events != 2 || actor_events != 1) {
     return 1;
   }
+  if (!publisher_seen) {
+    return 5;
+  }
   if (!timer_failure_is_summary) {
     return 2;
   }
   if (!stream_transport_distinct || !stream_handler_distinct) {
     return 3;
   }
-  if (trace_events < 7) {
+  if (trace_events < 8) {
     return 4;
   }
 

@@ -3,9 +3,12 @@
 
 #include <zlink/stream_connector/contracts/connector.hpp>
 
+#include <boost/asio.hpp>
+
 #include <deque>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <typeindex>
@@ -45,6 +48,10 @@ public:
   bool message_pack_enabled = false;
   bool protobuf_enabled = false;
   bool lz4_enabled = false;
+  boost::asio::io_context io_context;
+  std::unique_ptr<boost::asio::ip::tcp::socket> socket;
+  boost::asio::streambuf inbound_buffer;
+  std::mutex transport_mutex;
 };
 
 class connector_runtime_t

@@ -908,13 +908,42 @@ observability는 운영 환경에서 필수 축이다.
 권장 표면은 아래와 같다.
 
 ```cpp
-app.logging().use_console();
+app.logging()
+  .use_console()
+  .use_rotating_file("logs/zlink.log")
+  .use_async({ .queue_capacity = 8192 })
+  .set_min_level(log_level_t::info);
 app.metrics().add_runtime_metrics();
 app.health().add_zlink_runtime_check();
 ```
 
 logging과 health는 core 관찰 표면이다. metrics와 tracing은 event 이름, label
 cardinality, exporter 정책을 정한 뒤 observability extension으로 확장한다.
+
+logging public API는 `zlink::framework::logger_t<TCategory>`와
+`zlink::framework::logger_factory_t`가 소유한다. `.NET`의 `ILogger<T>`에 대응하는 C++
+표면이며, handler와 hosted service는 이 타입을 통해 log를 남긴다. public header에는
+`spdlog` logger나 sink 타입을 노출하지 않는다.
+
+지원하는 sink는 아래와 같다.
+
+| sink | API | 용도 |
+|------|-----|------|
+| null | sink 미등록 | 테스트 또는 완전 무음 기본값 |
+| console | `use_console()` | 개발과 샘플 실행 |
+| file | `use_file(path)` | 단일 파일 로그 |
+| rotating file | `use_rotating_file(path, options)` | 운영 파일 로그 |
+| callback | `use_callback_sink(callback)` | 테스트, 사용자 sink, 외부 exporter 연결 |
+
+내부 backend는 `builtin`과 `spdlog` 선택지를 둔다. `spdlog`는 framework 내부 구현 세부로만
+사용하며, C++ public API에는 드러내지 않는다. 현재 public 계약은 backend 선택을
+`use_backend(logging_backend_t::spdlog)`로 표현하고, 실제 sink 호출은 logging runtime이
+닫는다.
+
+async logging은 `use_async(logging_async_options_t)`로 켠다. queue overflow 정책은
+`drop_debug`, `drop_oldest`, `block` 중 하나로 명시한다. runtime thread에서 blocking I/O가
+문제가 되는 환경에서는 `drop_debug` 또는 `drop_oldest`를 권장하고, `block`은 테스트나
+특수 운영 환경에서만 사용한다.
 
 event schema는 typed payload 기준으로 둔다. 모든 event는 최소한 아래 필드를 가진다.
 
@@ -1216,10 +1245,11 @@ Unreal Connector도 같은 문서에서 다루며 framework target에 포함하�
 
 framework 동작 리뷰 샘플은 `Bingo`와 `TicTacToe` 두 개로 둔다.
 
-`Bingo`는 channel/SPOT 중심의 기본 실시간 메시징 샘플이다. app/host, DI, channel
-request/reply, publish/subscribe, callback submit, coroutine submit, handler error
-mapping, user Spot, timer, monitoring, graceful shutdown, CPU-bound handler offload를
-검토한다. `Bingo`에는 STREAM ActorGateway relay 변형을 두지 않는다.
+`Bingo`는 channel/SPOT/session stream 중심의 기본 실시간 메시징 샘플이다. app/host, DI,
+channel request/reply, session packet dispatch, publish/subscribe, callback submit,
+coroutine submit, handler error mapping, user Spot, timer, monitoring, graceful shutdown,
+CPU-bound handler offload를 검토한다. packet 이름과 handler 흐름은 `.NET` Bingo 샘플과
+같은 수준으로 유지한다.
 
 `TicTacToe`는 STREAM과 ActorGateway 기반 actor/session relay 샘플이다. `.NET` 쪽에서
 session relay 구조로 검증한 TicTacToe와 같은 개념을 따르되, C++ 샘플 이름에는 별도
@@ -1233,22 +1263,79 @@ disconnect cleanup을 검토한다.
 framework/languages/cpp/samples/
 +-- Bingo/
 |   +-- README.ko.md
-|   +-- CMakeLists.txt
-|   +-- Server/
-|   +-- Client/
 |   +-- Shared/
-|   +-- run_local.sh
+|   |   +-- Configuration/
+|   |   |   +-- sample_names.hpp
+|   |   |   +-- sample_topology.hpp
+|   |   +-- Contracts/
+|   |   |   +-- messages.hpp
+|   |   +-- host_support.hpp
+|   |   +-- sample.hpp
+|   +-- Client/
+|   |   +-- bingo_notification_inbox.hpp
+|   |   +-- main.cpp
+|   +-- Server/
+|       +-- Registry/
+|       |   +-- main.cpp
+|       +-- Api/
+|       |   +-- Handlers/
+|       |   |   +-- authenticate_player_handler.hpp
+|       |   |   +-- match_bingo_handler.hpp
+|       |   +-- main.cpp
+|       +-- Play/
+|       |   +-- BingoRoomSpots/
+|       |   |   +-- bingo_room.hpp
+|       |   |   +-- bingo_room_handlers.hpp
+|       |   +-- EntrySpot/
+|       |   |   +-- match_bingo_actor_handler.hpp
+|       |   +-- Handlers/
+|       |   |   +-- allocate_bingo_room_handler.hpp
+|       |   |   +-- ensure_player_actor_handler.hpp
+|       |   +-- main.cpp
+|       +-- Session/
+|           +-- main.cpp
 +-- TicTacToe/
 |   +-- README.ko.md
-|   +-- CMakeLists.txt
-|   +-- Server/
-|   +-- Client/
 |   +-- Shared/
-|   +-- run_local.sh
+|   |   +-- Actors/
+|   |   |   +-- player_actor.hpp
+|   |   +-- Configuration/
+|   |   |   +-- sample_names.hpp
+|   |   |   +-- sample_topology.hpp
+|   |   +-- Contracts/
+|   |   |   +-- messages.hpp
+|   |   +-- host_support.hpp
+|   |   +-- sample.hpp
+|   +-- Client/
+|   |   +-- session_actor_notification_inbox.hpp
+|   |   +-- main.cpp
+|   +-- Server/
+|       +-- Registry/
+|       |   +-- main.cpp
+|       +-- Api/
+|       |   +-- Handlers/
+|       |   |   +-- authenticate_actor_handler.hpp
+|       |   |   +-- create_match_handler.hpp
+|       |   +-- main.cpp
+|       +-- Play/
+|       |   +-- EntrySpot/
+|       |   |   +-- join_match_handler.hpp
+|       |   |   +-- tictactoe_entry_spot.hpp
+|       |   +-- GameSpots/
+|       |   |   +-- place_mark_handler.hpp
+|       |   |   +-- tictactoe_match_room.hpp
+|       |   +-- Handlers/
+|       |   |   +-- create_match_room_handler.hpp
+|       |   |   +-- ensure_player_actor_handler.hpp
+|       |   +-- main.cpp
+|       +-- Session/
+|           +-- main.cpp
 ```
 
-CTest sample smoke 이름은 `framework-sample-smoke-bingo`와
-`framework-sample-smoke-tictactoe`로 둔다.
+CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` label로 묶고,
+샘플별로 `framework-sample-bingo`, `framework-sample-tictactoe` label을 함께 붙인다.
+또한 `framework-sample-parity` contract test로 `.NET` 샘플과 맞춰야 하는 packet 이름과
+핵심 handler 흐름을 고정한다.
 
 ## 5.2 Test Matrix
 

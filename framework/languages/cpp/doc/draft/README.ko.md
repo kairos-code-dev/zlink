@@ -100,7 +100,7 @@ runtime 구현인지에 대한 경계는 바꾸지 않는다.
 | `Runtime/Actors` | `src/runtime/actors` | actor instance, mailbox, relay dispatch 구현 |
 | `Runtime/Backend` | `src/runtime/backend` | zlink binding substrate 연결 구현 |
 | `Runtime/Backend/Contracts` | `src/runtime/backend/contracts` | public이 아닌 backend 내부 계약 |
-| `Runtime/Channels` | `src/runtime/channels` | socket owner, correlation, send-ready 구현 |
+| `Runtime/Channels` | `src/runtime/channels` | runtime bundle, receive loop, message pump, correlation, send-ready 구현 |
 | `Runtime/Codecs` | `src/runtime/codecs` | type-erased serializer map과 codec wiring |
 | `Runtime/Configuration` | `src/runtime/configuration` | service registry, option materialization 구현 |
 | `Runtime/Diagnostics` | `src/runtime/diagnostics` | logging, monitoring source, health 구현 |
@@ -214,11 +214,12 @@ C++ framework의 전반 동작 리뷰 샘플은 `Bingo`와 `TicTacToe` 두 개�
 
 | 샘플 | 역할 | 포함 범위 |
 |------|------|----------|
-| `Bingo` | channel/SPOT 중심 기본 실시간 메시징 샘플 | app/host, DI, channel request/reply, publish/subscribe, callback submit, coroutine submit, handler error, user Spot, timer, monitoring, graceful shutdown, offload handler |
-| `TicTacToe` | STREAM과 ActorGateway 기반 actor/session relay 샘플 | STREAM endpoint, ActorGateway attach, Entry Spot, actor factory, session actor bind, relay, bound session push, actor join/move, disconnect cleanup |
+| `Bingo` | channel/SPOT/session stream 기반 기본 실시간 메시징 샘플 | `Shared/Configuration`, `Shared/Contracts`, `Client`, `Server/Registry/*HostFactory`, `Server/Api/*HostFactory`, `Server/Api/Handlers`, `Server/Play/*HostFactory`, `Server/Play/Actors`, `Server/Play/Handlers`, `Server/Play/BingoRoomSpots`, `Server/Play/BingoRoomSpots/Handlers`, `Server/Play/EntrySpot`, `Server/Play/EntrySpot/Handlers`, `Server/Session/*HostFactory` 파일 분리, `.NET` Bingo packet 이름과 handler 흐름 |
+| `TicTacToe` | STREAM과 ActorGateway 기반 actor/session relay 샘플 | `Shared/Actors`, `Shared/Configuration`, `Shared/Contracts`, `Client`, `Server/Registry/*HostFactory`, `Server/Api/*HostFactory`, `Server/Api/Handlers`, `Server/Play/*HostFactory`, `Server/Play/EntrySpot`, `Server/Play/EntrySpot/Handlers`, `Server/Play/GameSpots`, `Server/Play/GameSpots/Handlers`, `Server/Play/Handlers`, `Server/Session/*HostFactory` 파일 분리, `.NET` TicTacToe packet 이름과 handler 흐름 |
 
-`Bingo`에는 STREAM ActorGateway relay 변형을 두지 않는다. 해당 방식의 기준 샘플은
-`TicTacToe` 하나로 두고, 별도 접미사를 붙이지 않는다.
+`Bingo`도 `.NET` Bingo와 같은 session stream 역할을 포함한다. `TicTacToe`는 STREAM과
+ActorGateway 기반 actor/session relay를 더 직접적으로 검토하는 기준 샘플이며, 별도
+접미사는 붙이지 않는다.
 
 ## 3. 핵심 방향
 

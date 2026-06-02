@@ -87,6 +87,20 @@ facade만 노출하고 runtime 실행 세부는 `src/runtime/*`에 숨겨야 한
 | project facade | `zlink/framework.hpp`, `zlink/framework/*.hpp` | `zlink/stream_connector.hpp` | public |
 | implementation glue | `framework/src/runtime/*` 내부 helper | `connector/src/runtime/*` 내부 helper | private |
 
+C++ connector runtime은 `.NET` `Systems.Zlink.Stream.Connector/Runtime`의 파일 분류를
+아래처럼 투영한다. C++ 파일명은 snake_case를 사용하지만 책임 경계는 동일하게 둔다.
+
+| `.NET` connector runtime 축 | C++ connector runtime owner |
+|-----------------------------|------------------------------|
+| `Runtime/Calls` | `connector/src/runtime/calls/*` |
+| `Runtime/Protocol/Compression` | `connector/src/runtime/protocol/compression/*` |
+| `Runtime/Protocol/Framing` | `connector/src/runtime/protocol/framing/*`, `connector/src/runtime/protocol/framing.*` |
+| `Runtime/Protocol/*Codec`, packet name resolver | `connector/src/runtime/protocol/*` |
+| `Runtime/Transport` | `connector/src/runtime/transport/*` |
+| lifecycle, callbacks, heartbeat | `connector/src/runtime/connector_lifecycle.*`, `connector/src/runtime/connector_callbacks.*`, `connector/src/runtime/heartbeat_monitor.*` |
+| receive dispatch/loop, task runner | `connector/src/runtime/receive_dispatcher.*`, `connector/src/runtime/receive_loop.hpp`, `connector/src/runtime/task_runner.hpp` |
+| pending requests, typed handlers | `connector/src/runtime/pending_requests.hpp`, `connector/src/runtime/typed_handler_registry.hpp` |
+
 framework의 public/runtime 하위 축은 `.NET` `Zlink.Framework`의 현재 구조를 기준으로
 아래처럼 고정한다. C++ 파일 배치가 이 표와 맞지 않는다면 먼저 문서를 갱신하고, 그 다음
 코드를 옮긴다.
@@ -208,8 +222,8 @@ runtime state를 새로 만들 때도 같은 규칙을 적용한다.
 | 14. Registry/topology | `contracts/registry/*`, discovery builder contract | `src/runtime/registry/*`, `src/runtime/configuration/*` | topology cache, backend query owner, route resolver state |
 | 15. monitoring | `contracts/eventing/*`, monitoring builder contract | `src/runtime/diagnostics/*`, 기능별 runtime event source | snapshot diff cache, telemetry backend |
 | 16. module/hosted service | module and hosted service contract | `src/runtime/host/*`, `src/runtime/configuration/*` | lifecycle scheduler, hosted service drain set |
-| 17. C++ connector | `connector/include/zlink/stream_connector/contracts/*` | `connector/src/runtime/*` | receive loop, reconnect state, pending request table, frame codec |
-| 18. Unreal connector | Unreal `Public/` contract | Unreal `Private/` implementation | general C++ connector runtime class, transport internals |
+| 17. C++ connector | `connector/include/zlink/stream_connector/contracts/*` | `connector/src/runtime/*` | Asio receive loop, reconnect state, pending request table, frame codec |
+| 18. Unreal connector | Unreal `Public/` contract | Unreal `Private/` implementation | Unreal `Sockets`/`Networking`, transport internals |
 | 19. samples | sample source using public API only | sample support runtime only when private to sample | sample-only metadata store as framework contract |
 | 20. final regression | installed public headers and test contracts | all runtime owner directories | accidental external dependency leak, runtime header include |
 | 21. extensions | extension public contract/target | extension private runtime | Kafka/gRPC/HTTP/YAML/FlatBuffers dependency in core target |
@@ -413,6 +427,10 @@ ctest --test-dir framework/languages/cpp/build -L framework-unit
 - 자체 CLI args parser
 - public logging API
 - 내부 logging backend 숨김
+- `logger_t<TCategory>`와 `logger_factory_t`
+- console, file, rotating file, callback sink
+- async logging option과 overflow policy
+- `spdlog` backend는 public header에 노출하지 않음
 
 완료 기준:
 
@@ -956,6 +974,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R hoste
 - `zlink/stream_connector.hpp`
 - `connector_t`
 - `connector_factory_t`
+- Asio 기반 TCP transport
 - `codec_registry_t`
 - explicit connect
 - graceful close
@@ -980,7 +999,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R hoste
 - JSON 기본 ON
 - MessagePack 기본 OFF
 - Protobuf 기본 OFF
-- LZ4 기본 OFF
+- LZ4 기본 ON
 - unsupported codec error
 
 완료 기준:
@@ -992,14 +1011,24 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R hoste
   분리된다.
 - connector public header는 receive loop, transport connection, pending request table,
   frame sender 구현 타입을 노출하지 않는다.
+- connector runtime은 raw fd나 OS별 socket API가 아니라 Asio socket, resolver, timer를
+  내부 구현으로 사용한다.
 - manual dispatch에서는 callback이 `dispatch()` 호출 경로에서 실행된다.
 - immediate dispatch에서는 별도 manual dispatch 없이 callback이 실행된다.
+- `connect()`는 단순 상태 전환이 아니라 실제 endpoint 연결을 수행한다.
+- `request(...).submit()`은 STREAM server response frame을 받아 pending request table의
+  correlation을 해소한다.
+- `send(...).submit()`은 실제 STREAM server로 frame을 기록하고, 전송 실패를 error로
+  돌려준다.
+- connector regression에는 local test runtime 검증과 별도로 실제 framework STREAM
+  endpoint에 붙는 end-to-end test를 둔다.
 
 검증:
 
 ```bash
 ctest --test-dir framework/languages/cpp/build -L connector-unit
 ctest --test-dir framework/languages/cpp/build -L connector-integration
+ctest --test-dir framework/languages/cpp/build -L connector-e2e
 ```
 
 ### Goal 18. Unreal Stream Connector
@@ -1025,6 +1054,8 @@ ctest --test-dir framework/languages/cpp/build -L connector-integration
 - Tick 또는 subsystem update manual dispatch
 - Unreal logging category
 - Unreal build system dependency
+- Unreal Automation Test `ZLink.StreamConnector.Loopback`
+- Unreal `FSocket` loopback server 기반 send/request/push 검증
 - PIE 종료 graceful close
 - map unload graceful close
 - game instance shutdown graceful close
@@ -1034,18 +1065,25 @@ ctest --test-dir framework/languages/cpp/build -L connector-integration
 완료 기준:
 
 - Unreal connector는 일반 C++ connector public API를 그대로 노출하는 wrapper가 아니다.
+- Unreal connector는 일반 C++ connector Asio runtime을 내부에서 감싸지 않고 Unreal의
+  `Sockets`/`Networking` 모듈로 transport를 구현한다.
 - public API는 Unreal 타입과 thread model을 따른다.
 - callback은 Game Thread에서 실행된다.
 - Unreal 사용자가 codec 산출물을 따로 가져오지 않아도 JSON 기본 사용이 가능하다.
 - Unreal `Public/` header는 Unreal 전용 contract와 facade만 노출하고, connection,
   codec registry, thread dispatch 구현은 `Private/`에 둔다.
 - Unreal public API는 일반 C++ connector runtime 구현 타입을 그대로 노출하지 않는다.
+- Unreal Automation Test는 실제 `FSocket` loopback server와 연결해 send/request/push
+  callback을 검증한다.
+- 일반 C++ CTest smoke는 Unreal Engine 없는 환경에서 public API shape와 source compile만
+  확인하며, 실제 Unreal connector 완료 판정으로 쓰지 않는다.
 
 검증:
 
 ```bash
 ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile
 ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke
+UnrealEditor-Cmd <TestProject>.uproject -ExecCmds="Automation RunTests ZLink.StreamConnector; Quit" -unattended -nop4 -nosplash -NullRHI
 ```
 
 ### Goal 19. Review Samples
@@ -1055,9 +1093,13 @@ ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke
 구현 항목:
 
 - `Bingo`
+  - `.NET` 샘플과 같은 `Shared`, `Client`, `Server/Registry`, `Server/Api`,
+    `Server/Play`, `Server/Session` 역할 분리
+  - `.NET` Bingo와 같은 packet 이름과 message contract 흐름
   - app/host
   - DI
   - channel request/reply
+  - session packet dispatch
   - outbound-only host
   - manual connection
   - publish/subscribe
@@ -1071,6 +1113,9 @@ ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke
   - graceful shutdown
   - offload handler
 - `TicTacToe`
+  - `.NET` 샘플과 같은 `Shared`, `Client`, `Server/Registry`, `Server/Api`,
+    `Server/Play`, `Server/Session` 역할 분리
+  - `.NET` TicTacToe와 같은 packet 이름과 message contract 흐름
   - STREAM endpoint
   - ActorGateway attach
   - Entry Spot
@@ -1083,15 +1128,24 @@ ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke
 
 완료 기준:
 
-- `Bingo`에는 STREAM ActorGateway relay 변형을 두지 않는다.
+- `Bingo`는 `.NET` Bingo와 같은 session stream 역할을 포함한다.
 - `TicTacToe`가 STREAM과 ActorGateway 기반 actor/session relay 기준 샘플이다.
 - 샘플 이름에 별도 접미사를 붙이지 않는다.
-- sample smoke test가 CTest에 등록된다.
+- 역할별 sample smoke test가 CTest에 등록된다.
+- `.NET` 샘플과 맞춰야 하는 packet 이름과 핵심 handler 흐름이 contract test에 등록된다.
+- `Client` 샘플은 서버 handler를 직접 호출하지 않고 `zlink::stream_connector`를 통해
+  `connect -> request/send submit -> notification callback` 흐름을 사용한다.
+- client sample smoke가 단순 컴파일/표면 검증으로만 통과하면 완료로 보지 않는다.
+  Bingo와 TicTacToe client executable은 실제 server process와 붙어 request reply와 push
+  notification을 검증해야 한다.
+- 서버 쪽 로그는 파일로 남겨서 bind, receive, reply, push 흐름을 확인할 수 있어야 한다.
 
 검증:
 
 ```bash
 ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke
+ctest --test-dir framework/languages/cpp/build -L framework-sample-parity
+ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e
 ```
 
 ### Goal 20. Final Parity And Regression Gate

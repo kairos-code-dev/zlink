@@ -6,6 +6,22 @@
 
 #include <string>
 
+namespace
+{
+
+struct typed_session_push_t
+{
+  std::string body;
+};
+
+std::string
+to_stream_payload (const typed_session_push_t &message)
+{
+  return message.body;
+}
+
+} // namespace
+
 int
 main ()
 {
@@ -92,6 +108,18 @@ main ()
   if (!push_result || gateway.bound_session_pushes ().size () != 1 ||
       gateway.bound_session_pushes ()[0].payload.to_string () != "payload") {
     return 9;
+  }
+
+  auto typed_push = bound.value ()
+                      .context ()
+                      .bound_session ()
+                      .send (typed_session_push_t { "typed-payload" })
+                      .submit ()
+                      .result ();
+  if (!typed_push || gateway.bound_session_pushes ().size () != 2 ||
+      gateway.bound_session_pushes ()[1].payload.to_string () !=
+        "typed-payload") {
+    return 13;
   }
 
   auto disconnect = bound.value ().notify_disconnected ().submit ().result ();

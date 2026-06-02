@@ -4,6 +4,9 @@
 
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
+#include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/messaging/client_call_codec.hpp"
+
 #include <utility>
 
 namespace zlink::framework::detail
@@ -170,9 +173,9 @@ channel_runtime_t::reserve_outbound_request (std::string channel_name)
       "channel pending queue is full");
   }
 
-  const auto request_seq = _state->next_request_seq++;
-  _state->pending_request_channels.emplace (request_seq,
-                                            std::move (channel_name));
+  const auto request_seq = _state->pending_requests.next_request_seq ();
+  _state->pending_requests.register_request (request_seq,
+                                             std::move (channel_name));
   ++_state->pending;
   return result_t<std::uint64_t>::success (request_seq);
 }
@@ -196,7 +199,7 @@ channel_runtime_t::queue_pending_send (std::string channel_name,
       framework_error_kind_t::request_rejected,
       "channel pending queue is full");
   }
-  const auto operation_id = _state->next_request_seq++;
+  const auto operation_id = _state->pending_requests.next_request_seq ();
   _state->pending_operations.emplace (
     operation_id,
     channel_reliability_event_t {
@@ -211,13 +214,11 @@ channel_runtime_t::queue_pending_send (std::string channel_name,
 result_t<void>
 channel_runtime_t::complete_outbound_reply (std::uint64_t request_seq)
 {
-  const auto found = _state->pending_request_channels.find (request_seq);
-  if (found == _state->pending_request_channels.end ()) {
+  if (!_state->pending_requests.remove (request_seq)) {
     return result_t<void>::failure (
       framework_error_kind_t::request_protocol_error,
       "reply does not match a pending outbound request");
   }
-  _state->pending_request_channels.erase (found);
   --_state->pending;
   return result_t<void>::success ();
 }
@@ -299,7 +300,7 @@ channel_runtime_t::pending_limit () const noexcept
 void
 channel_runtime_t::drain () noexcept
 {
-  _state->pending_request_channels.clear ();
+  _state->pending_requests.clear ();
   _state->pending_operations.clear ();
   _state->pending = 0;
 }
@@ -438,6 +439,53 @@ channel_builder_t::snapshot () const
   return _state->snapshot;
 }
 
+route_channel_builder_t::route_channel_builder_t ()
+{
+}
+
+route_channel_builder_t::route_channel_builder_t (
+  std::shared_ptr<detail::route_channel_builder_state_t> state)
+  : _state (std::move (state))
+{
+}
+
+route_channel_builder_t::~route_channel_builder_t () = default;
+
+route_channel_builder_t::route_channel_builder_t (
+  route_channel_builder_t &&) noexcept = default;
+
+route_channel_builder_t &route_channel_builder_t::operator= (
+  route_channel_builder_t &&) noexcept = default;
+
+route_channel_builder_t &
+route_channel_builder_t::bind (std::string endpoint)
+{
+  _state->registration.bind (std::move (endpoint));
+  return *this;
+}
+
+route_channel_builder_t &
+route_channel_builder_t::connect (std::string endpoint)
+{
+  _state->registration.connect (std::move (endpoint));
+  return *this;
+}
+
+route_channel_builder_t &
+route_channel_builder_t::add_handler_group (std::string group_name)
+{
+  _state->registration.add_handler_group (std::move (group_name));
+  return *this;
+}
+
+route_channel_builder_t &
+route_channel_builder_t::add_handler (
+  route_handler_registration_t registration)
+{
+  _state->registration.add_handler (std::move (registration));
+  return *this;
+}
+
 message_bus_t::erased_request_result_t::erased_request_result_t (
   framework_exception_t error)
   : _error (std::move (error))
@@ -522,6 +570,226 @@ request_client_t::request_client_t (message_bus_t bus, std::string channel_name)
 
 publisher_t::publisher_t (message_bus_t bus) : _bus (std::move (bus)) {}
 
+route_send_call_t::route_send_call_t (std::string packet_name,
+                                      submit_fn_t submit)
+  : _packet_name (std::move (packet_name)), _submit (std::move (submit))
+{
+}
+
+route_send_call_t &
+route_send_call_t::packet_name (std::string packet_name)
+{
+  _packet_name = std::move (packet_name);
+  return *this;
+}
+
+task_t<void>
+route_send_call_t::submit ()
+{
+  if (!_submit) {
+    return task_t<void> (result_t<void>::failure (
+      framework_error_kind_t::request_protocol_error,
+      "route send call is not bound to a route client"));
+  }
+  return task_t<void> (_submit (_packet_name));
+}
+
+pending_operation_t
+route_send_call_t::submit (std::function<void (result_t<void>)> callback)
+{
+  auto result = submit ().result ();
+  callback (result);
+  return pending_operation_t::make_completed ();
+}
+
+route_request_call_t::route_request_call_t (std::string packet_name,
+                                            submit_fn_t submit)
+  : _packet_name (std::move (packet_name)), _submit (std::move (submit))
+{
+}
+
+route_request_call_t &
+route_request_call_t::packet_name (std::string packet_name)
+{
+  _packet_name = std::move (packet_name);
+  return *this;
+}
+
+route_request_call_t &
+route_request_call_t::timeout (std::chrono::milliseconds timeout)
+{
+  _timeout = timeout;
+  return *this;
+}
+
+task_t<std::uint64_t>
+route_request_call_t::submit ()
+{
+  if (!_submit) {
+    return task_t<std::uint64_t> (result_t<std::uint64_t>::failure (
+      framework_error_kind_t::request_protocol_error,
+      "route request call is not bound to a route client"));
+  }
+  return task_t<std::uint64_t> (_submit (_packet_name, _timeout));
+}
+
+pending_operation_t
+route_request_call_t::submit (
+  std::function<void (result_t<std::uint64_t>)> callback)
+{
+  auto result = submit ().result ();
+  callback (result);
+  return pending_operation_t::make_completed ();
+}
+
+route_client_t::route_client_t () = default;
+
+route_client_t::route_client_t (
+  std::shared_ptr<detail::route_client_state_t> state,
+  serializer_registry_t &serializers)
+  : _state (std::move (state)), _serializers (&serializers)
+{
+}
+
+route_client_t::~route_client_t () = default;
+
+route_client_t::route_client_t (route_client_t &&) noexcept = default;
+
+route_client_t &route_client_t::operator= (route_client_t &&) noexcept =
+  default;
+
+result_t<void>
+route_client_t::submit_send_erased (
+  const std::shared_ptr<detail::route_client_state_t> &state,
+  const std::string &router_channel_id,
+  const zlink::routing_id_t &target_node_rid,
+  const std::string &packet_name,
+  std::type_index message_type,
+  const void *message)
+{
+  if (!state || !state->runtime || state->serializers == nullptr) {
+    return result_t<void>::failure (
+      framework_error_kind_t::request_protocol_error,
+      "route client is not configured");
+  }
+  try {
+    detail::channel_runtime_manager_t manager (state->runtime);
+    auto &runtime = manager.get_route_channel (router_channel_id);
+    runtime::messaging::client_call_codec_t codec;
+    auto header = codec.create_envelope (
+      runtime::messaging::message_kind_t::command,
+      router_channel_id,
+      packet_name);
+    runtime::messaging::envelope_codec_t envelope;
+    return runtime.submit_send_parts (
+      target_node_rid,
+      envelope.encode_parts (
+        header, message_type, message, *state->serializers));
+  } catch (const framework_exception_t &error) {
+    return result_t<void>::failure (
+      error.kind (), error.what (), error.is_retriable ());
+  }
+}
+
+result_t<std::uint64_t>
+route_client_t::submit_request_erased (
+  const std::shared_ptr<detail::route_client_state_t> &state,
+  const std::string &router_channel_id,
+  const zlink::routing_id_t &target_node_rid,
+  const std::string &packet_name,
+  std::type_index request_type,
+  const void *request,
+  std::chrono::milliseconds timeout)
+{
+  if (!state || !state->runtime || state->serializers == nullptr) {
+    return result_t<std::uint64_t>::failure (
+      framework_error_kind_t::request_protocol_error,
+      "route client is not configured");
+  }
+  try {
+    detail::channel_runtime_manager_t manager (state->runtime);
+    auto &runtime = manager.get_route_channel (router_channel_id);
+    runtime::messaging::client_call_codec_t codec;
+    auto header = codec.create_envelope (
+      runtime::messaging::message_kind_t::request,
+      router_channel_id,
+      packet_name,
+      timeout);
+    runtime::messaging::envelope_codec_t envelope;
+    return runtime.submit_request_parts (
+      target_node_rid,
+      envelope.encode_parts (
+        header, request_type, request, *state->serializers));
+  } catch (const framework_exception_t &error) {
+    return result_t<std::uint64_t>::failure (
+      error.kind (), error.what (), error.is_retriable ());
+  }
+}
+
+result_t<zlink::message_t>
+route_client_t::submit_request_reply_erased (
+  const std::shared_ptr<detail::route_client_state_t> &state,
+  const std::string &router_channel_id,
+  const zlink::routing_id_t &target_node_rid,
+  const std::string &packet_name,
+  std::type_index request_type,
+  const void *request,
+  std::chrono::milliseconds timeout)
+{
+  if (!state || !state->runtime || state->serializers == nullptr) {
+    return result_t<zlink::message_t>::failure (
+      framework_error_kind_t::request_protocol_error,
+      "route client is not configured");
+  }
+  try {
+    detail::channel_runtime_manager_t manager (state->runtime);
+    auto &runtime = manager.get_route_channel (router_channel_id);
+    runtime::messaging::client_call_codec_t codec;
+    auto header = codec.create_envelope (
+      runtime::messaging::message_kind_t::request,
+      router_channel_id,
+      packet_name,
+      timeout);
+    runtime::messaging::envelope_codec_t envelope;
+    auto reply = runtime.request_reply_parts (
+      target_node_rid,
+      envelope.encode_parts (
+        header, request_type, request, *state->serializers),
+      timeout);
+    if (!reply) {
+      return result_t<zlink::message_t>::failure (
+        reply.error_kind (),
+        reply.error () ? reply.error ()->what ()
+                       : "route request failed");
+    }
+    auto reply_header = envelope.decode_header (reply.value ());
+    if (!reply_header) {
+      return result_t<zlink::message_t>::failure (
+        reply_header.error_kind (),
+        reply_header.error () ? reply_header.error ()->what ()
+                              : "route reply header decode failed");
+    }
+    if (reply_header.value ().kind ==
+        runtime::messaging::message_kind_t::error) {
+      return result_t<zlink::message_t>::failure (
+        framework_error_kind_t::request_failed,
+        reply_header.value ().error_message.value_or (
+          "route request failed"));
+    }
+    auto body = envelope.decode_body (reply.value ());
+    if (!body) {
+      return result_t<zlink::message_t>::failure (
+        body.error_kind (),
+        body.error () ? body.error ()->what ()
+                      : "route reply body decode failed");
+    }
+    return result_t<zlink::message_t>::success (body.value ());
+  } catch (const framework_exception_t &error) {
+    return result_t<zlink::message_t>::failure (
+      error.kind (), error.what (), error.is_retriable ());
+  }
+}
+
 zlink_builder_t::zlink_builder_t ()
   : _state (std::make_shared<detail::zlink_builder_state_t> ())
 {
@@ -603,6 +871,17 @@ publisher_t
 zlink_builder_t::publisher () const
 {
   return publisher_t (message_bus ());
+}
+
+route_client_t
+zlink_builder_t::route_client (serializer_registry_t &serializers) const
+{
+  detail::channel_runtime_manager_t manager (_state->runtime);
+  manager.initialize_route_channels (*this);
+  return route_client_t (
+    std::make_shared<detail::route_client_state_t> (
+      _state->runtime, serializers),
+    serializers);
 }
 
 } // namespace zlink::framework

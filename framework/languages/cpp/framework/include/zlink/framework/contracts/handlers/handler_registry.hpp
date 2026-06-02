@@ -3,6 +3,7 @@
 
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
+#include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
@@ -21,12 +22,6 @@ namespace zlink::framework
 namespace detail
 {
 class handler_registry_state_t;
-
-template<typename T>
-std::string default_packet_name ()
-{
-  return typeid (T).name ();
-}
 
 inline result_t<zlink::message_t>
 current_exception_to_message_result ()
@@ -106,7 +101,7 @@ public:
     handler_options_t options = {})
   {
     const auto packet = options.packet_name.value_or (
-      detail::default_packet_name<TRequest> ());
+      detail::message_name<TRequest> ());
     return add_handler (
       { std::move (channel_name),
         std::move (topic),
@@ -138,7 +133,7 @@ public:
     handler_options_t options = {})
   {
     const auto packet = options.packet_name.value_or (
-      detail::default_packet_name<TRequest> ());
+      detail::message_name<TRequest> ());
     return add_handler (
       { std::move (channel_name),
         std::move (topic),
@@ -278,7 +273,7 @@ private:
     handler_options_t options)
   {
     const auto packet = options.packet_name.value_or (
-      detail::default_packet_name<TPayload> ());
+      detail::message_name<TPayload> ());
     return add_handler (
       { std::move (channel_name),
         std::move (topic),
@@ -310,7 +305,7 @@ private:
     handler_options_t options)
   {
     const auto packet = options.packet_name.value_or (
-      detail::default_packet_name<TPayload> ());
+      detail::message_name<TPayload> ());
     return add_handler (
       { std::move (channel_name),
         std::move (topic),

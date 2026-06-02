@@ -125,6 +125,39 @@ request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `s
 
 - 일반 request/send dispatch는 local server capability ingress 기준이다.
 - outbound client capability 수신은 pending request의 reply correlation 경로다.
+- pending request correlation은 `channel_pending_requests_t`가 맡는다. request sequence와
+  pending table은 public call object에 노출하지 않는다.
+- server ingress envelope dispatch는 `channel_packet_dispatcher_t`가 맡는다. request는
+  reply writer를 통해 response/error envelope로 변환하고 command/send는 reply 없이
+  handler dispatch만 수행한다.
+- channel capability runtime bundle은 `channel_runtime_bundle_t`가 맡는다. manual
+  connection set, dealer-mesh pending request owner, receive gate는 한 capability의 내부
+  상태로 묶고 public builder나 call object에 노출하지 않는다.
+- channel capability 생성과 조회는 `channel_bundle_factory_t`와
+  `channel_runtime_manager_t`가 맡는다. manager는 `.NET`처럼 client/publisher bundle을
+  lazy creation으로 만들고 inbound, client, publisher, route channel 초기화를 runtime
+  state 안에서 정리한다.
+- server receive pump는 `channel_receive_loop_t`와 `channel_message_pump_t`가 맡는다.
+  receive loop는 수신 queue를 drain하고 receive gate로 재진입을 막으며, message pump는
+  packet dispatcher에 envelope dispatch를 위임한다. 이 구조는 `.NET`의
+  `ZLinkChannelRuntimeBundle`, `ZLinkChannelReceiveLoop`,
+  `ZLinkChannelMessagePump`와 같은 책임 분리다.
+- route channel은 `route_channel_runtime_t`와 `route_connection_set_t`가 맡는다.
+  route channel id, manual connection snapshot, target node/Spot routing id, outbound
+  envelope parts, request sequence correlation을 runtime 내부에 둔다. public API는 route
+  channel 이름과 typed send/request 표면만 드러내고 native router socket과 receive pump는
+  노출하지 않는다.
+- route channel handler 등록은 `route_channel_registration_t`와
+  `route_channel_initializer_t`가 맡는다. `.NET`은 reflection scanner와 assembly marker로
+  descriptor를 수집하지만, C++는 typed handler installer를 registration에 저장한 뒤
+  initializer가 `route_handler_registry_t`로 변환한다. 사용자는
+  `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`로 bind,
+  manual connection, handler group, typed routed send/request handler를 한 곳에서 설정한다.
+- route receive path는 `route_receive_pump_t`와 `route_packet_dispatcher_t`가 맡는다.
+  route handler가 있으면 `route_handler_registry_t`와 `route_handler_invoker_t`를 통해
+  typed payload를 호출하고, handler가 없으면 request에 `route_handler_not_found` error
+  envelope를 반환한다. framework 내부 routed packet은
+  `route_internal_packet_dispatcher_t`와 composite dispatcher가 먼저 처리한다.
 - 같은 capability에서 Discovery와 manual 연결을 같이 섞지 않는다.
 - runtime 연결 제어가 필요하면 framework core의 capability 단위 connection manager가
   담당한다. 사용자는 raw socket이 아니라 channel capability 표면으로 연결을 다룬다.

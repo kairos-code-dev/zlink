@@ -7,6 +7,40 @@
 namespace zlink::framework
 {
 
+runtime_event_publisher_t::runtime_event_publisher_t () = default;
+runtime_event_publisher_t::runtime_event_publisher_t (
+  std::shared_ptr<detail::monitoring_runtime_state_t> state)
+  : _state (std::move (state))
+{
+}
+
+runtime_event_publisher_t::~runtime_event_publisher_t () = default;
+runtime_event_publisher_t::runtime_event_publisher_t (
+  runtime_event_publisher_t &&) noexcept = default;
+runtime_event_publisher_t &runtime_event_publisher_t::operator= (
+  runtime_event_publisher_t &&) noexcept = default;
+
+void
+runtime_event_publisher_t::publish_erased (
+  std::type_index event_type,
+  const runtime_event_base_t &base,
+  const void *event) const
+{
+  if (!_state) {
+    return;
+  }
+  if (_state->tracing_hook) {
+    _state->tracing_hook (base);
+  }
+  const auto found = _state->handlers.find (event_type);
+  if (found == _state->handlers.end ()) {
+    return;
+  }
+  for (const auto &handler : found->second) {
+    handler (event);
+  }
+}
+
 monitoring_builder_t::monitoring_builder_t ()
   : _state (std::make_shared<detail::monitoring_runtime_state_t> ())
 {
@@ -86,6 +120,12 @@ monitoring_builder_t::on_trace (
 {
   _state->tracing_hook = std::move (hook);
   return *this;
+}
+
+runtime_event_publisher_t
+monitoring_builder_t::publisher () const
+{
+  return runtime_event_publisher_t (_state);
 }
 
 monitoring_builder_t &

@@ -221,6 +221,28 @@ zlink_builder_t::route_channel (std::string route_channel_name)
   return *this;
 }
 
+zlink_builder_t &
+zlink_builder_t::route_channel (
+  std::string route_channel_name,
+  std::function<void (route_channel_builder_t &)> configure)
+{
+  if (route_channel_name.empty ()) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "route channel name is required");
+  }
+  auto state = std::make_shared<detail::route_channel_builder_state_t> (
+    route_channel_name);
+  route_channel_builder_t builder (state);
+  if (configure) {
+    configure (builder);
+  }
+  _state->route_channels[route_channel_name] = state;
+  _state->registry_runtime->route_channels.push_back (
+    std::move (route_channel_name));
+  return *this;
+}
+
 registry_options_snapshot_t
 zlink_builder_t::registry_options () const
 {

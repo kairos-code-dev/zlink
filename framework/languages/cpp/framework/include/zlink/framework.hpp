@@ -3,6 +3,7 @@
 
 #include <zlink/framework/app.hpp>
 #include <zlink/framework/actors.hpp>
+#include <zlink/framework/assembly.hpp>
 #include <zlink/framework/call.hpp>
 #include <zlink/framework/channels.hpp>
 #include <zlink/framework/config.hpp>

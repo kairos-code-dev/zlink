@@ -1,0 +1,141 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "runtime/channels/route_channel_registration.hpp"
+
+#include <utility>
+
+namespace zlink::framework::detail
+{
+
+route_channel_registration_t::route_channel_registration_t (
+  std::string router_channel_id)
+  : _router_channel_id (std::move (router_channel_id))
+{
+  if (_router_channel_id.empty ()) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "route channel id is required");
+  }
+}
+
+const std::string &
+route_channel_registration_t::router_channel_id () const noexcept
+{
+  return _router_channel_id;
+}
+
+route_channel_registration_t &
+route_channel_registration_t::bind (std::string endpoint)
+{
+  if (endpoint.empty ()) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "route channel bind endpoint is required");
+  }
+  _bind_endpoint = std::move (endpoint);
+  return *this;
+}
+
+route_channel_registration_t &
+route_channel_registration_t::connect (std::string endpoint)
+{
+  if (endpoint.empty ()) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "route channel manual connection endpoint is required");
+  }
+  _manual_connections.push_back (std::move (endpoint));
+  return *this;
+}
+
+route_channel_registration_t &
+route_channel_registration_t::add_handler_group (std::string group_name)
+{
+  if (group_name.empty ()) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "route handler group name is required");
+  }
+  _handler_groups.push_back (std::move (group_name));
+  return *this;
+}
+
+route_channel_registration_t &
+route_channel_registration_t::add_handler (
+  framework::route_handler_registration_t registration)
+{
+  if (registration.packet_name.empty ()) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "route handler packet name is required");
+  }
+  _handlers.push_back (std::move (registration));
+  return *this;
+}
+
+const std::string &
+route_channel_registration_t::bind_endpoint () const noexcept
+{
+  return _bind_endpoint;
+}
+
+const std::vector<std::string> &
+route_channel_registration_t::manual_connections () const noexcept
+{
+  return _manual_connections;
+}
+
+const std::vector<std::string> &
+route_channel_registration_t::handler_groups () const noexcept
+{
+  return _handler_groups;
+}
+
+route_handler_registry_t
+route_channel_registration_t::create_handler_registry () const
+{
+  route_handler_registry_t handlers;
+  for (const auto &handler : _handlers) {
+    runtime::messaging::message_kind_t kind =
+      handler.kind == framework::route_handler_kind_t::send
+        ? runtime::messaging::message_kind_t::command
+        : runtime::messaging::message_kind_t::request;
+    handlers.add_handler (
+      route_handler_descriptor_t {
+        kind,
+        _router_channel_id,
+        handler.packet_name,
+        handler.owner_type,
+        handler.message_type,
+        handler.reply_type },
+      handler.invoker);
+  }
+  for (const auto &install : _send_handlers) {
+    install (handlers, _router_channel_id);
+  }
+  for (const auto &install : _request_handlers) {
+    install (handlers, _router_channel_id);
+  }
+  return handlers;
+}
+
+initialized_route_channel_t
+route_channel_initializer_t::initialize (
+  const route_channel_registration_t &registration) const
+{
+  auto runtime = std::make_shared<route_channel_runtime_t> (
+    registration.router_channel_id ());
+  if (!registration.bind_endpoint ().empty ()) {
+    runtime->connect (registration.bind_endpoint ());
+  }
+  for (const auto &endpoint : registration.manual_connections ()) {
+    runtime->connect (endpoint);
+  }
+  runtime->start ();
+  return initialized_route_channel_t {
+    std::move (runtime),
+    registration.create_handler_registry ()
+  };
+}
+
+} // namespace zlink::framework::detail

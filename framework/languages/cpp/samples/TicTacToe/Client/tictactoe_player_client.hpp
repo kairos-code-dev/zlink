@@ -1,0 +1,112 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "session_actor_notification_inbox.hpp"
+#include "tictactoe_client_options.hpp"
+#include "tictactoe_client_result.hpp"
+#include "../Shared/Configuration/sample_names.hpp"
+#include "../Shared/Contracts/messages.hpp"
+
+#include <zlink/stream_connector.hpp>
+
+#include <string>
+#include <utility>
+
+namespace zlink::samples::tictactoe
+{
+
+class tictactoe_player_client_t
+{
+public:
+  static tictactoe_player_client_t connect (
+    std::string actor_id,
+    const tictactoe_client_options_t &options)
+  {
+    zlink::stream_connector::connector_options_t connector_options;
+    connector_options.endpoint = options.play_endpoint;
+    connector_options.connect_timeout = options.stream_timeout;
+    connector_options.request_timeout = options.stream_timeout;
+    connector_options.dispatch_mode =
+      zlink::stream_connector::dispatch_mode_t::immediate;
+
+    auto connector =
+      zlink::stream_connector::connector_factory_t::create (connector_options);
+    auto client =
+      tictactoe_player_client_t (std::move (actor_id), std::move (connector));
+    client.register_notifications ();
+    client._connected = static_cast<bool> (client._connector.connect ().result ());
+    return client;
+  }
+
+  bool connected () const noexcept { return _connected; }
+  const notification_inbox_t &notifications () const noexcept
+  {
+    return _notifications;
+  }
+
+  tictactoe_client_call_result_t authenticate ()
+  {
+    return request<authenticate_res_t> (
+      authenticate_req_t { _actor_id });
+  }
+
+  tictactoe_client_call_result_t join_game (std::string match_id)
+  {
+    return request<join_match_res_t> (
+      join_match_req_t { std::move (match_id), _actor_id });
+  }
+
+  tictactoe_client_call_result_t place_mark (std::string match_id, int cell)
+  {
+    return request<place_mark_res_t> (
+      place_mark_req_t { std::move (match_id), _actor_id, cell });
+  }
+
+  void close () { _connector.close ().result (); }
+  void dispatch () { _connector.dispatch ().result (); }
+
+private:
+  tictactoe_player_client_t (
+    std::string actor_id,
+    zlink::stream_connector::connector_t connector)
+    : _actor_id (std::move (actor_id)), _connector (std::move (connector))
+  {
+  }
+
+  void register_notifications ()
+  {
+    _connector.on<opponent_joined_notify_t> (
+      [this](const opponent_joined_notify_t &message) {
+        _notifications.opponent_joined (message);
+      });
+    _connector.on<turn_changed_notify_t> (
+      [this](const turn_changed_notify_t &message) {
+        _notifications.turn_changed (message);
+      });
+    _connector.on<game_ended_notify_t> (
+      [this](const game_ended_notify_t &message) {
+        _notifications.game_ended (message);
+      });
+  }
+
+  template<typename TReply, typename TRequest>
+  tictactoe_client_call_result_t request (const TRequest &request_message)
+  {
+    auto result =
+      _connector.request<TReply> (request_message)
+        .submit ()
+        .result ();
+    return { TRequest::packet_name,
+             static_cast<bool> (result),
+             result ? std::string {}
+                    : result.error () ? result.error ()->message
+                                      : "request failed" };
+  }
+
+  std::string _actor_id;
+  zlink::stream_connector::connector_t _connector;
+  notification_inbox_t _notifications;
+  bool _connected = false;
+};
+
+} // namespace zlink::samples::tictactoe

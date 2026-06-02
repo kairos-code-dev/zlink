@@ -60,18 +60,7 @@ private:
   template<typename TEvent>
   void publish (TEvent event) const
   {
-    event.timestamp = std::chrono::system_clock::now ();
-    if (_state->tracing_hook) {
-      _state->tracing_hook (event);
-    }
-    const auto found = _state->handlers.find (
-      std::type_index (typeid (TEvent)));
-    if (found == _state->handlers.end ()) {
-      return;
-    }
-    for (const auto &handler : found->second) {
-      handler (&event);
-    }
+    runtime_event_publisher_t (_state).publish (std::move (event));
   }
 
   std::shared_ptr<monitoring_runtime_state_t> _state;

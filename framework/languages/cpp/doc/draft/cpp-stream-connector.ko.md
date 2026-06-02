@@ -62,7 +62,7 @@ thread dispatch 구현은 `Private/`에 둔다.
 connector도 framework와 같은 public surface gate를 적용한다. public header는 endpoint,
 packet, request/send builder, callback/coroutine submit, codec option만 노출한다.
 reconnect state, heartbeat scheduler, pending request table, frame encoder/decoder,
-compression worker, socket receive loop는 `src/runtime/*`에 둔다. Unreal Connector도
+compression worker, Asio socket receive loop는 `src/runtime/*`에 둔다. Unreal Connector도
 Blueprint/Game Thread 표면만 `Public/`에 두고, 일반 C++ connector runtime class를 그대로
 public type으로 노출하지 않는다.
 
@@ -79,17 +79,20 @@ connector 구현도 시작 전에 owner를 아래처럼 나눈다.
 
 | 기능 | C++ connector public owner | C++ connector runtime owner | Unreal public owner | Unreal private owner |
 |------|----------------------------|-----------------------------|---------------------|----------------------|
-| connector lifecycle | `contracts/connector.hpp` | `src/runtime/connection/*` | `Public/ZLinkStreamConnector.h` | `Private/Connection/*` |
-| packet send/request | `contracts/calls.hpp`, `contracts/packet.hpp` | `src/runtime/messaging/*` | Blueprint callable send/request API | `Private/Messaging/*` |
-| callback/coroutine submit | `contracts/dispatch/*` | `src/runtime/dispatch/*` | Blueprint delegate, Game Thread callback | `Private/Dispatch/*` |
-| codec option | `contracts/codecs/*` | `src/runtime/codecs/*` | Unreal codec option types | `Private/Codecs/*` |
-| reconnect/heartbeat | state event contract | `src/runtime/connection/*` | connection state delegate | `Private/Connection/*` |
-| compression | packet option contract | `src/runtime/compression/*` | Unreal packet option | `Private/Compression/*` |
+| connector lifecycle | `contracts/zlink_stream_connector.hpp`, `contracts/zlink_stream_connector_factory.hpp` | `src/runtime/connector_lifecycle.*`, `src/runtime/transport/*` with Asio | `Public/ZLinkStreamConnector.h` | `Private/Connection/*` with Unreal Sockets |
+| packet send/request | `contracts/calls/zlink_stream_calls.hpp`, `contracts/zlink_stream_models.hpp` | `src/runtime/calls/*`, `src/runtime/pending_requests.hpp` | Blueprint callable send/request API | `Private/Messaging/*` with Unreal Sockets |
+| callback/coroutine submit | `contracts/task.hpp`, callback overloads on call objects | `src/runtime/connector_callbacks.*`, `src/runtime/task_runner.hpp` | Blueprint delegate, Game Thread callback | `Private/Dispatch/*` |
+| codec option | `contracts/codec_registry.hpp`, `contracts/zlink_stream_enums.hpp` | `src/runtime/protocol/*`, `src/runtime/protocol/compression/*` | Unreal codec option types | `Private/Codecs/*` |
+| reconnect/heartbeat | state event contract, options contract | `src/runtime/heartbeat_monitor.*`, `src/runtime/connector_lifecycle.*` | connection state delegate | `Private/Connection/*` |
+| compression | packet option contract | `src/runtime/protocol/compression/*` | Unreal packet option | `Private/Compression/*` |
 
 이 표의 public owner는 사용자 호출 shape와 option만 담는다. request correlation table,
 receive loop, heartbeat scheduler, frame encoder/decoder, compression worker, Game Thread
-queue 구현은 public header에 두지 않는다. 일반 C++ connector와 Unreal Connector는 같은
-wire 의미를 공유하지만 public 타입은 서로 독립이다.
+queue 구현은 public header에 두지 않는다. 현재 C++ runtime 파일 분류는
+`calls`, `protocol`, `protocol/compression`, `protocol/framing`, `transport`,
+`connector_lifecycle`, `connector_callbacks`, `receive_dispatcher`, `receive_loop`,
+`task_runner`, `typed_handler_registry`를 기준으로 고정한다. 일반 C++ connector와 Unreal
+Connector는 같은 wire 의미를 공유하지만 public 타입은 서로 독립이다.
 
 ## 2. 패키징
 
@@ -103,9 +106,11 @@ wire 의미를 공유하지만 public 타입은 서로 독립이다.
 | 배포 단위 | framework server runtime | client connector library | Unreal plugin |
 | 주요 사용자 | server application | C++ game/client application | Unreal game/client application |
 
-codec은 connector 배포 단위에 포함한다. `.NET`처럼 codec별 package를 기본 배포 단위로
-쪼개지 않는다. 사용자는 하나의 `zlink::stream_connector` target을 링크하고, codec
-지원은 build option과 runtime codec registry로 선택한다.
+codec은 connector 배포 단위에 포함하되, 사용하지 않는 codec dependency를 기본 connector
+target에 강제로 붙이지 않는다. raw transport와 frame runtime은 `zlink::stream_connector`가
+맡고, typed auto codec helper는 같은 배포물 안의 `zlink::stream_connector_codecs` target이
+맡는다. MessagePack과 Protobuf는 build option이 켜지고 해당 C++ binding codec target이
+있을 때만 `zlink::stream_connector_codecs`에 연결된다.
 
 | 기능 | 포함 방식 | 기본값 |
 |------|----------|--------|
@@ -113,7 +118,7 @@ codec은 connector 배포 단위에 포함한다. `.NET`처럼 codec별 package�
 | JSON helper | connector package 안에 포함 | ON |
 | MessagePack helper | connector package 안의 build feature | OFF |
 | Protobuf helper | connector package 안의 optional build feature | OFF |
-| LZ4 compression | connector package 안의 build feature | OFF |
+| LZ4 compression | connector package 안의 build feature, system LZ4 또는 fallback source | ON |
 
 권장 CMake option은 아래와 같다.
 
@@ -121,13 +126,22 @@ codec은 connector 배포 단위에 포함한다. `.NET`처럼 codec별 package�
 ZLINK_STREAM_CONNECTOR_WITH_JSON=ON
 ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK=OFF
 ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF=OFF
-ZLINK_STREAM_CONNECTOR_WITH_LZ4=OFF
+ZLINK_STREAM_CONNECTOR_WITH_LZ4=ON
 ```
+
+`ZLINK_STREAM_CONNECTOR_WITH_LZ4=ON`이면 CMake는 먼저 system `lz4.h`와 `liblz4`를
+찾는다. 개발 패키지가 없으면 LZ4 source를 받아 `zlink::stream_connector` target 안에
+private source로 포함한다. 사용자는 별도 LZ4 target을 직접 링크하지 않는다.
 
 ## 3. 기능 기준
 
 C++ Stream Connector는 공통 [ZLink Stream Connector](../../../../doc/spec/draft/streaming-client.ko.md)
 초안과 `.NET` `Systems.Zlink.Stream.Connector`의 기능성을 C++20 방식으로 투영한다.
+
+일반 C++ connector의 transport 구현은 Asio를 사용한다. Linux, macOS, Windows에서 같은
+receive loop와 timer/reconnect 구조를 유지하기 위해 raw file descriptor나 OS별 socket
+API를 connector runtime에 직접 흩어 놓지 않는다. 현재 저장소에서는 C++ binding이 이미
+Boost include 경로를 제공하므로 Boost.Asio를 기본 구현 기반으로 사용한다.
 
 포함 기능은 아래와 같다.
 
@@ -157,6 +171,13 @@ connector는 ActorGateway나 server-side session actor relay를 직접 구현하
 서버 framework의 STREAM/ActorGateway 기능이다. connector는 STREAM 서버가 이해하는
 header/payload packet을 만들고 해석하는 client-side library다.
 
+구현 검증은 두 단계로 나눈다. 첫 단계는 local test runtime으로 packet 생성, pending
+request 등록, callback dispatch 같은 내부 상태를 검증한다. 이 검증은 transport가 없어도
+가능하지만 실제 서버 접속을 증명하지 않는다. 둘째 단계는 framework STREAM endpoint를
+실제로 띄우고 connector가 그 endpoint에 연결한 뒤 request reply와 push notification을
+주고받는 end-to-end 검증이다. connector를 완료로 볼 수 있는 기준은 둘째 단계까지 통과하는
+것이다.
+
 codec 표면은 `message_t` 중심으로 둔다. 사용자가 별도 codec namespace를 찾아
 `decode(message)`를 호출하는 방식은 주 표면으로 두지 않는다. connector 내부 typed
 send/request/on 경로도 같은 message 중심 codec API를 사용한다.
@@ -164,6 +185,25 @@ send/request/on 경로도 같은 message 중심 codec API를 사용한다.
 ```cpp
 auto message = zlink::message_t::from_json(login_request);
 auto reply = reply_message.parse_json<login_reply_t>();
+```
+
+`.NET` `Systems.Zlink.Stream.Connector.Codecs`의 auto codec helper에 해당하는 C++ 표면은
+`zlink/stream_connector/codecs/auto_codec.hpp`에 둔다. C++에는 attribute reflection이
+없으므로 기본은 JSON이고, MessagePack/Protobuf 선택은 사용자가 `codec_traits<T>`를
+특수화해서 명시한다.
+
+```cpp
+#include <zlink/stream_connector/codecs/auto_codec.hpp>
+
+zlink::stream_connector::codecs::send(connector, login_request)
+  .packet_name("login.request")
+  .submit();
+
+zlink::stream_connector::codecs::on<login_notify_t>(
+  connector,
+  [](const login_notify_t &notify) {
+    // notify is decoded before this callback runs.
+  });
 ```
 
 codec id는 STREAM header의 `codec` 필드에 기록한다. 압축은 codec이 아니라 header flag다.
@@ -268,7 +308,8 @@ immediate mode도 제공한다. 이 모드에서는 connector가 내부 수신 �
 - 여러 packet을 순서대로 dispatch한다.
 - manual dispatch에서는 callback이 `dispatch()` 호출 경로에서 실행된다.
 - immediate dispatch에서는 별도 manual dispatch 없이 callback이 실행된다.
-- packet name 기본값은 payload 타입 이름을 사용한다.
+- packet name 기본값은 DTO의 `static constexpr packet_name`을 우선 사용한다. 값이 없을
+  때만 C++ type name fallback을 사용한다.
 - metadata size limit은 send 전에 적용된다.
 - send payload size limit은 transport write 전에 적용된다.
 - request timeout은 pending request를 정리한다.
@@ -279,7 +320,10 @@ immediate mode도 제공한다. 이 모드에서는 connector가 내부 수신 �
 ## 7. Unreal Connector
 
 Unreal Connector는 일반 C++ connector와 별도 배포물이다. Unreal 프로젝트에서 바로 쓸 수
-있도록 Unreal 전용 함수와 타입을 제공한다.
+있도록 Unreal 전용 함수와 타입을 제공한다. Unreal Connector의 transport 구현은 일반 C++
+connector의 Asio runtime을 감싸지 않고 Unreal의 `Sockets`/`Networking` 모듈을 사용한다.
+그래야 Unreal lifecycle, PIE 종료, map unload, Game Thread callback 규칙과 충돌하지
+않는다.
 
 포함해야 할 Unreal 전용 표면은 아래와 같다.
 
@@ -312,13 +356,32 @@ public:
     void SendJson(FName PacketName, const FString &JsonPayload);
 
     UFUNCTION(BlueprintCallable)
+    void SendJsonWithOptions(
+      FName PacketName,
+      const FString &JsonPayload,
+      const FZLinkStreamSendOptions &Options);
+
+    UFUNCTION(BlueprintCallable)
     void RequestJson(
       FName PacketName,
       const FString &JsonPayload,
       float TimeoutSeconds);
 
     UFUNCTION(BlueprintCallable)
+    void RequestJsonWithOptions(
+      FName PacketName,
+      const FString &JsonPayload,
+      float TimeoutSeconds,
+      const FZLinkStreamSendOptions &Options);
+
+    UFUNCTION(BlueprintCallable)
     void Dispatch();
+
+    UPROPERTY(BlueprintAssignable)
+    FZLinkStreamPacketReceived OnPacketReceived;
+
+    UPROPERTY(BlueprintAssignable)
+    FZLinkStreamRequestCompleted OnRequestCompleted;
 };
 ```
 
@@ -326,6 +389,9 @@ Unreal Connector는 callback을 Game Thread에서 실행해야 한다. 내부 ne
 background thread에서 `UObject`, `AActor`, `UWorld`를 직접 만지지 않는다. 기본 dispatch
 mode는 manual이며, `Dispatch()`를 game tick에서 호출하면 그 frame에 쌓인 packet과
 lifecycle event를 Game Thread에서 처리한다.
+Unreal Connector에는 coroutine API를 별도로 두지 않는다. Unreal 사용자는 Blueprint
+delegate나 native multicast delegate로 callback을 받고, `PendingDispatchCount()`는
+`Dispatch()` 전에 처리할 완성 frame이 private queue에 몇 개 쌓여 있는지 알려준다.
 
 codec은 일반 C++ connector와 같은 배포 정책을 따른다. JSON은 기본 포함한다. MessagePack과
 Protobuf는 Unreal plugin 안의 build option으로 포함할 수 있지만, Unreal 사용자가 codec
@@ -334,3 +400,23 @@ Protobuf는 Unreal plugin 안의 build option으로 포함할 수 있지만, Unr
 Unreal Connector 테스트는 일반 C++ connector GoogleTest 회귀와 별도로 둔다. Unreal
 module compile test, Blueprint-callable API compile check, Game Thread dispatch smoke를
 최소 기준으로 둔다.
+
+실제 Unreal 동작 검증은 `ZLink.StreamConnector.Loopback` Automation Test로 한다. 이
+테스트는 Unreal `FSocket` loopback server를 열고 `UZLinkStreamConnector`가 실제로
+접속하는지, `SendJson`과 `RequestJson`이 STREAM frame 구조로 서버에 도착하는지,
+metadata options가 header metadata로 기록되는지, 서버가 보낸 `send` frame의 metadata가
+`OnPacketReceivedNative` callback packet으로 돌아오는지, request sequence가 일치하는
+`response` frame이 `OnRequestCompletedNative` callback으로 돌아오는지 확인한다. 또한
+`FZLinkStreamSendOptions::bCompress`가 켜진 send/request는 `payload_compressed` flag와
+LZ4 payload 형식으로 서버에 도착해야 하며, 서버가 보낸 compressed push/response frame은
+callback 전에 원래 payload로 복원되어야 한다. 서버가 frame을 보낸 뒤에는
+`PendingDispatchCount()`가 0보다 커지고, callback은 `Dispatch()` 호출 전에는 실행되지
+않아야 한다.
+
+Unreal Engine이 설치된 머신에서는 아래처럼 headless로 실행한다.
+
+```bash
+UnrealEditor-Cmd <TestProject>.uproject \
+  -ExecCmds="Automation RunTests ZLink.StreamConnector; Quit" \
+  -unattended -nop4 -nosplash -NullRHI
+```

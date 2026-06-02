@@ -935,9 +935,8 @@ Spot route cache는 `src/runtime/registry/*`가 소유한다.
 - 실제 CAPI registry service와 remote query transport 연결은 private runtime owner 안에서
   더 붙여야 한다. Goal 14에서는 public contract, validation, query/topology semantics,
   Spot lookup 기본값 경계를 먼저 닫았다.
-- route channel은 C++ framework에 아직 전용 route mesh runtime이 없으므로
-  `zlink_builder_t::route_channel(...)`의 public 설정으로 시작했다. 이후 channel route
-  runtime이 구체화되면 같은 public 설정을 runtime channel owner에 연결한다.
+- route channel은 이제 `src/runtime/channels/route_channel_runtime.*`의 private runtime
+  owner가 맡는다. 실제 CAPI router socket adapter 연결은 이후 backend substrate와 묶는다.
 
 ### 재실행한 검증 명령
 
@@ -1187,12 +1186,12 @@ git diff --check -- framework/languages/cpp bindings/cpp
 |-----------|------|
 | `.NET` 대응 확인 | 일반 C++ connector contract/runtime 분리와 Unreal plugin public/private 분리를 함께 기준으로 삼았다. Unreal public API는 일반 connector wrapper가 아니라 Unreal 타입과 thread model 표면이다. |
 | contract owner | `unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h`가 `UZLinkStreamConnector`, Unreal-facing state enum, packet value type, Blueprint-callable method를 소유한다. |
-| runtime owner | `unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp`가 일반 C++ connector instance, Game Thread dispatch forwarding, lifecycle shutdown mapping을 소유한다. |
+| runtime owner | `unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp`가 Unreal `Sockets`/`Networking` 기반 connection, Game Thread dispatch forwarding, lifecycle shutdown mapping을 소유한다. |
 | public dependency | Unreal public header는 일반 C++ connector runtime header를 include하지 않는다. Unreal 엔진이 없는 CTest compile에서는 shim 타입으로 public API shape만 검증한다. |
 | native leakage | public API는 `FString`, `FName`, `TArray<uint8>`, `TMap<FString,FString>` 기반 표면만 노출하고 receive loop, pending request table, frame sender, thread queue를 노출하지 않는다. |
-| detail 사용 | 일반 C++ connector runtime include는 Unreal `Private/` 구현에만 있다. |
+| detail 사용 | 일반 C++ connector runtime include는 Unreal 구현에 두지 않는다. Unreal connector는 wire 의미만 공유하고 transport는 Unreal networking API로 구현한다. |
 | state hiding | `UZLinkStreamConnector`는 opaque private runtime을 `unique_ptr`로 소유한다. |
-| validation | `test_unreal_stream_connector`가 plugin public header compile, connect/close/send/request/dispatch, PIE/map unload/game instance shutdown smoke를 확인한다. |
+| validation | `test_unreal_stream_connector`가 Engine 없는 compile smoke를 담당하고, `ZLink.StreamConnector.Loopback` Unreal Automation Test가 실제 `FSocket` loopback send/request/push를 확인한다. |
 
 ### 발견한 위험 신호
 
@@ -1208,7 +1207,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | 일반 C++ connector API를 Unreal public header에 그대로 노출 | 중복 API가 줄어든다 | Unreal 타입, Blueprint, Game Thread 모델과 맞지 않는다 |
-| Unreal 전용 facade를 제공하고 Private에서 일반 connector 사용 | Unreal 사용성에 맞고 runtime 구현을 숨길 수 있다 | public/private adapter 코드가 필요하다 |
+| Unreal 전용 facade를 제공하고 Private에서 Unreal runtime 구현 | Unreal 사용성에 맞고 transport 구현을 숨길 수 있다 | public/private adapter 코드가 필요하다 |
 | private runtime raw pointer 소유 | 구현이 짧다 | ownership, destructor, shutdown 책임이 명확하지 않다 |
 | private runtime `unique_ptr` 소유 | RAII로 lifetime이 닫힌다 | public header에 `<memory>`와 전방 선언이 필요하다 |
 | immediate callback 실행 | callback path가 단순하다 | Game Thread 실행 보장이 약해진다 |
@@ -1228,8 +1227,8 @@ dispatch 구현은 Private에 숨긴다.
   타입과 macro fallback을 두었다.
 - `Connect`, `Close`, `SendJson`, `RequestJson`, `Dispatch`, `Tick`, `ShutdownForPie`,
   `ShutdownForMapUnload`, `ShutdownForGameInstanceShutdown` 표면을 추가했다.
-- `Private/ZLinkStreamConnector.cpp`에서 일반 `zlink::stream_connector::connector_t`를
-  사용하되 public header에는 일반 connector runtime 타입을 노출하지 않았다.
+- `Private/ZLinkStreamConnector.cpp`에서 Unreal `Sockets` 기반 runtime을 소유하고, public
+  header에는 일반 connector runtime 타입을 노출하지 않았다.
 - POSD 리팩토링으로 private runtime 소유권을 raw pointer에서 `std::unique_ptr`로 바꾸었다.
 - CMake smoke용 `zlink_unreal_stream_connector` target과 `test_unreal_stream_connector`를
   추가해 Unreal public header compile과 lifecycle smoke를 CTest에 등록했다.
@@ -1239,8 +1238,9 @@ dispatch 구현은 Private에 숨긴다.
 - 실제 Unreal `DECLARE_DYNAMIC_MULTICAST_DELEGATE` 기반 Blueprint assignable event와 Unreal
   logging category는 Unreal 엔진 빌드 환경에서 확장해야 한다. Goal 18에서는 public/private
   경계, Blueprint-callable shape, Game Thread manual dispatch path를 먼저 닫았다.
-- JSON은 Unreal connector public API에 기본 `SendJson`/`RequestJson`으로 노출했지만 실제
-  JSON serializer wiring은 일반 connector codec runtime과 함께 더 연결해야 한다.
+- JSON은 Unreal connector public API에 기본 `SendJson`/`RequestJson`으로 노출했고, 현재
+  표면은 사용자가 넘긴 JSON payload를 STREAM `codec=json` frame으로 전송한다. typed UObject
+  serializer helper는 다음 확장 대상이다.
 
 ### 재실행한 검증 명령
 
@@ -1266,13 +1266,13 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | native leakage | 샘플은 native context, socket, poller, dispatch callback, stream frame codec을 직접 다루지 않는다. |
 | detail 사용 | 샘플 코드에는 `detail::*` 사용이 없다. |
 | state hiding | 샘플 state는 application domain object와 local variable에만 있고 framework runtime state를 직접 보관하지 않는다. |
-| validation | `framework-sample-smoke` CTest label이 Bingo와 TicTacToe 실행을 확인한다. README도 샘플 역할과 포함 범위를 설명한다. |
+| validation | `framework-sample-smoke` CTest label이 Bingo와 TicTacToe의 역할별 실행 파일을 확인한다. README도 샘플 역할과 포함 범위를 설명한다. |
 
 ### 발견한 위험 신호
 
 - Goal 1 placeholder README가 남아 있으면 샘플을 열어도 현재 리뷰 범위를 알기 어렵다.
-- Bingo에 STREAM ActorGateway relay 변형을 넣으면 TicTacToe와 역할이 겹치고 샘플 경계가
-  흐려진다.
+- Bingo에서 `.NET` Bingo의 session stream 역할을 빼면 처리 packet 수와 역할 구성이 달라져
+  sample parity를 검토할 수 없다.
 - TicTacToe에서 ActorGateway 대신 route mesh channel이나 sample-only metadata store를 쓰면
   Goal 13의 relay 기준을 우회하게 된다.
 
@@ -1291,15 +1291,17 @@ TicTacToe는 STREAM/ActorGateway 중심으로 둔다.
 
 ### 적용한 리팩토링
 
-- `samples/Bingo/main.cpp`를 app/host, DI, hosted service, channel request/reply,
-  outbound-only host, manual connection, publish/subscribe, 일반 event publish, callback
-  submit, coroutine submit, handler error, user Spot, SPOT timer, monitoring, graceful
-  shutdown, offload handler option을 확인하는 샘플로 채웠다.
-- `samples/TicTacToe/main.cpp`를 STREAM endpoint, ActorGateway attach, Entry Spot,
-  actor factory, session actor bind, relay, bound session push, actor join/move,
-  disconnect cleanup을 확인하는 샘플로 채웠다.
+- `samples/Bingo`를 `Shared`, `Client`, `Server/Registry`, `Server/Api`, `Server/Play`
+  역할로 나누고 app/host, DI, hosted service, channel request/reply, publish/subscribe,
+  callback submit, coroutine submit, user Spot, SPOT timer, monitoring, graceful shutdown,
+  offload handler option을 확인하는 샘플로 채웠다.
+- `samples/TicTacToe`를 `Shared`, `Client`, `Server/Registry`, `Server/Api`,
+  `Server/Play`, `Server/Session` 역할로 나누고 STREAM endpoint, ActorGateway attach,
+  Entry Spot, actor factory, session actor bind, relay, bound session push,
+  actor join/move, disconnect cleanup을 확인하는 샘플로 채웠다.
 - 샘플 이름은 `Bingo`, `TicTacToe` 그대로 유지하고 별도 접미사를 붙이지 않았다.
-- Bingo에는 STREAM ActorGateway relay 변형을 넣지 않았다.
+- Bingo에도 `.NET` Bingo와 같은 `Server/Session` 역할을 두고 session stream 흐름을
+  포함했다.
 - POSD 리팩토링으로 placeholder README를 제거하고 각 샘플의 리뷰 목적과 포함 범위를
   현재 코드와 맞게 갱신했다.
 
@@ -1312,7 +1314,7 @@ TicTacToe는 STREAM/ActorGateway 중심으로 둔다.
 ### 재실행한 검증 명령
 
 ```bash
-cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo sample_cpp_framework_tictactoe
+cmake --build framework/languages/cpp/build
 ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on-failure
 git diff --check -- framework/languages/cpp bindings/cpp
@@ -1448,4 +1450,1393 @@ cmake -S framework/languages/cpp -B framework/languages/cpp/build
 cmake --build framework/languages/cpp/build --target test_cpp_framework_extensions
 ctest --test-dir framework/languages/cpp/build -L framework-extension --output-on-failure
 git diff --check -- framework/languages/cpp bindings/cpp
+```
+
+## 추가 리뷰. 문서 반영 누락 보정
+
+### 발견한 위험 신호
+
+- `contracts/assembly/*`와 `src/runtime/backend/contracts/*`가 implementation plan의
+  interface/implementation owner matrix에는 있었지만 실제 tree에는 없었다.
+- framework와 connector export target은 build tree alias 이름과 install tree target 이름이
+  달라질 수 있었다.
+- 테스트 정책은 GoogleTest/GoogleMock을 기본 harness로 정했지만 CMake test target은 일반
+  executable만 링크하고 있었다.
+- `load_json()`과 `load_env()`가 실제 값을 읽지 않고 경로와 prefix만 저장하고 있었다.
+- `app_t::run()`이 hosted service를 시작한 뒤 바로 stop해서 long-running host lifecycle을
+  표현하지 못했다.
+- Unreal connector public header에 Blueprint assignable connection state event가 없었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 문서를 현재 skeleton 수준으로 낮추기 | 구현 변경이 적다 | 사용자가 요구한 완성 스펙과 어긋난다 |
+| 실제 코드와 package/test 경계를 문서 수준으로 올리기 | draft 기준과 구현이 맞는다 | CMake, host lifecycle, tests를 함께 고쳐야 한다 |
+
+선택은 코드를 문서 수준으로 올리는 것이다. draft는 구현 범위를 줄이지 않는다는 기준을
+이미 명시하고 있으므로, 누락된 owner와 runtime behavior를 추가 구현으로 닫는다.
+
+### 적용한 리팩토링
+
+- `contracts/assembly/assembly.hpp`, `framework/assembly.hpp`, `src/runtime/host/assembly.cpp`,
+  `src/runtime/backend/contracts/backend_runtime_contract.hpp`,
+  `connector/src/runtime/backend/contracts/connector_backend_contract.hpp`를 추가했다.
+- framework package와 stream connector package의 install/export config를 분리하고,
+  installed consumer가 `zlink::framework`, `zlink::stream_connector`,
+  `zlink::framework_extension_*` target을 그대로 사용할 수 있게 `EXPORT_NAME`과 config
+  파일을 추가했다.
+- framework public serializer가 요구하는 JSON codec header와 native runtime을 install
+  package에 포함했다.
+- GoogleTest/GoogleMock을 CMake test harness로 연결하고, GoogleMock boundary를 확인하는
+  `test_cpp_framework_gtest_harness`를 추가했다.
+- `load_json()`은 JSON 파일을 읽어 flat configuration model로 합치고, `load_env()`는
+  prefix가 맞는 환경 변수를 model에 반영하도록 수정했다.
+- `app_t::run()`은 signal handler를 등록하고 stop 요청이 들어올 때까지 hosted service를
+  유지한 뒤 역순 stop을 수행하도록 수정했다.
+- Unreal connector에 Blueprint assignable connection state delegate를 추가하고 state 변경
+  callback에서 broadcast하도록 수정했다.
+
+### 남은 tradeoff
+
+- GoogleTest가 시스템에 없으면 CMake configure 단계에서 FetchContent로 GoogleTest를
+  가져온다. 이는 개발 의존성에만 적용되며 public framework header와 install runtime
+  dependency에는 노출하지 않는다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+cmake --install framework/languages/cpp/build --prefix /tmp/zlink_framework_cpp_install
+cmake -S /tmp/zlink_framework_cpp_consumer -B /tmp/zlink_framework_cpp_consumer/build -DCMAKE_PREFIX_PATH=/tmp/zlink_framework_cpp_install
+cmake --build /tmp/zlink_framework_cpp_consumer/build
+git diff --check -- framework/languages/cpp
+# draft 금지 표현 검색과 public header dependency 누출 검색을 실행했다.
+```
+
+## 추가 리뷰. 샘플 품질 보정
+
+### 발견한 위험 신호
+
+- 기존 C++ `Bingo`와 `TicTacToe` 샘플은 CTest smoke 성격이 강해서 `.NET` 샘플처럼
+  registry/API/play/session/client 역할과 domain flow를 리뷰하기 어려웠다.
+- Bingo 샘플은 channel/SPOT 기능을 나열했지만 authenticate, match allocation, room state,
+  notification inbox 같은 실제 메시징 프로그램의 흐름이 약했다.
+- TicTacToe 샘플은 ActorGateway relay API 호출은 있었지만 create match, join, place mark,
+  turn changed, game ended 같은 게임 흐름이 거의 없었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 smoke 샘플 유지 | 테스트가 짧다 | `.NET` 샘플과 비교하면 리뷰 가치가 낮다 |
+| `.NET`처럼 여러 실행 파일로 즉시 분리 | 구조가 가장 비슷하다 | sample smoke target이 늘어난다 |
+| 단일 실행 파일 안에서 역할을 명확히 분리 | target 수가 적다 | 실제 프로세스 역할 분리가 보이지 않는다 |
+
+선택은 `.NET`처럼 여러 실행 파일로 즉시 분리하는 것이다. 샘플은 private runtime을 쓰지
+않고 public API와 샘플 domain code만 사용한다.
+
+### 적용한 리팩토링
+
+- `Bingo`를 `Shared`, `Client`, `Server/Registry`, `Server/Api`, `Server/Play`로 나누고
+  topology, authenticate handler, match allocation, room join/start/draw, notification
+  inbox, publish callback/coroutine, SPOT timer 흐름이 보이도록 재작성했다.
+- `TicTacToe`를 `Shared`, `Client`, `Server/Registry`, `Server/Api`, `Server/Play`,
+  `Server/Session`으로 나누고 session stream host, ActorGateway attach, authenticate
+  actor, create match, join, place mark, turn changed, game ended, bound session push,
+  disconnect cleanup 흐름이 보이도록 재작성했다.
+- CMake sample smoke를 역할별 실행 파일로 등록했다.
+- 두 샘플 README를 실제 샘플 구조와 맞게 갱신했다.
+
+### 남은 tradeoff
+
+- 현재 샘플 smoke는 각 역할 실행 파일을 독립 실행해 public API 사용성과 domain flow를
+  확인한다. 여러 프로세스를 동시에 띄워 실제 네트워크 통합 흐름을 확인하는 run script는
+  후속 통합 테스트 단계에서 추가한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
+```
+
+## 추가 리뷰. 샘플 parity 보정
+
+### 발견한 위험 신호
+
+- C++ 샘플은 `.NET` 샘플과 폴더 역할은 맞췄지만 packet 이름, request/response 계약,
+  notification 수, handler 수가 부족했다.
+- Bingo C++ 샘플에는 `.NET` Bingo에 있는 `Server/Session` 역할이 없어서 session packet
+  dispatch 흐름을 리뷰할 수 없었다.
+- 샘플 parity를 고정하는 테스트가 없어서 다시 단순 smoke 수준으로 퇴행할 수 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| README만 `.NET` 수준이라고 설명 | 수정이 작다 | 실제 샘플이 다르면 리뷰할 수 없다 |
+| 샘플 안에서만 메시지를 흉내 | 빠르게 맞출 수 있다 | framework 표면 누락을 숨길 수 있다 |
+| 샘플 계약과 framework 표면을 함께 보강 | 실제 개발 기준이 된다 | 샘플과 CMake, 테스트를 함께 수정해야 한다 |
+
+선택은 샘플 계약과 framework 표면을 함께 보강하는 것이다. 현재 필요한 stream, handler,
+ActorGateway 표면은 framework public API로 존재하므로 샘플은 private runtime을 우회하지
+않고 public API만 사용한다.
+
+### 적용한 리팩토링
+
+- Bingo shared contract를 `.NET` Bingo의 `AuthenticateReq/Res`,
+  `AuthenticatePlayerReq/Res`, `EnsurePlayerActorReq/Res`, `MatchBingoReq/Res`,
+  `MatchBingoApiReq/Res`, `AllocateBingoRoomReq/Res`, `BingoRoomJoinReq/Res`,
+  `StartBingoGameReq/Res`, `LeaveRoomReq/Res`, notification 5종으로 확장했다.
+- Bingo에 `Server/Session` sample executable을 추가하고 CTest sample smoke에 등록했다.
+- TicTacToe shared contract를 `.NET` TicTacToe의 `AuthenticateReq/Res`,
+  `AuthenticateActorReq/Res`, `EnsurePlayerActorReq/Res`, `CreateMatchReq/Res`,
+  `CreateMatchRoomReq/Res`, `JoinMatchReq/Res`, `PlaceMarkReq/Res`, notification 3종으로
+  확장했다.
+- `test_cpp_framework_sample_parity` contract test를 추가해 `.NET` 샘플과 맞춰야 하는
+  packet 이름과 핵심 handler 흐름을 고정했다.
+- 샘플 README와 draft 문서를 실제 역할 수와 packet/handler parity 기준에 맞게 수정했다.
+
+### 남은 tradeoff
+
+- 현재 sample smoke는 역할별 executable을 독립 실행한다. 여러 프로세스를 동시에 띄워
+  실제 네트워크 통합 흐름까지 확인하는 run script는 별도 통합 테스트 단계에서 추가한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Route public client facade 연결
+
+### 발견한 위험 신호
+
+- `.NET`은 `IZLinkRouteClient`와 `ZLinkRouteClient`가 routed send/request public 표면을
+  제공하지만, C++는 테스트와 샘플이 `route_channel_runtime_t` detail 타입을 직접 써야 했다.
+- route channel builder가 public으로 연결된 뒤에도 outbound call 표면이 없으면 사용자는
+  route runtime manager, serializer registry, envelope codec의 조합을 알아야 한다.
+- 기존 `call_facade_t`는 즉시 result를 담는 얕은 helper라 `.packet_name().timeout().submit()`
+  순서가 실제 route runtime 호출에 반영되기 어렵다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| detail `route_channel_runtime_t`를 public에 노출 | 구현이 빠르다 | route connection set과 envelope codec 지식이 public으로 샌다 |
+| 기존 `send_call_t`/`request_call_t`만 재사용 | 파일 수가 적다 | call 생성 시점에 이미 submit이 끝나 lazy option 변경을 반영하지 못한다 |
+| route 전용 public call object와 pimpl state 추가 | `.NET` route client 책임과 맞고 내부 runtime을 숨긴다 | native router adapter 연결은 backend seam 뒤에서 별도 구현해야 한다 |
+
+선택은 route 전용 public call object다. `route_client_t`는 builder에서 만들고,
+serializer registry와 route runtime state를 내부 state로 들고 있다. public template method는
+typed payload만 받고, envelope encode와 route runtime lookup은 `.cpp` 구현으로 내려간다.
+
+### 적용한 리팩토링
+
+- public `route_client_t`, `route_send_call_t`, `route_request_call_t`,
+  `typed_route_request_call_t<TReply>`를 추가했다.
+- `zlink_builder_t::route_client(serializer_registry_t&)`가 route channel registration을
+  초기화하고 public client를 반환하도록 연결했다.
+- route send call은 `.packet_name().submit()` 시점에 command envelope를 만들고
+  `route_channel_runtime_t::submit_send_parts`로 내려간다.
+- route request call은 `.packet_name().timeout().submit()` 시점에 request envelope와
+  deadline을 만들고 request sequence를 등록한다.
+- typed route request call은 backend seam에서 받은 reply envelope body를 serializer로
+  `TReply`로 복원한다.
+- `test_cpp_framework_channel_messaging`이 public route client로 send/request를 호출한 뒤
+  outbound packet, target node routing id, envelope kind/name/deadline, typed reply
+  deserialization을 검증한다.
+
+### 남은 tradeoff
+
+- 현재 typed request public call은 route runtime backend seam으로 reply parts를 받아
+  `TReply`를 완성한다. native route backend adapter가 이 seam에 연결됐고, 남은 작업은
+  runtime manager가 실제 router socket lifecycle과 discovery attach 단계에서 adapter를
+  자동으로 붙이는 것이다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_channel_messaging
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_channel_messaging --output-on-failure
+```
+
+## 추가 리뷰. Route typed request reply completion seam
+
+### 발견한 위험 신호
+
+- public route request가 request sequence만 반환하면 `.NET`의 `SubmitAsync<TReply>` 의미와
+  다르다.
+- reply completion을 public call object가 직접 알면 route backend, envelope decode,
+  serializer registry 지식이 public 표면으로 새어 나온다.
+- native router socket lifecycle 연결이 없는 상태에서 typed reply API를 억지로 성공시키면
+  실제 backend attach 때 다시 API를 바꿔야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| request sequence 반환만 유지 | 구현이 작다 | `.NET` route request 사용성과 맞지 않는다 |
+| public call object에 reply map을 둔다 | public API에서 completion을 볼 수 있다 | pending request table과 envelope 지식이 public으로 샌다 |
+| route runtime에 backend seam을 두고 typed call은 reply body만 deserialize | public 표면은 typed reply만 보고 backend는 숨긴다 | router socket lifecycle attach는 별도 단계로 남는다 |
+
+선택은 route runtime backend seam이다. native router adapter는 이 seam 뒤에 붙이고, public
+typed route request는 reply envelope body를 `TReply`로 복원하는 역할만 가진다.
+
+### 적용한 리팩토링
+
+- `route_channel_runtime_t`에 request backend seam과 `request_reply_parts`를 추가했다.
+- `route_client_t::request<TRequest, TReply>`와 `typed_route_request_call_t<TReply>`를
+  추가해 `.packet_name().timeout().submit()`이 `task_t<TReply>`를 반환하게 했다.
+- backend가 없을 때는 timeout 성격의 실패로 반환해 미완성 backend를 성공처럼 숨기지 않는다.
+- `test_cpp_framework_channel_messaging`이 backend seam에서 reply envelope를 만들고 public
+  typed route request가 `reply_t`로 복원하는지 검증한다.
+
+### 남은 tradeoff
+
+- backend seam은 `native_route_backend_t`로 C++ binding `router_socket_t::send/request`에
+  연결됐다. 남은 작업은 runtime manager가 실제 router socket owner를 만들고 route channel
+  초기화 시 adapter를 자동 attach하는 것이다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_channel_messaging
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_channel_messaging --output-on-failure
+```
+
+## 추가 리뷰. Native route backend adapter 연결
+
+### 발견한 위험 신호
+
+- route runtime이 send/request envelope를 만들지만 native `router_socket_t` 호출과 연결되지
+  않으면 `.NET`의 `IZLinkBackendRouterSocket` 역할이 C++에 없다.
+- route runtime이 직접 binding operation builder를 알면 routing id, multipart ownership,
+  async request result 처리 지식이 channel runtime으로 새어 나온다.
+- reply parts를 2-part로만 보관하면 native backend가 돌려주는 multipart reply를 손실할 수
+  있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `route_channel_runtime_t`에서 직접 `router_socket_t` 호출 | 구현이 빠르다 | backend 지식이 route runtime에 섞인다 |
+| public route client에서 native socket 호출 | public API가 바로 동작한다 | public 표면에 binding socket lifecycle이 샌다 |
+| private native route backend adapter 추가 | `.NET` backend substrate와 책임이 맞다 | runtime manager가 adapter lifecycle을 자동 연결하는 단계가 남는다 |
+
+선택은 private native route backend adapter다. route runtime은 send/request backend seam만
+알고, adapter가 C++ binding `router_socket_t::send/request` operation builder와
+`message_parts_t` 변환을 담당한다.
+
+### 적용한 리팩토링
+
+- `src/runtime/backend/native_route_backend.*`를 추가했다.
+- `native_route_backend_t`가 route send parts를 `router_socket_t::send(...).message(...).submit()`
+  경로로 내려보내도록 구현했다.
+- `native_route_backend_t`가 route request parts를
+  `router_socket_t::request(...).message(...).timeout(...).submit_async().get()` 경로로 보내고
+  reply vector를 framework `message_parts_t`로 복원하도록 구현했다.
+- `route_channel_runtime_t`에 send backend seam과 `attach_native_backend(...)`를 추가했다.
+- `message_parts_t`가 native multipart reply를 보존할 수 있도록 vector 생성자를 추가했다.
+- layout contract가 native route backend adapter 파일을 요구하도록 확장했다.
+- `test_cpp_framework_channel_messaging`이 route runtime에 native backend를 attach할 수 있고,
+  fake send backend seam이 public route send에서 실제 호출되는지 검증한다.
+
+### 남은 tradeoff
+
+- native adapter는 구현됐지만 runtime manager가 route channel별 router socket owner를 만들고
+  discovery attach까지 자동 연결하는 단계는 아직 남아 있다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_channel_messaging test_cpp_framework_layout_contract
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(channel_messaging|layout_contract)' --output-on-failure
+```
+
+## 추가 리뷰. Public route channel builder 연결
+
+### 발견한 위험 신호
+
+- C++ public `zlink_builder_t::route_channel(name)`은 route channel 이름만 registry runtime에
+  저장했다. 사용자는 별도 `channel(name)` 호출로 endpoint를 설정해야 했고 route handler는
+  public 표면에서 등록할 수 없었다.
+- `.NET`의 `AddRouteMeshChannel(..., builder)`는 bind, manual connection, handler group,
+  typed route handler registration을 한 builder에서 처리한다. C++가 이름만 받으면 파일
+  구조는 맞아도 사용성이 같은 기능 수준에 도달하지 못한다.
+- public template handler registration이 private state를 직접 만지면 public header가
+  runtime 구현 세부를 알아야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 `route_channel(name)`만 유지 | 변경이 작다 | `.NET` route builder 기능과 맞지 않는다 |
+| public builder template이 private registration을 직접 조작 | 구현이 빠르다 | public header가 private runtime 타입에 의존한다 |
+| public typed registration value를 만들고 non-template method로 runtime state에 전달 | public API와 runtime 구현을 분리한다 | route handler registration value type이 필요하다 |
+
+선택은 public typed registration value다. `route_channel_builder_t`는 public contract에서
+handler invoker value를 만들고, 내부 `route_channel_registration_t`가 그 값을 runtime
+registry로 변환한다.
+
+### 적용한 리팩토링
+
+- public `route_handler_context_t`, `route_handler_kind_t`,
+  `route_handler_registration_t`, `route_channel_builder_t`를 추가했다.
+- `zlink_builder_t::route_channel(name, configure)` overload를 추가해 bind, manual
+  connection, handler group, typed routed send/request handler 등록을 한 곳에서 처리하게
+  했다.
+- `zlink_builder_state_t`가 route channel builder state map을 보관하고,
+  `channel_runtime_manager_t`가 builder에서 route runtime을 초기화할 수 있게 했다.
+- private `route_handler_registry_t`와 `route_channel_registration_t`가 public route handler
+  context/registration value를 사용하도록 보정했다.
+- `test_cpp_framework_channel_messaging`이 public route builder에서 route runtime connection
+  두 개와 handler registration을 만든 뒤 manager가 route channel을 초기화하는 경로를
+  검증하도록 확장했다.
+
+### 남은 tradeoff
+
+- public route client facade는 추가됐지만 request는 아직 remote `TReply` completion까지
+  가지 않고 request sequence submission을 반환한다. native router socket adapter와 reply
+  completion 연결이 끝나면 `.NET`의 `ZLinkRouteRequestCall<TRequest>.SubmitAsync<TReply>`
+  의미로 확장한다.
+- native router socket과 discovery attach는 backend substrate 단계에서 initializer 뒤에
+  연결한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(channel_messaging|layout_contract)' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Route channel registration collector와 initializer 분리
+
+### 발견한 위험 신호
+
+- `.NET`은 `ZLinkRouteChannelBuilder`가 route handler registration을 모으고
+  `ZLinkRouteChannelInitializer`가 descriptor를 만들어 runtime에 넘기지만, C++에는
+  registration에서 route handler registry로 이어지는 owner가 없었다.
+- C++에서 route handler를 테스트나 dispatcher에 직접 넣으면 host 구성, route runtime,
+  handler registry 생성 규칙이 서로 다른 위치에 흩어진다.
+- `.NET`의 reflection scanner를 그대로 흉내 내면 C++ 언어 스타일과 맞지 않고, 실제 타입
+  안정성도 떨어진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| route handler registry를 직접 생성해 runtime에 전달 | 구현이 단순하다 | registration 단계와 runtime 단계가 분리되지 않는다 |
+| `.NET`처럼 reflection scanner를 흉내 낸다 | 파일 이름 대응이 쉽다 | C++에 맞지 않는 런타임 타입 탐색을 만들게 된다 |
+| typed handler installer를 registration에 모으고 initializer가 registry로 변환 | C++ 스타일을 유지하면서 `.NET` 책임 경계를 맞춘다 | public builder 노출은 별도 단계가 필요하다 |
+
+선택은 typed registration collector다. C++는 compile-time 타입 정보와 멤버 함수 포인터를
+사용하고, scanner가 하던 descriptor 생성 책임은 `route_channel_registration_t`의 installer와
+`route_channel_initializer_t`가 나눠 맡는다.
+
+### 적용한 리팩토링
+
+- `route_channel_registration.*`를 추가해 route channel id, bind endpoint, manual
+  connection, handler group, typed send/request handler installer를 모으게 했다.
+- `route_channel_initializer_t`가 registration에서 `route_channel_runtime_t`를 만들고
+  manual connection을 연결한 뒤 `route_handler_registry_t`를 생성하도록 했다.
+- layout contract가 route channel registration 파일을 요구하도록 확장했다.
+- `test_cpp_framework_channel_messaging`이 registration -> initializer -> route runtime ->
+  handler registry -> routed request reply 흐름을 검증하도록 확장했다.
+
+### 남은 tradeoff
+
+- registration collector는 public `zlink_builder_t::route_channel(name, configure)` 표면과
+  public `route_client_t` send/request submission facade까지 연결됐다. 남은 차이는 native
+  backend 연결과 typed request reply completion이다.
+- native router socket과 discovery attach는 backend substrate 단계에서 initializer 뒤에
+  연결한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(channel_messaging|layout_contract)' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Route handler registry/invoker와 internal dispatcher 분리
+
+### 발견한 위험 신호
+
+- route receive dispatcher가 request에 항상 `route_handler_not_found`를 반환하던 상태라,
+  `.NET`의 routed handler registry/invoker 기능과 맞지 않았다.
+- 일반 `handler_registry_t`를 route handler에 재사용하면 source routing id, route channel
+  id, routed packet context가 일반 channel handler 표면과 섞인다.
+- framework 내부 routed packet을 사용자 handler보다 먼저 처리하는 dispatcher seam이 없으면
+  ActorGateway/SPOT/registry internal packet이 route handler registry와 뒤섞일 위험이 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 일반 `handler_registry_t`에 route option 추가 | 코드 재사용이 쉽다 | route context와 일반 channel context가 한 public 표면에 섞인다 |
+| route packet dispatcher에 lambda map만 둔다 | 구현이 작다 | descriptor, duplicate detection, typed serializer 책임이 얕게 흩어진다 |
+| `.NET`처럼 route registry, invoker, internal dispatcher를 private runtime으로 분리 | route 의미를 깊은 내부 모듈에 숨긴다 | private 파일과 테스트가 늘어난다 |
+
+선택은 private route handler runtime 분리다. public channel handler 표면은 유지하고,
+route 전용 context와 internal packet dispatch는 `src/runtime/channels/*` 안에 둔다.
+
+### 적용한 리팩토링
+
+- `route_handler_registry.*`를 추가해 route handler descriptor, duplicate detection,
+  typed send/request registration, serializer 기반 payload decode/encode를 구현했다.
+- `route_handler_invoker.*`를 추가해 route send/request invocation을 route registry 뒤에
+  숨겼다.
+- `route_internal_packet_dispatcher.*`를 추가해 no-op internal dispatcher와 composite
+  internal dispatcher를 구현했다.
+- `route_packet.hpp`를 추가해 route receive/reply DTO를 dispatcher와 internal dispatcher가
+  순환 include 없이 공유하게 했다.
+- `route_packet_dispatcher.*`가 internal dispatcher 우선 처리, route handler send/request
+  dispatch, missing handler error envelope, handler failure error envelope를 처리하도록
+  확장했다.
+- `test_cpp_framework_channel_messaging`이 routed request handler reply, routed send handler
+  context, composite internal request reply를 검증하도록 확장했다.
+
+### 남은 tradeoff
+
+- route handler registry는 이제 typed registration collector와 public
+  `route_channel_builder_t`를 통해 runtime registry로 변환된다.
+- 실제 native router socket reply/send 연결은 backend substrate가 붙는 단계에서
+  `route_receive_pump_t`와 `route_channel_runtime_t` 뒤에 연결한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(channel_messaging|layout_contract)' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Channel manager/factory와 route receive dispatch 분리
+
+### 발견한 위험 신호
+
+- C++에 `channel_runtime_bundle_t`와 `route_channel_runtime_t`는 생겼지만, `.NET`의
+  `ZLinkChannelBundleFactory`, `ZLinkChannelRuntimeManager`처럼 capability bundle 생성과
+  조회를 소유하는 내부 모듈이 없었다.
+- manager가 없으면 client/publisher lazy creation, inbound 초기화, monitoring source
+  parsing, route channel lookup이 각각 call object, monitoring runtime, registry runtime에
+  흩어질 수 있다.
+- route receive path도 `route_channel_runtime_t`에 직접 넣으면 route outbound와 inbound
+  dispatch가 한 파일에 섞이고, 이후 route handler registry가 붙을 때 파일이 얕고 넓어진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `channel_runtime_t`에 bundle map과 helper를 직접 추가 | 호출 지점이 적다 | 기존 outbound pending/reliability runtime과 capability owner가 섞인다 |
+| monitoring/registry/SPOT 쪽에서 필요한 bundle을 직접 만든다 | 당장 필요한 경로에 맞출 수 있다 | 같은 capability 생성 규칙이 여러 모듈로 새어 나온다 |
+| `.NET`처럼 bundle factory, runtime manager, route dispatcher/pump를 private runtime으로 분리 | 책임이 깊고 파일 분류가 대응된다 | 내부 파일과 테스트가 늘어난다 |
+
+선택은 private runtime 분리다. bundle 생성 규칙은 factory가, state map과 lookup은 manager가,
+route inbound dispatch는 dispatcher/pump가 맡는다.
+
+### 적용한 리팩토링
+
+- `channel_runtime_state_t`에 server/client/publisher/subscriber bundle map과 route channel
+  runtime map을 추가했다.
+- `channel_bundle_factory.*`를 추가해 capability snapshot에서 runtime bundle을 만들고
+  manual endpoint attachment를 처리하게 했다.
+- `channel_runtime_manager.*`를 추가해 client/publisher lazy creation, inbound/client/
+  publisher 초기화, route channel 초기화와 lookup, monitoring source parsing을 담당하게
+  했다.
+- `route_packet_dispatcher.*`와 `route_receive_pump.*`를 추가해 route packet queue drain과
+  envelope dispatch를 분리했다. route handler registry가 붙기 전까지 request는
+  `route_handler_not_found` error envelope로 응답하고 command는 drop 처리한다.
+- `channel_reply_writer_t`가 `route_handler_not_found`를 stable error code로 기록하도록
+  보정했다.
+- layout contract와 `test_cpp_framework_channel_messaging`이 manager/factory, monitoring
+  source parsing, managed route initialization, route receive error reply를 검증하도록
+  확장했다.
+
+### 남은 tradeoff
+
+- route handler registry/invoker와 internal packet dispatcher는
+  `route_handler_registry.*`, `route_handler_invoker.*`,
+  `route_internal_packet_dispatcher.*`로 구현됐다. 남은 차이는 public registration builder와
+  native backend 연결이다.
+- channel manager는 현재 snapshot 기반 bundle을 만든다. 실제 CAPI backend socket attach는
+  `src/runtime/backend/*` substrate가 붙을 때 같은 manager/factory 뒤로 연결한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(channel_messaging|layout_contract)' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Route channel runtime과 connection set 분리
+
+### 발견한 위험 신호
+
+- `.NET Runtime/Channels`에는 `ZLinkRouteConnectionSet`과 `ZLinkRouteChannelRuntime`이
+  route channel 연결 목록, outbound envelope, request sequence correlation을 소유하지만
+  C++에는 같은 owner가 없었다.
+- route channel 설정은 registry/SPOT 쪽에 이미 존재했지만, route outbound parts와 SPOT
+  routed request를 담는 runtime owner가 없으면 registry, SPOT, channel 모듈이 같은
+  routing state를 각자 알게 된다.
+- route send/request를 public builder나 sample helper에 직접 구현하면 native router
+  socket, request sequence, envelope header 작성 지식이 사용자 표면으로 새어 나온다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| registry runtime에 route outbound 상태를 추가 | 기존 route channel 설정과 가깝다 | registry가 transport와 request correlation까지 알게 된다 |
+| SPOT runtime에 route send/request를 직접 구현 | actor route 호출을 빨리 연결할 수 있다 | channel route와 actor route 상태가 중복된다 |
+| `.NET`처럼 route connection set과 route channel runtime을 private channel runtime으로 분리 | route transport 지식이 한 모듈에 모인다 | backend adapter 연결 전에도 내부 runtime 테스트가 필요하다 |
+
+선택은 private channel runtime 분리다. route channel은 channel runtime의 특수 capability로
+보고, registry와 SPOT은 route channel id와 resolved routing id만 넘기도록 유지한다.
+
+### 적용한 리팩토링
+
+- `route_connection_set.*`를 추가해 route manual connection의 중복 제거, disconnect,
+  정렬 snapshot을 구현했다.
+- `route_channel_runtime.*`를 추가해 route channel id, running state, connection set,
+  outbound command/request parts, SPOT routed parts, request sequence correlation을
+  소유하게 했다.
+- typed route send/request는 `client_call_codec_t`를 사용해 `.NET`과 같은 envelope
+  header와 body parts를 만든다.
+- layout contract가 새 route runtime 파일들을 요구하도록 확장했다.
+- `test_cpp_framework_channel_messaging`이 route connection set, route send/request
+  envelope, deadline, SPOT routed request, pending completion, stop drain을 검증하도록
+  확장했다.
+
+### 남은 tradeoff
+
+- 이번 구현은 route runtime owner와 correlation semantics를 닫았고, 실제 CAPI
+  `router_socket_t` send/request 호출은 아직 backend substrate 뒤에 붙여야 한다.
+- 다음 반복에서는 `.NET`의 `ZLinkChannelBundleFactory`, `ZLinkChannelRuntimeManager`,
+  `ZLinkRouteReceivePump`, `ZLinkRoutePacketDispatcher`와 대조해 runtime manager와 route
+  receive dispatch 파일 분리를 추가로 맞춘다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(channel_messaging|layout_contract)' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Runtime/Channels bundle과 receive pump 분리
+
+### 발견한 위험 신호
+
+- C++ channel runtime은 `.NET Runtime/Channels`의 packet dispatcher, reply writer,
+  pending request table만 분리되어 있었고 runtime bundle, receive loop, message pump
+  owner가 없었다.
+- manual connection set, receive gate, dealer-mesh pending request owner가 capability
+  단위 내부 상태로 묶이지 않으면 이후 route runtime이나 native adapter가 붙을 때 같은
+  상태 지식이 여러 모듈에 흩어질 위험이 있었다.
+- receive pump를 public call object나 builder 쪽으로 노출하면 사용자가 수신 순서와
+  재진입 제어를 알아야 하므로 얕은 public API가 된다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `channel_runtime_state_t`에 필드만 추가 | 변경 파일이 적다 | capability 단위 상태와 receive gate 책임이 큰 상태 객체에 섞인다 |
+| receive pump를 public helper로 제공 | 테스트에서 직접 호출하기 쉽다 | raw 수신 루프가 public 계약처럼 보인다 |
+| `.NET`처럼 bundle, message pump, receive loop를 private runtime으로 분리 | public API를 유지하면서 내부 책임이 깊어진다 | 내부 파일과 테스트가 늘어난다 |
+
+선택은 private runtime 분리다. public channel API는 그대로 두고, 수신 루프와 manual
+connection set은 `src/runtime/channels/*` 내부 모듈이 맡는다.
+
+### 적용한 리팩토링
+
+- `channel_runtime_bundle.*`를 추가해 manual connection set, receive gate,
+  dealer-mesh pending request owner를 capability runtime 상태로 묶었다.
+- `channel_message_pump.*`를 추가해 server ingress envelope dispatch를 packet dispatcher
+  뒤에 숨겼다.
+- `channel_receive_loop.*`를 추가해 queued server message drain, reply 수집, receive
+  gate 재진입 거부를 구현했다.
+- layout contract가 새 `Runtime/Channels` owner 파일들을 요구하도록 확장했다.
+- `test_cpp_framework_channel_messaging`이 manual connection snapshot, receive loop drain,
+  reply envelope 생성, re-entrant gate rejection을 검증하도록 확장했다.
+
+### 남은 tradeoff
+
+- 현재 receive loop는 테스트 가능한 queued message drain 형태다. 다음 반복에서는
+  `.NET`의 `ZLinkChannelRuntimeManager`, `ZLinkChannelBundleFactory`,
+  `ZLinkRouteChannelRuntime`, `ZLinkRouteReceivePump`와 대조해 channel manager와 route
+  channel owner를 같은 방식으로 보강해야 한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(channel_messaging|layout_contract)' --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Channel Pending Request와 Reply Dispatcher 분리
+
+### 발견한 위험 신호
+
+- C++ channel runtime은 `.NET Runtime/Channels`의 pending request table, packet dispatcher,
+  reply writer 책임을 `channel_runtime.*` 안에 함께 담고 있었다.
+- reply correlation map이 runtime state에 직접 노출되어 있어 request sequence 발급,
+  reply match, drain 정책이 channel runtime의 여러 메서드에 흩어질 수 있었다.
+- request handler reply와 error reply를 envelope로 감싸는 책임이 분리되어 있지 않아,
+  이후 receive pump나 route dispatcher가 붙으면 같은 header/error 작성 지식이 반복될 수
+  있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `channel_runtime.*`에 계속 추가 | 변경 범위가 작다 | runtime 파일이 얕고 커져 `.NET` 책임 분리와 멀어진다 |
+| public channel API에 pending request object 노출 | 테스트가 쉽다 | 사용자가 correlation table을 직접 알게 된다 |
+| private channel runtime owner로 pending requests, reply writer, packet dispatcher 분리 | `.NET` 구조와 맞고 내부 지식을 숨긴다 | private 파일과 layout/test가 추가된다 |
+
+선택은 세 번째 방식이다. public call object는 pending table과 reply envelope를 모르고,
+`src/runtime/channels/*`가 request sequence, reply match, server ingress envelope dispatch를
+담당한다.
+
+### 적용한 리팩토링
+
+- `channel_pending_requests.*`를 추가해 request sequence 발급, pending 등록, reply remove,
+  drain을 담당하게 했다.
+- `channel_runtime_state_t`에서 raw `pending_request_channels` map을 제거하고
+  `channel_pending_requests_t`를 사용하게 했다.
+- `channel_reply_writer.*`를 추가해 response/error header 생성과 raw envelope reply 생성을
+  담당하게 했다.
+- `channel_packet_dispatcher.*`를 추가해 request/command envelope dispatch를 처리하게 했다.
+- error reply code를 enum 숫자가 아니라 stable string으로 기록하도록 보정했다.
+- layout contract가 새 channel runtime 파일을 요구하도록 갱신했다.
+- `test_cpp_framework_channel_messaging`이 envelope request dispatch, response envelope,
+  handler-not-found error envelope를 검증하도록 확장했다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Runtime/Messaging Envelope와 Failure Mapping 보강
+
+### 발견한 위험 신호
+
+- C++ `Runtime/Messaging`에는 submit queue와 pending operation은 있었지만, `.NET`의
+  `ZLinkEnvelopeCodec`, `ZLinkClientCallCodec`, `ZLinkRequestFailureMapper`에 해당하는
+  책임이 없었다.
+- header/body envelope, correlation id, deadline, error reply 해석을 channel이나 sample이
+  직접 알게 되면 messaging wire 지식이 여러 곳으로 새게 된다.
+- request 결과와 error envelope code를 framework error kind로 사상하는 정책이 한곳에
+  고정되어 있지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| channel runtime에 직접 encode/decode 구현 | 파일 수가 적다 | channel dispatch와 wire envelope 정책이 섞인다 |
+| public API로 envelope 타입을 노출 | 테스트와 샘플 작성이 쉽다 | 사용자가 내부 wire format을 직접 다루게 된다 |
+| private `src/runtime/messaging` codec/mapper로 분리 | `.NET Runtime/Messaging` 구조와 맞고 wire 지식을 숨긴다 | private test hook과 파일이 추가된다 |
+
+선택은 private runtime 분리다. public channel call object는 envelope JSON을 몰라도 되고,
+runtime messaging이 header/body/error mapping을 담당한다.
+
+### 적용한 리팩토링
+
+- `envelope_codec.*`를 추가해 message kind, envelope header, header/body 2-part encode,
+  header/body decode를 구현했다.
+- `client_call_codec.*`를 추가해 request envelope 생성, correlation id, deadline, typed
+  body encode, reply decode, error reply 해석을 구현했다.
+- `request_failure_mapper.*`를 추가해 request result와 error code를
+  `framework_error_kind_t`와 retriable 여부로 사상하게 했다.
+- layout contract가 새 `src/runtime/messaging/*` 파일들을 요구하도록 갱신했다.
+- `test_cpp_framework_messaging`이 envelope roundtrip, typed reply decode, error reply
+  mapping, busy retry mapping을 검증하도록 확장했다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. 타입 기반 Packet Name Resolver 보강
+
+### 발견한 위험 신호
+
+- handler 등록과 connector client 호출에서 같은 packet name 문자열을 DTO, handler,
+  client에 반복해서 적고 있었다.
+- framework handler 기본 packet name이 `typeid(T).name()`에 기대고 있어 compiler와 ABI에
+  따라 값이 달라질 수 있었다.
+- connector의 `packet_name_resolver.cpp`는 layout contract에는 있었지만 실제 packet 생성
+  경로에서 사용되지 않았다.
+- connector public template이 codec lookup을 위해 private `connector_state_t` 내부 map을
+  직접 보려고 했다. 이는 public header에 runtime state 지식을 새는 얕은 모듈이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 문자열 override 유지 | 변경 범위가 작다 | packet name 지식이 샘플과 handler에 반복된다 |
+| C++ type name만 사용 | 사용자가 이름을 적지 않아도 된다 | 안정적인 wire contract가 되지 않는다 |
+| DTO의 `static constexpr packet_name`을 우선 사용하고 fallback만 type name으로 둔다 | `.NET`의 타입 기반 이름 해석과 역할이 같고 C++ 스타일에도 맞다 | DTO에 packet name 상수를 추가해야 한다 |
+
+선택은 세 번째 방식이다. 샘플과 정식 DTO는 packet name을 명시하고, framework와 connector는
+그 값을 기본 이름으로 사용한다. public template은 이름 계산과 forwarding만 하고, codec
+lookup과 packet 생성은 connector runtime `.cpp`로 내린다.
+
+### 적용한 리팩토링
+
+- `contracts/detail/message_name.hpp`를 추가해 framework handler 기본 packet name이 DTO
+  `packet_name`을 우선 사용하게 했다.
+- Stream Connector `stream_payload.hpp`에 같은 방식의 packet name helper를 추가했다.
+- `connector_t::send`, `request`, `on`이 명시 packet name 없이 DTO 이름을 사용하게 했다.
+- connector runtime의 `make_packet(type, name)`이 `packet_name_resolver_t`를 실제로
+  호출하도록 연결했다.
+- Bingo와 TicTacToe 샘플 DTO에 `.NET` record 이름과 같은 packet name 상수를 추가하고,
+  client/handler의 반복 문자열을 제거했다.
+- contract/unit/sample smoke 테스트가 DTO packet name 기반 등록과 connector frame 이름을
+  검증하도록 갱신했다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Runtime/Messaging Submit 상태 보강
+
+### 발견한 위험 신호
+
+- `pending_operation_t`가 실제 완료 상태 없이 항상 유효한 것처럼 보이는 얕은 모듈이었다.
+- callback 기반 `submit(callback)`은 콜백을 즉시 호출한 뒤 빈 pending operation을
+  반환했다. 이 상태에서는 사용자가 완료, 취소, 만료 상태를 확인할 수 없다.
+- `.NET`의 `PendingSubmit`, `ZLinkSubmitQueue`에 해당하는 runtime owner가 C++ 파일
+  구조에 없어서 `Runtime/Messaging` 대응이 문서와 구현 사이에서 갈라져 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `pending_operation_t`에 bool 필드만 추가 | 변경 범위가 작다 | 완료/취소/실패 전이가 public layout에 고정되고 runtime queue와 연결되지 않는다 |
+| public header가 runtime submit class를 직접 friend로 안다 | 구현은 쉽다 | public 계약이 private runtime class 이름을 알게 되어 interface 분리가 약해진다 |
+| public type은 type-erased state만 들고, 전이는 `contracts/detail` helper와 private runtime에서 처리 | public 표면이 작고 runtime state를 숨길 수 있다 | helper 함수와 private state 파일이 추가된다 |
+
+선택은 세 번째 방식이다. 호출자는 `valid`, `completed`, `cancelled`, `cancel`만 알면 되고,
+deadline, queue slot, failure exception은 `src/runtime/messaging`이 관리한다.
+
+### 적용한 리팩토링
+
+- `pending_operation_t`를 type-erased state 기반으로 바꾸고 `completed`, `cancelled`,
+  `cancel`을 추가했다.
+- callback `submit(callback)`은 완료된 pending operation을 반환하도록 바꿨다.
+- `src/runtime/messaging/pending_operation_state.hpp`,
+  `pending_operation.cpp`, `pending_submit.*`, `submit_queue.*`를 추가했다.
+- `pending_submit_t`는 command accepted completion, request explicit completion,
+  deadline failure, wake callback을 처리한다.
+- `submit_queue_t`는 bounded FIFO, expected dequeue, dispose-all을 처리한다.
+- layout contract가 `src/runtime/messaging/*` 파일을 요구하도록 보강했다.
+- `test_cpp_framework_messaging`을 추가해 callback submit, command/request submit,
+  capacity, FIFO, deadline, dispose 동작을 검증했다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Execution Queue와 Runtime Event Publisher 보강
+
+### 발견한 위험 신호
+
+- `.NET` `Runtime/Execution`에는 serial execution queue와 runtime task runner가 있지만,
+  C++는 offload executor만 있고 ordered drain을 소유하는 runtime owner가 없었다. handler
+  offload는 있어도 session/spot 내부 작업 순서를 보장하는 queue가 따로 검증되지 않았다.
+- `.NET` `Contracts/Eventing`에는 runtime event publisher가 있지만, C++는 monitoring
+  builder의 handler 등록과 detail monitoring runtime의 publish method만 있었다. 사용자가
+  framework 표면에서 typed runtime event를 직접 publish하는 계약이 빠져 있었다.
+- layout contract가 `src/runtime/execution/*`를 요구하지 않아 구조가 다시 빠져도 테스트가
+  잡지 못했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| offload executor만 계속 사용 | 파일 수가 적다 | serial ordering, capacity, close/drain 의미를 호출자가 조합해야 한다 |
+| public execution queue 노출 | 테스트와 사용이 쉽다 | runtime work item 저장 구조가 public 계약으로 새기 쉽다 |
+| private runtime serial queue 구현 | `.NET Runtime/Execution` 축과 맞고 구현 세부를 숨긴다 | private runtime test hook이 필요하다 |
+| monitoring detail runtime만 유지 | 기존 테스트가 작다 | `.NET` event publisher 대응 public 표면이 없다 |
+| monitoring builder가 publisher를 반환 | handler map은 숨기고 typed publish 계약만 제공한다 | event publisher가 monitoring state를 공유하는 owner가 추가된다 |
+
+선택은 private runtime serial queue와 public runtime event publisher다. serial queue는
+`src/runtime/execution/*`에 두어 work item storage, capacity, drain state를 숨긴다.
+publisher는 `contracts/eventing/events.hpp`에 두되, state와 handler map은 diagnostics
+runtime 안에 둔다.
+
+### 적용한 리팩토링
+
+- `runtime::serial_execution_queue_t`를 추가했다. queue는 offload executor를 사용하지만
+  한 번에 하나의 drain loop만 실행하고, capacity, close, drain, handler exception reporting을
+  내부에서 처리한다.
+- `runtime_event_publisher_t`를 public eventing contract에 추가했다.
+  `monitoring_builder_t::publisher()`가 같은 monitoring state를 공유하는 publisher를 반환한다.
+- detail `monitoring_runtime_t`의 typed publish도 같은 publisher 경로를 사용하게 정리했다.
+- layout contract가 `framework/src/runtime/execution/serial_execution_queue.*`를 요구한다.
+- `test_cpp_framework_execution`이 ordering, exception reporting, close, capacity validation을
+  검증한다.
+- `test_cpp_framework_monitoring`이 public publisher로 올린 actor event가 typed handler와
+  trace hook까지 전달되는지 검증한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. `.NET` 구조 parity 반복 보정
+
+### 발견한 위험 신호
+
+- C++ connector public 계약이 `connector.hpp` 한 파일에 모여 있어 `.NET`의
+  `Contracts/Calls`, options, metadata, models, factory 분리와 맞지 않았다.
+- C++ connector runtime이 `connector_runtime.cpp` 중심이라 `.NET`의 `Runtime/Calls`,
+  `Runtime/Protocol`, `Runtime/Transport`, lifecycle, callbacks, receive loop 분리와
+  비교하기 어려웠다.
+- Bingo/TicTacToe 샘플은 폴더 이름은 나뉘었지만 `.NET` 샘플의 `*HostFactory`,
+  Actors, room/game model, publisher, spot, handler 하위 파일 분류가 부족했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 파일 유지 후 문서에만 대응표 작성 | 변경이 작다 | 사용자가 실제 파일을 보고 `.NET`과 비교할 수 없다 |
+| wrapper 파일만 추가 | 빠르다 | 책임 owner가 여전히 모호하다 |
+| public/runtime/sample 파일을 역할 단위로 분리하고 layout test로 강제 | 비교와 리뷰가 쉽다 | 파일 수와 CMake 관리가 늘어난다 |
+
+선택은 역할 단위 분리와 layout test 강제다. C++ 이름은 snake_case를 사용하지만, 책임 경계는
+`.NET`의 `Contracts/*`, `Runtime/*`, sample role file과 같은 뜻으로 맞춘다.
+
+### 적용한 리팩토링
+
+- connector public 계약을 `contracts/calls/zlink_stream_calls.hpp`,
+  `zlink_stream_connector_options.hpp`, `zlink_stream_models.hpp`,
+  `zlink_stream_connector.hpp`, `zlink_stream_connector_factory.hpp`,
+  `codec_registry.hpp`, `result.hpp`, `task.hpp`로 분리했다.
+- connector runtime을 `src/runtime/calls`, `src/runtime/protocol`,
+  `src/runtime/protocol/compression`, `src/runtime/protocol/framing`,
+  `src/runtime/transport`, `connector_lifecycle`, `connector_callbacks`,
+  `heartbeat_monitor`, `receive_dispatcher`, `receive_loop`, `task_runner`,
+  `typed_handler_registry`로 분리했다.
+- Bingo/TicTacToe 샘플에 role별 `*host_factory.hpp`, actor, room/game model,
+  publisher, spot, handler 하위 파일을 추가했다.
+- sample parity test가 새 role header를 include하고 주요 타입을 실제로 사용하도록
+  확장했다.
+- layout contract가 connector runtime 세부 분류와 sample role 파일을 필수 경로로
+  검증하도록 확장했다.
+- draft 문서의 connector owner 표와 sample 구조 설명을 실제 파일 배치와 맞췄다.
+
+### 남은 tradeoff
+
+- 일부 새 파일은 기존 구현을 감싸는 얇은 role header다. 이는 `.NET`과 같은 리뷰 단위를
+  먼저 만들기 위한 단계이며, 다음 구현 goal에서 내부 로직을 해당 owner 파일로 더 옮긴다.
+- connector transport 경로는 아직 `.NET` frame protocol로 전환되지 않았다. 다만
+  connector private runtime에 `.NET` byte layout과 같은 header/frame codec owner를 두고,
+  다음 반복에서 전송 경로를 그 codec으로 교체한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
+rg -n '<금지 표현 패턴>' framework/languages/cpp/doc/draft framework/languages/cpp/samples framework/languages/cpp/connector framework/languages/cpp/framework || true
+```
+
+## 추가 리뷰. 샘플 파일 분리 보정
+
+### 발견한 위험 신호
+
+- C++ 샘플은 역할별 executable로는 나뉘었지만 `Shared/sample.hpp` 하나가 configuration,
+  contracts, domain model, handler, inbox, host wiring을 모두 담고 있었다.
+- `.NET` 샘플은 `Shared/Configuration`, `Shared/Contracts`, `Server/*/Handlers`,
+  `Server/Play/*Spots`, `Client/*Inbox`처럼 기능 단위 파일을 나누는데 C++ 샘플은 이
+  수준을 따라가지 못했다.
+- 파일 분리 자체를 검증하는 contract test가 없어서 다시 큰 umbrella 파일로 퇴행할 수
+  있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| umbrella header 유지 | include가 단순하다 | `.NET` 샘플과 같은 수준의 리뷰가 어렵다 |
+| main만 include를 나눔 | 변경이 작다 | 실제 구현은 여전히 한 파일에 모인다 |
+| `.NET` 역할과 같은 파일 계층으로 분리 | 비교와 리뷰가 쉽다 | include 경로와 layout contract를 함께 관리해야 한다 |
+
+선택은 `.NET` 역할과 같은 파일 계층으로 분리하는 것이다. `Shared/sample.hpp`는 기존 include
+호환을 위한 umbrella로만 남기고, 실제 정의는 역할별 헤더로 이동했다.
+
+### 적용한 리팩토링
+
+- Bingo를 `Shared/Configuration`, `Shared/Contracts`, `Client/bingo_notification_inbox`,
+  `Server/Api/Handlers`, `Server/Play/Handlers`, `Server/Play/BingoRoomSpots`,
+  `Server/Play/EntrySpot` 파일로 분리했다.
+- TicTacToe를 `Shared/Actors`, `Shared/Configuration`, `Shared/Contracts`,
+  `Client/session_actor_notification_inbox`, `Server/Api/Handlers`,
+  `Server/Play/EntrySpot`, `Server/Play/GameSpots`, `Server/Play/Handlers` 파일로 분리했다.
+- `test_cpp_framework_layout_contract`가 샘플 파일 분리 경로를 필수로 확인하도록 확장했다.
+- 샘플 README와 draft 샘플 배치 문서를 실제 파일 구조와 맞게 수정했다.
+
+### 남은 tradeoff
+
+- `Shared/sample.hpp`는 기존 sample main과 contract test include를 유지하기 위한 umbrella다.
+  실제 계약과 handler 구현은 더 이상 이 파일에 두지 않는다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Connector frame/header codec parity 보정
+
+### 발견한 위험 신호
+
+- `.NET` connector는 frame prefix를 `u16 header length + u32 payload length` big-endian으로
+  쓰고, header에 kind, codec, flags, request sequence, name, metadata를 담는다.
+- C++ connector runtime에는 `protocol/framing/frame_codec`과 `protocol/header_codec` 파일은
+  있었지만 실제 구현은 frame size 검증과 packet name 문자열 반환 수준이었다.
+- 이 상태에서는 connector 폴더 구조가 `.NET`과 비슷해 보여도 wire protocol parity를
+  증명할 수 없었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| transport 경로를 한 번에 `.NET` frame protocol로 교체 | 최종 상태에 가장 가깝다 | 현재 샘플 smoke 서버와 connector test를 동시에 크게 바꿔야 한다 |
+| private codec만 먼저 구현하고 테스트로 고정 | 회귀 위험이 작고 다음 transport 전환의 기반이 된다 | 이 단계만으로는 실제 socket 전송까지 증명하지 못한다 |
+| public header codec API를 추가 | 테스트와 재사용이 쉽다 | 사용자가 wire 세부를 직접 다루는 API처럼 보인다 |
+
+선택은 private codec 구현을 먼저 완료하는 것이다. frame/header/metadata byte layout은
+runtime 내부에 숨기고, public connector API는 send/request/dispatch 표면만 유지한다.
+
+### 적용한 리팩토링
+
+- `metadata_codec_t`에 `.NET`과 같은 metadata payload encode/decode를 구현했다.
+- `header_codec_t`에 kind, codec, flags, request sequence, packet name, metadata
+  encode/decode와 control/request/send/error semantic validation을 구현했다.
+- `frame_codec_t`에 `.NET`과 같은 6-byte frame prefix와 frame encode를 구현했다.
+- `test_cpp_stream_connector`가 header roundtrip, unknown flag rejection, control packet
+  contract, frame prefix layout을 검증하도록 확장했다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Unreal Stream Connector frame protocol 전환
+
+### 발견한 위험 신호
+
+- 일반 C++ connector는 STREAM frame prefix와 header codec으로 전환됐지만 Unreal connector는
+  별도 텍스트 명령 문자열을 직접 읽고 썼다.
+- `.NET`과 같은 wire protocol을 사용하지 않으면 Unreal client만 별도 서버 adapter가
+  필요해지고, connector가 언어별로 같은 방식이라는 기준을 만족하지 못한다.
+- Unreal connector가 일반 C++ connector runtime을 그대로 감싸면 Asio transport와 Unreal
+  `FSocket`/Game Thread lifecycle이 섞인다. 이는 Unreal 전용 connector를 별도 배포한다는
+  정책과 충돌한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 라인 프로토콜 유지 | 구현이 작다 | 서버와 wire protocol parity가 깨진다 |
+| 일반 C++ connector runtime 재사용 | protocol 중복이 줄어든다 | Unreal network module과 lifecycle 기준을 잃는다 |
+| Unreal `Private/`에서 같은 frame byte layout을 구현 | Unreal transport를 유지하면서 wire 의미를 맞춘다 | protocol byte layout을 계속 contract test로 고정해야 한다 |
+
+선택은 Unreal `Private/` runtime이 Unreal `Sockets`를 계속 사용하되, 송수신 바이트는
+일반 C++ connector와 같은 STREAM frame 구조로 만드는 방식이다. public header에는 frame
+세부를 노출하지 않는다.
+
+### 적용한 리팩토링
+
+- `SendJson`은 `kind=send`, `codec=json`, request sequence 없음, packet name, payload로
+  STREAM frame을 만들어 `FSocket::Send`에 전달한다.
+- `RequestJson`은 `kind=request`, `codec=json`, `has_request_seq` flag와 sequence를 가진
+  STREAM frame을 만든다.
+- `Dispatch`는 socket에서 받은 bytes를 6-byte prefix, header, payload 순서로 읽고
+  `kind=send` packet을 Unreal packet callback으로 변환한다.
+- Unreal Automation Test `ZLink.StreamConnector.Loopback`은 더 이상 라인 문자열을 보지
+  않고, frame kind, codec, flags, request sequence, packet name, payload를 검증한다.
+
+### 남은 tradeoff
+
+- Unreal Engine 없는 CTest는 public shape와 source compile만 확인한다. 실제 `FSocket`
+  loopback 검증은 Unreal Automation Test에서 실행해야 한다.
+- Game Thread enqueue 정책은 다음 반복에서 일반 connector의 dispatch 규칙과 다시 대조한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_unreal_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_unreal_stream_connector --output-on-failure
+```
+
+## 추가 리뷰. Unreal Stream Connector metadata parity 보정
+
+### 발견한 위험 신호
+
+- Unreal public packet에는 `Metadata` 필드가 있었지만 `SendJson`과 `RequestJson`에서
+  metadata를 전달할 방법이 없었다.
+- 일반 C++ connector는 metadata를 STREAM header에 encode/decode하지만 Unreal connector는
+  수신 frame의 metadata를 callback packet에 채우지 않았다.
+- compression 같은 아직 구현되지 않은 option을 public options에 섞으면 호출자가 실제로
+  동작하지 않는 기능을 믿게 된다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 API 유지 | 변경이 작다 | Unreal connector만 metadata 기능이 빠진다 |
+| `SendJson` 인자를 계속 늘림 | Blueprint에서 바로 보인다 | timeout, metadata, 이후 option이 함수 시그니처를 계속 키운다 |
+| Unreal 전용 options 구조 추가 | public API를 깊게 유지하고 metadata를 실제 구현과 연결한다 | 기존 API와 options overload를 같이 관리해야 한다 |
+
+선택은 Unreal 전용 `FZLinkStreamSendOptions` 구조다. 기존 `SendJson`/`RequestJson`은 빈
+options로 동작하고, metadata가 필요한 호출만 `WithOptions` overload를 쓴다.
+
+### 적용한 리팩토링
+
+- `FZLinkStreamSendOptions`를 public Unreal contract에 추가하고 `Metadata`만 노출했다.
+  아직 구현하지 않은 compression option은 넣지 않았다.
+- `SendJsonWithOptions`와 `RequestJsonWithOptions`를 Blueprint-callable API로 추가했다.
+- Unreal private frame encoder가 metadata를 일반 C++ connector와 같은 metadata payload
+  구조로 header에 싣고 `has_metadata` flag를 설정하게 했다.
+- Unreal private frame decoder가 metadata payload를 `FZLinkStreamPacket.Metadata`에 채운다.
+- Engine 없는 CTest smoke가 새 options API를 컴파일하고, Unreal Automation Test가
+  metadata send/request frame과 metadata push callback을 검증하도록 확장됐다.
+
+### 남은 tradeoff
+
+- Engine 없는 CTest는 metadata wire bytes를 실행 검증하지 못한다. 실제 socket metadata
+  검증은 Unreal Automation Test에서 담당한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_unreal_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_unreal_stream_connector --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Stream Connector auto codec helper 보정
+
+### 발견한 위험 신호
+
+- `.NET`에는 `Systems.Zlink.Stream.Connector.Codecs`가 있어 typed send/request/on에서
+  JSON, MessagePack, Protobuf 선택을 호출자 코드 밖으로 숨긴다. C++ connector는 codec enum과
+  registry는 있었지만 auto codec helper target이 없어 사용자가 payload encode와 codec id를
+  직접 맞춰야 했다.
+- typed auto codec을 `zlink::stream_connector` 기본 target에 직접 붙이면 사용하지 않는
+  codec dependency가 기본 connector 사용자에게 전파된다.
+- C++에는 `.NET` attribute reflection이 없으므로 MessagePackObject, Protobuf IMessage 같은
+  런타임 자동 선택을 그대로 복제하면 언어 특성과 맞지 않는다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 codec registry만 유지 | 변경이 작다 | `.NET Codecs` 패키지 역할이 비어 있다 |
+| 기본 connector target에 모든 codec helper 포함 | 사용법이 단순하다 | MessagePack/Protobuf dependency를 강제한다 |
+| 같은 배포물 안에 별도 `stream_connector_codecs` target 제공 | 의존성을 선택적으로 유지하면서 auto helper를 제공한다 | 사용자가 helper target을 명시적으로 링크해야 한다 |
+
+선택은 별도 helper target이다. C++ auto codec 선택은 기본 JSON으로 두고, MessagePack과
+Protobuf는 `codec_traits<T>` 특수화로 명시한다.
+
+### 적용한 리팩토링
+
+- `zlink/stream_connector/codecs/auto_codec.hpp`를 추가했다.
+- `codec_traits<T>` 기본 구현은 `message_t::from_json`과 `message.parse_json<T>()`를 사용한다.
+- `codecs::send`, `codecs::request`, `codecs::on` helper를 추가해 encoded packet 생성,
+  codec id 지정, typed callback decode를 한 곳에 모았다.
+- connector public call object에 `codec(codec_t)` setter를 추가하고, `packet_t` 기반
+  `send`/`request` overload를 추가해 encoded payload가 public API로 이동할 수 있게 했다.
+- CMake에 `zlink::stream_connector_codecs` interface target을 추가했다. 이 target은
+  `zlink::stream_connector`와 `zlink::cpp_codec_json`을 링크하고, MessagePack/Protobuf는
+  build option과 binding codec target이 있을 때만 연결한다.
+- `test_cpp_stream_connector`가 auto codec send frame의 `codec=json`, packet name, JSON
+  payload를 실제 loopback에서 확인하고, `codecs::on<T>`가 dispatch 전에 JSON payload를 DTO로
+  복원하는지 검증한다.
+
+### 남은 tradeoff
+
+- C++ auto codec은 `.NET`처럼 attribute reflection으로 MessagePack/Protobuf를 자동 선택하지
+  않는다. 해당 codec을 쓰는 타입은 `codec_traits<T>` 특수화로 선택한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build -DZLINK_STREAM_CONNECTOR_WITH_LZ4=ON
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Unreal Stream Connector pending dispatch 보정
+
+### 발견한 위험 신호
+
+- Unreal connector public API에는 `PendingDispatchCount()`가 있었지만 runtime이 항상 0을
+  반환했다. 이 상태에서는 manual dispatch mode에서 처리할 callback이 쌓였는지 확인할 수
+  없다.
+- `.NET` connector는 manual dispatch에서 callback queue count를 노출하고, dispatch 전에는
+  handler가 실행되지 않는 것을 테스트한다. Unreal connector도 같은 의미를 Unreal delegate
+  모델에 맞게 제공해야 한다.
+- Unreal connector에 coroutine surface까지 추가하면 Unreal 사용 모델과 맞지 않고 public
+  API가 불필요하게 넓어진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 항상 0 유지 | 구현이 짧다 | public API가 거짓 상태를 노출한다 |
+| background receive thread 추가 | `.NET`과 queue 시점이 가장 비슷하다 | Unreal Game Thread/lifecycle 정책과 충돌하기 쉽다 |
+| `PendingDispatchCount()`에서 socket bytes를 private queue로만 pump | callback 실행을 지연하면서 manual dispatch 의미를 유지한다 | query가 receive buffer를 갱신한다 |
+
+선택은 private queue pump 방식이다. `PendingDispatchCount()`는 socket에서 완성 frame을 읽어
+private dispatch queue에 넣지만 callback은 실행하지 않는다. `Dispatch()`는 같은 queue를
+drain하면서 delegate를 호출한다.
+
+### 적용한 리팩토링
+
+- Unreal private runtime에 `DispatchQueue`를 추가했다.
+- socket receive와 frame decode를 `PumpIncomingFrames()`로 분리했다.
+- `PendingDispatchCount()`가 `PumpIncomingFrames()`를 호출한 뒤 queue size를 반환하게 했다.
+- `Dispatch()`는 queue를 drain하며 push는 `OnPacketReceived`, response는 pending request와
+  match될 때 `OnRequestCompleted`로 보낸다.
+- Unreal Automation Test가 response/push frame 수신 뒤 `PendingDispatchCount() == 1`,
+  callback 미실행, `Dispatch()` 후 count 0과 callback 실행을 검증하도록 확장됐다.
+- Unreal connector에는 coroutine API를 추가하지 않는다. Unreal 표면은 Blueprint/native
+  delegate와 Game Thread dispatch를 기준으로 유지한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_unreal_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_unreal_stream_connector --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Unreal Stream Connector request completion 보정
+
+### 발견한 위험 신호
+
+- Unreal `RequestJson`은 request frame을 보내지만 response frame을 받을 public 표면이
+  없었다. 이 상태에서는 요청/응답 connector가 아니라 send-only client처럼 보인다.
+- response completion을 `OnPacketReceived`와 섞으면 push notification과 request reply가
+  같은 callback으로 들어와 호출자가 request sequence 구분을 직접 해야 한다.
+- pending request sequence table을 public API로 노출하면 `.NET`과 일반 C++ connector가
+  숨기는 correlation 세부가 Unreal 사용자 표면으로 새어 나온다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `RequestJson`을 fire-and-forget으로 유지 | 변경이 작다 | request/reply 기능성이 빠진다 |
+| response를 `OnPacketReceived`로 보냄 | callback 수가 적다 | push와 reply 구분을 사용자에게 떠넘긴다 |
+| 별도 request completed delegate 제공 | Unreal event 모델에 맞고 reply 의미가 분리된다 | pending request table을 private runtime에서 관리해야 한다 |
+
+선택은 별도 request completed delegate다. public API는 response packet만 받고, request
+sequence 발급과 match 여부는 Unreal private runtime이 소유한다.
+
+### 적용한 리팩토링
+
+- `FZLinkStreamRequestCompleted`와 `FZLinkStreamRequestCompletedNative` delegate를 추가했다.
+- `UZLinkStreamConnector`에 `OnRequestCompleted`와 `OnRequestCompletedNative` event를
+  추가했다.
+- `RequestJson`과 `RequestJsonWithOptions`가 sequence를 발급하고 private pending request
+  table에 등록하게 했다.
+- `Dispatch`가 `kind=response` frame을 만나면 request sequence가 pending table에 있을 때만
+  `OnRequestCompleted`로 전달하고 pending entry를 제거한다.
+- Unreal Automation Test가 request frame의 sequence를 읽고 response frame을 보낸 뒤
+  request completed callback의 packet name과 metadata를 검증하도록 확장됐다.
+
+### 남은 tradeoff
+
+- 현재 Unreal request completion은 response event surface를 제공한다. typed UObject
+  serializer와 per-request callback/future style helper는 다음 API 확장 대상이다.
+- Engine 없는 CTest는 event surface compile smoke만 확인한다. 실제 response frame matching은
+  Unreal Automation Test가 담당한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_unreal_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_unreal_stream_connector --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Logging 표면 보정
+
+### 발견한 위험 신호
+
+- `app.logging().use_console().set_level()`은 상태만 저장하고, handler가 실제 log를 남길
+  public logger 표면이 없었다.
+- `.NET` 샘플은 `ILogger<T>`를 handler에 주입해 actor join, room event, packet dispatch를
+  기록하지만 C++ 샘플은 handler logging을 보여 주지 못했다.
+- `spdlog`를 내부 구현으로 쓰겠다는 정책은 있었지만 public API에서 어떤 sink와 level을
+  지원하는지 고정되어 있지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `spdlog::logger`를 public API로 노출 | 구현이 빠르다 | backend 교체가 public breaking change가 된다 |
+| console level만 유지 | 작다 | 운영 logging과 handler logging을 지원하지 못한다 |
+| ZLink logging abstraction 제공 | `.NET`의 `ILogger<T>`와 역할이 맞다 | 내부 logging runtime 구현이 필요하다 |
+
+선택은 ZLink 자체 logging abstraction이다. public API는 `logger_t<TCategory>`와
+`logger_factory_t`가 소유하고, backend와 sink 구현은 runtime 안에 숨긴다.
+
+### 적용한 리팩토링
+
+- `log_level_t`, `logging_backend_t`, `logging_overflow_policy_t`, `log_record_t`,
+  `logger_t<TCategory>`, `logger_factory_t`를 public contract에 추가했다.
+- `logging_builder_t`에 console, file, rotating file, callback sink, async option,
+  backend selection, captured records 조회를 추가했다.
+- diagnostics logging runtime에 level filtering, console/file/rotating/callback sink 호출을
+  구현했다.
+- Bingo/TicTacToe 핵심 handler가 logger를 받아 실제 log를 남기도록 샘플을 보강했다.
+- app host regression test가 callback sink, file sink, level filtering, backend selection을
+  검증하도록 확장했다.
+
+### 남은 tradeoff
+
+- 현재 backend selection은 public 계약으로 `spdlog`를 선택할 수 있게 고정했지만 public
+  header에는 `spdlog` 타입을 노출하지 않는다. 실제 spdlog sink 최적화는 이 abstraction
+  뒤에서 확장한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build -L framework-unit --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Stream Connector LZ4 실제 구현
+
+### 발견한 위험 신호
+
+- `lz4_compression_codec_t`가 payload를 그대로 돌려주는 no-op이었다. public option과
+  compression flag가 있어도 실제 압축이 일어나지 않아 테스트가 성공해도 운영 동작을
+  검증할 수 없었다.
+- 시스템에 `liblz4.so.1`만 있고 개발 header가 없으면 system dependency만으로는 현재
+  workspace에서 재현 가능한 빌드를 만들 수 없었다.
+- 압축 flag는 frame header에 기록되지만 send/read 경로에서 payload 변환과 decompression
+  실패 처리가 연결되어 있지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| no-op 유지 | 빌드는 쉽다 | compression 계약이 거짓 동작이 된다 |
+| system LZ4 dev package만 요구 | 배포 의존성이 명확하다 | 개발 환경마다 헤더 설치가 필요하고 현재 workspace에서 바로 깨진다 |
+| system LZ4를 우선 찾고 없으면 source fallback 포함 | 재현 가능한 빌드와 실제 압축을 모두 얻는다 | CMake가 C 언어와 FetchContent fallback을 관리해야 한다 |
+
+선택은 system 우선, source fallback 방식이다. connector 사용자는 여전히
+`zlink::stream_connector` 하나만 링크하고, LZ4 dependency는 connector target 내부 구현으로
+숨긴다.
+
+### 적용한 리팩토링
+
+- `ZLINK_STREAM_CONNECTOR_WITH_LZ4` 기본값을 ON으로 바꿨다.
+- CMake가 system `lz4.h`/`liblz4`를 먼저 찾고, 없으면 LZ4 1.10.0 source를 받아
+  `zlink_stream_connector` private source로 포함하게 했다.
+- `lz4_compression_codec_t`가 `LZ4_compress_default`와 `LZ4_decompress_safe`를 호출하도록
+  구현했다. compressed payload는 원본 크기 4바이트와 LZ4 bytes로 저장한다.
+- send/request frame 작성 경로가 `.compress()`와 `compression_t::lz4`를 만나면 실제
+  payload를 압축하고 `payload_compressed` flag를 기록한다.
+- read/dispatch 경로가 `payload_compressed` flag를 만나면 payload를 해제하고 실패 시
+  `decompression_failed`로 반환한다.
+- `test_cpp_stream_connector`가 LZ4 roundtrip, compressed send frame, compressed server push
+  수신과 해제를 실제 TCP stream 경로에서 검증한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build -DZLINK_STREAM_CONNECTOR_WITH_LZ4=ON
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+```
+
+## 추가 리뷰. Unreal Stream Connector LZ4 frame parity 보정
+
+### 발견한 위험 신호
+
+- Unreal connector에는 `payload_compressed` flag enum이 있었지만 public option과 payload
+  변환 경로가 없었다. 이 상태에서는 일반 C++ connector가 보낸 compressed frame을 Unreal
+  callback에서 그대로 binary payload로 받게 된다.
+- Unreal plugin public header나 Build.cs에 일반 connector runtime 또는 system LZ4 의존성을
+  노출하면 Unreal 전용 배포 단위가 깨진다.
+- compressed send/request를 automation에서 읽지 않으면 flag만 맞고 payload가 실제로
+  복원되는지 확인할 수 없다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| compression option을 계속 숨김 | Unreal public 변경이 없다 | 일반 connector와 기능 격차가 남는다 |
+| 일반 C++ connector runtime을 Unreal module에 링크 | codec 중복이 줄어든다 | Asio/runtime dependency가 Unreal plugin 내부로 새어 들어온다 |
+| Unreal `Private/`에 wire-format LZ4 helper를 둠 | public 의존성을 숨기고 같은 frame 형식을 처리한다 | LZ4 helper를 contract test로 계속 고정해야 한다 |
+
+선택은 Unreal `Private/` helper 방식이다. 일반 C++ connector와 같은 payload 형식인
+`원본 크기 4바이트 + LZ4 block`을 사용하되, public 표면은 `FZLinkStreamSendOptions`의
+`bCompress` 하나로 유지한다.
+
+### 적용한 리팩토링
+
+- `FZLinkStreamSendOptions::bCompress`를 Unreal public contract에 추가했다.
+- Unreal frame encoder가 `bCompress`를 받으면 payload를 LZ4 block payload로 바꾸고
+  `payload_compressed` flag를 기록하게 했다.
+- Unreal frame decoder가 `payload_compressed` flag를 만나면 callback 전에 payload를
+  해제하고, `FZLinkStreamPacket::bCompressed`에 원래 frame 상태를 기록하게 했다.
+- Unreal Automation Test loopback 서버가 compressed send/request를 읽어 원본 JSON으로
+  복원하고, compressed push/response가 native callback에서 복원되는지 검증하도록 확장했다.
+- Engine 없는 CTest smoke가 `bCompress` option을 사용하는 코드까지 컴파일한다.
+
+### 남은 tradeoff
+
+- CMake 검증 경로에서는 Unreal static target도 system LZ4 또는 FetchContent fallback을
+  private로 받아 실제 `LZ4_compress_default`와 `LZ4_decompress_safe`를 호출한다. Unreal
+  Engine Build.cs 배포에서는 같은 방식을 plugin `ThirdParty/LZ4` source vendoring으로
+  닫아야 한다.
+- Engine 없는 CTest는 Unreal socket automation을 실행하지 못한다. 실제 compressed frame
+  loopback은 `ZLink.StreamConnector.Loopback` Automation Test에서 담당한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_unreal_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_unreal_stream_connector --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
 ```

@@ -1,0 +1,103 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "runtime/protocol/framing.hpp"
+
+#include "runtime/protocol/compression/lz4_compression_codec.hpp"
+#include "runtime/protocol/header_codec.hpp"
+#include "runtime/transport/stream_connection.hpp"
+
+#include <stdexcept>
+
+namespace zlink::stream_connector::detail
+{
+
+namespace
+{
+
+zlink::message_t
+message_from_bytes (const std::vector<std::uint8_t> &bytes)
+{
+  return zlink::message_t::from (
+    std::string (bytes.begin (), bytes.end ()));
+}
+
+bool
+has_flag (header_flags_t flags, header_flags_t flag) noexcept
+{
+  return (static_cast<std::uint8_t> (flags) &
+          static_cast<std::uint8_t> (flag)) != 0;
+}
+
+packet_t
+read_stream_packet (connector_state_t &state)
+{
+  auto prefix = read_exact (state, 6);
+  const auto header_size =
+    static_cast<std::size_t> ((prefix[0] << 8) | prefix[1]);
+  const auto payload_size =
+    (static_cast<std::size_t> (prefix[2]) << 24) |
+    (static_cast<std::size_t> (prefix[3]) << 16) |
+    (static_cast<std::size_t> (prefix[4]) << 8) |
+    static_cast<std::size_t> (prefix[5]);
+  auto header_bytes = read_exact (state, header_size);
+  auto payload_bytes = read_exact (state, payload_size);
+  auto decoded = header_codec_t {}.decode (header_bytes);
+  if (!decoded) {
+    return packet_t { "unknown",
+                      {},
+                      codec_t::raw,
+                      false,
+                      zlink::message_t::from (std::string {}) };
+  }
+  auto header = decoded.value ();
+  const bool compressed =
+    has_flag (header.flags, header_flags_t::payload_compressed);
+  auto payload = message_from_bytes (payload_bytes);
+  if (compressed) {
+    if (state.options.compression != compression_t::lz4) {
+      throw std::runtime_error (
+        "stream connector compression is not configured");
+    }
+    if (!state.lz4_enabled) {
+      throw std::runtime_error ("LZ4 compression is not enabled");
+    }
+    payload = lz4_compression_codec_t {}.decompress (payload);
+  }
+  packet_t packet;
+  packet.name = std::move (header.name);
+  packet.metadata = std::move (header.metadata);
+  packet.codec = header.codec;
+  packet.compressed = compressed;
+  packet.payload = std::move (payload);
+  return packet;
+}
+
+} // namespace
+
+void
+dispatch_packet (connector_state_t &state, const packet_t &packet)
+{
+  const auto found = state.packet_handlers.find (packet.name);
+  if (found == state.packet_handlers.end ()) {
+    return;
+  }
+  for (const auto &handler : found->second) {
+    handler (packet);
+  }
+}
+
+void
+drain_available_pushes (connector_state_t &state)
+{
+  while (state.socket && state.socket->is_open () &&
+         state.socket->available () > 0) {
+    auto packet = read_stream_packet (state);
+    if (state.options.dispatch_mode == dispatch_mode_t::immediate) {
+      dispatch_packet (state, packet);
+    } else {
+      state.dispatch_queue.push_back (std::move (packet));
+    }
+  }
+}
+
+} // namespace zlink::stream_connector::detail

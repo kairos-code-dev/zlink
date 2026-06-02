@@ -151,11 +151,124 @@ framework의 `Contracts/*`와 `Runtime/*` 구조를 C++ framework에 옮길 때�
 둔다. public 타입이 내부 state를 가리켜야 하면 public header에는 전방 선언과
 `shared_ptr`/PIMPL만 두고 state 정의는 runtime owner 파일에 둔다.
 
+`src/runtime/channels/channel_pending_requests.*`는 `.NET`의
+`ZLinkDealerMeshPendingRequests`에 대응한다. request sequence 발급, pending 등록,
+reply completion, drain은 이 모듈이 맡고 `message_bus_t`나 public call object는 pending
+table을 직접 알지 않는다.
+
+`src/runtime/channels/channel_reply_writer.*`는 `.NET`의 `ZLinkChannelReplyWriter`에
+대응한다. request envelope에서 correlation id와 message name을 보존한 response/error
+header를 만들고, error code는 stable string으로 기록한다.
+
+`src/runtime/channels/channel_packet_dispatcher.*`는 `.NET`의
+`ZLinkChannelPacketDispatcher`에 대응한다. server ingress envelope를 해석하고 request는
+handler result를 response envelope로 감싸며, command/send는 reply 없이 dispatch한다.
+
+`src/runtime/channels/channel_bundle_factory.*`는 `.NET`의
+`ZLinkChannelBundleFactory`에 대응한다. channel capability snapshot에서 client, server,
+publisher, subscriber runtime bundle을 만들고 manual endpoint attachment를 bundle 내부로
+옮긴다.
+
+`src/runtime/channels/channel_runtime_manager.*`는 `.NET`의
+`ZLinkChannelRuntimeManager`에 대응한다. capability bundle lazy creation, inbound/client/
+publisher 초기화, route channel lookup, monitoring source parsing을 담당한다.
+
+`src/runtime/channels/channel_runtime_bundle.*`는 `.NET`의
+`ZLinkChannelRuntimeBundle`에 대응한다. manual connection set, receive gate,
+dealer-mesh pending request owner를 capability 내부 상태로 묶고 public contract에는
+노출하지 않는다.
+
+`src/runtime/channels/channel_message_pump.*`와
+`src/runtime/channels/channel_receive_loop.*`는 `.NET`의 `ZLinkChannelMessagePump`,
+`ZLinkChannelReceiveLoop`에 대응한다. receive loop는 수신 queue를 drain하고 재진입을
+막으며, message pump는 envelope dispatch를 `channel_packet_dispatcher_t`로 보낸다.
+
+`src/runtime/channels/route_connection_set.*`는 `.NET`의 `ZLinkRouteConnectionSet`에
+대응한다. route channel의 manual connection 목록과 중복 제거, 정렬 snapshot을 담당한다.
+
+`src/runtime/channels/route_channel_registration.*`는 `.NET`의
+`ZLinkRouteChannelRegistration`, `ZLinkRouteChannelBuilder`,
+`ZLinkRouteChannelInitializer`에 대응한다. C++에는 런타임 reflection scanner가 없으므로
+typed handler installer를 registration에 모으고 initializer가 route runtime과
+`route_handler_registry_t`를 생성한다. public 표면은 `route_channel_builder_t`가 맡고,
+template handler registration은 public contract에서 typed invoker value로 접힌 뒤 runtime
+registration으로 전달된다.
+
+`src/runtime/channels/route_channel_runtime.*`는 `.NET`의
+`ZLinkRouteChannelRuntime`에 대응한다. route channel id, connection set, outbound
+command/request envelope 작성, SPOT routed parts 전송, request sequence correlation을
+소유한다. native router socket adapter는 `src/runtime/backend/native_route_backend.*`가
+담당하고 public contract에 올리지 않는다.
+
+public `route_client_t`, `route_send_call_t`, `route_request_call_t`,
+`typed_route_request_call_t<TReply>`는 `.NET`의 `IZLinkRouteClient`와 `ZLinkRouteClient`에
+대응한다. 사용자는 router channel id, target node routing id, typed payload만 넘기고,
+route channel runtime lookup, envelope 작성, serializer 호출은 runtime owner가 처리한다.
+C++는 낮은 수준 검증을 위해 request sequence submission call도 유지하지만, 일반 사용 표면은
+`request<TRequest, TReply>(...).packet_name(...).timeout(...).submit()`으로 typed reply를
+받는다. typed reply completion은 route runtime backend seam을 통해 검증되고,
+`native_route_backend_t`가 C++ binding `router_socket_t::send/request`로 이 seam에 붙는다.
+남은 작업은 runtime manager가 실제 router socket lifecycle과 discovery attach를 만들 때
+이 adapter를 자동으로 연결하는 것이다.
+
+`src/runtime/channels/route_packet_dispatcher.*`와
+`src/runtime/channels/route_receive_pump.*`는 `.NET`의 `ZLinkRoutePacketDispatcher`,
+`ZLinkRouteReceivePump`에 대응한다. route receive pump는 routed packet queue를 drain하고,
+dispatcher는 envelope header를 해석한다. command는 routed handler나 internal dispatcher로
+보내고, request는 handler reply 또는 error envelope를 만든다.
+
+`src/runtime/channels/route_handler_registry.*`와
+`src/runtime/channels/route_handler_invoker.*`는 `.NET`의 `ZLinkRouteHandlerRegistry`,
+`ZLinkRouteHandlerInvoker`에 대응한다. routed handler descriptor, duplicate detection,
+source routing id가 포함된 route context, typed payload deserialize/serialize를 소유한다.
+
+`src/runtime/channels/route_internal_packet_dispatcher.*`는 `.NET`의
+`IZLinkRouteInternalPacketDispatcher`, `ZLinkNoRouteInternalPacketDispatcher`,
+`ZLinkCompositeRouteInternalPacketDispatcher`에 대응한다. framework 내부 routed packet은
+사용자 route handler보다 먼저 처리하고, 여러 internal dispatcher를 composite로 묶을 수
+있다.
+
 `backend substrate` 행은 의도적으로 public owner가 없다. `.NET`의
 `Runtime/Backend/Contracts`처럼 backend 내부 계약이 필요할 수는 있지만, 이 계약은
 framework와 zlink binding substrate 사이의 private seam이다. 사용자가 보는 extension
 point가 필요하면 `contracts/*` 아래 별도 public 타입을 만든다. backend 내부 타입을
 이름만 바꿔 public header에 올리는 방식은 허용하지 않는다.
+
+#### Runtime/Messaging 상태 분리
+
+`pending_operation_t`는 callback 기반 `submit(callback)`의 추적 핸들이다. 사용자는 이
+객체로 작업이 유효한지, 완료됐는지, 취소됐는지를 확인할 수 있다. 상태 저장소, 실패
+예외, queue slot은 public header에 두지 않고 `src/runtime/messaging`의 private state에
+둔다.
+
+`src/runtime/messaging/pending_submit.*`는 `.NET`의 `PendingSubmit`에 대응한다. C++에서는
+public cancellation token을 두지 않으므로 cancellation registration은 만들지 않는다.
+대신 command submit의 accepted 완료, request submit의 별도 응답 완료, deadline 만료,
+wake callback은 같은 책임으로 유지한다.
+
+`src/runtime/messaging/submit_queue.*`는 `.NET`의 `ZLinkSubmitQueue`에 대응한다. 큐는
+bounded FIFO이며 capacity 초과와 disposed 상태를 내부에서 막는다. public channel call
+object는 큐 구현을 알 필요가 없고 `pending_operation_t`만 받는다.
+
+`src/runtime/messaging/envelope_codec.*`는 `.NET`의 `ZLinkEnvelopeCodec`에 대응한다.
+header/body 2-part envelope, `application/json` content type, error envelope header,
+body part 누락 검사는 이 모듈이 맡는다. 사용자는 envelope JSON 구조를 직접 만들지 않는다.
+
+`src/runtime/messaging/client_call_codec.*`는 `.NET`의 `ZLinkClientCallCodec`에 대응한다.
+request/command/publish header 생성, correlation id, deadline 문자열, typed body encode,
+reply body decode, error reply 해석을 한 곳에 둔다.
+
+`src/runtime/messaging/request_failure_mapper.*`는 `.NET`의 `ZLinkRequestFailureMapper`에
+대응한다. native request result나 error envelope code를 `framework_error_kind_t`와
+retriable 여부로 사상한다. 이 매핑은 handler, channel, connector sample에 흩어져 있으면
+안 된다.
+
+`ZLinkMessageNameResolver`에 해당하는 C++ 정책은 DTO의
+`static constexpr const char *packet_name`을 우선 사용하는 것이다. framework handler
+등록과 Stream Connector send/request/on 기본 이름은 이 값을 읽는다. 이름이 없는 타입은
+fallback으로 C++ type name을 사용할 수 있지만, 샘플과 정식 DTO는 명시 packet name을
+가져야 한다. 이렇게 해야 handler 등록, client 호출, server push가 같은 문자열을 반복해서
+관리하지 않는다.
 
 ### 3.2 C++에서 생기는 분리 이슈와 결정
 
@@ -628,6 +741,18 @@ public:
     bool is_retriable() const noexcept;
 };
 
+class pending_operation_t {
+public:
+    pending_operation_t() noexcept;
+
+    static pending_operation_t make_completed();
+
+    bool valid() const noexcept;
+    bool completed() const noexcept;
+    bool cancelled() const noexcept;
+    bool cancel() noexcept;
+};
+
 template <typename TReply>
 class request_call_t {
 public:
@@ -854,6 +979,24 @@ public:
     request_client_t &client();
 };
 
+class route_client_t {
+public:
+    template <typename TMessage>
+    route_send_call_t send(std::string router_channel_id,
+      zlink::routing_id_t target_node_rid,
+      TMessage message);
+
+    template <typename TRequest>
+    route_request_call_t request(std::string router_channel_id,
+      zlink::routing_id_t target_node_rid,
+      TRequest request);
+
+    template <typename TRequest, typename TReply>
+    typed_route_request_call_t<TReply> request(std::string router_channel_id,
+      zlink::routing_id_t target_node_rid,
+      TRequest request);
+};
+
 } // namespace zlink::framework
 ```
 
@@ -868,6 +1011,7 @@ framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성
 - `message_bus_t`
 - `publisher_t`
 - `request_client_t`
+- `route_client_t`
 - `serializer_registry_t`
 
 ## 10. Serialization

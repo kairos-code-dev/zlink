@@ -20,6 +20,7 @@ struct reply_t
 
 struct command_t
 {
+  static constexpr const char *packet_name = "Command";
   int value {};
 };
 
@@ -295,7 +296,7 @@ main ()
   if (default_handlers.find (
         "game",
         "default",
-        typeid (command_t).name ()) == nullptr) {
+        command_t::packet_name) == nullptr) {
     return 16;
   }
 

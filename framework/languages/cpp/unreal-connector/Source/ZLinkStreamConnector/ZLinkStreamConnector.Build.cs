@@ -14,5 +14,10 @@ public class ZLinkStreamConnector : ModuleRules
         });
 
         PrivateDependencyModuleNames.AddRange(new string[] {});
+        PrivateDependencyModuleNames.AddRange(new[]
+        {
+            "Sockets",
+            "Networking"
+        });
     }
 }

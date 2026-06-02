@@ -6,6 +6,10 @@
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
+#include "runtime/channels/channel_pending_requests.hpp"
+#include "runtime/channels/channel_runtime_bundle.hpp"
+#include "runtime/channels/route_channel_registration.hpp"
+#include "runtime/channels/route_channel_runtime.hpp"
 #include "runtime/registry/registry_runtime.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
@@ -19,6 +23,7 @@ namespace zlink::framework::detail
 {
 
 class spot_node_builder_state_t;
+class channel_runtime_state_t;
 class stream_runtime_state_t;
 
 class capability_builder_state_t
@@ -38,15 +43,48 @@ public:
   channel_snapshot_t snapshot;
 };
 
+class route_channel_builder_state_t
+{
+public:
+  explicit route_channel_builder_state_t (std::string router_channel_id)
+    : registration (std::move (router_channel_id))
+  {
+  }
+
+  route_channel_registration_t registration;
+};
+
+class route_client_state_t
+{
+public:
+  route_client_state_t (std::shared_ptr<channel_runtime_state_t> runtime,
+                        serializer_registry_t &serializers)
+    : runtime (std::move (runtime)), serializers (&serializers)
+  {
+  }
+
+  std::shared_ptr<channel_runtime_state_t> runtime;
+  serializer_registry_t *serializers;
+};
+
 class channel_runtime_state_t
 {
 public:
   std::map<std::string, channel_snapshot_t> channels;
   std::size_t max_pending = 1024;
   std::size_t pending = 0;
-  std::map<std::uint64_t, std::string> pending_request_channels;
+  channel_pending_requests_t pending_requests;
+  std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>>
+    server_bundles;
+  std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>>
+    client_bundles;
+  std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>>
+    publisher_bundles;
+  std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>>
+    subscriber_bundles;
+  std::map<std::string, std::shared_ptr<route_channel_runtime_t>>
+    route_channels;
   std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
-  std::uint64_t next_request_seq = 1;
   bool shutdown = false;
   bool closed = false;
   retry_hook_t retry_hook;
@@ -60,6 +98,8 @@ public:
   std::shared_ptr<channel_runtime_state_t> runtime =
     std::make_shared<channel_runtime_state_t> ();
   std::map<std::string, std::shared_ptr<spot_node_builder_state_t>> spot_nodes;
+  std::map<std::string, std::shared_ptr<route_channel_builder_state_t>>
+    route_channels;
   std::shared_ptr<registry_runtime_state_t> registry_runtime =
     std::make_shared<registry_runtime_state_t> ();
   std::shared_ptr<stream_runtime_state_t> stream_runtime =

@@ -1,0 +1,249 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "runtime/messaging/pending_submit.hpp"
+#include "runtime/messaging/client_call_codec.hpp"
+#include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/messaging/request_failure_mapper.hpp"
+#include "runtime/messaging/submit_queue.hpp"
+
+#include <zlink/framework/contracts/detail/call_facade.hpp>
+#include <zlink/framework/contracts/errors/result.hpp>
+
+#include <chrono>
+#include <stdexcept>
+#include <vector>
+
+namespace
+{
+
+class sample_call_t
+  : public zlink::framework::detail::call_facade_t<sample_call_t, int>
+{
+public:
+  explicit sample_call_t (int value)
+    : call_facade_t (
+        zlink::framework::result_t<int>::success (value))
+  {
+  }
+};
+
+struct envelope_payload_t
+{
+  int value {};
+};
+
+} // namespace
+
+int
+main ()
+{
+  {
+    zlink::framework::serializer_registry_t serializers;
+    serializers.add<envelope_payload_t> (
+      [](const envelope_payload_t &payload) {
+        return zlink::message_t::from (std::to_string (payload.value));
+      },
+      [](const zlink::message_t &message) {
+        return envelope_payload_t { std::stoi (message.to_string ()) };
+      });
+
+    zlink::framework::runtime::messaging::client_call_codec_t client_codec;
+    const auto header = client_codec.create_envelope (
+      zlink::framework::runtime::messaging::message_kind_t::request,
+      "profile",
+      "EnvelopePayload",
+      std::chrono::milliseconds (10),
+      std::string ("lookup"),
+      std::string ("client"));
+    const auto parts = client_codec.encode_envelope_parts (
+      header,
+      envelope_payload_t { 42 },
+      serializers);
+    zlink::framework::runtime::messaging::envelope_codec_t envelope_codec;
+    const auto decoded_header = envelope_codec.decode_header (parts);
+    if (!decoded_header ||
+        decoded_header.value ().kind !=
+          zlink::framework::runtime::messaging::message_kind_t::request ||
+        decoded_header.value ().channel_name != "profile" ||
+        decoded_header.value ().message_name != "EnvelopePayload" ||
+        decoded_header.value ().content_type != "application/json" ||
+        decoded_header.value ().correlation_id.empty () ||
+        !decoded_header.value ().deadline ||
+        decoded_header.value ().topic.value_or ("") != "lookup" ||
+        decoded_header.value ().source.value_or ("") != "client") {
+      return 11;
+    }
+    const auto decoded_body = envelope_codec.decode_body (parts);
+    if (!decoded_body ||
+        serializers.get<envelope_payload_t> ()
+            .deserialize (decoded_body.value ())
+            .value != 42) {
+      return 12;
+    }
+
+    zlink::framework::runtime::messaging::envelope_header_t reply_header;
+    reply_header.kind =
+      zlink::framework::runtime::messaging::message_kind_t::response;
+    reply_header.channel_name = "profile";
+    reply_header.message_name = "EnvelopePayload";
+    reply_header.correlation_id = header.correlation_id;
+    const auto reply = envelope_codec.encode_raw_body_parts (
+      reply_header,
+      zlink::message_t::from (std::string ("7")));
+    const auto reply_result =
+      client_codec.decode_envelope_reply<envelope_payload_t> (
+        reply,
+        serializers,
+        "empty reply",
+        "reply failed",
+        "profile request");
+    if (!reply_result || reply_result.value ().value != 7) {
+      return 13;
+    }
+
+    zlink::framework::runtime::messaging::envelope_header_t error_header;
+    error_header.kind =
+      zlink::framework::runtime::messaging::message_kind_t::error;
+    error_header.channel_name = "profile";
+    error_header.message_name = "EnvelopePayload";
+    error_header.error_code = "route_not_connected";
+    error_header.error_message = "route is down";
+    const auto error_reply = envelope_codec.encode_raw_body_parts (
+      error_header,
+      zlink::message_t::from (std::string {}));
+    const auto error_result =
+      client_codec.decode_envelope_reply<envelope_payload_t> (
+        error_reply,
+        serializers,
+        "empty reply",
+        "reply failed",
+        "profile request");
+    if (error_result ||
+        error_result.error_kind () !=
+          zlink::framework::framework_error_kind_t::route_not_connected ||
+        error_result.error () == nullptr ||
+        !error_result.error ()->is_retriable ()) {
+      return 14;
+    }
+
+    zlink::framework::runtime::messaging::request_failure_mapper_t mapper;
+    const auto busy = mapper.completion_exception (
+      zlink::framework::runtime::messaging::request_result_t::busy,
+      "profile request");
+    if (busy.kind () !=
+          zlink::framework::framework_error_kind_t::request_rejected ||
+        !busy.is_retriable ()) {
+      return 15;
+    }
+  }
+
+  using zlink::framework::runtime::messaging::pending_submit_t;
+  using zlink::framework::runtime::messaging::submit_queue_t;
+
+  bool callback_seen = false;
+  auto callback_operation = sample_call_t (42).submit (
+    [&](zlink::framework::result_t<int> result) {
+      callback_seen = result.has_value () && result.value () == 42;
+    });
+  if (!callback_seen || !callback_operation.valid () ||
+      !callback_operation.completed () || callback_operation.cancel ()) {
+    return 1;
+  }
+
+  int wake_count = 0;
+  bool command_submitted = false;
+  auto command = pending_submit_t::create_command (
+    [&] {
+      command_submitted = true;
+      return true;
+    },
+    std::nullopt,
+    [&] { ++wake_count; });
+  auto command_operation = command.operation ();
+  if (!command.try_submit () || !command_submitted ||
+      !command_operation.completed () || wake_count != 1) {
+    return 2;
+  }
+
+  bool request_submitted = false;
+  auto request = pending_submit_t::create_request (
+    [&] {
+      request_submitted = true;
+      return true;
+    },
+    std::nullopt,
+    [&] { ++wake_count; });
+  auto request_operation = request.operation ();
+  if (!request.try_submit () || !request_submitted ||
+      request_operation.completed ()) {
+    return 3;
+  }
+  request.complete ();
+  if (!request_operation.completed () || wake_count != 2) {
+    return 4;
+  }
+
+  submit_queue_t queue (2);
+  std::vector<int> submitted;
+  auto first = pending_submit_t::create_command ([&] {
+    submitted.push_back (1);
+    return true;
+  });
+  auto first_operation = first.operation ();
+  auto second = pending_submit_t::create_command ([&] {
+    submitted.push_back (2);
+    return true;
+  });
+  auto second_operation = second.operation ();
+  queue.enqueue (std::move (first));
+  queue.enqueue (std::move (second));
+  bool capacity_error = false;
+  try {
+    queue.enqueue (pending_submit_t::create_command ([] { return true; }));
+  } catch (const std::runtime_error &) {
+    capacity_error = true;
+  }
+  if (!capacity_error || queue.pending_count () != 2) {
+    return 5;
+  }
+
+  pending_submit_t current = pending_submit_t::create_command (
+    [] { return false; });
+  if (!queue.try_peek (current) ||
+      queue.try_dequeue_expected (second_operation, current) ||
+      !queue.try_dequeue_expected (first_operation, current) ||
+      !current.try_submit ()) {
+    return 6;
+  }
+  if (!queue.try_dequeue_expected (second_operation, current) ||
+      !current.try_submit () ||
+      submitted != std::vector<int> { 1, 2 } ||
+      queue.pending_count () != 0) {
+    return 7;
+  }
+
+  auto expired = pending_submit_t::create_command (
+    [] { return true; },
+    pending_submit_t::clock_t::now () - std::chrono::milliseconds (1));
+  auto expired_operation = expired.operation ();
+  if (expired.try_submit () || !expired_operation.completed () ||
+      expired_operation.cancelled ()) {
+    return 8;
+  }
+
+  submit_queue_t disposable (2);
+  disposable.enqueue (pending_submit_t::create_command ([] { return true; }));
+  if (disposable.dispose_all ().size () != 1 ||
+      !disposable.dispose_all ().empty ()) {
+    return 9;
+  }
+  bool disposed_error = false;
+  try {
+    disposable.enqueue (
+      pending_submit_t::create_command ([] { return true; }));
+  } catch (const std::runtime_error &) {
+    disposed_error = true;
+  }
+
+  return disposed_error ? 0 : 10;
+}

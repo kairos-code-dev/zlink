@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 #ifndef ZLINK_FRAMEWORK_CPP_SOURCE_DIR
@@ -47,6 +48,64 @@ public_headers_do_not_include_runtime (const std::filesystem::path &root)
   return ok;
 }
 
+bool
+file_contains (const std::filesystem::path &path, const std::string &needle)
+{
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  return buffer.str ().find (needle) != std::string::npos;
+}
+
+bool
+client_sample_uses_connector (const std::filesystem::path &root,
+                              const std::filesystem::path &client_file)
+{
+  const auto path = root / client_file;
+  bool ok = true;
+  ok &= file_contains (path, "zlink/stream_connector.hpp");
+  ok &= file_contains (path, "connector_factory_t::create");
+  ok &= file_contains (path, ".connect ()");
+  ok &= file_contains (path, ".request<");
+  ok &= file_contains (path, ".submit ()");
+  if (!ok) {
+    std::cerr << "client sample does not show connector connect/request/submit: "
+              << path << '\n';
+  }
+  return ok;
+}
+
+bool
+client_main_does_not_include_server_handlers (
+  const std::filesystem::path &root,
+  const std::filesystem::path &client_main)
+{
+  const auto path = root / client_main;
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  const auto text = buffer.str ();
+  if (text.find ("../Server/") != std::string::npos ||
+      text.find ("Server/") != std::string::npos) {
+    std::cerr << "client sample main references server implementation: "
+              << path << '\n';
+    return false;
+  }
+  return true;
+}
+
+bool
+file_does_not_contain (const std::filesystem::path &path,
+                       const std::string &needle,
+                       const std::string &message)
+{
+  if (!file_contains (path, needle)) {
+    return true;
+  }
+  std::cerr << message << ": " << path << '\n';
+  return false;
+}
+
 } // namespace
 
 int
@@ -57,14 +116,332 @@ main ()
   bool ok = true;
   ok &= require_exists (
     root / "framework/include/zlink/framework/contracts");
+  ok &= require_exists (
+    root / "framework/include/zlink/framework/contracts/assembly");
+  ok &= require_exists (
+    root / "framework/include/zlink/framework/contracts/detail/message_name.hpp");
   ok &= require_exists (root / "framework/src/runtime");
+  ok &= require_exists (root / "framework/src/runtime/backend/contracts");
+  ok &= require_exists (
+    root / "framework/src/runtime/backend/native_route_backend.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/backend/native_route_backend.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_packet_dispatcher.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_packet_dispatcher.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_pending_requests.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_pending_requests.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_reply_writer.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_reply_writer.hpp");
+  ok &= require_exists (root / "framework/src/runtime/execution");
+  ok &= require_exists (
+    root / "framework/src/runtime/execution/serial_execution_queue.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/execution/serial_execution_queue.hpp");
+  ok &= require_exists (root / "framework/src/runtime/messaging");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/client_call_codec.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/client_call_codec.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/envelope_codec.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/envelope_codec.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/pending_operation.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/pending_operation_state.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/pending_submit.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/pending_submit.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/request_failure_mapper.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/request_failure_mapper.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/submit_queue.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/messaging/submit_queue.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_runtime_bundle.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_runtime_bundle.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_bundle_factory.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_bundle_factory.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_runtime_manager.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_runtime_manager.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_message_pump.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_message_pump.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_receive_loop.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/channel_receive_loop.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_connection_set.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_connection_set.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_channel_registration.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_channel_registration.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_channel_runtime.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_channel_runtime.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_handler_registry.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_handler_registry.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_handler_invoker.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_handler_invoker.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_internal_packet_dispatcher.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_internal_packet_dispatcher.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_packet.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_packet_dispatcher.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_packet_dispatcher.hpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_receive_pump.cpp");
+  ok &= require_exists (
+    root / "framework/src/runtime/channels/route_receive_pump.hpp");
   ok &= require_exists (
     root / "connector/include/zlink/stream_connector/contracts");
+  ok &= require_exists (
+    root / "connector/include/zlink/stream_connector/contracts/calls");
+  ok &= require_exists (
+    root /
+    "connector/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp");
+  ok &= require_exists (
+    root /
+    "connector/include/zlink/stream_connector/contracts/zlink_stream_connector_options.hpp");
+  ok &= require_exists (
+    root /
+    "connector/include/zlink/stream_connector/contracts/zlink_stream_models.hpp");
   ok &= require_exists (root / "connector/src/runtime");
+  ok &= require_exists (root / "connector/src/runtime/calls");
+  ok &= require_exists (root / "connector/src/runtime/protocol");
+  ok &= require_exists (root / "connector/src/runtime/protocol/compression");
+  ok &= require_exists (root / "connector/src/runtime/protocol/framing");
+  ok &= require_exists (root / "connector/src/runtime/transport");
+  ok &= require_exists (
+    root / "connector/src/runtime/connector_callbacks.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/connector_lifecycle.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/heartbeat_monitor.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/pending_requests.hpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/receive_dispatcher.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/receive_loop.hpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/task_runner.hpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/typed_handler_registry.hpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/calls/zlink_stream_calls.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/protocol/compression/lz4_compression_codec.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/protocol/framing/frame_codec.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/protocol/framing.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/protocol/header_codec.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/protocol/metadata_codec.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/protocol/packet_name_resolver.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/transport/stream_connection.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/transport/stream_transport_factory.cpp");
+  ok &= require_exists (
+    root / "connector/src/runtime/transport/websocket_connection.cpp");
+  ok &= require_exists (root / "connector/src/runtime/backend/contracts");
   ok &= require_exists (
     root / "unreal-connector/Source/ZLinkStreamConnector/Public");
   ok &= require_exists (
     root / "unreal-connector/Source/ZLinkStreamConnector/Private");
+  ok &= require_exists (
+    root /
+    "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnectorAutomationTests.cpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Shared/Configuration/sample_names.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Shared/Configuration/sample_topology.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Shared/Contracts/messages.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Api/api_server_host_factory.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Api/Handlers/match_bingo_handler.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/Actors/player_actor.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/Actors/player_actor_factory.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_card.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_notification_publisher.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_models.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_spot.hpp");
+  ok &= require_exists (
+    root /
+    "samples/Bingo/Server/Play/BingoRoomSpots/Handlers/bingo_room_join_handler.hpp");
+  ok &= require_exists (
+    root /
+    "samples/Bingo/Server/Play/BingoRoomSpots/Handlers/start_bingo_game_handler.hpp");
+  ok &= require_exists (
+    root /
+    "samples/Bingo/Server/Play/BingoRoomSpots/Handlers/bingo_room_timer_handler.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_handlers.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/EntrySpot/bingo_entry_spot.hpp");
+  ok &= require_exists (
+    root /
+    "samples/Bingo/Server/Play/EntrySpot/Handlers/match_bingo_actor_handler.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/EntrySpot/match_bingo_actor_handler.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/Handlers/allocate_bingo_room_handler.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/Handlers/bingo_room_directory.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/Handlers/ensure_player_actor_handler.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Play/play_server_host_factory.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Registry/registry_host_factory.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Session/main.cpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Session/session_server_host_factory.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Client/bingo_notification_inbox.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Client/bingo_client_options.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Client/bingo_player_client.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Client/bingo_client_app.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Shared/Actors/player_actor.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Shared/Configuration/sample_names.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Shared/Configuration/sample_topology.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Shared/Contracts/messages.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Api/Handlers/authenticate_actor_handler.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Api/api_server_host_factory.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Api/Handlers/create_match_handler.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Play/EntrySpot/join_match_handler.hpp");
+  ok &= require_exists (
+    root /
+    "samples/TicTacToe/Server/Play/EntrySpot/Handlers/join_match_handler.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_match_room.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Play/GameSpots/game_notification_publisher.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_contract_mapper.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_models.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_spot.hpp");
+  ok &= require_exists (
+    root /
+    "samples/TicTacToe/Server/Play/GameSpots/Handlers/tictactoe_game_join_handler.hpp");
+  ok &= require_exists (
+    root /
+    "samples/TicTacToe/Server/Play/GameSpots/Handlers/place_mark_handler.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Play/GameSpots/place_mark_handler.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Play/Handlers/create_match_room_handler.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Play/Handlers/ensure_player_actor_handler.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Play/play_server_host_factory.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Registry/registry_host_factory.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Session/session_server_host_factory.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Client/session_actor_notification_inbox.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Client/tictactoe_client_options.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Client/tictactoe_player_client.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Client/tictactoe_client.hpp");
+
+  ok &= client_sample_uses_connector (
+    root, "samples/Bingo/Client/bingo_player_client.hpp");
+  ok &= client_sample_uses_connector (
+    root, "samples/TicTacToe/Client/tictactoe_player_client.hpp");
+  ok &= client_main_does_not_include_server_handlers (
+    root, "samples/Bingo/Client/main.cpp");
+  ok &= client_main_does_not_include_server_handlers (
+    root, "samples/TicTacToe/Client/main.cpp");
+  ok &= file_does_not_contain (
+    root / "connector/src/runtime/connector_runtime.hpp",
+    "socket_fd",
+    "C++ connector runtime must not use raw fd state");
+  ok &= file_does_not_contain (
+    root / "connector/src/runtime/connector_runtime.hpp",
+    "recv(",
+    "C++ connector runtime must not expose raw recv state");
+  ok &= file_does_not_contain (
+    root /
+      "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+    "zlink/stream_connector",
+    "Unreal connector must not wrap the general C++ connector runtime");
+  ok &= file_contains (
+    root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
+    "\"Sockets\"");
+  ok &= file_contains (
+    root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
+    "\"Networking\"");
+  ok &= file_contains (
+    root /
+      "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnectorAutomationTests.cpp",
+    "IMPLEMENT_SIMPLE_AUTOMATION_TEST");
+  ok &= file_contains (
+    root /
+      "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnectorAutomationTests.cpp",
+    "FSocket");
 
   ok &= public_headers_do_not_include_runtime (
     root / "framework/include");

@@ -17,6 +17,7 @@ namespace zlink::framework
 
 namespace detail
 {
+class channel_runtime_manager_t;
 class zlink_builder_state_t;
 } // namespace detail
 
@@ -40,6 +41,9 @@ public:
   zlink_builder_t &discovery (
     std::function<void (discovery_builder_t &)> configure);
   zlink_builder_t &route_channel (std::string route_channel_name);
+  zlink_builder_t &route_channel (
+    std::string route_channel_name,
+    std::function<void (route_channel_builder_t &)> configure);
   zlink_builder_t &channel (
     std::string channel_name,
     std::function<void (channel_builder_t &)> configure);
@@ -61,8 +65,10 @@ public:
   message_bus_t message_bus () const;
   request_client_t request_client (std::string channel_name) const;
   publisher_t publisher () const;
+  route_client_t route_client (serializer_registry_t &serializers) const;
 
 private:
+  friend class detail::channel_runtime_manager_t;
   friend class detail::registry_runtime_t;
   friend class detail::stream_runtime_t;
   std::shared_ptr<detail::zlink_builder_state_t> _state;

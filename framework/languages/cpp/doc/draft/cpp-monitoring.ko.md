@@ -20,6 +20,12 @@ monitoring public contract는 `contracts/eventing/*`와 필요한 기능별 even
 timer failure event factory, telemetry backend는 `src/runtime/diagnostics/*`와 각 기능별
 runtime에 둔다.
 
+`.NET`의 `IZLinkRuntimeEventPublisher`에 대응하는 C++ 표면은
+`runtime_event_publisher_t`다. 사용자는 `app.monitoring().publisher().publish(event)`로
+typed runtime event를 직접 올릴 수 있고, 등록된 typed handler와 trace hook은 monitoring
+runtime이 같은 순서로 호출한다. publisher는 monitoring state를 공유하지만 handler map이나
+trace hook 저장 구조를 공개하지 않는다.
+
 monitoring event는 내부 구현 상태를 그대로 공개하지 않는다. payload는 운영자가 이해할 수
 있는 안정적인 field만 담고, native handle이나 private runtime pointer를 포함하지 않는다.
 
@@ -65,3 +71,21 @@ source 이름은 logical name을 쓰는 편이 자연스럽다.
 timer handler 예외 event는 interval 설정을 기다리지 않고 즉시 전달한다. payload에는
 exception 객체 자체가 아니라 timer 이름, handler 타입 이름, delivery index,
 scheduled index, exception type, message 같은 직렬화 가능한 요약 정보를 넣는다.
+
+## 4. Publisher 예시
+
+```cpp
+auto publisher = app.monitoring().publisher();
+publisher.publish(actor_event_payload_t{
+  runtime_event_base_t{"game.actor"},
+  actor_event_kind_t::bound,
+  "player",
+  "alice",
+  "session-1",
+  {}
+});
+```
+
+publisher는 event timestamp를 publish 시점으로 보정한다. 사용자가 만든 payload가
+handler로 전달되기 전에 trace hook이 먼저 호출된다. 이 순서는 `.NET` monitoring event
+publisher와 같은 의미로, 운영자가 전체 event stream을 먼저 볼 수 있게 하기 위한 것이다.

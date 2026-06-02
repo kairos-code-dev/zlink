@@ -1,0 +1,24 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "../../../Shared/Configuration/sample_names.hpp"
+#include "../../../Shared/Contracts/messages.hpp"
+
+namespace zlink::samples::bingo
+{
+
+class ensure_player_actor_handler_t
+{
+public:
+  ensure_player_actor_res_t handle (const ensure_player_actor_req_t &request)
+  {
+    return { request.actor_id,
+             sample_names_t::player_actor_type,
+             { {}, request.actor_id, ++_generation } };
+  }
+
+private:
+  unsigned long long _generation = 0;
+};
+
+} // namespace zlink::samples::bingo

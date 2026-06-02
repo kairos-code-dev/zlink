@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -172,9 +173,15 @@ main ()
   int argc = 1;
   char program[] = "module-test";
   char *argv[] = { program, nullptr };
+  std::thread stopper ([&app] {
+    std::this_thread::sleep_for (std::chrono::milliseconds (5));
+    app.stop ();
+  });
   if (app.run (argc, argv) != 0) {
+    stopper.join ();
     return 3;
   }
+  stopper.join ();
   const std::vector<std::string> expected {
     "start:first",
     "start:second",

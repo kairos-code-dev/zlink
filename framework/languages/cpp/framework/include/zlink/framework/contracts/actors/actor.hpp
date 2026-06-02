@@ -3,6 +3,7 @@
 
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/framework/contracts/channels/call.hpp>
+#include <zlink/framework/contracts/detail/message_payload.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
@@ -59,8 +60,7 @@ public:
   template<typename TMessage>
   send_call_t send (const TMessage &message)
   {
-    (void) message;
-    return send_erased (zlink::message_t::from (std::string ("typed")));
+    return send_erased (detail::to_message_payload (message, 0));
   }
 
   send_call_t send_raw (const zlink::message_t &payload);

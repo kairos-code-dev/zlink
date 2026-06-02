@@ -2,74 +2,19 @@
 
 #include "connector_runtime.hpp"
 
-#include <algorithm>
+#include "runtime/protocol/framing.hpp"
+#include "runtime/protocol/packet_name_resolver.hpp"
+#include "runtime/transport/stream_connection.hpp"
+#include "runtime/transport/stream_transport_factory.hpp"
+
+#include <boost/asio/connect.hpp>
+#include <boost/asio/ip/tcp.hpp>
+
 #include <stdexcept>
 #include <utility>
 
 namespace zlink::stream_connector::detail
 {
-
-namespace
-{
-
-bool
-is_connected (const connector_state_t &state)
-{
-  return state.state == connection_state_t::connected;
-}
-
-result_t<void>
-validate_packet_limits (const connector_state_t &state, const packet_t &packet)
-{
-  if (packet.payload.size () > state.options.max_send_payload_size) {
-    return result_t<void>::failure (error_code_t::frame_too_large,
-                                    "stream connector payload is too large");
-  }
-  std::size_t metadata_size = 0;
-  for (const auto &[key, value] : packet.metadata.values) {
-    metadata_size += key.size () + value.size ();
-  }
-  if (metadata_size > state.options.max_metadata_size) {
-    return result_t<void>::failure (error_code_t::validation_failed,
-                                    "stream connector metadata is too large");
-  }
-  if (packet.codec == codec_t::message_pack && !state.message_pack_enabled) {
-    return result_t<void>::failure (error_code_t::unsupported_codec,
-                                    "MessagePack codec is not enabled");
-  }
-  if (packet.codec == codec_t::protobuf && !state.protobuf_enabled) {
-    return result_t<void>::failure (error_code_t::unsupported_codec,
-                                    "Protobuf codec is not enabled");
-  }
-  if (packet.compressed && state.options.compression == compression_t::lz4 &&
-      !state.lz4_enabled) {
-    return result_t<void>::failure (error_code_t::compression_failed,
-                                    "LZ4 compression is not enabled");
-  }
-  return result_t<void>::success ();
-}
-
-void
-publish_error (const connector_state_t &state, const error_t &error)
-{
-  for (const auto &handler : state.error_handlers) {
-    handler (error);
-  }
-}
-
-void
-dispatch_packet (connector_state_t &state, const packet_t &packet)
-{
-  const auto found = state.packet_handlers.find (packet.name);
-  if (found == state.packet_handlers.end ()) {
-    return;
-  }
-  for (const auto &handler : found->second) {
-    handler (packet);
-  }
-}
-
-} // namespace
 
 connector_runtime_t::connector_runtime_t (
   std::shared_ptr<connector_state_t> state)
@@ -137,58 +82,6 @@ change_state (std::shared_ptr<connector_state_t> state,
       handler ();
     }
   }
-}
-
-result_t<void>
-submit_send (std::shared_ptr<connector_state_t> state, packet_t packet)
-{
-  if (!is_connected (*state)) {
-    return result_t<void>::failure (error_code_t::disconnected,
-                                    "stream connector is not connected");
-  }
-  if (auto validation = validate_packet_limits (*state, packet); !validation) {
-    publish_error (*state, *validation.error ());
-    return validation;
-  }
-  state->sent_packets.push_back (std::move (packet));
-  return result_t<void>::success ();
-}
-
-result_t<zlink::message_t>
-submit_request (std::shared_ptr<connector_state_t> state,
-                packet_t packet,
-                std::chrono::milliseconds timeout)
-{
-  (void) timeout;
-  if (!is_connected (*state)) {
-    return result_t<zlink::message_t>::failure (
-      error_code_t::disconnected,
-      "stream connector is not connected");
-  }
-  if (auto validation = validate_packet_limits (*state, packet); !validation) {
-    publish_error (*state, *validation.error ());
-    return result_t<zlink::message_t>::failure (
-      validation.error_code (),
-      validation.error () ? validation.error ()->message
-                          : "stream request validation failed");
-  }
-  const auto seq = state->next_request_seq++;
-  state->pending_requests.emplace (
-    seq, pending_request_t { seq, std::move (packet) });
-  return result_t<zlink::message_t>::failure (
-    error_code_t::request_timeout,
-    "stream request reply was not completed by the local test runtime");
-}
-
-result_t<void>
-dispatch_pending (std::shared_ptr<connector_state_t> state)
-{
-  while (!state->dispatch_queue.empty ()) {
-    auto packet = std::move (state->dispatch_queue.front ());
-    state->dispatch_queue.pop_front ();
-    dispatch_packet (*state, packet);
-  }
-  return result_t<void>::success ();
 }
 
 } // namespace zlink::stream_connector::detail
@@ -267,6 +160,13 @@ send_call_t &
 send_call_t::metadata (metadata_t metadata)
 {
   _packet.metadata = std::move (metadata);
+  return *this;
+}
+
+send_call_t &
+send_call_t::codec (codec_t codec)
+{
+  _packet.codec = codec;
   return *this;
 }
 
@@ -364,7 +264,34 @@ connector_t::connect ()
       error_code_t::configuration_error,
       "stream connector endpoint is required"));
   }
+  if (!detail::stream_transport_factory_t::is_supported (
+        _state->options.transport)) {
+    return task_t<void> (result_t<void>::failure (
+      error_code_t::configuration_error,
+      "stream connector currently supports the tcp transport only"));
+  }
+  const auto parsed = detail::parse_tcp_endpoint (_state->options.endpoint);
+  if (!parsed) {
+    return task_t<void> (result_t<void>::failure (
+      error_code_t::configuration_error,
+      "stream connector endpoint must use tcp://host:port"));
+  }
+
   detail::change_state (_state, connection_state_t::connecting);
+  try {
+    boost::asio::ip::tcp::resolver resolver (_state->io_context);
+    auto endpoints = resolver.resolve (parsed->host, parsed->port);
+    _state->socket =
+      std::make_unique<boost::asio::ip::tcp::socket> (_state->io_context);
+    boost::asio::connect (*_state->socket, endpoints);
+  } catch (const std::exception &ex) {
+    detail::change_state (
+      _state,
+      connection_state_t::disconnected,
+      error_t { error_code_t::connect_timeout, ex.what () });
+    return task_t<void> (
+      result_t<void>::failure (error_code_t::connect_timeout, ex.what ()));
+  }
   detail::change_state (_state, connection_state_t::connected);
   return task_t<void> (result_t<void>::success ());
 }
@@ -372,6 +299,12 @@ connector_t::connect ()
 task_t<void>
 connector_t::close ()
 {
+  if (_state->socket && _state->socket->is_open ()) {
+    boost::system::error_code ignored;
+    _state->socket->shutdown (
+      boost::asio::ip::tcp::socket::shutdown_both, ignored);
+    _state->socket->close (ignored);
+  }
   detail::change_state (_state, connection_state_t::closed);
   _state->pending_requests.clear ();
   _state->dispatch_queue.clear ();
@@ -407,13 +340,14 @@ connector_t::on_disconnected (std::function<void ()> handler)
 }
 
 packet_t
-connector_t::make_packet (std::type_index type) const
+connector_t::make_packet (std::type_index type, std::string packet_name) const
 {
   packet_t packet;
-  packet.name = type.name ();
+  packet.name =
+    detail::packet_name_resolver_t {}.resolve (type, std::move (packet_name));
   const auto codec = _state->codecs.find (type);
   packet.codec = codec == _state->codecs.end () ? codec_t::raw : codec->second;
-  packet.payload = zlink::message_t::from (std::string ("typed"));
+  packet.payload = zlink::message_t::from (std::string ("{}"));
   return packet;
 }
 

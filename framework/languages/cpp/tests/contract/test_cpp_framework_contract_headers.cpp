@@ -7,6 +7,7 @@
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/configuration/module.hpp>
+#include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/registry/registry.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/contracts/version.hpp>
@@ -36,6 +37,26 @@ concept has_future_get = requires (T value) {
 static_assert (!has_blocking_wait<zlink::framework::task_t<int>>);
 static_assert (!has_future_get<zlink::framework::task_t<int>>);
 
+namespace
+{
+
+struct named_request_t
+{
+  static constexpr const char *packet_name = "NamedRequest";
+};
+
+struct named_reply_t
+{
+};
+
+class named_handler_t
+{
+public:
+  named_reply_t handle (const named_request_t &) { return {}; }
+};
+
+} // namespace
+
 int
 main ()
 {
@@ -63,6 +84,18 @@ main ()
   if (shutdown_call.submit ().result ().error_kind () !=
       zlink::framework::framework_error_kind_t::shutdown) {
     return 2;
+  }
+
+  zlink::framework::handler_registry_t handlers;
+  handlers.on_request<named_handler_t, named_request_t, named_reply_t> (
+    "sample",
+    "topic",
+    &named_handler_t::handle);
+  const auto *descriptor =
+    handlers.find ("sample", "topic", named_request_t::packet_name);
+  if (descriptor == nullptr ||
+      descriptor->packet_name != named_request_t::packet_name) {
+    return 3;
   }
 
   return 0;

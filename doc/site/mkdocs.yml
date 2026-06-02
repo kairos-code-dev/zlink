@@ -134,55 +134,13 @@ nav:
       - Shared Scenarios: guide/scenarios.ko.md
     - Bindings:
       - Overview: guide/bindings/README.md
-      - .NET:
-        - Overview: guide/bindings/dotnet/index.md
-        - Getting Started: guide/bindings/dotnet/01-getting-started.md
-        - Messaging: guide/bindings/dotnet/02-messaging.md
-        - Services: guide/bindings/dotnet/03-services.md
-        - Operations: guide/bindings/dotnet/04-operations.md
-        - Reference: guide/bindings/dotnet/05-reference.md
-      - C++:
-        - Overview: guide/bindings/cpp/index.md
-        - Getting Started: guide/bindings/cpp/01-getting-started.md
-        - Messaging: guide/bindings/cpp/02-messaging.md
-        - Services: guide/bindings/cpp/03-services.md
-        - Operations: guide/bindings/cpp/04-operations.md
-        - Reference: guide/bindings/cpp/05-reference.md
-      - Java:
-        - Overview: guide/bindings/java/index.md
-        - Getting Started: guide/bindings/java/01-getting-started.md
-        - Messaging: guide/bindings/java/02-messaging.md
-        - Services: guide/bindings/java/03-services.md
-        - Operations: guide/bindings/java/04-operations.md
-        - Reference: guide/bindings/java/05-reference.md
-      - Node.js:
-        - Overview: guide/bindings/node/index.md
-        - Getting Started: guide/bindings/node/01-getting-started.md
-        - Messaging: guide/bindings/node/02-messaging.md
-        - Services: guide/bindings/node/03-services.md
-        - Operations: guide/bindings/node/04-operations.md
-        - Reference: guide/bindings/node/05-reference.md
-      - Python:
-        - Overview: guide/bindings/python/index.md
-        - Getting Started: guide/bindings/python/01-getting-started.md
-        - Messaging: guide/bindings/python/02-messaging.md
-        - Services: guide/bindings/python/03-services.md
-        - Operations: guide/bindings/python/04-operations.md
-        - Reference: guide/bindings/python/05-reference.md
-      - Go:
-        - Overview: guide/bindings/go/index.md
-        - Getting Started: guide/bindings/go/01-getting-started.md
-        - Messaging: guide/bindings/go/02-messaging.md
-        - Services: guide/bindings/go/03-services.md
-        - Operations: guide/bindings/go/04-operations.md
-        - Reference: guide/bindings/go/05-reference.md
-      - Rust:
-        - Overview: guide/bindings/rust/index.md
-        - Getting Started: guide/bindings/rust/01-getting-started.md
-        - Messaging: guide/bindings/rust/02-messaging.md
-        - Services: guide/bindings/rust/03-services.md
-        - Operations: guide/bindings/rust/04-operations.md
-        - Reference: guide/bindings/rust/05-reference.md
+      - .NET: guide/bindings/dotnet/index.md
+      - C++: guide/bindings/cpp/index.md
+      - Java: guide/bindings/java/index.md
+      - Node.js: guide/bindings/node/index.md
+      - Python: guide/bindings/python/index.md
+      - Go: guide/bindings/go/index.md
+      - Rust: guide/bindings/rust/index.md
   - API Reference:
     - Context: api/context.md
     - Socket: api/socket.md

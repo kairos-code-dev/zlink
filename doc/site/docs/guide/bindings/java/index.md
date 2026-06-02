@@ -2,61 +2,339 @@
 
 # Java 바인딩 가이드 (`systems.zlink`)
 
-이 묶음은 **Java에서 zlink를 사용하는 방법**을 기능별로, 실제 샘플 코드 중심으로
-설명합니다. Java 사용자가 가장 먼저 보는 진입 문서입니다.
+Java에서 zlink를 사용하는 방법을 실제 샘플 코드 중심으로 설명합니다.
+메시징 개념의 깊은 설명은 [코어 가이드](../../01-overview.md)가 소유하며, 이 가이드는 Java API 사용에 집중합니다.
 
-메시징 **개념의 깊은 설명**(왜 DEALER인지, PUB/SUB 시맨틱, 라우팅 ID 정책 등)은
-언어 중립적으로 [코어 가이드](../../01-overview.md)가 소유합니다. 이 가이드는
-각 기능을 **Java API로 어떻게 쓰는지**에 집중하고, 개념이 필요한 지점마다 코어
-챕터로 링크합니다.
+---
 
-## 이 가이드 읽는 법
+## 설치
 
-- **바로 쓰려는 사람** → [01 시작하기](./01-getting-started.md)에서 의존성을 추가하고
-  5분 예제를 띄운 뒤, 필요한 기능 문서로 이동하세요.
-- **메시징이 처음인 사람** → 코어 가이드 [개요](../../01-overview.md)와
-  [소켓 패턴](../../03-0-socket-patterns.md)을 먼저 본 뒤 여기로 돌아오세요.
-- **API 멤버를 찾는 사람** → [API 레퍼런스 생성](./05-reference.md#api-레퍼런스-생성).
-- **메인테이너** → 구현 계약 [`doc/spec/bindings/java`](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/bindings/java/README.ko.md).
+Gradle 또는 Maven으로 추가합니다. 네이티브 코어가 플랫폼별로 번들됩니다.
 
-## 문서 구성
+**Gradle (build.gradle):**
 
-| 문서 | 내용 |
+```groovy
+dependencies {
+    implementation 'systems.zlink:zlink-java:6.0.4'
+}
+```
+
+**Maven (pom.xml):**
+
+```xml
+<dependency>
+    <groupId>systems.zlink</groupId>
+    <artifactId>zlink-java</artifactId>
+    <version>6.0.4</version>
+</dependency>
+```
+
+- **Java 17** 이상.
+- 네이티브 별도 설치 불필요 — RID별 공유 라이브러리를 자동 로드합니다.
+
+```java
+import systems.zlink.contracts.core.Zlink;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.messaging.Received;
+```
+
+---
+
+## 5분 예제
+
+`Pair` 소켓으로 한쪽이 `PING`을 보내고 다른 쪽이 `ACK`로 답하는 최소 예제입니다.
+모든 리소스는 `try-with-resources`로 관리합니다.
+
+```java
+// 서버
+try (Context ctx = Zlink.createContext();
+     var server = ctx.createPairSocket()) {
+
+    server.bind("tcp://127.0.0.1:5555");
+
+    try (Received received = new Received()) {
+        server.recv(received, RecvFlags.NONE);
+        String text = received.firstPart().toUtf8String();
+        System.out.println(text); // PING
+
+        try (Message reply = Message.from("ACK")) {
+            received.send().message(reply).submit();
+        }
+    }
+}
+```
+
+```java
+// 클라이언트
+try (Context ctx = Zlink.createContext();
+     var client = ctx.createPairSocket()) {
+
+    client.connect("tcp://127.0.0.1:5555");
+
+    try (Message ping = Message.from("PING")) {
+        client.send().message(ping).submit();
+    }
+
+    try (Received received = new Received()) {
+        client.recv(received, RecvFlags.NONE);
+        System.out.println(received.firstPart().toUtf8String()); // ACK
+    }
+}
+```
+
+---
+
+## 핵심 타입
+
+모든 기능이 공유하는 4가지 기본 타입입니다.
+
+### 1. 컨텍스트 (Context)
+
+프로세스의 런타임 진입점입니다. `AutoCloseable`을 구현하므로 try-with-resources로
+관리합니다. 컨텍스트를 닫으면 하위 소켓·서비스에 대한 블로킹 작업이 중단됩니다.
+
+```java
+try (Context ctx = Zlink.createContext()) {
+    // 소켓과 서비스를 여기서 생성합니다
+    var socket = ctx.createPairSocket();
+    // ...
+} // ctx.close() 자동 호출 → 하위 소켓 종료
+```
+
+I/O 스레드 수 조정:
+
+```java
+ctx.options().ioThreads(4);
+```
+
+### 2. 메시지 (Message)
+
+페이로드 프레임 하나를 소유합니다. `AutoCloseable`을 구현합니다.
+전송하면 소유권이 이전되어 별도로 닫을 필요가 없습니다.
+전송에 실패하면 소유권이 유지되어 재시도하거나 명시적으로 닫아야 합니다.
+
+```java
+// 문자열에서 복사본 생성
+try (Message msg = Message.from("payload")) {
+    socket.send().message(msg).submit();
+}
+// submit 성공 시 msg는 이미 소비됨 — try 블록이 닫혀도 무방
+
+// 바이트 배열에서 복사본 생성
+try (Message msg = Message.from(bytes)) { ... }
+
+// 크기 지정으로 빈 프레임 할당
+try (Message msg = new Message(256)) {
+    msg.mutableDataBuffer().put(data);
+    socket.send().message(msg).submit();
+}
+```
+
+수신된 메시지 읽기:
+
+```java
+int size = msg.size();
+String text = msg.toUtf8String();    // UTF-8 변환
+byte[] data = msg.data();            // 바이트 배열 복사
+ByteBuffer buf = msg.dataBuffer();   // 읽기 전용 뷰
+```
+
+### 3. Received — 수신 봉투
+
+수신한 메시지 봉투입니다. 라우팅 ID, 파트 목록, 선택적 회신 컨텍스트를 담습니다.
+재사용이 가능합니다. `AutoCloseable`을 구현합니다.
+
+```java
+try (Received received = new Received()) {
+    socket.recv(received, RecvFlags.NONE);
+
+    // 단일 파트 접근
+    Message part = received.firstPart();         // 첫 번째 파트
+    Message part = received.singlePartOrThrow();  // 파트가 정확히 하나여야 함
+
+    // 멀티파트 접근
+    List<Message> parts = received.parts();
+
+    // 라우팅 ID (ROUTER/SPOT 수신 시)
+    Optional<RoutingId> rid = received.getRoutingId();
+}
+```
+
+### 4. 라우팅 ID (RoutingId)
+
+피어나 스팟을 식별하는 1~255 바이트의 불변 값입니다.
+
+```java
+RoutingId rid = RoutingId.from("server-01".getBytes(StandardCharsets.UTF_8));
+RoutingId rid = RoutingId.from(RoutingId.fromString("server-01"));
+```
+
+---
+
+## 소유권과 수명
+
+Java 바인딩의 소유권 규칙입니다. try-with-resources를 기본 패턴으로 사용합니다.
+
+| 상황 | 규칙 |
 |------|------|
-| [01 시작하기](./01-getting-started.md) | 의존성 추가, 5분 예제, 핵심 타입(Context·Message·Received·RoutingId), 소유권 규칙 |
-| [02 메시징](./02-messaging.md) | 소켓 패턴별 사용법 — PAIR / DEALER·ROUTER / PUB·SUB / XPUB·XSUB / STREAM / Proxy |
-| [03 서비스](./03-services.md) | Registry · Discovery · SpotNode·Spot · Actor |
-| [04 운영](./04-operations.md) | 소켓 옵션 · TLS · 모니터링 · 폴러/타이머 · 스레딩 · 네이티브 라이브러리 |
-| [05 레퍼런스](./05-reference.md) | 에러 처리 · 코덱 · C API↔Java 대응표 · API 레퍼런스 · 샘플 |
+| `submit()` 성공 | 추가한 `Message`의 소유권이 전송 스택으로 이전됩니다. 별도 `close()` 불필요 |
+| `submit()` 실패(예외) | 소유권이 호출자에게 유지됩니다. try-with-resources가 자동 처리 |
+| `recv()` 성공 | 호출자가 `Received`의 소유권을 가집니다. try-with-resources 필수 |
+| `submitAsync()` 완료 | 회신 `List<Message>`는 호출자 소유. `Message.closeAll(reply)` 필요 |
+| `Context.close()` | 컨텍스트 하위의 모든 블로킹 작업을 중단합니다 |
 
-## 기능 지도
+```java
+// 패턴: try-with-resources로 안전하게
+try (Message msg = Message.from("data")) {
+    boolean submitted = socket.send().message(msg).submit();
+    // submitted=true면 msg가 소비됨, false면 백프레셔(DONT_WAIT일 때만)
+} // submit이 예외를 던지면 try-with-resources가 msg를 닫음
+```
 
-이 바인딩이 제공하는 기능 전체입니다.
+---
 
-| 기능 | Java 타입 / 진입점 | 한 줄 설명 | 가이드 | 개념(core) |
-|---|---|---|---|---|
-| 컨텍스트 | `Zlink.createContext()` → `Context` | 런타임 진입점, I/O 스레드 소유 | [01](./01-getting-started.md) | [02](../../02-core-api.md) |
-| 메시지 | `Message` | 페이로드 프레임(단일/멀티파트) | [01](./01-getting-started.md) | [09](../../09-message-api.md) |
-| 수신 버퍼 | `Received` | 재사용 가능한 수신 봉투 | [01](./01-getting-started.md) | [09](../../09-message-api.md) |
-| 라우팅 ID | `RoutingId` | 피어/스팟 식별 값 | [01](./01-getting-started.md) | [08](../../08-routing-id.md) |
-| PAIR | `ctx.createPairSocket()` | 1:1 배타적 연결 | [02](./02-messaging.md#pair) | [03-1](../../03-1-pair.md) |
-| DEALER/ROUTER | `ctx.createDealerSocket()` / `createRouterSocket()` | 비동기 요청/응답·라우팅 | [02](./02-messaging.md#dealer--router) | [03-3](../../03-3-dealer.md) |
-| PUB/SUB | `ctx.createPubSocket()` / `createSubSocket()` | 토픽 발행/구독 | [02](./02-messaging.md#pub--sub) | [03-2](../../03-2-pubsub.md) |
-| XPUB/XSUB | `ctx.createXPubSocket()` / `createXSubSocket()` | 구독 이벤트 가시화 | [02](./02-messaging.md#xpub--xsub) | [03-2](../../03-2-pubsub.md) |
-| STREAM | `ctx.createStreamSocket()` | 원시 TCP·패킷 프레이밍 | [02](./02-messaging.md#stream) | [03-5](../../03-5-stream.md) |
-| 프록시 | `Zlink.proxy(...)` | 프론트/백엔드 중계 | [02](./02-messaging.md#프록시-proxy) | [03-6](../../03-6-proxy.md) |
-| Registry | `ctx.createRegistry()` | 클러스터 서비스 카탈로그 | [03](./03-services.md#registry) | [07-4r](../../07-4-registry.md) |
-| Discovery | `ctx.createDiscovery(...)` | 서비스 발견·라우트 해석 | [03](./03-services.md#discovery) | [07-1](../../07-1-discovery.md) |
-| SpotNode/Spot | `ctx.createSpotNode()` / `node.createSpot()` | 메시 노드와 메시징 엔드포인트 | [03](./03-services.md#spotnode--spot) | [07-3](../../07-3-spot.md) |
-| Actor | `node.createActor("id")` | 상태 보유 엔티티(세션·플레이어 등) | [03](./03-services.md#actor) | [07-4](../../07-4-actor.md) |
-| 소켓 옵션 | `socket.options()` | HWM·타임아웃·하트비트 등 | [04](./04-operations.md#소켓-옵션) | [12](../../12-socket-options.md) |
-| TLS 보안 | `socket.setTlsServer/setTlsClient` | 전송 암호화 | [04](./04-operations.md#tls-보안) | [05](../../05-tls-security.md) |
-| 모니터링 | `socket.monitorOpen(...)` | 연결 수명 이벤트 | [04](./04-operations.md#모니터링) | [06](../../06-monitoring.md) |
-| 폴러/타이머 | `Zlink.createPoller()` / `createTimer()` | 다중 소켓 폴링·타이머 | [04](./04-operations.md#폴러--타이머) | [02](../../02-core-api.md) |
-| 스레딩 | — | 컨텍스트 공유, 소켓 단일 스레드 | [04](./04-operations.md#스레딩) | [11](../../11-thread-safety.md) |
-| 직렬화(코덱) | `zlink-codec-json` 등 | JSON/MessagePack/Protobuf | [05](./05-reference.md#코덱) | — |
-| 에러 처리 | `ZlinkException` 계층 | 작업별 타입 예외 | [05](./05-reference.md#에러-처리) | — |
+## 에러 처리
 
-> 전송 방식(`tcp`/`ipc`/`inproc`/`ws`/`tls`)은 모든 소켓에 공통이며
-> [트랜스포트](../../04-transports.md), 성능 튜닝은 [성능](../../10-performance.md)을
-> 참고하세요.
+Java 바인딩은 `ZlinkException` 계층 구조로 예외를 던집니다.
+
+```java
+try (Message msg = Message.from("data")) {
+    socket.send().message(msg).submit();
+} catch (ZlinkSubmitException e) {
+    switch (e.getResult()) {
+        case BACKPRESSURED -> { /* 잠시 후 재시도 */ }
+        case NOT_CONNECTED -> { /* 연결된 피어 없음 */ }
+        default -> throw e;
+    }
+}
+```
+
+예외 타입:
+
+| 예외 클래스 | 발생 시점 | 결과 필드 |
+|------------|----------|-----------|
+| `ZlinkSubmitException` | 전송/발행 실패 | `getResult(): SubmitResult` |
+| `ZlinkRequestException` | 요청 실패 | `getResult(): RequestResult` |
+| `ZlinkRecvException` | 수신 실패 | `getResult(): RecvResult` |
+| `ZlinkBindException` | 바인드 실패 | `getResult(): BindResult` |
+| `ZlinkConnectException` | 연결 실패 | `getResult(): ConnectResult` |
+| `ZlinkConfigException` | 옵션 설정 실패 | `getResult(): ConfigResult` |
+| `ZlinkCloseException` | 닫기 실패 | `getResult(): CloseResult` |
+| `ZlinkHandlerException` | 핸들러 등록 실패 | `getResult(): HandlerResult` |
+
+모든 예외는 `ZlinkException`을 상속하며, `getCode()`와 `getInternalErrno()`로
+네이티브 코드를 확인할 수 있습니다.
+
+---
+
+## C API 대응표
+
+| C API | Java API |
+|-------|----------|
+| `zlink_ctx_new()` | `Zlink.createContext()` |
+| `zlink_ctx_term()` | `ctx.close()` |
+| `zlink_socket(ctx, type)` | `ctx.createPairSocket()` 등 |
+| `zlink_close(socket)` | `socket.close()` |
+| `zlink_bind(socket, ep)` | `socket.bind(ep)` |
+| `zlink_connect(socket, ep)` | `socket.connect(ep)` |
+| `zlink_send_part(...)` | `socket.send().message(m).submit()` |
+| `zlink_recv(...)` | `socket.recv(received, flags)` |
+| `zlink_msg_data(msg)` | `msg.data()` |
+| `zlink_msg_size(msg)` | `msg.size()` |
+| `zlink_msg_close(msg)` | `msg.close()` |
+| `zlink_routing_id_t` | `RoutingId` |
+| `zlink_socket_monitor_open(...)` | `socket.monitorOpen(...)` |
+| `zlink_poller_new()` | `Zlink.createPoller()` |
+| `zlink_timer_new()` | `Zlink.createTimer()` |
+| `zlink_spot_node_new(ctx)` | `ctx.createSpotNode()` |
+| `zlink_spot_node_create_spot(...)` | `node.createSpot()` |
+| `zlink_spot_node_actor_new(...)` | `node.createActor("id")` |
+| `zlink_registry_new(ctx)` | `ctx.createRegistry()` |
+| `zlink_discovery_new(ctx, ...)` | `ctx.createDiscovery(type, channel)` |
+
+---
+
+## 네이티브 라이브러리 / 배포
+
+Java 바인딩은 플랫폼별 공유 라이브러리를 내장합니다. 별도 설치 없이 Gradle/Maven으로
+추가하면 됩니다.
+
+사용 중인 네이티브 버전 확인:
+
+```java
+int[] version = Zlink.version();
+System.out.printf("zlink %d.%d.%d%n", version[0], version[1], version[2]);
+```
+
+특정 기능 지원 여부:
+
+```java
+if (Zlink.has("draft")) {
+    System.out.println("draft API 지원");
+}
+```
+
+**스레딩:** `Context`는 스레드 간 공유 가능하나, 소켓은 **하나의 스레드에서만** 사용해야 합니다.
+디스패치 핸들러는 zlink 내부 워커 스레드에서 호출되므로 핸들러 내에서 오래 블록하지 않을 것.
+자세한 내용은 [스레드 안전성](../../11-thread-safety.md)을 참고하세요.
+
+---
+
+## 샘플
+
+`bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/` 에 있는
+검증된 샘플 코드입니다.
+
+| 샘플 클래스 | 설명 |
+|------------|------|
+| `PairRecvSample` | PAIR 소켓 송수신 |
+| `DealerRouterRecvSample` | DEALER/ROUTER 송수신 |
+| `RequestReplyAsyncSample` | 비동기 요청/응답 |
+| `PubSubRecvSample` | PUB/SUB 발행·구독 |
+| `StreamRecvSample` | STREAM 원시 TCP |
+| `StreamPacketCallbackSample` | STREAM 패킷 콜백 |
+| `MonitorRecvSample` | 모니터 이벤트 수신 |
+| `DiscoveryRegistrySample` | Registry + Discovery 기본 |
+| `RegistryQuerySample` | Registry 토폴로지 쿼리 |
+| `SpotRecvSample` | SpotNode/Spot PUB/SUB |
+| `SpotRequestAsyncSample` | SpotNode 비동기 요청 |
+| `ActorSinglePlayerQueueSample` | 액터 조인/이동/메시지 큐 |
+| `ActorRoomServerSample` | 방 서버 액터 패턴 |
+| `ActorGatewayRelaySample` | 게이트웨이 릴레이 |
+
+샘플 빌드 및 실행:
+
+```bash
+cd bindings/java
+./gradlew :samples:build
+./gradlew :samples:run -PmainClass=systems.zlink.samples.PairRecvSample
+```
+
+---
+
+## 더 보기
+
+**소켓 패턴**
+- [소켓 패턴 개요](../../03-0-socket-patterns.md)
+  - [PAIR](../../03-1-pair.md)
+  - [PUB/SUB](../../03-2-pubsub.md)
+  - [DEALER](../../03-3-dealer.md)
+  - [ROUTER](../../03-4-router.md)
+  - [STREAM](../../03-5-stream.md)
+  - [프록시](../../03-6-proxy.md)
+
+**서비스**
+- [서비스 개요](../../07-0-services.md)
+  - [Discovery](../../07-1-discovery.md)
+  - [SPOT](../../07-3-spot.md)
+  - [Actor](../../07-4-actor.md)
+  - [Registry](../../07-4-registry.md)
+
+**운영**
+- [소켓 옵션](../../12-socket-options.md)
+- [TLS 보안](../../05-tls-security.md)
+- [모니터링](../../06-monitoring.md)
+- [스레드 안전성](../../11-thread-safety.md)
+- [메시지 API](../../09-message-api.md)
+- [라우팅 ID](../../08-routing-id.md)

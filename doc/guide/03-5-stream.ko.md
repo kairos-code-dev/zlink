@@ -279,3 +279,83 @@ recv(fd, body, body_len, MSG_WAITALL);
 
 ---
 [← ROUTER](./03-4-router.ko.md) | [Proxy →](./03-6-proxy.ko.md) | [Transport →](./04-transports.ko.md)
+
+## 언어별 완전한 예제
+
+STREAM 소켓으로 원시 바이트를 주고받는 자립형 예제다(모든 바인딩, 빌드·실행 검증됨).
+
+=== "C++"
+
+    --8<-- "bindings/cpp/samples/stream_recv_sample.cpp"
+
+=== "C#/.NET"
+
+    --8<-- "bindings/dotnet/samples/StreamRecv/Program.cs"
+
+=== "Java"
+
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/StreamRecvSample.java"
+
+=== "Kotlin"
+
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/StreamRecvSample.kt"
+
+=== "Python"
+
+    --8<-- "bindings/python/samples/stream_recv_sample.py"
+
+=== "Node/TypeScript"
+
+    --8<-- "bindings/node/samples/stream_recv_sample.ts"
+
+=== "JavaScript"
+
+    --8<-- "bindings/javascript/samples/stream_recv_sample.js"
+
+=== "Go"
+
+    --8<-- "bindings/go/samples/stream_recv_sample/main.go"
+
+=== "Rust"
+
+    --8<-- "bindings/rust/samples/stream_recv_sample.rs"
+
+### 패킷 콜백 방식
+
+수신 패킷을 콜백으로 처리하는 변형이다.
+
+=== "C++"
+
+    --8<-- "bindings/cpp/samples/stream_packet_callback_sample.cpp"
+
+=== "C#/.NET"
+
+    --8<-- "bindings/dotnet/samples/StreamPacketCallback/Program.cs"
+
+=== "Java"
+
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/StreamPacketCallbackSample.java"
+
+=== "Kotlin"
+
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/StreamPacketCallbackSample.kt"
+
+=== "Python"
+
+    --8<-- "bindings/python/samples/stream_packet_callback_sample.py"
+
+=== "Node/TypeScript"
+
+    --8<-- "bindings/node/samples/stream_packet_callback_sample.ts"
+
+=== "JavaScript"
+
+    --8<-- "bindings/javascript/samples/stream_packet_callback_sample.js"
+
+=== "Go"
+
+    --8<-- "bindings/go/samples/stream_packet_callback_sample/main.go"
+
+=== "Rust"
+
+    --8<-- "bindings/rust/samples/stream_packet_callback_sample.rs"

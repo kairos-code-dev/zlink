@@ -287,3 +287,43 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
 ---
 [← 소켓 패턴](./03-0-socket-patterns.ko.md) | [PUB/SUB →](./03-2-pubsub.ko.md)
+
+## 언어별 완전한 예제
+
+PAIR 소켓으로 메시지를 주고받는 자립형 예제다(모든 바인딩, 빌드·실행 검증됨).
+
+=== "C++"
+
+    --8<-- "bindings/cpp/samples/pair_recv_sample.cpp"
+
+=== "C#/.NET"
+
+    --8<-- "bindings/dotnet/samples/PairRecv/Program.cs"
+
+=== "Java"
+
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/PairRecvSample.java"
+
+=== "Kotlin"
+
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/PairRecvSample.kt"
+
+=== "Python"
+
+    --8<-- "bindings/python/samples/pair_recv_sample.py"
+
+=== "Node/TypeScript"
+
+    --8<-- "bindings/node/samples/pair_recv_sample.ts"
+
+=== "JavaScript"
+
+    --8<-- "bindings/javascript/samples/pair_recv_sample.js"
+
+=== "Go"
+
+    --8<-- "bindings/go/samples/pair_recv_sample/main.go"
+
+=== "Rust"
+
+    --8<-- "bindings/rust/samples/pair_recv_sample.rs"

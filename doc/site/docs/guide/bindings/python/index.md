@@ -2,35 +2,213 @@
 
 # Python 바인딩 가이드 (`zlink`)
 
-이 묶음은 **Python에서 zlink를 사용하는 방법**을 기능별로, 실제 샘플 코드 중심으로
-설명합니다.
-
+Python에서 zlink를 사용하는 방법을 실제 샘플 코드 중심으로 설명합니다.
 메시징 개념은 [코어 가이드](../../01-overview.md)를 참고하세요.
 
-## 문서 구성
+---
 
-| 문서 | 내용 |
+## 설치
+
+```bash
+pip install zlink
+```
+
+- **Python 3.9** 이상.
+- 네이티브 코어가 플랫폼별 wheel에 번들됩니다.
+
+```python
+import zlink
+```
+
+---
+
+## 5분 예제 — PING/ACK
+
+모든 리소스는 `with` 문으로 관리합니다.
+
+```python
+import zlink
+
+# 서버
+with zlink.create_context() as ctx:
+    with zlink.create_pair_socket(ctx) as server:
+        server.bind("tcp://127.0.0.1:5555")
+        received = zlink.create_received()
+        server.recv_into(received)
+        with received:
+            payload = received.to_bytes_list()[0]
+            print(payload)  # b"PING"
+        server.send().message(b"ACK").submit()
+
+# 클라이언트
+with zlink.create_context() as ctx:
+    with zlink.create_pair_socket(ctx) as client:
+        client.connect("tcp://127.0.0.1:5555")
+        client.send().message(b"PING").submit()
+
+        received = zlink.create_received()
+        client.recv_into(received)
+        with received:
+            print(received.to_bytes_list()[0])  # b"ACK"
+```
+
+---
+
+## 핵심 타입
+
+### 컨텍스트
+
+```python
+with zlink.create_context() as ctx:
+    # ctx.close()는 with 블록 종료 시 자동 호출
+    pass
+```
+
+### 메시지
+
+Python 바인딩은 `bytes` 객체를 메시지로 직접 사용합니다. `send().message()` 호출 시
+자동으로 복사본을 만듭니다.
+
+```python
+# 바이트 리터럴로 전송
+socket.send().message(b"hello").submit()
+
+# 문자열을 UTF-8로 인코딩
+socket.send().message("hello".encode()).submit()
+
+# 수신 후 페이로드 접근
+received = zlink.create_received()
+socket.recv_into(received)
+with received:
+    parts = received.to_bytes_list()     # [b"part1", b"part2", ...]
+    text = parts[0].decode("utf-8")
+```
+
+### Received — 수신 봉투
+
+```python
+received = zlink.create_received()
+ok = socket.recv_into(received)   # True = 수신 성공
+with received:
+    parts = received.to_bytes_list()
+    rid = received.routing_id     # RoutingId 또는 None
+    seq = received.request_seq    # int 또는 None (요청 수신 시)
+```
+
+### 라우팅 ID
+
+```python
+rid = zlink.RoutingId(b"server-01")
+socket.set_routing_id(b"client-01")   # 바이트 직접 전달도 가능
+```
+
+---
+
+## 소유권과 수명
+
+| 상황 | 규칙 |
 |------|------|
-| [01 시작하기](./01-getting-started.md) | 설치, 5분 예제, 핵심 타입, 소유권 규칙 |
-| [02 메시징](./02-messaging.md) | 소켓 패턴별 사용법 |
-| [03 서비스](./03-services.md) | Registry · Discovery · SpotNode·Spot · Actor |
-| [04 운영](./04-operations.md) | 옵션 · TLS · 모니터링 · 폴러/타이머 · 스레딩 |
-| [05 레퍼런스](./05-reference.md) | 에러 처리 · 코덱 · C API↔Python 대응표 · 샘플 |
+| `submit()` 성공 | 전달된 bytes는 내부적으로 복사되므로 원본 재사용 가능 |
+| `recv_into()` 성공 | `with received:` 블록으로 수명 관리. `close()` 시 파트 해제 |
+| 요청 회신 파트 | `submit_async()` 완료 후 각 파트를 `part.close()` 필요 |
 
-## 기능 지도
+---
 
-| 기능 | Python 진입점 | 한 줄 설명 | 가이드 |
-|---|---|---|---|
-| 컨텍스트 | `zlink.create_context()` | 런타임 진입점 | [01](./01-getting-started.md) |
-| 메시지 | `bytes` 리터럴 | 페이로드 (바이트) | [01](./01-getting-started.md) |
-| 수신 | `zlink.create_received()` | 수신 봉투 | [01](./01-getting-started.md) |
-| 라우팅 ID | `zlink.RoutingId(b"id")` | 피어 식별 값 | [01](./01-getting-started.md) |
-| PAIR | `zlink.create_pair_socket(ctx)` | 1:1 배타적 연결 | [02](./02-messaging.md#pair) |
-| DEALER/ROUTER | `create_dealer/router_socket` | 요청/응답 | [02](./02-messaging.md#dealer--router) |
-| PUB/SUB | `create_pub/sub_socket` | 토픽 발행/구독 | [02](./02-messaging.md#pub--sub) |
-| XPUB/XSUB | `create_xpub/xsub_socket` | 구독 이벤트 | [02](./02-messaging.md#xpub--xsub) |
-| STREAM | `create_stream_socket` | 원시 TCP | [02](./02-messaging.md#stream) |
-| Registry | `zlink.create_registry(ctx)` | 서비스 카탈로그 | [03](./03-services.md#registry) |
-| Discovery | `zlink.create_discovery(...)` | 서비스 발견 | [03](./03-services.md#discovery) |
-| SpotNode/Spot | `create_spot_node` / `node.create_spot()` | 메시 노드 | [03](./03-services.md#spotnode--spot) |
-| Actor | `node.actor("id")` | 상태 엔티티 | [03](./03-services.md#actor) |
+## 에러 처리
+
+```python
+try:
+    socket.send().message(b"data").submit()
+except zlink.SubmitError as e:
+    if e.result == zlink.SubmitResult.BACKPRESSURED:
+        pass  # 재시도
+    else:
+        raise
+```
+
+예외 타입: `SubmitError`, `RequestError`, `RecvError`,
+`BindError`, `ConnectError`, `ConfigError`, `CloseError`, `HandlerError`.
+모두 `ZlinkError`를 상속합니다.
+
+---
+
+## C API 대응표
+
+| C API | Python API |
+|-------|-----------|
+| `zlink_ctx_new()` | `zlink.create_context()` |
+| `zlink_ctx_term()` | `ctx.close()` |
+| `zlink_socket(ctx, type)` | `zlink.create_pair_socket(ctx)` 등 |
+| `zlink_bind(s, ep)` | `socket.bind(ep)` |
+| `zlink_connect(s, ep)` | `socket.connect(ep)` |
+| `zlink_send_part(...)` | `socket.send().message(b).submit()` |
+| `zlink_recv(...)` | `socket.recv_into(received)` |
+| `zlink_msg_data(msg)` | `part.to_bytes()` |
+| `zlink_routing_id_t` | `zlink.RoutingId(b"id")` |
+| `zlink_spot_node_new(ctx)` | `zlink.create_spot_node(ctx)` |
+| `zlink_registry_new(ctx)` | `zlink.create_registry(ctx)` |
+| `zlink_discovery_new(ctx,...)` | `zlink.create_discovery(ctx, type, ch)` |
+
+---
+
+## 네이티브 라이브러리 / 배포
+
+```python
+major, minor, patch = zlink.version()   # (major, minor, patch) 튜플
+print(f"zlink {major}.{minor}.{patch}")
+```
+
+네이티브 코어는 플랫폼별 wheel에 포함되어 별도 설치가 불필요합니다.
+
+**스레딩:** `Context`는 스레드 간 공유 가능하지만 소켓은 **하나의 스레드에서만**
+사용합니다. 블로킹 수신은 `asyncio.to_thread(socket.recv_into, received)`로
+오프로드합니다.
+
+---
+
+## 샘플
+
+`bindings/python/samples/` 디렉터리의 검증된 샘플입니다.
+
+| 파일 | 설명 |
+|------|------|
+| `pair_recv_sample.py` | PAIR 송수신 |
+| `dealer_router_recv_sample.py` | DEALER/ROUTER 송수신 |
+| `request_reply_async_sample.py` | asyncio 비동기 요청/응답 |
+| `pubsub_recv_sample.py` | XPUB/SUB 발행·구독 |
+| `stream_recv_sample.py` | STREAM 원시 TCP |
+| `stream_packet_callback_sample.py` | STREAM 패킷 콜백 |
+| `monitor_recv_sample.py` | 모니터 이벤트 수신 |
+| `discovery_registry_sample.py` | Registry + Discovery |
+| `registry_query_sample.py` | Registry 토폴로지 쿼리 |
+| `spot_recv_sample.py` | SpotNode/Spot PUB/SUB |
+| `spot_request_async_sample.py` | SpotNode 비동기 요청 |
+| `actor_single_player_queue_sample.py` | 액터 조인·이동·메시지 큐 |
+| `actor_room_server_sample.py` | 방 서버 패턴 |
+| `actor_gateway_relay_sample.py` | 게이트웨이 릴레이 |
+
+```bash
+cd bindings/python/samples
+python pair_recv_sample.py
+python run_samples.py   # 전체 실행
+```
+
+---
+
+## 더 보기
+
+**소켓 패턴**
+- [소켓 패턴 개요](../../03-0-socket-patterns.md)
+  — [PAIR](../../03-1-pair.md) · [PUB/SUB](../../03-2-pubsub.md) · [DEALER](../../03-3-dealer.md) · [ROUTER](../../03-4-router.md) · [STREAM](../../03-5-stream.md) · [프록시](../../03-6-proxy.md)
+
+**서비스**
+- [서비스 개요](../../07-0-services.md)
+  — [discovery](../../07-1-discovery.md) · [SPOT](../../07-3-spot.md) · [Actor](../../07-4-actor.md) · [registry](../../07-4-registry.md)
+
+**운영**
+- [소켓 옵션](../../12-socket-options.md)
+- [TLS 보안](../../05-tls-security.md)
+- [모니터링](../../06-monitoring.md)
+- [스레드 안전성](../../11-thread-safety.md)
+- [메시지 API](../../09-message-api.md)
+- [라우팅 ID](../../08-routing-id.md)

@@ -604,3 +604,43 @@ MANUAL 모드에서 구독 프레임을 수신한 후 `zlink_set_subscription()`
 
 ---
 [← PAIR](./03-1-pair.ko.md) | [DEALER →](./03-3-dealer.ko.md)
+
+## 언어별 완전한 예제
+
+PUB로 토픽을 발행하고 SUB로 구독·수신하는 자립형 예제다(모든 바인딩, 빌드·실행 검증됨).
+
+=== "C++"
+
+    --8<-- "bindings/cpp/samples/pubsub_recv_sample.cpp"
+
+=== "C#/.NET"
+
+    --8<-- "bindings/dotnet/samples/PubSubRecv/Program.cs"
+
+=== "Java"
+
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/PubSubRecvSample.java"
+
+=== "Kotlin"
+
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/PubSubRecvSample.kt"
+
+=== "Python"
+
+    --8<-- "bindings/python/samples/pubsub_recv_sample.py"
+
+=== "Node/TypeScript"
+
+    --8<-- "bindings/node/samples/pubsub_recv_sample.ts"
+
+=== "JavaScript"
+
+    --8<-- "bindings/javascript/samples/pubsub_recv_sample.js"
+
+=== "Go"
+
+    --8<-- "bindings/go/samples/pubsub_recv_sample/main.go"
+
+=== "Rust"
+
+    --8<-- "bindings/rust/samples/pubsub_recv_sample.rs"

@@ -398,6 +398,46 @@ Discovery가 하나의 Registry에만 연결해도 다른 Registry에 등록된 
 - 한 Registry 노드가 실패해도 다른 부트스트랩 control endpoint를 통해
   계속 동작할 수 있다.
 
+## 언어별 완전한 예제
+
+서비스를 registry에 등록하고 discovery로 찾아 연결하는 자립형 예제다(모든 바인딩, 빌드·실행 검증됨).
+
+=== "C++"
+
+    --8<-- "bindings/cpp/samples/discovery_registry_sample.cpp"
+
+=== "C#/.NET"
+
+    --8<-- "bindings/dotnet/samples/DiscoveryRegistry/Program.cs"
+
+=== "Java"
+
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/DiscoveryRegistrySample.java"
+
+=== "Kotlin"
+
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/DiscoveryRegistrySample.kt"
+
+=== "Python"
+
+    --8<-- "bindings/python/samples/discovery_registry_sample.py"
+
+=== "Node/TypeScript"
+
+    --8<-- "bindings/node/samples/discovery_registry_sample.ts"
+
+=== "JavaScript"
+
+    --8<-- "bindings/javascript/samples/discovery_registry_sample.js"
+
+=== "Go"
+
+    --8<-- "bindings/go/samples/discovery_registry_sample/main.go"
+
+=== "Rust"
+
+    --8<-- "bindings/rust/samples/discovery_registry_sample.rs"
+
 ## 7. 다음 단계
 
 - [SPOT PUB/SUB](./07-3-spot.ko.md) — Discovery 기반 위치투명 발행/구독

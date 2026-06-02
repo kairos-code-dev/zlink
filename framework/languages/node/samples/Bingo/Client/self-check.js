@@ -1,9 +1,9 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const nestjs = require('../../../packages/nestjs/dist');
-const { createChannelClient } = require('../../shared/channel-runtime');
 const { assertNestModule } = require('../../shared/nestjs-smoke');
 const { reserveTcpEndpoint, withServers } = require('../../shared/process-host');
+const { BingoClientApp } = require('./bingo-client-app');
 
 async function main() {
   const registryEndpoint = await reserveTcpEndpoint();
@@ -19,7 +19,14 @@ async function main() {
 
   await withServers([
     { entry: path.resolve(__dirname, '../Server/Registry/main.js'), env: { BINGO_REGISTRY_ENDPOINT: registryEndpoint } },
-    { entry: path.resolve(__dirname, '../Server/Session/main.js'), env: { BINGO_SESSION_ENDPOINT: sessionEndpoint } },
+    {
+      entry: path.resolve(__dirname, '../Server/Session/main.js'),
+      env: {
+        BINGO_SESSION_ENDPOINT: sessionEndpoint,
+        BINGO_API_ENDPOINT: apiEndpoint,
+        BINGO_PLAY_ENDPOINT: playEndpoint
+      }
+    },
     { entry: path.resolve(__dirname, '../Server/Play/main.js'), env: { BINGO_PLAY_ENDPOINT: playEndpoint } },
     {
       entry: path.resolve(__dirname, '../Server/Api/main.js'),
@@ -29,31 +36,16 @@ async function main() {
       }
     }
   ], async () => {
-    const client = await createChannelClient({
-      channelName: 'bingo.api',
-      peers: [apiEndpoint]
-    });
-    try {
-      const auth = await client.request('AuthenticatePlayerReq', { accessToken: 'player-1' }, 7000);
-      assert.equal(auth.accepted, true);
-      assert.equal(auth.actorId, 'player-1');
-      assert.equal(auth.displayName, 'Player 1');
-
-      const first = await client.request('MatchBingoApiReq', {
-        actorId: auth.actorId,
-        displayName: auth.displayName,
-        mode: 'four-player'
-      }, 7000);
-      const second = await client.request('MatchBingoApiReq', {
-        actorId: 'player-2',
-        displayName: 'Player 2',
-        mode: 'four-player'
-      }, 7000);
-      assert.equal(first.roomId, 'bingo-room-001');
-      assert.equal(second.roomId, 'bingo-room-001');
-    } finally {
-      await client.stop();
-    }
+    const result = await new BingoClientApp().run({ apiEndpoint, playEndpoint });
+    assert.equal(result.ended.status, 'Finished');
+    assert.equal(result.ended.hostActorId, 'player-1');
+    assert.deepEqual(result.ended.winners, ['player-1', 'player-3']);
+    assert.equal(result.earlyHostStartRejected, true);
+    assert.equal(result.nonHostStartRejected, true);
+    assert.deepEqual(result.ended.players.map((player) => player.actorId), ['player-1', 'player-2', 'player-3', 'player-4']);
+    assert.equal(result.startedPushCounts.length, 4);
+    assert.equal(result.drawnPushCounts.length, 4);
+    assert.equal(result.endedPushCounts.length, 4);
   });
 
   console.log('PASS Bingo');

@@ -137,8 +137,13 @@ function isTransientConnectError(error) {
 
 function waitForShutdown() {
   return new Promise((resolve) => {
-    process.once('SIGINT', resolve);
-    process.once('SIGTERM', resolve);
+    const keepAlive = setInterval(() => {}, 60000);
+    const stop = () => {
+      clearInterval(keepAlive);
+      resolve();
+    };
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
   });
 }
 

@@ -254,7 +254,7 @@ runtime 구현을 둘 수 있는 library target이어야 한다. public header�
 - `app_t`는 public concrete facade로 유지하되, 내부 상태는 `detail::app_state_t` PIMPL로
   숨겼다.
 - `config_builder_t::load_json`, `load_env`, `load_cli` 구현을
-  `framework/src/runtime/configuration/configuration.cpp`로 옮겼다.
+  `framework/src/runtime/configuration/builders/configuration_builder.cpp`로 옮겼다.
 - `logging_builder_t::use_console`, `set_level` 구현을
   `framework/src/runtime/diagnostics/logging.cpp`로 옮겼다.
 - `app_t::create`, `services`, `handlers`, `config`, `logging`, `use_zlink`, `run`, `stop` 구현을
@@ -1623,7 +1623,7 @@ STREAM wire가 여러 frame을 한 byte stream에 실을 수 있다는 구현 �
 
 #### 적용한 리팩토링
 
-- `tests/samples/verify_sample_client_log.cmake`를 추가해 샘플 executable 실행, 서버 로그
+- `tests/Zlink.Framework.E2ETests/Samples/verify_sample_client_log.cmake`를 추가해 샘플 executable 실행, 서버 로그
   생성 여부, 기대 문자열, 최소 receive/reply/push line 수를 검증하게 했다.
 - Bingo client E2E 로그 테스트가 `AuthenticateReq`, `MatchBingoReq`,
   `StartBingoGameReq`, `LeaveRoomReq`, `PlayerJoinedNotify`, `BingoGameEndedNotify`와
@@ -1748,6 +1748,222 @@ cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
 ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L connector-unit --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L connector-integration --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. .NET 대응 테스트 폴더 분류 보정
+
+### 발견한 위험 신호
+
+- .NET framework는 `Zlink.Framework.UnitTests`, `Zlink.Framework.ContractTests`,
+  `Zlink.Framework.E2ETests`, `Systems.Zlink.Stream.Connector.Tests`처럼 테스트 프로젝트
+  단위가 기능과 검증 성격을 드러낸다. C++은 `tests/unit`, `tests/contract`, `tests/samples`,
+  `tests/package`에 섞여 있어 .NET 기준으로 어느 회귀 축을 비교해야 하는지 바로 보이지
+  않았다.
+- CTest label은 충분히 세분화되어 있었지만, 폴더 구조가 label 의미를 따라가지 못했다.
+  파일 분류만 보고는 framework contract test와 connector transport test, sample e2e test의
+  책임 경계가 약했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 `unit/contract` 디렉터리 유지 | 변경이 작다 | `.NET` 테스트 프로젝트 구조와 직접 비교하기 어렵다 |
+| CTest label만 보강 | 실행 필터는 충분하다 | 파일 분류 요구를 만족하지 못한다 |
+| `.NET` 테스트 프로젝트 이름에 맞춰 C++ 테스트 디렉터리 재분류 | 구조 비교와 파일 책임이 명확하다 | CMake 경로와 layout contract를 함께 바꿔야 한다 |
+
+선택은 테스트 디렉터리를 `.NET` 테스트 프로젝트 이름에 맞춰 재분류하는 것이다. C++은
+프로젝트 파일 대신 CMake target과 CTest label을 쓰지만, 디렉터리 이름은 `.NET`의 검증 축을
+그대로 따라가게 한다.
+
+### 적용한 리팩토링
+
+- `tests/Zlink.Framework.ContractTests`에 public contract/layout/sample parity 검증을 옮겼다.
+- `tests/Zlink.Framework.UnitTests`에 framework runtime 단위 테스트를 옮겼다.
+- `tests/Zlink.Framework.E2ETests/Samples`에 sample client/server log e2e verifier를 옮겼다.
+- `tests/Systems.Zlink.Stream.Connector.Tests`에 C++ Stream Connector test를 옮겼다.
+- `tests/Zlink.Unreal.Stream.Connector.Tests`에 Unreal connector compile/smoke test를 옮겼다.
+- `tests/Zlink.Framework.PackageTests`에 install consumer package 검증을 옮겼다.
+- CMake test source 경로와 layout contract의 구조 검증을 새 디렉터리로 맞췄다.
+
+### 남은 tradeoff
+
+- C++은 .NET처럼 test project 파일을 만들지 않고, CMake target과 CTest label로 실행 단위를
+  관리한다. 디렉터리 이름은 `.NET`과 맞추되 build system은 C++ 방식으로 유지한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_layout_contract
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_layout_contract --output-on-failure
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. Configuration builder owner 분리
+
+### 발견한 위험 신호
+
+- .NET framework는 configuration runtime 안에서도 `Runtime/Configuration/Builders`를
+  별도 하위 owner로 둔다. C++은 JSON/env/CLI configuration builder 구현이
+  `src/runtime/configuration/configuration.cpp`에 바로 있었기 때문에, 파일 이름만 보면
+  configuration model 구현인지 builder/parser 구현인지 구분하기 어려웠다.
+- configuration builder는 app/host public configuration surface의 핵심 진입점이다. 이
+  구현이 flat하게 남아 있으면 이후 route/spot/stream builder 구현이 같은 디렉터리에 섞일
+  가능성이 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 `configuration.cpp` 유지 | 변경이 작다 | `.NET`의 builder owner 분리와 다르고 역할이 모호하다 |
+| 모든 configuration 파일을 `builders`로 이동 | 폴더 이름은 맞는다 | DI service container 같은 비-builder 구현까지 잘못 분류된다 |
+| configuration builder 구현만 `configuration/builders`로 이동 | 역할이 정확하고 .NET 구조와 가까워진다 | CMake와 layout contract를 갱신해야 한다 |
+
+선택은 configuration builder 구현만 이동하는 것이다. `services.cpp`는 DI container runtime
+구현이므로 builder owner가 아니다.
+
+### 적용한 리팩토링
+
+- `framework/src/runtime/configuration/configuration.cpp`를
+  `framework/src/runtime/configuration/builders/configuration_builder.cpp`로 옮겼다.
+- CMake source path를 새 위치로 갱신했다.
+- layout contract가 `configuration/builders`와 `configuration_builder.cpp` 존재를 검증하게
+  보강했다.
+
+### 남은 tradeoff
+
+- C++은 .NET처럼 channel/route/spot/stream builder 파일이 모두 별도 구현 파일로 분리되어
+  있지는 않다. 현재 실제 구현 owner가 있는 configuration builder부터 분리하고, 새로운
+  runtime builder 구현이 생기면 같은 `configuration/builders` 아래에 둔다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_layout_contract
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_layout_contract --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. TicTacToe sample discovery/topology 정렬
+
+### 발견한 위험 신호
+
+- .NET TicTacToe SessionGateway sample의 Api/Play/Session host factory는 모두
+  `UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint))`를 사용한다.
+  C++ TicTacToe sample은 registry endpoint가 topology에 없고, Api host가 Play channel client를
+  직접 endpoint로 연결했다. 이 상태에서는 C++ sample이 discovery 기반 channel 구성이라는
+  `.NET` 샘플의 핵심 흐름을 보여 주지 못한다.
+- Bingo C++ sample은 `api_server_framework.hpp`로 framework 설정을 host factory 밖에
+  분리했지만, TicTacToe API는 설정이 `api_server_host_factory.hpp` 안에 남아 있었다. 같은
+  sample family 안에서도 파일 분류 수준이 달랐다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재 direct endpoint client 유지 | 단순하고 smoke가 빠르다 | `.NET` discovery/channel 사용 흐름과 다르다 |
+| route mesh 전체를 즉시 재현 | `.NET` sample과 가장 가깝다 | 당시 C++ high-level options가 route mesh 전체를 한 번에 표현하지 못했다 |
+| registry/discovery/channel client 흐름부터 맞춤 | 당시 public C++ API로 구현 가능하고 사용성 차이를 줄인다 | route mesh/reconnect endpoint 전체 parity가 다음 반복 리뷰 대상이었다 |
+
+선택은 registry/discovery/channel client 흐름부터 맞추는 것이다. 이는 framework public API를
+늘리지 않고 `.NET` 샘플의 가장 눈에 보이는 host configuration 흐름을 맞추는 변경이다.
+
+### 적용한 리팩토링
+
+- TicTacToe `sample_topology_t`에 `registry_pub_endpoint`와 `registry_router_endpoint`를
+  추가했다.
+- TicTacToe registry host factory가 hard-coded endpoint 대신 topology 값을 받도록 바꿨다.
+- TicTacToe API 설정을 `api_server_framework.hpp`로 분리해 Bingo와 같은 host factory 깊이를
+  유지했다.
+- TicTacToe Api/Play/Session host factory가 `options.discovery().add(...)`를 사용하게 했다.
+- TicTacToe Api/Session client channels는 `.NET`처럼 discovery 기반 client 표면으로 보이게
+  직접 play endpoint 연결을 제거했다.
+- sample parity test가 TicTacToe host factory의 discovery 사용과 registry topology 사용을
+  검증하게 했다.
+
+### 후속 보정
+
+이후 반복 리뷰에서 `options.route_mesh_channel(...)`,
+`options.use_registry_spot_remote_addresses(...)`, `options.spot_mesh(...)`를 추가해
+`.NET`의 route mesh, registry backed Spot remote address, Spot mesh 설정을 C++ framework
+options 표면에서도 표현하도록 보정했다. 그래서 이 단계의 남은 tradeoff였던 route mesh/
+spot mesh builder 부재는 현재 draft 기준으로 해소된 상태다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_sample_parity
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_sample_parity --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
+git diff --check -- framework/languages/cpp
+```
+
+## 추가 리뷰. Framework options route/spot mesh 표면 보정
+
+### 발견한 위험 신호
+
+- `.NET` framework options에는 `UseRegistrySpotRemoteAddresses`,
+  `AddRouteMeshChannel`, `AddSpotMesh`가 있어 host factory가 route mesh와 Spot mesh를
+  낮은 수준 socket 설정 없이 표현한다. C++는 같은 기능이 `zlink_builder_t`와
+  `spot_node_builder_t` 쪽에 흩어져 있어 샘플 설정이 `.NET`보다 얕고 직접적이었다.
+- TicTacToe Session/Play sample은 registry 기반 Spot remote address와 route mesh channel을
+  보여 줘야 하지만, C++ sample은 stream/client channel 중심으로만 구성되어 framework 검증
+  샘플로서 약했다.
+- fluent builder가 내부적으로 여러 번 `route_channel(...)`을 적용하면 registry route channel
+  이름이 중복될 수 있었다. 이는 builder pattern을 쓰는 사용자가 호출 순서를 알아야 하는
+  얕은 모듈 신호다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 낮은 수준 `zlink_builder_t` 사용을 가이드 | public 변경이 작다 | `.NET`과 같은 host factory 가독성을 만들 수 없다 |
+| 샘플에 helper 함수만 추가 | 샘플 코드는 짧아진다 | framework API 자체의 얕은 표면은 그대로 남는다 |
+| framework options에 route/spot mesh builder 추가 | 호출자가 보는 설정이 `.NET`과 같은 수준으로 올라간다 | builder 상태 재적용과 회귀 테스트가 필요하다 |
+
+선택은 framework options builder 추가다. route mesh, registry Spot remote address, Spot mesh는
+애플리케이션 설정자가 이해해야 하는 개념이고, native socket 조립은 framework 내부로 내려야
+한다.
+
+### 적용한 리팩토링
+
+- `zlink_framework_options_t::route_mesh_channel(name)`을 추가해 route channel bind와 manual
+  connection, routing id를 framework options 표면에서 설정하게 했다.
+- `zlink_framework_options_t::use_registry_spot_remote_addresses(...)`를 추가해 Spot remote
+  address resolver 기본값을 framework options에서 켤 수 있게 했다.
+- `zlink_framework_options_t::spot_mesh(name).node(nodeName)`을 추가해 Spot node discovery
+  channel과 node 설정을 한 곳에서 표현하게 했다.
+- `spot_node_options_builder_t`에 `accept_routes_from_channel(...)`과
+  `attach_channel_client(...)`를 추가해 `.NET` sample의 `AcceptSpotRoutesFromChannel`과
+  `AttachChannelClient` 의미를 C++ native style로 표현했다.
+- `spot_node_options_builder_t::enable_router(...)`와 `enable_pub_sub(...)`를 추가해
+  `.NET` sample의 `EnableRouter(...)`, `EnablePubSub(...)` 역할 구분을 C++ host factory에도
+  드러나게 했다.
+- `enable_router(endpoint, routing_id)`와 `enable_pub_sub(endpoint, routing_id)` overload를
+  추가해 `.NET` sample topology의 `PlayRid`, `SessionRouterRid`, `SessionPubRid` 역할을 C++
+  sample에서도 보존하게 했다.
+- `route_mesh_channel(...).routing_id(...)`와 route channel runtime routing id snapshot을
+  추가해 `.NET`의 `ConfigureRouting(routing => routing.RoutingId = ...)` 정보를 C++ route
+  mesh registration에서도 잃지 않게 했다.
+- `zlink_builder_t::route_channel(...)` 재적용 시 registry route channel 이름이 중복되지 않게
+  보정했다.
+- Bingo/TicTacToe Play/Session sample이 새 framework options 표면을 사용하도록 바꿨고,
+  sample parity와 registry topology test가 이 표면의 snapshot 의미를 검증하게 했다.
+
+### 남은 tradeoff
+
+- 현재 C++ Spot runtime snapshot은 router/pubsub endpoint와 routing id 역할을 구분하지만,
+  socket 세부 option builder까지 별도 객체로 나누지는 않는다. socket option 세부 builder는
+  실제 framework runtime에서 native SPOT socket 초기화를 확장할 때 추가한다.
+
+### 재실행할 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_registry_topology test_cpp_framework_sample_parity
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(sample_parity|registry_topology|layout_contract)' --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure
 git diff --check -- framework/languages/cpp
 ```
 
@@ -3245,7 +3461,7 @@ git diff --check -- framework/languages/cpp
 
 ### 적용한 리팩토링
 
-- `tests/package/install_consumer.cmake`를 추가했다.
+- `tests/Zlink.Framework.PackageTests/install_consumer.cmake`를 추가했다.
 - 새 CTest `test_cpp_framework_install_consumer`가 현재 build tree를 임시 prefix에 설치하고,
   별도 consumer project를 생성해 `find_package(zlink_framework_cpp)`와
   `find_package(zlink_stream_connector_cpp)`를 실행한다.

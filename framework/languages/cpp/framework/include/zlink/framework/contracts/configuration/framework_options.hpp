@@ -15,6 +15,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -127,6 +128,14 @@ struct handler_group_options_state_t
     }
     json_serializer_installers.back () ();
   }
+};
+
+struct framework_options_state_t
+{
+  std::set<std::string> spot_nodes;
+  std::map<std::string, std::function<void ()>> spot_node_appliers;
+  bool registry_spot_remote_addresses_enabled = false;
+  std::optional<std::string> registry_spot_route_channel;
 };
 
 } // namespace detail
@@ -337,13 +346,98 @@ private:
   zlink_builder_t *_zlink;
 };
 
+class route_mesh_channel_builder_t
+{
+public:
+  route_mesh_channel_builder_t (std::string channel_name,
+                                zlink_builder_t &zlink,
+                                std::shared_ptr<
+                                  detail::handler_group_options_state_t>
+                                  handler_groups)
+    : _channel_name (std::move (channel_name)),
+      _zlink (&zlink),
+      _handler_groups (std::move (handler_groups))
+  {
+    apply ();
+  }
+
+  route_mesh_channel_builder_t &bind (std::string endpoint)
+  {
+    _bind_endpoint = std::move (endpoint);
+    apply ();
+    return *this;
+  }
+
+  route_mesh_channel_builder_t &routing_id (zlink::routing_id_t routing_id)
+  {
+    _routing_id = std::move (routing_id);
+    apply ();
+    return *this;
+  }
+
+  route_mesh_channel_builder_t &connect (std::string endpoint)
+  {
+    _manual_connections.push_back (std::move (endpoint));
+    apply ();
+    return *this;
+  }
+
+  route_mesh_channel_builder_t &handler_group (std::string group_name)
+  {
+    _handler_groups->add_channel (group_name, _channel_name);
+    _route_handler_groups.push_back (std::move (group_name));
+    apply ();
+    return *this;
+  }
+
+private:
+  void apply ()
+  {
+    const auto channel_name = _channel_name;
+    const auto bind_endpoint = _bind_endpoint;
+    const auto routing_id = _routing_id;
+    const auto manual_connections = _manual_connections;
+    const auto route_handler_groups = _route_handler_groups;
+    _zlink->route_channel (
+      channel_name,
+      [bind_endpoint, routing_id, manual_connections, route_handler_groups](
+        route_channel_builder_t &channel) {
+        if (!bind_endpoint.empty ()) {
+          channel.bind (bind_endpoint);
+        }
+        if (routing_id) {
+          channel.routing_id (*routing_id);
+        }
+        for (const auto &endpoint : manual_connections) {
+          channel.connect (endpoint);
+        }
+        for (const auto &group : route_handler_groups) {
+          channel.add_handler_group (group);
+        }
+      });
+  }
+
+  std::string _channel_name;
+  zlink_builder_t *_zlink;
+  std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
+  std::string _bind_endpoint;
+  std::optional<zlink::routing_id_t> _routing_id;
+  std::vector<std::string> _manual_connections;
+  std::vector<std::string> _route_handler_groups;
+};
+
 class spot_node_options_builder_t
 {
 public:
   spot_node_options_builder_t (std::string spot_node_name,
-                               zlink_builder_t &zlink)
-    : _spot_node_name (std::move (spot_node_name)), _zlink (&zlink)
+                               zlink_builder_t &zlink,
+                               std::shared_ptr<
+                                 detail::framework_options_state_t> options)
+    : _spot_node_name (std::move (spot_node_name)),
+      _zlink (&zlink),
+      _options (std::move (options))
   {
+    _options->spot_nodes.insert (_spot_node_name);
   }
 
   spot_node_options_builder_t &bind (std::string endpoint)
@@ -353,9 +447,64 @@ public:
     return *this;
   }
 
+  spot_node_options_builder_t &enable_router (std::string endpoint)
+  {
+    _router_endpoint = std::move (endpoint);
+    _router_routing_id.reset ();
+    apply ();
+    return *this;
+  }
+
+  spot_node_options_builder_t &enable_router (
+    std::string endpoint,
+    zlink::routing_id_t routing_id)
+  {
+    _router_endpoint = std::move (endpoint);
+    _router_routing_id = std::move (routing_id);
+    apply ();
+    return *this;
+  }
+
+  spot_node_options_builder_t &enable_pub_sub (std::string endpoint)
+  {
+    _pub_endpoint = std::move (endpoint);
+    _pub_routing_id.reset ();
+    apply ();
+    return *this;
+  }
+
+  spot_node_options_builder_t &enable_pub_sub (
+    std::string endpoint,
+    zlink::routing_id_t routing_id)
+  {
+    _pub_endpoint = std::move (endpoint);
+    _pub_routing_id = std::move (routing_id);
+    apply ();
+    return *this;
+  }
+
   spot_node_options_builder_t &use_discovery (std::string channel_name)
   {
     _discovery_channel = std::move (channel_name);
+    apply ();
+    return *this;
+  }
+
+  spot_node_options_builder_t &accept_routes_from_channel (
+    std::string route_channel_name)
+  {
+    _accepted_route_channel = std::move (route_channel_name);
+    apply ();
+    return *this;
+  }
+
+  spot_node_options_builder_t &attach_channel_client (std::string channel_name)
+  {
+    _actions.push_back (
+      [channel_name = std::move (channel_name)](
+        spot_node_builder_t &spot_node) mutable {
+        spot_node.attach_channel_client (std::move (channel_name));
+      });
     apply ();
     return *this;
   }
@@ -406,14 +555,32 @@ private:
   {
     const auto spot_node_name = _spot_node_name;
     const auto endpoint = _endpoint;
+    const auto router_endpoint = _router_endpoint;
+    const auto pub_endpoint = _pub_endpoint;
+    const auto router_routing_id = _router_routing_id;
+    const auto pub_routing_id = _pub_routing_id;
     const auto discovery_channel = _discovery_channel;
     const auto actor_gateway = _actor_gateway;
+    const auto accepted_route_channel = _accepted_route_channel;
     const auto actions = _actions;
-    _zlink->spot_node (
-      spot_node_name,
-      [=](spot_node_builder_t &spot_node) {
+    const auto options = _options;
+    auto configure = [=](spot_node_builder_t &spot_node) {
         if (!endpoint.empty ()) {
           spot_node.bind (endpoint);
+        }
+        if (!router_endpoint.empty ()) {
+          if (router_routing_id) {
+            spot_node.enable_router (router_endpoint, *router_routing_id);
+          } else {
+            spot_node.enable_router (router_endpoint);
+          }
+        }
+        if (!pub_endpoint.empty ()) {
+          if (pub_routing_id) {
+            spot_node.enable_pub_sub (pub_endpoint, *pub_routing_id);
+          } else {
+            spot_node.enable_pub_sub (pub_endpoint);
+          }
         }
         if (!discovery_channel.empty ()) {
           spot_node.use_discovery (discovery_channel);
@@ -421,18 +588,73 @@ private:
         if (actor_gateway) {
           spot_node.enable_actor_gateway ();
         }
+        if (options->registry_spot_remote_addresses_enabled) {
+          if (options->registry_spot_route_channel) {
+            spot_node.use_registry_spot_remote_addresses (
+              *options->registry_spot_route_channel);
+          } else {
+            spot_node.use_registry_spot_remote_addresses ();
+          }
+        }
+        if (!accepted_route_channel.empty ()) {
+          spot_node.use_registry_spot_remote_addresses (
+            accepted_route_channel);
+        }
         for (const auto &action : actions) {
           action (spot_node);
         }
-      });
+      };
+    _options->spot_node_appliers[spot_node_name] =
+      [zlink = _zlink, spot_node_name, configure] {
+        zlink->spot_node (spot_node_name, configure);
+      };
+    _options->spot_node_appliers[spot_node_name] ();
   }
 
   std::string _spot_node_name;
   zlink_builder_t *_zlink;
+  std::shared_ptr<detail::framework_options_state_t> _options;
   std::string _endpoint;
+  std::string _router_endpoint;
+  std::string _pub_endpoint;
+  std::optional<zlink::routing_id_t> _router_routing_id;
+  std::optional<zlink::routing_id_t> _pub_routing_id;
   std::string _discovery_channel;
+  std::string _accepted_route_channel;
   bool _actor_gateway = false;
   std::vector<std::function<void (spot_node_builder_t &)>> _actions;
+};
+
+class spot_mesh_builder_t
+{
+public:
+  spot_mesh_builder_t (std::string channel_name,
+                       zlink_builder_t &zlink,
+                       std::shared_ptr<detail::framework_options_state_t>
+                         options)
+    : _channel_name (std::move (channel_name)),
+      _zlink (&zlink),
+      _options (std::move (options))
+  {
+  }
+
+  discovery_options_builder_t discovery ()
+  {
+    return discovery_options_builder_t (*_zlink);
+  }
+
+  spot_node_options_builder_t node (std::string spot_node_name)
+  {
+    auto node = spot_node_options_builder_t (
+      std::move (spot_node_name), *_zlink, _options);
+    node.use_discovery (_channel_name);
+    return node;
+  }
+
+private:
+  std::string _channel_name;
+  zlink_builder_t *_zlink;
+  std::shared_ptr<detail::framework_options_state_t> _options;
 };
 
 class stream_node_options_builder_t
@@ -511,7 +733,8 @@ public:
       _zlink (&zlink),
       _monitoring (&monitoring),
       _handler_groups (
-        std::make_shared<detail::handler_group_options_state_t> ())
+        std::make_shared<detail::handler_group_options_state_t> ()),
+      _options (std::make_shared<detail::framework_options_state_t> ())
   {
   }
 
@@ -555,9 +778,38 @@ public:
     return publisher_channel_builder_t (std::move (channel_name), *_zlink);
   }
 
+  route_mesh_channel_builder_t route_mesh_channel (std::string channel_name)
+  {
+    return route_mesh_channel_builder_t (
+      std::move (channel_name), *_zlink, _handler_groups);
+  }
+
+  zlink_framework_options_t &use_registry_spot_remote_addresses ()
+  {
+    _options->registry_spot_remote_addresses_enabled = true;
+    _options->registry_spot_route_channel.reset ();
+    apply_registry_spot_remote_addresses ();
+    return *this;
+  }
+
+  zlink_framework_options_t &use_registry_spot_remote_addresses (
+    std::string route_channel_name)
+  {
+    _options->registry_spot_remote_addresses_enabled = true;
+    _options->registry_spot_route_channel = std::move (route_channel_name);
+    apply_registry_spot_remote_addresses ();
+    return *this;
+  }
+
+  spot_mesh_builder_t spot_mesh (std::string channel_name)
+  {
+    return spot_mesh_builder_t (std::move (channel_name), *_zlink, _options);
+  }
+
   spot_node_options_builder_t spot_node (std::string spot_node_name)
   {
-    return spot_node_options_builder_t (std::move (spot_node_name), *_zlink);
+    return spot_node_options_builder_t (
+      std::move (spot_node_name), *_zlink, _options);
   }
 
   stream_node_options_builder_t stream_node (std::string stream_name)
@@ -580,12 +832,20 @@ public:
   }
 
 private:
+  void apply_registry_spot_remote_addresses ()
+  {
+    for (const auto &[_, apply] : _options->spot_node_appliers) {
+      apply ();
+    }
+  }
+
   service_collection_t *_services;
   handler_registry_t *_handlers;
   serializer_registry_t *_serializers;
   zlink_builder_t *_zlink;
   monitoring_builder_t *_monitoring;
   std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
+  std::shared_ptr<detail::framework_options_state_t> _options;
   std::size_t _handler_coroutine_workers = 0;
 };
 

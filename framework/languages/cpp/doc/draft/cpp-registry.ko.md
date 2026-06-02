@@ -37,17 +37,23 @@ runtime 구현 타입이나 backend query state에 의존하도록 public API를
 
 Registry 기본 구현은 Spot owner 조회와 Spot RID directory를 돕는다.
 
-`C++` framework는 아래 표면을 제공해야 한다.
+`C++` framework는 `.NET`의 `UseRegistrySpotRemoteAddresses`,
+`AddRouteMeshChannel`, `AddSpotMesh`에 대응하는 아래 표면을 제공한다. 사용자는
+낮은 수준 `zlink_builder_t::spot_node(...)`를 직접 열지 않고 framework options에서
+registry, route mesh, spot mesh를 한 번에 표현한다.
 
 ```cpp
-app.use_zlink([](auto &zlink) {
-    zlink.node("play-node")
-      .discovery([](auto &discovery) {
-          discovery.connect_registry("tcp://registry:5551");
-      })
-      .spot_node("play-actors", [](auto &spot_node) {
-          spot_node.use_registry_spot_remote_addresses("game.route");
-      });
+app.add_zlink_framework([](auto &options) {
+    options.discovery().add("tcp://registry:5551");
+    options.use_registry_spot_remote_addresses("game.route");
+    options.route_mesh_channel("game.route")
+      .bind("tcp://0.0.0.0:7200")
+      .routing_id(zlink::routing_id_t::from("7200"))
+      .connect("tcp://peer:7201");
+    options.spot_mesh("game.spots")
+      .node("play-actors")
+      .enable_router("tcp://0.0.0.0:7300")
+      .accept_routes_from_channel("game.route");
 });
 ```
 

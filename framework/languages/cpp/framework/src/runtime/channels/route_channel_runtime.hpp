@@ -43,6 +43,8 @@ public:
   explicit route_channel_runtime_t (std::string router_channel_id);
 
   const std::string &router_channel_id () const noexcept;
+  void routing_id (zlink::routing_id_t routing_id);
+  const std::optional<zlink::routing_id_t> &routing_id () const noexcept;
   void start () noexcept;
   void stop () noexcept;
   bool running () const noexcept;
@@ -122,6 +124,7 @@ private:
   result_t<void> ensure_connected () const;
 
   std::string _router_channel_id;
+  std::optional<zlink::routing_id_t> _routing_id;
   bool _running = false;
   route_connection_set_t _connections;
   channel_pending_requests_t _pending_requests;

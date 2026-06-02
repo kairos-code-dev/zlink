@@ -465,6 +465,13 @@ route_channel_builder_t::bind (std::string endpoint)
 }
 
 route_channel_builder_t &
+route_channel_builder_t::routing_id (zlink::routing_id_t routing_id)
+{
+  _state->registration.routing_id (std::move (routing_id));
+  return *this;
+}
+
+route_channel_builder_t &
 route_channel_builder_t::connect (std::string endpoint)
 {
   _state->registration.connect (std::move (endpoint));

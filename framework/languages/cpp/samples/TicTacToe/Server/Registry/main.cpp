@@ -5,6 +5,7 @@
 int
 main (int argc, char **argv)
 {
-  return zlink::samples::tictactoe::registry_host_factory_t::build ()
+  const zlink::samples::tictactoe::sample_topology_t topology;
+  return zlink::samples::tictactoe::registry_host_factory_t::build (topology)
     .run (argc, argv);
 }

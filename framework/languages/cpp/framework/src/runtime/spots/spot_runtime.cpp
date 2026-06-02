@@ -299,6 +299,44 @@ spot_node_builder_t::bind (std::string endpoint)
 }
 
 spot_node_builder_t &
+spot_node_builder_t::enable_router (std::string endpoint)
+{
+  _state->snapshot.router_bind_endpoint = endpoint;
+  if (_state->snapshot.bind_endpoint.empty ()) {
+    _state->snapshot.bind_endpoint = std::move (endpoint);
+  }
+  return *this;
+}
+
+spot_node_builder_t &
+spot_node_builder_t::enable_router (std::string endpoint,
+                                    zlink::routing_id_t routing_id)
+{
+  enable_router (std::move (endpoint));
+  _state->snapshot.router_routing_id = std::move (routing_id);
+  return *this;
+}
+
+spot_node_builder_t &
+spot_node_builder_t::enable_pub_sub (std::string endpoint)
+{
+  _state->snapshot.pub_bind_endpoint = endpoint;
+  if (_state->snapshot.bind_endpoint.empty ()) {
+    _state->snapshot.bind_endpoint = std::move (endpoint);
+  }
+  return *this;
+}
+
+spot_node_builder_t &
+spot_node_builder_t::enable_pub_sub (std::string endpoint,
+                                     zlink::routing_id_t routing_id)
+{
+  enable_pub_sub (std::move (endpoint));
+  _state->snapshot.pub_routing_id = std::move (routing_id);
+  return *this;
+}
+
+spot_node_builder_t &
 spot_node_builder_t::enable_actor_gateway ()
 {
   _state->snapshot.actor_gateway_enabled = true;

@@ -366,6 +366,10 @@ struct spot_node_snapshot_t
 {
   std::string name;
   std::string bind_endpoint;
+  std::optional<std::string> router_bind_endpoint;
+  std::optional<std::string> pub_bind_endpoint;
+  std::optional<zlink::routing_id_t> router_routing_id;
+  std::optional<zlink::routing_id_t> pub_routing_id;
   bool actor_gateway_enabled = false;
   std::optional<std::string> discovery_channel_name;
   std::vector<std::string> attached_channel_clients;
@@ -919,6 +923,12 @@ public:
   spot_node_builder_t &operator= (const spot_node_builder_t &) = default;
 
   spot_node_builder_t &bind (std::string endpoint);
+  spot_node_builder_t &enable_router (std::string endpoint);
+  spot_node_builder_t &enable_router (std::string endpoint,
+                                      zlink::routing_id_t routing_id);
+  spot_node_builder_t &enable_pub_sub (std::string endpoint);
+  spot_node_builder_t &enable_pub_sub (std::string endpoint,
+                                       zlink::routing_id_t routing_id);
   spot_node_builder_t &enable_actor_gateway ();
   spot_node_builder_t &use_discovery (std::string channel_name);
   spot_node_builder_t &use_registry_spot_remote_addresses ();

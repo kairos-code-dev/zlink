@@ -4,8 +4,11 @@
 #include "runtime/channels/route_channel_runtime.hpp"
 #include "runtime/channels/route_handler_registry.hpp"
 
+#include <zlink/Contracts/Core/routing_id.hpp>
+
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,6 +22,7 @@ public:
 
   const std::string &router_channel_id () const noexcept;
   route_channel_registration_t &bind (std::string endpoint);
+  route_channel_registration_t &routing_id (zlink::routing_id_t routing_id);
   route_channel_registration_t &connect (std::string endpoint);
   route_channel_registration_t &add_handler_group (std::string group_name);
   route_channel_registration_t &add_handler (
@@ -62,6 +66,7 @@ public:
   }
 
   const std::string &bind_endpoint () const noexcept;
+  const std::optional<zlink::routing_id_t> &routing_id () const noexcept;
   const std::vector<std::string> &manual_connections () const noexcept;
   const std::vector<std::string> &handler_groups () const noexcept;
 
@@ -73,6 +78,7 @@ private:
 
   std::string _router_channel_id;
   std::string _bind_endpoint;
+  std::optional<zlink::routing_id_t> _routing_id;
   std::vector<std::string> _manual_connections;
   std::vector<std::string> _handler_groups;
   std::vector<framework::route_handler_registration_t> _handlers;

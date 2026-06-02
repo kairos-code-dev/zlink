@@ -22,6 +22,18 @@ route_channel_runtime_t::router_channel_id () const noexcept
 }
 
 void
+route_channel_runtime_t::routing_id (zlink::routing_id_t routing_id)
+{
+  _routing_id = std::move (routing_id);
+}
+
+const std::optional<zlink::routing_id_t> &
+route_channel_runtime_t::routing_id () const noexcept
+{
+  return _routing_id;
+}
+
+void
 route_channel_runtime_t::start () noexcept
 {
   _running = true;

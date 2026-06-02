@@ -77,7 +77,9 @@ runtime이고, C++ Stream Connector와 Unreal Stream Connector는 별도 산출�
 | Unreal Stream Connector | `framework/languages/cpp/unreal-connector` | Unreal module/plugin | Unreal 전용 client connector |
 | framework extensions | `framework/languages/cpp/extensions` | extension targets | bridge, config, codec, observability 확장 |
 | framework samples | `framework/languages/cpp/samples` | sample executables | `Bingo`, `TicTacToe` 리뷰 샘플 |
-| framework tests | `framework/languages/cpp/tests` | CTest labels | contract, unit, integration, regression, sample smoke |
+| framework tests | `framework/languages/cpp/tests/Zlink.Framework.*Tests` | CTest labels | `.NET` test project 분류에 맞춘 contract, unit, e2e, package |
+| connector tests | `framework/languages/cpp/tests/Systems.Zlink.Stream.Connector.Tests` | CTest labels | connector contract, protocol, transport, typed 흐름 |
+| Unreal connector tests | `framework/languages/cpp/tests/Zlink.Unreal.Stream.Connector.Tests` | CTest labels | Unreal public API compile/smoke와 automation source check |
 
 각 산출물 안에서는 `.NET` framework의 `Contracts/*`와 `Runtime/*` 분리를 따른다.
 C++에서는 `Contracts/*`가 설치되는 public header이고, `Runtime/*`가 컴파일되는 구현이다.

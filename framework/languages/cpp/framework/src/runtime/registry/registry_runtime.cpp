@@ -216,8 +216,12 @@ zlink_builder_t::route_channel (std::string route_channel_name)
       framework_error_kind_t::request_protocol_error,
       "route channel name is required");
   }
-  _state->registry_runtime->route_channels.push_back (
-    std::move (route_channel_name));
+  auto &route_channels = _state->registry_runtime->route_channels;
+  if (std::find (
+        route_channels.begin (), route_channels.end (), route_channel_name) ==
+      route_channels.end ()) {
+    route_channels.push_back (std::move (route_channel_name));
+  }
   return *this;
 }
 
@@ -238,8 +242,12 @@ zlink_builder_t::route_channel (
     configure (builder);
   }
   _state->route_channels[route_channel_name] = state;
-  _state->registry_runtime->route_channels.push_back (
-    std::move (route_channel_name));
+  auto &route_channels = _state->registry_runtime->route_channels;
+  if (std::find (
+        route_channels.begin (), route_channels.end (), route_channel_name) ==
+      route_channels.end ()) {
+    route_channels.push_back (std::move (route_channel_name));
+  }
   return *this;
 }
 

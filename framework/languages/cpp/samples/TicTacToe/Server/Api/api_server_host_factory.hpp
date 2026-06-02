@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../Shared/sample.hpp"
+#include "api_server_framework.hpp"
 
 namespace zlink::samples::tictactoe
 {
@@ -14,19 +14,7 @@ public:
   {
     auto app = zlink::framework::app_t::create ();
     add_sample_auto_stop (app);
-    app.add_zlink_framework (
-      [&](zlink::framework::zlink_framework_options_t &options) {
-        options.services ().add_singleton<create_match_room_handler_t> ();
-        options.handlers ()
-          .add<authenticate_actor_handler_t> ("api")
-          .add<create_match_handler_t> ("api");
-        options.codecs ().add_json ();
-        options.client_server_channel (sample_names_t::api_channel)
-          .server (topology.api_endpoint)
-          .handler_group ("api");
-        options.client_server_channel (sample_names_t::play_channel)
-          .client (topology.play_endpoint);
-      });
+    add_tictactoe_api_server (app, topology);
     return app;
   }
 };

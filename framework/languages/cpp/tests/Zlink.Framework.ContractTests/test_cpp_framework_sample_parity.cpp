@@ -237,6 +237,75 @@ TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
   }
 }
 
+TEST (CppFrameworkSampleParity, TicTacToeHostsUseDiscoveryLikeDotNet)
+{
+  const auto tictactoe_root = cpp_language_root () / "samples/TicTacToe";
+  const auto api_framework = read_file (
+    tictactoe_root / "Server/Api/api_server_framework.hpp");
+  const auto play_factory = read_file (
+    tictactoe_root / "Server/Play/play_server_host_factory.hpp");
+  const auto session_factory = read_file (
+    tictactoe_root / "Server/Session/session_server_host_factory.hpp");
+  const auto registry_factory = read_file (
+    tictactoe_root / "Server/Registry/registry_host_factory.hpp");
+
+  EXPECT_NE (api_framework.find (
+               "options.discovery ().add (topology.registry_router_endpoint)"),
+             std::string::npos);
+  EXPECT_NE (play_factory.find (
+               "options.discovery ().add (topology.registry_router_endpoint)"),
+             std::string::npos);
+  EXPECT_NE (session_factory.find (
+               "options.discovery ().add (topology.registry_router_endpoint)"),
+             std::string::npos);
+  EXPECT_NE (play_factory.find (
+               "options.use_registry_spot_remote_addresses"),
+             std::string::npos);
+  EXPECT_NE (session_factory.find (
+               "options.use_registry_spot_remote_addresses"),
+             std::string::npos);
+  EXPECT_NE (play_factory.find ("options.route_mesh_channel"),
+             std::string::npos);
+  EXPECT_NE (session_factory.find ("options.route_mesh_channel"),
+             std::string::npos);
+  EXPECT_NE (play_factory.find ("options.spot_mesh"),
+             std::string::npos);
+  EXPECT_NE (session_factory.find ("options.spot_mesh"),
+             std::string::npos);
+  EXPECT_NE (play_factory.find (".enable_router"),
+             std::string::npos);
+  EXPECT_NE (session_factory.find (".enable_router"),
+             std::string::npos);
+  EXPECT_NE (play_factory.find (".accept_routes_from_channel"),
+             std::string::npos);
+  EXPECT_NE (session_factory.find (".accept_routes_from_channel"),
+             std::string::npos);
+  EXPECT_NE (registry_factory.find ("topology.registry_pub_endpoint"),
+             std::string::npos);
+  EXPECT_NE (registry_factory.find ("topology.registry_router_endpoint"),
+             std::string::npos);
+  EXPECT_EQ (api_framework.find (".client (topology.play_endpoint)"),
+             std::string::npos);
+}
+
+TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
+{
+  const auto bingo_root = cpp_language_root () / "samples/Bingo";
+  const auto play_factory = read_file (
+    bingo_root / "Server/Play/play_server_host_factory.hpp");
+  const auto session_factory = read_file (
+    bingo_root / "Server/Session/session_server_host_factory.hpp");
+
+  EXPECT_NE (play_factory.find ("options.spot_mesh"), std::string::npos);
+  EXPECT_NE (session_factory.find ("options.spot_mesh"), std::string::npos);
+  EXPECT_NE (play_factory.find (".enable_router"), std::string::npos);
+  EXPECT_NE (session_factory.find (".enable_router"), std::string::npos);
+  EXPECT_NE (play_factory.find (".enable_pub_sub"), std::string::npos);
+  EXPECT_NE (session_factory.find (".enable_pub_sub"), std::string::npos);
+  EXPECT_NE (play_factory.find (".attach_channel_client"),
+             std::string::npos);
+}
+
 int
 main (int argc, char **argv)
 {

@@ -74,7 +74,8 @@ contract_headers_have_compile_coverage (const std::filesystem::path &root,
                                         const std::string &include_prefix)
 {
   const auto coverage_file =
-    root / "tests/contract/test_cpp_framework_contract_headers.cpp";
+    root /
+    "tests/Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp";
   std::ifstream coverage_input (coverage_file);
   std::ostringstream coverage_buffer;
   coverage_buffer << coverage_input.rdbuf ();
@@ -267,6 +268,11 @@ main ()
   ok &= require_exists (
     root / "framework/src/runtime/channels/route_receive_pump.hpp");
   ok &= require_exists (
+    root / "framework/src/runtime/configuration/builders");
+  ok &= require_exists (
+    root /
+    "framework/src/runtime/configuration/builders/configuration_builder.cpp");
+  ok &= require_exists (
     root / "connector/include/zlink/stream_connector/contracts");
   ok &= require_exists (
     root / "connector/include/zlink/stream_connector/contracts/calls");
@@ -322,6 +328,28 @@ main ()
   ok &= require_exists (
     root / "connector/src/runtime/transport/websocket_connection.cpp");
   ok &= require_exists (root / "connector/src/runtime/backend/contracts");
+  ok &= require_exists (root / "tests/Zlink.Framework.UnitTests");
+  ok &= require_exists (root / "tests/Zlink.Framework.ContractTests");
+  ok &= require_exists (root / "tests/Zlink.Framework.E2ETests");
+  ok &= require_exists (
+    root / "tests/Systems.Zlink.Stream.Connector.Tests");
+  ok &= require_exists (
+    root / "tests/Zlink.Unreal.Stream.Connector.Tests");
+  ok &= require_exists (
+    root /
+    "tests/Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp");
+  ok &= require_exists (
+    root /
+    "tests/Zlink.Framework.UnitTests/test_cpp_framework_handler_registry.cpp");
+  ok &= require_exists (
+    root /
+    "tests/Zlink.Framework.E2ETests/Samples/verify_sample_client_log.cmake");
+  ok &= require_exists (
+    root /
+    "tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp");
+  ok &= require_exists (
+    root /
+    "tests/Zlink.Unreal.Stream.Connector.Tests/test_unreal_stream_connector.cpp");
   ok &= require_exists (
     root / "unreal-connector/Source/ZLinkStreamConnector/Public");
   ok &= require_exists (
@@ -339,6 +367,8 @@ main ()
     root / "samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp");
   ok &= require_exists (
     root / "samples/Bingo/Server/Api/api_server_host_factory.hpp");
+  ok &= require_exists (
+    root / "samples/Bingo/Server/Api/api_server_framework.hpp");
   ok &= require_exists (
     root / "samples/Bingo/Server/Api/Handlers/match_bingo_handler.hpp");
   ok &= require_exists (
@@ -416,6 +446,8 @@ main ()
     root / "samples/TicTacToe/Server/Api/api_server_host_factory.hpp");
   ok &= require_exists (
     root / "samples/TicTacToe/Server/Api/Handlers/create_match_handler.hpp");
+  ok &= require_exists (
+    root / "samples/TicTacToe/Server/Api/api_server_framework.hpp");
   ok &= require_exists (
     root /
     "samples/TicTacToe/Server/Play/EntrySpot/Handlers/join_match_handler.hpp");

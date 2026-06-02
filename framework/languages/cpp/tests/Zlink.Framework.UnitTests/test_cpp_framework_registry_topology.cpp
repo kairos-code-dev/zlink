@@ -3,6 +3,7 @@
 #include <zlink/framework.hpp>
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/registry/registry_runtime.hpp"
 
 #include <chrono>
@@ -206,6 +207,87 @@ main ()
       query.monitoring_snapshot ().spot_lookup_count !=
         lookup_after_actor_bind) {
     return 16;
+  }
+
+  zlink::framework::service_collection_t services;
+  zlink::framework::handler_registry_t handlers;
+  zlink::framework::serializer_registry_t serializers;
+  zlink::framework::zlink_builder_t framework_zlink;
+  zlink::framework::monitoring_builder_t monitoring;
+  zlink::framework::zlink_framework_options_t options (
+    services, handlers, serializers, framework_zlink, monitoring);
+  options.discovery ().add ("tcp://registry:5551");
+  options.use_registry_spot_remote_addresses ("game.route");
+  options.route_mesh_channel ("game.route")
+    .bind ("tcp://0.0.0.0:7200")
+    .routing_id (zlink::routing_id_t::from ("7200"))
+    .connect ("tcp://peer:7201");
+  options.spot_mesh ("game.spots")
+    .node ("game-node")
+    .enable_router ("tcp://0.0.0.0:7300",
+                    zlink::routing_id_t::from ("7300"))
+    .enable_pub_sub ("tcp://0.0.0.0:7301",
+                     zlink::routing_id_t::from ("7301"))
+    .accept_routes_from_channel ("game.route")
+    .add_spot<stage_spot_t> ("stage");
+  if (framework_zlink.route_channels ().size () != 1 ||
+      framework_zlink.route_channels ()[0] != "game.route") {
+    return 17;
+  }
+  const auto framework_spots = framework_zlink.spot_nodes ();
+  if (framework_spots.size () != 1 ||
+      framework_spots[0].name != "game-node" ||
+      framework_spots[0].bind_endpoint != "tcp://0.0.0.0:7300" ||
+      !framework_spots[0].router_bind_endpoint ||
+      *framework_spots[0].router_bind_endpoint != "tcp://0.0.0.0:7300" ||
+      !framework_spots[0].pub_bind_endpoint ||
+      *framework_spots[0].pub_bind_endpoint != "tcp://0.0.0.0:7301" ||
+      !framework_spots[0].router_routing_id ||
+      framework_spots[0].router_routing_id->to_string () != "7300" ||
+      !framework_spots[0].pub_routing_id ||
+      framework_spots[0].pub_routing_id->to_string () != "7301" ||
+      !framework_spots[0].discovery_channel_name ||
+      *framework_spots[0].discovery_channel_name != "game.spots" ||
+      !framework_spots[0].registry_spot_remote_addresses_enabled ||
+      !framework_spots[0].registry_spot_route_channel ||
+      *framework_spots[0].registry_spot_route_channel != "game.route") {
+    return 18;
+  }
+  if (!framework_zlink.validate_registry ()) {
+    return 19;
+  }
+  auto route_manager =
+    zlink::framework::detail::channel_runtime_manager_t::from (
+      framework_zlink);
+  route_manager.initialize_route_channels (framework_zlink);
+  const auto &route_runtime = route_manager.get_route_channel ("game.route");
+  if (!route_runtime.routing_id () ||
+      route_runtime.routing_id ()->to_string () != "7200") {
+    return 20;
+  }
+
+  zlink::framework::zlink_builder_t late_registry_zlink;
+  zlink::framework::zlink_framework_options_t late_options (
+    services, handlers, serializers, late_registry_zlink, monitoring);
+  late_options.discovery ().add ("tcp://registry:5551");
+  late_options.route_mesh_channel ("late.route")
+    .bind ("tcp://0.0.0.0:7400")
+    .routing_id (zlink::routing_id_t::from ("7400"));
+  late_options.spot_mesh ("late.spots")
+    .node ("late-node")
+    .enable_router ("tcp://0.0.0.0:7500")
+    .enable_pub_sub ("tcp://0.0.0.0:7501")
+    .add_spot<stage_spot_t> ("stage");
+  late_options.use_registry_spot_remote_addresses ("late.route");
+  const auto late_spots = late_registry_zlink.spot_nodes ();
+  if (late_spots.size () != 1 ||
+      late_spots[0].spot_names.size () != 1 ||
+      !late_spots[0].router_bind_endpoint ||
+      !late_spots[0].pub_bind_endpoint ||
+      !late_spots[0].registry_spot_remote_addresses_enabled ||
+      !late_spots[0].registry_spot_route_channel ||
+      *late_spots[0].registry_spot_route_channel != "late.route") {
+    return 21;
   }
 
   return 0;

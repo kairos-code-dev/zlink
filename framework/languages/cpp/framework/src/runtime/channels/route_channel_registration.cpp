@@ -37,6 +37,13 @@ route_channel_registration_t::bind (std::string endpoint)
 }
 
 route_channel_registration_t &
+route_channel_registration_t::routing_id (zlink::routing_id_t routing_id)
+{
+  _routing_id = std::move (routing_id);
+  return *this;
+}
+
+route_channel_registration_t &
 route_channel_registration_t::connect (std::string endpoint)
 {
   if (endpoint.empty ()) {
@@ -77,6 +84,12 @@ const std::string &
 route_channel_registration_t::bind_endpoint () const noexcept
 {
   return _bind_endpoint;
+}
+
+const std::optional<zlink::routing_id_t> &
+route_channel_registration_t::routing_id () const noexcept
+{
+  return _routing_id;
 }
 
 const std::vector<std::string> &
@@ -127,6 +140,9 @@ route_channel_initializer_t::initialize (
     registration.router_channel_id ());
   if (!registration.bind_endpoint ().empty ()) {
     runtime->connect (registration.bind_endpoint ());
+  }
+  if (registration.routing_id ()) {
+    runtime->routing_id (*registration.routing_id ());
   }
   for (const auto &endpoint : registration.manual_connections ()) {
     runtime->connect (endpoint);

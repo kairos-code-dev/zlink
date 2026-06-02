@@ -1126,6 +1126,14 @@ namespace zlink::framework {
 class spot_node_builder_t {
 public:
     spot_node_builder_t &bind(std::string endpoint);
+    spot_node_builder_t &enable_router(std::string endpoint);
+    spot_node_builder_t &enable_router(
+      std::string endpoint,
+      zlink::routing_id_t routing_id);
+    spot_node_builder_t &enable_pub_sub(std::string endpoint);
+    spot_node_builder_t &enable_pub_sub(
+      std::string endpoint,
+      zlink::routing_id_t routing_id);
     spot_node_builder_t &use_discovery(std::string channel_name);
     spot_node_builder_t &enable_actor_gateway();
     spot_node_builder_t &attach_channel_client(std::string channel_name);
@@ -1503,6 +1511,19 @@ options.client_server_channel(sample_names_t::api_channel)
 
 options.publisher_channel(sample_names_t::notification_channel)
   .bind(topology.notification_endpoint);
+
+options.use_registry_spot_remote_addresses(sample_names_t::router_channel);
+
+options.route_mesh_channel(sample_names_t::router_channel)
+  .bind(topology.session_spot_endpoint)
+  .routing_id(topology.session_router_rid)
+  .connect(topology.play_router_endpoint);
+
+options.spot_mesh(sample_names_t::game_spot_discovery)
+  .node(sample_names_t::session_spot_node)
+  .enable_router(topology.session_router_endpoint, topology.session_router_rid)
+  .enable_pub_sub(topology.session_spot_endpoint, topology.session_pub_rid)
+  .accept_routes_from_channel(sample_names_t::router_channel);
 
 options.stream_node(sample_names_t::stream_name)
   .bind(topology.stream_endpoint)

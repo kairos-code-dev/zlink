@@ -71,7 +71,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/actors/actor_gateway_runtime.cpp
   framework/src/runtime/backend/native_route_backend.cpp
   framework/src/runtime/host/assembly.cpp
-  framework/src/runtime/configuration/configuration.cpp
+  framework/src/runtime/configuration/builders/configuration_builder.cpp
   framework/src/runtime/configuration/services.cpp
   framework/src/runtime/codecs/serializer.cpp
   framework/src/runtime/diagnostics/logging.cpp
@@ -383,7 +383,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   endfunction()
 
   add_executable(test_cpp_framework_contract_headers
-    tests/contract/test_cpp_framework_contract_headers.cpp)
+    tests/Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp)
   target_link_libraries(test_cpp_framework_contract_headers PRIVATE
     zlink::framework
     zlink::stream_connector
@@ -396,7 +396,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     TIMEOUT 30)
 
   add_executable(test_cpp_framework_sample_parity
-    tests/contract/test_cpp_framework_sample_parity.cpp)
+    tests/Zlink.Framework.ContractTests/test_cpp_framework_sample_parity.cpp)
   target_link_libraries(test_cpp_framework_sample_parity PRIVATE
     zlink::framework
     zlink::stream_connector
@@ -409,7 +409,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     TIMEOUT 30)
 
   add_executable(test_cpp_framework_layout_contract
-    tests/contract/test_cpp_framework_layout_contract.cpp)
+    tests/Zlink.Framework.ContractTests/test_cpp_framework_layout_contract.cpp)
   target_compile_definitions(test_cpp_framework_layout_contract PRIVATE
     ZLINK_FRAMEWORK_CPP_SOURCE_DIR="${ZLINK_FRAMEWORK_CPP_DIR}")
   target_compile_features(test_cpp_framework_layout_contract PRIVATE cxx_std_20)
@@ -422,70 +422,70 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
 
   add_zlink_framework_test(
     test_cpp_framework_app_host
-    tests/unit/test_cpp_framework_app_host.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp
     "framework-unit")
   add_zlink_framework_test(
     test_cpp_framework_DI_scope
-    tests/unit/test_cpp_framework_di.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_di.cpp
     "framework-unit;framework-regression;DI;scope")
   add_zlink_framework_test(
     test_cpp_framework_runtime_integration
-    tests/unit/test_cpp_framework_runtime_integration.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_runtime_integration.cpp
     "framework-unit;framework-integration;runtime")
   add_zlink_framework_test(
     test_cpp_framework_serializer_registry
-    tests/unit/test_cpp_framework_serializer_registry.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_serializer_registry.cpp
     "framework-unit;serializer")
   add_zlink_framework_test(
     test_cpp_framework_handler_registry
-    tests/unit/test_cpp_framework_handler_registry.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_handler_registry.cpp
     "framework-unit;handler")
   add_zlink_framework_test(
     test_cpp_framework_channel_messaging
-    tests/unit/test_cpp_framework_channel_messaging.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_channel_messaging.cpp
     "framework-integration;framework-regression;channel")
   add_zlink_framework_test(
     test_cpp_framework_backpressure_reliability
-    tests/unit/test_cpp_framework_backpressure_reliability.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_backpressure_reliability.cpp
     "framework-unit;framework-regression;backpressure;reliability")
   add_zlink_framework_test(
     test_cpp_framework_spot_runtime
-    tests/unit/test_cpp_framework_spot_runtime.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_spot_runtime.cpp
     "framework-integration;framework-regression;spot")
   add_zlink_framework_test(
     test_cpp_framework_spot_timer
-    tests/unit/test_cpp_framework_spot_timer.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_spot_timer.cpp
     "framework-unit;framework-integration;framework-regression;timer")
   add_zlink_framework_test(
     test_cpp_framework_stream_framework
-    tests/unit/test_cpp_framework_stream_framework.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_stream_framework.cpp
     "framework-integration;framework-regression;stream")
   add_zlink_framework_test(
     test_cpp_framework_ActorGateway_actor_session_relay
-    tests/unit/test_cpp_framework_actor_gateway.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_actor_gateway.cpp
     "framework-integration;framework-regression;ActorGateway;actor")
   add_zlink_framework_test(
     test_cpp_framework_registry_topology
-    tests/unit/test_cpp_framework_registry_topology.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_registry_topology.cpp
     "framework-integration;framework-regression;registry")
   add_zlink_framework_test(
     test_cpp_framework_monitoring
-    tests/unit/test_cpp_framework_monitoring.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_monitoring.cpp
     "framework-unit;framework-integration;monitoring")
   add_zlink_framework_test(
     test_cpp_framework_execution
-    tests/unit/test_cpp_framework_execution.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_execution.cpp
     "framework-unit;framework-regression;execution")
   add_zlink_framework_test(
     test_cpp_framework_messaging
-    tests/unit/test_cpp_framework_messaging.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_messaging.cpp
     "framework-unit;framework-regression;messaging")
   add_zlink_framework_test(
     test_cpp_framework_module_hosted
-    tests/unit/test_cpp_framework_module_hosted.cpp
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_module_hosted.cpp
     "framework-unit;framework-integration;module;hosted")
   add_executable(test_cpp_framework_gtest_harness
-    tests/unit/test_cpp_framework_gtest_harness.cpp)
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_gtest_harness.cpp)
   target_link_libraries(test_cpp_framework_gtest_harness PRIVATE
     zlink::framework
     GTest::gtest_main
@@ -496,7 +496,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     LABELS "framework-unit;framework-regression;gtest"
     TIMEOUT 30)
   add_executable(test_cpp_framework_extensions
-    tests/unit/test_cpp_framework_extensions.cpp)
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_extensions.cpp)
   target_link_libraries(test_cpp_framework_extensions PRIVATE
     zlink::framework_extension_metrics
     zlink::framework_extension_tracing
@@ -521,19 +521,19 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
       ${CMAKE_COMMAND}
       -DZLINK_FRAMEWORK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
       -DZLINK_FRAMEWORK_CPP_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/package-consumer-install
-      -P ${CMAKE_CURRENT_LIST_DIR}/tests/package/install_consumer.cmake)
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.PackageTests/install_consumer.cmake)
   set_tests_properties(test_cpp_framework_install_consumer PROPERTIES
     LABELS "framework-package;framework-regression;connector-package"
     TIMEOUT 120)
   add_zlink_connector_test(
     test_cpp_stream_connector
-    tests/unit/test_cpp_stream_connector.cpp
+    tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp
     "connector-unit;connector-integration")
   target_link_libraries(test_cpp_stream_connector PRIVATE
     zlink::stream_connector_codecs)
 
   add_executable(test_unreal_stream_connector
-    tests/unit/test_unreal_stream_connector.cpp)
+    tests/Zlink.Unreal.Stream.Connector.Tests/test_unreal_stream_connector.cpp)
   target_link_libraries(test_unreal_stream_connector PRIVATE
     zlink_unreal_stream_connector
     GTest::gtest
@@ -633,7 +633,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
       -D MIN_RECV=10
       -D MIN_REPLY=9
       -D MIN_PUSH=8
-      -P ${CMAKE_CURRENT_LIST_DIR}/tests/samples/verify_sample_client_log.cmake)
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.E2ETests/Samples/verify_sample_client_log.cmake)
   set_tests_properties(
     sample_e2e_log_sample_cpp_framework_bingo_client
     PROPERTIES
@@ -649,7 +649,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
       -D MIN_RECV=9
       -D MIN_REPLY=9
       -D MIN_PUSH=9
-      -P ${CMAKE_CURRENT_LIST_DIR}/tests/samples/verify_sample_client_log.cmake)
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.E2ETests/Samples/verify_sample_client_log.cmake)
   set_tests_properties(
     sample_e2e_log_sample_cpp_framework_tictactoe_client
     PROPERTIES

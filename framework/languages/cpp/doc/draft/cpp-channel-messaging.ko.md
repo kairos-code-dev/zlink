@@ -150,9 +150,11 @@ request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `s
 - route channel handler 등록은 `route_channel_registration_t`와
   `route_channel_initializer_t`가 맡는다. `.NET`은 reflection scanner와 assembly marker로
   descriptor를 수집하지만, C++는 typed handler installer를 registration에 저장한 뒤
-  initializer가 `route_handler_registry_t`로 변환한다. 사용자는
-  `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`로 bind,
-  manual connection, handler group, typed routed send/request handler를 한 곳에서 설정한다.
+  initializer가 `route_handler_registry_t`로 변환한다. 프레임워크 사용자는
+  `options.route_mesh_channel(name)`으로 bind, routing id, manual connection, handler group을
+  설정한다.
+  `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`는 framework
+  내부와 고급 확장용 낮은 수준 표면으로 남긴다.
 - route receive path는 `route_receive_pump_t`와 `route_packet_dispatcher_t`가 맡는다.
   route handler가 있으면 `route_handler_registry_t`와 `route_handler_invoker_t`를 통해
   typed payload를 호출하고, handler가 없으면 request에 `route_handler_not_found` error

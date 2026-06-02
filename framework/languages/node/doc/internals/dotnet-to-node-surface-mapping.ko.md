@@ -304,3 +304,15 @@ backend port 의 정확한 시그니처는 dotnet
 
 > 사용자 가이드(usability) 계층은 표면이 확정된 뒤 별도로 작성하며, 현재
 > 구현용 draft 묶음의 범위가 아니다.
+
+## 9. 회귀 테스트
+
+이 표면 매핑 정책은 아래 회귀 테스트와 함께 유지한다. 테스트는 Node 표면이
+dotnet 의미를 다시 정의하지 않고, 문서와 public package 선언이 같은 이름을
+가리키는지 확인한다.
+
+| 테스트 | 확인 기준 |
+|--------|-----------|
+| `documentation-regression.test.js › node implementation reference docs declare regression coverage sections` | 이 정책 문서가 자기 회귀 테스트 단락을 유지한다. |
+| `documentation-regression.test.js › node interface catalog names resolve in public package declarations` | guide 의 public interface catalog 이름이 실제 package declaration 에 존재한다. |
+| `contract-surface.test.js` | TypeScript contract surface 가 dotnet 의미를 Node 표면으로만 옮긴 형태인지 확인한다. |

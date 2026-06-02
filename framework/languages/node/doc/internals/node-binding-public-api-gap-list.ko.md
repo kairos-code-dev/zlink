@@ -20,7 +20,7 @@
 | registry | embedded registry와 query client 생성·조회 | `createRegistry`, `createRegistryQueryClient` | gap 없음 |
 | monitoring | socket monitor 생성, event callback, status/recv | `Socket.monitorOpen`, `MonitorSocket.onEvent`, `recv`, `status` | gap 없음 |
 
-## 회귀 기준
+## 2. 회귀 테스트
 
 P2~P8 구현 중 위 표의 기능을 더 깊게 사용하다가 공개 API가 부족하면 다음 순서로
 처리한다.

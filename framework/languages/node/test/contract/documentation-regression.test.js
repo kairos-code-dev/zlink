@@ -86,6 +86,26 @@ test('node spec and internals documentation do not depend on legacy draft links'
   assert.deepEqual(offenders.sort(), []);
 });
 
+test('node implementation reference docs declare regression coverage sections', () => {
+  const required = [
+    path.join(docRoot, 'README.ko.md'),
+    path.join(docRoot, 'IMPLEMENTATION-PLAN.ko.md'),
+    path.join(docRoot, 'sample-implementation-plan.ko.md'),
+    ...allMarkdownFiles(path.join(docRoot, 'spec')),
+    ...allMarkdownFiles(path.join(docRoot, 'internals'))
+  ];
+  const missing = [];
+
+  for (const file of required) {
+    const content = fs.readFileSync(file, 'utf8');
+    if (!/^## .*회귀 테스트/m.test(content)) {
+      missing.push(path.relative(workspaceRoot, file));
+    }
+  }
+
+  assert.deepEqual(missing.sort(), []);
+});
+
 test('node documentation keeps fanout and route client public surface aligned with contracts', () => {
   const files = [
     path.join(docRoot, 'spec', 'nestjs-channel-messaging.ko.md'),

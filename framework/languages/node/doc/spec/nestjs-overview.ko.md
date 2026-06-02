@@ -705,4 +705,16 @@ backend 스왑 지점의 전부다. framework 의 다른 어떤 코드도 `@zlin
 
 ---
 
+## 7. 회귀 테스트
+
+이 overview 는 bootstrap, DI, lifecycle, backend adapter 경계의 기준 문서다.
+아래 테스트가 이 문서의 핵심 결정을 고정한다.
+
+| 테스트 | 확인 기준 |
+|--------|-----------|
+| `backend-contract.test.js` | backend adapter factory 가 channel, spot, stream, registry, monitoring adapter 를 모두 제공한다. |
+| `backend-public-api-only.test.js` | framework runtime 이 binding internal/native 경로를 직접 import 하지 않는다. |
+| `nestjs-module.test.js` | `ZLinkModule.forRoot/forRootAsync`, provider token 노출, startup validation, lifecycle 연결이 동작한다. |
+| `documentation-regression.test.js › node implementation reference docs declare regression coverage sections` | 이 overview 가 자기 회귀 테스트 단락을 유지한다. |
+
 [문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [DI 노출 정책](../internals/di-capability-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md)

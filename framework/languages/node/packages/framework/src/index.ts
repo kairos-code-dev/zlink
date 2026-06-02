@@ -9,3 +9,4 @@ export * from './runtime/streams';
 export * from './runtime/registry';
 export * from './runtime/diagnostics';
 export * from './runtime/codecs';
+export * from './runtime/execution';

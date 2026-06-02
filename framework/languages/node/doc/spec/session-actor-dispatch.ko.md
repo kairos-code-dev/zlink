@@ -1478,6 +1478,8 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 맞물�
 | `HeaderStreamSessionTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 닫고 disconnect callback으로 자연스럽게 이어진다. |
 | `SerialExecutorTests.StreamSessionSerialExecutor_Continues_After_Work_Exception` | session queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
 | `SerialExecutorTests.SpotSerialExecutor_Continues_After_Queued_Work_Exception` | Spot queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
+| `runtime task runner observes detached task exceptions without unhandled rejection` | Node runtime task runner 가 detached task 예외를 관찰하고 unhandled rejection 을 만들지 않는다. |
+| `framework runtime state aborts listener tasks before disposing backend context` | runtime state shutdown 이 listener task 에 stop signal 을 먼저 전달하고 backend context 를 마지막에 정리한다. |
 | `SerialExecutorTests.SpotSerialExecutor_ExecuteAsync_Propagates_Work_Exception` | Spot queue에서 완료를 기다리는 실행 경로는 handler 예외를 호출자에게 그대로 돌려준다. |
 | `SerialExecutorTests.SerialExecutionQueue_RunAsync_Propagates_Work_Exception` | 공통 serial queue의 `run(...)`가 work 예외를 error sink에 기록하면서 호출자에게도 전파한다. |
 | `SerialExecutorTests.SerialExecutionQueue_Wait_Cancellation_Does_Not_Remove_Queued_Work` | 공통 serial queue에서 completion wait가 취소되더라도 이미 queue에 들어간 work item은 제거되지 않는다. |

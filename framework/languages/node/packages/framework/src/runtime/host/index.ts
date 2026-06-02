@@ -1,6 +1,7 @@
 import { ZLinkNodeBackendAdapterFactory } from '../backend';
 import type { ZLinkBackendAdapterFactory, ZLinkBackendContext } from '../backend';
 import type { ZLinkFrameworkRegistration } from '../configuration';
+import { ZLinkFrameworkRuntimeState } from '../execution';
 import { DefaultZLinkBoundSessionFactory, ZLinkStreamBindingRuntime } from '../streams';
 
 export interface ZLinkFrameworkRuntime {
@@ -17,7 +18,7 @@ export interface ZLinkFrameworkRuntimeHostOptions {
 export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   private readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   private readonly lifecycleSink?: string[];
-  private context?: ZLinkBackendContext;
+  private state?: ZLinkFrameworkRuntimeState;
   readonly streamBindingRuntime = new ZLinkStreamBindingRuntime();
   readonly boundSessionFactory = new DefaultZLinkBoundSessionFactory(this.streamBindingRuntime);
 
@@ -27,11 +28,23 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   }
 
   get isStarted(): boolean {
-    return this.context !== undefined;
+    return this.state !== undefined;
+  }
+
+  get context(): ZLinkBackendContext | undefined {
+    return this.state?.context as ZLinkBackendContext | undefined;
+  }
+
+  get taskRunner(): ZLinkFrameworkRuntimeState['taskRunner'] | undefined {
+    return this.state?.taskRunner;
+  }
+
+  get errorSink(): ZLinkFrameworkRuntimeState['errorSink'] | undefined {
+    return this.state?.errorSink;
   }
 
   async start(): Promise<void> {
-    if (this.context !== undefined) {
+    if (this.state !== undefined) {
       return;
     }
 
@@ -39,7 +52,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
     const channelAdapter = this.backendAdapterFactory.createChannelAdapter();
     const context = channelAdapter.createContext();
     try {
-      this.context = context;
+      this.state = new ZLinkFrameworkRuntimeState(context);
       this.lifecycleSink?.push('framework:started');
     } catch (error) {
       await context.dispose();
@@ -48,14 +61,14 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   }
 
   async stop(): Promise<void> {
-    const context = this.context;
-    if (context === undefined) {
+    const state = this.state;
+    if (state === undefined) {
       return;
     }
 
-    this.context = undefined;
+    this.state = undefined;
     this.lifecycleSink?.push('framework:stop');
-    await context.dispose();
+    await state.dispose();
     this.lifecycleSink?.push('framework:stopped');
   }
 

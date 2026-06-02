@@ -216,6 +216,33 @@ test('stream session runtime completes pending responses before session dispatch
   assert.deepEqual(events, []);
 });
 
+test('stream session pending request timeout removes request sequence', async () => {
+  const context = new framework.ZLinkStreamBindingRuntime().createSessionContext({
+    sessionId: 'session-timeout',
+    routingId: 'session-timeout',
+    write() {
+      return true;
+    },
+    async close() {}
+  });
+  const pending = context.startRequest(1);
+  await assert.rejects(
+    () => pending.promise,
+    /Client stream request timed out/
+  );
+
+  const consumed = context.tryCompleteResponse({
+    kind: 3,
+    codec: 1,
+    flags: 1,
+    requestSeq: pending.requestSeq,
+    name: 'LateReply',
+    metadata: new Map()
+  }, fakeMessage('late-body'));
+
+  assert.equal(consumed, false);
+});
+
 test('stream session runtime dispatches unmatched response frames to the session', async () => {
   const socket = new FakeStreamSocket();
   const events = [];

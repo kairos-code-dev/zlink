@@ -3,16 +3,13 @@ const { AuthenticatePlayerHandler } = require('./Handlers/authenticate-player-ha
 const { MatchBingoHandler } = require('./Handlers/match-bingo-handler');
 
 async function buildApiServerHost(options) {
-  let playClient;
-  const authenticatePlayer = new AuthenticatePlayerHandler();
-  const matchBingo = new MatchBingoHandler(async () => {
-    playClient ??= await createRouteClient({
-      endpoint: options.apiClientEndpoint,
-      routingId: 'api-client',
-      peers: [options.playEndpoint]
-    });
-    return playClient;
+  const playClient = await createRouteClient({
+    endpoint: options.apiClientEndpoint,
+    routingId: 'api-client',
+    peers: [options.playEndpoint]
   });
+  const authenticatePlayer = new AuthenticatePlayerHandler();
+  const matchBingo = new MatchBingoHandler(playClient);
 
   const server = await startRouteServer({
     endpoint: options.apiEndpoint,
@@ -26,7 +23,7 @@ async function buildApiServerHost(options) {
 
   return {
     async stop() {
-      await playClient?.stop();
+      await playClient.stop();
       await server?.stop?.();
     }
   };

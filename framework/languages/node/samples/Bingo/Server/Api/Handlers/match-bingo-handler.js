@@ -1,11 +1,10 @@
 class MatchBingoHandler {
-  constructor(playClientFactory) {
-    this.playClientFactory = playClientFactory;
+  constructor(playClient) {
+    this.playClient = playClient;
   }
 
   async handle() {
-    const playClient = await this.playClientFactory();
-    return await playClient.request('play-server', 'RunBingoRoom', {
+    return await this.playClient.request('play-server', 'RunBingoRoom', {
       players: [
         { actorId: 'p1', numbers: [7] },
         { actorId: 'p2', numbers: [9] },

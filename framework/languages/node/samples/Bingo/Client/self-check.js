@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const nestjs = require('../../../packages/nestjs/dist');
-const { createRouteClient } = require('../../shared/route-runtime');
+const { createChannelClient } = require('../../shared/channel-runtime');
 const { assertNestModule } = require('../../shared/nestjs-smoke');
 const { reserveTcpEndpoint, withServers } = require('../../shared/process-host');
 
@@ -10,14 +10,11 @@ async function main() {
   const sessionEndpoint = await reserveTcpEndpoint();
   const playEndpoint = await reserveTcpEndpoint();
   const apiEndpoint = await reserveTcpEndpoint();
-  const clientEndpoint = await reserveTcpEndpoint();
   assertNestModule({
-    routeChannels: [{
-      routerChannelId: 'sample-route',
-      bind: clientEndpoint,
-      routingId: 'sample-client',
-      manualConnections: [apiEndpoint]
-    }]
+    channels: {
+      'bingo.api': { client: { manualConnections: [apiEndpoint] } },
+      'bingo.play': { client: { manualConnections: [playEndpoint] }, server: { bind: playEndpoint } }
+    }
   }, nestjs);
 
   await withServers([
@@ -32,22 +29,28 @@ async function main() {
       }
     }
   ], async () => {
-    const client = await createRouteClient({
-      endpoint: clientEndpoint,
-      routingId: 'sample-client',
+    const client = await createChannelClient({
+      channelName: 'bingo.api',
       peers: [apiEndpoint]
     });
     try {
-      const result = await client.request('api-server', 'RunBingo', {});
-      assert.equal(result.room.status, 'Finished');
-      assert.equal(result.room.hostActorId, 'p1');
-      assert.deepEqual(result.room.winners, ['p1', 'p3']);
-      assert.equal(result.earlyHostStartRejected, true);
-      assert.equal(result.nonHostStartRejected, true);
-      assert.deepEqual(result.room.players.map((player) => player.actorId), ['p1', 'p2', 'p3', 'p4']);
-      assert.equal(result.notifications.filter((message) => message.packetName === 'BingoGameStarted').length, 4);
-      assert.equal(result.notifications.filter((message) => message.packetName === 'BingoNumberDrawn').length, 4);
-      assert.equal(result.notifications.filter((message) => message.packetName === 'BingoGameEnded').length, 4);
+      const auth = await client.request('AuthenticatePlayerReq', { accessToken: 'player-1' }, 7000);
+      assert.equal(auth.accepted, true);
+      assert.equal(auth.actorId, 'player-1');
+      assert.equal(auth.displayName, 'Player 1');
+
+      const first = await client.request('MatchBingoApiReq', {
+        actorId: auth.actorId,
+        displayName: auth.displayName,
+        mode: 'four-player'
+      }, 7000);
+      const second = await client.request('MatchBingoApiReq', {
+        actorId: 'player-2',
+        displayName: 'Player 2',
+        mode: 'four-player'
+      }, 7000);
+      assert.equal(first.roomId, 'bingo-room-001');
+      assert.equal(second.roomId, 'bingo-room-001');
     } finally {
       await client.stop();
     }

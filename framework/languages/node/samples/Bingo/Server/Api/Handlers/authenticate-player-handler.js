@@ -1,21 +1,35 @@
+const { ZLinkHandlerGroup, ZLinkRequest } = require('../../../../../packages/framework/dist');
+
 class AuthenticatePlayerHandler {
   handle(request) {
     if (!request.accessToken?.startsWith('player-')) {
       return {
-        authenticated: false,
+        accepted: false,
         actorId: null,
         displayName: null,
-        error: 'Access token must be a sample player id.'
+        reason: 'Access token must be a sample player id.'
       };
     }
 
     return {
-      authenticated: true,
+      accepted: true,
       actorId: request.accessToken,
       displayName: request.accessToken.replace('player-', 'Player '),
-      error: null
+      reason: null
     };
   }
 }
 
+ZLinkHandlerGroup('api')(AuthenticatePlayerHandler);
+ZLinkRequest('AuthenticatePlayerReq')(AuthenticatePlayerHandler.prototype, 'handle', descriptor());
+
 module.exports = { AuthenticatePlayerHandler };
+
+function descriptor() {
+  return {
+    configurable: true,
+    enumerable: false,
+    value: AuthenticatePlayerHandler.prototype.handle,
+    writable: true
+  };
+}

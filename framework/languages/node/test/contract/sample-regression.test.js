@@ -306,7 +306,7 @@ test('TicTacToe SessionGateway sample covers reconnect two-actor round and bound
   assert.deepEqual(missing, []);
 });
 
-test('Bingo sample covers four-player host start guards and bound push fanout', () => {
+test('Bingo sample covers api to play channel room allocation flow', () => {
   const client = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Client', 'self-check.js'), 'utf8');
   const apiMain = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'main.js'), 'utf8');
   const apiFactory = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'api-server-host-factory.js'), 'utf8');
@@ -321,33 +321,42 @@ test('Bingo sample covers four-player host start guards and bound push fanout', 
     [apiFactory, 'AuthenticatePlayerHandler'],
     [apiFactory, 'MatchBingoHandler'],
     [apiFactory, 'createChannelClient'],
+    [apiFactory, 'startChannelServer'],
     [apiFactory, "channelName: 'bingo.play'"],
+    [apiFactory, "channelName: 'bingo.api'"],
+    [apiFactory, "handlerGroups: ['api']"],
+    [apiFactory, "packetName: 'AuthenticatePlayerReq'"],
+    [apiFactory, "packetName: 'MatchBingoApiReq'"],
     [authenticate, 'Access token must be a sample player id.'],
+    [authenticate, "ZLinkHandlerGroup('api')"],
+    [authenticate, "ZLinkRequest('AuthenticatePlayerReq')"],
+    [authenticate, 'accepted: true'],
     [match, "this.playClient"],
+    [match, "ZLinkHandlerGroup('api')"],
+    [match, "ZLinkRequest('MatchBingoApiReq')"],
     [match, ".requestToChannel('bingo.play'"],
+    [match, "mode: request.mode ?? 'four-player'"],
     [match, ".packetName('AllocateBingoRoom')"],
     [match, '.timeout(10000)'],
     [match, '.submit()'],
-    [match, "{ actorId: 'p1', numbers: [7] }"],
-    [match, "{ actorId: 'p4', numbers: [11] }"],
     [roomMain, 'buildPlayServerHost'],
     [playFactory, 'AllocateBingoRoomHandler'],
     [playFactory, "channelName: 'bingo.play'"],
+    [playFactory, "handlerGroups: ['play']"],
     [playFactory, "packetName: 'AllocateBingoRoom'"],
+    [room, "ZLinkHandlerGroup('play')"],
+    [room, "ZLinkRequest('AllocateBingoRoom')"],
     [room, 'const requiredPlayers = 4'],
-    [room, 'earlyHostStartRejected'],
-    [room, 'nonHostStartRejected'],
-    [room, "'BingoGameStarted'"],
-    [room, "'BingoNumberDrawn'"],
-    [room, "'BingoGameEnded'"],
-    [room, 'hostActorId'],
-    [client, "assert.deepEqual(result.room.winners, ['p1', 'p3'])"],
-    [client, "message.packetName === 'BingoGameStarted'"],
-    [client, "message.packetName === 'BingoNumberDrawn'"],
-    [client, "message.packetName === 'BingoGameEnded'"],
-    [readme, '네 player'],
-    [readme, 'non-host start 요청은 거부된다'],
-    [readme, '`p1`, `p3`']
+    [room, 'this.reservedSeats >= requiredPlayers'],
+    [room, 'return { roomId: this.currentRoomId }'],
+    [client, "createChannelClient"],
+    [client, "channelName: 'bingo.api'"],
+    [client, "client.request('AuthenticatePlayerReq'"],
+    [client, "client.request('MatchBingoApiReq'"],
+    [client, "assert.equal(first.roomId, 'bingo-room-001')"],
+    [client, "assert.equal(second.roomId, 'bingo-room-001')"],
+    [readme, 'request payload 는 `mode` 만 포함한다'],
+    [readme, 'Play channel 로 `AllocateBingoRoom` request 를 보낸다']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -355,8 +364,12 @@ test('Bingo sample covers four-player host start guards and bound push fanout', 
 
   assert.deepEqual(missing, []);
   assert.equal(apiFactory.includes('createRouteClient'), false);
+  assert.equal(client.includes('createRouteClient'), false);
+  assert.equal(client.includes("'RunBingo'"), false);
   assert.equal(match.includes('this.playClient.request('), false);
   assert.equal(match.includes("'RunBingoRoom'"), false);
+  assert.equal(match.includes('players:'), false);
+  assert.equal(match.includes('draws:'), false);
   assert.equal(apiMain.includes("packetName: 'RunBingo'"), false);
   assert.equal(roomMain.includes('const requiredPlayers'), false);
 });

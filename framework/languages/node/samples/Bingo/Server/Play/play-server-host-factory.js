@@ -6,7 +6,11 @@ async function buildPlayServerHost(options) {
   return await startChannelServer({
     endpoint: options.playEndpoint,
     channelName: 'bingo.play',
-    handlers: [{ packetName: 'AllocateBingoRoom', handle: (request) => allocateBingoRoom.handle(request) }]
+    handlerGroups: ['play'],
+    handlers: [
+      { group: 'play', packetName: 'AllocateBingoRoom', handle: (request) => allocateBingoRoom.handle(request) },
+      { group: 'play', packetName: 'Ping', handle: () => ({ ok: true }) }
+    ]
   });
 }
 

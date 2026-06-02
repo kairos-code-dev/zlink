@@ -1,11 +1,13 @@
 const framework = require('../../packages/framework/dist');
 
-function createChannelServerRegistration({ endpoint, channelName, handlers = [] }) {
+function createChannelServerRegistration({ endpoint, channelName, handlers = [], handlerGroups }) {
+  const exposedHandlers = exposeHandlerGroups(handlers, handlerGroups);
   return framework.createFrameworkRegistration({
     channels: {
       [channelName]: {
         server: { bind: endpoint },
-        requestHandlers: handlers.map(({ packetName, handle }) => ({
+        handlerGroups,
+        requestHandlers: exposedHandlers.map(({ packetName, handle }) => ({
           packetName,
           handler: {
             async handle(payload, context) {
@@ -26,14 +28,29 @@ function createChannelClientRegistration({ channelName, peers }) {
   });
 }
 
-async function startChannelServer({ endpoint, channelName, handlers, beforeReady }) {
-  const registration = createChannelServerRegistration({ endpoint, channelName, handlers });
+async function startChannelServer({ endpoint, channelName, handlers, handlerGroups, beforeReady }) {
+  const registration = createChannelServerRegistration({ endpoint, channelName, handlers, handlerGroups });
   const runtime = new framework.ZLinkFrameworkRuntimeHost({ registration });
   await runtime.start();
   await beforeReady?.();
   process.stdout.write(`${JSON.stringify({ event: 'ready', endpoint, channelName })}\n`);
   await waitForShutdown();
   await stopRuntime(runtime);
+}
+
+function exposeHandlerGroups(handlers, handlerGroups) {
+  if (handlerGroups === undefined) {
+    return handlers;
+  }
+
+  const groups = new Set(handlerGroups);
+  const exposed = handlers.filter((handler) => groups.has(handler.group));
+  for (const group of groups) {
+    if (!handlers.some((handler) => handler.group === group)) {
+      throw new Error(`No sample handler is registered for group '${group}'.`);
+    }
+  }
+  return exposed;
 }
 
 async function createChannelClient({ channelName, peers }) {

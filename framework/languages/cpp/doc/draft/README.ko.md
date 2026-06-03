@@ -199,6 +199,7 @@ host/runtime 표면으로만 구체화한다.
 | [cpp-stream.ko.md](./cpp-stream.ko.md) | framework Header 기반 packet stream과 handler 통합 |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM 결정 기록 |
 | [cpp-stream-connector.ko.md](./cpp-stream-connector.ko.md) | C++용 Stream Connector 별도 라이브러리와 배포 정책 |
+| [cpp-http-client.ko.md](./cpp-http-client.ko.md) | C++ framework 샘플과 HTTP e2e에서 쓰는 fluent HTTP/JSON client |
 | [cpp-http-hosting.ko.md](./cpp-http-hosting.ko.md) | ASP.NET Core Minimal API에 대응하는 HTTP hosting과 zlink request 연동 |
 | [cpp-monitoring.ko.md](./cpp-monitoring.ko.md) | runtime monitoring 등록, typed event, 운영 샘플 |
 | [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | stage 같은 상위 모델을 `SPOT` 위에 감쌀 때의 조건 |

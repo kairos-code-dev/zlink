@@ -6333,3 +6333,34 @@ heading 형식으로 남아 있으면 완료 audit의 기준이 흐려진다.
 
 - draft 파일이 추가되거나 삭제됐는데 실행 계획 추적표가 따라오지 않으면
   `test_cpp_framework_layout_contract`가 실패한다.
+
+## 추가 리뷰. Draft README 역할 표 HTTP Client 누락 보강
+
+### 발견한 위험 신호
+
+- Goal 18은 `ZLink HTTP Client`를 별도 산출물과 별도 draft 문서로 둔다.
+- `doc/draft/README.ko.md` 상단 링크에는 `cpp-http-client.ko.md`가 있었지만,
+  `문서 구조와 역할 분담`의 주제 문서 표에는 HTTP Client 역할 설명이 없었다.
+- 사용자가 README 본문에서 문서 역할을 찾으면 HTTP client draft가 어떤 범위인지 알 수 없다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 상단 링크만 유지 | 문서 이동은 가능하다 | 역할 표가 Goal 18 산출물을 설명하지 않는다 |
+| HTTP Client 행만 수동 추가 | 즉시 누락을 고친다 | 다음 draft 문서 누락을 자동으로 잡지 못한다 |
+| HTTP Client 행을 추가하고 README 역할 표가 모든 draft를 덮는지 contract로 검사 | 현재 누락과 재발을 같이 막는다 | README 섹션 경계가 바뀌면 검사도 갱신해야 한다 |
+
+선택은 세 번째 방식이다. README의 역할 표는 draft 독자가 각 문서의 범위를 파악하는 첫
+본문 인덱스이므로, 실제 draft 파일과 같은 범위를 설명해야 한다.
+
+### 적용한 리팩토링
+
+- README 주제 문서 표에 `cpp-http-client.ko.md` 행을 추가했다.
+- layout contract가 README의 `문서 구조와 역할 분담` 구간을 읽고, `README.ko.md`를 제외한
+  모든 draft 문서가 이 구간에서 설명되는지 검사하게 했다.
+
+### 수정 후 점검
+
+- 새 draft 문서가 생겼는데 README 역할 표에 빠지면 `test_cpp_framework_layout_contract`가
+  실패한다.

@@ -197,6 +197,46 @@ draft_tracking_table_matches_files (const std::filesystem::path &root)
 }
 
 bool
+draft_readme_role_tables_cover_files (const std::filesystem::path &root)
+{
+  const auto path = root / "doc/draft/README.ko.md";
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  const auto text = buffer.str ();
+
+  const auto start = text.find ("## 2. 문서 구조와 역할 분담");
+  const auto end = text.find ("## 3. 핵심 방향");
+  if (start == std::string::npos || end == std::string::npos ||
+      start >= end) {
+    std::cerr << "draft README lacks bounded document role tables: "
+              << path << '\n';
+    return false;
+  }
+  const auto tables = text.substr (start, end - start);
+
+  bool ok = true;
+  for (const auto &entry : std::filesystem::directory_iterator (
+         root / "doc/draft")) {
+    if (!entry.is_regular_file () || entry.path ().extension () != ".md") {
+      continue;
+    }
+    const auto filename = entry.path ().filename ().generic_string ();
+    if (filename == "README.ko.md" || filename.size () < 6 ||
+        filename.substr (filename.size () - 6) != ".ko.md") {
+      continue;
+    }
+    const auto link = std::string ("(./") + filename + ")";
+    if (tables.find (link) == std::string::npos) {
+      std::cerr << "draft README role tables do not describe: "
+                << filename << '\n';
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+bool
 posd_log_has_current_goal_mapping (const std::filesystem::path &root)
 {
   const auto path =
@@ -996,6 +1036,7 @@ main ()
     "http-client/include",
     "");
   ok &= draft_tracking_table_matches_files (root);
+  ok &= draft_readme_role_tables_cover_files (root);
   ok &= posd_log_has_current_goal_mapping (root);
   ok &= cmake_extension_boundaries_hold (root);
 

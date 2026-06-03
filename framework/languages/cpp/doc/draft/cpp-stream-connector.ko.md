@@ -348,7 +348,8 @@ immediate mode도 제공한다. 이 모드에서는 connector가 내부 수신 �
 - send payload size limit은 transport write 전에 적용된다.
 - request timeout은 pending request를 정리한다.
 - request callback은 response, timeout, close 상황을 모두 처리한다.
-- reconnect 중 새 request는 queue에 쌓지 않고 disconnected 계열 오류로 실패한다.
+- reconnect 성공은 `reconnecting` 상태를 거쳐 `connected`로 돌아온 뒤 send가 가능해야 한다.
+- reconnect 실패 뒤 새 request는 queue에 쌓지 않고 disconnected 계열 오류로 실패한다.
 - heartbeat ping/pong과 heartbeat timeout을 검증한다.
 - compressed server packet은 typed callback 전에 복원된다.
 

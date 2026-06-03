@@ -5322,12 +5322,15 @@ hook보다 실제 transport를 통과한 packet으로 검증해야 한다.
   request callback 완료 기준을 직접 증명하게 했다.
 - raw TCP 서버가 frame을 두 번에 나눠 보내도 `receive(timeout)`이 하나의 packet으로 복원하는
   partial read 회귀 테스트를 추가했다.
+- reconnect 성공 경로는 첫 연결 실패 뒤 지연 시작한 TCP 서버로 재시도가 성공하고, 이후
+  public send가 가능한지 확인하도록 추가했다.
 
 ### 재점검
 
 - explicit receive 계약은 public API와 실제 STREAM frame read 경로로 검증된다.
 - callback request response, timeout, close는 callback submit 경로에서 직접 검증된다.
 - partial read는 raw TCP wire split을 통해 frame codec과 read loop 경계에서 검증된다.
+- reconnect 성공과 실패는 각각 상태 전이와 실패 후 request 거부로 검증된다.
 - public header는 public 시그니처에 필요한 표준 header를 직접 include한다.
 
 ## 추가 리뷰. HTTP Client 문서 탐색 표면 보정

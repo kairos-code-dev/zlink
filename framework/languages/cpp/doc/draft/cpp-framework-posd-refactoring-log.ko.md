@@ -5712,6 +5712,38 @@ transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 �
 - POSD 기록 수나 현재 Goal 1-22 매핑 row가 빠지면 `test_cpp_framework_layout_contract`가
   실패한다.
 
+## 추가 리뷰. CTest label empty-selection contract 보강
+
+### 발견한 위험 신호
+
+- implementation plan의 각 Goal 검증 명령은 CTest label을 기준으로 실행한다.
+- 현재 수동 감사에서는 주요 label이 모두 test를 선택하지만, CMake가 새로 바뀌면 label이
+  비어도 문서 명령 자체는 남아 있을 수 있다.
+- 빈 label selection은 테스트 실패가 아니라 "No tests were found" 형태로 지나갈 수 있어,
+  final audit이 실제 회귀 증거 없이 완료된 것처럼 보일 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 수동 `ctest -N -L` 감사 유지 | 새 test가 없다 | label drift가 자동으로 잡히지 않는다 |
+| plan 문서에서 label 명령 제거 | empty selection 위험이 줄어든다 | Goal별 검증 표면이 약해진다 |
+| CTest label contract가 주요 label의 non-empty selection을 검사 | 문서 명령과 CTest taxonomy를 자동으로 묶는다 | CTest 안에서 CTest dry-run을 한 번 더 호출한다 |
+
+선택은 세 번째 방식이다. `ctest -N -L`은 실행하지 않는 dry-run이므로 빠르고, label taxonomy
+drift를 기존 contract/regression label에서 바로 잡을 수 있다.
+
+### 적용한 리팩토링
+
+- `verify_ctest_label_contract.cmake`를 추가해 plan에 등장하는 주요 CTest label이 하나 이상의
+  test를 선택하는지 검사하게 했다.
+- `test_cpp_framework_label_contract`를 `framework-contract;framework-regression` label로
+  등록했다.
+
+### 수정 후 점검
+
+- Goal 검증 label이 비면 `test_cpp_framework_label_contract`가 실패한다.
+
 ## 추가 리뷰. Public facade compile coverage와 native leakage gate 보강
 
 ### 발견한 위험 신호

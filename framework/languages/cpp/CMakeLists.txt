@@ -559,6 +559,14 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_tooling_contract PROPERTIES
     LABELS "framework-contract;framework-package"
     TIMEOUT 30)
+  add_test(
+    NAME test_cpp_framework_label_contract
+    COMMAND ${CMAKE_COMMAND}
+      -D ZLINK_FRAMEWORK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.ContractTests/verify_ctest_label_contract.cmake)
+  set_tests_properties(test_cpp_framework_label_contract PROPERTIES
+    LABELS "framework-contract;framework-regression"
+    TIMEOUT 30)
 
   add_zlink_framework_test(
     test_cpp_framework_app_host

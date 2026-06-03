@@ -5116,3 +5116,46 @@ HTTP hosting, API handler DI 경계가 한 테스트에서 검증되고, process
 - client sample은 여전히 `zlink::http_client`와 stream connector를 사용하고 server handler를
   직접 호출하지 않는다.
 - 이번 보정 뒤 Goal 21 샘플 handler 경계에서 남은 즉시 수정 이슈는 0개다.
+
+## 추가 리뷰. Connector label taxonomy 공백 보정
+
+### 발견한 위험 신호
+
+- Implementation plan의 산출물 경계는 connector tests가 contract, protocol, transport,
+  typed 흐름을 CTest label로 드러내야 한다고 적는다. 그러나 현재 `ctest -N -L` 감사에서는
+  `connector-contract`, `connector-protocol`, `connector-transport`, `connector-typed`가 모두
+  0개를 선택했다.
+- `test_cpp_stream_connector`는 header/frame protocol, TCP endpoint transport, typed codec send와
+  dispatch를 이미 검증한다. 문제는 테스트 부재가 아니라 테스트 의미가 `connector-unit`,
+  `connector-integration`, `connector-e2e`에만 접혀 있어 final audit에서 문서 요구사항을 직접
+  증명할 수 없다는 점이다.
+- Unreal connector test도 public compile/smoke 계약을 확인하지만 `unreal-connector-contract`
+  label이 없어 plan의 Unreal public API compile 계약을 라벨로 선택할 수 없었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| plan에서 세분 label 제거 | CMake 변경이 없다 | 산출물 경계의 검증 의도를 약화한다 |
+| 별도 connector 테스트를 네 개로 분리 | label 의미가 가장 좁아진다 | 현재 단일 e2e가 공유하는 server setup을 중복한다 |
+| 기존 connector 테스트에 세분 label 추가 | 현재 검증 범위를 유지하면서 final audit 선택자가 비지 않는다 | 하나의 테스트가 여러 의미 label을 가진다 |
+
+선택은 기존 connector 테스트에 세분 label을 추가하는 것이다. 현재 테스트가 이미 protocol,
+transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 중복 테스트를 만드는 것보다
+복잡성을 덜 늘린다.
+
+### 적용한 리팩토링
+
+- `test_cpp_stream_connector` label에 `connector-contract`, `connector-protocol`,
+  `connector-transport`, `connector-typed`를 추가했다.
+- `test_unreal_stream_connector` label에 `unreal-connector-contract`를 추가했다.
+
+### 수정 후 점검
+
+- `ctest --test-dir framework/languages/cpp/build -N -L connector-contract`는
+  `test_cpp_stream_connector`를 포함해야 한다. CTest label 선택은 정규식이므로
+  `unreal-connector-contract`도 같은 명령에 함께 선택될 수 있다.
+- `connector-protocol`, `connector-transport`, `connector-typed` label도 같은 connector
+  회귀 테스트를 선택해야 한다.
+- `unreal-connector-contract` label은 Unreal connector compile/smoke 테스트를 선택해야 한다.
+- 이번 보정 뒤 connector label taxonomy에서 남은 즉시 수정 이슈는 0개다.

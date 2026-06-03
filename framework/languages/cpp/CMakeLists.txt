@@ -697,7 +697,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   add_zlink_connector_test(
     test_cpp_stream_connector
     tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp
-    "connector-unit;connector-integration;connector-e2e")
+    "connector-unit;connector-integration;connector-e2e;connector-contract;connector-protocol;connector-transport;connector-typed")
   target_link_libraries(test_cpp_stream_connector PRIVATE
     zlink::stream_connector_codecs)
   add_zlink_http_client_test(
@@ -724,7 +724,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     GTest::gmock)
   add_test(NAME test_unreal_stream_connector COMMAND test_unreal_stream_connector)
   set_tests_properties(test_unreal_stream_connector PROPERTIES
-    LABELS "unreal-connector-compile;unreal-connector-smoke"
+    LABELS "unreal-connector-contract;unreal-connector-compile;unreal-connector-smoke"
     TIMEOUT 30)
 endif()
 

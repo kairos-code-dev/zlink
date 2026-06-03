@@ -340,6 +340,40 @@ main ()
     return 29;
   }
 
+  auto oversized_payload =
+    connector
+      .send (zlink::stream_connector::packet_t {
+        "oversized.payload",
+        {},
+        zlink::stream_connector::codec_t::raw,
+        false,
+        zlink::message_t::from (std::string (17, 'x')) })
+      .submit ()
+      .result ();
+  if (oversized_payload ||
+      oversized_payload.error_code () !=
+        zlink::stream_connector::error_code_t::frame_too_large) {
+    return 40;
+  }
+
+  zlink::stream_connector::metadata_t oversized_metadata;
+  oversized_metadata.with ("trace", std::string (9 * 1024, 'm'));
+  auto oversized_metadata_result =
+    connector
+      .send (zlink::stream_connector::packet_t {
+        "oversized.metadata",
+        std::move (oversized_metadata),
+        zlink::stream_connector::codec_t::raw,
+        false,
+        zlink::message_t::from (std::string ("ok")) })
+      .submit ()
+      .result ();
+  if (oversized_metadata_result ||
+      oversized_metadata_result.error_code () !=
+        zlink::stream_connector::error_code_t::validation_failed) {
+    return 41;
+  }
+
   int manual_dispatch_count = 0;
   connector.on<zlink::stream_connector::packet_t> (
     "server.push",
@@ -578,6 +612,32 @@ main ()
                  zlink::stream_connector::connection_state_t::reconnecting) ==
         reconnect_states.end ()) {
     return 39;
+  }
+
+  zlink::stream_connector::connector_options_t unsupported_transport_options;
+  unsupported_transport_options.endpoint = endpoint;
+  unsupported_transport_options.transport =
+    zlink::stream_connector::transport_t::websocket;
+  auto unsupported_transport =
+    zlink::stream_connector::connector_factory_t::create (
+      unsupported_transport_options);
+  auto unsupported_transport_result = unsupported_transport.connect ().result ();
+  if (unsupported_transport_result ||
+      unsupported_transport_result.error_code () !=
+        zlink::stream_connector::error_code_t::configuration_error ||
+      unsupported_transport.is_connected ()) {
+    return 42;
+  }
+
+  auto request_after_reconnect_failure =
+    reconnect_connector.request<login_reply_t> (login_request_t {})
+      .packet_name ("after.reconnect.failure")
+      .submit ()
+      .result ();
+  if (request_after_reconnect_failure ||
+      request_after_reconnect_failure.error_code () !=
+        zlink::stream_connector::error_code_t::disconnected) {
+    return 43;
   }
   return 0;
 }

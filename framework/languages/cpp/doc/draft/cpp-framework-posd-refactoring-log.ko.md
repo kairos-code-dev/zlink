@@ -12,6 +12,55 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. Stream Connector 경계 조건 회귀 고정
+
+### 발견한 위험 신호
+
+- Stream Connector 초안은 지원하지 않는 TLS/WebSocket transport를 조용히 TCP처럼 처리하지
+  않는다고 설명하지만, connector 회귀 테스트는 이 실패 정책을 직접 검증하지 않았다.
+- `max_send_payload_size`와 `max_metadata_size`는 public option으로 제공되지만, send 전에
+  차단된다는 회귀 테스트가 없었다. 이 상태에서는 frame encoder나 call object 변경 중 제한
+  검사가 transport write 뒤로 밀려도 테스트가 놓칠 수 있다.
+- reconnect 실패 뒤 새 request가 queue에 쌓이지 않고 disconnected 오류로 실패한다는
+  테스트 항목도 명시적인 회귀가 약했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 구현 코드만 유지 | 변경이 없다 | public option의 실패 의미를 테스트가 증명하지 못한다 |
+| 별도 executable로 경계 테스트 분리 | label을 더 세밀하게 나눌 수 있다 | connector runtime setup이 중복된다 |
+| 기존 connector e2e 테스트에 경계 조건 추가 | 실제 연결 상태에서 send/request 경계를 검증한다 | 단일 테스트 본문이 조금 길어진다 |
+
+선택은 기존 connector 회귀에 추가하는 방식이다. 같은 connector instance에서 성공 경로와
+실패 경계를 함께 검증해야, 제한 검사가 실제 transport write 전에 실행되는지 확인할 수
+있다.
+
+### 적용한 리팩토링
+
+- `test_cpp_stream_connector`에 raw `packet_t` send payload가 `max_send_payload_size`를
+  넘으면 `frame_too_large`로 실패하는 검사를 추가했다.
+- metadata 합산 크기가 `max_metadata_size`를 넘으면 `validation_failed`로 실패하는 검사를
+  추가했다.
+- `transport_t::websocket` connect가 `configuration_error`로 실패하고 연결 상태로 전환되지
+  않는지 검증했다.
+- reconnect 시도 실패 뒤 새 request가 pending queue에 쌓이지 않고 `disconnected`로 실패하는
+  회귀를 추가했다.
+
+### 수정 후 점검
+
+- Stream Connector public API는 바꾸지 않았다.
+- 경계 조건은 DTO fallback payload가 아니라 raw `packet_t` overload를 통해 검증한다. 이
+  방식이 payload 크기 제한의 실제 입력을 가장 직접적으로 드러낸다.
+- unsupported transport 정책은 문서처럼 명시 실패로 고정된다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+```
+
 ## Goal 1. Repository Skeleton And Build
 
 ### 추가 리뷰. Unreal Connector async 표면 분리

@@ -12,6 +12,48 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. HTTP hosting TLS startup validation 회귀 보강
+
+### 발견한 위험 신호
+
+- Goal 19는 `https://` endpoint가 TLS certificate와 private key를 모두 요구한다고 명시한다.
+  구현은 두 값을 모두 검사하지만, 회귀 테스트는 TLS 설정이 전혀 없는 경우만 고정하고 있었다.
+- certificate만 누락되거나 private key만 누락되는 부분 설정은 사용자가 실제로 만들 수 있는
+  오류다. 이 케이스가 테스트에 없으면 완료 증거가 구현 세부에 의존하게 된다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 테스트를 유지한다 | 변경이 없다 | 문서의 "둘 다 필요" 조건을 테스트가 직접 증명하지 못한다 |
+| TLS builder setter에서 즉시 검증한다 | 오류 위치가 빠르다 | fluent builder 작성 순서 중간 상태까지 오류로 만들 수 있다 |
+| startup validation 테스트에 부분 TLS 설정 케이스를 추가한다 | 문서의 완료 조건을 그대로 고정한다 | 테스트 케이스가 몇 개 늘어난다 |
+
+선택은 세 번째 방식이다. `listen(...).tls(...)`는 fluent builder이므로 중간 상태를 허용하고,
+framework 설정 완료 시점의 startup validation에서 certificate/private key 쌍을 검증하는 것이
+호출자 관점에서 단순하다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_app_host`에 HTTPS TLS validation helper를 추가했다.
+- TLS 설정 없음, certificate 누락, private key 누락, 빈 TLS callback을 모두 startup validation
+  실패로 검증했다.
+- `http://` endpoint에 TLS option이 붙는 경우는 실패시키지 않아 scheme별 검증 범위를 분리했다.
+
+### 수정 후 점검
+
+- public HTTP API는 바꾸지 않았다.
+- HTTPS endpoint의 필수 TLS 쌍 검증은 문서 문구와 테스트가 같은 단위로 맞는다.
+- OpenSSL runtime availability와 관계없이 startup validation 의미를 확인한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_app_host --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure
+```
+
 ## 반복 POSD 재리뷰. Stream Connector WebSocket TLS transport 추가
 
 ### 발견한 위험 신호

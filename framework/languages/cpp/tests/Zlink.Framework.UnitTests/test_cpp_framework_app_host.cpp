@@ -729,20 +729,71 @@ main ()
     return 9;
   }
 
-  bool https_without_tls_rejected = false;
+  auto expect_https_tls_validation_rejected = [] (auto configure_http) {
+    bool rejected = false;
+    try {
+      auto invalid = zlink::framework::app_t::create ();
+      invalid.add_zlink_framework (
+        [&](zlink::framework::zlink_framework_options_t &options) {
+          configure_http (options.http ());
+        });
+    } catch (const zlink::framework::framework_exception_t &error) {
+      rejected =
+        error.kind () ==
+        zlink::framework::framework_error_kind_t::request_protocol_error;
+    }
+    return rejected;
+  };
+
+  if (!expect_https_tls_validation_rejected (
+        [] (zlink::framework::http_options_builder_t &http) {
+          http.listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT);
+        })) {
+    return 12;
+  }
+
+  if (!expect_https_tls_validation_rejected (
+        [] (zlink::framework::http_options_builder_t &http) {
+          http.listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT)
+            .tls ([](zlink::framework::http_tls_options_builder_t &tls) {
+              tls.private_key_file ("server.key");
+            });
+        })) {
+    return 41;
+  }
+
+  if (!expect_https_tls_validation_rejected (
+        [] (zlink::framework::http_options_builder_t &http) {
+          http.listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT)
+            .tls ([](zlink::framework::http_tls_options_builder_t &tls) {
+              tls.certificate_file ("server.crt");
+            });
+        })) {
+    return 42;
+  }
+
+  if (!expect_https_tls_validation_rejected (
+        [] (zlink::framework::http_options_builder_t &http) {
+          http.listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT)
+            .tls ([](zlink::framework::http_tls_options_builder_t &) {});
+        })) {
+    return 43;
+  }
+
+  bool http_with_tls_accepted = true;
   try {
     auto invalid = zlink::framework::app_t::create ();
     invalid.add_zlink_framework (
       [](zlink::framework::zlink_framework_options_t &options) {
-        options.http ().listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT);
+        options.http ()
+          .listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT)
+          .tls ([](zlink::framework::http_tls_options_builder_t &) {});
       });
-  } catch (const zlink::framework::framework_exception_t &error) {
-    https_without_tls_rejected =
-      error.kind () ==
-      zlink::framework::framework_error_kind_t::request_protocol_error;
+  } catch (const zlink::framework::framework_exception_t &) {
+    http_with_tls_accepted = false;
   }
-  if (!https_without_tls_rejected) {
-    return 12;
+  if (!http_with_tls_accepted) {
+    return 44;
   }
 
   auto secure = zlink::framework::app_t::create ();

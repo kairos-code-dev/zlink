@@ -35,7 +35,8 @@ foreach(required
     "\"boost-asio\""
     "\"gtest\""
     "\"lz4\""
-    "\"nlohmann-json\"")
+    "\"nlohmann-json\""
+    "\"openssl\"")
   if(NOT vcpkg_text MATCHES "${required}")
     message(FATAL_ERROR "vcpkg.json is missing ${required}")
   endif()

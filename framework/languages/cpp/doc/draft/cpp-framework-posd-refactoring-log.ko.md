@@ -5829,3 +5829,34 @@ server file log에서 stream request와 함께 검증하는 것이 plan의 완�
 - Goal 4 logging sink 중 console/file/rotating/callback/async/backend/min-level은 같은 app host
   regression에서 모두 검증된다.
 - 일반 file sink와 rotating file sink를 함께 등록해도 rotating sink가 자기 option을 사용한다.
+
+## 추가 리뷰. HTTPS/TLS toolchain manifest 보강
+
+### 발견한 위험 신호
+
+- Goal 18, Goal 19, Goal 20은 HTTPS, TLS transport, WebSocket over TLS를 완료 기준으로 둔다.
+- CMake runtime은 OpenSSL을 찾으면 secure 기능과 테스트를 켜지만, vcpkg manifest에는 OpenSSL
+  dependency가 없었다. vcpkg preset을 쓰는 clean 환경에서는 secure 기능이 조용히 빠질 수 있다.
+- tooling contract는 vcpkg manifest의 Boost, GTest, LZ4, JSON만 확인해 HTTPS/TLS dependency
+  누락을 잡지 못했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| OpenSSL을 optional로 계속 둠 | OpenSSL 없는 환경도 configure가 쉽다 | HTTPS/TLS 완료 기준과 vcpkg preset 기대가 어긋난다 |
+| CMake에서 OpenSSL 없으면 항상 실패 | secure 기능 누락을 즉시 잡는다 | system package 없이 HTTP-only 개발도 막는다 |
+| vcpkg manifest와 tooling contract에 OpenSSL을 명시 | vcpkg preset은 secure 기능을 재현 가능하게 한다 | non-vcpkg 환경은 여전히 system OpenSSL에 의존한다 |
+
+선택은 세 번째 방식이다. plan은 vcpkg manifest를 tooling 산출물로 두므로, vcpkg 경로에서는
+HTTPS/TLS dependency를 명시해 secure 기능이 빠지지 않게 해야 한다.
+
+### 적용한 리팩토링
+
+- `framework/languages/cpp/vcpkg.json`에 `openssl` dependency를 추가했다.
+- tooling contract가 vcpkg manifest에서 `openssl`을 요구하도록 보강했다.
+
+### 수정 후 점검
+
+- vcpkg preset은 HTTP client HTTPS, HTTP hosting HTTPS, connector TLS/WSS 구현에 필요한
+  OpenSSL dependency를 manifest에서 제공한다.

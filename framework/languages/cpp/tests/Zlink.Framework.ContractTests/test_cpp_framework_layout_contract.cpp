@@ -258,9 +258,9 @@ implementation_plan_expands_label_wildcards (const std::filesystem::path &root)
   bool ok = true;
   const std::string rows[] = {
     "| `http-client-*` | `http-client-contract`, `http-client-unit`, `http-client-e2e`, `http-client-https`, `http-client-regression` |",
-    "| `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, `connector-contract`, `connector-protocol`, `connector-transport`, `connector-typed` |",
+    "| `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, `connector-contract`, `connector-protocol`, `connector-transport`, `connector-typed`, `connector-package` |",
     "| `unreal-connector-*` | `unreal-connector-contract`, `unreal-connector-compile`, `unreal-connector-smoke` |",
-    "| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-e2e`, `framework-sample-log` |"
+    "| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-e2e`, `framework-sample-log`, `framework-sample-api`, `framework-sample-bingo`, `framework-sample-client`, `framework-sample-client-e2e`, `framework-sample-play`, `framework-sample-registry`, `framework-sample-session`, `framework-sample-tictactoe` |"
   };
   for (const auto &row : rows) {
     if (table.find (row) == std::string::npos) {

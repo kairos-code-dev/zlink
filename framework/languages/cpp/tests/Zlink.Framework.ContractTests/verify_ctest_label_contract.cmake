@@ -25,6 +25,14 @@ set(required_labels
   framework-sample-parity
   framework-sample-e2e
   framework-sample-log
+  framework-sample-api
+  framework-sample-bingo
+  framework-sample-client
+  framework-sample-client-e2e
+  framework-sample-play
+  framework-sample-registry
+  framework-sample-session
+  framework-sample-tictactoe
   http-client-contract
   http-client-unit
   http-client-e2e
@@ -37,6 +45,7 @@ set(required_labels
   connector-protocol
   connector-transport
   connector-typed
+  connector-package
   unreal-connector-contract
   unreal-connector-compile
   unreal-connector-smoke

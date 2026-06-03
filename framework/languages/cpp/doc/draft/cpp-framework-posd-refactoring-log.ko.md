@@ -6397,3 +6397,36 @@ contract와 같은 concrete label 집합을 보여 주는 역할로 나누는 �
 
 - wildcard label 의미가 plan에서 빠지거나 concrete label 목록과 어긋나면
   `test_cpp_framework_layout_contract`가 실패한다.
+
+## 추가 리뷰. Wildcard label prefix coverage 보정
+
+### 발견한 위험 신호
+
+- `ctest --print-labels` 기준 실제 `connector-*` label에는 `connector-package`도 포함된다.
+- 실제 `framework-sample-*` label에는 smoke/parity/e2e/log 외에도 sample 영역별
+  `framework-sample-api`, `framework-sample-client`, `framework-sample-bingo` 같은 label이
+  있다.
+- wildcard 확장표가 prefix label 일부만 적으면 기능 축 추적표의 `*-*` 표현이 실제 CTest
+  label prefix 전체가 아니라 임의의 부분집합처럼 보인다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| regression에 쓰는 일부 label만 확장표에 둠 | 표가 짧다 | wildcard가 prefix 전체를 뜻한다는 직관과 어긋난다 |
+| wildcard 표현을 더 좁은 이름으로 바꿈 | 부분집합 의미가 분명해진다 | 기존 기능 축 표와 label taxonomy를 다시 바꿔야 한다 |
+| 실제 prefix label 전체를 확장표와 label contract에 포함 | 문서와 CTest label taxonomy가 일치한다 | 표와 required label 목록이 길어진다 |
+
+선택은 세 번째 방식이다. `*-*` wildcard를 쓰는 이상 실제 prefix label 전체를 문서화하고
+non-empty contract로 고정하는 편이 오해가 적다.
+
+### 적용한 리팩토링
+
+- `connector-*` 확장표와 label contract에 `connector-package`를 추가했다.
+- `framework-sample-*` 확장표와 label contract에 sample 영역별 concrete label을 추가했다.
+- layout contract의 wildcard 확장 행도 같은 목록으로 갱신했다.
+
+### 수정 후 점검
+
+- 실제 sample/connector prefix label이 비거나 확장표에서 빠지면 label/layout contract가
+  함께 실패한다.

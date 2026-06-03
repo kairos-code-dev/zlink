@@ -51,6 +51,32 @@ has_suffix (const std::filesystem::path &path, const std::string &suffix)
                         suffix) == 0;
 }
 
+std::vector<std::filesystem::path>
+sample_source_files ()
+{
+  std::vector<std::filesystem::path> files;
+  const auto samples_root = cpp_language_root () / "samples";
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator (samples_root)) {
+    if (!entry.is_regular_file ()) {
+      continue;
+    }
+    const auto path = entry.path ();
+    if (has_suffix (path, ".cpp") || has_suffix (path, ".hpp")) {
+      files.push_back (path);
+    }
+  }
+  return files;
+}
+
+std::string
+relative_sample_path (const std::filesystem::path &path)
+{
+  return std::filesystem::relative (
+    path,
+    cpp_language_root () / "samples").generic_string ();
+}
+
 } // namespace
 
 TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
@@ -201,7 +227,6 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 
 TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 {
-  const auto samples_root = cpp_language_root () / "samples";
   const std::vector<std::string> banned_patterns {
     "configure_registry_host",
     "configure_api_host",
@@ -222,19 +247,79 @@ TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
     "enable_client"
   };
 
-  for (const auto &entry :
-       std::filesystem::recursive_directory_iterator (samples_root)) {
-    if (!entry.is_regular_file ()) {
-      continue;
-    }
-    const auto path = entry.path ();
-    if (!has_suffix (path, ".cpp") && !has_suffix (path, ".hpp")) {
-      continue;
-    }
+  for (const auto &path : sample_source_files ()) {
     const auto content = read_file (path);
     for (const auto &pattern : banned_patterns) {
       EXPECT_EQ (content.find (pattern), std::string::npos)
         << path << " contains low-level framework configuration pattern "
+        << pattern;
+    }
+  }
+}
+
+TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
+{
+  const auto samples_root = cpp_language_root () / "samples";
+  const std::vector<std::string> expected_samples { "Bingo", "TicTacToe" };
+
+  for (const auto &sample : expected_samples) {
+    EXPECT_TRUE (std::filesystem::is_directory (samples_root / sample))
+      << sample << " sample directory is missing";
+  }
+
+  for (const auto &entry : std::filesystem::directory_iterator (samples_root)) {
+    if (!entry.is_directory ()) {
+      continue;
+    }
+    const auto name = entry.path ().filename ().generic_string ();
+    if (name == "Shared") {
+      continue;
+    }
+    EXPECT_TRUE (name == "Bingo" || name == "TicTacToe")
+      << entry.path () << " adds a sample-name variant suffix";
+  }
+}
+
+TEST (CppFrameworkSampleParity, ClientSamplesDoNotCallServerHandlersDirectly)
+{
+  const std::vector<std::string> banned_client_patterns {
+    "../Server/",
+    "/Server/",
+    "Handlers/"
+  };
+
+  for (const auto &path : sample_source_files ()) {
+    const auto relative_path = relative_sample_path (path);
+    if (relative_path.find ("/Client/") == std::string::npos) {
+      continue;
+    }
+    const auto content = read_file (path);
+    for (const auto &pattern : banned_client_patterns) {
+      EXPECT_EQ (content.find (pattern), std::string::npos)
+        << path << " makes the client depend on server handler internals via "
+        << pattern;
+    }
+  }
+}
+
+TEST (CppFrameworkSampleParity, JsonFieldAccessStaysInsideDtoSerializers)
+{
+  const std::vector<std::string> banned_json_patterns {
+    "nlohmann::json::parse",
+    ".at (",
+    ".at(",
+    "json["
+  };
+
+  for (const auto &path : sample_source_files ()) {
+    const auto relative_path = relative_sample_path (path);
+    if (relative_path.find ("/Shared/Contracts/") != std::string::npos) {
+      continue;
+    }
+    const auto content = read_file (path);
+    for (const auto &pattern : banned_json_patterns) {
+      EXPECT_EQ (content.find (pattern), std::string::npos)
+        << path << " reads JSON fields outside DTO serializer hooks via "
         << pattern;
     }
   }

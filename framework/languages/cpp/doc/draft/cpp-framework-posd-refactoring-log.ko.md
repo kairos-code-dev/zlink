@@ -7545,3 +7545,43 @@ exporter, label schema, backend adapter는 extension이 맡을 수 있게 남겨
 
 - Stream Connector send/request submit await 경로가 깨지면 `test_cpp_stream_connector`가
   실패한다.
+
+## 반복 POSD 재리뷰. Goal 21 sample parity 회귀 테스트 보강
+
+### 발견한 위험 신호
+
+- Goal 21은 샘플 클라이언트가 실제 서버 프로세스와 HTTP client, Stream Connector를 사용하고
+  서버 handler를 직접 호출하지 않아야 한다고 요구한다.
+- 기존 parity 테스트는 TicTacToe client가 `zlink::http_client`로 `POST /games`를 호출하는지는
+  확인했지만, client 디렉터리가 나중에 server handler header를 직접 include하는 회귀는 막지
+  못했다.
+- DTO serializer hook 밖에서 JSON field를 직접 읽는 코드도 자동으로 막지 못했다. 이 경우
+  샘플 애플리케이션이 contract type 대신 JSON 구조에 직접 결합되어 호출자 복잡성이 다시
+  올라간다.
+- public sample 이름에 variant suffix가 다시 붙는 회귀도 CMake target smoke만으로는 드러나지
+  않는다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 수동 리뷰만 유지 | 코드 변경이 없다 | 문서 완료 기준을 매번 사람이 기억해야 한다 |
+| 샘플 client 구현을 더 감싸는 facade를 추가 | include 경로를 줄일 수 있다 | 현재 클라이언트 구조보다 깊은 모듈이 되지 않고 표면만 늘어난다 |
+| parity 테스트가 client/server 경계와 JSON 접근 위치를 스캔 | 문서 요구를 자동 회귀 조건으로 만든다 | 문자열 기반 구조 검증이므로 의도적인 새 예외가 생기면 테스트를 갱신해야 한다 |
+
+선택은 세 번째 방식이다. 샘플의 핵심 요구는 새 abstraction보다 public 경계가 흐려지지 않는지를
+지속적으로 검증하는 것이다. 테스트가 client와 server handler 경계, JSON serializer 경계, sample
+이름 경계를 고정하면 호출자 관점의 단순한 샘플 구조가 유지된다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_sample_parity`에 sample source 순회 helper를 추가했다.
+- client sample 파일이 `Server` 또는 `Handlers` 경로를 직접 참조하지 않는지 검증했다.
+- `Shared/Contracts` 아래 DTO serializer hook을 제외한 sample code에서 `nlohmann::json::parse`,
+  `json.at`, `json[]` 접근이 나오지 않도록 검증했다.
+- public sample directory가 `Bingo`, `TicTacToe` 이름만 유지하는지 검증했다.
+
+### 수정 후 점검
+
+- sample client가 server handler를 직접 include하거나 DTO serializer 밖에서 JSON field에 결합되면
+  `test_cpp_framework_sample_parity`가 실패한다.

@@ -16,16 +16,33 @@ min_reply="${7:-0}"
 min_push="${8:-0}"
 
 mkdir -p "$work_dir"
-rm -f "$sample_log"
 
 server_pid=""
+lock_dir=""
 cleanup() {
   if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
     kill "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
+  if [[ -n "$lock_dir" ]] && [[ -d "$lock_dir" ]]; then
+    rmdir "$lock_dir" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
+
+lock_root="$(dirname "$work_dir")"
+mkdir -p "$lock_root"
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$lock_root/.sample-process-e2e.lock"
+  flock 9
+else
+  lock_dir="$lock_root/.sample-process-e2e.lockdir"
+  while ! mkdir "$lock_dir" 2>/dev/null; do
+    sleep 0.01
+  done
+fi
+
+rm -f "$sample_log"
 
 (
   cd "$work_dir"
@@ -54,7 +71,7 @@ fi
 
 (
   cd "$work_dir"
-  ZLINK_SAMPLE_EXTERNAL_SERVER=1 "$client_executable" \
+  "$client_executable" \
     > client.stdout 2> client.stderr
 ) || {
   client_status=$?

@@ -27,7 +27,6 @@ struct tictactoe_client_options_t
   std::string x_actor_id = sample_names_t::x_actor_id;
   std::string o_actor_id = sample_names_t::o_actor_id;
   std::chrono::milliseconds stream_timeout { 5000 };
-  bool use_embedded_server = true;
 };
 
 } // namespace zlink::samples::tictactoe

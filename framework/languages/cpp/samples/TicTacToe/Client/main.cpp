@@ -2,17 +2,12 @@
 
 #include "tictactoe_client.hpp"
 
-#include <cstdlib>
-
 int
 main ()
 {
   using namespace zlink::samples::tictactoe;
 
   tictactoe_client_options_t options;
-  if (std::getenv ("ZLINK_SAMPLE_EXTERNAL_SERVER") != nullptr) {
-    options.use_embedded_server = false;
-  }
   const auto result = tictactoe_client_t {}.run (options);
   if (!result.connected || !result.http_game_created ||
       result.game_name != "match-1" ||

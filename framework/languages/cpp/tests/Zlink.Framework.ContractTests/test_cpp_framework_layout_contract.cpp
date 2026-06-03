@@ -727,6 +727,18 @@ client_sample_does_not_include_server_implementation (
   const std::filesystem::path &client_root)
 {
   bool ok = true;
+  const std::string forbidden[] = {
+    "../Server/",
+    "Server/",
+    "../Shared/E2E/",
+    "Shared/E2E/",
+    "zlink/Contracts/Sockets",
+    "zlink/Contracts/Service",
+    "zlink::context_t",
+    "zlink::stream_socket_t",
+    "run_client_e2e_stream_server",
+    "use_embedded_server"
+  };
   const auto path = root / client_root;
   for (const auto &entry :
        std::filesystem::recursive_directory_iterator (path)) {
@@ -743,11 +755,14 @@ client_sample_does_not_include_server_implementation (
     std::size_t line_no = 0;
     while (std::getline (input, line)) {
       ++line_no;
-      if (line.find ("../Server/") != std::string::npos ||
-          line.find ("Server/") != std::string::npos) {
-        std::cerr << "client sample references server implementation: "
-                  << entry.path () << ':' << line_no << '\n';
-        ok = false;
+      for (const auto &needle : forbidden) {
+        if (line.find (needle) != std::string::npos) {
+          std::cerr << "client sample references server/test harness or "
+                       "low-level zlink implementation: "
+                    << entry.path () << ':' << line_no << " contains "
+                    << needle << '\n';
+          ok = false;
+        }
       }
     }
   }
@@ -1119,9 +1134,6 @@ main ()
   ok &= require_exists (
     root /
     "tests/Zlink.Framework.UnitTests/test_cpp_framework_handler_registry.cpp");
-  ok &= require_exists (
-    root /
-    "tests/Zlink.Framework.E2ETests/Samples/verify_sample_client_log.cmake");
   ok &= require_exists (
     root /
     "tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp");

@@ -2,17 +2,12 @@
 
 #include "bingo_client_app.hpp"
 
-#include <cstdlib>
-
 int
 main ()
 {
   using namespace zlink::samples::bingo;
 
   bingo_client_options_t options;
-  if (std::getenv ("ZLINK_SAMPLE_EXTERNAL_SERVER") != nullptr) {
-    options.use_embedded_server = false;
-  }
   const auto result = bingo_client_app_t {}.run (options);
   if (!result.connected || result.requests.size () != 9 ||
       result.sends.size () != 1 ||

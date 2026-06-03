@@ -2456,13 +2456,13 @@ git diff --check -- framework/languages/cpp bindings/cpp
 |------|------|------|
 | 기존 client smoke만 유지 | 테스트가 빠르고 단순하다 | 서버 쪽 실제 frame 흐름을 증명하지 못한다 |
 | 샘플 코드 안에서 로그 문자열을 직접 assert | 실행 파일 하나로 끝난다 | 샘플 사용성 코드에 테스트 전용 검증 로직이 섞인다 |
-| CTest wrapper가 샘플을 실행한 뒤 로그 파일을 검증 | 샘플 코드는 사용자 흐름으로 유지하고 회귀 검증을 분리한다 | CMake script test가 하나 더 필요하다 |
+| CTest wrapper가 server/client 샘플 프로세스를 실행한 뒤 로그 파일을 검증 | 샘플 코드는 사용자 흐름으로 유지하고 회귀 검증을 분리한다 | process orchestration helper가 필요하다 |
 | reply와 push를 별도 public 동작으로 바꿈 | 연속 submit 문제가 줄어든다 | `.NET` 샘플의 reply 후 bound-session push 논리 흐름과 달라질 수 있다 |
 | 같은 STREAM write에 reply frame과 push frame을 순서대로 담음 | `.NET`과 같은 reply 후 push frame 순서를 유지하면서 write readiness 문제를 숨기지 않는다 | loopback server helper가 frame batching을 알아야 한다 |
 
-선택은 CTest wrapper 방식이다. 샘플 executable은 계속 public API 사용성만 보여 주고,
-회귀 테스트는 실행 뒤 서버 로그를 읽어 실제 bind, receive, reply, push 흐름과 packet
-이름, 최소 처리 횟수를 검증한다.
+선택은 CTest wrapper 방식이다. Client 샘플 executable은 계속 public API 사용성만 보여 주고,
+회귀 테스트는 별도 server process와 client process를 함께 실행한 뒤 서버 로그를 읽어 실제 bind,
+receive, reply, push 흐름과 packet 이름, 최소 처리 횟수를 검증한다.
 
 연속 submit 실패는 frame batching으로 정리했다. `.NET` 샘플처럼 request reply와
 bound-session push는 논리적으로 분리되어 있고, 로그도 `reply` 다음 `push`를 그대로 남긴다.
@@ -2472,13 +2472,14 @@ STREAM wire가 여러 frame을 한 byte stream에 실을 수 있다는 구현 �
 
 #### 적용한 리팩토링
 
-- `tests/Zlink.Framework.E2ETests/Samples/verify_sample_client_log.cmake`를 추가해 샘플 executable 실행, 서버 로그
-  생성 여부, 기대 문자열, 최소 receive/reply/push line 수를 검증하게 했다.
+- `tests/Zlink.Framework.E2ETests/Samples/run_sample_process_e2e.sh`가 샘플 server/client executable을
+  별도 프로세스로 실행하고, 서버 로그 생성 여부, 기대 문자열, 최소 receive/reply/push line 수를
+  검증하게 했다.
 - Bingo client E2E 로그 테스트가 `AuthenticateReq`, `MatchBingoReq`,
   `StartBingoGameReq`, `LeaveRoomReq`, `PlayerJoinedNotify`, `BingoGameEndedNotify`와
-  10개 receive, 9개 reply, 10개 push 흐름을 확인하도록 등록했다.
+  10개 receive, 9개 reply, 8개 push 흐름을 확인하도록 등록했다.
 - TicTacToe client E2E 로그 테스트가 `AuthenticateReq`, `JoinMatchReq`, `PlaceMarkReq`,
-  `TurnChangedNotify`와 9개 receive, 9개 reply, 9개 push 흐름을 확인하도록 등록했다.
+  `TurnChangedNotify`와 10개 receive, 10개 reply, 9개 push 흐름을 확인하도록 등록했다.
 - `framework-sample-log` CTest label을 추가해 로그 검증만 따로 실행할 수 있게 했다.
 - sample loopback server helper에 reply frame과 push frame을 같은 STREAM write에 담는
   `send_stream_reply_and_push`를 추가하고, Bingo/TicTacToe client sample server가 이를
@@ -8054,3 +8055,46 @@ public header compile 여부가 아니라 HTTPS request와 TLS verification을 �
 
 - framework, HTTP client, connector, extension public header에 future/awaitable/cancellation
   primitive가 노출되면 `test_cpp_framework_layout_contract`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 21 client sample embedded harness 제거
+
+### 발견한 위험 신호
+
+- Goal 21은 Client 샘플이 서버 handler를 직접 호출하지 않고 HTTP client와 Stream Connector로
+  실제 server process와 붙어 검증해야 한다고 명시한다.
+- 기존 Bingo/TicTacToe Client 코드는 standalone smoke를 위해 `zlink::context_t`,
+  `zlink::stream_socket_t`, `Shared/E2E` server harness를 직접 포함했다.
+- 이 구조에서는 사용자에게 보여야 할 Client 샘플과 테스트용 server harness가 한 모듈에 섞인다.
+  Client가 낮은 수준 zlink socket 준비 순서를 알아야 하므로 public sample 사용성이 얕아진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| embedded harness 유지 | client executable 하나만 실행해도 통과한다 | Client 샘플이 server/test harness와 낮은 수준 socket을 직접 안다 |
+| Client 내부 분기를 유지하되 파일만 나눈다 | 일부 include는 줄일 수 있다 | Client API에 embedded server 옵션이 남아 책임 경계가 흐리다 |
+| Client는 실제 client 역할만 수행하고 process e2e test가 server executable을 띄운다 | 샘플 역할과 테스트 harness 책임이 분리된다 | standalone client smoke test를 process e2e로 대체해야 한다 |
+
+선택은 세 번째 방식이다. Goal 21의 완료 증거는 client 단독 smoke가 아니라 실제 server process와
+붙은 request/reply, push, disconnect, shutdown log 검증이어야 한다.
+
+### 적용한 리팩토링
+
+- Bingo/TicTacToe Client에서 embedded server option, raw zlink context/stream socket, `Shared/E2E`
+  harness include를 제거했다.
+- Client executable은 더 이상 standalone smoke test로 등록하지 않고, process e2e test에서 server
+  executable과 함께 실행하게 했다.
+- 기존 standalone client-log verifier를 제거하고, process e2e test가 server file log의 request,
+  reply, push, disconnect, shutdown evidence를 계속 검증하게 했다.
+- process e2e runner는 build directory 단위 lock을 잡은 뒤 로그를 초기화하고 server/client를
+  실행한다. 같은 고정 sample endpoint와 로그 파일을 쓰는 label들을 별도 CTest 프로세스에서
+  동시에 실행해도 서로 충돌하지 않게 하기 위해서다.
+- sample parity/layout contract가 Client 디렉터리에서 server/test harness include와 낮은 수준
+  zlink socket/context 사용을 금지하게 했다.
+
+### 수정 후 점검
+
+- Client 샘플에 `Shared/E2E`, `zlink/Contracts/Sockets`, `zlink::context_t`,
+  `zlink::stream_socket_t`, embedded server option이 다시 들어오면 contract test가 실패한다.
+- `framework-sample-client-e2e`와 `framework-sample-log` label을 별도 CTest 프로세스로 동시에
+  실행해도 process e2e runner lock 때문에 sample server port 충돌이 재발하지 않는다.

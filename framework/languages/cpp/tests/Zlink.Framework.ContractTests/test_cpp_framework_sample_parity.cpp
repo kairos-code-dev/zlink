@@ -285,7 +285,15 @@ TEST (CppFrameworkSampleParity, ClientSamplesDoNotCallServerHandlersDirectly)
   const std::vector<std::string> banned_client_patterns {
     "../Server/",
     "/Server/",
-    "Handlers/"
+    "Handlers/",
+    "../Shared/E2E/",
+    "/Shared/E2E/",
+    "zlink/Contracts/Sockets",
+    "zlink/Contracts/Service",
+    "zlink::context_t",
+    "zlink::stream_socket_t",
+    "run_client_e2e_stream_server",
+    "use_embedded_server"
   };
 
   for (const auto &path : sample_source_files ()) {

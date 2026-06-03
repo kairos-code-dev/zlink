@@ -4,6 +4,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <stdexcept>
@@ -50,6 +52,16 @@ flatten_json (zlink::framework::configuration_model_t &model,
   if (value.is_null ()) {
     model.set (prefix, "");
   }
+}
+
+std::string
+lower_ascii (std::string value)
+{
+  std::transform (
+    value.begin (), value.end (), value.begin (), [] (unsigned char ch) {
+      return static_cast<char> (std::tolower (ch));
+    });
+  return value;
 }
 
 } // namespace
@@ -180,6 +192,25 @@ config_builder_t::load_cli (int argc, char **argv)
     _model.set (std::move (key), std::move (value));
   }
   return *this;
+}
+
+config_builder_t &
+config_builder_t::use_environment (std::string name)
+{
+  _model.set ("environment.name", std::move (name));
+  return *this;
+}
+
+std::string
+config_builder_t::environment () const
+{
+  return _model.get ("environment.name").value_or ("production");
+}
+
+bool
+config_builder_t::is_environment (std::string_view name) const
+{
+  return lower_ascii (environment ()) == lower_ascii (std::string (name));
 }
 
 } // namespace zlink::framework

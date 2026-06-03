@@ -377,8 +377,14 @@ main ()
   setenv ("ZLINK_server__queue", "64", 1);
 
   app.config ()
+    .use_environment ("development")
     .load_json (config_path.string ())
     .load_env ("ZLINK_");
+  auto default_environment_config = zlink::framework::config_builder_t {};
+  if (default_environment_config.environment () != "production" ||
+      !default_environment_config.is_environment ("Production")) {
+    return 41;
+  }
   auto optional_config = zlink::framework::config_builder_t {};
   optional_config.load_json ("missing.optional.appsettings.json",
                              zlink::framework::optional_t::yes);
@@ -696,6 +702,11 @@ main ()
   }
   if (app.config ().model ().get ("config.env.prefix") != "ZLINK_") {
     return 3;
+  }
+  if (app.config ().environment () != "development" ||
+      !app.config ().is_environment ("Development") ||
+      app.config ().is_environment ("production")) {
+    return 42;
   }
   if (app.config ().model ().get ("cli.node") != "alpha") {
     return 4;

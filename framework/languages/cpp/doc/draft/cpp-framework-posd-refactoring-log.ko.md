@@ -139,6 +139,48 @@ section을 해석하게 하면 public API는 작게 유지하면서 필수 값 �
 - 필수 값 누락은 `framework_exception_t(request_protocol_error)`로 한곳에서 보고된다.
 - 기존 `env.*`, `cli.*` source-specific key는 유지되어 디버깅과 기존 테스트 표면을 보존한다.
 
+## 반복 POSD 재리뷰. Goal 4 environment profile selection 보강
+
+### 발견한 위험 신호
+
+- application framework draft는 `development`, `production`, `test` 같은 environment/profile
+  selection을 필수 configuration 기능으로 둔다.
+- 기존 configuration API는 profile JSON을 직접 optional load할 수는 있었지만, 현재 app이 어떤
+  environment로 실행되는지 framework 표면에서 표현하지 못했다.
+- profile 이름이 application code의 임의 문자열로 흩어지면 sample과 테스트가 같은 의미로
+  환경을 선택하는지 검증하기 어렵다.
+
+### 위반한 POSD 원칙
+
+- 정보 은닉: environment 이름과 기본값 결정이 framework가 아니라 호출자 관례로 새어 나갔다.
+- 오류를 정의로 없애라: 기본 environment가 없으면 호출자가 매번 fallback을 정해야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 문서의 profile 문구를 제거 | 구현 변경이 없다 | application framework 목표를 축소한다 |
+| environment를 env var parser에만 맡긴다 | 입력 source가 하나다 | 명시 profile 선택과 테스트 기본값을 표현하기 어렵다 |
+| `use_environment`, `environment`, `is_environment`를 configuration API에 둔다 | 표면이 작고 profile 선택 의미가 한곳에 모인다 | profile별 파일 로딩은 호출자가 명시해야 한다 |
+
+선택은 세 번째 방식이다. C++에서는 파일 로딩 순서를 명시하는 편이 단순하므로, framework는
+environment 이름과 기본값을 제공하고 profile JSON은 기존 `load_json(..., optional_t::yes)`와
+조합하게 한다.
+
+### 적용한 리팩토링
+
+- `config_builder_t::use_environment(std::string)`, `environment()`,
+  `is_environment(std::string_view)`를 추가했다.
+- environment 기본값은 `.NET Generic Host` 관례와 맞춰 `production`으로 둔다.
+- app host regression이 기본 production, explicit development, 대소문자 무시 비교를 확인하게
+  했다.
+
+### 수정 후 점검
+
+- application code는 현재 profile을 `app.config().environment()`로 읽을 수 있다.
+- profile 비교는 `is_environment()`에 모여 호출자가 casing 규칙을 반복하지 않는다.
+- optional profile JSON은 기존 optional loader와 조합된다.
+
 ## 반복 POSD 재리뷰. Sample client process e2e 분리
 
 ### 발견한 위험 신호

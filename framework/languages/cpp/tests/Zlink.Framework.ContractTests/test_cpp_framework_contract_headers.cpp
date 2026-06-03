@@ -157,6 +157,24 @@ static_assert (
                             zlink::framework::optional_t::yes)),
     zlink::framework::config_builder_t &>);
 
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::config_builder_t &> ()
+                .use_environment ("development")),
+    zlink::framework::config_builder_t &>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<const zlink::framework::config_builder_t &> ()
+                .environment ()),
+    std::string>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<const zlink::framework::config_builder_t &> ()
+                .is_environment ("development")),
+    bool>);
+
 class named_handler_t
 {
 public:

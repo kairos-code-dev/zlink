@@ -103,6 +103,12 @@ public:
 
   config_builder_t &load_cli (int argc, char **argv);
 
+  config_builder_t &use_environment (std::string name);
+
+  std::string environment () const;
+
+  bool is_environment (std::string_view name) const;
+
   configuration_section_t section (std::string prefix) const
   {
     return configuration_section_t (_model, std::move (prefix));

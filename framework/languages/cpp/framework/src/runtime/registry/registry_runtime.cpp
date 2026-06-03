@@ -458,6 +458,20 @@ registry_runtime_t::add_spot_route (spot_route_t route)
     std::move (route);
 }
 
+void
+registry_runtime_t::cleanup_stale_spot_routes (
+  const std::set<std::string> &active_spot_rids)
+{
+  for (auto it = _state->spot_routes.begin ();
+       it != _state->spot_routes.end ();) {
+    if (active_spot_rids.find (it->first) == active_spot_rids.end ()) {
+      it = _state->spot_routes.erase (it);
+      continue;
+    }
+    ++it;
+  }
+}
+
 result_t<spot_route_t>
 registry_runtime_t::resolve_spot_remote_address (spot_rid_t spot_rid)
 {

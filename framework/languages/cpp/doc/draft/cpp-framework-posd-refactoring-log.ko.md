@@ -5964,3 +5964,37 @@ pipeline으로 닫아야 logging/correlation 지식이 handler마다 반복되�
 
 - HTTP 오류 응답도 middleware/filter pipeline의 관찰 지점을 지난다.
 - correlation id는 success DTO, response header, error JSON에 모두 남는다.
+
+## 추가 리뷰. Registry stale Spot route cleanup gate 보강
+
+### 발견한 위험 신호
+
+- Goal 15는 Registry와 Topology 완료 기준에 stale address cleanup을 포함한다.
+- registry runtime은 remote Spot route를 추가하고 조회할 수 있었지만, 오래된 route를 제거하는
+  경로와 회귀 테스트가 없었다.
+- stale route가 계속 lookup에 남으면 Registry가 Spot remote address 기본값으로 동작할 때
+  caller가 이미 사라진 route를 정상 route처럼 받을 수 있다.
+- stale 판단과 route table 소유권이 caller 쪽으로 새면 Registry lookup 정책이 얕은 helper로
+  흩어진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 조회 실패 테스트만 유지 | 기존 구현을 유지한다 | stale route 누적을 잡지 못한다 |
+| public `registry_query_t`에 remove API를 추가 | application code에서 정리할 수 있다 | cleanup 정책을 caller에게 노출한다 |
+| detail registry runtime이 active RID set 기준으로 stale route를 제거 | route table 소유자가 cleanup도 맡는다 | 현재 테스트는 detail runtime hook을 사용한다 |
+
+선택은 세 번째 방식이다. Spot route table은 registry runtime 내부 상태이므로, stale cleanup도
+같은 owner 안에 두는 것이 정보 은닉에 맞다. public query 표면은 lookup 계약만 유지한다.
+
+### 적용한 리팩토링
+
+- `registry_runtime_t::cleanup_stale_spot_routes(...)`를 추가했다.
+- registry topology test가 active route와 stale route를 함께 등록한 뒤, cleanup 이후 stale
+  route lookup이 `spot_route_not_found`로 실패하는지 검증하게 했다.
+
+### 수정 후 점검
+
+- stale Spot remote address는 registry runtime 내부 cleanup으로 제거된다.
+- Goal 15의 stale address cleanup 항목은 `framework-zlink-registry` 회귀 테스트가 잡는다.

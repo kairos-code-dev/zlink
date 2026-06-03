@@ -6,6 +6,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,7 @@ public:
   result_t<void> validate (const zlink_builder_state_t &builder) const;
   void project_topology (const zlink_builder_state_t &builder);
   void add_spot_route (spot_route_t route);
+  void cleanup_stale_spot_routes (const std::set<std::string> &active_spot_rids);
   result_t<spot_route_t> resolve_spot_remote_address (spot_rid_t spot_rid);
 
 private:

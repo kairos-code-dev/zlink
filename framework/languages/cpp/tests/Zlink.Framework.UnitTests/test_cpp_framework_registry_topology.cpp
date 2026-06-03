@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <optional>
+#include <set>
 #include <string>
 
 namespace
@@ -94,11 +95,22 @@ main ()
 
   const auto remote_rid =
     zlink::framework::spot_rid_t::from_string ("remote-stage");
-  zlink::framework::detail::registry_runtime_t::from (query).add_spot_route (
+  auto registry_runtime =
+    zlink::framework::detail::registry_runtime_t::from (query);
+  registry_runtime.add_spot_route (
     zlink::framework::spot_route_t {
       zlink::framework::node_rid_t::from_string ("remote-node"),
       remote_rid,
       "stage" });
+  const auto stale_rid =
+    zlink::framework::spot_rid_t::from_string ("stale-stage");
+  registry_runtime.add_spot_route (
+    zlink::framework::spot_route_t {
+      zlink::framework::node_rid_t::from_string ("stale-node"),
+      stale_rid,
+      "stage" });
+  registry_runtime.cleanup_stale_spot_routes (
+    std::set<std::string> { std::string (remote_rid.value ()) });
   auto route = query.resolve_spot_remote_address (remote_rid);
   if (!route || route.value ().spot_name != "stage" ||
       route.value ().node_rid.value () != "remote-node") {
@@ -114,6 +126,11 @@ main ()
   if (missing ||
       missing.error_kind () != framework_error_kind_t::spot_route_not_found) {
     return 9;
+  }
+  auto stale = query.resolve_spot_remote_address (stale_rid);
+  if (stale ||
+      stale.error_kind () != framework_error_kind_t::spot_route_not_found) {
+    return 22;
   }
 
   zlink::framework::zlink_builder_t no_discovery;

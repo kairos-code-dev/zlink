@@ -5670,15 +5670,47 @@ transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 �
 | Goal 17. Module System And Hosted Services | `Goal 16. Hosted Services And Module System`, `AddZLinkFramework 대응 C++ module API 보정` |
 | Goal 18. ZLink HTTP Client | `Goal 18. ZLink HTTP Client 실제 산출물 추가`, `HTTP Client contract label 보강` |
 | Goal 19. HTTP Hosting | `Goal 19. HTTP Hosting runtime과 HTTP client e2e 연결`, `HTTP system route 충돌 validation 보강` |
-| Goal 20. Stream Connectors | `Goal 17. C++ Stream Connector`, `Connector label taxonomy 공백 보정` |
-| Goal 21. Review Samples | `Goal 19. Review Samples`, `TicTacToe HTTP 시작 handler 경계 보정` |
-| Goal 22. Final Regression, Package, Extension Boundary | `Goal 22. Runtime coverage regression gate 추가`, `Goal 검증 명령 empty-selection gate 제거` |
+| Goal 20. Stream Connectors | `Goal 17. C++ Stream Connector`, `Unreal Stream Connector general connector dependency 제거`, `Connector label taxonomy 공백 보정` |
+| Goal 21. Review Samples | `Goal 19. Review Samples`, `TicTacToe client server handler include 제거`, `TicTacToe HTTP 시작 handler 경계 보정` |
+| Goal 22. Final Regression, Package, Extension Boundary | `Goal 22. Runtime coverage regression gate 추가`, `Parity label e2e coverage 보강`, `Goal 검증 명령 empty-selection gate 제거` |
 
 ### 수정 후 점검
 
 - 현재 implementation plan의 Goal 1-22는 모두 이 로그 안의 대표 POSD 기록과 연결된다.
 - 과거 section 번호는 실행 당시 기록으로 유지하고, 현재 plan 기준 대조는 위 표를 사용한다.
 - 이번 보정 뒤 POSD 기록 매핑 감사의 즉시 수정 이슈는 0개다.
+
+## 추가 리뷰. POSD 기록 매핑 contract gate 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 Goal 1부터 Goal 22까지 각 goal에서 POSD 기반 리팩토링을 최소 한 번씩 수행하고,
+  POSD 리팩토링 기록이 22개 이상 남아 있어야 한다고 적는다.
+- POSD 로그에는 현재 Goal 1-22 대표 기록 표가 있지만, 테스트가 이 표와 기록 수를 검사하지
+  않으면 표가 낡아져도 회귀에서 드러나지 않는다.
+- 문서 증거가 테스트와 떨어져 있으면 final audit이 다시 수동 추정에 의존하게 된다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 수동 리뷰만 유지 | 코드 변경이 없다 | POSD 기록 누락이 자동 회귀에 잡히지 않는다 |
+| 별도 문서 검사 스크립트 추가 | 책임이 분리된다 | 현재 layout/public surface gate와 중복된다 |
+| layout contract가 POSD 기록 수와 현재 Goal 1-22 row를 검사 | Goal 22 final audit 증거를 기존 contract label에 묶는다 | layout contract가 문서 검사도 포함한다 |
+
+선택은 세 번째 방식이다. Goal 22의 final audit은 public surface와 문서 증거를 함께 확인해야
+하므로 기존 layout contract에 POSD 기록 매핑 검사를 붙인다.
+
+### 적용한 리팩토링
+
+- layout contract가 `cpp-framework-posd-refactoring-log.ko.md`의 `### 적용한 리팩토링`
+  개수가 22개 이상인지 검사하게 했다.
+- layout contract가 현재 Goal 1-22 대표 POSD 기록 표의 각 row를 검사하게 했다.
+
+### 수정 후 점검
+
+- POSD 기록 수나 현재 Goal 1-22 매핑 row가 빠지면 `test_cpp_framework_layout_contract`가
+  실패한다.
 
 ## 추가 리뷰. Public facade compile coverage와 native leakage gate 보강
 

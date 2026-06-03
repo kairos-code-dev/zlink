@@ -131,6 +131,75 @@ file_contains (const std::filesystem::path &path, const std::string &needle)
   return buffer.str ().find (needle) != std::string::npos;
 }
 
+std::size_t
+count_occurrences (const std::string &text, const std::string &needle)
+{
+  std::size_t count = 0;
+  std::size_t offset = 0;
+  while (true) {
+    offset = text.find (needle, offset);
+    if (offset == std::string::npos) {
+      return count;
+    }
+    ++count;
+    offset += needle.size ();
+  }
+}
+
+bool
+posd_log_has_current_goal_mapping (const std::filesystem::path &root)
+{
+  const auto path =
+    root / "doc/draft/cpp-framework-posd-refactoring-log.ko.md";
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  const auto text = buffer.str ();
+
+  bool ok = true;
+  const auto refactor_count =
+    count_occurrences (text, "### 적용한 리팩토링");
+  if (refactor_count < 22) {
+    std::cerr << "POSD refactoring log has only " << refactor_count
+              << " refactoring sections; expected at least 22: "
+              << path << '\n';
+    ok = false;
+  }
+
+  const std::string rows[] = {
+    "| Goal 1. Repository Skeleton And Tooling |",
+    "| Goal 2. Binding Codec Surface Alignment |",
+    "| Goal 3. Core Async, Task, Error Model |",
+    "| Goal 4. App Host, Configuration, Logging |",
+    "| Goal 5. DI Container And Scope Lifetime |",
+    "| Goal 6. Application Framework Parity Model |",
+    "| Goal 7. Runtime Integration And Execution |",
+    "| Goal 8. Handler Registry And Serializer |",
+    "| Goal 9. Channel Messaging |",
+    "| Goal 10. Backpressure And Reliability |",
+    "| Goal 11. SPOT Runtime |",
+    "| Goal 12. SPOT Timer |",
+    "| Goal 13. STREAM Framework |",
+    "| Goal 14. ActorGateway Session Relay |",
+    "| Goal 15. Registry And Topology |",
+    "| Goal 16. Monitoring, Health, Observability |",
+    "| Goal 17. Module System And Hosted Services |",
+    "| Goal 18. ZLink HTTP Client |",
+    "| Goal 19. HTTP Hosting |",
+    "| Goal 20. Stream Connectors |",
+    "| Goal 21. Review Samples |",
+    "| Goal 22. Final Regression, Package, Extension Boundary |"
+  };
+  for (const auto &row : rows) {
+    if (text.find (row) == std::string::npos) {
+      std::cerr << "POSD refactoring log lacks current goal mapping row: "
+                << row << '\n';
+      ok = false;
+    }
+  }
+  return ok;
+}
+
 bool
 contract_headers_have_compile_coverage (const std::filesystem::path &root,
                                         const std::filesystem::path &include_dir,
@@ -810,6 +879,7 @@ main ()
     root,
     "http-client/include",
     "");
+  ok &= posd_log_has_current_goal_mapping (root);
 
   return ok ? 0 : 1;
 }

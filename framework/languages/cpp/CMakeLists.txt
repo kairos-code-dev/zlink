@@ -703,7 +703,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   add_zlink_http_client_test(
     test_cpp_http_client
     tests/Zlink.HttpClient.Tests/test_cpp_http_client.cpp
-    "http-client-unit;http-client-e2e;http-client-regression")
+    "http-client-contract;http-client-unit;http-client-e2e;http-client-regression")
   if(ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL)
     target_compile_definitions(test_cpp_http_client PRIVATE
       ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL
@@ -713,7 +713,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
       OpenSSL::SSL
       OpenSSL::Crypto)
     set_tests_properties(test_cpp_http_client PROPERTIES
-      LABELS "http-client-unit;http-client-e2e;http-client-https;http-client-regression")
+      LABELS "http-client-contract;http-client-unit;http-client-e2e;http-client-https;http-client-regression")
   endif()
 
   add_executable(test_unreal_stream_connector

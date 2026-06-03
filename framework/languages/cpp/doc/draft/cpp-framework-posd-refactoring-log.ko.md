@@ -5019,3 +5019,39 @@ application framework, framework interface, policy를 읽을 때 함께 확인�
 - Goal 18 `ZLink HTTP Client`는 README, implementation plan, policy, application framework,
   framework interface, HTTP client, HTTP hosting 문서에서 탐색 가능하다.
 - 문서 본문에 남은 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 추가 리뷰. HTTP Client contract label 보강
+
+### 발견한 위험 신호
+
+- Goal 18 검증 명령의 `http-client-contract` label은 실제 빌드에서 비어 있지는 않았지만
+  `test_cpp_framework_contract_headers`만 실행했다. 이 상태에서는 HTTP client public header
+  compile smoke는 보지만 typed JSON request/response, status mapping, timeout, HTTPS trust 같은
+  실제 client 계약 테스트는 contract gate에 포함되지 않는다.
+- `test_cpp_http_client`는 `http-client-unit`, `http-client-e2e`, `http-client-regression`,
+  OpenSSL 사용 시 `http-client-https`에는 들어가지만 contract label에는 빠져 있었다. 검증
+  label 의미가 test target의 책임과 어긋난다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재 label 유지 | 테스트 선택 수는 이미 0이 아니다 | contract gate가 실제 HTTP client 계약을 실행하지 않는다 |
+| header smoke에서 unit/e2e label 제거 | label 의미를 더 좁힐 수 있다 | 기존 non-empty gate와 과거 검증 명령의 기대 선택 수를 갑자기 줄인다 |
+| `test_cpp_http_client`에 `http-client-contract`를 추가 | 실제 client 계약 테스트가 contract gate에 포함된다 | contract label 선택 수가 늘어난다 |
+
+선택은 `test_cpp_http_client`에 contract label을 추가하는 것이다. Header compile smoke는 public
+include 경계를 지키고, 실제 HTTP client 테스트는 동작 계약을 지키므로 둘 다 contract gate에
+속하는 편이 plan의 완료 기준에 맞다.
+
+### 적용한 리팩토링
+
+- `test_cpp_http_client` 기본 label에 `http-client-contract`를 추가했다.
+- OpenSSL 사용 시 재설정되는 `test_cpp_http_client` label에도 `http-client-contract`를
+  유지하도록 맞췄다.
+
+### 수정 후 점검
+
+- `ctest --test-dir framework/languages/cpp/build -L http-client-contract -N`은 header smoke와
+  실제 HTTP client test를 함께 선택해야 한다.
+- Goal 18 HTTP client contract gate에 남은 label/테스트 매핑 이슈는 0개다.

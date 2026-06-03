@@ -6560,3 +6560,36 @@ non-empty contract로 고정하는 편이 오해가 적다.
 
 - extension alias target이 export에서 빠지거나 불필요한 외부 dependency를 요구하면
   `test_cpp_framework_install_consumer`가 configure/build 단계에서 실패한다.
+
+## 추가 리뷰. Installed package export target file gate 보강
+
+### 발견한 위험 신호
+
+- install consumer는 target을 링크하므로 큰 누락은 configure 단계에서 잡지만, 어떤 export
+  target 파일이 어떤 target을 제공해야 하는지 직접 설명하지 않았다.
+- `zlink_framework_cppTargets.cmake`와 `zlink_stream_connector_cppTargets.cmake` 중 하나가
+  설치되지 않거나, target 일부가 잘못된 export에 들어가도 실패 메시지가 간접적일 수 있다.
+- Goal 22는 framework, connector, HTTP client, extension boundary를 package 사용성까지
+  고정해야 하므로 export 파일 자체의 expected target 목록도 증거가 되어야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| consumer link 실패에만 의존 | 중복 검사가 없다 | 어떤 export 파일이 깨졌는지 알기 어렵다 |
+| CMake export 파일 전체를 snapshot으로 비교 | drift를 가장 강하게 잡는다 | CMake 버전 차이에 취약하다 |
+| export target 파일 존재와 expected target 문자열만 검사 | 산출물 경계를 직접 확인하고 CMake 생성 세부에는 덜 민감하다 | link consumer와 일부 중복된다 |
+
+선택은 세 번째 방식이다. package gate는 설치 산출물의 공개 target taxonomy를 확인해야 하지만,
+CMake가 생성하는 파일 전체 형식까지 고정할 필요는 없다.
+
+### 적용한 리팩토링
+
+- install consumer가 framework/stream connector package target 파일 존재를 검사하게 했다.
+- framework package export에 framework, HTTP client, 11개 extension target이 있는지 확인하게 했다.
+- stream connector package export에 connector와 codec helper target이 있는지 확인하게 했다.
+
+### 수정 후 점검
+
+- export target 파일이 빠지거나 기대 target이 누락되면 consumer configure 전에
+  `test_cpp_framework_install_consumer`가 명확한 메시지로 실패한다.

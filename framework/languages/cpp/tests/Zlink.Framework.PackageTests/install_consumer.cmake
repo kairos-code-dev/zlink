@@ -24,6 +24,43 @@ if(NOT install_result EQUAL 0)
   message(FATAL_ERROR "C++ framework install failed")
 endif()
 
+set(framework_targets_file
+  "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib/cmake/zlink_framework_cpp/zlink_framework_cppTargets.cmake")
+set(connector_targets_file
+  "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib/cmake/zlink_stream_connector_cpp/zlink_stream_connector_cppTargets.cmake")
+foreach(path IN ITEMS "${framework_targets_file}" "${connector_targets_file}")
+  if(NOT EXISTS "${path}")
+    message(FATAL_ERROR "installed package target file is missing: ${path}")
+  endif()
+endforeach()
+file(READ "${framework_targets_file}" framework_targets_text)
+file(READ "${connector_targets_file}" connector_targets_text)
+foreach(required_target IN ITEMS
+    "zlink::framework"
+    "zlink::http_client"
+    "zlink::framework_extension_metrics"
+    "zlink::framework_extension_tracing"
+    "zlink::framework_extension_kafka_bridge"
+    "zlink::framework_extension_grpc_bridge"
+    "zlink::framework_extension_http_gateway"
+    "zlink::framework_extension_advanced_retry"
+    "zlink::framework_extension_dead_letter_storage"
+    "zlink::framework_extension_flatbuffers"
+    "zlink::framework_extension_yaml_config"
+    "zlink::framework_extension_custom_codec"
+    "zlink::framework_extension_custom_transport")
+  if(NOT framework_targets_text MATCHES "${required_target}")
+    message(FATAL_ERROR "framework package export lacks ${required_target}")
+  endif()
+endforeach()
+foreach(required_target IN ITEMS
+    "zlink::stream_connector"
+    "zlink::stream_connector_codecs")
+  if(NOT connector_targets_text MATCHES "${required_target}")
+    message(FATAL_ERROR "stream connector package export lacks ${required_target}")
+  endif()
+endforeach()
+
 file(WRITE "${consumer_source_dir}/CMakeLists.txt" [=[
 cmake_minimum_required(VERSION 3.20)
 project(zlink_framework_cpp_consumer LANGUAGES CXX)

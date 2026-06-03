@@ -82,7 +82,7 @@
 |-------------|--------------------|---------------------|------------------|-----------|
 | `Contracts/*` | `framework/include/zlink/framework/contracts/*` | `connector/include/zlink/stream_connector/contracts/*` | `http-client/include/zlink/http_client/contracts/*` | public |
 | `Runtime/*` | `framework/src/runtime/*` | `connector/src/runtime/*` | `http-client/src/runtime/*` | private implementation |
-| `Runtime/Backend/Contracts` | `framework/src/runtime/backend/contracts` | `connector/src/runtime/backend/contracts` | `http-client/src/runtime/backend/contracts` | private backend contract |
+| `Runtime/Backend/Contracts` | `framework/src/runtime/backend/contracts` | `connector/src/runtime/backend/contracts` | 현재 없음 | private backend contract. HTTP client는 현재 별도 backend adapter가 없으므로 placeholder 디렉터리를 만들지 않는다 |
 | project facade | `zlink/framework.hpp`, `zlink/framework/*.hpp` | `zlink/stream_connector.hpp` | `zlink/http_client.hpp` | public |
 | implementation glue | `framework/src/runtime/*` | `connector/src/runtime/*` | `http-client/src/runtime/*` | private |
 

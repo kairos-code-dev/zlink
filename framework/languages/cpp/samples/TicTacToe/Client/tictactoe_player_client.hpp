@@ -9,7 +9,6 @@
 #include "../../Shared/client_connector_helpers.hpp"
 
 #include <zlink/stream_connector.hpp>
-#include <zlink/stream_connector/codecs/auto_codec.hpp>
 
 #include <string>
 #include <utility>
@@ -33,7 +32,8 @@ public:
     auto client =
       tictactoe_player_client_t (std::move (actor_id), std::move (connector));
     client.register_notifications ();
-    client._connected = static_cast<bool> (client._connector.connect ().result ());
+    client._connected =
+      zlink::samples::connect_client_connector (client._connector);
     return client;
   }
 
@@ -67,8 +67,8 @@ public:
       place_mark_req_t { std::move (match_id), _actor_id, cell });
   }
 
-  void close () { _connector.close ().result (); }
-  void dispatch () { _connector.dispatch ().result (); }
+  void close () { zlink::samples::close_client_connector (_connector); }
+  void dispatch () { zlink::samples::dispatch_client_connector (_connector); }
 
 private:
   tictactoe_player_client_t (
@@ -100,15 +100,9 @@ private:
   template<typename TReply, typename TRequest>
   tictactoe_client_call_result_t request (const TRequest &request_message)
   {
-    auto result =
-      zlink::stream_connector::codecs::request<TReply> (
-        _connector, request_message)
-        .submit ()
-        .result ();
-    return zlink::samples::make_client_call_result<tictactoe_client_call_result_t> (
-      TRequest::packet_name,
-      result,
-      "request failed");
+    return zlink::samples::request_client_packet<
+      tictactoe_client_call_result_t,
+      TReply> (_connector, request_message);
   }
 
   std::string _actor_id;

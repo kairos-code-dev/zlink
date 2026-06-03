@@ -17,8 +17,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 
 namespace
 {
@@ -246,16 +248,28 @@ private:
 };
 #endif
 
+zlink::http_client::client_t
+make_json_client (
+  std::string base_url,
+  std::chrono::milliseconds timeout = std::chrono::milliseconds (500),
+  std::optional<std::string> trust_certificate_file = std::nullopt)
+{
+  auto builder = zlink::http_client::client_t::create ()
+                   .base_url (std::move (base_url))
+                   .json ()
+                   .timeout (timeout);
+  if (trust_certificate_file) {
+    builder.trust_certificate_file (std::move (*trust_certificate_file));
+  }
+  return builder.build ();
+}
+
 } // namespace
 
 TEST (ZLinkHttpClient, ContractBuilderSubmitsTypedJsonRequests)
 {
   loopback_http_server_t server;
-  auto client = zlink::http_client::client_t::create ()
-                  .base_url (server.base_url ())
-                  .json ()
-                  .timeout (std::chrono::milliseconds (500))
-                  .build ();
+  auto client = make_json_client (server.base_url ());
 
   auto result = client.post ("/games")
                   .body (create_game_request_t { .name = "match-1" })
@@ -271,10 +285,7 @@ TEST (ZLinkHttpClient, ContractBuilderSubmitsTypedJsonRequests)
 TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
 {
   loopback_http_server_t server;
-  auto client = zlink::http_client::client_t::create ()
-                  .base_url (server.base_url ())
-                  .json ()
-                  .build ();
+  auto client = make_json_client (server.base_url ());
 
   EXPECT_EQ (client.get ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
              "GET");
@@ -303,11 +314,8 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
 TEST (ZLinkHttpClient, MapsStatusDecodeAndTimeoutFailures)
 {
   loopback_http_server_t server;
-  auto client = zlink::http_client::client_t::create ()
-                  .base_url (server.base_url ())
-                  .json ()
-                  .timeout (std::chrono::milliseconds (50))
-                  .build ();
+  auto client =
+    make_json_client (server.base_url (), std::chrono::milliseconds (50));
 
   const auto missing = client.get ("/missing")
                          .submit<create_game_reply_t> ()
@@ -347,12 +355,10 @@ TEST (ZLinkHttpClient, MapsStatusDecodeAndTimeoutFailures)
 TEST (ZLinkHttpClient, SupportsHttpsWithExplicitTrust)
 {
   loopback_https_server_t server;
-  auto client = zlink::http_client::client_t::create ()
-                  .base_url (server.base_url ())
-                  .json ()
-                  .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
-                  .timeout (std::chrono::milliseconds (500))
-                  .build ();
+  auto client = make_json_client (
+    server.base_url (),
+    std::chrono::milliseconds (500),
+    std::string (ZLINK_HTTP_CLIENT_TEST_CERT));
 
   auto result = client.post ("/games")
                   .body (create_game_request_t { .name = "secure" })
@@ -367,11 +373,7 @@ TEST (ZLinkHttpClient, SupportsHttpsWithExplicitTrust)
 TEST (ZLinkHttpClient, RejectsUntrustedHttpsCertificate)
 {
   loopback_https_server_t server;
-  auto client = zlink::http_client::client_t::create ()
-                  .base_url (server.base_url ())
-                  .json ()
-                  .timeout (std::chrono::milliseconds (500))
-                  .build ();
+  auto client = make_json_client (server.base_url ());
 
   auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
 
@@ -383,12 +385,10 @@ TEST (ZLinkHttpClient, RejectsUntrustedHttpsCertificate)
 TEST (ZLinkHttpClient, RejectsHttpsHostnameMismatch)
 {
   loopback_https_server_t server;
-  auto client = zlink::http_client::client_t::create ()
-                  .base_url (server.mismatched_base_url ())
-                  .json ()
-                  .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
-                  .timeout (std::chrono::milliseconds (500))
-                  .build ();
+  auto client = make_json_client (
+    server.mismatched_base_url (),
+    std::chrono::milliseconds (500),
+    std::string (ZLINK_HTTP_CLIENT_TEST_CERT));
 
   auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
 

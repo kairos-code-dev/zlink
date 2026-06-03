@@ -64,7 +64,6 @@ public:
   static connector_runtime_t from (const connector_t &connector);
 
   void receive_packet (packet_t packet);
-  void complete_next_request (zlink::message_t payload);
   const std::vector<packet_t> &sent_packets () const noexcept;
   std::size_t pending_request_count () const noexcept;
 

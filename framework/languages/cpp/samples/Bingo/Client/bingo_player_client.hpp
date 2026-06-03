@@ -9,7 +9,6 @@
 #include "../../Shared/client_connector_helpers.hpp"
 
 #include <zlink/stream_connector.hpp>
-#include <zlink/stream_connector/codecs/auto_codec.hpp>
 
 #include <string>
 #include <utility>
@@ -32,7 +31,8 @@ public:
     auto client =
       bingo_player_client_t (std::move (actor_id), std::move (connector));
     client.register_notifications ();
-    client._connected = static_cast<bool> (client._connector.connect ().result ());
+    client._connected =
+      zlink::samples::connect_client_connector (client._connector);
     return client;
   }
 
@@ -63,19 +63,13 @@ public:
 
   bingo_client_call_result_t leave (std::string room_id)
   {
-    auto result =
-      zlink::stream_connector::codecs::send (
-        _connector, leave_room_req_t { std::move (room_id) })
-        .submit ()
-        .result ();
-    return zlink::samples::make_client_call_result<bingo_client_call_result_t> (
-      leave_room_req_t::packet_name,
-      result,
-      "send failed");
+    return zlink::samples::send_client_packet<bingo_client_call_result_t> (
+      _connector,
+      leave_room_req_t { std::move (room_id) });
   }
 
-  void close () { _connector.close ().result (); }
-  void dispatch () { _connector.dispatch ().result (); }
+  void close () { zlink::samples::close_client_connector (_connector); }
+  void dispatch () { zlink::samples::dispatch_client_connector (_connector); }
 
 private:
   bingo_player_client_t (std::string actor_id,
@@ -111,15 +105,9 @@ private:
   template<typename TReply, typename TRequest>
   bingo_client_call_result_t request (const TRequest &request_message)
   {
-    auto result =
-      zlink::stream_connector::codecs::request<TReply> (
-        _connector, request_message)
-        .submit ()
-        .result ();
-    return zlink::samples::make_client_call_result<bingo_client_call_result_t> (
-      TRequest::packet_name,
-      result,
-      "request failed");
+    return zlink::samples::request_client_packet<
+      bingo_client_call_result_t,
+      TReply> (_connector, request_message);
   }
 
   std::string _actor_id;

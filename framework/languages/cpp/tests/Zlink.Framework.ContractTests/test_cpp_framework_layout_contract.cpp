@@ -244,14 +244,13 @@ client_sample_uses_connector (const std::filesystem::path &root,
   const auto path = root / client_file;
   bool ok = true;
   ok &= file_contains (path, "zlink/stream_connector.hpp");
-  ok &= file_contains (path, "zlink/stream_connector/codecs/auto_codec.hpp");
+  ok &= file_contains (path, "../../Shared/client_connector_helpers.hpp");
   ok &= file_contains (path, "connector_factory_t::create");
-  ok &= file_contains (path, ".connect ()");
-  ok &= file_contains (path, "zlink::stream_connector::codecs::request<");
+  ok &= file_contains (path, "connect_client_connector");
+  ok &= file_contains (path, "request_client_packet");
   ok &= file_contains (path, "zlink::stream_connector::codecs::on<");
-  ok &= file_contains (path, ".submit ()");
   if (!ok) {
-    std::cerr << "client sample does not show connector codec connect/request/submit: "
+    std::cerr << "client sample does not use shared connector policy helper: "
               << path << '\n';
   }
   return ok;
@@ -429,21 +428,9 @@ main ()
   ok &= require_exists (root / "connector/src/runtime/protocol/framing");
   ok &= require_exists (root / "connector/src/runtime/transport");
   ok &= require_exists (
-    root / "connector/src/runtime/connector_callbacks.cpp");
-  ok &= require_exists (
     root / "connector/src/runtime/connector_lifecycle.cpp");
   ok &= require_exists (
     root / "connector/src/runtime/heartbeat_monitor.cpp");
-  ok &= require_exists (
-    root / "connector/src/runtime/pending_requests.hpp");
-  ok &= require_exists (
-    root / "connector/src/runtime/receive_dispatcher.cpp");
-  ok &= require_exists (
-    root / "connector/src/runtime/receive_loop.hpp");
-  ok &= require_exists (
-    root / "connector/src/runtime/task_runner.hpp");
-  ok &= require_exists (
-    root / "connector/src/runtime/typed_handler_registry.hpp");
   ok &= require_exists (
     root / "connector/src/runtime/calls/zlink_stream_calls.cpp");
   ok &= require_exists (

@@ -80,8 +80,8 @@ connector 구현도 시작 전에 owner를 아래처럼 나눈다.
 | 기능 | C++ connector public owner | C++ connector runtime owner | Unreal public owner | Unreal private owner |
 |------|----------------------------|-----------------------------|---------------------|----------------------|
 | connector lifecycle | `contracts/zlink_stream_connector.hpp`, `contracts/zlink_stream_connector_factory.hpp` | `src/runtime/connector_lifecycle.*`, `src/runtime/transport/*` with Asio | `Public/ZLinkStreamConnector.h` | `Private/Connection/*` with Unreal Sockets |
-| packet send/request | `contracts/calls/zlink_stream_calls.hpp`, `contracts/zlink_stream_models.hpp` | `src/runtime/calls/*`, `src/runtime/pending_requests.hpp` | Blueprint callable send/request API | `Private/Messaging/*` with Unreal Sockets |
-| callback/coroutine submit | `contracts/task.hpp`, callback overloads on call objects | `src/runtime/connector_callbacks.*`, `src/runtime/task_runner.hpp` | Blueprint delegate, Game Thread callback | `Private/Dispatch/*` |
+| packet send/request | `contracts/calls/zlink_stream_calls.hpp`, `contracts/zlink_stream_models.hpp` | `src/runtime/calls/*`, `src/runtime/connector_runtime.*` | Blueprint callable send/request API | `Private/Messaging/*` with Unreal Sockets |
+| callback/coroutine submit | `contracts/task.hpp`, callback overloads on call objects | `contracts/task.hpp` | Blueprint delegate, Game Thread callback | `Private/Dispatch/*` |
 | codec option | `contracts/codec_registry.hpp`, `contracts/zlink_stream_enums.hpp` | `src/runtime/protocol/*`, `src/runtime/protocol/compression/*` | Unreal codec option types | `Private/Codecs/*` |
 | reconnect/heartbeat | state event contract, options contract | `src/runtime/heartbeat_monitor.*`, `src/runtime/connector_lifecycle.*` | connection state delegate | `Private/Connection/*` |
 | compression | packet option contract | `src/runtime/protocol/compression/*` | Unreal packet option | `Private/Compression/*` |
@@ -93,8 +93,9 @@ queue 구현은 public header에 두지 않는다. 일반 C++ connector만 `task
 Blueprint delegate와 native multicast delegate callback만 public 표면으로 제공하며,
 별도 coroutine API를 두지 않는다. 현재 C++ runtime 파일 분류는
 `calls`, `protocol`, `protocol/compression`, `protocol/framing`, `transport`,
-`connector_lifecycle`, `connector_callbacks`, `receive_dispatcher`, `receive_loop`,
-`task_runner`, `typed_handler_registry`를 기준으로 고정한다. 일반 C++ connector와 Unreal
+`connector_lifecycle`, `connector_runtime`, `heartbeat_monitor`를 기준으로 고정한다. 받은
+packet을 즉시 dispatch할지 queue에 둘지는 `connector_runtime`의 helper가 소유하고, frame을
+읽고 쓰는 구현은 `protocol/framing`과 `transport`에 둔다. 일반 C++ connector와 Unreal
 Connector는 같은 wire 의미를 공유하지만 public 타입은 서로 독립이다.
 
 ## 2. 패키징

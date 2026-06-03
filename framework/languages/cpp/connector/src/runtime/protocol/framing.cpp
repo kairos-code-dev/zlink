@@ -92,11 +92,7 @@ drain_available_pushes (connector_state_t &state)
   while (state.socket && state.socket->is_open () &&
          state.socket->available () > 0) {
     auto packet = read_stream_packet (state);
-    if (state.options.dispatch_mode == dispatch_mode_t::immediate) {
-      dispatch_packet (state, packet);
-    } else {
-      state.dispatch_queue.push_back (std::move (packet));
-    }
+    deliver_received_packet (state, std::move (packet));
   }
 }
 

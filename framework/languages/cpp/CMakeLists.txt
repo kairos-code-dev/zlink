@@ -202,7 +202,6 @@ endif()
 
 add_library(zlink_stream_connector STATIC
   connector/src/runtime/calls/zlink_stream_calls.cpp
-  connector/src/runtime/connector_callbacks.cpp
   connector/src/runtime/connector_lifecycle.cpp
   connector/src/runtime/connector_runtime.cpp
   connector/src/runtime/heartbeat_monitor.cpp
@@ -212,7 +211,6 @@ add_library(zlink_stream_connector STATIC
   connector/src/runtime/protocol/header_codec.cpp
   connector/src/runtime/protocol/metadata_codec.cpp
   connector/src/runtime/protocol/packet_name_resolver.cpp
-  connector/src/runtime/receive_dispatcher.cpp
   connector/src/runtime/transport/stream_connection.cpp
   connector/src/runtime/transport/stream_transport_factory.cpp
   connector/src/runtime/transport/websocket_connection.cpp)

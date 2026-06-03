@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <vector>
 #include <string>
 #include <thread>
@@ -259,6 +260,36 @@ from_json (const nlohmann::json &json, health_http_reply_t &value)
   value.liveness = json.value ("liveness", "");
 }
 
+zlink::http_client::client_t
+make_app_host_test_client (
+  std::string base_url,
+  std::optional<std::string> trust_certificate_file = std::nullopt)
+{
+  auto builder = zlink::http_client::client_t::create ()
+                   .base_url (std::move (base_url))
+                   .json ()
+                   .timeout (std::chrono::milliseconds (500));
+  if (trust_certificate_file) {
+    builder.trust_certificate_file (std::move (*trust_certificate_file));
+  }
+  return builder.build ();
+}
+
+bool
+wait_for_ready (const zlink::http_client::client_t &client)
+{
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    auto result = client.get ("/ready")
+                    .submit<health_http_reply_t> ()
+                    .result ();
+    if (result.has_value () && result.value ().body.readiness == "healthy") {
+      return true;
+    }
+    std::this_thread::sleep_for (std::chrono::milliseconds (10));
+  }
+  return false;
+}
+
 } // namespace
 
 int
@@ -362,23 +393,9 @@ main ()
   std::thread app_thread ([&] {
     exit_code = app.run (3, argv);
   });
-  auto http_client = zlink::http_client::client_t::create ()
-                       .base_url (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT)
-                       .json ()
-                       .timeout (std::chrono::milliseconds (500))
-                       .build ();
-  bool http_ready = false;
-  for (int attempt = 0; attempt < 100 && !http_ready; ++attempt) {
-    auto result = http_client.get ("/ready")
-                    .submit<health_http_reply_t> ()
-                    .result ();
-    http_ready = result.has_value () &&
-                 result.value ().body.readiness == "healthy";
-    if (!http_ready) {
-      std::this_thread::sleep_for (std::chrono::milliseconds (10));
-    }
-  }
-  if (!http_ready) {
+  auto http_client =
+    make_app_host_test_client (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT);
+  if (!wait_for_ready (http_client)) {
     app.stop ();
     app_thread.join ();
     return 13;
@@ -686,24 +703,10 @@ main ()
   std::thread secure_thread ([&] {
     secure_exit_code = secure_host.run (3, argv);
   });
-  auto secure_client = zlink::http_client::client_t::create ()
-                         .base_url (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL)
-                         .json ()
-                         .timeout (std::chrono::milliseconds (500))
-                         .trust_certificate_file (ZLINK_FRAMEWORK_HTTP_TEST_CERT)
-                         .build ();
-  bool secure_ready = false;
-  for (int attempt = 0; attempt < 100 && !secure_ready; ++attempt) {
-    auto result = secure_client.get ("/ready")
-                    .submit<health_http_reply_t> ()
-                    .result ();
-    secure_ready = result.has_value () &&
-                   result.value ().body.readiness == "healthy";
-    if (!secure_ready) {
-      std::this_thread::sleep_for (std::chrono::milliseconds (10));
-    }
-  }
-  if (!secure_ready) {
+  auto secure_client = make_app_host_test_client (
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL,
+    std::string (ZLINK_FRAMEWORK_HTTP_TEST_CERT));
+  if (!wait_for_ready (secure_client)) {
     secure_host.stop ();
     secure_thread.join ();
     return 15;

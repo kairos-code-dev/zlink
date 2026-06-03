@@ -57,6 +57,121 @@ ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_layout_cont
 git diff --check -- framework/languages/cpp
 ```
 
+## 반복 POSD 재리뷰. Sample connector 호출 정책 공통화
+
+### 발견한 위험 신호
+
+- Bingo와 TicTacToe player client는 connector 생성 option은 공통 helper를 쓰지만,
+  `connect().result()`, `close().result()`, `dispatch().result()` 호출 방식은 각 client에
+  직접 남아 있었다. 이는 sample client가 connector task 처리 세부를 계속 알아야 하는
+  정보 누출이다.
+- typed request와 fire-and-forget send도 각 sample client가 `codecs::request/send`,
+  `submit()`, `result()`, sample call result 변환 순서를 직접 조립했다. 게임별 client가
+  보여줘야 할 것은 packet 흐름인데, connector 호출 절차가 같이 섞여 있었다.
+- `connector_runtime_t::complete_next_request(...)`는 실제 호출자가 없는 내부 hook으로
+  남아 있었다. pending request table을 직접 지우고 fake reply packet을 queue에 넣기 때문에,
+  유지하면 connector request 완료 경로가 두 곳에 있는 것처럼 보인다.
+- `connector_callbacks_t`는 error handler loop를 한 번 감싸는 class였지만 실제 호출자가
+  없었다. connector error publish 정책은 실제 send/request 호출 경로의 helper가 이미
+  소유하므로, 별도 source는 얕은 모듈로 남아 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재 구조 유지 | 변경이 작다 | connector task/result 처리 규칙이 sample마다 반복된다 |
+| player client 공통 base class 추가 | 반복을 많이 줄일 수 있다 | 게임별 client 상속 구조가 생겨 sample이 더 무거워진다 |
+| 기존 sample helper에 connector 호출 정책만 추가 | public API를 바꾸지 않고 반복 지식만 숨긴다 | helper 함수 수가 조금 늘어난다 |
+| 미사용 runtime hook 유지 | 테스트용 확장 가능성이 남는다 | 실제 완료 경로가 아닌 API가 pending request 정책을 노출한다 |
+
+선택은 기존 sample helper 확장이다. sample public surface와 게임별 client 구조는 유지하고,
+connector task 완료와 result 변환 규칙만 `samples/Shared/client_connector_helpers.hpp`가
+소유하게 한다.
+
+### 적용한 리팩토링
+
+- `connect_client_connector`, `close_client_connector`, `dispatch_client_connector`를 추가해
+  sample client가 connector task result를 직접 풀지 않게 했다.
+- `request_client_packet`과 `send_client_packet`을 추가해 typed packet 호출과 sample call
+  result 변환을 한 helper로 모았다.
+- Bingo/TicTacToe player client에서 직접 `codecs::request/send`, `submit()`, `result()`를
+  조립하던 코드를 공통 helper 호출로 바꿨다.
+- 호출자가 없던 `connector_runtime_t::complete_next_request(...)`를 제거했다.
+- 호출자가 없던 `connector_callbacks_t`와 source 등록을 제거했다.
+
+### 수정 후 점검
+
+- Bingo/TicTacToe player client는 actor id, notification registration, game packet method만
+  드러낸다.
+- connector option, task 완료, error string 변환 정책은 sample shared helper에 모였다.
+- framework, http-client, connector public API는 바꾸지 않았다.
+- connector request 완료는 `submit_request(...)`의 실제 frame receive 경로만 남았다.
+- connector callback task 완료는 public `task_t`가 소유하고, runtime source에는 사용하지
+  않는 callback wrapper가 남지 않는다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client test_cpp_framework_sample_parity
+ctest --test-dir framework/languages/cpp/build -R 'sample_smoke_sample_cpp_framework_bingo_client|sample_smoke_sample_cpp_framework_tictactoe_client|sample_e2e_log_sample_cpp_framework_bingo_client|sample_e2e_log_sample_cpp_framework_tictactoe_client|test_cpp_framework_sample_parity' --output-on-failure
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+```
+
+## 반복 POSD 재리뷰. HTTP client test builder 정책 공통화
+
+### 발견한 위험 신호
+
+- `test_cpp_http_client`의 각 test가 `client_t::create().base_url(...).json().timeout(...)`
+  builder chain을 직접 반복했다. HTTPS trust test는 여기에 certificate trust 설정까지 더해,
+  테스트가 검증하려는 HTTP 동작보다 client 구성 절차가 더 크게 보였다.
+- `test_cpp_framework_app_host`도 HTTP host와 HTTPS host 검증에서 같은 JSON client 구성과
+  500ms timeout 정책을 직접 반복했다.
+- timeout 기본값과 JSON mode 선택이 테스트마다 흩어져 있어, HTTP client test 기본 정책을
+  바꿀 때 여러 test body를 함께 수정해야 했다.
+- implementation plan의 구조 표는 HTTP client에도 backend contract 디렉터리가 있는 것처럼
+  적고 있었지만, 실제 HTTP client는 별도 backend adapter가 없는 단일 runtime owner 구조다.
+  없는 디렉터리를 맞추기 위해 placeholder를 만들면 얕은 모듈만 늘어난다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재 구조 유지 | helper가 늘지 않는다 | client 구성 정책이 테스트마다 반복된다 |
+| fixture class 도입 | shared setup을 강하게 묶을 수 있다 | 각 test가 독립 server를 갖는 현재 구조보다 무거워진다 |
+| 작은 `make_json_client(...)` helper 추가 | 반복 정책만 숨기고 test 독립성은 유지한다 | optional trust 인자가 하나 늘어난다 |
+
+선택은 작은 helper 추가다. HTTP/HTTPS server 생명주기는 각 test가 계속 소유하고, JSON mode,
+timeout, optional trust certificate 구성만 helper가 소유한다.
+
+### 적용한 리팩토링
+
+- `make_json_client(...)`를 추가해 HTTP client test의 JSON mode, timeout, trust certificate
+  설정을 한 곳으로 모았다.
+- `make_app_host_test_client(...)`를 추가해 app host HTTP/HTTPS e2e test의 JSON mode,
+  timeout, optional trust certificate 설정을 한 곳으로 모았다.
+- HTTP/HTTPS client tests가 검증하려는 request/response expectation만 직접 드러내도록
+  builder chain 반복을 제거했다.
+- implementation plan의 HTTP client backend contract 칸을 `현재 없음`으로 바꾸고, 별도
+  backend adapter가 생기기 전에는 placeholder 디렉터리를 만들지 않는다고 명시했다.
+
+### 수정 후 점검
+
+- HTTP client public API는 바꾸지 않았다.
+- HTTPS trust와 hostname mismatch test는 여전히 explicit trust certificate를 검증한다.
+- timeout test는 기존 50ms timeout을 유지한다.
+- HTTP client runtime 구조 문서는 실제 파일 구조와 맞고, 사용하지 않는 backend contract
+  placeholder를 요구하지 않는다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_http_client
+ctest --test-dir framework/languages/cpp/build -R test_cpp_http_client --output-on-failure
+cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_app_host --output-on-failure
+```
+
 ### 발견한 위험 신호
 
 - `zlink::stream_connector` target이 당시 public header에서 사용하지 않는 codec build
@@ -296,7 +411,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 - DI를 header-only로 구현하면 service registry, scope cache, shutdown resolve 금지 같은
   정책이 public header에 쌓인다. 이는 framework contract/runtime 분리 기준을 약하게 만든다.
 - 첫 transient resolve 구현은 매번 새 객체를 만들지만, `get_required<T>()`가 reference를
-  반환하기 때문에 temporary shared object가 바로 파괴될 수 있었다. 이는 API 의미와
+  반환하기 때문에 임시 공유 객체가 바로 파괴될 수 있었다. 이는 API 의미와
   lifetime 구현이 맞지 않는 위험 신호다.
 
 ### 비교한 대안
@@ -2992,14 +3107,14 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
   `codec_registry.hpp`, `result.hpp`, `task.hpp`로 분리했다.
 - connector runtime을 `src/runtime/calls`, `src/runtime/protocol`,
   `src/runtime/protocol/compression`, `src/runtime/protocol/framing`,
-  `src/runtime/transport`, `connector_lifecycle`, `connector_callbacks`,
-  `heartbeat_monitor`, `receive_dispatcher`, `receive_loop`, `task_runner`,
-  `typed_handler_registry`로 분리했다.
+  `src/runtime/transport`, `connector_lifecycle`, `connector_runtime`,
+  `heartbeat_monitor`로 분리했다. 이후 반복 POSD 리뷰에서
+  사용되지 않는 얕은 wrapper 파일은 제거했다.
 - Bingo/TicTacToe 샘플에 role별 `*host_factory.hpp`, actor, room/game model,
   publisher, spot, handler 하위 파일을 추가했다.
 - sample parity test가 새 role header를 include하고 주요 타입을 실제로 사용하도록
   확장했다.
-- layout contract가 connector runtime 세부 분류와 sample role 파일을 필수 경로로
+- layout contract가 connector runtime의 실제 owner와 sample role 파일을 필수 경로로
   검증하도록 확장했다.
 - draft 문서의 connector owner 표와 sample 구조 설명을 실제 파일 배치와 맞췄다.
 
@@ -4803,4 +4918,68 @@ cmake --build framework/languages/cpp/build --target test_cpp_framework_channel_
 ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_channel_messaging|test_cpp_framework_backpressure_reliability' --output-on-failure
 cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
 ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+```
+
+## 반복 POSD 재리뷰. Connector receive dispatch 정책 단일화
+
+### 발견한 위험 신호
+
+- `deliver_received_packet(...)`은 connector가 받은 push packet을 즉시 handler로 넘길지
+  dispatch queue에 쌓을지 결정했다. 그러나 socket에서 남은 push frame을 drain하는
+  `drain_available_pushes(...)`도 같은 `dispatch_mode` 분기를 직접 가지고 있었다. 이는
+  dispatch mode 정책이 두 파일에 퍼진 정보 누출이다.
+- `receive_dispatcher_t`는 `dispatch_queue.push_back(...)`만 감싸는 내부 클래스였고 실제
+  호출자가 없었다. 인터페이스가 구현보다 얕은 dead module이므로, 유지하면 connector
+  receive 경로를 읽을 때 존재하지 않는 추상화를 따라가게 만든다.
+- `pending_requests_t`, `receive_loop_t`, `task_runner_t`, `typed_handler_registry_t`도
+  connector runtime에서 호출되지 않는 내부 wrapper였다. 대부분 상태 container 크기를 읽거나
+  함수를 바로 실행하는 수준이라, 유지할수록 실제 connector 경로보다 파일 구조가 더 복잡해진다.
+- HTTP app host 테스트는 HTTP host와 HTTPS host가 준비될 때까지 `/ready`를 ZLink HTTP
+  client로 polling하는 절차를 두 번 반복했다. 이 절차는 테스트 안정화 정책이므로 각
+  시나리오 본문에 직접 남아 있으면 readiness 판정 변경 시 두 곳을 함께 고쳐야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재 구조 유지 | 코드 이동이 없다 | dispatch mode 정책 변경 시 `deliver_received_packet`과 drain 경로를 함께 고쳐야 한다 |
+| `drain_available_pushes`에 작은 private helper 추가 | 파일 내부 중복은 줄어든다 | 이미 있는 `deliver_received_packet`과 정책 owner가 둘로 남는다 |
+| 모든 inbound push packet을 `deliver_received_packet`으로 통과시킴 | dispatch mode 정책 owner가 하나가 된다 | framing 코드가 runtime helper를 호출한다 |
+
+선택은 모든 inbound push packet을 `deliver_received_packet`으로 통과시키는 것이다. frame을
+읽는 책임은 framing module에 남기고, 읽은 뒤 connector가 packet을 사용자 handler로 보낼지
+queue에 둘지는 connector runtime helper가 소유한다.
+
+### 적용한 리팩토링
+
+- `drain_available_pushes(...)`가 `dispatch_mode`를 직접 읽지 않고
+  `deliver_received_packet(...)`을 호출하도록 바꿨다.
+- 사용되지 않던 `receive_dispatcher_t`와 source 등록을 제거했다.
+- 사용되지 않던 connector 내부 wrapper header 네 개를 제거했다.
+- layout contract에서 삭제된 내부 파일 존재 요구를 제거했다.
+- `test_cpp_framework_app_host`의 HTTP/HTTPS readiness polling을 `wait_for_ready(...)`로
+  모아, host 준비 판정은 한 helper가 소유하고 테스트 본문은 시나리오 검증에 집중하게 했다.
+
+### 수정 후 점검
+
+- connector의 push packet dispatch mode 결정은 `deliver_received_packet(...)` 한 곳에 남았다.
+- framing module은 stream frame 읽기와 packet 구성만 담당한다.
+- 삭제한 dispatcher와 wrapper header들은 public header가 아니며, connector public 계약에는
+  영향을 주지 않는다.
+- app host 테스트는 여전히 ZLink HTTP client로 `/ready`를 확인하지만, polling loop와 대기
+  간격은 테스트 helper 하나에만 남았다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector test_cpp_framework_layout_contract
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_stream_connector|test_cpp_framework_layout_contract' --output-on-failure
+cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_app_host --output-on-failure
+cmake --build framework/languages/cpp/build
+ctest --test-dir framework/languages/cpp/build --output-on-failure
+cmake --build framework/languages/cpp/build-coverage
+ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure
+cmake -DZLINK_FRAMEWORK_CPP_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_SOURCE_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70 -P framework/languages/cpp/tests/Zlink.Framework.Coverage/coverage_threshold.cmake
+git diff --check -- framework/languages/cpp
 ```

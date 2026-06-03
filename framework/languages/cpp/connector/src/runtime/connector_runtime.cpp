@@ -47,21 +47,6 @@ connector_runtime_t::receive_packet (packet_t packet)
   deliver_received_packet (*_state, std::move (packet));
 }
 
-void
-connector_runtime_t::complete_next_request (zlink::message_t payload)
-{
-  if (_state->pending_requests.empty ()) {
-    return;
-  }
-  _state->pending_requests.erase (_state->pending_requests.begin ());
-  _state->dispatch_queue.push_back (packet_t {
-    "reply",
-    {},
-    codec_t::raw,
-    false,
-    std::move (payload) });
-}
-
 const std::vector<packet_t> &
 connector_runtime_t::sent_packets () const noexcept
 {

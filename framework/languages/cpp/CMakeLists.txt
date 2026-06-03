@@ -830,7 +830,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     COMMAND ${CMAKE_COMMAND}
       -D SAMPLE_EXECUTABLE=$<TARGET_FILE:sample_cpp_framework_tictactoe_client>
       -D SAMPLE_LOG=${CMAKE_CURRENT_BINARY_DIR}/sample-e2e-logs/tictactoe-server.log
-      -D "EXPECTED_CONTAINS=bind |monitor stream ready|recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply AuthenticateReq|reply PlaceMarkReq|push TurnChangedNotify|actor relay player-x|disconnect client|shutdown server"
+      -D "EXPECTED_CONTAINS=bind |monitor stream ready|recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply AuthenticateReq|reply JoinMatchReq|reply PlaceMarkReq|push TurnChangedNotify|actor relay player-x|disconnect client|shutdown server"
       -D MIN_RECV=9
       -D MIN_REPLY=9
       -D MIN_PUSH=9

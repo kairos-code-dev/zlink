@@ -5055,3 +5055,55 @@ include 경계를 지키고, 실제 HTTP client 테스트는 동작 계약을 �
 - `ctest --test-dir framework/languages/cpp/build -L http-client-contract -N`은 header smoke와
   실제 HTTP client test를 함께 선택해야 한다.
 - Goal 18 HTTP client contract gate에 남은 label/테스트 매핑 이슈는 0개다.
+
+## 추가 리뷰. TicTacToe HTTP 시작 handler 경계 보정
+
+### 발견한 위험 신호
+
+- Goal 21과 HTTP hosting draft는 TicTacToe client가 HTTP `POST /games`로 시작하고
+  `Server/Api` role의 handler 흐름을 지나야 한다고 적는다. 그러나 client e2e는 client 파일
+  안에 둔 임시 HTTP handler를 route에 직접 붙여 `Server/Api/Handlers/create_match_handler_t`
+  경계를 우회하고 있었다.
+- 임시 handler는 고정된 `"tictactoe-game"` 응답만 만들었다. 이 상태에서는 sample API role의
+  DI handler 구성과 create-match handler가 깨져도 client e2e가 통과할 수 있다.
+- STREAM mock server가 HTTP 응답으로 받은 match id를 보존하지 않고 thread 시작 시점의 기본
+  `"tictactoe-game"`을 reply state에 넣었다. 또한 모든 request에 `place_mark_res_t` 형태로
+  답해 typed reply 계약이 약하게 검증됐다.
+- TicTacToe client e2e가 API HTTP endpoint를 고정 port로 열어 반복 실행이나 외부 프로세스와
+  충돌할 수 있었다. 샘플 회귀 테스트가 환경 상태에 흔들리면 실제 샘플 문제와 포트 점유 문제를
+  구분하기 어렵다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 임시 handler 유지 | e2e 구성이 단순하다 | 문서의 `Server/Api` handler 흐름을 검증하지 않는다 |
+| 실제 Api server executable을 별도 process로 띄움 | role 분리가 가장 명확하다 | registry/play server까지 orchestration해야 해서 이번 보정 범위를 크게 넘는다 |
+| client e2e의 HTTP app에 `create_match_handler_t`를 연결 | HTTP route가 실제 API handler와 DI 구성을 검증한다 | process 분리는 후속 샘플 orchestration 과제로 남는다 |
+
+선택은 client e2e HTTP app에 실제 API handler를 연결하는 것이다. 이렇게 하면 HTTP client,
+HTTP hosting, API handler DI 경계가 한 테스트에서 검증되고, process orchestration은 별도
+샘플 실행기 개선으로 남길 수 있다.
+
+### 적용한 리팩토링
+
+- TicTacToe client e2e에서 임시 `sample_create_game_http_handler_t`를 제거했다.
+- HTTP route는 `create_match_handler_t`를 사용하고, 그 의존성인 `create_match_room_handler_t`를
+  sample app service로 등록한다.
+- STREAM mock server는 `AuthenticateReq`, `JoinMatchReq`, `PlaceMarkReq` payload를 읽고 각
+  요청에 맞는 reply DTO를 반환한다.
+- `JoinMatchReq`와 `PlaceMarkReq`의 `match_id`를 reply/push state에 반영해 HTTP `POST /games`
+  결과로 받은 match id가 stream 흐름까지 이어지게 했다.
+- TicTacToe client executable은 HTTP create-game 결과가 `match-1`인지 확인한다.
+- TicTacToe client e2e의 API HTTP endpoint는 zlink stream socket의 loopback port allocation을
+  이용해 고정 port 충돌을 피한다.
+
+### 수정 후 점검
+
+- TicTacToe client e2e의 `POST /games`는 `Server/Api/Handlers/create_match_handler_t`를 통과한다.
+- Stream connector request는 요청별 reply DTO와 HTTP create-game 결과의 match id를 함께
+  검증한다.
+- 샘플 e2e label은 같은 workspace에서 반복 실행해도 고정 API HTTP port에 의존하지 않는다.
+- client sample은 여전히 `zlink::http_client`와 stream connector를 사용하고 server handler를
+  직접 호출하지 않는다.
+- 이번 보정 뒤 Goal 21 샘플 handler 경계에서 남은 즉시 수정 이슈는 0개다.

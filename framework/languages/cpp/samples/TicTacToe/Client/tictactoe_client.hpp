@@ -2,6 +2,7 @@
 #pragma once
 
 #include "tictactoe_player_client.hpp"
+#include "../Server/Api/Handlers/create_match_handler.hpp"
 #include "../../Shared/stream_frame_server.hpp"
 
 #include <zlink/Contracts/Sockets/stream_socket.hpp>
@@ -10,26 +11,28 @@
 #include <zlink/http_client.hpp>
 
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
 namespace zlink::samples::tictactoe
 {
 
-class sample_create_game_http_handler_t
+inline std::string
+make_sample_api_http_endpoint ()
 {
-public:
-  using request_type = create_match_req_t;
-  using reply_type = create_match_res_t;
-
-  create_match_res_t handle (const create_match_req_t &request)
-  {
-    const auto owner = request.owner_actor_id.empty ()
-                         ? std::string (sample_names_t::x_actor_id)
-                         : request.owner_actor_id;
-    return { "tictactoe-game", owner };
+  zlink::context_t context;
+  zlink::stream_socket_t probe (context);
+  probe.options ().notify (false);
+  probe.bind ("tcp://127.0.0.1:0");
+  const auto endpoint = probe.options ().last_endpoint ();
+  probe.close ();
+  const auto colon = endpoint.rfind (':');
+  if (colon == std::string::npos || colon + 1 >= endpoint.size ()) {
+    throw std::runtime_error ("sample API endpoint port allocation failed");
   }
-};
+  return "http://127.0.0.1:" + endpoint.substr (colon + 1);
+}
 
 class tictactoe_client_t
 {
@@ -47,12 +50,12 @@ public:
     run_options.api_http_endpoint = "http://127.0.0.1:0";
     std::thread server_thread ([&server,
                                 endpoint = run_options.play_endpoint,
-                                game_name = run_options.game_name,
                                 x_actor_id = run_options.x_actor_id] {
       std::ofstream log ("tictactoe-server.log", std::ios::trunc);
       log << "bind " << endpoint << '\n';
       log << "monitor stream ready\n";
       int handled = 0;
+      std::string current_match_id = "tictactoe-game";
       std::string buffer;
       while (handled < 9) {
         zlink::received_t inbound;
@@ -65,15 +68,54 @@ public:
         while (auto frame = zlink::samples::try_read_stream_frame (buffer)) {
           log << "recv " << frame->name << '\n';
           tictactoe_state_t state;
-          state.match_id = game_name;
+          state.match_id = current_match_id;
           state.status = "playing";
           log << "actor relay " << x_actor_id << '\n';
-          zlink::samples::send_stream_reply_and_push (
-            inbound,
-            *frame,
-            place_mark_res_t { state },
-            turn_changed_notify_t::packet_name,
-            turn_changed_notify_t { state.match_id, x_actor_id, state });
+          if (frame->name == authenticate_req_t::packet_name) {
+            const auto request =
+              zlink::message_t::from (frame->payload)
+                .parse_json<authenticate_req_t> ();
+            zlink::samples::send_stream_reply_and_push (
+              inbound,
+              *frame,
+              authenticate_res_t { request.actor_id },
+              turn_changed_notify_t::packet_name,
+              turn_changed_notify_t { state.match_id, x_actor_id, state });
+          } else if (frame->name == join_match_req_t::packet_name) {
+            const auto request =
+              zlink::message_t::from (frame->payload)
+                .parse_json<join_match_req_t> ();
+            current_match_id = request.match_id;
+            state.match_id = current_match_id;
+            state.x_actor_id = x_actor_id;
+            state.o_actor_id = request.actor_id == x_actor_id
+                                 ? sample_names_t::o_actor_id
+                                 : request.actor_id;
+            zlink::samples::send_stream_reply_and_push (
+              inbound,
+              *frame,
+              join_match_res_t {
+                current_match_id,
+                request.actor_id,
+                request.actor_id == x_actor_id ? "X" : "O",
+                state },
+              turn_changed_notify_t::packet_name,
+              turn_changed_notify_t { current_match_id, x_actor_id, state });
+          } else {
+            const auto request =
+              zlink::message_t::from (frame->payload)
+                .parse_json<place_mark_req_t> ();
+            current_match_id = request.match_id;
+            state.match_id = current_match_id;
+            state.last_move_actor_id = request.actor_id;
+            state.last_move_cell = request.cell;
+            zlink::samples::send_stream_reply_and_push (
+              inbound,
+              *frame,
+              place_mark_res_t { state },
+              turn_changed_notify_t::packet_name,
+              turn_changed_notify_t { current_match_id, x_actor_id, state });
+          }
           log << "reply " << frame->name << '\n';
           log << "push " << turn_changed_notify_t::packet_name << '\n';
           ++handled;
@@ -85,12 +127,13 @@ public:
     });
 
     zlink::framework::app_t api_app = zlink::framework::app_t::create ();
-    const std::string api_http_endpoint = "http://127.0.0.1:48123";
+    const auto api_http_endpoint = make_sample_api_http_endpoint ();
     api_app.add_zlink_framework (
       [&](zlink::framework::zlink_framework_options_t &options) {
+        options.services ().add_singleton<create_match_room_handler_t> ();
         options.http ()
           .listen (api_http_endpoint)
-          .map_post<sample_create_game_http_handler_t> ("/games");
+          .map_post<create_match_handler_t> ("/games");
       });
     int api_exit_code = -1;
     std::thread api_thread ([&api_app, &api_exit_code] {

@@ -245,6 +245,8 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseDiscoveryLikeDotNet)
   const auto tictactoe_root = cpp_language_root () / "samples/TicTacToe";
   const auto api_framework = read_file (
     tictactoe_root / "Server/Api/api_server_framework.hpp");
+  const auto client = read_file (
+    tictactoe_root / "Client/tictactoe_client.hpp");
   const auto play_factory = read_file (
     tictactoe_root / "Server/Play/play_server_host_factory.hpp");
   const auto session_factory = read_file (
@@ -287,7 +289,23 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseDiscoveryLikeDotNet)
              std::string::npos);
   EXPECT_NE (registry_factory.find ("topology.registry_router_endpoint"),
              std::string::npos);
+  EXPECT_NE (api_framework.find (".listen (topology.api_http_endpoint)"),
+             std::string::npos);
+  EXPECT_NE (api_framework.find (
+               ".map_post<create_match_handler_t> (\"/games\")"),
+             std::string::npos);
   EXPECT_EQ (api_framework.find (".client (topology.play_endpoint)"),
+             std::string::npos);
+  EXPECT_NE (client.find ("#include <zlink/http_client.hpp>"),
+             std::string::npos);
+  EXPECT_NE (client.find ("zlink::http_client::client_t::create ()"),
+             std::string::npos);
+  EXPECT_NE (client.find (".base_url (api_http_endpoint)"),
+             std::string::npos);
+  EXPECT_NE (client.find (".post (\"/games\")"), std::string::npos);
+  EXPECT_NE (client.find (".submit<create_match_res_t> ()"),
+             std::string::npos);
+  EXPECT_NE (client.find ("result.http_game_created = http_ready"),
              std::string::npos);
 }
 

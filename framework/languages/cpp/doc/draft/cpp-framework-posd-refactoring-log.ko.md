@@ -12,6 +12,49 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. TicTacToe HTTP sample parity 회귀 보강
+
+### 발견한 위험 신호
+
+- Goal 19는 TicTacToe sample이 HTTP `POST /games`로 시작해야 한다고 명시한다. 샘플 구현과
+  e2e log 검증은 해당 흐름을 사용하지만, sample parity 테스트는 API role이 play endpoint에
+  직접 연결하지 않는다는 우회 조건만 확인하고 있었다.
+- `POST /games` route와 `zlink::http_client` 호출을 직접 고정하지 않으면, 샘플이 다시
+  channel-only 시작 흐름으로 돌아가도 parity 테스트가 놓칠 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| e2e log 검증만 신뢰한다 | 실행 흐름을 본다 | route 등록과 client API 선택을 정확히 지목하지 못한다 |
+| 샘플 구현을 더 추상화한다 | 중복 문자열을 줄일 수 있다 | 이미 동작하는 샘플에 불필요한 구조 변경이 생긴다 |
+| sample parity 테스트가 route와 client 호출 표면을 직접 검사한다 | 문서 완료 조건을 좁고 빠르게 고정한다 | 파일 문자열 계약을 추가로 유지해야 한다 |
+
+선택은 세 번째 방식이다. 샘플 시작 흐름은 public sample contract에 가까우므로, route와 client
+표면을 계약 테스트에서 직접 확인하는 것이 더 명확하다.
+
+### 적용한 리팩토링
+
+- TicTacToe API role이 `topology.api_http_endpoint`를 listen하고
+  `map_post<create_match_handler_t>("/games")`를 등록하는지 고정했다.
+- TicTacToe client가 `zlink::http_client`를 include하고, API HTTP endpoint를 base URL로 둔 뒤
+  `POST /games`를 `create_match_res_t`로 받는지 고정했다.
+- client 결과의 `http_game_created`가 HTTP readiness 결과로 채워지는지도 검증했다.
+
+### 수정 후 점검
+
+- sample 구현과 public API는 바꾸지 않았다.
+- HTTP 시작 흐름은 e2e log와 sample parity 테스트 양쪽에서 확인된다.
+- API role이 play endpoint에 직접 연결하지 않는 기존 검증은 유지했다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_sample_parity
+ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_sample_parity --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure
+```
+
 ## 반복 POSD 재리뷰. HTTP hosting TLS startup validation 회귀 보강
 
 ### 발견한 위험 신호

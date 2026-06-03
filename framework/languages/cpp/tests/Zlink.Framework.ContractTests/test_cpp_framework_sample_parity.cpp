@@ -325,6 +325,55 @@ TEST (CppFrameworkSampleParity, JsonFieldAccessStaysInsideDtoSerializers)
   }
 }
 
+TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndLogEvidence)
+{
+  const auto cpp_root = cpp_language_root ();
+  const auto cmake = read_file (cpp_root / "CMakeLists.txt");
+  struct sample_readme_case_t
+  {
+    std::string readme_path;
+    std::vector<std::string> public_targets;
+    std::string log_file;
+  };
+  const std::vector<sample_readme_case_t> cases {
+    { "samples/Bingo/README.ko.md",
+      { "sample_cpp_framework_bingo_registry",
+        "sample_cpp_framework_bingo_api",
+        "sample_cpp_framework_bingo_play",
+        "sample_cpp_framework_bingo_session",
+        "sample_cpp_framework_bingo_client" },
+      "bingo-server.log" },
+    { "samples/TicTacToe/README.ko.md",
+      { "sample_cpp_framework_tictactoe_registry",
+        "sample_cpp_framework_tictactoe_api",
+        "sample_cpp_framework_tictactoe_play",
+        "sample_cpp_framework_tictactoe_session",
+        "sample_cpp_framework_tictactoe_client" },
+      "tictactoe-server.log" }
+  };
+
+  for (const auto &sample : cases) {
+    const auto readme = read_file (cpp_root / sample.readme_path);
+    for (const auto &target : sample.public_targets) {
+      EXPECT_NE (cmake.find (target), std::string::npos)
+        << target << " is missing from CMake sample targets";
+      EXPECT_NE (readme.find ("`" + target + "`"), std::string::npos)
+        << sample.readme_path << " does not document " << target;
+    }
+
+    EXPECT_EQ (readme.find ("_e2e_server`"), std::string::npos)
+      << sample.readme_path << " should not document internal e2e server "
+      << "targets as public sample executables";
+    EXPECT_NE (readme.find (sample.log_file), std::string::npos)
+      << sample.readme_path << " does not document the server log file";
+    EXPECT_NE (readme.find ("monitoring event"), std::string::npos)
+      << sample.readme_path << " does not document monitoring event evidence";
+    EXPECT_NE (readme.find ("receive, reply, push"), std::string::npos)
+      << sample.readme_path << " does not document request/reply/push "
+      << "log evidence";
+  }
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeHostsUseDiscoveryLikeDotNet)
 {
   const auto tictactoe_root = cpp_language_root () / "samples/TicTacToe";

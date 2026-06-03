@@ -7663,3 +7663,39 @@ framework, connector, HTTP client public header와 같은 leakage gate를 통과
 
 - sample e2e server log에서 monitoring event 항목이 빠지면 `framework-sample-log`,
   `framework-sample-e2e`, `framework-sample-process-e2e` 라벨이 실패한다.
+
+## 반복 POSD 재리뷰. Goal 22 sample README target alignment 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 public docs and sample code alignment를 완료 기준에 둔다.
+- 기존 layout contract는 draft 문서 추적표와 draft README 역할표를 검사하지만, sample README가
+  CMake의 public sample executable 목록과 계속 맞는지는 직접 확인하지 않았다.
+- 이 상태에서는 sample target 이름이나 역할이 바뀌어도 README가 낡은 실행 파일 이름을
+  설명하거나, 내부 e2e server target을 public sample처럼 설명하는 회귀를 놓칠 수 있다.
+- 최근 sample log 검증은 monitoring event까지 강해졌지만 README가 그 증거를 계속 설명하는지도
+  자동으로 고정되어 있지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| README는 수동 리뷰로만 확인 | 테스트 변경이 없다 | public docs/sample alignment 완료 기준이 약하다 |
+| README를 CMake에서 생성 | drift를 없앨 수 있다 | 문서 설명 문맥과 한국어 작성 품질을 템플릿에 묶는다 |
+| sample parity test가 README의 public target 목록과 log evidence 문구를 검사 | 현재 문서 구조를 유지하면서 drift를 막는다 | target 목록을 테스트에 명시해야 한다 |
+
+선택은 세 번째 방식이다. sample README는 사용자가 직접 읽는 public 문서이므로 생성물보다
+설명형 문서로 유지하는 편이 낫다. 대신 parity test가 CMake target과 README target 설명,
+server log evidence 문구를 함께 확인해 문서와 샘플 코드가 같은 표면을 가리키도록 고정한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_sample_parity`에 sample README alignment 테스트를 추가했다.
+- Bingo와 TicTacToe README가 public sample executable target 5개를 모두 설명하는지 확인한다.
+- README가 내부 `_e2e_server` target을 public sample executable로 설명하지 않는지 확인한다.
+- README가 server log 파일과 monitoring event, receive/reply/push 증거를 설명하는지 확인한다.
+
+### 수정 후 점검
+
+- sample target 이름, README 실행 파일 목록, server log evidence 설명이 서로 어긋나면
+  `test_cpp_framework_sample_parity`가 실패한다.

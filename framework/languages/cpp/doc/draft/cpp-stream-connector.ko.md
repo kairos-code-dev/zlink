@@ -179,9 +179,13 @@ TCP처럼 처리하지 않는 이유는 endpoint 보안과 handshake 의미가 �
 request/reply는 pending request table의 sequence로 response frame을 매칭한다. response가
 `request_timeout` 안에 도착하지 않으면 pending request를 제거하고 `request_timeout`
 error를 반환한다. heartbeat는 별도 background thread를 만들지 않고, manual dispatch 모델과
-같은 `dispatch()` 경로에서 interval이 지난 경우 `$zlink.heartbeat.ping` control frame을
-전송한다. reconnect는 `connect()` 실패 시 `reconnect` option의 시도 횟수와 backoff 값을
-따라 재시도하고, 두 번째 시도부터 `reconnecting` state event를 발행한다.
+같은 `dispatch()` 경로에서 처리한다. `dispatch()`는 먼저 도착한 frame을 비워 마지막 inbound
+시각을 갱신하고, heartbeat timeout을 넘으면 연결을 `disconnected`로 바꾼다. timeout이
+아니고 interval이 지난 경우에는 `$zlink.heartbeat.ping` control frame을 전송한다.
+`$zlink.heartbeat.pong` 같은 `$zlink.` control frame은 connector 내부 frame이므로
+application packet callback으로 전달하지 않는다. reconnect는 `connect()` 실패 시
+`reconnect` option의 시도 횟수와 backoff 값을 따라 재시도하고, 두 번째 시도부터
+`reconnecting` state event를 발행한다.
 
 connector는 ActorGateway나 server-side session actor relay를 직접 구현하지 않는다. 그것은
 서버 framework의 STREAM/ActorGateway 기능이다. connector는 STREAM 서버가 이해하는

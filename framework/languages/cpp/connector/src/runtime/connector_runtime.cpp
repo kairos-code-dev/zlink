@@ -34,6 +34,9 @@ connector_runtime_t::from (const connector_t &connector)
 void
 deliver_received_packet (connector_state_t &state, packet_t packet)
 {
+  if (packet.name.rfind ("$zlink.", 0) == 0) {
+    return;
+  }
   if (state.options.dispatch_mode == dispatch_mode_t::immediate) {
     dispatch_packet (state, packet);
     return;
@@ -287,7 +290,9 @@ connector_t::connect ()
       _state->socket =
         std::make_unique<boost::asio::ip::tcp::socket> (_state->io_context);
       boost::asio::connect (*_state->socket, endpoints);
-      _state->last_heartbeat_sent = std::chrono::steady_clock::now ();
+      const auto now = std::chrono::steady_clock::now ();
+      _state->last_heartbeat_sent = now;
+      _state->last_inbound_received = now;
       detail::change_state (_state, connection_state_t::connected);
       return task_t<void> (result_t<void>::success ());
     } catch (const std::exception &ex) {

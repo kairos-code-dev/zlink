@@ -12,6 +12,61 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. Stream Connector heartbeat 의미 정렬
+
+### 발견한 위험 신호
+
+- 공통 Stream Connector 초안은 heartbeat ping/pong과 timeout을 완료 기준으로 둔다. C++
+  connector에는 `heartbeat.timeout` option이 있었지만, runtime은 ping 전송만 하고 timeout
+  값을 사용하지 않았다.
+- `$zlink.heartbeat.pong` 같은 control frame을 application callback으로 전달하지 않는다는
+  공통 규칙을 C++ runtime 경계에서 직접 막지 않았다. 사용자가 `$zlink.` 예약 이름 handler를
+  등록하면 내부 control frame이 application packet처럼 보일 수 있었다.
+- heartbeat 판단을 별도 background thread로 옮기면 manual dispatch 모델과 충돌한다. C++
+  초안은 game/client loop가 `dispatch()`를 호출하는 모델을 전제로 하므로, heartbeat도 같은
+  경로에서 처리해야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| ping 전송만 유지 | 구현이 가장 작다 | public timeout option과 공통 완료 기준이 맞지 않는다 |
+| heartbeat 전용 background thread 추가 | 자동으로 timeout을 감지할 수 있다 | manual dispatch/game loop 모델과 thread ownership이 복잡해진다 |
+| `dispatch()`에서 inbound drain, timeout 판정, ping 전송을 처리 | 기존 dispatch 모델과 맞고 thread를 늘리지 않는다 | 사용자가 dispatch를 주기적으로 호출해야 한다 |
+
+선택은 세 번째 방식이다. connector는 사용자가 정한 loop에서 callback을 실행하는 것이 기본
+정책이므로, heartbeat도 같은 loop의 `dispatch()` 호출에서 처리한다.
+
+### 적용한 리팩토링
+
+- connector state에 마지막 inbound frame 시각을 추가하고, connect 성공 시 기준 시각을
+  초기화했다.
+- request read와 dispatch push read 경로가 frame을 읽으면 마지막 inbound 시각을 갱신하게
+  했다.
+- `heartbeat_monitor_t`가 timeout 판단도 소유하게 해 heartbeat option 의미를 한 runtime
+  모듈로 모았다.
+- `dispatch()`가 도착한 frame을 먼저 비운 뒤 heartbeat timeout을 판정하고, timeout이면
+  socket을 닫고 `disconnected` 상태와 오류를 발행하게 했다.
+- `$zlink.` 예약 control packet은 application dispatch queue나 immediate callback으로
+  전달하지 않게 했다.
+- `test_cpp_stream_connector`에 heartbeat pong control frame 필터와 heartbeat timeout
+  회귀를 추가했다.
+
+### 수정 후 점검
+
+- heartbeat 처리는 별도 thread를 만들지 않는다.
+- server pong이 이미 도착한 경우 먼저 drain해서 마지막 inbound 시각을 갱신하므로 잘못된
+  timeout으로 끊지 않는다.
+- application callback은 `$zlink.` 내부 control packet을 받지 않는다.
+- timeout error code는 현재 public enum을 늘리지 않고 `disconnected`를 사용한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+```
+
 ## 반복 POSD 재리뷰. Stream Connector 경계 조건 회귀 고정
 
 ### 발견한 위험 신호

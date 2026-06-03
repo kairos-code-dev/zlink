@@ -208,6 +208,7 @@ read_packet_frame (connector_state_t &state,
   }
   auto header = decoded.value ();
   auto payload = message_from_bytes (payload_bytes.value ());
+  state.last_inbound_received = steady_clock_t::now ();
   const bool compressed =
     has_flag (header.flags, header_flags_t::payload_compressed);
   if (compressed) {
@@ -336,10 +337,23 @@ dispatch_pending (std::shared_ptr<connector_state_t> state)
 {
   std::lock_guard<std::mutex> lock (state->transport_mutex);
   if (is_transport_connected (*state)) {
+    drain_available_pushes (*state);
+    heartbeat_monitor_t monitor (state->options.heartbeat);
+    const auto now = steady_clock_t::now ();
+    if (monitor.timed_out (state->last_inbound_received, now)) {
+      boost::system::error_code ignored;
+      if (state->socket) {
+        state->socket->close (ignored);
+      }
+      error_t error { error_code_t::disconnected,
+                      "stream connector heartbeat timed out" };
+      publish_error (*state, error);
+      change_state (state, connection_state_t::disconnected, error);
+      return result_t<void>::failure (error.code, error.message);
+    }
     if (auto heartbeat = send_due_heartbeat (*state); !heartbeat) {
       return heartbeat;
     }
-    drain_available_pushes (*state);
   }
   while (!state->dispatch_queue.empty ()) {
     auto packet = std::move (state->dispatch_queue.front ());

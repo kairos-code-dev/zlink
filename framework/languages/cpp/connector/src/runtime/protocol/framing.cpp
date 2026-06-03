@@ -6,6 +6,7 @@
 #include "runtime/protocol/header_codec.hpp"
 #include "runtime/transport/stream_connection.hpp"
 
+#include <chrono>
 #include <stdexcept>
 
 namespace zlink::stream_connector::detail
@@ -50,6 +51,7 @@ read_stream_packet (connector_state_t &state)
                       zlink::message_t::from (std::string {}) };
   }
   auto header = decoded.value ();
+  state.last_inbound_received = std::chrono::steady_clock::now ();
   const bool compressed =
     has_flag (header.flags, header_flags_t::payload_compressed);
   auto payload = message_from_bytes (payload_bytes);

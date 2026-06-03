@@ -28,4 +28,16 @@ heartbeat_monitor_t::due (
          now - last_sent >= _options.interval;
 }
 
+bool
+heartbeat_monitor_t::timed_out (
+  std::chrono::steady_clock::time_point last_inbound,
+  std::chrono::steady_clock::time_point now) const noexcept
+{
+  if (!_options.enabled ||
+      last_inbound == std::chrono::steady_clock::time_point {}) {
+    return false;
+  }
+  return now - last_inbound >= _options.timeout;
+}
+
 } // namespace zlink::stream_connector::detail

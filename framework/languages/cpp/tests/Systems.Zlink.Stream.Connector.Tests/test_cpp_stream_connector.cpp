@@ -114,9 +114,12 @@ make_server_frame (zlink::stream_connector::message_kind_t kind,
   header.flags = compressed
                    ? zlink::stream_connector::header_flags_t::payload_compressed
                    : zlink::stream_connector::header_flags_t::none;
-  header.request_seq = kind == zlink::stream_connector::message_kind_t::send
-                         ? std::optional<std::uint64_t> {}
-                         : std::optional<std::uint64_t> { seq };
+  header.request_seq =
+    kind == zlink::stream_connector::message_kind_t::request ||
+        kind == zlink::stream_connector::message_kind_t::response ||
+        kind == zlink::stream_connector::message_kind_t::error
+      ? std::optional<std::uint64_t> { seq }
+      : std::optional<std::uint64_t> {};
   header.name = std::move (name);
   auto header_bytes =
     zlink::stream_connector::detail::header_codec_t {}.encode (header);
@@ -573,6 +576,12 @@ main ()
       heartbeat_seen =
         frame->header.kind == zlink::stream_connector::message_kind_t::control &&
         frame->header.name == "$zlink.heartbeat.ping";
+      auto pong = make_server_frame (
+        zlink::stream_connector::message_kind_t::control,
+        0,
+        "$zlink.heartbeat.pong",
+        "");
+      inbound.send ().message (pong).submit ();
     }
     inbound.close ();
   });
@@ -589,7 +598,41 @@ main ()
   if (!heartbeat_seen) {
     return 38;
   }
+  bool heartbeat_control_delivered = false;
+  heartbeat_connector.on<zlink::stream_connector::packet_t> (
+    "$zlink.heartbeat.pong",
+    [&](const zlink::stream_connector::packet_t &) {
+      heartbeat_control_delivered = true;
+    });
+  if (!heartbeat_connector.dispatch ().result () ||
+      heartbeat_control_delivered ||
+      heartbeat_connector.pending_dispatch_count () != 0) {
+    return 44;
+  }
   heartbeat_connector.close ().result ();
+
+  zlink::stream_socket_t heartbeat_timeout_server (context);
+  heartbeat_timeout_server.options ().notify (false);
+  heartbeat_timeout_server.bind ("tcp://127.0.0.1:0");
+  zlink::stream_connector::connector_options_t heartbeat_timeout_options;
+  heartbeat_timeout_options.endpoint =
+    heartbeat_timeout_server.options ().last_endpoint ();
+  heartbeat_timeout_options.heartbeat.timeout = std::chrono::milliseconds (0);
+  auto heartbeat_timeout_connector =
+    zlink::stream_connector::connector_factory_t::create (
+      heartbeat_timeout_options);
+  if (!heartbeat_timeout_connector.connect ().result ()) {
+    return 45;
+  }
+  auto heartbeat_timeout_result =
+    heartbeat_timeout_connector.dispatch ().result ();
+  if (heartbeat_timeout_result ||
+      heartbeat_timeout_result.error_code () !=
+        zlink::stream_connector::error_code_t::disconnected ||
+      heartbeat_timeout_connector.state () !=
+        zlink::stream_connector::connection_state_t::disconnected) {
+    return 46;
+  }
 
   zlink::stream_connector::connector_options_t reconnect_options;
   reconnect_options.endpoint = "tcp://127.0.0.1:1";

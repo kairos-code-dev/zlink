@@ -50,6 +50,7 @@ public:
   bool protobuf_enabled = false;
   bool lz4_enabled = false;
   std::chrono::steady_clock::time_point last_heartbeat_sent {};
+  std::chrono::steady_clock::time_point last_inbound_received {};
   boost::asio::io_context io_context;
   std::unique_ptr<boost::asio::ip::tcp::socket> socket;
   boost::asio::streambuf inbound_buffer;

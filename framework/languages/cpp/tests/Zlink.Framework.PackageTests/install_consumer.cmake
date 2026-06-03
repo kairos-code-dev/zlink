@@ -58,7 +58,9 @@ foreach(required_text IN ITEMS
   endif()
 endforeach()
 foreach(forbidden_text IN ITEMS
-    "zlink_stream_connector_cppTargets.cmake")
+    "zlink_stream_connector_cppTargets.cmake"
+    "find_dependency(msgpack-cxx CONFIG)"
+    "find_dependency(Protobuf)")
   string(FIND "${framework_config_text}" "${forbidden_text}" forbidden_pos)
   if(NOT forbidden_pos EQUAL -1)
     message(FATAL_ERROR "framework package config must not include ${forbidden_text}")

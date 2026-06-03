@@ -1032,16 +1032,27 @@ ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-fai
 ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-config --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-observability --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-contract --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-unit --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L http-client-regression --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L http-client-https --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L parity --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-parity --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-log --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-client --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-registry --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-play --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-session --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-unit --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-integration --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L connector-contract --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L connector-protocol --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L connector-transport --output-on-failure
@@ -1057,6 +1068,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-extension --output-o
 cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70
 cmake --build framework/languages/cpp/build-coverage
 ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure
+ctest --test-dir framework/languages/cpp/build-coverage -L framework-coverage --output-on-failure
 git diff --check -- framework/languages/cpp bindings/cpp
 ```
 

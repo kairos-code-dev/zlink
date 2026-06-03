@@ -8346,3 +8346,108 @@ HTTP client와 Stream Connector의 역할 분담을 바로 드러내야 한다.
 - 향후 구현이 들어간 디렉터리에 placeholder가 남으면 `test_cpp_framework_layout_contract`가
   실패한다.
 - 이번 보정 뒤 non-empty directory placeholder 잔재의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 22 final concrete label command 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 CTest label 전체 통과와 Goal 1-22 완료 기준 충족을 최종 완료 조건으로 둔다.
+- Goal 22 검증 블록에는 full CTest가 있었지만, 일부 concrete label이 독립 명령으로
+  드러나지 않았거나 layout contract의 필수 명령 목록에 고정되지 않았다.
+- 빠져 있던 축은 HTTP client contract/unit/HTTPS, framework zlink 세부 label,
+  config/observability, connector unit/integration, sample smoke/parity/log, 샘플별 role label
+  일부, framework coverage였다.
+- 이 상태에서는 전체 CTest를 실행하면 통과하더라도, Goal 22 문서만 보고 최종 감사 축을
+  하나씩 재실행하는 사용자가 concrete label 일부를 놓칠 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| full CTest 명령만 유지한다 | 명령 목록이 짧다 | 최종 audit 축이 문서에 모두 보이지 않는다 |
+| 각 Goal 18-21 검증 명령에만 맡긴다 | 중복을 줄인다 | Goal 22 단독 실행 시 concrete label 일부를 놓칠 수 있다 |
+| Goal 22 명령에 final audit concrete label 축을 모두 드러내고 contract로 고정한다 | 최종 감사 명령과 label taxonomy가 일치한다 | 명령 목록이 길어진다 |
+
+선택은 세 번째 방식이다. Goal 22는 최종 감사 문서이므로, full CTest와 별도로 독립 label 축을
+명령 목록에서 바로 확인할 수 있어야 한다.
+
+### 적용한 리팩토링
+
+- Goal 22 검증 명령에 누락된 HTTP client contract/unit/HTTPS, connector unit/integration,
+  sample smoke/parity/log, sample bingo/client/tictactoe, framework coverage concrete label 명령을 추가했다.
+- layout contract가 framework zlink 세부 label, config/observability, HTTP client, connector,
+  Unreal connector, sample, coverage concrete label 명령을 Goal 22 검증 블록에서 찾도록 보강했다.
+
+### 수정 후 점검
+
+- Goal 22 검증 블록에서 final audit concrete label 축이 빠지면
+  `test_cpp_framework_layout_contract`가 실패한다.
+- 이번 보정 뒤 Goal 22 final concrete label command의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 22 final non-CTest gate 보강
+
+### 발견한 위험 신호
+
+- Goal 22 검증 블록은 full build, coverage configure/build, `git diff --check`까지 포함한다.
+- 기존 layout contract는 Goal 22의 `ctest` 명령만 필수로 고정했다.
+- 이 상태에서는 coverage threshold 명령은 남아 있어도 coverage build configure가 빠지거나,
+  최종 whitespace gate가 문서에서 사라지는 퇴행을 contract가 잡지 못한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `ctest` 명령만 계속 검사한다 | contract가 단순하다 | Goal 22의 build/hygiene gate 누락을 놓친다 |
+| shell script로 Goal 22 명령 전체를 실행한다 | 문서와 실행이 강하게 묶인다 | layout contract가 느려지고 환경 의존성이 커진다 |
+| layout contract가 비-CTest gate 문자열도 검사한다 | 빠르고 Goal 22 문서 퇴행을 잡는다 | 명령 문자열을 유지해야 한다 |
+
+선택은 세 번째 방식이다. Goal 22 문서의 비-CTest gate는 실행 자체보다 존재 여부를 빠르게
+고정하는 것이 목적에 맞다.
+
+### 적용한 리팩토링
+
+- layout contract가 Goal 22 검증 블록에서 normal build, coverage configure/build,
+  `git diff --check -- framework/languages/cpp bindings/cpp` 명령을 찾도록 보강했다.
+
+### 수정 후 점검
+
+- Goal 22 검증 블록에서 build, coverage configure/build, diff check gate가 빠지면
+  `test_cpp_framework_layout_contract`가 실패한다.
+- 이번 보정 뒤 Goal 22 final non-CTest gate의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 22 framework package optional connector dependency 제거
+
+### 발견한 위험 신호
+
+- Goal 22는 framework, connector, HTTP client, extension boundary가 독립 package 경계를
+  유지해야 한다고 둔다.
+- `zlink_framework_cppConfig.cmake.in`은 framework package config인데도 Stream Connector의
+  MessagePack/Protobuf optional dependency placeholder를 포함했다.
+- 기본 옵션에서는 빈 문자열이라 드러나지 않지만, connector optional codec을 켠 build에서는
+  framework package만 찾는 소비자도 connector codec dependency를 요구받을 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 그대로 둔다 | 현재 기본 build에는 변화가 없다 | optional connector dependency가 framework package 경계로 샌다 |
+| framework package가 connector config를 함께 포함한다 | consumer가 한 config만 찾으면 된다 | connector 별도 배포물 기준과 충돌한다 |
+| connector optional dependency 복원은 stream connector config에만 둔다 | package 경계가 명확하다 | consumer가 connector를 쓰려면 connector package도 찾아야 한다 |
+
+선택은 세 번째 방식이다. framework package는 framework와 HTTP client dependency만 복원하고,
+Stream Connector optional codec dependency는 connector package config가 복원해야 한다.
+
+### 적용한 리팩토링
+
+- `zlink_framework_cppConfig.cmake.in`에서 Stream Connector MessagePack/Protobuf dependency
+  placeholder를 제거했다.
+- install consumer regression이 framework package config 안에 connector targets, MessagePack,
+  Protobuf dependency 복원이 들어오면 실패하게 했다.
+
+### 수정 후 점검
+
+- framework package config는 `zlink_stream_connector_cppTargets.cmake`,
+  `find_dependency(msgpack-cxx CONFIG)`, `find_dependency(Protobuf)`를 포함하지 않는다.
+- Stream Connector package config는 connector를 사용할 때 필요한 optional dependency 복원을
+  계속 소유한다.
+- 이번 보정 뒤 framework package optional connector dependency 잔재의 즉시 수정 이슈는 0개다.

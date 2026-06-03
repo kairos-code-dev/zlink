@@ -466,17 +466,36 @@ implementation_plan_goal22_covers_final_label_axes (
   const std::string commands[] = {
     "ctest --test-dir framework/languages/cpp/build --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-zlink --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-zlink-channel --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-zlink-spot --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-zlink-stream --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-zlink-actor-gateway --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-config --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-observability --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L http-client-contract --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L http-client-unit --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L http-client-regression --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L http-client-https --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L parity --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-log --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-client --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-sample-play --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-sample-session --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L connector-unit --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L connector-integration --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L connector-contract --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L connector-protocol --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L connector-transport --output-on-failure",
@@ -489,11 +508,26 @@ implementation_plan_goal22_covers_final_label_axes (
     "ctest --test-dir framework/languages/cpp/build -L framework-package --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-tooling --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-extension --output-on-failure",
-    "ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure"
+    "ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build-coverage -L framework-coverage --output-on-failure"
   };
   for (const auto &command : commands) {
     if (goal.find (command) == std::string::npos) {
       std::cerr << "Goal 22 verification commands lack: "
+                << command << '\n';
+      ok = false;
+    }
+  }
+
+  const std::string non_ctest_commands[] = {
+    "cmake --build framework/languages/cpp/build",
+    "cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70",
+    "cmake --build framework/languages/cpp/build-coverage",
+    "git diff --check -- framework/languages/cpp bindings/cpp"
+  };
+  for (const auto &command : non_ctest_commands) {
+    if (goal.find (command) == std::string::npos) {
+      std::cerr << "Goal 22 verification commands lack non-CTest gate: "
                 << command << '\n';
       ok = false;
     }
@@ -1469,12 +1503,14 @@ main ()
   ok &= file_contains (
     root / "CMakeLists.txt",
     "$<$<BOOL:${ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF>");
-  ok &= file_contains (
+  ok &= file_does_not_contain (
     root / "cmake/zlink_framework_cppConfig.cmake.in",
-    "@ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY@");
-  ok &= file_contains (
+    "@ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY@",
+    "Framework package config must not restore connector MessagePack dependency");
+  ok &= file_does_not_contain (
     root / "cmake/zlink_framework_cppConfig.cmake.in",
-    "@ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY@");
+    "@ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY@",
+    "Framework package config must not restore connector Protobuf dependency");
   ok &= file_contains (
     root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
     "@ZLINK_STREAM_CONNECTOR_EXPORT_OPENSSL_DEPENDENCY@");

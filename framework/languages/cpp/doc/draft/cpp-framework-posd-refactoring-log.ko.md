@@ -8310,3 +8310,39 @@ HTTP client와 Stream Connector의 역할 분담을 바로 드러내야 한다.
 - TicTacToe sample 문서는 plan의 HTTP 시작 요구와 실제 client 구현을 같은 방향으로 설명한다.
 - README에서 HTTP 시작 흐름이 빠지면 `test_cpp_framework_sample_parity`가 실패한다.
 - 이번 보정 뒤 Goal 21 TicTacToe README HTTP 시작 흐름의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 1/22 non-empty directory placeholder 제거
+
+### 발견한 위험 신호
+
+- Goal 1과 Goal 22는 framework, connector, HTTP client, Unreal connector가 실제 산출물과
+  public/runtime 경계로 분리되어야 한다고 둔다.
+- 실제 파일이 들어찬 `framework/include`, `framework/src/runtime`, `connector/src/runtime`,
+  Unreal `Private` 하위 디렉터리에 `.gitkeep` placeholder가 계속 남아 있었다.
+- 비어 있지 않은 디렉터리에 placeholder 파일이 남으면 현재 구조가 실제 구현 소유자인지,
+  빈 디렉터리를 맞추기 위한 자리표시자인지 구분이 흐려진다. 이는 산출물 경계 감사에서 잡음이 된다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `.gitkeep`를 그대로 둔다 | 변경이 없다 | placeholder와 실제 구현 디렉터리의 의미가 섞인다 |
+| 모든 `.gitkeep`를 일괄 금지한다 | 규칙이 단순하다 | 진짜 빈 디렉터리를 보존해야 할 때 사용할 수 없다 |
+| 비어 있지 않은 C++ framework 산출물 디렉터리에서만 `.gitkeep`를 금지한다 | 구현 소유자가 생긴 디렉터리의 placeholder 잔재를 막는다 | layout contract가 파일 시스템 구조를 더 본다 |
+
+선택은 세 번째 방식이다. `.gitkeep` 자체를 금지하지 않고, 실제 파일이 들어찬 산출물 디렉터리에
+남은 placeholder만 제거하면 디렉터리 의도가 명확해진다.
+
+### 적용한 리팩토링
+
+- 이미 실제 파일이 있는 C++ framework, connector, Unreal connector public/runtime 디렉터리의
+  `.gitkeep` 파일을 제거했다.
+- layout contract가 non-empty framework 산출물 디렉터리에 `.gitkeep` placeholder가 남으면
+  실패하게 했다.
+
+### 수정 후 점검
+
+- public/runtime 디렉터리는 실제 header/source 파일로 존재가 증명된다.
+- 향후 구현이 들어간 디렉터리에 placeholder가 남으면 `test_cpp_framework_layout_contract`가
+  실패한다.
+- 이번 보정 뒤 non-empty directory placeholder 잔재의 즉시 수정 이슈는 0개다.

@@ -229,6 +229,52 @@ draft_tracking_table_matches_files (const std::filesystem::path &root)
 }
 
 bool
+non_empty_directories_do_not_keep_gitkeep (
+  const std::filesystem::path &root)
+{
+  bool ok = true;
+  const std::filesystem::path roots[] = {
+    root / "framework/include",
+    root / "framework/src/runtime",
+    root / "connector/include",
+    root / "connector/src/runtime",
+    root / "http-client/include",
+    root / "http-client/src/runtime",
+    root / "extensions/include",
+    root / "unreal-connector/Source/ZLinkStreamConnector/Public",
+    root / "unreal-connector/Source/ZLinkStreamConnector/Private"
+  };
+
+  for (const auto &scan_root : roots) {
+    if (!std::filesystem::exists (scan_root)) {
+      continue;
+    }
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator (scan_root)) {
+      if (!entry.is_regular_file () ||
+          entry.path ().filename () != ".gitkeep") {
+        continue;
+      }
+
+      const auto dir = entry.path ().parent_path ();
+      bool has_real_entry = false;
+      for (const auto &sibling : std::filesystem::directory_iterator (dir)) {
+        if (sibling.path ().filename () != ".gitkeep") {
+          has_real_entry = true;
+          break;
+        }
+      }
+      if (has_real_entry) {
+        std::cerr << "non-empty framework directory still keeps placeholder: "
+                  << entry.path () << '\n';
+        ok = false;
+      }
+    }
+  }
+  return ok;
+}
+
+bool
 draft_readme_role_tables_cover_files (const std::filesystem::path &root)
 {
   const auto path = root / "doc/draft/README.ko.md";
@@ -1501,6 +1547,7 @@ main ()
     "extensions/include",
     "");
   ok &= draft_tracking_table_matches_files (root);
+  ok &= non_empty_directories_do_not_keep_gitkeep (root);
   ok &= draft_readme_role_tables_cover_files (root);
   ok &= implementation_plan_expands_label_wildcards (root);
   ok &= implementation_plan_goal20_covers_connector_labels (root);

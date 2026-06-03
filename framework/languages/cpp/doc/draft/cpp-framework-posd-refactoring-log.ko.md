@@ -5367,3 +5367,36 @@ transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 �
 - public header에는 `zlink::context_t`, concrete socket 타입, binding socket/service contract
   include가 나타나면 안 된다.
 - 이번 보정 뒤 public facade compile coverage와 native leakage gate의 즉시 수정 이슈는 0개다.
+
+## 추가 리뷰. HTTP client default header 회귀 보강
+
+### 발견한 위험 신호
+
+- HTTP client draft는 초기 구현 범위에 default header를 포함한다.
+- 구현은 `client_builder_t::default_header(...)` 값을 runtime option에 저장하고, request별
+  header를 나중에 적용해 같은 이름의 default header를 override할 수 있게 한다.
+- 기존 `test_cpp_http_client`는 typed JSON, method, callback, status, timeout, HTTPS를
+  검증했지만 default header와 request-level override 순서는 직접 검증하지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 구현만 신뢰 | 변경이 없다 | default header 계약이 테스트 없이 남는다 |
+| runtime 옵션 accessor 추가 | 내부 상태를 직접 확인하기 쉽다 | public/test hook이 runtime 세부를 노출한다 |
+| loopback server가 수신 header를 echo하는 public HTTP 테스트 추가 | 실제 wire request로 default/override 순서를 검증한다 | 테스트 endpoint 분기가 하나 늘어난다 |
+
+선택은 loopback server echo 테스트다. default header는 사용자가 관찰하는 wire 계약이므로,
+runtime 내부 option을 직접 읽지 않고 HTTP request 결과로 검증한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_http_client`에 `/headers` echo path를 추가했다.
+- `default_header("From", ...)`가 request에 실리는지 확인했다.
+- 같은 이름의 default header를 `.header(...)`가 request 단위로 덮는지 확인했다.
+
+### 수정 후 점검
+
+- `zlink::http_client`의 default header와 request header override 순서는 public HTTP client
+  test에서 검증되어야 한다.
+- 이번 보정 뒤 HTTP client default header 회귀 공백은 0개다.

@@ -40,6 +40,12 @@ struct create_game_reply_t
   std::string name;
 };
 
+struct header_echo_reply_t
+{
+  std::string defaultHeader;
+  std::string overrideHeader;
+};
+
 void
 to_json (nlohmann::json &json, const create_game_request_t &value)
 {
@@ -51,6 +57,13 @@ from_json (const nlohmann::json &json, create_game_reply_t &value)
 {
   value.method = json.at ("method").get<std::string> ();
   value.name = json.at ("name").get<std::string> ();
+}
+
+void
+from_json (const nlohmann::json &json, header_echo_reply_t &value)
+{
+  value.defaultHeader = json.at ("defaultHeader").get<std::string> ();
+  value.overrideHeader = json.at ("overrideHeader").get<std::string> ();
 }
 
 http::response<http::string_body>
@@ -75,6 +88,14 @@ make_response (const http::request<http::string_body> &request)
   } else if (target == "/slow") {
     std::this_thread::sleep_for (std::chrono::milliseconds (250));
     response.body () = R"({"method":"GET","name":"slow"})";
+  } else if (target == "/headers") {
+    response.body () =
+      nlohmann::json {
+        { "defaultHeader",
+          std::string (request[http::field::from]) },
+        { "overrideHeader",
+          std::string (request["X-ZLink-Override"]) }
+      }.dump ();
   } else {
     const auto method = std::string (request.method_string ());
     std::string name = method;
@@ -309,6 +330,26 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
         EXPECT_EQ (result.value ().body.name, "callback");
       });
   EXPECT_TRUE (callback_called);
+}
+
+TEST (ZLinkHttpClient, SendsDefaultHeadersAndRequestOverride)
+{
+  loopback_http_server_t server;
+  auto client = zlink::http_client::client_t::create ()
+                  .base_url (server.base_url ())
+                  .json ()
+                  .default_header ("From", "default@example.test")
+                  .default_header ("X-ZLink-Override", "default")
+                  .build ();
+
+  auto result = client.get ("/headers")
+                  .header ("X-ZLink-Override", "request")
+                  .submit<header_echo_reply_t> ()
+                  .result ();
+
+  ASSERT_TRUE (result) << result.error ()->what ();
+  EXPECT_EQ (result.value ().body.defaultHeader, "default@example.test");
+  EXPECT_EQ (result.value ().body.overrideHeader, "request");
 }
 
 TEST (ZLinkHttpClient, MapsStatusDecodeAndTimeoutFailures)

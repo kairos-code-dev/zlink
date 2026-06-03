@@ -28,13 +28,57 @@ set(framework_targets_file
   "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib/cmake/zlink_framework_cpp/zlink_framework_cppTargets.cmake")
 set(connector_targets_file
   "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib/cmake/zlink_stream_connector_cpp/zlink_stream_connector_cppTargets.cmake")
-foreach(path IN ITEMS "${framework_targets_file}" "${connector_targets_file}")
+set(framework_config_file
+  "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib/cmake/zlink_framework_cpp/zlink_framework_cppConfig.cmake")
+set(connector_config_file
+  "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib/cmake/zlink_stream_connector_cpp/zlink_stream_connector_cppConfig.cmake")
+foreach(path IN ITEMS
+    "${framework_config_file}"
+    "${connector_config_file}"
+    "${framework_targets_file}"
+    "${connector_targets_file}")
   if(NOT EXISTS "${path}")
-    message(FATAL_ERROR "installed package target file is missing: ${path}")
+    message(FATAL_ERROR "installed package file is missing: ${path}")
   endif()
 endforeach()
+file(READ "${framework_config_file}" framework_config_text)
+file(READ "${connector_config_file}" connector_config_text)
 file(READ "${framework_targets_file}" framework_targets_text)
 file(READ "${connector_targets_file}" connector_targets_text)
+foreach(required_text IN ITEMS
+    "find_dependency(Threads)"
+    "find_dependency(nlohmann_json CONFIG)"
+    "../zlink_cpp/zlink_cppTargets.cmake"
+    "zlink_framework_cppTargets.cmake")
+  string(FIND "${framework_config_text}" "${required_text}" required_pos)
+  if(required_pos EQUAL -1)
+    message(FATAL_ERROR "framework package config lacks ${required_text}")
+  endif()
+endforeach()
+foreach(forbidden_text IN ITEMS
+    "zlink_stream_connector_cppTargets.cmake")
+  string(FIND "${framework_config_text}" "${forbidden_text}" forbidden_pos)
+  if(NOT forbidden_pos EQUAL -1)
+    message(FATAL_ERROR "framework package config must not include ${forbidden_text}")
+  endif()
+endforeach()
+foreach(required_text IN ITEMS
+    "find_dependency(Threads)"
+    "find_dependency(nlohmann_json)"
+    "../zlink_cpp/zlink_cppTargets.cmake"
+    "zlink_stream_connector_cppTargets.cmake")
+  string(FIND "${connector_config_text}" "${required_text}" required_pos)
+  if(required_pos EQUAL -1)
+    message(FATAL_ERROR "stream connector package config lacks ${required_text}")
+  endif()
+endforeach()
+foreach(forbidden_text IN ITEMS
+    "zlink_framework_cppTargets.cmake")
+  string(FIND "${connector_config_text}" "${forbidden_text}" forbidden_pos)
+  if(NOT forbidden_pos EQUAL -1)
+    message(FATAL_ERROR "stream connector package config must not include ${forbidden_text}")
+  endif()
+endforeach()
 foreach(required_target IN ITEMS
     "zlink::framework"
     "zlink::http_client"

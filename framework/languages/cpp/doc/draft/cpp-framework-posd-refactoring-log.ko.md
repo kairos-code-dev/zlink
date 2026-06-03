@@ -6593,3 +6593,40 @@ CMake가 생성하는 파일 전체 형식까지 고정할 필요는 없다.
 
 - export target 파일이 빠지거나 기대 target이 누락되면 consumer configure 전에
   `test_cpp_framework_install_consumer`가 명확한 메시지로 실패한다.
+
+## 추가 리뷰. Installed package config boundary gate 보강
+
+### 발견한 위험 신호
+
+- install consumer는 `find_package`와 target link를 실행하지만, package config 파일이
+  어떤 dependency와 target export를 포함해야 하는지 직접 검증하지 않았다.
+- framework package config가 stream connector target export를 포함하거나, stream connector
+  package config가 framework target export를 포함하면 두 package의 독립 배포 경계가 흐려진다.
+- `Threads`와 JSON dependency는 installed target link interface가 기대하는 공개 dependency다.
+  config 파일에서 빠지면 consumer configure 실패가 link 단계의 간접 오류로 드러난다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| consumer configure 실패에만 의존 | 검사가 짧다 | dependency 누락과 package 경계 섞임의 원인이 불명확하다 |
+| generated config 파일 전체를 snapshot으로 비교 | drift를 강하게 잡는다 | CMake package boilerplate 변경에 취약하다 |
+| config 파일의 필수 dependency와 금지된 target include만 검사 | 공개 package 계약을 직접 고정하면서 생성 세부에는 덜 민감하다 | 검사 문자열을 package 구조 변경 때 갱신해야 한다 |
+
+선택은 세 번째 방식이다. package config는 소비자 진입점이므로 dependency와 package 경계를
+명확히 증명해야 하지만, CMake가 생성하는 부수 형식 전체를 계약으로 만들 필요는 없다.
+
+### 적용한 리팩토링
+
+- install consumer가 framework와 stream connector `Config.cmake` 파일 존재를 검사하게 했다.
+- framework config가 `Threads`, `nlohmann_json CONFIG`, core C++ target export,
+  framework target export를 포함하는지 확인하게 했다.
+- stream connector config가 `Threads`, `nlohmann_json`, core C++ target export,
+  stream connector target export를 포함하는지 확인하게 했다.
+- framework config에는 stream connector target export가 없고, stream connector config에는
+  framework target export가 없는지 확인하게 했다.
+
+### 수정 후 점검
+
+- package config dependency가 누락되거나 두 package target export가 서로 섞이면
+  `test_cpp_framework_install_consumer`가 consumer configure 전에 실패한다.

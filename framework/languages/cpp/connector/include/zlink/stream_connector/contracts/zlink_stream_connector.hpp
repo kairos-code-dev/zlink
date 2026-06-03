@@ -36,6 +36,8 @@ public:
   task_t<void> connect ();
   task_t<void> close ();
   task_t<void> dispatch ();
+  task_t<packet_t> receive ();
+  task_t<packet_t> receive (std::chrono::milliseconds timeout);
 
   connector_t &on_connection_state_changed (
     std::function<void (const connection_state_changed_t &)> handler);

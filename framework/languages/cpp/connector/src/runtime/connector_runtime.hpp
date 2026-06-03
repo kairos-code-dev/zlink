@@ -76,6 +76,8 @@ private:
 result_t<void> submit_send (std::shared_ptr<connector_state_t> state,
                             packet_t packet);
 result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state);
+result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,
+                                 std::chrono::milliseconds timeout);
 void deliver_received_packet (connector_state_t &state, packet_t packet);
 void change_state (std::shared_ptr<connector_state_t> state,
                    connection_state_t next,

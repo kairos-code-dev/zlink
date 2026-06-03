@@ -364,4 +364,36 @@ dispatch_pending (std::shared_ptr<connector_state_t> state)
   return result_t<void>::success ();
 }
 
+result_t<packet_t>
+receive_next (std::shared_ptr<connector_state_t> state,
+              std::chrono::milliseconds timeout)
+{
+  const auto deadline = steady_clock_t::now () + timeout;
+  for (;;) {
+    {
+      std::lock_guard<std::mutex> lock (state->transport_mutex);
+      if (is_transport_connected (*state)) {
+        drain_available_pushes (*state);
+      }
+      if (!state->dispatch_queue.empty ()) {
+        auto packet = std::move (state->dispatch_queue.front ());
+        state->dispatch_queue.pop_front ();
+        return result_t<packet_t>::success (std::move (packet));
+      }
+      if (!is_transport_connected (*state)) {
+        return result_t<packet_t>::failure (
+          error_code_t::disconnected,
+          "stream connector is not connected");
+      }
+    }
+
+    if (steady_clock_t::now () >= deadline) {
+      return result_t<packet_t>::failure (
+        error_code_t::request_timeout,
+        "stream connector receive timed out");
+    }
+    std::this_thread::sleep_for (std::chrono::milliseconds (1));
+  }
+}
+
 } // namespace zlink::stream_connector::detail

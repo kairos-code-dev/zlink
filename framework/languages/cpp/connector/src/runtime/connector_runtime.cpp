@@ -397,6 +397,18 @@ connector_t::dispatch ()
   return task_t<void> (detail::dispatch_pending (_state));
 }
 
+task_t<packet_t>
+connector_t::receive ()
+{
+  return receive (options ().request_timeout);
+}
+
+task_t<packet_t>
+connector_t::receive (std::chrono::milliseconds timeout)
+{
+  return task_t<packet_t> (detail::receive_next (_state, timeout));
+}
+
 connector_t &
 connector_t::on_connection_state_changed (
   std::function<void (const connection_state_changed_t &)> handler)

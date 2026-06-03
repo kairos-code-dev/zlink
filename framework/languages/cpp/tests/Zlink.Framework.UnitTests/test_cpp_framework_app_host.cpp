@@ -119,6 +119,23 @@ struct scoped_http_counter_t
   int count = 0;
 };
 
+struct app_host_config_options_t
+{
+  std::string endpoint;
+  int queue_limit = 0;
+  bool enabled = false;
+
+  static app_host_config_options_t bind (
+    const zlink::framework::configuration_section_t &section)
+  {
+    return {
+      .endpoint = section.require ("endpoint"),
+      .queue_limit = std::stoi (section.require ("queue")),
+      .enabled = section.require ("enabled") == "true"
+    };
+  }
+};
+
 struct injected_game_http_handler_t
 {
   using request_type = create_game_http_handler_t::request_type;
@@ -354,13 +371,28 @@ main ()
     std::filesystem::temp_directory_path () / "zlink_cpp_framework_app.json";
   {
     std::ofstream config (config_path);
-    config << R"({"node":"json-node","limits":{"queue":42},"enabled":true})";
+    config << R"({"node":"json-node","server":{"endpoint":"tcp://json:7100","queue":42,"enabled":true}})";
   }
   setenv ("ZLINK_REGION", "local", 1);
+  setenv ("ZLINK_server__queue", "64", 1);
 
   app.config ()
     .load_json (config_path.string ())
     .load_env ("ZLINK_");
+  auto optional_config = zlink::framework::config_builder_t {};
+  optional_config.load_json ("missing.optional.appsettings.json",
+                             zlink::framework::optional_t::yes);
+  bool missing_required_json_rejected = false;
+  try {
+    auto required_config = zlink::framework::config_builder_t {};
+    required_config.load_json ("missing.required.appsettings.json");
+  } catch (const zlink::framework::framework_exception_t &ex) {
+    missing_required_json_rejected =
+      ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+  }
+  if (!missing_required_json_rejected) {
+    return 40;
+  }
   const auto log_path =
     std::filesystem::temp_directory_path () / "zlink_cpp_framework_app.log";
   const auto rotating_log_path =
@@ -415,11 +447,16 @@ main ()
       .use<request_state_middleware_t> ();
   });
 
-  const char *argv_raw[] = { "app", "--node=alpha", "--dry-run" };
+  const char *argv_raw[] = {
+    "app",
+    "--node=alpha",
+    "--server.endpoint=tcp://cli:7100",
+    "--dry-run"
+  };
   auto **argv = const_cast<char **> (argv_raw);
   int exit_code = -1;
   std::thread app_thread ([&] {
-    exit_code = app.run (3, argv);
+    exit_code = app.run (4, argv);
   });
   auto http_client =
     make_app_host_test_client (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT);
@@ -666,12 +703,31 @@ main ()
   if (app.config ().model ().get ("cli.dry-run") != "true") {
     return 5;
   }
-  if (app.config ().model ().get ("node") != "json-node" ||
-      app.config ().model ().get ("limits.queue") != "42" ||
-      app.config ().model ().get ("enabled") != "true" ||
+  if (app.config ().model ().get ("node") != "alpha" ||
+      app.config ().model ().get ("server.endpoint") != "tcp://cli:7100" ||
+      app.config ().model ().get ("server.queue") != "64" ||
+      app.config ().model ().get ("server.enabled") != "true" ||
       app.config ().model ().get ("env.REGION") != "local" ||
+      app.config ().model ().get ("env.server__queue") != "64" ||
       app.config ().model ().get ("host.signal_handlers") != "installed") {
     return 10;
+  }
+  const auto server_options =
+    app.config ().bind_required<app_host_config_options_t> ("server");
+  if (server_options.endpoint != "tcp://cli:7100" ||
+      server_options.queue_limit != 64 || !server_options.enabled) {
+    return 38;
+  }
+  bool missing_required_value_rejected = false;
+  app.config ().model ().set ("broken.endpoint", "tcp://broken:7100");
+  try {
+    (void) app.config ().bind_required<app_host_config_options_t> ("broken");
+  } catch (const zlink::framework::framework_exception_t &ex) {
+    missing_required_value_rejected =
+      ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+  }
+  if (!missing_required_value_rejected) {
+    return 39;
   }
   if (!app.logging ().console_enabled () || app.logging ().level () != "debug") {
     return 6;

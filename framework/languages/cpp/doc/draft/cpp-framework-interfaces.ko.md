@@ -1727,8 +1727,11 @@ namespace zlink::framework {
 class config_builder_t {
 public:
     config_builder_t &load_json(std::string path);
+    config_builder_t &load_json(std::string path, optional_t optional);
     config_builder_t &load_env(std::string prefix);
     config_builder_t &load_cli(int argc, char **argv);
+    template<typename T> std::optional<T> bind(std::string prefix) const;
+    template<typename T> T bind_required(std::string prefix) const;
 };
 
 class logging_builder_t {

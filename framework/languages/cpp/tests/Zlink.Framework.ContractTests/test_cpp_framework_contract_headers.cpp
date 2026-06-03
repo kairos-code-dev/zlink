@@ -121,11 +121,41 @@ struct named_reply_t
 {
 };
 
+struct typed_config_t
+{
+  std::string endpoint;
+
+  static typed_config_t bind (
+    const zlink::framework::configuration_section_t &section)
+  {
+    return { .endpoint = section.require ("endpoint") };
+  }
+};
+
 static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::channel_client_t &> ()
                 .request<named_reply_t> ("sample", named_request_t {})),
     zlink::framework::request_call_t<named_reply_t>>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::config_builder_t &> ()
+                .bind<typed_config_t> ("server")),
+    std::optional<typed_config_t>>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::config_builder_t &> ()
+                .bind_required<typed_config_t> ("server")),
+    typed_config_t>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::config_builder_t &> ()
+                .load_json ("appsettings.development.json",
+                            zlink::framework::optional_t::yes)),
+    zlink::framework::config_builder_t &>);
 
 class named_handler_t
 {

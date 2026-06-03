@@ -70,6 +70,23 @@ configuration_model_t::contains (std::string_view key) const
   return _values.find (std::string (key)) != _values.end ();
 }
 
+bool
+configuration_model_t::has_section (std::string_view key) const
+{
+  const auto exact = std::string (key);
+  if (contains (exact)) {
+    return true;
+  }
+
+  const auto prefix = exact.empty () ? std::string () : exact + ".";
+  for (const auto &[entry_key, _] : _values) {
+    if (prefix.empty () || entry_key.rfind (prefix, 0) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::optional<std::string>
 configuration_model_t::get (std::string_view key) const
 {
@@ -83,9 +100,20 @@ configuration_model_t::get (std::string_view key) const
 config_builder_t &
 config_builder_t::load_json (std::string path)
 {
+  return load_json (std::move (path), optional_t::no);
+}
+
+config_builder_t &
+config_builder_t::load_json (std::string path, optional_t optional)
+{
   _model.set ("config.json.path", path);
   std::ifstream input (path);
   if (!input) {
+    if (optional == optional_t::no) {
+      throw framework_exception_t (
+        framework_error_kind_t::request_protocol_error,
+        "required configuration file missing: " + path);
+    }
     return *this;
   }
 
@@ -116,7 +144,15 @@ config_builder_t::load_env (std::string prefix)
 
     auto key = entry.substr (0, separator);
     key.erase (0, prefix.size ());
-    _model.set ("env." + key, entry.substr (separator + 1));
+    auto canonical_key = key;
+    for (std::size_t pos = 0;
+         (pos = canonical_key.find ("__", pos)) != std::string::npos;) {
+      canonical_key.replace (pos, 2, ".");
+      ++pos;
+    }
+    auto value = entry.substr (separator + 1);
+    _model.set ("env." + key, value);
+    _model.set (std::move (canonical_key), std::move (value));
   }
   return *this;
 }
@@ -134,11 +170,14 @@ config_builder_t::load_cli (int argc, char **argv)
     const auto separator = arg.find ('=');
     if (separator == std::string::npos) {
       _model.set ("cli." + arg, "true");
+      _model.set (std::move (arg), "true");
       continue;
     }
 
-    _model.set ("cli." + arg.substr (0, separator),
-                arg.substr (separator + 1));
+    auto key = arg.substr (0, separator);
+    auto value = arg.substr (separator + 1);
+    _model.set ("cli." + key, value);
+    _model.set (std::move (key), std::move (value));
   }
   return *this;
 }

@@ -93,6 +93,52 @@ ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on
 - parity label의 실제 선택 범위는 CTest label contract와 sample e2e/process e2e label에서
   함께 검증된다.
 
+## 반복 POSD 재리뷰. Goal 4 typed configuration binding 보강
+
+### 발견한 위험 신호
+
+- Goal 4와 application framework draft는 JSON/env/CLI merge와 typed options binding을 완료
+  항목으로 둔다.
+- 기존 configuration model은 JSON, env, CLI 값을 읽었지만 env와 CLI 값을 source별 namespace에만
+  저장해 같은 key 공간에서 override되는지 검증하기 어려웠다.
+- `config_builder_t`에는 draft 예시의 `bind_required<T>("server")`에 해당하는 public API가
+  없어 typed options binding 완료 기준을 만족하지 못했다.
+
+### 위반한 POSD 원칙
+
+- 깊은 모듈: 호출자가 직접 문자열 key를 여러 번 읽고 parsing해야 해서 configuration module이
+  얕게 남아 있었다.
+- 복잡성을 아래로: 필수 값 누락과 typed options 조립 책임이 application code로 새어 나갔다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 문자열 model만 유지 | 변경이 작다 | typed options binding 완료 기준이 계속 미구현이다 |
+| reflection-like 자동 field binding을 도입 | 호출 코드는 짧다 | C++에서 숨은 naming 규칙과 macro가 필요해 public surface가 무거워진다 |
+| `T::bind(configuration_section_t)` 계약으로 typed binding을 제공 | API가 작고 parsing 지식이 option type 안에 모인다 | option type이 static bind 함수를 제공해야 한다 |
+
+선택은 세 번째 방식이다. C++에는 `.NET` reflection 기반 binder가 없으므로, option type이 자기
+section을 해석하게 하면 public API는 작게 유지하면서 필수 값 검증을 framework가 한곳에서
+제공할 수 있다.
+
+### 적용한 리팩토링
+
+- `configuration_section_t`, `config_builder_t::bind<T>()`,
+  `config_builder_t::bind_required<T>()`를 추가했다.
+- `optional_t::yes/no`와 `load_json(path, optional_t)` overload를 추가해 profile JSON 파일이
+  없을 때 허용할지 명시하게 했다.
+- env `__` key와 CLI `--key=value`를 source별 key와 canonical key 양쪽에 저장해 JSON/env/CLI
+  호출 순서대로 같은 key 공간에서 merge되게 했다.
+- app host regression이 JSON 기본값, env override, CLI override, typed binding, 필수 값 누락
+  실패, optional JSON 파일 허용, required JSON 파일 누락 실패를 확인하게 했다.
+
+### 수정 후 점검
+
+- application code는 `app.config().bind_required<T>("server")`만 호출하면 된다.
+- 필수 값 누락은 `framework_exception_t(request_protocol_error)`로 한곳에서 보고된다.
+- 기존 `env.*`, `cli.*` source-specific key는 유지되어 디버깅과 기존 테스트 표면을 보존한다.
+
 ## 반복 POSD 재리뷰. Sample client process e2e 분리
 
 ### 발견한 위험 신호

@@ -44,7 +44,7 @@ final class BoundSessionTest {
                 .join();
         }
 
-        assertTrue(backend.calls().contains("stream.sendBoundActor.player-1"));
+        assertTrue(backend.calls().contains("stream.send.session-1.Push.push"));
     }
 
     @Test

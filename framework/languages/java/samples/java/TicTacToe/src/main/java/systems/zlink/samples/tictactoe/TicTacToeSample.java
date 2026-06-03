@@ -28,6 +28,10 @@ public final class TicTacToeSample {
 
             require("player-x".equals(result.finalState().winner()),
                 "direct TicTacToe winner mismatch");
+            require(!result.stateNotifications().isEmpty(),
+                "room Spot did not send GameStateNotify push");
+            require(!result.playerJoinedNotifications().isEmpty(),
+                "room Spot did not send PlayerJoinedNotify push");
         }
 
         System.out.println("TicTacToe sample self-check passed");

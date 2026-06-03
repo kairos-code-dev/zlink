@@ -63,7 +63,7 @@ final class ActorSessionStateTest {
         }
 
         assertTrue(backend.calls().contains("stream.unbindActor.player-1"));
-        assertTrue(backend.calls().contains("stream.sendBoundActor.player-1"));
+        assertTrue(backend.calls().contains("stream.send.session-2.Push.push"));
     }
 
     @ZLinkHandlerGroup("entry")

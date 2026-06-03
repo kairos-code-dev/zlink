@@ -20,8 +20,9 @@ fun main(args: Array<String>) = runBlocking {
                     oActorId = "player-o",
                 ),
             )
-            require(result.winner == "player-x") { "direct TicTacToe winner mismatch" }
-            require("GameWon:player-x" in result.pushes) { "room Spot did not publish winner push" }
+            require(result.finalState.winner == "player-x") { "direct TicTacToe winner mismatch" }
+            require(result.stateNotifications.isNotEmpty()) { "room Spot did not send GameStateNotify push" }
+            require(result.playerJoinedNotifications.isNotEmpty()) { "room Spot did not send PlayerJoinedNotify push" }
         }
     }
 

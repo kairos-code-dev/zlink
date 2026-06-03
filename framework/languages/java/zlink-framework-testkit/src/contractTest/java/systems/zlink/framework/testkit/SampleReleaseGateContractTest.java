@@ -534,10 +534,23 @@ final class SampleReleaseGateContractTest {
         String mainSource = sampleJavaSource(
             "TicTacToe",
             "systems/zlink/samples/tictactoe/TicTacToeSample.java");
+        String serverProgramSource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/Program.java");
+        String serverBuildSource = sampleFile(
+            "java",
+            "TicTacToe",
+            "Server",
+            "build.gradle.kts");
         String clientSource = sampleJavaSource(
             "TicTacToe",
             "Client/src/main/java",
             "systems/zlink/samples/tictactoe/client/TicTacToeClient.java");
+        String clientResultSource = sampleJavaSource(
+            "TicTacToe",
+            "Client/src/main/java",
+            "systems/zlink/samples/tictactoe/client/TicTacToeClientResult.java");
         String apiSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
@@ -579,10 +592,21 @@ final class SampleReleaseGateContractTest {
                 && mainSource.contains("ApiServer.start(settings)")
                 && mainSource.contains("ConfigurableApplicationContext"),
             "TicTacToe direct Java sample must start roles through the Spring Boot public facade");
+        assertTrue(serverProgramSource.contains("case \"client\"")
+                && serverProgramSource.contains("new TicTacToeClient().run")
+                && serverProgramSource.contains("result.writeTo(System.out)")
+                && serverBuildSource.contains("implementation(project(\":Client\"))"),
+            "TicTacToe Java Server role must expose the .NET-style client run mode through the aggregate server entry point");
         assertTrue(mainSource.contains("SampleSettings.fromArgs(args).withEphemeralDefaults()")
                 && apiSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && apiSource.contains("@SpringBootApplication")
+                && apiSource.contains("SpringApplicationBuilder")
+                && apiSource.contains(".web(WebApplicationType.SERVLET)")
                 && apiSource.contains("options.codecs().addJson()")
                 && playSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && playSource.contains("@SpringBootApplication")
+                && playSource.contains("SpringApplicationBuilder")
+                && playSource.contains(".web(WebApplicationType.NONE)")
                 && playSource.contains("options.codecs().addJson()"),
             "TicTacToe direct Api and Play framework hosts must enable JSON codecs and expose HTTP create-game with shared settings");
         assertTrue(settingsSource.contains("withEphemeralDefaults()")
@@ -624,6 +648,19 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains("new PlaceMarkReq(2)")
                 && !clientSource.contains("game.gameId() + \"|\""),
             "TicTacToe stream client path must use typed JSON stream request contracts");
+        assertTrue(clientSource.contains("ZLinkStreamJson.on(host, GameStateNotify.class")
+                && clientSource.contains("ZLinkStreamJson.on(guest, GameStateNotify.class")
+                && clientSource.contains("ZLinkStreamJson.on(host, PlayerJoinedNotify.class")
+                && clientSource.contains("ZLinkStreamJson.on(guest, PlayerJoinedNotify.class")
+                && clientSource.contains("ZLinkStreamDispatchMode.AUTO")
+                && clientSource.contains("CompletableFuture.delayedExecutor(250, TimeUnit.MILLISECONDS)")
+                && clientResultSource.contains("List<GameStateNotify>")
+                && clientResultSource.contains("List<PlayerJoinedNotify>")
+                && clientResultSource.contains("finalState()")
+                && clientResultSource.contains("notifications:")
+                && !clientResultSource.contains("pushes")
+                && !clientResultSource.contains("GameWon"),
+            "TicTacToe direct client must subscribe to typed stream notifications and report actual received packets");
         assertFalse(clientSource.contains("systems.zlink.samples.tictactoe.server."),
             "TicTacToe Client role must not import server implementation");
         assertFalse(clientSource.contains("TicTacToeGameDirectory"),
@@ -681,6 +718,30 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/PlayActorPlaceMarkHandler.java");
+        String gameCreatedHandlerSource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameCreatedHandler.java");
+        String gameActorJoinedHandlerSource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameActorJoinedHandler.java");
+        String gameActorLeftHandlerSource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameActorLeftHandler.java");
+        String gameTimerHandlerSource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameTimerHandler.java");
+        String entryActorJoinedHandlerSource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/entryspot/handlers/PlayEntrySpotActorJoinedHandler.java");
+        String entryActorLeftHandlerSource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/entryspot/handlers/PlayEntrySpotActorLeftHandler.java");
         assertTrue(playSessionSource.contains("ZLinkStreamJson.decode")
                 && playSessionSource.contains("new AuthenticatePlayerReq(request.accessToken())")
                 && playSessionSource.contains("actorId = authenticated.actorId()")
@@ -693,14 +754,41 @@ final class SampleReleaseGateContractTest {
                 && gameJoinReqSource.contains("String actorId")
                 && gameJoinResSource.contains("GameState state"),
             "TicTacToe direct sample must split client JoinGame contracts from Spot join contracts");
-        assertTrue(playJoinHandlerSource.contains("TicTacToeGameJoinReq request")
+        assertTrue(playJoinHandlerSource.contains("CompletionStage<TicTacToeGameJoinRes>")
+                && playJoinHandlerSource.contains("TicTacToeGameJoinReq request")
                 && playJoinHandlerSource.contains("TicTacToeGameJoinRes")
                 && playActorJoinHandlerSource.contains("new TicTacToeGameJoinReq")
                 && playActorJoinHandlerSource.contains("new JoinGameRes")
                 && playPlaceMarkHandlerSource.contains("PlaceMarkReq request"),
             "TicTacToe Play actor handlers must receive typed stream request contracts");
-        assertTrue(playActorJoinHandlerSource.contains("actor.joinGame"),
-            "TicTacToe join handler must store the joined game on the framework actor");
+        assertTrue(gameSpotSource.contains("actor.joinGame")
+                && gameSpotSource.contains("boundSession()")
+                && gameSpotSource.contains(".send(new GameStateNotify")
+                && gameSpotSource.contains(".send(message)"),
+            "TicTacToe game Spot must own joined-game state transitions and typed bound-session notifications");
+        assertTrue(gameSpotSource.contains("onInitializeAsync()")
+                && gameSpotSource.contains("context.addTimer(")
+                && gameSpotSource.contains("TicTacToeGameTimerHandler.class")
+                && gameSpotSource.contains("onClosingAsync()")
+                && gameSpotSource.contains("gameTick.cancelAsync()")
+                && gameSpotSource.contains("TurnTimedOut")
+                && gameSpotSource.contains("resetTurnDeadline()")
+                && gameSpotSource.contains("tickAsync()")
+                && gameSpotSource.contains("markCreated(List<Message> createParts)")
+                && gameSpotSource.contains("ensureCreated()")
+                && gameCreatedHandlerSource.contains("handleAsync(")
+                && gameCreatedHandlerSource.contains("List<Message>")
+                && gameCreatedHandlerSource.contains("game.markCreated(createParts)")
+                && gameTimerHandlerSource.contains("implements ZLinkSpotTimerHandler<TicTacToeGame>")
+                && gameTimerHandlerSource.contains("spot.tickAsync()"),
+            "TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
+        assertTrue(gameActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
+                && gameActorJoinedHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && gameActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
+                && gameActorLeftHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && entryActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
+                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft"),
+            "TicTacToe EntrySpot and GameSpot lifecycle handler files must use framework lifecycle annotations, not placeholder methods");
         assertTrue(playActorJoinHandlerSource.contains("request.gameId()"),
             "TicTacToe join handler must store the requested game id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),
@@ -773,10 +861,23 @@ final class SampleReleaseGateContractTest {
         String mainSource = sampleKotlinSource(
             "TicTacToe",
             "systems/zlink/samples/kotlin/tictactoe/TicTacToeKotlinSample.kt");
+        String serverProgramSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/Program.kt");
+        String serverBuildSource = sampleFile(
+            "kotlin",
+            "TicTacToe",
+            "Server",
+            "build.gradle.kts");
         String clientSource = sampleKotlinSource(
             "TicTacToe",
             "Client/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClient.kt");
+        String clientResultSource = sampleKotlinSource(
+            "TicTacToe",
+            "Client/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClientResult.kt");
         String apiSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
@@ -817,10 +918,21 @@ final class SampleReleaseGateContractTest {
         assertTrue(mainSource.contains("PlayServer.start(settings)")
                 && mainSource.contains("ApiServer.start(settings)"),
             "Kotlin TicTacToe direct sample must start roles through the Spring Boot public facade");
+        assertTrue(serverProgramSource.contains("\"client\" -> runClient(settings)")
+                && serverProgramSource.contains("TicTacToeClient().run")
+                && serverProgramSource.contains("result.writeTo(System.out)")
+                && serverBuildSource.contains("implementation(project(\":Client\"))"),
+            "Kotlin TicTacToe Server role must expose the .NET-style client run mode through the aggregate server entry point");
         assertTrue(mainSource.contains("SampleSettings.fromArgs(args).withEphemeralDefaults()")
                 && apiSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && apiSource.contains("@SpringBootApplication")
+                && apiSource.contains("SpringApplicationBuilder")
+                && apiSource.contains(".web(WebApplicationType.SERVLET)")
                 && apiSource.contains("options.codecs().addJson()")
                 && playSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && playSource.contains("@SpringBootApplication")
+                && playSource.contains("SpringApplicationBuilder")
+                && playSource.contains(".web(WebApplicationType.NONE)")
                 && playSource.contains("options.codecs().addJson()"),
             "Kotlin TicTacToe direct Api and Play framework hosts must enable JSON codecs and expose HTTP create-game with shared settings");
         assertTrue(settingsSource.contains("withEphemeralDefaults()")
@@ -862,6 +974,19 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains("PlaceMarkReq(2)")
                 && !clientSource.contains("game.gameId}|"),
             "Kotlin TicTacToe stream client path must use typed JSON stream request contracts");
+        assertTrue(clientSource.contains("ZLinkStreamJson.on(hostStream, GameStateNotify::class.java")
+                && clientSource.contains("ZLinkStreamJson.on(guestStream, GameStateNotify::class.java")
+                && clientSource.contains("ZLinkStreamJson.on(hostStream, PlayerJoinedNotify::class.java")
+                && clientSource.contains("ZLinkStreamJson.on(guestStream, PlayerJoinedNotify::class.java")
+                && clientSource.contains("ZLinkStreamDispatchMode.AUTO")
+                && clientSource.contains("CompletableFuture.delayedExecutor(250, TimeUnit.MILLISECONDS)")
+                && clientResultSource.contains("stateNotifications: List<GameStateNotify>")
+                && clientResultSource.contains("playerJoinedNotifications: List<PlayerJoinedNotify>")
+                && clientResultSource.contains("finalState")
+                && clientResultSource.contains("notifications:")
+                && !clientResultSource.contains("pushes")
+                && !clientResultSource.contains("GameWon"),
+            "Kotlin TicTacToe direct client must subscribe to typed stream notifications and report actual received packets");
         assertFalse(clientSource.contains("systems.zlink.samples.kotlin.tictactoe.server."),
             "Kotlin TicTacToe Client role must not import server implementation");
         assertFalse(clientSource.contains("TicTacToeGameDirectory"),
@@ -914,6 +1039,30 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/PlayActorPlaceMarkHandler.kt");
+        String gameCreatedHandlerSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameCreatedHandler.kt");
+        String gameActorJoinedHandlerSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameActorJoinedHandler.kt");
+        String gameActorLeftHandlerSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameActorLeftHandler.kt");
+        String gameTimerHandlerSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameTimerHandler.kt");
+        String entryActorJoinedHandlerSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/entryspot/handlers/PlayEntrySpotActorJoinedHandler.kt");
+        String entryActorLeftHandlerSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/entryspot/handlers/PlayEntrySpotActorLeftHandler.kt");
         assertTrue(playSessionSource.contains("ZLinkStreamJson.decode")
                 && playSessionSource.contains("AuthenticatePlayerReq(request.accessToken)")
                 && playSessionSource.contains("actorId = authenticatedActorId")
@@ -922,14 +1071,41 @@ final class SampleReleaseGateContractTest {
                 && !playSessionSource.contains("joinSpot(RoutingId.fromHex")
                 && !playSessionSource.contains("split(\"|\")"),
             "Kotlin TicTacToe Play stream session must authenticate through the Api role and relay actor packets");
-        assertTrue(playJoinHandlerSource.contains("request: TicTacToeGameJoinReq")
+        assertTrue(playJoinHandlerSource.contains("CompletionStage<TicTacToeGameJoinRes>")
+                && playJoinHandlerSource.contains("request: TicTacToeGameJoinReq")
                 && playJoinHandlerSource.contains("TicTacToeGameJoinRes")
                 && playActorJoinHandlerSource.contains("TicTacToeGameJoinReq")
                 && playActorJoinHandlerSource.contains("JoinGameRes(result.reply().state)")
                 && playPlaceMarkHandlerSource.contains("request: PlaceMarkReq"),
             "Kotlin TicTacToe Play actor handlers must receive typed stream request contracts");
-        assertTrue(playActorJoinHandlerSource.contains("actor.joinGame"),
-            "Kotlin TicTacToe join handler must store the joined game on the framework actor");
+        assertTrue(gameSpotSource.contains("actor.joinGame")
+                && gameSpotSource.contains("boundSession()")
+                && gameSpotSource.contains(".send(GameStateNotify")
+                && gameSpotSource.contains(".send(message)"),
+            "Kotlin TicTacToe game Spot must own joined-game state transitions and typed bound-session notifications");
+        assertTrue(gameSpotSource.contains("onInitializeAsync()")
+                && gameSpotSource.contains("context.addTimer(")
+                && gameSpotSource.contains("TicTacToeGameTimerHandler::class.java")
+                && gameSpotSource.contains("onClosingAsync()")
+                && gameSpotSource.contains("gameTick?.cancelAsync()")
+                && gameSpotSource.contains("TurnTimedOut")
+                && gameSpotSource.contains("resetTurnDeadline()")
+                && gameSpotSource.contains("tickAsync()")
+                && gameSpotSource.contains("fun markCreated(createParts: List<Message>)")
+                && gameSpotSource.contains("ensureCreated()")
+                && gameCreatedHandlerSource.contains("handleAsync(")
+                && gameCreatedHandlerSource.contains("List<Message>")
+                && gameCreatedHandlerSource.contains("game.markCreated(createParts)")
+                && gameTimerHandlerSource.contains("ZLinkSpotTimerHandler<TicTacToeGame>")
+                && gameTimerHandlerSource.contains("spot.tickAsync()"),
+            "Kotlin TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
+        assertTrue(gameActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
+                && gameActorJoinedHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && gameActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
+                && gameActorLeftHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && entryActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
+                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft"),
+            "Kotlin TicTacToe EntrySpot and GameSpot lifecycle handler files must use framework lifecycle annotations, not placeholder methods");
         assertTrue(playActorJoinHandlerSource.contains("request.gameId"),
             "Kotlin TicTacToe join handler must store the requested game id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),
@@ -1271,6 +1447,18 @@ final class SampleReleaseGateContractTest {
             .resolve(sourceRoot)
             .resolve(relativePath);
         return Files.isRegularFile(file) && Files.readString(file).contains(needle);
+    }
+
+    private static String sampleFile(
+        String language,
+        String sample,
+        String sourceRoot,
+        String relativePath) throws IOException {
+        return Files.readString(samplesRoot()
+            .resolve(language)
+            .resolve(sample)
+            .resolve(sourceRoot)
+            .resolve(relativePath));
     }
 
     private static void assertDotNetProjectLayout(Path sampleRoot, List<String> relativeProjects) {

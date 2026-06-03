@@ -294,6 +294,9 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) {
             return submitFramedStream(socket.send(routingId), 1, null, null, parts, flags);
         }
+        @Override public boolean send(RoutingId routingId, String packetName, List<Message> parts, SendFlags flags) {
+            return submitFramedStream(socket.send(routingId), 1, null, packetName, parts, flags);
+        }
         @Override public boolean reply(RoutingId routingId, long requestSeq, String packetName, List<Message> parts, SendFlags flags) {
             return submitFramedStream(socket.send(routingId), 3, requestSeq, packetName, parts, flags);
         }

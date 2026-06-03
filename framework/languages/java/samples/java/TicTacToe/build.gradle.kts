@@ -5,6 +5,7 @@ plugins {
 dependencies {
     implementation(project(":Client"))
     implementation(project(":Server"))
+    implementation(project(":Shared"))
     implementation(files("../../../zlink-framework-core/build/libs/zlink-framework-core-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../zlink-framework-spring-boot-starter/build/libs/zlink-framework-spring-boot-starter-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../zlink-stream-connector/build/libs/zlink-stream-connector-0.1.0-SNAPSHOT.jar"))

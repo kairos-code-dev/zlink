@@ -782,6 +782,10 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             record("send." + routingId + "." + firstPart(parts));
             return true;
         }
+        @Override public boolean send(RoutingId routingId, String packetName, List<Message> parts, SendFlags flags) {
+            record("send." + routingId + "." + packetName + "." + firstPart(parts));
+            return true;
+        }
         @Override public boolean reply(RoutingId routingId, long requestSeq, String packetName, List<Message> parts, SendFlags flags) {
             record("reply." + routingId + "." + requestSeq + "." + packetName + "." + firstPart(parts));
             return true;

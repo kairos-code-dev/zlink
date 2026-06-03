@@ -13,8 +13,8 @@ class TicTacToeGameJoinHandler {
     fun join(
         actor: PlayActor,
         request: TicTacToeGameJoinReq,
-    ): TicTacToeGameJoinRes =
+    ): java.util.concurrent.CompletionStage<TicTacToeGameJoinRes> =
         actor.context()
             .getSpot(TicTacToeGame::class.java)
-            .join(request.actorId)
+            .join(actor, request.gameId)
 }

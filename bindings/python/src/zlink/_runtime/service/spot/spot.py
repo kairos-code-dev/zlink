@@ -423,10 +423,28 @@ class Spot(SpotActorJoinMixin):
     def publish(self, topic):
         return PublishOp(self, topic)
 
+    def _publish_topic_bytes(self, topic):
+        cache = getattr(self, "_publish_topic_bytes_cache", None)
+        if cache is None:
+            cache = {}
+            self._publish_topic_bytes_cache = cache
+        try:
+            return cache[topic]
+        except (KeyError, TypeError):
+            topic_bytes = _validated_c_string_value(topic, field="topic", max_length=255)
+            try:
+                cache[topic] = topic_bytes
+            except TypeError:
+                pass
+            return topic_bytes
+
     def _publish_submit(self, topic, parts, flags=0):
+        topic_bytes = _validated_c_string_value(topic, field="topic", max_length=255)
+        return self._publish_submit_prevalidated(topic_bytes, parts, flags)
+
+    def _publish_submit_prevalidated(self, topic_bytes, parts, flags=0):
         try:
             _ensure_not_in_callback("blocking publish")
-            topic_bytes = _validated_c_string_value(topic, field="topic", max_length=255)
             if _payload_can_use_native_bridge(parts):
                 if _native_spot_publish_submit_parts is not None:
                     bridged = _native_spot_publish_submit_parts(

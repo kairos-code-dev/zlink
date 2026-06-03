@@ -13,6 +13,8 @@ public interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
 
     boolean send(RoutingId routingId, List<Message> parts, SendFlags flags);
 
+    boolean send(RoutingId routingId, String packetName, List<Message> parts, SendFlags flags);
+
     boolean reply(
         RoutingId routingId,
         long requestSeq,

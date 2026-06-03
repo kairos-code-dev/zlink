@@ -13,10 +13,10 @@ class PlayActorPlaceMarkHandler {
     fun placeMark(
         actor: PlayActor,
         request: PlaceMarkReq,
-    ): PlaceMarkRes {
+    ): java.util.concurrent.CompletionStage<PlaceMarkRes> {
         actor.requireJoinedGame()
         return actor.context()
             .getSpot(TicTacToeGame::class.java)
-            .placeMark(actor.actorId(), request.cell)
+            .placeMark(actor, request.cell)
     }
 }

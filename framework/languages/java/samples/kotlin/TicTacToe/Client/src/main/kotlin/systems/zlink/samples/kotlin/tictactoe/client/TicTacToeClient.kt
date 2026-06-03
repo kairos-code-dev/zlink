@@ -7,15 +7,20 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.future.await
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameHttpReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameHttpRes
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.GameStateNotify
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkRes
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerJoinedNotify
 import systems.zlink.stream.connector.ZLinkStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
@@ -30,25 +35,59 @@ class TicTacToeClient {
         val game = createGame(options.apiUrl, options.gameName)
         val hostStream = playerConnector(game.playEndpoint, options.xActorId)
         val guestStream = playerConnector(game.playEndpoint, options.oActorId)
+        val stateNotifications = ConcurrentLinkedQueue<GameStateNotify>()
+        val playerJoinedNotifications = ConcurrentLinkedQueue<PlayerJoinedNotify>()
+        val handlers = listOf(
+            ZLinkStreamJson.on(hostStream, GameStateNotify::class.java) { message ->
+                stateNotifications += message.payload()
+                CompletableFuture.completedFuture(null)
+            },
+            ZLinkStreamJson.on(guestStream, GameStateNotify::class.java) { message ->
+                stateNotifications += message.payload()
+                CompletableFuture.completedFuture(null)
+            },
+            ZLinkStreamJson.on(hostStream, PlayerJoinedNotify::class.java) { message ->
+                playerJoinedNotifications += message.payload()
+                CompletableFuture.completedFuture(null)
+            },
+            ZLinkStreamJson.on(guestStream, PlayerJoinedNotify::class.java) { message ->
+                playerJoinedNotifications += message.payload()
+                CompletableFuture.completedFuture(null)
+            },
+        )
         try {
             hostStream.connectAsync().await()
             guestStream.connectAsync().await()
 
-            request(hostStream, AuthenticateReq(options.xActorId), AuthenticateRes::class.java)
-            request(guestStream, AuthenticateReq(options.oActorId), AuthenticateRes::class.java)
-            request(hostStream, JoinGameReq(game.gameId), JoinGameRes::class.java)
-            request(guestStream, JoinGameReq(game.gameId), JoinGameRes::class.java)
-            request(hostStream, PlaceMarkReq(0), PlaceMarkRes::class.java)
-            request(guestStream, PlaceMarkReq(4), PlaceMarkRes::class.java)
-            request(hostStream, PlaceMarkReq(1), PlaceMarkRes::class.java)
-            request(guestStream, PlaceMarkReq(8), PlaceMarkRes::class.java)
-            val finalReply = request(hostStream, PlaceMarkReq(2), PlaceMarkRes::class.java)
+            val xAuthentication = request(hostStream, AuthenticateReq(options.xActorId), AuthenticateRes::class.java)
+            val oAuthentication = request(guestStream, AuthenticateReq(options.oActorId), AuthenticateRes::class.java)
+            val xJoin = request(hostStream, JoinGameReq(game.gameId), JoinGameRes::class.java)
+            val oJoin = request(guestStream, JoinGameReq(game.gameId), JoinGameRes::class.java)
+            val moves = listOf(
+                request(hostStream, PlaceMarkReq(0), PlaceMarkRes::class.java),
+                request(guestStream, PlaceMarkReq(4), PlaceMarkRes::class.java),
+                request(hostStream, PlaceMarkReq(1), PlaceMarkRes::class.java),
+                request(guestStream, PlaceMarkReq(8), PlaceMarkRes::class.java),
+                request(hostStream, PlaceMarkReq(2), PlaceMarkRes::class.java),
+            )
+
+            CompletableFuture.runAsync(
+                {},
+                CompletableFuture.delayedExecutor(250, TimeUnit.MILLISECONDS),
+            ).await()
 
             return TicTacToeClientResult(
-                winner = finalReply.state.winner,
-                pushes = finalReply.state.winner?.let { listOf("GameWon:$it") }.orEmpty(),
+                game = game,
+                xAuthentication = xAuthentication,
+                oAuthentication = oAuthentication,
+                xJoin = xJoin,
+                oJoin = oJoin,
+                moves = moves,
+                stateNotifications = stateNotifications.toList(),
+                playerJoinedNotifications = playerJoinedNotifications.toList(),
             )
         } finally {
+            handlers.forEach { handler -> handler.close() }
             hostStream.close()
             guestStream.close()
         }
@@ -70,7 +109,7 @@ class TicTacToeClient {
         ZLinkStreamConnectorFactory.create(
             ZLinkStreamConnectorOptions(
                 URI.create("$endpoint/$actorId"),
-                ZLinkStreamDispatchMode.MANUAL,
+                ZLinkStreamDispatchMode.AUTO,
                 Duration.ofSeconds(3),
                 2,
             ),

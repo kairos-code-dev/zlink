@@ -23,4 +23,5 @@ gradle :Client:run --args='--api-url http://127.0.0.1:18080 --game-name tictacto
 Each actor id is sent as the sample authentication token. The client calls the
 API role over HTTP, opens two STREAM connections to the Play role, authenticates
 both players, joins them to one game, and plays a fixed five-move sequence where
-X wins.
+X wins. It registers typed handlers for `GameStateNotify` and
+`PlayerJoinedNotify` and prints the collected notification counts.

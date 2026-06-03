@@ -532,6 +532,23 @@ class RouterSocket(
             int(request_seq),
         )
 
+    def _recv_owner_via_native_bridge(self, flags):
+        if _in_callback():
+            return None
+        if _native_router_recv_owner_func is None:
+            return None
+        result = _native_router_recv_owner_func(
+            int(self._socket_handle.handle), int(flags)
+        )
+        if result is False:
+            return False
+        if result is None:
+            return None
+        rc, err, _routing, _spot_routing, _request_seq, owner = result
+        if int(rc) != 0:
+            _raise_result_error(RecvError, RecvResult, rc, err)
+        return owner
+
     def _replace_router_received(
         self, received, owner, routing_id, spot_rid, request_seq_value
     ):

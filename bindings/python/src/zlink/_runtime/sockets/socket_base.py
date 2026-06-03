@@ -511,6 +511,21 @@ class _BaseSocket:
         routing_id = RoutingId.from_(routing) if routing is not None else None
         return routing_id, _BytesReceivedPartsOwner._from_trusted_bytes_tuple(parts)
 
+    def _recv_owner_via_native_bridge(self, flags):
+        if _in_callback():
+            return None
+        if _native_recv_owner is None:
+            return None
+        result = _native_recv_owner(int(self._socket_handle.handle), int(flags))
+        if result is False:
+            return False
+        if result is None:
+            return None
+        rc, err, _routing, owner = result
+        if int(rc) != 0:
+            _raise_result_error(RecvError, RecvResult, rc, err)
+        return owner
+
     def _set_raw_option(self, setter, option, value):
         ptr, size, keepalive = _send_buffer(value)
         rc = setter(

@@ -59,11 +59,13 @@ def main(argv=None):
         # every retry, busy-loop through transient backpressure.
         flag = int(zlink.SendFlags.DONT_WAIT)
         publish = publisher.publish
+        topic = TOPIC
         stamp = stamp_payload
+        perf_counter = time.perf_counter
         submit_backpressured = zlink.SubmitResult.BACKPRESSURED
-        while time.perf_counter() < active_end:
+        while perf_counter() < active_end:
             try:
-                publish(TOPIC).message(stamp(payload, phase=1, run_id=run_id)).flags(
+                publish(topic).message(stamp(payload, phase=1, run_id=run_id)).flags(
                     flag
                 ).submit()
             except zlink.SubmitError as exc:

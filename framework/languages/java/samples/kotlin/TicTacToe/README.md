@@ -6,7 +6,8 @@ The root project is a self-check entry point. The standalone role projects are:
 
 - `Client`: sends an HTTP `CreateGameHttpReq` to the API role, opens two STREAM
   connections to the Play role, authenticates both players, joins one game, and
-  plays a fixed winning sequence.
+  plays a fixed winning sequence. It also registers typed STREAM handlers for
+  `GameStateNotify` and `PlayerJoinedNotify`.
 - `Server`: starts the API and Play roles as Spring Boot applications in one
   sample process. The API role exposes the `/games` HTTP endpoint plus
   `AuthenticatePlayer` channel handler. The Play role owns the STREAM endpoint,

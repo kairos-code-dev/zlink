@@ -269,6 +269,44 @@ def recv_into_storage(sock, storage, *, method="recv", blocking=True):
         raise
 
 
+def _recv_owner_data(sock, *, method, flags, recv_error, no_data):
+    try:
+        if method == "subscribe" and hasattr(sock, "_subscribe_parts_owner"):
+            result = sock._subscribe_parts_owner(flags)
+            if result is False:
+                return False, None, None
+            _topic_raw, owner, _routing = result
+        elif method == "recv" and hasattr(sock, "_recv_parts_via_native_bridge"):
+            owner_result = None
+            if hasattr(sock, "_recv_owner_via_native_bridge"):
+                owner_result = sock._recv_owner_via_native_bridge(flags)
+            if owner_result is False:
+                return False, None, None
+            if owner_result is not None:
+                owner = owner_result
+            else:
+                result = sock._recv_parts_via_native_bridge(flags)
+                if result is False:
+                    return False, None, None
+                if result is None:
+                    return None, None, None
+                if len(result) == 2:
+                    _routing_id, owner = result
+                else:
+                    owner, _routing_id, _spot_rid, _request_seq = result
+        else:
+            return None, None, None
+    except recv_error as exc:
+        if exc.result == no_data:
+            return False, None, None
+        raise
+
+    if owner._part_count > 0:
+        return True, owner.data(owner._part_count - 1), owner
+    owner.close()
+    return True, memoryview(b""), None
+
+
 def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                          received, latencies):
     """C perf_single_one_way.hpp run_active_phase receiver, fused for the
@@ -285,7 +323,6 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
     )
 
     zlink_mod = _require_zlink()
-    recv_method = sock.subscribe_into if method == "subscribe" else sock.recv_into
     dont_wait = int(zlink_mod.RecvFlags.DONT_WAIT)
     recv_error = zlink_mod.RecvError
     no_data = zlink_mod.RecvResult.NO_DATA
@@ -304,8 +341,26 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                 break
             flags = dont_wait
             while True:
+                owner = None
                 try:
-                    if not recv_method(storage, flags=flags):
+                    received_data, data, owner = _recv_owner_data(
+                        sock,
+                        method=method,
+                        flags=flags,
+                        recv_error=recv_error,
+                        no_data=no_data,
+                    )
+                    if received_data is None:
+                        recv_method = (
+                            sock.subscribe_into if method == "subscribe" else sock.recv_into
+                        )
+                        if recv_method(storage, flags=flags):
+                            data = storage._last_part_data()
+                            owner = storage
+                        else:
+                            wait_socket_readable_until(poller, poll_events, stop_wait_end)
+                            break
+                    elif not received_data:
                         wait_socket_readable_until(poller, poll_events, stop_wait_end)
                         break
                 except recv_error as exc:
@@ -318,7 +373,6 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                     break
                 flags = dont_wait
                 try:
-                    data = storage._last_part_data()
                     if _native_active_latency_ns is not None:
                         latency_ns = _native_active_latency_ns(
                             data,
@@ -359,7 +413,8 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                     else:
                         latencies.append(0.0)
                 finally:
-                    storage.close()
+                    if owner is not None:
+                        owner.close()
     finally:
         poller.close()
     return count

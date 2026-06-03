@@ -6,6 +6,7 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -13,6 +14,7 @@ import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -68,7 +70,7 @@ final class SessionActorsRuntimeIntegrationTest {
     }
 
     @Test
-    void playActorPush_arrivesAtClientStream() {
+    void playActorPush_withoutLiveClientStreamFailsNativeSend() {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
             ZLinkActor actor = runtime.actorManager()
@@ -80,13 +82,13 @@ final class SessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
 
-            actor.context()
-                .boundSession()
-                .send("push")
-                .packetName("Push")
-                .submitAsync()
-                .toCompletableFuture()
-                .join();
+            assertThrows(ZlinkSubmitException.class, () -> actor.context()
+                    .boundSession()
+                    .send("push")
+                    .packetName("Push")
+                    .submitAsync()
+                    .toCompletableFuture()
+                    .join());
         }
     }
 

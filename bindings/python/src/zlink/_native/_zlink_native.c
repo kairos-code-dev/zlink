@@ -1284,10 +1284,7 @@ publisher_send_op_submit (publisher_send_op_t *op,
                     (size_t) payload_size);
 
         topic = PyBytes_AS_STRING (op->topic);
-        const int release_gil = (op->flags & ZLINK_DONTWAIT) == 0;
-        PyThreadState *_save = NULL;
-        if (release_gil)
-            _save = PyEval_SaveThread ();
+        Py_BEGIN_ALLOW_THREADS
         rc = zlink_publish_part (op->handle, topic, &part,
                                  (zlink_send_flags_t) op->flags,
                                  ZLINK_PART_FINAL);
@@ -1295,8 +1292,7 @@ publisher_send_op_submit (publisher_send_op_t *op,
             err = zlink_errno ();
             zlink_msg_close (&part);
         }
-        if (release_gil)
-            PyEval_RestoreThread (_save);
+        Py_END_ALLOW_THREADS
 
         if (has_view)
             PyBuffer_Release (&view);
@@ -1314,10 +1310,7 @@ publisher_send_op_submit (publisher_send_op_t *op,
     topic = PyBytes_AS_STRING (op->topic);
     op->submitted = 1;
 
-    const int release_gil = (op->flags & ZLINK_DONTWAIT) == 0;
-    PyThreadState *_save = NULL;
-    if (release_gil)
-        _save = PyEval_SaveThread ();
+    Py_BEGIN_ALLOW_THREADS
     for (Py_ssize_t i = 0; i < prepared.count; ++i) {
         rc = zlink_publish_part (op->handle, topic, &prepared.parts[i],
                                  (zlink_send_flags_t) op->flags,
@@ -1329,8 +1322,7 @@ publisher_send_op_submit (publisher_send_op_t *op,
             break;
         }
     }
-    if (release_gil)
-        PyEval_RestoreThread (_save);
+    Py_END_ALLOW_THREADS
 
     release_prepared_parts (&prepared, close_from);
     if (rc == ZLINK_SUBMIT_OK)

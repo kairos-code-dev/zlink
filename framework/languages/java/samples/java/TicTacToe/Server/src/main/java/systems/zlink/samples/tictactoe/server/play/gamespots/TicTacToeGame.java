@@ -1,5 +1,7 @@
 package systems.zlink.samples.tictactoe.server.play.gamespots;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -7,7 +9,11 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkTimer;
+import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.tictactoe.server.play.actors.PlayActor;
+import systems.zlink.samples.tictactoe.server.play.gamespots.handlers.TicTacToeGameCreatedHandler;
+import systems.zlink.samples.tictactoe.server.play.gamespots.handlers.TicTacToeGameTimerHandler;
 import systems.zlink.samples.tictactoe.shared.contracts.GameState;
 import systems.zlink.samples.tictactoe.shared.contracts.GameStateNotify;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkRes;
@@ -15,6 +21,9 @@ import systems.zlink.samples.tictactoe.shared.contracts.PlayerJoinedNotify;
 import systems.zlink.samples.tictactoe.shared.contracts.TicTacToeGameJoinRes;
 
 public final class TicTacToeGame implements ZLinkSpot {
+    private static final Duration GAME_TICK_PERIOD = Duration.ofSeconds(1);
+    private static final Duration TURN_TIMEOUT = Duration.ofSeconds(15);
+
     private final ZLinkSpotContext context;
     private final String gameId;
     private final char[] board = ".........".toCharArray();
@@ -24,6 +33,9 @@ public final class TicTacToeGame implements ZLinkSpot {
     private String winner = "";
     private String lastMoveActorId = "";
     private int lastMoveCell = -1;
+    private Instant turnDeadline;
+    private ZLinkTimer gameTick;
+    private boolean created;
 
     public TicTacToeGame(ZLinkSpotContext context) {
         this.context = context;
@@ -41,22 +53,53 @@ public final class TicTacToeGame implements ZLinkSpot {
 
     @Override
     public CompletionStage<Void> onCreateAsync(List<Message> createParts) {
-        return CompletableFuture.completedFuture(null);
+        return new TicTacToeGameCreatedHandler().handleAsync(this, createParts);
+    }
+
+    @Override
+    public CompletionStage<Void> onInitializeAsync() {
+        return context.addTimer(
+                "game-tick",
+                GAME_TICK_PERIOD,
+                TicTacToeGameTimerHandler.class,
+                new ZLinkTimerOptions())
+            .thenAccept(timer -> gameTick = timer);
+    }
+
+    @Override
+    public CompletionStage<Void> onClosingAsync() {
+        return gameTick == null
+            ? CompletableFuture.completedFuture(null)
+            : gameTick.cancelAsync();
+    }
+
+    public void markCreated(List<Message> createParts) {
+        if (!createParts.isEmpty()) {
+            throw new IllegalArgumentException("tic-tac-toe game creation does not accept payload parts");
+        }
+        created = true;
     }
 
     public CompletionStage<TicTacToeGameJoinRes> join(PlayActor actor, String gameId) {
+        ensureCreated();
         PlayerSlot slot = players.stream()
             .filter(player -> player.actor().actorId().equals(actor.actorId()))
             .findFirst()
             .orElse(null);
         boolean isNewPlayer = slot == null;
         if (slot == null) {
-            String mark = players.isEmpty() ? "X" : "O";
+            if (players.size() >= 2) {
+                throw new IllegalStateException("tic-tac-toe game already has two players");
+            }
+            String mark = players.size() == 0 ? "X" : "O";
             slot = new PlayerSlot(actor, mark);
             players.add(slot);
+        } else {
+            slot.actor(actor);
         }
         if (players.size() == 2 && status.equals("WaitingForPlayers")) {
             status = "InProgress";
+            resetTurnDeadline();
         }
         actor.joinGame(gameId);
         GameState state = snapshot();
@@ -69,6 +112,7 @@ public final class TicTacToeGame implements ZLinkSpot {
     }
 
     public CompletionStage<PlaceMarkRes> placeMark(PlayActor actor, int cell) {
+        ensureCreated();
         PlayerSlot slot = players.stream()
             .filter(player -> player.actor().actorId().equals(actor.actorId()))
             .findFirst()
@@ -101,6 +145,7 @@ public final class TicTacToeGame implements ZLinkSpot {
     }
 
     public GameState snapshot() {
+        ensureCreated();
         return new GameState(
             gameId,
             new String(board),
@@ -118,11 +163,52 @@ public final class TicTacToeGame implements ZLinkSpot {
             status = "Won";
             winner = slot.actor().actorId();
             nextTurn = "";
+            turnDeadline = null;
         } else if (new String(board).indexOf('.') < 0) {
             status = "Draw";
+            winner = "";
             nextTurn = "";
+            turnDeadline = null;
         } else {
             nextTurn = slot.mark().equals("X") ? "O" : "X";
+            resetTurnDeadline();
+        }
+    }
+
+    public CompletionStage<Void> tickAsync() {
+        ensureCreated();
+        if (!status.equals("InProgress")
+            || turnDeadline == null
+            || Instant.now().isBefore(turnDeadline)) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        PlayerSlot timedOut = players.stream()
+            .filter(player -> player.mark().equals(nextTurn))
+            .findFirst()
+            .orElse(null);
+        PlayerSlot winningSlot = players.stream()
+            .filter(player -> !player.mark().equals(nextTurn))
+            .findFirst()
+            .orElse(null);
+
+        status = "TurnTimedOut";
+        winner = winningSlot == null ? "" : winningSlot.actor().actorId();
+        nextTurn = "";
+        lastMoveActorId = timedOut == null ? "" : timedOut.actor().actorId();
+        lastMoveCell = -1;
+        turnDeadline = null;
+
+        return broadcast(snapshot(), null);
+    }
+
+    private void resetTurnDeadline() {
+        turnDeadline = Instant.now().plus(TURN_TIMEOUT);
+    }
+
+    private void ensureCreated() {
+        if (!created) {
+            throw new IllegalStateException("tic-tac-toe game has not completed creation");
         }
     }
 
@@ -137,8 +223,11 @@ public final class TicTacToeGame implements ZLinkSpot {
     private CompletionStage<Void> broadcast(GameState state, String excludedActorId) {
         List<CompletionStage<Void>> sends = players.stream()
             .map(PlayerSlot::actor)
-            .filter(actor -> !actor.actorId().equals(excludedActorId))
-            .map(actor -> actor.context().boundSession().send(new GameStateNotify(state)).submitAsync())
+            .filter(actor -> excludedActorId == null || !actor.actorId().equals(excludedActorId))
+            .map(actor -> actor.context().boundSession()
+                .send(new GameStateNotify(state))
+                .packetName("GameStateNotify")
+                .submitAsync())
             .toList();
         return allOf(sends);
     }
@@ -155,15 +244,20 @@ public final class TicTacToeGame implements ZLinkSpot {
         List<CompletionStage<Void>> sends = players.stream()
             .map(PlayerSlot::actor)
             .filter(actor -> !actor.actorId().equals(joinedActor.actorId()))
-            .map(actor -> actor.context().boundSession().send(message).submitAsync())
+            .map(actor -> actor.context().boundSession()
+                .send(message)
+                .packetName("PlayerJoinedNotify")
+                .submitAsync())
             .toList();
         return allOf(sends);
     }
 
     private static CompletionStage<Void> allOf(List<CompletionStage<Void>> stages) {
-        return CompletableFuture.allOf(stages.stream()
-            .map(CompletionStage::toCompletableFuture)
-            .toArray(CompletableFuture[]::new));
+        CompletionStage<Void> combined = CompletableFuture.completedFuture(null);
+        for (CompletionStage<Void> stage : stages) {
+            combined = combined.thenCompose(ignored -> stage);
+        }
+        return combined;
     }
 
     private boolean hasWon(char mark) {
@@ -184,6 +278,25 @@ public final class TicTacToeGame implements ZLinkSpot {
         return value < 0 ? Integer.MAX_VALUE : value;
     }
 
-    private record PlayerSlot(PlayActor actor, String mark) {
+    private static final class PlayerSlot {
+        private PlayActor actor;
+        private final String mark;
+
+        private PlayerSlot(PlayActor actor, String mark) {
+            this.actor = actor;
+            this.mark = mark;
+        }
+
+        private PlayActor actor() {
+            return actor;
+        }
+
+        private void actor(PlayActor actor) {
+            this.actor = actor;
+        }
+
+        private String mark() {
+            return mark;
+        }
     }
 }

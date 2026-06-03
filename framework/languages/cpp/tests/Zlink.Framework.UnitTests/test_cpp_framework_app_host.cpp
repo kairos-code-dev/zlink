@@ -182,6 +182,45 @@ private:
   scoped_http_counter_t *_counter;
 };
 
+struct number_http_handler_t
+{
+  struct request_type
+  {
+    int id = 0;
+    int page = 0;
+  };
+
+  struct reply_type
+  {
+    int id = 0;
+    int page = 0;
+  };
+
+  reply_type handle (const request_type &request)
+  {
+    return { .id = request.id, .page = request.page };
+  }
+};
+
+int
+parse_required_int_field (const nlohmann::json &json,
+                          const char *field,
+                          const char *message)
+{
+  try {
+    const auto text = json.at (field).get<std::string> ();
+    std::size_t consumed = 0;
+    const auto parsed = std::stoi (text, &consumed);
+    if (consumed == text.size ()) {
+      return parsed;
+    }
+  } catch (const std::exception &) {
+  }
+  throw zlink::framework::framework_exception_t (
+    zlink::framework::framework_error_kind_t::payload_decode_failed,
+    message);
+}
+
 void
 to_json (nlohmann::json &json,
          const create_game_http_handler_t::request_type &value)
@@ -232,6 +271,37 @@ from_json (const nlohmann::json &json,
   value.name = json.value ("name", "");
   value.filter = json.value ("filter", "");
   value.correlationId = json.value ("correlationId", "");
+}
+
+void
+to_json (nlohmann::json &json,
+         const number_http_handler_t::request_type &value)
+{
+  json = nlohmann::json { { "id", std::to_string (value.id) },
+                          { "page", std::to_string (value.page) } };
+}
+
+void
+from_json (const nlohmann::json &json,
+           number_http_handler_t::request_type &value)
+{
+  value.id = parse_required_int_field (json, "id", "invalid route id");
+  value.page = parse_required_int_field (json, "page", "invalid query page");
+}
+
+void
+to_json (nlohmann::json &json,
+         const number_http_handler_t::reply_type &value)
+{
+  json = nlohmann::json { { "id", value.id }, { "page", value.page } };
+}
+
+void
+from_json (const nlohmann::json &json,
+           number_http_handler_t::reply_type &value)
+{
+  value.id = json.value ("id", 0);
+  value.page = json.value ("page", 0);
 }
 
 struct correlation_middleware_t
@@ -462,6 +532,7 @@ main ()
       .map_get<create_game_http_handler_t> ("/games/{id}")
       .map_put<create_game_http_handler_t> ("/games/{id}")
       .map_delete<create_game_http_handler_t> ("/games/{id}")
+      .map_get<number_http_handler_t> ("/numbers/{id}")
       .map_post<async_game_http_handler_t> ("/async-games")
       .map_post<injected_game_http_handler_t> ("/injected-games")
       .use<correlation_middleware_t> ()
@@ -497,6 +568,10 @@ main ()
     http_client.get ("/games/1?filter=active")
       .submit<create_game_http_handler_t::reply_type> ()
       .result ();
+  const auto number_get_result =
+    http_client.get ("/numbers/41?page=2")
+      .submit<number_http_handler_t::reply_type> ()
+      .result ();
   const auto put_result =
     http_client.put ("/games/1")
       .body (create_game_http_handler_t::request_type {
@@ -530,6 +605,14 @@ main ()
     http_client.post ("/games")
       .header ("X-Correlation-Id", "corr-invalid-json")
       .body (std::string ("not-an-object"))
+      .submit_raw ()
+      .result ();
+  const auto route_parse_failure_result =
+    http_client.get ("/numbers/not-a-number?page=2")
+      .submit_raw ()
+      .result ();
+  const auto query_parse_failure_result =
+    http_client.get ("/numbers/41?page=bad")
       .submit_raw ()
       .result ();
   const auto missing_required_field_result =
@@ -624,6 +707,11 @@ main ()
       get_result.value ().headers.at ("X-Context-Path") != "/games/1") {
     return 18;
   }
+  if (!number_get_result ||
+      number_get_result.value ().body.id != 41 ||
+      number_get_result.value ().body.page != 2) {
+    return 46;
+  }
   if (!put_result || put_result.value ().body.name != "put" ||
       put_result.value ().body.id != "1" ||
       put_result.value ().body.filter != "body-filter") {
@@ -655,6 +743,22 @@ main ()
       invalid_json_shape_result.value ().headers.at ("X-Middleware-After") !=
         "seen") {
     return 22;
+  }
+  if (!route_parse_failure_result ||
+      route_parse_failure_result.value ().status != 400 ||
+      route_parse_failure_result.value ().body.find (
+        "payload_decode_failed") == std::string::npos ||
+      route_parse_failure_result.value ().body.find ("invalid route id") ==
+        std::string::npos) {
+    return 47;
+  }
+  if (!query_parse_failure_result ||
+      query_parse_failure_result.value ().status != 400 ||
+      query_parse_failure_result.value ().body.find (
+        "payload_decode_failed") == std::string::npos ||
+      query_parse_failure_result.value ().body.find ("invalid query page") ==
+        std::string::npos) {
+    return 48;
   }
   if (!missing_required_field_result ||
       missing_required_field_result.value ().status != 400 ||

@@ -7331,3 +7331,41 @@ public result의 configuration error와 message fragment를 transport별로 확�
 
 - transport별 endpoint scheme validation이 빠지거나 잘못된 메시지를 반환하면
   `test_cpp_stream_connector`가 실패한다.
+
+## 반복 POSD 재리뷰. HTTP route/query parse failure 회귀 테스트 보강
+
+### 발견한 위험 신호
+
+- HTTP 적용 가이드는 request validation 항목에 route parameter parse failure와 query parse
+  failure를 포함한다.
+- `test_cpp_framework_app_host`는 route parameter와 query string이 handler DTO로 들어가는 성공
+  경로를 검증했지만, 잘못된 route/query 값이 decode 실패로 매핑되는지는 고정하지 않았다.
+- 이 상태에서는 Goal 19의 HTTP handler e2e 테스트가 `zlink::http_client`를 사용하더라도
+  request validation 실패 경로가 조용히 빠질 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 문자열 DTO 성공 테스트만 유지 | 변경이 없다 | parse failure 완료 기준을 회귀 테스트가 지키지 못한다 |
+| runtime에서 route/query 값을 숫자와 boolean으로 전역 변환 | handler DTO가 typed scalar를 바로 받을 수 있다 | 기존 string DTO에서 `/games/1` 같은 값의 의미가 바뀔 수 있다 |
+| typed DTO가 현재 문자열 binding을 명시적으로 파싱하게 하고 실패 매핑을 e2e로 검증 | 기존 public binding 의미를 유지한다 | 테스트 DTO에 파싱 코드가 조금 추가된다 |
+
+선택은 세 번째 방식이다. framework runtime은 DTO 필드 타입을 알지 못하므로 route/query 문자열을
+전역으로 추측 변환하면 호출자 관점의 예측 가능성이 낮아진다. 현재 contract는 serializer decode
+단계의 실패를 `payload_decode_failed`로 모으는 것이므로, typed DTO에서 잘못된 route/query 값을
+던지고 HTTP e2e가 400 응답을 확인하는 편이 더 작은 인터페이스를 유지한다.
+
+### 적용한 리팩토링
+
+- `number_http_handler_t`를 app host e2e에 추가해 `/numbers/{id}?page=...` 경로에서 route와
+  query 값을 정수로 파싱하게 했다.
+- `/numbers/not-a-number?page=2`와 `/numbers/41?page=bad` 호출이 `zlink::http_client` raw
+  응답에서 400과 `payload_decode_failed`를 반환하는지 검증하게 했다.
+- 정상 숫자 route/query 값도 typed reply로 확인해 성공 경로와 실패 경로가 같은 binding 흐름을
+  지나가게 했다.
+
+### 수정 후 점검
+
+- route/query parse failure가 `payload_decode_failed` HTTP 400 매핑에서 벗어나면
+  `test_cpp_framework_app_host`가 실패한다.

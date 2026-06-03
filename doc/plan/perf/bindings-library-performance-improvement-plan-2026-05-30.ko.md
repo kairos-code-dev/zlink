@@ -907,6 +907,14 @@ routed receive에서는 native bridge가 이미 새 `bytes`를 만들어 넘기�
 `PUBSUB tcp 64B` 321,638.4 msg/s, `DEALER_ROUTER tcp 64B` 332,057.6 msg/s,
 `ROUTER_ROUTER tcp 64B` 154,169.8 msg/s를 기록했다. 아직 정책 기준은 넘지
 못했지만 routed public 경로의 Python materialization 비용은 이전보다 줄었다.
+이후 routed single perf sender loop에서 public builder chain은 그대로 쓰되
+`send_nonblocking()` wrapper 호출을 제거하고 flag/method를 루프 밖에서 캐시했다.
+`perf_python_single_linux_20260603_122117_py_dealer_router_inline_send_public_tcp64_5s.txt`는
+`DEALER_ROUTER tcp 64B` 335,289.4 msg/s,
+`perf_python_single_linux_20260603_122045_py_router_router_inline_send_public_tcp64_5s.txt`는
+`ROUTER_ROUTER tcp 64B` 155,439.2 msg/s를 기록했다. 이 변경은
+`router.send(routing_id).message(...).flags(...).submit()` 형태를 유지하므로
+private active-loop 우회가 아니다.
 native routed send builder 후보는
 `perf_python_single_linux_20260603_115457_py_routed_send_op_tcp64_5s.txt`에서
 `ROUTER_ROUTER tcp 64B`가 99,225.4 msg/s로 회귀해 제거했다. router receive에서
@@ -916,6 +924,9 @@ native routed send builder 후보는
 `perf_python_single_linux_20260603_121209_py_router_blocking_first_tcp64_5s.txt`에서
 회귀해 제거했고, `ReceivedMessage`/`RoutingId`에 `__slots__`를 추가한 후보도
 뚜렷한 개선 없이 public 객체 확장성을 줄일 수 있어 유지하지 않았다.
+callback guard를 dict+thread id 대신 `threading.local()`로 바꾼 후보도
+`perf_python_single_linux_20260603_122240_py_threadlocal_callback_state_tcp64_5s.txt`에서
+PAIR/PUBSUB/routed가 모두 회귀해 제거했다.
 
 public contract 복구 뒤 Python multi smoke에서 `MULTI_SPOT_REQREP tcp 64B`가
 client timeout으로 반복 partial이 됐다. server dispatch가 owner-backed part의

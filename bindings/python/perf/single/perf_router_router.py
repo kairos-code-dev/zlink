@@ -17,7 +17,6 @@ from perf_common import (
     poll_idle_ms,
     print_result_lines,
     run_one_way_receiver,
-    send_nonblocking,
     result_metrics,
     resolve_single_endpoint,
     resolve_single_connect_ready_timeout_ms,
@@ -58,12 +57,18 @@ def main(argv=None):
     def send_loop(router, active_end):
         # C send_active_samples: DONTWAIT routed send, re-stamp fresh
         # now_ns on every retry, busy-loop through transient backpressure.
+        flag = int(zlink.SendFlags.DONT_WAIT)
+        send = router.send
+        stamp = stamp_payload
+        submit_backpressured = zlink.SubmitResult.BACKPRESSURED
         while time.perf_counter() < active_end:
-            send_nonblocking(
-                router,
-                stamp_payload(payload, phase=1, run_id=run_id),
-                routing_id=b"SERVER",
-            )
+            try:
+                send(b"SERVER").message(stamp(payload, phase=1, run_id=run_id)).flags(
+                    flag
+                ).submit()
+            except zlink.SubmitError as exc:
+                if exc.result != submit_backpressured:
+                    raise
         _send_router_stop_token(router, b"SERVER")
 
     with perf_context() as ctx:

@@ -835,7 +835,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   set_tests_properties(
     sample_e2e_log_sample_cpp_framework_bingo_client
     PROPERTIES
-      LABELS "framework-sample-bingo;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;connector-e2e"
+      LABELS "framework-sample-bingo;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;connector-e2e;parity"
       TIMEOUT 30)
 
   add_test(
@@ -851,7 +851,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   set_tests_properties(
     sample_e2e_log_sample_cpp_framework_tictactoe_client
     PROPERTIES
-      LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;connector-e2e"
+      LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;connector-e2e;parity"
       TIMEOUT 30)
 endif()
 

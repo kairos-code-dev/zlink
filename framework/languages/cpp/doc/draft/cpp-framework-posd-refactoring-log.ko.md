@@ -6105,3 +6105,34 @@ push와 relay 모두 같은 state를 확인해야 cleanup 의미가 한 곳에 �
   호출한다.
 - server handler include 회귀는 `test_cpp_framework_layout_contract`가 client subtree 전체에서
   잡는다.
+
+## 추가 리뷰. Parity label e2e coverage 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 `.NET` parity e2e regression을 완료 기준에 둔다.
+- `parity` CTest label은 `test_cpp_framework_sample_parity`의 중복 실행만 선택했고, 실제
+  client/server request, reply, push, log 검증을 수행하는 sample e2e log 테스트는 선택하지
+  않았다.
+- label 의미가 정적 parity 검사에만 묶이면 final audit에서 `ctest -L parity`가 e2e 증거를
+  제공하지 못한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 label 유지 | 변경이 없다 | parity e2e 요구가 label로 증명되지 않는다 |
+| 별도 parity e2e 테스트를 새로 추가 | label 의미가 가장 명확하다 | 기존 sample e2e log test와 setup이 중복된다 |
+| 기존 sample e2e log 테스트에 `parity` label을 추가 | 실제 e2e 증거를 재사용하고 label 선택이 강해진다 | 한 테스트가 여러 목적 label을 가진다 |
+
+선택은 세 번째 방식이다. sample e2e log 테스트는 이미 client 성공, server file log, push,
+disconnect, shutdown을 확인하므로 parity e2e 증거로 재사용할 수 있다.
+
+### 적용한 리팩토링
+
+- Bingo와 TicTacToe sample e2e log 테스트에 `parity` label을 추가했다.
+
+### 수정 후 점검
+
+- `ctest -L parity`는 정적 sample parity와 sample e2e log regression을 함께 선택한다.
+- parity audit은 packet/handler 구조뿐 아니라 실제 client/server 흐름도 확인한다.

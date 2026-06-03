@@ -278,6 +278,10 @@ connector_t::connect ()
     _state->options.transport == transport_t::websocket
       ? detail::parse_websocket_endpoint (_state->options.endpoint)
       : std::optional<detail::websocket_endpoint_parts_t> {};
+  const auto websocket_secure_endpoint =
+    _state->options.transport == transport_t::websocket_secure
+      ? detail::parse_websocket_secure_endpoint (_state->options.endpoint)
+      : std::optional<detail::websocket_endpoint_parts_t> {};
   if (_state->options.transport == transport_t::tcp && !tcp_endpoint) {
     return task_t<void> (result_t<void>::failure (
       error_code_t::configuration_error,
@@ -293,6 +297,12 @@ connector_t::connect ()
     return task_t<void> (result_t<void>::failure (
       error_code_t::configuration_error,
       "stream connector endpoint must use ws://host:port/path"));
+  }
+  if (_state->options.transport == transport_t::websocket_secure &&
+      !websocket_secure_endpoint) {
+    return task_t<void> (result_t<void>::failure (
+      error_code_t::configuration_error,
+      "stream connector endpoint must use wss://host:port/path"));
   }
 
   const auto max_attempts =
@@ -311,6 +321,17 @@ connector_t::connect ()
       if (_state->options.transport == transport_t::websocket) {
         _state->connection =
           detail::connect_websocket (_state->io_context, *websocket_endpoint);
+      } else if (_state->options.transport ==
+                 transport_t::websocket_secure) {
+#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
+        _state->connection = detail::connect_websocket_secure (
+          _state->io_context,
+          *websocket_secure_endpoint,
+          _state->options.skip_server_certificate_validation);
+#else
+        throw std::runtime_error (
+          "stream connector WSS support requires OpenSSL");
+#endif
       } else if (_state->options.transport == transport_t::tls) {
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
         _state->connection = detail::connect_tls (

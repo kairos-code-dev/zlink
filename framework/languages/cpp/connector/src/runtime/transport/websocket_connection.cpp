@@ -4,8 +4,14 @@
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
+#include <boost/asio/ssl/host_name_verification.hpp>
+#include <boost/asio/ssl/stream.hpp>
+#include <openssl/ssl.h>
+#endif
 #include <boost/beast/core/buffers_to_string.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/ssl.hpp>
 #include <boost/beast/websocket.hpp>
 
 #include <algorithm>
@@ -23,11 +29,15 @@ namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
 using tcp = asio::ip::tcp;
+#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
+namespace ssl = asio::ssl;
+#endif
 
+template<typename TStream>
 class websocket_stream_connection_t final : public stream_connection_t
 {
 public:
-  explicit websocket_stream_connection_t (websocket::stream<tcp::socket> stream)
+  explicit websocket_stream_connection_t (websocket::stream<TStream> stream)
     : _stream (std::move (stream))
   {
     _stream.binary (true);
@@ -41,7 +51,7 @@ public:
       return _read_buffer.size () - _read_offset;
     }
 
-    const auto tcp_available = _stream.next_layer ().available (error);
+    const auto tcp_available = beast::get_lowest_layer (_stream).available (error);
     if (error || tcp_available == 0) {
       return 0;
     }
@@ -91,21 +101,19 @@ public:
 
   void close (boost::system::error_code &error) override
   {
-    _stream.next_layer ().close (error);
+    beast::get_lowest_layer (_stream).close (error);
   }
 
 private:
-  websocket::stream<tcp::socket> _stream;
+  websocket::stream<TStream> _stream;
   std::vector<std::uint8_t> _read_buffer;
   std::size_t _read_offset = 0;
 };
 
-} // namespace
-
 std::optional<websocket_endpoint_parts_t>
-parse_websocket_endpoint (const std::string &endpoint)
+parse_websocket_endpoint_with_prefix (const std::string &endpoint,
+                                      std::string_view prefix)
 {
-  constexpr std::string_view prefix = "ws://";
   if (endpoint.rfind (std::string (prefix), 0) != 0) {
     return std::nullopt;
   }
@@ -130,6 +138,20 @@ parse_websocket_endpoint (const std::string &endpoint)
                                     : endpoint.substr (path_start) };
 }
 
+} // namespace
+
+std::optional<websocket_endpoint_parts_t>
+parse_websocket_endpoint (const std::string &endpoint)
+{
+  return parse_websocket_endpoint_with_prefix (endpoint, "ws://");
+}
+
+std::optional<websocket_endpoint_parts_t>
+parse_websocket_secure_endpoint (const std::string &endpoint)
+{
+  return parse_websocket_endpoint_with_prefix (endpoint, "wss://");
+}
+
 std::unique_ptr<stream_connection_t>
 connect_websocket (boost::asio::io_context &io_context,
                    const websocket_endpoint_parts_t &endpoint)
@@ -140,7 +162,39 @@ connect_websocket (boost::asio::io_context &io_context,
   asio::connect (stream.next_layer (), endpoints);
   stream.binary (true);
   stream.handshake (endpoint.host, endpoint.target);
-  return std::make_unique<websocket_stream_connection_t> (std::move (stream));
+  return std::make_unique<websocket_stream_connection_t<tcp::socket>> (
+    std::move (stream));
 }
+
+#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
+std::unique_ptr<stream_connection_t>
+connect_websocket_secure (boost::asio::io_context &io_context,
+                          const websocket_endpoint_parts_t &endpoint,
+                          bool skip_server_certificate_validation)
+{
+  ssl::context context (ssl::context::tls_client);
+  context.set_default_verify_paths ();
+  websocket::stream<ssl::stream<tcp::socket>> stream (io_context, context);
+  SSL_set_tlsext_host_name (
+    stream.next_layer ().native_handle (), endpoint.host.c_str ());
+  if (skip_server_certificate_validation) {
+    stream.next_layer ().set_verify_mode (ssl::verify_none);
+  } else {
+    stream.next_layer ().set_verify_mode (ssl::verify_peer);
+    stream.next_layer ().set_verify_callback (
+      ssl::host_name_verification (endpoint.host));
+  }
+
+  tcp::resolver resolver (io_context);
+  auto endpoints = resolver.resolve (endpoint.host, endpoint.port);
+  asio::connect (beast::get_lowest_layer (stream), endpoints);
+  stream.next_layer ().handshake (ssl::stream_base::client);
+  stream.binary (true);
+  stream.handshake (endpoint.host, endpoint.target);
+  return std::make_unique<
+    websocket_stream_connection_t<ssl::stream<tcp::socket>>> (
+    std::move (stream));
+}
+#endif
 
 } // namespace zlink::stream_connector::detail

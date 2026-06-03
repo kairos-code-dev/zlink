@@ -12,6 +12,52 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. Stream Connector WebSocket TLS transport 추가
+
+### 발견한 위험 신호
+
+- TCP, TLS, WebSocket은 구현됐지만 공통 초안과 `.NET` connector의 최종 transport 범위에는
+  WebSocket over TLS도 포함된다. WSS만 명시 실패로 남기면 Goal 20의 transport parity가
+  완료되지 않는다.
+- WebSocket over TLS를 별도 호출 경로로 처리하면 TLS handshake와 WebSocket binary message
+  경계가 connector lifecycle, frame codec, request read에 섞인다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| WSS를 계속 unsupported로 둔다 | 변경이 작다 | 공통 transport 완료 기준이 닫히지 않는다 |
+| TLS connection 위에 별도 WebSocket 호출 경로를 둔다 | 구현 위치가 명시적이다 | packet 호출자가 secure WebSocket 세부를 알게 된다 |
+| Beast `websocket::stream<ssl::stream<tcp::socket>>`를 `stream_connection_t` 구현체로 둔다 | 기존 frame read/write 경로를 그대로 쓴다 | Beast SSL teardown include와 buffering 처리가 필요하다 |
+
+선택은 세 번째 방식이다. WSS도 connector 입장에서는 byte frame을 읽고 쓰는 connection이다.
+TLS handshake와 WebSocket binary message는 transport owner가 흡수한다.
+
+### 적용한 리팩토링
+
+- `wss://host:port/path` endpoint parser를 추가했다.
+- OpenSSL이 있는 빌드에서 `connect_websocket_secure(...)`를 추가하고, TLS handshake 뒤
+  WebSocket handshake를 수행하게 했다.
+- WebSocket connection 구현을 template로 정리해 plain TCP WebSocket과 TLS WebSocket이 같은
+  buffering/read/write/close 구현을 공유하게 했다.
+- connector lifecycle과 transport factory가 `transport_t::websocket_secure`를 OpenSSL 빌드에서
+  지원하게 했다.
+- connector e2e 테스트에 self-signed WSS loopback server를 추가해 binary WebSocket frame에
+  STREAM connector frame이 실리는지 검증했다.
+
+### 수정 후 점검
+
+- public Stream Connector API는 바꾸지 않았다.
+- TCP, TLS, WebSocket, WebSocket over TLS가 모두 같은 send/request frame 경로를 사용한다.
+- OpenSSL 없는 빌드에서는 secure transport가 명시 실패로 남는다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+```
+
 ## 반복 POSD 재리뷰. Stream Connector TLS transport 추가
 
 ### 발견한 위험 신호
@@ -52,7 +98,7 @@ certificate validation 정책만 표현한다.
 
 - public Stream Connector header는 OpenSSL 타입을 노출하지 않는다.
 - TCP, TLS, WebSocket은 같은 send/request frame 경로를 사용한다.
-- WebSocket over TLS는 아직 미구현이며 명시 실패 상태로 남아 있다.
+- WebSocket over TLS도 같은 `stream_connection_t` abstraction 아래에서 구현됐다.
 
 ### 재실행한 검증 명령
 
@@ -99,7 +145,7 @@ WebSocket binary message 경계는 transport 구현이 흡수한다.
 
 - public Stream Connector API는 바꾸지 않았다.
 - TCP와 WebSocket은 같은 `send(packet)` / typed send 호출 표면을 사용한다.
-- WebSocket over TLS는 아직 미구현이며, 명시 실패 상태로 남아 있다.
+- WebSocket over TLS도 같은 `stream_connection_t` abstraction 아래에서 구현됐다.
 
 ### 재실행한 검증 명령
 
@@ -153,8 +199,7 @@ TLS handshake, WebSocket binary message, TCP socket details는 transport owner�
 
 - public Stream Connector API는 바꾸지 않았다.
 - TCP 동작은 기존 connector e2e 테스트로 유지된다.
-- WebSocket over TLS parity는 아직 완료되지 않았다. 다음 반복에서는 이 abstraction 아래에
-  남은 secure WebSocket connection 구현과 e2e 회귀를 추가해야 한다.
+- WebSocket over TLS parity도 같은 abstraction 아래에서 닫혔다.
 
 ### 재실행한 검증 명령
 

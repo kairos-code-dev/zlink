@@ -13,13 +13,12 @@ stream_transport_factory_t::is_supported (transport_t transport) noexcept
   case transport_t::websocket:
     return true;
   case transport_t::tls:
+  case transport_t::websocket_secure:
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
     return true;
 #else
     return false;
 #endif
-  case transport_t::websocket_secure:
-    return false;
   }
   return false;
 }

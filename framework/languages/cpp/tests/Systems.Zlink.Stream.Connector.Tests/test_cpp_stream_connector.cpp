@@ -13,6 +13,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/core/buffers_to_string.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/ssl.hpp>
 #include <boost/beast/websocket.hpp>
 #ifdef ZLINK_STREAM_CONNECTOR_TEST_WITH_OPENSSL
 #include <boost/asio/ssl/stream.hpp>
@@ -755,6 +756,70 @@ main ()
   if (!tls_send_seen) {
     return 52;
   }
+
+  boost::asio::io_context wss_io;
+  boost::asio::ip::tcp::acceptor wss_acceptor (
+    wss_io,
+    { boost::asio::ip::make_address ("127.0.0.1"), 0 });
+  const auto wss_endpoint =
+    std::string ("wss://localhost:") +
+    std::to_string (wss_acceptor.local_endpoint ().port ()) +
+    "/stream";
+  std::atomic_bool wss_send_seen { false };
+  std::thread wss_server_thread ([&wss_acceptor, &wss_send_seen] {
+    boost::asio::ssl::context tls_context (
+      boost::asio::ssl::context::tls_server);
+    tls_context.use_certificate_chain_file (
+      ZLINK_STREAM_CONNECTOR_TEST_CERT);
+    tls_context.use_private_key_file (
+      ZLINK_STREAM_CONNECTOR_TEST_KEY,
+      boost::asio::ssl::context::pem);
+    boost::asio::ip::tcp::socket socket (wss_acceptor.get_executor ());
+    wss_acceptor.accept (socket);
+    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> tls_stream (
+      std::move (socket),
+      tls_context);
+    boost::system::error_code error;
+    tls_stream.handshake (boost::asio::ssl::stream_base::server, error);
+    if (error) {
+      return;
+    }
+    boost::beast::websocket::stream<
+      boost::asio::ssl::stream<boost::asio::ip::tcp::socket>>
+      websocket (std::move (tls_stream));
+    websocket.accept ();
+    boost::beast::flat_buffer buffer;
+    websocket.read (buffer);
+    auto frame_text = boost::beast::buffers_to_string (buffer.data ());
+    if (auto frame = try_read_server_frame (frame_text)) {
+      wss_send_seen =
+        frame->header.kind ==
+          zlink::stream_connector::message_kind_t::send &&
+        frame->header.name == login_request_t::packet_name &&
+        websocket.got_binary ();
+    }
+    websocket.close (
+      boost::beast::websocket::close_code::normal, error);
+  });
+
+  zlink::stream_connector::connector_options_t wss_options;
+  wss_options.endpoint = wss_endpoint;
+  wss_options.transport =
+    zlink::stream_connector::transport_t::websocket_secure;
+  wss_options.skip_server_certificate_validation = true;
+  auto wss_connector =
+    zlink::stream_connector::connector_factory_t::create (wss_options);
+  if (!wss_connector.connect ().result ()) {
+    return 53;
+  }
+  if (!wss_connector.send (login_request_t {}).submit ().result ()) {
+    return 54;
+  }
+  wss_connector.close ().result ();
+  wss_server_thread.join ();
+  if (!wss_send_seen) {
+    return 55;
+  }
 #endif
 
   zlink::stream_connector::connector_options_t reconnect_options;
@@ -780,18 +845,18 @@ main ()
     return 39;
   }
 
-  zlink::stream_connector::connector_options_t unsupported_transport_options;
-  unsupported_transport_options.endpoint = endpoint;
-  unsupported_transport_options.transport =
+  zlink::stream_connector::connector_options_t invalid_transport_options;
+  invalid_transport_options.endpoint = endpoint;
+  invalid_transport_options.transport =
     zlink::stream_connector::transport_t::websocket_secure;
-  auto unsupported_transport =
+  auto invalid_transport =
     zlink::stream_connector::connector_factory_t::create (
-      unsupported_transport_options);
-  auto unsupported_transport_result = unsupported_transport.connect ().result ();
-  if (unsupported_transport_result ||
-      unsupported_transport_result.error_code () !=
+      invalid_transport_options);
+  auto invalid_transport_result = invalid_transport.connect ().result ();
+  if (invalid_transport_result ||
+      invalid_transport_result.error_code () !=
         zlink::stream_connector::error_code_t::configuration_error ||
-      unsupported_transport.is_connected ()) {
+      invalid_transport.is_connected ()) {
     return 42;
   }
 

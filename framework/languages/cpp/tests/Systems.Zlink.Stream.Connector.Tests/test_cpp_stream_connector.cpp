@@ -1194,19 +1194,53 @@ main ()
     return 39;
   }
 
-  zlink::stream_connector::connector_options_t invalid_transport_options;
-  invalid_transport_options.endpoint = endpoint;
-  invalid_transport_options.transport =
-    zlink::stream_connector::transport_t::websocket_secure;
-  auto invalid_transport =
-    zlink::stream_connector::connector_factory_t::create (
-      invalid_transport_options);
-  auto invalid_transport_result = invalid_transport.connect ().result ();
-  if (invalid_transport_result ||
-      invalid_transport_result.error_code () !=
-        zlink::stream_connector::error_code_t::configuration_error ||
-      invalid_transport.is_connected ()) {
-    return 42;
+  struct endpoint_mismatch_case_t
+  {
+    zlink::stream_connector::transport_t transport;
+    const char *endpoint;
+    const char *message_part;
+  };
+
+  const endpoint_mismatch_case_t endpoint_mismatch_cases[] = {
+    { zlink::stream_connector::transport_t::tcp,
+      "ws://127.0.0.1:1/stream",
+      "tcp://host:port" },
+    { zlink::stream_connector::transport_t::websocket,
+      "tcp://127.0.0.1:1",
+      "ws://host:port/path" },
+#ifdef ZLINK_STREAM_CONNECTOR_TEST_WITH_OPENSSL
+    { zlink::stream_connector::transport_t::tls,
+      "tcp://127.0.0.1:1",
+      "tls://host:port" },
+    { zlink::stream_connector::transport_t::websocket_secure,
+      "tcp://127.0.0.1:1",
+      "wss://host:port/path" }
+#else
+    { zlink::stream_connector::transport_t::tls,
+      "tcp://127.0.0.1:1",
+      "does not support" },
+    { zlink::stream_connector::transport_t::websocket_secure,
+      "tcp://127.0.0.1:1",
+      "does not support" }
+#endif
+  };
+  for (const auto &mismatch_case : endpoint_mismatch_cases) {
+    zlink::stream_connector::connector_options_t invalid_transport_options;
+    invalid_transport_options.endpoint = mismatch_case.endpoint;
+    invalid_transport_options.transport = mismatch_case.transport;
+    auto invalid_transport =
+      zlink::stream_connector::connector_factory_t::create (
+        invalid_transport_options);
+    auto invalid_transport_result = invalid_transport.connect ().result ();
+    if (invalid_transport_result ||
+        invalid_transport_result.error_code () !=
+          zlink::stream_connector::error_code_t::configuration_error ||
+        !invalid_transport_result.error () ||
+        invalid_transport_result.error ()->message.find (
+          mismatch_case.message_part) == std::string::npos ||
+        invalid_transport.is_connected ()) {
+      return 42;
+    }
   }
 
   auto request_after_reconnect_failure =

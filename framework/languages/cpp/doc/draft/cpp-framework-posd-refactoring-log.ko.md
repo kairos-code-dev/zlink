@@ -6870,3 +6870,36 @@ Protobuf option으로 충분하다.
 
 - optional codec option을 켠 build에서 `test_cpp_stream_connector`, install, installed
   consumer configure/build가 모두 통과해야 한다.
+
+## 추가 리뷰. Stream Connector endpoint scheme mismatch coverage 보강
+
+### 발견한 위험 신호
+
+- Goal 20은 unsupported transport와 endpoint scheme mismatch validation을 완료 기준으로 둔다.
+- connector runtime은 transport별 endpoint scheme을 검증하지만, 테스트는 WSS transport에 TCP
+  endpoint를 넣는 한 조합만 확인했다.
+- TCP, TLS, WebSocket, WebSocket over TLS가 같은 packet API로 동작하려면 각 transport가
+  자기 endpoint scheme만 받아들이는 계약도 같은 수준으로 고정되어야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 WSS mismatch 테스트만 유지 | 변경이 작다 | 다른 transport의 scheme validation drift를 놓친다 |
+| parser private 함수를 직접 테스트 | 실패 원인이 세분화된다 | runtime connect 계약보다 내부 함수에 테스트가 묶인다 |
+| public connector connect 결과로 모든 transport mismatch를 표 기반 검증 | public 계약을 직접 검증하고 중복을 줄인다 | OpenSSL 없는 build의 TLS/WSS 기대 메시지를 분기해야 한다 |
+
+선택은 세 번째 방식이다. 사용자는 parser가 아니라 connector connect 결과를 보므로,
+public result의 configuration error와 message fragment를 transport별로 확인한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_stream_connector`가 TCP, TLS, WebSocket, WebSocket over TLS scheme mismatch를
+  표 기반으로 검증하게 했다.
+- OpenSSL 없는 build에서는 TLS/WSS가 unsupported transport 메시지를 먼저 반환하는 점을
+  테스트가 반영하게 했다.
+
+### 수정 후 점검
+
+- transport별 endpoint scheme validation이 빠지거나 잘못된 메시지를 반환하면
+  `test_cpp_stream_connector`가 실패한다.

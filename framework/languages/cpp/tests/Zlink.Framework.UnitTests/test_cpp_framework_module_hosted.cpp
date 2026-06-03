@@ -224,6 +224,33 @@ private:
   std::vector<std::string> &_events;
 };
 
+class failing_start_hosted_service_t final
+  : public zlink::framework::hosted_service_t
+{
+public:
+  explicit failing_start_hosted_service_t (
+    std::vector<std::string> &events)
+    : _events (events)
+  {
+  }
+
+  void start (zlink::framework::service_provider_t &) override
+  {
+    _events.push_back ("start:failing");
+    throw zlink::framework::framework_exception_t (
+      zlink::framework::framework_error_kind_t::request_failed,
+      "hosted service start failed");
+  }
+
+  void stop () noexcept override
+  {
+    _events.push_back ("stop:failing");
+  }
+
+private:
+  std::vector<std::string> &_events;
+};
+
 } // namespace
 
 int
@@ -284,6 +311,35 @@ main ()
   }
   if (!null_hosted_service_failed) {
     return 5;
+  }
+
+  std::vector<std::string> failed_lifecycle;
+  bool start_failure_cleaned_up_started_services = false;
+  try {
+    zlink::framework::app_t failure_app = zlink::framework::app_t::create ();
+    failure_app.advanced ().services ().add_singleton<stage_state_t> ();
+    failure_app
+      .add_hosted_service (
+        std::make_unique<recording_hosted_service_t> ("started",
+                                                      failed_lifecycle))
+      .add_hosted_service (
+        std::make_unique<failing_start_hosted_service_t> (failed_lifecycle))
+      .add_hosted_service (
+        std::make_unique<recording_hosted_service_t> ("never",
+                                                      failed_lifecycle));
+    failure_app.run (argc, argv);
+  } catch (const zlink::framework::framework_exception_t &error) {
+    const std::vector<std::string> expected_failed_lifecycle {
+      "start:started",
+      "start:failing",
+      "stop:started"
+    };
+    start_failure_cleaned_up_started_services =
+      error.kind () == zlink::framework::framework_error_kind_t::request_failed &&
+      failed_lifecycle == expected_failed_lifecycle;
+  }
+  if (!start_failure_cleaned_up_started_services) {
+    return 12;
   }
 
   zlink::framework::app_t options_app = zlink::framework::app_t::create ();

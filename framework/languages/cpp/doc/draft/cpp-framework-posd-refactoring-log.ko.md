@@ -5860,3 +5860,35 @@ HTTPS/TLS dependency를 명시해 secure 기능이 빠지지 않게 해야 한�
 
 - vcpkg preset은 HTTP client HTTPS, HTTP hosting HTTPS, connector TLS/WSS 구현에 필요한
   OpenSSL dependency를 manifest에서 제공한다.
+
+## 추가 리뷰. Hosted service start failure lifecycle gate 보강
+
+### 발견한 위험 신호
+
+- Goal 17은 hosted service가 app startup/shutdown과 함께 시작하고 종료해야 한다고 적는다.
+- 기존 module/hosted test는 정상 시작과 역순 종료는 검증했지만, 여러 hosted service 중 하나가
+  `start()`에서 실패할 때 이미 시작된 service가 정리되는지는 직접 확인하지 않았다.
+- 실패 경로의 정리 책임이 caller에게 새면 lifecycle 지식이 app host 밖으로 새는 얕은 모듈이
+  된다. POSD 관점에서는 host가 start/stop 순서와 실패 정리를 한 곳에서 숨겨야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 정상 lifecycle test만 유지 | 테스트가 작다 | start 실패 회귀를 잡지 못한다 |
+| app host 내부 helper를 public test hook으로 노출 | started 목록을 직접 볼 수 있다 | 내부 순서 자료구조를 공개 표면으로 끌어올린다 |
+| public hosted service로 start 실패를 만들고 관찰 가능한 start/stop event만 확인 | public lifecycle 계약만 본다 | test helper class가 하나 늘어난다 |
+
+선택은 세 번째 방식이다. hosted service lifecycle은 public `hosted_service_t`의 `start()`와
+`stop()` 호출 결과로 증명되어야 하며, app host 내부 started list를 노출할 필요가 없다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_module_hosted`에 `failing_start_hosted_service_t`를 추가했다.
+- 두 번째 hosted service가 `start()`에서 실패할 때 첫 번째 service만 `stop()`되고 세 번째
+  service는 시작되지 않는지 검증했다.
+
+### 수정 후 점검
+
+- Goal 17 hosted service lifecycle은 정상 start/stop과 start 실패 cleanup을 모두 회귀 테스트로
+  고정한다.

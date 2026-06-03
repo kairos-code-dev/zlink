@@ -18,15 +18,14 @@ namespace zlink::framework::detail
 class app_state_t
 {
 public:
-  std::vector<hosted_service_t *> start_hosted_services (
-    service_provider_t &provider)
+  void start_hosted_services (
+    service_provider_t &provider,
+    std::vector<hosted_service_t *> &started)
   {
-    std::vector<hosted_service_t *> started;
     for (const auto &service : hosted_services) {
       service->start (provider);
       started.push_back (service.get ());
     }
-    return started;
   }
 
   void stop_hosted_services (
@@ -220,7 +219,7 @@ app_t::run (int argc, char **argv)
   auto provider = _state->services.build_provider ();
   std::vector<hosted_service_t *> started;
   try {
-    started = _state->start_hosted_services (provider);
+    _state->start_hosted_services (provider, started);
     while (!_state->stop_requested.load (std::memory_order_acquire)) {
       std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }

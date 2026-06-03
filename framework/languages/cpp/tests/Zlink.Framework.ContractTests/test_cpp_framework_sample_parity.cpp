@@ -2,14 +2,27 @@
 
 #include "../../samples/Bingo/Shared/sample.hpp"
 #include "../../samples/Bingo/Server/Play/Actors/player_actor_factory.hpp"
+#include "../../samples/Bingo/Server/Play/BingoRoomSpots/Handlers/bingo_room_join_handler.hpp"
 #include "../../samples/Bingo/Server/Play/BingoRoomSpots/Handlers/bingo_room_timer_handler.hpp"
+#include "../../samples/Bingo/Server/Play/BingoRoomSpots/Handlers/start_bingo_game_handler.hpp"
 #include "../../samples/Bingo/Server/Play/BingoRoomSpots/bingo_notification_publisher.hpp"
 #include "../../samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_spot.hpp"
 #include "../../samples/Bingo/Server/Play/EntrySpot/bingo_entry_spot.hpp"
+#include "../../samples/Bingo/Server/Play/Handlers/allocate_bingo_room_handler.hpp"
+#include "../../samples/Bingo/Server/Play/Handlers/bingo_room_directory.hpp"
+#include "../../samples/Bingo/Server/Play/Handlers/ensure_player_actor_handler.hpp"
+#include "../../samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../samples/TicTacToe/Shared/sample.hpp"
 #include "../../samples/TicTacToe/Server/Play/GameSpots/game_notification_publisher.hpp"
+#include "../../samples/TicTacToe/Server/Play/GameSpots/Handlers/place_mark_handler.hpp"
 #include "../../samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_contract_mapper.hpp"
 #include "../../samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_spot.hpp"
+#include "../../samples/TicTacToe/Server/Api/Handlers/authenticate_actor_handler.hpp"
+#include "../../samples/TicTacToe/Server/Api/Handlers/create_match_handler.hpp"
+#include "../../samples/TicTacToe/Server/Play/EntrySpot/Handlers/join_match_handler.hpp"
+#include "../../samples/TicTacToe/Server/Play/EntrySpot/tictactoe_entry_spot.hpp"
+#include "../../samples/TicTacToe/Server/Play/Handlers/create_match_room_handler.hpp"
+#include "../../samples/TicTacToe/Server/Play/Handlers/ensure_player_actor_handler.hpp"
 
 #include <gtest/gtest.h>
 
@@ -277,6 +290,31 @@ TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
     }
     EXPECT_TRUE (name == "Bingo" || name == "TicTacToe")
       << entry.path () << " adds a sample-name variant suffix";
+  }
+}
+
+TEST (CppFrameworkSampleParity, SharedSampleHeadersDoNotAggregateRoleCode)
+{
+  const auto samples_root = cpp_language_root () / "samples";
+  const std::vector<std::filesystem::path> shared_headers {
+    samples_root / "Bingo/Shared/sample.hpp",
+    samples_root / "Bingo/Shared/host_support.hpp",
+    samples_root / "TicTacToe/Shared/sample.hpp",
+    samples_root / "TicTacToe/Shared/host_support.hpp"
+  };
+  const std::vector<std::string> forbidden_patterns {
+    "../Client/",
+    "../Server/",
+    "/Client/",
+    "/Server/"
+  };
+
+  for (const auto &path : shared_headers) {
+    const auto content = read_file (path);
+    for (const auto &pattern : forbidden_patterns) {
+      EXPECT_EQ (content.find (pattern), std::string::npos)
+        << path << " aggregates role-specific code via " << pattern;
+    }
   }
 }
 

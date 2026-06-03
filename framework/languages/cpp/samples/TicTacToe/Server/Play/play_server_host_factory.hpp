@@ -2,6 +2,10 @@
 #pragma once
 
 #include "../../Shared/sample.hpp"
+#include "EntrySpot/tictactoe_entry_spot.hpp"
+#include "GameSpots/tictactoe_game_spot.hpp"
+#include "Handlers/create_match_room_handler.hpp"
+#include "Handlers/ensure_player_actor_handler.hpp"
 
 namespace zlink::samples::tictactoe
 {

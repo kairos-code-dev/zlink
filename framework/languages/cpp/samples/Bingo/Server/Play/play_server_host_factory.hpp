@@ -2,6 +2,10 @@
 #pragma once
 
 #include "../../Shared/sample.hpp"
+#include "BingoRoomSpots/bingo_room.hpp"
+#include "Handlers/allocate_bingo_room_handler.hpp"
+#include "Handlers/bingo_room_directory.hpp"
+#include "Handlers/ensure_player_actor_handler.hpp"
 
 namespace zlink::samples::bingo
 {

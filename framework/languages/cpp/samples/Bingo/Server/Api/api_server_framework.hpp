@@ -2,6 +2,8 @@
 #pragma once
 
 #include "../../Shared/sample.hpp"
+#include "Handlers/authenticate_player_handler.hpp"
+#include "Handlers/match_bingo_handler.hpp"
 
 namespace zlink::samples::bingo
 {

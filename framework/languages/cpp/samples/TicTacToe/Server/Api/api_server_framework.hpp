@@ -2,6 +2,9 @@
 #pragma once
 
 #include "../../Shared/sample.hpp"
+#include "../Play/Handlers/create_match_room_handler.hpp"
+#include "Handlers/authenticate_actor_handler.hpp"
+#include "Handlers/create_match_handler.hpp"
 
 #include <memory>
 

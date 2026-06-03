@@ -8236,3 +8236,40 @@ public header compile 여부가 아니라 HTTPS request와 TLS verification을 �
 - health HTTP route가 aggregate status body만이 아니라 documented HTTP status mapping까지
   지키는지 `framework-http-e2e` label에서 확인한다.
 - 이번 보정 뒤 health HTTP unhealthy status mapping의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 21 Shared sample aggregate 경계 보강
+
+### 발견한 위험 신호
+
+- Goal 21은 `Shared`, `Client`, `Server/Registry`, `Server/Api`, `Server/Play`,
+  `Server/Session` 역할 분리를 완료 기준으로 둔다.
+- `Bingo/Shared/sample.hpp`와 `TicTacToe/Shared/sample.hpp`가 Client header와 Server handler
+  header를 함께 include하고 있었다.
+- 이 구조에서는 server host factory가 필요한 타입을 명시하지 않고 Shared aggregate에 기대게 된다.
+  Shared 역할이 DTO와 공통 설정을 넘어 role-specific 구현을 끌어안는 얕은 모듈이 되는 위험 신호다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 aggregate를 유지하고 문서에 예외로 적는다 | 코드 변경이 작다 | Goal 21의 역할 분리 기준을 약화한다 |
+| Client만 aggregate에서 제거한다 | client/server 직접 결합은 줄어든다 | Server handler가 Shared 표면에 계속 섞인다 |
+| Shared aggregate와 host support를 공통 설정, 계약, lifecycle helper로 줄이고 role 파일이 직접 include한다 | include owner가 명확하고 역할 분리가 테스트로 고정된다 | 각 host/test 파일의 include가 늘어난다 |
+
+선택은 세 번째 방식이다. 각 role 파일이 자신이 사용하는 handler와 runtime 타입을 직접 include하면
+Shared header를 읽는 사용자가 server 내부 구조를 함께 배워야 하지 않는다.
+
+### 적용한 리팩토링
+
+- `Bingo/Shared/sample.hpp`와 `TicTacToe/Shared/sample.hpp`에서 Client/Server 구현 include를
+  제거했다.
+- `Shared/host_support.hpp`는 sample auto-stop hosted service만 제공하도록 축소했다.
+- server host factory와 sample parity test는 필요한 handler/header를 직접 include하게 했다.
+- sample parity test에 Shared sample header가 Client/Server role code를 aggregate하지 않는
+  회귀 테스트를 추가했다.
+
+### 수정 후 점검
+
+- Shared sample header는 DTO, 공통 설정, lifecycle helper만 노출한다.
+- Client sample은 여전히 HTTP client와 Stream Connector를 통해 server process와 통신한다.
+- 이번 보정 뒤 Goal 21 Shared sample aggregate 경계의 즉시 수정 이슈는 0개다.

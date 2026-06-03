@@ -6529,3 +6529,34 @@ non-empty contract로 고정하는 편이 오해가 적다.
 
 - macOS/CLion preset 또는 compile commands 설정이 빠지면 `test_cpp_framework_tooling_contract`가
   실패한다.
+
+## 추가 리뷰. Installed extension target consumer coverage 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 extension target naming과 dependency isolation을 완료 기준에 둔다.
+- install consumer는 `zlink::framework_extension_metrics`만 링크했기 때문에, 나머지 extension
+  alias target이 설치 package에서 소비 가능한지는 직접 확인하지 않았다.
+- extension target이 모두 INTERFACE로 core에만 의존해야 한다면, 설치 consumer가 전부 링크해도
+  Kafka/gRPC/YAML/FlatBuffers dependency를 끌어오지 않아야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| metrics extension만 유지 | consumer가 짧다 | extension package surface 대부분을 확인하지 못한다 |
+| extension별 consumer test를 따로 만든다 | 실패 원인이 세분화된다 | package install/configure 시간이 늘고 중복이 크다 |
+| 기존 install consumer가 모든 extension alias target을 링크 | 하나의 package smoke로 전체 installed target surface를 확인한다 | consumer CMakeLists가 길어진다 |
+
+선택은 세 번째 방식이다. Goal 22의 package gate는 설치된 산출물을 소비하는 증거여야 하므로,
+모든 extension target을 한 consumer에서 링크해 export와 dependency boundary를 함께 확인한다.
+
+### 적용한 리팩토링
+
+- install consumer가 11개 framework extension alias target을 모두 링크하게 했다.
+- consumer 실행 코드가 `known_extensions()` 개수 11개를 확인하게 했다.
+
+### 수정 후 점검
+
+- extension alias target이 export에서 빠지거나 불필요한 외부 dependency를 요구하면
+  `test_cpp_framework_install_consumer`가 configure/build 단계에서 실패한다.

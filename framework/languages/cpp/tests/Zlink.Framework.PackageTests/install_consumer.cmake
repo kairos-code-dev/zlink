@@ -35,6 +35,16 @@ add_executable(consumer main.cpp)
 target_link_libraries(consumer PRIVATE
   zlink::framework
   zlink::framework_extension_metrics
+  zlink::framework_extension_tracing
+  zlink::framework_extension_kafka_bridge
+  zlink::framework_extension_grpc_bridge
+  zlink::framework_extension_http_gateway
+  zlink::framework_extension_advanced_retry
+  zlink::framework_extension_dead_letter_storage
+  zlink::framework_extension_flatbuffers
+  zlink::framework_extension_yaml_config
+  zlink::framework_extension_custom_codec
+  zlink::framework_extension_custom_transport
   zlink::http_client
   zlink::stream_connector
   zlink::stream_connector_codecs)
@@ -70,6 +80,10 @@ main ()
                   .json ()
                   .build ();
   (void) client;
+  auto extensions = zlink::framework::extensions::known_extensions ();
+  if (extensions.size () != 11) {
+    return 2;
+  }
   auto packet =
     zlink::stream_connector::codecs::encode_packet (login_request_t {});
   return packet.name == login_request_t::packet_name ? 0 : 1;

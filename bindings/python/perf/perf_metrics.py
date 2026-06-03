@@ -30,6 +30,11 @@ _native_stamp_payload = (
     if _native_extension is not None
     else None
 )
+_native_active_latency_ns = (
+    getattr(_native_extension, "perf_active_latency_ns", None)
+    if _native_extension is not None
+    else None
+)
 
 
 def _env_int(name, default):

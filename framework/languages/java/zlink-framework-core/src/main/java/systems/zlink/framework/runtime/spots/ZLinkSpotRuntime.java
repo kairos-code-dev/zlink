@@ -77,7 +77,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private final Map<RoutingId, SpotActivation> spots = new HashMap<>();
     private final List<EntrySpotActivation> entrySpots = new ArrayList<>();
     private final ZLinkBackendSpotNode primaryNode;
-    private final ZLinkMessageSerializer serializer = new ZLinkStringMessageSerializer();
+    private final ZLinkMessageSerializer serializer;
     private final ZLinkHandlerFactory handlerFactory;
     private final Map<String, SpotActorJoinHandlerRegistration> actorJoinHandlers;
     private final Map<String, SpotActorPacketHandlerRegistration> actorPacketHandlers;
@@ -118,10 +118,27 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         ZLinkFrameworkRegistration registration,
         ZLinkChannelRuntime channels,
         ZLinkHandlerFactory handlerFactory) {
+        this(
+            backendFactory,
+            adapterOptions,
+            registration,
+            channels,
+            new ZLinkStringMessageSerializer(),
+            handlerFactory);
+    }
+
+    public ZLinkSpotRuntime(
+        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterOptions adapterOptions,
+        ZLinkFrameworkRegistration registration,
+        ZLinkChannelRuntime channels,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerFactory handlerFactory) {
         if (registration.spotNodes().isEmpty()) {
             throw new ZLinkConfigurationException("at least one SpotNode is required");
         }
         this.channels = channels;
+        this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
         this.handlerFactory = handlerFactory;
         ZLinkScannedHandlerCatalog handlerCatalog =
             ZLinkHandlerScanner.scan(registration.handlerPackageMarkers());

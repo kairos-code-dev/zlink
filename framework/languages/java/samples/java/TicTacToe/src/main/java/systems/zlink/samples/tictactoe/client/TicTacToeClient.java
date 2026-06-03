@@ -42,11 +42,7 @@ public final class TicTacToeClient {
         return frameworkClient
             .requestToChannel("tictactoe-api", gameName)
             .packetName("CreateGame")
-            .submitAsync(String.class)
-            .thenApply(gameId -> new CreateGameRes(
-                gameId,
-                TicTacToeSampleDefaults.PlayEndpoint,
-                gameName));
+            .submitAsync(CreateGameRes.class);
     }
 
     private CompletionStage<TicTacToeClientResult> playScenario(

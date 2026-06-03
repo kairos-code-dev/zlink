@@ -14,6 +14,7 @@ import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.streams.ZLinkStreamRuntime;
@@ -61,6 +62,7 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                 adapterOptions,
                 options.registration(),
                 channels,
+                serializer,
                 runtimeHandlers);
         if (this.spots != null) {
             runtimeHandlers.add(ZLinkSpotManager.class, this.spots);
@@ -99,7 +101,7 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
     public static ZLinkFrameworkRuntime start(
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterFactory backendFactory) {
-        return new ZLinkFrameworkRuntime(options, backendFactory, new ZLinkStringMessageSerializer());
+        return new ZLinkFrameworkRuntime(options, backendFactory, serializerFor(options));
     }
 
     public static ZLinkFrameworkRuntime start(
@@ -109,8 +111,15 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
         return new ZLinkFrameworkRuntime(
             options,
             backendFactory,
-            new ZLinkStringMessageSerializer(),
+            serializerFor(options),
             handlerFactory);
+    }
+
+    private static ZLinkMessageSerializer serializerFor(DefaultZLinkFrameworkOptions options) {
+        if (options.registration().codecs().registeredCodecs().contains("json")) {
+            return new ZLinkJsonMessageSerializer();
+        }
+        return new ZLinkStringMessageSerializer();
     }
 
     public ZLinkClient client() {

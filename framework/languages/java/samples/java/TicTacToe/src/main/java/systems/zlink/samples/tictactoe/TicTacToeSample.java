@@ -17,10 +17,12 @@ public final class TicTacToeSample {
     public static void main(String[] args) throws Exception {
         try (ZLinkFramework play = ZLinkFramework.start(PlayServer::configure);
              ZLinkFramework api = ZLinkFramework.start(ApiServer::configure);
-             ZLinkFramework clientFramework = ZLinkFramework.start(options ->
+             ZLinkFramework clientFramework = ZLinkFramework.start(options -> {
+                 options.codecs().addJson();
                  options.addClientServerChannel("tictactoe-api", channel ->
                      channel.enableClient(client -> client.useManualConnections(
-                         endpoints -> endpoints.connect(SampleTopology.ApiEndpoint)))))) {
+                         endpoints -> endpoints.connect(SampleTopology.ApiEndpoint))));
+             })) {
             TicTacToeClient client = new TicTacToeClient(clientFramework.client());
             TicTacToeClientResult result = awaitSample(client.run(new TicTacToeClientOptions(
                 "Morning game",

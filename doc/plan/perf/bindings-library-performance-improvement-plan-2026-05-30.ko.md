@@ -32,7 +32,7 @@
 | 4 | Node | `bindings/node/perf` | `미달 6/144 (4.2%)` | `미달 21/156 (13.5%)` | Multi가 10% gate를 초과하지만, fastpath 변경, single routed 단일 payload native 수신, `sendToSpot` DontWait result-code 경로, `MULTI_PUBSUB` 단일 payload 내부 수신 경로를 적용했고, 추가 public contract-safe 후보는 log에 기각 근거를 남겼다. 평균 성능 비율을 계산한 뒤 다음 언어로 넘어간다. |
 | 5 | Go | `bindings/go/perf` | `미달 6/144 (4.2%)` | `미달 20/192 (10.4%)` | `MULTI_SPOT_REQREP tcp 4096B`는 request message 누수 수정으로 통과했고, 같은 complete 검증에서 `ws 131072B`도 통과로 회복했다. 잔여 routed echo, one-way 64B, builder hot path 후보를 추가로 시험했지만 새 통과를 만들지 못해 Go는 추가 후보 소진으로 정리하고 Rust로 넘어간다. |
 | 6 | Rust | `bindings/rust/perf` | `미달 25/144 (17.4%)` | `미달 11/192 (5.7%)` | Single 공통 송신 loop를 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿔 `PUBSUB wss 64B`를 통과로 올렸다. 이후 table transport full 확인에서 routed 대용량과 `SPOT tcp/ws/tls 1024B`는 기준에 못 닿았고, public recv envelope를 우회하지 않는 추가 후보는 log에 기각 근거를 남겼다. |
-| 7 | Python | `bindings/python/perf` | `미측정` | `미측정` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. `PAIR tcp 64B` public API probe는 C 대비 20.1%로 one-way 최소 기준 30%에 못 닿았다. 아래 Python 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, public Python API 경로로 다시 측정해야 한다. |
+| 7 | Python | `bindings/python/perf` | `미측정` | `미측정` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. `PAIR tcp 64B` public API probe는 C 대비 19.9%로 one-way 최소 기준 30%에 못 닿았다. 아래 Python 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, public Python API 경로로 다시 측정해야 한다. |
 
 ### 1.1 언어별 평균 성능
 
@@ -772,17 +772,19 @@ script의 active phase가 private native bridge helper를 직접 호출하지 �
 같은 날 public API 경로를 유지한 채 socket 전용 native builder, native receive
 owner, native owner가 반환한 bytes tuple 신뢰 경로, owner-backed `ReceivedMessage`
 접근의 직접 호출, 단일 part `Received` materialize fast path, perf payload native
-stamp 후보와 hot native bridge의 handle 직접 읽기 후보를 적용했다. 단일 probe
+stamp 후보, hot native bridge의 handle 직접 읽기 후보, native receive owner,
+single payload send의 direct bytes/bytearray pointer 후보를 적용했다. 단일 probe
 `PAIR tcp 64B` 5초 `runs=3` 기준은 C
 `perf_c_single_linux_20260603_094321_py_retry_c_pair64_5s_runs3.txt`
 1,232,691.2 msg/s 대비 Python
-`perf_python_single_linux_20260603_094312_py_current_retained_direct_handle_pair64_5s_runs3.txt`
-247,517.0 msg/s로 20.1%에 그쳤다. public Python 호출 loop와
+`perf_python_single_linux_20260603_100021_py_native_owner_send_direct_pair64_5s_runs3.txt`
+245,361.4 msg/s로 19.9%에 그쳤다. public Python 호출 loop와
 caller-provided `Received` materialize 비용이 남아 있어 one-way 최소 기준 30%에는
 아직 못 닿는다. `recv_into` C 직접 호출, C part tuple, bridge lookup cache,
 `ReceivedMessage` `__slots__`, 직접 생성자 호출, socket send op freelist, 단일
 receive owner C fast path, native latency decode, perf send bound-method cache,
-inline send factory, callback empty fast path, unbound public send 후보는
+inline send factory, callback empty fast path, unbound public send, native inline
+owner, native `recv_into` replacement, blocking-first receive loop 후보는
 `cProfile`/thread 조합에서 segfault가 재현되거나 5초 측정에서 회귀해 최종 코드에
 남기지 않았다. private active-loop helper를 perf에서 직접 호출하지 않는 조건을
 유지하려면 다음 후보는 public builder/recv container 자체를 더 안전하게 낮은

@@ -6,6 +6,7 @@ import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleTopolog
 
 object ApiServer {
     fun configure(options: ZLinkFrameworkOptions) {
+        options.codecs().addJson()
         options.addHandlersFromPackageOf(ApiServer::class.java)
         options.addClientServerChannel(SampleNames.ApiChannel) { channel ->
             channel.enableServer { server -> server.bind(SampleTopology.ApiEndpoint) }

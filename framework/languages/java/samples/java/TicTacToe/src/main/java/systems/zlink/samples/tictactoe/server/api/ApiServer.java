@@ -9,6 +9,7 @@ public final class ApiServer {
     }
 
     public static void configure(ZLinkFrameworkOptions options) {
+        options.codecs().addJson();
         options.addHandlersFromPackageOf(ApiServer.class);
         options.addClientServerChannel(SampleNames.ApiChannel, channel -> {
             channel.enableServer(server -> server.bind(SampleTopology.ApiEndpoint));

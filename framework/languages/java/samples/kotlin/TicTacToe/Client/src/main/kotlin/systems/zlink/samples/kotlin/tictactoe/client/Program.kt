@@ -5,6 +5,7 @@ import systems.zlink.framework.ZLinkFramework
 
 fun main() = runBlocking {
     ZLinkFramework.start { options ->
+        options.codecs().addJson()
         options.addClientServerChannel("tictactoe-api") { channel ->
             channel.enableClient { client ->
                 client.useManualConnections { endpoints ->

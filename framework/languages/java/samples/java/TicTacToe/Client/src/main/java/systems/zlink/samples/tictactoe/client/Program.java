@@ -10,6 +10,7 @@ public final class Program {
 
     public static void main(String[] args) throws Exception {
         try (ZLinkFramework framework = ZLinkFramework.start(options -> {
+            options.codecs().addJson();
             options.addClientServerChannel("tictactoe-api", channel ->
                 channel.enableClient(client -> client.useManualConnections(
                     endpoints -> endpoints.connect(TicTacToeSampleDefaults.ApiEndpoint))));

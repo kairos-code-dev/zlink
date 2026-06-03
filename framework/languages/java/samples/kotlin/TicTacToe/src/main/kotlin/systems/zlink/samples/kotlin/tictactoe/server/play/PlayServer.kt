@@ -8,6 +8,7 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.sessions.PlaySession
 
 object PlayServer {
     fun configure(options: ZLinkFrameworkOptions) {
+        options.codecs().addJson()
         options.addHandlersFromPackageOf(PlayServer::class.java)
         options.addClientServerChannel(SampleNames.PlayChannel) { channel ->
             channel.enableServer { server -> server.bind(SampleTopology.PlayChannelEndpoint) }

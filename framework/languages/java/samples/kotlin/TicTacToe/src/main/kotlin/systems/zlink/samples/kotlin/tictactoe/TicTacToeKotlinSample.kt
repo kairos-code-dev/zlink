@@ -12,6 +12,7 @@ fun main() = runBlocking {
     ZLinkFramework.start(PlayServer::configure).use {
         ZLinkFramework.start(ApiServer::configure).use { framework ->
             ZLinkFramework.start { options ->
+                options.codecs().addJson()
                 options.addClientServerChannel("tictactoe-api") { channel ->
                     channel.enableClient { client ->
                         client.useManualConnections { endpoints ->

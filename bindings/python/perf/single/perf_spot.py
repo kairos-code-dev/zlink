@@ -68,6 +68,71 @@ def _spot_subscribe_once(spot, storage):
         raise
 
 
+def _read_spot_messages(
+    subscriber,
+    *,
+    args,
+    run_id,
+    probe_ready,
+    stop_received,
+    active_deadline,
+    recv_lock,
+    received,
+    latencies,
+):
+    unpack_from = struct.unpack_from
+    message = zlink.create_topic_message()
+    with zlink.create_poller() as poller:
+        poller.add_socket(subscriber, zlink.PollEventFlag.POLLIN, 0)
+        poll_events = zlink.create_poll_events(1)
+        while not stop_received.is_set():
+            received_message = _spot_subscribe_once(subscriber, message)
+            if received_message is None:
+                poller.wait(poll_events, 2)
+                continue
+            try:
+                if received_message.topic != TOPIC:
+                    continue
+                part = received_message.first_part()
+                data = part.data
+                size = len(data)
+                if size == len(STOP_TOKEN) and bytes(data) == STOP_TOKEN:
+                    stop_received.set()
+                    return
+                if size < HEADER_SIZE:
+                    continue
+                (
+                    magic,
+                    hdr_run_id,
+                    phase,
+                    hdr_msg_size,
+                    _seq,
+                    sent_ts_ns,
+                ) = unpack_from(HEADER_FORMAT, data, 0)
+                if (
+                    magic != HEADER_MAGIC
+                    or hdr_msg_size != args.msg_size
+                    or hdr_run_id != run_id
+                ):
+                    continue
+                if phase == 0:
+                    probe_ready.set()
+                    continue
+                if phase != 1 or time.perf_counter() > active_deadline[0]:
+                    continue
+                now_ns = time.time_ns()
+                latency = (
+                    float(now_ns - sent_ts_ns)
+                    if sent_ts_ns > 0 and now_ns >= sent_ts_ns
+                    else 0.0
+                )
+                with recv_lock:
+                    received[0] += 1
+                    latencies.append(latency)
+            finally:
+                received_message.close()
+
+
 def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="spot")
     run_id = benchmark_run_id()
@@ -130,71 +195,22 @@ def main(argv=None):
                                 publisher_node.last_endpoint()
                             )
                             subscriber.set_subscription(TOPIC)
-
-                            def on_dispatch(current_spot, info):
-                                if (
-                                    info.event
-                                    != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE
-                                ):
-                                    return
-                                unpack_from = struct.unpack_from
-                                message = zlink.create_topic_message()
-                                while True:
-                                    received_message = _spot_subscribe_once(
-                                        current_spot, message
-                                    )
-                                    if received_message is None:
-                                        return
-                                    try:
-                                        if received_message.topic != TOPIC:
-                                            continue
-                                        part = received_message.first_part()
-                                        data = part.data
-                                        size = len(data)
-                                        if (
-                                            size == len(STOP_TOKEN)
-                                            and bytes(data) == STOP_TOKEN
-                                        ):
-                                            stop_received.set()
-                                            return
-                                        if size < HEADER_SIZE:
-                                            continue
-                                        (
-                                            magic,
-                                            hdr_run_id,
-                                            phase,
-                                            hdr_msg_size,
-                                            _seq,
-                                            sent_ts_ns,
-                                        ) = unpack_from(
-                                            HEADER_FORMAT, data, 0
-                                        )
-                                        if (
-                                            magic != HEADER_MAGIC
-                                            or hdr_msg_size != args.msg_size
-                                            or hdr_run_id != run_id
-                                        ):
-                                            continue
-                                        if phase == 0:
-                                            if not probe_ready.is_set():
-                                                probe_ready.set()
-                                            continue
-                                        if phase != 1:
-                                            continue
-                                        if time.perf_counter() > active_deadline[0]:
-                                            continue
-                                        now_ns = time.time_ns()
-                                        if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
-                                            latency = float(now_ns - sent_ts_ns)
-                                        else:
-                                            latency = 0.0
-                                        with recv_lock:
-                                            received[0] += 1
-                                            latencies.append(latency)
-                                    finally:
-                                        received_message.close()
-
-                            subscriber.on_dispatch_event(on_dispatch)
+                            receiver = threading.Thread(
+                                target=_read_spot_messages,
+                                kwargs={
+                                    "subscriber": subscriber,
+                                    "args": args,
+                                    "run_id": run_id,
+                                    "probe_ready": probe_ready,
+                                    "stop_received": stop_received,
+                                    "active_deadline": active_deadline,
+                                    "recv_lock": recv_lock,
+                                    "received": received,
+                                    "latencies": latencies,
+                                },
+                                daemon=True,
+                            )
+                            receiver.start()
 
                             ready_deadline = time.monotonic() + (
                                 resolve_single_connect_ready_timeout_ms()
@@ -255,6 +271,7 @@ def main(argv=None):
                                 _env_int("PERF_SINGLE_STOP_WAIT_MS", 2000)
                                 / 1000.0
                             )
+                            receiver.join(timeout=1.0)
 
                             with recv_lock:
                                 collected = list(latencies)

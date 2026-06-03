@@ -59,7 +59,6 @@ typedef struct native_parts_owner_t
 {
     PyObject_HEAD
     zlink_msg_t *parts;
-    zlink_msg_t inline_part;
     char *open_parts;
     char inline_open_part;
     Py_ssize_t part_count;
@@ -453,8 +452,7 @@ native_parts_owner_close_all (native_parts_owner_t *owner)
                 owner->open_parts[i] = 0;
             }
         }
-        if (owner->parts != &owner->inline_part)
-            free (owner->parts);
+        free (owner->parts);
         owner->parts = NULL;
     }
 }
@@ -573,8 +571,7 @@ native_parts_owner_close_part (native_parts_owner_t *owner, PyObject *index_obj)
         }
     }
     if (!any_open) {
-        if (owner->parts != &owner->inline_part)
-            free (owner->parts);
+        free (owner->parts);
         owner->parts = NULL;
         owner->closed = 1;
     }
@@ -628,7 +625,6 @@ build_native_parts_owner (received_parts_t *received)
     if (!owner)
         return NULL;
     owner->parts = received->parts;
-    memset (&owner->inline_part, 0, sizeof (owner->inline_part));
     owner->part_count = received->count;
     owner->closed = 0;
     owner->open_parts = NULL;
@@ -649,68 +645,6 @@ build_native_parts_owner (received_parts_t *received)
     received->parts = NULL;
     received->count = 0;
     received->capacity = 0;
-    return (PyObject *) owner;
-}
-
-static PyObject *
-build_native_single_part_owner (zlink_msg_t *part)
-{
-    native_parts_owner_t *owner = NULL;
-
-    owner = PyObject_New (native_parts_owner_t, &native_parts_owner_type);
-    if (!owner)
-        return NULL;
-    owner->inline_part = *part;
-    owner->parts = &owner->inline_part;
-    owner->part_count = 1;
-    owner->closed = 0;
-    owner->inline_open_part = 1;
-    owner->open_parts = &owner->inline_open_part;
-    return (PyObject *) owner;
-}
-
-static PyObject *
-build_bytes_parts_owner (received_parts_t *received)
-{
-    bytes_parts_owner_t *owner = NULL;
-    PyObject *parts_obj = PyTuple_New (received->count);
-
-    if (!parts_obj)
-        return NULL;
-    for (Py_ssize_t i = 0; i < received->count; ++i) {
-        void *data = zlink_msg_data (&received->parts[i]);
-        size_t size = zlink_msg_size (&received->parts[i]);
-        PyObject *part = PyBytes_FromStringAndSize ((const char *) data,
-                                                    (Py_ssize_t) size);
-        if (!part) {
-            Py_DECREF (parts_obj);
-            return NULL;
-        }
-        PyTuple_SET_ITEM (parts_obj, i, part);
-    }
-
-    owner = PyObject_New (bytes_parts_owner_t, &bytes_parts_owner_type);
-    if (!owner) {
-        Py_DECREF (parts_obj);
-        return NULL;
-    }
-    owner->parts = parts_obj;
-    owner->part_count = received->count;
-    owner->closed = 0;
-    owner->open_parts = NULL;
-    owner->inline_open_part = 0;
-    if (received->count == 1) {
-        owner->inline_open_part = 1;
-        owner->open_parts = &owner->inline_open_part;
-    } else {
-        owner->open_parts = PyMem_Calloc ((size_t) received->count, sizeof (char));
-        if (!owner->open_parts) {
-            Py_DECREF (owner);
-            PyErr_NoMemory ();
-            return NULL;
-        }
-        memset (owner->open_parts, 1, (size_t) received->count);
-    }
     return (PyObject *) owner;
 }
 
@@ -824,21 +758,37 @@ socket_send_op_submit (socket_send_op_t *op, PyObject *Py_UNUSED (ignored))
     op->submitted = 1;
     if (!op->parts) {
         Py_buffer view = { 0 };
+        const char *payload_data = NULL;
+        Py_ssize_t payload_size = 0;
+        int has_view = 0;
         zlink_msg_t part;
 
-        if (PyObject_GetBuffer (payload, &view, PyBUF_CONTIG_RO) != 0)
-            return NULL;
-        if (zlink_msg_init_size (&part, (size_t) view.len)
+        if (PyByteArray_Check (payload)) {
+            payload_data = PyByteArray_AS_STRING (payload);
+            payload_size = PyByteArray_GET_SIZE (payload);
+        } else if (PyBytes_Check (payload)) {
+            payload_data = PyBytes_AS_STRING (payload);
+            payload_size = PyBytes_GET_SIZE (payload);
+        } else {
+            if (PyObject_GetBuffer (payload, &view, PyBUF_CONTIG_RO) != 0)
+                return NULL;
+            payload_data = (const char *) view.buf;
+            payload_size = view.len;
+            has_view = 1;
+        }
+        if (zlink_msg_init_size (&part, (size_t) payload_size)
             != ZLINK_CONFIG_OK) {
             err = zlink_errno ();
-            PyBuffer_Release (&view);
+            if (has_view)
+                PyBuffer_Release (&view);
             if (err != 0)
                 errno = err;
             PyErr_SetFromErrnoWithFilename (PyExc_OSError, NULL);
             return NULL;
         }
-        if (view.len > 0)
-            memcpy (zlink_msg_data (&part), view.buf, (size_t) view.len);
+        if (payload_size > 0)
+            memcpy (zlink_msg_data (&part), payload_data,
+                    (size_t) payload_size);
 
         Py_BEGIN_ALLOW_THREADS
         rc = zlink_send_part (op->handle, &part, (zlink_send_flags_t) op->flags,
@@ -849,7 +799,8 @@ socket_send_op_submit (socket_send_op_t *op, PyObject *Py_UNUSED (ignored))
         }
         Py_END_ALLOW_THREADS
 
-        PyBuffer_Release (&view);
+        if (has_view)
+            PyBuffer_Release (&view);
         if (rc == ZLINK_SUBMIT_OK)
             Py_RETURN_TRUE;
         if ((op->flags & ZLINK_DONTWAIT) && rc == ZLINK_SUBMIT_BACKPRESSURED)
@@ -907,13 +858,14 @@ static PyTypeObject socket_send_op_type = {
 };
 
 static PyObject *
-py_socket_send_op (PyObject *self, PyObject *args)
+py_socket_send_op (PyObject *self, PyObject *handle_obj)
 {
     unsigned long long handle_value = 0;
     socket_send_op_t *op = NULL;
 
     (void) self;
-    if (!PyArg_ParseTuple (args, "K", &handle_value))
+    handle_value = PyLong_AsUnsignedLongLong (handle_obj);
+    if (handle_value == (unsigned long long) -1 && PyErr_Occurred ())
         return NULL;
     op = PyObject_New (socket_send_op_t, &socket_send_op_type);
     if (!op)
@@ -950,6 +902,22 @@ write_le64 (unsigned char *dst, uint64_t value)
         dst[i] = (unsigned char) ((value >> (i * 8)) & 0xffu);
 }
 
+static uint32_t
+read_le32 (const unsigned char *src)
+{
+    return ((uint32_t) src[0]) | ((uint32_t) src[1] << 8)
+           | ((uint32_t) src[2] << 16) | ((uint32_t) src[3] << 24);
+}
+
+static uint64_t
+read_le64 (const unsigned char *src)
+{
+    uint64_t value = 0;
+    for (int i = 7; i >= 0; --i)
+        value = (value << 8) | (uint64_t) src[i];
+    return value;
+}
+
 static PyObject *
 py_perf_stamp_payload (PyObject *self, PyObject *args)
 {
@@ -984,6 +952,53 @@ py_perf_stamp_payload (PyObject *self, PyObject *args)
     PyBuffer_Release (&view);
     Py_INCREF (payload);
     return payload;
+}
+
+static PyObject *
+py_perf_active_latency_ns (PyObject *self, PyObject *args)
+{
+    static const char stop_token[] = "__zlink_perf_stop__";
+    PyObject *data_obj = NULL;
+    Py_buffer data = { 0 };
+    int msg_size = 0;
+    unsigned int run_id = 0;
+    const unsigned char *src = NULL;
+    uint32_t magic = 0;
+    uint32_t header_run_id = 0;
+    uint8_t phase = 0;
+    uint32_t header_msg_size = 0;
+    int64_t sent_ts_ns = 0;
+    uint64_t now = 0;
+
+    (void) self;
+    if (!PyArg_ParseTuple (args, "OiI", &data_obj, &msg_size, &run_id))
+        return NULL;
+    if (PyObject_GetBuffer (data_obj, &data, PyBUF_CONTIG_RO) != 0)
+        return NULL;
+    if (data.len == (Py_ssize_t) (sizeof (stop_token) - 1)
+        && memcmp (data.buf, stop_token, sizeof (stop_token) - 1) == 0) {
+        PyBuffer_Release (&data);
+        return PyFloat_FromDouble (-1.0);
+    }
+    if (data.len != msg_size || data.len < 29) {
+        PyBuffer_Release (&data);
+        return PyFloat_FromDouble (-2.0);
+    }
+    src = (const unsigned char *) data.buf;
+    magic = read_le32 (src);
+    header_run_id = read_le32 (src + 4);
+    phase = src[8];
+    header_msg_size = read_le32 (src + 9);
+    sent_ts_ns = (int64_t) read_le64 (src + 21);
+    PyBuffer_Release (&data);
+
+    if (magic != 0x5A4C4E4Bu || phase != 1 || header_msg_size != (uint32_t) msg_size
+        || header_run_id != run_id)
+        return PyFloat_FromDouble (-2.0);
+    now = now_ns ();
+    if (sent_ts_ns > 0 && now >= (uint64_t) sent_ts_ns)
+        return PyFloat_FromDouble ((double) (now - (uint64_t) sent_ts_ns));
+    return PyFloat_FromDouble (0.0);
 }
 
 static uint64_t
@@ -4574,13 +4589,10 @@ py_recv_owner (PyObject *self, PyObject *args)
     int err = 0;
     zlink_routing_id_t routing_copy;
     int has_routing = 0;
-    zlink_msg_t single_part;
-    int has_single_part = 0;
     received_parts_t received = { 0 };
 
     (void) self;
     memset (&routing_copy, 0, sizeof (routing_copy));
-    memset (&single_part, 0, sizeof (single_part));
     if (!PyArg_ParseTuple (args, "Ki", &handle_value, &flags))
         return NULL;
 
@@ -4611,11 +4623,6 @@ py_recv_owner (PyObject *self, PyObject *args)
             routing_copy = *source_rid;
             has_routing = 1;
         }
-        if (received.count == 0 && has_more == ZLINK_PART_FINAL) {
-            single_part = part;
-            has_single_part = 1;
-            break;
-        }
         if (append_received_part (&received, &part) != 0) {
             zlink_msg_close (&part);
             rc = ZLINK_RECV_INTERNAL_ERROR;
@@ -4635,14 +4642,9 @@ py_recv_owner (PyObject *self, PyObject *args)
     }
 
     PyObject *routing_obj = Py_None;
-    PyObject *owner_obj = has_single_part
-                           ? build_native_single_part_owner (&single_part)
-                           : build_native_parts_owner (&received);
+    PyObject *owner_obj = build_native_parts_owner (&received);
     if (!owner_obj) {
-        if (has_single_part)
-            zlink_msg_close (&single_part);
-        else
-            close_received_parts (&received);
+        close_received_parts (&received);
         return NULL;
     }
     if (has_routing) {
@@ -4657,202 +4659,6 @@ py_recv_owner (PyObject *self, PyObject *args)
         Py_INCREF (Py_None);
     }
     return Py_BuildValue ("iiNN", rc, err, routing_obj, owner_obj);
-}
-
-static PyObject *
-build_received_message_tuple (PyObject *message_cls, PyObject *owner,
-                              Py_ssize_t part_count)
-{
-    PyObject *factory = PyObject_GetAttrString (message_cls, "_from_owner");
-    PyObject *parts = NULL;
-
-    if (!factory)
-        return NULL;
-    parts = PyTuple_New (part_count);
-    if (!parts) {
-        Py_DECREF (factory);
-        return NULL;
-    }
-    for (Py_ssize_t i = 0; i < part_count; ++i) {
-        PyObject *index = PyLong_FromSsize_t (i);
-        PyObject *message = NULL;
-        if (!index) {
-            Py_DECREF (factory);
-            Py_DECREF (parts);
-            return NULL;
-        }
-        message = PyObject_CallFunctionObjArgs (factory, owner, index, NULL);
-        Py_DECREF (index);
-        if (!message) {
-            Py_DECREF (factory);
-            Py_DECREF (parts);
-            return NULL;
-        }
-        PyTuple_SET_ITEM (parts, i, message);
-    }
-    Py_DECREF (factory);
-    return parts;
-}
-
-static PyObject *
-build_routing_object (PyObject *routing_cls, const zlink_routing_id_t *routing)
-{
-    PyObject *routing_bytes = NULL;
-    PyObject *factory = NULL;
-    PyObject *routing_obj = NULL;
-
-    if (!routing || routing->size == 0) {
-        Py_INCREF (Py_None);
-        return Py_None;
-    }
-    routing_bytes =
-      PyBytes_FromStringAndSize ((const char *) routing->data,
-                                 (Py_ssize_t) routing->size);
-    if (!routing_bytes)
-        return NULL;
-    factory = PyObject_GetAttrString (routing_cls, "from_");
-    if (!factory) {
-        Py_DECREF (routing_bytes);
-        return NULL;
-    }
-    routing_obj = PyObject_CallFunctionObjArgs (factory, routing_bytes, NULL);
-    Py_DECREF (routing_bytes);
-    Py_DECREF (factory);
-    return routing_obj;
-}
-
-static int
-replace_received_object (PyObject *received, PyObject *owner, PyObject *parts,
-                         PyObject *routing_obj)
-{
-    PyObject *current_owner = PyObject_GetAttrString (received, "_owner");
-    PyObject *close_result = NULL;
-
-    if (!current_owner)
-        return -1;
-    if (current_owner != Py_None) {
-        close_result = PyObject_CallMethod (current_owner, "close", NULL);
-        if (!close_result) {
-            Py_DECREF (current_owner);
-            return -1;
-        }
-        Py_DECREF (close_result);
-    }
-    Py_DECREF (current_owner);
-
-    if (PyObject_SetAttrString (received, "_owner", owner) != 0)
-        return -1;
-    if (PyObject_SetAttrString (received, "parts", parts) != 0)
-        return -1;
-    if (PyObject_SetAttrString (received, "routing_id", routing_obj) != 0)
-        return -1;
-    if (PyObject_SetAttrString (received, "spot_rid", Py_None) != 0)
-        return -1;
-    if (PyObject_SetAttrString (received, "request_seq", Py_None) != 0)
-        return -1;
-    if (PyObject_SetAttrString (received, "_reply_sender", Py_None) != 0)
-        return -1;
-    if (PyObject_SetAttrString (received, "_send_sender", Py_None) != 0)
-        return -1;
-    return 0;
-}
-
-static PyObject *
-py_recv_into_message (PyObject *self, PyObject *args)
-{
-    PyObject *received_obj = NULL;
-    PyObject *message_cls = NULL;
-    PyObject *routing_cls = NULL;
-    unsigned long long handle_value = 0;
-    int flags = 0;
-    int rc = ZLINK_RECV_OK;
-    int err = 0;
-    zlink_routing_id_t routing_copy;
-    int has_routing = 0;
-    received_parts_t received = { 0 };
-
-    (void) self;
-    memset (&routing_copy, 0, sizeof (routing_copy));
-    if (!PyArg_ParseTuple (args, "OKiOO", &received_obj, &handle_value, &flags,
-                           &message_cls, &routing_cls))
-        return NULL;
-
-    void *handle = (void *) (uintptr_t) handle_value;
-    Py_BEGIN_ALLOW_THREADS
-    while (1) {
-        const zlink_routing_id_t *source_rid = NULL;
-        zlink_msg_t part;
-        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        zlink_recv_flags_t recv_flags =
-          received.count == 0 ? (zlink_recv_flags_t) flags : ZLINK_DONTWAIT;
-
-        if (zlink_msg_init (&part) != ZLINK_CONFIG_OK) {
-            err = zlink_errno ();
-            if (err == 0)
-                err = ENOMEM;
-            rc = ZLINK_RECV_INTERNAL_ERROR;
-            break;
-        }
-        rc = zlink_recv_part (handle, &source_rid, &part, &has_more,
-                              recv_flags);
-        if (rc != ZLINK_RECV_OK) {
-            err = zlink_errno ();
-            zlink_msg_close (&part);
-            break;
-        }
-        if (received.count == 0 && source_rid && source_rid->size > 0) {
-            routing_copy = *source_rid;
-            has_routing = 1;
-        }
-        if (append_received_part (&received, &part) != 0) {
-            zlink_msg_close (&part);
-            rc = ZLINK_RECV_INTERNAL_ERROR;
-            err = ENOMEM;
-            break;
-        }
-        if (has_more == ZLINK_PART_FINAL)
-            break;
-    }
-    Py_END_ALLOW_THREADS
-
-    if (rc != ZLINK_RECV_OK) {
-        close_received_parts (&received);
-        if ((flags & ZLINK_DONTWAIT) && err == EAGAIN)
-            Py_RETURN_FALSE;
-        return Py_BuildValue ("ii", rc, err);
-    }
-
-    PyObject *owner_obj = build_native_parts_owner (&received);
-    PyObject *parts_obj = NULL;
-    PyObject *routing_obj = NULL;
-    if (!owner_obj)
-        return NULL;
-    parts_obj =
-      build_received_message_tuple (message_cls, owner_obj,
-                                    ((native_parts_owner_t *) owner_obj)
-                                      ->part_count);
-    if (!parts_obj) {
-        Py_DECREF (owner_obj);
-        return NULL;
-    }
-    routing_obj =
-      build_routing_object (routing_cls, has_routing ? &routing_copy : NULL);
-    if (!routing_obj) {
-        Py_DECREF (parts_obj);
-        Py_DECREF (owner_obj);
-        return NULL;
-    }
-    if (replace_received_object (received_obj, owner_obj, parts_obj, routing_obj)
-        != 0) {
-        Py_DECREF (routing_obj);
-        Py_DECREF (parts_obj);
-        Py_DECREF (owner_obj);
-        return NULL;
-    }
-    Py_DECREF (routing_obj);
-    Py_DECREF (parts_obj);
-    Py_DECREF (owner_obj);
-    Py_RETURN_TRUE;
 }
 
 static PyObject *
@@ -5336,7 +5142,7 @@ py_spot_recv_parts (PyObject *self, PyObject *args)
 }
 
 static PyMethodDef zlink_native_methods[] = {
-    { "socket_send_op", py_socket_send_op, METH_VARARGS,
+    { "socket_send_op", py_socket_send_op, METH_O,
       "Create a native simple socket send builder." },
     { "send_parts", py_send_parts, METH_VARARGS,
       "Submit multipart payload parts through zlink_send_part." },
@@ -5354,8 +5160,6 @@ static PyMethodDef zlink_native_methods[] = {
       "Receive multipart payload parts through zlink_recv_part." },
     { "recv_owner", py_recv_owner, METH_VARARGS,
       "Receive multipart payload parts as a native bytes owner." },
-    { "recv_into_message", py_recv_into_message, METH_VARARGS,
-      "Receive multipart payload parts into a Python Received object." },
     { "subscribe_parts", py_subscribe_parts, METH_VARARGS,
       "Receive topic multipart payload parts through zlink_subscribe_part." },
     { "router_recv_parts", py_router_recv_parts, METH_VARARGS,
@@ -5407,6 +5211,8 @@ static PyMethodDef zlink_native_methods[] = {
       "Return native stream echo counters." },
     { "perf_stamp_payload", py_perf_stamp_payload, METH_VARARGS,
       "Stamp a perf payload header." },
+    { "perf_active_latency_ns", py_perf_active_latency_ns, METH_VARARGS,
+      "Classify a perf payload and return active latency ns." },
     { NULL, NULL, 0, NULL },
 };
 

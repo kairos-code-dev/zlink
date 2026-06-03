@@ -206,14 +206,14 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
-            String reply = context.getBean(ZLinkClient.class)
-                .requestToChannel("profile", "42")
+            ProfileReply reply = context.getBean(ZLinkClient.class)
+                .requestToChannel("profile", new ProfileRequest("42"))
                 .packetName("GetProfile")
-                .submitAsync(String.class)
+                .submitAsync(ProfileReply.class)
                 .toCompletableFuture()
                 .join();
 
-            assertEquals("profile:42", reply);
+            assertEquals(new ProfileReply("profile:42"), reply);
             assertTrue(context.getBean(ZLinkFrameworkLifecycle.class).isRunning());
         }
     }
@@ -342,6 +342,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkOptionsCustomizer scannedHandlerCustomizer(String springAnnotatedEndpoint) {
             return options -> {
+                options.codecs().addJson();
                 options.addHandlersFromPackageOf(ScannedHandlerConfig.class);
                 options.addClientServerChannel("profile", channel -> {
                     channel.enableServer(server -> server.bind(springAnnotatedEndpoint));
@@ -432,9 +433,16 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @ZLinkRequest(packetName = "GetProfile")
-        public CompletionStage<String> handleAsync(String request) {
-            return CompletableFuture.completedFuture(dependency.format(request));
+        public CompletionStage<ProfileReply> handleAsync(ProfileRequest request) {
+            return CompletableFuture.completedFuture(
+                new ProfileReply(dependency.format(request.profileId())));
         }
+    }
+
+    public record ProfileRequest(String profileId) {
+    }
+
+    public record ProfileReply(String value) {
     }
 
     private static systems.zlink.framework.channels.ZLinkRequestContext requestContext() {

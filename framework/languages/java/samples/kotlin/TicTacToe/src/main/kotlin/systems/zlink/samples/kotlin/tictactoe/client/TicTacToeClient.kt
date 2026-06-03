@@ -57,11 +57,10 @@ class TicTacToeClient(
         )
 
     private suspend fun createGame(gameName: String): CreateGameRes {
-        val gameId = frameworkClient
+        return frameworkClient
             .requestToChannel("tictactoe-api", gameName)
             .packetName("CreateGame")
-            .awaitReply<String>()
-        return CreateGameRes(gameId, "tcp://127.0.0.1:47302", gameName)
+            .awaitReply<CreateGameRes>()
     }
 
     private fun playerConnector(endpoint: String, actorId: String): ZLinkStreamConnector =

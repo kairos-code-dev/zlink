@@ -497,6 +497,12 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/shared/contracts/CreateGameRes.java",
             "systems/zlink/samples/tictactoe/shared/contracts/JoinGameRes.java",
             "systems/zlink/samples/tictactoe/shared/contracts/PlaceMarkRes.java"));
+        assertTrue(sampleFileContains("java", "TicTacToe", "Client/src/main/java",
+                "systems/zlink/samples/tictactoe/client/Program.java", "TicTacToeClient"),
+            "Java TicTacToe Client role Program must live in the Client project folder");
+        assertTrue(sampleFileContains("java", "TicTacToe", "Server/src/main/java",
+                "systems/zlink/samples/tictactoe/server/Program.java", "PlayServer::configure"),
+            "Java TicTacToe Server role Program must live in the Server project folder");
 
         String mainSource = sampleJavaSource(
             "TicTacToe",
@@ -519,8 +525,16 @@ final class SampleReleaseGateContractTest {
 
         assertTrue(mainSource.contains("ZLinkFramework.start"),
             "TicTacToe direct sample must start the framework through the public facade");
+        assertTrue(mainSource.contains("options.codecs().addJson()")
+                && apiSource.contains("options.codecs().addJson()")
+                && playSource.contains("options.codecs().addJson()"),
+            "TicTacToe direct Api, Play, and client framework hosts must enable JSON codecs for typed contracts");
         assertTrue(clientSource.contains(".requestToChannel("),
             "TicTacToe direct sample must use framework channel request path");
+        assertTrue(clientSource.contains(".submitAsync(CreateGameRes.class)")
+                && createGameHandlerSource.contains("CompletionStage<CreateGameRes>")
+                && createGameHandlerSource.contains(".submitAsync(CreateGameRes.class)"),
+            "TicTacToe direct CreateGame channel path must use the CreateGameRes contract object");
         assertTrue(clientSource.contains("ZLinkStreamConnectorFactory.create"),
             "TicTacToe Client role must use the public stream connector for play requests");
         assertFalse(clientSource.contains("systems.zlink.samples.tictactoe.server."),
@@ -539,6 +553,15 @@ final class SampleReleaseGateContractTest {
             "TicTacToe direct Api handlers must use annotation-based request mapping");
         assertTrue(playSource.contains(".addSpotMesh("),
             "TicTacToe direct sample must expose the Play Spot role");
+        assertTrue(playSource.contains("addHandlersFromPackageOf")
+                && playSource.contains("addHandlerGroup(\"play\")"),
+            "TicTacToe Play role must expose annotation-discovered play channel handlers");
+        String playCreateGameHandlerSource = sampleJavaSource(
+            "TicTacToe",
+            "systems/zlink/samples/tictactoe/server/play/handlers/CreateGameHandler.java");
+        assertTrue(playCreateGameHandlerSource.contains("CompletionStage<CreateGameRes>")
+                && playCreateGameHandlerSource.contains("new CreateGameRes("),
+            "TicTacToe Play CreateGame handler must reply with the typed CreateGameRes contract");
         assertTrue(playSource.contains(".addStreamNode("),
             "TicTacToe direct sample must register the STREAM entry point");
         assertFalse(mainSource.contains("CreateGameHandler"),
@@ -569,6 +592,12 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/server/play/handlers/CreateGameHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/sessions/PlaySession.kt",
             "systems/zlink/samples/kotlin/tictactoe/shared/contracts/Contracts.kt"));
+        assertTrue(sampleFileContains("kotlin", "TicTacToe", "Client/src/main/kotlin",
+                "systems/zlink/samples/kotlin/tictactoe/client/Program.kt", "TicTacToeClient"),
+            "Kotlin TicTacToe Client role Program must live in the Client project folder");
+        assertTrue(sampleFileContains("kotlin", "TicTacToe", "Server/src/main/kotlin",
+                "systems/zlink/samples/kotlin/tictactoe/server/Program.kt", "PlayServer::configure"),
+            "Kotlin TicTacToe Server role Program must live in the Server project folder");
 
         String mainSource = sampleKotlinSource(
             "TicTacToe",
@@ -591,8 +620,16 @@ final class SampleReleaseGateContractTest {
 
         assertTrue(mainSource.contains("ZLinkFramework.start"),
             "Kotlin TicTacToe direct sample must start the framework through the public facade");
+        assertTrue(mainSource.contains("options.codecs().addJson()")
+                && apiSource.contains("options.codecs().addJson()")
+                && playSource.contains("options.codecs().addJson()"),
+            "Kotlin TicTacToe direct Api, Play, and client framework hosts must enable JSON codecs for typed contracts");
         assertTrue(clientSource.contains(".requestToChannel("),
             "Kotlin TicTacToe direct sample must use framework channel request path");
+        assertTrue(clientSource.contains(".awaitReply<CreateGameRes>()")
+                && createGameHandlerSource.contains("CompletionStage<CreateGameRes>")
+                && createGameHandlerSource.contains(".submitAsync(CreateGameRes::class.java)"),
+            "Kotlin TicTacToe direct CreateGame channel path must use the CreateGameRes contract object");
         assertTrue(clientSource.contains("ZLinkStreamConnectorFactory.create"),
             "Kotlin TicTacToe Client role must use the public stream connector for play requests");
         assertFalse(clientSource.contains("systems.zlink.samples.kotlin.tictactoe.server."),
@@ -611,6 +648,15 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe direct Api handlers must use annotation-based request mapping");
         assertTrue(playSource.contains(".addSpotMesh("),
             "Kotlin TicTacToe direct sample must expose the Play Spot role");
+        assertTrue(playSource.contains("addHandlersFromPackageOf")
+                && playSource.contains("addHandlerGroup(\"play\")"),
+            "Kotlin TicTacToe Play role must expose annotation-discovered play channel handlers");
+        String playCreateGameHandlerSource = sampleKotlinSource(
+            "TicTacToe",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/handlers/CreateGameHandler.kt");
+        assertTrue(playCreateGameHandlerSource.contains("CompletionStage<CreateGameRes>")
+                && playCreateGameHandlerSource.contains("CreateGameRes("),
+            "Kotlin TicTacToe Play CreateGame handler must reply with the typed CreateGameRes contract");
         assertTrue(playSource.contains(".addStreamNode("),
             "Kotlin TicTacToe direct sample must register the STREAM entry point");
         assertFalse(mainSource.contains("CreateGameHandler"),

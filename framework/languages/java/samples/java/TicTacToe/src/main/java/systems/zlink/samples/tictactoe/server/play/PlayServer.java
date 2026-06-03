@@ -11,6 +11,7 @@ public final class PlayServer {
     }
 
     public static void configure(ZLinkFrameworkOptions options) {
+        options.codecs().addJson();
         options.addHandlersFromPackageOf(PlayServer.class);
         options.addClientServerChannel(SampleNames.PlayChannel, channel -> {
             channel.enableServer(server -> server.bind(SampleTopology.PlayChannelEndpoint));

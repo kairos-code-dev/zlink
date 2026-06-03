@@ -49,6 +49,7 @@ from perf_metrics import (
     transport_endpoint,
     wait_monitor_event,
     _require_zlink,
+    _native_active_latency_ns,
 )
 
 
@@ -290,7 +291,6 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
     no_data = zlink_mod.RecvResult.NO_DATA
     storage = _recv_storage(method)
     poller, poll_events = new_socket_poller(sock, zlink_mod.PollEventFlag.POLLIN)
-    unpack_from = struct.unpack_from
     perf_counter = time.perf_counter
     time_ns = time.time_ns
     count = received
@@ -320,13 +320,29 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                 try:
                     parts = storage.parts
                     data = parts[-1].data if parts else memoryview(b"")
+                    if _native_active_latency_ns is not None:
+                        latency_ns = _native_active_latency_ns(
+                            data,
+                            msg_size,
+                            run_id,
+                        )
+                        if latency_ns == -1.0:
+                            stop_received = True
+                            break
+                        if latency_ns < 0.0:
+                            continue
+                        if perf_counter() >= active_end:
+                            continue
+                        count += 1
+                        latencies.append(latency_ns)
+                        continue
                     if len(data) == len(stop_view) and data == stop_view:
                         stop_received = True
                         break
                     if len(data) != msg_size or len(data) < HEADER_SIZE:
                         continue
                     magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
-                        unpack_from(HEADER_FORMAT, data, 0)
+                        struct.unpack_from(HEADER_FORMAT, data, 0)
                     )
                     if (
                         magic != HEADER_MAGIC

@@ -103,6 +103,16 @@ framework/languages/java/samples/
       settings.gradle.kts
       README.md
       run_sample.sh
+      Client/
+        build.gradle.kts
+        README.md
+        src/main/java/systems/zlink/samples/tictactoe/client/
+      Server/
+        build.gradle.kts
+        src/main/java/systems/zlink/samples/tictactoe/server/
+      Shared/
+        build.gradle.kts
+        src/main/java/systems/zlink/samples/tictactoe/shared/contracts/
       src/main/java/systems/zlink/samples/tictactoe/
     TicTacToe.SessionGateway/
       build.gradle.kts
@@ -134,6 +144,16 @@ framework/languages/java/samples/
       settings.gradle.kts
       README.md
       run_sample.sh
+      Client/
+        build.gradle.kts
+        README.md
+        src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/client/
+      Server/
+        build.gradle.kts
+        src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/server/
+      Shared/
+        build.gradle.kts
+        src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/shared/contracts/
       src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/
     TicTacToe.SessionGateway/
       build.gradle.kts
@@ -163,15 +183,23 @@ framework/languages/java/samples/
 
 각 sample은 aggregate build entry point와 `run_sample.sh`를 가진다. `run_samples.sh`는
 Java와 Kotlin의 필수 sample을 모두 실행한다. Java와 Kotlin sample은 Gradle 표준 source
-layout을 따른다. `.NET` sample의 `Client`, `Server`, `Shared` 역할 구분은 Java/Kotlin에서는
-package와 class 이름으로 표현한다. 이렇게 해야 standalone Gradle application으로
-빌드·실행하면서도 package 규칙을 흐트러뜨리지 않는다.
+layout을 따른다. `.NET` sample의 `Client`, `Server`, `Shared` 역할 구분은 Java/Kotlin에서도
+보존한다. 작은 sample은 package와 class 이름으로 역할을 나누고, 독립 실행이 필요한
+sample은 같은 역할을 Gradle 하위 프로젝트로도 나눈다. 이 구조는 aggregate self-check와
+standalone role 실행을 동시에 지원하기 위한 것이다.
+
+현재 direct `TicTacToe` sample은 `Client`, `Server`, `Shared` Gradle 하위 프로젝트를
+가진다. root project는 자동 self-check entry point이고, `Client` project는 사용자가
+별도로 실행할 수 있는 sample client다. `Server` project는 API role과 Play role을 한
+sample process에서 시작한다. API role은 client의 HTTP `/games` 요청을 받아 Play channel
+로 `CreateGameReq`를 보내고, Play session의 `AuthenticatePlayer` channel request도
+처리한다. Play role은 STREAM endpoint, actor runtime, entry Spot, game Spot을 소유한다.
 
 `.NET` sample과 대응되는 세 sample은 아래 역할 package를 필수로 가진다.
 
 | Sample | 필수 역할 package |
 |--------|-------------------|
-| `TicTacToe` | `client`, `server/api/handlers`, `server/configuration`, `server/play/actors`, `server/play/entryspot/handlers`, `server/play/gamespots/handlers`, `server/play/sessions`, `shared/contracts` |
+| `TicTacToe` | `Client/src/.../client`, `Server/src/.../server/api/handlers`, `Server/src/.../server/configuration`, `Server/src/.../server/play/actors`, `Server/src/.../server/play/entryspot/handlers`, `Server/src/.../server/play/gamespots/handlers`, `Server/src/.../server/play/sessions`, `Shared/src/.../shared/contracts` |
 | `TicTacToe.SessionGateway` | `client`, `server/api/handlers`, `server/play/entryspot/handlers`, `server/play/gamespots/handlers`, `server/play/handlers`, `server/registry`, `server/session/sessions/handlers`, `shared/actors`, `shared/configuration`, `shared/contracts` |
 | `Bingo` | `client`, `server/api/handlers`, `server/play/actors`, `server/play/bingoroomspots/handlers`, `server/play/entryspot/handlers`, `server/play/handlers`, `server/registry`, `server/session/sessions/handlers`, `shared/configuration`, `shared/contracts` |
 
@@ -188,6 +216,8 @@ direct sample은 아래를 보여 준다.
 
 - Spring Boot 밖의 standalone 실행에서는 `ZLinkFramework.start(...)` public facade로
   framework host를 시작
+- standalone `Client` role은 API role의 `/games` HTTP endpoint로 `CreateGameHttpReq`를
+  보내고, API role은 Play server channel로 `CreateGameReq`를 전달한다.
 - API server와 Play server 분리
 - API server가 Play server channel로 game 생성 요청
 - Play server가 game room Spot 생성

@@ -5,7 +5,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkRequest
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
-import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.TicTacToeGame
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameRes
@@ -20,7 +20,7 @@ class CreateGameHandler(
             .thenApply { created ->
                 CreateGameRes(
                     gameId = created.spotRid().toHex(),
-                    playEndpoint = SampleTopology.PlayStreamEndpoint,
+                    playEndpoint = SampleSettings.current().playEndpoint,
                     gameName = request.gameName,
                 )
             }

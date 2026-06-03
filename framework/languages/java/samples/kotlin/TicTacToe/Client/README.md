@@ -17,9 +17,10 @@ gradle :Client:run
 Options:
 
 ```bash
-gradle :Client:run --args='--api-endpoint tcp://127.0.0.1:47301 --play-endpoint tcp://127.0.0.1:47302 --game-name Morning --host-access-token alice-token --guest-access-token bob-token'
+gradle :Client:run --args='--api-url http://127.0.0.1:18081 --game-name tictactoe-game --x-actor-id player-x --o-actor-id player-o'
 ```
 
-The client sends typed channel requests to the API role, opens two STREAM
-connections to the Play role, authenticates both players, joins them to one game,
-and plays a fixed five-move sequence where the host wins.
+Each actor id is sent as the sample authentication token. The client calls the
+API role over HTTP, opens two STREAM connections to the Play role, authenticates
+both players, joins them to one game, and plays a fixed five-move sequence where
+X wins.

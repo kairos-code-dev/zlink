@@ -752,6 +752,7 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 6. 같은 sample set을 `samples/java/*`, `samples/kotlin/*` 양쪽에 배치한다.
 7. `.NET`의 `Client`, `Server/Api`, `Server/Play`, `Server/Registry`,
    `Server/Session`, `Shared/*` 역할을 Java/Kotlin package와 파일로 나누어 둔다.
+   독립 실행이 필요한 sample은 같은 역할을 Gradle 하위 프로젝트로도 나누어 둔다.
    `TicTacToe.SessionGateway`와 `Bingo`는 actor joined/left, Spot created, room model,
    player client 역할 파일을 생략하지 않는다.
 8. sample regression self-check를 만든다.
@@ -785,7 +786,7 @@ sample gate는 아래를 자동 확인해야 한다.
 | 항목 | `.NET` 기준 | Java/Kotlin 구현 | 검증 | 판정 |
 |------|-------------|------------------|------|------|
 | sample set | `samples/TicTacToe`, `samples/TicTacToe.SessionGateway`, `samples/Bingo` | `samples/java/*`와 `samples/kotlin/*`에 `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient`, `Async` 배치 | `SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints` | 완료 |
-| direct TicTacToe 역할 구조 | `Client`, `Server/Api`, `Server/Play`, `Shared/Contracts` | Java/Kotlin `client`, `server/api`, `server/play`, `shared/contracts` package로 분리 | `ticTacToeDirectSampleUsesFrameworkRuntimePublicFacade`, `ticTacToeKotlinSampleMirrorsJavaRoleLayout` | 완료 |
+| direct TicTacToe 역할 구조 | `Client`, `Server/Api`, `Server/Play`, `Shared/Contracts` | Java/Kotlin `Client`, `Server`, `Shared` Gradle 하위 프로젝트와 `client`, `server/api`, `server/play`, `shared/contracts` package로 분리 | `ticTacToeDirectSampleUsesFrameworkRuntimePublicFacade`, `ticTacToeKotlinSampleMirrorsJavaRoleLayout` | 완료 |
 | SessionGateway 역할 구조 | `Client`, `Server/Api`, `Server/Play`, `Server/Registry`, `Server/Session`, `Shared/Actors`, `Shared/Contracts` | Java/Kotlin SessionGateway sample이 같은 역할 package와 actor/session handler 파일을 가짐 | `ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator`, `ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout` | 완료 |
 | Bingo 역할 구조 | `Client`, `Server/Api`, `Server/Play`, `Server/Registry`, `Server/Session`, `Shared/*` | Java/Kotlin Bingo sample이 matching, room, actor, session, notification 역할 파일을 가짐 | `bingoMirrorsFourClientMatchingTimerAndBoundPushGate`, `bingoKotlinSampleMirrorsJavaRoleLayout` | 완료 |
 | connector sample | `.NET` connector client는 manual dispatch, request/reply, lifecycle, reconnect를 검증 | Java/Kotlin `StreamingClient`가 loopback TCP endpoint와 public connector API로 같은 smoke를 실행 | `streamingClientMirrorsConnectorSmokeGate`, `streamingClientKotlinMirrorsConnectorSmokeGate`, `./samples/run_samples.sh` | 완료 |

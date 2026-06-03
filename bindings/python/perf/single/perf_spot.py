@@ -46,7 +46,10 @@ def _spot_publish_blocking(spot, topic, payload):
             ):
                 return True
         except zlink.SubmitError as exc:
-            if exc.result != zlink.SubmitResult.BACKPRESSURED:
+            if exc.result not in (
+                zlink.SubmitResult.BACKPRESSURED,
+                zlink.SubmitResult.NOT_CONNECTED,
+            ):
                 raise
         poll_idle_ms(1)
     return False
@@ -245,16 +248,33 @@ def main(argv=None):
                             active_deadline[0] = (
                                 time.perf_counter() + args.duration
                             )
+                            publish = publisher.publish
+                            flag = int(zlink.SendFlags.DONT_WAIT)
+                            submit_backpressured = zlink.SubmitResult.BACKPRESSURED
+                            submit_not_connected = zlink.SubmitResult.NOT_CONNECTED
+                            stamp = stamp_payload
                             while time.perf_counter() < active_deadline[0]:
-                                _spot_publish_blocking(
-                                    publisher,
-                                    TOPIC,
-                                    stamp_payload(
-                                        active_payload,
-                                        phase=1,
-                                        run_id=run_id,
-                                    ),
+                                payload = stamp(
+                                    active_payload,
+                                    phase=1,
+                                    run_id=run_id,
                                 )
+                                for _ in range(100):
+                                    try:
+                                        if (
+                                            publish(TOPIC)
+                                            .message(payload)
+                                            .flags(flag)
+                                            .submit()
+                                        ):
+                                            break
+                                    except zlink.SubmitError as exc:
+                                        if exc.result not in (
+                                            submit_backpressured,
+                                            submit_not_connected,
+                                        ):
+                                            raise
+                                    poll_idle_ms(1)
                             # C perf_spot.cpp: publish the wire stop
                             # token through the dedicated stop publisher
                             # on the subscriber node, not the active

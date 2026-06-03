@@ -2,8 +2,9 @@ package systems.zlink.samples.kotlin.tictactoe.server.play
 
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions
+import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLogging
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
-import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.actors.PlayActorFactory
 import systems.zlink.samples.kotlin.tictactoe.server.play.entryspot.PlayEntrySpot
 import systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.TicTacToeGame
@@ -11,30 +12,36 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.sessions.PlaySession
 
 object PlayServer {
     fun configure(options: ZLinkFrameworkOptions) {
+        configure(options, SampleSettings.current())
+    }
+
+    fun configure(options: ZLinkFrameworkOptions, settings: SampleSettings) {
+        SampleSettings.setCurrent(settings)
+        SampleLogging.configure(settings, "play")
         options.codecs().addJson()
         options.addHandlersFromPackageOf(PlayServer::class.java)
         options.addActorFactory(SampleNames.PlayActor, PlayActorFactory::class.java)
         options.addClientServerChannel(SampleNames.ApiChannel) { channel ->
             channel.enableClient { client ->
                 client.useManualConnections { endpoints ->
-                    endpoints.connect(SampleTopology.ApiEndpoint)
+                    endpoints.connect(settings.apiChannelEndpoint)
                 }
             }
         }
         options.addClientServerChannel(SampleNames.PlayChannel) { channel ->
             channel.enableClient { client ->
-                client.useManualConnections { endpoints -> endpoints.connect(SampleTopology.PlayChannelEndpoint) }
+                client.useManualConnections { endpoints -> endpoints.connect(settings.playChannelEndpoint) }
             }
-            channel.enableServer { server -> server.bind(SampleTopology.PlayChannelEndpoint) }
+            channel.enableServer { server -> server.bind(settings.playChannelEndpoint) }
             channel.addHandlerGroup(SampleNames.PlayChannel)
         }
         options.addSpotMesh(SampleNames.SpotMesh) { mesh ->
             mesh.addNode(SampleNames.PlayNode) { node ->
                 node.enableRouter { router ->
                     router.setRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId))
-                    router.setRouterBind(SampleTopology.PlaySpotRouterEndpoint)
+                    router.setRouterBind(settings.playRouterEndpoint)
                     router.useManualConnections { endpoints ->
-                        endpoints.connect(SampleTopology.PlaySpotRouterEndpoint)
+                        endpoints.connect(settings.playRouterEndpoint)
                     }
                 }
                 node.configureEntrySpot { entry ->
@@ -45,7 +52,7 @@ object PlayServer {
             }
         }
         options.addStreamNode(SampleNames.PlayStream) { stream ->
-            stream.bind(SampleTopology.PlayStreamEndpoint)
+            stream.bind(settings.playEndpoint)
             stream.attachActorGateway(SampleNames.PlayNode)
             stream.registerSession(PlaySession::class.java)
         }

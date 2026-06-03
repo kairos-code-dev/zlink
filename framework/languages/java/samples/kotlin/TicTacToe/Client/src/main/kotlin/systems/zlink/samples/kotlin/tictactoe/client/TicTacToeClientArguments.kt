@@ -4,11 +4,10 @@ object TicTacToeClientArguments {
     fun parse(args: Array<String>): TicTacToeClientOptions {
         val defaults = TicTacToeClientOptions.createDefault()
         return TicTacToeClientOptions(
+            apiUrl = readOption(args, "--api-url") ?: defaults.apiUrl,
             gameName = readOption(args, "--game-name") ?: defaults.gameName,
-            hostAccessToken = readOption(args, "--host-access-token") ?: defaults.hostAccessToken,
-            guestAccessToken = readOption(args, "--guest-access-token") ?: defaults.guestAccessToken,
-            apiEndpoint = readOption(args, "--api-endpoint") ?: defaults.apiEndpoint,
-            playEndpoint = readOption(args, "--play-endpoint") ?: defaults.playEndpoint,
+            xActorId = readOption(args, "--x-actor-id") ?: defaults.xActorId,
+            oActorId = readOption(args, "--o-actor-id") ?: defaults.oActorId,
         )
     }
 

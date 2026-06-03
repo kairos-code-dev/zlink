@@ -13,8 +13,10 @@ class PlayActorPlaceMarkHandler {
     fun placeMark(
         actor: PlayActor,
         request: PlaceMarkReq,
-    ): PlaceMarkRes =
-        actor.context()
+    ): PlaceMarkRes {
+        actor.requireJoinedGame()
+        return actor.context()
             .getSpot(TicTacToeGame::class.java)
             .placeMark(actor.actorId(), request.cell)
+    }
 }

@@ -18,6 +18,9 @@ public final class PlayActorJoinGameHandler {
         return actor.context()
             .joinSpot(RoutingId.fromHex(request.gameId()), request)
             .submitAsync(JoinGameRes.class)
-            .thenApply(result -> result.reply());
+            .thenApply(result -> {
+                actor.joinGame(request.gameId());
+                return result.reply();
+            });
     }
 }

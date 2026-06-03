@@ -1,14 +1,17 @@
 package systems.zlink.samples.kotlin.tictactoe.client
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.time.Duration
 import kotlinx.coroutines.future.await
-import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.kotlin.awaitReply
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateRes
-import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameReq
-import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameRes
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameHttpReq
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameHttpRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkReq
@@ -19,19 +22,20 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 import systems.zlink.stream.connector.json.ZLinkStreamJson
 
-class TicTacToeClient(
-    private val frameworkClient: ZLinkClient,
-) {
+class TicTacToeClient {
+    private val http = HttpClient.newHttpClient()
+    private val json = ObjectMapper().registerKotlinModule()
+
     suspend fun run(options: TicTacToeClientOptions): TicTacToeClientResult {
-        val game = createGame(options.gameName)
-        val hostStream = playerConnector(game.playEndpoint, options.hostAccessToken)
-        val guestStream = playerConnector(game.playEndpoint, options.guestAccessToken)
+        val game = createGame(options.apiUrl, options.gameName)
+        val hostStream = playerConnector(game.playEndpoint, options.xActorId)
+        val guestStream = playerConnector(game.playEndpoint, options.oActorId)
         try {
             hostStream.connectAsync().await()
             guestStream.connectAsync().await()
 
-            request(hostStream, AuthenticateReq(options.hostAccessToken), AuthenticateRes::class.java)
-            request(guestStream, AuthenticateReq(options.guestAccessToken), AuthenticateRes::class.java)
+            request(hostStream, AuthenticateReq(options.xActorId), AuthenticateRes::class.java)
+            request(guestStream, AuthenticateReq(options.oActorId), AuthenticateRes::class.java)
             request(hostStream, JoinGameReq(game.gameId), JoinGameRes::class.java)
             request(guestStream, JoinGameReq(game.gameId), JoinGameRes::class.java)
             request(hostStream, PlaceMarkReq(0), PlaceMarkRes::class.java)
@@ -50,11 +54,16 @@ class TicTacToeClient(
         }
     }
 
-    private suspend fun createGame(gameName: String): CreateGameRes {
-        return frameworkClient
-            .requestToChannel("tictactoe-api", CreateGameReq(gameName))
-            .packetName("CreateGame")
-            .awaitReply<CreateGameRes>()
+    private suspend fun createGame(apiUrl: String, gameName: String): CreateGameHttpRes {
+        val request = HttpRequest.newBuilder(URI.create(apiUrl).resolve("/games"))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(CreateGameHttpReq(gameName))))
+            .build()
+        val response = http.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
+        check(response.statusCode() / 100 == 2) {
+            "API returned HTTP ${response.statusCode()}: ${response.body()}"
+        }
+        return json.readValue(response.body(), CreateGameHttpRes::class.java)
     }
 
     private fun playerConnector(endpoint: String, actorId: String): ZLinkStreamConnector =

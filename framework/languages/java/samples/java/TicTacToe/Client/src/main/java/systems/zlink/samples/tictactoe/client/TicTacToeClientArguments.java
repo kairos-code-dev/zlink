@@ -7,11 +7,10 @@ public final class TicTacToeClientArguments {
     public static TicTacToeClientOptions parse(String[] args) {
         TicTacToeClientOptions defaults = TicTacToeClientOptions.createDefault();
         return new TicTacToeClientOptions(
+            readOption(args, "--api-url", defaults.apiUrl()),
             readOption(args, "--game-name", defaults.gameName()),
-            readOption(args, "--host-access-token", defaults.hostAccessToken()),
-            readOption(args, "--guest-access-token", defaults.guestAccessToken()),
-            readOption(args, "--api-endpoint", defaults.apiEndpoint()),
-            readOption(args, "--play-endpoint", defaults.playEndpoint()));
+            readOption(args, "--x-actor-id", defaults.xActorId()),
+            readOption(args, "--o-actor-id", defaults.oActorId()));
     }
 
     private static String readOption(

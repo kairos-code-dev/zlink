@@ -24,8 +24,9 @@ samples/
 ```
 
 The three framework parity samples mirror the .NET sample role layout. Java and
-Kotlin keep one Gradle application per sample, but the source packages are split
-by the same roles:
+Kotlin keep one aggregate Gradle entry point per sample, and the larger samples
+also expose standalone role projects so users can run the client and server
+processes separately. Source packages stay split by the same roles:
 
 ```text
 TicTacToe/

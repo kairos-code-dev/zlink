@@ -38,7 +38,10 @@ def _send_router_stop_token(router, dest_routing_id):
             router.send(dest_routing_id).message(STOP_TOKEN).submit()
             return
         except zlink.SubmitError as exc:
-            if exc.result != zlink.SubmitResult.BACKPRESSURED:
+            if exc.result not in (
+                zlink.SubmitResult.BACKPRESSURED,
+                zlink.SubmitResult.NOT_CONNECTED,
+            ):
                 raise
             poll_idle_ms(1)
 
@@ -61,13 +64,14 @@ def main(argv=None):
         send = router.send
         stamp = stamp_payload
         submit_backpressured = zlink.SubmitResult.BACKPRESSURED
+        submit_not_connected = zlink.SubmitResult.NOT_CONNECTED
         while time.perf_counter() < active_end:
             try:
                 send(b"SERVER").message(stamp(payload, phase=1, run_id=run_id)).flags(
                     flag
                 ).submit()
             except zlink.SubmitError as exc:
-                if exc.result != submit_backpressured:
+                if exc.result not in (submit_backpressured, submit_not_connected):
                     raise
         _send_router_stop_token(router, b"SERVER")
 

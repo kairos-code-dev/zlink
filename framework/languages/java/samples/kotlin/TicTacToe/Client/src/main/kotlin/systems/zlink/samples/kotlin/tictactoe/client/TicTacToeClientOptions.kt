@@ -1,20 +1,18 @@
 package systems.zlink.samples.kotlin.tictactoe.client
 
 data class TicTacToeClientOptions(
+    val apiUrl: String,
     val gameName: String,
-    val hostAccessToken: String,
-    val guestAccessToken: String,
-    val apiEndpoint: String,
-    val playEndpoint: String,
+    val xActorId: String,
+    val oActorId: String,
 ) {
     companion object {
         fun createDefault(): TicTacToeClientOptions =
             TicTacToeClientOptions(
-                gameName = "Morning game",
-                hostAccessToken = TicTacToeSampleDefaults.HostAccessToken,
-                guestAccessToken = TicTacToeSampleDefaults.GuestAccessToken,
-                apiEndpoint = TicTacToeSampleDefaults.ApiEndpoint,
-                playEndpoint = TicTacToeSampleDefaults.PlayEndpoint,
+                apiUrl = TicTacToeSampleDefaults.ApiUrl,
+                gameName = TicTacToeSampleDefaults.GameName,
+                xActorId = TicTacToeSampleDefaults.XActorId,
+                oActorId = TicTacToeSampleDefaults.OActorId,
             )
     }
 }

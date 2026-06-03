@@ -13,6 +13,7 @@ public final class PlayActorPlaceMarkHandler {
     public PlaceMarkRes placeMark(
         PlayActor actor,
         PlaceMarkReq request) {
+        actor.requireJoinedGame();
         return actor.context()
             .getSpot(TicTacToeGame.class)
             .placeMark(actor.actorId(), request.cell());

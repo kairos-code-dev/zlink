@@ -4,17 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.actors.ZLinkActor;
-import systems.zlink.framework.channels.ZLinkPublishCall;
-import systems.zlink.framework.channels.ZLinkRequestCall;
-import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
-import systems.zlink.framework.spots.ZLinkSpotOutbound;
-import systems.zlink.framework.spots.ZLinkTimer;
-import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.tictactoe.shared.contracts.GameState;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkRes;
@@ -31,14 +23,9 @@ public final class TicTacToeGame implements ZLinkSpot {
     private String lastMoveActorId = "";
     private int lastMoveCell = -1;
 
-    public TicTacToeGame() {
-        this(new SampleSpotContext("room-1"));
-    }
-
     public TicTacToeGame(ZLinkSpotContext context) {
         this.context = context;
         this.gameId = context.spotRid().toHex();
-        TicTacToeGameDirectory.register(this);
     }
 
     public String gameId() {
@@ -158,151 +145,5 @@ public final class TicTacToeGame implements ZLinkSpot {
     }
 
     private record PlayerSlot(String actorId, String mark) {
-    }
-
-    private static final class SampleSpotContext implements ZLinkSpotContext {
-        private final String gameId;
-
-        private SampleSpotContext(String gameId) {
-            this.gameId = gameId;
-        }
-
-        @Override
-        public RoutingId spotRid() {
-            return RoutingId.from(gameId);
-        }
-
-        @Override
-        public RoutingId nodeRid() {
-            return RoutingId.from("play-node");
-        }
-
-        @Override
-        public ZLinkSpotOutbound outbound() {
-            return CompletedSpotOutbound.INSTANCE;
-        }
-
-        @Override
-        public CompletionStage<Void> leaveActorAsync(ZLinkActor actor) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<ZLinkTimer> addTimer(
-            String name,
-            java.time.Duration period,
-            Class<?> handlerType,
-            ZLinkTimerOptions options) {
-            return CompletableFuture.completedFuture(CompletedTimer.INSTANCE);
-        }
-    }
-
-    private enum CompletedTimer implements ZLinkTimer {
-        INSTANCE;
-
-        @Override
-        public boolean isDisposed() {
-            return false;
-        }
-
-        @Override
-        public CompletionStage<Void> cancelAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public void close() {
-        }
-    }
-
-    private enum CompletedSpotOutbound implements ZLinkSpotOutbound {
-        INSTANCE;
-
-        @Override
-        public <TMessage> ZLinkSendCall sendToSpot(RoutingId spotRid, TMessage message) {
-            return CompletedSendCall.INSTANCE;
-        }
-
-        @Override
-        public <TMessage> ZLinkRequestCall requestToSpot(RoutingId spotRid, TMessage request) {
-            return CompletedRequestCall.INSTANCE;
-        }
-
-        @Override
-        public <TEvent> ZLinkPublishCall publish(String topic, TEvent message) {
-            return CompletedPublishCall.INSTANCE;
-        }
-
-        @Override
-        public <TMessage> ZLinkSendCall sendToChannel(String channelName, TMessage message) {
-            return CompletedSendCall.INSTANCE;
-        }
-
-        @Override
-        public <TMessage> ZLinkRequestCall requestToChannel(String channelName, TMessage request) {
-            return CompletedRequestCall.INSTANCE;
-        }
-    }
-
-    private enum CompletedSendCall implements ZLinkSendCall {
-        INSTANCE;
-
-        @Override
-        public ZLinkSendCall packetName(String packetName) {
-            return this;
-        }
-
-        @Override
-        public ZLinkSendCall metadata(String key, String value) {
-            return this;
-        }
-
-        @Override
-        public CompletionStage<Void> submitAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    private enum CompletedPublishCall implements ZLinkPublishCall {
-        INSTANCE;
-
-        @Override
-        public ZLinkPublishCall packetName(String packetName) {
-            return this;
-        }
-
-        @Override
-        public ZLinkPublishCall metadata(String key, String value) {
-            return this;
-        }
-
-        @Override
-        public CompletionStage<Void> submitAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    private enum CompletedRequestCall implements ZLinkRequestCall {
-        INSTANCE;
-
-        @Override
-        public ZLinkRequestCall packetName(String packetName) {
-            return this;
-        }
-
-        @Override
-        public ZLinkRequestCall metadata(String key, String value) {
-            return this;
-        }
-
-        @Override
-        public ZLinkRequestCall timeout(java.time.Duration timeout) {
-            return this;
-        }
-
-        @Override
-        public <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType) {
-            return CompletableFuture.completedFuture(null);
-        }
     }
 }

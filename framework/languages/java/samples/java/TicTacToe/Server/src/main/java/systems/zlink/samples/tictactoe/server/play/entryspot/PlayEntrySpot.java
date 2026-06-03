@@ -6,10 +6,6 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 public final class PlayEntrySpot implements ZLinkEntrySpot {
     private final ZLinkEntrySpotContext context;
 
-    public PlayEntrySpot() {
-        this.context = null;
-    }
-
     public PlayEntrySpot(ZLinkEntrySpotContext context) {
         this.context = context;
     }

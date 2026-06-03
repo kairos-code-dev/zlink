@@ -28,6 +28,13 @@ from .native_parts import (
     prepare_native_parts as _prepare_native_parts,
 )
 
+_native_extension = getattr(_native_bridge, "_zlink_native", None)
+_native_spot_subscribe_parts = (
+    getattr(_native_extension, "spot_subscribe_parts", None)
+    if _native_extension is not None
+    else None
+)
+
 
 def _payload_parts(payload):
     if isinstance(payload, (list, tuple)):
@@ -141,8 +148,13 @@ def _make_message_list(parts_ptr, part_count):
 
 def _recv_spot_subscribed(handle, flags):
     if not _in_callback():
-        bridged = _native_bridge.spot_subscribe_parts(handle, flags)
+        if _native_spot_subscribe_parts is not None:
+            bridged = _native_spot_subscribe_parts(int(handle), int(flags))
+        else:
+            bridged = _native_bridge.spot_subscribe_parts(handle, flags)
         if bridged is not None:
+            if bridged is False:
+                return False
             rc, err, routing, topic_raw, parts = bridged
             if int(rc) != 0:
                 _raise_result_error(RecvError, RecvResult, rc, err)

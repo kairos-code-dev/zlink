@@ -901,8 +901,11 @@ routed receive에서는 native bridge가 이미 새 `bytes`를 만들어 넘기�
 이후 `ReceivedMessage._from_owner()`가 keyword `__init__` 경로를 타지 않고 새
 객체를 직접 초기화하도록 줄였고, routed send builder는 routing id를 `submit()`
 때마다 다시 검증하지 않도록 `send(routing_id)` 시점에 한 번 검증한 bytes를
-보관하게 했다. router owner receive는 DONTWAIT에서도 GIL을 놓는 방식이 이
-패턴에서는 더 나아 그대로 유지했다. 현재 retained probe
+보관하게 했다. router owner receive가 DONTWAIT에서도 GIL을 놓는 후보는
+`perf_python_single_linux_20260603_122441_py_router_owner_release_gil_confirm_tcp64_5s.txt`에서
+`DEALER_ROUTER tcp 64B` 161,348.8 msg/s,
+`ROUTER_ROUTER tcp 64B` 11,673.4 msg/s로 크게 회귀해 제거했고, 현재 코드는
+DONTWAIT receive에서 GIL을 놓지 않는 경로를 유지한다. 현재 retained probe
 `perf_python_single_linux_20260603_121853_py_retained_pubsub_routed_tcp64_probe.txt`는
 `PUBSUB tcp 64B` 321,638.4 msg/s, `DEALER_ROUTER tcp 64B` 332,057.6 msg/s,
 `ROUTER_ROUTER tcp 64B` 154,169.8 msg/s를 기록했다. 아직 정책 기준은 넘지
@@ -915,6 +918,20 @@ routed receive에서는 native bridge가 이미 새 `bytes`를 만들어 넘기�
 `ROUTER_ROUTER tcp 64B` 155,439.2 msg/s를 기록했다. 이 변경은
 `router.send(routing_id).message(...).flags(...).submit()` 형태를 유지하므로
 private active-loop 우회가 아니다.
+`recv_into()`를 쓰는 single receive loop에서 각 메시지마다 storage를 즉시 닫지 않고
+다음 receive의 `_replace(...)`와 마지막 정리에서 닫는 후보도 검토했다. 이 후보는 public
+`recv_into()` 경로를 유지하면서 owner-backed payload의 반복 close 비용만 줄이는 의도였다.
+`perf_python_single_linux_20260603_122618_py_deferred_storage_close_tcp64_5s.txt`에서
+`PAIR tcp 64B` 430,493.6 msg/s, `PUBSUB tcp 64B` 317,132.8 msg/s,
+`DEALER_ROUTER tcp 64B` 355,756.2 msg/s, `ROUTER_ROUTER tcp 64B` 159,038.6 msg/s를
+기록했다. 하지만 active loop의 owner-backed storage 해제를 메시지 처리 범위 밖으로
+밀어내 per-message lifetime이 약해지므로 제거했고, 현재 코드는 메시지를 처리한 뒤
+`finally`에서 즉시 `storage.close()`를 호출하는 경로를 유지한다. 현재 빌드 재확인
+`perf_python_single_linux_20260603_123003_py_retry_current_tcp64_5s.txt`는
+status=complete(30/30)였고, 같은 C 기준 대비 `PAIR` 34.0%, `PUBSUB` 25.5%,
+`DEALER_DEALER` 33.6%, `DEALER_ROUTER` 24.4%, `ROUTER_ROUTER` 12.0%, `SPOT`
+24.1%였다. 따라서 public contract 복구 뒤 현재 유지 변경만으로는 아직
+`PUBSUB`, routed, `SPOT`의 최소 기준을 충족하지 못한다.
 native routed send builder 후보는
 `perf_python_single_linux_20260603_115457_py_routed_send_op_tcp64_5s.txt`에서
 `ROUTER_ROUTER tcp 64B`가 99,225.4 msg/s로 회귀해 제거했다. router receive에서
@@ -927,6 +944,11 @@ native routed send builder 후보는
 callback guard를 dict+thread id 대신 `threading.local()`로 바꾼 후보도
 `perf_python_single_linux_20260603_122240_py_threadlocal_callback_state_tcp64_5s.txt`에서
 PAIR/PUBSUB/routed가 모두 회귀해 제거했다.
+callback guard에 전역 active count fast path를 둔 후보도
+`perf_python_single_linux_20260603_123217_py_callback_active_count_tcp64_5s.txt`의
+단일 PUBSUB 실행은 좋아졌지만, 확인 측정
+`perf_python_single_linux_20260603_123304_py_callback_active_count_pubsub_confirm_tcp64_5s.txt`의
+3회 중앙값이 315,392.0 msg/s로 현재 retained 수치와 큰 차이가 없어 제거했다.
 
 public contract 복구 뒤 Python multi smoke에서 `MULTI_SPOT_REQREP tcp 64B`가
 client timeout으로 반복 partial이 됐다. server dispatch가 owner-backed part의

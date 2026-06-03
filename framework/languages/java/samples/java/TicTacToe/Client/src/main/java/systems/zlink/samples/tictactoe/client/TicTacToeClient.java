@@ -1,14 +1,17 @@
 package systems.zlink.samples.tictactoe.client;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
-import systems.zlink.samples.tictactoe.shared.contracts.CreateGameReq;
-import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
+import systems.zlink.samples.tictactoe.shared.contracts.CreateGameHttpReq;
+import systems.zlink.samples.tictactoe.shared.contracts.CreateGameHttpRes;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkReq;
@@ -20,37 +23,60 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.json.ZLinkStreamJson;
 
 public final class TicTacToeClient {
-    private final ZLinkClient frameworkClient;
+    private final HttpClient http;
+    private final ObjectMapper json;
 
-    public TicTacToeClient(ZLinkClient frameworkClient) {
-        this.frameworkClient = frameworkClient;
+    public TicTacToeClient() {
+        this(HttpClient.newHttpClient(), new ObjectMapper());
+    }
+
+    TicTacToeClient(HttpClient http, ObjectMapper json) {
+        this.http = http;
+        this.json = json;
     }
 
     public CompletionStage<TicTacToeClientResult> run(TicTacToeClientOptions options) {
-        return createGame(options.gameName())
+        return createGame(options.apiUrl(), options.gameName())
             .thenCompose(game -> playScenario(options, game));
     }
 
-    private CompletionStage<CreateGameRes> createGame(String gameName) {
-        return frameworkClient
-            .requestToChannel("tictactoe-api", new CreateGameReq(gameName))
-            .packetName("CreateGame")
-            .submitAsync(CreateGameRes.class);
+    private CompletionStage<CreateGameHttpRes> createGame(String apiUrl, String gameName) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(apiUrl).resolve("/games"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                    json.writeValueAsString(new CreateGameHttpReq(gameName))))
+                .build();
+            return http.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() / 100 != 2) {
+                        throw new IllegalStateException(
+                            "API returned HTTP " + response.statusCode() + ": " + response.body());
+                    }
+                    try {
+                        return json.readValue(response.body(), CreateGameHttpRes.class);
+                    } catch (java.io.IOException ex) {
+                        throw new IllegalStateException("API returned an invalid game response.", ex);
+                    }
+                });
+        } catch (java.io.IOException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
     }
 
     private CompletionStage<TicTacToeClientResult> playScenario(
         TicTacToeClientOptions options,
-        CreateGameRes game) {
-        ZLinkStreamConnector host = playerConnector(game.playEndpoint(), options.hostAccessToken());
-        ZLinkStreamConnector guest = playerConnector(game.playEndpoint(), options.guestAccessToken());
+        CreateGameHttpRes game) {
+        ZLinkStreamConnector host = playerConnector(game.playEndpoint(), options.xActorId());
+        ZLinkStreamConnector guest = playerConnector(game.playEndpoint(), options.oActorId());
         return host.connectAsync()
             .thenCompose(ignored -> guest.connectAsync())
             .thenCompose(ignored -> requestStep(
                 "host AuthenticateReq",
-                request(host, new AuthenticateReq(options.hostAccessToken()), AuthenticateRes.class)))
+                request(host, new AuthenticateReq(options.xActorId()), AuthenticateRes.class)))
             .thenCompose(ignored -> requestStep(
                 "guest AuthenticateReq",
-                request(guest, new AuthenticateReq(options.guestAccessToken()), AuthenticateRes.class)))
+                request(guest, new AuthenticateReq(options.oActorId()), AuthenticateRes.class)))
             .thenCompose(ignored -> requestStep(
                 "host JoinGameReq",
                 request(host, new JoinGameReq(game.gameId()), JoinGameRes.class)))

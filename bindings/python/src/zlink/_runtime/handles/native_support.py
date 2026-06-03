@@ -404,6 +404,11 @@ def _copy_routing_id(routing_id):
 
 
 def _validated_routing_id_bytes(routing_id):
+    if isinstance(routing_id, bytes):
+        size = len(routing_id)
+        if size <= 0 or size > 255:
+            raise ValueError("routing_id length must be between 1 and 255")
+        return routing_id
     native = _copy_routing_id(routing_id)
     return bytes(native.data[: native.size])
 

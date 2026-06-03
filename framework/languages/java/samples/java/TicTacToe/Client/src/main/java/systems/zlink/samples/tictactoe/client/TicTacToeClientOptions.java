@@ -1,17 +1,15 @@
 package systems.zlink.samples.tictactoe.client;
 
 public record TicTacToeClientOptions(
+    String apiUrl,
     String gameName,
-    String hostAccessToken,
-    String guestAccessToken,
-    String apiEndpoint,
-    String playEndpoint) {
+    String xActorId,
+    String oActorId) {
     public static TicTacToeClientOptions createDefault() {
         return new TicTacToeClientOptions(
-            "Morning game",
-            TicTacToeSampleDefaults.HostAccessToken,
-            TicTacToeSampleDefaults.GuestAccessToken,
-            TicTacToeSampleDefaults.ApiEndpoint,
-            TicTacToeSampleDefaults.PlayEndpoint);
+            TicTacToeSampleDefaults.ApiUrl,
+            TicTacToeSampleDefaults.GameName,
+            TicTacToeSampleDefaults.XActorId,
+            TicTacToeSampleDefaults.OActorId);
     }
 }

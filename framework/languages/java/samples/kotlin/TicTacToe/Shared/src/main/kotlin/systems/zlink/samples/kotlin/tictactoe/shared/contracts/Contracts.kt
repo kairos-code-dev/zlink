@@ -8,6 +8,10 @@ data class AuthenticateRes(val actorId: String)
 
 data class AuthenticateReq(val accessToken: String)
 
+data class CreateGameHttpReq(val gameName: String?)
+
+data class CreateGameHttpRes(val gameId: String, val playEndpoint: String, val gameName: String)
+
 data class CreateGameReq(val gameName: String)
 
 data class CreateGameRes(val gameId: String, val playEndpoint: String, val gameName: String)

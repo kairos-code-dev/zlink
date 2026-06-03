@@ -22,7 +22,6 @@ from perf_common import (
     resolve_single_pubsub_recv_timeout_ms,
     result_metrics,
     run_one_way_subscriber_public_subscribe,
-    publish_nonblocking,
     stamp_payload,
     wait_monitor_event,
 )
@@ -58,10 +57,18 @@ def main(argv=None):
     def send_loop(publisher, active_end):
         # C send_active_samples: DONTWAIT publish, re-stamp fresh now_ns on
         # every retry, busy-loop through transient backpressure.
+        flag = int(zlink.SendFlags.DONT_WAIT)
+        publish = publisher.publish
+        stamp = stamp_payload
+        submit_backpressured = zlink.SubmitResult.BACKPRESSURED
         while time.perf_counter() < active_end:
-            publish_nonblocking(
-                publisher, TOPIC, stamp_payload(payload, phase=1, run_id=run_id)
-            )
+            try:
+                publish(TOPIC).message(stamp(payload, phase=1, run_id=run_id)).flags(
+                    flag
+                ).submit()
+            except zlink.SubmitError as exc:
+                if exc.result != submit_backpressured:
+                    raise
         _publish_stop_token(publisher)
     with perf_context() as ctx:
         apply_single_auto_hwm_msg_unit(ctx, args.msg_size)

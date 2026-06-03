@@ -4,7 +4,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 
 class PlayEntrySpot(
-    private val context: ZLinkEntrySpotContext? = null,
+    private val context: ZLinkEntrySpotContext,
 ) : ZLinkEntrySpot {
-    override fun context(): ZLinkEntrySpotContext? = context
+    override fun context(): ZLinkEntrySpotContext = context
 }

@@ -98,6 +98,11 @@ _native_socket_send_op_func = (
     if _native_extension is not None
     else None
 )
+_native_routed_send_op_func = (
+    getattr(_native_extension, "routed_send_op", None)
+    if _native_extension is not None
+    else None
+)
 _native_publisher_send_op_func = (
     getattr(_native_extension, "publisher_send_op", None)
     if _native_extension is not None
@@ -114,6 +119,15 @@ def _native_socket_send_op(socket):
     if _native_socket_send_op_func is None:
         return None
     return _native_socket_send_op_func(int(socket._socket_handle.handle))
+
+
+def _native_routed_send_op(socket, routing_id):
+    if _native_routed_send_op_func is None:
+        return None
+    return _native_routed_send_op_func(
+        int(socket._socket_handle.handle),
+        _validated_routing_id_bytes(routing_id),
+    )
 
 
 class _SocketSendOp:
@@ -410,7 +424,9 @@ class RouterSocket(
         return create_router_socket_options(self)
 
     def send(self, routing_id):
-        return _RoutedSocketSendOp(self, routing_id)
+        return _native_routed_send_op(self, routing_id) or _RoutedSocketSendOp(
+            self, routing_id
+        )
 
     def request(self, peer_rid):
         from ..service.spot import RequestOp

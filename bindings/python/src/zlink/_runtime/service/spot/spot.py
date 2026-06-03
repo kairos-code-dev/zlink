@@ -162,6 +162,12 @@ from .spot_models_runtime import (
 
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
 _ERRNO_ENOTSUP = getattr(errno, "ENOTSUP", getattr(errno, "EOPNOTSUPP", 95))
+_native_extension = getattr(_native_bridge, "_zlink_native", None)
+_native_spot_publish_submit_parts = (
+    getattr(_native_extension, "spot_publish_submit_parts", None)
+    if _native_extension is not None
+    else None
+)
 _SPOT_INIT_TOKEN = object()
 _REQUEST_PROGRESS_IDLE_GRACE_S = 0.1
 
@@ -420,12 +426,20 @@ class Spot(SpotActorJoinMixin):
             _ensure_not_in_callback("blocking publish")
             topic_bytes = _validated_c_string_value(topic, field="topic", max_length=255)
             if _payload_can_use_native_bridge(parts):
-                bridged = _native_bridge.spot_publish_submit_parts(
-                    self._handle,
-                    topic_bytes,
-                    parts,
-                    flags,
-                )
+                if _native_spot_publish_submit_parts is not None:
+                    bridged = _native_spot_publish_submit_parts(
+                        int(self._handle),
+                        topic_bytes,
+                        parts,
+                        int(flags),
+                    )
+                else:
+                    bridged = _native_bridge.spot_publish_submit_parts(
+                        self._handle,
+                        topic_bytes,
+                        parts,
+                        flags,
+                    )
                 if bridged is not None:
                     rc, err = bridged
                     if int(rc) != 0:
@@ -696,7 +710,10 @@ class Spot(SpotActorJoinMixin):
 
     def _subscribe_allocated(self, *, flags=0):
         try:
-            return self._recv_subscribed(flags)
+            result = self._recv_subscribed(flags)
+            if result is False:
+                return None
+            return result
         except RecvError as ex:
             if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
                 return None
@@ -707,6 +724,8 @@ class Spot(SpotActorJoinMixin):
             raise TypeError("topic_message must be a TopicMessage")
         try:
             fresh = self._recv_subscribed(flags)
+            if fresh is False:
+                return False
         except RecvError as ex:
             if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
                 return False

@@ -214,6 +214,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 .join();
 
             assertEquals(new ProfileReply("profile:42"), reply);
+            assertEquals(
+                1,
+                context.getBean(AnnotatedInjectedRequestHandler.class).requestCount());
             assertTrue(context.getBean(ZLinkFrameworkLifecycle.class).isRunning());
         }
     }
@@ -340,6 +343,12 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
+        AnnotatedInjectedRequestHandler annotatedInjectedRequestHandler(
+            HandlerDependency dependency) {
+            return new AnnotatedInjectedRequestHandler(dependency);
+        }
+
+        @Bean
         ZLinkFrameworkOptionsCustomizer scannedHandlerCustomizer(String springAnnotatedEndpoint) {
             return options -> {
                 options.codecs().addJson();
@@ -427,6 +436,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     @ZLinkHandlerGroup("spring-scanned")
     public static final class AnnotatedInjectedRequestHandler {
         private final HandlerDependency dependency;
+        private int requestCount;
 
         public AnnotatedInjectedRequestHandler(HandlerDependency dependency) {
             this.dependency = dependency;
@@ -434,8 +444,13 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @ZLinkRequest(packetName = "GetProfile")
         public CompletionStage<ProfileReply> handleAsync(ProfileRequest request) {
+            requestCount++;
             return CompletableFuture.completedFuture(
                 new ProfileReply(dependency.format(request.profileId())));
+        }
+
+        int requestCount() {
+            return requestCount;
         }
     }
 

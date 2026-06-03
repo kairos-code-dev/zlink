@@ -5,7 +5,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
-import systems.zlink.samples.tictactoe.server.configuration.SampleTopology;
+import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.gamespots.TicTacToeGame;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
@@ -23,7 +23,7 @@ public final class CreateGameHandler {
         return spots.createAsync(TicTacToeGame.class)
             .thenApply(created -> new CreateGameRes(
                 created.spotRid().toHex(),
-                SampleTopology.PlayStreamEndpoint,
+                SampleSettings.current().playEndpoint(),
                 request.gameName()));
     }
 }

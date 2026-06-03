@@ -11,11 +11,8 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlaye
 class AuthenticatePlayerHandler {
     @ZLinkRequest(packetName = "AuthenticatePlayer")
     fun handleAsync(request: AuthenticatePlayerReq): CompletionStage<AuthenticatePlayerRes> {
-        val actorId = when (request.accessToken) {
-            "alice-token" -> "alice"
-            "bob-token" -> "bob"
-            else -> throw IllegalArgumentException("unknown access token")
-        }
+        val actorId = request.accessToken.trim()
+        require(actorId.isNotBlank()) { "authentication token is empty" }
         return CompletableFuture.completedFuture(AuthenticatePlayerRes(actorId))
     }
 }

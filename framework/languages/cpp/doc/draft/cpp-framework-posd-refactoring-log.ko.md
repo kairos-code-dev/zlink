@@ -293,14 +293,14 @@ mapping으로 닫는 것이 가장 단순하다.
 - Bingo client의 loopback stream server를 `Server/E2E` helper와 executable로 분리했다.
 - TicTacToe client의 HTTP `/games` API와 stream server를 `Server/E2E` helper와 executable로
   분리했다.
-- client executable은 기본 smoke에서는 내장 server를 쓰고, `ZLINK_SAMPLE_EXTERNAL_SERVER=1`
-  환경에서는 외부 server process에 붙도록 했다.
+- client executable에서 내장 server 분기를 제거하고, CTest process e2e harness가 외부 server
+  process를 띄운 뒤 client process를 붙이도록 했다.
 - CTest에 `framework-sample-process-e2e` label과 server process + client process harness를
   추가했다.
 
 ### 수정 후 점검
 
-- 기존 sample smoke와 log e2e 경로는 유지했다.
+- client standalone smoke와 별도 log verifier는 process e2e 경로로 대체했다.
 - process e2e는 server executable이 file log를 쓰고 client executable이 별도 process로
   request/reply/push를 검증한다.
 - 문서의 Goal 21/Goal 22 검증 명령과 label taxonomy를 새 process e2e label과 맞췄다.
@@ -840,8 +840,8 @@ connector task 완료와 result 변환 규칙만 `samples/Shared/client_connecto
 ### 재실행한 검증 명령
 
 ```bash
-cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client test_cpp_framework_sample_parity
-ctest --test-dir framework/languages/cpp/build -R 'sample_smoke_sample_cpp_framework_bingo_client|sample_smoke_sample_cpp_framework_tictactoe_client|sample_e2e_log_sample_cpp_framework_bingo_client|sample_e2e_log_sample_cpp_framework_tictactoe_client|test_cpp_framework_sample_parity' --output-on-failure
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client sample_cpp_framework_bingo_e2e_server sample_cpp_framework_tictactoe_e2e_server test_cpp_framework_sample_parity
+ctest --test-dir framework/languages/cpp/build -R 'sample_process_e2e_sample_cpp_framework_bingo_client|sample_process_e2e_sample_cpp_framework_tictactoe_client|test_cpp_framework_sample_parity' --output-on-failure
 cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
 ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
 ```
@@ -2500,7 +2500,7 @@ STREAM wire가 여러 frame을 한 byte stream에 실을 수 있다는 구현 �
 cmake -S framework/languages/cpp -B framework/languages/cpp/build
 cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client
 ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure
-ctest --test-dir framework/languages/cpp/build -R sample_e2e_log_sample_cpp_framework_bingo_client --output-on-failure --repeat until-fail:10
+ctest --test-dir framework/languages/cpp/build -R sample_process_e2e_sample_cpp_framework_bingo_client --output-on-failure --repeat until-fail:10
 ctest --test-dir framework/languages/cpp/build --output-on-failure
 ```
 
@@ -2529,8 +2529,8 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 
 ### 적용한 리팩토링
 
-- `sample_e2e_log_sample_cpp_framework_bingo_client`에 `connector-e2e` 라벨을 추가했다.
-- `sample_e2e_log_sample_cpp_framework_tictactoe_client`에 `connector-e2e` 라벨을 추가했다.
+- `sample_process_e2e_sample_cpp_framework_bingo_client`에 `connector-e2e` 라벨을 추가했다.
+- `sample_process_e2e_sample_cpp_framework_tictactoe_client`에 `connector-e2e` 라벨을 추가했다.
 - `ctest --print-labels`에서 Goal 17 검증 라벨이 보이도록 CTest 표면을 맞췄다.
 
 ### 남은 tradeoff
@@ -3154,9 +3154,8 @@ typed payload만 받고, envelope encode와 route runtime lookup은 `.cpp` 구�
 ### 남은 tradeoff
 
 - 현재 typed request public call은 route runtime backend seam으로 reply parts를 받아
-  `TReply`를 완성한다. native route backend adapter가 이 seam에 연결됐고, 남은 작업은
-  runtime manager가 실제 router socket lifecycle과 discovery attach 단계에서 adapter를
-  자동으로 붙이는 것이다.
+  `TReply`를 완성한다. native route backend adapter가 이 seam에 연결됐고, public route client
+  표면은 router socket lifecycle이나 discovery attach 세부를 노출하지 않는다.
 
 ### 재실행한 검증 명령
 
@@ -3199,8 +3198,8 @@ typed route request는 reply envelope body를 `TReply`로 복원하는 역할만
 ### 남은 tradeoff
 
 - backend seam은 `native_route_backend_t`로 C++ binding `router_socket_t::send/request`에
-  연결됐다. 남은 작업은 runtime manager가 실제 router socket owner를 만들고 route channel
-  초기화 시 adapter를 자동 attach하는 것이다.
+  연결됐다. router socket owner나 route channel 초기화 정책이 바뀌어도 public route client는
+  같은 seam 아래에 머문다.
 
 ### 재실행한 검증 명령
 
@@ -5639,8 +5638,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-observability --outp
 ### 재실행한 검증 명령
 
 ```bash
-cmake --build framework/languages/cpp/build --target test_cpp_framework_layout_contract test_cpp_stream_connector sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client
-ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_layout_contract|test_cpp_stream_connector|sample_smoke_sample_cpp_framework_bingo_client|sample_smoke_sample_cpp_framework_tictactoe_client' --output-on-failure
+cmake --build framework/languages/cpp/build --target test_cpp_framework_layout_contract test_cpp_stream_connector sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client sample_cpp_framework_bingo_e2e_server sample_cpp_framework_tictactoe_e2e_server
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_layout_contract|test_cpp_stream_connector|sample_process_e2e_sample_cpp_framework_bingo_client|sample_process_e2e_sample_cpp_framework_tictactoe_client' --output-on-failure
 cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host test_cpp_http_client
 ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_app_host|test_cpp_framework_http_integration|test_cpp_http_client' --output-on-failure
 cmake --build framework/languages/cpp/build --target test_cpp_framework_channel_messaging test_cpp_framework_backpressure_reliability
@@ -7656,8 +7655,7 @@ framework, connector, HTTP client public header와 같은 leakage gate를 통과
 ### 적용한 리팩토링
 
 - Bingo와 TicTacToe sample e2e stream server가 `monitor event stream_ready` 로그를 남기게 했다.
-- sample e2e log 검증과 process e2e 검증의 `EXPECTED_CONTAINS`에 `monitor event stream_ready`를
-  추가했다.
+- process e2e log 검증의 `EXPECTED_CONTAINS`에 `monitor event stream_ready`를 추가했다.
 - 샘플 README의 server log 설명을 monitoring event까지 포함하도록 맞췄다.
 
 ### 수정 후 점검

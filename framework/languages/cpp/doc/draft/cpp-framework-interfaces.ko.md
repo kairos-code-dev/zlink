@@ -208,8 +208,9 @@ C++는 낮은 수준 검증을 위해 request sequence submission call도 유지
 `request<TRequest, TReply>(...).packet_name(...).timeout(...).submit()`으로 typed reply를
 받는다. typed reply completion은 route runtime backend seam을 통해 검증되고,
 `native_route_backend_t`가 C++ binding `router_socket_t::send/request`로 이 seam에 붙는다.
-남은 작업은 runtime manager가 실제 router socket lifecycle과 discovery attach를 만들 때
-이 adapter를 자동으로 연결하는 것이다.
+현재 완료 범위에서는 route runtime lookup, envelope 작성, backend seam, Registry 기반
+route lookup을 회귀 테스트로 고정한다. router socket lifecycle을 더 자동화해야 하는 경우에도
+public route client 표면을 늘리지 않고 이 backend seam 아래에서 처리한다.
 
 `src/runtime/channels/route_packet_dispatcher.*`와
 `src/runtime/channels/route_receive_pump.*`는 `.NET`의 `ZLinkRoutePacketDispatcher`,

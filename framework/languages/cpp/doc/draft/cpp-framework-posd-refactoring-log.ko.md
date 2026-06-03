@@ -7840,3 +7840,38 @@ framework 표면이 외부 codec SDK 타입에 결합되지 않는지를 검증�
 
 - POSD 대표 mapping row가 기록만 남기고 0 이슈 상태를 빠뜨리면
   `test_cpp_framework_layout_contract`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 18 HTTP client deferred feature boundary 보강
+
+### 발견한 위험 신호
+
+- Goal 18은 retry, redirect, cookie, proxy, multipart, streaming download를 초기 core 범위에
+  넣지 않고 후속 extension point로 남긴다고 명시한다.
+- 현재 public header에는 해당 API가 없지만, layout contract는 이 제외 범위를 직접 검사하지
+  않았다.
+- 이 상태에서는 HTTP client public surface에 후속 범위 API가 섞여도 public dependency gate나
+  compile contract만으로는 plan과의 충돌을 잡기 어렵다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 수동 리뷰만 유지 | 테스트 변경이 없다 | public surface drift를 반복 리뷰 때 놓칠 수 있다 |
+| HTTP client feature를 모두 구현한다 | 기능 표면이 넓어진다 | Goal 18의 초기 core 범위를 넘어서고 extension boundary가 흐려진다 |
+| layout contract가 HTTP client public include에서 deferred feature API를 금지한다 | plan의 범위 제한을 자동으로 고정한다 | 후속 goal에서 기능을 열 때 contract와 문서를 함께 바꿔야 한다 |
+
+선택은 세 번째 방식이다. HTTP client는 framework HTTP hosting 검증용 core 소비자이므로 초기
+표면은 typed JSON request/response, timeout, status/TLS mapping에 집중해야 한다. 후속 기능은
+별도 extension point가 생길 때 plan과 contract를 함께 갱신한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_layout_contract`에 HTTP client public include를 스캔하는
+  deferred feature boundary 검사를 추가했다.
+- public header에 retry, redirect, cookie, proxy, multipart, streaming download 계열 이름이
+  들어오면 contract가 실패하게 했다.
+
+### 수정 후 점검
+
+- HTTP client public surface가 Goal 18 초기 core 범위를 넘어서면
+  `test_cpp_framework_layout_contract`가 실패한다.

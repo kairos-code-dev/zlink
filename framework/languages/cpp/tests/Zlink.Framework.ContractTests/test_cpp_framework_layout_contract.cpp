@@ -760,6 +760,51 @@ file_does_not_contain (const std::filesystem::path &path,
   return false;
 }
 
+bool
+http_client_public_surface_excludes_deferred_features (
+  const std::filesystem::path &root)
+{
+  bool ok = true;
+  const auto include_root = root / "http-client/include";
+  const std::string forbidden[] = {
+    "retry",
+    "redirect",
+    "cookie",
+    "proxy",
+    "multipart",
+    "streaming_download",
+    "download_stream",
+    "follow_redirect"
+  };
+
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator (include_root)) {
+    if (!entry.is_regular_file ()) {
+      continue;
+    }
+    const auto ext = entry.path ().extension ();
+    if (ext != ".hpp" && ext != ".h") {
+      continue;
+    }
+
+    std::ifstream input (entry.path ());
+    std::string line;
+    std::size_t line_no = 0;
+    while (std::getline (input, line)) {
+      ++line_no;
+      for (const auto &needle : forbidden) {
+        if (line.find (needle) != std::string::npos) {
+          std::cerr << "HTTP client public surface exposes deferred feature: "
+                    << entry.path () << ':' << line_no << " contains "
+                    << needle << '\n';
+          ok = false;
+        }
+      }
+    }
+  }
+  return ok;
+}
+
 } // namespace
 
 int
@@ -1272,6 +1317,7 @@ main ()
     root /
       "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnectorAutomationTests.cpp",
     "FSocket");
+  ok &= http_client_public_surface_excludes_deferred_features (root);
 
   ok &= public_headers_do_not_include_runtime (
     root / "framework/include");

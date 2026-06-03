@@ -34,6 +34,18 @@ struct options_reply_t
   std::string value;
 };
 
+struct late_options_request_t
+{
+  static constexpr const char *packet_name = "LateOptionsRequest";
+  std::string value;
+};
+
+struct late_options_reply_t
+{
+  static constexpr const char *packet_name = "LateOptionsReply";
+  std::string value;
+};
+
 inline void to_json (nlohmann::json &json, const options_request_t &value)
 {
   json = { { "value", value.value } };
@@ -54,6 +66,27 @@ inline void from_json (const nlohmann::json &json, options_reply_t &value)
   value.value = json.value ("value", "");
 }
 
+inline void to_json (nlohmann::json &json, const late_options_request_t &value)
+{
+  json = { { "value", value.value } };
+}
+
+inline void from_json (const nlohmann::json &json,
+                       late_options_request_t &value)
+{
+  value.value = json.value ("value", "");
+}
+
+inline void to_json (nlohmann::json &json, const late_options_reply_t &value)
+{
+  json = { { "value", value.value } };
+}
+
+inline void from_json (const nlohmann::json &json, late_options_reply_t &value)
+{
+  value.value = json.value ("value", "");
+}
+
 class options_request_handler_t
 {
 public:
@@ -64,6 +97,19 @@ public:
   options_reply_t handle (const options_request_t &request)
   {
     return { "reply:" + request.value };
+  }
+};
+
+class late_options_request_handler_t
+{
+public:
+  using request_type = late_options_request_t;
+  using reply_type = late_options_reply_t;
+  static constexpr const char *topic_name = "LateOptionsRequest";
+
+  late_options_reply_t handle (const late_options_request_t &request)
+  {
+    return { "late:" + request.value };
   }
 };
 
@@ -361,6 +407,7 @@ main ()
 
   options.handlers ().add<options_request_handler_t> ("api");
   options.codecs ().add_json ();
+  options.handlers ().add<late_options_request_handler_t> ("api");
   options.discovery ().add ("tcp://127.0.0.1:9102");
   options.client_server_channel ("api-channel")
     .server ("tcp://127.0.0.1:9103")
@@ -393,6 +440,20 @@ main ()
   const auto reply = result.value ().parse_json<options_reply_t> ();
   if (reply.value != "reply:request") {
     return 9;
+  }
+  auto late_result = handlers.invoke (
+    "api-channel",
+    "LateOptionsRequest",
+    late_options_request_t::packet_name,
+    provider,
+    serializers,
+    zlink::message_t::from_json (late_options_request_t { "request" }));
+  if (!late_result) {
+    return 13;
+  }
+  const auto late_reply = late_result.value ().parse_json<late_options_reply_t> ();
+  if (late_reply.value != "late:request") {
+    return 14;
   }
 
   const auto discovery = zlink.discovery_options ();

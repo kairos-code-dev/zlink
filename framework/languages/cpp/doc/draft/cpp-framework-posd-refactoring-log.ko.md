@@ -7441,3 +7441,37 @@ exporter, label schema, backend adapter는 extension이 맡을 수 있게 남겨
 
 - metrics hook이 public app surface에서 사라지거나 metric event가 monitoring handler/trace
   hook을 통과하지 않으면 `test_cpp_framework_monitoring`이 실패한다.
+
+## 반복 POSD 재리뷰. Goal 17 JSON codec 선언 순서 회귀 테스트 보강
+
+### 발견한 위험 신호
+
+- Goal 17 완료 기준은 `options.codecs().add_json()`이 JSON codec 사용만 선언하고 message type을
+  모두 나열하지 않아야 한다고 요구한다.
+- 기존 module/hosted service 테스트는 handler를 먼저 등록하고 나중에 `add_json()`을 호출하는
+  순서만 검증했다.
+- 이 상태에서는 사용자가 JSON codec을 먼저 선언한 뒤 handler를 추가할 때 request/reply
+  serializer가 자동 설치되지 않는 회귀를 놓칠 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 단일 순서 테스트만 유지 | 변경이 없다 | 선언형 codec 의미의 절반만 검증한다 |
+| handler type마다 serializer를 직접 등록하도록 문서화 | 구현이 단순하다 | Goal 17의 "message type을 모두 나열하지 않는다" 기준과 충돌한다 |
+| `add_json()` 전후 handler 등록 순서를 모두 e2e로 검증 | public 사용 의미를 고정한다 | 테스트 DTO와 handler가 하나 늘어난다 |
+
+선택은 세 번째 방식이다. JSON codec 선언은 handler 등록 순서와 독립적이어야 호출자가 serializer
+등록 순서를 외우지 않아도 된다. 이는 codec builder가 복잡성을 아래로 숨긴다는 POSD 기준에도
+맞다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_module_hosted`에 `add_json()` 이후 등록되는 late handler를 추가했다.
+- 같은 channel/group에서 기존 handler와 late handler를 모두 invoke해 request/reply JSON
+  serializer가 자동 설치되는지 검증했다.
+
+### 수정 후 점검
+
+- `options.codecs().add_json()` 호출 뒤 추가된 handler의 serializer가 자동 설치되지 않으면
+  `test_cpp_framework_module_hosted`가 실패한다.

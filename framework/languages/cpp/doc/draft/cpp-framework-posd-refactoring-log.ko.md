@@ -181,6 +181,49 @@ environment 이름과 기본값을 제공하고 profile JSON은 기존 `load_jso
 - profile 비교는 `is_environment()`에 모여 호출자가 casing 규칙을 반복하지 않는다.
 - optional profile JSON은 기존 optional loader와 조합된다.
 
+## 반복 POSD 재리뷰. Goal 19 HTTP DTO validation hook 보강
+
+### 발견한 위험 신호
+
+- Goal 19와 application framework draft는 HTTP request validation과 DTO validation failure를
+  필수 테스트 축으로 둔다.
+- 기존 HTTP hosting은 invalid JSON과 exception mapping은 처리했지만, DTO가 역직렬화된 뒤
+  handler 실행 전에 사용자 정의 validation hook을 호출하지 않았다.
+- validation을 handler 내부에만 두면 handler마다 같은 `400` 매핑을 반복하거나 validation 실패를
+  business failure와 섞어 처리하게 된다.
+
+### 위반한 POSD 원칙
+
+- 깊은 모듈: HTTP route module이 binding과 error mapping을 맡으면서 validation 단계는 호출자에
+  떠넘겨져 있었다.
+- 복잡성을 아래로: handler 작성자가 validation 실패의 HTTP status mapping까지 알아야 했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| handler 내부 validation만 문서화 | 구현 변경이 없다 | 공통 validation/error mapping 완료 기준이 미구현으로 남는다 |
+| 별도 validator registry를 추가 | 확장성이 크다 | 초기 표면이 커지고 route 등록과 validator 등록 순서가 생긴다 |
+| DTO의 `validate(context)` 또는 `validate()` hook을 route invocation에서 호출 | 표면이 작고 DTO가 자기 규칙을 가진다 | 복잡한 validation 조합은 후속 extension이 필요하다 |
+
+선택은 세 번째 방식이다. C++ DTO가 자기 validation 함수를 제공하면 framework는 호출 시점과
+HTTP error mapping만 책임지고, annotation이나 별도 validator는 후속 extension으로 남길 수 있다.
+
+### 적용한 리팩토링
+
+- HTTP route invocation이 request DTO 역직렬화 뒤 `validate(context)` 또는 `validate()`가
+  있으면 handler 호출 전에 실행하게 했다.
+- validation hook이 `framework_exception_t(request_protocol_error)`를 던지면 기존 error mapping을
+  통해 `400` 응답으로 고정된다.
+- app host regression이 missing required field와 DTO validation failure를 `zlink::http_client`
+  raw response로 확인하게 했다.
+
+### 수정 후 점검
+
+- validation 실패는 handler 실행 전에 멈춘다.
+- HTTP validation 실패는 기존 middleware `after`와 correlation id 흐름을 그대로 통과한다.
+- 복잡한 validator registry 없이 draft의 초기 사용자 정의 `validate()` hook 요구를 만족한다.
+
 ## 반복 POSD 재리뷰. Sample client process e2e 분리
 
 ### 발견한 위험 신호

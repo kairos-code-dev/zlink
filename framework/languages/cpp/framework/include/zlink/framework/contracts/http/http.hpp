@@ -435,6 +435,21 @@ private:
     }
   }
 
+  template<typename TRequest>
+  static void validate_request (const TRequest &request,
+                                const http_context_t &context)
+  {
+    if constexpr (requires {
+                    request.validate (context);
+                  }) {
+      request.validate (context);
+    } else if constexpr (requires {
+                           request.validate ();
+                         }) {
+      request.validate ();
+    }
+  }
+
   template<typename THandler>
   http_options_builder_t &add_route (http_method_t method, std::string path)
   {
@@ -460,6 +475,7 @@ private:
       const auto request =
         serializers->template get<request_type> ().deserialize (
           zlink::message_t::from (body));
+      validate_request (request, context);
       try {
         auto &handler = services.get_required<THandler> ();
         auto handler_result = invoke_handler (handler, request, context);

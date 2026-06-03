@@ -44,6 +44,21 @@ struct create_game_http_handler_t
     std::string name;
     std::string filter;
     std::string correlationId;
+
+    void validate (const zlink::framework::http_context_t &context) const
+    {
+      if (context.method == zlink::framework::http_method_t::post &&
+          name.empty ()) {
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          "name is required");
+      }
+      if (name == "invalid") {
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          "name is invalid");
+      }
+    }
   };
 
   struct reply_type
@@ -517,6 +532,16 @@ main ()
       .body (std::string ("not-an-object"))
       .submit_raw ()
       .result ();
+  const auto missing_required_field_result =
+    http_client.post ("/games")
+      .body (create_game_http_handler_t::request_type {})
+      .submit_raw ()
+      .result ();
+  const auto dto_validation_result =
+    http_client.post ("/games")
+      .body (create_game_http_handler_t::request_type { .name = "invalid" })
+      .submit_raw ()
+      .result ();
   const auto system_method_mismatch_result =
     http_client.post ("/ready")
       .body (create_game_http_handler_t::request_type { .name = "wrong-method" })
@@ -624,6 +649,18 @@ main ()
       invalid_json_shape_result.value ().headers.at ("X-Middleware-After") !=
         "seen") {
     return 22;
+  }
+  if (!missing_required_field_result ||
+      missing_required_field_result.value ().status != 400 ||
+      missing_required_field_result.value ().body.find ("name is required") ==
+        std::string::npos) {
+    return 43;
+  }
+  if (!dto_validation_result ||
+      dto_validation_result.value ().status != 400 ||
+      dto_validation_result.value ().body.find ("name is invalid") ==
+        std::string::npos) {
+    return 44;
   }
   if (!system_method_mismatch_result ||
       system_method_mismatch_result.value ().status != 405) {

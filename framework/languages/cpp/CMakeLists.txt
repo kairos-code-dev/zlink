@@ -230,6 +230,10 @@ if(OpenSSL_FOUND)
   target_link_libraries(zlink_stream_connector PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto)
+  set(ZLINK_STREAM_CONNECTOR_EXPORT_OPENSSL_DEPENDENCY
+    "find_dependency(OpenSSL)")
+else()
+  set(ZLINK_STREAM_CONNECTOR_EXPORT_OPENSSL_DEPENDENCY "")
 endif()
 if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
   find_path(ZLINK_LZ4_INCLUDE_DIR lz4.h)
@@ -250,9 +254,29 @@ if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
       ${zlink_lz4_SOURCE_DIR}/lib)
   endif()
 endif()
+set(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED OFF)
+if(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK AND TARGET zlink::cpp_codec_messagepack)
+  set(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED ON)
+endif()
+if(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED)
+  set(ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY
+    "find_dependency(msgpack-cxx CONFIG)")
+else()
+  set(ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY "")
+endif()
+set(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED OFF)
+if(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF AND TARGET zlink::cpp_codec_protobuf)
+  set(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED ON)
+endif()
+if(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED)
+  set(ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY
+    "find_dependency(Protobuf)")
+else()
+  set(ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY "")
+endif()
 target_compile_definitions(zlink_stream_connector PRIVATE
-  $<$<BOOL:${ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK}>:ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK>
-  $<$<BOOL:${ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF}>:ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF>
+  $<$<BOOL:${ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK>
+  $<$<BOOL:${ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF>
   $<$<BOOL:${ZLINK_STREAM_CONNECTOR_WITH_LZ4}>:ZLINK_STREAM_CONNECTOR_WITH_LZ4>)
 
 add_library(zlink_stream_connector_codecs INTERFACE)
@@ -266,11 +290,11 @@ target_include_directories(zlink_stream_connector_codecs INTERFACE
 target_link_libraries(zlink_stream_connector_codecs INTERFACE
   zlink::stream_connector
   nlohmann_json::nlohmann_json)
-if(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK AND TARGET zlink::cpp_codec_messagepack)
+if(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED)
   target_link_libraries(zlink_stream_connector_codecs INTERFACE
     zlink::cpp_codec_messagepack)
 endif()
-if(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF AND TARGET zlink::cpp_codec_protobuf)
+if(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED)
   target_link_libraries(zlink_stream_connector_codecs INTERFACE
     zlink::cpp_codec_protobuf)
 endif()

@@ -1186,6 +1186,42 @@ main ()
     "CMake presets must not set the removed Stream Connector JSON helper option");
   ok &= file_contains (
     root / "CMakeLists.txt",
+    "set(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED OFF)");
+  ok &= file_contains (
+    root / "CMakeLists.txt",
+    "if(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK AND TARGET zlink::cpp_codec_messagepack)");
+  ok &= file_contains (
+    root / "CMakeLists.txt",
+    "$<$<BOOL:${ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK>");
+  ok &= file_contains (
+    root / "CMakeLists.txt",
+    "set(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED OFF)");
+  ok &= file_contains (
+    root / "CMakeLists.txt",
+    "if(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF AND TARGET zlink::cpp_codec_protobuf)");
+  ok &= file_contains (
+    root / "CMakeLists.txt",
+    "$<$<BOOL:${ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF>");
+  ok &= file_contains (
+    root / "cmake/zlink_framework_cppConfig.cmake.in",
+    "@ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY@");
+  ok &= file_contains (
+    root / "cmake/zlink_framework_cppConfig.cmake.in",
+    "@ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY@");
+  ok &= file_contains (
+    root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
+    "@ZLINK_STREAM_CONNECTOR_EXPORT_OPENSSL_DEPENDENCY@");
+  ok &= file_contains (
+    root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
+    "@ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY@");
+  ok &= file_contains (
+    root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
+    "@ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY@");
+  ok &= file_contains (
+    root / "../../../bindings/cpp/CMakeLists.txt",
+    "install(TARGETS ${target_name}\n    EXPORT zlink_cppTargets)");
+  ok &= file_contains (
+    root / "CMakeLists.txt",
     "option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 \"Enable Stream Connector LZ4 compression\" ON)");
   ok &= file_contains (
     root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",

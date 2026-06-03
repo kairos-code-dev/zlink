@@ -297,9 +297,7 @@ main ()
   }
 
   connector.codecs ().add_json<login_request_t> ();
-  if (!connector.codecs ().supports (zlink::stream_connector::codec_t::json) ||
-      connector.codecs ().supports (
-        zlink::stream_connector::codec_t::message_pack)) {
+  if (!connector.codecs ().supports (zlink::stream_connector::codec_t::json)) {
     return 3;
   }
 
@@ -491,13 +489,15 @@ main ()
     return 10;
   }
 
+  const auto message_pack_supported = connector.codecs ().supports (
+    zlink::stream_connector::codec_t::message_pack);
   bool error_seen = false;
   try {
     connector.codecs ().add_message_pack<login_request_t> ();
   } catch (const std::invalid_argument &) {
     error_seen = true;
   }
-  if (!error_seen) {
+  if (message_pack_supported == error_seen) {
     return 11;
   }
   auto disconnected = connector.close ().result ();

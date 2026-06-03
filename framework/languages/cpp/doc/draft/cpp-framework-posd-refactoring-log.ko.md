@@ -6793,3 +6793,80 @@ Protobuf option으로 충분하다.
 ### 수정 후 점검
 
 - 의미 없는 JSON helper option이 재도입되면 `test_cpp_framework_layout_contract`가 실패한다.
+
+## 추가 리뷰. Stream Connector optional codec effective flag 보강
+
+### 발견한 위험 신호
+
+- MessagePack과 Protobuf helper는 build option이 켜지고 해당 C++ binding codec target이
+  있을 때만 연결된다고 문서화되어 있다.
+- CMake link 조건은 option과 target 존재를 함께 봤지만, runtime compile definition은 option만
+  봤다. option이 ON이고 target이 없으면 runtime은 codec을 enabled로 볼 수 있었다.
+- 이 상태는 public `supports(codec_t::message_pack)` 의미와 실제 helper dependency 상태가
+  갈라지는 정보 누출이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| option만 runtime enabled 조건으로 유지 | 설정이 단순하다 | target이 없어도 enabled로 보이는 오구현이 남는다 |
+| option ON인데 target이 없으면 configure 실패 | 누락 의존성을 즉시 알린다 | optional helper를 끈 기본 개발 흐름과 다르게 패키지 설치를 강제할 수 있다 |
+| effective flag를 만들어 option과 target 존재가 모두 참일 때만 runtime/link를 켠다 | 문서 의미와 runtime 의미가 일치한다 | CMake 변수가 두 개 늘어난다 |
+
+선택은 세 번째 방식이다. MessagePack과 Protobuf는 선택 helper이므로 의존 target이 실제로
+있을 때만 connector runtime과 helper target이 같은 enabled 상태를 가져야 한다.
+
+### 적용한 리팩토링
+
+- `ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED`와
+  `ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED` effective flag를 추가했다.
+- runtime compile definition과 `zlink::stream_connector_codecs` link 조건을 같은 effective
+  flag로 묶었다.
+- layout contract가 optional codec effective flag 패턴을 확인하게 했다.
+
+### 수정 후 점검
+
+- option만 켜고 binding codec target이 없는 상태에서 runtime codec support가 켜지는 회귀는
+  layout contract가 CMake 조건 drift로 잡는다.
+
+## 추가 리뷰. Optional codec package export dependency 보강
+
+### 발견한 위험 신호
+
+- `ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK=ON`과
+  `ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF=ON` 구성에서 binding codec target은 build tree에
+  생기지만 `zlink_cppTargets` export set에는 들어가지 않았다.
+- 그 상태에서 `zlink::stream_connector_codecs`가 optional codec target을 참조하면 install
+  export 생성 또는 installed consumer configure가 실패한다.
+- 설치된 config 파일은 optional codec dependency와 stream connector OpenSSL dependency를
+  `find_dependency`로 복원하지 않았다.
+- `find_dependency`가 다른 package config를 읽은 뒤 `PACKAGE_PREFIX_DIR`를 바꿀 수 있어,
+  `zlink-native` imported location이 설치 prefix가 아니라 `/usr` 같은 다른 prefix를 가리킬
+  수 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| optional codec target link를 제거한다 | install export 오류가 사라진다 | helper target이 optional codec dependency를 제공한다는 문서 의미가 약해진다 |
+| optional codec option ON이면 install packaging을 지원하지 않는다고 문서화한다 | 구현 변경이 작다 | Goal 20 package boundary 완료 기준과 충돌한다 |
+| binding codec targets를 export/install하고 package config dependency를 복원한다 | optional codec helper가 build/install consumer 모두에서 같은 의미를 가진다 | binding CMake와 framework config template을 함께 고쳐야 한다 |
+
+선택은 세 번째 방식이다. optional codec은 connector package 표면의 일부이므로 build tree에서만
+동작하고 install consumer에서 깨지는 상태를 허용하면 안 된다.
+
+### 적용한 리팩토링
+
+- binding C++ codec interface target을 `zlink_cppTargets` export set에 포함하고 codec include를
+  install하도록 했다.
+- framework와 stream connector package config가 optional MessagePack/Protobuf dependency를
+  `find_dependency`로 복원하게 했다.
+- stream connector package config가 OpenSSL dependency를 복원하게 했다.
+- framework와 stream connector package config가 native runtime prefix를 별도 변수로 저장해
+  `find_dependency` 이후에도 같은 설치 prefix를 사용하게 했다.
+- layout contract가 optional codec export/config dependency 패턴을 확인하게 했다.
+
+### 수정 후 점검
+
+- optional codec option을 켠 build에서 `test_cpp_stream_connector`, install, installed
+  consumer configure/build가 모두 통과해야 한다.

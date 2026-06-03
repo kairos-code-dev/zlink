@@ -1,23 +1,30 @@
 @PACKAGE_INIT@
 
+get_filename_component(
+  ZLINK_FRAMEWORK_CPP_PACKAGE_PREFIX
+  "${CMAKE_CURRENT_LIST_DIR}/../../../"
+  ABSOLUTE)
+
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
 find_dependency(nlohmann_json CONFIG)
 @ZLINK_HTTP_CLIENT_EXPORT_OPENSSL_DEPENDENCY@
+@ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY@
+@ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY@
 
 if(NOT TARGET zlink-native)
   if(WIN32)
     add_library(zlink-native SHARED IMPORTED)
     set_target_properties(zlink-native PROPERTIES
-      IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/bin/zlink.dll")
+      IMPORTED_LOCATION "${ZLINK_FRAMEWORK_CPP_PACKAGE_PREFIX}/bin/zlink.dll")
   elseif(APPLE)
     add_library(zlink-native SHARED IMPORTED)
     set_target_properties(zlink-native PROPERTIES
-      IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/lib/libzlink.dylib")
+      IMPORTED_LOCATION "${ZLINK_FRAMEWORK_CPP_PACKAGE_PREFIX}/lib/libzlink.dylib")
   else()
     add_library(zlink-native SHARED IMPORTED)
     set_target_properties(zlink-native PROPERTIES
-      IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/lib/libzlink.so")
+      IMPORTED_LOCATION "${ZLINK_FRAMEWORK_CPP_PACKAGE_PREFIX}/lib/libzlink.so")
   endif()
 endif()
 if(NOT TARGET zlink::cpp)

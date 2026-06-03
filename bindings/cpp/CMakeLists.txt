@@ -221,8 +221,15 @@ function(add_zlink_cpp_codec_target codec_name include_dir)
   add_library(${target_name} INTERFACE)
   add_library("zlink::cpp_codec_${codec_name}" ALIAS ${target_name})
   target_compile_features(${target_name} INTERFACE cxx_std_20)
-  target_include_directories(${target_name} INTERFACE ${include_dir})
+  target_include_directories(${target_name} INTERFACE
+    $<BUILD_INTERFACE:${include_dir}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
   target_link_libraries(${target_name} INTERFACE zlink_cpp ${ARGN})
+  install(TARGETS ${target_name}
+    EXPORT zlink_cppTargets)
+  install(DIRECTORY "${include_dir}/"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp")
 endfunction()
 
 find_package(nlohmann_json QUIET)

@@ -76,6 +76,11 @@ send_call_t
 bound_session_t::send_erased (const zlink::message_t &payload)
 {
   const auto found = _state->actors_by_id.find (_actor_id);
+  if (found != _state->actors_by_id.end () && found->second.disconnected) {
+    return send_call_t (result_t<void>::failure (
+      framework_error_kind_t::disconnected,
+      "actor session is disconnected"));
+  }
   if (found == _state->actors_by_id.end () || !found->second.bound) {
     return send_call_t (result_t<void>::failure (
       framework_error_kind_t::actor_session_not_bound,
@@ -249,6 +254,17 @@ session_actor_t::relay (const stream_header_t &header,
     return relay_call_t (result_t<void>::failure (
       framework_error_kind_t::actor_route_not_found,
       "session actor is not bound"));
+  }
+  const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ()));
+  if (found != _state->actors_by_id.end () && found->second.disconnected) {
+    return relay_call_t (result_t<void>::failure (
+      framework_error_kind_t::disconnected,
+      "actor session is disconnected"));
+  }
+  if (found == _state->actors_by_id.end () || !found->second.bound) {
+    return relay_call_t (result_t<void>::failure (
+      framework_error_kind_t::actor_session_not_bound,
+      "actor session is not bound"));
   }
   _state->relayed_frames.push_back (
     detail::relayed_frame_t { _ref, header, payload });

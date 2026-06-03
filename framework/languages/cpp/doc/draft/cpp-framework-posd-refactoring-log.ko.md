@@ -5998,3 +5998,39 @@ pipeline으로 닫아야 logging/correlation 지식이 handler마다 반복되�
 
 - stale Spot remote address는 registry runtime 내부 cleanup으로 제거된다.
 - Goal 15의 stale address cleanup 항목은 `framework-zlink-registry` 회귀 테스트가 잡는다.
+
+## 추가 리뷰. ActorGateway disconnected session relay gate 보강
+
+### 발견한 위험 신호
+
+- Goal 14와 ActorGateway session relay 문서는 session disconnect cleanup 뒤 bound session push와
+  relay가 실패해야 한다고 적는다.
+- `bound_session_t::send_raw(...)`은 bound 상태를 확인했지만, `session_actor_t::relay(...)`는
+  disconnect된 actor record를 보지 않고 stale actor ref로 relay frame을 계속 기록했다.
+- disconnect 상태 지식이 push와 relay 경로에 다르게 적용되면 caller는 같은 session actor에
+  대해 push는 실패하고 relay는 성공하는 모순을 관찰한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| actor bound 상태 테스트만 유지 | 기존 relay 구현을 유지한다 | cleanup 뒤 stale relay를 잡지 못한다 |
+| `notify_disconnected()`에서 actor ref를 비움 | relay 실패를 쉽게 만든다 | 기존 `session_actor_t` 복사본의 상태가 여전히 남을 수 있다 |
+| push와 relay가 모두 actor gateway state의 bound/disconnected record를 확인 | 상태 소유자를 한 곳으로 유지한다 | relay마다 map lookup이 추가된다 |
+
+선택은 세 번째 방식이다. actor-session binding 상태는 ActorGateway state가 소유하므로,
+push와 relay 모두 같은 state를 확인해야 cleanup 의미가 한 곳에 모인다.
+
+### 적용한 리팩토링
+
+- `bound_session_t::send_raw(...)`이 disconnected record에는 `disconnected` error를 반환하도록
+  했다.
+- `session_actor_t::relay(...)`가 actor record의 bound/disconnected 상태를 확인하도록 했다.
+- ActorGateway regression test가 `notify_disconnected()` 이후 push와 relay가 모두
+  `disconnected`로 실패하고 payload가 소비되지 않는지 검증하게 했다.
+
+### 수정 후 점검
+
+- disconnect cleanup 뒤 stale `session_actor_t`로 relay frame이 추가되지 않는다.
+- Goal 14의 disconnected session push/relay 실패 계약은 `framework-zlink-actor-gateway`
+  test가 잡는다.

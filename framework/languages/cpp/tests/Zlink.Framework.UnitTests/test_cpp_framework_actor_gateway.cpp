@@ -165,6 +165,19 @@ main ()
       !gateway.actor_disconnected ("bob")) {
     return 10;
   }
+  auto disconnected_push =
+    bound.value ().bound_session ().send_raw (payload).submit ().result ();
+  if (disconnected_push ||
+      disconnected_push.error_kind () != framework_error_kind_t::disconnected) {
+    return 16;
+  }
+  auto disconnected_relay =
+    bound.value ().relay (header, payload).submit ().result ();
+  if (disconnected_relay ||
+      disconnected_relay.error_kind () != framework_error_kind_t::disconnected ||
+      payload.to_string () != "payload") {
+    return 17;
+  }
 
   auto rebound = manager.bind (remote_ref).submit ().result ();
   if (!rebound || !gateway.actor_bound ("bob")) {

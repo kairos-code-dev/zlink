@@ -5201,3 +5201,37 @@ transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 �
 - 남아 있는 `create_game_http_handler_t` 이름은 HTTP hosting unit test fixture에 한정되어야
   하며, TicTacToe sample 계약 설명에는 남기지 않는다.
 - 이번 보정 뒤 TicTacToe HTTP 문서 예시와 현재 구현 계약 사이의 즉시 수정 이슈는 0개다.
+
+## 추가 리뷰. HTTP route/query/body binding 우선순위 회귀 보강
+
+### 발견한 위험 신호
+
+- HTTP hosting draft는 request DTO 병합 우선순위를 route parameter, query string, body
+  순서로 고정한다. 현재 runtime은 body를 읽은 뒤 query, route 값을 차례로 덮어써 이 규칙을
+  구현하고 있다.
+- 기존 HTTP app host 테스트는 GET query binding과 route parameter가 body id를 덮는 경로를
+  검증했다. 그러나 query string이 body field를 덮는 경로는 직접 검증하지 않아, runtime 병합
+  순서가 바뀌어도 테스트가 놓칠 수 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| runtime 유지, 테스트 추가 없음 | 코드 변경이 없다 | 문서의 우선순위 계약을 간접 증거에 맡긴다 |
+| runtime에 별도 우선순위 helper를 추가 | 의도가 이름으로 드러난다 | 현재 병합 로직이 짧아 abstraction 이득이 작다 |
+| 기존 HTTP e2e에 query-over-body 케이스 추가 | 문서 계약을 실제 public HTTP 호출로 검증한다 | 테스트 요청이 하나 늘어난다 |
+
+선택은 기존 HTTP e2e에 query-over-body 케이스를 추가하는 것이다. runtime 구현은 이미
+문서 방향과 맞고, 부족한 것은 회귀 증거다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_app_host`에 `PUT /games/1?filter=query-filter` 요청을 추가했다.
+- 요청 body에는 `filter=body-filter`를 넣고, 응답이 `filter=query-filter`와 route id `1`을
+  반환하는지 확인한다.
+
+### 수정 후 점검
+
+- HTTP binding 우선순위는 body 값을 query가 덮고, route parameter가 body id를 덮는 방식으로
+  public HTTP e2e에서 검증되어야 한다.
+- 이번 보정 뒤 HTTP route/query/body binding 우선순위 회귀 공백은 0개다.

@@ -419,6 +419,14 @@ main ()
         .filter = "body-filter" })
       .submit<create_game_http_handler_t::reply_type> ()
       .result ();
+  const auto query_overrides_body_result =
+    http_client.put ("/games/1?filter=query-filter")
+      .body (create_game_http_handler_t::request_type {
+        .id = "body-id",
+        .name = "put",
+        .filter = "body-filter" })
+      .submit<create_game_http_handler_t::reply_type> ()
+      .result ();
   const auto delete_result =
     http_client.delete_ ("/games/1")
       .submit<create_game_http_handler_t::reply_type> ()
@@ -516,6 +524,12 @@ main ()
       put_result.value ().body.id != "1" ||
       put_result.value ().body.filter != "body-filter") {
     return 19;
+  }
+  if (!query_overrides_body_result ||
+      query_overrides_body_result.value ().body.name != "put" ||
+      query_overrides_body_result.value ().body.id != "1" ||
+      query_overrides_body_result.value ().body.filter != "query-filter") {
+    return 36;
   }
   if (!delete_result || delete_result.value ().status != 200) {
     return 20;

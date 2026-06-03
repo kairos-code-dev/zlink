@@ -3,6 +3,7 @@
 
 #include "tictactoe_player_client.hpp"
 #include "../Server/Api/Handlers/create_match_handler.hpp"
+#include "../Shared/sample_log.hpp"
 #include "../../Shared/stream_frame_server.hpp"
 
 #include <zlink/Contracts/Sockets/stream_socket.hpp>
@@ -42,6 +43,7 @@ public:
     const tictactoe_client_options_t &options)
   {
     zlink::context_t context;
+    reset_sample_log ();
     zlink::stream_socket_t server (context);
     server.options ().notify (false);
     server.bind ("tcp://127.0.0.1:0");
@@ -52,7 +54,7 @@ public:
     std::thread server_thread ([&server,
                                 endpoint = run_options.play_endpoint,
                                 x_actor_id = run_options.x_actor_id] {
-      std::ofstream log ("tictactoe-server.log", std::ios::trunc);
+      std::ofstream log (sample_log_file, std::ios::app);
       log << "bind " << endpoint << '\n';
       log << "monitor stream ready\n";
       int handled = 0;

@@ -3,6 +3,7 @@
 
 #include "../../../Shared/Configuration/sample_names.hpp"
 #include "../../../Shared/Configuration/sample_topology.hpp"
+#include "../../../Shared/sample_log.hpp"
 #include "../../Play/Handlers/create_match_room_handler.hpp"
 
 #include <zlink/framework.hpp>
@@ -29,10 +30,15 @@ public:
 
   create_match_res_t handle (const create_match_req_t &request)
   {
+    append_sample_log_line ("http POST /games");
+    append_sample_log_line (
+      std::string ("recv ") + create_match_req_t::packet_name);
     const auto room = _rooms.handle ({});
     const auto owner = request.owner_actor_id.empty ()
                          ? std::string (sample_names_t::x_actor_id)
                          : request.owner_actor_id;
+    append_sample_log_line (
+      std::string ("reply ") + create_match_req_t::packet_name);
     return { room.match_id, owner, _topology.stream_endpoint };
   }
 

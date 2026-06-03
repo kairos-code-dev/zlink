@@ -5752,3 +5752,40 @@ runtime 내부 option을 직접 읽지 않고 HTTP request 결과로 검증한�
 - `zlink::http_client`의 default header와 request header override 순서는 public HTTP client
   test에서 검증되어야 한다.
 - 이번 보정 뒤 HTTP client default header 회귀 공백은 0개다.
+
+## 추가 리뷰. TicTacToe sample HTTP 시작 흐름 로그 gate 보강
+
+### 발견한 위험 신호
+
+- Goal 19와 Goal 21은 TicTacToe client가 HTTP `POST /games`로 시작하고, sample e2e가 server
+  file log의 request/reply 흐름을 검증해야 한다고 적는다.
+- client sample은 실제로 `zlink::http_client`로 `/games`를 호출했지만, e2e log assertion은
+  stream server packet만 확인했다. 이 상태에서는 HTTP 시작 흐름이 나중에 빠져도 log gate가
+  통과할 수 있다.
+- HTTP handler와 stream client가 같은 sample log file을 다루면서 파일 이름과 초기화 정책이
+  각 파일에 흩어지면 로그 생산 순서에 따라 한쪽 로그가 지워질 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| client result의 `http_game_created`만 신뢰 | 이미 smoke에서 확인한다 | server file log gate 요구를 직접 증명하지 못한다 |
+| CTest에서 stdout을 추가 확인 | 구현 변경이 작다 | sample server file log 기준과 분리된다 |
+| HTTP handler가 sample log에 request/reply를 남기고 CTest expected를 강화 | HTTP 시작 흐름을 같은 e2e log gate로 고정한다 | sample log helper가 필요하다 |
+
+선택은 세 번째 방식이다. HTTP 시작 흐름은 sample server가 처리한 request/reply이므로,
+server file log에서 stream request와 함께 검증하는 것이 plan의 완료 기준과 가장 직접 맞는다.
+
+### 적용한 리팩토링
+
+- TicTacToe `Shared/sample_log.hpp`에 sample log file 이름, reset, append helper를 모았다.
+- `create_match_handler_t`가 HTTP `POST /games`, `recv CreateMatchReq`, `reply CreateMatchReq`를
+  sample log에 남기게 했다.
+- TicTacToe sample e2e CTest expected와 최소 request/reply count를 HTTP 시작 흐름까지
+  포함하도록 올렸다.
+
+### 수정 후 점검
+
+- sample log file 초기화와 append 정책은 shared helper 한 곳이 소유한다.
+- TicTacToe sample e2e log gate는 HTTP `POST /games`와 stream connector request/reply/push를
+  모두 고정한다.

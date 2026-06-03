@@ -5892,3 +5892,37 @@ HTTPS/TLS dependency를 명시해 secure 기능이 빠지지 않게 해야 한�
 
 - Goal 17 hosted service lifecycle은 정상 start/stop과 start 실패 cleanup을 모두 회귀 테스트로
   고정한다.
+
+## 추가 리뷰. STREAM disconnected write gate 보강
+
+### 발견한 위험 신호
+
+- Goal 13은 pending write 중 disconnect가 발생하면 caller가 disconnected 계열 error를 받아야
+  한다고 적는다.
+- `dispatch_disconnected()`는 session을 closed 상태로 표시했지만, `stream_t::write_packet()`은
+  그 상태를 확인하지 않고 항상 성공으로 write record를 추가했다.
+- disconnect 상태 지식이 dispatch 경로와 write 경로에 나뉘면 caller가 close 이후 write 성공을
+  관찰할 수 있다. 이는 session lifecycle 정보를 `stream_t`가 숨기지 못한 정보 은닉 약화다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| test에서 serial log만 확인 | 기존 구조를 건드리지 않는다 | write caller가 받는 error를 증명하지 못한다 |
+| runtime에 별도 pending write table을 공개 | pending 상태를 직접 볼 수 있다 | 아직 필요 없는 세부 구현을 public/test 표면으로 끌어올린다 |
+| `stream_t::write_packet()`이 session closed 상태를 보고 `disconnected`를 반환 | caller 계약을 가장 가까운 write 표면에서 지킨다 | 현재 구현의 pending write 모델은 즉시 call object에 머문다 |
+
+선택은 세 번째 방식이다. 현재 runtime은 write call object를 즉시 완료하므로, disconnect 이후 write를
+가장 가까운 public write 표면에서 실패시키는 것이 완료 기준과 가장 직접 맞는다.
+
+### 적용한 리팩토링
+
+- `stream_t::write_packet()`이 closed session이면 `framework_error_kind_t::disconnected` 실패를
+  반환하도록 했다.
+- `test_cpp_framework_stream_framework`가 disconnect 이후 write 실패와 write record 미증가를
+  검증하도록 보강했다.
+
+### 수정 후 점검
+
+- STREAM session lifecycle 상태는 `stream_t` 내부 state가 소유한다.
+- close 이후 write 성공으로 보이는 회귀는 `framework-zlink-stream` test가 잡는다.

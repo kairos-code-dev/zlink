@@ -214,6 +214,16 @@ main ()
       runtime.written_headers (stream)[0].request_seq () != 77) {
     return 15;
   }
+  const auto disconnected_write = stream.write_packet (
+    request_header,
+    zlink::message_t::from (std::string ("after-disconnect")))
+                                    .submit ()
+                                    .result ();
+  if (disconnected_write ||
+      disconnected_write.error_kind () != framework_error_kind_t::disconnected ||
+      runtime.written_headers (stream).size () != 1) {
+    return 16;
+  }
 
   sample_session_t validation_session;
   auto validation_stream = runtime.open_session ("client-stream");

@@ -167,6 +167,11 @@ stream_write_call_t
 stream_t::write_packet (const stream_header_t &header,
                         const zlink::message_t &payload)
 {
+  if (_state->closed) {
+    return stream_write_call_t (result_t<void>::failure (
+      framework_error_kind_t::disconnected,
+      "STREAM session is disconnected"));
+  }
   _state->written_headers.push_back (header);
   _state->written_payloads.push_back (payload);
   return stream_write_call_t (result_t<void>::success ());

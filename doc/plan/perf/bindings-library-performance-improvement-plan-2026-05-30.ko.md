@@ -32,7 +32,7 @@
 | 4 | Node | `bindings/node/perf` | `미달 6/144 (4.2%)` | `미달 21/156 (13.5%)` | Multi가 10% gate를 초과하지만, fastpath 변경, single routed 단일 payload native 수신, `sendToSpot` DontWait result-code 경로, `MULTI_PUBSUB` 단일 payload 내부 수신 경로를 적용했고, 추가 public contract-safe 후보는 log에 기각 근거를 남겼다. 평균 성능 비율을 계산한 뒤 다음 언어로 넘어간다. |
 | 5 | Go | `bindings/go/perf` | `미달 6/144 (4.2%)` | `미달 20/192 (10.4%)` | `MULTI_SPOT_REQREP tcp 4096B`는 request message 누수 수정으로 통과했고, 같은 complete 검증에서 `ws 131072B`도 통과로 회복했다. 잔여 routed echo, one-way 64B, builder hot path 후보를 추가로 시험했지만 새 통과를 만들지 못해 Go는 추가 후보 소진으로 정리하고 Rust로 넘어간다. |
 | 6 | Rust | `bindings/rust/perf` | `미달 25/144 (17.4%)` | `미달 11/192 (5.7%)` | Single 공통 송신 loop를 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿔 `PUBSUB wss 64B`를 통과로 올렸다. 이후 table transport full 확인에서 routed 대용량과 `SPOT tcp/ws/tls 1024B`는 기준에 못 닿았고, public recv envelope를 우회하지 않는 추가 후보는 log에 기각 근거를 남겼다. |
-| 7 | Python | `bindings/python/perf` | `미달` | `미측정` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. public Python API 경로의 single tcp/64 complete 재측정에서 `PAIR`, `DEALER_DEALER`는 기준을 넘겼지만 `PUBSUB`, routed, `SPOT`은 아직 미달한다. 아래 Python full 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, public Python API 경로로 다시 측정해야 한다. |
+| 7 | Python | `bindings/python/perf` | `tcp/64 제한 통과` | `미측정` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. public Python API 경로의 single tcp/64 제한 재측정에서 6개 패턴이 모두 기준을 넘겼다. 아래 Python full 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, full matrix는 public Python API 경로로 다시 측정해야 한다. |
 
 ### 1.1 언어별 평균 성능
 
@@ -55,9 +55,10 @@ p10은 하위 10% 경계값이고, 최저 10% 평균은 가장 느린 구간의 
 | Rust | 336 | 94.8% | 95.5% | 76.3% | 48.2% | 95.4% | 94.4% |
 | Python | 328 | 80.5% | 82.2% | 46.5% | 38.3% | 85.4% | 76.7% |
 
-Python 행은 2026-06-03 public contract 복구 전의 과거 측정값이다. 현재 코드의
-성능 판정에는 쓰지 않고, public Python API 경로로 다시 측정한 complete report가
-나온 뒤 새 값으로 교체한다.
+Python 행은 2026-06-03 public contract 복구 전의 과거 full 측정값이다. 현재 코드의
+full matrix 성능 판정에는 쓰지 않는다. 이번 public Python API 경로 재측정은 tcp/64
+제한 범위를 확인한 것이므로, full matrix 평균은 별도 complete report가 나온 뒤 새 값으로
+교체한다.
 
 
 ## 2. 기준 파일 메모
@@ -977,6 +978,34 @@ median 비율은 `PAIR` 33.1%, `PUBSUB` 28.3%, `DEALER_DEALER` 33.6%,
 아직 못 닿았다. routed one-way와 `SPOT`은 28% 기준에 못 닿았지만, `ROUTER_ROUTER`는
 native routed builder 적용 전 12.0~17.4% 구간에서 24.8%까지 올라갔고, `SPOT`은
 27.3%로 기준에 근접했다.
+
+최종 retained 변경은 public builder 표면을 그대로 유지하면서 receiver hot path와
+publish hot path의 반복 비용을 더 줄였다. perf runner는 private native active-loop helper를
+직접 호출하지 않고, public `recv_into(...)`와 같은 native owner receive 단위를 내부에서
+한 메시지씩 받아 payload view만 검사한다. 이 경로는 `ReceivedMessage`와 `RoutingId`
+wrapper를 만들지 않으므로 routed one-way 수신 비용을 줄인다. `PUBSUB` native publisher
+builder는 `DONTWAIT` publish의 native 호출 구간에서도 GIL을 놓도록 맞췄다. sender와 receiver가
+서로 다른 Python thread에서 도는 active phase에서 이 변경은 receiver 진행을 막지 않게 한다.
+`SPOT` publish builder는 topic을 builder 생성 시 한 번 검증하고, submit에서는 이미 검증한
+topic bytes를 사용한다. SPOT native subscribe owner-only 후보는 core assert와 segfault를
+재현해 제거했다.
+
+같은 C 기준 `perf_c_single_linux_20260603_120459_py_current_single_tcp64_all_c_baseline.txt`에
+대해 public Python API 경로를 패턴별 complete report로 다시 측정했다. 각 파일은
+status=complete(15/15)다. median 비율은 `PAIR` 39.5%
+(`perf_python_single_linux_20260603_134320_py_final_PAIR_tcp64_5s.txt`),
+`PUBSUB` 31.7% (`perf_python_single_linux_20260603_134343_py_final_PUBSUB_tcp64_5s.txt`),
+`DEALER_DEALER` 38.5%
+(`perf_python_single_linux_20260603_134405_py_final_DEALER_DEALER_tcp64_5s.txt`),
+`DEALER_ROUTER` 29.4%
+(`perf_python_single_linux_20260603_134426_py_final_DEALER_ROUTER_tcp64_5s.txt`),
+`ROUTER_ROUTER` 30.8%
+(`perf_python_single_linux_20260603_134446_py_final_ROUTER_ROUTER_tcp64_5s.txt`),
+`SPOT` 30.3% (`perf_python_single_linux_20260603_134508_py_final_SPOT_tcp64_5s.txt`)다.
+따라서 simple one-way 30% 기준과 routed/SPOT 28% 기준을 모두 넘겼다. 앞선 all-pattern
+probe report `perf_python_single_linux_20260603_120444_py_current_single_tcp64_all_probe.txt`도
+status=complete(30/30)였지만 runs=1이라 중앙값을 판단할 수 없고, `ROUTER_ROUTER`와
+`SPOT`에서 스케줄링 outlier가 보였으므로 최종 기준 판정에는 패턴별 complete report를 사용한다.
 
 native routed submit에서 `DONTWAIT`일 때 GIL을 유지하는 후보는 같은 public builder
 표면을 유지했지만 `ROUTER_ROUTER tcp 64B`가 313K/273K/205K msg/s로 흔들리고 stop

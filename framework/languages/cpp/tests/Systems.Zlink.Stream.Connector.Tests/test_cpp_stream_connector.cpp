@@ -142,6 +142,8 @@ make_server_frame (zlink::stream_connector::message_kind_t kind,
         .to_string ();
   }
   std::vector<std::uint8_t> payload_bytes (payload.begin (), payload.end ());
+  options.max_send_payload_size =
+    std::max (options.max_send_payload_size, payload_bytes.size ());
   auto frame = zlink::stream_connector::detail::frame_codec_t::encode (
     header_bytes.value (), payload_bytes, options);
   return zlink::message_t::from (
@@ -780,6 +782,54 @@ main ()
     return 66;
   }
   partial_connector.close ().result ();
+
+  zlink::stream_socket_t large_receive_server (context);
+  large_receive_server.options ().notify (false);
+  large_receive_server.bind ("tcp://127.0.0.1:0");
+  const auto large_receive_endpoint =
+    large_receive_server.options ().last_endpoint ();
+  const std::string large_receive_payload (70 * 1024, 'l');
+  std::thread large_receive_server_thread (
+    [&large_receive_server, &large_receive_payload] {
+      zlink::received_t inbound;
+      if (large_receive_server.recv (inbound) != 0) {
+        return;
+      }
+      auto frame = make_server_frame (
+        zlink::stream_connector::message_kind_t::send,
+        0,
+        "server.large",
+        large_receive_payload);
+      inbound.send ().message (frame).submit ();
+      inbound.close ();
+    });
+  zlink::stream_connector::connector_options_t large_receive_options;
+  large_receive_options.endpoint = large_receive_endpoint;
+  large_receive_options.dispatch_mode =
+    zlink::stream_connector::dispatch_mode_t::manual;
+  large_receive_options.max_send_payload_size = 16;
+  auto large_receive_connector =
+    zlink::stream_connector::connector_factory_t::create (
+      large_receive_options);
+  if (!large_receive_connector.connect ().result ()) {
+    return 70;
+  }
+  if (!large_receive_connector.send (login_request_t {})
+         .packet_name ("large.receive.trigger")
+         .submit ()
+         .result ()) {
+    return 71;
+  }
+  auto large_received =
+    large_receive_connector.receive (std::chrono::milliseconds (100)).result ();
+  large_receive_server_thread.join ();
+  if (!large_received ||
+      large_received.value ().name != "server.large" ||
+      large_received.value ().payload.to_string ().size () !=
+        large_receive_payload.size ()) {
+    return 72;
+  }
+  large_receive_connector.close ().result ();
 
   zlink::stream_socket_t heartbeat_server (context);
   heartbeat_server.options ().notify (false);

@@ -10,6 +10,11 @@
 #include "runtime/protocol/framing/frame_codec.hpp"
 #include "runtime/protocol/header_codec.hpp"
 
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/beast/core/buffers_to_string.hpp>
+#include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/websocket.hpp>
+
 #include <chrono>
 #include <algorithm>
 #include <atomic>
@@ -634,6 +639,55 @@ main ()
     return 46;
   }
 
+  boost::asio::io_context websocket_io;
+  boost::asio::ip::tcp::acceptor websocket_acceptor (
+    websocket_io,
+    { boost::asio::ip::make_address ("127.0.0.1"), 0 });
+  const auto websocket_endpoint =
+    std::string ("ws://127.0.0.1:") +
+    std::to_string (websocket_acceptor.local_endpoint ().port ()) +
+    "/stream";
+  std::atomic_bool websocket_send_seen { false };
+  std::thread websocket_server_thread (
+    [&websocket_acceptor, &websocket_send_seen] {
+      boost::asio::ip::tcp::socket socket (
+        websocket_acceptor.get_executor ());
+      websocket_acceptor.accept (socket);
+      boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket (
+        std::move (socket));
+      websocket.accept ();
+      boost::beast::flat_buffer buffer;
+      websocket.read (buffer);
+      auto frame_text = boost::beast::buffers_to_string (buffer.data ());
+      if (auto frame = try_read_server_frame (frame_text)) {
+        websocket_send_seen =
+          frame->header.kind ==
+            zlink::stream_connector::message_kind_t::send &&
+          frame->header.name == login_request_t::packet_name &&
+          websocket.got_binary ();
+      }
+      boost::system::error_code ignored;
+      websocket.close (
+        boost::beast::websocket::close_code::normal, ignored);
+    });
+
+  zlink::stream_connector::connector_options_t websocket_options;
+  websocket_options.endpoint = websocket_endpoint;
+  websocket_options.transport = zlink::stream_connector::transport_t::websocket;
+  auto websocket_connector =
+    zlink::stream_connector::connector_factory_t::create (websocket_options);
+  if (!websocket_connector.connect ().result ()) {
+    return 47;
+  }
+  if (!websocket_connector.send (login_request_t {}).submit ().result ()) {
+    return 48;
+  }
+  websocket_connector.close ().result ();
+  websocket_server_thread.join ();
+  if (!websocket_send_seen) {
+    return 49;
+  }
+
   zlink::stream_connector::connector_options_t reconnect_options;
   reconnect_options.endpoint = "tcp://127.0.0.1:1";
   reconnect_options.reconnect.initial_delay = std::chrono::milliseconds (1);
@@ -660,7 +714,7 @@ main ()
   zlink::stream_connector::connector_options_t unsupported_transport_options;
   unsupported_transport_options.endpoint = endpoint;
   unsupported_transport_options.transport =
-    zlink::stream_connector::transport_t::websocket;
+    zlink::stream_connector::transport_t::tls;
   auto unsupported_transport =
     zlink::stream_connector::connector_factory_t::create (
       unsupported_transport_options);

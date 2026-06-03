@@ -6,6 +6,7 @@
 #include "runtime/protocol/packet_name_resolver.hpp"
 #include "runtime/transport/stream_connection.hpp"
 #include "runtime/transport/stream_transport_factory.hpp"
+#include "runtime/transport/websocket_connection.hpp"
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -263,13 +264,26 @@ connector_t::connect ()
         _state->options.transport)) {
     return task_t<void> (result_t<void>::failure (
       error_code_t::configuration_error,
-      "stream connector currently supports the tcp transport only"));
+      "stream connector currently supports tcp and websocket transports"));
   }
-  const auto parsed = detail::parse_tcp_endpoint (_state->options.endpoint);
-  if (!parsed) {
+  const auto tcp_endpoint = _state->options.transport == transport_t::tcp
+                              ? detail::parse_tcp_endpoint (
+                                  _state->options.endpoint)
+                              : std::optional<detail::endpoint_parts_t> {};
+  const auto websocket_endpoint =
+    _state->options.transport == transport_t::websocket
+      ? detail::parse_websocket_endpoint (_state->options.endpoint)
+      : std::optional<detail::websocket_endpoint_parts_t> {};
+  if (_state->options.transport == transport_t::tcp && !tcp_endpoint) {
     return task_t<void> (result_t<void>::failure (
       error_code_t::configuration_error,
       "stream connector endpoint must use tcp://host:port"));
+  }
+  if (_state->options.transport == transport_t::websocket &&
+      !websocket_endpoint) {
+    return task_t<void> (result_t<void>::failure (
+      error_code_t::configuration_error,
+      "stream connector endpoint must use ws://host:port/path"));
   }
 
   const auto max_attempts =
@@ -285,11 +299,17 @@ connector_t::connect ()
       attempt == 1 ? connection_state_t::connecting
                    : connection_state_t::reconnecting);
     try {
-      boost::asio::ip::tcp::resolver resolver (_state->io_context);
-      auto endpoints = resolver.resolve (parsed->host, parsed->port);
-      boost::asio::ip::tcp::socket socket (_state->io_context);
-      boost::asio::connect (socket, endpoints);
-      _state->connection = detail::make_tcp_connection (std::move (socket));
+      if (_state->options.transport == transport_t::websocket) {
+        _state->connection =
+          detail::connect_websocket (_state->io_context, *websocket_endpoint);
+      } else {
+        boost::asio::ip::tcp::resolver resolver (_state->io_context);
+        auto endpoints =
+          resolver.resolve (tcp_endpoint->host, tcp_endpoint->port);
+        boost::asio::ip::tcp::socket socket (_state->io_context);
+        boost::asio::connect (socket, endpoints);
+        _state->connection = detail::make_tcp_connection (std::move (socket));
+      }
       const auto now = std::chrono::steady_clock::now ();
       _state->last_heartbeat_sent = now;
       _state->last_inbound_received = now;

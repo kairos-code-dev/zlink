@@ -12,6 +12,52 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. Stream Connector WebSocket transport 추가
+
+### 발견한 위험 신호
+
+- `.NET` connector와 공통 초안은 WebSocket binary transport를 지원하지만, C++ connector는
+  `transport_t::websocket`을 public enum에 두고도 connect 단계에서 실패시켰다. 이 상태는
+  public surface와 실제 동작이 맞지 않는 오구현이다.
+- WebSocket을 호출 경로에 직접 분기로 넣으면 request read, push drain, heartbeat, close가
+  WebSocket frame 세부를 알게 된다. 앞서 분리한 `stream_connection_t` 경계를 실제 transport
+  구현으로 검증해야 했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| WebSocket을 계속 unsupported로 둔다 | 변경이 작다 | `.NET` parity와 공통 초안 완료 기준을 만족하지 못한다 |
+| request/write 경로에서 WebSocket 분기 처리 | 빠르게 frame을 보낼 수 있다 | transport 세부가 호출 경로로 퍼진다 |
+| `stream_connection_t` 구현체로 WebSocket connection 추가 | 기존 packet frame 호출자는 그대로 둔다 | WebSocket buffering 구현이 필요하다 |
+
+선택은 세 번째 방식이다. connector의 상위 호출자는 byte frame read/write만 알아야 하며,
+WebSocket binary message 경계는 transport 구현이 흡수한다.
+
+### 적용한 리팩토링
+
+- `websocket_connection.cpp`를 placeholder에서 Boost.Beast 기반 WebSocket binary connection
+  구현으로 바꿨다.
+- `ws://host:port/path` endpoint parser와 WebSocket connect factory를 추가했다.
+- WebSocket binary message를 내부 byte buffer로 풀어 기존 frame decoder가 그대로 읽게 했다.
+- `transport_t::websocket`을 supported transport로 전환하고, connector lifecycle이
+  WebSocket factory를 호출하게 했다.
+- connector e2e 테스트에 Boost.Beast loopback server를 추가해 WebSocket binary frame으로
+  STREAM connector frame이 도착하는지 검증했다.
+
+### 수정 후 점검
+
+- public Stream Connector API는 바꾸지 않았다.
+- TCP와 WebSocket은 같은 `send(packet)` / typed send 호출 표면을 사용한다.
+- TLS와 WebSocket over TLS는 아직 미구현이며, 명시 실패 상태로 남아 있다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+```
+
 ## 반복 POSD 재리뷰. Stream Connector transport 경계 분리
 
 ### 발견한 위험 신호
@@ -50,15 +96,15 @@ TLS handshake, WebSocket binary message, TCP socket details는 transport owner�
   `state.connection` helper만 사용하게 정리했다.
 - Goal 20 계획 문서에 TCP, TLS, WebSocket, WebSocket over TLS와 unsupported transport
   validation을 완료 범위로 명시했다.
-- C++ Stream Connector 초안에 현재 TCP-only 상태와 최종 parity 전까지 TLS/WebSocket
+- C++ Stream Connector 초안에 당시 TCP-only 상태와 최종 parity 전까지 추가 transport
   connection 구현이 남아 있음을 분명히 적었다.
 
 ### 수정 후 점검
 
 - public Stream Connector API는 바꾸지 않았다.
 - TCP 동작은 기존 connector e2e 테스트로 유지된다.
-- TLS/WebSocket parity는 아직 완료되지 않았다. 다음 반복에서는 이 abstraction 아래에
-  transport별 connection 구현과 e2e 회귀를 추가해야 한다.
+- TLS와 WebSocket over TLS parity는 아직 완료되지 않았다. 다음 반복에서는 이 abstraction
+  아래에 남은 secure transport connection 구현과 e2e 회귀를 추가해야 한다.
 
 ### 재실행한 검증 명령
 
@@ -126,7 +172,7 @@ ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --ou
 
 ### 발견한 위험 신호
 
-- Stream Connector 초안은 지원하지 않는 TLS/WebSocket transport를 조용히 TCP처럼 처리하지
+- Stream Connector 초안은 지원하지 않는 secure transport를 조용히 TCP처럼 처리하지
   않는다고 설명하지만, connector 회귀 테스트는 이 실패 정책을 직접 검증하지 않았다.
 - `max_send_payload_size`와 `max_metadata_size`는 public option으로 제공되지만, send 전에
   차단된다는 회귀 테스트가 없었다. 이 상태에서는 frame encoder나 call object 변경 중 제한
@@ -152,7 +198,7 @@ ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --ou
   넘으면 `frame_too_large`로 실패하는 검사를 추가했다.
 - metadata 합산 크기가 `max_metadata_size`를 넘으면 `validation_failed`로 실패하는 검사를
   추가했다.
-- `transport_t::websocket` connect가 `configuration_error`로 실패하고 연결 상태로 전환되지
+- `transport_t::tls` connect가 `configuration_error`로 실패하고 연결 상태로 전환되지
   않는지 검증했다.
 - reconnect 시도 실패 뒤 새 request가 pending queue에 쌓이지 않고 `disconnected`로 실패하는
   회귀를 추가했다.

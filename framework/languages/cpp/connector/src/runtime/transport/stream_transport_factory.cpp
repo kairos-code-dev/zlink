@@ -10,9 +10,9 @@ stream_transport_factory_t::is_supported (transport_t transport) noexcept
 {
   switch (transport) {
   case transport_t::tcp:
+  case transport_t::websocket:
     return true;
   case transport_t::tls:
-  case transport_t::websocket:
   case transport_t::websocket_secure:
     return false;
   }

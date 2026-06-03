@@ -75,8 +75,8 @@ public final class RegistryMonitor
 ```
 
 registry event는 `STATUS_CHANGED`, `TOPOLOGY_CHANGED`, `SERVICE_SUMMARY_CHANGED`
-**3종 고정**이다. 하부 raw monitor가 없어 framework가 주기적으로 snapshot을 읽어
-직전 값과 비교해 합성한다.
+**3종 고정**이다. framework가 주기적으로 registry snapshot을 읽고 직전 값과 비교해
+변경 event를 만든다.
 
 ### socket
 
@@ -86,7 +86,7 @@ public final class ProfileSocketMonitor
     implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
     @Override
     public CompletionStage<Void> handleAsync(ZLinkSocketEvent event) {
-        // socket event만 raw native 코드를 함께 노출한다(event.value()).
+        // event.event()와 event.diagnostic()으로 상태와 진단 정보를 확인한다.
         return CompletableFuture.completedFuture(null);
     }
 }

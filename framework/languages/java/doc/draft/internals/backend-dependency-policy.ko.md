@@ -72,7 +72,7 @@ adapter는 framework internal package에 둔다. 사용자 guide와 sample은 ad
 > 참고: port의 정확한 시그니처는 `framework/languages/dotnet/src/Zlink.Framework/
 > Runtime/Backend/Contracts/*.cs` 를 코드로 읽어 Java adapter 구현 가이드에 옮긴다.
 > backend 의존 정책의 정식 기준은 `.NET` 코드다. 이 절은 Node
-> [backend-dependency-policy §7](../../../node/doc/internals/backend-dependency-policy.ko.md)
+> [backend-dependency-policy §7](../../../../node/doc/internals/backend-dependency-policy.ko.md)
 > 의 어댑터 구성 규칙을 Java/Spring 표면으로 옮긴 것이다.
 
 ## 4. Public API에 새면 안 되는 것

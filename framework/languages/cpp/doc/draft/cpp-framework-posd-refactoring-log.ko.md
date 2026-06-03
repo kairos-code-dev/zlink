@@ -4384,7 +4384,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 
 - coverage script는 tests, samples, external dependency, build generated source를 coverage
   분모에 넣지 않는다.
-- 현재 coverage build 기준 runtime line coverage는 77.35%다.
+- 현재 coverage build 기준 runtime line coverage는 77.69%다.
 - 기준값 70% 미만이면 CTest가 실패하므로 이후 회귀 테스트 추가/삭제가 숫자로 검증된다.
 
 ### 재실행한 검증 명령

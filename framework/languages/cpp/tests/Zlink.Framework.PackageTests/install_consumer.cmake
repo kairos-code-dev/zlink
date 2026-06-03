@@ -5,33 +5,35 @@ if(NOT DEFINED ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX)
   message(FATAL_ERROR "ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX is required")
 endif()
 
+string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef consumer_run_id)
+set(consumer_run_dir
+  "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/package-consumer-runs/${consumer_run_id}")
+set(consumer_install_prefix
+  "${consumer_run_dir}/install")
 set(consumer_source_dir
-  "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/package-consumer-src")
+  "${consumer_run_dir}/src")
 set(consumer_build_dir
-  "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/package-consumer-build")
+  "${consumer_run_dir}/build")
 
-file(REMOVE_RECURSE
-  "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}"
-  "${consumer_source_dir}"
-  "${consumer_build_dir}")
+file(MAKE_DIRECTORY "${consumer_run_dir}")
 file(MAKE_DIRECTORY "${consumer_source_dir}")
 
 execute_process(
   COMMAND "${CMAKE_COMMAND}" --install "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}"
-          --prefix "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}"
+          --prefix "${consumer_install_prefix}"
   RESULT_VARIABLE install_result)
 if(NOT install_result EQUAL 0)
   message(FATAL_ERROR "C++ framework install failed")
 endif()
 
 set(framework_targets_file
-  "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib/cmake/zlink_framework_cpp/zlink_framework_cppTargets.cmake")
+  "${consumer_install_prefix}/lib/cmake/zlink_framework_cpp/zlink_framework_cppTargets.cmake")
 set(connector_targets_file
-  "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib/cmake/zlink_stream_connector_cpp/zlink_stream_connector_cppTargets.cmake")
+  "${consumer_install_prefix}/lib/cmake/zlink_stream_connector_cpp/zlink_stream_connector_cppTargets.cmake")
 set(framework_config_file
-  "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib/cmake/zlink_framework_cpp/zlink_framework_cppConfig.cmake")
+  "${consumer_install_prefix}/lib/cmake/zlink_framework_cpp/zlink_framework_cppConfig.cmake")
 set(connector_config_file
-  "${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib/cmake/zlink_stream_connector_cpp/zlink_stream_connector_cppConfig.cmake")
+  "${consumer_install_prefix}/lib/cmake/zlink_stream_connector_cpp/zlink_stream_connector_cppConfig.cmake")
 foreach(path IN ITEMS
     "${framework_config_file}"
     "${connector_config_file}"
@@ -173,7 +175,7 @@ main ()
 
 execute_process(
   COMMAND "${CMAKE_COMMAND}" -S "${consumer_source_dir}" -B "${consumer_build_dir}"
-          "-DCMAKE_PREFIX_PATH=${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}"
+          "-DCMAKE_PREFIX_PATH=${consumer_install_prefix}"
   RESULT_VARIABLE configure_result)
 if(NOT configure_result EQUAL 0)
   message(FATAL_ERROR "installed C++ framework consumer configure failed")
@@ -188,13 +190,13 @@ endif()
 
 if(WIN32)
   set(runtime_path
-    "PATH=${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/bin;$ENV{PATH}")
+    "PATH=${consumer_install_prefix}/bin;$ENV{PATH}")
 elseif(APPLE)
   set(runtime_path
-    "DYLD_LIBRARY_PATH=${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib:$ENV{DYLD_LIBRARY_PATH}")
+    "DYLD_LIBRARY_PATH=${consumer_install_prefix}/lib:$ENV{DYLD_LIBRARY_PATH}")
 else()
   set(runtime_path
-    "LD_LIBRARY_PATH=${ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX}/lib:$ENV{LD_LIBRARY_PATH}")
+    "LD_LIBRARY_PATH=${consumer_install_prefix}/lib:$ENV{LD_LIBRARY_PATH}")
 endif()
 
 execute_process(

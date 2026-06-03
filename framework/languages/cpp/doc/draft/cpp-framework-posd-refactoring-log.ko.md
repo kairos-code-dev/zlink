@@ -7735,3 +7735,73 @@ framework 표면이 외부 codec SDK 타입에 결합되지 않는지를 검증�
 
 - 상위 public header가 nlohmann/json, MessagePack, Protobuf SDK 타입을 직접 include하거나
   signature에 노출하면 `test_cpp_framework_layout_contract`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 22 package consumer 실행 격리 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 CTest label 전체 통과와 install/package consumer test를 완료 기준에 둔다.
+- `test_cpp_framework_install_consumer`는 고정된 `package-consumer-src`,
+  `package-consumer-build`, `package-consumer-install` 경로를 사용했다.
+- 같은 build tree에서 package label과 full suite를 별도 `ctest` 프로세스로 동시에 실행하면
+  한쪽 테스트가 다른 쪽 consumer build directory를 지워 dependency file 생성 실패가 날 수
+  있었다.
+- 이는 package 기능 자체의 실패가 아니라 test isolation 실패다. 하지만 최종 회귀 gate를 반복
+  실행하는 상황에서는 테스트 신뢰성을 떨어뜨리는 실제 오구현이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 병렬로 같은 label을 실행하지 않는 규칙만 둔다 | 코드 변경이 없다 | 테스트 사용자가 실행 순서를 기억해야 한다 |
+| CTest `RESOURCE_LOCK`만 추가 | 한 CTest 프로세스 안에서는 충돌을 줄인다 | 서로 다른 CTest 프로세스 간 충돌은 막지 못한다 |
+| install consumer가 실행마다 고유 작업 디렉터리를 사용 | 별도 CTest 프로세스끼리도 격리된다 | 임시 run directory가 생긴다 |
+
+선택은 세 번째 방식이다. package consumer는 배포 산출물을 소비하는 독립 검증이어야 하므로,
+호출자가 실행 순서를 알아야 하는 설계는 얕은 테스트다. 실행마다 install/source/build directory를
+분리하면 테스트가 자기 상태를 내부에 숨기고 최종 gate를 반복 실행해도 안정적으로 동작한다.
+
+### 적용한 리팩토링
+
+- `install_consumer.cmake`가 random run id 아래에 `install`, `src`, `build` directory를 만들게 했다.
+- package config 검사, consumer configure/build/run 모두 해당 고유 install prefix를 사용하게 했다.
+- 기존 `ZLINK_FRAMEWORK_CPP_INSTALL_PREFIX`는 test 호출 contract로 유지하되, 개별 실행의 base
+  directory는 script 내부에서 격리한다.
+
+### 수정 후 점검
+
+- 같은 build tree에서 package consumer가 중복 실행되어도 서로의 source/build/install directory를
+  지우지 않는다.
+
+## 반복 POSD 재리뷰. Goal 22 tooling smoke 실행 격리 보강
+
+### 발견한 위험 신호
+
+- `test_cpp_framework_tooling_contract`는 `framework-package` label에도 포함되어 install/package
+  gate와 함께 실행된다.
+- 해당 스크립트는 고정된 `tooling-smoke/linux-ninja-debug` build directory를 지우고 다시
+  configure했다.
+- 같은 build tree에서 package label을 별도 `ctest` 프로세스로 동시에 실행하면 한쪽 tooling smoke가
+  다른 쪽 configure directory를 지워 CMake target import 상태가 깨질 수 있었다.
+- 이는 tooling contract의 본질인 preset/configure 검증과 무관한 공유 상태 누출이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| package label을 동시에 실행하지 않는다 | 변경이 없다 | 최종 gate 반복 실행 조건을 테스트 사용자가 기억해야 한다 |
+| tooling smoke를 package label에서 제거 | 충돌 가능성이 줄어든다 | package gate가 tooling contract를 덜 검증한다 |
+| tooling smoke가 실행마다 고유 build directory를 사용 | 별도 `ctest` 프로세스끼리도 격리된다 | 임시 run directory가 생긴다 |
+
+선택은 세 번째 방식이다. tooling smoke는 CLion-style configure가 가능한지를 독립적으로 확인하는
+깊은 테스트여야 한다. 고정 directory를 공유하면 호출자가 실행 순서를 알아야 하므로 테스트가
+자기 상태를 숨기지 못한다.
+
+### 적용한 리팩토링
+
+- `verify_tooling_contract.cmake`가 random run id 아래에 tooling smoke build directory를 만들게 했다.
+- 기존 preset, vcpkg, compile commands, cache 검증은 그대로 유지했다.
+
+### 수정 후 점검
+
+- 같은 build tree에서 tooling contract가 중복 실행되어도 서로의 configure directory를 지우지 않는다.

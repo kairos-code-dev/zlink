@@ -75,9 +75,12 @@ if(NOT ZLINK_NINJA_EXECUTABLE)
   message(FATAL_ERROR "Ninja is required for CLion-style configure smoke")
 endif()
 
+string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef tooling_run_id)
+set(smoke_run_dir
+  "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/tooling-smoke-runs/${tooling_run_id}")
 set(smoke_build_dir
-  "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/tooling-smoke/linux-ninja-debug")
-file(REMOVE_RECURSE "${smoke_build_dir}")
+  "${smoke_run_dir}/linux-ninja-debug")
+file(MAKE_DIRECTORY "${smoke_run_dir}")
 execute_process(
   COMMAND "${CMAKE_COMMAND}"
     -S "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}"

@@ -7699,3 +7699,39 @@ server log evidence 문구를 함께 확인해 문서와 샘플 코드가 같은
 
 - sample target 이름, README 실행 파일 목록, server log evidence 설명이 서로 어긋나면
   `test_cpp_framework_sample_parity`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 22 public codec SDK leakage gate 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 public header에 codec 외부 타입이 불필요하게 노출되지 않아야 한다고 요구한다.
+- 기존 public header dependency gate는 Boost, OpenSSL, test/logging library, Kafka/gRPC/YAML/
+  FlatBuffers 노출을 막았지만 nlohmann/json, MessagePack, Protobuf SDK 타입 노출은 직접 금지하지
+  않았다.
+- JSON 구현은 `zlink/codec/json.hpp`가 소유하지만, framework, HTTP client, connector,
+  extension public header가 `nlohmann::json`, `msgpack::...`, `google::protobuf` 타입을 직접
+  signature나 include로 노출하면 codec 경계가 새어 나간다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재 금지 목록만 유지 | 변경이 작다 | codec SDK 타입 public 노출 회귀를 놓친다 |
+| JSON helper에서도 nlohmann include를 제거 | public dependency가 가장 작아진다 | 현재 template JSON encode/decode 표면과 binding codec 구조를 크게 바꾼다 |
+| 상위 public header에서 codec SDK 타입 직접 노출만 금지 | codec helper 소유권을 유지하면서 framework 표면을 보호한다 | dedicated codec header 자체는 별도 소유자로 남는다 |
+
+선택은 세 번째 방식이다. 현재 구조에서 JSON codec helper는 `message_t::from_json`과
+`parse_json<T>()` template 구현을 맡는 명확한 owner다. POSD 기준으로는 이 helper 바깥의 public
+framework 표면이 외부 codec SDK 타입에 결합되지 않는지를 검증하는 것이 더 직접적인 경계다.
+
+### 적용한 리팩토링
+
+- layout contract의 public header dependency 금지 목록에 `#include <nlohmann`, `nlohmann::`,
+  `#include <msgpack`, `msgpack::`, `#include <google/protobuf`, `google::protobuf`를 추가했다.
+- 기존 검사 범위인 framework, connector, HTTP client, extension, Unreal public header에 같은
+  codec SDK leakage gate가 적용된다.
+
+### 수정 후 점검
+
+- 상위 public header가 nlohmann/json, MessagePack, Protobuf SDK 타입을 직접 include하거나
+  signature에 노출하면 `test_cpp_framework_layout_contract`가 실패한다.

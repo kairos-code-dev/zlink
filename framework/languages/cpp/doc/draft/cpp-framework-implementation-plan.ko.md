@@ -1034,6 +1034,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-config --output-on-f
 ctest --test-dir framework/languages/cpp/build -L framework-observability --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L http-client-regression --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L parity --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure

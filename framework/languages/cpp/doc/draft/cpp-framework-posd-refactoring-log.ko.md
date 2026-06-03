@@ -55,6 +55,44 @@ ctest --test-dir framework/languages/cpp/build -L framework-tooling --output-on-
 ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on-failure
 ```
 
+## 반복 POSD 재리뷰. Goal 22 parity e2e command gate 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 `.NET` parity e2e regression을 완료 기준으로 둔다.
+- `parity` label은 정적 sample parity와 sample e2e/process e2e 테스트를 함께 선택하지만,
+  Goal 22 검증 명령에는 `ctest -L parity`가 직접 들어 있지 않았다.
+- final audit 문서가 parity 축을 설명하면서 실행 명령으로는 드러내지 않으면, 검증자가 full
+  CTest를 생략하고 축별 명령만 실행할 때 parity e2e 증거를 놓칠 수 있다.
+
+### 위반한 POSD 원칙
+
+- 정보 은닉: parity e2e 선택 기준이 CMake label에만 숨고 plan 검증 명령에는 드러나지 않았다.
+- 복잡성을 아래로: 검증자가 어떤 label 조합이 `.NET` parity e2e를 증명하는지 추론해야 했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| full CTest 명령에만 의존 | 문서가 짧다 | Goal 22의 독립 parity 축이 명령 목록에서 보이지 않는다 |
+| 별도 `framework-parity-e2e` label을 추가 | 의미가 가장 좁다 | 기존 `parity` label과 sample e2e label이 중복된다 |
+| Goal 22 명령에 `ctest -L parity`를 추가하고 layout contract로 고정 | 현재 label 의미를 재사용하면서 final audit 명령이 명확해진다 | 검증 명령이 한 줄 늘어난다 |
+
+선택은 세 번째 방식이다. `parity` label은 이미 정적 parity와 sample e2e/process e2e를 함께
+선택하므로, Goal 22 검증 명령이 해당 label을 직접 실행하게 하는 편이 가장 단순하다.
+
+### 적용한 리팩토링
+
+- Goal 22 검증 명령에 `ctest --test-dir framework/languages/cpp/build -L parity
+  --output-on-failure`를 추가했다.
+- layout contract가 Goal 22 검증 블록에 parity label 명령이 있는지 확인하게 했다.
+
+### 수정 후 점검
+
+- Goal 22를 문서대로 실행하면 `.NET` parity e2e regression 축도 독립 명령으로 확인된다.
+- parity label의 실제 선택 범위는 CTest label contract와 sample e2e/process e2e label에서
+  함께 검증된다.
+
 ## 반복 POSD 재리뷰. Sample client process e2e 분리
 
 ### 발견한 위험 신호

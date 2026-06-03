@@ -398,6 +398,7 @@ implementation_plan_goal22_covers_final_label_axes (
     "ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L http-client-regression --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L parity --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure",

@@ -5271,3 +5271,59 @@ transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 �
 - user route와 system route 충돌뿐 아니라 system route 간 path 충돌도 startup validation에서
   실패해야 한다.
 - 이번 보정 뒤 HTTP system route 충돌 validation의 즉시 수정 이슈는 0개다.
+
+## 전체 POSD 재리뷰. 현재 Goal 1-22 기록 매핑 감사
+
+### 발견한 위험 신호
+
+- implementation plan은 현재 22개 goal을 기준으로 각 goal마다 POSD 기반 리팩토링 기록이
+  최소 하나 필요하다고 적는다.
+- 이 로그는 구현 중 goal 재배치가 여러 번 있었기 때문에 과거 section 번호와 현재 plan의
+  goal 번호가 항상 1:1로 읽히지 않는다. 기록 수는 충분하지만, final audit에서 현재 Goal
+  1-22 각각의 대표 증거를 바로 찾기 어렵다.
+- 증거 탐색이 어렵다는 것은 구현 문제가 아니라 검증 가능성 문제다. completion gate는 사람이
+  의도를 추정하지 않아도 현재 plan 항목과 기록 항목을 대조할 수 있어야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 로그만 유지 | 새 문서 변경이 없다 | 현재 22개 goal 기준 증거를 매번 재검색해야 한다 |
+| 과거 section 번호를 모두 현재 번호로 재작성 | 번호가 깔끔해진다 | 과거 실행 기록의 시간 순서와 commit 맥락이 흐려진다 |
+| 현재 plan 기준 evidence mapping table 추가 | 기존 기록을 보존하면서 final audit 증거를 고정한다 | 표를 최신 상태로 유지해야 한다 |
+
+선택은 evidence mapping table을 추가하는 것이다. POSD 로그는 실행 기록이므로 과거 번호를
+무리하게 다시 쓰지 않고, 현재 plan 기준 대표 증거를 별도 표로 연결한다.
+
+### 현재 Goal 1-22 대표 POSD 기록
+
+| 현재 goal | 대표 POSD 기록 |
+|-----------|----------------|
+| Goal 1. Repository Skeleton And Tooling | `Goal 1. Tooling contract smoke 보강`, `Goal 1. Repository Skeleton And Build` |
+| Goal 2. Binding Codec Surface Alignment | `Goal 2. Codec boundary와 sample JSON 사용 gate 보강`, `Goal 2. Binding Codec Surface Alignment` |
+| Goal 3. Core Async, Task, Error Model | `Goal 3. Core Framework Types And Error Model`, `Runtime/Messaging Submit 상태 보강` |
+| Goal 4. App Host, Configuration, Logging | `Goal 4. App, Host, Configuration, Logging`, `Logging 표면 보정` |
+| Goal 5. DI Container And Scope Lifetime | `Goal 5. DI Container And Scope Lifetime`, `Configuration builder owner 분리` |
+| Goal 6. Application Framework Parity Model | `Application Framework` 문서 예시 보정, `.NET 구조 parity 반복 보정` |
+| Goal 7. Runtime Integration And Execution | `Goal 6. Runtime Integration And Dispatch Projection`, `Execution Queue와 Runtime Event Publisher 보강` |
+| Goal 8. Handler Registry And Serializer | `Goal 7. Handler Registry And Serializer`, `SPOT handler registry typed dispatch 보정` |
+| Goal 9. Channel Messaging | `Goal 8. Channel Messaging`, `Route public client facade 연결` |
+| Goal 10. Backpressure And Reliability | `Goal 9. Backpressure, Flow Control, Reliability`, `Channel Pending Request와 Reply Dispatcher 분리` |
+| Goal 11. SPOT Runtime | `Goal 10. SPOT Runtime`, `SPOT actor lifecycle handler shape 보정` |
+| Goal 12. SPOT Timer | `Goal 11. SPOT Timer`, `Goal 16/19. HTTP health route와 middleware short-circuit 보강` |
+| Goal 13. STREAM Framework | `Goal 12. STREAM Framework`, `Sample Session role 구현 분리` |
+| Goal 14. ActorGateway Session Relay | `Goal 13. ActorGateway Session Relay`, `ActorContext JoinSpot 결과 구조 보정` |
+| Goal 15. Registry And Topology | `Goal 14. Registry And Topology`, `TicTacToe sample discovery/topology 정렬` |
+| Goal 16. Monitoring, Health, Observability | `Goal 16. Health readiness/liveness 표면 보강`, `Logging 표면 보정` |
+| Goal 17. Module System And Hosted Services | `Goal 16. Hosted Services And Module System`, `AddZLinkFramework 대응 C++ module API 보정` |
+| Goal 18. ZLink HTTP Client | `Goal 18. ZLink HTTP Client 실제 산출물 추가`, `HTTP Client contract label 보강` |
+| Goal 19. HTTP Hosting | `Goal 19. HTTP Hosting runtime과 HTTP client e2e 연결`, `HTTP system route 충돌 validation 보강` |
+| Goal 20. Stream Connectors | `Goal 17. C++ Stream Connector`, `Connector label taxonomy 공백 보정` |
+| Goal 21. Review Samples | `Goal 19. Review Samples`, `TicTacToe HTTP 시작 handler 경계 보정` |
+| Goal 22. Final Regression, Package, Extension Boundary | `Goal 22. Runtime coverage regression gate 추가`, `Goal 검증 명령 empty-selection gate 제거` |
+
+### 수정 후 점검
+
+- 현재 implementation plan의 Goal 1-22는 모두 이 로그 안의 대표 POSD 기록과 연결된다.
+- 과거 section 번호는 실행 당시 기록으로 유지하고, 현재 plan 기준 대조는 위 표를 사용한다.
+- 이번 보정 뒤 POSD 기록 매핑 감사의 즉시 수정 이슈는 0개다.

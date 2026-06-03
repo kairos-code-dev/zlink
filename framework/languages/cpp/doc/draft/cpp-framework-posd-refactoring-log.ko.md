@@ -7405,3 +7405,39 @@ core는 middleware DI와 `http_context_t::json_response(...)` short-circuit 의�
 
 - HTTP middleware가 DI에서 resolve되지 않거나 auth-style middleware가 handler 호출을 건너뛰지
   못하면 `test_cpp_framework_app_host`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 16 metrics hook public surface 보강
+
+### 발견한 위험 신호
+
+- Goal 16은 metrics/tracing hook을 구현 항목에 포함한다.
+- tracing hook은 `monitoring_builder_t::on_trace(...)`와 monitoring 회귀 테스트가 고정하고
+  있었지만, `metrics_builder_t::add_runtime_metrics()`는 문서 인터페이스 초안에만 있고 실제
+  public surface에는 없었다.
+- 이 상태에서는 health와 runtime event는 구현되어 있어도 metrics hook 요구가 문서에만 남아
+  Goal 16 완료 증거가 약해진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| metrics 문구를 문서에서 제거 | 구현 변경이 없다 | Goal 16과 인터페이스 초안의 관찰 표면 요구를 축소한다 |
+| exporter와 label schema까지 한 번에 추가 | 완성형 metrics 시스템에 가깝다 | 초기 core 범위를 넘어 provider 정책과 backend 결정을 끌어들인다 |
+| `metrics_builder_t`와 typed `metric_event_payload_t`를 monitoring state 위에 얹는다 | public metrics hook을 제공하면서 exporter 결정은 숨긴다 | runtime metric publish helper가 최소 기능으로 시작한다 |
+
+선택은 세 번째 방식이다. metrics는 운영 event stream의 일부이므로 monitoring handler와 trace
+hook 순서를 재사용하면 public API를 작게 유지하면서도 문서의 core 관찰 표면 요구를 충족한다.
+exporter, label schema, backend adapter는 extension이 맡을 수 있게 남겨 둔다.
+
+### 적용한 리팩토링
+
+- `metric_event_payload_t`와 `metrics_builder_t`를 public eventing contract에 추가했다.
+- `app.metrics().add_runtime_metrics()`와 `record_runtime_metric(...)`가 monitoring state를
+  공유해 typed handler와 trace hook을 통과하게 했다.
+- `test_cpp_framework_monitoring`이 runtime metric event payload, tag, trace 호출을 함께
+  검증하게 했다.
+
+### 수정 후 점검
+
+- metrics hook이 public app surface에서 사라지거나 metric event가 monitoring handler/trace
+  hook을 통과하지 않으면 `test_cpp_framework_monitoring`이 실패한다.

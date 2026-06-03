@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -20,6 +21,7 @@ namespace zlink::framework
 
 namespace detail
 {
+class app_state_t;
 class monitoring_runtime_state_t;
 class monitoring_runtime_t;
 } // namespace detail
@@ -125,6 +127,7 @@ public:
 
 private:
   friend class monitoring_builder_t;
+  friend class metrics_builder_t;
   friend class detail::monitoring_runtime_t;
 
   explicit runtime_event_publisher_t (
@@ -134,6 +137,13 @@ private:
                        const void *event) const;
 
   std::shared_ptr<detail::monitoring_runtime_state_t> _state;
+};
+
+struct metric_event_payload_t : runtime_event_base_t
+{
+  std::string name;
+  double value = 0;
+  std::map<std::string, std::string> tags;
 };
 
 struct socket_event_payload_t : runtime_event_base_t
@@ -237,6 +247,7 @@ public:
 
 private:
   friend class app_t;
+  friend class metrics_builder_t;
   friend class detail::monitoring_runtime_t;
 
   explicit monitoring_builder_t (
@@ -244,6 +255,33 @@ private:
   monitoring_builder_t &on_erased (
     std::type_index event_type,
     std::function<void (const void *)> handler);
+
+  std::shared_ptr<detail::monitoring_runtime_state_t> _state;
+};
+
+class metrics_builder_t
+{
+public:
+  metrics_builder_t ();
+  ~metrics_builder_t ();
+
+  metrics_builder_t (metrics_builder_t &&) noexcept;
+  metrics_builder_t &operator= (metrics_builder_t &&) noexcept;
+  metrics_builder_t (const metrics_builder_t &) = delete;
+  metrics_builder_t &operator= (const metrics_builder_t &) = delete;
+
+  metrics_builder_t &add_runtime_metrics ();
+  bool runtime_metrics_enabled () const noexcept;
+  metrics_builder_t &record_runtime_metric (
+    std::string name,
+    double value,
+    std::map<std::string, std::string> tags = {});
+
+private:
+  friend class app_t;
+  friend class detail::app_state_t;
+
+  explicit metrics_builder_t (const monitoring_builder_t &monitoring);
 
   std::shared_ptr<detail::monitoring_runtime_state_t> _state;
 };

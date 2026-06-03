@@ -29,6 +29,7 @@ public:
   std::vector<std::string> spot_timer_sources;
   std::vector<std::string> stream_sources;
   std::vector<std::string> actor_sources;
+  bool runtime_metrics_enabled = false;
   std::map<std::type_index, std::vector<std::function<void (const void *)>>>
     handlers;
   std::function<void (const runtime_event_base_t &)> tracing_hook;

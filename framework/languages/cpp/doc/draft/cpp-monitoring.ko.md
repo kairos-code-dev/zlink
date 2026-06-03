@@ -37,6 +37,13 @@ HTTP를 사용하는 app은 `options.http().map_health(...)`,
 `map_readiness(...)`, `map_liveness(...)`로 같은 report를 JSON endpoint로 노출할 수 있다.
 이 endpoint는 health 집계를 새로 계산하지 않고 `app.health()` 표면을 읽는다.
 
+metrics public contract는 `metrics_builder_t`와 `metric_event_payload_t`가 소유한다. 사용자는
+`app.metrics().add_runtime_metrics()`로 runtime metric event 표면을 켜고,
+`record_runtime_metric(...)`으로 typed metric payload를 올린다. metric event는 monitoring
+state를 공유하므로 `app.monitoring().on<metric_event_payload_t>(...)` handler와 trace hook을
+같은 순서로 통과한다. exporter, label schema, 외부 telemetry backend는 core가 직접 정하지 않고
+extension에서 연결한다.
+
 ## 1. 방향
 
 - event kind는 enum으로 둔다.
@@ -128,4 +135,19 @@ app.add_zlink_framework([](auto &options) {
     .map_readiness("/ready")
     .map_liveness("/live");
 });
+```
+
+## 6. Metrics 예시
+
+```cpp
+app.monitoring().on<metric_event_payload_t>([](const auto &event) {
+  // exporter extension can consume event.name, event.value, and event.tags.
+});
+
+app.metrics()
+  .add_runtime_metrics()
+  .record_runtime_metric(
+    "active_http_requests",
+    3,
+    {{"surface", "http"}});
 ```

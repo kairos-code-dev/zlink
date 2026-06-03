@@ -18,6 +18,8 @@ namespace zlink::framework::detail
 class app_state_t
 {
 public:
+  app_state_t () : metrics (monitoring) {}
+
   void start_hosted_services (
     service_provider_t &provider,
     std::vector<hosted_service_t *> &started)
@@ -41,6 +43,7 @@ public:
   config_builder_t config;
   logging_builder_t logging;
   monitoring_builder_t monitoring;
+  metrics_builder_t metrics;
   health_builder_t health;
   zlink_builder_t zlink;
   serializer_registry_t serializers;
@@ -120,6 +123,12 @@ monitoring_builder_t &
 app_t::monitoring () noexcept
 {
   return _state->monitoring;
+}
+
+metrics_builder_t &
+app_t::metrics () noexcept
+{
+  return _state->metrics;
 }
 
 health_builder_t &

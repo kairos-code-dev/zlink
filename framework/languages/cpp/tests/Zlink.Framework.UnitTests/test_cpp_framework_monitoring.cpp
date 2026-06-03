@@ -31,6 +31,7 @@ main ()
   int spot_events = 0;
   int stream_events = 0;
   int actor_events = 0;
+  int metric_events = 0;
   int trace_events = 0;
   bool timer_failure_is_summary = false;
   bool stream_transport_distinct = false;
@@ -109,6 +110,17 @@ main ()
         if (event.actor_id == "bob" &&
             event.event == zlink::framework::actor_event_kind_t::unbound) {
           publisher_seen = true;
+        }
+      })
+    .on<zlink::framework::metric_event_payload_t> (
+      [&](const zlink::framework::metric_event_payload_t &event) {
+        const auto surface = event.tags.find ("surface");
+        if (event.source_name == "runtime.metrics" &&
+            event.name == "active_http_requests" &&
+            event.value == 3 &&
+            surface != event.tags.end () &&
+            surface->second == "http") {
+          ++metric_events;
         }
       });
 
@@ -192,9 +204,16 @@ main ()
       7,
       true,
       "boom" });
+  app.metrics ()
+    .add_runtime_metrics ()
+    .record_runtime_metric (
+      "active_http_requests",
+      3,
+      { { "surface", "http" } });
 
   if (socket_events != 1 || discovery_events != 1 || registry_events != 1 ||
-      spot_events != 1 || stream_events != 2 || actor_events != 1) {
+      spot_events != 1 || stream_events != 2 || actor_events != 1 ||
+      metric_events != 1) {
     return 1;
   }
   if (!publisher_seen) {
@@ -206,7 +225,7 @@ main ()
   if (!stream_transport_distinct || !stream_handler_distinct) {
     return 3;
   }
-  if (trace_events < 8) {
+  if (trace_events < 9) {
     return 4;
   }
 

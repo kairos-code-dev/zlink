@@ -137,6 +137,53 @@ monitoring_builder_t::on_erased (
   return *this;
 }
 
+metrics_builder_t::metrics_builder_t ()
+  : _state (std::make_shared<detail::monitoring_runtime_state_t> ())
+{
+}
+
+metrics_builder_t::metrics_builder_t (const monitoring_builder_t &monitoring)
+  : _state (monitoring._state)
+{
+}
+
+metrics_builder_t::~metrics_builder_t () = default;
+
+metrics_builder_t::metrics_builder_t (metrics_builder_t &&) noexcept =
+  default;
+
+metrics_builder_t &metrics_builder_t::operator= (
+  metrics_builder_t &&) noexcept = default;
+
+metrics_builder_t &
+metrics_builder_t::add_runtime_metrics ()
+{
+  _state->runtime_metrics_enabled = true;
+  return *this;
+}
+
+bool
+metrics_builder_t::runtime_metrics_enabled () const noexcept
+{
+  return _state && _state->runtime_metrics_enabled;
+}
+
+metrics_builder_t &
+metrics_builder_t::record_runtime_metric (
+  std::string name,
+  double value,
+  std::map<std::string, std::string> tags)
+{
+  if (runtime_metrics_enabled ()) {
+    runtime_event_publisher_t (_state).publish (metric_event_payload_t {
+      runtime_event_base_t { "runtime.metrics" },
+      std::move (name),
+      value,
+      std::move (tags) });
+  }
+  return *this;
+}
+
 } // namespace zlink::framework
 
 namespace zlink::framework::detail

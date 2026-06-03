@@ -55,6 +55,7 @@ public:
   config_builder_t &config () noexcept;
   logging_builder_t &logging () noexcept;
   monitoring_builder_t &monitoring () noexcept;
+  metrics_builder_t &metrics () noexcept;
   health_builder_t &health () noexcept;
   app_advanced_t advanced () noexcept;
 

@@ -154,11 +154,13 @@ function createDiscoveringZLinkDynamicModule(options: ZLinkModuleOptions): Dynam
         inject: [ZLINK_FRAMEWORK_REGISTRATION],
         useFactory: (registration: ZLinkFrameworkRegistration) => createRuntimeHost(registration)
       },
-      ...alwaysAvailableClientProviders()
+      ...alwaysAvailableClientProviders(),
+      ...conditionalClientProvidersForAsync()
     ],
     exports: [
       ZLINK_FRAMEWORK_RUNTIME,
-      ...alwaysAvailableClientTokens()
+      ...alwaysAvailableClientTokens(),
+      ...conditionalClientTokens()
     ]
   };
 }
@@ -372,7 +374,9 @@ function conditionalClientProvidersForAsync(): Provider[] {
       provide: ZLINK_SPOT_MANAGER,
       inject: [ZLINK_FRAMEWORK_REGISTRATION],
       useFactory: (registration: ZLinkFrameworkRegistration) => {
-        ensureCapability(framework.hasSpotNode(registration), ZLINK_SPOT_MANAGER);
+        if (!framework.hasSpotNode(registration)) {
+          return null;
+        }
         return createSpotManager(registration);
       }
     },
@@ -383,7 +387,9 @@ function conditionalClientProvidersForAsync(): Provider[] {
         registration: ZLinkFrameworkRegistration,
         runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
       ) => {
-        ensureCapability(framework.hasSpotNode(registration), ZLINK_SPOT_OUTBOUND);
+        if (!framework.hasSpotNode(registration)) {
+          return null;
+        }
         return createSpotOutbound(registration, runtime);
       }
     },
@@ -394,7 +400,9 @@ function conditionalClientProvidersForAsync(): Provider[] {
         registration: ZLinkFrameworkRegistration,
         runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
       ) => {
-        ensureCapability(framework.hasSpotPublisherClient(registration), ZLINK_SPOT_PUBLISHER_CLIENT);
+        if (!framework.hasSpotPublisherClient(registration)) {
+          return null;
+        }
         return new framework.DefaultZLinkSpotPublisherClient(registration, runtime.spotPublisherTransport);
       }
     },
@@ -402,7 +410,9 @@ function conditionalClientProvidersForAsync(): Provider[] {
       provide: ZLINK_ACTOR_MANAGER,
       inject: [ZLINK_FRAMEWORK_REGISTRATION],
       useFactory: (registration: ZLinkFrameworkRegistration) => {
-        ensureCapability(framework.hasActorManager(registration), ZLINK_ACTOR_MANAGER);
+        if (!framework.hasActorManager(registration)) {
+          return null;
+        }
         return new framework.DefaultZLinkActorManager({ actorFactories: registration.actorFactories });
       }
     },
@@ -410,7 +420,9 @@ function conditionalClientProvidersForAsync(): Provider[] {
       provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
       inject: [ZLINK_FRAMEWORK_REGISTRATION],
       useFactory: (registration: ZLinkFrameworkRegistration) => {
-        ensureCapability(framework.hasSpotRemoteAddressResolver(registration), ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER);
+        if (!framework.hasSpotRemoteAddressResolver(registration)) {
+          return null;
+        }
         return createSpotRemoteAddressResolver(registration);
       }
     }
@@ -440,12 +452,6 @@ function createRuntimeHost(registration: ZLinkFrameworkRegistration): RuntimeHos
 
 function providerToken(provider: Provider): InjectionToken {
   return typeof provider === 'function' ? provider : provider.provide;
-}
-
-function ensureCapability(enabled: boolean, token: InjectionToken): void {
-  if (!enabled) {
-    throw new framework.ZLinkConfigurationException(`Provider ${String(token)} requires a matching ZLink capability.`);
-  }
 }
 
 function createSpotManager(registration: ZLinkFrameworkRegistration): InstanceType<FrameworkModule['DefaultZLinkSpotManager']> {

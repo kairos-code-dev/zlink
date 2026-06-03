@@ -176,6 +176,84 @@ test('ZLinkModule.forRoot discovers annotated request handlers from NestJS provi
   await app.close();
 });
 
+test('ZLinkModule.forRoot with handler discovery exposes capability providers through NestJS context', async () => {
+  class ActorFactory {
+    async create(actorId, context) {
+      return { actorId, context };
+    }
+  }
+  class StageSpot {
+    constructor(context) {
+      this.context = context;
+    }
+  }
+  class ProfileHandler {
+    async handle(request) {
+      return { profileId: request.profileId };
+    }
+  }
+  framework.ZLinkRequest('GetProfile')(ProfileHandler.prototype, 'handle', descriptor());
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot({
+      spotNodes: ['game'],
+      spotFactories: [StageSpot],
+      actorFactories: { player: ActorFactory },
+      spotPublisherClients: ['events'],
+      channels: {
+        api: {
+          server: { bind: 'tcp://127.0.0.1:7956' },
+          handlerTypes: [ProfileHandler]
+        }
+      }
+    })],
+    providers: [ProfileHandler]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const spotManager = app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false });
+  const actorManager = app.get(nestjs.ZLINK_ACTOR_MANAGER, { strict: false });
+
+  assert.equal(spotManager instanceof framework.DefaultZLinkSpotManager, true);
+  assert.equal(actorManager instanceof framework.DefaultZLinkActorManager, true);
+  assert.equal((await spotManager.create(StageSpot)).created, true);
+  assert.equal((await actorManager.getOrCreate('p1', 'player')).actorId, 'p1');
+  assert.equal(app.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }) instanceof framework.DefaultZLinkSpotPublisherClient, true);
+
+  await app.close();
+});
+
+test('ZLinkModule.forRoot with handler discovery returns null for absent optional capability providers', async () => {
+  class ProfileHandler {
+    async handle(request) {
+      return { profileId: request.profileId };
+    }
+  }
+  framework.ZLinkRequest('GetProfile')(ProfileHandler.prototype, 'handle', descriptor());
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot({
+      channels: {
+        api: {
+          server: { bind: 'tcp://127.0.0.1:7957' },
+          handlerTypes: [ProfileHandler]
+        }
+      }
+    })],
+    providers: [ProfileHandler]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+
+  assert.equal(app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false }), null);
+  assert.equal(app.get(nestjs.ZLINK_ACTOR_MANAGER, { strict: false }), null);
+  assert.equal(app.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }), null);
+
+  await app.close();
+});
+
 test('ZLinkModule.forRoot passes registered spot factories to the spot manager', async () => {
   class StageSpot {
     constructor(context) {
@@ -662,7 +740,7 @@ test('ZLinkModule.forRoot registers custom spot remote address resolver as concr
   );
 });
 
-test('ZLinkModule.forRootAsync exposes capability providers after async registration resolves', async () => {
+test('ZLinkModule.forRootAsync exposes capability providers through the real NestJS app context', async () => {
   class AsyncSpot {
     constructor(context) {
       this.context = context;
@@ -683,31 +761,34 @@ test('ZLinkModule.forRootAsync exposes capability providers after async registra
       };
     }
   });
-  const container = await resolveModuleProviders(module, [
-    nestjs.ZLINK_SPOT_MANAGER,
-    nestjs.ZLINK_ACTOR_MANAGER,
-    nestjs.ZLINK_SPOT_PUBLISHER_CLIENT
-  ]);
-  const actorManager = container.get(nestjs.ZLINK_ACTOR_MANAGER);
+  class AsyncModule {}
+  Module({ imports: [module] })(AsyncModule);
+  const app = await NestFactory.createApplicationContext(AsyncModule, { logger: false, abortOnError: false });
+  const spotManager = app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false });
+  const actorManager = app.get(nestjs.ZLINK_ACTOR_MANAGER, { strict: false });
 
-  assert.equal(container.get(nestjs.ZLINK_SPOT_MANAGER) instanceof framework.DefaultZLinkSpotManager, true);
+  assert.equal(spotManager instanceof framework.DefaultZLinkSpotManager, true);
   assert.equal(actorManager instanceof framework.DefaultZLinkActorManager, true);
-  assert.equal((await container.get(nestjs.ZLINK_SPOT_MANAGER).create(AsyncSpot)).created, true);
+  assert.equal((await spotManager.create(AsyncSpot)).created, true);
   assert.equal((await actorManager.getOrCreate('p1', 'player')).actorId, 'p1');
-  assert.equal(container.has(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT), true);
+  assert.equal(app.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }) instanceof framework.DefaultZLinkSpotPublisherClient, true);
+  await app.close();
 });
 
-test('ZLinkModule.forRootAsync rejects capability provider resolution when capability is absent', async () => {
+test('ZLinkModule.forRootAsync boots through NestJS when async capability providers are absent', async () => {
   const module = nestjs.ZLinkModule.forRootAsync({
     async useFactory() {
       return {};
     }
   });
+  class AsyncModule {}
+  Module({ imports: [module] })(AsyncModule);
 
-  await assert.rejects(
-    () => resolveModuleProviders(module, [nestjs.ZLINK_SPOT_MANAGER]),
-    framework.ZLinkConfigurationException
-  );
+  const app = await NestFactory.createApplicationContext(AsyncModule, { logger: false, abortOnError: false });
+  assert.equal(app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false }), null);
+  assert.equal(app.get(nestjs.ZLINK_ACTOR_MANAGER, { strict: false }), null);
+  assert.equal(app.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }), null);
+  await app.close();
 });
 
 test('framework runtime host start and stop are idempotent and ordered', async () => {

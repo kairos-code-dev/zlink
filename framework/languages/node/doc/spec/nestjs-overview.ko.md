@@ -131,10 +131,10 @@ export class PricingModule {}
 > **검증 시점 약속**: 설정 검증은 lifecycle hook 이 아니라 **module 등록 시점**
 > 에 끝난다. .NET 은 `AddZLinkFramework(...)` 호출 안에서
 > `ZLinkFrameworkRegistrationValidator.Validate(...)` 를 돌린다. NestJS 도
-> `forRoot(...)`(또는 `forRootAsync` 의 factory 가 옵션을 만든 직후) 가
-> `DynamicModule` 을 만들기 전에 동기 검증을 수행하고, 잘못된 구성이면 그
-> 자리에서 throw 한다. 따라서 잘못된 registration 조합·필수 endpoint 누락은
-> application 이 부팅을 시작하기도 전에 멈춘다([lifecycle §2~3](../internals/lifecycle-and-failure-semantics.ko.md)).
+> `forRoot(...)` 에서는 `DynamicModule` 을 만들기 전에 검증을 수행하고,
+> `forRootAsync(...)` 에서는 NestJS 가 factory 를 실행해 옵션을 받은 직후
+> registration 을 만든다. 잘못된 registration 조합·필수 endpoint 누락은
+> runtime start 전에 실패한다([lifecycle §2~3](../internals/lifecycle-and-failure-semantics.ko.md)).
 
 ### 2.2 Registry / Registry Query Client 모듈
 
@@ -197,6 +197,12 @@ capability 조건이 충족될 때만 `providers`/`exports` 에 들어간다. �
 [di-capability-exposure-policy](../internals/di-capability-exposure-policy.ko.md)
 가 소유한다. 아래는 .NET `ZLinkFrameworkServiceRegistrar.AddPublicClients(...)`
 의 등록 조건을 옮긴 요약이다.
+
+`forRootAsync(...)` 와 handler discovery 를 쓰는 `forRoot(...)` 는 registration 이
+DI 단계에서 확정되기 전에는 어떤 capability 가 필요한지 알 수 없다. 그래서 이 두
+경로는 capability 토큰을 export 하되, 해당 capability 가 없는 경우 provider 값은
+`null` 이다. 이 정책은 NestJS application context 가 optional capability 때문에
+부팅 단계에서 실패하지 않게 하기 위한 것이다.
 
 ### 3.1 항상 등록되는 provider
 

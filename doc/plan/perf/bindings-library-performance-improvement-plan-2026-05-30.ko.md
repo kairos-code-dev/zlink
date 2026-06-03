@@ -808,11 +808,13 @@ owner, native `recv_into` replacement, blocking-first receive loop, per-message
 `perf_python_single_linux_20260603_105104_py_single_part_accessor_pair64_5s.txt`에서
 238,818.8 msg/s로 낮았다. caller-provided `Received`의 단일 part 갱신을 C helper로
 옮긴 후보도 `perf_python_single_linux_20260603_105354_py_received_replace_single_pair64_5s.txt`에서
-220,873.6 msg/s에 그쳐 최종 코드에 남기지 않았다. private active-loop helper를
-perf에서 직접 호출하지 않는 조건을 유지하려면 다음 후보는 public builder/recv
-container 자체를 더 안전하게 낮은 비용으로 옮기는 방식이어야 한다. 이때 profiler와
-thread 조합에서도 segfault가 없어야 하고, 기존 `ReceivedMessage` 객체 보관 의미를
-바꾸면 안 된다.
+220,873.6 msg/s에 그쳐 최종 코드에 남기지 않았다. `recv_owner`와 `_replace`를
+하나의 `recv_into` 전용 C helper로 합친 후보도
+`perf_python_single_linux_20260603_110040_py_recv_into_received_pair64_5s.txt`에서
+247,215.4 msg/s로 현재 public 기준보다 낮았다. private active-loop helper를 perf에서
+직접 호출하지 않는 조건을 유지하려면 다음 후보는 public builder/recv container 자체를
+더 안전하게 낮은 비용으로 옮기는 방식이어야 한다. 이때 profiler와 thread 조합에서도
+segfault가 없어야 하고, 기존 `ReceivedMessage` 객체 보관 의미를 바꾸면 안 된다.
 
 public contract 복구 뒤 Python multi smoke에서 `MULTI_SPOT_REQREP tcp 64B`가
 client timeout으로 반복 partial이 됐다. server dispatch가 owner-backed part의

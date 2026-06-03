@@ -38,7 +38,6 @@ from ...contracts.core.routing_id import RoutingId
 from ..messaging.message_materializer import (
     Message,
     Received,
-    ReceivedMessage,
     TopicMessage,
 )
 from ..handles.native_support import (
@@ -82,11 +81,6 @@ _callback_depth_by_thread = {}
 _native_extension = getattr(_native_bridge, "_zlink_native", None)
 _native_recv_owner = (
     getattr(_native_extension, "recv_owner", None)
-    if _native_extension is not None
-    else None
-)
-_native_recv_into_received = (
-    getattr(_native_extension, "recv_into_received", None)
     if _native_extension is not None
     else None
 )
@@ -493,23 +487,6 @@ class _BaseSocket:
         routing_id = RoutingId.from_(routing) if routing is not None else None
         return routing_id, _BytesReceivedPartsOwner._from_trusted_bytes_tuple(parts)
 
-    def _recv_into_received_via_native_bridge(self, received, flags):
-        if _in_callback() or _native_recv_into_received is None:
-            return None
-        result = _native_recv_into_received(
-            int(self._socket_handle.handle),
-            int(flags),
-            received,
-            ReceivedMessage,
-            RoutingId.from_,
-        )
-        if result is True:
-            return True
-        if result is False:
-            return False
-        rc, err = result
-        _raise_result_error(RecvError, RecvResult, rc, err)
-
     def _set_raw_option(self, setter, option, value):
         ptr, size, keepalive = _send_buffer(value)
         rc = setter(
@@ -892,9 +869,6 @@ class _MessageSocket(_Socket):
         """
         if received is None:
             raise TypeError("received must be a Received")
-        bridged_into = self._recv_into_received_via_native_bridge(received, flags)
-        if bridged_into is not None:
-            return bridged_into
         try:
             bridged = self._recv_parts_via_native_bridge(flags)
             if bridged is None:

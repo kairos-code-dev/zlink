@@ -542,6 +542,12 @@ main ()
       .body (create_game_http_handler_t::request_type { .name = "invalid" })
       .submit_raw ()
       .result ();
+  const auto unsupported_content_type_result =
+    http_client.post ("/games")
+      .body (create_game_http_handler_t::request_type { .name = "plain" })
+      .header ("content-type", "text/plain")
+      .submit_raw ()
+      .result ();
   const auto system_method_mismatch_result =
     http_client.post ("/ready")
       .body (create_game_http_handler_t::request_type { .name = "wrong-method" })
@@ -661,6 +667,12 @@ main ()
       dto_validation_result.value ().body.find ("name is invalid") ==
         std::string::npos) {
     return 44;
+  }
+  if (!unsupported_content_type_result ||
+      unsupported_content_type_result.value ().status != 400 ||
+      unsupported_content_type_result.value ().body.find (
+        "unsupported content type") == std::string::npos) {
+    return 45;
   }
   if (!system_method_mismatch_result ||
       system_method_mismatch_result.value ().status != 405) {

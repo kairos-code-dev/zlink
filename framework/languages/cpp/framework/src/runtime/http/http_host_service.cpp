@@ -286,6 +286,41 @@ find_header (const std::map<std::string, std::string> &headers,
 }
 
 bool
+content_type_is_json (std::string value)
+{
+  const auto separator = value.find (';');
+  if (separator != std::string::npos) {
+    value.erase (separator);
+  }
+  while (!value.empty () &&
+         std::isspace (static_cast<unsigned char> (value.front ()))) {
+    value.erase (value.begin ());
+  }
+  while (!value.empty () &&
+         std::isspace (static_cast<unsigned char> (value.back ()))) {
+    value.pop_back ();
+  }
+  return header_name_equals (value, "application/json");
+}
+
+void
+validate_json_content_type (
+  const http::request<http::string_body> &request,
+  const http_context_t &context)
+{
+  if (request.body ().empty ()) {
+    return;
+  }
+  const auto content_type =
+    find_header (context.request_headers, "content-type");
+  if (!content_type || !content_type_is_json (*content_type)) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "unsupported content type");
+  }
+}
+
+bool
 route_matches (const std::string &pattern,
                const std::string &target,
                std::map<std::string, std::string> &route_values)
@@ -646,6 +681,7 @@ handle_request (const http_options_snapshot_t &options,
       if (context.response_body) {
         response.body () = *context.response_body;
       } else {
+        validate_json_content_type (request, context);
         const auto bound_body = bind_http_request_body (
           request.body (),
           match.route_values,

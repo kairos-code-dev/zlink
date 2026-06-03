@@ -224,6 +224,47 @@ HTTP error mapping만 책임지고, annotation이나 별도 validator는 후속 
 - HTTP validation 실패는 기존 middleware `after`와 correlation id 흐름을 그대로 통과한다.
 - 복잡한 validator registry 없이 draft의 초기 사용자 정의 `validate()` hook 요구를 만족한다.
 
+## 반복 POSD 재리뷰. Goal 19 HTTP unsupported content type 보강
+
+### 발견한 위험 신호
+
+- Goal 19와 application framework draft는 HTTP request validation 축에 unsupported content type을
+  포함한다.
+- 기존 HTTP host는 body가 있으면 `Content-Type`을 확인하지 않고 JSON parse를 시도했다.
+- 이 상태에서는 `text/plain` 같은 요청도 JSON처럼 처리되거나 JSON parse error로만 보고되어,
+  content negotiation 책임이 route handler 주변에 흩어질 수 있다.
+
+### 위반한 POSD 원칙
+
+- 깊은 모듈: HTTP binding module이 JSON body를 담당하면서 media type 정책을 숨기지 못했다.
+- 오류를 정의로 없애라: 지원하지 않는 media type을 parse error로 늦게 발견하면 원인이 흐려진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| JSON parse 실패에 계속 의존 | 변경이 없다 | unsupported content type 완료 기준을 만족하지 못한다 |
+| route handler마다 content type을 검사 | route별 자유도가 크다 | 같은 validation과 error mapping이 반복된다 |
+| body가 있는 framework JSON route에서 `application/json`만 허용 | 정책이 한곳에 모이고 테스트가 단순하다 | 다른 media type은 후속 extension이 필요하다 |
+
+선택은 세 번째 방식이다. 현재 HTTP route는 JSON DTO binding을 core 표면으로 제공하므로,
+framework가 `application/json` 여부를 먼저 확인하고 지원하지 않는 media type은 공통 error
+mapping으로 닫는 것이 가장 단순하다.
+
+### 적용한 리팩토링
+
+- HTTP host request handling에서 body가 있는 route 호출 전에 `Content-Type`을 검사한다.
+- `application/json`은 parameter가 붙어도 허용하고, 그 외 media type이나 누락된 content type은
+  `framework_exception_t(request_protocol_error, "unsupported content type")`로 실패한다.
+- app host regression이 `text/plain` body 요청을 `zlink::http_client` raw response로 확인하게
+  했다.
+
+### 수정 후 점검
+
+- unsupported content type은 handler 호출 전에 `400`으로 매핑된다.
+- invalid JSON과 DTO validation failure는 기존 경로로 계속 분리된다.
+- JSON media type 정책은 Beast request 타입을 public header에 노출하지 않고 runtime에 머문다.
+
 ## 반복 POSD 재리뷰. Sample client process e2e 분리
 
 ### 발견한 위험 신호

@@ -5789,3 +5789,43 @@ server file log에서 stream request와 함께 검증하는 것이 plan의 완�
 - sample log file 초기화와 append 정책은 shared helper 한 곳이 소유한다.
 - TicTacToe sample e2e log gate는 HTTP `POST /games`와 stream connector request/reply/push를
   모두 고정한다.
+
+## 추가 리뷰. App Host rotating file logging 회귀 보강
+
+### 발견한 위험 신호
+
+- Goal 4는 console, file, rotating file, callback sink, async logging option을 구현 항목으로
+  둔다.
+- 기존 app host 테스트는 console/file/callback/async/backend/min-level은 검증했지만,
+  rotating file sink가 실제 파일 회전을 수행하는지는 직접 확인하지 않았다.
+- rotating file 동작을 builder 내부 상태만 확인하면 파일 크기, rename 순서, 새 로그 쓰기 같은
+  사용자가 실제로 관찰하는 계약을 놓칠 수 있다.
+- 일반 file sink와 rotating file sink를 함께 쓰면 file path와 rotation option이 서로 다른
+  vector에 저장되어 순서가 어긋날 수 있었다. 이는 같은 sink 설정 지식이 두 자료구조에 나뉜
+  정보 은닉 약화다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `file_paths()`에 path가 추가되는지만 확인 | 테스트가 작다 | 회전 동작을 전혀 증명하지 못한다 |
+| runtime helper를 public/test hook으로 노출 | 세부 상태 확인이 쉽다 | logging 구현 세부를 테스트 표면으로 끌어올린다 |
+| 기존 app host 테스트에서 작은 max size로 실제 파일 회전을 확인 | public logging API와 파일 결과만 본다 | 임시 파일 검증이 조금 늘어난다 |
+
+선택은 세 번째 방식이다. rotating file은 파일 시스템 결과가 public 관찰 지점이므로 runtime
+내부 helper를 노출하지 않고 실제 회전 결과로 검증한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_app_host`가 기존 rotating log file을 만든 뒤 `use_rotating_file(...)`을
+  작은 `max_file_size`로 설정한다.
+- logger write 후 기존 파일이 `.1`로 이동하고 새 rotating log file에 현재 record가 쓰였는지
+  확인한다.
+- `use_file(...)`도 non-rotating option slot을 함께 추가해 file path와 rotation option의
+  index가 항상 1:1로 맞게 했다.
+
+### 수정 후 점검
+
+- Goal 4 logging sink 중 console/file/rotating/callback/async/backend/min-level은 같은 app host
+  regression에서 모두 검증된다.
+- 일반 file sink와 rotating file sink를 함께 등록해도 rotating sink가 자기 option을 사용한다.

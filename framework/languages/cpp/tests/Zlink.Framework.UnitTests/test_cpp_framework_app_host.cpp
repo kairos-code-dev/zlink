@@ -363,10 +363,20 @@ main ()
     .load_env ("ZLINK_");
   const auto log_path =
     std::filesystem::temp_directory_path () / "zlink_cpp_framework_app.log";
+  const auto rotating_log_path =
+    std::filesystem::temp_directory_path () /
+    "zlink_cpp_framework_app_rotating.log";
+  {
+    std::ofstream existing_rotating_log (rotating_log_path);
+    existing_rotating_log << "old";
+  }
   std::vector<zlink::framework::log_record_t> observed_logs;
   app.logging ()
     .use_console ()
     .use_file (log_path.string ())
+    .use_rotating_file (
+      rotating_log_path.string (),
+      { .max_file_size = 1, .max_files = 2 })
     .use_callback_sink ([&](const zlink::framework::log_record_t &record) {
       observed_logs.push_back (record);
     })
@@ -672,6 +682,25 @@ main ()
     if (line.find ("startup") == std::string::npos ||
         line.find ("node=alpha") == std::string::npos) {
       return 11;
+    }
+  }
+  if (!std::filesystem::exists (rotating_log_path.string () + ".1")) {
+    return 38;
+  }
+  {
+    std::ifstream rotated_file (rotating_log_path.string () + ".1");
+    std::string rotated_line;
+    std::getline (rotated_file, rotated_line);
+    if (rotated_line.find ("old") == std::string::npos) {
+      return 39;
+    }
+  }
+  {
+    std::ifstream current_rotating_log (rotating_log_path);
+    std::string line;
+    std::getline (current_rotating_log, line);
+    if (line.find ("startup") == std::string::npos) {
+      return 40;
     }
   }
 

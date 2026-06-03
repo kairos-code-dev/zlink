@@ -231,6 +231,7 @@ logging_builder_t::use_file (std::string path)
 {
   std::lock_guard lock (_state->mutex);
   _state->file_paths.push_back (std::move (path));
+  _state->rotating_options.push_back ({});
   return *this;
 }
 

@@ -12,6 +12,56 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. Stream Connector TLS transport 추가
+
+### 발견한 위험 신호
+
+- `.NET` connector는 `tls://` endpoint를 TLS over TCP로 연결하고 certificate validation
+  정책을 option으로 제공한다. C++ connector에는 같은 public enum과
+  `skip_server_certificate_validation` option이 있었지만 runtime은 TLS를 unsupported로
+  처리했다.
+- TLS를 request/write 경로에 직접 넣으면 handshake, certificate verification, SNI 설정이
+  connector lifecycle과 frame codec에 흩어진다. 이는 transport 보안 세부가 packet 호출
+  경로로 새는 정보 은닉 위반이다.
+- OpenSSL이 없는 빌드에서도 public header가 OpenSSL 타입을 노출하면 dependency isolation
+  원칙이 깨진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| TLS를 계속 unsupported로 둔다 | 변경이 없다 | `.NET` parity와 공통 transport 완료 기준을 만족하지 못한다 |
+| connector lifecycle에서 SSL stream을 직접 소유한다 | 구현 파일 수가 적다 | read/write/close 경로가 TLS 세부를 알게 된다 |
+| OpenSSL이 있는 빌드에서만 `stream_connection_t` TLS 구현체를 추가한다 | public API를 바꾸지 않고 transport 세부를 숨긴다 | OpenSSL 없는 빌드는 TLS를 명시 실패로 유지한다 |
+
+선택은 세 번째 방식이다. TLS는 private runtime dependency이며, public option은 endpoint와
+certificate validation 정책만 표현한다.
+
+### 적용한 리팩토링
+
+- `tls://host:port` endpoint parser를 추가했다.
+- OpenSSL이 있는 빌드에서 `tls_stream_connection_t`를 `stream_connection_t` 구현체로 추가했다.
+- TLS client handshake, SNI, hostname verification, `skip_server_certificate_validation`
+  처리를 transport owner에 모았다.
+- CMake가 OpenSSL을 찾으면 `zlink_stream_connector`에 private OpenSSL dependency와
+  `ZLINK_STREAM_CONNECTOR_WITH_OPENSSL` compile definition을 붙이게 했다.
+- connector e2e 테스트에 self-signed TLS loopback server를 추가하고, 테스트 인증서 검증
+  생략 option으로 `tls://localhost:<port>` 전송을 검증했다.
+
+### 수정 후 점검
+
+- public Stream Connector header는 OpenSSL 타입을 노출하지 않는다.
+- TCP, TLS, WebSocket은 같은 send/request frame 경로를 사용한다.
+- WebSocket over TLS는 아직 미구현이며 명시 실패 상태로 남아 있다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake -S framework/languages/cpp -B framework/languages/cpp/build
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+```
+
 ## 반복 POSD 재리뷰. Stream Connector WebSocket transport 추가
 
 ### 발견한 위험 신호
@@ -49,7 +99,7 @@ WebSocket binary message 경계는 transport 구현이 흡수한다.
 
 - public Stream Connector API는 바꾸지 않았다.
 - TCP와 WebSocket은 같은 `send(packet)` / typed send 호출 표면을 사용한다.
-- TLS와 WebSocket over TLS는 아직 미구현이며, 명시 실패 상태로 남아 있다.
+- WebSocket over TLS는 아직 미구현이며, 명시 실패 상태로 남아 있다.
 
 ### 재실행한 검증 명령
 
@@ -103,8 +153,8 @@ TLS handshake, WebSocket binary message, TCP socket details는 transport owner�
 
 - public Stream Connector API는 바꾸지 않았다.
 - TCP 동작은 기존 connector e2e 테스트로 유지된다.
-- TLS와 WebSocket over TLS parity는 아직 완료되지 않았다. 다음 반복에서는 이 abstraction
-  아래에 남은 secure transport connection 구현과 e2e 회귀를 추가해야 한다.
+- WebSocket over TLS parity는 아직 완료되지 않았다. 다음 반복에서는 이 abstraction 아래에
+  남은 secure WebSocket connection 구현과 e2e 회귀를 추가해야 한다.
 
 ### 재실행한 검증 명령
 

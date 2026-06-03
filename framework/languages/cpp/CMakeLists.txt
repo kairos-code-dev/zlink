@@ -225,6 +225,13 @@ target_include_directories(zlink_stream_connector PRIVATE
   ${ZLINK_FRAMEWORK_CPP_DIR}/connector/src)
 target_link_libraries(zlink_stream_connector PUBLIC zlink::cpp)
 target_link_libraries(zlink_stream_connector PRIVATE Threads::Threads)
+if(OpenSSL_FOUND)
+  target_compile_definitions(zlink_stream_connector PRIVATE
+    ZLINK_STREAM_CONNECTOR_WITH_OPENSSL)
+  target_link_libraries(zlink_stream_connector PRIVATE
+    OpenSSL::SSL
+    OpenSSL::Crypto)
+endif()
 if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
   find_path(ZLINK_LZ4_INCLUDE_DIR lz4.h)
   find_library(ZLINK_LZ4_LIBRARY NAMES lz4 liblz4)
@@ -700,6 +707,15 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     "connector-unit;connector-integration;connector-e2e;connector-contract;connector-protocol;connector-transport;connector-typed")
   target_link_libraries(test_cpp_stream_connector PRIVATE
     zlink::stream_connector_codecs)
+  if(ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL)
+    target_compile_definitions(test_cpp_stream_connector PRIVATE
+      ZLINK_STREAM_CONNECTOR_TEST_WITH_OPENSSL
+      ZLINK_STREAM_CONNECTOR_TEST_CERT="${ZLINK_HTTP_CLIENT_TEST_CERT}"
+      ZLINK_STREAM_CONNECTOR_TEST_KEY="${ZLINK_HTTP_CLIENT_TEST_KEY}")
+    target_link_libraries(test_cpp_stream_connector PRIVATE
+      OpenSSL::SSL
+      OpenSSL::Crypto)
+  endif()
   add_zlink_http_client_test(
     test_cpp_http_client
     tests/Zlink.HttpClient.Tests/test_cpp_http_client.cpp

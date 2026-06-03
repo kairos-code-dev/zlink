@@ -14,9 +14,13 @@
 #include <boost/beast/core/buffers_to_string.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
 #include <boost/beast/websocket.hpp>
+#ifdef ZLINK_STREAM_CONNECTOR_TEST_WITH_OPENSSL
+#include <boost/asio/ssl/stream.hpp>
+#endif
 
 #include <chrono>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <nlohmann/json.hpp>
@@ -688,6 +692,71 @@ main ()
     return 49;
   }
 
+#ifdef ZLINK_STREAM_CONNECTOR_TEST_WITH_OPENSSL
+  boost::asio::io_context tls_io;
+  boost::asio::ip::tcp::acceptor tls_acceptor (
+    tls_io,
+    { boost::asio::ip::make_address ("127.0.0.1"), 0 });
+  const auto tls_endpoint =
+    std::string ("tls://localhost:") +
+    std::to_string (tls_acceptor.local_endpoint ().port ());
+  std::atomic_bool tls_send_seen { false };
+  std::thread tls_server_thread ([&tls_acceptor, &tls_send_seen] {
+    boost::asio::ssl::context tls_context (
+      boost::asio::ssl::context::tls_server);
+    tls_context.use_certificate_chain_file (
+      ZLINK_STREAM_CONNECTOR_TEST_CERT);
+    tls_context.use_private_key_file (
+      ZLINK_STREAM_CONNECTOR_TEST_KEY,
+      boost::asio::ssl::context::pem);
+    boost::asio::ip::tcp::socket socket (tls_acceptor.get_executor ());
+    tls_acceptor.accept (socket);
+    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> stream (
+      std::move (socket),
+      tls_context);
+    boost::system::error_code error;
+    stream.handshake (boost::asio::ssl::stream_base::server, error);
+    if (error) {
+      return;
+    }
+    std::string buffer;
+    std::array<char, 1024> chunk {};
+    while (!tls_send_seen) {
+      const auto read = stream.read_some (
+        boost::asio::buffer (chunk), error);
+      if (error) {
+        return;
+      }
+      buffer.append (chunk.data (), read);
+      if (auto frame = try_read_server_frame (buffer)) {
+        tls_send_seen =
+          frame->header.kind ==
+            zlink::stream_connector::message_kind_t::send &&
+          frame->header.name == login_request_t::packet_name;
+      }
+    }
+    stream.shutdown (error);
+  });
+
+  zlink::stream_connector::connector_options_t tls_options;
+  tls_options.endpoint = tls_endpoint;
+  tls_options.transport = zlink::stream_connector::transport_t::tls;
+  tls_options.skip_server_certificate_validation = true;
+  auto tls_connector =
+    zlink::stream_connector::connector_factory_t::create (tls_options);
+  if (!tls_connector.connect ().result ()) {
+    return 50;
+  }
+  if (!tls_connector.send (login_request_t {}).submit ().result ()) {
+    return 51;
+  }
+  tls_connector.close ().result ();
+  tls_server_thread.join ();
+  if (!tls_send_seen) {
+    return 52;
+  }
+#endif
+
   zlink::stream_connector::connector_options_t reconnect_options;
   reconnect_options.endpoint = "tcp://127.0.0.1:1";
   reconnect_options.reconnect.initial_delay = std::chrono::milliseconds (1);
@@ -714,7 +783,7 @@ main ()
   zlink::stream_connector::connector_options_t unsupported_transport_options;
   unsupported_transport_options.endpoint = endpoint;
   unsupported_transport_options.transport =
-    zlink::stream_connector::transport_t::tls;
+    zlink::stream_connector::transport_t::websocket_secure;
   auto unsupported_transport =
     zlink::stream_connector::connector_factory_t::create (
       unsupported_transport_options);

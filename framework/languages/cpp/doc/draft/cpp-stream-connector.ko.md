@@ -150,6 +150,7 @@ Boost include 경로를 제공하므로 Boost.Asio를 기본 구현 기반으로
 현재 구현된 포함 기능은 아래와 같다.
 
 - TCP transport
+- TLS transport
 - WebSocket transport
 - transport connection abstraction
 - connector 생성과 명시 connect
@@ -173,13 +174,13 @@ Boost include 경로를 제공하므로 Boost.Asio를 기본 구현 기반으로
 - max metadata size
 - connector instance별 독립 실행
 
-TLS와 WebSocket over TLS는 `transport_t`에 확장 지점으로 남아 있지만 현재 runtime이
-지원하지 않는 transport로 명확히 실패한다. 지원하지 않는 transport를 조용히 TCP처럼
-처리하지 않는 이유는 endpoint 보안과 handshake 의미가 달라서, 잘못된 성공이 실제 운영
-장애로 이어질 수 있기 때문이다.
+WebSocket over TLS는 `transport_t`에 확장 지점으로 남아 있지만 현재 runtime이 지원하지
+않는 transport로 명확히 실패한다. 지원하지 않는 transport를 조용히 TCP처럼 처리하지 않는
+이유는 endpoint 보안과 handshake 의미가 달라서, 잘못된 성공이 실제 운영 장애로 이어질 수
+있기 때문이다.
 다만 공통 Stream Connector 초안과 `.NET` connector는 TCP, TLS, WebSocket, WebSocket over
 TLS를 모두 공개 범위로 둔다. 따라서 C++ connector는 최종 완료 전까지 `stream_connection_t`
-runtime abstraction 아래에 TLS와 WebSocket over TLS connection 구현을 추가해야 한다.
+runtime abstraction 아래에 WebSocket over TLS connection 구현을 추가해야 한다.
 
 request/reply는 pending request table의 sequence로 response frame을 매칭한다. response가
 `request_timeout` 안에 도착하지 않으면 pending request를 제거하고 `request_timeout`

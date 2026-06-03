@@ -264,10 +264,14 @@ connector_t::connect ()
         _state->options.transport)) {
     return task_t<void> (result_t<void>::failure (
       error_code_t::configuration_error,
-      "stream connector currently supports tcp and websocket transports"));
+      "stream connector does not support the configured transport in this build"));
   }
   const auto tcp_endpoint = _state->options.transport == transport_t::tcp
                               ? detail::parse_tcp_endpoint (
+                                  _state->options.endpoint)
+                              : std::optional<detail::endpoint_parts_t> {};
+  const auto tls_endpoint = _state->options.transport == transport_t::tls
+                              ? detail::parse_tls_endpoint (
                                   _state->options.endpoint)
                               : std::optional<detail::endpoint_parts_t> {};
   const auto websocket_endpoint =
@@ -278,6 +282,11 @@ connector_t::connect ()
     return task_t<void> (result_t<void>::failure (
       error_code_t::configuration_error,
       "stream connector endpoint must use tcp://host:port"));
+  }
+  if (_state->options.transport == transport_t::tls && !tls_endpoint) {
+    return task_t<void> (result_t<void>::failure (
+      error_code_t::configuration_error,
+      "stream connector endpoint must use tls://host:port"));
   }
   if (_state->options.transport == transport_t::websocket &&
       !websocket_endpoint) {
@@ -302,6 +311,16 @@ connector_t::connect ()
       if (_state->options.transport == transport_t::websocket) {
         _state->connection =
           detail::connect_websocket (_state->io_context, *websocket_endpoint);
+      } else if (_state->options.transport == transport_t::tls) {
+#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
+        _state->connection = detail::connect_tls (
+          _state->io_context,
+          *tls_endpoint,
+          _state->options.skip_server_certificate_validation);
+#else
+        throw std::runtime_error (
+          "stream connector TLS support requires OpenSSL");
+#endif
       } else {
         boost::asio::ip::tcp::resolver resolver (_state->io_context);
         auto endpoints =

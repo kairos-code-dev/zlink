@@ -98,6 +98,16 @@ _native_socket_send_op_func = (
     if _native_extension is not None
     else None
 )
+_native_publisher_send_op_func = (
+    getattr(_native_extension, "publisher_send_op", None)
+    if _native_extension is not None
+    else None
+)
+_native_router_recv_owner_func = (
+    getattr(_native_extension, "router_recv_owner", None)
+    if _native_extension is not None
+    else None
+)
 
 
 def _native_socket_send_op(socket):
@@ -187,7 +197,7 @@ class _RoutedSocketSendOp(_SocketSendOp):
 
     def __init__(self, socket, routing_id):
         super().__init__(socket)
-        self._routing_id = routing_id
+        self._routing_id = _validated_routing_id_bytes(routing_id)
 
     def submit(self):
         if self._submitted:
@@ -195,7 +205,7 @@ class _RoutedSocketSendOp(_SocketSendOp):
         payload = self._payload_or_raise()
         self._submitted = True
         try:
-            bridged = self._socket._send_routed_payload_via_native_bridge(
+            bridged = self._socket._send_routed_payload_bytes_via_native_bridge(
                 self._routing_id,
                 payload,
                 self._flags,
@@ -459,6 +469,26 @@ class RouterSocket(
             return None
         if _native_extension is None:
             return None
+        if _native_router_recv_owner_func is not None:
+            result = _native_router_recv_owner_func(
+                int(self._socket_handle.handle), int(flags)
+            )
+            if result is False:
+                return False
+            if result is None:
+                return None
+            rc, err, routing, spot_routing, request_seq, owner = result
+            if int(rc) != 0:
+                _raise_result_error(RecvError, RecvResult, rc, err)
+            routing_id = (
+                RoutingId._from_trusted_bytes(routing) if routing is not None else None
+            )
+            spot_rid = (
+                RoutingId._from_trusted_bytes(spot_routing)
+                if spot_routing is not None
+                else None
+            )
+            return owner, routing_id, spot_rid, int(request_seq)
         result = _native_extension.router_recv_parts(
             int(self._socket_handle.handle), int(flags)
         )
@@ -479,35 +509,12 @@ class RouterSocket(
     def _replace_router_received(
         self, received, owner, routing_id, spot_rid, request_seq_value
     ):
-        socket = self
-        request_seq_for_reply = request_seq_value
-
-        def _make_router_send_op():
-            from ..service.spot import SendOp
-
-            return SendOp(
-                socket,
-                lambda parts, flags: socket._send_op_submit(
-                    routing_id, spot_rid, parts, flags
-                ),
-            )
-
-        def _make_router_reply_op():
-            from ..service.spot import ReplyOp
-
-            return ReplyOp(
-                lambda parts, flags: socket._reply_from_receive_context(
-                    routing_id, spot_rid, request_seq_for_reply, parts, flags=flags
-                )
-            )
-
         received._replace(
             owner,
             routing_id=routing_id,
             spot_rid=spot_rid,
             request_seq=request_seq_value if request_seq_value != 0 else None,
-            send_sender=_make_router_send_op,
-            reply_sender=_make_router_reply_op,
+            router_socket=self,
         )
 
     def recv_into(self, received, *, flags=0):
@@ -525,6 +532,8 @@ class RouterSocket(
             raise TypeError("received must be a Received")
         try:
             bridged = self._recv_parts_via_native_bridge(flags)
+            if bridged is False:
+                return False
             if bridged is not None:
                 owner, routing_id, spot_rid, request_seq_value = bridged
                 self._replace_router_received(
@@ -1075,6 +1084,10 @@ class PubSocket(
         return create_pub_socket_options(self)
 
     def publish(self, topic):
+        if _native_publisher_send_op_func is not None:
+            return _native_publisher_send_op_func(
+                int(self._socket_handle.handle), topic
+            )
         return _PublisherSendOp(self, topic)
 
 
@@ -1100,6 +1113,10 @@ class XPubSocket(
         return create_pub_socket_options(self)
 
     def publish(self, topic):
+        if _native_publisher_send_op_func is not None:
+            return _native_publisher_send_op_func(
+                int(self._socket_handle.handle), topic
+            )
         return _PublisherSendOp(self, topic)
 
     def _subscription_event(self, flags):

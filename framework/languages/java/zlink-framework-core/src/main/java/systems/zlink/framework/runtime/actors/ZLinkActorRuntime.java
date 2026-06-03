@@ -428,7 +428,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             try {
                 return spotNode.joinActor(
                         context.actorRef,
-                        spotNode.routingId(),
+                        context.actorRef.nodeRid(),
                         spotRid,
                         List.of(packetNamePart, requestPart),
                         timeout)

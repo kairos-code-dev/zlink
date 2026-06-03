@@ -558,7 +558,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         spot.configure();
         return withCurrentOutbound(spotContext.outbound, () -> spot.onCreateAsync(List.of()))
             .thenCompose(ignored -> withCurrentOutbound(spotContext.outbound, spot::onInitializeAsync))
-            .thenApply(ignored -> new SpotActivation(spot, backendSpot, spotContext))
+            .thenApply(ignored -> {
+                SpotActivation activation = new SpotActivation(spot, backendSpot, spotContext);
+                backendSpot.onDispatchEvent(activation::handleDispatchEvent);
+                return activation;
+            })
             .handle((activation, error) -> {
                 if (error == null) {
                     return activation;
@@ -1054,15 +1058,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     if (reply.isEmpty()) {
                         return;
                     }
-                    try (Message header = encodeActorReplyHeader(packetHeader, headerPart);
-                         Message body = reply.get()) {
-                        primaryNode.sendActorBoundSession(
+                    try (Message frame = encodeActorReplyFrame(packetHeader, headerPart, reply.get())) {
+                        if (!primaryNode.sendActorBoundSession(
                             new ZLinkBackendActorRef(
                                 headerPart.actor().nodeRid(),
                                 actor.actorId(),
                                 headerPart.actor().epoch()),
-                            List.of(header, body),
-                            SendFlags.NONE);
+                            List.of(frame),
+                            SendFlags.NONE)) {
+                            throw new ZLinkConfigurationException(
+                                "actor bound session reply failed: " + actor.actorId());
+                        }
                     }
                 })
                 .whenComplete((ignored, error) -> payload.close());
@@ -1134,21 +1140,29 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 codec);
         }
 
-        private Message encodeActorReplyHeader(
+        private Message encodeActorReplyFrame(
             ActorPacketHeader packetHeader,
-            ZLinkBackendActorReceived originalHeader) {
+            ZLinkBackendActorReceived originalHeader,
+            Message payload) {
             if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
-                return Message.from(originalHeader.message());
+                return Message.from(payload);
             }
             byte[] name = packetHeader.packetName().getBytes(StandardCharsets.UTF_8);
-            ByteBuffer buffer = ByteBuffer.allocate(3 + Long.BYTES + 1 + name.length);
-            buffer.put((byte) 3);
-            buffer.put((byte) packetHeader.codec());
-            buffer.put((byte) 0x01);
-            buffer.putLong(packetHeader.requestSeq().get());
-            buffer.put((byte) name.length);
-            buffer.put(name);
-            return Message.from(buffer.array());
+            ByteBuffer header = ByteBuffer.allocate(3 + Long.BYTES + 1 + name.length);
+            header.put((byte) 3);
+            header.put((byte) packetHeader.codec());
+            header.put((byte) 0x01);
+            header.putLong(packetHeader.requestSeq().get());
+            header.put((byte) name.length);
+            header.put(name);
+            byte[] headerBytes = header.array();
+            byte[] body = payload.toByteArray();
+            ByteBuffer frame = ByteBuffer.allocate(6 + headerBytes.length + body.length);
+            frame.putShort((short) headerBytes.length);
+            frame.putInt(body.length);
+            frame.put(headerBytes);
+            frame.put(body);
+            return Message.from(frame.array());
         }
 
         private record ActorPacketHeader(
@@ -1232,6 +1246,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                             "Spot actor join target actor is not available: "
                                 + request.targetActor().actorId()));
                     }
+                    actorRuntime.markJoined(
+                        actor.get(),
+                        request.targetActor(),
+                        backendSpot.routingId(),
+                        spotFor(backendSpot.routingId()));
                     try {
                         Object handler = handlerFactory.create(registration.handlerType());
                         Object requestObject =
@@ -1245,23 +1264,26 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                                 ? completionStage
                                 : CompletableFuture.completedFuture(result);
                         return stage
-                            .thenCompose(reply -> {
-                                actorRuntime.markJoined(
-                                    actor.get(),
-                                    request.targetActor(),
-                                    backendSpot.routingId(),
-                                    spotFor(backendSpot.routingId()));
-                                return notifyActorJoined(actor.get())
-                                    .thenApply(ignored -> reply);
+                            .thenCompose(reply -> notifyActorJoined(actor.get())
+                                .thenApply(ignored -> reply))
+                            .whenComplete((reply, error) -> {
+                                if (error != null) {
+                                    actorRuntime.markLeft(actor.get());
+                                }
                             })
                             .thenApply(serializer::serialize);
                     } catch (IllegalAccessException | InvocationTargetException ex) {
+                        actorRuntime.markLeft(actor.get());
                         return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                             "failed to invoke Spot actor join handler: "
                                 + registration.handlerType().getName()
                                 + "."
-                                + registration.handlerMethod().getName()));
+                                + registration.handlerMethod().getName(),
+                            ex instanceof InvocationTargetException invocation
+                                ? invocation.getCause()
+                                : ex));
                     } catch (RuntimeException ex) {
+                        actorRuntime.markLeft(actor.get());
                         return CompletableFuture.failedFuture(ex);
                     }
                 });
@@ -1305,7 +1327,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     "failed to invoke Spot actor joined handler: "
                         + registration.handlerType().getName()
                         + "."
-                        + registration.handlerMethod().getName()));
+                        + registration.handlerMethod().getName(),
+                    ex instanceof InvocationTargetException invocation
+                        ? invocation.getCause()
+                        : ex));
             } catch (RuntimeException ex) {
                 return CompletableFuture.failedFuture(ex);
             }
@@ -1328,7 +1353,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     "failed to invoke Spot actor send handler: "
                         + registration.handlerType().getName()
                         + "."
-                        + registration.handlerMethod().getName()));
+                        + registration.handlerMethod().getName(),
+                    ex instanceof InvocationTargetException invocation
+                        ? invocation.getCause()
+                        : ex));
             } catch (RuntimeException ex) {
                 return CompletableFuture.failedFuture(ex);
             }
@@ -1351,7 +1379,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     "failed to invoke Spot actor request handler: "
                         + registration.handlerType().getName()
                         + "."
-                        + registration.handlerMethod().getName()));
+                        + registration.handlerMethod().getName(),
+                    ex instanceof InvocationTargetException invocation
+                        ? invocation.getCause()
+                        : ex));
             } catch (RuntimeException ex) {
                 return CompletableFuture.failedFuture(ex);
             }
@@ -2081,10 +2112,451 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             .orElseGet(() -> List.of(payload));
     }
 
-    private record SpotActivation(
-        ZLinkSpot spot,
-        ZLinkBackendSpot backendSpot,
-        DefaultSpotContext context) implements AutoCloseable {
+    private final class SpotActivation implements AutoCloseable {
+        private final ZLinkSpot spot;
+        private final ZLinkBackendSpot backendSpot;
+        private final DefaultSpotContext context;
+
+        SpotActivation(
+            ZLinkSpot spot,
+            ZLinkBackendSpot backendSpot,
+            DefaultSpotContext context) {
+            this.spot = spot;
+            this.backendSpot = backendSpot;
+            this.context = context;
+        }
+
+        void handleDispatchEvent(ZLinkBackendSpotDispatchInfo info) {
+            if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_JOIN_READABLE) {
+                drainUnhandledActorJoins();
+            }
+            if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_READABLE) {
+                dispatchActorMessages(info.actorMessages());
+            }
+            if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_LIFECYCLE_READABLE) {
+                drainActorLifecycleEvents();
+            }
+            for (ZLinkBackendActorReceived actorMessage : info.actorMessages()) {
+                actorMessage.close();
+            }
+        }
+
+        private void drainActorLifecycleEvents() {
+            while (true) {
+                ZLinkBackendActorLifecycleEvent event =
+                    backendSpot.recvActorLifecycle(ZLinkBackendRecvMode.DONT_WAIT);
+                if (event == null) {
+                    return;
+                }
+                if (actorRuntime == null) {
+                    continue;
+                }
+                ZLinkBackendActorRef actorRef = event.kind() == ZLinkBackendActorLifecycleEventKind.LEFT
+                    ? event.info().previousActor()
+                    : event.info().currentActor();
+                actorRuntime.localActor(actorRef.actorId())
+                    .ifPresent(actor -> dispatchActorLifecycle(event, actorRef, actor));
+            }
+        }
+
+        private void dispatchActorLifecycle(
+            ZLinkBackendActorLifecycleEvent event,
+            ZLinkBackendActorRef actorRef,
+            ZLinkActor actor) {
+            if (event.kind() == ZLinkBackendActorLifecycleEventKind.LEFT) {
+                actorRuntime.markLeft(actor);
+                ZLinkSpotActorChangeResult result =
+                    new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.LEAVE_SPOT);
+                actorRuntime.submitActorDispatch(
+                    actor.actorId(),
+                    () -> notifySpotActorLifecycle(actor, result, actorLeftHandlers));
+                return;
+            }
+            RoutingId spotRid = event.info()
+                .currentSpotRid()
+                .orElse(backendSpot.routingId());
+            actorRuntime.markJoined(actor, actorRef, spotRid, spotFor(spotRid));
+            ZLinkSpotActorChangeResult result =
+                new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JOIN_ENTRY_SPOT);
+            actorRuntime.submitActorDispatch(
+                actor.actorId(),
+                () -> notifySpotActorLifecycle(actor, result, actorJoinedHandlers));
+        }
+
+        private void dispatchActorMessages(List<ZLinkBackendActorReceived> actorMessages) {
+            int index = 0;
+            while (index + 1 < actorMessages.size()) {
+                ZLinkBackendActorReceived headerPart = actorMessages.get(index++);
+                ZLinkBackendActorReceived bodyPart = actorMessages.get(index++);
+                ActorPacketHeader packetHeader = decodeActorPacketHeader(headerPart);
+                SpotActorPacketHandlerRegistration handler =
+                    actorPacketHandlers.get(packetHeader.packetName());
+                if (handler == null || actorRuntime == null) {
+                    continue;
+                }
+                if (packetHeader.requestSeq().isPresent()
+                    != (handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST)) {
+                    continue;
+                }
+                actorRuntime.localActor(headerPart.actor().actorId())
+                    .filter(actor -> handler.actorType().isInstance(actor))
+                    .ifPresent(actor -> {
+                        Message payloadCopy = Message.from(bodyPart.message());
+                        actorRuntime.submitActorDispatch(
+                            actor.actorId(),
+                            () -> dispatchActorPacket(
+                                handler,
+                                actor,
+                                packetHeader,
+                                headerPart,
+                                payloadCopy));
+                    });
+            }
+        }
+
+        private CompletionStage<Void> dispatchActorPacket(
+            SpotActorPacketHandlerRegistration handler,
+            ZLinkActor actor,
+            ActorPacketHeader packetHeader,
+            ZLinkBackendActorReceived headerPart,
+            Message payload) {
+            CompletionStage<Optional<Message>> stage = handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST
+                ? invokeActorRequestHandler(handler, actor, payload)
+                : invokeActorSendHandler(handler, actor, payload).thenApply(ignored -> Optional.empty());
+            return stage.thenAccept(reply -> {
+                    if (reply.isEmpty()) {
+                        return;
+                    }
+                    try (Message frame = encodeActorReplyFrame(packetHeader, headerPart, reply.get())) {
+                        if (!primaryNode.sendActorBoundSession(
+                            new ZLinkBackendActorRef(
+                                headerPart.actor().nodeRid(),
+                                actor.actorId(),
+                                headerPart.actor().epoch()),
+                            List.of(frame),
+                            SendFlags.NONE)) {
+                            throw new ZLinkConfigurationException(
+                                "user actor bound session reply failed: " + actor.actorId());
+                        }
+                    }
+                })
+                .whenComplete((ignored, error) -> payload.close());
+        }
+
+        private ActorPacketHeader decodeActorPacketHeader(ZLinkBackendActorReceived headerPart) {
+            byte[] bytes = headerPart.message().toByteArray();
+            try {
+                return decodeStreamActorPacketHeader(bytes, headerPart.requestSeq());
+            } catch (RuntimeException ignored) {
+                return new ActorPacketHeader(
+                    headerPart.message().toUtf8String(),
+                    headerPart.requestSeq(),
+                    false,
+                    0);
+            }
+        }
+
+        private ActorPacketHeader decodeStreamActorPacketHeader(
+            byte[] bytes,
+            Optional<Long> backendRequestSeq) {
+            if (bytes.length < 4) {
+                throw new IllegalArgumentException("actor STREAM header is too short");
+            }
+            ByteBuffer buffer = ByteBuffer.wrap(bytes);
+            int kind = Byte.toUnsignedInt(buffer.get());
+            int codec = Byte.toUnsignedInt(buffer.get());
+            int flags = Byte.toUnsignedInt(buffer.get());
+            Optional<Long> requestSeq = backendRequestSeq;
+            if ((flags & 0x01) != 0) {
+                if (buffer.remaining() < Long.BYTES) {
+                    throw new IllegalArgumentException("actor STREAM header missing request sequence");
+                }
+                long decodedRequestSeq = buffer.getLong();
+                if (decodedRequestSeq == 0) {
+                    throw new IllegalArgumentException("actor STREAM request sequence is zero");
+                }
+                requestSeq = Optional.of(decodedRequestSeq);
+            }
+            if (buffer.remaining() < 1) {
+                throw new IllegalArgumentException("actor STREAM header missing packet name");
+            }
+            int nameLength = Byte.toUnsignedInt(buffer.get());
+            if (buffer.remaining() < nameLength) {
+                throw new IllegalArgumentException("actor STREAM header packet name is truncated");
+            }
+            byte[] nameBytes = new byte[nameLength];
+            buffer.get(nameBytes);
+            if ((flags & 0x02) != 0) {
+                if (buffer.remaining() < 2) {
+                    throw new IllegalArgumentException("actor STREAM header metadata is truncated");
+                }
+                int metadataLength = Short.toUnsignedInt(buffer.getShort());
+                if (buffer.remaining() < metadataLength) {
+                    throw new IllegalArgumentException("actor STREAM header metadata is truncated");
+                }
+                buffer.position(buffer.position() + metadataLength);
+            }
+            if (buffer.hasRemaining()) {
+                throw new IllegalArgumentException("actor STREAM header has trailing bytes");
+            }
+            if (kind != 1 && kind != 2) {
+                throw new IllegalArgumentException("actor STREAM header is not dispatch kind");
+            }
+            return new ActorPacketHeader(
+                new String(nameBytes, StandardCharsets.UTF_8),
+                requestSeq,
+                true,
+                codec);
+        }
+
+        private Message encodeActorReplyFrame(
+            ActorPacketHeader packetHeader,
+            ZLinkBackendActorReceived originalHeader,
+            Message payload) {
+            if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
+                return Message.from(payload);
+            }
+            byte[] name = packetHeader.packetName().getBytes(StandardCharsets.UTF_8);
+            ByteBuffer header = ByteBuffer.allocate(3 + Long.BYTES + 1 + name.length);
+            header.put((byte) 3);
+            header.put((byte) packetHeader.codec());
+            header.put((byte) 0x01);
+            header.putLong(packetHeader.requestSeq().get());
+            header.put((byte) name.length);
+            header.put(name);
+            byte[] headerBytes = header.array();
+            byte[] body = payload.toByteArray();
+            ByteBuffer frame = ByteBuffer.allocate(6 + headerBytes.length + body.length);
+            frame.putShort((short) headerBytes.length);
+            frame.putInt(body.length);
+            frame.put(headerBytes);
+            frame.put(body);
+            return Message.from(frame.array());
+        }
+
+        private record ActorPacketHeader(
+            String packetName,
+            Optional<Long> requestSeq,
+            boolean streamHeader,
+            int codec) {
+        }
+
+        private void drainUnhandledActorJoins() {
+            while (true) {
+                ZLinkBackendActorJoinRequest request =
+                    backendSpot.recvActorJoin(ZLinkBackendRecvMode.DONT_WAIT);
+                if (request == null) {
+                    return;
+                }
+                try {
+                    SpotActorJoinHandlerRegistration handler =
+                        resolveActorJoinHandler(request);
+                    if (handler == null) {
+                        try (Message emptyReply = Message.from(new byte[0])) {
+                            backendSpot.replyActorJoin(request, 1, List.of(emptyReply));
+                        }
+                        continue;
+                    }
+                    Message payload = actorJoinPayload(request);
+                    invokeActorJoinHandler(handler, request, payload)
+                        .whenComplete((reply, error) -> {
+                            if (error != null) {
+                                try (Message emptyReply = Message.from(new byte[0])) {
+                                    backendSpot.replyActorJoin(request, 1, List.of(emptyReply));
+                                }
+                                return;
+                            }
+                            backendSpot.replyActorJoin(request, 0, List.of(reply));
+                            reply.close();
+                        });
+                } finally {
+                    request.parts().forEach(Message::close);
+                }
+            }
+        }
+
+        private SpotActorJoinHandlerRegistration resolveActorJoinHandler(
+            ZLinkBackendActorJoinRequest request) {
+            if (request.parts().isEmpty()) {
+                return null;
+            }
+            if (request.parts().size() >= 2) {
+                return actorJoinHandlers.get(request.parts().get(0).toUtf8String());
+            }
+            for (SpotActorJoinHandlerRegistration handler : actorJoinHandlers.values()) {
+                if (handler.requestType() == Message.class
+                    || handler.requestType() == byte[].class
+                    || handler.requestType() == String.class) {
+                    return handler;
+                }
+            }
+            return null;
+        }
+
+        private Message actorJoinPayload(ZLinkBackendActorJoinRequest request) {
+            return request.parts().size() >= 2 ? request.parts().get(1) : request.parts().get(0);
+        }
+
+        private CompletionStage<Message> invokeActorJoinHandler(
+            SpotActorJoinHandlerRegistration registration,
+            ZLinkBackendActorJoinRequest request,
+            Message payload) {
+            if (actorRuntime == null) {
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "actor runtime is required for Spot actor join handler"));
+            }
+            return actorRuntime
+                .getOrCreateLocalActor(
+                    request.targetActor().actorId(),
+                    registration.actorType())
+                .thenCompose(actor -> {
+                    if (actor.isEmpty()) {
+                        return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                            "Spot actor join target actor is not available: "
+                                + request.targetActor().actorId()));
+                    }
+                    actorRuntime.markJoined(
+                        actor.get(),
+                        request.targetActor(),
+                        backendSpot.routingId(),
+                        spotFor(backendSpot.routingId()));
+                    try {
+                        Object handler = handlerFactory.create(registration.handlerType());
+                        Object requestObject =
+                            serializer.deserialize(payload, registration.requestType());
+                        Object result = registration.handlerMethod().invoke(
+                            handler,
+                            actor.get(),
+                            requestObject);
+                        CompletionStage<?> stage =
+                            result instanceof CompletionStage<?> completionStage
+                                ? completionStage
+                                : CompletableFuture.completedFuture(result);
+                        return stage
+                            .thenCompose(reply -> notifyActorJoined(actor.get())
+                                .thenApply(ignored -> reply))
+                            .whenComplete((reply, error) -> {
+                                if (error != null) {
+                                    actorRuntime.markLeft(actor.get());
+                                }
+                            })
+                            .thenApply(serializer::serialize);
+                    } catch (IllegalAccessException | InvocationTargetException ex) {
+                        actorRuntime.markLeft(actor.get());
+                        return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                            "failed to invoke Spot actor join handler: "
+                                + registration.handlerType().getName()
+                                + "."
+                                + registration.handlerMethod().getName(),
+                            ex instanceof InvocationTargetException invocation
+                                ? invocation.getCause()
+                                : ex));
+                    } catch (RuntimeException ex) {
+                        actorRuntime.markLeft(actor.get());
+                        return CompletableFuture.failedFuture(ex);
+                    }
+                });
+        }
+
+        private CompletionStage<Void> notifyActorJoined(ZLinkActor actor) {
+            ZLinkSpotActorChangeResult result =
+                new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JOIN_ENTRY_SPOT);
+            return notifyActorLifecycle(actor, result, actorJoinedHandlers);
+        }
+
+        private CompletionStage<Void> notifyActorLifecycle(
+            ZLinkActor actor,
+            ZLinkSpotActorChangeResult result,
+            List<SpotActorLifecycleHandlerRegistration> registrations) {
+            CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
+            for (SpotActorLifecycleHandlerRegistration registration : registrations) {
+                if (!registration.actorType().isInstance(actor)) {
+                    continue;
+                }
+                tail = tail.thenCompose(ignored ->
+                    invokeActorJoinedHandler(registration, actor, result));
+            }
+            return tail;
+        }
+
+        private CompletionStage<Void> invokeActorJoinedHandler(
+            SpotActorLifecycleHandlerRegistration registration,
+            ZLinkActor actor,
+            ZLinkSpotActorChangeResult result) {
+            try {
+                Object handler = handlerFactory.create(registration.handlerType());
+                Object invocationResult =
+                    registration.handlerMethod().invoke(handler, actor, result);
+                if (invocationResult instanceof CompletionStage<?> stage) {
+                    return stage.thenApply(ignored -> null);
+                }
+                return CompletableFuture.completedFuture(null);
+            } catch (IllegalAccessException | InvocationTargetException ex) {
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "failed to invoke Spot actor joined handler: "
+                        + registration.handlerType().getName()
+                        + "."
+                        + registration.handlerMethod().getName(),
+                    ex instanceof InvocationTargetException invocation
+                        ? invocation.getCause()
+                        : ex));
+            } catch (RuntimeException ex) {
+                return CompletableFuture.failedFuture(ex);
+            }
+        }
+
+        private CompletionStage<Void> invokeActorSendHandler(
+            SpotActorPacketHandlerRegistration registration,
+            ZLinkActor actor,
+            Message payload) {
+            try {
+                Object handler = handlerFactory.create(registration.handlerType());
+                Object message = serializer.deserialize(payload, registration.messageType());
+                Object result = registration.handlerMethod().invoke(handler, actor, message);
+                if (result instanceof CompletionStage<?> stage) {
+                    return stage.thenApply(ignored -> null);
+                }
+                return CompletableFuture.completedFuture(null);
+            } catch (IllegalAccessException | InvocationTargetException ex) {
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "failed to invoke Spot actor send handler: "
+                        + registration.handlerType().getName()
+                        + "."
+                        + registration.handlerMethod().getName(),
+                    ex instanceof InvocationTargetException invocation
+                        ? invocation.getCause()
+                        : ex));
+            } catch (RuntimeException ex) {
+                return CompletableFuture.failedFuture(ex);
+            }
+        }
+
+        private CompletionStage<Optional<Message>> invokeActorRequestHandler(
+            SpotActorPacketHandlerRegistration registration,
+            ZLinkActor actor,
+            Message payload) {
+            try {
+                Object handler = handlerFactory.create(registration.handlerType());
+                Object message = serializer.deserialize(payload, registration.messageType());
+                Object result = registration.handlerMethod().invoke(handler, actor, message);
+                CompletionStage<?> stage = result instanceof CompletionStage<?> completionStage
+                    ? completionStage
+                    : CompletableFuture.completedFuture(result);
+                return stage.thenApply(reply -> Optional.of(serializer.serialize(reply)));
+            } catch (IllegalAccessException | InvocationTargetException ex) {
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "failed to invoke Spot actor request handler: "
+                        + registration.handlerType().getName()
+                        + "."
+                        + registration.handlerMethod().getName(),
+                    ex instanceof InvocationTargetException invocation
+                        ? invocation.getCause()
+                        : ex));
+            } catch (RuntimeException ex) {
+                return CompletableFuture.failedFuture(ex);
+            }
+        }
+
         @Override
         public void close() {
             if (spot == null) {

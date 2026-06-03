@@ -3,16 +3,25 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.messaging.Message;
+import java.util.List;
 import java.util.Objects;
 
 /** A pending request from an actor to join a spot, awaiting a reply. */
 public final class ActorJoinRequest implements AutoCloseable {
     private final ActorJoinInfo info;
-    private final Message message;
+    private final List<Message> parts;
 
     ActorJoinRequest(ActorJoinInfo info, Message message) {
+        this(info, List.of(message));
+    }
+
+    ActorJoinRequest(ActorJoinInfo info, List<Message> parts) {
         this.info = Objects.requireNonNull(info, "info");
-        this.message = Objects.requireNonNull(message, "message");
+        Objects.requireNonNull(parts, "parts");
+        if (parts.isEmpty()) {
+            throw new IllegalArgumentException("parts must not be empty");
+        }
+        this.parts = List.copyOf(parts);
     }
 
     public ActorJoinInfo info() {
@@ -20,11 +29,15 @@ public final class ActorJoinRequest implements AutoCloseable {
     }
 
     public Message message() {
-        return message;
+        return parts.get(0);
+    }
+
+    public List<Message> parts() {
+        return parts;
     }
 
     @Override
     public void close() {
-        message.close();
+        parts.forEach(Message::close);
     }
 }

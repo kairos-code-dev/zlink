@@ -28,6 +28,12 @@ class RoutingId:
         return cls(value)
 
     @classmethod
+    def _from_trusted_bytes(cls, value):
+        rid = cls.__new__(cls)
+        rid._raw = value
+        return rid
+
+    @classmethod
     def from_hex(cls, value):
         """Create a routing id by decoding ``value`` as a hex string (non-empty,
         even length, up to 510 digits for 255 bytes). Raise :class:`TypeError`

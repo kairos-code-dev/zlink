@@ -1,0 +1,25 @@
+# Tic Tac Toe Client
+
+This is the standalone sample client for `TicTacToe`.
+
+Start the server roles first:
+
+```bash
+gradle :Server:run --args='server'
+```
+
+Then run the client:
+
+```bash
+gradle :Client:run
+```
+
+Options:
+
+```bash
+gradle :Client:run --args='--api-endpoint tcp://127.0.0.1:47201 --play-endpoint tcp://127.0.0.1:47202 --game-name Morning --host-access-token alice-token --guest-access-token bob-token'
+```
+
+The client sends typed channel requests to the API role, opens two STREAM
+connections to the Play role, authenticates both players, joins them to one game,
+and plays a fixed five-move sequence where the host wins.

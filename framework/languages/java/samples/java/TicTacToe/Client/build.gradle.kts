@@ -18,16 +18,6 @@ java {
     }
 }
 
-sourceSets {
-    main {
-        java {
-            srcDir("../src/main/java")
-            srcDir("src/main/java")
-            include("systems/zlink/samples/tictactoe/client/**")
-        }
-    }
-}
-
 application {
     mainClass.set("systems.zlink.samples.tictactoe.client.Program")
     applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")

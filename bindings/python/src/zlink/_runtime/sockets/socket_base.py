@@ -84,6 +84,11 @@ _native_recv_owner = (
     if _native_extension is not None
     else None
 )
+_native_subscribe_owner = (
+    getattr(_native_extension, "subscribe_owner", None)
+    if _native_extension is not None
+    else None
+)
 
 
 def _in_callback():
@@ -449,6 +454,23 @@ class _BaseSocket:
             return False
         return self._submit_bridge_result(result, flags)
 
+    def _send_routed_payload_bytes_via_native_bridge(
+        self, routing_id_bytes, payload, flags
+    ):
+        _ensure_not_in_callback("blocking send")
+        if _native_extension is None:
+            return None
+        try:
+            result = _native_extension.send_parts_rid(
+                int(self._socket_handle.handle),
+                routing_id_bytes,
+                payload,
+                int(flags),
+            )
+        except (BufferError, TypeError):
+            return False
+        return self._submit_bridge_result(result, flags)
+
     def _publish_payload_via_native_bridge(self, topic_bytes, payload, flags):
         _ensure_not_in_callback("blocking publish")
         if _native_extension is None:
@@ -468,6 +490,8 @@ class _BaseSocket:
             return None
         if _native_recv_owner is not None:
             result = _native_recv_owner(int(self._socket_handle.handle), int(flags))
+            if result is False:
+                return False
             if result is None:
                 return None
             rc, err, routing, owner = result
@@ -871,6 +895,8 @@ class _MessageSocket(_Socket):
             raise TypeError("received must be a Received")
         try:
             bridged = self._recv_parts_via_native_bridge(flags)
+            if bridged is False:
+                return False
             if bridged is None:
                 routing, owner = _recv_native_parts(self._handle, flags)
             else:
@@ -981,6 +1007,17 @@ class _SubscriberSocket(_Socket):
     def _subscribe_parts_via_native_bridge(self, flags):
         if _in_callback():
             return None
+        if _native_subscribe_owner is not None:
+            result = _native_subscribe_owner(int(self._socket_handle.handle), int(flags))
+            if result is False:
+                return False
+            if result is None:
+                return None
+            rc, err, routing, topic_raw, owner = result
+            if int(rc) != 0:
+                _raise_result_error(RecvError, RecvResult, rc, err)
+            routing_id = RoutingId.from_(routing) if routing is not None else None
+            return topic_raw, owner, routing_id
         result = _native_bridge.subscribe_parts(self._handle, flags)
         if result is None:
             return None
@@ -996,6 +1033,8 @@ class _SubscriberSocket(_Socket):
 
     def _subscribe_parts_owner(self, flags):
         bridged = self._subscribe_parts_via_native_bridge(flags)
+        if bridged is False:
+            return False
         if bridged is not None:
             return bridged
 
@@ -1054,7 +1093,10 @@ class _SubscriberSocket(_Socket):
         return first_topic_raw, _ReceivedPartsOwner(final_array, part_count), routing
 
     def _subscribe_once(self, flags):
-        topic_raw, owner, routing = self._subscribe_parts_owner(flags)
+        result = self._subscribe_parts_owner(flags)
+        if result is False:
+            raise RecvError(RecvResult.NO_DATA, 0)
+        topic_raw, owner, routing = result
         return TopicMessage(topic_raw.decode("utf-8", errors="replace"), owner, routing)
 
     def _subscribe_allocated(self, *, flags=0):
@@ -1069,7 +1111,10 @@ class _SubscriberSocket(_Socket):
         if topic_message is None or not hasattr(topic_message, "_replace"):
             raise TypeError("topic_message must be a TopicMessage")
         try:
-            topic_raw, owner, routing = self._subscribe_parts_owner(flags)
+            result = self._subscribe_parts_owner(flags)
+            if result is False:
+                return False
+            topic_raw, owner, routing = result
         except RecvError as ex:
             if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
                 return False

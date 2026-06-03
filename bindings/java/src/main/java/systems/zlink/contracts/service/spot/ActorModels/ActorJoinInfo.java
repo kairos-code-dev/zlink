@@ -29,6 +29,12 @@ public final class ActorJoinInfo {
             }
 
             @Override
+            public ActorJoinRequest request(ActorJoinInfo info,
+                                            java.util.List<Message> parts) {
+                return new ActorJoinRequest(info, parts);
+            }
+
+            @Override
             public ActorJoinInfo infoFromNative(
               ActorRef sourceActor,
               ActorRef targetActor,

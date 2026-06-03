@@ -21,16 +21,6 @@ kotlin {
     jvmToolchain(22)
 }
 
-sourceSets {
-    main {
-        kotlin {
-            srcDir("../src/main/kotlin")
-            srcDir("src/main/kotlin")
-            include("systems/zlink/samples/kotlin/tictactoe/server/**")
-        }
-    }
-}
-
 application {
     mainClass.set("systems.zlink.samples.kotlin.tictactoe.server.ProgramKt")
     applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")

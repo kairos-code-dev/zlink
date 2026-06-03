@@ -62,6 +62,8 @@ public final class ContractAccess {
     public interface ActorJoinAccess {
         ActorJoinRequest request(ActorJoinInfo info, Message message);
 
+        ActorJoinRequest request(ActorJoinInfo info, java.util.List<Message> parts);
+
         ActorJoinInfo infoFromNative(ActorRef sourceActor,
                                      ActorRef targetActor,
                                      RoutingId sourceNodeRid,
@@ -421,6 +423,11 @@ public final class ContractAccess {
     public static ActorJoinRequest actorJoinRequest(ActorJoinInfo info,
                                                     Message message) {
         return actorJoinAccess().request(info, message);
+    }
+
+    public static ActorJoinRequest actorJoinRequest(ActorJoinInfo info,
+                                                    java.util.List<Message> parts) {
+        return actorJoinAccess().request(info, parts);
     }
 
     public static ActorJoinInfo actorJoinInfoFromNative(

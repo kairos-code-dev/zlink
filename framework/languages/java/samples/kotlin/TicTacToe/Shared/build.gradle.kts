@@ -5,12 +5,3 @@ plugins {
 kotlin {
     jvmToolchain(22)
 }
-
-sourceSets {
-    main {
-        kotlin {
-            srcDir("../src/main/kotlin")
-            include("systems/zlink/samples/kotlin/tictactoe/shared/**")
-        }
-    }
-}

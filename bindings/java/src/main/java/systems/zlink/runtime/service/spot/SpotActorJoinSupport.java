@@ -39,7 +39,7 @@ final class SpotActorJoinSupport {
                 NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
             MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
-            Message message = null;
+            Message[] messages = null;
             boolean success = false;
             try {
                 int rc = Native.spotActorJoinRecv(spot.handle(), infoOut,
@@ -53,20 +53,18 @@ final class SpotActorJoinSupport {
                 }
                 MemorySegment parts = partsOut.get(ValueLayout.ADDRESS, 0);
                 long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
-                Message[] messages = partCount > 0
+                messages = partCount > 0
                     ? InternalAccess.messageFromOwnedMessageVector(parts, partCount)
                     : new Message[] { new Message() };
                 NativeMessage.multipartClose(parts, partCount);
-                message = messages[0];
-                for (int i = 1; i < messages.length; i++) {
-                    messages[i].close();
-                }
                 success = true;
                 return ContractAccess.actorJoinRequest(
-                    readActorJoinInfo(infoOut), message);
+                    readActorJoinInfo(infoOut), java.util.List.of(messages));
             } finally {
-                if (!success && message != null) {
-                    message.close();
+                if (!success && messages != null) {
+                    for (Message message : messages) {
+                        message.close();
+                    }
                 }
             }
         }

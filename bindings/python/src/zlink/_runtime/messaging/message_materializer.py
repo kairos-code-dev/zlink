@@ -32,7 +32,13 @@ class ReceivedMessage:
 
     @classmethod
     def _from_owner(cls, owner, index, routing_id=None):
-        return cls(routing_id=routing_id, owner=owner, index=index)
+        message = cls.__new__(cls)
+        message._msg = None
+        message._owner = owner
+        message._index = index
+        message._closed = False
+        message.routing_id = routing_id
+        return message
 
     def _native_msg(self):
         if self._owner is not None:
@@ -192,6 +198,7 @@ class ReceivedMultipart(_BaseReceived):
         spot_rid=None,
         reply_sender=None,
         send_sender=None,
+        router_socket=None,
     ):
         # Caller-provided storage path: ReceivedMultipart() / Received()
         # constructs an empty placeholder for reuse across recv_into calls.
@@ -205,6 +212,7 @@ class ReceivedMultipart(_BaseReceived):
             self.request_seq = None
             self._reply_sender = None
             self._send_sender = None
+            self._router_socket = None
             return
         self._owner = owner
         if owner._part_count == 1:
@@ -216,6 +224,7 @@ class ReceivedMultipart(_BaseReceived):
         self.request_seq = request_seq
         self._reply_sender = reply_sender
         self._send_sender = send_sender
+        self._router_socket = router_socket
 
     def _adopt_from(self, source):
         """Replace this Received's internal state with the contents of
@@ -231,12 +240,14 @@ class ReceivedMultipart(_BaseReceived):
         self.request_seq = source.request_seq
         self._reply_sender = source._reply_sender
         self._send_sender = source._send_sender
+        self._router_socket = source._router_socket
         source._clear_owner()
         source.routing_id = None
         source.spot_rid = None
         source.request_seq = None
         source._reply_sender = None
         source._send_sender = None
+        source._router_socket = None
 
     def _replace(
         self,
@@ -247,6 +258,7 @@ class ReceivedMultipart(_BaseReceived):
         spot_rid=None,
         reply_sender=None,
         send_sender=None,
+        router_socket=None,
     ):
         current_owner = self._owner
         if current_owner is not None:
@@ -264,6 +276,7 @@ class ReceivedMultipart(_BaseReceived):
         self.request_seq = request_seq
         self._reply_sender = reply_sender
         self._send_sender = send_sender
+        self._router_socket = router_socket
 
 
 class TopicMessage(_BaseReceived):
@@ -342,16 +355,42 @@ class Received(ReceivedMultipart):
         Source rid / spot rid are encapsulated; accumulate payload via
         ``.message(...)`` before calling ``.submit()``.
         """
-        if self._send_sender is None:
+        if self._send_sender is not None:
+            return self._send_sender()
+        if self._router_socket is not None:
+            from ..service.spot import SendOp
+
+            socket = self._router_socket
+            return SendOp(
+                socket,
+                lambda parts, flags: socket._send_op_submit(
+                    self.routing_id, self.spot_rid, parts, flags
+                ),
+            )
+        else:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        return self._send_sender()
 
     def reply(self):
         """Return a ReplyOp for this received request. Valid only when
         ``request_seq`` is present."""
-        if self.request_seq is None or self._reply_sender is None:
+        if self.request_seq is None:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        return self._reply_sender()
+        if self._reply_sender is not None:
+            return self._reply_sender()
+        if self._router_socket is not None:
+            from ..service.spot import ReplyOp
+
+            socket = self._router_socket
+            return ReplyOp(
+                lambda parts, flags: socket._reply_from_receive_context(
+                    self.routing_id,
+                    self.spot_rid,
+                    self.request_seq,
+                    parts,
+                    flags=flags,
+                )
+            )
+        raise SubmitError(SubmitResult.INVALID_STATE, 0)
 
 
 class SubscriptionEvent:

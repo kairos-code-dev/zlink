@@ -15,7 +15,8 @@ public interface ZLinkHandlerFactory {
                 return handlerType.getConstructor().newInstance();
             } catch (ReflectiveOperationException ex) {
                 throw new ZLinkConfigurationException(
-                    "failed to create handler: " + handlerType.getName());
+                    "failed to create handler: " + handlerType.getName(),
+                    ex);
             }
         };
     }
@@ -53,7 +54,8 @@ public interface ZLinkHandlerFactory {
                 return fallback.create(handlerType);
             } catch (ReflectiveOperationException ex) {
                 throw new ZLinkConfigurationException(
-                    "failed to create handler: " + handlerType.getName());
+                    "failed to create handler: " + handlerType.getName(),
+                    ex);
             }
         }
 
@@ -74,6 +76,9 @@ public interface ZLinkHandlerFactory {
                 if (parameterType.isAssignableFrom(entry.getKey())) {
                     return entry.getValue();
                 }
+            }
+            if (fallback instanceof MutableServices parentServices) {
+                return parentServices.findService(parameterType);
             }
             return null;
         }

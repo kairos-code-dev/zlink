@@ -811,10 +811,111 @@ owner, native `recv_into` replacement, blocking-first receive loop, per-message
 220,873.6 msg/s에 그쳐 최종 코드에 남기지 않았다. `recv_owner`와 `_replace`를
 하나의 `recv_into` 전용 C helper로 합친 후보도
 `perf_python_single_linux_20260603_110040_py_recv_into_received_pair64_5s.txt`에서
-247,215.4 msg/s로 현재 public 기준보다 낮았다. private active-loop helper를 perf에서
-직접 호출하지 않는 조건을 유지하려면 다음 후보는 public builder/recv container 자체를
-더 안전하게 낮은 비용으로 옮기는 방식이어야 한다. 이때 profiler와 thread 조합에서도
-segfault가 없어야 하고, 기존 `ReceivedMessage` 객체 보관 의미를 바꾸면 안 된다.
+247,215.4 msg/s로 현재 public 기준보다 낮았다. PAIR perf 송신 loop에서 public
+builder 호출을 유지하되 `send_nonblocking()` wrapper를 인라인한 후보도
+`perf_python_single_linux_20260603_110525_py_pair_inline_send_pair64_5s.txt`에서
+273,763.0 msg/s로 낮아 최종 코드에 남기지 않았다. receiver의 `NO_DATA` 뒤 poll
+진입 전에 짧게 DONTWAIT spin을 넣은 후보는 기본 32회가
+`perf_python_single_linux_20260603_110715_py_empty_spin32_pair64_5s.txt`에서
+290,502.4 msg/s로 미세하게 높았지만, 4/8/16/64회 재측정은 각각 225,203.6,
+221,219.8, 224,211.4, 217,727.0 msg/s로 크게 회귀해 안정적인 개선으로 보지 않았다.
+native `recv_owner`의 DONTWAIT `NO_DATA`를 예외로 만들지 않고 곧바로 `False`로
+되돌리는 후보도 `perf_python_single_linux_20260603_110829_py_recv_no_data_false_pair64_5s.txt`에서
+284,691.6 msg/s로 개선되지 않았다. 단일 payload DONTWAIT `SocketSendOp.submit()`에서
+GIL을 놓지 않는 후보는
+`perf_python_single_linux_20260603_110924_py_dontwait_send_keep_gil_pair64_5s.txt`에서
+260,343.2 msg/s로 회귀했다. native send builder 객체를 해제 때 freelist에 넣고
+다음 `send()`에서 재사용하는 후보도
+`perf_python_single_linux_20260603_111443_py_sendop_freelist_pair64_5s.txt`에서
+282,171.6 msg/s에 그쳐 현재 public 기준보다 낮았다. owner-backed 단일 part의
+`ReceivedMessage.data`가 `owner.data(0)` 인자 변환을 피하도록 `data0()` fast path를
+추가한 후보도
+`perf_python_single_linux_20260603_111747_py_received_data0_pair64_5s.txt`에서
+284,423.2 msg/s에 머물러 유지하지 않았다. single one-way latency list 저장을
+32개당 1개로 줄인 후보도
+`perf_python_single_linux_20260603_111938_py_single_latency_stride32_pair64_5s.txt`에서
+278,188.6 msg/s로 회귀했다. callback handler가 없는 소켓에서는 recv native bridge의
+`_in_callback()` thread-local 조회를 건너뛰는 후보도
+`perf_python_single_linux_20260603_112321_py_callback_flag_pair64_5s.txt`에서
+275,318.4 msg/s로 회귀해 유지하지 않았다. private active-loop helper를 perf에서 직접 호출하지 않는
+조건을 유지하려면 다음 후보는 public builder/recv container 자체를 더 안전하게 낮은
+비용으로 옮기는 방식이어야 한다. 이때 profiler와 thread 조합에서도 segfault가 없어야
+하고, 기존 `ReceivedMessage` 객체 보관 의미를 바꾸면 안 된다.
+
+이후 native `recv_owner`는 첫 receive flag가 `DONTWAIT`일 때 GIL을 놓지 않고,
+`DONTWAIT`의 `NO_DATA` 결과를 Python 예외 대신 `False` sentinel로 돌려보내도록
+바꿨다. public `recv_into(received, flags=DONT_WAIT)`의 반환 의미는 그대로
+유지한다. `PAIR tcp 64B`는 C
+`perf_c_single_linux_20260603_112651_py_recv_owner_keep_gil_c_pair64_5s_runs3.txt`
+1,229,012.8 msg/s 대비 Python
+`perf_python_single_linux_20260603_112830_py_recv_owner_keep_gil_no_data_false_pair64_5s_runs3.txt`
+384,484.2 msg/s 중앙값으로 31.3%까지 올라 one-way 최소 기준을 넘겼다.
+`python3 -X faulthandler -m cProfile ... perf_pair.py --transport tcp --msg-size 64 --duration 1`
+조합도 segfault 없이 끝났다.
+
+같은 변경 뒤 single tcp/64 smoke
+`perf_python_single_linux_20260603_112902_py_recv_owner_keep_gil_no_data_false_single_tcp64_smoke.txt`와
+C 기준
+`perf_c_single_linux_20260603_112912_py_recv_owner_keep_gil_no_data_false_c_single_tcp64_smoke.txt`를
+비교하면 `PAIR`와 `DEALER_DEALER`는 30% 기준을 넘겼지만 `PUBSUB`,
+`DEALER_ROUTER`, `ROUTER_ROUTER`, `SPOT`은 아직 미달한다. `PUBSUB`에서 bytes-copy
+native bridge를 끄고 기존 owner fallback만 쓰는 후보는
+`perf_python_single_linux_20260603_113012_py_pubsub_owner_fallback_tcp64_5s.txt`에서
+44,800.4 msg/s로 크게 회귀해 유지하지 않았다. routed receive는
+`router_recv_owner` C helper로 owner-backed payload를 반환하도록 바꿨다.
+`DEALER_ROUTER tcp 64B`는
+`perf_python_single_linux_20260603_113145_py_router_recv_owner_dr_tcp64_5s.txt`에서
+276,145.6 msg/s, `ROUTER_ROUTER tcp 64B`는
+`perf_python_single_linux_20260603_113144_py_router_recv_owner_rr_tcp64_5s.txt`에서
+139,251.0 msg/s까지 올라갔지만 C 기준 30%에는 아직 못 닿는다.
+
+PUBSUB receive도 `subscribe_owner` C helper로 owner-backed payload를 반환하도록
+바꿨다. `PUBSUB tcp 64B`는
+`perf_python_single_linux_20260603_113438_py_pubsub_subscribe_owner_tcp64_5s.txt`에서
+187,007.0 msg/s로 올라갔지만, C 기준 30%에는 부족했다. 이어서
+`publish_parts`가 DONTWAIT publish에서는 GIL을 놓지 않도록 바꾸자
+`perf_python_single_linux_20260603_113751_py_publish_keep_gil_tcp64_5s.txt`에서
+262,054.2 msg/s까지 올라갔다. public `publish(topic).message(...).flags(...).submit()`
+builder 의미를 유지하면서 native `PublisherSendOp`를 추가한 뒤에는
+`perf_python_single_linux_20260603_113953_py_publisher_send_op_tcp64_5s.txt`에서
+308,633.6 msg/s를 기록했다. 3회 측정
+`perf_python_single_linux_20260603_114152_py_publisher_current_pubsub_tcp64_5s_runs3.txt`는
+333,407.2 msg/s 중앙값이고, 같은 조건의 C
+`perf_c_single_linux_20260603_114218_py_publisher_current_c_pubsub_tcp64_5s_runs3.txt`는
+1,211,127.4 msg/s 중앙값이라 현재 비율은 약 27.5%다. single-payload publish
+fast path, topic cache, public sender loop wrapper 인라인 후보는 각각 충분한
+개선이 없거나 회귀해 최종 개선 근거로 삼지 않는다. routed send의 DONTWAIT
+GIL 유지 후보도 `ROUTER_ROUTER tcp 64B`가
+`perf_python_single_linux_20260603_114809_py_send_rid_keep_gil_routed_tcp64_5s.txt`에서
+4,710.2 msg/s로 크게 회귀해 되돌렸다.
+
+routed receive에서는 native bridge가 이미 새 `bytes`를 만들어 넘기는 routing id를
+다시 검증하고 복사하지 않도록 내부 trusted constructor를 추가했고, `Received.send()`와
+`Received.reply()`에 필요한 router sender/reply 객체는 메시지를 받을 때마다 closure로
+만들지 않고 실제 호출 시점에 만들도록 늦췄다. 이 변경 뒤
+`perf_python_single_linux_20260603_120811_py_router_lazy_context_tcp64_5s.txt`에서
+`DEALER_ROUTER tcp 64B`는 312,927.0 msg/s, `ROUTER_ROUTER tcp 64B`는
+146,427.4 msg/s를 기록했다. 같은 조건의 C 기준
+`perf_c_single_linux_20260603_120459_py_current_single_tcp64_all_c_baseline.txt`는
+각각 1,425,989.6 msg/s와 1,309,771.2 msg/s라 여전히 정책 기준에는 부족하다.
+이후 `ReceivedMessage._from_owner()`가 keyword `__init__` 경로를 타지 않고 새
+객체를 직접 초기화하도록 줄였고, routed send builder는 routing id를 `submit()`
+때마다 다시 검증하지 않도록 `send(routing_id)` 시점에 한 번 검증한 bytes를
+보관하게 했다. router owner receive는 DONTWAIT에서도 GIL을 놓는 방식이 이
+패턴에서는 더 나아 그대로 유지했다. 현재 retained probe
+`perf_python_single_linux_20260603_121853_py_retained_pubsub_routed_tcp64_probe.txt`는
+`PUBSUB tcp 64B` 321,638.4 msg/s, `DEALER_ROUTER tcp 64B` 332,057.6 msg/s,
+`ROUTER_ROUTER tcp 64B` 154,169.8 msg/s를 기록했다. 아직 정책 기준은 넘지
+못했지만 routed public 경로의 Python materialization 비용은 이전보다 줄었다.
+native routed send builder 후보는
+`perf_python_single_linux_20260603_115457_py_routed_send_op_tcp64_5s.txt`에서
+`ROUTER_ROUTER tcp 64B`가 99,225.4 msg/s로 회귀해 제거했다. router receive에서
+`NO_DATA` 직후 짧은 DONTWAIT retry를 넣은 후보도
+`perf_python_single_linux_20260603_120905_py_router_no_data_retry8_tcp64_5s.txt`에서
+개선되지 않아 제거했다. router receive blocking-first 후보도
+`perf_python_single_linux_20260603_121209_py_router_blocking_first_tcp64_5s.txt`에서
+회귀해 제거했고, `ReceivedMessage`/`RoutingId`에 `__slots__`를 추가한 후보도
+뚜렷한 개선 없이 public 객체 확장성을 줄일 수 있어 유지하지 않았다.
 
 public contract 복구 뒤 Python multi smoke에서 `MULTI_SPOT_REQREP tcp 64B`가
 client timeout으로 반복 partial이 됐다. server dispatch가 owner-backed part의

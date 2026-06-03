@@ -9,19 +9,15 @@ public final class Program {
     }
 
     public static void main(String[] args) throws Exception {
+        TicTacToeClientOptions clientOptions = TicTacToeClientArguments.parse(args);
         try (ZLinkFramework framework = ZLinkFramework.start(options -> {
             options.codecs().addJson();
             options.addClientServerChannel("tictactoe-api", channel ->
                 channel.enableClient(client -> client.useManualConnections(
-                    endpoints -> endpoints.connect(TicTacToeSampleDefaults.ApiEndpoint))));
+                    endpoints -> endpoints.connect(clientOptions.apiEndpoint()))));
         })) {
             TicTacToeClientResult result = awaitSample(new TicTacToeClient(framework.client())
-                .run(new TicTacToeClientOptions(
-                    "Morning game",
-                    TicTacToeSampleDefaults.HostAccessToken,
-                    TicTacToeSampleDefaults.GuestAccessToken,
-                    TicTacToeSampleDefaults.ApiEndpoint,
-                    TicTacToeSampleDefaults.PlayEndpoint)));
+                .run(clientOptions));
             result.writeTo(System.out);
         }
     }

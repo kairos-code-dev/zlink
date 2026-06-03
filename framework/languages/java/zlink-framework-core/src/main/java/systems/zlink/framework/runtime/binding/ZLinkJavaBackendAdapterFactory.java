@@ -524,7 +524,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         return new ZLinkBackendActorJoinRequest(
             fromActorRef(request.info().sourceActor()),
             fromActorRef(request.info().targetActor()),
-            List.of(Message.from(request.message())),
+            request.parts().stream().map(Message::from).toList(),
             request);
     }
 

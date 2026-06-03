@@ -6730,3 +6730,34 @@ CMake가 생성하는 파일 전체 형식까지 고정할 필요는 없다.
 
 - Goal 21 검증 명령에서 sample role label이 빠지면
   `test_cpp_framework_layout_contract`가 실패한다.
+
+## 추가 리뷰. Goal 22 final label axis command gate 보강
+
+### 발견한 위험 신호
+
+- Goal 22 완료 기준은 CTest label 전체 통과와 Goal 1-22 완료 기준 충족을 요구한다.
+- 최종 검증 명령은 full CTest를 실행하지만, 기능 축 추적표에서 독립 축으로 둔
+  connector, Unreal connector, sample role label 일부를 직접 명령으로 드러내지 않았다.
+- full CTest가 통과해도 문서 명령 블록만 보면 어떤 독립 label 축을 최종 감사에서 확인해야
+  하는지 약해진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| full CTest 명령만 최종 근거로 둔다 | 명령 목록이 짧다 | 기능 축별 audit 증거가 문서에서 보이지 않는다 |
+| 각 Goal의 검증 명령에만 의존한다 | 중복을 줄인다 | Goal 22 단독 실행 시 독립 축 명령을 놓칠 수 있다 |
+| Goal 22 명령에 독립 label 축을 명시하고 layout contract로 고정 | 최종 audit 문서와 CTest taxonomy가 일치한다 | 검증 명령 목록이 길어진다 |
+
+선택은 세 번째 방식이다. Goal 22는 최종 audit이므로 full CTest 외에도 독립 public/package
+축을 명시적으로 실행할 수 있어야 한다.
+
+### 적용한 리팩토링
+
+- Goal 22 검증 명령에 sample role, connector, Unreal connector concrete label 명령을 추가했다.
+- layout contract가 Goal 22 검증 블록에 최종 label 축 명령이 있는지 확인하게 했다.
+
+### 수정 후 점검
+
+- Goal 22 검증 명령에서 connector, Unreal connector, sample role, package, coverage 축이
+  빠지면 `test_cpp_framework_layout_contract`가 실패한다.

@@ -1034,6 +1034,20 @@ ctest --test-dir framework/languages/cpp/build -L framework-observability --outp
 ctest --test-dir framework/languages/cpp/build -L http-client-regression --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-registry --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-play --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-session --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-contract --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-protocol --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-transport --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-typed --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-package --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-package --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-extension --output-on-failure
 cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70

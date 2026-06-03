@@ -369,6 +369,64 @@ implementation_plan_goal21_covers_sample_labels (
 }
 
 bool
+implementation_plan_goal22_covers_final_label_axes (
+  const std::filesystem::path &root)
+{
+  const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  const auto text = buffer.str ();
+
+  const auto start = text.find (
+    "### Goal 22. Final Regression, Package, Extension Boundary");
+  const auto end = text.find ("## 6. Draft 추적표");
+  if (start == std::string::npos || end == std::string::npos ||
+      start >= end) {
+    std::cerr << "implementation plan lacks bounded Goal 22 section: "
+              << path << '\n';
+    return false;
+  }
+  const auto goal = text.substr (start, end - start);
+
+  bool ok = true;
+  const std::string commands[] = {
+    "ctest --test-dir framework/languages/cpp/build --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-zlink --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L http-client-regression --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-play --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-session --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L connector-contract --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L connector-protocol --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L connector-transport --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L connector-typed --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L connector-e2e --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L connector-package --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-package --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-extension --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure"
+  };
+  for (const auto &command : commands) {
+    if (goal.find (command) == std::string::npos) {
+      std::cerr << "Goal 22 verification commands lack: "
+                << command << '\n';
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+bool
 posd_log_has_current_goal_mapping (const std::filesystem::path &root)
 {
   const auto path =
@@ -1174,6 +1232,7 @@ main ()
   ok &= implementation_plan_expands_label_wildcards (root);
   ok &= implementation_plan_goal20_covers_connector_labels (root);
   ok &= implementation_plan_goal21_covers_sample_labels (root);
+  ok &= implementation_plan_goal22_covers_final_label_axes (root);
   ok &= posd_log_has_current_goal_mapping (root);
   ok &= cmake_extension_boundaries_hold (root);
 

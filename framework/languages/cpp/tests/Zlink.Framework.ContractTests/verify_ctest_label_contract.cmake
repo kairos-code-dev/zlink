@@ -16,6 +16,7 @@ set(required_labels
   framework-zlink-actor-gateway
   framework-zlink-registry
   framework-observability
+  timer
   framework-http
   framework-http-e2e
   framework-package

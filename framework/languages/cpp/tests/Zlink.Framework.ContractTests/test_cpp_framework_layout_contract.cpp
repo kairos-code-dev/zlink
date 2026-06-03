@@ -197,6 +197,20 @@ posd_log_has_current_goal_mapping (const std::filesystem::path &root)
       ok = false;
     }
   }
+
+  const std::string stale_headings[] = {
+    "\n## Goal 17. C++ Stream Connector",
+    "\n## Goal 18. Unreal Stream Connector",
+    "\n## Goal 20. Final Parity And Regression Gate",
+    "\n## Goal 21. Extension Boundaries"
+  };
+  for (const auto &heading : stale_headings) {
+    if (text.find (heading) != std::string::npos) {
+      std::cerr << "POSD refactoring log uses stale plan goal heading: "
+                << heading << '\n';
+      ok = false;
+    }
+  }
   return ok;
 }
 

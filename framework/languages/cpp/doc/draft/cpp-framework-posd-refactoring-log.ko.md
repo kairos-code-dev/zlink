@@ -1790,7 +1790,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on
 git diff --check -- framework/languages/cpp bindings/cpp
 ```
 
-## Goal 17. C++ Stream Connector
+## 이전 계획 Goal 17. C++ Stream Connector
 
 ### Interface Separation Review
 
@@ -1867,7 +1867,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on
 git diff --check -- framework/languages/cpp bindings/cpp
 ```
 
-## Goal 18. Unreal Stream Connector
+## 이전 계획 Goal 18. Unreal Stream Connector
 
 ### Interface Separation Review
 
@@ -2388,7 +2388,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --
 git diff --check -- framework/languages/cpp
 ```
 
-## Goal 20. Final Parity And Regression Gate
+## 이전 계획 Goal 20. Final Parity And Regression Gate
 
 ### Interface Separation Review
 
@@ -2453,7 +2453,7 @@ find framework/languages/cpp/framework/include/zlink/framework/contracts/detail 
 git diff --check -- framework/languages/cpp bindings/cpp
 ```
 
-## Goal 21. Extension Boundaries
+## 이전 계획 Goal 21. Extension Boundaries
 
 ### Interface Separation Review
 
@@ -6235,3 +6235,37 @@ disconnect, shutdown을 확인하므로 parity e2e 증거로 재사용할 수 �
 
 - `ctest -L parity`는 정적 sample parity와 sample e2e log regression을 함께 선택한다.
 - parity audit은 packet/handler 구조뿐 아니라 실제 client/server 흐름도 확인한다.
+
+## 추가 리뷰. Plan label과 POSD goal heading drift 보강
+
+### 발견한 위험 신호
+
+- 실행 계획의 기능 축 추적표는 SPOT timer 검증 축에 `timer` label을 적지만, label
+  empty-selection contract는 이 label을 직접 검사하지 않았다.
+- POSD 기록에는 현재 계획으로 재번호화되기 전의 `Goal 17`, `Goal 18`, `Goal 20`,
+  `Goal 21` heading이 그대로 남아 있었다.
+- 현재 계획에서 Goal 18은 `ZLink HTTP Client`, Goal 20은 `Stream Connectors`, Goal 21은
+  `Review Samples`이므로, 예전 heading을 현재 heading처럼 두면 문서 대조 때 같은 번호가
+  서로 다른 기능을 뜻한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 로그 heading을 그대로 둠 | 과거 기록을 손대지 않는다 | 현재 goal 번호와 충돌한다 |
+| 예전 로그 섹션을 삭제 | 현재 plan만 남는다 | 어떤 리뷰에서 해당 변경이 들어왔는지 추적하기 어렵다 |
+| 예전 heading을 `이전 계획 Goal N`으로 표시하고 contract로 stale heading을 금지 | 기록은 보존하고 현재 plan과 구분한다 | heading 검사 목록을 plan 재번호화 때 갱신해야 한다 |
+
+선택은 세 번째 방식이다. POSD 기록은 변경 이력으로 보존해야 하지만, 현재 실행 계획과 같은
+heading 형식으로 남아 있으면 완료 audit의 기준이 흐려진다.
+
+### 적용한 리팩토링
+
+- label contract가 `timer` label도 비어 있지 않은지 확인하게 했다.
+- 예전 plan 번호로 작성된 connector/final/extension heading을 `이전 계획 Goal N`으로 바꾸었다.
+- layout contract가 현재 plan과 충돌하는 예전 goal heading이 다시 들어오면 실패하게 했다.
+
+### 수정 후 점검
+
+- `timer` label이 비면 `test_cpp_framework_label_contract`가 실패한다.
+- POSD 로그는 과거 변경 이력과 현재 Goal 18/20/21 의미를 서로 구분한다.

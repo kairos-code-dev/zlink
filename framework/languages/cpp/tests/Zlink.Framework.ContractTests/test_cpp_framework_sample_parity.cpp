@@ -418,6 +418,15 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndLogEvid
       << sample.readme_path << " does not document request/reply/push "
       << "log evidence";
   }
+
+  const auto tictactoe_readme = read_file (
+    cpp_root / "samples/TicTacToe/README.ko.md");
+  EXPECT_NE (tictactoe_readme.find ("HTTP client `POST /games`"),
+             std::string::npos);
+  EXPECT_NE (tictactoe_readme.find ("`zlink::http_client`"),
+             std::string::npos);
+  EXPECT_NE (tictactoe_readme.find ("HTTP request"),
+             std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeHostsUseDiscoveryLikeDotNet)

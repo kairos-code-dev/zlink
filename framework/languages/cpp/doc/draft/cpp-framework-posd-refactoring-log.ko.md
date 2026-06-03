@@ -8273,3 +8273,40 @@ Shared header를 읽는 사용자가 server 내부 구조를 함께 배워야 �
 - Shared sample header는 DTO, 공통 설정, lifecycle helper만 노출한다.
 - Client sample은 여전히 HTTP client와 Stream Connector를 통해 server process와 통신한다.
 - 이번 보정 뒤 Goal 21 Shared sample aggregate 경계의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 21 TicTacToe README HTTP 시작 흐름 보강
+
+### 발견한 위험 신호
+
+- Goal 18, Goal 19, Goal 21은 TicTacToe client sample이 `zlink::http_client`로
+  HTTP `POST /games`를 호출해 match를 시작해야 한다고 둔다.
+- 실제 `sample_cpp_framework_tictactoe_client`는 HTTP client로 `/games`를 호출한 뒤
+  Stream Connector로 session flow를 진행한다.
+- 하지만 `samples/TicTacToe/README.ko.md`의 client 실행 파일 설명은 Stream Connector flow만
+  언급했다. 문서를 보고 sample을 검토하는 사용자가 HTTP 시작 경계를 놓칠 수 있는 문서 drift다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| README를 그대로 둔다 | 변경이 없다 | Goal 21의 HTTP 시작 흐름이 sample 문서에서 보이지 않는다 |
+| implementation plan만 근거로 둔다 | 상위 계획은 이미 맞다 | 샘플을 직접 여는 독자에게는 증거가 약하다 |
+| TicTacToe README와 sample parity test가 HTTP client 시작 흐름을 함께 고정한다 | 문서와 회귀 테스트가 실제 client 경계를 같이 설명한다 | README test 문구가 조금 더 구체적이다 |
+
+선택은 세 번째 방식이다. Review sample 문서는 사용자가 실제 실행 파일을 열기 전에 보는 문서이므로
+HTTP client와 Stream Connector의 역할 분담을 바로 드러내야 한다.
+
+### 적용한 리팩토링
+
+- TicTacToe README의 client 실행 파일 설명을 HTTP client `POST /games` 시작 요청과
+  Stream Connector flow로 고쳤다.
+- client smoke 설명에 실제 HTTP API server, `zlink::http_client`, `POST /games`,
+  HTTP request log evidence를 추가했다.
+- sample parity test가 TicTacToe README에 HTTP client 시작 흐름과 log evidence가 있는지
+  검증하게 했다.
+
+### 수정 후 점검
+
+- TicTacToe sample 문서는 plan의 HTTP 시작 요구와 실제 client 구현을 같은 방향으로 설명한다.
+- README에서 HTTP 시작 흐름이 빠지면 `test_cpp_framework_sample_parity`가 실패한다.
+- 이번 보정 뒤 Goal 21 TicTacToe README HTTP 시작 흐름의 즉시 수정 이슈는 0개다.

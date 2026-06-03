@@ -38,9 +38,10 @@ actor/session relay의 기준 샘플이다.
 - `sample_cpp_framework_tictactoe_api`: API channel과 authenticate handler
 - `sample_cpp_framework_tictactoe_play`: play channel, Spot, actor factory, game flow
 - `sample_cpp_framework_tictactoe_session`: STREAM endpoint와 ActorGateway relay
-- `sample_cpp_framework_tictactoe_client`: Stream Connector 기반 client flow
+- `sample_cpp_framework_tictactoe_client`: HTTP client `POST /games` 시작 요청과 Stream Connector 기반 client flow
 
-client smoke는 connector public API 사용 형태만 보지 않는다. 실행 중 실제 STREAM server를
-띄우고 Stream Connector가 TCP로 접속해 request reply와 push notification을 주고받는지
-검증한다. 서버는 `tictactoe-server.log` 파일에 bind, monitoring event, receive, reply, push
-흐름을 남긴다.
+client smoke는 connector public API 사용 형태만 보지 않는다. 실행 중 실제 HTTP API server와
+STREAM server를 띄우고, `zlink::http_client`가 `POST /games`로 match를 만든 뒤
+Stream Connector가 TCP로 접속해 request reply와 push notification을 주고받는지 검증한다.
+서버는 `tictactoe-server.log` 파일에 HTTP request, bind, monitoring event와
+receive, reply, push 흐름을 남긴다.

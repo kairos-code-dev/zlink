@@ -300,7 +300,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseDiscoveryLikeDotNet)
              std::string::npos);
   EXPECT_NE (client.find ("zlink::http_client::client_t::create ()"),
              std::string::npos);
-  EXPECT_NE (client.find (".base_url (api_http_endpoint)"),
+  EXPECT_NE (client.find (".base_url (run_options.api_http_endpoint)"),
              std::string::npos);
   EXPECT_NE (client.find (".post (\"/games\")"), std::string::npos);
   EXPECT_NE (client.find (".submit<create_match_res_t> ()"),

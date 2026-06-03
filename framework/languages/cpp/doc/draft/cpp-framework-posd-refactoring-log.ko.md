@@ -12,6 +12,54 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. Sample client process e2e 분리
+
+### 발견한 위험 신호
+
+- Goal 21은 Bingo와 TicTacToe client executable이 실제 server process와 붙어 request/reply와
+  push를 검증해야 한다고 명시한다. 기존 client e2e는 client process 안에서 loopback server
+  thread를 띄워 같은 흐름을 흉내냈다.
+- client가 server loop와 server log 작성까지 직접 소유하면 sample의 역할 경계가 흐려진다.
+  이는 `Client`가 connector/http client 사용법만 보여야 한다는 목표와 맞지 않는다.
+- CTest label에는 sample e2e가 있었지만, process topology를 직접 드러내는 label이 없어
+  단일 process e2e와 multi-process e2e를 구분하기 어려웠다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 내장 server e2e를 유지한다 | 변경이 작고 빠르다 | "실제 server process" 완료 조건을 만족하지 못한다 |
+| role server 전체를 한 번에 orchestration한다 | 운영 형태와 가장 가깝다 | registry/discovery/readiness까지 한 번에 묶여 변경 범위가 크다 |
+| 기존 e2e server loop를 독립 server executable로 분리하고 client가 외부 process에 붙게 한다 | 완료 조건을 직접 검증하면서 변경 범위를 줄인다 | role server 전체 orchestration은 별도 단계로 남는다 |
+
+선택은 세 번째 방식이다. 먼저 process 경계를 테스트로 고정해야 이후 role server orchestration을
+넓힐 때도 client가 server 구현을 다시 품는 퇴행을 막을 수 있다.
+
+### 적용한 리팩토링
+
+- Bingo client의 loopback stream server를 `Server/E2E` helper와 executable로 분리했다.
+- TicTacToe client의 HTTP `/games` API와 stream server를 `Server/E2E` helper와 executable로
+  분리했다.
+- client executable은 기본 smoke에서는 내장 server를 쓰고, `ZLINK_SAMPLE_EXTERNAL_SERVER=1`
+  환경에서는 외부 server process에 붙도록 했다.
+- CTest에 `framework-sample-process-e2e` label과 server process + client process harness를
+  추가했다.
+
+### 수정 후 점검
+
+- 기존 sample smoke와 log e2e 경로는 유지했다.
+- process e2e는 server executable이 file log를 쓰고 client executable이 별도 process로
+  request/reply/push를 검증한다.
+- 문서의 Goal 21/Goal 22 검증 명령과 label taxonomy를 새 process e2e label과 맞췄다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_e2e_server sample_cpp_framework_tictactoe_e2e_server sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client
+ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure
+```
+
 ## 반복 POSD 재리뷰. Stream Connector compression opt-in 회귀 보강
 
 ### 발견한 위험 신호

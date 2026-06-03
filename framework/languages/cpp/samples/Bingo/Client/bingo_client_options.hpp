@@ -20,6 +20,7 @@ struct bingo_client_options_t
   std::string stream_endpoint;
   std::chrono::milliseconds connect_timeout { 5000 };
   std::chrono::milliseconds request_timeout { 5000 };
+  bool use_embedded_server = true;
 };
 
 } // namespace zlink::samples::bingo

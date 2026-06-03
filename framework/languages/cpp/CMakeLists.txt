@@ -811,6 +811,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     zlink::framework
     zlink::stream_connector
     zlink::stream_connector_codecs)
+  add_executable(sample_cpp_framework_bingo_e2e_server
+    samples/Bingo/Server/E2E/main.cpp)
+  target_link_libraries(sample_cpp_framework_bingo_e2e_server PRIVATE
+    zlink::framework
+    zlink::stream_connector
+    zlink::stream_connector_codecs)
 
   add_zlink_framework_sample(
     sample_cpp_framework_tictactoe_registry
@@ -844,6 +850,13 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     zlink::http_client
     zlink::stream_connector
     zlink::stream_connector_codecs)
+  add_executable(sample_cpp_framework_tictactoe_e2e_server
+    samples/TicTacToe/Server/E2E/main.cpp)
+  target_link_libraries(sample_cpp_framework_tictactoe_e2e_server PRIVATE
+    zlink::framework
+    zlink::http_client
+    zlink::stream_connector
+    zlink::stream_connector_codecs)
 
   set_tests_properties(
     sample_smoke_sample_cpp_framework_bingo_client
@@ -869,6 +882,22 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     PROPERTIES
       LABELS "framework-sample-bingo;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;connector-e2e;parity"
       TIMEOUT 30)
+  add_test(
+    NAME sample_process_e2e_sample_cpp_framework_bingo_client
+    COMMAND ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.E2ETests/Samples/run_sample_process_e2e.sh
+      $<TARGET_FILE:sample_cpp_framework_bingo_e2e_server>
+      $<TARGET_FILE:sample_cpp_framework_bingo_client>
+      ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/bingo
+      ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/bingo/bingo-server.log
+      "bind |monitor stream ready|recv AuthenticateReq|recv MatchBingoReq|recv StartBingoGameReq|recv LeaveRoomReq|reply AuthenticateReq|reply MatchBingoReq|push PlayerJoinedNotify|push BingoGameStartedNotify|push BingoNumberDrawnNotify|push BingoGameEndedNotify|actor relay player-1|disconnect client|shutdown server"
+      10
+      9
+      8)
+  set_tests_properties(
+    sample_process_e2e_sample_cpp_framework_bingo_client
+    PROPERTIES
+      LABELS "framework-sample-bingo;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;framework-sample-process-e2e;connector-e2e;parity"
+      TIMEOUT 30)
 
   add_test(
     NAME sample_e2e_log_sample_cpp_framework_tictactoe_client
@@ -884,6 +913,22 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     sample_e2e_log_sample_cpp_framework_tictactoe_client
     PROPERTIES
       LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;connector-e2e;parity"
+      TIMEOUT 30)
+  add_test(
+    NAME sample_process_e2e_sample_cpp_framework_tictactoe_client
+    COMMAND ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.E2ETests/Samples/run_sample_process_e2e.sh
+      $<TARGET_FILE:sample_cpp_framework_tictactoe_e2e_server>
+      $<TARGET_FILE:sample_cpp_framework_tictactoe_client>
+      ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/tictactoe
+      ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/tictactoe/tictactoe-server.log
+      "bind |monitor stream ready|http POST /games|recv CreateMatchReq|recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply CreateMatchReq|reply AuthenticateReq|reply JoinMatchReq|reply PlaceMarkReq|push TurnChangedNotify|actor relay player-x|disconnect client|shutdown server"
+      10
+      10
+      9)
+  set_tests_properties(
+    sample_process_e2e_sample_cpp_framework_tictactoe_client
+    PROPERTIES
+      LABELS "framework-sample-tictactoe;framework-sample-client;framework-sample-e2e;framework-sample-client-e2e;framework-sample-log;framework-sample-process-e2e;connector-e2e;parity"
       TIMEOUT 30)
 endif()
 

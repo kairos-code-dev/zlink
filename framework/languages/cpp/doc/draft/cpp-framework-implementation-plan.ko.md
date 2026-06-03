@@ -964,6 +964,7 @@ ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke
 ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke
 ctest --test-dir framework/languages/cpp/build -L framework-sample-parity
 ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e
+ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e
 ctest --test-dir framework/languages/cpp/build -L framework-sample-log
 ctest --test-dir framework/languages/cpp/build -L framework-sample-api
 ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo
@@ -1034,6 +1035,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-observability --outp
 ctest --test-dir framework/languages/cpp/build -L http-client-regression --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-registry --output-on-failure
@@ -1118,7 +1120,7 @@ concrete label을 선택한다.
 | `http-client-*` | `http-client-contract`, `http-client-unit`, `http-client-e2e`, `http-client-https`, `http-client-regression` |
 | `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, `connector-contract`, `connector-protocol`, `connector-transport`, `connector-typed`, `connector-package` |
 | `unreal-connector-*` | `unreal-connector-contract`, `unreal-connector-compile`, `unreal-connector-smoke` |
-| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-e2e`, `framework-sample-log`, `framework-sample-api`, `framework-sample-bingo`, `framework-sample-client`, `framework-sample-client-e2e`, `framework-sample-play`, `framework-sample-registry`, `framework-sample-session`, `framework-sample-tictactoe` |
+| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-e2e`, `framework-sample-process-e2e`, `framework-sample-log`, `framework-sample-api`, `framework-sample-bingo`, `framework-sample-client`, `framework-sample-client-e2e`, `framework-sample-play`, `framework-sample-registry`, `framework-sample-session`, `framework-sample-tictactoe` |
 
 ## 8. Goal 실행용 문구
 

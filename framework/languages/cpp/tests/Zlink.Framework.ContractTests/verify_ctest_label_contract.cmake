@@ -24,6 +24,7 @@ set(required_labels
   framework-sample-smoke
   framework-sample-parity
   framework-sample-e2e
+  framework-sample-process-e2e
   framework-sample-log
   framework-sample-api
   framework-sample-bingo

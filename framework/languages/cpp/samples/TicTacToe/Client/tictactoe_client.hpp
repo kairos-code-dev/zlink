@@ -2,8 +2,7 @@
 #pragma once
 
 #include "tictactoe_player_client.hpp"
-#include "../Shared/sample_log.hpp"
-#include "../../Shared/stream_frame_server.hpp"
+#include "../Shared/E2E/client_e2e_server.hpp"
 
 #include <zlink/Contracts/Sockets/stream_socket.hpp>
 #include <zlink/Contracts/Service/operation_contracts.hpp>
@@ -18,37 +17,6 @@
 
 namespace zlink::samples::tictactoe
 {
-
-class tictactoe_client_e2e_create_game_handler_t
-{
-public:
-  using request_type = create_match_req_t;
-  using reply_type = create_match_res_t;
-  using dependency_types =
-    zlink::framework::dependency_list_t<sample_topology_t>;
-
-  explicit tictactoe_client_e2e_create_game_handler_t (
-    sample_topology_t &topology)
-    : _topology (topology)
-  {
-  }
-
-  create_match_res_t handle (const create_match_req_t &request)
-  {
-    append_sample_log_line ("http POST /games");
-    append_sample_log_line (
-      std::string ("recv ") + create_match_req_t::packet_name);
-    append_sample_log_line (
-      std::string ("reply ") + create_match_req_t::packet_name);
-    const auto owner = request.owner_actor_id.empty ()
-                         ? std::string (sample_names_t::x_actor_id)
-                         : request.owner_actor_id;
-    return { "match-1", owner, _topology.stream_endpoint };
-  }
-
-private:
-  sample_topology_t &_topology;
-};
 
 inline std::string
 make_sample_api_http_endpoint ()
@@ -73,114 +41,38 @@ public:
     const tictactoe_client_options_t &options)
   {
     zlink::context_t context;
-    reset_sample_log ();
     zlink::stream_socket_t server (context);
-    server.options ().notify (false);
-    server.bind ("tcp://127.0.0.1:0");
 
     tictactoe_client_options_t run_options = options;
-    run_options.play_endpoint = server.options ().last_endpoint ();
-    run_options.api_http_endpoint = "http://127.0.0.1:0";
-    std::thread server_thread ([&server,
-                                endpoint = run_options.play_endpoint,
-                                x_actor_id = run_options.x_actor_id] {
-      std::ofstream log (sample_log_file, std::ios::app);
-      log << "bind " << endpoint << '\n';
-      log << "monitor stream ready\n";
-      int handled = 0;
-      std::string current_match_id = "tictactoe-game";
-      std::string buffer;
-      while (handled < 9) {
-        zlink::received_t inbound;
-        if (server.recv (inbound) != 0) {
-          log << "recv failed index=" << handled << '\n';
-          return;
-        }
-        buffer += inbound.parts ().empty () ? std::string {}
-                                            : inbound.parts ()[0].to_string ();
-        while (auto frame = zlink::samples::try_read_stream_frame (buffer)) {
-          log << "recv " << frame->name << '\n';
-          tictactoe_state_t state;
-          state.match_id = current_match_id;
-          state.status = "playing";
-          log << "actor relay " << x_actor_id << '\n';
-          if (frame->name == authenticate_req_t::packet_name) {
-            const auto request =
-              zlink::message_t::from (frame->payload)
-                .parse_json<authenticate_req_t> ();
-            zlink::samples::send_stream_reply_and_push (
-              inbound,
-              *frame,
-              authenticate_res_t { request.actor_id },
-              turn_changed_notify_t::packet_name,
-              turn_changed_notify_t { state.match_id, x_actor_id, state });
-          } else if (frame->name == join_match_req_t::packet_name) {
-            const auto request =
-              zlink::message_t::from (frame->payload)
-                .parse_json<join_match_req_t> ();
-            current_match_id = request.match_id;
-            state.match_id = current_match_id;
-            state.x_actor_id = x_actor_id;
-            state.o_actor_id = request.actor_id == x_actor_id
-                                 ? sample_names_t::o_actor_id
-                                 : request.actor_id;
-            zlink::samples::send_stream_reply_and_push (
-              inbound,
-              *frame,
-              join_match_res_t {
-                current_match_id,
-                request.actor_id,
-                request.actor_id == x_actor_id ? "X" : "O",
-                state },
-              turn_changed_notify_t::packet_name,
-              turn_changed_notify_t { current_match_id, x_actor_id, state });
-          } else {
-            const auto request =
-              zlink::message_t::from (frame->payload)
-                .parse_json<place_mark_req_t> ();
-            current_match_id = request.match_id;
-            state.match_id = current_match_id;
-            state.last_move_actor_id = request.actor_id;
-            state.last_move_cell = request.cell;
-            zlink::samples::send_stream_reply_and_push (
-              inbound,
-              *frame,
-              place_mark_res_t { state },
-              turn_changed_notify_t::packet_name,
-              turn_changed_notify_t { current_match_id, x_actor_id, state });
-          }
-          log << "reply " << frame->name << '\n';
-          log << "push " << turn_changed_notify_t::packet_name << '\n';
-          ++handled;
-        }
-        inbound.close ();
-      }
-      log << "disconnect client\n";
-      log << "shutdown server\n";
-    });
-
-    zlink::framework::app_t api_app = zlink::framework::app_t::create ();
-    const auto api_http_endpoint = make_sample_api_http_endpoint ();
-    sample_topology_t api_topology;
-    api_topology.api_http_endpoint = api_http_endpoint;
-    api_topology.stream_endpoint = run_options.play_endpoint;
-    api_app.add_zlink_framework (
-      [api_topology](zlink::framework::zlink_framework_options_t &options) {
-        options.services ().add_singleton<sample_topology_t> (
-          std::make_unique<sample_topology_t> (api_topology));
-        options.http ()
-          .listen (api_topology.api_http_endpoint)
-          .map_post<tictactoe_client_e2e_create_game_handler_t> ("/games");
-      });
+    zlink::framework::app_t api_app;
     int api_exit_code = -1;
-    std::thread api_thread ([&api_app, &api_exit_code] {
-      const char *argv_raw[] = { "tictactoe-api" };
-      auto **argv = const_cast<char **> (argv_raw);
-      api_exit_code = api_app.run (1, argv);
-    });
+    std::thread server_thread;
+    std::thread api_thread;
+    if (run_options.use_embedded_server) {
+      reset_sample_log ();
+      server.options ().notify (false);
+      server.bind ("tcp://127.0.0.1:0");
+      run_options.play_endpoint = server.options ().last_endpoint ();
+      run_options.api_http_endpoint = make_sample_api_http_endpoint ();
+      server_thread = std::thread ([&server,
+                                    endpoint = run_options.play_endpoint,
+                                    x_actor_id = run_options.x_actor_id] {
+        run_client_e2e_stream_server (server, endpoint, x_actor_id);
+      });
+
+      sample_topology_t api_topology;
+      api_topology.api_http_endpoint = run_options.api_http_endpoint;
+      api_topology.stream_endpoint = run_options.play_endpoint;
+      api_app = build_client_e2e_api_server (api_topology);
+      api_thread = std::thread ([&api_app, &api_exit_code] {
+        const char *argv_raw[] = { "tictactoe-api" };
+        auto **argv = const_cast<char **> (argv_raw);
+        api_exit_code = api_app.run (1, argv);
+      });
+    }
 
     auto http_client = zlink::http_client::client_t::create ()
-                         .base_url (api_http_endpoint)
+                         .base_url (run_options.api_http_endpoint)
                          .json ()
                          .timeout (std::chrono::milliseconds (500))
                          .build ();
@@ -208,7 +100,7 @@ public:
     tictactoe_client_run_result_t result;
     result.connected = x.connected () && o.connected ();
     result.game_name = run_options.game_name;
-    result.api_endpoint = api_http_endpoint;
+    result.api_endpoint = run_options.api_http_endpoint;
     result.play_endpoint = run_options.play_endpoint;
     result.http_game_created = http_ready;
     result.requests.push_back (x.authenticate ());
@@ -232,12 +124,16 @@ public:
 
     x.close ();
     o.close ();
-    api_app.stop ();
-    api_thread.join ();
-    if (api_exit_code != 0) {
+    if (api_thread.joinable ()) {
+      api_app.stop ();
+      api_thread.join ();
+    }
+    if (run_options.use_embedded_server && api_exit_code != 0) {
       result.connected = false;
     }
-    server_thread.join ();
+    if (server_thread.joinable ()) {
+      server_thread.join ();
+    }
     return result;
   }
 };

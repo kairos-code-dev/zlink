@@ -1,22 +1,27 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.handlers
 
-import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkRequest
+import systems.zlink.framework.spots.ZLinkSpotManager
+import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleTopology
-import systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.TicTacToeGameDirectory
+import systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.TicTacToeGame
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameRes
 
-@ZLinkHandlerGroup("play")
-class CreateGameHandler {
+@ZLinkHandlerGroup(SampleNames.PlayChannel)
+class CreateGameHandler(
+    private val spots: ZLinkSpotManager,
+) {
     @ZLinkRequest(packetName = "CreateGameReq")
-    fun createAsync(gameName: String): CompletionStage<CreateGameRes> =
-        CompletableFuture.completedFuture(
-            CreateGameRes(
-                gameId = TicTacToeGameDirectory.create(gameName).gameId,
-                playEndpoint = SampleTopology.PlayStreamEndpoint,
-                gameName = gameName,
-            ),
-        )
+    fun createAsync(request: CreateGameReq): CompletionStage<CreateGameRes> =
+        spots.createAsync(TicTacToeGame::class.java)
+            .thenApply { created ->
+                CreateGameRes(
+                    gameId = created.spotRid().toHex(),
+                    playEndpoint = SampleTopology.PlayStreamEndpoint,
+                    gameName = request.gameName,
+                )
+            }
 }

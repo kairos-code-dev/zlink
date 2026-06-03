@@ -25,6 +25,7 @@ import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.spots.ZLinkSpot;
 
 public final class ZLinkActorRuntime implements ZLinkActorManager {
@@ -423,12 +424,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 throw new ZLinkConfigurationException("replyType is required");
             }
             Message requestPart = serializer.serialize(request);
+            Message packetNamePart = Message.from(packetNameFor(request.getClass()));
             try {
                 return spotNode.joinActor(
                         context.actorRef,
                         spotNode.routingId(),
                         spotRid,
-                        List.of(requestPart),
+                        List.of(packetNamePart, requestPart),
                         timeout)
                     .thenApply(result -> {
                         if (result.result() != ZLinkBackendRequestResult.OK) {
@@ -460,8 +462,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                         }
                     });
             } finally {
+                packetNamePart.close();
                 requestPart.close();
             }
         }
+    }
+
+    private static String packetNameFor(Class<?> messageType) {
+        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
+        return packet == null ? messageType.getSimpleName() : packet.value();
     }
 }

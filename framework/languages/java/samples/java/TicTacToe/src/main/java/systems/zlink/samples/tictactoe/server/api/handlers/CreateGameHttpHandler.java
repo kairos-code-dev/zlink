@@ -5,6 +5,7 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
+import systems.zlink.samples.tictactoe.shared.contracts.CreateGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
 
 @ZLinkHandlerGroup("api")
@@ -16,7 +17,7 @@ public final class CreateGameHttpHandler {
     }
 
     @ZLinkRequest(packetName = "CreateGame")
-    public CompletionStage<CreateGameRes> handleAsync(String request) {
+    public CompletionStage<CreateGameRes> handleAsync(CreateGameReq request) {
         return client.requestToChannel(SampleNames.PlayChannel, request)
             .packetName("CreateGameReq")
             .submitAsync(CreateGameRes.class);

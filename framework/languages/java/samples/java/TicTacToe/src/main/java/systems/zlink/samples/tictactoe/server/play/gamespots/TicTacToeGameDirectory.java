@@ -9,11 +9,8 @@ public final class TicTacToeGameDirectory {
     private TicTacToeGameDirectory() {
     }
 
-    public static TicTacToeGame create(String gameName) {
-        String gameId = "room-" + (Games.size() + 1);
-        TicTacToeGame game = new TicTacToeGame(gameId, gameName);
-        Games.put(gameId, game);
-        return game;
+    static void register(TicTacToeGame game) {
+        Games.put(game.gameId(), game);
     }
 
     public static TicTacToeGame get(String gameId) {
@@ -22,5 +19,13 @@ public final class TicTacToeGameDirectory {
             throw new IllegalArgumentException("unknown game " + gameId);
         }
         return game;
+    }
+
+    public static TicTacToeGame findByActor(String actorId) {
+        return Games.values().stream()
+            .filter(game -> game.hasPlayer(actorId))
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException(
+                "actor has not joined a game: " + actorId));
     }
 }

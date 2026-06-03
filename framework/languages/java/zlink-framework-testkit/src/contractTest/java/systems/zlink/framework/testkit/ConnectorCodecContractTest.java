@@ -30,16 +30,19 @@ final class ConnectorCodecContractTest {
             "JsonPacket",
             ZLinkStreamJson.CONTENT_TYPE,
             ZLinkStreamJson.encode("JsonPacket", "json-body"),
+            "json-body",
             payload -> ZLinkStreamJson.decode(payload, String.class));
         assertCodecRoundtrip(
             "MsgpackPacket",
             ZLinkStreamMessagePack.CONTENT_TYPE,
             ZLinkStreamMessagePack.encode("MsgpackPacket", "msgpack-body"),
+            "msgpack-body",
             payload -> ZLinkStreamMessagePack.decode(payload, String.class));
         assertCodecRoundtrip(
             "ProtobufPacket",
             ZLinkStreamProtobuf.CONTENT_TYPE,
             ZLinkStreamProtobuf.encode("ProtobufPacket", "protobuf-body"),
+            "protobuf-body",
             payload -> ZLinkStreamProtobuf.decode(payload, String.class));
     }
 
@@ -62,13 +65,13 @@ final class ConnectorCodecContractTest {
             Frame sent = server.readFrame();
             assertEquals(1, sent.kind());
             assertEquals("String", sent.name());
-            assertEquals("hello", new String(sent.payload(), StandardCharsets.UTF_8));
+            assertEquals("\"hello\"", new String(sent.payload(), StandardCharsets.UTF_8));
 
             server.sendFrame(new Frame(
                 1,
                 null,
                 "String",
-                "server".getBytes(StandardCharsets.UTF_8),
+                "\"server\"".getBytes(StandardCharsets.UTF_8),
                 true));
             awaitPendingDispatch(connector);
             connector.dispatchAsync().toCompletableFuture().join();
@@ -79,12 +82,12 @@ final class ConnectorCodecContractTest {
             Frame request = server.readFrame();
             assertEquals(2, request.kind());
             assertEquals("String", request.name());
-            assertEquals("reply", new String(request.payload(), StandardCharsets.UTF_8));
+            assertEquals("\"reply\"", new String(request.payload(), StandardCharsets.UTF_8));
             server.sendFrame(new Frame(
                 3,
                 request.requestSeq(),
                 "String",
-                "reply".getBytes(StandardCharsets.UTF_8),
+                "\"reply\"".getBytes(StandardCharsets.UTF_8),
                 true));
 
             ZLinkStreamEncodedPayload reply = replyFuture.join();
@@ -103,11 +106,12 @@ final class ConnectorCodecContractTest {
         String packetName,
         String contentType,
         ZLinkStreamEncodedPayload encoded,
+        String expected,
         java.util.function.Function<ZLinkStreamEncodedPayload, String> decode) {
         try {
             assertEquals(packetName, encoded.packetName());
             assertEquals(contentType, encoded.metadata().get("content-type"));
-            assertEquals(encoded.payload().toUtf8String(), decode.apply(encoded));
+            assertEquals(expected, decode.apply(encoded));
         } finally {
             encoded.payload().close();
         }

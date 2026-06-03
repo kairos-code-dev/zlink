@@ -8,4 +8,5 @@ description = "ZLink Java STREAM connector JSON codec"
 dependencies {
     api(project(":zlink-stream-connector"))
     api(project(":zlink-stream-connector-codecs"))
+    api("com.fasterxml.jackson.core:jackson-databind:2.17.2")
 }

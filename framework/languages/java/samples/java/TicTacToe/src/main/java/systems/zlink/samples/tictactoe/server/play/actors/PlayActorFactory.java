@@ -1,7 +1,16 @@
 package systems.zlink.samples.tictactoe.server.play.actors;
 
-public final class PlayActorFactory {
-    public PlayActor create(String actorId) {
-        return new PlayActor(actorId);
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorFactory;
+
+public final class PlayActorFactory implements ZLinkActorFactory {
+    @Override
+    public CompletionStage<ZLinkActor> createAsync(
+        String actorId,
+        ZLinkActorContext context) {
+        return CompletableFuture.completedFuture(new PlayActor(actorId, context));
     }
 }

@@ -504,6 +504,20 @@ class _ReceivedPartsOwner:
             raise RuntimeError("received message is closed")
         return self._parts_ptr[index]
 
+    def size(self, index):
+        return _msg_size(self.msg(index))
+
+    def data(self, index):
+        native = self.msg(index)
+        ptr = _msg_data_ptr(native)
+        size = _msg_size(native)
+        if not ptr or size <= 0:
+            return memoryview(b"")
+        return memoryview((ctypes.c_ubyte * size).from_address(ptr)).cast("B")
+
+    def to_bytes(self, index):
+        return _msg_to_bytes(self.msg(index))
+
     def close_part(self, index):
         if self._closed or not self._open_parts[index]:
             return

@@ -20,8 +20,8 @@ import systems.zlink.samples.tictactoe.shared.contracts.JoinGameRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkRes;
 
 public final class TicTacToeGame implements ZLinkSpot {
+    private final ZLinkSpotContext context;
     private final String gameId;
-    private final String gameName;
     private final char[] board = ".........".toCharArray();
     private final List<PlayerSlot> players = new ArrayList<>();
     private final List<String> pushes = new ArrayList<>();
@@ -32,25 +32,22 @@ public final class TicTacToeGame implements ZLinkSpot {
     private int lastMoveCell = -1;
 
     public TicTacToeGame() {
-        this("room-1", "Sample game");
+        this(new SampleSpotContext("room-1"));
     }
 
-    public TicTacToeGame(String gameId, String gameName) {
-        this.gameId = gameId;
-        this.gameName = gameName;
+    public TicTacToeGame(ZLinkSpotContext context) {
+        this.context = context;
+        this.gameId = context.spotRid().toHex();
+        TicTacToeGameDirectory.register(this);
     }
 
     public String gameId() {
         return gameId;
     }
 
-    public String gameName() {
-        return gameName;
-    }
-
     @Override
     public ZLinkSpotContext context() {
-        return new SampleSpotContext(gameId);
+        return context;
     }
 
     @Override
@@ -102,6 +99,10 @@ public final class TicTacToeGame implements ZLinkSpot {
 
     public List<String> pushes() {
         return List.copyOf(pushes);
+    }
+
+    public boolean hasPlayer(String actorId) {
+        return players.stream().anyMatch(player -> player.actorId().equals(actorId));
     }
 
     public GameState snapshot() {

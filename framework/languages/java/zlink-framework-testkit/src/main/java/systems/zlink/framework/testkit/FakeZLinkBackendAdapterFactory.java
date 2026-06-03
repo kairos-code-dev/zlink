@@ -790,6 +790,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) { record("bindActor." + actor.actorId()); return timeout -> CompletableFuture.completedFuture(null); }
         @Override public ZLinkBackendActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId) { record("unbindActor." + actorId); return timeout -> CompletableFuture.completedFuture(null); }
         @Override public boolean sendBoundActor(RoutingId sessionRid, String actorId, List<Message> parts, SendFlags flags) { record("sendBoundActor." + actorId); return true; }
+        @Override public boolean relayBoundActor(RoutingId sessionRid, String actorId, String packetName, Optional<Long> requestSeq, List<Message> parts, SendFlags flags) { record("relayBoundActor." + actorId + "." + packetName); return true; }
 
         void dispatchPacket(RoutingId routingId, Message header, Message payload) {
             if (packetHandler == null) {

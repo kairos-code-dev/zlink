@@ -73,7 +73,8 @@ def main(argv=None):
 
     threading.Thread(target=stdin_loop, daemon=True).start()
 
-    with perf_client_context() as ctx:
+    ctx = perf_client_context()
+    try:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         data_node = zlink.create_spot_node(ctx)
         control_node = zlink.create_spot_node(ctx)
@@ -255,6 +256,9 @@ def main(argv=None):
             bandwidth_multiplier=2.0,
         )
         print_result_lines("MULTI_SPOT_REQREP", args.transport, args.msg_size, metrics)
+        ctx.shutdown()
+    finally:
+        pass
 
 
 if __name__ == "__main__":

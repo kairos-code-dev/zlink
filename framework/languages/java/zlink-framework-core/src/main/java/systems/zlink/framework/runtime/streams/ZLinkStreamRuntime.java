@@ -13,6 +13,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkMessageSerializer;
+import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
@@ -135,37 +136,26 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             actors == null
                 ? null
                 : new ZLinkSessionActorsRuntime(stream, routingId, actors, serializer));
-        try {
-            ZLinkSession session;
-            ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher =
-                new ZLinkSessionPacketDispatcherRuntime<>(
-                    streamNode.sessionPacketHandlers(),
-                    handlerFactory);
-            try {
-                session = streamNode.sessionType()
-                    .getConstructor(
-                        ZLinkSessionContext.class,
-                        ZLinkSessionPacketDispatcher.class)
-                    .newInstance(context, dispatcher);
-            } catch (NoSuchMethodException ignored) {
-                try {
-                    session = streamNode.sessionType()
-                    .getConstructor(ZLinkSessionContext.class)
-                    .newInstance(context);
-                } catch (NoSuchMethodException ignoredAgain) {
-                    session = streamNode.sessionType()
-                        .getConstructor()
-                        .newInstance();
-                }
-            }
-            ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
-            queue.enqueue(session::onConnectedAsync);
-            return new SessionState(session, queue, context);
-        } catch (ReflectiveOperationException ex) {
+        ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher =
+            new ZLinkSessionPacketDispatcherRuntime<>(
+                streamNode.sessionPacketHandlers(),
+                handlerFactory);
+        ZLinkHandlerFactory.MutableServices sessionFactory =
+            ZLinkHandlerFactory.services(handlerFactory)
+                .add(ZLinkSessionContext.class, context)
+                .add(ZLinkSessionPacketDispatcher.class, dispatcher);
+        if (actors != null) {
+            sessionFactory.add(ZLinkActorManager.class, actors);
+        }
+        Object createdSession = sessionFactory.create(streamNode.sessionType());
+        if (!(createdSession instanceof ZLinkSession session)) {
             throw new ZLinkConfigurationException(
-                "stream session type must expose a public ZLinkSessionContext or no-arg constructor: "
+                "stream session type must implement ZLinkSession: "
                     + streamNode.sessionType().getName());
         }
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        queue.enqueue(session::onConnectedAsync);
+        return new SessionState(session, queue, context);
     }
 
     private static String sessionKey(StreamNodeRegistration streamNode, RoutingId routingId) {

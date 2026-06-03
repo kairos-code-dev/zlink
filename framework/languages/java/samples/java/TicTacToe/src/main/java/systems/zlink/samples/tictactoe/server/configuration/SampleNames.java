@@ -6,6 +6,7 @@ public final class SampleNames {
     public static final String SpotMesh = "tictactoe";
     public static final String PlayNode = "play";
     public static final String PlayStream = "play-stream";
+    public static final String PlayActor = "play-actor";
 
     private SampleNames() {
     }

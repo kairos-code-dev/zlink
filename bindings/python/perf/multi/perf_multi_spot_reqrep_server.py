@@ -51,7 +51,8 @@ def main(argv=None):
                 stop.set()
                 return
 
-    with perf_server_context() as ctx:
+    ctx = perf_server_context()
+    try:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         data_node = zlink.create_spot_node(ctx)
         control_node = zlink.create_spot_node(ctx)
@@ -92,6 +93,8 @@ def main(argv=None):
                     received.reply().messages(
                         *(part.data for part in received.parts)
                     ).submit()
+
+        replier.on_dispatch_event(on_dispatch)
 
         data_node.set_router_bind(
             benchmark_endpoint(args.transport, "multi-spot-reqrep-router")
@@ -144,14 +147,15 @@ def main(argv=None):
         ):
             raise RuntimeError("spot reqrep control start publish timeout")
 
-        replier.on_dispatch_event(on_dispatch)
-
         idle_seconds = max(
             1.0,
             float(os.environ.get("PERF_MULTI_DURATION_SECONDS", str(args.duration))),
         ) + float(os.environ.get("PERF_MULTI_SPOT_SERVER_IDLE_S", "2.0"))
         stop.wait(idle_seconds)
         control_poller.close()
+        ctx.shutdown()
+    finally:
+        pass
 
 
 if __name__ == "__main__":

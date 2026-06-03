@@ -4661,6 +4661,192 @@ py_recv_owner (PyObject *self, PyObject *args)
     return Py_BuildValue ("iiNN", rc, err, routing_obj, owner_obj);
 }
 
+static int
+set_attr_or_none (PyObject *target, const char *name, PyObject *value)
+{
+    PyObject *effective = value ? value : Py_None;
+    return PyObject_SetAttrString (target, name, effective);
+}
+
+static PyObject *
+py_recv_into_received (PyObject *self, PyObject *args)
+{
+    unsigned long long handle_value = 0;
+    int flags = 0;
+    int rc = ZLINK_RECV_OK;
+    int err = 0;
+    zlink_routing_id_t routing_copy;
+    int has_routing = 0;
+    received_parts_t received = { 0 };
+    PyObject *target = NULL;
+    PyObject *message_type = NULL;
+    PyObject *routing_factory = NULL;
+    PyObject *routing_obj = Py_None;
+    PyObject *owner_obj = NULL;
+    PyObject *current_owner = NULL;
+    PyObject *close_result = NULL;
+    PyObject *parts_obj = NULL;
+    PyObject *message = NULL;
+    PyObject *index = NULL;
+    PyObject *closed = NULL;
+
+    (void) self;
+    memset (&routing_copy, 0, sizeof (routing_copy));
+    if (!PyArg_ParseTuple (args, "KiOOO", &handle_value, &flags, &target,
+                           &message_type, &routing_factory))
+        return NULL;
+
+    void *handle = (void *) (uintptr_t) handle_value;
+    Py_BEGIN_ALLOW_THREADS
+    while (1) {
+        const zlink_routing_id_t *source_rid = NULL;
+        zlink_msg_t part;
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        zlink_recv_flags_t recv_flags =
+          received.count == 0 ? (zlink_recv_flags_t) flags : ZLINK_DONTWAIT;
+
+        if (zlink_msg_init (&part) != ZLINK_CONFIG_OK) {
+            err = zlink_errno ();
+            if (err == 0)
+                err = ENOMEM;
+            rc = ZLINK_RECV_INTERNAL_ERROR;
+            break;
+        }
+        rc = zlink_recv_part (handle, &source_rid, &part, &has_more,
+                              recv_flags);
+        if (rc != ZLINK_RECV_OK) {
+            err = zlink_errno ();
+            zlink_msg_close (&part);
+            break;
+        }
+        if (received.count == 0 && source_rid && source_rid->size > 0) {
+            routing_copy = *source_rid;
+            has_routing = 1;
+        }
+        if (append_received_part (&received, &part) != 0) {
+            zlink_msg_close (&part);
+            rc = ZLINK_RECV_INTERNAL_ERROR;
+            err = ENOMEM;
+            break;
+        }
+        if (has_more == ZLINK_PART_FINAL)
+            break;
+    }
+    Py_END_ALLOW_THREADS
+
+    if (rc != ZLINK_RECV_OK) {
+        close_received_parts (&received);
+        if ((flags & 1) && rc == ZLINK_RECV_NO_DATA)
+            Py_RETURN_FALSE;
+        return Py_BuildValue ("ii", rc, err);
+    }
+
+    owner_obj = build_native_parts_owner (&received);
+    if (!owner_obj) {
+        close_received_parts (&received);
+        return NULL;
+    }
+
+    if (has_routing) {
+        PyObject *routing_bytes =
+          PyBytes_FromStringAndSize ((const char *) routing_copy.data,
+                                     (Py_ssize_t) routing_copy.size);
+        if (!routing_bytes) {
+            Py_DECREF (owner_obj);
+            return NULL;
+        }
+        routing_obj = PyObject_CallFunctionObjArgs (routing_factory,
+                                                    routing_bytes, NULL);
+        Py_DECREF (routing_bytes);
+        if (!routing_obj) {
+            Py_DECREF (owner_obj);
+            return NULL;
+        }
+    } else {
+        Py_INCREF (Py_None);
+    }
+
+    current_owner = PyObject_GetAttrString (target, "_owner");
+    if (!current_owner) {
+        Py_DECREF (routing_obj);
+        Py_DECREF (owner_obj);
+        return NULL;
+    }
+    if (current_owner != Py_None) {
+        close_result = PyObject_CallMethod (current_owner, "close", NULL);
+        if (!close_result)
+            PyErr_Clear ();
+        else
+            Py_DECREF (close_result);
+    }
+    Py_DECREF (current_owner);
+
+    if (((native_parts_owner_t *) owner_obj)->part_count == 1) {
+        message = PyObject_CallFunctionObjArgs (message_type, Py_None,
+                                                routing_obj, NULL);
+        if (!message) {
+            Py_DECREF (routing_obj);
+            Py_DECREF (owner_obj);
+            return NULL;
+        }
+        index = PyLong_FromLong (0);
+        closed = PyBool_FromLong (0);
+        if (!index || !closed
+            || PyObject_SetAttrString (message, "_owner", owner_obj) != 0
+            || PyObject_SetAttrString (message, "_index", index) != 0
+            || PyObject_SetAttrString (message, "_closed", closed) != 0) {
+            Py_XDECREF (closed);
+            Py_XDECREF (index);
+            Py_DECREF (message);
+            Py_DECREF (routing_obj);
+            Py_DECREF (owner_obj);
+            return NULL;
+        }
+        Py_DECREF (closed);
+        Py_DECREF (index);
+        parts_obj = PyTuple_New (1);
+        if (!parts_obj) {
+            Py_DECREF (message);
+            Py_DECREF (routing_obj);
+            Py_DECREF (owner_obj);
+            return NULL;
+        }
+        PyTuple_SET_ITEM (parts_obj, 0, message);
+    } else {
+        PyObject *build_parts = PyObject_GetAttrString (target, "_build_parts");
+        if (!build_parts) {
+            Py_DECREF (routing_obj);
+            Py_DECREF (owner_obj);
+            return NULL;
+        }
+        parts_obj = PyObject_CallFunctionObjArgs (build_parts, owner_obj, NULL);
+        Py_DECREF (build_parts);
+        if (!parts_obj) {
+            Py_DECREF (routing_obj);
+            Py_DECREF (owner_obj);
+            return NULL;
+        }
+    }
+
+    if (PyObject_SetAttrString (target, "_owner", owner_obj) != 0
+        || PyObject_SetAttrString (target, "parts", parts_obj) != 0
+        || set_attr_or_none (target, "routing_id", routing_obj) != 0
+        || set_attr_or_none (target, "spot_rid", Py_None) != 0
+        || set_attr_or_none (target, "request_seq", Py_None) != 0
+        || set_attr_or_none (target, "_reply_sender", Py_None) != 0
+        || set_attr_or_none (target, "_send_sender", Py_None) != 0) {
+        Py_DECREF (parts_obj);
+        Py_DECREF (routing_obj);
+        Py_DECREF (owner_obj);
+        return NULL;
+    }
+
+    Py_DECREF (parts_obj);
+    Py_DECREF (routing_obj);
+    Py_DECREF (owner_obj);
+    Py_RETURN_TRUE;
+}
+
 static PyObject *
 py_subscribe_parts (PyObject *self, PyObject *args)
 {
@@ -5160,6 +5346,8 @@ static PyMethodDef zlink_native_methods[] = {
       "Receive multipart payload parts through zlink_recv_part." },
     { "recv_owner", py_recv_owner, METH_VARARGS,
       "Receive multipart payload parts as a native bytes owner." },
+    { "recv_into_received", py_recv_into_received, METH_VARARGS,
+      "Receive into a caller-provided Received envelope." },
     { "subscribe_parts", py_subscribe_parts, METH_VARARGS,
       "Receive topic multipart payload parts through zlink_subscribe_part." },
     { "router_recv_parts", py_router_recv_parts, METH_VARARGS,

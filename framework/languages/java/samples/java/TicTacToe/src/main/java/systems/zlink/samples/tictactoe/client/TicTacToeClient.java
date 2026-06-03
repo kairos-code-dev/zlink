@@ -2,19 +2,24 @@ package systems.zlink.samples.tictactoe.client;
 
 import java.net.URI;
 import java.time.Duration;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
+import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
+import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
+import systems.zlink.samples.tictactoe.shared.contracts.CreateGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
-import systems.zlink.samples.tictactoe.shared.contracts.GameState;
+import systems.zlink.samples.tictactoe.shared.contracts.JoinGameReq;
+import systems.zlink.samples.tictactoe.shared.contracts.JoinGameRes;
+import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkReq;
+import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkRes;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
-import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
+import systems.zlink.stream.connector.json.ZLinkStreamJson;
 
 public final class TicTacToeClient {
     private final ZLinkClient frameworkClient;
@@ -32,15 +37,15 @@ public final class TicTacToeClient {
 
     private CompletionStage<AuthenticateRes> authenticate(String accessToken) {
         return frameworkClient
-            .requestToChannel("tictactoe-api", accessToken)
+            .requestToChannel("tictactoe-api", new AuthenticatePlayerReq(accessToken))
             .packetName("AuthenticatePlayer")
-            .submitAsync(String.class)
-            .thenApply(AuthenticateRes::new);
+            .submitAsync(AuthenticatePlayerRes.class)
+            .thenApply(reply -> new AuthenticateRes(reply.actorId()));
     }
 
     private CompletionStage<CreateGameRes> createGame(String gameName) {
         return frameworkClient
-            .requestToChannel("tictactoe-api", gameName)
+            .requestToChannel("tictactoe-api", new CreateGameReq(gameName))
             .packetName("CreateGame")
             .submitAsync(CreateGameRes.class);
     }
@@ -53,15 +58,15 @@ public final class TicTacToeClient {
         ZLinkStreamConnector guest = playerConnector(options.playEndpoint(), players.guest().actorId());
         return host.connectAsync()
             .thenCompose(ignored -> guest.connectAsync())
-            .thenCompose(ignored -> request(host, "AuthenticateReq", players.host().actorId()))
-                .thenCompose(ignored -> request(guest, "AuthenticateReq", players.guest().actorId()))
-                .thenCompose(ignored -> request(host, "JoinGameReq", game.gameId() + "|" + players.host().actorId()))
-                .thenCompose(ignored -> request(guest, "JoinGameReq", game.gameId() + "|" + players.guest().actorId()))
-                .thenCompose(ignored -> request(host, "PlaceMarkReq", game.gameId() + "|" + players.host().actorId() + "|0"))
-                .thenCompose(ignored -> request(guest, "PlaceMarkReq", game.gameId() + "|" + players.guest().actorId() + "|4"))
-                .thenCompose(ignored -> request(host, "PlaceMarkReq", game.gameId() + "|" + players.host().actorId() + "|1"))
-                .thenCompose(ignored -> request(guest, "PlaceMarkReq", game.gameId() + "|" + players.guest().actorId() + "|8"))
-                .thenCompose(ignored -> request(host, "PlaceMarkReq", game.gameId() + "|" + players.host().actorId() + "|2"))
+            .thenCompose(ignored -> request(host, new AuthenticateReq(players.host().actorId()), AuthenticateRes.class))
+            .thenCompose(ignored -> request(guest, new AuthenticateReq(players.guest().actorId()), AuthenticateRes.class))
+            .thenCompose(ignored -> request(host, new JoinGameReq(game.gameId()), JoinGameRes.class))
+            .thenCompose(ignored -> request(guest, new JoinGameReq(game.gameId()), JoinGameRes.class))
+            .thenCompose(ignored -> request(host, new PlaceMarkReq(0), PlaceMarkRes.class))
+            .thenCompose(ignored -> request(guest, new PlaceMarkReq(4), PlaceMarkRes.class))
+            .thenCompose(ignored -> request(host, new PlaceMarkReq(1), PlaceMarkRes.class))
+            .thenCompose(ignored -> request(guest, new PlaceMarkReq(8), PlaceMarkRes.class))
+            .thenCompose(ignored -> request(host, new PlaceMarkReq(2), PlaceMarkRes.class))
             .thenApply(TicTacToeClient::resultFromReply)
             .whenComplete((ignored, error) -> {
                 host.close();
@@ -77,24 +82,22 @@ public final class TicTacToeClient {
             2));
     }
 
-    private static CompletionStage<String> request(ZLinkStreamConnector connector, String packetName, String body) {
-        return connector.request(new ZLinkStreamEncodedPayload(
-                packetName,
-                Message.from(body),
-                Map.of()))
-            .packetName(packetName)
+    private static <TReply> CompletionStage<TReply> request(
+        ZLinkStreamConnector connector,
+        Object request,
+        Class<TReply> replyType) {
+        return ZLinkStreamJson.request(connector, request)
             .submitAsync()
-            .thenApply(reply -> reply.payload().toUtf8String());
+            .thenApply(reply -> ZLinkStreamJson.decode(reply, replyType));
     }
 
-    private static TicTacToeClientResult resultFromReply(String reply) {
-        String[] parts = reply.split("\\|", 2);
-        String winner = parts[0].isBlank() ? null : parts[0];
+    private static TicTacToeClientResult resultFromReply(PlaceMarkRes reply) {
+        String winner = reply.state().winner();
         return new TicTacToeClientResult(
             winner,
-            parts.length == 2 && !parts[1].isBlank()
-                ? java.util.List.of(parts[1].split(","))
-                : java.util.List.of());
+            winner == null
+                ? java.util.List.of()
+                : java.util.List.of("GameWon:" + winner));
     }
 
     private record Players(AuthenticateRes host, AuthenticateRes guest) {

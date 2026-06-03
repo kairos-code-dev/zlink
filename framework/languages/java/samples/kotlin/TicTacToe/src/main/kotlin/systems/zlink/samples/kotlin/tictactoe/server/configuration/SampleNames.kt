@@ -6,4 +6,5 @@ object SampleNames {
     const val SpotMesh: String = "tictactoe"
     const val PlayNode: String = "play"
     const val PlayStream: String = "play-stream"
+    const val PlayActor: String = "play-actor"
 }

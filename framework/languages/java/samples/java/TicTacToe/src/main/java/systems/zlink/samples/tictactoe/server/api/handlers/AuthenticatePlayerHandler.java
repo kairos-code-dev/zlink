@@ -5,6 +5,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
+import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
+import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
 
 @ZLinkHandlerGroup("api")
 public final class AuthenticatePlayerHandler {
@@ -13,11 +15,11 @@ public final class AuthenticatePlayerHandler {
         "bob-token", "bob");
 
     @ZLinkRequest(packetName = "AuthenticatePlayer")
-    public CompletionStage<String> handleAsync(String request) {
-        String actorId = Actors.get(request);
+    public CompletionStage<AuthenticatePlayerRes> handleAsync(AuthenticatePlayerReq request) {
+        String actorId = Actors.get(request.accessToken());
         if (actorId == null) {
             throw new IllegalArgumentException("unknown access token");
         }
-        return CompletableFuture.completedFuture(actorId);
+        return CompletableFuture.completedFuture(new AuthenticatePlayerRes(actorId));
     }
 }

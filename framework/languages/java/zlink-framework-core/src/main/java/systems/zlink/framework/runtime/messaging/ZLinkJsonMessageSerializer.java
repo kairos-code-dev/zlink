@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.messaging;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.io.IOException;
@@ -12,6 +13,8 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
 
     public ZLinkJsonMessageSerializer() {
         this(JsonMapper.builder()
+            .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true)
+            .configure(MapperFeature.USE_STD_BEAN_NAMING, true)
             .findAndAddModules()
             .build());
     }

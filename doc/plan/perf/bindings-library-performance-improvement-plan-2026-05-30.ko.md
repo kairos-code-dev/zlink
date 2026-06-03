@@ -32,7 +32,7 @@
 | 4 | Node | `bindings/node/perf` | `미달 6/144 (4.2%)` | `미달 21/156 (13.5%)` | Multi가 10% gate를 초과하지만, fastpath 변경, single routed 단일 payload native 수신, `sendToSpot` DontWait result-code 경로, `MULTI_PUBSUB` 단일 payload 내부 수신 경로를 적용했고, 추가 public contract-safe 후보는 log에 기각 근거를 남겼다. 평균 성능 비율을 계산한 뒤 다음 언어로 넘어간다. |
 | 5 | Go | `bindings/go/perf` | `미달 6/144 (4.2%)` | `미달 20/192 (10.4%)` | `MULTI_SPOT_REQREP tcp 4096B`는 request message 누수 수정으로 통과했고, 같은 complete 검증에서 `ws 131072B`도 통과로 회복했다. 잔여 routed echo, one-way 64B, builder hot path 후보를 추가로 시험했지만 새 통과를 만들지 못해 Go는 추가 후보 소진으로 정리하고 Rust로 넘어간다. |
 | 6 | Rust | `bindings/rust/perf` | `미달 25/144 (17.4%)` | `미달 11/192 (5.7%)` | Single 공통 송신 loop를 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿔 `PUBSUB wss 64B`를 통과로 올렸다. 이후 table transport full 확인에서 routed 대용량과 `SPOT tcp/ws/tls 1024B`는 기준에 못 닿았고, public recv envelope를 우회하지 않는 추가 후보는 log에 기각 근거를 남겼다. |
-| 7 | Python | `bindings/python/perf` | `미측정` | `미측정` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. `PAIR tcp 64B` public API probe는 C 대비 19.9%로 one-way 최소 기준 30%에 못 닿았다. 아래 Python 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, public Python API 경로로 다시 측정해야 한다. |
+| 7 | Python | `bindings/python/perf` | `미측정` | `미측정` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. `PAIR tcp 64B` public API probe는 C 대비 23.5%로 one-way 최소 기준 30%에 못 닿았다. 아래 Python 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, public Python API 경로로 다시 측정해야 한다. |
 
 ### 1.1 언어별 평균 성능
 
@@ -777,19 +777,55 @@ single payload send의 direct bytes/bytearray pointer 후보를 적용했다. �
 `PAIR tcp 64B` 5초 `runs=3` 기준은 C
 `perf_c_single_linux_20260603_094321_py_retry_c_pair64_5s_runs3.txt`
 1,232,691.2 msg/s 대비 Python
-`perf_python_single_linux_20260603_100021_py_native_owner_send_direct_pair64_5s_runs3.txt`
-245,361.4 msg/s로 19.9%에 그쳤다. public Python 호출 loop와
+`perf_python_single_linux_20260603_102035_py_public_final_pair64_5s_runs3.txt`
+289,901.6 msg/s로 23.5%에 그쳤다. public Python 호출 loop와
 caller-provided `Received` materialize 비용이 남아 있어 one-way 최소 기준 30%에는
 아직 못 닿는다. `recv_into` C 직접 호출, C part tuple, bridge lookup cache,
 `ReceivedMessage` `__slots__`, 직접 생성자 호출, socket send op freelist, 단일
 receive owner C fast path, native latency decode, perf send bound-method cache,
-inline send factory, callback empty fast path, unbound public send, native inline
-owner, native `recv_into` replacement, blocking-first receive loop 후보는
+inline send factory, callback empty fast path, unbound public send, compact receive
+owner result, native owner metric decode, PAIR sender loop inline, native inline
+owner, native `recv_into` replacement, blocking-first receive loop, per-message
+`Received.close()` 지연, PAIR sender main-thread 실행 후보는
 `cProfile`/thread 조합에서 segfault가 재현되거나 5초 측정에서 회귀해 최종 코드에
-남기지 않았다. private active-loop helper를 perf에서 직접 호출하지 않는 조건을
-유지하려면 다음 후보는 public builder/recv container 자체를 더 안전하게 낮은
-비용으로 옮기는 방식이어야 한다. 이때 profiler와 thread 조합에서도 segfault가
-없어야 하고, 기존 `ReceivedMessage` 객체 보관 의미를 바꾸면 안 된다.
+남기지 않았다. close 지연 후보는
+`perf_python_single_linux_20260603_103019_py_deferred_close_pair64_5s.txt`에서
+283,843.6 msg/s, sender main-thread 후보는
+`perf_python_single_linux_20260603_103129_py_pair_sender_main_pair64_5s.txt`에서
+281,689.2 msg/s로 최종 public 기준보다 낮았다. 이후 같은 현재 runtime에서 단발
+재측정한 C `perf_c_single_linux_20260603_104109_py_retry_current_c_pair64_5s.txt`는
+1,235,528.2 msg/s, Python
+`perf_python_single_linux_20260603_104126_py_retry_current_python_pair64_5s.txt`는
+284,878.4 msg/s였다. owner-backed `ReceivedMessage`를 C extension 타입으로 옮긴
+후보는 `perf_python_single_linux_20260603_103726_py_c_received_message_pair64_5s.txt`에서
+282,615.8 msg/s, small payload `zlink_msg_init_data(...)` malloc-copy 후보는
+`perf_python_single_linux_20260603_104440_py_init_data_copy_pair64_5s.txt`에서
+274,640.2 msg/s로 회귀했다. PAIR sender process 분리 probe는 stop-token 전달이
+꼬여 timeout이 났고, single suite의 같은-process 의미와 맞지 않아 최종 코드에
+남기지 않았다. receiver idle wait를 `time.sleep(0)`로 바꾼 후보는
+`perf_python_single_linux_20260603_105022_py_sleep0_wait_pair64_5s.txt`에서
+150,696.8 msg/s로 크게 회귀했고, 단일 part public accessor 후보는
+`perf_python_single_linux_20260603_105104_py_single_part_accessor_pair64_5s.txt`에서
+238,818.8 msg/s로 낮았다. caller-provided `Received`의 단일 part 갱신을 C helper로
+옮긴 후보도 `perf_python_single_linux_20260603_105354_py_received_replace_single_pair64_5s.txt`에서
+220,873.6 msg/s에 그쳐 최종 코드에 남기지 않았다. private active-loop helper를
+perf에서 직접 호출하지 않는 조건을 유지하려면 다음 후보는 public builder/recv
+container 자체를 더 안전하게 낮은 비용으로 옮기는 방식이어야 한다. 이때 profiler와
+thread 조합에서도 segfault가 없어야 하고, 기존 `ReceivedMessage` 객체 보관 의미를
+바꾸면 안 된다.
+
+public contract 복구 뒤 Python multi smoke에서 `MULTI_SPOT_REQREP tcp 64B`가
+client timeout으로 반복 partial이 됐다. server dispatch가 owner-backed part의
+`data` view 계약을 만족하지 못해 reply callback에서 예외가 났고, 정상 active
+loop가 끝난 뒤에는 context close가 native term에서 멈췄다. `_ReceivedPartsOwner`
+와 native owner-backed `ReceivedMessage`가 같은 `data`/`size`/`to_bytes`
+계약을 제공하도록 맞추고, SPOT req/rep perf 프로세스는 결과 출력 뒤 native
+context shutdown만 수행한 다음 기존 `os._exit(0)` 종료 경로로 빠지게 했다.
+같은 조건 재측정 `perf_python_multi_linux_20260603_103823.txt`는
+status=complete(5/5)였고, 전체 tcp/64 smoke
+`perf_python_multi_linux_20260603_102512.txt`도 status=complete(40/40)였다.
+이 검증은 full matrix 판정이 아니라 public API 경로의 timeout 회귀가 해소됐는지
+확인한 제한 smoke다.
 
 Python single smoke 결과 파일은 `perf_python_single_linux_20260531_162613_round_20260530_python_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_python_single_linux_20260531_163931_round_20260530_python_single_full_v1.txt`이고 status=complete(720/720)였다. C 기준 대비 통과 56개와 잔류 미달 88개가 확인됐다. 이후 `stamp_payload(...)`가 `bytes` 사본 대신 기존 `bytearray`를 그대로 반환하게 바꾸고, single receive hot path가 마지막 message part의 공개 `Message.data` memoryview에서 header를 직접 읽게 바꿨다. 제한 재측정 `perf_python_single_linux_20260531_234853_python_single_stamp_bytearray_probe_20260531.txt`와 `perf_python_single_linux_20260531_235420_python_single_recv_data_view_probe_20260531.txt`에서 PAIR/PUBSUB 64/256/1024B는 C 대비 3.2~12.4% 범위에 머물러 통과권까지 오르지 않았다. 이 후보만으로는 Python interpreter 루프, ctypes 기반 message materialize, send builder 호출 경계를 충분히 줄이지 못했다.
 

@@ -166,7 +166,14 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
     private record JavaContext(Context nativeContext) implements ZLinkBackendContext {
         @Override public String name() { return "context"; }
         @Override public void shutdown() { nativeContext.shutdown(); }
-        @Override public void close() { nativeContext.close(); }
+        @Override
+        public void close() {
+            try {
+                nativeContext.shutdown();
+            } finally {
+                nativeContext.close();
+            }
+        }
     }
 
     private record JavaDiscovery(Discovery nativeDiscovery) implements ZLinkBackendDiscovery {
@@ -300,7 +307,24 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             return timeout -> toVoid(operation.timeout(timeout).submitAsync());
         }
         @Override public boolean sendBoundActor(RoutingId sessionRid, String actorId, List<Message> parts, SendFlags flags) {
-            return submitFramedStream(socket.sendBoundActor(sessionRid, actorId), 1, null, null, parts, flags);
+            return submit(socket.sendBoundActor(sessionRid, actorId), parts, flags);
+        }
+        @Override public boolean relayBoundActor(
+            RoutingId sessionRid,
+            String actorId,
+            String packetName,
+            Optional<Long> requestSeq,
+            List<Message> parts,
+            SendFlags flags) {
+            Message header = Message.from(encodeStreamHeader(
+                requestSeq.isPresent() ? 2 : 1,
+                packetName,
+                requestSeq.orElse(null)));
+            try {
+                return submit(socket.sendBoundActor(sessionRid, actorId), prepend(header, parts), flags);
+            } finally {
+                header.close();
+            }
         }
         @Override public void close() { socket.close(); }
     }
@@ -574,6 +598,13 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         buffer.put((byte) name.length);
         buffer.put(name);
         return buffer.array();
+    }
+
+    private static List<Message> prepend(Message first, List<Message> rest) {
+        java.util.ArrayList<Message> result = new java.util.ArrayList<>(rest.size() + 1);
+        result.add(first);
+        result.addAll(rest);
+        return result;
     }
 
     private static boolean submitFramedStream(

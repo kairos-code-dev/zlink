@@ -19,9 +19,9 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkRes
 
 class TicTacToeGame(
-    val gameId: String = "room-1",
-    val gameName: String = "Sample game",
+    private val context: ZLinkSpotContext,
 ) : ZLinkSpot {
+    val gameId: String = context.spotRid().toHex()
     private val board = ".........".toCharArray()
     private val players = mutableListOf<PlayerSlot>()
     val pushes = mutableListOf<String>()
@@ -31,7 +31,13 @@ class TicTacToeGame(
     private var lastMoveActorId: String? = null
     private var lastMoveCell: Int? = null
 
-    override fun context(): ZLinkSpotContext = SampleSpotContext(gameId)
+    init {
+        TicTacToeGameDirectory.register(this)
+    }
+
+    constructor() : this(SampleSpotContext("room-1"))
+
+    override fun context(): ZLinkSpotContext = context
     override fun onCreateAsync(createParts: MutableList<Message>): CompletionStage<Void> =
         CompletableFuture.completedFuture(null)
 
@@ -64,6 +70,9 @@ class TicTacToeGame(
         }
         return PlaceMarkRes(snapshot())
     }
+
+    fun hasPlayer(actorId: String): Boolean =
+        players.any { it.actorId == actorId }
 
     private fun snapshot(): GameState = GameState(
         gameId = gameId,

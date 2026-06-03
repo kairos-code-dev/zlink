@@ -2,7 +2,6 @@ package systems.zlink.framework.runtime.actors;
 
 import systems.zlink.framework.runtime.backend.*;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -153,21 +152,20 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 return CompletableFuture.failedFuture(new IllegalArgumentException(
                     "payload is required"));
             }
-            Message headerPart = Message.from(
-                header.packetName().getBytes(StandardCharsets.UTF_8));
             Message payloadPart = Message.from(payload);
             try {
-                if (!stream.sendBoundActor(
+                if (!stream.relayBoundActor(
                     sessionRid,
                     ref.actorId(),
-                    List.of(headerPart, payloadPart),
+                    header.packetName(),
+                    header.requestSequence(),
+                    List.of(payloadPart),
                     SendFlags.DONT_WAIT)) {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "actor session relay failed: " + ref.actorId()));
                 }
                 return CompletableFuture.completedFuture(null);
             } finally {
-                headerPart.close();
                 payloadPart.close();
             }
         }

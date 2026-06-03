@@ -101,6 +101,6 @@ final class BoundSessionTest {
             }
         }
 
-        assertTrue(backend.calls().contains("stream.sendBoundActor.player-1"));
+        assertTrue(backend.calls().contains("stream.relayBoundActor.player-1.PlaceMark"));
     }
 }

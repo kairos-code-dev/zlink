@@ -925,6 +925,7 @@ ctest --test-dir framework/languages/cpp/build -L connector-contract
 ctest --test-dir framework/languages/cpp/build -L connector-protocol
 ctest --test-dir framework/languages/cpp/build -L connector-transport
 ctest --test-dir framework/languages/cpp/build -L connector-typed
+ctest --test-dir framework/languages/cpp/build -L connector-package
 ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract
 ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile
 ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke

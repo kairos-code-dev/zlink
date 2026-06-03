@@ -279,6 +279,50 @@ implementation_plan_expands_label_wildcards (const std::filesystem::path &root)
 }
 
 bool
+implementation_plan_goal20_covers_connector_labels (
+  const std::filesystem::path &root)
+{
+  const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  const auto text = buffer.str ();
+
+  const auto start = text.find ("### Goal 20. Stream Connectors");
+  const auto end = text.find ("### Goal 21. Review Samples");
+  if (start == std::string::npos || end == std::string::npos ||
+      start >= end) {
+    std::cerr << "implementation plan lacks bounded Goal 20 section: "
+              << path << '\n';
+    return false;
+  }
+  const auto goal = text.substr (start, end - start);
+
+  bool ok = true;
+  const std::string commands[] = {
+    "ctest --test-dir framework/languages/cpp/build -L connector-unit",
+    "ctest --test-dir framework/languages/cpp/build -L connector-integration",
+    "ctest --test-dir framework/languages/cpp/build -L connector-e2e",
+    "ctest --test-dir framework/languages/cpp/build -L connector-contract",
+    "ctest --test-dir framework/languages/cpp/build -L connector-protocol",
+    "ctest --test-dir framework/languages/cpp/build -L connector-transport",
+    "ctest --test-dir framework/languages/cpp/build -L connector-typed",
+    "ctest --test-dir framework/languages/cpp/build -L connector-package",
+    "ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract",
+    "ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile",
+    "ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke"
+  };
+  for (const auto &command : commands) {
+    if (goal.find (command) == std::string::npos) {
+      std::cerr << "Goal 20 verification commands lack: "
+                << command << '\n';
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+bool
 posd_log_has_current_goal_mapping (const std::filesystem::path &root)
 {
   const auto path =
@@ -1082,6 +1126,7 @@ main ()
   ok &= draft_tracking_table_matches_files (root);
   ok &= draft_readme_role_tables_cover_files (root);
   ok &= implementation_plan_expands_label_wildcards (root);
+  ok &= implementation_plan_goal20_covers_connector_labels (root);
   ok &= posd_log_has_current_goal_mapping (root);
   ok &= cmake_extension_boundaries_hold (root);
 

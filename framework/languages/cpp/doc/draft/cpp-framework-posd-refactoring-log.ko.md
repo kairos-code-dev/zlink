@@ -6664,3 +6664,36 @@ CMake가 생성하는 파일 전체 형식까지 고정할 필요는 없다.
 
 - CTest에 오타 label이나 문서화되지 않은 임시 label이 추가되면
   `test_cpp_framework_label_contract`가 실패한다.
+
+## 추가 리뷰. Goal 20 connector package command gate 보강
+
+### 발견한 위험 신호
+
+- implementation plan의 wildcard 표와 실제 CTest label에는 `connector-package`가 있다.
+- 그러나 Goal 20 검증 명령 블록은 connector unit, integration, e2e, contract, protocol,
+  transport, typed label만 실행하고 package label을 빠뜨렸다.
+- connector package는 framework package와 독립 배포 경계를 검증하므로 Goal 20 완료 기준의
+  일부다. 검증 명령에서 빠지면 문서를 따라 실행해도 package 회귀를 놓칠 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| wildcard 표만 유지 | 표는 정확하다 | Goal 20 실행 명령을 그대로 따르는 사용자는 package 검증을 놓친다 |
+| 최종 Goal 22 package 검증에만 의존 | 중복 실행이 줄어든다 | connector 자체 goal 완료 기준과 package 경계가 분리된다 |
+| Goal 20 명령에 `connector-package`를 추가하고 layout contract로 고정 | goal별 검증 명령과 label taxonomy가 일치한다 | plan 명령 목록이 한 줄 늘어난다 |
+
+선택은 세 번째 방식이다. Goal 20은 connector 자체의 public/package 경계를 다루므로,
+해당 goal의 검증 명령이 connector package label을 직접 포함해야 한다.
+
+### 적용한 리팩토링
+
+- Goal 20 검증 명령 블록에 `ctest --test-dir framework/languages/cpp/build -L connector-package`
+  명령을 추가했다.
+- layout contract가 Goal 20 검증 블록 안에 모든 connector/unreal connector concrete label
+  명령이 있는지 확인하게 했다.
+
+### 수정 후 점검
+
+- Goal 20 검증 명령에서 connector package label이 빠지면
+  `test_cpp_framework_layout_contract`가 실패한다.

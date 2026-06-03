@@ -147,6 +147,56 @@ count_occurrences (const std::string &text, const std::string &needle)
 }
 
 bool
+draft_tracking_table_matches_files (const std::filesystem::path &root)
+{
+  const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  const auto text = buffer.str ();
+
+  const auto start = text.find ("## 6. Draft 추적표");
+  const auto end = text.find ("## 7. 기능 축 추적표");
+  if (start == std::string::npos || end == std::string::npos ||
+      start >= end) {
+    std::cerr << "implementation plan lacks a bounded draft tracking table: "
+              << path << '\n';
+    return false;
+  }
+  const auto table = text.substr (start, end - start);
+
+  bool ok = true;
+  std::size_t file_count = 0;
+  for (const auto &entry : std::filesystem::directory_iterator (
+         root / "doc/draft")) {
+    if (!entry.is_regular_file () || entry.path ().extension () != ".md") {
+      continue;
+    }
+    const auto filename = entry.path ().filename ().generic_string ();
+    if (filename.size () < 6 ||
+        filename.substr (filename.size () - 6) != ".ko.md") {
+      continue;
+    }
+    ++file_count;
+    const auto link = std::string ("(./") + filename + ")";
+    const auto link_count = count_occurrences (table, link);
+    if (link_count != 1) {
+      std::cerr << "draft tracking table must reference exactly once: "
+                << filename << " (got " << link_count << ")\n";
+      ok = false;
+    }
+  }
+
+  const auto tracked_count = count_occurrences (table, ".ko.md)");
+  if (tracked_count != file_count) {
+    std::cerr << "draft tracking table count mismatch: tracked "
+              << tracked_count << ", files " << file_count << '\n';
+    ok = false;
+  }
+  return ok;
+}
+
+bool
 posd_log_has_current_goal_mapping (const std::filesystem::path &root)
 {
   const auto path =
@@ -945,6 +995,7 @@ main ()
     root,
     "http-client/include",
     "");
+  ok &= draft_tracking_table_matches_files (root);
   ok &= posd_log_has_current_goal_mapping (root);
   ok &= cmake_extension_boundaries_hold (root);
 

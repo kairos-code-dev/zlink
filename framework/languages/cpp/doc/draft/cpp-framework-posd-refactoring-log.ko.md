@@ -6301,3 +6301,35 @@ heading 형식으로 남아 있으면 완료 audit의 기준이 흐려진다.
 
 - normal build에서는 coverage test가 없어도 label contract가 통과한다.
 - coverage build에서는 `framework-coverage` label이 비면 label contract가 실패한다.
+
+## 추가 리뷰. Draft 추적표 파일 목록 contract 보강
+
+### 발견한 위험 신호
+
+- 실행 계획은 `Draft 추적표`에서 C++ framework draft 문서와 구현 goal의 대응을 관리한다.
+- 실제 `doc/draft/*.ko.md` 파일과 추적표 항목이 어긋나도 기존 contract는 이 차이를 직접
+  검사하지 않았다.
+- 새 draft 문서를 추가하거나 문서를 삭제한 뒤 추적표가 따라오지 않으면 final audit에서 어떤
+  문서가 구현 계획 범위인지 판단하기 어려워진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 사람이 plan 하단을 눈으로 대조 | 별도 코드가 없다 | 반복 리뷰 때 누락을 놓치기 쉽다 |
+| 추적표 문서 목록을 contract에 하드코딩 | 검사 의도가 명확하다 | 새 draft 추가 때 plan과 contract를 모두 수정해야 한다 |
+| layout contract가 실제 draft 파일 목록과 추적표 링크를 비교 | 파일 추가/삭제 drift를 직접 잡는다 | 추적표 마크다운 구조가 바뀌면 검사도 갱신해야 한다 |
+
+선택은 세 번째 방식이다. 추적표는 실제 draft 파일의 공개 인덱스 역할을 하므로, 파일 시스템과
+계획 문서의 링크 목록이 1:1인지 검사하는 것이 가장 직접적이다.
+
+### 적용한 리팩토링
+
+- layout contract가 `## 6. Draft 추적표`와 `## 7. 기능 축 추적표` 사이의 표를 읽게 했다.
+- `doc/draft/*.ko.md` 파일마다 추적표에 `./파일명` 링크가 정확히 한 번 있는지 검사하게 했다.
+- 추적표의 `.ko.md` 링크 개수와 실제 draft 파일 개수가 다르면 실패하게 했다.
+
+### 수정 후 점검
+
+- draft 파일이 추가되거나 삭제됐는데 실행 계획 추적표가 따라오지 않으면
+  `test_cpp_framework_layout_contract`가 실패한다.

@@ -5306,6 +5306,7 @@ git diff --check -- framework/languages/cpp
 | 문서에서 explicit receive 기준 제거 | 구현 변경이 작다 | 공통 완료 기준을 낮추고 언어별 connector 의미가 어긋난다 |
 | runtime hook으로 queue에 packet을 넣어 `receive()`만 검증 | 테스트가 단순하다 | 실제 transport read, frame decode, multi-packet read를 증명하지 못한다 |
 | loopback STREAM 서버가 두 frame을 한 번에 보내고 public `receive()`로 읽음 | public API와 wire frame 경계를 함께 검증한다 | 테스트 fixture가 조금 길어진다 |
+| raw TCP 서버가 frame prefix를 나눠 보내 partial read를 재현 | read loop의 frame 복원 책임을 직접 검증한다 | STREAM helper 대신 raw socket fixture가 필요하다 |
 
 선택은 세 번째 방식이다. explicit receive는 사용자에게 보이는 public API이므로 runtime 내부
 hook보다 실제 transport를 통과한 packet으로 검증해야 한다.
@@ -5319,11 +5320,14 @@ hook보다 실제 transport를 통과한 packet으로 검증해야 한다.
   의미를 같은 회귀 테스트에 묶었다.
 - request callback response와 timeout도 별도 loopback 서버로 검증해 공통 초안의
   request callback 완료 기준을 직접 증명하게 했다.
+- raw TCP 서버가 frame을 두 번에 나눠 보내도 `receive(timeout)`이 하나의 packet으로 복원하는
+  partial read 회귀 테스트를 추가했다.
 
 ### 재점검
 
 - explicit receive 계약은 public API와 실제 STREAM frame read 경로로 검증된다.
 - callback request response, timeout, close는 callback submit 경로에서 직접 검증된다.
+- partial read는 raw TCP wire split을 통해 frame codec과 read loop 경계에서 검증된다.
 - public header는 public 시그니처에 필요한 표준 header를 직접 include한다.
 
 ## 추가 리뷰. HTTP Client 문서 탐색 표면 보정

@@ -386,13 +386,13 @@ main ()
   auto receive_connector =
     zlink::stream_connector::connector_factory_t::create (receive_options);
   if (!receive_connector.connect ().result ()) {
-    return 47;
+    return 56;
   }
   if (!receive_connector.send (login_request_t {})
          .packet_name ("receive.trigger")
          .submit ()
          .result ()) {
-    return 48;
+    return 57;
   }
   auto received_first =
     receive_connector.receive (std::chrono::milliseconds (100)).result ();
@@ -405,7 +405,7 @@ main ()
       received_second.value ().name != "server.receive.two" ||
       received_second.value ().payload.to_string () != "two" ||
       receive_connector.pending_dispatch_count () != 0) {
-    return 49;
+    return 58;
   }
   receive_connector.close ().result ();
 
@@ -521,7 +521,7 @@ main ()
           zlink::stream_connector::error_code_t::disconnected;
     });
   if (!request_after_close_callback_seen) {
-    return 50;
+    return 59;
   }
   auto missing_endpoint =
     zlink::stream_connector::connector_factory_t::create (
@@ -666,7 +666,7 @@ main ()
     zlink::stream_connector::connector_factory_t::create (
       callback_response_options);
   if (!callback_response_connector.connect ().result ()) {
-    return 51;
+    return 60;
   }
   bool request_callback_response_seen = false;
   callback_response_connector.request<login_reply_t> (login_request_t {})
@@ -677,7 +677,7 @@ main ()
     });
   callback_response_thread.join ();
   if (!request_callback_response_seen) {
-    return 52;
+    return 61;
   }
   callback_response_connector.close ().result ();
 
@@ -703,7 +703,7 @@ main ()
     zlink::stream_connector::connector_factory_t::create (
       callback_timeout_options);
   if (!callback_timeout_connector.connect ().result ()) {
-    return 53;
+    return 62;
   }
   bool request_callback_timeout_seen = false;
   callback_timeout_connector.request<login_reply_t> (login_request_t {})
@@ -717,9 +717,69 @@ main ()
     });
   callback_timeout_thread.join ();
   if (!request_callback_timeout_seen || !callback_timeout_request_seen) {
-    return 54;
+    return 63;
   }
   callback_timeout_connector.close ().result ();
+
+  boost::asio::io_context partial_io;
+  boost::asio::ip::tcp::acceptor partial_acceptor (
+    partial_io,
+    { boost::asio::ip::make_address ("127.0.0.1"), 0 });
+  const auto partial_endpoint =
+    std::string ("tcp://127.0.0.1:") +
+    std::to_string (partial_acceptor.local_endpoint ().port ());
+  std::atomic_bool partial_write_seen { false };
+  std::thread partial_server_thread (
+    [&partial_acceptor, &partial_write_seen] {
+      boost::asio::ip::tcp::socket socket (
+        partial_acceptor.get_executor ());
+      partial_acceptor.accept (socket);
+      std::array<char, 256> request_buffer {};
+      boost::system::error_code error;
+      socket.read_some (boost::asio::buffer (request_buffer), error);
+      if (error) {
+        return;
+      }
+      const auto frame = make_server_frame (
+                           zlink::stream_connector::message_kind_t::send,
+                           0,
+                           "server.partial",
+                           "split")
+                           .to_string ();
+      socket.write_some (boost::asio::buffer (frame.data (), 3), error);
+      if (error) {
+        return;
+      }
+      std::this_thread::sleep_for (std::chrono::milliseconds (2));
+      socket.write_some (
+        boost::asio::buffer (frame.data () + 3, frame.size () - 3),
+        error);
+      partial_write_seen = !error;
+    });
+  zlink::stream_connector::connector_options_t partial_options;
+  partial_options.endpoint = partial_endpoint;
+  partial_options.dispatch_mode =
+    zlink::stream_connector::dispatch_mode_t::manual;
+  auto partial_connector =
+    zlink::stream_connector::connector_factory_t::create (partial_options);
+  if (!partial_connector.connect ().result ()) {
+    return 64;
+  }
+  if (!partial_connector.send (login_request_t {})
+         .packet_name ("partial.trigger")
+         .submit ()
+         .result ()) {
+    return 65;
+  }
+  auto partial_packet =
+    partial_connector.receive (std::chrono::milliseconds (100)).result ();
+  partial_server_thread.join ();
+  if (!partial_packet || !partial_write_seen ||
+      partial_packet.value ().name != "server.partial" ||
+      partial_packet.value ().payload.to_string () != "split") {
+    return 66;
+  }
+  partial_connector.close ().result ();
 
   zlink::stream_socket_t heartbeat_server (context);
   heartbeat_server.options ().notify (false);

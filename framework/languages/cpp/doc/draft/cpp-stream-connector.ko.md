@@ -338,6 +338,7 @@ immediate mode도 제공한다. 이 모드에서는 connector가 내부 수신 �
 - TCP typed request가 request sequence로 response를 정확히 짝짓는다.
 - send는 helper header와 payload frame 형식을 그대로 사용한다.
 - 여러 packet을 순서대로 dispatch한다.
+- 하나의 TCP frame이 여러 read로 나뉘어 도착해도 packet을 복원한다.
 - explicit receive는 callback 없이 서버가 보낸 여러 packet을 순서대로 꺼낸다.
 - manual dispatch에서는 callback이 `dispatch()` 호출 경로에서 실행된다.
 - immediate dispatch에서는 별도 manual dispatch 없이 callback이 실행된다.

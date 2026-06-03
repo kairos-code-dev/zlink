@@ -6034,3 +6034,38 @@ push와 relay 모두 같은 state를 확인해야 cleanup 의미가 한 곳에 �
 - disconnect cleanup 뒤 stale `session_actor_t`로 relay frame이 추가되지 않는다.
 - Goal 14의 disconnected session push/relay 실패 계약은 `framework-zlink-actor-gateway`
   test가 잡는다.
+
+## 추가 리뷰. Unreal Stream Connector general connector dependency 제거
+
+### 발견한 위험 신호
+
+- Goal 20은 Unreal connector가 일반 C++ connector wrapper가 아니라 Unreal network library 기반
+  구현이어야 한다고 적는다.
+- Unreal private source는 자체 frame codec과 Unreal `Sockets` 경로를 사용하지만, CMake target은
+  `zlink::stream_connector`를 public link하고 `connector/src`를 private include로 열어 두었다.
+- 구현은 독립인데 build graph가 일반 connector runtime을 끌고 오면, 나중에 wrapper 의존성이
+  조용히 생겨도 public surface gate가 놓칠 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 link 유지 | 빌드 변경이 없다 | Goal 20의 독립 connector 기준을 증명하지 못한다 |
+| link를 PRIVATE로 낮춤 | public 전이는 줄어든다 | 일반 connector runtime 의존성 자체는 남는다 |
+| 일반 connector link와 runtime include를 제거 | Unreal connector가 자체 Unreal transport만 의존한다 | 필요한 공유 코드가 생기면 별도 protocol contract로 분리해야 한다 |
+
+선택은 세 번째 방식이다. Unreal connector private 구현은 이미 자체 frame/metadata/LZ4 경로를
+가지므로 일반 connector target에 의존하지 않아도 된다. 의존성을 제거해야 정보 은닉과 배포
+경계가 문서 기준과 일치한다.
+
+### 적용한 리팩토링
+
+- `zlink_unreal_stream_connector` target에서 `zlink::stream_connector` link를 제거했다.
+- 같은 target의 `connector/src` private include도 제거했다.
+- layout contract가 Unreal connector target이 일반 connector target이나 runtime include를 다시
+  참조하지 않는지 검사하게 했다.
+
+### 수정 후 점검
+
+- Unreal connector는 build graph에서도 일반 C++ connector wrapper가 아니다.
+- Unreal public/private 코드는 Unreal plugin 표면과 자체 private runtime 경계만 유지한다.

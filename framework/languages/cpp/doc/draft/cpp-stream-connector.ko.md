@@ -122,7 +122,7 @@ target에 강제로 붙이지 않는다. raw transport와 frame runtime은 `zlin
 | JSON helper | connector package 안에 포함 | ON |
 | MessagePack helper | connector package 안의 build feature | OFF |
 | Protobuf helper | connector package 안의 optional build feature | OFF |
-| LZ4 compression | connector package 안의 build feature, system LZ4 또는 fallback source | ON |
+| LZ4 compression | connector package 안의 build feature, system LZ4 또는 fallback source | ON. packet 압축은 opt-in |
 
 권장 CMake option은 아래와 같다.
 
@@ -133,9 +133,11 @@ ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF=OFF
 ZLINK_STREAM_CONNECTOR_WITH_LZ4=ON
 ```
 
-`ZLINK_STREAM_CONNECTOR_WITH_LZ4=ON`이면 CMake는 먼저 system `lz4.h`와 `liblz4`를
-찾는다. 개발 패키지가 없으면 LZ4 source를 받아 `zlink::stream_connector` target 안에
-private source로 포함한다. 사용자는 별도 LZ4 target을 직접 링크하지 않는다.
+JSON helper는 기본 ON CMake option으로 제공한다. `ZLINK_STREAM_CONNECTOR_WITH_LZ4=ON`이면
+CMake는 먼저 system `lz4.h`와 `liblz4`를 찾는다. 개발 패키지가 없으면 LZ4 source를 받아
+`zlink::stream_connector` target 안에 private source로 포함한다. 사용자는 별도 LZ4 target을
+직접 링크하지 않는다. 다만 실제 packet을 압축할지는 `send_call_t::compress()`나 Unreal
+`FZLinkStreamSendOptions::bCompress`처럼 호출 지점의 option으로 결정한다.
 
 ## 3. 기능 기준
 

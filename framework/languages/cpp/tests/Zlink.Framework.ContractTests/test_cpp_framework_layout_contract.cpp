@@ -735,6 +735,24 @@ main ()
     root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
     "submit",
     "Unreal public API must use delegates instead of connector submit calls");
+  ok &= file_does_not_contain (
+    root / "CMakeLists.txt",
+    "target_link_libraries(zlink_unreal_stream_connector PUBLIC zlink::stream_connector)",
+    "Unreal connector target must not publicly wrap the general C++ connector");
+  ok &= file_does_not_contain (
+    root / "CMakeLists.txt",
+    "target_link_libraries(zlink_unreal_stream_connector PRIVATE zlink::stream_connector)",
+    "Unreal connector target must not privately wrap the general C++ connector");
+  ok &= file_does_not_contain (
+    root / "CMakeLists.txt",
+    "target_include_directories(zlink_unreal_stream_connector PRIVATE\n  ${ZLINK_FRAMEWORK_CPP_DIR}/connector/src)",
+    "Unreal connector target must not include general connector runtime internals");
+  ok &= file_contains (
+    root / "CMakeLists.txt",
+    "option(ZLINK_STREAM_CONNECTOR_WITH_JSON \"Enable Stream Connector JSON helpers\" ON)");
+  ok &= file_contains (
+    root / "CMakeLists.txt",
+    "option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 \"Enable Stream Connector LZ4 compression\" ON)");
   ok &= file_contains (
     root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
     "\"Sockets\"");

@@ -53,7 +53,8 @@
 - public facade가 상태를 가지면 PIMPL 또는 type-erased state를 사용한다.
 - codec 사용성은 binding, framework, connector, HTTP client 모두 `message_t` 중심으로 맞춘다.
 - base C++ binding은 JSON, MessagePack, Protobuf dependency를 끌고 오지 않는다.
-- MessagePack, Protobuf, LZ4는 선택 기능으로 둔다.
+- MessagePack과 Protobuf는 선택 기능으로 둔다. LZ4 지원은 connector build feature 기본 ON으로
+  두고, 실제 packet 압축은 호출 지점의 option으로 선택한다.
 - application sample code는 serializer를 직접 호출하지 않는다.
 - 샘플 client는 raw STREAM payload 조립, `nlohmann::json::parse`, field-by-field JSON 추출,
   sample-only stream payload helper를 사용하지 않는다.
@@ -895,7 +896,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R http
 - reconnect, heartbeat, pending request correlation
 - JSON 기본 ON
 - MessagePack/Protobuf 선택
-- LZ4 기본 ON
+- LZ4 build feature 기본 ON, packet 압축은 opt-in
 - Unreal plugin/module packaging
 - Unreal `Public/` / `Private` 분리
 - Unreal `Sockets`/`Networking` 기반 transport

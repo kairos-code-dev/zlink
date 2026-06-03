@@ -135,7 +135,9 @@ codec 구조는 binding, framework, connector가 같은 원칙을 따른다. bas
 raw `message_t`와 protocol enum만 제공하고 JSON, MessagePack, Protobuf dependency를
 끌고 오지 않는다. codec 사용성은 `message_t` 중심 API로 맞추며, 각 codec 구현은 필요한
 target과 header를 선택한 경우에만 활성화한다. framework와 connector는 이 원칙 위에서
-JSON을 기본 사용성으로 제공하고, MessagePack, Protobuf, LZ4는 선택 기능으로 둔다.
+JSON을 기본 사용성으로 제공한다. MessagePack과 Protobuf는 선택 기능으로 두고, LZ4는
+connector build feature를 기본 ON으로 제공하되 실제 packet 압축은 호출자가 packet option으로
+선택한다.
 
 `C++`에는 `.NET`, `Java`, `Node.js`처럼 기준으로 삼을 메이저 애플리케이션
 프레임워크가 없으므로, [C++ 정책](./cpp-framework-policy.ko.md)은 app, host, DI,

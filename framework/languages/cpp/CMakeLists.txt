@@ -283,9 +283,6 @@ set_target_properties(zlink_unreal_stream_connector PROPERTIES
 target_compile_features(zlink_unreal_stream_connector PUBLIC cxx_std_20)
 target_include_directories(zlink_unreal_stream_connector PUBLIC
   ${ZLINK_FRAMEWORK_CPP_DIR}/unreal-connector/Source/ZLinkStreamConnector/Public)
-target_include_directories(zlink_unreal_stream_connector PRIVATE
-  ${ZLINK_FRAMEWORK_CPP_DIR}/connector/src)
-target_link_libraries(zlink_unreal_stream_connector PUBLIC zlink::stream_connector)
 if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
   if(ZLINK_LZ4_INCLUDE_DIR AND ZLINK_LZ4_LIBRARY)
     target_include_directories(zlink_unreal_stream_connector PRIVATE

@@ -493,8 +493,21 @@ posd_log_has_current_goal_mapping (const std::filesystem::path &root)
     "| Goal 22. Final Regression, Package, Extension Boundary |"
   };
   for (const auto &row : rows) {
-    if (text.find (row) == std::string::npos) {
+    const auto offset = text.find (row);
+    if (offset == std::string::npos) {
       std::cerr << "POSD refactoring log lacks current goal mapping row: "
+                << row << '\n';
+      ok = false;
+      continue;
+    }
+    const auto line_end = text.find ('\n', offset);
+    const auto line = text.substr (
+      offset,
+      line_end == std::string::npos ? std::string::npos : line_end - offset);
+    if (line.find ("잔여 POSD 위험 신호와 리팩토링 이슈 0개") ==
+        std::string::npos) {
+      std::cerr << "POSD refactoring log mapping row lacks zero-issue "
+                   "recheck status: "
                 << row << '\n';
       ok = false;
     }

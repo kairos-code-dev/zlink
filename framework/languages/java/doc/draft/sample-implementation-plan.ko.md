@@ -214,8 +214,9 @@ lifecycle, bound push 흐름에서 각 서버 역할이 어디에 놓이는지 �
 
 direct sample은 아래를 보여 준다.
 
-- Spring Boot 밖의 standalone 실행에서는 `ZLinkFramework.start(...)` public facade로
-  framework host를 시작
+- standalone 실행에서는 Spring Boot starter public facade로 API role과 Play role을
+  시작한다. 이 경로도 framework/connector public API만 사용하며, sample-local HTTP
+  server나 handler 직접 호출로 우회하지 않는다.
 - standalone `Client` role은 API role의 `/games` HTTP endpoint로 `CreateGameHttpReq`를
   보내고, API role은 Play server channel로 `CreateGameReq`를 전달한다.
 - API server와 Play server 분리

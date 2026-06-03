@@ -34,6 +34,10 @@ data class JoinGameRes(val state: GameState)
 
 data class JoinGameReq(val gameId: String)
 
+data class TicTacToeGameJoinReq(val gameId: String, val actorId: String)
+
+data class TicTacToeGameJoinRes(val state: GameState)
+
 data class PlaceMarkRes(val state: GameState)
 
 data class PlaceMarkReq(val cell: Int)

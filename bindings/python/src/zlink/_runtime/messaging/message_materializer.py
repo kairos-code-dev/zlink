@@ -169,6 +169,14 @@ class _BaseReceived:
             raise RecvError(RecvResult.NO_DATA, 0)
         return self.parts[0]
 
+    def _last_part_data(self):
+        owner = self._owner
+        if owner is not None and owner._part_count > 0:
+            return owner.data(owner._part_count - 1)
+        if not self.parts:
+            return memoryview(b"")
+        return self.parts[-1].data
+
     def close(self):
         if self._owner is None:
             return

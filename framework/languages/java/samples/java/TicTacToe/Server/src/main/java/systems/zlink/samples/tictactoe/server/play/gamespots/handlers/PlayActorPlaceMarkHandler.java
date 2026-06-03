@@ -10,12 +10,12 @@ import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkRes;
 @ZLinkHandlerGroup("play-actor")
 public final class PlayActorPlaceMarkHandler {
     @ZLinkSpotActorRequest
-    public PlaceMarkRes placeMark(
+    public CompletionStage<PlaceMarkRes> placeMark(
         PlayActor actor,
         PlaceMarkReq request) {
         actor.requireJoinedGame();
         return actor.context()
             .getSpot(TicTacToeGame.class)
-            .placeMark(actor.actorId(), request.cell());
+            .placeMark(actor, request.cell());
     }
 }

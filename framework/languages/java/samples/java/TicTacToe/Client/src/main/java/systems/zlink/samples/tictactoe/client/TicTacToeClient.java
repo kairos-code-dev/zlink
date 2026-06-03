@@ -6,16 +6,23 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameHttpReq;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameHttpRes;
+import systems.zlink.samples.tictactoe.shared.contracts.GameStateNotify;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkReq;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkRes;
+import systems.zlink.samples.tictactoe.shared.contracts.PlayerJoinedNotify;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -69,37 +76,99 @@ public final class TicTacToeClient {
         CreateGameHttpRes game) {
         ZLinkStreamConnector host = playerConnector(game.playEndpoint(), options.xActorId());
         ZLinkStreamConnector guest = playerConnector(game.playEndpoint(), options.oActorId());
+        Queue<GameStateNotify> stateNotifications = new ConcurrentLinkedQueue<>();
+        Queue<PlayerJoinedNotify> playerJoinedNotifications = new ConcurrentLinkedQueue<>();
+        List<AutoCloseable> handlers = new ArrayList<>();
+        handlers.add(ZLinkStreamJson.on(host, GameStateNotify.class, message -> {
+            stateNotifications.add(message.payload());
+            return CompletableFuture.completedFuture(null);
+        }));
+        handlers.add(ZLinkStreamJson.on(guest, GameStateNotify.class, message -> {
+            stateNotifications.add(message.payload());
+            return CompletableFuture.completedFuture(null);
+        }));
+        handlers.add(ZLinkStreamJson.on(host, PlayerJoinedNotify.class, message -> {
+            playerJoinedNotifications.add(message.payload());
+            return CompletableFuture.completedFuture(null);
+        }));
+        handlers.add(ZLinkStreamJson.on(guest, PlayerJoinedNotify.class, message -> {
+            playerJoinedNotifications.add(message.payload());
+            return CompletableFuture.completedFuture(null);
+        }));
+
+        java.util.concurrent.atomic.AtomicReference<AuthenticateRes> hostAuth =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<AuthenticateRes> guestAuth =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<JoinGameRes> hostJoin =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<JoinGameRes> guestJoin =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        List<PlaceMarkRes> moves = new ArrayList<>();
+
         return host.connectAsync()
             .thenCompose(ignored -> guest.connectAsync())
             .thenCompose(ignored -> requestStep(
                 "host AuthenticateReq",
-                request(host, new AuthenticateReq(options.xActorId()), AuthenticateRes.class)))
+                request(host, new AuthenticateReq(options.xActorId()), AuthenticateRes.class))
+                .thenApply(reply -> {
+                    hostAuth.set(reply);
+                    return reply;
+                }))
             .thenCompose(ignored -> requestStep(
                 "guest AuthenticateReq",
-                request(guest, new AuthenticateReq(options.oActorId()), AuthenticateRes.class)))
+                request(guest, new AuthenticateReq(options.oActorId()), AuthenticateRes.class))
+                .thenApply(reply -> {
+                    guestAuth.set(reply);
+                    return reply;
+                }))
             .thenCompose(ignored -> requestStep(
                 "host JoinGameReq",
-                request(host, new JoinGameReq(game.gameId()), JoinGameRes.class)))
+                request(host, new JoinGameReq(game.gameId()), JoinGameRes.class))
+                .thenApply(reply -> {
+                    hostJoin.set(reply);
+                    return reply;
+                }))
             .thenCompose(ignored -> requestStep(
                 "guest JoinGameReq",
-                request(guest, new JoinGameReq(game.gameId()), JoinGameRes.class)))
+                request(guest, new JoinGameReq(game.gameId()), JoinGameRes.class))
+                .thenApply(reply -> {
+                    guestJoin.set(reply);
+                    return reply;
+                }))
             .thenCompose(ignored -> requestStep(
                 "host PlaceMarkReq(0)",
-                request(host, new PlaceMarkReq(0), PlaceMarkRes.class)))
+                request(host, new PlaceMarkReq(0), PlaceMarkRes.class))
+                .thenApply(reply -> addMove(moves, reply)))
             .thenCompose(ignored -> requestStep(
                 "guest PlaceMarkReq(4)",
-                request(guest, new PlaceMarkReq(4), PlaceMarkRes.class)))
+                request(guest, new PlaceMarkReq(4), PlaceMarkRes.class))
+                .thenApply(reply -> addMove(moves, reply)))
             .thenCompose(ignored -> requestStep(
                 "host PlaceMarkReq(1)",
-                request(host, new PlaceMarkReq(1), PlaceMarkRes.class)))
+                request(host, new PlaceMarkReq(1), PlaceMarkRes.class))
+                .thenApply(reply -> addMove(moves, reply)))
             .thenCompose(ignored -> requestStep(
                 "guest PlaceMarkReq(8)",
-                request(guest, new PlaceMarkReq(8), PlaceMarkRes.class)))
+                request(guest, new PlaceMarkReq(8), PlaceMarkRes.class))
+                .thenApply(reply -> addMove(moves, reply)))
             .thenCompose(ignored -> requestStep(
                 "host PlaceMarkReq(2)",
-                request(host, new PlaceMarkReq(2), PlaceMarkRes.class)))
-            .thenApply(TicTacToeClient::resultFromReply)
+                request(host, new PlaceMarkReq(2), PlaceMarkRes.class))
+                .thenApply(reply -> addMove(moves, reply)))
+            .thenCompose(finalMove -> CompletableFuture.supplyAsync(
+                () -> new TicTacToeClientResult(
+                    game,
+                    hostAuth.get(),
+                    guestAuth.get(),
+                    hostJoin.get(),
+                    guestJoin.get(),
+                    List.copyOf(moves),
+                    List.copyOf(stateNotifications),
+                    List.copyOf(playerJoinedNotifications)),
+                CompletableFuture.delayedExecutor(250, TimeUnit.MILLISECONDS)))
             .whenComplete((ignored, error) -> {
+                closeHandlers(handlers);
                 host.close();
                 guest.close();
             });
@@ -108,7 +177,7 @@ public final class TicTacToeClient {
     private static ZLinkStreamConnector playerConnector(String endpoint, String actorId) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(endpoint + "/" + actorId),
-            ZLinkStreamDispatchMode.MANUAL,
+            ZLinkStreamDispatchMode.AUTO,
             Duration.ofSeconds(3),
             2));
     }
@@ -131,13 +200,19 @@ public final class TicTacToeClient {
                 error)));
     }
 
-    private static TicTacToeClientResult resultFromReply(PlaceMarkRes reply) {
-        String winner = reply.state().winner();
-        return new TicTacToeClientResult(
-            winner,
-            winner == null
-                ? java.util.List.of()
-                : java.util.List.of("GameWon:" + winner));
+    private static PlaceMarkRes addMove(List<PlaceMarkRes> moves, PlaceMarkRes reply) {
+        moves.add(reply);
+        return reply;
+    }
+
+    private static void closeHandlers(List<AutoCloseable> handlers) {
+        for (AutoCloseable handler : handlers) {
+            try {
+                handler.close();
+            } catch (Exception ignored) {
+                // Best-effort cleanup for sample event subscriptions.
+            }
+        }
     }
 
 }

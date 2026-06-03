@@ -8,6 +8,8 @@ import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.play.actors.PlayActor;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameRes;
+import systems.zlink.samples.tictactoe.shared.contracts.TicTacToeGameJoinReq;
+import systems.zlink.samples.tictactoe.shared.contracts.TicTacToeGameJoinRes;
 
 @ZLinkHandlerGroup(SampleNames.PlayActor)
 public final class PlayActorJoinGameHandler {
@@ -16,11 +18,12 @@ public final class PlayActorJoinGameHandler {
         PlayActor actor,
         JoinGameReq request) {
         return actor.context()
-            .joinSpot(RoutingId.fromHex(request.gameId()), request)
-            .submitAsync(JoinGameRes.class)
+            .joinSpot(RoutingId.fromHex(request.gameId()),
+                new TicTacToeGameJoinReq(request.gameId(), actor.actorId()))
+            .submitAsync(TicTacToeGameJoinRes.class)
             .thenApply(result -> {
                 actor.joinGame(request.gameId());
-                return result.reply();
+                return new JoinGameRes(result.reply().state());
             });
     }
 }

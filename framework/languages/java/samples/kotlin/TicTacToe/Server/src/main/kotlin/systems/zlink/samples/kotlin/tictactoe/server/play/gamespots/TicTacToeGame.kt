@@ -6,8 +6,8 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.GameState
-import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkRes
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinRes
 
 class TicTacToeGame(
     private val context: ZLinkSpotContext,
@@ -26,7 +26,7 @@ class TicTacToeGame(
     override fun onCreateAsync(createParts: MutableList<Message>): CompletionStage<Void> =
         CompletableFuture.completedFuture(null)
 
-    fun join(actorId: String): JoinGameRes {
+    fun join(actorId: String): TicTacToeGameJoinRes {
         if (players.none { it.actorId == actorId }) {
             val mark = if (players.isEmpty()) "X" else "O"
             players += PlayerSlot(actorId, mark)
@@ -35,7 +35,7 @@ class TicTacToeGame(
         if (players.size == 2 && status == "WaitingForPlayers") {
             status = "InProgress"
         }
-        return JoinGameRes(snapshot())
+        return TicTacToeGameJoinRes(snapshot())
     }
 
     fun placeMark(actorId: String, cell: Int): PlaceMarkRes {

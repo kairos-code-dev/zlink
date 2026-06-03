@@ -1,28 +1,49 @@
 package systems.zlink.samples.tictactoe.server.api;
 
-import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Bean;
+import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
+import systems.zlink.samples.tictactoe.server.api.handlers.AuthenticatePlayerHandler;
+import systems.zlink.samples.tictactoe.server.api.handlers.CreateGameHttpHandler;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 
-public final class ApiServer {
-    private ApiServer() {
+@SpringBootApplication(
+    proxyBeanMethods = false,
+    scanBasePackageClasses = {
+        ApiServer.class,
+        AuthenticatePlayerHandler.class,
+        CreateGameHttpHandler.class
+    })
+public class ApiServer {
+    public static ConfigurableApplicationContext start(SampleSettings settings) {
+        return new SpringApplicationBuilder(ApiServer.class)
+            .web(WebApplicationType.SERVLET)
+            .properties(
+                "server.address=127.0.0.1",
+                "server.port=" + settings.apiHttpPort())
+            .initializers(context ->
+                context.getBeanFactory().registerSingleton("sampleSettings", settings))
+            .run();
     }
 
-    public static void configure(ZLinkFrameworkOptions options) {
-        configure(options, SampleSettings.current());
-    }
-
-    public static void configure(ZLinkFrameworkOptions options, SampleSettings settings) {
-        SampleLogging.configure(settings, "api");
-        options.codecs().addJson();
-        options.addHandlersFromPackageOf(ApiServer.class);
-        options.addClientServerChannel(SampleNames.ApiChannel, channel -> {
-            channel.enableServer(server -> server.bind(settings.apiChannelEndpoint()));
-            channel.addHandlerGroup("api");
-        });
-        options.addClientServerChannel(SampleNames.PlayChannel, channel ->
-            channel.enableClient(client -> client.useManualConnections(
-                endpoints -> endpoints.connect(settings.playChannelEndpoint()))));
+    @Bean
+    ZLinkFrameworkOptionsCustomizer apiOptions(SampleSettings settings) {
+        return options -> {
+            SampleLogging.configure(settings, "api");
+            options.codecs().addJson();
+            options.addHandlersFromPackageOf(ApiServer.class);
+            options.addClientServerChannel(SampleNames.ApiChannel, channel -> {
+                channel.enableServer(server -> server.bind(settings.apiChannelEndpoint()));
+                channel.addHandlerGroup("api");
+            });
+            options.addClientServerChannel(SampleNames.PlayChannel, channel ->
+                channel.enableClient(client -> client.useManualConnections(
+                    endpoints -> endpoints.connect(settings.playChannelEndpoint()))));
+        };
     }
 }

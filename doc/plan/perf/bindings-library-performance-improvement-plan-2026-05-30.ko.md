@@ -32,7 +32,7 @@
 | 4 | Node | `bindings/node/perf` | `미달 6/144 (4.2%)` | `미달 21/156 (13.5%)` | Multi가 10% gate를 초과하지만, fastpath 변경, single routed 단일 payload native 수신, `sendToSpot` DontWait result-code 경로, `MULTI_PUBSUB` 단일 payload 내부 수신 경로를 적용했고, 추가 public contract-safe 후보는 log에 기각 근거를 남겼다. 평균 성능 비율을 계산한 뒤 다음 언어로 넘어간다. |
 | 5 | Go | `bindings/go/perf` | `미달 6/144 (4.2%)` | `미달 20/192 (10.4%)` | `MULTI_SPOT_REQREP tcp 4096B`는 request message 누수 수정으로 통과했고, 같은 complete 검증에서 `ws 131072B`도 통과로 회복했다. 잔여 routed echo, one-way 64B, builder hot path 후보를 추가로 시험했지만 새 통과를 만들지 못해 Go는 추가 후보 소진으로 정리하고 Rust로 넘어간다. |
 | 6 | Rust | `bindings/rust/perf` | `미달 25/144 (17.4%)` | `미달 11/192 (5.7%)` | Single 공통 송신 loop를 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿔 `PUBSUB wss 64B`를 통과로 올렸다. 이후 table transport full 확인에서 routed 대용량과 `SPOT tcp/ws/tls 1024B`는 기준에 못 닿았고, public recv envelope를 우회하지 않는 추가 후보는 log에 기각 근거를 남겼다. |
-| 7 | Python | `bindings/python/perf` | `미측정` | `미측정` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. `PAIR tcp 64B` public API probe는 C 대비 23.5%로 one-way 최소 기준 30%에 못 닿았다. 아래 Python 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, public Python API 경로로 다시 측정해야 한다. |
+| 7 | Python | `bindings/python/perf` | `미달` | `미측정` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. public Python API 경로의 single tcp/64 complete 재측정에서 `PAIR`, `DEALER_DEALER`는 기준을 넘겼지만 `PUBSUB`, routed, `SPOT`은 아직 미달한다. 아래 Python full 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, public Python API 경로로 다시 측정해야 한다. |
 
 ### 1.1 언어별 평균 성능
 
@@ -949,6 +949,43 @@ callback guard에 전역 active count fast path를 둔 후보도
 단일 PUBSUB 실행은 좋아졌지만, 확인 측정
 `perf_python_single_linux_20260603_123304_py_callback_active_count_pubsub_confirm_tcp64_5s.txt`의
 3회 중앙값이 315,392.0 msg/s로 현재 retained 수치와 큰 차이가 없어 제거했다.
+
+추가 재시도에서는 routing id가 이미 immutable `bytes`인 경우 `_validated_routing_id_bytes(...)`가
+native 구조체를 거쳐 다시 복사하지 않도록 fast path를 두었다. 이 변경은
+`router.send(b"SERVER")` 같은 public routed builder 표면을 그대로 유지하면서
+`ROUTER_ROUTER tcp 64B`를
+`perf_python_single_linux_20260603_123611_py_routing_id_bytes_fastpath_tcp64_5s.txt`의
+약 230K msg/s까지 올렸다. SPOT subscribe native bridge는 `DONTWAIT`의 `NO_DATA`
+결과를 C enum 값과 Python enum 값 모두에서 `False` sentinel로 돌려보내도록 맞췄고,
+public `subscribe_into(...)`는 기존처럼 `False`/`None` 의미를 유지한다. SPOT publish/subscribe
+hot path는 bridge wrapper를 거치지 않고 캐시한 extension 함수를 직접 호출하게 했으며,
+SPOT `SendOp`는 단일 payload를 list로 만들지 않고 보관한다. SPOT active perf sender도
+public `spot.publish(topic).message(payload).flags(...).submit()` 체인을 그대로 쓰되,
+성공 경로의 wrapper 호출을 줄이고 `NOT_CONNECTED` transient를 C runner처럼 재시도한다.
+
+routed send는 이전 probe에서 thread 예외가 나던 원인이 perf loop가 `NOT_CONNECTED`
+transient를 잡지 못한 데 있었다. 이번에는 public 계약 테스트가 요구하는
+`SubmitResult.NOT_CONNECTED` 예외 의미를 유지한 채 native `RoutedSendOp` builder를
+추가하고, perf active loop와 stop-token loop만 C `perf_router_router.cpp`처럼
+`BACKPRESSURED`와 `NOT_CONNECTED`를 transient로 재시도하게 했다. 이 변경 뒤 complete report
+`perf_python_single_linux_20260603_130451_py_retry_current_native_routed_tcp64_5s.txt`는
+status=complete(90/90)였다. 같은 C 기준
+`perf_c_single_linux_20260603_120459_py_current_single_tcp64_all_c_baseline.txt` 대비
+median 비율은 `PAIR` 33.1%, `PUBSUB` 28.3%, `DEALER_DEALER` 33.6%,
+`DEALER_ROUTER` 23.8%, `ROUTER_ROUTER` 24.8%, `SPOT` 27.3%다. 따라서
+`PAIR`와 `DEALER_DEALER`는 one-way 30% 기준을 넘겼고, `PUBSUB`는 30% 기준에
+아직 못 닿았다. routed one-way와 `SPOT`은 28% 기준에 못 닿았지만, `ROUTER_ROUTER`는
+native routed builder 적용 전 12.0~17.4% 구간에서 24.8%까지 올라갔고, `SPOT`은
+27.3%로 기준에 근접했다.
+
+native routed submit에서 `DONTWAIT`일 때 GIL을 유지하는 후보는 같은 public builder
+표면을 유지했지만 `ROUTER_ROUTER tcp 64B`가 313K/273K/205K msg/s로 흔들리고 stop
+token에서 `NOT_CONNECTED` transient가 재현되어 제거했다. native SPOT publish builder를
+별도 C builder로 만드는 후보도 `perf_python_single_linux_20260603_124914_py_spot_native_publish_builder_tcp64_5s.txt`에서
+SPOT median 59,496.4 msg/s로 회귀해 제거했다. public `PUBSUB` sender wrapper를
+인라인한 후보는 `perf_python_single_linux_20260603_125150_py_pubsub_inline_public_retry_tcp64_5s.txt`에서
+326,671.6 msg/s 중앙값을 기록했지만 최종 complete report의 변동 범위와 큰 차이가
+없어, 통과 근거가 아니라 public chain 유지 상태의 소폭 정리로만 남긴다.
 
 public contract 복구 뒤 Python multi smoke에서 `MULTI_SPOT_REQREP tcp 64B`가
 client timeout으로 반복 partial이 됐다. server dispatch가 owner-backed part의

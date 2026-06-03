@@ -8,6 +8,8 @@ import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.play.actors.PlayActor
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameRes
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinReq
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinRes
 
 @ZLinkHandlerGroup(SampleNames.PlayActor)
 class PlayActorJoinGameHandler {
@@ -17,10 +19,10 @@ class PlayActorJoinGameHandler {
         request: JoinGameReq,
     ): CompletionStage<JoinGameRes> =
         actor.context()
-            .joinSpot(RoutingId.fromHex(request.gameId), request)
-            .submitAsync(JoinGameRes::class.java)
+            .joinSpot(RoutingId.fromHex(request.gameId), TicTacToeGameJoinReq(request.gameId, actor.actorId()))
+            .submitAsync(TicTacToeGameJoinRes::class.java)
             .thenApply { result ->
                 actor.joinGame(request.gameId)
-                result.reply()
+                JoinGameRes(result.reply().state)
             }
 }

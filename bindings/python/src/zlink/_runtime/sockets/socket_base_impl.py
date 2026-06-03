@@ -124,10 +124,20 @@ def _native_socket_send_op(socket):
 def _native_routed_send_op(socket, routing_id):
     if _native_routed_send_op_func is None:
         return None
+    if isinstance(routing_id, bytes):
+        routing_id_bytes = routing_id
+    else:
+        routing_id_bytes = _validated_routing_id_bytes(routing_id)
     return _native_routed_send_op_func(
         int(socket._socket_handle.handle),
-        _validated_routing_id_bytes(routing_id),
+        routing_id_bytes,
     )
+
+
+def _native_publisher_send_op(socket, topic):
+    if _native_publisher_send_op_func is None:
+        return None
+    return _native_publisher_send_op_func(int(socket._socket_handle.handle), topic)
 
 
 class _SocketSendOp:
@@ -1100,10 +1110,9 @@ class PubSocket(
         return create_pub_socket_options(self)
 
     def publish(self, topic):
-        if _native_publisher_send_op_func is not None:
-            return _native_publisher_send_op_func(
-                int(self._socket_handle.handle), topic
-            )
+        native = _native_publisher_send_op(self, topic)
+        if native is not None:
+            return native
         return _PublisherSendOp(self, topic)
 
 
@@ -1129,10 +1138,9 @@ class XPubSocket(
         return create_pub_socket_options(self)
 
     def publish(self, topic):
-        if _native_publisher_send_op_func is not None:
-            return _native_publisher_send_op_func(
-                int(self._socket_handle.handle), topic
-            )
+        native = _native_publisher_send_op(self, topic)
+        if native is not None:
+            return native
         return _PublisherSendOp(self, topic)
 
     def _subscription_event(self, flags):

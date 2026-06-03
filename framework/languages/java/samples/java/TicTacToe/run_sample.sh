@@ -13,7 +13,7 @@ trap cleanup EXIT
 
 wait_port() {
   local port="$1"
-  local deadline=$((SECONDS + 15))
+  local deadline=$((SECONDS + 45))
   while (( SECONDS < deadline )); do
     if (echo >"/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1; then
       return 0

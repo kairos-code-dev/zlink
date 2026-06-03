@@ -318,8 +318,7 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                     break
                 flags = dont_wait
                 try:
-                    parts = storage.parts
-                    data = parts[-1].data if parts else memoryview(b"")
+                    data = storage._last_part_data()
                     if _native_active_latency_ns is not None:
                         latency_ns = _native_active_latency_ns(
                             data,

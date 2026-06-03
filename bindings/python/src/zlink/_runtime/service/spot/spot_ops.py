@@ -69,6 +69,68 @@ class SendOp:
         return self._op_fn(payload, self._flags)
 
 
+class PublishOp:
+    """Fluent builder for Spot publish operations."""
+    __slots__ = ("_spot", "_topic", "_payload", "_parts", "_flags", "_submitted")
+
+    def __init__(self, spot, topic):
+        self._spot = spot
+        self._topic = topic
+        self._payload = _NO_PAYLOAD
+        self._parts = None
+        self._flags = 0
+        self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if self._parts is not None:
+            self._parts.append(payload)
+        elif self._payload is _NO_PAYLOAD:
+            self._payload = payload
+        else:
+            self._parts = [self._payload, payload]
+            self._payload = _NO_PAYLOAD
+        return self
+
+    def messages(self, *payloads):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if not payloads:
+            return self
+        if self._parts is not None:
+            self._parts.extend(payloads)
+        elif self._payload is _NO_PAYLOAD:
+            if len(payloads) == 1:
+                self._payload = payloads[0]
+            else:
+                self._parts = list(payloads)
+        else:
+            self._parts = [self._payload, *payloads]
+            self._payload = _NO_PAYLOAD
+        return self
+
+    def flags(self, flags):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._flags = int(flags)
+        return self
+
+    def submit(self):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if self._parts is None:
+            if self._payload is _NO_PAYLOAD:
+                raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+            payload = self._payload
+        elif self._parts:
+            payload = self._parts
+        else:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        self._submitted = True
+        return self._spot._publish_submit(self._topic, payload, self._flags)
+
+
 class RequestOp:
     """Fluent builder for Spot request operations (async or callback)."""
     __slots__ = ('_spot', '_op_async_fn', '_op_cb_fn', '_parts', '_timeout', '_submitted')

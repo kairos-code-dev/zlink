@@ -117,6 +117,7 @@ from .spot_submit import (
 )
 from .spot_actor_join_runtime import SpotActorJoinMixin
 from .spot_ops import (
+    PublishOp,
     ReplyOp,
     RequestCallbackOp,
     RequestOp,
@@ -283,6 +284,10 @@ def _timeout_to_ms(timeout):
 
 
 def _payload_can_use_native_bridge(payload):
+    if isinstance(payload, (bytes, bytearray)):
+        return True
+    if isinstance(payload, memoryview):
+        return payload.c_contiguous
     parts = payload if isinstance(payload, (list, tuple)) else (payload,)
     if not parts:
         return False
@@ -416,10 +421,7 @@ class Spot(SpotActorJoinMixin):
         return _clone_payload_parts(parts)
 
     def publish(self, topic):
-        return SendOp(
-            self,
-            lambda parts, flags: self._publish_submit(topic, parts, flags),
-        )
+        return PublishOp(self, topic)
 
     def _publish_submit(self, topic, parts, flags=0):
         try:
@@ -1155,6 +1157,7 @@ for _public_type in (
     SpotNodeSocketEntry,
     Actor,
     SpotNode,
+    PublishOp,
     SendOp,
     RequestOp,
     RequestCallbackOp,

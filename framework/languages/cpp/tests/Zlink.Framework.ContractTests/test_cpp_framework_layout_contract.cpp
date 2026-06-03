@@ -237,6 +237,42 @@ draft_readme_role_tables_cover_files (const std::filesystem::path &root)
 }
 
 bool
+implementation_plan_expands_label_wildcards (const std::filesystem::path &root)
+{
+  const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  const auto text = buffer.str ();
+
+  const auto start = text.find ("| wildcard label | concrete label |");
+  const auto end = text.find ("## 8. Goal 실행용 문구");
+  if (start == std::string::npos || end == std::string::npos ||
+      start >= end) {
+    std::cerr << "implementation plan lacks label wildcard expansion table: "
+              << path << '\n';
+    return false;
+  }
+  const auto table = text.substr (start, end - start);
+
+  bool ok = true;
+  const std::string rows[] = {
+    "| `http-client-*` | `http-client-contract`, `http-client-unit`, `http-client-e2e`, `http-client-https`, `http-client-regression` |",
+    "| `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, `connector-contract`, `connector-protocol`, `connector-transport`, `connector-typed` |",
+    "| `unreal-connector-*` | `unreal-connector-contract`, `unreal-connector-compile`, `unreal-connector-smoke` |",
+    "| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-e2e`, `framework-sample-log` |"
+  };
+  for (const auto &row : rows) {
+    if (table.find (row) == std::string::npos) {
+      std::cerr << "implementation plan lacks label wildcard expansion: "
+                << row << '\n';
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+bool
 posd_log_has_current_goal_mapping (const std::filesystem::path &root)
 {
   const auto path =
@@ -1037,6 +1073,7 @@ main ()
     "");
   ok &= draft_tracking_table_matches_files (root);
   ok &= draft_readme_role_tables_cover_files (root);
+  ok &= implementation_plan_expands_label_wildcards (root);
   ok &= posd_log_has_current_goal_mapping (root);
   ok &= cmake_extension_boundaries_hold (root);
 

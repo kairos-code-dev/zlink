@@ -1087,6 +1087,16 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | package/extensions/final audit | Goal 22 | `framework-package`, `framework-extension` |
 | POSD 리팩토링 | Goal 1-22 | POSD 기록, `framework-regression` |
 
+wildcard label은 아래 concrete label 묶음을 뜻한다. CTest 명령을 직접 실행할 때는 필요한
+concrete label을 선택한다.
+
+| wildcard label | concrete label |
+|----------------|----------------|
+| `http-client-*` | `http-client-contract`, `http-client-unit`, `http-client-e2e`, `http-client-https`, `http-client-regression` |
+| `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, `connector-contract`, `connector-protocol`, `connector-transport`, `connector-typed` |
+| `unreal-connector-*` | `unreal-connector-contract`, `unreal-connector-compile`, `unreal-connector-smoke` |
+| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-e2e`, `framework-sample-log` |
+
 ## 8. Goal 실행용 문구
 
 goal을 만들 때는 아래 문구를 objective로 사용할 수 있다.

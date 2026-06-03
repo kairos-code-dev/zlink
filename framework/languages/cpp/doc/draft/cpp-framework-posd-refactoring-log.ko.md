@@ -6364,3 +6364,36 @@ heading 형식으로 남아 있으면 완료 audit의 기준이 흐려진다.
 
 - 새 draft 문서가 생겼는데 README 역할 표에 빠지면 `test_cpp_framework_layout_contract`가
   실패한다.
+
+## 추가 리뷰. Feature axis wildcard label 확장표 보강
+
+### 발견한 위험 신호
+
+- 실행 계획의 기능 축 추적표는 `http-client-*`, `connector-*`, `unreal-connector-*`,
+  `framework-sample-*`처럼 wildcard label을 사용한다.
+- 실제 CTest gate는 concrete label을 검사하지만, plan 안에서 wildcard가 어떤 concrete label을
+  뜻하는지 한곳에 고정하지 않았다.
+- wildcard 의미가 사람 머릿속에만 있으면 label을 추가하거나 이름을 바꿀 때 기능 축 추적표와
+  `test_cpp_framework_label_contract`가 서로 다른 범위를 가리킬 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| wildcard 표현만 유지 | 표가 짧다 | concrete label 범위가 불명확하다 |
+| 기능 축 표에서 wildcard를 모두 concrete label로 펼침 | 한 표만 보면 된다 | 표가 길어져 기능 축을 읽기 어렵다 |
+| 기능 축 표는 유지하고 별도 wildcard 확장표를 둔 뒤 contract로 검사 | 표의 가독성과 exact label 증거를 모두 유지한다 | label 추가 때 확장표도 갱신해야 한다 |
+
+선택은 세 번째 방식이다. 기능 축 표는 큰 범위를 보여 주고, wildcard 확장표는 CTest label
+contract와 같은 concrete label 집합을 보여 주는 역할로 나누는 것이 더 명확하다.
+
+### 적용한 리팩토링
+
+- 실행 계획의 기능 축 추적표 아래에 wildcard label 확장표를 추가했다.
+- layout contract가 `http-client-*`, `connector-*`, `unreal-connector-*`,
+  `framework-sample-*` 확장 행을 검사하게 했다.
+
+### 수정 후 점검
+
+- wildcard label 의미가 plan에서 빠지거나 concrete label 목록과 어긋나면
+  `test_cpp_framework_layout_contract`가 실패한다.

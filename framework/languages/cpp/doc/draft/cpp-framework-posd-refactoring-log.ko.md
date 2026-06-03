@@ -8164,3 +8164,39 @@ public header compile 여부가 아니라 HTTPS request와 TLS verification을 �
 - 남은 `spdlog` 참조는 내부 구현 정책 설명, plan의 금지 기준, POSD 기록, contract test의
   금지 문자열에 한정된다.
 - 이번 보정 뒤 logging backend public dependency 경계의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 22 implementation plan CTest command gate 보강
+
+### 발견한 위험 신호
+
+- implementation plan은 각 goal과 최종 회귀 단계에 CTest 명령을 직접 적는다.
+- 기존 label contract는 required label이 현재 build에서 비어 있지 않은지만 확인했다.
+  하지만 plan에 적힌 `-R` selector나 build directory가 잘못되어도, 해당 명령 전체를
+  자동으로 훑는 gate는 없었다.
+- 이 상태에서는 문서 명령이 실제로는 0개 테스트를 선택하는데도 label taxonomy만 통과할 수
+  있다. 검증 지식이 문서와 수동 스크립트에 나뉘어 있는 정보 은닉 위반이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 수동 스크립트만 유지 | 구현 변경이 없다 | plan 명령 drift가 회귀 테스트에 남지 않는다 |
+| 모든 plan 명령을 별도 테스트 executable로 실행 | 표현력이 높다 | CTest 호출을 다시 구현해야 한다 |
+| label contract CMake script가 plan의 CTest 명령을 `ctest -N`으로 스캔 | 기존 label gate와 책임이 같다 | 외부 build dir이 없을 때 skip 기준이 필요하다 |
+
+선택은 세 번째 방식이다. plan 검증 명령은 CTest label/selectors의 계약이므로 기존
+`test_cpp_framework_label_contract` 안에서 함께 검사한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_label_contract`에 framework source dir을 전달하게 했다.
+- label contract script가 `cpp-framework-implementation-plan.ko.md`의 `ctest --test-dir`
+  명령을 읽고, 현재 framework build 명령은 현재 build dir으로 `ctest -N` 스캔한다.
+- coverage build 명령은 coverage label contract에서 현재 build dir으로 스캔하고, 외부
+  `bindings/cpp/build`처럼 현재 configure 범위 밖의 build dir은 존재할 때만 스캔한다.
+
+### 수정 후 점검
+
+- plan에 적힌 CTest 명령이 현재 build tree에서 0개 테스트를 선택하면
+  `test_cpp_framework_label_contract`가 실패한다.
+- 이번 보정 뒤 implementation plan CTest command drift의 즉시 수정 이슈는 0개다.

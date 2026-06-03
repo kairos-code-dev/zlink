@@ -1,6 +1,9 @@
 if(NOT DEFINED ZLINK_FRAMEWORK_CPP_BUILD_DIR)
   message(FATAL_ERROR "ZLINK_FRAMEWORK_CPP_BUILD_DIR is required")
 endif()
+if(NOT DEFINED ZLINK_FRAMEWORK_CPP_SOURCE_DIR)
+  message(FATAL_ERROR "ZLINK_FRAMEWORK_CPP_SOURCE_DIR is required")
+endif()
 
 set(required_labels
   framework-contract
@@ -154,3 +157,59 @@ if(http_client_https_output MATCHES "test_cpp_framework_contract_headers")
   message(FATAL_ERROR
     "http-client-https must not be satisfied by public header compile smoke")
 endif()
+
+get_filename_component(zlink_repo_root
+  "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/../../.." ABSOLUTE)
+set(implementation_plan
+  "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/doc/draft/cpp-framework-implementation-plan.ko.md")
+file(STRINGS "${implementation_plan}" plan_ctest_commands
+  REGEX "^ctest --test-dir ")
+foreach(plan_command IN LISTS plan_ctest_commands)
+  if(NOT plan_command MATCHES "^ctest --test-dir ([^ ]+)(.*)$")
+    message(FATAL_ERROR
+      "implementation plan CTest command has unsupported form: ${plan_command}")
+  endif()
+  set(plan_test_dir_rel "${CMAKE_MATCH_1}")
+  set(plan_command_tail "${CMAKE_MATCH_2}")
+
+  set(plan_test_dir "${zlink_repo_root}/${plan_test_dir_rel}")
+  if(plan_test_dir_rel STREQUAL "framework/languages/cpp/build")
+    set(plan_test_dir "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}")
+  elseif(plan_test_dir_rel STREQUAL "framework/languages/cpp/build-coverage")
+    if(ZLINK_FRAMEWORK_CPP_EXPECT_COVERAGE_LABEL)
+      set(plan_test_dir "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}")
+    elseif(NOT EXISTS "${plan_test_dir}")
+      continue()
+    endif()
+  elseif(NOT EXISTS "${plan_test_dir}")
+    continue()
+  endif()
+
+  set(plan_scan_command
+    "${CMAKE_CTEST_COMMAND}" --test-dir "${plan_test_dir}" -N)
+  if(plan_command_tail MATCHES " -L ([^ ]+)")
+    list(APPEND plan_scan_command -L "${CMAKE_MATCH_1}")
+  endif()
+  if(plan_command_tail MATCHES " -R ([^ ]+)")
+    list(APPEND plan_scan_command -R "${CMAKE_MATCH_1}")
+  endif()
+
+  execute_process(
+    COMMAND ${plan_scan_command}
+    RESULT_VARIABLE plan_scan_result
+    OUTPUT_VARIABLE plan_scan_output
+    ERROR_VARIABLE plan_scan_error)
+  if(NOT plan_scan_result EQUAL 0)
+    message(FATAL_ERROR
+      "implementation plan CTest command scan failed: ${plan_command}\n${plan_scan_error}")
+  endif()
+  if(NOT plan_scan_output MATCHES "Total Tests: *([0-9]+)")
+    message(FATAL_ERROR
+      "implementation plan CTest command did not report a test count: ${plan_command}")
+  endif()
+  set(plan_test_count "${CMAKE_MATCH_1}")
+  if(plan_test_count LESS 1)
+    message(FATAL_ERROR
+      "implementation plan CTest command selects no tests: ${plan_command}")
+  endif()
+endforeach()

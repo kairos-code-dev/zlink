@@ -7509,3 +7509,39 @@ exporter, label schema, backend adapter는 extension이 맡을 수 있게 남겨
 
 - typed submit이 coroutine await에서 깨지거나 callback failure result가 누락되면
   `test_cpp_http_client`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 20 Stream Connector coroutine submit 회귀 테스트 보강
+
+### 발견한 위험 신호
+
+- Goal 20은 Stream Connector call object가 callback submit과 coroutine submit을 모두 제공해야
+  한다고 요구한다.
+- 기존 connector 테스트는 `submit().result()`와 callback request/send 경로를 넓게 검증했지만,
+  실제 coroutine 안에서 `co_await send.submit()`와 `co_await request.submit()`를 사용하는
+  public 경로는 직접 고정하지 않았다.
+- 이 상태에서는 connector `task_t` await contract가 깨져도 대부분의 regression이 blocking
+  result 호출로만 통과할 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 `.result()`와 callback 테스트만 유지 | 변경이 없다 | coroutine submit 완료 기준을 간접 증거에 의존한다 |
+| connector task 구현을 framework `task_t`로 합친다 | coroutine 모델이 하나로 줄어든다 | connector 독립 산출물 경계와 public task contract를 크게 흔든다 |
+| 기존 loopback stream socket 위에 send/request coroutine helper를 추가 | public coroutine 경로를 좁게 고정한다 | 내부 scheduler까지 검증하지는 않는다 |
+
+선택은 세 번째 방식이다. Goal 20의 요구는 connector public call object가 coroutine 문법으로도
+같은 packet API를 제공하는 것이므로, 기존 transport regression 안에 실제 `co_await` 호출을
+넣는 것이 가장 작은 증거 보강이다.
+
+### 적용한 리팩토링
+
+- `test_cpp_stream_connector`에 `co_await connector.send(...).submit()` helper와
+  `co_await connector.request<T>(...).submit()` helper를 추가했다.
+- loopback stream socket이 coroutine send와 request frame을 모두 수신하고 request reply를
+  반환하는지 검증했다.
+
+### 수정 후 점검
+
+- Stream Connector send/request submit await 경로가 깨지면 `test_cpp_stream_connector`가
+  실패한다.

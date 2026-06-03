@@ -61,6 +61,25 @@ from_json (const nlohmann::json &json, auto_payload_t &payload)
   payload.text = json.at ("text").get<std::string> ();
 }
 
+zlink::stream_connector::task_t<void>
+send_with_coroutine_submit (zlink::stream_connector::connector_t &connector)
+{
+  co_await connector.send (login_request_t {})
+    .packet_name ("coroutine.send")
+    .submit ();
+}
+
+zlink::stream_connector::task_t<login_reply_t>
+request_with_coroutine_submit (
+  zlink::stream_connector::connector_t &connector)
+{
+  auto reply = co_await connector.request<login_reply_t> (login_request_t {})
+                 .packet_name ("coroutine.request")
+                 .timeout (std::chrono::milliseconds (100))
+                 .submit ();
+  co_return reply;
+}
+
 struct server_frame_t
 {
   zlink::stream_connector::detail::stream_header_t header;
@@ -746,6 +765,71 @@ main ()
     return 63;
   }
   callback_timeout_connector.close ().result ();
+
+  zlink::stream_socket_t coroutine_server (context);
+  coroutine_server.options ().notify (false);
+  coroutine_server.bind ("tcp://127.0.0.1:0");
+  const auto coroutine_endpoint =
+    coroutine_server.options ().last_endpoint ();
+  std::atomic_bool coroutine_send_seen { false };
+  std::atomic_bool coroutine_request_seen { false };
+  std::thread coroutine_thread (
+    [&coroutine_server,
+     &coroutine_send_seen,
+     &coroutine_request_seen] {
+      std::string buffer;
+      while (!coroutine_send_seen || !coroutine_request_seen) {
+        zlink::received_t inbound;
+        if (coroutine_server.recv (inbound) != 0) {
+          return;
+        }
+        buffer += inbound.parts ().empty () ? std::string {}
+                                            : inbound.parts ()[0].to_string ();
+        while (auto frame = try_read_server_frame (buffer)) {
+          if (frame->header.kind ==
+                zlink::stream_connector::message_kind_t::send &&
+              frame->header.name == "coroutine.send") {
+            coroutine_send_seen = true;
+          }
+          if (frame->header.kind ==
+                zlink::stream_connector::message_kind_t::request &&
+              frame->header.name == "coroutine.request") {
+            coroutine_request_seen = true;
+            auto reply = make_server_frame (
+              zlink::stream_connector::message_kind_t::response,
+              frame->header.request_seq.value (),
+              "reply",
+              "ok");
+            inbound.send ().message (reply).submit ();
+          }
+        }
+        inbound.close ();
+      }
+    });
+  zlink::stream_connector::connector_options_t coroutine_options;
+  coroutine_options.endpoint = coroutine_endpoint;
+  auto coroutine_connector =
+    zlink::stream_connector::connector_factory_t::create (
+      coroutine_options);
+  if (!coroutine_connector.connect ().result ()) {
+    return 73;
+  }
+  auto coroutine_send = send_with_coroutine_submit (
+                          coroutine_connector)
+                          .result ();
+  if (!coroutine_send) {
+    return 74;
+  }
+  auto coroutine_request = request_with_coroutine_submit (
+                             coroutine_connector)
+                             .result ();
+  coroutine_thread.join ();
+  if (!coroutine_request ||
+      !coroutine_send_seen ||
+      !coroutine_request_seen) {
+    return 75;
+  }
+  coroutine_connector.close ().result ();
 
   boost::asio::io_context partial_io;
   boost::asio::ip::tcp::acceptor partial_acceptor (

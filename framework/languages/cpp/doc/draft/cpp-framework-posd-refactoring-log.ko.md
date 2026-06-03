@@ -5317,11 +5317,13 @@ hook보다 실제 transport를 통과한 packet으로 검증해야 한다.
   두 packet을 순서대로 꺼내는 loopback 검증을 추가했다.
 - close 이후 request callback이 `disconnected` 오류를 받는지 확인해 task/callback 오류
   의미를 같은 회귀 테스트에 묶었다.
+- request callback response와 timeout도 별도 loopback 서버로 검증해 공통 초안의
+  request callback 완료 기준을 직접 증명하게 했다.
 
 ### 재점검
 
 - explicit receive 계약은 public API와 실제 STREAM frame read 경로로 검증된다.
-- callback request close 실패는 callback submit 경로에서 직접 검증된다.
+- callback request response, timeout, close는 callback submit 경로에서 직접 검증된다.
 - public header는 public 시그니처에 필요한 표준 header를 직접 include한다.
 
 ## 추가 리뷰. HTTP Client 문서 탐색 표면 보정

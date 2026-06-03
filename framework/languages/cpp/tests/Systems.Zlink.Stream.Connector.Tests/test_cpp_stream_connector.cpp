@@ -637,6 +637,90 @@ main ()
   }
   timeout_connector.close ().result ();
 
+  zlink::stream_socket_t callback_response_server (context);
+  callback_response_server.options ().notify (false);
+  callback_response_server.bind ("tcp://127.0.0.1:0");
+  const auto callback_response_endpoint =
+    callback_response_server.options ().last_endpoint ();
+  std::thread callback_response_thread ([&callback_response_server] {
+    zlink::received_t inbound;
+    if (callback_response_server.recv (inbound) != 0) {
+      return;
+    }
+    std::string buffer = inbound.parts ().empty ()
+                           ? std::string {}
+                           : inbound.parts ()[0].to_string ();
+    if (auto frame = try_read_server_frame (buffer)) {
+      auto reply = make_server_frame (
+        zlink::stream_connector::message_kind_t::response,
+        frame->header.request_seq.value (),
+        "reply",
+        "ok");
+      inbound.send ().message (reply).submit ();
+    }
+    inbound.close ();
+  });
+  zlink::stream_connector::connector_options_t callback_response_options;
+  callback_response_options.endpoint = callback_response_endpoint;
+  auto callback_response_connector =
+    zlink::stream_connector::connector_factory_t::create (
+      callback_response_options);
+  if (!callback_response_connector.connect ().result ()) {
+    return 51;
+  }
+  bool request_callback_response_seen = false;
+  callback_response_connector.request<login_reply_t> (login_request_t {})
+    .packet_name ("callback.response.request")
+    .timeout (std::chrono::milliseconds (100))
+    .submit ([&](zlink::stream_connector::result_t<login_reply_t> result) {
+      request_callback_response_seen = static_cast<bool> (result);
+    });
+  callback_response_thread.join ();
+  if (!request_callback_response_seen) {
+    return 52;
+  }
+  callback_response_connector.close ().result ();
+
+  zlink::stream_socket_t callback_timeout_server (context);
+  callback_timeout_server.options ().notify (false);
+  callback_timeout_server.bind ("tcp://127.0.0.1:0");
+  const auto callback_timeout_endpoint =
+    callback_timeout_server.options ().last_endpoint ();
+  std::atomic_bool callback_timeout_request_seen { false };
+  std::thread callback_timeout_thread (
+    [&callback_timeout_server, &callback_timeout_request_seen] {
+      zlink::received_t inbound;
+      if (callback_timeout_server.recv (inbound) != 0) {
+        return;
+      }
+      callback_timeout_request_seen = true;
+      inbound.close ();
+    });
+  zlink::stream_connector::connector_options_t callback_timeout_options;
+  callback_timeout_options.endpoint = callback_timeout_endpoint;
+  callback_timeout_options.request_timeout = std::chrono::milliseconds (5);
+  auto callback_timeout_connector =
+    zlink::stream_connector::connector_factory_t::create (
+      callback_timeout_options);
+  if (!callback_timeout_connector.connect ().result ()) {
+    return 53;
+  }
+  bool request_callback_timeout_seen = false;
+  callback_timeout_connector.request<login_reply_t> (login_request_t {})
+    .packet_name ("callback.timeout.request")
+    .timeout (std::chrono::milliseconds (5))
+    .submit ([&](zlink::stream_connector::result_t<login_reply_t> result) {
+      request_callback_timeout_seen =
+        !result &&
+        result.error_code () ==
+          zlink::stream_connector::error_code_t::request_timeout;
+    });
+  callback_timeout_thread.join ();
+  if (!request_callback_timeout_seen || !callback_timeout_request_seen) {
+    return 54;
+  }
+  callback_timeout_connector.close ().result ();
+
   zlink::stream_socket_t heartbeat_server (context);
   heartbeat_server.options ().notify (false);
   heartbeat_server.bind ("tcp://127.0.0.1:0");

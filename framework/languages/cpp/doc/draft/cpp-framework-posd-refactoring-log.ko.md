@@ -6463,3 +6463,36 @@ non-empty contract로 고정하는 편이 오해가 적다.
 
 - 새 wildcard prefix label이 추가됐는데 label contract와 plan 확장표를 갱신하지 않으면
   `test_cpp_framework_label_contract`가 실패한다.
+
+## 추가 리뷰. Unreal public header runtime include gate 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 Unreal connector public header도 runtime implementation header를 include하지
+  않아야 한다고 적는다.
+- 기존 `public_headers_do_not_include_runtime` 검사는 `.hpp`만 순회했기 때문에 Unreal public
+  header인 `ZLinkStreamConnector.h`를 일반 runtime include 검사에서 놓쳤다.
+- 별도 문자열 검사로 일부 connector include는 막고 있었지만, Unreal `Private/` 구현 header를
+  public header에서 include하는 회귀는 일반 규칙으로 잡지 못했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| Unreal 전용 금지 문자열만 계속 추가 | 변경 범위가 작다 | public header 공통 규칙과 중복된다 |
+| Unreal public header를 `.hpp`로 바꿈 | 기존 검사에 들어온다 | Unreal 관례와 generated header 흐름에 맞지 않는다 |
+| public header runtime include 검사를 `.h`까지 확장하고 Unreal Public에도 적용 | Goal 22 문구와 검사 범위가 일치한다 | 검사 함수가 Unreal `Private/` 경로도 알아야 한다 |
+
+선택은 세 번째 방식이다. public header 경계는 framework/connector/http-client/Unreal 모두에
+공통으로 적용되는 규칙이므로, 파일 확장자 차이 때문에 검사 범위가 갈라지면 안 된다.
+
+### 적용한 리팩토링
+
+- `public_headers_do_not_include_runtime`가 `.hpp`와 `.h`를 모두 검사하게 했다.
+- runtime include 금지 패턴에 `Private/` 구현 경로를 추가했다.
+- Unreal connector `Public` 디렉터리에도 같은 검사를 적용했다.
+
+### 수정 후 점검
+
+- Unreal public header가 `Private/` 구현이나 `src/runtime` 구현을 include하면
+  `test_cpp_framework_layout_contract`가 실패한다.

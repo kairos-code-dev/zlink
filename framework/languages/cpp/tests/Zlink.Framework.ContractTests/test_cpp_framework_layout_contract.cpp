@@ -40,7 +40,11 @@ public_headers_do_not_include_runtime (const std::filesystem::path &root)
   bool ok = true;
   for (const auto &entry :
        std::filesystem::recursive_directory_iterator (root)) {
-    if (!entry.is_regular_file () || entry.path ().extension () != ".hpp") {
+    if (!entry.is_regular_file ()) {
+      continue;
+    }
+    const auto ext = entry.path ().extension ();
+    if (ext != ".hpp" && ext != ".h") {
       continue;
     }
 
@@ -49,7 +53,9 @@ public_headers_do_not_include_runtime (const std::filesystem::path &root)
     std::size_t line_no = 0;
     while (std::getline (input, line)) {
       ++line_no;
-      if (line.find ("src/runtime") != std::string::npos) {
+      if (line.find ("src/runtime") != std::string::npos ||
+          line.find ("/Private/") != std::string::npos ||
+          line.find ("Private/") != std::string::npos) {
         std::cerr << "public header references runtime implementation: "
                   << entry.path () << ':' << line_no << '\n';
         ok = false;
@@ -1049,6 +1055,8 @@ main ()
     root / "connector/include");
   ok &= public_headers_do_not_include_runtime (
     root / "http-client/include");
+  ok &= public_headers_do_not_include_runtime (
+    root / "unreal-connector/Source/ZLinkStreamConnector/Public");
   ok &= public_headers_do_not_expose_runtime_dependencies (
     root / "framework/include");
   ok &= public_headers_do_not_expose_runtime_dependencies (

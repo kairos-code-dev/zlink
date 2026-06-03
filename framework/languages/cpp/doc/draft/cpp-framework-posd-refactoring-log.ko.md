@@ -5744,6 +5744,41 @@ drift를 기존 contract/regression label에서 바로 잡을 수 있다.
 
 - Goal 검증 label이 비면 `test_cpp_framework_label_contract`가 실패한다.
 
+## 추가 리뷰. Core framework extension dependency boundary gate 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 core framework target이 Kafka, gRPC, YAML, FlatBuffers dependency를 기본으로
+  끌고 오지 않아야 한다고 적는다.
+- extension unit test는 extension descriptor와 API shape를 확인하지만, `zlink_framework`
+  target이 실수로 extension target이나 외부 package를 링크하는 회귀는 CMake 파일 기준으로
+  직접 검사하지 않았다.
+- dependency boundary가 CMake에만 숨어 있으면 public header 검사는 통과해도 build graph가
+  무거워질 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| extension unit test만 유지 | 기존 동작을 유지한다 | core target 링크 누출을 직접 잡지 못한다 |
+| CMake graph를 외부 도구로 출력해 검사 | 더 일반적이다 | 환경 의존성과 출력 파싱이 커진다 |
+| layout contract가 CMake target/link/package 문자열을 검사 | 빠르고 현재 boundary를 직접 고정한다 | CMake 구조가 크게 바뀌면 검사도 갱신해야 한다 |
+
+선택은 세 번째 방식이다. 현재 extension boundary는 CMake target taxonomy로 표현되므로,
+layout contract에서 target 수와 core link 금지 규칙을 같이 확인하는 것이 가장 직접적이다.
+
+### 적용한 리팩토링
+
+- layout contract가 framework extension target 등록 수를 11개로 검사하게 했다.
+- extension target helper가 core framework에만 의존하는지 확인하게 했다.
+- `zlink_framework` target이 extension target이나 Kafka/gRPC/YAML/FlatBuffers package를
+  기본 링크/탐색하지 않는지 검사하게 했다.
+
+### 수정 후 점검
+
+- core framework target dependency boundary가 깨지면 `test_cpp_framework_layout_contract`가
+  실패한다.
+
 ## 추가 리뷰. Public facade compile coverage와 native leakage gate 보강
 
 ### 발견한 위험 신호

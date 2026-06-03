@@ -201,6 +201,58 @@ posd_log_has_current_goal_mapping (const std::filesystem::path &root)
 }
 
 bool
+cmake_extension_boundaries_hold (const std::filesystem::path &root)
+{
+  const auto path = root / "CMakeLists.txt";
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  const auto text = buffer.str ();
+
+  bool ok = true;
+  const auto extension_count =
+    count_occurrences (text, "add_zlink_framework_extension(");
+  if (extension_count != 11) {
+    std::cerr << "expected 11 framework extension targets, got "
+              << extension_count << ": " << path << '\n';
+    ok = false;
+  }
+  if (text.find ("target_link_libraries(${target_name} INTERFACE zlink::framework)") ==
+      std::string::npos) {
+    std::cerr << "framework extension helper must depend on core only: "
+              << path << '\n';
+    ok = false;
+  }
+
+  const std::string forbidden[] = {
+    "target_link_libraries(zlink_framework PUBLIC zlink::framework_extension_",
+    "target_link_libraries(zlink_framework PRIVATE zlink::framework_extension_",
+    "target_link_libraries(zlink_framework PUBLIC Kafka",
+    "target_link_libraries(zlink_framework PRIVATE Kafka",
+    "target_link_libraries(zlink_framework PUBLIC gRPC",
+    "target_link_libraries(zlink_framework PRIVATE gRPC",
+    "target_link_libraries(zlink_framework PUBLIC yaml",
+    "target_link_libraries(zlink_framework PRIVATE yaml",
+    "target_link_libraries(zlink_framework PUBLIC FlatBuffers",
+    "target_link_libraries(zlink_framework PRIVATE FlatBuffers",
+    "find_package(Kafka",
+    "find_package(gRPC",
+    "find_package(yaml",
+    "find_package(YAML",
+    "find_package(FlatBuffers"
+  };
+  for (const auto &needle : forbidden) {
+    if (text.find (needle) != std::string::npos) {
+      std::cerr << "core framework target must not depend on extension "
+                   "package/target by default: "
+                << needle << '\n';
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+bool
 contract_headers_have_compile_coverage (const std::filesystem::path &root,
                                         const std::filesystem::path &include_dir,
                                         const std::string &include_prefix)
@@ -880,6 +932,7 @@ main ()
     "http-client/include",
     "");
   ok &= posd_log_has_current_goal_mapping (root);
+  ok &= cmake_extension_boundaries_hold (root);
 
   return ok ? 0 : 1;
 }

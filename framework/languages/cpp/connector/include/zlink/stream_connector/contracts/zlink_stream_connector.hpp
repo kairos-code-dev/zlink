@@ -6,6 +6,7 @@
 #include <zlink/stream_connector/contracts/stream_payload.hpp>
 #include <zlink/stream_connector/contracts/zlink_stream_connector_options.hpp>
 
+#include <chrono>
 #include <functional>
 #include <cstddef>
 #include <memory>

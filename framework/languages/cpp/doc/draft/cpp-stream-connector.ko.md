@@ -277,6 +277,8 @@ public:
     void on(std::string packet_name,
       std::function<void(const TMessage &)> callback);
 
+    task_t<packet_t> receive();
+    task_t<packet_t> receive(std::chrono::milliseconds timeout);
     task_t<void> dispatch();
 };
 
@@ -314,6 +316,12 @@ connector.codecs()
 `dispatch()`를 호출할 때 등록 callback을 실행한다. 게임 client나 UI runtime에서 frame
 loop와 명확히 맞추기 쉽기 때문이다.
 
+callback을 등록하지 않고 직접 다음 packet을 꺼내야 하는 client는 `receive()`를 호출한다.
+이 API는 manual dispatch queue와 같은 수신 queue에서 다음 application packet을 하나
+반환한다. timeout을 넘기면 `request_timeout` 오류가 반환되고, 연결이 닫혀 있으면
+`disconnected` 오류가 반환된다. callback dispatch와 explicit receive를 같은 connector에서
+섞어 쓰면 먼저 호출된 쪽이 packet을 소비한다.
+
 immediate mode도 제공한다. 이 모드에서는 connector가 내부 수신 흐름에서 callback 실행을
 예약한다. 사용자는 이 모드에서 callback이 UI thread에서 실행된다고 가정하면 안 된다.
 
@@ -330,6 +338,7 @@ immediate mode도 제공한다. 이 모드에서는 connector가 내부 수신 �
 - TCP typed request가 request sequence로 response를 정확히 짝짓는다.
 - send는 helper header와 payload frame 형식을 그대로 사용한다.
 - 여러 packet을 순서대로 dispatch한다.
+- explicit receive는 callback 없이 서버가 보낸 여러 packet을 순서대로 꺼낸다.
 - manual dispatch에서는 callback이 `dispatch()` 호출 경로에서 실행된다.
 - immediate dispatch에서는 별도 manual dispatch 없이 callback이 실행된다.
 - packet name 기본값은 DTO의 `static constexpr packet_name`을 우선 사용한다. 값이 없을
@@ -337,6 +346,7 @@ immediate mode도 제공한다. 이 모드에서는 connector가 내부 수신 �
 - metadata size limit은 send 전에 적용된다.
 - send payload size limit은 transport write 전에 적용된다.
 - request timeout은 pending request를 정리한다.
+- close 이후 request callback은 `disconnected` 오류를 받는다.
 - reconnect 중 새 request는 queue에 쌓지 않고 disconnected 계열 오류로 실패한다.
 - heartbeat ping/pong과 heartbeat timeout을 검증한다.
 - compressed server packet은 typed callback 전에 복원된다.

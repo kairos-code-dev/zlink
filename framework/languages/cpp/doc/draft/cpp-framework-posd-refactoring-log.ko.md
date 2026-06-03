@@ -5284,6 +5284,46 @@ cmake -DZLINK_FRAMEWORK_CPP_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/
 git diff --check -- framework/languages/cpp
 ```
 
+## 추가 리뷰. Stream Connector explicit receive 검증 보강
+
+### 위험 신호
+
+- 공통 Stream Connector 초안은 callback receive와 explicit receive API를 모두 완료 기준으로
+  둔다. C++ connector public API에는 `receive()`가 추가됐지만, loopback 서버가 보낸
+  packet을 callback 없이 직접 꺼내는 회귀 테스트가 없었다. 이는 테스트가 public 계약을
+  충분히 증명하지 못하는 정보 은닉 약화다.
+- close 이후 request 실패는 async result 경로로만 일부 확인됐고 callback submit 경로는
+  직접 검증하지 않았다. callback과 task가 같은 오류 의미를 공유한다는 지식이 테스트 밖에
+  남는 상태였다.
+- `zlink_stream_connector.hpp`는 `std::chrono::milliseconds`를 public method 시그니처에
+  쓰면서 직접 `<chrono>`를 include하지 않았다. public header가 transitive include에 의존하면
+  호출자가 숨은 include 순서를 알아야 한다.
+
+### 대안 검토
+
+| 대안 | 장점 | 문제 |
+|------|------|------|
+| 문서에서 explicit receive 기준 제거 | 구현 변경이 작다 | 공통 완료 기준을 낮추고 언어별 connector 의미가 어긋난다 |
+| runtime hook으로 queue에 packet을 넣어 `receive()`만 검증 | 테스트가 단순하다 | 실제 transport read, frame decode, multi-packet read를 증명하지 못한다 |
+| loopback STREAM 서버가 두 frame을 한 번에 보내고 public `receive()`로 읽음 | public API와 wire frame 경계를 함께 검증한다 | 테스트 fixture가 조금 길어진다 |
+
+선택은 세 번째 방식이다. explicit receive는 사용자에게 보이는 public API이므로 runtime 내부
+hook보다 실제 transport를 통과한 packet으로 검증해야 한다.
+
+### 수정
+
+- `connector_t` public header가 `<chrono>`를 직접 include하도록 했다.
+- `test_cpp_stream_connector`에 callback 없이 `receive(timeout)`를 두 번 호출해 서버가 보낸
+  두 packet을 순서대로 꺼내는 loopback 검증을 추가했다.
+- close 이후 request callback이 `disconnected` 오류를 받는지 확인해 task/callback 오류
+  의미를 같은 회귀 테스트에 묶었다.
+
+### 재점검
+
+- explicit receive 계약은 public API와 실제 STREAM frame read 경로로 검증된다.
+- callback request close 실패는 callback submit 경로에서 직접 검증된다.
+- public header는 public 시그니처에 필요한 표준 header를 직접 include한다.
+
 ## 추가 리뷰. HTTP Client 문서 탐색 표면 보정
 
 ### 발견한 위험 신호

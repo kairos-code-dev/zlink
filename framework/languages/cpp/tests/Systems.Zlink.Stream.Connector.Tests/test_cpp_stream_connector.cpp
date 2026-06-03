@@ -353,6 +353,62 @@ main ()
     return 29;
   }
 
+  zlink::stream_socket_t receive_server (context);
+  receive_server.options ().notify (false);
+  receive_server.bind ("tcp://127.0.0.1:0");
+  const auto receive_endpoint = receive_server.options ().last_endpoint ();
+  std::thread receive_server_thread ([&receive_server] {
+    zlink::received_t inbound;
+    if (receive_server.recv (inbound) != 0) {
+      return;
+    }
+    auto first = make_server_frame (
+      zlink::stream_connector::message_kind_t::send,
+      0,
+      "server.receive.one",
+      "one");
+    auto second = make_server_frame (
+      zlink::stream_connector::message_kind_t::send,
+      0,
+      "server.receive.two",
+      "two");
+    inbound.send ()
+      .message (zlink::message_t::from (
+        first.to_string () + second.to_string ()))
+      .submit ();
+    inbound.close ();
+  });
+  zlink::stream_connector::connector_options_t receive_options;
+  receive_options.endpoint = receive_endpoint;
+  receive_options.dispatch_mode =
+    zlink::stream_connector::dispatch_mode_t::manual;
+  receive_options.request_timeout = std::chrono::milliseconds (100);
+  auto receive_connector =
+    zlink::stream_connector::connector_factory_t::create (receive_options);
+  if (!receive_connector.connect ().result ()) {
+    return 47;
+  }
+  if (!receive_connector.send (login_request_t {})
+         .packet_name ("receive.trigger")
+         .submit ()
+         .result ()) {
+    return 48;
+  }
+  auto received_first =
+    receive_connector.receive (std::chrono::milliseconds (100)).result ();
+  auto received_second =
+    receive_connector.receive (std::chrono::milliseconds (100)).result ();
+  receive_server_thread.join ();
+  if (!received_first || !received_second ||
+      received_first.value ().name != "server.receive.one" ||
+      received_first.value ().payload.to_string () != "one" ||
+      received_second.value ().name != "server.receive.two" ||
+      received_second.value ().payload.to_string () != "two" ||
+      receive_connector.pending_dispatch_count () != 0) {
+    return 49;
+  }
+  receive_connector.close ().result ();
+
   auto oversized_payload =
     connector
       .send (zlink::stream_connector::packet_t {
@@ -454,6 +510,18 @@ main ()
       send_after_close.error_code () !=
         zlink::stream_connector::error_code_t::disconnected) {
     return 13;
+  }
+  bool request_after_close_callback_seen = false;
+  connector.request<login_reply_t> (login_request_t {})
+    .packet_name ("after.close.request")
+    .submit ([&](zlink::stream_connector::result_t<login_reply_t> result) {
+      request_after_close_callback_seen =
+        !result &&
+        result.error_code () ==
+          zlink::stream_connector::error_code_t::disconnected;
+    });
+  if (!request_after_close_callback_seen) {
+    return 50;
   }
   auto missing_endpoint =
     zlink::stream_connector::connector_factory_t::create (

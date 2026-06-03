@@ -920,6 +920,11 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R http
 ctest --test-dir framework/languages/cpp/build -L connector-unit
 ctest --test-dir framework/languages/cpp/build -L connector-integration
 ctest --test-dir framework/languages/cpp/build -L connector-e2e
+ctest --test-dir framework/languages/cpp/build -L connector-contract
+ctest --test-dir framework/languages/cpp/build -L connector-protocol
+ctest --test-dir framework/languages/cpp/build -L connector-transport
+ctest --test-dir framework/languages/cpp/build -L connector-typed
+ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract
 ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile
 ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke
 ```

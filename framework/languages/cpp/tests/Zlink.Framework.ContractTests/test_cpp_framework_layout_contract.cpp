@@ -266,22 +266,36 @@ client_sample_uses_connector (const std::filesystem::path &root,
 }
 
 bool
-client_main_does_not_include_server_handlers (
+client_sample_does_not_include_server_implementation (
   const std::filesystem::path &root,
-  const std::filesystem::path &client_main)
+  const std::filesystem::path &client_root)
 {
-  const auto path = root / client_main;
-  std::ifstream input (path);
-  std::ostringstream buffer;
-  buffer << input.rdbuf ();
-  const auto text = buffer.str ();
-  if (text.find ("../Server/") != std::string::npos ||
-      text.find ("Server/") != std::string::npos) {
-    std::cerr << "client sample main references server implementation: "
-              << path << '\n';
-    return false;
+  bool ok = true;
+  const auto path = root / client_root;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator (path)) {
+    if (!entry.is_regular_file ()) {
+      continue;
+    }
+    const auto ext = entry.path ().extension ();
+    if (ext != ".hpp" && ext != ".cpp") {
+      continue;
+    }
+
+    std::ifstream input (entry.path ());
+    std::string line;
+    std::size_t line_no = 0;
+    while (std::getline (input, line)) {
+      ++line_no;
+      if (line.find ("../Server/") != std::string::npos ||
+          line.find ("Server/") != std::string::npos) {
+        std::cerr << "client sample references server implementation: "
+                  << entry.path () << ':' << line_no << '\n';
+        ok = false;
+      }
+    }
   }
-  return true;
+  return ok;
 }
 
 bool
@@ -646,10 +660,10 @@ main ()
     root, "samples/Bingo/Client/bingo_player_client.hpp");
   ok &= client_sample_uses_connector (
     root, "samples/TicTacToe/Client/tictactoe_player_client.hpp");
-  ok &= client_main_does_not_include_server_handlers (
-    root, "samples/Bingo/Client/main.cpp");
-  ok &= client_main_does_not_include_server_handlers (
-    root, "samples/TicTacToe/Client/main.cpp");
+  ok &= client_sample_does_not_include_server_implementation (
+    root, "samples/Bingo/Client");
+  ok &= client_sample_does_not_include_server_implementation (
+    root, "samples/TicTacToe/Client");
   ok &= file_does_not_contain (
     root / "connector/src/runtime/connector_runtime.hpp",
     "socket_fd",

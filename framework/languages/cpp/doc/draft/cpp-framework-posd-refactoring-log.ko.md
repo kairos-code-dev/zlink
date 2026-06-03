@@ -6069,3 +6069,39 @@ push와 relay 모두 같은 state를 확인해야 cleanup 의미가 한 곳에 �
 
 - Unreal connector는 build graph에서도 일반 C++ connector wrapper가 아니다.
 - Unreal public/private 코드는 Unreal plugin 표면과 자체 private runtime 경계만 유지한다.
+
+## 추가 리뷰. TicTacToe client server handler include 제거
+
+### 발견한 위험 신호
+
+- Goal 21은 `Client` 샘플이 서버 handler를 직접 호출하지 않고 HTTP client와 connector를
+  사용해야 한다고 적는다.
+- layout contract는 `Client/main.cpp`만 검사했기 때문에 `TicTacToe/Client/tictactoe_client.hpp`가
+  `Server/Api/Handlers/create_match_handler.hpp`를 include해도 잡지 못했다.
+- client e2e가 HTTP handler 구현 타입을 직접 알면 HTTP 경계 검증과 server handler 소유권이
+  같은 파일에 섞인다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 검사 유지 | 변경이 없다 | client subtree의 server include를 놓친다 |
+| client가 server host factory를 직접 사용 | 실제 server handler를 재사용한다 | server 구현 지식이 client에 계속 남는다 |
+| client e2e용 HTTP fixture handler를 client 내부에 두고 server include를 금지 | HTTP client 경계는 유지하고 server handler 소유권을 분리한다 | fixture handler가 sample e2e 전용 코드로 남는다 |
+
+선택은 세 번째 방식이다. TicTacToe client e2e는 HTTP `POST /games`와 stream connector 연결을
+검증하면 충분하고, Play/API server handler class 자체를 알 필요는 없다.
+
+### 적용한 리팩토링
+
+- `tictactoe_client.hpp`에서 server API handler include를 제거했다.
+- client e2e용 `tictactoe_client_e2e_create_game_handler_t`를 추가해 공유 DTO와 topology만으로
+  `/games` 응답을 만든다.
+- layout contract가 `samples/*/Client` 전체에서 server implementation include를 금지하게 했다.
+
+### 수정 후 점검
+
+- TicTacToe client sample은 서버 handler를 include하지 않고 `zlink::http_client`로 `/games`를
+  호출한다.
+- server handler include 회귀는 `test_cpp_framework_layout_contract`가 client subtree 전체에서
+  잡는다.

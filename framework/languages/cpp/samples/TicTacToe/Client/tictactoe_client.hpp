@@ -2,7 +2,6 @@
 #pragma once
 
 #include "tictactoe_player_client.hpp"
-#include "../Server/Api/Handlers/create_match_handler.hpp"
 #include "../Shared/sample_log.hpp"
 #include "../../Shared/stream_frame_server.hpp"
 
@@ -19,6 +18,37 @@
 
 namespace zlink::samples::tictactoe
 {
+
+class tictactoe_client_e2e_create_game_handler_t
+{
+public:
+  using request_type = create_match_req_t;
+  using reply_type = create_match_res_t;
+  using dependency_types =
+    zlink::framework::dependency_list_t<sample_topology_t>;
+
+  explicit tictactoe_client_e2e_create_game_handler_t (
+    sample_topology_t &topology)
+    : _topology (topology)
+  {
+  }
+
+  create_match_res_t handle (const create_match_req_t &request)
+  {
+    append_sample_log_line ("http POST /games");
+    append_sample_log_line (
+      std::string ("recv ") + create_match_req_t::packet_name);
+    append_sample_log_line (
+      std::string ("reply ") + create_match_req_t::packet_name);
+    const auto owner = request.owner_actor_id.empty ()
+                         ? std::string (sample_names_t::x_actor_id)
+                         : request.owner_actor_id;
+    return { "match-1", owner, _topology.stream_endpoint };
+  }
+
+private:
+  sample_topology_t &_topology;
+};
 
 inline std::string
 make_sample_api_http_endpoint ()
@@ -138,10 +168,9 @@ public:
       [api_topology](zlink::framework::zlink_framework_options_t &options) {
         options.services ().add_singleton<sample_topology_t> (
           std::make_unique<sample_topology_t> (api_topology));
-        options.services ().add_singleton<create_match_room_handler_t> ();
         options.http ()
           .listen (api_topology.api_http_endpoint)
-          .map_post<create_match_handler_t> ("/games");
+          .map_post<tictactoe_client_e2e_create_game_handler_t> ("/games");
       });
     int api_exit_code = -1;
     std::thread api_thread ([&api_app, &api_exit_code] {

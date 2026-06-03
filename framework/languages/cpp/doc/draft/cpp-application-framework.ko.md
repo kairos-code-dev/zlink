@@ -133,19 +133,20 @@ DI는 framework core 기능이다. 외부 DI 라이브러리를 public dependenc
 
 ```cpp
 options.services()
-  .add_singleton<game_repository_t>()
-  .add_scoped<game_service_t, game_repository_t>()
-  .add_transient<create_game_http_handler_t, request_client_t>();
+  .add_singleton<create_match_room_handler_t>()
+  .add_singleton<sample_topology_t>()
+  .add_transient<create_match_handler_t>();
 ```
 
 handler auto registration은 handler 타입의 `dependency_types`를 사용한다.
 
 ```cpp
-class create_game_http_handler_t {
+class create_match_handler_t {
 public:
-    using request_type = create_game_http_req_t;
-    using reply_type = create_game_http_res_t;
-    using dependency_types = dependency_list_t<request_client_t>;
+    using request_type = create_match_req_t;
+    using reply_type = create_match_res_t;
+    using dependency_types =
+      dependency_list_t<create_match_room_handler_t, sample_topology_t>;
 };
 ```
 
@@ -213,20 +214,20 @@ HTTP hosting은 framework core 기능이다. ASP.NET Core Minimal API의 `MapGet
 ```cpp
 options.http()
   .listen(topology.api_http_endpoint)
-  .map_post<create_game_http_handler_t>("/games");
+  .map_post<create_match_handler_t>("/games");
 ```
 
 handler는 DI로 생성하고 DTO를 반환한다.
 
 ```cpp
-class create_game_http_handler_t {
+class create_match_handler_t {
 public:
-    using request_type = create_game_http_req_t;
-    using reply_type = create_game_http_res_t;
-    using dependency_types = dependency_list_t<request_client_t>;
+    using request_type = create_match_req_t;
+    using reply_type = create_match_res_t;
+    using dependency_types =
+      dependency_list_t<create_match_room_handler_t, sample_topology_t>;
 
-    task_t<create_game_http_res_t> handle(
-      const create_game_http_req_t &request);
+    create_match_res_t handle(const create_match_req_t &request);
 };
 ```
 
@@ -333,9 +334,9 @@ logging은 framework core 기능이다.
 - handler latency log
 - startup/shutdown log
 
-HTTP correlation id와 zlink message correlation id는 연결되어야 한다. 예를 들어 HTTP
-`POST /games`에서 Play channel로 `CreateGameReq`를 보낼 때 같은 correlation id가 log와
-monitoring event에 남아야 한다.
+HTTP correlation id와 framework handler log correlation id는 연결되어야 한다. 예를 들어
+HTTP `POST /games`에서 `CreateMatchReq`를 처리할 때 같은 correlation id가 log와 monitoring
+event에 남아야 한다.
 
 ## 11. Observability
 

@@ -1613,23 +1613,25 @@ app.add_zlink_framework([&](auto &options) {
 
     options.http()
       .listen(topology.api_http_endpoint)
-      .map_post<create_game_http_handler_t>("/games");
+      .map_post<create_match_handler_t>("/games");
 });
 ```
 
 HTTP handler는 message handler와 같은 type alias 규칙을 사용한다.
 
 ```cpp
-class create_game_http_handler_t {
+class create_match_handler_t {
 public:
-    using request_type = create_game_http_req_t;
-    using reply_type = create_game_http_res_t;
-    using dependency_types = dependency_list_t<request_client_t>;
+    using request_type = create_match_req_t;
+    using reply_type = create_match_res_t;
+    using dependency_types =
+      dependency_list_t<create_match_room_handler_t, sample_topology_t>;
 
-    explicit create_game_http_handler_t(request_client_t &client);
+    explicit create_match_handler_t(
+      create_match_room_handler_t &rooms,
+      sample_topology_t &topology);
 
-    task_t<create_game_http_res_t> handle(
-      const create_game_http_req_t &request);
+    create_match_res_t handle(const create_match_req_t &request);
 };
 ```
 

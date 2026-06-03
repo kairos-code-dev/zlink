@@ -58,8 +58,8 @@ auto client = zlink::http_client::client_t::create()
 
 auto created = co_await client
   .post("/games")
-  .body(create_game_http_req_t { .game_name = game_name })
-  .submit<create_game_http_res_t>();
+  .body(create_match_req_t { .owner_actor_id = actor_id })
+  .submit<create_match_res_t>();
 ```
 
 callback submit도 같은 call object에서 제공한다.
@@ -70,8 +70,8 @@ await하거나 관찰한다. 이 규칙은 샘플 handler가 HTTP client를 사�
 ```cpp
 client
   .post("/games")
-  .body(create_game_http_req_t { .game_name = game_name })
-  .submit<create_game_http_res_t>([](auto result) {
+  .body(create_match_req_t { .owner_actor_id = actor_id })
+  .submit<create_match_res_t>([](auto result) {
       // result는 HTTP status, transport error, decode error를 함께 표현한다.
   });
 ```

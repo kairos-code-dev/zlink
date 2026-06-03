@@ -5108,7 +5108,7 @@ HTTP hosting, API handler DI 경계가 한 테스트에서 검증되고, process
 ### 수정 후 점검
 
 - TicTacToe client e2e의 `POST /games`는 `Server/Api/Handlers/create_match_handler_t`를 통과한다.
-- Stream connector request는 요청별 reply DTO와 HTTP create-game 결과의 match id를 함께
+- Stream connector request는 요청별 reply DTO와 HTTP create-match 결과의 match id를 함께
   검증한다.
 - Stream connector endpoint는 샘플의 초기 옵션값이 아니라 HTTP `POST /games` 응답의
   `play_endpoint`에서 온다.
@@ -5159,3 +5159,45 @@ transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 �
   회귀 테스트를 선택해야 한다.
 - `unreal-connector-contract` label은 Unreal connector compile/smoke 테스트를 선택해야 한다.
 - 이번 보정 뒤 connector label taxonomy에서 남은 즉시 수정 이슈는 0개다.
+
+## 추가 리뷰. TicTacToe HTTP 문서 예시와 구현 계약 정렬
+
+### 발견한 위험 신호
+
+- HTTP hosting, HTTP client, application framework, interface draft 일부가 C++ TicTacToe
+  HTTP 시작 예시를 `CreateGameHttpReq/Res`, `game_id`, `game_name`으로 설명했다.
+- 현재 C++ TicTacToe sample의 shared contract와 handler는 `CreateMatchReq/Res`,
+  `match_id`, `owner_actor_id`, `play_endpoint`를 사용한다. 문서와 코드가 서로 다른 DTO
+  이름을 갖고 있으면 사용자는 어떤 요청을 보내야 하는지 알기 어렵다.
+- 일부 설명은 API handler가 Play channel로 `CreateGameReq`를 보낸다고 단정했지만, 현재
+  C++ sample의 검증된 HTTP path는 `create_match_handler_t`가 DI로 match room allocator와
+  topology를 받아 `CreateMatchRes`를 반환하는 흐름이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 문서의 `CreateGameHttp*` 흐름을 유지 | `.NET` TicTacToe 일반 sample과 이름이 가깝다 | 현재 C++ sample과 테스트가 검증하는 계약을 설명하지 못한다 |
+| C++ sample을 `CreateGameHttp*`로 전면 rename | `.NET` 일반 sample과 이름을 맞춘다 | SessionGateway 기반 match contract와 기존 회귀 테스트를 크게 흔든다 |
+| draft 예시를 현재 C++ `CreateMatch*` 계약으로 정렬 | 구현과 테스트 증거가 같은 계약을 가리킨다 | `.NET` 일반 sample과 C++ match 용어 차이를 문서에 명시해야 한다 |
+
+선택은 draft 예시를 현재 C++ `CreateMatch*` 계약으로 정렬하는 것이다. 이 문서들은 정식 spec이
+아니라 현재 C++ framework 구현 범위를 추적하는 draft이므로, 검증 가능한 구현 계약을 우선한다.
+
+### 적용한 리팩토링
+
+- `cpp-http-client.ko.md`의 `/games` POST 예시를 `create_match_req_t`와
+  `create_match_res_t`로 바꿨다.
+- `cpp-http-hosting.ko.md`의 기준 흐름, handler shape, TicTacToe 반영 항목을
+  `create_match_handler_t`, `CreateMatchReq/Res`, `match_id`, `owner_actor_id`,
+  `play_endpoint` 기준으로 바꿨다.
+- `cpp-application-framework.ko.md`, `cpp-framework-interfaces.ko.md`,
+  `cpp-framework-policy.ko.md`의 TicTacToe HTTP 예시도 같은 계약으로 맞췄다.
+
+### 수정 후 점검
+
+- C++ draft 문서의 TicTacToe HTTP sample 설명은 `CreateMatchReq/Res`와
+  `play_endpoint`를 중심으로 읽혀야 한다.
+- 남아 있는 `create_game_http_handler_t` 이름은 HTTP hosting unit test fixture에 한정되어야
+  하며, TicTacToe sample 계약 설명에는 남기지 않는다.
+- 이번 보정 뒤 TicTacToe HTTP 문서 예시와 현재 구현 계약 사이의 즉시 수정 이슈는 0개다.

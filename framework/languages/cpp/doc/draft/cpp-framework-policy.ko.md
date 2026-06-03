@@ -1307,8 +1307,8 @@ CPU-bound handler offload를 검토한다. packet 이름과 handler 흐름은 `.
 같은 수준으로 유지한다.
 
 `TicTacToe`는 HTTP 시작 요청, STREAM, ActorGateway 기반 actor/session relay 샘플이다.
-`.NET` TicTacToe처럼 client가 먼저 HTTP `POST /games`를 호출하고, API handler가 Play
-channel로 `CreateGameReq`를 보낸 뒤, 응답의 STREAM endpoint에 connector가 연결된다.
+`.NET` TicTacToe처럼 client가 먼저 HTTP `POST /games`를 호출하고, C++ sample의
+`CreateMatchReq` API handler 응답에 담긴 STREAM endpoint에 connector가 연결된다.
 이 샘플은 HTTP hosting, STREAM endpoint, ActorGateway attach, Entry Spot, actor factory,
 session actor bind, relay, bound session push, actor join/move, disconnect cleanup을
 검토한다.

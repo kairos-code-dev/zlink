@@ -7369,3 +7369,39 @@ public result의 configuration error와 message fragment를 transport별로 확�
 
 - route/query parse failure가 `payload_decode_failed` HTTP 400 매핑에서 벗어나면
   `test_cpp_framework_app_host`가 실패한다.
+
+## 반복 POSD 재리뷰. HTTP middleware DI auth extension 회귀 테스트 보강
+
+### 발견한 위험 신호
+
+- application framework 문서는 middleware/filter가 DI를 사용할 수 있어야 하고, 초기 security
+  범위는 auth filter extension point까지 둔다고 설명한다.
+- HTTP runtime은 default 생성 middleware와 DI resolve middleware를 모두 지원하지만,
+  app host e2e는 default 생성 middleware만 검증했다.
+- 이 상태에서는 non-default middleware가 request scope에서 resolve되지 않거나 short-circuit
+  response를 만들지 못해도 문서의 auth extension point 요구를 테스트가 놓칠 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 middleware 테스트만 유지 | 변경이 없다 | DI 기반 filter 요구가 증거 없이 남는다 |
+| JWT/OAuth provider를 framework core에 추가 | 실제 auth 기능처럼 보인다 | 초기 범위가 아닌 provider 정책을 core에 끌어들인다 |
+| auth-style middleware를 DI로 등록하고 token 정책 서비스 기반 short-circuit을 e2e로 검증 | extension point를 public API 증가 없이 고정한다 | 테스트용 middleware 타입이 하나 늘어난다 |
+
+선택은 세 번째 방식이다. 문서가 요구하는 것은 구체 auth provider가 아니라 extension point이므로,
+core는 middleware DI와 `http_context_t::json_response(...)` short-circuit 의미를 깊은 모듈로
+제공하고 auth 정책 자체는 사용자 코드에 남겨야 한다.
+
+### 적용한 리팩토링
+
+- `auth_policy_t`와 non-default `auth_middleware_t`를 app host e2e에 추가했다.
+- middleware를 `add_scoped<auth_middleware_t, auth_policy_t>()`로 등록하고
+  `options.http().use<auth_middleware_t>()`가 request scope에서 resolve되게 했다.
+- `/secure-games/{id}` 요청에서 올바른 `authorization` header는 handler까지 통과하고,
+  누락된 token은 middleware가 401 JSON response로 short-circuit하는지 검증했다.
+
+### 수정 후 점검
+
+- HTTP middleware가 DI에서 resolve되지 않거나 auth-style middleware가 handler 호출을 건너뛰지
+  못하면 `test_cpp_framework_app_host`가 실패한다.

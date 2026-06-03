@@ -134,6 +134,11 @@ struct scoped_http_counter_t
   int count = 0;
 };
 
+struct auth_policy_t
+{
+  std::string token = "Bearer test-token";
+};
+
 struct app_host_config_options_t
 {
   std::string endpoint;
@@ -347,6 +352,31 @@ struct request_state_middleware_t
   }
 };
 
+struct auth_middleware_t
+{
+  explicit auth_middleware_t (auth_policy_t &policy)
+    : _policy (&policy)
+  {
+  }
+
+  void before (zlink::framework::http_context_t &context)
+  {
+    if (context.path.rfind ("/secure-games/", 0) != 0) {
+      return;
+    }
+    const auto found = context.request_headers.find ("authorization");
+    if (found == context.request_headers.end () ||
+        found->second != _policy->token) {
+      context.json_response (
+        401,
+        R"({"error":"unauthorized","message":"missing or invalid token"})");
+    }
+  }
+
+private:
+  auth_policy_t *_policy;
+};
+
 struct health_http_reply_t
 {
   std::string status;
@@ -522,7 +552,9 @@ main ()
     .add_hosted_service_check ("http.host");
   app.add_zlink_framework ([](zlink::framework::zlink_framework_options_t &options) {
     options.services ().add_singleton<http_name_prefix_t> ();
+    options.services ().add_singleton<auth_policy_t> ();
     options.services ().add_scoped<scoped_http_counter_t> ();
+    options.services ().add_scoped<auth_middleware_t, auth_policy_t> ();
     options.http ()
       .listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT)
       .map_health ("/health")
@@ -533,10 +565,12 @@ main ()
       .map_put<create_game_http_handler_t> ("/games/{id}")
       .map_delete<create_game_http_handler_t> ("/games/{id}")
       .map_get<number_http_handler_t> ("/numbers/{id}")
+      .map_get<create_game_http_handler_t> ("/secure-games/{id}")
       .map_post<async_game_http_handler_t> ("/async-games")
       .map_post<injected_game_http_handler_t> ("/injected-games")
       .use<correlation_middleware_t> ()
-      .use<request_state_middleware_t> ();
+      .use<request_state_middleware_t> ()
+      .use<auth_middleware_t> ();
   });
 
   const char *argv_raw[] = {
@@ -571,6 +605,15 @@ main ()
   const auto number_get_result =
     http_client.get ("/numbers/41?page=2")
       .submit<number_http_handler_t::reply_type> ()
+      .result ();
+  const auto secure_get_result =
+    http_client.get ("/secure-games/7")
+      .header ("authorization", "Bearer test-token")
+      .submit<create_game_http_handler_t::reply_type> ()
+      .result ();
+  const auto unauthorized_get_result =
+    http_client.get ("/secure-games/7")
+      .submit_raw ()
       .result ();
   const auto put_result =
     http_client.put ("/games/1")
@@ -711,6 +754,17 @@ main ()
       number_get_result.value ().body.id != 41 ||
       number_get_result.value ().body.page != 2) {
     return 46;
+  }
+  if (!secure_get_result ||
+      secure_get_result.value ().status != 200 ||
+      secure_get_result.value ().body.id != "7") {
+    return 49;
+  }
+  if (!unauthorized_get_result ||
+      unauthorized_get_result.value ().status != 401 ||
+      unauthorized_get_result.value ().body.find ("unauthorized") ==
+        std::string::npos) {
+    return 50;
   }
   if (!put_result || put_result.value ().body.name != "put" ||
       put_result.value ().body.id != "1" ||

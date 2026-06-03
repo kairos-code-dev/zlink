@@ -323,6 +323,52 @@ implementation_plan_goal20_covers_connector_labels (
 }
 
 bool
+implementation_plan_goal21_covers_sample_labels (
+  const std::filesystem::path &root)
+{
+  const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  const auto text = buffer.str ();
+
+  const auto start = text.find ("### Goal 21. Review Samples");
+  const auto end = text.find (
+    "### Goal 22. Final Regression, Package, Extension Boundary");
+  if (start == std::string::npos || end == std::string::npos ||
+      start >= end) {
+    std::cerr << "implementation plan lacks bounded Goal 21 section: "
+              << path << '\n';
+    return false;
+  }
+  const auto goal = text.substr (start, end - start);
+
+  bool ok = true;
+  const std::string commands[] = {
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-log",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-api",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-client",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-play",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-session",
+    "ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe"
+  };
+  for (const auto &command : commands) {
+    if (goal.find (command) == std::string::npos) {
+      std::cerr << "Goal 21 verification commands lack: "
+                << command << '\n';
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+bool
 posd_log_has_current_goal_mapping (const std::filesystem::path &root)
 {
   const auto path =
@@ -1127,6 +1173,7 @@ main ()
   ok &= draft_readme_role_tables_cover_files (root);
   ok &= implementation_plan_expands_label_wildcards (root);
   ok &= implementation_plan_goal20_covers_connector_labels (root);
+  ok &= implementation_plan_goal21_covers_sample_labels (root);
   ok &= posd_log_has_current_goal_mapping (root);
   ok &= cmake_extension_boundaries_hold (root);
 

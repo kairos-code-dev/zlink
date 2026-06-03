@@ -965,6 +965,14 @@ ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke
 ctest --test-dir framework/languages/cpp/build -L framework-sample-parity
 ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e
 ctest --test-dir framework/languages/cpp/build -L framework-sample-log
+ctest --test-dir framework/languages/cpp/build -L framework-sample-api
+ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo
+ctest --test-dir framework/languages/cpp/build -L framework-sample-client
+ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e
+ctest --test-dir framework/languages/cpp/build -L framework-sample-play
+ctest --test-dir framework/languages/cpp/build -L framework-sample-registry
+ctest --test-dir framework/languages/cpp/build -L framework-sample-session
+ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe
 ```
 
 ### Goal 22. Final Regression, Package, Extension Boundary

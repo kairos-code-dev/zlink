@@ -6697,3 +6697,36 @@ CMake가 생성하는 파일 전체 형식까지 고정할 필요는 없다.
 
 - Goal 20 검증 명령에서 connector package label이 빠지면
   `test_cpp_framework_layout_contract`가 실패한다.
+
+## 추가 리뷰. Goal 21 sample role command gate 보강
+
+### 발견한 위험 신호
+
+- implementation plan의 `framework-sample-*` wildcard 표는 sample role label을 모두
+  concrete label로 나열한다.
+- Goal 21 검증 명령은 smoke, parity, e2e, log만 실행했다. 실제 CTest에는
+  `framework-sample-api`, `framework-sample-play`, `framework-sample-registry`,
+  `framework-sample-session`, `framework-sample-client-e2e` 같은 역할별 label이 존재한다.
+- Goal 21 완료 기준은 샘플의 역할 분리와 client/server e2e를 검증해야 하므로, 검증 명령이
+  역할별 label을 직접 드러내야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 smoke/e2e/log 명령만 유지 | 중복 실행이 적다 | 역할별 label이 문서 검증 명령에서 보이지 않는다 |
+| wildcard 표만 근거로 둔다 | 표는 간결하다 | Goal 21 명령을 따라 실행하면 역할별 selector를 놓친다 |
+| Goal 21 명령에 모든 sample concrete label을 추가하고 layout contract로 고정 | 문서 명령과 sample label taxonomy가 일치한다 | 검증 명령 목록이 길어진다 |
+
+선택은 세 번째 방식이다. Goal 21은 샘플 역할 분리 자체를 완료 기준으로 삼으므로,
+검증 명령도 역할별 CTest label을 명시해야 한다.
+
+### 적용한 리팩토링
+
+- Goal 21 검증 명령 블록에 sample role concrete label 명령을 추가했다.
+- layout contract가 Goal 21 검증 블록에 모든 sample concrete label 명령이 있는지 확인하게 했다.
+
+### 수정 후 점검
+
+- Goal 21 검증 명령에서 sample role label이 빠지면
+  `test_cpp_framework_layout_contract`가 실패한다.

@@ -331,6 +331,24 @@ main ()
     return 32;
   }
 
+  bool duplicate_system_route_rejected = false;
+  try {
+    auto duplicate_system_app = zlink::framework::app_t::create ();
+    duplicate_system_app.add_zlink_framework (
+      [](zlink::framework::zlink_framework_options_t &options) {
+        options.http ()
+          .listen ("http://127.0.0.1:18083")
+          .map_health ("/status")
+          .map_readiness ("/status");
+      });
+  } catch (const zlink::framework::framework_exception_t &ex) {
+    duplicate_system_route_rejected =
+      ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+  }
+  if (!duplicate_system_route_rejected) {
+    return 37;
+  }
+
   auto app = zlink::framework::app_t::create ();
   const auto config_path =
     std::filesystem::temp_directory_path () / "zlink_cpp_framework_app.json";

@@ -5235,3 +5235,39 @@ transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 �
 - HTTP binding 우선순위는 body 값을 query가 덮고, route parameter가 body id를 덮는 방식으로
   public HTTP e2e에서 검증되어야 한다.
 - 이번 보정 뒤 HTTP route/query/body binding 우선순위 회귀 공백은 0개다.
+
+## 추가 리뷰. HTTP system route 충돌 validation 보강
+
+### 발견한 위험 신호
+
+- HTTP hosting draft는 같은 method/path 중복 등록과 system route 충돌이 startup validation에서
+  실패해야 한다고 적는다.
+- 현재 validation은 user route가 health/readiness/liveness path와 충돌하는 경우를 막았다.
+  그러나 `map_health("/status")`와 `map_readiness("/status")`처럼 system route끼리 같은 path를
+  쓰는 경우는 막지 않았다.
+- system route 간 path가 같으면 request 처리 순서에 따라 health/readiness/liveness 중 어느
+  의미가 반환되는지 결정된다. 이는 API 정의가 아니라 구현 순서에 의존하는 얕은 계약이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재 동작 유지 | 코드 변경이 없다 | 같은 path에 여러 system 의미가 붙는 모호성을 허용한다 |
+| request 처리에서 우선순위를 문서화 | runtime 동작은 명확해진다 | 사용자가 잘못된 route 구성을 startup에서 알 수 없다 |
+| startup validation에서 system route path 중복을 거부 | 모호한 route 구성을 실행 전에 제거한다 | validation 코드가 조금 늘어난다 |
+
+선택은 startup validation에서 system route path 중복을 거부하는 것이다. HTTP route table의
+의미를 하나의 path당 하나로 유지해 호출자가 내부 match 순서를 알 필요가 없게 한다.
+
+### 적용한 리팩토링
+
+- `http_options_builder_t::validate()`가 health/readiness/liveness path 중복을
+  `request_protocol_error`로 거부하도록 했다.
+- `test_cpp_framework_app_host`에 `map_health("/status")`와 `map_readiness("/status")`가 함께
+  등록될 때 startup validation이 실패하는 회귀 테스트를 추가했다.
+
+### 수정 후 점검
+
+- user route와 system route 충돌뿐 아니라 system route 간 path 충돌도 startup validation에서
+  실패해야 한다.
+- 이번 보정 뒤 HTTP system route 충돌 validation의 즉시 수정 이슈는 0개다.

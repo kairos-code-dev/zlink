@@ -240,6 +240,20 @@ public:
   void validate () const
   {
     std::set<std::string> route_keys;
+    std::set<std::string> system_paths;
+    auto add_system_path = [&](const std::optional<std::string> &path) {
+      if (!path) {
+        return;
+      }
+      if (!system_paths.insert (*path).second) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "duplicate HTTP system route registration");
+      }
+    };
+    add_system_path (_snapshot.health_path);
+    add_system_path (_snapshot.readiness_path);
+    add_system_path (_snapshot.liveness_path);
     for (const auto &endpoint : _snapshot.endpoints) {
       if (!starts_with (endpoint.uri, "https://")) {
         continue;

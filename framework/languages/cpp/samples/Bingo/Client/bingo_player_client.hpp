@@ -6,6 +6,7 @@
 #include "bingo_notification_inbox.hpp"
 #include "../Shared/Configuration/sample_names.hpp"
 #include "../Shared/Contracts/messages.hpp"
+#include "../../Shared/client_connector_helpers.hpp"
 
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
@@ -22,15 +23,12 @@ public:
   static bingo_player_client_t connect (std::string actor_id,
                                         const bingo_client_options_t &options)
   {
-    zlink::stream_connector::connector_options_t connector_options;
-    connector_options.endpoint = options.stream_endpoint;
-    connector_options.connect_timeout = options.connect_timeout;
-    connector_options.request_timeout = options.request_timeout;
-    connector_options.dispatch_mode =
-      zlink::stream_connector::dispatch_mode_t::immediate;
-
     auto connector =
-      zlink::stream_connector::connector_factory_t::create (connector_options);
+      zlink::stream_connector::connector_factory_t::create (
+        zlink::samples::make_immediate_connector_options (
+          options.stream_endpoint,
+          options.connect_timeout,
+          options.request_timeout));
     auto client =
       bingo_player_client_t (std::move (actor_id), std::move (connector));
     client.register_notifications ();
@@ -70,11 +68,10 @@ public:
         _connector, leave_room_req_t { std::move (room_id) })
         .submit ()
         .result ();
-    return { leave_room_req_t::packet_name,
-             static_cast<bool> (result),
-             result ? std::string {}
-                    : result.error () ? result.error ()->message
-                                      : "send failed" };
+    return zlink::samples::make_client_call_result<bingo_client_call_result_t> (
+      leave_room_req_t::packet_name,
+      result,
+      "send failed");
   }
 
   void close () { _connector.close ().result (); }
@@ -119,11 +116,10 @@ private:
         _connector, request_message)
         .submit ()
         .result ();
-    return { TRequest::packet_name,
-             static_cast<bool> (result),
-             result ? std::string {}
-                    : result.error () ? result.error ()->message
-                                      : "request failed" };
+    return zlink::samples::make_client_call_result<bingo_client_call_result_t> (
+      TRequest::packet_name,
+      result,
+      "request failed");
   }
 
   std::string _actor_id;

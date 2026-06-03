@@ -84,14 +84,18 @@ public:
     return *_result;
   }
 
+  result_t<T> consume_result ()
+  {
+    if (_handle) {
+      return std::move (*_handle.promise ().result);
+    }
+    return std::move (*_result);
+  }
+
   void on_completed (std::function<void (result_t<T>)> callback)
   {
     if (callback) {
-      if (_handle) {
-        callback (std::move (*_handle.promise ().result));
-      } else {
-        callback (std::move (*_result));
-      }
+      callback (consume_result ());
     }
   }
 
@@ -168,14 +172,18 @@ public:
     return *_result;
   }
 
+  result_t<void> consume_result ()
+  {
+    if (_handle) {
+      return std::move (_handle.promise ().result);
+    }
+    return std::move (*_result);
+  }
+
   void on_completed (std::function<void (result_t<void>)> callback)
   {
     if (callback) {
-      if (_handle) {
-        callback (std::move (_handle.promise ().result));
-      } else {
-        callback (std::move (*_result));
-      }
+      callback (consume_result ());
     }
   }
 

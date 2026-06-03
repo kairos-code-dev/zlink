@@ -730,17 +730,24 @@ public:
   }
 
 private:
-  void handle_http (tcp::socket socket)
+  template<typename TStream>
+  void serve_request (TStream &stream)
   {
     beast::flat_buffer buffer;
     http::request<http::string_body> request;
     beast::error_code ec;
-    http::read (socket, buffer, request, ec);
+    http::read (stream, buffer, request, ec);
     if (ec) {
       return;
     }
     auto response = handle_request (*_options, *_services, *_health, request);
-    http::write (socket, response, ec);
+    http::write (stream, response, ec);
+  }
+
+  void handle_http (tcp::socket socket)
+  {
+    beast::error_code ec;
+    serve_request (socket);
     socket.shutdown (tcp::socket::shutdown_send, ec);
   }
 
@@ -757,14 +764,7 @@ private:
     if (ec) {
       return;
     }
-    beast::flat_buffer buffer;
-    http::request<http::string_body> request;
-    http::read (stream, buffer, request, ec);
-    if (ec) {
-      return;
-    }
-    auto response = handle_request (*_options, *_services, *_health, request);
-    http::write (stream, response, ec);
+    serve_request (stream);
     stream.shutdown (ec);
 #else
     (void) socket;

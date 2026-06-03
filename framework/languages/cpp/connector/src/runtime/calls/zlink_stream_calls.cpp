@@ -323,11 +323,7 @@ submit_request (std::shared_ptr<connector_state_t> state,
     }
     auto packet = std::move (received.value ());
     if (packet.name != "reply") {
-      if (state->options.dispatch_mode == dispatch_mode_t::immediate) {
-        dispatch_packet (*state, packet);
-      } else {
-        state->dispatch_queue.push_back (packet);
-      }
+      deliver_received_packet (*state, std::move (packet));
       continue;
     }
     state->pending_requests.erase (seq);

@@ -4732,3 +4732,75 @@ ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-fai
 ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-observability --output-on-failure
 ```
+
+## 전체 POSD 재리뷰. Connector, HTTP transport, sample client 정책 정리
+
+### 발견한 위험 신호
+
+- `auto_codec.hpp`가 typed request 결과를 얻기 위해 `on_completed` callback을 호출하고
+  local `optional`에 결과를 다시 담았다. 이는 connector `task_t`가 즉시 완료된다는 내부
+  구현 사실을 auto codec이 알아야 하는 back-door leakage다.
+- HTTP host는 HTTP와 HTTPS handler에서 request를 읽고 framework response를 쓰는 규칙을
+  각각 반복했다. transport 차이는 handshake와 shutdown인데, dispatch 규칙까지 두 곳에
+  퍼져 있었다.
+- HTTP client는 HTTP와 HTTPS 분기에서 `write`, `read`, raw response 변환, timeout 판정을
+  반복했다. status/timeout 정책 변경 시 두 분기를 함께 고쳐야 하는 change amplification이다.
+- Bingo와 TicTacToe client sample은 connector option 구성과 connector `result_t`를 sample
+  call result로 바꾸는 규칙을 각자 반복했다. 샘플 사용법 정책이 게임별 client에 새어 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재 구조 유지 | 코드 이동이 없다 | task completion, HTTP exchange, sample connector 정책이 여러 곳에 반복된다 |
+| 큰 공통 runtime 모듈로 통합 | 중복이 가장 많이 줄어든다 | framework, HTTP client, connector target 경계를 흐릴 수 있다 |
+| 각 target 안에서 정보 owner만 좁게 추출 | public 표면과 target 경계를 유지하면서 반복 지식을 줄인다 | 작은 helper가 몇 개 추가된다 |
+
+선택은 target 안의 좁은 owner 추출이다. POSD 관점에서 이번 문제는 public API를 새로 늘릴
+문제가 아니라, 이미 존재하는 task/result/transport 정책이 다른 파일에 새지 않게 하는 문제다.
+
+### 적용한 리팩토링
+
+- connector `task_t`에 `consume_result()`를 추가해 coroutine handle 저장과 direct result 저장
+  차이를 `task_t` 내부로 숨겼다.
+- `auto_codec.hpp`의 typed request 변환은 `on_completed` capture 대신 `consume_result()`를
+  사용한다.
+- layout contract가 auto codec에서 `.result`, immediate callback capture, local
+  `optional<result_t>` 패턴이 다시 들어오지 못하게 검사한다.
+- HTTP host listener에 `serve_request(...)`를 추가해 HTTP/HTTPS transport가 같은 request
+  dispatch 규칙을 공유하게 했다.
+- HTTP client runtime에 `exchange_request(...)`와 `finish_response(...)`를 추가해
+  HTTP/HTTPS 분기의 response 변환과 timeout 판정을 한 곳으로 모았다.
+- sample 공통 `client_connector_helpers.hpp`를 추가해 immediate connector option과 sample
+  call result 변환 규칙을 Bingo/TicTacToe client 밖으로 옮겼다.
+- channel runtime의 pending admission 검사를 `ensure_pending_admission(...)`으로 모아
+  shutdown, closed, pending capacity 정책을 request/send 경로가 공유하게 했다.
+- connector inbound packet dispatch 정책을 `deliver_received_packet(...)`으로 모아
+  direct receive 경로와 request 중 push packet 수신 경로가 같은 dispatch mode 규칙을 쓰게 했다.
+
+### 수정 후 점검
+
+- connector auto codec은 task completion 저장 방식이나 callback 즉시 실행 여부를 알 필요가
+  없다.
+- HTTP host와 HTTP client는 transport별 setup만 분기하고 request/response 처리 정책은 각
+  target 안의 한 helper가 소유한다.
+- sample client는 게임별 packet 흐름과 notification registration만 드러내고, connector
+  option 구성과 error string 변환은 공통 helper를 사용한다.
+- channel request/send admission은 연결 필요 여부 같은 경로별 차이만 남고, lifecycle과
+  capacity 거절 정책은 한 helper가 소유한다.
+- connector는 push packet을 즉시 handler로 넘길지 dispatch queue에 넣을지 결정하는 규칙을
+  한 내부 helper가 소유한다.
+- 이번 재리뷰 패스에서 추가로 남은 POSD 리팩토링 이슈는 발견하지 못했다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_framework_layout_contract test_cpp_stream_connector sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_layout_contract|test_cpp_stream_connector|sample_smoke_sample_cpp_framework_bingo_client|sample_smoke_sample_cpp_framework_tictactoe_client' --output-on-failure
+cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host test_cpp_http_client
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_app_host|test_cpp_framework_http_integration|test_cpp_http_client' --output-on-failure
+cmake --build framework/languages/cpp/build --target test_cpp_framework_channel_messaging test_cpp_framework_backpressure_reliability
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_channel_messaging|test_cpp_framework_backpressure_reliability' --output-on-failure
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+```

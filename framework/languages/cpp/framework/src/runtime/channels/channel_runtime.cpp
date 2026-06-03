@@ -75,6 +75,27 @@ has_connection (const channel_capability_snapshot_t *capability)
           !capability->connect_endpoints.empty ());
 }
 
+result_t<void>
+ensure_pending_admission (const channel_runtime_state_t &state)
+{
+  if (state.shutdown) {
+    return result_t<void>::failure (
+      framework_error_kind_t::shutdown,
+      "channel runtime is shutting down");
+  }
+  if (state.closed) {
+    return result_t<void>::failure (
+      framework_error_kind_t::closed,
+      "channel runtime is closed");
+  }
+  if (state.pending >= state.max_pending) {
+    return result_t<void>::failure (
+      framework_error_kind_t::request_rejected,
+      "channel pending queue is full");
+  }
+  return result_t<void>::success ();
+}
+
 void
 ensure_manual_allowed (const channel_capability_snapshot_t &snapshot)
 {
@@ -151,26 +172,18 @@ channel_runtime_t::dispatch_send (std::string channel_name,
 result_t<std::uint64_t>
 channel_runtime_t::reserve_outbound_request (std::string channel_name)
 {
-  if (_state->shutdown) {
+  auto admission = ensure_pending_admission (*_state);
+  if (!admission) {
     return result_t<std::uint64_t>::failure (
-      framework_error_kind_t::shutdown,
-      "channel runtime is shutting down");
-  }
-  if (_state->closed) {
-    return result_t<std::uint64_t>::failure (
-      framework_error_kind_t::closed,
-      "channel runtime is closed");
+      admission.error_kind (),
+      admission.error () ? admission.error ()->what ()
+                         : "channel request was rejected");
   }
   const auto *client = client_capability (*_state, channel_name);
   if (!has_connection (client)) {
     return result_t<std::uint64_t>::failure (
       framework_error_kind_t::disconnected,
       "channel client is not connected");
-  }
-  if (_state->pending >= _state->max_pending) {
-    return result_t<std::uint64_t>::failure (
-      framework_error_kind_t::request_rejected,
-      "channel pending queue is full");
   }
 
   const auto request_seq = _state->pending_requests.next_request_seq ();
@@ -184,20 +197,12 @@ result_t<std::uint64_t>
 channel_runtime_t::queue_pending_send (std::string channel_name,
                                        std::string idempotency_key)
 {
-  if (_state->shutdown) {
+  auto admission = ensure_pending_admission (*_state);
+  if (!admission) {
     return result_t<std::uint64_t>::failure (
-      framework_error_kind_t::shutdown,
-      "channel runtime is shutting down");
-  }
-  if (_state->closed) {
-    return result_t<std::uint64_t>::failure (
-      framework_error_kind_t::closed,
-      "channel runtime is closed");
-  }
-  if (_state->pending >= _state->max_pending) {
-    return result_t<std::uint64_t>::failure (
-      framework_error_kind_t::request_rejected,
-      "channel pending queue is full");
+      admission.error_kind (),
+      admission.error () ? admission.error ()->what ()
+                         : "channel send was rejected");
   }
   const auto operation_id = _state->pending_requests.next_request_seq ();
   _state->pending_operations.emplace (

@@ -6,6 +6,7 @@
 #include "tictactoe_client_result.hpp"
 #include "../Shared/Configuration/sample_names.hpp"
 #include "../Shared/Contracts/messages.hpp"
+#include "../../Shared/client_connector_helpers.hpp"
 
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
@@ -23,15 +24,12 @@ public:
     std::string actor_id,
     const tictactoe_client_options_t &options)
   {
-    zlink::stream_connector::connector_options_t connector_options;
-    connector_options.endpoint = options.play_endpoint;
-    connector_options.connect_timeout = options.stream_timeout;
-    connector_options.request_timeout = options.stream_timeout;
-    connector_options.dispatch_mode =
-      zlink::stream_connector::dispatch_mode_t::immediate;
-
     auto connector =
-      zlink::stream_connector::connector_factory_t::create (connector_options);
+      zlink::stream_connector::connector_factory_t::create (
+        zlink::samples::make_immediate_connector_options (
+          options.play_endpoint,
+          options.stream_timeout,
+          options.stream_timeout));
     auto client =
       tictactoe_player_client_t (std::move (actor_id), std::move (connector));
     client.register_notifications ();
@@ -107,11 +105,10 @@ private:
         _connector, request_message)
         .submit ()
         .result ();
-    return { TRequest::packet_name,
-             static_cast<bool> (result),
-             result ? std::string {}
-                    : result.error () ? result.error ()->message
-                                      : "request failed" };
+    return zlink::samples::make_client_call_result<tictactoe_client_call_result_t> (
+      TRequest::packet_name,
+      result,
+      "request failed");
   }
 
   std::string _actor_id;

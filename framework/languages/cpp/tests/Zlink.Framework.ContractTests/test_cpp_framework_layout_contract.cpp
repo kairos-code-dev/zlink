@@ -703,6 +703,14 @@ main ()
     ".result",
     "connector auto codec callback submit must observe task completion instead of blocking");
   ok &= file_does_not_contain (
+    root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp",
+    "on_completed ([&",
+    "connector auto codec must not depend on immediate callback completion");
+  ok &= file_does_not_contain (
+    root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp",
+    "std::optional<result_t",
+    "connector auto codec must let task_t own result storage details");
+  ok &= file_does_not_contain (
     root / "connector/src/runtime/connector_runtime.cpp",
     ".result",
     "connector send callback submit must observe task completion instead of blocking");

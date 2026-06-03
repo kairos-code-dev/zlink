@@ -143,6 +143,33 @@ to_raw_response (const http::response<http::string_body> &response)
   return raw;
 }
 
+template<typename TStream>
+raw_http_response_t
+exchange_request (TStream &stream,
+                  const http::request<http::string_body> &request,
+                  beast::flat_buffer &buffer)
+{
+  http::write (stream, request);
+  http::response<http::string_body> response;
+  http::read (stream, buffer, response);
+  return to_raw_response (response);
+}
+
+zlink::framework::result_t<raw_http_response_t>
+finish_response (raw_http_response_t response,
+                 std::chrono::steady_clock::time_point started_at,
+                 std::chrono::milliseconds timeout)
+{
+  if (std::chrono::steady_clock::now () - started_at > timeout) {
+    return zlink::framework::result_t<raw_http_response_t>::failure (
+      zlink::framework::framework_error_kind_t::timeout,
+      "HTTP request exceeded timeout",
+      true);
+  }
+  return zlink::framework::result_t<raw_http_response_t>::success (
+    std::move (response));
+}
+
 zlink::framework::result_t<raw_http_response_t>
 map_exception (const std::exception &ex)
 {
@@ -197,20 +224,11 @@ http_client_runtime_t::execute (const http_request_t &request) const
       beast::tcp_stream stream (io);
       stream.expires_after (_options.timeout);
       stream.connect (results);
-      http::write (stream, req);
-      http::response<http::string_body> response;
-      http::read (stream, buffer, response);
+      auto raw = exchange_request (stream, req, buffer);
       beast::error_code ignored;
       stream.socket ().shutdown (tcp::socket::shutdown_both, ignored);
-      auto raw = to_raw_response (response);
-      if (std::chrono::steady_clock::now () - started_at > _options.timeout) {
-        return zlink::framework::result_t<raw_http_response_t>::failure (
-          zlink::framework::framework_error_kind_t::timeout,
-          "HTTP request exceeded timeout",
-          true);
-      }
-      return zlink::framework::result_t<raw_http_response_t>::success (
-        std::move (raw));
+      return finish_response (
+        std::move (raw), started_at, _options.timeout);
     }
 
 #ifdef ZLINK_HTTP_CLIENT_WITH_OPENSSL
@@ -226,20 +244,11 @@ http_client_runtime_t::execute (const http_request_t &request) const
     beast::get_lowest_layer (stream).expires_after (_options.timeout);
     beast::get_lowest_layer (stream).connect (results);
     stream.handshake (asio::ssl::stream_base::client);
-    http::write (stream, req);
-    http::response<http::string_body> response;
-    http::read (stream, buffer, response);
+    auto raw = exchange_request (stream, req, buffer);
     beast::error_code ignored;
     stream.shutdown (ignored);
-    auto raw = to_raw_response (response);
-    if (std::chrono::steady_clock::now () - started_at > _options.timeout) {
-      return zlink::framework::result_t<raw_http_response_t>::failure (
-        zlink::framework::framework_error_kind_t::timeout,
-        "HTTP request exceeded timeout",
-        true);
-    }
-    return zlink::framework::result_t<raw_http_response_t>::success (
-      std::move (raw));
+    return finish_response (
+      std::move (raw), started_at, _options.timeout);
 #else
     return zlink::framework::result_t<raw_http_response_t>::failure (
       zlink::framework::framework_error_kind_t::request_protocol_error,

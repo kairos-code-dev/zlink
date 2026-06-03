@@ -75,6 +75,7 @@ private:
 result_t<void> submit_send (std::shared_ptr<connector_state_t> state,
                             packet_t packet);
 result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state);
+void deliver_received_packet (connector_state_t &state, packet_t packet);
 void change_state (std::shared_ptr<connector_state_t> state,
                    connection_state_t next,
                    std::optional<error_t> error = std::nullopt);

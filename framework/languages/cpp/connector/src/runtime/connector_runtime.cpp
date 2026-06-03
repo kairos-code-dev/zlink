@@ -32,13 +32,19 @@ connector_runtime_t::from (const connector_t &connector)
 }
 
 void
-connector_runtime_t::receive_packet (packet_t packet)
+deliver_received_packet (connector_state_t &state, packet_t packet)
 {
-  if (_state->options.dispatch_mode == dispatch_mode_t::immediate) {
-    dispatch_packet (*_state, packet);
+  if (state.options.dispatch_mode == dispatch_mode_t::immediate) {
+    dispatch_packet (state, packet);
     return;
   }
-  _state->dispatch_queue.push_back (std::move (packet));
+  state.dispatch_queue.push_back (std::move (packet));
+}
+
+void
+connector_runtime_t::receive_packet (packet_t packet)
+{
+  deliver_received_packet (*_state, std::move (packet));
 }
 
 void

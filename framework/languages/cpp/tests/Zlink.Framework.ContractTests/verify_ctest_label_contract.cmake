@@ -20,6 +20,7 @@ set(required_labels
   framework-http
   framework-http-e2e
   framework-package
+  framework-tooling
   framework-extension
   framework-sample-smoke
   framework-sample-parity

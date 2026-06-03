@@ -414,6 +414,7 @@ implementation_plan_goal22_covers_final_label_axes (
     "ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-package --output-on-failure",
+    "ctest --test-dir framework/languages/cpp/build -L framework-tooling --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build -L framework-extension --output-on-failure",
     "ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure"
   };

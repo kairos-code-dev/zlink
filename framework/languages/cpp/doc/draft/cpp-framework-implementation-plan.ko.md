@@ -1051,6 +1051,7 @@ ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract --ou
 ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-package --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-tooling --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-extension --output-on-failure
 cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70
 cmake --build framework/languages/cpp/build-coverage

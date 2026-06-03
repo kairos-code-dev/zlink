@@ -12,6 +12,49 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. Final tooling configure smoke 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 CLion/Visual Studio configure smoke를 완료 항목으로 둔다. 기존 tooling contract는
+  CMake preset 이름과 vcpkg manifest를 확인했지만, 현재 host에서 CLion-style Ninja configure가
+  실제로 성공하는지는 확인하지 않았다.
+- IDE 설정은 preset 문법과 실제 configure 가능성이 따로 깨질 수 있다. 정적 확인만 남기면
+  include path, target graph, generated compile database 문제를 놓칠 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| preset 목록 확인만 유지한다 | 빠르다 | configure smoke 완료 조건을 직접 증명하지 못한다 |
+| 모든 OS/IDE preset을 현재 CI에서 configure한다 | 가장 넓다 | Linux host에서 Visual Studio generator를 실행할 수 없다 |
+| 현재 host에서는 Ninja configure를 실제 실행하고, Visual Studio는 preset parse/static contract로 고정한다 | 실행 가능한 범위를 직접 검증한다 | Windows generator 실행은 별도 환경에 남는다 |
+
+선택은 세 번째 방식이다. CLion 계열 configure는 Ninja와 `compile_commands.json`으로 현재
+host에서 검증할 수 있고, Visual Studio는 generator preset이 깨지지 않도록 static contract로
+남긴다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_tooling_contract`에 `framework-tooling` label을 추가했다.
+- tooling contract가 build tree 내부 임시 디렉터리에 Ninja configure를 실행하게 했다.
+- configure 결과의 `compile_commands.json`, test/sample build option, compile command export
+  cache를 확인하게 했다.
+- Goal 22 검증 명령에 `framework-tooling` label을 추가했다.
+
+### 수정 후 점검
+
+- public API와 sample 동작은 바꾸지 않았다.
+- tooling smoke는 source tree 밖 build tree에 산출물을 만들고, package/install 검증과 분리된다.
+- Visual Studio preset은 `cmake --list-presets=all`과 generator string contract로 계속 고정된다.
+
+### 재실행한 검증 명령
+
+```bash
+ctest --test-dir framework/languages/cpp/build -L framework-tooling --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on-failure
+```
+
 ## 반복 POSD 재리뷰. Sample client process e2e 분리
 
 ### 발견한 위험 신호

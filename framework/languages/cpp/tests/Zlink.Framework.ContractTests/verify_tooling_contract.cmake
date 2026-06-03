@@ -1,6 +1,9 @@
 if(NOT DEFINED ZLINK_FRAMEWORK_CPP_SOURCE_DIR)
   message(FATAL_ERROR "ZLINK_FRAMEWORK_CPP_SOURCE_DIR is required")
 endif()
+if(NOT DEFINED ZLINK_FRAMEWORK_CPP_BUILD_DIR)
+  message(FATAL_ERROR "ZLINK_FRAMEWORK_CPP_BUILD_DIR is required")
+endif()
 
 set(presets_file "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/CMakePresets.json")
 set(vcpkg_file "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/vcpkg.json")
@@ -66,3 +69,49 @@ foreach(required
     message(FATAL_ERROR "cmake --list-presets=all did not list ${required}")
   endif()
 endforeach()
+
+find_program(ZLINK_NINJA_EXECUTABLE ninja)
+if(NOT ZLINK_NINJA_EXECUTABLE)
+  message(FATAL_ERROR "Ninja is required for CLion-style configure smoke")
+endif()
+
+set(smoke_build_dir
+  "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/tooling-smoke/linux-ninja-debug")
+file(REMOVE_RECURSE "${smoke_build_dir}")
+execute_process(
+  COMMAND "${CMAKE_COMMAND}"
+    -S "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}"
+    -B "${smoke_build_dir}"
+    -G Ninja
+    -D CMAKE_BUILD_TYPE=Debug
+    -D CMAKE_CXX_STANDARD=20
+    -D CMAKE_CXX_EXTENSIONS=OFF
+    -D CMAKE_EXPORT_COMPILE_COMMANDS=ON
+    -D ZLINK_FRAMEWORK_CPP_BUILD_TESTS=ON
+    -D ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON
+  RESULT_VARIABLE configure_result
+  OUTPUT_VARIABLE configure_output
+  ERROR_VARIABLE configure_error)
+if(NOT configure_result EQUAL 0)
+  message(STATUS "configure stdout:\n${configure_output}")
+  message(STATUS "configure stderr:\n${configure_error}")
+  message(FATAL_ERROR "CLion-style Ninja configure smoke failed")
+endif()
+
+if(NOT EXISTS "${smoke_build_dir}/compile_commands.json")
+  message(FATAL_ERROR
+    "CLion-style configure smoke did not produce compile_commands.json")
+endif()
+
+file(READ "${smoke_build_dir}/CMakeCache.txt" smoke_cache)
+foreach(required
+    "ZLINK_FRAMEWORK_CPP_BUILD_TESTS:BOOL=ON"
+    "ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES:BOOL=ON")
+  if(NOT smoke_cache MATCHES "${required}")
+    message(FATAL_ERROR "CLion-style configure cache is missing ${required}")
+  endif()
+endforeach()
+if(NOT smoke_cache MATCHES "CMAKE_EXPORT_COMPILE_COMMANDS:[^=]*=ON")
+  message(FATAL_ERROR
+    "CLion-style configure cache is missing CMAKE_EXPORT_COMPILE_COMMANDS=ON")
+endif()

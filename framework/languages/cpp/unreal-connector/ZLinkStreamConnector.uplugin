@@ -3,7 +3,7 @@
   "Version": 1,
   "VersionName": "0.1.0",
   "FriendlyName": "ZLink Stream Connector",
-  "Description": "Unreal-facing ZLink Stream Connector plugin skeleton.",
+  "Description": "Unreal-facing ZLink Stream Connector runtime plugin.",
   "Category": "Networking",
   "Modules": [
     {

@@ -8084,9 +8084,9 @@ public header compile 여부가 아니라 HTTPS request와 TLS verification을 �
   executable과 함께 실행하게 했다.
 - 기존 standalone client-log verifier를 제거하고, process e2e test가 server file log의 request,
   reply, push, disconnect, shutdown evidence를 계속 검증하게 했다.
-- process e2e runner는 build directory 단위 lock을 잡은 뒤 로그를 초기화하고 server/client를
-  실행한다. 같은 고정 sample endpoint와 로그 파일을 쓰는 label들을 별도 CTest 프로세스에서
-  동시에 실행해도 서로 충돌하지 않게 하기 위해서다.
+- process e2e runner는 runner source 경로 기준의 process-wide lock을 잡은 뒤 로그를 초기화하고
+  server/client를 실행한다. 같은 고정 sample endpoint를 쓰는 label이나 normal/coverage build
+  tree를 별도 CTest 프로세스에서 동시에 실행해도 서로 충돌하지 않게 하기 위해서다.
 - sample parity/layout contract가 Client 디렉터리에서 server/test harness include와 낮은 수준
   zlink socket/context 사용을 금지하게 했다.
 
@@ -8094,5 +8094,35 @@ public header compile 여부가 아니라 HTTPS request와 TLS verification을 �
 
 - Client 샘플에 `Shared/E2E`, `zlink/Contracts/Sockets`, `zlink::context_t`,
   `zlink::stream_socket_t`, embedded server option이 다시 들어오면 contract test가 실패한다.
-- `framework-sample-client-e2e`와 `framework-sample-log` label을 별도 CTest 프로세스로 동시에
-  실행해도 process e2e runner lock 때문에 sample server port 충돌이 재발하지 않는다.
+- `framework-sample-client-e2e`와 `framework-sample-log` label, normal/coverage build tree를 별도
+  CTest 프로세스로 동시에 실행해도 process e2e runner lock 때문에 sample server port 충돌이
+  재발하지 않는다.
+
+## 반복 POSD 재리뷰. Goal 20 Unreal connector plugin metadata 정합성
+
+### 발견한 위험 신호
+
+- Goal 20은 Unreal Stream Connector를 별도 plugin/module 산출물로 구현한다고 명시한다.
+- 실제 `ZLinkStreamConnector.uplugin`은 runtime module과 public/private 구현을 갖고 있었지만,
+  description은 여전히 `plugin skeleton`이라고 설명했다.
+- 사용자가 plugin metadata를 먼저 보면 구현된 runtime 산출물을 빈 뼈대처럼 오해할 수 있다.
+  이는 구현 상태 지식이 코드와 metadata에 다르게 저장된 정보 누출이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| description 유지 | 변경이 없다 | plan 완료 상태와 plugin metadata가 계속 충돌한다 |
+| plugin metadata를 제거 | 불일치가 사라진다 | Unreal package 표면 정보가 빈약해진다 |
+| description을 runtime plugin으로 갱신 | 산출물 상태를 정확히 드러낸다 | metadata 문구를 유지해야 한다 |
+
+선택은 세 번째 방식이다. Unreal plugin metadata는 public package surface이므로 구현 상태를 정확히
+말해야 한다.
+
+### 적용한 리팩토링
+
+- `ZLinkStreamConnector.uplugin` description을 `runtime plugin`으로 갱신했다.
+
+### 수정 후 점검
+
+- Unreal connector contract/compile/smoke label이 계속 통과한다.

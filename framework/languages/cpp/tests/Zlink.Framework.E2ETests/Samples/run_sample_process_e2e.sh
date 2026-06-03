@@ -30,7 +30,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-lock_root="$(dirname "$work_dir")"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+lock_key="$(printf '%s' "$script_dir" | cksum | awk '{print $1}')"
+lock_root="${TMPDIR:-/tmp}/zlink-sample-process-e2e-${lock_key}"
 mkdir -p "$lock_root"
 if command -v flock >/dev/null 2>&1; then
   exec 9>"$lock_root/.sample-process-e2e.lock"

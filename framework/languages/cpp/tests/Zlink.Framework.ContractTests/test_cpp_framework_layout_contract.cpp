@@ -89,6 +89,19 @@ public_headers_do_not_expose_runtime_dependencies (
     "spdlog::",
     "#include <fmt",
     "fmt::",
+    "#include <kafka",
+    "#include <Kafka",
+    "Kafka::",
+    "RdKafka",
+    "#include <grpc",
+    "#include <gRPC",
+    "grpc::",
+    "#include <yaml",
+    "#include <YAML",
+    "YAML::",
+    "#include <flatbuffers",
+    "#include <FlatBuffers",
+    "flatbuffers::",
     "#include <zlink.hpp",
     "#include <zlink/Contracts/Sockets",
     "#include <zlink/Contracts/Service",
@@ -1248,6 +1261,8 @@ main ()
   ok &= public_headers_do_not_include_runtime (
     root / "http-client/include");
   ok &= public_headers_do_not_include_runtime (
+    root / "extensions/include");
+  ok &= public_headers_do_not_include_runtime (
     root / "unreal-connector/Source/ZLinkStreamConnector/Public");
   ok &= public_headers_do_not_expose_runtime_dependencies (
     root / "framework/include");
@@ -1255,6 +1270,8 @@ main ()
     root / "connector/include");
   ok &= public_headers_do_not_expose_runtime_dependencies (
     root / "http-client/include");
+  ok &= public_headers_do_not_expose_runtime_dependencies (
+    root / "extensions/include");
   ok &= public_headers_do_not_expose_runtime_dependencies (
     root / "unreal-connector/Source/ZLinkStreamConnector/Public");
   ok &= sample_application_code_uses_message_codec (root);
@@ -1270,6 +1287,10 @@ main ()
   ok &= contract_headers_have_compile_coverage (
     root,
     "http-client/include",
+    "");
+  ok &= contract_headers_have_compile_coverage (
+    root,
+    "extensions/include",
     "");
   ok &= draft_tracking_table_matches_files (root);
   ok &= draft_readme_role_tables_cover_files (root);

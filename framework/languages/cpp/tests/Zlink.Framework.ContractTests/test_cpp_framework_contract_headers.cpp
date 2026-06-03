@@ -55,6 +55,8 @@
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
+#include <zlink/framework/extensions.hpp>
+#include <zlink/framework/extensions/extension_boundaries.hpp>
 #include <zlink/http_client.hpp>
 #include <zlink/http_client/contracts/client.hpp>
 #include <zlink/stream_connector.hpp>

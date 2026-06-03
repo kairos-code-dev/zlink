@@ -7585,3 +7585,45 @@ exporter, label schema, backend adapter는 extension이 맡을 수 있게 남겨
 
 - sample client가 server handler를 직접 include하거나 DTO serializer 밖에서 JSON field에 결합되면
   `test_cpp_framework_sample_parity`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 22 extension public header boundary 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 extension target naming, dependency isolation, Kafka/gRPC bridge boundary,
+  FlatBuffers/YAML/custom codec boundary를 완료 기준에 둔다.
+- 기존 layout contract는 CMake target이 extension dependency를 core framework에 링크하지 않는지
+  검사했지만, `extensions/include` public header 자체는 runtime include와 외부 dependency 노출
+  검사 범위에 들어 있지 않았다.
+- extension public header가 나중에 Kafka, gRPC, YAML, FlatBuffers header나 runtime detail을 직접
+  include해도 core target link 검사는 통과할 수 있다. 이 경우 extension boundary가 public
+  contract에서 새어 나가고, 사용자는 선택하지 않은 외부 SDK를 include 단계에서 요구받는다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| CMake target 경계 검사만 유지 | 현재 테스트가 짧다 | public header dependency 누출을 놓친다 |
+| extension header를 전부 opaque forward declaration으로 바꿈 | 외부 dependency 노출 가능성이 작다 | 현재 policy/value type 사용성을 불필요하게 줄인다 |
+| 기존 public header layout 검사와 compile coverage 범위에 `extensions/include`를 추가 | core와 extension 경계를 같은 규칙으로 검증한다 | forbidden dependency 목록을 extension SDK까지 명시해야 한다 |
+
+선택은 세 번째 방식이다. extension은 별도 target이지만 사용자가 include하는 public contract이므로
+framework, connector, HTTP client public header와 같은 leakage gate를 통과해야 한다. 이렇게 하면
+확장 기능의 선택 dependency가 core나 다른 extension 사용자에게 전파되지 않는다.
+
+### 적용한 리팩토링
+
+- contract header smoke가 `zlink/framework/extensions.hpp`와
+  `zlink/framework/extensions/extension_boundaries.hpp`를 직접 include하게 했다.
+- contract header smoke target이 extension public include directory를 실제로 compile하도록
+  framework extension target을 링크하게 했다.
+- layout contract의 public header runtime include 검사 범위에 `extensions/include`를 추가했다.
+- public header dependency 금지 목록에 Kafka, gRPC, YAML, FlatBuffers SDK include/type 패턴을
+  추가하고, 같은 검사를 `extensions/include`에도 적용했다.
+- extension public headers도 direct compile coverage 검사 대상에 넣었다.
+
+### 수정 후 점검
+
+- extension public header가 runtime detail이나 Kafka/gRPC/YAML/FlatBuffers SDK 타입을 노출하거나
+  contract compile smoke에서 빠지면 `test_cpp_framework_layout_contract` 또는
+  `test_cpp_framework_contract_headers`가 실패한다.

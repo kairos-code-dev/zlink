@@ -530,6 +530,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp)
   target_link_libraries(test_cpp_framework_contract_headers PRIVATE
     zlink::framework
+    zlink::framework_extension_metrics
     zlink::http_client
     zlink::stream_connector
     GTest::gtest

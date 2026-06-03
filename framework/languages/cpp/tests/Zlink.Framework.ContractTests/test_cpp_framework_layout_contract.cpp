@@ -806,6 +806,54 @@ http_client_public_surface_excludes_deferred_features (
 }
 
 bool
+stream_connector_public_surface_hides_runtime_internals (
+  const std::filesystem::path &root)
+{
+  bool ok = true;
+  const auto include_root = root / "connector/include";
+  const std::string forbidden[] = {
+    "connector_state_t",
+    "connector_runtime_t",
+    "pending_request_t",
+    "pending_requests",
+    "transport_connection_t",
+    "stream_connection_t",
+    "frame_codec_t",
+    "header_codec_t",
+    "metadata_codec_t",
+    "lz4_compression_codec_t"
+  };
+
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator (include_root)) {
+    if (!entry.is_regular_file ()) {
+      continue;
+    }
+    const auto ext = entry.path ().extension ();
+    if (ext != ".hpp" && ext != ".h") {
+      continue;
+    }
+
+    std::ifstream input (entry.path ());
+    std::string line;
+    std::size_t line_no = 0;
+    while (std::getline (input, line)) {
+      ++line_no;
+      for (const auto &needle : forbidden) {
+        if (line.find (needle) != std::string::npos) {
+          std::cerr << "Stream Connector public surface exposes runtime "
+                       "implementation type: "
+                    << entry.path () << ':' << line_no << " contains "
+                    << needle << '\n';
+          ok = false;
+        }
+      }
+    }
+  }
+  return ok;
+}
+
+bool
 http_hosting_public_surface_excludes_non_goal_features (
   const std::filesystem::path &root)
 {
@@ -1392,6 +1440,7 @@ main ()
       "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnectorAutomationTests.cpp",
     "FSocket");
   ok &= http_client_public_surface_excludes_deferred_features (root);
+  ok &= stream_connector_public_surface_hides_runtime_internals (root);
   ok &= http_hosting_public_surface_excludes_non_goal_features (root);
 
   ok &= public_headers_do_not_include_runtime (

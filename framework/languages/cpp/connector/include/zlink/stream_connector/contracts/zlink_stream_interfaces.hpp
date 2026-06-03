@@ -4,12 +4,6 @@
 namespace zlink::stream_connector
 {
 
-namespace detail
-{
-class connector_state_t;
-class connector_runtime_t;
-} // namespace detail
-
 class codec_registry_t;
 class connector_t;
 class connector_factory_t;

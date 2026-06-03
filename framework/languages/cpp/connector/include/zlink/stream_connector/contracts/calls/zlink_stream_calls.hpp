@@ -21,7 +21,7 @@ namespace zlink::stream_connector
 namespace detail
 {
 result_t<zlink::message_t> submit_request (
-  std::shared_ptr<connector_state_t> state,
+  std::shared_ptr<void> state,
   packet_t packet,
   std::chrono::milliseconds timeout);
 } // namespace detail
@@ -48,10 +48,9 @@ public:
 
 private:
   friend class connector_t;
-  send_call_t (std::shared_ptr<detail::connector_state_t> state,
-               packet_t packet);
+  send_call_t (std::shared_ptr<void> state, packet_t packet);
 
-  std::shared_ptr<detail::connector_state_t> _state;
+  std::shared_ptr<void> _state;
   packet_t _packet;
 };
 
@@ -144,7 +143,7 @@ private:
     result_t<zlink::message_t> _result;
   };
 
-  request_call_t (std::shared_ptr<detail::connector_state_t> state,
+  request_call_t (std::shared_ptr<void> state,
                   packet_t packet,
                   std::chrono::milliseconds default_timeout)
     : _state (std::move (state)),
@@ -159,7 +158,7 @@ private:
       detail::submit_request (_state, std::move (_packet), _timeout));
   }
 
-  std::shared_ptr<detail::connector_state_t> _state;
+  std::shared_ptr<void> _state;
   packet_t _packet;
   std::chrono::milliseconds _timeout { 0 };
 };

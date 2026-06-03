@@ -110,7 +110,8 @@ public:
 
 private:
   friend class connector_factory_t;
-  friend class detail::connector_runtime_t;
+  friend std::shared_ptr<void> connector_internal_handle (
+    const connector_t &connector);
 
   explicit connector_t (connector_options_t options);
   template<typename TMessage>
@@ -126,7 +127,7 @@ private:
     std::string packet_name,
     std::function<void (const packet_t &)> handler);
 
-  std::shared_ptr<detail::connector_state_t> _state;
+  std::shared_ptr<void> _state;
   codec_registry_t _codecs;
 };
 

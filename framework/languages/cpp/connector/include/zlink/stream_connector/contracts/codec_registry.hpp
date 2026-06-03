@@ -2,7 +2,6 @@
 #pragma once
 
 #include <zlink/stream_connector/contracts/zlink_stream_enums.hpp>
-#include <zlink/stream_connector/contracts/zlink_stream_interfaces.hpp>
 
 #include <memory>
 #include <typeindex>
@@ -44,10 +43,10 @@ public:
 
 private:
   friend class connector_t;
-  explicit codec_registry_t (std::shared_ptr<detail::connector_state_t> state);
+  explicit codec_registry_t (std::shared_ptr<void> state);
   codec_registry_t &add_erased (std::type_index type, codec_t codec);
 
-  std::shared_ptr<detail::connector_state_t> _state;
+  std::shared_ptr<void> _state;
 };
 
 } // namespace zlink::stream_connector

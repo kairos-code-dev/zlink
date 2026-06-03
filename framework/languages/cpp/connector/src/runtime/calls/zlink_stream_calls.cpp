@@ -286,10 +286,12 @@ submit_send (std::shared_ptr<connector_state_t> state, packet_t packet)
 }
 
 result_t<zlink::message_t>
-submit_request (std::shared_ptr<connector_state_t> state,
+submit_request (std::shared_ptr<void> state_handle,
                 packet_t packet,
                 std::chrono::milliseconds timeout)
 {
+  auto state = std::static_pointer_cast<connector_state_t> (
+    std::move (state_handle));
   std::lock_guard<std::mutex> lock (state->transport_mutex);
   if (!is_transport_connected (*state)) {
     return result_t<zlink::message_t>::failure (

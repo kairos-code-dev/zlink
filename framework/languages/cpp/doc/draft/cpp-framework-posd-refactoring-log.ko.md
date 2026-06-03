@@ -7944,3 +7944,44 @@ core로 닫고, MVC/Razor/WebSocket 계열은 별도 goal이나 extension owner�
 
 - 별도 CTest 프로세스에서 HTTP 관련 label이 동시에 실행되어도 같은 고정 listener port를
   공유하지 않는다.
+
+## 반복 POSD 재리뷰. Goal 20 Stream Connector public state hiding 보강
+
+### 발견한 위험 신호
+
+- Goal 20 완료 조건은 connector public header가 receive loop, transport connection, pending
+  request table, frame sender 같은 runtime 구현 타입을 노출하지 않아야 한다고 명시한다.
+- 기존 public header는 실제 transport나 pending table 필드를 직접 노출하지는 않았지만,
+  `detail::connector_state_t`와 `detail::connector_runtime_t` forward declaration을 통해 내부
+  상태 owner 이름을 public contract에 남겼다.
+- 이 상태에서는 호출자가 내부 상태 구조를 알아야 할 필요는 없는데도 public header가 구현의
+  이름을 암시하므로 정보 은닉이 약해진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 수동 리뷰만 유지 | 코드 변경이 작다 | 내부 상태 타입명이 다시 public header에 들어와도 자동으로 잡지 못한다 |
+| 모든 builder 상태를 값 타입으로 복사한다 | 내부 pointer가 사라진다 | connector/call/codec registry가 같은 runtime 상태를 공유해야 하는 현재 fluent API와 맞지 않는다 |
+| public header는 opaque handle만 보관하고 runtime `.cpp`에서 내부 상태로 복원한다 | 호출자 표면에서 구현 타입명을 숨기고 기존 fluent API를 유지한다 | runtime 구현에서 handle 복원 helper가 필요하다 |
+
+선택은 세 번째 방식이다. connector 상태 공유는 구현 세부 사항이므로 public header에는 의미 없는
+opaque handle로만 남기고, 실제 상태 타입과 runtime helper는 `connector/src/runtime` 안에서만
+다룬다.
+
+### 적용한 리팩토링
+
+- `connector_t`, `codec_registry_t`, `send_call_t`, `request_call_t` public header의 내부 상태
+  저장소를 `std::shared_ptr<void>` opaque handle로 바꾸었다.
+- `detail::connector_state_t`와 `detail::connector_runtime_t` forward declaration을 public
+  interface header에서 제거했다.
+- runtime 구현은 내부 helper로 opaque handle을 `connector_state_t`로 복원한 뒤 기존 동작을
+  수행하게 했다.
+- `test_cpp_framework_layout_contract`가 Stream Connector public include에서 runtime 내부 타입명
+  노출을 검사하게 했다.
+
+### 수정 후 점검
+
+- connector public header에 `connector_state_t`, `connector_runtime_t`, pending request table,
+  transport connection, frame/header/metadata/LZ4 codec 구현 타입명이 들어오면
+  `test_cpp_framework_layout_contract`가 실패한다.

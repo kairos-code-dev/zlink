@@ -987,10 +987,10 @@ logging public API는 `zlink::framework::logger_t<TCategory>`와
 | rotating file | `use_rotating_file(path, options)` | 운영 파일 로그 |
 | callback | `use_callback_sink(callback)` | 테스트, 사용자 sink, 외부 exporter 연결 |
 
-내부 backend는 `builtin`과 `spdlog` 선택지를 둔다. `spdlog`는 framework 내부 구현 세부로만
-사용하며, C++ public API에는 드러내지 않는다. 현재 public 계약은 backend 선택을
-`use_backend(logging_backend_t::spdlog)`로 표현하고, 실제 sink 호출은 logging runtime이
-닫는다.
+내부 backend는 기본 backend와 구조화된 backend 선택지를 둔다. 구조화된 backend가 어떤 logging
+library를 쓰는지는 framework 내부 구현 세부로만 사용하며, C++ public API에는 드러내지 않는다.
+현재 public 계약은 backend 선택을 `use_backend(logging_backend_t::structured)`로 표현하고,
+실제 sink 호출은 logging runtime이 닫는다.
 
 async logging은 `use_async(logging_async_options_t)`로 켠다. queue overflow 정책은
 `drop_debug`, `drop_oldest`, `block` 중 하나로 명시한다. runtime thread에서 blocking I/O가

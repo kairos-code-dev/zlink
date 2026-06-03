@@ -4853,8 +4853,8 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 
 ### 남은 tradeoff
 
-- 현재 backend selection은 public 계약으로 `spdlog`를 선택할 수 있게 고정했지만 public
-  header에는 `spdlog` 타입을 노출하지 않는다. 실제 spdlog sink 최적화는 이 abstraction
+- 현재 backend selection은 public 계약으로 구조화된 backend를 선택할 수 있게 고정했지만 public
+  header에는 `spdlog` 이름이나 타입을 노출하지 않는다. 실제 logging sink 최적화는 이 abstraction
   뒤에서 확장한다.
 
 ### 재실행할 검증 명령
@@ -5215,8 +5215,9 @@ git diff --check -- framework/languages/cpp
 
 ### 수정 후 점검
 
-- `logging_backend_t::spdlog`는 public 설정 enum 값이므로 `spdlog::` 타입이나
-  `<spdlog/...>` header 노출로 보지 않는다.
+- `logging_backend_t::structured`는 public 설정 enum 값이지만 구체 logging library 이름을
+  노출하지 않는다. layout contract는 `spdlog` 이름, `spdlog::` 타입, `<spdlog/...>` header가
+  public header에 다시 들어오면 실패한다.
 - JSON DTO 변환을 위해 사용하는 선택 codec 또는 `nlohmann::json` template helper는 이번
   runtime dependency 검색 대상이 아니다. codec dependency 분리는 Goal 2와 HTTP client JSON
   계약의 별도 기준으로 유지한다.
@@ -8126,3 +8127,40 @@ public header compile 여부가 아니라 HTTPS request와 TLS verification을 �
 ### 수정 후 점검
 
 - Unreal connector contract/compile/smoke label이 계속 통과한다.
+
+## 반복 POSD 재리뷰. Goal 4/22 logging backend public dependency 은닉
+
+### 발견한 위험 신호
+
+- Goal 4와 Goal 22는 `spdlog` 같은 logging runtime dependency가 public header에 불필요하게
+  노출되지 않아야 한다고 요구한다.
+- `logging_backend_t` public enum은 `spdlog` 값을 직접 노출했다. `spdlog::logger`나
+  `<spdlog/...>` header를 노출하지는 않았지만, public API가 내부 logging library 이름을
+  호출자에게 알리는 형태였다.
+- 정책 문서도 `spdlog`는 내부 구현 세부라고 설명하면서 public 계약 예시는
+  `logging_backend_t::spdlog`로 남아 있었다. 이는 정보 은닉 위반이며, 문서와 코드가 서로
+  다른 설계 의도를 말하는 위험 신호다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 enum 유지 | 코드 변경이 적다 | 내부 구현 이름이 public API에 계속 남는다 |
+| `use_backend(...)`를 제거 | 호출자 표면이 가장 작다 | 현재 regression이 검증하는 backend 선택 기능까지 한 번에 제거한다 |
+| enum 값을 구현 중립 이름으로 변경 | 기능은 유지하고 implementation name 누출만 제거한다 | public enum 이름 변경이 필요하다 |
+
+선택은 세 번째 방식이다. backend 선택 기능 자체는 유지하되, 호출자가 특정 logging library를
+알아야 하는 구조는 제거한다.
+
+### 적용한 리팩토링
+
+- `logging_backend_t::spdlog`를 `logging_backend_t::structured`로 바꿨다.
+- app host regression test와 정책 문서의 public 계약 예시를 같은 이름으로 맞췄다.
+- public header dependency contract가 bare `spdlog` 문자열도 금지하도록 보강했다.
+
+### 수정 후 점검
+
+- public header에는 `spdlog` 이름, `spdlog::` 타입, `<spdlog/...>` include가 남아 있지 않다.
+- 남은 `spdlog` 참조는 내부 구현 정책 설명, plan의 금지 기준, POSD 기록, contract test의
+  금지 문자열에 한정된다.
+- 이번 보정 뒤 logging backend public dependency 경계의 즉시 수정 이슈는 0개다.

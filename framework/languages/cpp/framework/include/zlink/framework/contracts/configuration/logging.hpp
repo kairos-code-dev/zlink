@@ -33,7 +33,7 @@ enum class log_level_t
 enum class logging_backend_t
 {
   builtin,
-  spdlog
+  structured
 };
 
 enum class logging_overflow_policy_t

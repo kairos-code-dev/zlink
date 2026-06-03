@@ -92,6 +92,7 @@ public_headers_do_not_expose_runtime_dependencies (
     "#include <gmock",
     "testing::",
     "#include <spdlog",
+    "spdlog",
     "spdlog::",
     "#include <fmt",
     "fmt::",

@@ -603,7 +603,7 @@ main ()
       observed_logs.push_back (record);
     })
     .use_async ({ .queue_capacity = 128 })
-    .use_backend (zlink::framework::logging_backend_t::spdlog)
+    .use_backend (zlink::framework::logging_backend_t::structured)
     .set_min_level (zlink::framework::log_level_t::debug);
   auto logger = app.logging ().factory ().create ("app-host-test");
   logger.debug ("startup", { { "node", "alpha" } });
@@ -1032,7 +1032,8 @@ main ()
     return 6;
   }
   if (!app.logging ().async_enabled () ||
-      app.logging ().backend () != zlink::framework::logging_backend_t::spdlog ||
+      app.logging ().backend () !=
+        zlink::framework::logging_backend_t::structured ||
       app.logging ().file_paths ().empty () ||
       observed_logs.size () != 1 ||
       observed_logs.front ().category != "app-host-test" ||

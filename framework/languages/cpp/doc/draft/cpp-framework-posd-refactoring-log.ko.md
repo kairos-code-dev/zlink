@@ -6269,3 +6269,35 @@ heading 형식으로 남아 있으면 완료 audit의 기준이 흐려진다.
 
 - `timer` label이 비면 `test_cpp_framework_label_contract`가 실패한다.
 - POSD 로그는 과거 변경 이력과 현재 Goal 18/20/21 의미를 서로 구분한다.
+
+## 추가 리뷰. Coverage 전용 label contract 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 coverage build의 runtime line coverage 70% 이상을 완료 기준으로 둔다.
+- `framework-coverage` label은 coverage build에서만 생기므로 normal build의 label contract에
+  무조건 넣으면 정상 build가 실패한다.
+- 반대로 label contract가 `framework-coverage`를 전혀 보지 않으면 coverage threshold test가
+  label에서 빠져도 normal build 검증만으로는 드러나지 않는다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `framework-coverage`를 항상 필수 label로 둠 | 규칙이 단순하다 | coverage option이 꺼진 normal build가 실패한다 |
+| coverage label은 coverage threshold test 자체에만 맡김 | 변경이 적다 | label drift를 별도 contract가 잡지 못한다 |
+| label contract에 coverage build 여부를 넘겨 조건부 필수 label로 검사 | normal build와 coverage build 의미를 모두 보존한다 | CTest command에 옵션 전달이 필요하다 |
+
+선택은 세 번째 방식이다. coverage label은 coverage build의 공개 검증 축이므로, coverage build
+안에서는 empty-selection contract가 직접 확인해야 한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_label_contract` 실행 시
+  `ZLINK_FRAMEWORK_CPP_EXPECT_COVERAGE_LABEL` 값을 CMake option에서 넘기게 했다.
+- label contract는 이 값이 켜진 build에서만 `framework-coverage` label을 필수로 검사한다.
+
+### 수정 후 점검
+
+- normal build에서는 coverage test가 없어도 label contract가 통과한다.
+- coverage build에서는 `framework-coverage` label이 비면 label contract가 실패한다.

@@ -42,6 +42,10 @@ set(required_labels
   unreal-connector-smoke
   parity)
 
+if(ZLINK_FRAMEWORK_CPP_EXPECT_COVERAGE_LABEL)
+  list(APPEND required_labels framework-coverage)
+endif()
+
 foreach(label IN LISTS required_labels)
   execute_process(
     COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}" -N -L "${label}"

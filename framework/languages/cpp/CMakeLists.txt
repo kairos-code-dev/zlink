@@ -563,6 +563,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     NAME test_cpp_framework_label_contract
     COMMAND ${CMAKE_COMMAND}
       -D ZLINK_FRAMEWORK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+      -D ZLINK_FRAMEWORK_CPP_EXPECT_COVERAGE_LABEL=${ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE}
       -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.ContractTests/verify_ctest_label_contract.cmake)
   set_tests_properties(test_cpp_framework_label_contract PROPERTIES
     LABELS "framework-contract;framework-regression"

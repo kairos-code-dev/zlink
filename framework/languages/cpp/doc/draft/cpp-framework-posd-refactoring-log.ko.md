@@ -4983,3 +4983,39 @@ ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure
 cmake -DZLINK_FRAMEWORK_CPP_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_SOURCE_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70 -P framework/languages/cpp/tests/Zlink.Framework.Coverage/coverage_threshold.cmake
 git diff --check -- framework/languages/cpp
 ```
+
+## 추가 리뷰. HTTP Client 문서 탐색 표면 보정
+
+### 발견한 위험 신호
+
+- Goal 18에서 `zlink::http_client`가 별도 산출물로 승격됐지만, 일부 C++ draft 문서의
+  상단 묶음 링크에는 `HTTP Client`가 빠져 있었다. 독자가 HTTP hosting 문서에서만 client
+  표면을 찾게 되면 plan의 산출물 경계와 문서 탐색 경계가 어긋난다.
+- `cpp-http-client.ko.md`는 HTTP hosting만 되돌아갈 수 있고 framework interface 문서로 바로
+  이어지지 않았다. public surface를 검토하는 흐름에서 client 계약을 interface 문맥과 대조하기
+  어렵다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| README 링크만 유지 | 한 곳에서 전체 목록을 볼 수 있다 | 개별 문서에서 HTTP client 산출물이 보이지 않는다 |
+| 모든 문서에 긴 전체 링크 목록을 복제 | 탐색 누락이 줄어든다 | 문서마다 유지보수 비용과 소음이 늘어난다 |
+| HTTP와 interface 인접 문서의 묶음 링크만 보강 | Goal 18/19 흐름에서 필요한 탐색 경계를 닫는다 | 전체 문서 내비게이션 생성기는 별도 개선 과제로 남는다 |
+
+선택은 HTTP와 interface 인접 문서의 묶음 링크 보강이다. HTTP client는 HTTP hosting,
+application framework, framework interface, policy를 읽을 때 함께 확인해야 하는 산출물이므로
+그 경로에서만 링크를 추가해 문서 소음을 늘리지 않는다.
+
+### 적용한 리팩토링
+
+- `cpp-framework-policy.ko.md`, `cpp-application-framework.ko.md`,
+  `cpp-framework-interfaces.ko.md`의 묶음 링크에 `HTTP Client`를 추가했다.
+- `cpp-http-client.ko.md`의 묶음 링크에 `Framework 인터페이스`를 추가해 public surface
+  검토 흐름으로 돌아갈 수 있게 했다.
+
+### 수정 후 점검
+
+- Goal 18 `ZLink HTTP Client`는 README, implementation plan, policy, application framework,
+  framework interface, HTTP client, HTTP hosting 문서에서 탐색 가능하다.
+- 문서 본문에 남은 POSD 위험 신호와 리팩토링 이슈는 0개다.

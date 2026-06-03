@@ -68,6 +68,7 @@ struct create_match_res_t
   static constexpr const char *packet_name = "CreateMatchRes";
   std::string match_id;
   std::string owner_actor_id;
+  std::string play_endpoint;
 };
 
 struct create_match_room_req_t
@@ -329,13 +330,15 @@ inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
 inline void to_json (nlohmann::json &json, const create_match_res_t &value)
 {
   json = { { "matchId", value.match_id },
-           { "ownerActorId", value.owner_actor_id } };
+           { "ownerActorId", value.owner_actor_id },
+           { "playEndpoint", value.play_endpoint } };
 }
 
 inline void from_json (const nlohmann::json &json, create_match_res_t &value)
 {
   value.match_id = json.value ("matchId", "");
   value.owner_actor_id = json.value ("ownerActorId", "");
+  value.play_endpoint = json.value ("playEndpoint", "");
 }
 
 inline void to_json (nlohmann::json &json, const join_match_res_t &value)

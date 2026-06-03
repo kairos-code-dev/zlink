@@ -5069,6 +5069,9 @@ include 경계를 지키고, 실제 HTTP client 테스트는 동작 계약을 �
 - STREAM mock server가 HTTP 응답으로 받은 match id를 보존하지 않고 thread 시작 시점의 기본
   `"tictactoe-game"`을 reply state에 넣었다. 또한 모든 request에 `place_mark_res_t` 형태로
   답해 typed reply 계약이 약하게 검증됐다.
+- HTTP hosting draft는 `POST /games` 응답의 `play_endpoint`로 stream connector가 연결한다고
+  설명하지만, 샘플 DTO와 API handler 응답에는 endpoint가 없었다. 이 상태에서는 문서의 시작
+  흐름과 실제 connector 입력이 서로 다른 지식을 갖게 된다.
 - TicTacToe client e2e가 API HTTP endpoint를 고정 port로 열어 반복 실행이나 외부 프로세스와
   충돌할 수 있었다. 샘플 회귀 테스트가 환경 상태에 흔들리면 실제 샘플 문제와 포트 점유 문제를
   구분하기 어렵다.
@@ -5094,7 +5097,11 @@ HTTP hosting, API handler DI 경계가 한 테스트에서 검증되고, process
   요청에 맞는 reply DTO를 반환한다.
 - `JoinMatchReq`와 `PlaceMarkReq`의 `match_id`를 reply/push state에 반영해 HTTP `POST /games`
   결과로 받은 match id가 stream 흐름까지 이어지게 했다.
-- TicTacToe client executable은 HTTP create-game 결과가 `match-1`인지 확인한다.
+- `CreateMatchRes`에 `play_endpoint`를 추가하고, API handler가 sample topology의
+  `stream_endpoint`를 응답에 담도록 했다.
+- TicTacToe client는 HTTP create-game 응답의 `play_endpoint`로 stream connector를 연결한다.
+- TicTacToe client executable은 HTTP create-game 결과가 `match-1`이고 play endpoint가 loopback
+  stream endpoint인지 확인한다.
 - TicTacToe client e2e의 API HTTP endpoint는 zlink stream socket의 loopback port allocation을
   이용해 고정 port 충돌을 피한다.
 
@@ -5103,6 +5110,8 @@ HTTP hosting, API handler DI 경계가 한 테스트에서 검증되고, process
 - TicTacToe client e2e의 `POST /games`는 `Server/Api/Handlers/create_match_handler_t`를 통과한다.
 - Stream connector request는 요청별 reply DTO와 HTTP create-game 결과의 match id를 함께
   검증한다.
+- Stream connector endpoint는 샘플의 초기 옵션값이 아니라 HTTP `POST /games` 응답의
+  `play_endpoint`에서 온다.
 - 샘플 e2e label은 같은 workspace에서 반복 실행해도 고정 API HTTP port에 의존하지 않는다.
 - client sample은 여전히 `zlink::http_client`와 stream connector를 사용하고 server handler를
   직접 호출하지 않는다.

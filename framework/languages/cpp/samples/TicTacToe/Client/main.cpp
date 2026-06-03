@@ -11,6 +11,7 @@ main ()
     tictactoe_client_t {}.run (tictactoe_client_options_t {});
   if (!result.connected || !result.http_game_created ||
       result.game_name != "match-1" ||
+      result.play_endpoint.rfind ("tcp://127.0.0.1:", 0) != 0 ||
       result.requests.size () != 9 ||
       result.requests.front ().packet_name != "AuthenticateReq" ||
       result.requests.back ().packet_name != "PlaceMarkReq") {

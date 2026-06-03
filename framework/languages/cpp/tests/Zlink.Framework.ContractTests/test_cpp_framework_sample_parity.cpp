@@ -133,8 +133,10 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
   ASSERT_TRUE (authenticated.accepted);
 
   create_match_room_handler_t rooms;
-  create_match_handler_t create (rooms);
+  sample_topology_t topology;
+  create_match_handler_t create (rooms, topology);
   const auto created = create.handle ({ authenticated.actor_id });
+  EXPECT_EQ (created.play_endpoint, topology.stream_endpoint);
   tictactoe_match_room_t room (created.match_id);
   room.create ({ created.owner_actor_id });
 

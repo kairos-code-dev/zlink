@@ -11,6 +11,7 @@
 #include <zlink/http_client.hpp>
 
 #include <fstream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -128,11 +129,16 @@ public:
 
     zlink::framework::app_t api_app = zlink::framework::app_t::create ();
     const auto api_http_endpoint = make_sample_api_http_endpoint ();
+    sample_topology_t api_topology;
+    api_topology.api_http_endpoint = api_http_endpoint;
+    api_topology.stream_endpoint = run_options.play_endpoint;
     api_app.add_zlink_framework (
-      [&](zlink::framework::zlink_framework_options_t &options) {
+      [api_topology](zlink::framework::zlink_framework_options_t &options) {
+        options.services ().add_singleton<sample_topology_t> (
+          std::make_unique<sample_topology_t> (api_topology));
         options.services ().add_singleton<create_match_room_handler_t> ();
         options.http ()
-          .listen (api_http_endpoint)
+          .listen (api_topology.api_http_endpoint)
           .map_post<create_match_handler_t> ("/games");
       });
     int api_exit_code = -1;
@@ -153,9 +159,11 @@ public:
                      .body (create_match_req_t { run_options.x_actor_id })
                      .submit<create_match_res_t> ()
                      .result ();
-      http_ready = ready.has_value ();
+      http_ready =
+        ready.has_value () && !ready.value ().body.play_endpoint.empty ();
       if (http_ready) {
         run_options.game_name = ready.value ().body.match_id;
+        run_options.play_endpoint = ready.value ().body.play_endpoint;
       } else {
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
       }
@@ -170,6 +178,7 @@ public:
     result.connected = x.connected () && o.connected ();
     result.game_name = run_options.game_name;
     result.api_endpoint = api_http_endpoint;
+    result.play_endpoint = run_options.play_endpoint;
     result.http_game_created = http_ready;
     result.requests.push_back (x.authenticate ());
     result.requests.push_back (o.authenticate ());

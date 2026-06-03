@@ -27,7 +27,7 @@ public:
     }
     _state.x_actor_id = request.owner_actor_id;
     _state.turn_actor_id = request.owner_actor_id;
-    return { _state.match_id, request.owner_actor_id };
+    return { _state.match_id, request.owner_actor_id, "" };
   }
 
   join_match_res_t join (const join_match_req_t &request)

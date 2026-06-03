@@ -3,6 +3,8 @@
 
 #include "../../Shared/sample.hpp"
 
+#include <memory>
+
 namespace zlink::samples::tictactoe
 {
 
@@ -12,6 +14,8 @@ add_tictactoe_api_server (zlink::framework::app_t &app,
 {
   app.add_zlink_framework (
     [&](zlink::framework::zlink_framework_options_t &options) {
+      options.services ().add_singleton<sample_topology_t> (
+        std::make_unique<sample_topology_t> (topology));
       options.services ().add_singleton<create_match_room_handler_t> ();
 
       options.handlers ()

@@ -7875,3 +7875,72 @@ framework 표면이 외부 codec SDK 타입에 결합되지 않는지를 검증�
 
 - HTTP client public surface가 Goal 18 초기 core 범위를 넘어서면
   `test_cpp_framework_layout_contract`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 19 HTTP hosting non-goal boundary 보강
+
+### 발견한 위험 신호
+
+- Goal 19는 HTTP hosting 범위를 Minimal API style route handler로 제한하고, MVC controller,
+  template rendering, Razor page, WebSocket transport는 포함하지 않는다고 명시한다.
+- public dependency gate는 Beast/Asio/OpenSSL 같은 낮은 수준 타입 노출을 막지만, HTTP hosting
+  public surface가 non-goal 기능 이름을 직접 추가하는 회귀는 별도로 고정하지 않았다.
+- 이 상태에서는 HTTP route handler 표면이 framework core 안에서 MVC/WebSocket 계열 표면과
+  섞여도 final audit이 문서 대조를 다시 수동으로 해야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 수동 리뷰만 유지 | 테스트 변경이 없다 | HTTP hosting 범위가 넓어지는 회귀를 놓칠 수 있다 |
+| non-goal 기능을 즉시 구현한다 | 기능은 많아진다 | Goal 19의 Minimal API 중심 범위와 충돌한다 |
+| layout contract가 HTTP hosting public include에서 non-goal feature API를 금지한다 | plan의 범위 제한을 자동으로 고정한다 | 후속 기능을 열 때 문서와 contract를 함께 갱신해야 한다 |
+
+선택은 세 번째 방식이다. HTTP hosting은 route handler, middleware/filter, TLS, health 표면을
+core로 닫고, MVC/Razor/WebSocket 계열은 별도 goal이나 extension owner가 생길 때 분리해야 한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_layout_contract`에 HTTP hosting public include를 스캔하는 non-goal
+  boundary 검사를 추가했다.
+- public HTTP hosting header에 MVC/controller/Razor/WebSocket/template rendering 계열 이름이
+  들어오면 contract가 실패하게 했다.
+
+### 수정 후 점검
+
+- HTTP hosting public surface가 Goal 19 Minimal API 범위를 넘어서면
+  `test_cpp_framework_layout_contract`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 19 HTTP e2e process port isolation 보강
+
+### 발견한 위험 신호
+
+- `test_cpp_framework_app_host`는 HTTP/HTTPS listener endpoint를 고정 port로 사용했다.
+- 같은 executable이 `framework-http`, `framework-http-e2e`, full suite 같은 서로 다른 CTest
+  프로세스에서 동시에 실행되면 한쪽 process가 다른 쪽 process의 port bind를 실패시킬 수 있다.
+- 이는 HTTP hosting 기능 실패가 아니라 test isolation 실패지만, Goal 19/22 검증 명령을 반복해서
+  병렬 실행하는 상황에서는 완료 증거를 흔든다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| HTTP 관련 label을 동시에 실행하지 않는다 | 코드 변경이 없다 | 테스트 사용자가 실행 순서를 기억해야 한다 |
+| CTest `RESOURCE_LOCK`만 추가 | 한 CTest 프로세스 안에서는 충돌을 줄인다 | 별도 CTest 프로세스끼리는 막지 못한다 |
+| 테스트 process별로 listener port를 파생한다 | 별도 CTest 프로세스끼리도 격리된다 | test endpoint 계산 helper가 필요하다 |
+
+선택은 세 번째 방식이다. HTTP hosting e2e는 route/middleware/TLS 의미를 검증해야 하므로,
+고정 port라는 외부 공유 상태 때문에 실패하면 테스트가 얕아진다. process별 endpoint를 만들면
+검증자가 label 실행 순서를 알 필요가 없다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_app_host`가 compile-time 기본 endpoint에서 process id 기반 port offset을
+  계산하게 했다.
+- HTTP listener, HTTPS listener, HTTPS client base URL이 같은 process 안에서는 같은 파생 port를
+  공유하고, 다른 process와는 겹치지 않게 했다.
+- TLS startup validation과 HTTPS e2e test도 파생 endpoint를 사용하게 했다.
+
+### 수정 후 점검
+
+- 별도 CTest 프로세스에서 HTTP 관련 label이 동시에 실행되어도 같은 고정 listener port를
+  공유하지 않는다.

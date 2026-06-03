@@ -805,6 +805,80 @@ http_client_public_surface_excludes_deferred_features (
   return ok;
 }
 
+bool
+http_hosting_public_surface_excludes_non_goal_features (
+  const std::filesystem::path &root)
+{
+  bool ok = true;
+  const std::filesystem::path include_roots[] = {
+    root / "framework/include/zlink/framework/http.hpp",
+    root / "framework/include/zlink/framework/contracts/http"
+  };
+  const std::string forbidden[] = {
+    "mvc",
+    "MVC",
+    "controller",
+    "Controller",
+    "razor",
+    "Razor",
+    "websocket",
+    "WebSocket",
+    "web_socket",
+    "view_engine",
+    "template_renderer",
+    "render_template"
+  };
+
+  for (const auto &include_root : include_roots) {
+    if (std::filesystem::is_regular_file (include_root)) {
+      std::ifstream input (include_root);
+      std::string line;
+      std::size_t line_no = 0;
+      while (std::getline (input, line)) {
+        ++line_no;
+        for (const auto &needle : forbidden) {
+          if (line.find (needle) != std::string::npos) {
+            std::cerr << "HTTP hosting public surface exposes non-goal "
+                         "feature: "
+                      << include_root << ':' << line_no << " contains "
+                      << needle << '\n';
+            ok = false;
+          }
+        }
+      }
+      continue;
+    }
+
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator (include_root)) {
+      if (!entry.is_regular_file ()) {
+        continue;
+      }
+      const auto ext = entry.path ().extension ();
+      if (ext != ".hpp" && ext != ".h") {
+        continue;
+      }
+
+      std::ifstream input (entry.path ());
+      std::string line;
+      std::size_t line_no = 0;
+      while (std::getline (input, line)) {
+        ++line_no;
+        for (const auto &needle : forbidden) {
+          if (line.find (needle) != std::string::npos) {
+            std::cerr << "HTTP hosting public surface exposes non-goal "
+                         "feature: "
+                      << entry.path () << ':' << line_no << " contains "
+                      << needle << '\n';
+            ok = false;
+          }
+        }
+      }
+    }
+  }
+  return ok;
+}
+
 } // namespace
 
 int
@@ -1318,6 +1392,7 @@ main ()
       "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnectorAutomationTests.cpp",
     "FSocket");
   ok &= http_client_public_surface_excludes_deferred_features (root);
+  ok &= http_hosting_public_surface_excludes_non_goal_features (root);
 
   ok &= public_headers_do_not_include_runtime (
     root / "framework/include");

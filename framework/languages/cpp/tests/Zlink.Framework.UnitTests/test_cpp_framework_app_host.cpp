@@ -4,6 +4,7 @@
 #include <zlink/http_client.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +14,12 @@
 #include <string>
 #include <thread>
 #include <type_traits>
+
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #ifndef ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT
 #define ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT "http://127.0.0.1:18080"
@@ -35,6 +42,68 @@ static_assert (std::is_same_v<decltype (zlink::framework::app_t::create ()),
 
 namespace
 {
+
+std::uint32_t
+current_process_id () noexcept
+{
+#ifdef _WIN32
+  return static_cast<std::uint32_t> (_getpid ());
+#else
+  return static_cast<std::uint32_t> (getpid ());
+#endif
+}
+
+std::uint16_t
+process_unique_port (std::uint16_t base_port, std::uint16_t salt)
+{
+  const auto offset =
+    static_cast<std::uint16_t> ((current_process_id () % 1000U) * 3U);
+  return static_cast<std::uint16_t> (base_port + offset + salt);
+}
+
+std::uint16_t
+port_from_endpoint (const std::string &endpoint)
+{
+  const auto scheme = endpoint.find ("://");
+  const auto authority_start =
+    scheme == std::string::npos ? 0 : scheme + 3;
+  const auto slash = endpoint.find ('/', authority_start);
+  const auto authority = endpoint.substr (
+    authority_start,
+    slash == std::string::npos ? std::string::npos : slash - authority_start);
+  const auto colon = authority.rfind (':');
+  if (colon == std::string::npos || colon + 1 >= authority.size ()) {
+    return 0;
+  }
+  return static_cast<std::uint16_t> (
+    std::stoi (authority.substr (colon + 1)));
+}
+
+std::string
+endpoint_with_port (const std::string &endpoint, std::uint16_t port)
+{
+  const auto scheme = endpoint.find ("://");
+  const auto authority_start =
+    scheme == std::string::npos ? 0 : scheme + 3;
+  const auto slash = endpoint.find ('/', authority_start);
+  const auto colon = endpoint.rfind (
+    ':',
+    slash == std::string::npos ? endpoint.size () : slash);
+  if (colon == std::string::npos || colon < authority_start) {
+    return endpoint;
+  }
+  const auto port_end = slash == std::string::npos ? endpoint.size () : slash;
+  return endpoint.substr (0, colon + 1) + std::to_string (port) +
+         endpoint.substr (port_end);
+}
+
+std::string
+process_unique_endpoint (const std::string &endpoint, std::uint16_t salt)
+{
+  return endpoint_with_port (
+    endpoint,
+    process_unique_port (port_from_endpoint (endpoint), salt));
+}
 
 struct create_game_http_handler_t
 {
@@ -543,6 +612,18 @@ main ()
   bool zlink_configured = false;
   correlation_middleware_t::before_count = 0;
   correlation_middleware_t::after_count = 0;
+  const auto http_endpoint = process_unique_endpoint (
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT,
+    0);
+  const auto https_invalid_endpoint = process_unique_endpoint (
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT,
+    1);
+  const auto https_endpoint = process_unique_endpoint (
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_ENDPOINT,
+    2);
+  const auto https_client_base_url = endpoint_with_port (
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL,
+    port_from_endpoint (https_endpoint));
   app.advanced ().use_zlink ([&](zlink::framework::zlink_builder_t &) {
     zlink_configured = true;
   });
@@ -550,13 +631,13 @@ main ()
     .add_zlink_runtime_check ()
     .add_channel_check ("games.channel")
     .add_hosted_service_check ("http.host");
-  app.add_zlink_framework ([](zlink::framework::zlink_framework_options_t &options) {
+  app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &options) {
     options.services ().add_singleton<http_name_prefix_t> ();
     options.services ().add_singleton<auth_policy_t> ();
     options.services ().add_scoped<scoped_http_counter_t> ();
     options.services ().add_scoped<auth_middleware_t, auth_policy_t> ();
     options.http ()
-      .listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT)
+      .listen (http_endpoint)
       .map_health ("/health")
       .map_readiness ("/ready")
       .map_liveness ("/live")
@@ -585,7 +666,7 @@ main ()
     exit_code = app.run (4, argv);
   });
   auto http_client =
-    make_app_host_test_client (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT);
+    make_app_host_test_client (http_endpoint);
   if (!wait_for_ready (http_client)) {
     app.stop ();
     app_thread.join ();
@@ -1020,15 +1101,15 @@ main ()
   };
 
   if (!expect_https_tls_validation_rejected (
-        [] (zlink::framework::http_options_builder_t &http) {
-          http.listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT);
+        [&](zlink::framework::http_options_builder_t &http) {
+          http.listen (https_invalid_endpoint);
         })) {
     return 12;
   }
 
   if (!expect_https_tls_validation_rejected (
-        [] (zlink::framework::http_options_builder_t &http) {
-          http.listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT)
+        [&](zlink::framework::http_options_builder_t &http) {
+          http.listen (https_invalid_endpoint)
             .tls ([](zlink::framework::http_tls_options_builder_t &tls) {
               tls.private_key_file ("server.key");
             });
@@ -1037,8 +1118,8 @@ main ()
   }
 
   if (!expect_https_tls_validation_rejected (
-        [] (zlink::framework::http_options_builder_t &http) {
-          http.listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT)
+        [&](zlink::framework::http_options_builder_t &http) {
+          http.listen (https_invalid_endpoint)
             .tls ([](zlink::framework::http_tls_options_builder_t &tls) {
               tls.certificate_file ("server.crt");
             });
@@ -1047,8 +1128,8 @@ main ()
   }
 
   if (!expect_https_tls_validation_rejected (
-        [] (zlink::framework::http_options_builder_t &http) {
-          http.listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT)
+        [&](zlink::framework::http_options_builder_t &http) {
+          http.listen (https_invalid_endpoint)
             .tls ([](zlink::framework::http_tls_options_builder_t &) {});
         })) {
     return 43;
@@ -1058,9 +1139,9 @@ main ()
   try {
     auto invalid = zlink::framework::app_t::create ();
     invalid.add_zlink_framework (
-      [](zlink::framework::zlink_framework_options_t &options) {
+      [&](zlink::framework::zlink_framework_options_t &options) {
         options.http ()
-          .listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT)
+          .listen (http_endpoint)
           .tls ([](zlink::framework::http_tls_options_builder_t &) {});
       });
   } catch (const zlink::framework::framework_exception_t &) {
@@ -1072,9 +1153,9 @@ main ()
 
   auto secure = zlink::framework::app_t::create ();
   secure.add_zlink_framework (
-    [](zlink::framework::zlink_framework_options_t &options) {
+    [&](zlink::framework::zlink_framework_options_t &options) {
       options.http ()
-        .listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT)
+        .listen (https_invalid_endpoint)
         .tls ([](zlink::framework::http_tls_options_builder_t &tls) {
           tls.certificate_file ("server.crt").private_key_file ("server.key");
         })
@@ -1084,9 +1165,9 @@ main ()
 #ifdef ZLINK_FRAMEWORK_HTTP_TEST_WITH_OPENSSL
   auto secure_host = zlink::framework::app_t::create ();
   secure_host.add_zlink_framework (
-    [](zlink::framework::zlink_framework_options_t &options) {
+    [&](zlink::framework::zlink_framework_options_t &options) {
       options.http ()
-        .listen (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_ENDPOINT)
+        .listen (https_endpoint)
         .tls ([](zlink::framework::http_tls_options_builder_t &tls) {
           tls.certificate_file (ZLINK_FRAMEWORK_HTTP_TEST_CERT)
             .private_key_file (ZLINK_FRAMEWORK_HTTP_TEST_KEY);
@@ -1100,7 +1181,7 @@ main ()
     secure_exit_code = secure_host.run (3, argv);
   });
   auto secure_client = make_app_host_test_client (
-    ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL,
+    https_client_base_url,
     std::string (ZLINK_FRAMEWORK_HTTP_TEST_CERT));
   if (!wait_for_ready (secure_client)) {
     secure_host.stop ();

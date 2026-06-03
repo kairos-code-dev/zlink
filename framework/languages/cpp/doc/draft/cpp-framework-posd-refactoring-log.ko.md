@@ -7475,3 +7475,37 @@ exporter, label schema, backend adapter는 extension이 맡을 수 있게 남겨
 
 - `options.codecs().add_json()` 호출 뒤 추가된 handler의 serializer가 자동 설치되지 않으면
   `test_cpp_framework_module_hosted`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 18 coroutine/callback submit 회귀 테스트 보강
+
+### 발견한 위험 신호
+
+- Goal 18과 HTTP client 문서는 public 호출이 call object를 만든 뒤 `submit(callback)` 또는
+  `co_await submit<T>()`으로 실행되어야 한다고 요구한다.
+- 기존 HTTP client 테스트는 `submit<T>().result()`와 callback 성공 경로를 검증했지만,
+  실제 coroutine 안에서 `co_await submit<T>()`를 사용하는 경로는 직접 고정하지 않았다.
+- callback도 성공 경로만 확인해 decode error가 callback result로 전달되는지 증거가 약했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 `.result()` 테스트만 유지 | 변경이 없다 | coroutine submit 완료 기준을 간접 증거에 의존한다 |
+| 별도 async runtime을 도입해 HTTP client 테스트를 재구성 | runtime thread blocking 여부까지 더 강하게 볼 수 있다 | 현재 `task_t` contract보다 큰 테스트 인프라를 만든다 |
+| 기존 loopback HTTP server 위에 작은 coroutine helper와 callback failure 검증을 추가 | public API 요구를 좁게 고정한다 | 내부 nonblocking 구현까지 증명하지는 않는다 |
+
+선택은 세 번째 방식이다. Goal 18의 public contract는 call object가 coroutine과 callback 양쪽에서
+같은 result surface를 제공하는 것이다. 이를 기존 HTTP client regression suite 안에서 직접
+검증하면 테스트 범위를 키우지 않고 문서 요구를 더 강하게 고정할 수 있다.
+
+### 적용한 리팩토링
+
+- `test_cpp_http_client`에 `co_await client.post(...).submit<T>()`를 사용하는 coroutine helper를
+  추가했다.
+- callback submit이 invalid JSON decode failure를 `payload_decode_failed` result로 전달하는지
+  검증했다.
+
+### 수정 후 점검
+
+- typed submit이 coroutine await에서 깨지거나 callback failure result가 누락되면
+  `test_cpp_http_client`가 실패한다.

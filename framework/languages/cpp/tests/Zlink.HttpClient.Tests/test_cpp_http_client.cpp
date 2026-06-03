@@ -285,6 +285,15 @@ make_json_client (
   return builder.build ();
 }
 
+zlink::framework::task_t<zlink::http_client::http_response_t<create_game_reply_t>>
+create_game_with_coroutine_submit (const zlink::http_client::client_t &client)
+{
+  auto response = co_await client.post ("/games")
+                    .body (create_game_request_t { .name = "coawait" })
+                    .submit<create_game_reply_t> ();
+  co_return response;
+}
+
 } // namespace
 
 TEST (ZLinkHttpClient, ContractBuilderSubmitsTypedJsonRequests)
@@ -301,6 +310,19 @@ TEST (ZLinkHttpClient, ContractBuilderSubmitsTypedJsonRequests)
   EXPECT_EQ (result.value ().status, 200);
   EXPECT_EQ (result.value ().body.method, "POST");
   EXPECT_EQ (result.value ().body.name, "match-1");
+}
+
+TEST (ZLinkHttpClient, SupportsCoroutineSubmit)
+{
+  loopback_http_server_t server;
+  auto client = make_json_client (server.base_url ());
+
+  auto result = create_game_with_coroutine_submit (client).result ();
+
+  ASSERT_TRUE (result) << result.error ()->what ();
+  EXPECT_EQ (result.value ().status, 200);
+  EXPECT_EQ (result.value ().body.method, "POST");
+  EXPECT_EQ (result.value ().body.name, "coawait");
 }
 
 TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
@@ -330,6 +352,18 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
         EXPECT_EQ (result.value ().body.name, "callback");
       });
   EXPECT_TRUE (callback_called);
+
+  bool failure_callback_called = false;
+  client.get ("/invalid-json")
+    .submit<create_game_reply_t> (
+      [&failure_callback_called] (const auto &result) {
+        failure_callback_called = true;
+        ASSERT_FALSE (result);
+        EXPECT_EQ (
+          result.error_kind (),
+          zlink::framework::framework_error_kind_t::payload_decode_failed);
+      });
+  EXPECT_TRUE (failure_callback_called);
 }
 
 TEST (ZLinkHttpClient, SendsDefaultHeadersAndRequestOverride)

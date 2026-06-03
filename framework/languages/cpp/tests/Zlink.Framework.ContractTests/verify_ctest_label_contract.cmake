@@ -55,6 +55,29 @@ if(ZLINK_FRAMEWORK_CPP_EXPECT_COVERAGE_LABEL)
   list(APPEND required_labels framework-coverage)
 endif()
 
+execute_process(
+  COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}" --print-labels
+  RESULT_VARIABLE print_labels_result
+  OUTPUT_VARIABLE print_labels_output
+  ERROR_VARIABLE print_labels_error)
+if(NOT print_labels_result EQUAL 0)
+  message(FATAL_ERROR "ctest label print failed: ${print_labels_error}")
+endif()
+
+string(REGEX MATCHALL
+  "(^|\n)  (http-client-[A-Za-z0-9_-]+|connector-[A-Za-z0-9_-]+|unreal-connector-[A-Za-z0-9_-]+|framework-sample-[A-Za-z0-9_-]+)"
+  wildcard_label_lines
+  "${print_labels_output}")
+foreach(label_line IN LISTS wildcard_label_lines)
+  string(REGEX REPLACE "^(\\n)?  " "" wildcard_label "${label_line}")
+  string(STRIP "${wildcard_label}" wildcard_label)
+  list(FIND required_labels "${wildcard_label}" required_index)
+  if(required_index EQUAL -1)
+    message(FATAL_ERROR
+      "CTest wildcard-prefix label is not covered by required_labels: ${wildcard_label}")
+  endif()
+endforeach()
+
 foreach(label IN LISTS required_labels)
   execute_process(
     COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}" -N -L "${label}"

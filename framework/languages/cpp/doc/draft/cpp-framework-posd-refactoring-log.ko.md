@@ -6430,3 +6430,36 @@ non-empty contract로 고정하는 편이 오해가 적다.
 
 - 실제 sample/connector prefix label이 비거나 확장표에서 빠지면 label/layout contract가
   함께 실패한다.
+
+## 추가 리뷰. Wildcard prefix label 자동 감시 보강
+
+### 발견한 위험 신호
+
+- `required_labels`는 concrete label을 직접 나열하므로 현재 목록은 정확하지만, 새
+  `http-client-*`, `connector-*`, `unreal-connector-*`, `framework-sample-*` label이
+  추가되어도 누락을 자동으로 발견하지 못했다.
+- 실행 계획의 wildcard 확장표가 prefix 전체를 뜻한다면, CTest에 실제로 존재하는 prefix label도
+  모두 non-empty contract에 들어와야 한다.
+- 수동 목록만 유지하면 이전처럼 prefix label 일부가 문서와 contract에서 빠질 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 수동 목록만 유지 | 스크립트가 단순하다 | 새 prefix label 누락을 다시 놓칠 수 있다 |
+| plan 문서를 파싱해 required label을 만든다 | 문서가 단일 기준이 된다 | CMake markdown parsing이 복잡해진다 |
+| CTest `--print-labels`에서 wildcard prefix label을 수집해 required 목록 포함 여부를 검사 | 실제 빌드 label taxonomy를 직접 감시한다 | prefix 목록을 스크립트에 유지해야 한다 |
+
+선택은 세 번째 방식이다. 이 contract의 목적은 CTest label이 비거나 required 목록에서 빠지는
+회귀를 잡는 것이므로, 실제 CTest label 출력과 required 목록을 직접 비교하는 편이 가장 강하다.
+
+### 적용한 리팩토링
+
+- label contract가 `ctest --print-labels` 출력을 읽게 했다.
+- `http-client-*`, `connector-*`, `unreal-connector-*`, `framework-sample-*` prefix label이
+  `required_labels`에 없으면 실패하게 했다.
+
+### 수정 후 점검
+
+- 새 wildcard prefix label이 추가됐는데 label contract와 plan 확장표를 갱신하지 않으면
+  `test_cpp_framework_label_contract`가 실패한다.

@@ -5926,3 +5926,41 @@ HTTPS/TLS dependency를 명시해 secure 기능이 빠지지 않게 해야 한�
 
 - STREAM session lifecycle 상태는 `stream_t` 내부 state가 소유한다.
 - close 이후 write 성공으로 보이는 회귀는 `framework-zlink-stream` test가 잡는다.
+
+## 추가 리뷰. HTTP error pipeline middleware gate 보강
+
+### 발견한 위험 신호
+
+- Goal 19와 HTTP hosting 문서는 exception, logging, validation, auth, correlation id 처리를
+  middleware/filter extension point로 둔다고 적는다.
+- `cpp-http-hosting.ko.md`는 short-circuit 경로도 `after(...)` middleware를 거쳐 logging과
+  correlation 처리를 한 곳에 둘 수 있어야 한다고 설명한다.
+- 기존 runtime은 정상 응답에서만 `after(...)`를 실행했고, JSON binding 실패나 handler
+  exception이 발생하면 `after(...)`가 실행되지 않았다.
+- `cpp-application-framework.ko.md`의 기본 HTTP error response에는 `correlationId`가 포함되지만,
+  실제 error JSON은 `error`와 `message`만 반환했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 오류 응답 테스트만 body/status로 유지 | 기존 구현을 보존한다 | logging/correlation middleware 계약을 증명하지 못한다 |
+| middleware에 별도 `on_error(...)` hook 추가 | 오류 전용 처리가 명확하다 | 초기 core API 범위를 넓히고 route filter 설계를 앞당긴다 |
+| 현재 `before/after` hook을 유지하되 오류 경로에서도 `after`를 한 번 실행 | public API를 늘리지 않고 문서의 cross-cutting 위치를 지킨다 | runtime의 try/catch 구조를 정리해야 한다 |
+
+선택은 세 번째 방식이다. 초기 core 범위는 `before/after` hook이므로, 오류 경로도 같은
+pipeline으로 닫아야 logging/correlation 지식이 handler마다 반복되지 않는다.
+
+### 적용한 리팩토링
+
+- HTTP route 처리에서 request scope와 middleware invocation 목록을 try/catch 바깥의 route 처리
+  상태로 올렸다.
+- 정상, binding 실패, handler failure 경로 모두 `after(...)` middleware를 한 번 실행하게 했다.
+- framework error JSON과 일반 exception error JSON에 `correlationId`를 포함했다.
+- app host HTTP e2e가 invalid JSON과 handler timeout 오류에서 `X-Middleware-After`와
+  correlation id 보존을 검증하게 했다.
+
+### 수정 후 점검
+
+- HTTP 오류 응답도 middleware/filter pipeline의 관찰 지점을 지난다.
+- correlation id는 success DTO, response header, error JSON에 모두 남는다.

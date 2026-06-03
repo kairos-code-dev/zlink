@@ -470,6 +470,7 @@ main ()
       .result ();
   const auto invalid_json_shape_result =
     http_client.post ("/games")
+      .header ("X-Correlation-Id", "corr-invalid-json")
       .body (std::string ("not-an-object"))
       .submit_raw ()
       .result ();
@@ -480,6 +481,7 @@ main ()
       .result ();
   const auto timeout_mapping_result =
     http_client.post ("/games")
+      .header ("X-Correlation-Id", "corr-timeout")
       .body (create_game_http_handler_t::request_type { .name = "timeout" })
       .submit_raw ()
       .result ();
@@ -573,7 +575,11 @@ main ()
   if (!invalid_json_shape_result ||
       invalid_json_shape_result.value ().status != 400 ||
       invalid_json_shape_result.value ().body.find ("payload_decode_failed") ==
-        std::string::npos) {
+        std::string::npos ||
+      invalid_json_shape_result.value ().body.find ("corr-invalid-json") ==
+        std::string::npos ||
+      invalid_json_shape_result.value ().headers.at ("X-Middleware-After") !=
+        "seen") {
     return 22;
   }
   if (!system_method_mismatch_result ||
@@ -583,7 +589,11 @@ main ()
   if (!timeout_mapping_result ||
       timeout_mapping_result.value ().status != 504 ||
       timeout_mapping_result.value ().body.find ("timeout") ==
-        std::string::npos) {
+        std::string::npos ||
+      timeout_mapping_result.value ().body.find ("corr-timeout") ==
+        std::string::npos ||
+      timeout_mapping_result.value ().headers.at ("X-Middleware-After") !=
+        "seen") {
     return 27;
   }
   if (!shutdown_mapping_result ||

@@ -531,7 +531,8 @@ apply_framework_error (http::response<http::string_body> &response,
   response.body () =
     nlohmann::json {
       { "error", error_kind_name (error.kind ()) },
-      { "message", error.what () }
+      { "message", error.what () },
+      { "correlationId", context.correlation_id }
     }.dump ();
   apply_context_response (response, context, false);
 }
@@ -612,12 +613,26 @@ handle_request (const http_options_snapshot_t &options,
     }
     apply_context_response (response, context, false);
   } else {
+    auto request_scope =
+      services.create_scope (service_scope_kind_t::handler_invocation);
+    auto &request_services = request_scope.provider ();
+    std::vector<middleware_invocation_t> middleware_invocations;
+    middleware_invocations.reserve (options.middleware.size ());
+    bool after_middleware_ran = false;
+    auto run_after_middleware = [&]() {
+      if (after_middleware_ran) {
+        return;
+      }
+      after_middleware_ran = true;
+      for (auto it = middleware_invocations.rbegin ();
+           it != middleware_invocations.rend ();
+           ++it) {
+        if (it->middleware != nullptr && it->middleware->after) {
+          it->middleware->after (request_services, context, it->instance);
+        }
+      }
+    };
     try {
-      auto request_scope =
-        services.create_scope (service_scope_kind_t::handler_invocation);
-      auto &request_services = request_scope.provider ();
-      std::vector<middleware_invocation_t> middleware_invocations;
-      middleware_invocations.reserve (options.middleware.size ());
       for (const auto &middleware : options.middleware) {
         auto &invocation = middleware_invocations.emplace_back ();
         invocation.middleware = &middleware;
@@ -646,22 +661,19 @@ handle_request (const http_options_snapshot_t &options,
         }
         response.body () = route_result.value ();
       }
-      for (auto it = middleware_invocations.rbegin ();
-           it != middleware_invocations.rend ();
-           ++it) {
-        if (it->middleware != nullptr && it->middleware->after) {
-          it->middleware->after (request_services, context, it->instance);
-        }
-      }
+      run_after_middleware ();
       apply_context_response (response, context);
     } catch (const framework_exception_t &ex) {
+      run_after_middleware ();
       apply_framework_error (response, ex, context);
     } catch (const std::exception &ex) {
+      run_after_middleware ();
       response.result (http::status::internal_server_error);
       response.body () =
         nlohmann::json {
           { "error", "request_failed" },
-          { "message", ex.what () }
+          { "message", ex.what () },
+          { "correlationId", context.correlation_id }
         }.dump ();
       apply_context_response (response, context, false);
     }

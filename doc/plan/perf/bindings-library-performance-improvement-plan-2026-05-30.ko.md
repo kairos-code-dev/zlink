@@ -32,7 +32,7 @@
 | 4 | Node | `bindings/node/perf` | `미달 6/144 (4.2%)` | `미달 21/156 (13.5%)` | Multi가 10% gate를 초과하지만, fastpath 변경, single routed 단일 payload native 수신, `sendToSpot` DontWait result-code 경로, `MULTI_PUBSUB` 단일 payload 내부 수신 경로를 적용했고, 추가 public contract-safe 후보는 log에 기각 근거를 남겼다. 평균 성능 비율을 계산한 뒤 다음 언어로 넘어간다. |
 | 5 | Go | `bindings/go/perf` | `미달 6/144 (4.2%)` | `미달 20/192 (10.4%)` | `MULTI_SPOT_REQREP tcp 4096B`는 request message 누수 수정으로 통과했고, 같은 complete 검증에서 `ws 131072B`도 통과로 회복했다. 잔여 routed echo, one-way 64B, builder hot path 후보를 추가로 시험했지만 새 통과를 만들지 못해 Go는 추가 후보 소진으로 정리하고 Rust로 넘어간다. |
 | 6 | Rust | `bindings/rust/perf` | `미달 25/144 (17.4%)` | `미달 11/192 (5.7%)` | Single 공통 송신 loop를 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿔 `PUBSUB wss 64B`를 통과로 올렸다. 이후 table transport full 확인에서 routed 대용량과 `SPOT tcp/ws/tls 1024B`는 기준에 못 닿았고, public recv envelope를 우회하지 않는 추가 후보는 log에 기각 근거를 남겼다. |
-| 7 | Python | `bindings/python/perf` | `미달 없음` | `미달 없음` | CPython extension native bridge로 ctypes 반복 호출과 Python active loop를 줄였다. Single은 complete report 기준 미달이 없다. Multi는 `MULTI_SPOT_REQREP` native request/reply loop로 잔여 17개 cell을 모두 통과시켰고, `MULTI_SPOT_SENDSEND`는 native dispatch, client `init_data` 소형 fast path, C small failset 제한 재측정 기준으로 잔여 cell을 모두 통과했다. |
+| 7 | Python | `bindings/python/perf` | `미측정` | `미측정` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. `PAIR tcp 64B` public API probe는 C 대비 20.1%로 one-way 최소 기준 30%에 못 닿았다. 아래 Python 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, public Python API 경로로 다시 측정해야 한다. |
 
 ### 1.1 언어별 평균 성능
 
@@ -54,6 +54,10 @@ p10은 하위 10% 경계값이고, 최저 10% 평균은 가장 느린 구간의 
 | Go | 335 | 73.8% | 68.2% | 45.0% | 38.2% | 81.8% | 67.7% |
 | Rust | 336 | 94.8% | 95.5% | 76.3% | 48.2% | 95.4% | 94.4% |
 | Python | 328 | 80.5% | 82.2% | 46.5% | 38.3% | 85.4% | 76.7% |
+
+Python 행은 2026-06-03 public contract 복구 전의 과거 측정값이다. 현재 코드의
+성능 판정에는 쓰지 않고, public Python API 경로로 다시 측정한 complete report가
+나온 뒤 새 값으로 교체한다.
 
 
 ## 2. 기준 파일 메모
@@ -759,6 +763,32 @@ Rust multi smoke 결과 파일은 `perf_rust_multi_linux_20260531_153200_round_2
 
 perf 경로: `bindings/python/perf`.
 
+2026-06-03에 public socket contract를 builder-only 표면으로 되돌리고, perf
+script의 active phase가 private native bridge helper를 직접 호출하지 않도록
+수정했다. 따라서 이 절의 기존 통과 표와 평균값은 과거 구현의 측정 기록으로만
+남긴다. 현재 Python 성능 판정은 public Python API 경로로 다시 complete report를
+확보한 뒤 갱신해야 한다.
+
+같은 날 public API 경로를 유지한 채 socket 전용 native builder, native receive
+owner, native owner가 반환한 bytes tuple 신뢰 경로, owner-backed `ReceivedMessage`
+접근의 직접 호출, 단일 part `Received` materialize fast path, perf payload native
+stamp 후보와 hot native bridge의 handle 직접 읽기 후보를 적용했다. 단일 probe
+`PAIR tcp 64B` 5초 `runs=3` 기준은 C
+`perf_c_single_linux_20260603_094321_py_retry_c_pair64_5s_runs3.txt`
+1,232,691.2 msg/s 대비 Python
+`perf_python_single_linux_20260603_094312_py_current_retained_direct_handle_pair64_5s_runs3.txt`
+247,517.0 msg/s로 20.1%에 그쳤다. public Python 호출 loop와
+caller-provided `Received` materialize 비용이 남아 있어 one-way 최소 기준 30%에는
+아직 못 닿는다. `recv_into` C 직접 호출, C part tuple, bridge lookup cache,
+`ReceivedMessage` `__slots__`, 직접 생성자 호출, socket send op freelist, 단일
+receive owner C fast path, native latency decode, perf send bound-method cache,
+inline send factory, callback empty fast path, unbound public send 후보는
+`cProfile`/thread 조합에서 segfault가 재현되거나 5초 측정에서 회귀해 최종 코드에
+남기지 않았다. private active-loop helper를 perf에서 직접 호출하지 않는 조건을
+유지하려면 다음 후보는 public builder/recv container 자체를 더 안전하게 낮은
+비용으로 옮기는 방식이어야 한다. 이때 profiler와 thread 조합에서도 segfault가
+없어야 하고, 기존 `ReceivedMessage` 객체 보관 의미를 바꾸면 안 된다.
+
 Python single smoke 결과 파일은 `perf_python_single_linux_20260531_162613_round_20260530_python_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_python_single_linux_20260531_163931_round_20260530_python_single_full_v1.txt`이고 status=complete(720/720)였다. C 기준 대비 통과 56개와 잔류 미달 88개가 확인됐다. 이후 `stamp_payload(...)`가 `bytes` 사본 대신 기존 `bytearray`를 그대로 반환하게 바꾸고, single receive hot path가 마지막 message part의 공개 `Message.data` memoryview에서 header를 직접 읽게 바꿨다. 제한 재측정 `perf_python_single_linux_20260531_234853_python_single_stamp_bytearray_probe_20260531.txt`와 `perf_python_single_linux_20260531_235420_python_single_recv_data_view_probe_20260531.txt`에서 PAIR/PUBSUB 64/256/1024B는 C 대비 3.2~12.4% 범위에 머물러 통과권까지 오르지 않았다. 이 후보만으로는 Python interpreter 루프, ctypes 기반 message materialize, send builder 호출 경계를 충분히 줄이지 못했다.
 
 Python multi smoke 결과 파일은 `perf_python_multi_linux_20260531_165008_round_20260530_python_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_python_multi_linux_20260531_180039_round_20260530_python_multi_full_v1.txt`이고 status=partial(810/960)이었다. 실패 조합 보강 파일 `perf_python_multi_linux_20260531_185859_round_20260530_python_multi_failset_fill.txt`는 status=partial(440/600)이었다. Overlay 뒤에도 RESULT가 없는 23개 칸은 두 실행에서 반복 실패한 조합이므로 `미달(RESULT 없음)`으로 둔다. 이후 `PERF_MULTI_*_IO_THREADS=4` 후보는 `perf_python_multi_linux_20260531_234941_python_multi_io4_spot_probe_20260531.txt`에서 MULTI_SPOT tcp/wss 64/1024B가 C 대비 4.1~4.6%에 그쳐 유지하지 않았다. Echo server와 SPOT receive 경로는 `to_bytes_list()` 또는 `to_bytes()` 사본 생성을 줄이고 공개 `Message.data` view를 submit/decode에 직접 쓰도록 바꿨다. 제한 재측정 `perf_python_multi_linux_20260601_001503_python_multi_dataview_echo_probe_20260531.txt`는 partial(205/225)이었고, `MULTI_SPOT wss 65536B`는 70.5%까지 개선됐다. 이 단계까지는 routed/SPOT echo 후보 다수가 C 대비 4.0~53.4% 범위에 머물렀거나 반복 timeout이 남아 추가 후보가 필요했다.
@@ -769,7 +799,7 @@ Python multi smoke 결과 파일은 `perf_python_multi_linux_20260531_165008_rou
 
 Multi는 native bridge 이후 full run `perf_python_multi_linux_20260602_210003_python_native_bridge_full_multi_20260602.txt`가 status=partial(800/920)이었고, 초기 `MULTI_SPOT_SENDSEND`와 `MULTI_STREAM` failset 재측정도 반복 partial로 남았다. 이후 `MULTI_STREAM` native echo와 C multi default에 맞춘 Python multi `io_threads=4`를 적용한 complete report `perf_python_multi_linux_20260602_230703_python_stream_native_echo_default_io4_verify_20260602.txt`에서 대상 16개 cell이 C 대비 62.9~92.0%로 통과했다. `MULTI_SPOT_SENDSEND` 65536/131072B 대상은 `perf_python_multi_linux_20260602_231518_python_spot_sendsend_default_io4_slot_verify_20260602.txt`와 `perf_python_multi_linux_20260602_231618_python_spot_sendsend_tls65536_default_io4_recheck_20260602.txt` 기준 38.2~84.3%로 통과했다. `MULTI_DEALER_DEALER`는 native send/count loop complete report `perf_python_multi_linux_20260603_001915_python_multi_dealer_dealer_native_send_count_full_verify_20260603.txt`에서 C 대비 35.1~99.7%로 통과했고, `MULTI_PUBSUB`는 native publish/count loop complete report `perf_python_multi_linux_20260603_002713_python_multi_pubsub_native_publish_count_full_verify_20260603.txt`에서 C 대비 53.6~153.1%로 통과했다. `MULTI_DEALER_ROUTER`와 `MULTI_ROUTER_ROUTER`는 native client round-trip loop complete report `perf_python_multi_linux_20260603_010318.txt`에서 대형 16개 cell이 C 대비 39.3~90.8%로 통과했다. 이후 routed echo server의 수신-반송 loop 전체를 native loop로 옮긴 complete report `perf_python_multi_linux_20260603_012037.txt`에서 small/4096B 32개 cell도 C 대비 74.2~99.4%로 통과했다.
 
-`MULTI_SPOT`은 native polling-count client와 latency sample stride 1024 후보를 반영한 complete report 기준으로 모든 transport/msg-size가 통과했다. `MULTI_SPOT_SENDSEND`는 native client loop를 C perf처럼 등록형 poller 기반으로 맞춘 뒤 5개 cell이 추가로 통과했고, active phase 직전에 native routed echo handler를 설치한 보강 probe에서 `ws 1024B`도 통과했다. 이후 client send path에서 64/256B payload를 `zlink_msg_init_data(...)`로 초기화해 사본 생성을 줄였고, 같은 현재 환경에서 C `MULTI_SPOT_SENDSEND` 64/256B failset을 제한 재측정한 complete report로 small cell 기준을 보강했다. `MULTI_SPOT_REQREP`는 request submit과 reply callback 집계를 CPython extension active loop로 옮기고 server reply dispatch도 native handler로 처리한 뒤 잔여 17개 cell이 complete report 기준 모두 통과했다. 현재 Python 표는 complete report가 있는 cell만 반영하며, Single과 Multi 모두 미달이 없다. 상세 근거는 `doc/plan/perf/log/2026-06-02-python-bindings-performance-round.ko.md`에 남겼다.
+`MULTI_SPOT`은 native polling-count client와 latency sample stride 1024 후보를 반영한 complete report 기준으로 모든 transport/msg-size가 통과했다. `MULTI_SPOT_SENDSEND`는 native client loop를 C perf처럼 등록형 poller 기반으로 맞춘 뒤 5개 cell이 추가로 통과했고, active phase 직전에 native routed echo handler를 설치한 보강 probe에서 `ws 1024B`도 통과했다. 이후 client send path에서 64/256B payload를 `zlink_msg_init_data(...)`로 초기화해 사본 생성을 줄였고, 같은 현재 환경에서 C `MULTI_SPOT_SENDSEND` 64/256B failset을 제한 재측정한 complete report로 small cell 기준을 보강했다. `MULTI_SPOT_REQREP`는 request submit과 reply callback 집계를 CPython extension active loop로 옮기고 server reply dispatch도 native handler로 처리한 뒤 잔여 17개 cell이 complete report 기준 모두 통과했다. 이 결과는 2026-06-03 public contract 복구 전의 과거 구현 기준이다. 상세 근거는 `doc/plan/perf/log/2026-06-02-python-bindings-performance-round.ko.md`에 남겼다.
 
 Python multi 표에서 긴 결과 파일명은 표 폭을 키우지 않도록 위 설명 문단에 모았다. 표 안의 메모는 기준과 판정만 짧게 적는다.
 

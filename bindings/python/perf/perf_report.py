@@ -480,7 +480,7 @@ def _multi_effective_options(args, section):
     if default_io_threads_value:
         default_io_threads = f"{default_io_threads_value} (default)"
     else:
-        default_io_threads = "1 (python default)" if args.lang == "python" else "4 (default)"
+        default_io_threads = "4 (python default)" if args.lang == "python" else "4 (default)"
     lines = [
         f"## Effective Options ({section})",
         f"- lang: {args.lang}",

@@ -393,68 +393,94 @@ def recv_nonblocking(sock, *, method="recv", storage=None):
         raise
 
 
+_DONT_WAIT_FLAG = None
+_SUBMIT_ERROR = None
+_SUBMIT_BACKPRESSURED = None
+
+
+def _dont_wait_flag():
+    global _DONT_WAIT_FLAG
+    if _DONT_WAIT_FLAG is None:
+        _DONT_WAIT_FLAG = int(_require_zlink().SendFlags.DONT_WAIT)
+    return _DONT_WAIT_FLAG
+
+
+def _submit_error_type():
+    global _SUBMIT_ERROR
+    if _SUBMIT_ERROR is None:
+        _SUBMIT_ERROR = _require_zlink().SubmitError
+    return _SUBMIT_ERROR
+
+
+def _submit_backpressured_result():
+    global _SUBMIT_BACKPRESSURED
+    if _SUBMIT_BACKPRESSURED is None:
+        _SUBMIT_BACKPRESSURED = _require_zlink().SubmitResult.BACKPRESSURED
+    return _SUBMIT_BACKPRESSURED
+
+
 def send_nonblocking(sock, payload, *, method="send", routing_id=None):
-    zlink_mod = _require_zlink()
     if method != "send":
         raise ValueError(f"unsupported send method: {method}")
     send_method = sock.send
+    flag = _dont_wait_flag()
     try:
         if routing_id is None:
-            op = send_method().flags(zlink_mod.SendFlags.DONT_WAIT)
+            op = send_method().flags(flag)
         else:
-            op = send_method(routing_id).flags(zlink_mod.SendFlags.DONT_WAIT)
+            op = send_method(routing_id).flags(flag)
         if isinstance(payload, (list, tuple)):
             op.messages(*payload)
         else:
             op.message(payload)
         return bool(op.submit())
-    except zlink_mod.SubmitError as exc:
-        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+    except _submit_error_type() as exc:
+        if exc.result == _submit_backpressured_result():
             return False
         raise
 
 
 def send_to_spot_nonblocking(sock, dest_node_rid, dest_spot_rid, payload):
-    zlink_mod = _require_zlink()
+    flag = _dont_wait_flag()
     try:
-        op = sock.send_to_spot(dest_node_rid, dest_spot_rid).flags(zlink_mod.SendFlags.DONT_WAIT)
+        op = sock.send_to_spot(dest_node_rid, dest_spot_rid).flags(flag)
         if isinstance(payload, (list, tuple)):
             op.messages(*payload)
         else:
             op.message(payload)
         return bool(op.submit())
-    except zlink_mod.SubmitError as exc:
-        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+    except _submit_error_type() as exc:
+        if exc.result == _submit_backpressured_result():
             return False
         raise
 
 
 def publish_nonblocking(sock, topic, payload):
-    zlink_mod = _require_zlink()
+    flag = _dont_wait_flag()
     try:
-        op = sock.publish(topic).flags(zlink_mod.SendFlags.DONT_WAIT)
+        op = sock.publish(topic).flags(flag)
         if isinstance(payload, (list, tuple)):
             op.messages(*payload)
         else:
             op.message(payload)
         return bool(op.submit())
-    except zlink_mod.SubmitError as exc:
-        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+    except _submit_error_type() as exc:
+        if exc.result == _submit_backpressured_result():
             return False
         raise
 
 
 def spot_publish_nonblocking(spot, channel_name, topic, payload):
-    zlink_mod = _require_zlink()
+    flag = _dont_wait_flag()
     try:
-        op = spot.publish(topic).flags(zlink_mod.SendFlags.DONT_WAIT)
+        op = spot.publish(topic).flags(flag)
         if isinstance(payload, (list, tuple)):
             op.messages(*payload)
         else:
             op.message(payload)
         return bool(op.submit())
-    except zlink_mod.SubmitError as exc:
-        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+    except _submit_error_type() as exc:
+        if exc.result == _submit_backpressured_result():
             return False
         raise
 

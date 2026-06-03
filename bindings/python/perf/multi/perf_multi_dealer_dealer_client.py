@@ -3,7 +3,6 @@ import time
 from contextlib import ExitStack
 
 import zlink
-from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     STOP_TOKEN,
@@ -64,71 +63,57 @@ def main(argv=None):
                     raise SystemExit(f"unexpected command: {command}")
 
                 active_deadline = time.perf_counter() + args.duration
-                native_send = _native_bridge.multi_send_one_way(
-                    [sock._handle for sock in sockets],
-                    args.msg_size,
-                    max(1, int(args.duration)),
-                    run_id,
-                )
-                if native_send is None:
-                    send_pending = [False] * len(sockets)
-                    with zlink.create_poller() as poller:
-                        poll_events = zlink.create_poll_events(max(1, len(sockets)))
-                        for index, sock in enumerate(sockets):
-                            poller.add_socket(sock, zlink.PollEventFlag.POLLOUT, index)
-                        # C run_send_window: per socket, send DONTWAIT until
-                        # EAGAIN -> mark pending; once all attempted, POLLOUT
-                        # poll(-1) the pending sockets and clear on writable.
-                        while time.perf_counter() < active_deadline:
-                            for index, current_sock in enumerate(sockets):
-                                if send_pending[index]:
-                                    continue
-                                while time.perf_counter() < active_deadline:
-                                    seq += 1
-                                    if send_nonblocking(
-                                        current_sock,
-                                        stamp_payload(
-                                            payloads[index],
-                                            phase=1,
-                                            run_id=run_id,
-                                            seq=seq,
-                                        ),
-                                    ):
-                                        continue
-                                    # EAGAIN/backpressure: defer until POLLOUT.
-                                    send_pending[index] = True
-                                    break
-                            if time.perf_counter() >= active_deadline:
-                                break
-                            if not any(send_pending):
+                send_pending = [False] * len(sockets)
+                with zlink.create_poller() as poller:
+                    poll_events = zlink.create_poll_events(max(1, len(sockets)))
+                    for index, sock in enumerate(sockets):
+                        poller.add_socket(sock, zlink.PollEventFlag.POLLOUT, index)
+                    # C run_send_window: per socket, send DONTWAIT until
+                    # EAGAIN -> mark pending; once all attempted, POLLOUT
+                    # poll(-1) the pending sockets and clear on writable.
+                    while time.perf_counter() < active_deadline:
+                        for index, current_sock in enumerate(sockets):
+                            if send_pending[index]:
                                 continue
-                            remaining_ms = int(
-                                (active_deadline - time.perf_counter()) * 1000
-                            )
-                            if remaining_ms <= 0:
-                                break
-                            ready_count = safe_poll(
-                                poller, poll_events, max(1, remaining_ms)
-                            )
-                            if not ready_count:
-                                continue
-                            for offset in range(ready_count):
-                                if not (
-                                    poll_events.revents(offset)
-                                    & int(zlink.PollEventFlag.POLLOUT)
+                            while time.perf_counter() < active_deadline:
+                                seq += 1
+                                if send_nonblocking(
+                                    current_sock,
+                                    stamp_payload(
+                                        payloads[index],
+                                        phase=1,
+                                        run_id=run_id,
+                                        seq=seq,
+                                    ),
                                 ):
                                     continue
-                                idx = poll_events.slot(offset)
-                                if idx < 0 or idx >= len(sockets):
-                                    continue
-                                send_pending[idx] = False
-                else:
-                    _sent_count, native_errno = native_send
-                    if native_errno != 0:
-                        raise RuntimeError(
-                            "native multi dealer-dealer send failed: "
-                            f"errno={native_errno}"
+                                # EAGAIN/backpressure: defer until POLLOUT.
+                                send_pending[index] = True
+                                break
+                        if time.perf_counter() >= active_deadline:
+                            break
+                        if not any(send_pending):
+                            continue
+                        remaining_ms = int(
+                            (active_deadline - time.perf_counter()) * 1000
                         )
+                        if remaining_ms <= 0:
+                            break
+                        ready_count = safe_poll(
+                            poller, poll_events, max(1, remaining_ms)
+                        )
+                        if not ready_count:
+                            continue
+                        for offset in range(ready_count):
+                            if not (
+                                poll_events.revents(offset)
+                                & int(zlink.PollEventFlag.POLLOUT)
+                            ):
+                                continue
+                            idx = poll_events.slot(offset)
+                            if idx < 0 or idx >= len(sockets):
+                                continue
+                            send_pending[idx] = False
                 # C run_single_size_case: send a wire stop token per socket
                 # so the server receive window terminates.
                 for sock in sockets:

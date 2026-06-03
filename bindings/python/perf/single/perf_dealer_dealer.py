@@ -3,7 +3,6 @@ import threading
 import time
 
 import zlink
-from zlink._native import bridge as _native_bridge
 
 from perf_common import (
     STOP_TOKEN,
@@ -47,29 +46,7 @@ def _send_stop_token(sock):
 
 
 def _native_one_way_metrics(sender, receiver, *, msg_size, duration_s, run_id):
-    native_result = _native_bridge.single_socket_one_way(
-        sender._handle,
-        receiver._handle,
-        msg_size,
-        max(1, int(duration_s)),
-        run_id,
-    )
-    if native_result is None:
-        return None
-    received, throughput, bandwidth, latency, latency_p95, latency_p99, err = (
-        native_result
-    )
-    if err != 0 or received == 0:
-        raise RuntimeError(
-            f"native dealer-dealer benchmark active phase failed: errno={err}"
-        )
-    return {
-        "throughput": throughput,
-        "bandwidth": bandwidth,
-        "latency": latency,
-        "latency_p95": latency_p95,
-        "latency_p99": latency_p99,
-    }
+    return None
 
 
 def main(argv=None):

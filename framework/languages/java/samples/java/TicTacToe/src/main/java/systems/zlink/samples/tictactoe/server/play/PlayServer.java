@@ -11,6 +11,11 @@ public final class PlayServer {
     }
 
     public static void configure(ZLinkFrameworkOptions options) {
+        options.addHandlersFromPackageOf(PlayServer.class);
+        options.addClientServerChannel(SampleNames.PlayChannel, channel -> {
+            channel.enableServer(server -> server.bind(SampleTopology.PlayChannelEndpoint));
+            channel.addHandlerGroup("play");
+        });
         options.addSpotMesh(SampleNames.SpotMesh, mesh ->
             mesh.addNode(SampleNames.PlayNode, node -> node.addSpotFactory(TicTacToeGame.class)));
         options.addStreamNode(SampleNames.PlayStream, stream -> {

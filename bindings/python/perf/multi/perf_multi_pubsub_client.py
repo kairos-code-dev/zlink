@@ -4,7 +4,6 @@ import os
 from contextlib import ExitStack
 
 import zlink
-from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     STOP_TOKEN,
@@ -78,43 +77,6 @@ def main(argv=None):
                 raise SystemExit(f"unexpected command: {command}")
 
             active_deadline = time.perf_counter() + args.duration
-            native_count = _native_bridge.subscribe_count_active(
-                [sock._handle for sock in sockets],
-                TOPIC,
-                args.msg_size,
-                max(1, int(args.duration)),
-                run_id,
-                latency_stride,
-            )
-            if native_count is not None:
-                (
-                    count,
-                    throughput,
-                    bandwidth,
-                    mean_ms,
-                    p95_ms,
-                    p99_ms,
-                    native_errno,
-                ) = native_count
-                if native_errno != 0:
-                    raise RuntimeError(
-                        f"native multi pubsub count failed: errno={native_errno}"
-                    )
-                if count <= 0:
-                    raise RuntimeError(
-                        "multi pubsub benchmark did not receive any active message"
-                    )
-                metrics = {
-                    "throughput": throughput,
-                    "bandwidth": bandwidth,
-                    "latency": mean_ms,
-                    "latency_p95": p95_ms,
-                    "latency_p99": p99_ms,
-                }
-                print_result_lines(
-                    "MULTI_PUBSUB", args.transport, args.msg_size, metrics
-                )
-                return
             stopped = [False] * len(sockets)
             recv_storage = [zlink.create_topic_message() for _ in sockets]
             with zlink.create_poller() as poller:

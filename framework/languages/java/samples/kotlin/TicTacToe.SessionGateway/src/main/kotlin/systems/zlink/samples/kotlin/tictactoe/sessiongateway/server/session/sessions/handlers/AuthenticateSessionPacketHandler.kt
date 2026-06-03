@@ -8,6 +8,7 @@ import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkStreamHeader
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.PlayerSessionDirectory
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleNames
 
 class AuthenticateSessionPacketHandler : ZLinkSessionPacketHandler<ZLinkSessionContext> {
@@ -32,6 +33,7 @@ class AuthenticateSessionPacketHandler : ZLinkSessionPacketHandler<ZLinkSessionC
         return context.actors()
             .bindAsync(actorRef)
             .thenCompose {
+                PlayerSessionDirectory.bind(actorId, context)
                 context.client()
                     .reply(actorId)
                     .submitAsync()

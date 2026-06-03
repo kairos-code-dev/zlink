@@ -6,13 +6,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.samples.bingo.client.BingoPlayerClient;
 
 public final class BingoRoomState {
     private final String roomId;
     private final List<Integer> drawSequence;
     private final BingoNotificationPublisher publisher = new BingoNotificationPublisher();
-    private final List<BingoPlayerClient> clients = new ArrayList<>();
+    private final List<BingoWinnerSink> clients = new ArrayList<>();
     private final Map<String, BingoCard> cards = new HashMap<>();
     private String host = "";
 
@@ -21,7 +20,7 @@ public final class BingoRoomState {
         this.drawSequence = drawSequence;
     }
 
-    public void join(BingoPlayerClient client) {
+    public void join(BingoWinnerSink client) {
         if (clients.isEmpty()) {
             host = client.playerId();
         }
@@ -39,7 +38,7 @@ public final class BingoRoomState {
         }
         List<CompletionStage<Void>> pushes = new ArrayList<>();
         List<String> winners = winners();
-        for (BingoPlayerClient client : clients) {
+        for (BingoWinnerSink client : clients) {
             pushes.add(publisher.publishWinnerAsync(client, winners, roomId));
         }
         return allOf(pushes).thenApply(ignored -> true);

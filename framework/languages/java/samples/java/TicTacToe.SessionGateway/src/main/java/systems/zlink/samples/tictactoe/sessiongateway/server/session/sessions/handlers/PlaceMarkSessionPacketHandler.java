@@ -33,17 +33,9 @@ public final class PlaceMarkSessionPacketHandler
                 payload.toUtf8String() + "|" + actor.actorId())
             .packetName("PlaceMarkReq")
             .submitAsync(String.class)
-            .thenCompose(reply -> {
-                String packet = reply.contains(",Won,")
-                    ? SampleNames.GameEndedPacket
-                    : SampleNames.TurnChangedPacket;
-                return context.client()
-                    .send(reply)
-                    .packetName(packet)
-                    .submitAsync()
-                    .thenCompose(ignored -> context.client()
-                        .reply(reply)
-                        .submitAsync());
-            });
+            .thenCompose(response -> PlayNotificationRelay.deliverAsync(response)
+                .thenCompose(ignored -> context.client()
+                    .reply(PlayNotificationRelay.reply(response))
+                    .submitAsync()));
     }
 }

@@ -8,6 +8,7 @@ import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.PlayerSessionDirectory;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleNames;
 
 public final class AuthenticateSessionPacketHandler
@@ -35,8 +36,11 @@ public final class AuthenticateSessionPacketHandler
             requestedActorId,
             1);
         return context.actors().bindAsync(actorRef)
-            .thenCompose(ignored -> context.client()
-                .reply(requestedActorId)
-                .submitAsync());
+            .thenCompose(ignored -> {
+                PlayerSessionDirectory.bind(requestedActorId, context);
+                return context.client()
+                    .reply(requestedActorId)
+                    .submitAsync();
+            });
     }
 }

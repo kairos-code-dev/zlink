@@ -4,19 +4,20 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleNames;
 
-public final class EnsurePlayerActorHandler implements ZLinkRequestHandler<String, String> {
+@ZLinkHandlerGroup("play")
+public final class EnsurePlayerActorHandler {
     private final ZLinkActorManager actors;
 
     public EnsurePlayerActorHandler(ZLinkActorManager actors) {
         this.actors = actors;
     }
 
-    @Override
-    public CompletionStage<String> handleAsync(String actorId, ZLinkRequestContext context) {
+    @ZLinkRequest(packetName = "EnsurePlayerActor")
+    public CompletionStage<String> handleAsync(String actorId) {
         return actors.getOrCreateAsync(actorId, SampleNames.PlayerActorType)
             .thenCompose(actor -> actor.context()
                 .joinEntrySpot(RoutingId.from(SampleNames.EntrySpotRoutingId))

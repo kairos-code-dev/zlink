@@ -59,6 +59,15 @@ def _all_source_text() -> str:
     return "\n".join(path.read_text(encoding="utf-8") for path in _source_files())
 
 
+def _perf_source_files() -> list[Path]:
+    perf_root = ROOT / "perf"
+    return sorted(
+        path
+        for path in perf_root.rglob("*.py")
+        if "__pycache__" not in path.parts and ".egg-info" not in path.parts
+    )
+
+
 def test_hot_paths_use_part_substrate_not_aggregate_calls():
     text = _all_source_text()
 
@@ -163,6 +172,56 @@ def test_python_hot_paths_prefer_private_native_bridge():
         runner_text = runner.read_text(encoding="utf-8")
         assert "_require_native_bridge" in runner_text
         assert "_native_bridge.available()" in runner_text
+
+
+def test_public_socket_contracts_keep_builder_only_send_publish_surface():
+    contract_files = [
+        SRC / "contracts" / "sockets" / "message_socket_contracts.py",
+        SRC / "contracts" / "sockets" / "routed_socket_contracts.py",
+        SRC / "contracts" / "sockets" / "pubsub_socket_contracts.py",
+        SRC / "_runtime" / "sockets" / "socket_base_impl.py",
+    ]
+    text = "\n".join(path.read_text(encoding="utf-8") for path in contract_files)
+
+    assert "def send(self, payload" not in text
+    assert "def send(self, routing_id, payload" not in text
+    assert "def publish(self, topic, payload" not in text
+    assert "def send(self):" in text
+    assert "def send(self, routing_id):" in text
+    assert "def publish(self, topic):" in text
+
+
+def test_perf_scripts_do_not_bypass_public_python_api_active_loops():
+    forbidden_calls = (
+        "single_socket_one_way(",
+        "multi_send_one_way(",
+        "multi_echo_roundtrip(",
+        "multi_spot_sendsend_roundtrip(",
+        "multi_spot_reqrep_roundtrip(",
+        "subscribe_count_active(",
+        "publish_active(",
+        "spot_subscribe_count_active(",
+        "spot_publish_active(",
+        "recv_count_active(",
+        "router_echo_server_loop(",
+        "stream_echo_install(",
+        "stream_echo_drain(",
+        "spot_routed_echo_install(",
+        "spot_count_install(",
+        "spot_count_start(",
+        "spot_count_stats(",
+    )
+
+    violations: list[str] = []
+    for path in _perf_source_files():
+        if path.name == "run_benchmarks.py":
+            continue
+        body = path.read_text(encoding="utf-8")
+        for call in forbidden_calls:
+            if call in body:
+                violations.append(f"{path.relative_to(ROOT)}:{call}")
+
+    assert violations == []
 
 
 def test_public_helpers_remain_canonical_facade_objects():

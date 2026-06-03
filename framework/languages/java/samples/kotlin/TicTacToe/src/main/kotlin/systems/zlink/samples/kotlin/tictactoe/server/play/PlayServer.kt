@@ -8,6 +8,11 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.sessions.PlaySession
 
 object PlayServer {
     fun configure(options: ZLinkFrameworkOptions) {
+        options.addHandlersFromPackageOf(PlayServer::class.java)
+        options.addClientServerChannel(SampleNames.PlayChannel) { channel ->
+            channel.enableServer { server -> server.bind(SampleTopology.PlayChannelEndpoint) }
+            channel.addHandlerGroup("play")
+        }
         options.addSpotMesh(SampleNames.SpotMesh) { mesh ->
             mesh.addNode(SampleNames.PlayNode) { node -> node.addSpotFactory(TicTacToeGame::class.java) }
         }

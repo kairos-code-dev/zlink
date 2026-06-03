@@ -19,6 +19,7 @@ sourceSets {
     main {
         java {
             srcDir("../src/main/java")
+            srcDir("src/main/java")
             include("systems/zlink/samples/tictactoe/client/**")
             include("systems/zlink/samples/tictactoe/shared/**")
         }

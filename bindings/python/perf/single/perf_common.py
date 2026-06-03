@@ -379,6 +379,8 @@ def run_one_way_subscriber_public_subscribe(
 
 
 _DONT_WAIT_FLAG = None
+_SUBMIT_ERROR = None
+_SUBMIT_BACKPRESSURED = None
 
 
 def _dont_wait_flag():
@@ -388,25 +390,45 @@ def _dont_wait_flag():
     return _DONT_WAIT_FLAG
 
 
+def _submit_error_type():
+    global _SUBMIT_ERROR
+    if _SUBMIT_ERROR is None:
+        _SUBMIT_ERROR = _require_zlink().SubmitError
+    return _SUBMIT_ERROR
+
+
+def _submit_backpressured_result():
+    global _SUBMIT_BACKPRESSURED
+    if _SUBMIT_BACKPRESSURED is None:
+        _SUBMIT_BACKPRESSURED = _require_zlink().SubmitResult.BACKPRESSURED
+    return _SUBMIT_BACKPRESSURED
+
+
 def send_nonblocking(sock, payload, *, routing_id=None):
-    zlink_mod = _require_zlink()
+    flag = _dont_wait_flag()
     try:
-        flags = zlink_mod.SendFlags.DONT_WAIT
         if routing_id is None:
-            return bool(sock.send(payload, flags=flags))
-        return bool(sock.send(routing_id, payload, flags=flags))
-    except zlink_mod.SubmitError as exc:
-        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+            op = sock.send()
+        else:
+            op = sock.send(routing_id)
+        return bool(op.message(payload).flags(flag).submit())
+    except _submit_error_type() as exc:
+        if exc.result == _submit_backpressured_result():
             return False
         raise
 
 
 def publish_nonblocking(sock, topic, payload):
-    zlink_mod = _require_zlink()
+    flag = _dont_wait_flag()
     try:
-        return bool(sock.publish(topic, payload, flags=zlink_mod.SendFlags.DONT_WAIT))
-    except zlink_mod.SubmitError as exc:
-        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+        return bool(
+            sock.publish(topic)
+            .message(payload)
+            .flags(flag)
+            .submit()
+        )
+    except _submit_error_type() as exc:
+        if exc.result == _submit_backpressured_result():
             return False
         raise
 

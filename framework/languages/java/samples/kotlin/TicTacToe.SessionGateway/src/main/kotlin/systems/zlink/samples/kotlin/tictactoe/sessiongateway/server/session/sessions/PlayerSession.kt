@@ -20,7 +20,9 @@ class PlayerSession(
         CompletableFuture.completedFuture(null)
 
     override fun onDisconnectedAsync(): CompletionStage<Void> =
-        CompletableFuture.completedFuture(null)
+        context.actors().bound().forEach { actor ->
+            PlayerSessionDirectory.unbind(actor.actorId(), context)
+        }.let { CompletableFuture.completedFuture(null) }
 
     override fun onErrorAsync(error: ZLinkStreamError): CompletionStage<Void> =
         CompletableFuture.completedFuture(null)

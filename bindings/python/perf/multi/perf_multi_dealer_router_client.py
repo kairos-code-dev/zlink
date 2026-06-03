@@ -3,7 +3,6 @@ import time
 from contextlib import ExitStack
 
 import zlink
-from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     apply_multi_auto_hwm_msg_unit,
@@ -61,46 +60,6 @@ def main(argv=None):
                         zlink.MonitorEventMask.CONNECTION_READY,
                         timeout_ms=resolve_multi_connect_ready_timeout_ms(),
                     )
-
-                native_result = _native_bridge.multi_echo_roundtrip(
-                    [sock._handle for sock in sockets],
-                    args.msg_size,
-                    max(1, int(args.duration)),
-                    run_id,
-                    router_mode=False,
-                )
-                if native_result is not None:
-                    (
-                        count,
-                        throughput,
-                        bandwidth,
-                        mean_ms,
-                        p95_ms,
-                        p99_ms,
-                        native_errno,
-                    ) = native_result
-                    if native_errno != 0:
-                        raise RuntimeError(
-                            "native multi dealer-router echo failed: "
-                            f"errno={native_errno}"
-                        )
-                    if count == 0:
-                        raise RuntimeError(
-                            "multi dealer-router benchmark did not receive any active reply"
-                        )
-                    print_result_lines(
-                        "MULTI_DEALER_ROUTER",
-                        args.transport,
-                        args.msg_size,
-                        {
-                            "throughput": throughput,
-                            "bandwidth": bandwidth,
-                            "latency": mean_ms,
-                            "latency_p95": p95_ms,
-                            "latency_p99": p99_ms,
-                        },
-                    )
-                    return
 
                 active_deadline = time.perf_counter() + args.duration
                 recv_storage = [zlink.create_received() for _ in sockets]

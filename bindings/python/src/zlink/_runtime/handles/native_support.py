@@ -527,6 +527,15 @@ class _BytesReceivedPartsOwner:
         self._closed = False
         self._open_parts = [True] * self._part_count
 
+    @classmethod
+    def _from_trusted_bytes_tuple(cls, parts):
+        owner = cls.__new__(cls)
+        owner._parts = parts
+        owner._part_count = len(parts)
+        owner._closed = False
+        owner._open_parts = [True] * owner._part_count
+        return owner
+
     def _check_open(self, index):
         if self._closed or not self._open_parts[index]:
             raise RuntimeError("received message is closed")

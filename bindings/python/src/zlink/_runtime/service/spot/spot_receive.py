@@ -148,7 +148,7 @@ def _recv_spot_subscribed(handle, flags):
                 _raise_result_error(RecvError, RecvResult, rc, err)
             return TopicMessage(
                 _decode_topic_text(topic_raw),
-                _BytesReceivedPartsOwner(parts),
+                _BytesReceivedPartsOwner._from_trusted_bytes_tuple(parts),
                 routing,
             )
 
@@ -323,7 +323,7 @@ def _recv_spot_routed(handle, flags, *, reply_sender_factory=None, send_sender_f
             if send_sender_factory is not None:
                 send_sender = send_sender_factory(node_rid, spot_rid)
             received = Received(
-                _BytesReceivedPartsOwner(parts),
+                _BytesReceivedPartsOwner._from_trusted_bytes_tuple(parts),
                 routing_id=node_rid,
                 request_seq=request_seq,
                 spot_rid=spot_rid,

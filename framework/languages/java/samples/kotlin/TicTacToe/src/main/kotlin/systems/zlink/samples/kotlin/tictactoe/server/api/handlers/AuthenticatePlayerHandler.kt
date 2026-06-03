@@ -2,11 +2,13 @@ package systems.zlink.samples.kotlin.tictactoe.server.api.handlers
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import systems.zlink.framework.handlers.ZLinkRequest
 
-class AuthenticatePlayerHandler : ZLinkRequestHandler<String, String> {
-    override fun handleAsync(request: String, context: ZLinkRequestContext): CompletionStage<String> {
+@ZLinkHandlerGroup("api")
+class AuthenticatePlayerHandler {
+    @ZLinkRequest(packetName = "AuthenticatePlayer")
+    fun handleAsync(request: String): CompletionStage<String> {
         val actorId = when (request) {
             "alice-token" -> "alice"
             "bob-token" -> "bob"

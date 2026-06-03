@@ -20,6 +20,7 @@ sourceSets {
     main {
         kotlin {
             srcDir("../src/main/kotlin")
+            srcDir("src/main/kotlin")
             include("systems/zlink/samples/kotlin/tictactoe/server/**")
             include("systems/zlink/samples/kotlin/tictactoe/shared/**")
         }

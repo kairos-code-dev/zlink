@@ -8,6 +8,7 @@ import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.connect
 import systems.zlink.framework.kotlin.dispatch
 import systems.zlink.framework.kotlin.submit
+import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoWinnerSink
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
 import systems.zlink.stream.connector.ZLinkStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
@@ -16,8 +17,8 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 
 class BingoPlayerClient(
-    val playerId: String,
-) : AutoCloseable {
+    override val playerId: String,
+) : BingoWinnerSink, AutoCloseable {
     private val connector: ZLinkStreamConnector =
         ZLinkStreamConnectorFactory.create(
             ZLinkStreamConnectorOptions(
@@ -61,6 +62,10 @@ class BingoPlayerClient(
             .packetName(packetName)
             .metadata("playerId", playerId)
             .submit()
+    }
+
+    override suspend fun publishWinner(payload: String, roomId: String) {
+        push("BingoWinner", payload, roomId)
     }
 
     suspend fun dispatch() {

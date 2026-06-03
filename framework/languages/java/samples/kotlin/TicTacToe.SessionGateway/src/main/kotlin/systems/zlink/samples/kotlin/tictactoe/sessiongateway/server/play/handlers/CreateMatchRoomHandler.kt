@@ -2,14 +2,15 @@ package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.handle
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import systems.zlink.framework.handlers.ZLinkRequest
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.gamespots.TicTacToeGameDirectory
 
-class CreateMatchRoomHandler : ZLinkRequestHandler<String, String> {
-    override fun handleAsync(
+@ZLinkHandlerGroup("play")
+class CreateMatchRoomHandler {
+    @ZLinkRequest(packetName = "CreateMatchRoom")
+    fun handleAsync(
         ownerActorId: String,
-        context: ZLinkRequestContext,
     ): CompletionStage<String> {
         val room = TicTacToeGameDirectory.create(ownerActorId)
         return CompletableFuture.completedFuture("${room.matchId}|${room.ownerActorId}")

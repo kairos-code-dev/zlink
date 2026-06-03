@@ -2,11 +2,13 @@ package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.api.handler
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import systems.zlink.framework.handlers.ZLinkRequest
 
-class AuthenticateActorHandler : ZLinkRequestHandler<String, String> {
-    override fun handleAsync(request: String, context: ZLinkRequestContext): CompletionStage<String> {
+@ZLinkHandlerGroup("api")
+class AuthenticateActorHandler {
+    @ZLinkRequest(packetName = "AuthenticateActor")
+    fun handleAsync(request: String): CompletionStage<String> {
         require(request.startsWith("player-")) { "unknown actor token" }
         return CompletableFuture.completedFuture(request)
     }

@@ -42,7 +42,7 @@ class ReceivedMessage:
         return self._msg
 
     def __len__(self):
-        if self._owner is not None and hasattr(self._owner, "size"):
+        if self._owner is not None:
             return self._owner.size(self._index)
         return _msg_size(self._native_msg())
 
@@ -55,7 +55,7 @@ class ReceivedMessage:
         both cases the view is only valid while this received message remains
         open.
         """
-        if self._owner is not None and hasattr(self._owner, "data"):
+        if self._owner is not None:
             return self._owner.data(self._index)
         native = self._native_msg()
         ptr = _msg_data_ptr(native)
@@ -65,7 +65,7 @@ class ReceivedMessage:
         return memoryview((ctypes.c_ubyte * size).from_address(ptr)).cast("B")
 
     def to_bytes(self):
-        if self._owner is not None and hasattr(self._owner, "to_bytes"):
+        if self._owner is not None:
             return self._owner.to_bytes(self._index)
         return _msg_to_bytes(self._native_msg())
 
@@ -92,6 +92,7 @@ class ReceivedMessage:
     async def __aexit__(self, exc_type, exc, tb):
         self.close()
 
+
 class _BaseReceived:
     """Shared parts/lifecycle for received-message containers.
 
@@ -107,6 +108,8 @@ class _BaseReceived:
 
     @staticmethod
     def _build_parts(owner):
+        if owner._part_count == 1:
+            return (ReceivedMessage._from_owner(owner, 0),)
         return tuple(
             ReceivedMessage._from_owner(owner, index)
             for index in range(owner._part_count)
@@ -204,7 +207,10 @@ class ReceivedMultipart(_BaseReceived):
             self._send_sender = None
             return
         self._owner = owner
-        self.parts = self._build_parts(owner)
+        if owner._part_count == 1:
+            self.parts = (ReceivedMessage._from_owner(owner, 0),)
+        else:
+            self.parts = self._build_parts(owner)
         self.routing_id = routing_id
         self.spot_rid = spot_rid
         self.request_seq = request_seq
@@ -242,8 +248,17 @@ class ReceivedMultipart(_BaseReceived):
         reply_sender=None,
         send_sender=None,
     ):
-        self._close_current_owner()
-        self._attach_owner(owner)
+        current_owner = self._owner
+        if current_owner is not None:
+            try:
+                current_owner.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self._owner = owner
+        if owner._part_count == 1:
+            self.parts = (ReceivedMessage._from_owner(owner, 0),)
+        else:
+            self.parts = self._build_parts(owner)
         self.routing_id = routing_id
         self.spot_rid = spot_rid
         self.request_seq = request_seq

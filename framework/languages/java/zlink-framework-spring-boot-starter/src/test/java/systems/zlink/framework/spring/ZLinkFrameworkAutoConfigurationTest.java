@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.List;
@@ -22,6 +23,8 @@ import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
@@ -193,6 +196,29 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
+    void annotatedHandlerGroupHandlesRequestsInsideSpringLifecycle() {
+        String endpoint = "inproc://zlink-spring-annotated-" + UUID.randomUUID();
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean("springAnnotatedEndpoint", String.class, () -> endpoint);
+            context.register(
+                ScannedHandlerConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            String reply = context.getBean(ZLinkClient.class)
+                .requestToChannel("profile", "42")
+                .packetName("GetProfile")
+                .submitAsync(String.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals("profile:42", reply);
+            assertTrue(context.getBean(ZLinkFrameworkLifecycle.class).isRunning());
+        }
+    }
+
+    @Test
     void runtimeEventDispatcherIsAlwaysRegistered() {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
@@ -306,6 +332,27 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
+    @Configuration
+    static class ScannedHandlerConfig {
+        @Bean
+        HandlerDependency handlerDependency() {
+            return new HandlerDependency("profile");
+        }
+
+        @Bean
+        ZLinkFrameworkOptionsCustomizer scannedHandlerCustomizer(String springAnnotatedEndpoint) {
+            return options -> {
+                options.addHandlersFromPackageOf(ScannedHandlerConfig.class);
+                options.addClientServerChannel("profile", channel -> {
+                    channel.enableServer(server -> server.bind(springAnnotatedEndpoint));
+                    channel.enableClient(client -> client.useManualConnections(
+                        endpoints -> endpoints.connect(springAnnotatedEndpoint)));
+                    channel.addHandlerGroup("spring-scanned");
+                });
+            };
+        }
+    }
+
     public static final class GameSpot implements ZLinkSpot {
         private final ZLinkSpotContext context;
 
@@ -372,6 +419,20 @@ final class ZLinkFrameworkAutoConfigurationTest {
         public CompletionStage<String> handleAsync(
             String request,
             systems.zlink.framework.channels.ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(dependency.format(request));
+        }
+    }
+
+    @ZLinkHandlerGroup("spring-scanned")
+    public static final class AnnotatedInjectedRequestHandler {
+        private final HandlerDependency dependency;
+
+        public AnnotatedInjectedRequestHandler(HandlerDependency dependency) {
+            this.dependency = dependency;
+        }
+
+        @ZLinkRequest(packetName = "GetProfile")
+        public CompletionStage<String> handleAsync(String request) {
             return CompletableFuture.completedFuture(dependency.format(request));
         }
     }

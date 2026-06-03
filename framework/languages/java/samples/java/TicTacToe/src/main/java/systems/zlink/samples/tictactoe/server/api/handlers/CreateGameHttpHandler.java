@@ -1,15 +1,23 @@
 package systems.zlink.samples.tictactoe.server.api.handlers;
 
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.samples.tictactoe.server.play.handlers.CreateGameHandler;
+import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.handlers.ZLinkRequest;
+import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 
-public final class CreateGameHttpHandler implements ZLinkRequestHandler<String, String> {
-    private final CreateGameHandler playHandler = new CreateGameHandler();
+@ZLinkHandlerGroup("api")
+public final class CreateGameHttpHandler {
+    private final ZLinkClient client;
 
-    @Override
-    public CompletionStage<String> handleAsync(String request, ZLinkRequestContext context) {
-        return playHandler.createAsync(request);
+    public CreateGameHttpHandler(ZLinkClient client) {
+        this.client = client;
+    }
+
+    @ZLinkRequest(packetName = "CreateGame")
+    public CompletionStage<String> handleAsync(String request) {
+        return client.requestToChannel(SampleNames.PlayChannel, request)
+            .packetName("CreateGameReq")
+            .submitAsync(String.class);
     }
 }

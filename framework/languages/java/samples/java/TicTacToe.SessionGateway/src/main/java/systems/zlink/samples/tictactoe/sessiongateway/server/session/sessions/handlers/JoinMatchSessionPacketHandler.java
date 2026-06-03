@@ -33,12 +33,9 @@ public final class JoinMatchSessionPacketHandler
                 payload.toUtf8String().trim() + "|" + actor.actorId())
             .packetName("JoinMatchReq")
             .submitAsync(String.class)
-            .thenCompose(reply -> context.client()
-                .send(reply)
-                .packetName(SampleNames.TurnChangedPacket)
-                .submitAsync()
+            .thenCompose(response -> PlayNotificationRelay.deliverAsync(response)
                 .thenCompose(ignored -> context.client()
-                    .reply(reply)
+                    .reply(PlayNotificationRelay.reply(response))
                     .submitAsync()));
     }
 }

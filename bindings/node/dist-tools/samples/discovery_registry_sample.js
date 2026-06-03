@@ -26,6 +26,7 @@ async function waitForTopologyEntry(registry, channelName, endpoint) {
     return null;
 }
 async function main() {
+    // --8<-- [start:doc]
     const ctx = zlink.createContext();
     const registry = zlink.createRegistry(ctx);
     const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'sample');
@@ -48,6 +49,7 @@ async function main() {
         registry.close();
         ctx.close();
     }
+    // --8<-- [end:doc]
 }
 main().catch((error) => {
     console.error(error);

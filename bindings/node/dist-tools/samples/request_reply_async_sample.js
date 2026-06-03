@@ -19,6 +19,7 @@ function timeoutPromise(ms, label) {
     });
 }
 async function main() {
+    // --8<-- [start:doc]
     const port = await reservePort();
     const endpoint = `tcp://127.0.0.1:${port}`;
     const ctx = zlink.createContext();
@@ -71,6 +72,7 @@ async function main() {
         routerSocket.close();
         ctx.close();
     }
+    // --8<-- [end:doc]
 }
 main().catch((error) => {
     console.error(error);

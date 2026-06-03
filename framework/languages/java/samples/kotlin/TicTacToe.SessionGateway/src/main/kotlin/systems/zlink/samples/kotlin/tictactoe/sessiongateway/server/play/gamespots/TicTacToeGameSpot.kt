@@ -20,6 +20,7 @@ class TicTacToeGameSpot(
 
     @Synchronized
     fun join(actorId: String): JoinResult {
+        var isNewActor = false
         val mark = when (actorId) {
             xActorId -> "X"
             oActorId -> "O"
@@ -28,21 +29,24 @@ class TicTacToeGameSpot(
                     xActorId == null -> {
                         xActorId = actorId
                         turnActorId = actorId
+                        isNewActor = true
                         "X"
                     }
                     oActorId == null -> {
                         oActorId = actorId
+                        isNewActor = true
                         "O"
                     }
                     else -> throw IllegalStateException("Match is full: $matchId")
                 }
             }
         }
-        return JoinResult(matchId, actorId, mark, snapshot())
+        val state = snapshot()
+        return JoinResult(matchId, actorId, mark, state, joinEvents(actorId, mark, state, isNewActor))
     }
 
     @Synchronized
-    fun placeMark(actorId: String, cell: Int): State {
+    fun placeMark(actorId: String, cell: Int): MoveResult {
         if (actorId != turnActorId) {
             throw IllegalStateException("It is not $actorId's turn")
         }
@@ -57,7 +61,9 @@ class TicTacToeGameSpot(
         if (winnerActorId == null && !draw) {
             turnActorId = if (actorId == xActorId) oActorId else xActorId
         }
-        return snapshot()
+        val state = snapshot()
+        val events = if (winnerActorId == null && !draw) turnChangedEvents(state) else gameEndedEvents(state)
+        return MoveResult(state, events)
     }
 
     private fun winner(): String? {
@@ -98,13 +104,74 @@ class TicTacToeGameSpot(
             lastMoveCell = lastMoveCell,
         )
 
+    private fun joinEvents(
+        joinedActorId: String,
+        joinedMark: String,
+        state: State,
+        isNewActor: Boolean,
+    ): List<GameEvent> {
+        val events = mutableListOf<GameEvent>()
+        if (isNewActor) {
+            actorIds()
+                .filter { it != joinedActorId }
+                .forEach { events += GameEvent.opponentJoined(it, joinedActorId, joinedMark, state) }
+        }
+        events += turnChangedEvents(state)
+        return events
+    }
+
+    private fun turnChangedEvents(state: State): List<GameEvent> =
+        if (state.status == "Playing") {
+            actorIds().map { GameEvent.turnChanged(it, state) }
+        } else {
+            emptyList()
+        }
+
+    private fun gameEndedEvents(state: State): List<GameEvent> =
+        actorIds().map { GameEvent.gameEnded(it, state) }
+
+    private fun actorIds(): List<String> =
+        listOfNotNull(xActorId, oActorId)
+
     data class JoinResult(
         val matchId: String,
         val actorId: String,
         val mark: String,
         val state: State,
+        val events: List<GameEvent>,
     ) {
         fun encode(): String = "$matchId|$actorId|$mark|${state.encode()}"
+    }
+
+    data class MoveResult(
+        val state: State,
+        val events: List<GameEvent>,
+    ) {
+        fun encode(): String = state.encode()
+    }
+
+    data class GameEvent(
+        val kind: String,
+        val recipientActorId: String,
+        val joinedActorId: String?,
+        val joinedMark: String?,
+        val state: State,
+    ) {
+        companion object {
+            fun opponentJoined(
+                recipientActorId: String,
+                joinedActorId: String,
+                joinedMark: String,
+                state: State,
+            ): GameEvent =
+                GameEvent("OpponentJoined", recipientActorId, joinedActorId, joinedMark, state)
+
+            fun turnChanged(recipientActorId: String, state: State): GameEvent =
+                GameEvent("TurnChanged", recipientActorId, null, null, state)
+
+            fun gameEnded(recipientActorId: String, state: State): GameEvent =
+                GameEvent("GameEnded", recipientActorId, null, null, state)
+        }
     }
 
     data class State(

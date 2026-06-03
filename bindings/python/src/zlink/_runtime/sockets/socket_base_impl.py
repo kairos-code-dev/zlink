@@ -33,6 +33,7 @@ from ..handles.native_support import (
     _raise_recv_error_from_errno,
     _raise_submit_error_from_errno,
     _validated_routing_id_bytes,
+    _validated_c_string_value,
 )
 from ...contracts.errors.errors import (
     BindError,
@@ -85,23 +86,181 @@ from .socket_base import (
     _SubscriberSocket,
     _close_native_parts,
     _in_callback,
+    _native_extension,
     _part_flag,
     _submit_parts,
 )
 
 
+_NO_PAYLOAD = object()
+_native_socket_send_op_func = (
+    getattr(_native_extension, "socket_send_op", None)
+    if _native_extension is not None
+    else None
+)
+
+
+def _native_socket_send_op(socket):
+    if _native_socket_send_op_func is None:
+        return None
+    return _native_socket_send_op_func(int(socket._socket_handle.handle))
+
+
+class _SocketSendOp:
+    __slots__ = ("_socket", "_payload", "_parts", "_flags", "_submitted")
+
+    def __init__(self, socket):
+        self._socket = socket
+        self._payload = _NO_PAYLOAD
+        self._parts = None
+        self._flags = 0
+        self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if self._parts is not None:
+            self._parts.append(payload)
+        elif self._payload is _NO_PAYLOAD:
+            self._payload = payload
+        else:
+            self._parts = [self._payload, payload]
+            self._payload = _NO_PAYLOAD
+        return self
+
+    def messages(self, *payloads):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if not payloads:
+            return self
+        if self._parts is not None:
+            self._parts.extend(payloads)
+        elif self._payload is _NO_PAYLOAD:
+            if len(payloads) == 1:
+                self._payload = payloads[0]
+            else:
+                self._parts = list(payloads)
+        else:
+            self._parts = [self._payload, *payloads]
+            self._payload = _NO_PAYLOAD
+        return self
+
+    def flags(self, flags):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._flags = int(flags)
+        return self
+
+    def _payload_or_raise(self):
+        if self._parts is not None:
+            if not self._parts:
+                raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+            return self._parts
+        if self._payload is _NO_PAYLOAD:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        return self._payload
+
+    def submit(self):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        payload = self._payload_or_raise()
+        self._submitted = True
+        try:
+            bridged = self._socket._send_payload_via_native_bridge(
+                payload, self._flags
+            )
+            if bridged is not None:
+                return bridged
+            self._socket._send_native_parts(
+                self._socket._native_parts_from_payload(payload),
+                self._flags,
+            )
+            return True
+        except SubmitError as ex:
+            if (self._flags & 1) and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
+
+
+class _RoutedSocketSendOp(_SocketSendOp):
+    __slots__ = ("_routing_id",)
+
+    def __init__(self, socket, routing_id):
+        super().__init__(socket)
+        self._routing_id = routing_id
+
+    def submit(self):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        payload = self._payload_or_raise()
+        self._submitted = True
+        try:
+            bridged = self._socket._send_routed_payload_via_native_bridge(
+                self._routing_id,
+                payload,
+                self._flags,
+            )
+            if bridged is not None:
+                return bridged
+            self._socket._send_native_parts_to_routing_id(
+                self._routing_id,
+                self._socket._native_parts_from_payload(payload),
+                self._flags,
+            )
+            return True
+        except SubmitError as ex:
+            if (self._flags & 1) and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
+
+
+class _PublisherSendOp(_SocketSendOp):
+    __slots__ = ("_topic",)
+
+    def __init__(self, socket, topic):
+        super().__init__(socket)
+        self._topic = topic
+
+    def submit(self):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        payload = self._payload_or_raise()
+        self._submitted = True
+        try:
+            topic_bytes = _validated_c_string_value(self._topic, field="topic")
+            bridged = self._socket._publish_payload_via_native_bridge(
+                topic_bytes,
+                payload,
+                self._flags,
+            )
+            if bridged is not None:
+                return bridged
+            native_parts = self._socket._native_parts_from_payload(payload)
+            part_count = len(native_parts)
+            for index, native in enumerate(native_parts):
+                rc = lib().zlink_publish_part(
+                    self._socket._handle,
+                    topic_bytes,
+                    ctypes.byref(native),
+                    int(self._flags),
+                    _part_flag(index, part_count),
+                )
+                if rc != 0:
+                    err = lib().zlink_errno()
+                    _close_native_parts(native_parts, index)
+                    _raise_result_error(SubmitError, SubmitResult, rc, err)
+            return True
+        except SubmitError as ex:
+            if (self._flags & 1) and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
+
+
 class PairSocket(_SendReadySocket, _EndpointSocket, _MessageSocket):
     _socket_type_value = SocketType.PAIR
 
-    def send(self, payload=None, *, flags=0):
-        if payload is not None:
-            return _MessageSocket.send(self, payload, flags=flags)
-        from ..service.spot import SendOp
-
-        return SendOp(
-            self,
-            lambda parts, op_flags: _MessageSocket.send(self, parts, flags=op_flags),
-        )
+    def send(self):
+        return _native_socket_send_op(self) or _SocketSendOp(self)
 
 
 class DealerSocket(
@@ -123,15 +282,8 @@ class DealerSocket(
             lambda: bool(self._pending_requests),
         )
 
-    def send(self, payload=None, *, flags=0):
-        if payload is not None:
-            return _MessageSocket.send(self, payload, flags=flags)
-        from ..service.spot import SendOp
-
-        return SendOp(
-            self,
-            lambda parts, op_flags: _MessageSocket.send(self, parts, flags=op_flags),
-        )
+    def send(self):
+        return _native_socket_send_op(self) or _SocketSendOp(self)
 
     def request(self):
         from ..service.spot import RequestOp
@@ -247,17 +399,8 @@ class RouterSocket(
     def router_options(self):
         return create_router_socket_options(self)
 
-    def send(self, routing_id, payload=None, *, flags=0):
-        if payload is not None:
-            return _RoutedMessageSocket.send(self, routing_id, payload, flags=flags)
-        from ..service.spot import SendOp
-
-        return SendOp(
-            self,
-            lambda parts, op_flags: _RoutedMessageSocket.send(
-                self, routing_id, parts, flags=op_flags
-            ),
-        )
+    def send(self, routing_id):
+        return _RoutedSocketSendOp(self, routing_id)
 
     def request(self, peer_rid):
         from ..service.spot import RequestOp
@@ -314,7 +457,11 @@ class RouterSocket(
     def _recv_parts_via_native_bridge(self, flags):
         if _in_callback():
             return None
-        result = _native_bridge.router_recv_parts(self._handle, flags)
+        if _native_extension is None:
+            return None
+        result = _native_extension.router_recv_parts(
+            int(self._socket_handle.handle), int(flags)
+        )
         if result is None:
             return None
         rc, err, routing, spot_routing, request_seq, parts = result
@@ -323,7 +470,7 @@ class RouterSocket(
         routing_id = RoutingId.from_(routing) if routing is not None else None
         spot_rid = RoutingId.from_(spot_routing) if spot_routing is not None else None
         return (
-            _BytesReceivedPartsOwner(parts),
+            _BytesReceivedPartsOwner._from_trusted_bytes_tuple(parts),
             routing_id,
             spot_rid,
             int(request_seq),
@@ -927,17 +1074,8 @@ class PubSocket(
     def pub_options(self):
         return create_pub_socket_options(self)
 
-    def publish(self, topic, payload=None, *, flags=0):
-        if payload is not None:
-            return _PublisherSocket.publish(self, topic, payload, flags=flags)
-        from ..service.spot import SendOp
-
-        return SendOp(
-            self,
-            lambda parts, op_flags: _PublisherSocket.publish(
-                self, topic, parts, flags=op_flags
-            ),
-        )
+    def publish(self, topic):
+        return _PublisherSendOp(self, topic)
 
 
 class SubSocket(
@@ -961,17 +1099,8 @@ class XPubSocket(
     def pub_options(self):
         return create_pub_socket_options(self)
 
-    def publish(self, topic, payload=None, *, flags=0):
-        if payload is not None:
-            return _PublisherSocket.publish(self, topic, payload, flags=flags)
-        from ..service.spot import SendOp
-
-        return SendOp(
-            self,
-            lambda parts, op_flags: _PublisherSocket.publish(
-                self, topic, parts, flags=op_flags
-            ),
-        )
+    def publish(self, topic):
+        return _PublisherSendOp(self, topic)
 
     def _subscription_event(self, flags):
         routing_id = ctypes.POINTER(ZlinkRoutingId)()

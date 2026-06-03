@@ -25,14 +25,11 @@ class JoinMatchSessionPacketHandler(
         )
             .packetName("JoinMatchReq")
             .submitAsync(String::class.java)
-            .thenCompose { reply ->
-                context.client()
-                    .send(reply)
-                    .packetName(SampleNames.TurnChangedPacket)
-                    .submitAsync()
+            .thenCompose { response ->
+                PlayNotificationRelay.deliverAsync(response)
                     .thenCompose {
                         context.client()
-                            .reply(reply)
+                            .reply(PlayNotificationRelay.reply(response))
                             .submitAsync()
                     }
             }

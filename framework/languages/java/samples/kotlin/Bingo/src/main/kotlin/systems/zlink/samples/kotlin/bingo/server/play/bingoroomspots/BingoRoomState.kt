@@ -1,18 +1,16 @@
 package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots
 
-import systems.zlink.samples.kotlin.bingo.client.BingoPlayerClient
-
 class BingoRoomState(
     private val roomId: String,
     private val drawSequence: List<Int>,
 ) {
     private val publisher = BingoNotificationPublisher()
-    private val clients = mutableListOf<BingoPlayerClient>()
+    private val clients = mutableListOf<BingoWinnerSink>()
     private val cards = mutableMapOf<String, BingoCard>()
     var host = ""
         private set
 
-    fun join(client: BingoPlayerClient) {
+    fun join(client: BingoWinnerSink) {
         if (clients.isEmpty()) {
             host = client.playerId
         }

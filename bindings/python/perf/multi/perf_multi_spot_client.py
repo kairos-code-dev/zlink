@@ -5,7 +5,6 @@ import threading
 import time
 
 import zlink
-from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     HEADER_MAGIC,
@@ -181,46 +180,6 @@ def main(argv=None):
         _trace("start-handshake-done")
 
         sample_stride = _latency_sample_stride()
-        if _native_bridge.available():
-            native_result = _native_bridge.spot_subscribe_count_active(
-                [spot._handle for spot in spots],
-                TOPIC,
-                args.msg_size,
-                args.duration,
-                run_id,
-                sample_stride,
-            )
-            if native_result is not None:
-                (
-                    received,
-                    throughput,
-                    bandwidth,
-                    latency,
-                    latency_p95,
-                    latency_p99,
-                    err,
-                ) = native_result
-                if err != 0 or received <= 0:
-                    raise RuntimeError(
-                        f"native multi spot subscribe count failed: errno={err}"
-                    )
-                control_poller.close()
-                _close_all(*spots, control_sub, control_pub, control_node, data_node)
-                print_result_lines(
-                    "MULTI_SPOT",
-                    args.transport,
-                    args.msg_size,
-                    {
-                        "throughput": throughput,
-                        "bandwidth": bandwidth,
-                        "latency": latency,
-                        "latency_p95": latency_p95,
-                        "latency_p99": latency_p99,
-                    },
-                )
-                sys.stdout.flush()
-                return
-
         latencies = []
         received_count = 0
         active_deadline = time.perf_counter() + args.duration

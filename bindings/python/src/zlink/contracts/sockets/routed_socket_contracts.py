@@ -23,10 +23,9 @@ class RouterSocket(_socket_contract._SocketContract, Protocol):
         """Disconnect the connection previously established to ``endpoint``."""
         ...
 
-    def send(self, routing_id, payload=None, *, flags=0):
-        """Begin a send addressed to ``routing_id`` when ``payload`` is omitted,
-        or submit one payload immediately when ``payload`` is provided. Parts
-        are consumed on a successful submit."""
+    def send(self, routing_id):
+        """Begin a send addressed to ``routing_id``; parts are consumed on a
+        successful submit."""
         ...
 
     def request(self, routing_id):

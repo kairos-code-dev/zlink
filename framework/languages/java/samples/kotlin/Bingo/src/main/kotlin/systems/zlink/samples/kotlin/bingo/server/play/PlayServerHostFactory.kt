@@ -4,33 +4,17 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.ZLinkFramework
 import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActorFactory
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoRoomSpot
-import systems.zlink.samples.kotlin.bingo.server.play.handlers.AllocateBingoRoomHandler
-import systems.zlink.samples.kotlin.bingo.server.play.handlers.EnsurePlayerActorHandler
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
-import systems.zlink.samples.kotlin.bingo.shared.contracts.AllocateBingoRoomReq
-import systems.zlink.samples.kotlin.bingo.shared.contracts.AllocateBingoRoomRes
-import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
-import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 
 object PlayServerHostFactory {
     fun start(): ZLinkFramework =
         ZLinkFramework.start { options ->
+            options.addHandlersFromPackageOf(PlayServerHostFactory::class.java)
             options.useDiscovery { discovery -> discovery.add(SampleTopology.RegistryRouterEndpoint) }
             options.addClientServerChannel(SampleNames.PlayChannel) { channel ->
                 channel.enableServer { server -> server.bind(SampleTopology.PlayChannelEndpoint) }
-                channel.addRequestHandler(
-                    EnsurePlayerActorHandler::class.java,
-                    EnsurePlayerActorReq::class.java,
-                    EnsurePlayerActorRes::class.java,
-                    "EnsurePlayerActor",
-                )
-                channel.addRequestHandler(
-                    AllocateBingoRoomHandler::class.java,
-                    AllocateBingoRoomReq::class.java,
-                    AllocateBingoRoomRes::class.java,
-                    "AllocateBingoRoom",
-                )
+                channel.addHandlerGroup("play")
             }
             options.addClientServerChannel(SampleNames.ApiChannel) { channel -> channel.enableClient() }
             options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)

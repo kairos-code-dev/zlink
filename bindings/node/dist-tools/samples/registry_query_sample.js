@@ -26,6 +26,7 @@ async function waitForTopologyEntry(query, channelName, endpoint) {
     return null;
 }
 async function main() {
+    // --8<-- [start:doc]
     const ctx = zlink.createContext();
     const registry = zlink.createRegistry(ctx);
     const query = zlink.createRegistryQueryClient(ctx);
@@ -51,6 +52,7 @@ async function main() {
         registry.close();
         ctx.close();
     }
+    // --8<-- [end:doc]
 }
 main().catch((error) => {
     console.error(error);

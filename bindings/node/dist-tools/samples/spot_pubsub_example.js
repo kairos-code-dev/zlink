@@ -26,6 +26,7 @@ async function waitPeer(node) {
     throw new Error('spot peer not connected');
 }
 async function main() {
+    // --8<-- [start:doc]
     const ctx = zlink.createContext();
     const publisherNode = zlink.createSpotNode(ctx);
     const subscriberNode = zlink.createSpotNode(ctx);
@@ -70,6 +71,7 @@ async function main() {
         subscriberNode.close();
         ctx.close();
     }
+    // --8<-- [end:doc]
 }
 main().catch((error) => {
     console.error(error);

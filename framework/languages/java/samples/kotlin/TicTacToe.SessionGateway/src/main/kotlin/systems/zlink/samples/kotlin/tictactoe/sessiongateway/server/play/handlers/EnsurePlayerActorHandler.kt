@@ -5,16 +5,17 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRef
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import systems.zlink.framework.handlers.ZLinkRequest
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleNames
 
+@ZLinkHandlerGroup("play")
 class EnsurePlayerActorHandler(
     private val actors: ZLinkActorManager,
-) : ZLinkRequestHandler<String, String> {
-    override fun handleAsync(
+) {
+    @ZLinkRequest(packetName = "EnsurePlayerActor")
+    fun handleAsync(
         actorId: String,
-        context: ZLinkRequestContext,
     ): CompletionStage<String> =
         actors.getOrCreateAsync(actorId, SampleNames.PlayerActorType)
             .thenCompose { actor ->

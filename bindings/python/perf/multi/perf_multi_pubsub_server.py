@@ -4,7 +4,6 @@ import threading
 import time
 
 import zlink
-from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     STOP_TOKEN,
@@ -58,38 +57,23 @@ def main(argv=None):
             if stop_event.is_set():
                 return
             active_deadline = time.perf_counter() + active_duration_s
-            native_publish = _native_bridge.publish_active(
-                publisher._handle,
-                TOPIC,
-                STOP_TOKEN,
-                args.msg_size,
-                max(1, int(active_duration_s)),
-                run_id,
-            )
-            if native_publish is None:
-                while time.perf_counter() < active_deadline and not stop_event.is_set():
-                    sent = publish_nonblocking(
-                        publisher,
-                        TOPIC,
-                        stamp_payload(payload, phase=1, run_id=run_id),
-                    )
-                    if not sent:
-                        continue
-                # PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end on the wire.
-                cooldown_deadline = time.perf_counter() + 5.0
-                while not stop_event.is_set() and time.perf_counter() < cooldown_deadline:
-                    try:
-                        if publisher.publish(TOPIC).message(STOP_TOKEN).submit():
-                            break
-                    except zlink.SubmitError as exc:
-                        if exc.result != zlink.SubmitResult.BACKPRESSURED:
-                            raise
-            else:
-                _sent_count, native_errno = native_publish
-                if native_errno != 0:
-                    raise RuntimeError(
-                        f"native multi pubsub publish failed: errno={native_errno}"
-                    )
+            while time.perf_counter() < active_deadline and not stop_event.is_set():
+                sent = publish_nonblocking(
+                    publisher,
+                    TOPIC,
+                    stamp_payload(payload, phase=1, run_id=run_id),
+                )
+                if not sent:
+                    continue
+            # PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end on the wire.
+            cooldown_deadline = time.perf_counter() + 5.0
+            while not stop_event.is_set() and time.perf_counter() < cooldown_deadline:
+                try:
+                    if publisher.publish(TOPIC).message(STOP_TOKEN).submit():
+                        break
+                except zlink.SubmitError as exc:
+                    if exc.result != zlink.SubmitResult.BACKPRESSURED:
+                        raise
             # Stay alive until runner sends STOP so the published stop token
             # has time to flush to all subscribers (linger_ms == 0).
             stop_event.wait()

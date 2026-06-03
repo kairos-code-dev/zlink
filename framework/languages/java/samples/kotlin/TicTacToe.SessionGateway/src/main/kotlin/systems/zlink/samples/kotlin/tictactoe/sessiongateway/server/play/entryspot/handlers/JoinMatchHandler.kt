@@ -2,18 +2,20 @@ package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.entrys
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import systems.zlink.framework.handlers.ZLinkRequest
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.gamespots.TicTacToeGameDirectory
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.gamespots.GameNotificationPublisher
 
-class JoinMatchHandler : ZLinkRequestHandler<String, String> {
-    override fun handleAsync(
+@ZLinkHandlerGroup("play")
+class JoinMatchHandler {
+    @ZLinkRequest(packetName = "JoinMatchReq")
+    fun handleAsync(
         request: String,
-        context: ZLinkRequestContext,
     ): CompletionStage<String> {
         val parts = request.split("|", limit = 2)
         return CompletableFuture.completedFuture(
-            TicTacToeGameDirectory.get(parts[0]).join(parts[1]).encode(),
+            GameNotificationPublisher.encode(TicTacToeGameDirectory.get(parts[0]).join(parts[1])),
         )
     }
 }

@@ -28,5 +28,6 @@ gradle :Server:run --quiet --args='server' &
 pids+=("$!")
 wait_port 47201
 wait_port 47202
+wait_port 47203
 
 gradle :Client:run --quiet

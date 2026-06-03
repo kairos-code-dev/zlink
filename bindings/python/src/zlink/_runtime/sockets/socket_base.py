@@ -35,7 +35,11 @@ from ...contracts.sockets.socket_options import (
     create_sub_socket_options,
 )
 from ...contracts.core.routing_id import RoutingId
-from ..messaging.message_materializer import Message, Received, TopicMessage
+from ..messaging.message_materializer import (
+    Message,
+    Received,
+    TopicMessage,
+)
 from ..handles.native_support import (
     BindError,
     CloseError,
@@ -73,19 +77,31 @@ from ..handles.native_support import (
     ZlinkError,
 )
 
-_callback_depth = threading.local()
+_callback_depth_by_thread = {}
+_native_extension = getattr(_native_bridge, "_zlink_native", None)
+_native_recv_owner = (
+    getattr(_native_extension, "recv_owner", None)
+    if _native_extension is not None
+    else None
+)
 
 
 def _in_callback():
-    return getattr(_callback_depth, "depth", 0) > 0
+    return _callback_depth_by_thread.get(threading.get_ident(), 0) > 0
 
 
 def _enter_callback():
-    _callback_depth.depth = getattr(_callback_depth, "depth", 0) + 1
+    ident = threading.get_ident()
+    _callback_depth_by_thread[ident] = _callback_depth_by_thread.get(ident, 0) + 1
 
 
 def _leave_callback():
-    _callback_depth.depth = getattr(_callback_depth, "depth", 0) - 1
+    ident = threading.get_ident()
+    depth = _callback_depth_by_thread.get(ident, 0) - 1
+    if depth > 0:
+        _callback_depth_by_thread[ident] = depth
+    else:
+        _callback_depth_by_thread.pop(ident, None)
 
 
 def _ensure_not_in_callback(operation):
@@ -122,19 +138,6 @@ def _payload_parts(payload):
     if not parts:
         raise ValueError("parts must not be empty")
     return parts
-
-
-def _payload_can_use_native_bridge(payload):
-    for part in _payload_parts(payload):
-        if isinstance(part, Message):
-            return False
-        try:
-            view = memoryview(part)
-        except TypeError:
-            return False
-        if not view.c_contiguous:
-            return False
-    return True
 
 
 def _close_send_parts(parts_array, part_count, start=0):
@@ -353,54 +356,136 @@ class _BaseSocket:
                 _raise_result_error(SubmitError, SubmitResult, rc, err)
         return 0
 
-    def _submit_bridge_result(self, result):
+    def _submit_bridge_result(self, result, flags):
         if result is None:
-            return False
+            return None
         rc, err = result
         if int(rc) != 0:
+            if (int(flags) & 1) and err == _errno.EAGAIN:
+                return False
             _raise_result_error(SubmitError, SubmitResult, rc, err)
         return True
 
+    def _raise_submit_error_from_bridge(self, rc, err):
+        _raise_result_error(SubmitError, SubmitResult, int(rc), int(err))
+
+    def _raise_send_op_error(self, kind):
+        result = (
+            SubmitResult.INVALID_ARGUMENT
+            if kind == "invalid_argument"
+            else SubmitResult.INVALID_STATE
+        )
+        raise SubmitError(result, 0)
+
+    def _send_payload_fallback(self, payload, flags):
+        try:
+            self._send_native_parts(self._native_parts_from_payload(payload), flags)
+            return True
+        except SubmitError as ex:
+            if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
+
+    def _send_routed_payload_fallback(self, routing_id, payload, flags):
+        try:
+            self._send_native_parts_to_routing_id(
+                routing_id,
+                self._native_parts_from_payload(payload),
+                flags,
+            )
+            return True
+        except SubmitError as ex:
+            if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
+
+    def _publish_payload_fallback(self, topic, payload, flags):
+        try:
+            topic_bytes = _validated_c_string_value(topic, field="topic")
+            native_parts = self._native_parts_from_payload(payload)
+            part_count = len(native_parts)
+            for index, native in enumerate(native_parts):
+                rc = lib().zlink_publish_part(
+                    self._handle,
+                    topic_bytes,
+                    ctypes.byref(native),
+                    int(flags),
+                    _part_flag(index, part_count),
+                )
+                if rc != 0:
+                    err = lib().zlink_errno()
+                    _close_native_parts(native_parts, index)
+                    _raise_result_error(SubmitError, SubmitResult, rc, err)
+            return True
+        except SubmitError as ex:
+            if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
+
     def _send_payload_via_native_bridge(self, payload, flags):
         _ensure_not_in_callback("blocking send")
-        if not _payload_can_use_native_bridge(payload):
+        if _native_extension is None:
+            return None
+        try:
+            result = _native_extension.send_parts(
+                int(self._socket_handle.handle), payload, int(flags)
+            )
+        except (BufferError, TypeError):
             return False
-        return self._submit_bridge_result(
-            _native_bridge.send_parts(self._handle, payload, flags)
-        )
+        return self._submit_bridge_result(result, flags)
 
     def _send_routed_payload_via_native_bridge(self, routing_id, payload, flags):
         _ensure_not_in_callback("blocking send")
-        if not _payload_can_use_native_bridge(payload):
-            return False
-        return self._submit_bridge_result(
-            _native_bridge.send_parts_rid(
-                self._handle,
+        if _native_extension is None:
+            return None
+        try:
+            result = _native_extension.send_parts_rid(
+                int(self._socket_handle.handle),
                 _validated_routing_id_bytes(routing_id),
                 payload,
-                flags,
+                int(flags),
             )
-        )
+        except (BufferError, TypeError):
+            return False
+        return self._submit_bridge_result(result, flags)
 
     def _publish_payload_via_native_bridge(self, topic_bytes, payload, flags):
         _ensure_not_in_callback("blocking publish")
-        if not _payload_can_use_native_bridge(payload):
+        if _native_extension is None:
+            return None
+        try:
+            result = _native_extension.publish_parts(
+                int(self._socket_handle.handle), topic_bytes, payload, int(flags)
+            )
+        except (BufferError, TypeError):
             return False
-        return self._submit_bridge_result(
-            _native_bridge.publish_parts(self._handle, topic_bytes, payload, flags)
-        )
+        return self._submit_bridge_result(result, flags)
 
     def _recv_parts_via_native_bridge(self, flags):
         if _in_callback():
             return None
-        result = _native_bridge.recv_parts(self._handle, flags)
+        if _native_extension is None:
+            return None
+        if _native_recv_owner is not None:
+            result = _native_recv_owner(int(self._socket_handle.handle), int(flags))
+            if result is None:
+                return None
+            rc, err, routing, owner = result
+            if int(rc) != 0:
+                _raise_result_error(RecvError, RecvResult, rc, err)
+            routing_id = RoutingId.from_(routing) if routing is not None else None
+            return routing_id, owner
+
+        result = _native_extension.recv_parts(
+            int(self._socket_handle.handle), int(flags)
+        )
         if result is None:
             return None
         rc, err, routing, parts = result
         if int(rc) != 0:
             _raise_result_error(RecvError, RecvResult, rc, err)
         routing_id = RoutingId.from_(routing) if routing is not None else None
-        return routing_id, _BytesReceivedPartsOwner(parts)
+        return routing_id, _BytesReceivedPartsOwner._from_trusted_bytes_tuple(parts)
 
     def _set_raw_option(self, setter, option, value):
         ptr, size, keepalive = _send_buffer(value)
@@ -760,9 +845,11 @@ class _SubscriberOptionSocket(_Socket):
 class _MessageSocket(_Socket):
     def send(self, payload, *, flags=0):
         try:
-            if not self._send_payload_via_native_bridge(payload, flags):
+            bridged = self._send_payload_via_native_bridge(payload, flags)
+            if bridged is None:
                 self._send_native_parts(self._native_parts_from_payload(payload), flags)
-            return True
+                return True
+            return bridged
         except SubmitError as ex:
             if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
                 return False
@@ -840,17 +927,19 @@ class _MessageSocket(_Socket):
 class _RoutedMessageSocket(_MessageSocket):
     def send(self, routing_id, payload, *, flags=0):
         try:
-            if not self._send_routed_payload_via_native_bridge(
+            bridged = self._send_routed_payload_via_native_bridge(
                 routing_id,
                 payload,
                 flags,
-            ):
+            )
+            if bridged is None:
                 self._send_native_parts_to_routing_id(
                     routing_id,
                     self._native_parts_from_payload(payload),
                     flags,
                 )
-            return True
+                return True
+            return bridged
         except SubmitError as ex:
             if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
                 return False
@@ -862,8 +951,11 @@ class _PublisherSocket(_Socket):
         try:
             _ensure_not_in_callback("blocking publish")
             topic_bytes = _validated_c_string_value(topic, field="topic")
-            if self._publish_payload_via_native_bridge(topic_bytes, payload, flags):
-                return True
+            bridged = self._publish_payload_via_native_bridge(
+                topic_bytes, payload, flags
+            )
+            if bridged is not None:
+                return bridged
             native_parts = self._native_parts_from_payload(payload)
             part_count = len(native_parts)
             for index, native in enumerate(native_parts):
@@ -896,7 +988,11 @@ class _SubscriberSocket(_Socket):
         if int(rc) != 0:
             _raise_result_error(RecvError, RecvResult, rc, err)
         routing_id = RoutingId.from_(routing) if routing is not None else None
-        return topic_raw, _BytesReceivedPartsOwner(parts), routing_id
+        return (
+            topic_raw,
+            _BytesReceivedPartsOwner._from_trusted_bytes_tuple(parts),
+            routing_id,
+        )
 
     def _subscribe_parts_owner(self, flags):
         bridged = self._subscribe_parts_via_native_bridge(flags)

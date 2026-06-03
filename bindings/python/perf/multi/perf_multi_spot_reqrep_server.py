@@ -4,7 +4,6 @@ import threading
 import time
 
 import zlink
-from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     TOPIC,
@@ -145,14 +144,7 @@ def main(argv=None):
         ):
             raise RuntimeError("spot reqrep control start publish timeout")
 
-        native_echo = None
-        if _native_bridge.available():
-            native_echo = _native_bridge.spot_routed_echo_install(
-                replier._handle,
-                reply_mode=True,
-            )
-        if native_echo is None:
-            replier.on_dispatch_event(on_dispatch)
+        replier.on_dispatch_event(on_dispatch)
 
         idle_seconds = max(
             1.0,

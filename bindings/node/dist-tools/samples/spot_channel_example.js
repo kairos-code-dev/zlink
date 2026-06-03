@@ -16,6 +16,7 @@ async function reservePort() {
     return port;
 }
 async function main() {
+    // --8<-- [start:doc]
     const ctx = zlink.createContext();
     const roomNode = zlink.createSpotNode(ctx);
     const room = roomNode.createSpot();
@@ -67,6 +68,7 @@ async function main() {
         roomNode.close();
         ctx.close();
     }
+    // --8<-- [end:doc]
 }
 main().catch((error) => {
     console.error(error);

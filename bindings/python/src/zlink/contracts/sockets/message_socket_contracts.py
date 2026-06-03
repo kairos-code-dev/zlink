@@ -18,10 +18,9 @@ class PairSocket(_socket_contract._SocketContract, Protocol):
         """Disconnect the connection previously established to ``endpoint``."""
         ...
 
-    def send(self, payload=None, *, flags=0):
-        """Begin a multipart send when ``payload`` is omitted, or submit one
-        payload immediately when ``payload`` is provided. Parts are consumed on
-        a successful submit."""
+    def send(self):
+        """Begin a multipart send: add parts on the returned builder, then
+        submit. Parts are consumed on a successful submit."""
         ...
 
     def recv_into(self, received, *, flags=0):
@@ -54,10 +53,8 @@ class DealerSocket(_socket_contract._SocketContract, Protocol):
         """Disconnect the connection previously established to ``endpoint``."""
         ...
 
-    def send(self, payload=None, *, flags=0):
-        """Begin a multipart send when ``payload`` is omitted, or submit one
-        payload immediately when ``payload`` is provided. Parts are consumed on
-        a successful submit."""
+    def send(self):
+        """Begin a multipart send; parts are consumed on a successful submit."""
         ...
 
     def request(self):

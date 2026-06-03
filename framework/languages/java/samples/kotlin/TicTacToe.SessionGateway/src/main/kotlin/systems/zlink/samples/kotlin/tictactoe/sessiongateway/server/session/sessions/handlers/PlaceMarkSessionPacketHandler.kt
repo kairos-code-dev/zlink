@@ -25,15 +25,11 @@ class PlaceMarkSessionPacketHandler(
         )
             .packetName("PlaceMarkReq")
             .submitAsync(String::class.java)
-            .thenCompose { reply ->
-                val packet = if (reply.contains(",Won,")) SampleNames.GameEndedPacket else SampleNames.TurnChangedPacket
-                context.client()
-                    .send(reply)
-                    .packetName(packet)
-                    .submitAsync()
+            .thenCompose { response ->
+                PlayNotificationRelay.deliverAsync(response)
                     .thenCompose {
                         context.client()
-                            .reply(reply)
+                            .reply(PlayNotificationRelay.reply(response))
                             .submitAsync()
                     }
             }

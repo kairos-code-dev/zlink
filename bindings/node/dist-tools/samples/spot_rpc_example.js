@@ -30,6 +30,7 @@ function rid(text) {
     return zlink.RoutingId.from(Buffer.from(text));
 }
 async function main() {
+    // --8<-- [start:doc]
     const serverCtx = zlink.createContext();
     const clientCtx = zlink.createContext();
     const serverNode = zlink.createSpotNode(serverCtx);
@@ -96,6 +97,7 @@ async function main() {
         serverCtx.close();
         clientCtx.close();
     }
+    // --8<-- [end:doc]
 }
 main().catch((error) => {
     console.error(error);

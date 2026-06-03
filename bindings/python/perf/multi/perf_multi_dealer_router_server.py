@@ -3,7 +3,6 @@ import threading
 from collections import deque
 
 import zlink
-from zlink._native import bridge as _native_bridge
 
 from perf_multi_common import (
     apply_multi_auto_hwm_msg_unit,
@@ -22,17 +21,14 @@ def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
     endpoint = benchmark_endpoint(args.transport, "multi-dealer-router")
     stop = threading.Event()
-    stop_flag = bytearray(1)
     pending = deque()
 
     def wait_stop():
         for line in sys.stdin:
             if line.strip().upper() in {"STOP", "QUIT"}:
-                stop_flag[0] = 1
                 stop.set()
                 return
         # stdin EOF (parent closed pipe) is also a STOP signal.
-        stop_flag[0] = 1
         stop.set()
 
     threading.Thread(target=wait_stop, daemon=True).start()
@@ -44,17 +40,6 @@ def main(argv=None):
             apply_multi_socket_options(router)
             router.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
-            if _native_bridge.available():
-                received, sent, pending_count, err = (
-                    _native_bridge.router_echo_server_loop(
-                        router._handle,
-                        stop_flag,
-                    )
-                )
-                if err:
-                    raise OSError(err, "native router echo server loop failed")
-                _ = (received, sent, pending_count)
-                return
             with zlink.create_poller() as poller:
                 poller.add_socket(
                     router,

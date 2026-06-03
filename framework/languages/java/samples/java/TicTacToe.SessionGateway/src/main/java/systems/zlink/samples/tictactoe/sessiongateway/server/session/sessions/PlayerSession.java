@@ -33,6 +33,8 @@ public final class PlayerSession implements ZLinkSession {
 
     @Override
     public CompletionStage<Void> onDisconnectedAsync() {
+        context.actors().bound()
+            .forEach(actor -> PlayerSessionDirectory.unbind(actor.actorId(), context));
         return CompletableFuture.completedFuture(null);
     }
 

@@ -6,6 +6,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
 async function main() {
+    // --8<-- [start:doc]
     const ctx = zlink.createContext();
     const node = zlink.createSpotNode(ctx);
     const room = node.createSpot();
@@ -30,6 +31,7 @@ async function main() {
         node.close();
         ctx.close();
     }
+    // --8<-- [end:doc]
 }
 main().catch((error) => {
     console.error(error);

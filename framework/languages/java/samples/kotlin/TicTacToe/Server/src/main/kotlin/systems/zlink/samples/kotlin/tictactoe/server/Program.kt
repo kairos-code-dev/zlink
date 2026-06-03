@@ -11,20 +11,21 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.PlayServer
 
 fun main(args: Array<String>) = runBlocking {
     when (args.firstOrNull { !it.startsWith("--") } ?: "server") {
-        "all", "server" -> runServer {
-            ApiServer.configure(it)
-            PlayServer.configure(it)
-        }
+        "all", "server" -> runServer(PlayServer::configure, ApiServer::configure)
         "api" -> runServer(ApiServer::configure)
         "play" -> runServer(PlayServer::configure)
         else -> error("Usage: gradle :Server:run --args='[all|server|api|play]'")
     }
 }
 
-private suspend fun runServer(configure: (ZLinkFrameworkOptions) -> Unit) {
-    ZLinkFramework.start(configure).use {
+private suspend fun runServer(vararg configureHosts: (ZLinkFrameworkOptions) -> Unit) {
+    val hosts = mutableListOf<ZLinkFramework>()
+    try {
+        configureHosts.forEach { configure -> hosts += ZLinkFramework.start(configure) }
         withContext(Dispatchers.IO) {
             CountDownLatch(1).await()
         }
+    } finally {
+        hosts.asReversed().forEach { it.close() }
     }
 }

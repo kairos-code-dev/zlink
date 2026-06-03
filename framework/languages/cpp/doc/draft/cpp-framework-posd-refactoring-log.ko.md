@@ -8200,3 +8200,39 @@ public header compile 여부가 아니라 HTTPS request와 TLS verification을 �
 - plan에 적힌 CTest 명령이 현재 build tree에서 0개 테스트를 선택하면
   `test_cpp_framework_label_contract`가 실패한다.
 - 이번 보정 뒤 implementation plan CTest command drift의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 16/19 health HTTP unhealthy status 회귀 보강
+
+### 발견한 위험 신호
+
+- `cpp-http-hosting.ko.md`는 readiness 또는 liveness가 `unhealthy`이면 해당 HTTP endpoint가
+  `503 Service Unavailable`을 반환한다고 명시한다.
+- runtime 구현은 이 mapping을 갖고 있었지만, app host HTTP e2e는 healthy `/health`와
+  `/live` 응답만 확인했다.
+- 이 상태에서는 health aggregate 구현이 바뀌어 unhealthy readiness가 `200 OK`로 회귀해도
+  문서 조건을 직접 깨는 테스트가 없었다. 문서 조건과 검증 지식이 분리된 위험 신호다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| monitoring unit test만 유지 | 테스트가 빠르다 | HTTP status mapping을 검증하지 않는다 |
+| 기존 running app health 상태를 중간에 바꾼다 | 같은 endpoint를 재사용한다 | test thread와 server thread 사이 상태 변경이 섞인다 |
+| 별도 unhealthy health app을 띄워 `/ready`, `/live` status를 검증한다 | HTTP mapping을 직접 고정하고 기존 happy path와 격리된다 | app host test가 한 시나리오 더 실행된다 |
+
+선택은 세 번째 방식이다. health 상태를 server 시작 전에 설정하면 테스트가 실행 순서나 공유 상태
+변경 타이밍을 알아야 하지 않는다.
+
+### 적용한 리팩토링
+
+- app host e2e test에 `wait_for_raw_status(...)` helper를 추가했다.
+- 별도 health app에서 readiness 전용 channel check를 `unhealthy`로 설정하고 `/ready`는 `503`,
+  `/live`는 `200`을 반환하는지 `zlink::http_client` raw response로 검증하게 했다.
+- liveness까지 포함되는 hosted service check가 `unhealthy`일 때는 `/ready`와 `/live`가 모두
+  `503`을 반환하는지도 별도 app으로 검증하게 했다.
+
+### 수정 후 점검
+
+- health HTTP route가 aggregate status body만이 아니라 documented HTTP status mapping까지
+  지키는지 `framework-http-e2e` label에서 확인한다.
+- 이번 보정 뒤 health HTTP unhealthy status mapping의 즉시 수정 이슈는 0개다.

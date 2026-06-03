@@ -491,6 +491,21 @@ wait_for_ready (const zlink::http_client::client_t &client)
   return false;
 }
 
+bool
+wait_for_raw_status (const zlink::http_client::client_t &client,
+                     std::string path,
+                     int status)
+{
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    auto result = client.get (path).submit_raw ().result ();
+    if (result.has_value () && result.value ().status == status) {
+      return true;
+    }
+    std::this_thread::sleep_for (std::chrono::milliseconds (10));
+  }
+  return false;
+}
+
 } // namespace
 
 int
@@ -1083,6 +1098,82 @@ main ()
   restartable.stop ();
   if (restartable.run (1, argv) != 0) {
     return 9;
+  }
+
+  auto unhealthy_app = zlink::framework::app_t::create ();
+  const auto unhealthy_endpoint = process_unique_endpoint (
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT,
+    3);
+  unhealthy_app.health ()
+    .add_channel_check ("games.channel")
+    .set_status (
+      "games.channel",
+      zlink::framework::health_status_t::unhealthy,
+      "channel unavailable");
+  unhealthy_app.add_zlink_framework (
+    [&](zlink::framework::zlink_framework_options_t &options) {
+      options.http ()
+        .listen (unhealthy_endpoint)
+        .map_readiness ("/ready")
+        .map_liveness ("/live");
+    });
+  int unhealthy_exit_code = -1;
+  std::thread unhealthy_thread ([&] {
+    unhealthy_exit_code = unhealthy_app.run (1, argv);
+  });
+  auto unhealthy_client = make_app_host_test_client (unhealthy_endpoint);
+  if (!wait_for_raw_status (unhealthy_client, "/ready", 503)) {
+    unhealthy_app.stop ();
+    unhealthy_thread.join ();
+    return 51;
+  }
+  if (!wait_for_raw_status (unhealthy_client, "/live", 200)) {
+    unhealthy_app.stop ();
+    unhealthy_thread.join ();
+    return 52;
+  }
+  unhealthy_app.stop ();
+  unhealthy_thread.join ();
+  if (unhealthy_exit_code != 0) {
+    return 53;
+  }
+
+  auto not_live_app = zlink::framework::app_t::create ();
+  const auto not_live_endpoint = process_unique_endpoint (
+    ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT,
+    4);
+  not_live_app.health ()
+    .add_hosted_service_check ("games.service")
+    .set_status (
+      "games.service",
+      zlink::framework::health_status_t::unhealthy,
+      "hosted service unavailable");
+  not_live_app.add_zlink_framework (
+    [&](zlink::framework::zlink_framework_options_t &options) {
+      options.http ()
+        .listen (not_live_endpoint)
+        .map_readiness ("/ready")
+        .map_liveness ("/live");
+    });
+  int not_live_exit_code = -1;
+  std::thread not_live_thread ([&] {
+    not_live_exit_code = not_live_app.run (1, argv);
+  });
+  auto not_live_client = make_app_host_test_client (not_live_endpoint);
+  if (!wait_for_raw_status (not_live_client, "/ready", 503)) {
+    not_live_app.stop ();
+    not_live_thread.join ();
+    return 54;
+  }
+  if (!wait_for_raw_status (not_live_client, "/live", 503)) {
+    not_live_app.stop ();
+    not_live_thread.join ();
+    return 55;
+  }
+  not_live_app.stop ();
+  not_live_thread.join ();
+  if (not_live_exit_code != 0) {
+    return 56;
   }
 
   auto expect_https_tls_validation_rejected = [] (auto configure_http) {

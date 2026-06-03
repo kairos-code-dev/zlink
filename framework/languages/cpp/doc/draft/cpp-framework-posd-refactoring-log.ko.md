@@ -12,6 +12,48 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. Stream Connector compression opt-in 회귀 보강
+
+### 발견한 위험 신호
+
+- Goal 20은 LZ4 build feature는 기본 ON이고, packet 압축은 opt-in이라고 명시한다. 기존
+  connector 테스트는 `.compress()`를 호출한 packet이 압축되는지는 확인했지만, 기본 send가
+  압축되지 않는지는 직접 확인하지 않았다.
+- 기본값 검증 없이 압축 성공만 보면, 나중에 connector 기본 option이 `lz4`로 바뀌거나 send
+  경로가 모든 packet을 압축해도 테스트가 완료 조건 위반을 놓칠 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| LZ4 codec round-trip만 유지한다 | 테스트가 작다 | opt-in 의미를 증명하지 못한다 |
+| public option에서 compression setter를 제거한다 | 오용 표면이 줄어든다 | 사용자가 packet 단위 압축을 선택할 수 없어진다 |
+| connector e2e에서 기본 option과 무압축 send frame을 함께 확인한다 | 문서 완료 조건을 wire 수준에서 고정한다 | server loop가 한 frame 더 처리해야 한다 |
+
+선택은 세 번째 방식이다. 압축 여부는 header flag와 payload wire 형태로 드러나는 동작이므로,
+테스트도 connector server가 받은 frame에서 직접 확인해야 한다.
+
+### 적용한 리팩토링
+
+- `connector_options_t` 기본 compression이 `none`인지 확인했다.
+- `.compress()`를 호출한 send는 compressed flag와 복원된 payload로 검증하고, 별도의 기본
+  send는 compressed flag가 없는 frame으로 검증했다.
+- 같은 TCP connector e2e 안에서 압축 opt-in과 무압축 기본 경로를 함께 확인하게 했다.
+
+### 수정 후 점검
+
+- public connector API는 바꾸지 않았다.
+- LZ4 build feature 기본 ON 검증은 유지하고, packet 단위 opt-in 의미를 wire 회귀로 보강했다.
+- compression 설정 지식은 caller가 아닌 connector option과 send call 경계에 남는다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-protocol --output-on-failure
+```
+
 ## 반복 POSD 재리뷰. TicTacToe HTTP sample parity 회귀 보강
 
 ### 발견한 위험 신호

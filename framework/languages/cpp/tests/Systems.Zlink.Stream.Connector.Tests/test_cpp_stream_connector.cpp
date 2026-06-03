@@ -231,11 +231,19 @@ main ()
   server.options ().notify (false);
   server.bind ("tcp://127.0.0.1:0");
   const auto endpoint = server.options ().last_endpoint ();
+  zlink::stream_connector::connector_options_t default_options;
+  if (default_options.compression !=
+      zlink::stream_connector::compression_t::none) {
+    return 67;
+  }
   std::atomic_bool compressed_send_seen { false };
-  std::thread server_thread ([&server, &compressed_send_seen] {
+  std::atomic_bool uncompressed_send_seen { false };
+  std::thread server_thread ([&server,
+                              &compressed_send_seen,
+                              &uncompressed_send_seen] {
     int handled = 0;
     std::string buffer;
-    while (handled < 2) {
+    while (handled < 3) {
       zlink::received_t inbound;
       if (server.recv (inbound) != 0) {
         return;
@@ -248,6 +256,13 @@ main ()
             frame->compressed &&
             frame->payload == "{}") {
           compressed_send_seen = true;
+        }
+        if (frame->header.kind ==
+              zlink::stream_connector::message_kind_t::send &&
+            !frame->compressed &&
+            frame->header.name == "login.uncompressed" &&
+            frame->payload == "{}") {
+          uncompressed_send_seen = true;
         }
         if (frame->header.kind ==
             zlink::stream_connector::message_kind_t::request) {
@@ -322,6 +337,15 @@ main ()
     return 5;
   }
 
+  auto uncompressed_send =
+    connector.send (login_request_t {})
+      .packet_name ("login.uncompressed")
+      .submit ()
+      .result ();
+  if (!uncompressed_send) {
+    return 68;
+  }
+
   auto request =
     connector.request<login_reply_t> (login_request_t {})
       .packet_name ("login.request")
@@ -332,7 +356,7 @@ main ()
     return 6;
   }
   server_thread.join ();
-  if (!compressed_send_seen) {
+  if (!compressed_send_seen || !uncompressed_send_seen) {
     return 27;
   }
 

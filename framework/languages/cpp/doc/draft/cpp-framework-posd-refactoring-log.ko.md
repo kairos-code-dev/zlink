@@ -5327,3 +5327,43 @@ transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 �
 - 현재 implementation plan의 Goal 1-22는 모두 이 로그 안의 대표 POSD 기록과 연결된다.
 - 과거 section 번호는 실행 당시 기록으로 유지하고, 현재 plan 기준 대조는 위 표를 사용한다.
 - 이번 보정 뒤 POSD 기록 매핑 감사의 즉시 수정 이슈는 0개다.
+
+## 추가 리뷰. Public facade compile coverage와 native leakage gate 보강
+
+### 발견한 위험 신호
+
+- implementation plan의 public surface gate는 public header include와 runtime include 금지 규칙을
+  contract/layout test가 확인해야 한다고 적는다.
+- 기존 compile smoke는 contract header를 직접 include했고, top-level facade 일부는
+  `zlink/framework.hpp` 같은 aggregate include를 통해 간접으로만 검증됐다. facade header는
+  사용자가 직접 include하는 표면이므로 직접 compile coverage가 약하면 public header 누락을
+  놓칠 수 있다.
+- layout contract는 Boost/OpenSSL/gtest/spdlog 같은 외부 runtime dependency 누출을 막았지만,
+  C++ binding의 concrete socket/context header와 타입 누출은 명시적으로 막지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| aggregate header compile만 유지 | 테스트가 작다 | 개별 facade include 누락을 직접 증명하지 못한다 |
+| 모든 facade를 별도 테스트 파일로 분리 | 실패 위치가 좁다 | 테스트 파일 수가 늘어난다 |
+| 기존 contract smoke에 facade include를 추가하고 layout coverage 범위를 include tree 전체로 확장 | 테스트 구조를 유지하면서 public include 증거를 넓힌다 | smoke 파일 include 목록이 길어진다 |
+
+선택은 기존 contract smoke와 layout contract를 확장하는 것이다. public header 검증 책임을 한
+곳에 유지하면서, 사용자가 직접 include할 수 있는 facade header까지 같은 gate에 넣는다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_contract_headers`가 framework facade header, stream connector facade/header
+  helper를 직접 include하도록 보강했다.
+- layout contract의 compile coverage 검사를 `contracts/*` 하위가 아니라 public include tree
+  전체로 넓혔다.
+- public header 금지어에 binding concrete socket/context include와 타입을 추가했다.
+
+### 수정 후 점검
+
+- framework, connector, HTTP client public include tree의 `.hpp` 파일은 direct compile smoke
+  include 목록에 있어야 한다.
+- public header에는 `zlink::context_t`, concrete socket 타입, binding socket/service contract
+  include가 나타나면 안 된다.
+- 이번 보정 뒤 public facade compile coverage와 native leakage gate의 즉시 수정 이슈는 0개다.

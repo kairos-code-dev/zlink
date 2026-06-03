@@ -1,7 +1,30 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/framework.hpp>
+#include <zlink/framework/actors.hpp>
+#include <zlink/framework/app.hpp>
+#include <zlink/framework/assembly.hpp>
+#include <zlink/framework/call.hpp>
+#include <zlink/framework/channels.hpp>
+#include <zlink/framework/config.hpp>
+#include <zlink/framework/error.hpp>
+#include <zlink/framework/execution.hpp>
+#include <zlink/framework/handlers.hpp>
 #include <zlink/framework/health.hpp>
+#include <zlink/framework/http.hpp>
+#include <zlink/framework/logging.hpp>
+#include <zlink/framework/module.hpp>
+#include <zlink/framework/monitoring.hpp>
+#include <zlink/framework/registry.hpp>
+#include <zlink/framework/result.hpp>
+#include <zlink/framework/serialization.hpp>
+#include <zlink/framework/services.hpp>
+#include <zlink/framework/spots.hpp>
+#include <zlink/framework/streams.hpp>
+#include <zlink/framework/task.hpp>
+#include <zlink/framework/timers.hpp>
+#include <zlink/framework/transport.hpp>
+#include <zlink/framework/version.hpp>
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/assembly/assembly.hpp>
 #include <zlink/framework/contracts/channels/channel.hpp>
@@ -35,6 +58,7 @@
 #include <zlink/http_client.hpp>
 #include <zlink/http_client/contracts/client.hpp>
 #include <zlink/stream_connector.hpp>
+#include <zlink/stream_connector/codecs/auto_codec.hpp>
 #include <zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp>
 #include <zlink/stream_connector/contracts/codec_registry.hpp>
 #include <zlink/stream_connector/contracts/connector.hpp>
@@ -48,6 +72,7 @@
 #include <zlink/stream_connector/contracts/zlink_stream_enums.hpp>
 #include <zlink/stream_connector/contracts/zlink_stream_interfaces.hpp>
 #include <zlink/stream_connector/contracts/zlink_stream_models.hpp>
+#include <zlink/stream_connector/version.hpp>
 
 #include <future>
 #include <type_traits>

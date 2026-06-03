@@ -82,7 +82,16 @@ public_headers_do_not_expose_runtime_dependencies (
     "#include <spdlog",
     "spdlog::",
     "#include <fmt",
-    "fmt::"
+    "fmt::",
+    "#include <zlink.hpp",
+    "#include <zlink/Contracts/Sockets",
+    "#include <zlink/Contracts/Service",
+    "zlink::context_t",
+    "zlink::router_socket_t",
+    "zlink::stream_socket_t",
+    "zlink::dealer_socket_t",
+    "zlink::pub_socket_t",
+    "zlink::sub_socket_t"
   };
 
   for (const auto &entry :
@@ -759,16 +768,16 @@ main ()
   ok &= sample_server_code_does_not_block_on_task_result (root);
   ok &= contract_headers_have_compile_coverage (
     root,
-    "framework/include/zlink/framework/contracts",
-    "zlink/framework/contracts/");
+    "framework/include",
+    "");
   ok &= contract_headers_have_compile_coverage (
     root,
-    "connector/include/zlink/stream_connector/contracts",
-    "zlink/stream_connector/contracts/");
+    "connector/include",
+    "");
   ok &= contract_headers_have_compile_coverage (
     root,
-    "http-client/include/zlink/http_client/contracts",
-    "zlink/http_client/contracts/");
+    "http-client/include",
+    "");
 
   return ok ? 0 : 1;
 }

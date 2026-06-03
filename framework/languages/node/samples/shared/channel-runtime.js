@@ -1,8 +1,8 @@
-const framework = require('../../packages/framework/dist');
+const { createZLinkNestRuntime, nestjs } = require('./nestjs-provider-runtime');
 
-function createChannelServerRegistration({ endpoint, channelName, handlers = [], handlerGroups }) {
+function createChannelServerOptions({ endpoint, channelName, handlers = [], handlerGroups }) {
   const exposedHandlers = exposeHandlerGroups(handlers, handlerGroups);
-  return framework.createFrameworkRegistration({
+  return {
     channels: {
       [channelName]: {
         server: { bind: endpoint },
@@ -17,25 +17,35 @@ function createChannelServerRegistration({ endpoint, channelName, handlers = [],
         }))
       }
     }
-  });
+  };
 }
 
-function createChannelClientRegistration({ channelName, peers }) {
-  return framework.createFrameworkRegistration({
+function createChannelClientOptions({ channelName, peers }) {
+  return {
     channels: {
       [channelName]: { client: { manualConnections: peers } }
     }
-  });
+  };
 }
 
-async function startChannelServer({ endpoint, channelName, handlers, handlerGroups, beforeReady }) {
-  const registration = createChannelServerRegistration({ endpoint, channelName, handlers, handlerGroups });
-  const runtime = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  await runtime.start();
-  await beforeReady?.();
+async function startChannelServer({ endpoint, channelName, handlers, handlerGroups, providers = [] }) {
+  let container;
+  const resolver = {
+    get(token) {
+      if (container === undefined) {
+        throw new Error(`NestJS provider is not ready: ${String(token)}`);
+      }
+      return container.get(token);
+    }
+  };
+  const resolvedHandlers = typeof handlers === 'function' ? handlers(resolver) : handlers;
+  container = await createZLinkNestRuntime(
+    createChannelServerOptions({ endpoint, channelName, handlers: resolvedHandlers, handlerGroups }),
+    providers
+  );
   process.stdout.write(`${JSON.stringify({ event: 'ready', endpoint, channelName })}\n`);
   await waitForShutdown();
-  await stopRuntime(runtime);
+  await closeNestRuntime(container);
 }
 
 function exposeHandlerGroups(handlers, handlerGroups) {
@@ -46,7 +56,7 @@ function exposeHandlerGroups(handlers, handlerGroups) {
   const groups = new Set(handlerGroups);
   const exposed = handlers.filter((handler) => groups.has(handler.group));
   for (const group of groups) {
-    if (!handlers.some((handler) => handler.group === group)) {
+    if (handlers.length > 0 && !handlers.some((handler) => handler.group === group)) {
       throw new Error(`No sample handler is registered for group '${group}'.`);
     }
   }
@@ -54,10 +64,8 @@ function exposeHandlerGroups(handlers, handlerGroups) {
 }
 
 async function createChannelClient({ channelName, peers }) {
-  const registration = createChannelClientRegistration({ channelName, peers });
-  const runtime = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  await runtime.start();
-  const client = new framework.DefaultZLinkChannelClient(registration, runtime.channelTransport);
+  const container = await createZLinkNestRuntime(createChannelClientOptions({ channelName, peers }));
+  const client = container.get(nestjs.ZLINK_CHANNEL_CLIENT);
   return {
     requestToChannel(targetChannelName, payload) {
       return retryableRequestCall(() => client.requestToChannel(targetChannelName, payload));
@@ -70,7 +78,7 @@ async function createChannelClient({ channelName, peers }) {
         .submit();
     },
     async stop() {
-      await stopRuntime(runtime);
+      await closeNestRuntime(container);
     }
   };
 }
@@ -147,9 +155,9 @@ function waitForShutdown() {
   });
 }
 
-async function stopRuntime(runtime) {
+async function closeNestRuntime(container) {
   try {
-    await runtime.stop();
+    await container.close();
   } catch (error) {
     if (error?.name === 'CloseError' && (error?.code === 0 || error?.code === 401)) {
       return;

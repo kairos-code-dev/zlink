@@ -20,8 +20,8 @@ test('handler decorators accumulate metadata without requiring reflect-metadata'
   assert.deepEqual(readZLinkDecoratorMetadata(Handler), [
     { kind: 'handlerGroup', groupName: 'api' },
     { kind: 'packet', packetName: 'profile.changed' },
-    { kind: 'request', packetName: 'getProfile' },
-    { kind: 'send', packetName: 'updateProfile' }
+    { kind: 'request', packetName: 'getProfile', methodName: 'getProfile' },
+    { kind: 'send', packetName: 'updateProfile', methodName: 'updateProfile' }
   ]);
 });
 

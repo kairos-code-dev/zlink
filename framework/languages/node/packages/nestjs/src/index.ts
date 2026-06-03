@@ -1,9 +1,16 @@
+import 'reflect-metadata';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { Module } from '@nestjs/common';
+import type { DynamicModule, InjectionToken, OnModuleDestroy, OnModuleInit, Provider } from '@nestjs/common';
+import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 import type {
   Type,
+  ZLinkChannelOptions,
+  ZLinkDecoratorMetadata,
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
+  ZLinkRequestContext,
   ZLinkRegistryOptions,
   ZLinkRegistryQueryClientOptions,
   ZLinkSpotRemoteAddressResolver
@@ -13,28 +20,22 @@ type FrameworkModule = typeof import('@zlink-systems/framework');
 
 const framework = loadFramework();
 
-export type InjectionToken = string | symbol | Function;
-
-export interface Provider<T = unknown> {
-  readonly provide: InjectionToken;
-  readonly useValue?: T;
-  readonly useClass?: Type<T>;
-  readonly useFactory?: (...args: never[]) => T | Promise<T>;
-  readonly inject?: readonly InjectionToken[];
-}
-
-export interface DynamicModule {
-  readonly module: Function;
-  readonly providers: readonly Provider[];
-  readonly exports: readonly InjectionToken[];
-}
+type RuntimeHost = InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>;
+type RuntimeHostWithNestLifecycle = RuntimeHost & OnModuleInit & OnModuleDestroy;
 
 export interface ZLinkModuleAsyncOptions {
   readonly useFactory: (...args: unknown[]) => ZLinkModuleOptions | Promise<ZLinkModuleOptions>;
   readonly inject?: readonly InjectionToken[];
 }
 
-export type ZLinkModuleOptions = ZLinkFrameworkRegistrationOptions;
+export interface ZLinkNestChannelOptions extends ZLinkChannelOptions {
+  readonly handlerGroups?: readonly string[];
+  readonly handlerTypes?: readonly Type[];
+}
+
+export interface ZLinkModuleOptions extends Omit<ZLinkFrameworkRegistrationOptions, 'channels'> {
+  readonly channels?: Readonly<Record<string, ZLinkNestChannelOptions>>;
+}
 
 export const ZLINK_FRAMEWORK_REGISTRATION = Symbol.for('@zlink-systems/framework:registration');
 export const ZLINK_FRAMEWORK_RUNTIME = Symbol.for('@zlink-systems/framework:runtime');
@@ -52,15 +53,19 @@ export const ZLINK_REGISTRY_RUNTIME = Symbol.for('@zlink-systems/framework:regis
 export const ZLINK_REGISTRY_QUERY = Symbol.for('@zlink-systems/framework:registry-query');
 export const ZLINK_REGISTRY_QUERY_CLIENT = Symbol.for('@zlink-systems/framework:registry-query-client');
 
+@Module({})
 export class ZLinkModule {
   static forRoot(options: ZLinkModuleOptions = {}): DynamicModule {
+    if (hasNestHandlerDiscovery(options)) {
+      return createDiscoveringZLinkDynamicModule(options);
+    }
     return createZLinkDynamicModule(framework.createFrameworkRegistration(options));
   }
 
   static forRootAsync(options: ZLinkModuleAsyncOptions): DynamicModule {
     const registrationProvider: Provider<Promise<ZLinkFrameworkRegistration>> = {
       provide: ZLINK_FRAMEWORK_REGISTRATION,
-      inject: options.inject,
+      inject: options.inject === undefined ? undefined : [...options.inject],
       useFactory: async (...args: unknown[]) => framework.createFrameworkRegistration(await options.useFactory(...args))
     };
 
@@ -71,7 +76,7 @@ export class ZLinkModule {
         {
           provide: ZLINK_FRAMEWORK_RUNTIME,
           inject: [ZLINK_FRAMEWORK_REGISTRATION],
-          useFactory: (registration: ZLinkFrameworkRegistration) => new framework.ZLinkFrameworkRuntimeHost({ registration })
+          useFactory: (registration: ZLinkFrameworkRegistration) => createRuntimeHost(registration)
         },
         ...alwaysAvailableClientProviders(),
         ...conditionalClientProvidersForAsync()
@@ -85,6 +90,7 @@ export class ZLinkModule {
   }
 }
 
+@Module({})
 export class ZLinkRegistryModule {
   static forRoot(options: ZLinkRegistryOptions): DynamicModule {
     const runtime = new framework.ZLinkRegistryRuntime({ registration: options });
@@ -96,11 +102,12 @@ export class ZLinkRegistryModule {
     return {
       module: ZLinkRegistryModule,
       providers,
-      exports: providers.map((provider) => provider.provide)
+      exports: providers.map(providerToken)
     };
   }
 }
 
+@Module({})
 export class ZLinkRegistryQueryClientModule {
   static forRoot(options: ZLinkRegistryQueryClientOptions): DynamicModule {
     return {
@@ -117,7 +124,7 @@ export class ZLinkRegistryQueryClientModule {
 export function createZLinkDynamicModule(registration: ZLinkFrameworkRegistration): DynamicModule {
   const providers: Provider[] = [
     { provide: ZLINK_FRAMEWORK_REGISTRATION, useValue: registration },
-    { provide: ZLINK_FRAMEWORK_RUNTIME, useValue: new framework.ZLinkFrameworkRuntimeHost({ registration }) },
+    { provide: ZLINK_FRAMEWORK_RUNTIME, useFactory: () => createRuntimeHost(registration) },
     ...alwaysAvailableClientProviders(registration),
     ...conditionalClientProviders(registration)
   ];
@@ -125,8 +132,126 @@ export function createZLinkDynamicModule(registration: ZLinkFrameworkRegistratio
   return {
     module: ZLinkModule,
     providers,
-    exports: providers.map((provider) => provider.provide)
+    exports: providers.map(providerToken)
   };
+}
+
+function createDiscoveringZLinkDynamicModule(options: ZLinkModuleOptions): DynamicModule {
+  const registrationProvider: Provider = {
+    provide: ZLINK_FRAMEWORK_REGISTRATION,
+    inject: [DiscoveryService, ModuleRef],
+    useFactory: (discovery: DiscoveryService, moduleRef: ModuleRef) =>
+      framework.createFrameworkRegistration(createDiscoveredOptions(options, discovery, moduleRef))
+  };
+
+  return {
+    module: ZLinkModule,
+    imports: [DiscoveryModule],
+    providers: [
+      registrationProvider,
+      {
+        provide: ZLINK_FRAMEWORK_RUNTIME,
+        inject: [ZLINK_FRAMEWORK_REGISTRATION],
+        useFactory: (registration: ZLinkFrameworkRegistration) => createRuntimeHost(registration)
+      },
+      ...alwaysAvailableClientProviders()
+    ],
+    exports: [
+      ZLINK_FRAMEWORK_RUNTIME,
+      ...alwaysAvailableClientTokens()
+    ]
+  };
+}
+
+function createDiscoveredOptions(
+  options: ZLinkModuleOptions,
+  discovery: DiscoveryService,
+  moduleRef: ModuleRef
+): ZLinkFrameworkRegistrationOptions {
+  const channels: Record<string, ZLinkChannelOptions> = {};
+  const providerTypes = discoverProviderTypes(discovery);
+
+  for (const [channelName, channel] of Object.entries(options.channels ?? {})) {
+    const { handlerGroups, handlerTypes, ...baseChannel } = channel;
+    const requestHandlers = [
+      ...(baseChannel.requestHandlers ?? []),
+      ...createDiscoveredRequestHandlers(providerTypes, handlerGroups, handlerTypes, moduleRef)
+    ];
+    channels[channelName] = requestHandlers.length === 0
+      ? baseChannel
+      : { ...baseChannel, requestHandlers };
+  }
+
+  return {
+    ...options,
+    channels
+  };
+}
+
+function createDiscoveredRequestHandlers(
+  providerTypes: readonly Type[],
+  handlerGroups: readonly string[] | undefined,
+  explicitHandlerTypes: readonly Type[] | undefined,
+  moduleRef: ModuleRef
+): NonNullable<ZLinkChannelOptions['requestHandlers']> {
+  if ((handlerGroups ?? []).length === 0 && (explicitHandlerTypes ?? []).length === 0) {
+    return [];
+  }
+
+  const knownTypes = [...new Set([...providerTypes, ...(explicitHandlerTypes ?? [])])];
+  const descriptors = framework.exposeZLinkHandlers(knownTypes, {
+    handlerGroups,
+    explicitHandlers: explicitHandlerTypes
+  }).filter((descriptor) => descriptor.metadata.kind === 'request');
+
+  return descriptors.map(({ handlerType, metadata }) => ({
+    packetName: metadata.packetName ?? handlerType.name,
+    handler: {
+      async handle(payload: Buffer, context: ZLinkRequestContext) {
+        return await invokeDiscoveredHandler(moduleRef, handlerType, metadata, payload, context);
+      }
+    }
+  }));
+}
+
+function discoverProviderTypes(discovery: DiscoveryService): Type[] {
+  return discovery.getProviders()
+    .flatMap((wrapper) => [wrapper.token, wrapper.metatype, wrapper.instance?.constructor])
+    .filter((value): value is Type => typeof value === 'function');
+}
+
+async function invokeDiscoveredHandler(
+  moduleRef: ModuleRef,
+  handlerType: Type,
+  metadata: ZLinkDecoratorMetadata,
+  payload: Buffer,
+  context: ZLinkRequestContext
+): Promise<unknown> {
+  const instance = moduleRef.get(handlerType, { strict: false }) as Record<string, unknown>;
+  const methodName = metadata.methodName ?? 'handle';
+  const method = instance[methodName];
+  if (typeof method !== 'function') {
+    throw new framework.ZLinkConfigurationException(
+      `Discovered handler ${handlerType.name}.${methodName} is not callable.`
+    );
+  }
+  return await method.call(instance, decodePayload(payload), context);
+}
+
+function decodePayload(payload: Buffer | Uint8Array | string | unknown): unknown {
+  if (Buffer.isBuffer(payload) || payload instanceof Uint8Array) {
+    return JSON.parse(Buffer.from(payload).toString());
+  }
+  if (typeof payload === 'string') {
+    return JSON.parse(payload);
+  }
+  return payload;
+}
+
+function hasNestHandlerDiscovery(options: ZLinkModuleOptions): boolean {
+  return Object.values(options.channels ?? {}).some(
+    (channel) => (channel.handlerGroups ?? []).length > 0 || (channel.handlerTypes ?? []).length > 0
+  );
 }
 
 function alwaysAvailableClientProviders(registration?: ZLinkFrameworkRegistration): Provider[] {
@@ -300,6 +425,21 @@ function conditionalClientTokens(): InjectionToken[] {
     ZLINK_ACTOR_MANAGER,
     ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER
   ];
+}
+
+function createRuntimeHost(registration: ZLinkFrameworkRegistration): RuntimeHostWithNestLifecycle {
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({ registration }) as RuntimeHostWithNestLifecycle;
+  runtime.onModuleInit = async () => {
+    await runtime.start();
+  };
+  runtime.onModuleDestroy = async () => {
+    await runtime.stop();
+  };
+  return runtime;
+}
+
+function providerToken(provider: Provider): InjectionToken {
+  return typeof provider === 'function' ? provider : provider.provide;
 }
 
 function ensureCapability(enabled: boolean, token: InjectionToken): void {

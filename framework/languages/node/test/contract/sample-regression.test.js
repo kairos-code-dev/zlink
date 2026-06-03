@@ -178,7 +178,7 @@ test('node samples use only framework and connector public APIs', () => {
   assert.deepEqual(violations, []);
 });
 
-test('node framework samples exercise the NestJS module surface', () => {
+test('node framework samples exercise the real NestJS application context', () => {
   const missing = [];
   for (const sample of ['TicTacToe', 'TicTacToe.SessionGateway', 'Bingo', 'Bingo.Ts']) {
     const usesNestModule = sampleSourceFiles(path.join(samplesRoot, sample))
@@ -187,6 +187,12 @@ test('node framework samples exercise the NestJS module surface', () => {
       missing.push(sample);
     }
   }
+
+  const nestRuntime = fs.readFileSync(path.join(samplesRoot, 'shared', 'nestjs-provider-runtime.js'), 'utf8');
+  assert.equal(nestRuntime.includes("require('@nestjs/common')"), true);
+  assert.equal(nestRuntime.includes("require('@nestjs/core')"), true);
+  assert.equal(nestRuntime.includes('NestFactory.createApplicationContext'), true);
+  assert.equal(nestRuntime.includes('resolveModuleProviders'), false);
 
   assert.deepEqual(missing, []);
 });
@@ -283,11 +289,11 @@ test('node topology samples do not use stdin command protocol as messaging', () 
   assert.deepEqual(violations, []);
 });
 
-test('node samples do not hide readiness with sleep calls', () => {
+test('node samples do not hide readiness with sleeps or pre-ready pings', () => {
   const violations = [];
   for (const file of sampleSourceFiles(samplesRoot)) {
     const content = fs.readFileSync(file, 'utf8');
-    if (/\bsleep\s*\(|setTimeout\s*\(/.test(content)) {
+    if (/\bsleep\s*\(|setTimeout\s*\(|beforeReady/.test(content)) {
       violations.push(path.relative(workspaceRoot, file));
     }
   }
@@ -477,8 +483,7 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [apiFactory, "channelName: 'bingo.play'"],
     [apiFactory, "channelName: 'bingo.api'"],
     [apiFactory, "handlerGroups: ['api']"],
-    [apiFactory, "packetName: 'AuthenticatePlayerReq'"],
-    [apiFactory, "packetName: 'MatchBingoApiReq'"],
+    [apiFactory, 'handlers: []'],
     [authenticate, 'Access token must be a sample player id.'],
     [authenticate, "ZLinkHandlerGroup('api')"],
     [authenticate, "ZLinkRequest('AuthenticatePlayerReq')"],
@@ -499,6 +504,8 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [sessionFactory, "packetName: 'StartBingoGameReq'"],
     [sessionFactory, "packetName: 'BingoNotificationsReq'"],
     [sessionFactory, 'relayToPlay'],
+    [sessionFactory, 'providers: ['],
+    [sessionFactory, 'inject: [API_CLIENT, PLAY_CLIENT]'],
     [session, 'class BingoSession'],
     [session, 'requireSingleBoundActor'],
     [authenticateSession, ".packetName('AuthenticatePlayerReq')"],
@@ -509,12 +516,10 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [playFactory, 'MatchBingoChannelHandler'],
     [playFactory, 'StartBingoGameChannelHandler'],
     [playFactory, 'SampleBoundSessionRuntime'],
+    [playFactory, 'providers: ['],
+    [playFactory, 'inject: [PlayerActorFactory'],
     [playFactory, "channelName: 'bingo.play'"],
     [playFactory, "handlerGroups: ['play']"],
-    [playFactory, "packetName: 'AllocateBingoRoom'"],
-    [playFactory, "packetName: 'EnsurePlayerActorReq'"],
-    [playFactory, "packetName: 'MatchBingoReq'"],
-    [playFactory, "packetName: 'StartBingoGameReq'"],
     [playFactory, "packetName: 'BingoNotificationsReq'"],
     [room, "ZLinkHandlerGroup('play')"],
     [room, "ZLinkRequest('AllocateBingoRoom')"],
@@ -540,6 +545,10 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
   assert.equal(clientApp.includes('RunBingoRoomTimerReq'), false);
   assert.equal(clientApp.includes('BingoDeliveredNotificationsReq'), false);
   assert.equal(apiFactory.includes('createRouteClient'), false);
+  assert.equal(apiFactory.includes('beforeReady'), false);
+  assert.equal(apiFactory.includes("playClient.request('Ping'"), false);
+  assert.equal(/const\s+\w+\s*=\s*new\s+\w+Handler/.test(apiFactory), false);
+  assert.equal(/const\s+\w+\s*=\s*new\s+\w+Handler/.test(sessionFactory), false);
   assert.equal(client.includes('createRouteClient'), false);
   assert.equal(playerClient.includes('apiClient.request('), false);
   assert.equal(playerClient.includes('playClient.request('), false);
@@ -549,6 +558,8 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
   assert.equal(match.includes('players:'), false);
   assert.equal(match.includes('draws:'), false);
   assert.equal(playFactory.includes('RunBingoRoomTimerReq'), false);
+  assert.equal(playFactory.includes("packetName: 'Ping'"), false);
+  assert.equal(/const\s+\w+\s*=\s*new\s+\w+(Handler|Directory|Publisher|Factory|Spot)/.test(playFactory), false);
   assert.equal(apiMain.includes("packetName: 'RunBingo'"), false);
   assert.equal(roomMain.includes('const requiredPlayers'), false);
 });

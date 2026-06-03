@@ -64,6 +64,10 @@ NestJS 의 module + provider + lifecycle hook 이다.
 dotnet 의 `IServiceCollection.AddZLinkFramework(options => ...)` 는 node 에서
 `ZLinkModule.forRoot(options)`(동기) / `ZLinkModule.forRootAsync(...)`(비동기,
 설정 주입) 가 반환하는 `DynamicModule` 로 매핑한다.
+여기서 `DynamicModule` 과 provider 는 자체 모양만 맞춘 객체가 아니라
+`@nestjs/common` 의 실제 타입과 decorator 를 사용한다. 실행 시에는
+`@nestjs/core` 의 application context 가 provider 를 만들고 lifecycle hook 을
+호출한다.
 
 ```csharp
 // dotnet
@@ -85,7 +89,7 @@ builder.Services.AddZLinkFramework(options =>
       channels: {
         price: {
           server: { bind: 'tcp://0.0.0.0:7301' },
-          requestHandlers: [GetPriceHandler],
+          handlerGroups: ['price'],
         },
       },
     }),
@@ -98,6 +102,9 @@ export class AppModule {}
 builder 람다(`channel => { ... }`) 패턴은 NestJS 의 선언적 options 객체로 옮긴다.
 dotnet builder 메서드 한 개 = node options 의 키 한 개로 1:1 대응시키는 것을
 기본으로 한다(§5 표 참조).
+`AddRequestHandler<T>()` 처럼 attribute/handler type 을 등록하는 흐름은 NestJS 에서
+provider + `@ZLinkHandlerGroup(...)` + `@ZLinkRequest(...)` 로 옮긴다. channel 의
+`handlerGroups` 는 어떤 annotation handler 를 이 channel 에 노출할지 정한다.
 
 ### 3.2 lifecycle 매핑
 
@@ -114,6 +121,9 @@ provider 들이 DI 에서 모두 resolvable 한 시점(`onApplicationBootstrap`)
 건다. lifecycle 의 정식 의미(시동 순서, 실패 처리, 종료 보장)는
 [lifecycle-and-failure-semantics](./lifecycle-and-failure-semantics.ko.md) 가
 소유한다.
+샘플과 회귀 테스트도 `NestFactory.createApplicationContext(...)` 를 사용한다.
+수동 provider resolver 로 `useFactory` / `inject` 를 흉내 내는 방식은 NestJS DI
+동작을 검증하지 못하므로 사용하지 않는다.
 
 ### 3.3 DI 매핑
 

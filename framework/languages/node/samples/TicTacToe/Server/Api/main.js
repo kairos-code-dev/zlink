@@ -10,7 +10,6 @@ async function main() {
   await startChannelServer({
     endpoint: process.env.TICTACTOE_API_ENDPOINT,
     channelName: 'api',
-    beforeReady: () => playClient.request('Ping', {}, 1000),
     handlers: [{
       packetName: 'RunTicTacToe',
       handle: (request) => createGame.handle(request)

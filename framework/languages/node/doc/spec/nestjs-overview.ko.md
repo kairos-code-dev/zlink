@@ -51,6 +51,9 @@ registry/monitoring). §6 에서 다시 정리한다.
 NestJS 에서는 `ZLinkModule.forRoot(options)`(동기) / `ZLinkModule.forRootAsync(
 { useFactory, inject, imports })`(비동기, 설정 주입)가 반환하는
 `DynamicModule` 로 매핑한다.
+이 `DynamicModule` 은 `@nestjs/common` 의 실제 모듈/provider 타입으로 만든다.
+framework runtime 과 client 는 NestJS DI 컨테이너가 resolve 하며, runtime 시작과
+종료는 NestJS lifecycle hook 을 통해 처리한다.
 
 .NET 빌더 메서드(`AddClientServerChannel`, `AddSpotNode`, `UseDiscovery` …)
 **한 개** = NestJS options 객체의 **키 한 개**로 1:1 대응시키는 것을 기본으로
@@ -714,7 +717,7 @@ backend 스왑 지점의 전부다. framework 의 다른 어떤 코드도 `@zlin
 |--------|-----------|
 | `backend-contract.test.js` | backend adapter factory 가 channel, spot, stream, registry, monitoring adapter 를 모두 제공한다. |
 | `backend-public-api-only.test.js` | framework runtime 이 binding internal/native 경로를 직접 import 하지 않는다. |
-| `nestjs-module.test.js` | `ZLinkModule.forRoot/forRootAsync`, provider token 노출, startup validation, lifecycle 연결이 동작한다. |
+| `nestjs-module.test.js` | `ZLinkModule.forRoot/forRootAsync`, provider token 노출, startup validation, 실제 NestJS application context 주입, lifecycle 연결이 동작한다. |
 | `documentation-regression.test.js › node implementation reference docs declare regression coverage sections` | 이 overview 가 자기 회귀 테스트 단락을 유지한다. |
 
 [문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [DI 노출 정책](../internals/di-capability-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md)

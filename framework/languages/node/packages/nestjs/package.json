@@ -5,6 +5,12 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "@zlink-systems/framework": "0.1.0-SNAPSHOT"
+    "@nestjs/common": "^10.4.22",
+    "@zlink-systems/framework": "0.1.0-SNAPSHOT",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "peerDependencies": {
+    "@nestjs/core": "^10.4.22"
   }
 }

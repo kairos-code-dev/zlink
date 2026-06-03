@@ -1,7 +1,7 @@
-const framework = require('../../packages/framework/dist');
+const { createZLinkNestRuntime, nestjs } = require('./nestjs-provider-runtime');
 
-function createRouteRegistration({ endpoint, routingId, peers = [], handlers = [] }) {
-  return framework.createFrameworkRegistration({
+function createRouteOptions({ endpoint, routingId, peers = [], handlers = [] }) {
+  return {
     routeChannels: [{
       routerChannelId: 'sample-route',
       bind: endpoint,
@@ -16,23 +16,32 @@ function createRouteRegistration({ endpoint, routingId, peers = [], handlers = [
         }
       }))
     }]
-  });
+  };
 }
 
-async function startRouteServer({ endpoint, routingId, peers = [], handlers }) {
-  const registration = createRouteRegistration({ endpoint, routingId, peers, handlers });
-  const runtime = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  await runtime.start();
+async function startRouteServer({ endpoint, routingId, peers = [], handlers, providers = [] }) {
+  let container;
+  const resolver = {
+    get(token) {
+      if (container === undefined) {
+        throw new Error(`NestJS provider is not ready: ${String(token)}`);
+      }
+      return container.get(token);
+    }
+  };
+  const resolvedHandlers = typeof handlers === 'function' ? handlers(resolver) : handlers;
+  container = await createZLinkNestRuntime(
+    createRouteOptions({ endpoint, routingId, peers, handlers: resolvedHandlers }),
+    providers
+  );
   process.stdout.write(`${JSON.stringify({ event: 'ready', endpoint, routingId })}\n`);
   await waitForShutdown();
-  await stopRuntime(runtime);
+  await closeNestRuntime(container);
 }
 
 async function createRouteClient({ endpoint, routingId, peers }) {
-  const registration = createRouteRegistration({ endpoint, routingId, peers });
-  const runtime = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  await runtime.start();
-  const client = new framework.DefaultZLinkRouteClient(registration, runtime.routeTransport);
+  const container = await createZLinkNestRuntime(createRouteOptions({ endpoint, routingId, peers }));
+  const client = container.get(nestjs.ZLINK_ROUTE_CLIENT);
   return {
     async request(targetNodeRid, packetName, payload, timeoutMs = 1000) {
       return await retry(() => client
@@ -42,7 +51,7 @@ async function createRouteClient({ endpoint, routingId, peers }) {
         .submit());
     },
     async stop() {
-      await stopRuntime(runtime);
+      await closeNestRuntime(container);
     }
   };
 }
@@ -79,9 +88,9 @@ function decodePayload(payload) {
   return payload;
 }
 
-async function stopRuntime(runtime) {
+async function closeNestRuntime(container) {
   try {
-    await runtime.stop();
+    await container.close();
   } catch (error) {
     if (error?.name === 'CloseError' && (error?.code === 0 || error?.code === 401)) {
       return;

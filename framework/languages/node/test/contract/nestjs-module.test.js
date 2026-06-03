@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { Module } = require('@nestjs/common');
+const { NestFactory } = require('@nestjs/core');
 
 const framework = require('../../packages/framework/dist');
 const nestjs = require('../../packages/nestjs/dist');
@@ -109,6 +111,69 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
     (error) => error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.ActorSessionNotBound
   );
+});
+
+test('ZLinkModule.forRoot boots through the real NestJS DI container and lifecycle', async () => {
+  const moduleDefinition = nestjs.ZLinkModule.forRoot();
+  class ConsumerModule {}
+  Module({
+    imports: [moduleDefinition],
+    providers: [{
+      provide: 'consumer',
+      inject: [nestjs.ZLINK_CHANNEL_CLIENT, nestjs.ZLINK_FRAMEWORK_RUNTIME],
+      useFactory: (channelClient, runtime) => ({ channelClient, runtime })
+    }]
+  })(ConsumerModule);
+
+  const app = await NestFactory.createApplicationContext(ConsumerModule, { logger: false });
+  const runtime = app.get(nestjs.ZLINK_FRAMEWORK_RUNTIME);
+  const channelClient = app.get(nestjs.ZLINK_CHANNEL_CLIENT);
+  const consumer = app.get('consumer');
+
+  assert.equal(runtime instanceof framework.ZLinkFrameworkRuntimeHost, true);
+  assert.equal(runtime.isStarted, true);
+  assert.equal(channelClient instanceof framework.DefaultZLinkChannelClient, true);
+  assert.equal(consumer.channelClient, channelClient);
+  assert.equal(consumer.runtime, runtime);
+
+  await app.close();
+  assert.equal(runtime.isStarted, false);
+});
+
+test('ZLinkModule.forRoot discovers annotated request handlers from NestJS providers', async () => {
+  class ProfileHandler {
+    async handle(request) {
+      return { profileId: request.profileId, source: 'annotation' };
+    }
+  }
+  framework.ZLinkHandlerGroup('api')(ProfileHandler);
+  framework.ZLinkRequest('GetProfile')(ProfileHandler.prototype, 'handle', descriptor());
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot({
+      channels: {
+        api: {
+          server: { bind: 'tcp://127.0.0.1:7955' },
+          handlerGroups: ['api']
+        }
+      }
+    })],
+    providers: [ProfileHandler]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const registration = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION);
+  const handlers = registration.channels.get('api').requestHandlers;
+
+  assert.equal(handlers.length, 1);
+  assert.equal(handlers[0].packetName, 'GetProfile');
+  assert.deepEqual(
+    await handlers[0].handler.handle(Buffer.from(JSON.stringify({ profileId: 'p1' })), {}),
+    { profileId: 'p1', source: 'annotation' }
+  );
+
+  await app.close();
 });
 
 test('ZLinkModule.forRoot passes registered spot factories to the spot manager', async () => {
@@ -1246,6 +1311,15 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
 
 function providerTokens(module) {
   return new Set(module.providers.map((provider) => provider.provide));
+}
+
+function descriptor() {
+  return {
+    configurable: true,
+    enumerable: false,
+    value() {},
+    writable: true
+  };
 }
 
 async function resolveModuleProviders(module, requestedTokens) {

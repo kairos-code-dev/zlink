@@ -14,31 +14,61 @@ const { MatchBingoChannelHandler } = require('./Handlers/match-bingo-channel-han
 const { StartBingoGameChannelHandler } = require('./Handlers/start-bingo-game-channel-handler');
 
 async function buildPlayServerHost(options) {
-  const boundSessions = new SampleBoundSessionRuntime();
-  const actorFactory = new PlayerActorFactory(boundSessions);
-  const notifications = new BingoNotificationPublisher();
-  const rooms = new BingoRoomDirectory(notifications);
-  const roomJoin = new BingoRoomJoinHandler();
-  const startBingoGame = new StartBingoGameHandler();
-  const timer = new BingoRoomTimerHandler();
-  const entrySpot = new BingoEntrySpot(rooms, roomJoin);
-  const matchBingoActor = new MatchBingoActorHandler();
-  const allocateBingoRoom = new AllocateBingoRoomHandler(rooms);
-  const ensurePlayerActor = new EnsurePlayerActorHandler(actorFactory);
-  const matchBingo = new MatchBingoChannelHandler(actorFactory, entrySpot, matchBingoActor);
-  const startBingo = new StartBingoGameChannelHandler(actorFactory, rooms, startBingoGame, timer);
-
   return await startChannelServer({
     endpoint: options.playEndpoint,
     channelName: 'bingo.play',
     handlerGroups: ['play'],
-    handlers: [
-      { group: 'play', packetName: 'AllocateBingoRoom', handle: (request) => allocateBingoRoom.handle(request) },
-      { group: 'play', packetName: 'EnsurePlayerActorReq', handle: (request) => ensurePlayerActor.handle(request) },
-      { group: 'play', packetName: 'MatchBingoReq', handle: (request) => matchBingo.handle(request) },
-      { group: 'play', packetName: 'StartBingoGameReq', handle: (request) => startBingo.handle(request) },
-      { group: 'play', packetName: 'BingoNotificationsReq', handle: (request) => boundSessions.deliveredFor(request.actorId, request.afterSeq) },
-      { group: 'play', packetName: 'Ping', handle: () => ({ ok: true }) }
+    providers: [
+      SampleBoundSessionRuntime,
+      {
+        provide: PlayerActorFactory,
+        inject: [SampleBoundSessionRuntime],
+        useFactory: (boundSessions) => new PlayerActorFactory(boundSessions)
+      },
+      BingoNotificationPublisher,
+      {
+        provide: BingoRoomDirectory,
+        inject: [BingoNotificationPublisher],
+        useFactory: (notifications) => new BingoRoomDirectory(notifications)
+      },
+      BingoRoomJoinHandler,
+      StartBingoGameHandler,
+      BingoRoomTimerHandler,
+      {
+        provide: BingoEntrySpot,
+        inject: [BingoRoomDirectory, BingoRoomJoinHandler],
+        useFactory: (rooms, roomJoin) => new BingoEntrySpot(rooms, roomJoin)
+      },
+      MatchBingoActorHandler,
+      {
+        provide: AllocateBingoRoomHandler,
+        inject: [BingoRoomDirectory],
+        useFactory: (rooms) => new AllocateBingoRoomHandler(rooms)
+      },
+      {
+        provide: EnsurePlayerActorHandler,
+        inject: [PlayerActorFactory],
+        useFactory: (actorFactory) => new EnsurePlayerActorHandler(actorFactory)
+      },
+      {
+        provide: MatchBingoChannelHandler,
+        inject: [PlayerActorFactory, BingoEntrySpot, MatchBingoActorHandler],
+        useFactory: (actorFactory, entrySpot, matchBingoActor) =>
+          new MatchBingoChannelHandler(actorFactory, entrySpot, matchBingoActor)
+      },
+      {
+        provide: StartBingoGameChannelHandler,
+        inject: [PlayerActorFactory, BingoRoomDirectory, StartBingoGameHandler, BingoRoomTimerHandler],
+        useFactory: (actorFactory, rooms, startBingoGame, timer) =>
+          new StartBingoGameChannelHandler(actorFactory, rooms, startBingoGame, timer)
+      }
+    ],
+    handlers: (providers) => [
+      {
+        group: 'play',
+        packetName: 'BingoNotificationsReq',
+        handle: (request) => providers.get(SampleBoundSessionRuntime).deliveredFor(request.actorId, request.afterSeq)
+      }
     ]
   });
 }

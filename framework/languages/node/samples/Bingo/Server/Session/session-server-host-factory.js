@@ -4,6 +4,10 @@ const { AuthenticateSessionHandler } = require('./Sessions/Handlers/authenticate
 const { BingoSession } = require('./Sessions/bingo-session');
 const { SampleNames, SampleTimings } = require('../../Shared/Configuration/sample-names');
 
+const API_CLIENT = Symbol('bingo.api.client');
+const PLAY_CLIENT = Symbol('bingo.play.client');
+const SESSION_CONTEXTS = Symbol('bingo.session.contexts');
+
 async function buildSessionServerHost(options) {
   const apiClient = await createChannelClient({
     channelName: 'bingo.api',
@@ -13,33 +17,41 @@ async function buildSessionServerHost(options) {
     channelName: 'bingo.play',
     peers: [options.playEndpoint].filter(Boolean)
   });
-  const authenticateSession = new AuthenticateSessionHandler(apiClient, playClient);
-  const sessionContexts = new Map();
 
   return await startRouteServer({
     endpoint: options.sessionEndpoint,
     routingId: 'session-server',
-    handlers: [
+    providers: [
+      { provide: API_CLIENT, useValue: apiClient },
+      { provide: PLAY_CLIENT, useValue: playClient },
+      { provide: SESSION_CONTEXTS, useValue: new Map() },
+      {
+        provide: AuthenticateSessionHandler,
+        inject: [API_CLIENT, PLAY_CLIENT],
+        useFactory: (api, play) => new AuthenticateSessionHandler(api, play)
+      }
+    ],
+    handlers: (providers) => [
       {
         packetName: 'AuthenticateReq',
         handle: async (request, routeContext) => {
           const session = createSessionContext();
-          const response = await authenticateSession.handle(request, session);
-          sessionContexts.set(sessionKey(routeContext), session);
+          const response = await providers.get(AuthenticateSessionHandler).handle(request, session);
+          providers.get(SESSION_CONTEXTS).set(sessionKey(routeContext), session);
           return response;
         }
       },
       {
         packetName: 'MatchBingoReq',
-        handle: (request, routeContext) => relayToPlay(playClient, requireSessionContext(sessionContexts, routeContext), 'MatchBingoReq', request)
+        handle: (request, routeContext) => relayToPlay(providers, routeContext, 'MatchBingoReq', request)
       },
       {
         packetName: 'StartBingoGameReq',
-        handle: (request, routeContext) => relayToPlay(playClient, requireSessionContext(sessionContexts, routeContext), 'StartBingoGameReq', request)
+        handle: (request, routeContext) => relayToPlay(providers, routeContext, 'StartBingoGameReq', request)
       },
       {
         packetName: 'BingoNotificationsReq',
-        handle: (request, routeContext) => relayToPlay(playClient, requireSessionContext(sessionContexts, routeContext), 'BingoNotificationsReq', request)
+        handle: (request, routeContext) => relayToPlay(providers, routeContext, 'BingoNotificationsReq', request)
       },
       { packetName: 'Ping', handle: () => ({ role: 'session-server', session: BingoSession.name }) }
     ]
@@ -61,7 +73,9 @@ function createSessionContext() {
   };
 }
 
-async function relayToPlay(playClient, session, packetName, request) {
+async function relayToPlay(providers, routeContext, packetName, request) {
+  const playClient = providers.get(PLAY_CLIENT);
+  const session = requireSessionContext(providers.get(SESSION_CONTEXTS), routeContext);
   const actor = session.actors.bound[0];
   if (actor === undefined || session.actorId === null || session.displayName === null) {
     throw new Error(`Client must authenticate before relaying packet '${packetName}'.`);

@@ -329,20 +329,25 @@ handler 를 **찾고**, 실제 노출은 명시적 등록이 정한다. node 는
 
 ```ts
 ZLinkModule.forRoot({
-  discover: {
-    // NestJS DiscoveryService 가 훑을 모듈/범위 (구현 가이드가 확정)
+  channels: {
+    api: {
+      server: { bind: 'tcp://0.0.0.0:7101' },
+      handlerGroups: ['api'],
+    },
   },
 });
 ```
 
 이 호출이 두 가지 일을 한꺼번에 한다.
 
-1. handler provider 들을 NestJS DI 컨테이너 후보로 본다.
+1. NestJS DI 컨테이너에 등록된 provider 들을 handler 후보로 본다.
 2. decorator/interface 메타데이터(`reflect-metadata`)로 request / send / publish handler
    후보를 찾아 둔다.
 
 여기서 발견된 handler 가 곧장 **모든** channel 에 노출되는 것은 아니다. 실제로 어느
 channel 에서 동작할지는, 별도로 묶어서 알려 주어야 한다.
+현재 channel request handler 노출은 `channels[name].handlerGroups` 가 지정한 group 을
+기준으로 한다.
 
 #### handler group[^handlergroup]으로 묶기
 

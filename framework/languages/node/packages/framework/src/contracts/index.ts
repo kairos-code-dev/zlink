@@ -960,6 +960,7 @@ export interface ZLinkDecoratorMetadata {
   readonly kind: string;
   readonly packetName?: string;
   readonly groupName?: string;
+  readonly methodName?: string;
   readonly spotNodeName?: string;
   readonly topic?: string;
 }
@@ -1029,7 +1030,10 @@ function classDecorator(metadata: ZLinkDecoratorMetadata): ClassDecorator {
 }
 
 function methodDecorator(metadata: ZLinkDecoratorMetadata): MethodDecorator {
-  return (target) => appendMetadata(target.constructor, metadata);
+  return (target, propertyKey) => appendMetadata(target.constructor, {
+    ...metadata,
+    methodName: String(propertyKey)
+  });
 }
 
 function appendMetadata(target: object, metadata: ZLinkDecoratorMetadata): void {

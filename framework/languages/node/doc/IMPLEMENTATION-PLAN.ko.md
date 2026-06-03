@@ -289,12 +289,13 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 - **입력:** [nestjs-overview §2~4](./spec/nestjs-overview.ko.md), [lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md), [di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) / dotnet `Runtime/Host/`, `Runtime/Configuration/`, `AspNetCore/`
 - **산출물:** `runtime/host/`, `runtime/configuration/`, `@zlink-systems/nestjs`(`ZLinkModule`)
 - **작업:**
-  - `ZLinkModule.forRoot(options)` / `forRootAsync({useFactory, inject})` → `DynamicModule`
+  - `ZLinkModule.forRoot(options)` / `forRootAsync({useFactory, inject})` → `@nestjs/common` 실제 `DynamicModule`
   - 등록 검증(forRoot 빌드 시점), provider 토큰 노출(capability→client)
   - 런타임 시동/종료를 `onApplicationBootstrap`/`onApplicationShutdown` 에 연결, **시동 순서·graceful close** 준수
   - 레지스트리/모니터링 모듈 분리(`ZLinkRegistryModule`, `ZLinkRegistryQueryClientModule`)
 - **DoD:**
   - [x] 빈 옵션으로 모듈 부트/셧다운이 lifecycle 순서대로 동작
+  - [x] `@nestjs/core` application context 에서 provider 주입과 runtime lifecycle 이 동작
   - [x] 잘못된 등록이 forRoot 빌드 시 검증 예외
   - [x] capability 별 injectable client 토큰 노출 규칙 일치
 - **검증:** lifecycle/host e2e 미러(시동순서·실패롤백·종료순서)

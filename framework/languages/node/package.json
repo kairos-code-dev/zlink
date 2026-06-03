@@ -7,8 +7,8 @@
     "clean": "rm -rf dist packages/*/dist",
     "build": "node ../../../bindings/node/node_modules/typescript/bin/tsc -b tsconfig.build.json",
     "typecheck": "node ../../../bindings/node/node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/**/*.test.js",
-    "verify:p0": "npm run build && npm run typecheck && node --test test/**/*.test.js",
+    "test": "node scripts/run_node_runtime_gate.js",
+    "verify:p0": "node scripts/run_node_runtime_gate.js",
     "verify:samples": "./samples/run_samples.sh",
     "verify:runtime-matrix": "node scripts/verify_node_runtime_matrix.js",
     "verify:abi-matrix": "node scripts/verify_node_abi_matrix.js",
@@ -21,5 +21,11 @@
   "devDependencies": {
     "@types/node": "^22.15.30",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.22",
+    "@nestjs/core": "^10.4.22",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
   }
 }

@@ -19,11 +19,13 @@ foreach(required
     "\"linux-ninja-debug\""
     "\"linux-ninja-release\""
     "\"linux-ninja-vcpkg-debug\""
+    "\"macos-ninja-debug\""
     "\"windows-msvc-debug\""
     "\"windows-msvc-release\""
     "\"windows-msvc-vcpkg-debug\""
     "\"Visual Studio 17 2022\""
     "\"CMAKE_CXX_STANDARD\": \"20\""
+    "\"CMAKE_EXPORT_COMPILE_COMMANDS\": \"ON\""
     "\"ZLINK_FRAMEWORK_CPP_BUILD_TESTS\": \"ON\""
     "\"ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES\": \"ON\"")
   if(NOT presets_text MATCHES "${required}")
@@ -56,6 +58,7 @@ foreach(required
     "linux-ninja-debug"
     "linux-ninja-release"
     "linux-ninja-vcpkg-debug"
+    "macos-ninja-debug"
     "windows-msvc-debug"
     "windows-msvc-release"
     "windows-msvc-vcpkg-debug")

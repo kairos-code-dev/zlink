@@ -6496,3 +6496,36 @@ non-empty contract로 고정하는 편이 오해가 적다.
 
 - Unreal public header가 `Private/` 구현이나 `src/runtime` 구현을 include하면
   `test_cpp_framework_layout_contract`가 실패한다.
+
+## 추가 리뷰. IDE configure preset contract 보강
+
+### 발견한 위험 신호
+
+- Goal 22는 CLion/Visual Studio configure smoke를 완료 기준에 둔다.
+- tooling contract는 Linux Ninja와 Windows MSVC preset을 확인했지만, 실제 preset 파일에 있는
+  `macos-ninja-debug`를 필수 목록으로 보지 않았다.
+- CLion configure에 중요한 `CMAKE_EXPORT_COMPILE_COMMANDS`도 preset에는 있지만 contract에서
+  고정하지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 preset 검사 유지 | 변경이 없다 | IDE configure에 필요한 일부 preset/cache drift를 놓친다 |
+| 각 플랫폼 generator configure를 모두 실행 | 가장 직접적이다 | 현재 Linux 환경에서 Visual Studio/macOS generator를 실행할 수 없다 |
+| preset 파일과 `cmake --list-presets=all` smoke에서 macOS preset과 compile commands option을 고정 | 현재 환경에서 실행 가능하고 IDE 진입점을 넓게 감시한다 | 실제 macOS/Windows configure는 해당 플랫폼 CI가 맡아야 한다 |
+
+선택은 세 번째 방식이다. 이 저장소의 contract test는 현재 플랫폼에서 실행 가능한 smoke를
+제공해야 하므로, cross-platform generator 실행 대신 preset 존재와 CMake 인식 여부를 강하게
+고정한다.
+
+### 적용한 리팩토링
+
+- tooling contract가 `macos-ninja-debug` preset을 필수로 확인하게 했다.
+- tooling contract가 `CMAKE_EXPORT_COMPILE_COMMANDS` 기본 ON 설정을 확인하게 했다.
+- `cmake --list-presets=all` 출력에도 `macos-ninja-debug`가 있는지 확인하게 했다.
+
+### 수정 후 점검
+
+- macOS/CLion preset 또는 compile commands 설정이 빠지면 `test_cpp_framework_tooling_contract`가
+  실패한다.

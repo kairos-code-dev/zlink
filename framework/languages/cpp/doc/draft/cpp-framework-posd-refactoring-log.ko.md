@@ -6761,3 +6761,35 @@ CMake가 생성하는 파일 전체 형식까지 고정할 필요는 없다.
 
 - Goal 22 검증 명령에서 connector, Unreal connector, sample role, package, coverage 축이
   빠지면 `test_cpp_framework_layout_contract`가 실패한다.
+
+## 추가 리뷰. Stream Connector JSON helper option 제거
+
+### 발견한 위험 신호
+
+- CMake에는 `ZLINK_STREAM_CONNECTOR_WITH_JSON` option이 있었지만 JSON helper target과
+  install include는 항상 켜져 있었다.
+- 옵션을 OFF로 바꿔도 public helper 표면이 실제로 사라지지 않으면 사용자는 설정 의미를
+  잘못 이해하게 된다.
+- POSD 관점에서는 동작을 바꾸지 않는 설정 파라미터가 호출자 복잡성만 늘리는 얕은 표면이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 옵션을 유지하고 문서만 둔다 | 변경이 작다 | 가짜 설정 표면이 계속 남는다 |
+| 옵션 OFF일 때 JSON helper target과 install include까지 조건부로 만든다 | option 의미가 생긴다 | 기본 helper를 끄는 경로까지 package/test matrix가 늘어난다 |
+| JSON helper는 항상 포함되는 기본 helper로 정리하고 option을 제거한다 | 실제 동작과 문서가 일치하고 설정 표면이 줄어든다 | 기존 preset의 JSON cache variable을 삭제해야 한다 |
+
+선택은 세 번째 방식이다. 현재 connector 완료 기준은 JSON helper 기본 포함을 요구하며,
+사용하지 않는 dependency 분리는 `zlink::stream_connector_codecs` target과 MessagePack,
+Protobuf option으로 충분하다.
+
+### 적용한 리팩토링
+
+- `ZLINK_STREAM_CONNECTOR_WITH_JSON` CMake option과 preset cache variable을 제거했다.
+- connector draft는 JSON helper가 별도 option 없이 기본 포함된다고 설명하게 했다.
+- layout contract가 제거된 JSON option이 CMakeLists나 preset에 다시 들어오면 실패하게 했다.
+
+### 수정 후 점검
+
+- 의미 없는 JSON helper option이 재도입되면 `test_cpp_framework_layout_contract`가 실패한다.

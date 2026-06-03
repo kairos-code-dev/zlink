@@ -113,8 +113,9 @@ Connector는 같은 wire 의미를 공유하지만 public 타입은 서로 독�
 codec은 connector 배포 단위에 포함하되, 사용하지 않는 codec dependency를 기본 connector
 target에 강제로 붙이지 않는다. raw transport와 frame runtime은 `zlink::stream_connector`가
 맡고, typed auto codec helper는 같은 배포물 안의 `zlink::stream_connector_codecs` target이
-맡는다. MessagePack과 Protobuf는 build option이 켜지고 해당 C++ binding codec target이
-있을 때만 `zlink::stream_connector_codecs`에 연결된다.
+맡는다. JSON helper는 기본 helper로 항상 포함한다. MessagePack과 Protobuf는 build option이
+켜지고 해당 C++ binding codec target이 있을 때만 `zlink::stream_connector_codecs`에
+연결된다.
 
 | 기능 | 포함 방식 | 기본값 |
 |------|----------|--------|
@@ -127,13 +128,12 @@ target에 강제로 붙이지 않는다. raw transport와 frame runtime은 `zlin
 권장 CMake option은 아래와 같다.
 
 ```cmake
-ZLINK_STREAM_CONNECTOR_WITH_JSON=ON
 ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK=OFF
 ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF=OFF
 ZLINK_STREAM_CONNECTOR_WITH_LZ4=ON
 ```
 
-JSON helper는 기본 ON CMake option으로 제공한다. `ZLINK_STREAM_CONNECTOR_WITH_LZ4=ON`이면
+JSON helper는 별도 CMake option 없이 기본 포함한다. `ZLINK_STREAM_CONNECTOR_WITH_LZ4=ON`이면
 CMake는 먼저 system `lz4.h`와 `liblz4`를 찾는다. 개발 패키지가 없으면 LZ4 source를 받아
 `zlink::stream_connector` target 안에 private source로 포함한다. 사용자는 별도 LZ4 target을
 직접 링크하지 않는다. 다만 실제 packet을 압축할지는 `send_call_t::compress()`나 Unreal

@@ -1176,9 +1176,14 @@ main ()
     root / "CMakeLists.txt",
     "target_include_directories(zlink_unreal_stream_connector PRIVATE\n  ${ZLINK_FRAMEWORK_CPP_DIR}/connector/src)",
     "Unreal connector target must not include general connector runtime internals");
-  ok &= file_contains (
+  ok &= file_does_not_contain (
     root / "CMakeLists.txt",
-    "option(ZLINK_STREAM_CONNECTOR_WITH_JSON \"Enable Stream Connector JSON helpers\" ON)");
+    "ZLINK_STREAM_CONNECTOR_WITH_JSON",
+    "Stream connector JSON helper is always included and must not expose a fake option");
+  ok &= file_does_not_contain (
+    root / "CMakePresets.json",
+    "ZLINK_STREAM_CONNECTOR_WITH_JSON",
+    "CMake presets must not set the removed Stream Connector JSON helper option");
   ok &= file_contains (
     root / "CMakeLists.txt",
     "option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 \"Enable Stream Connector LZ4 compression\" ON)");

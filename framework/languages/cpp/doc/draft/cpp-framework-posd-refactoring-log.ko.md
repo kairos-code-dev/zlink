@@ -7985,3 +7985,38 @@ opaque handle로만 남기고, 실제 상태 타입과 runtime helper는 `connec
 - connector public header에 `connector_state_t`, `connector_runtime_t`, pending request table,
   transport connection, frame/header/metadata/LZ4 codec 구현 타입명이 들어오면
   `test_cpp_framework_layout_contract`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 18 HTTP client HTTPS label evidence 보강
+
+### 발견한 위험 신호
+
+- Goal 18은 HTTPS request, TLS verification 실패, test certificate trust 성공을
+  `http-client-https` 축으로 검증해야 한다고 명시한다.
+- 기존 CTest label은 public header compile smoke에도 `http-client-https`를 붙였다. 이 상태에서는
+  HTTPS e2e가 비활성화되어도 label non-empty 검사가 compile smoke 때문에 통과할 수 있다.
+- label이 실제 동작 검증이 아니라 compile smoke로 만족되면 plan의 HTTPS 완료 기준을 증명하지
+  못한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현 상태 유지 | 테스트 수가 변하지 않는다 | HTTPS label의 증거 의미가 약하다 |
+| OpenSSL이 없으면 configure를 즉시 실패시킨다 | HTTPS 지원을 강하게 요구한다 | dependency discovery 정책까지 넓게 바꾼다 |
+| `http-client-https`를 실제 HTTP client regression test에만 붙이고 label contract로 고정한다 | label 의미와 plan 검증 축이 일치한다 | OpenSSL 없는 빌드에서는 label contract가 실패한다 |
+
+선택은 세 번째 방식이다. plan은 HTTPS를 완료 기준으로 둔다. 따라서 `http-client-https` label은
+public header compile 여부가 아니라 HTTPS request와 TLS verification을 실행하는 test를
+가리켜야 한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_contract_headers`에서 HTTP client unit/e2e/https/regression label을 제거하고
+  framework public header compile contract로만 남겼다.
+- `verify_ctest_label_contract.cmake`가 `http-client-https` label이
+  `test_cpp_http_client`를 선택하고 public header compile smoke로 만족되지 않는지 검사하게 했다.
+
+### 수정 후 점검
+
+- `http-client-https` label이 실제 HTTP client HTTPS regression test 없이 통과하면
+  `test_cpp_framework_label_contract`가 실패한다.

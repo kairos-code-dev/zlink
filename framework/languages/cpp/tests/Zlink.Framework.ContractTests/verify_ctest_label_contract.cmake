@@ -136,3 +136,21 @@ foreach(label IN LISTS required_labels)
     message(FATAL_ERROR "CTest label ${label} selects no tests")
   endif()
 endforeach()
+
+execute_process(
+  COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}" -N -L http-client-https
+  RESULT_VARIABLE http_client_https_result
+  OUTPUT_VARIABLE http_client_https_output
+  ERROR_VARIABLE http_client_https_error)
+if(NOT http_client_https_result EQUAL 0)
+  message(FATAL_ERROR
+    "ctest label scan failed for http-client-https: ${http_client_https_error}")
+endif()
+if(NOT http_client_https_output MATCHES "test_cpp_http_client")
+  message(FATAL_ERROR
+    "http-client-https must select the HTTP client HTTPS regression test")
+endif()
+if(http_client_https_output MATCHES "test_cpp_framework_contract_headers")
+  message(FATAL_ERROR
+    "http-client-https must not be satisfied by public header compile smoke")
+endif()

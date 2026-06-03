@@ -538,7 +538,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   add_test(NAME test_cpp_framework_contract_headers
     COMMAND test_cpp_framework_contract_headers)
   set_tests_properties(test_cpp_framework_contract_headers PROPERTIES
-    LABELS "framework-contract;http-client-contract;http-client-unit;http-client-e2e;http-client-https;http-client-regression"
+    LABELS "framework-contract"
     TIMEOUT 30)
   add_test(NAME test_cpp_framework_async_contract
     COMMAND test_cpp_framework_contract_headers)

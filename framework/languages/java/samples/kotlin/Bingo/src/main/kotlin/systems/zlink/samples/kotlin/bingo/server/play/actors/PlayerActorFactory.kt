@@ -1,5 +1,12 @@
 package systems.zlink.samples.kotlin.bingo.server.play.actors
 
-class PlayerActorFactory {
-    fun create(actorId: String): PlayerActor = PlayerActor(actorId)
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionStage
+import systems.zlink.framework.actors.ZLinkActor
+import systems.zlink.framework.actors.ZLinkActorContext
+import systems.zlink.framework.actors.ZLinkActorFactory
+
+class PlayerActorFactory : ZLinkActorFactory {
+    override fun createAsync(actorId: String, context: ZLinkActorContext): CompletionStage<ZLinkActor> =
+        CompletableFuture.completedFuture(PlayerActor(actorId, context))
 }

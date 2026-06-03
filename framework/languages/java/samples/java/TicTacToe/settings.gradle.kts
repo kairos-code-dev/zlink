@@ -13,3 +13,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "zlink-java-sample-tictactoe"
+
+include("Client")
+include("Server")
+include("Shared")

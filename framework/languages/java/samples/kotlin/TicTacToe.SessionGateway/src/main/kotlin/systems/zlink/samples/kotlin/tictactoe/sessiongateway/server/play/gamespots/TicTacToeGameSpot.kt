@@ -3,6 +3,134 @@ package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.gamesp
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
 
-class TicTacToeGameSpot : ZLinkSpot {
+class TicTacToeGameSpot(
+    val matchId: String = "match-sample",
+    val ownerActorId: String = "sample",
+) : ZLinkSpot {
+    private val board = ".........".toCharArray()
+    private var xActorId: String? = null
+    private var oActorId: String? = null
+    private var turnActorId: String? = null
+    private var winnerActorId: String? = null
+    private var lastMoveActorId: String? = null
+    private var lastMoveCell: Int? = null
+    private var draw = false
+
     override fun context(): ZLinkSpotContext? = null
+
+    @Synchronized
+    fun join(actorId: String): JoinResult {
+        val mark = when (actorId) {
+            xActorId -> "X"
+            oActorId -> "O"
+            else -> {
+                when {
+                    xActorId == null -> {
+                        xActorId = actorId
+                        turnActorId = actorId
+                        "X"
+                    }
+                    oActorId == null -> {
+                        oActorId = actorId
+                        "O"
+                    }
+                    else -> throw IllegalStateException("Match is full: $matchId")
+                }
+            }
+        }
+        return JoinResult(matchId, actorId, mark, snapshot())
+    }
+
+    @Synchronized
+    fun placeMark(actorId: String, cell: Int): State {
+        if (actorId != turnActorId) {
+            throw IllegalStateException("It is not $actorId's turn")
+        }
+        if (cell !in board.indices || board[cell] != '.') {
+            throw IllegalArgumentException("Invalid move: $cell")
+        }
+        board[cell] = if (actorId == xActorId) 'X' else 'O'
+        lastMoveActorId = actorId
+        lastMoveCell = cell
+        winnerActorId = winner()
+        draw = winnerActorId == null && !board.contains('.')
+        if (winnerActorId == null && !draw) {
+            turnActorId = if (actorId == xActorId) oActorId else xActorId
+        }
+        return snapshot()
+    }
+
+    private fun winner(): String? {
+        val lines = arrayOf(
+            intArrayOf(0, 1, 2),
+            intArrayOf(3, 4, 5),
+            intArrayOf(6, 7, 8),
+            intArrayOf(0, 3, 6),
+            intArrayOf(1, 4, 7),
+            intArrayOf(2, 5, 8),
+            intArrayOf(0, 4, 8),
+            intArrayOf(2, 4, 6),
+        )
+        for (line in lines) {
+            val mark = board[line[0]]
+            if (mark != '.' && mark == board[line[1]] && mark == board[line[2]]) {
+                return if (mark == 'X') xActorId else oActorId
+            }
+        }
+        return null
+    }
+
+    private fun snapshot(): State =
+        State(
+            matchId = matchId,
+            board = String(board),
+            status = when {
+                winnerActorId != null -> "Won"
+                draw -> "Draw"
+                else -> "Playing"
+            },
+            turnActorId = turnActorId,
+            winnerActorId = winnerActorId,
+            draw = draw,
+            xActorId = xActorId,
+            oActorId = oActorId,
+            lastMoveActorId = lastMoveActorId,
+            lastMoveCell = lastMoveCell,
+        )
+
+    data class JoinResult(
+        val matchId: String,
+        val actorId: String,
+        val mark: String,
+        val state: State,
+    ) {
+        fun encode(): String = "$matchId|$actorId|$mark|${state.encode()}"
+    }
+
+    data class State(
+        val matchId: String,
+        val board: String,
+        val status: String,
+        val turnActorId: String?,
+        val winnerActorId: String?,
+        val draw: Boolean,
+        val xActorId: String?,
+        val oActorId: String?,
+        val lastMoveActorId: String?,
+        val lastMoveCell: Int?,
+    ) {
+        fun encode(): String =
+            listOf(
+                matchId,
+                board,
+                status,
+                turnActorId.orEmpty(),
+                winnerActorId.orEmpty(),
+                draw.toString(),
+                xActorId.orEmpty(),
+                oActorId.orEmpty(),
+                lastMoveActorId.orEmpty(),
+                lastMoveCell?.toString().orEmpty(),
+            ).joinToString(",")
+    }
 }

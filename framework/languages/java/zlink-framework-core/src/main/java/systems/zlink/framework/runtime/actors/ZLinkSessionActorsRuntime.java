@@ -161,7 +161,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     sessionRid,
                     ref.actorId(),
                     List.of(headerPart, payloadPart),
-                    SendFlags.NONE)) {
+                    SendFlags.DONT_WAIT)) {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "actor session relay failed: " + ref.actorId()));
                 }

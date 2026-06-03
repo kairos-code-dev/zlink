@@ -1,7 +1,14 @@
 package systems.zlink.samples.bingo.server.play.actors;
 
-public final class PlayerActorFactory {
-    public PlayerActor create(String actorId) {
-        return new PlayerActor(actorId);
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorFactory;
+
+public final class PlayerActorFactory implements ZLinkActorFactory {
+    @Override
+    public CompletionStage<ZLinkActor> createAsync(String actorId, ZLinkActorContext context) {
+        return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
     }
 }

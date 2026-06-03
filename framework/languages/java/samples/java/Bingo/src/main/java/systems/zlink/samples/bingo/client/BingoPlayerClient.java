@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.samples.bingo.shared.configuration.SampleTopology;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -20,7 +21,7 @@ public final class BingoPlayerClient implements AutoCloseable {
     public BingoPlayerClient(String playerId) {
         this.playerId = playerId;
         this.connector = ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
-            URI.create("tcp://127.0.0.1:29100/" + playerId),
+            URI.create(SampleTopology.StreamEndpoint + "/" + playerId),
             ZLinkStreamDispatchMode.MANUAL,
             Duration.ofSeconds(3),
             2));
@@ -32,6 +33,16 @@ public final class BingoPlayerClient implements AutoCloseable {
             return CompletableFuture.completedFuture(null);
         });
         return connector.connectAsync();
+    }
+
+    public CompletionStage<String> authenticateAsync() {
+        return connector.request(new ZLinkStreamEncodedPayload(
+                "AuthenticateReq",
+                Message.from(playerId),
+                Map.of()))
+            .packetName("AuthenticateReq")
+            .submitAsync()
+            .thenApply(reply -> reply.payload().toUtf8String());
     }
 
     public CompletionStage<Void> pushAsync(String packetName, String payload, String roomId) {

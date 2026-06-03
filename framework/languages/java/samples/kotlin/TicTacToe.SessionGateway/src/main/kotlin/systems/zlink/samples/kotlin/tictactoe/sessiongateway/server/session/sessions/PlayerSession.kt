@@ -15,8 +15,13 @@ class PlayerSession(
     private val handlers: ZLinkSessionPacketDispatcher<ZLinkSessionContext>,
 ) : ZLinkSession {
     override fun context(): ZLinkSessionContext = context
-    override fun onConnectedAsync(): CompletionStage<Void> = CompletableFuture.completedFuture(null)
-    override fun onDisconnectedAsync(): CompletionStage<Void> = CompletableFuture.completedFuture(null)
+
+    override fun onConnectedAsync(): CompletionStage<Void> =
+        CompletableFuture.completedFuture(null)
+
+    override fun onDisconnectedAsync(): CompletionStage<Void> =
+        CompletableFuture.completedFuture(null)
+
     override fun onErrorAsync(error: ZLinkStreamError): CompletionStage<Void> =
         CompletableFuture.completedFuture(null)
 

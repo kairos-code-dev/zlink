@@ -13,3 +13,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "zlink-kotlin-sample-tictactoe"
+
+include("Client")
+include("Server")
+include("Shared")

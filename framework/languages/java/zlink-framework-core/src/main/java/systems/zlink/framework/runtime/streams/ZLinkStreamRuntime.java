@@ -330,7 +330,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         public CompletionStage<Void> submitAsync() {
             List<Message> parts = parts(packetName, payload);
             try {
-                if (!stream.send(routingId, parts, SendFlags.NONE)) {
+                if (!stream.send(routingId, parts, SendFlags.DONT_WAIT)) {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "session send failed: " + routingId));
                 }
@@ -371,7 +371,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     header.requestSequence().get(),
                     header.packetName(),
                     List.of(payload),
-                    SendFlags.NONE)) {
+                    SendFlags.DONT_WAIT)) {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "session reply failed: " + routingId));
                 }

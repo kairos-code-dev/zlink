@@ -1,5 +1,6 @@
 package systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -27,17 +28,17 @@ public final class PlayerSession implements ZLinkSession {
 
     @Override
     public CompletionStage<Void> onConnectedAsync() {
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public CompletionStage<Void> onDisconnectedAsync() {
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
@@ -47,7 +48,7 @@ public final class PlayerSession implements ZLinkSession {
         return handlers.tryHandleAsync(context, header, payload)
             .thenCompose(handled -> {
                 if (handled) {
-                    return java.util.concurrent.CompletableFuture.completedFuture(null);
+                    return CompletableFuture.completedFuture(null);
                 }
                 ZLinkSessionActor actor = requireSingleBoundActor(header.packetName());
                 return actor.relayAsync(header, payload);

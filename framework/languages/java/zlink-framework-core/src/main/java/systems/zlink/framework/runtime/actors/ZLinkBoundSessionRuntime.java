@@ -87,7 +87,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                     sessionRid,
                     actorId,
                     parts(packetName, payload),
-                    SendFlags.NONE);
+                    SendFlags.DONT_WAIT);
                 return CompletableFuture.completedFuture(null);
             } finally {
                 payload.close();

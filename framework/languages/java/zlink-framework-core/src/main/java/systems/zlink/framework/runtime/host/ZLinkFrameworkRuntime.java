@@ -44,13 +44,16 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
         options.validate();
         ZLinkBackendAdapterOptions adapterOptions =
             new ZLinkBackendAdapterOptions(options.defaultTimeout());
+        ZLinkHandlerFactory.MutableServices runtimeHandlers =
+            ZLinkHandlerFactory.services(handlerFactory);
         this.channels = new ZLinkChannelRuntime(
             backendFactory.createChannelAdapter(adapterOptions),
             backendFactory,
             adapterOptions,
             options.registration(),
             serializer,
-            handlerFactory);
+            runtimeHandlers);
+        runtimeHandlers.add(ZLinkClient.class, this.channels);
         this.spots = options.registration().spotNodes().isEmpty()
             ? null
             : new ZLinkSpotRuntime(
@@ -58,7 +61,10 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                 adapterOptions,
                 options.registration(),
                 channels,
-                handlerFactory);
+                runtimeHandlers);
+        if (this.spots != null) {
+            runtimeHandlers.add(ZLinkSpotManager.class, this.spots);
+        }
         if (this.spots != null) {
             this.channels.registerSpotRelayIngress(this.spots);
         }
@@ -69,6 +75,9 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                 options.registration().defaultTimeout(),
                 serializer)
             : null;
+        if (this.actors != null) {
+            runtimeHandlers.add(ZLinkActorManager.class, this.actors);
+        }
         if (this.actors != null) {
             this.spots.attachActorRuntime(this.actors);
             this.channels.registerRouteInternalRequestHandler(
@@ -84,7 +93,7 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                 spots == null ? java.util.Map.of() : spots.nodesByName(),
                 serializer,
                 actors,
-                handlerFactory);
+                runtimeHandlers);
     }
 
     public static ZLinkFrameworkRuntime start(

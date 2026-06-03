@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.tictactoe.server.configuration
 
 object SampleTopology {
-    const val ApiEndpoint: String = "inproc://zlink-kotlin-sample-tictactoe-api"
-    const val PlayStreamEndpoint: String = "inproc://zlink-kotlin-sample-tictactoe-stream"
+    const val ApiEndpoint: String = "tcp://127.0.0.1:47301"
+    const val PlayStreamEndpoint: String = "tcp://127.0.0.1:47302"
 }

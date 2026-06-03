@@ -4,9 +4,11 @@ import java.net.URI
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import systems.zlink.contracts.messaging.Message
+import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.connect
 import systems.zlink.framework.kotlin.dispatch
 import systems.zlink.framework.kotlin.submit
+import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
 import systems.zlink.stream.connector.ZLinkStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
@@ -19,7 +21,7 @@ class BingoPlayerClient(
     private val connector: ZLinkStreamConnector =
         ZLinkStreamConnectorFactory.create(
             ZLinkStreamConnectorOptions(
-                URI.create("tcp://127.0.0.1:29100/$playerId"),
+                URI.create("${SampleTopology.StreamEndpoint}/$playerId"),
                 ZLinkStreamDispatchMode.MANUAL,
                 Duration.ofSeconds(3),
                 2,
@@ -34,6 +36,19 @@ class BingoPlayerClient(
         }
         connector.connect()
     }
+
+    suspend fun authenticate(): String =
+        connector.request(
+            ZLinkStreamEncodedPayload(
+                "AuthenticateReq",
+                Message.from(playerId),
+                emptyMap(),
+            ),
+        )
+            .packetName("AuthenticateReq")
+            .await()
+            .payload()
+            .toUtf8String()
 
     suspend fun push(packetName: String, payload: String, roomId: String) {
         connector.send(

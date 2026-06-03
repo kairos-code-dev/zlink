@@ -1,3 +1,13 @@
 package systems.zlink.samples.kotlin.bingo.server.play.actors
 
-data class PlayerActor(val actorId: String)
+import systems.zlink.framework.actors.ZLinkActor
+import systems.zlink.framework.actors.ZLinkActorContext
+
+class PlayerActor(
+    private val actorId: String,
+    private val context: ZLinkActorContext,
+) : ZLinkActor {
+    override fun actorId(): String = actorId
+
+    override fun context(): ZLinkActorContext = context
+}

@@ -13,3 +13,10 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "zlink-java-sample-tictactoe-session-gateway"
+
+include("Client")
+include("Server:Api")
+include("Server:Play")
+include("Server:Registry")
+include("Server:Session")
+include("Shared")

@@ -12,6 +12,9 @@ import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.Sampl
 
 public final class AuthenticateSessionPacketHandler
     implements ZLinkSessionPacketHandler<ZLinkSessionContext> {
+    public AuthenticateSessionPacketHandler() {
+    }
+
     @Override
     public String packetName() {
         return "AuthenticateReq";
@@ -22,19 +25,18 @@ public final class AuthenticateSessionPacketHandler
         ZLinkSessionContext context,
         ZLinkStreamHeader header,
         Message payload) {
-        String actorId = payload.toUtf8String();
-        if (actorId == null || actorId.isBlank()) {
+        String requestedActorId = payload.toUtf8String().trim();
+        if (requestedActorId.isBlank()) {
             return CompletableFuture.failedFuture(
                 new IllegalArgumentException("actor id is required"));
         }
         ZLinkActorRef actorRef = new ZLinkActorRef(
             RoutingId.from(SampleNames.SessionRelayNode),
-            actorId.trim(),
+            requestedActorId,
             1);
-        return context.actors()
-            .bindAsync(actorRef)
+        return context.actors().bindAsync(actorRef)
             .thenCompose(ignored -> context.client()
-                .reply(actorId.trim())
+                .reply(requestedActorId)
                 .submitAsync());
     }
 }

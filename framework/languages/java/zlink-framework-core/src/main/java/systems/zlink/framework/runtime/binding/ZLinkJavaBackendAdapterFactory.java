@@ -1,6 +1,8 @@
 package systems.zlink.framework.runtime.binding;
 
 import java.time.Duration;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
@@ -282,17 +284,11 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void bind(String endpoint) { socket.bind(endpoint); }
         @Override public void onPacket(ZLinkBackendStreamPacketHandler handler) { socket.onPacket(handler::handle); }
         @Override public void onTransportError(ZLinkBackendStreamErrorHandler handler) { }
-        @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { return submit(socket.send(routingId), parts, flags); }
+        @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) {
+            return submitFramedStream(socket.send(routingId), 1, null, null, parts, flags);
+        }
         @Override public boolean reply(RoutingId routingId, long requestSeq, String packetName, List<Message> parts, SendFlags flags) {
-            Message header = Message.from(encodeStreamHeader(3, packetName, requestSeq));
-            try {
-                List<Message> framed = new java.util.ArrayList<>(parts.size() + 1);
-                framed.add(header);
-                framed.addAll(parts);
-                return submit(socket.send(routingId), framed, flags);
-            } finally {
-                header.close();
-            }
+            return submitFramedStream(socket.send(routingId), 3, requestSeq, packetName, parts, flags);
         }
         @Override public void attachActorGateway(ZLinkBackendSpotNode node) { socket.attachActorGateway(((JavaSpotNode) node).spotNode()); }
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) {
@@ -304,7 +300,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             return timeout -> toVoid(operation.timeout(timeout).submitAsync());
         }
         @Override public boolean sendBoundActor(RoutingId sessionRid, String actorId, List<Message> parts, SendFlags flags) {
-            return submit(socket.sendBoundActor(sessionRid, actorId), parts, flags);
+            return submitFramedStream(socket.sendBoundActor(sessionRid, actorId), 1, null, null, parts, flags);
         }
         @Override public void close() { socket.close(); }
     }
@@ -565,17 +561,65 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
     private static byte[] encodeStreamHeader(
         int kind,
         String packetName,
-        long requestSeq) {
-        byte[] name = packetName.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate(3 + Long.BYTES + 1 + name.length);
+        Long requestSeq) {
+        byte[] name = packetName.getBytes(StandardCharsets.UTF_8);
+        int flags = requestSeq == null ? 0 : 0x01;
+        ByteBuffer buffer = ByteBuffer.allocate(3 + (requestSeq == null ? 0 : Long.BYTES) + 1 + name.length);
         buffer.put((byte) kind);
         buffer.put((byte) 0);
-        buffer.put((byte) 0x01);
-        buffer.putLong(requestSeq);
+        buffer.put((byte) flags);
+        if (requestSeq != null) {
+            buffer.putLong(requestSeq);
+        }
         buffer.put((byte) name.length);
         buffer.put(name);
         return buffer.array();
     }
+
+    private static boolean submitFramedStream(
+        systems.zlink.contracts.service.spot.SendOperation operation,
+        int kind,
+        Long requestSeq,
+        String packetName,
+        List<Message> parts,
+        SendFlags flags) {
+        StreamPayload payload = streamPayload(packetName, parts);
+        Message frame = Message.from(encodeStreamFrame(
+            encodeStreamHeader(kind, payload.packetName(), requestSeq),
+            payload.body()));
+        try {
+            return operation.message(frame).flags(flags).submit();
+        } finally {
+            frame.close();
+        }
+    }
+
+    private static StreamPayload streamPayload(String packetName, List<Message> parts) {
+        if (parts == null || parts.isEmpty()) {
+            throw new IllegalArgumentException("stream payload requires at least one part");
+        }
+        if (packetName != null) {
+            return new StreamPayload(packetName, parts.get(0).toByteArray());
+        }
+        if (parts.size() == 1) {
+            return new StreamPayload("", parts.get(0).toByteArray());
+        }
+        return new StreamPayload(parts.get(0).toUtf8String(), parts.get(1).toByteArray());
+    }
+
+    private static byte[] encodeStreamFrame(byte[] header, byte[] body) {
+        if (header.length > 0xFFFF) {
+            throw new IllegalArgumentException("stream header exceeds u16 header size");
+        }
+        ByteBuffer buffer = ByteBuffer.allocate(6 + header.length + body.length);
+        buffer.putShort((short) header.length);
+        buffer.putInt(body.length);
+        buffer.put(header);
+        buffer.put(body);
+        return buffer.array();
+    }
+
+    private record StreamPayload(String packetName, byte[] body) { }
 
     private static List<Message> copyParts(List<Message> parts) {
         return parts.stream()

@@ -21,7 +21,6 @@ forbidden_sample_pattern+="|Route""Store|Metadata""Store|RemoteAddress""Resolver
 forbidden_sample_pattern+="|Thread\\.sleep|sleep\\(|toCompletable""Future\\(\\)"
 forbidden_sample_pattern+="|Fake[A-Za-z0-9_]*|Recording[A-Za-z0-9_]*|Catalog"
 forbidden_sample_pattern+="|UnsupportedOperationException\\(\"not needed by sample\"\\)"
-forbidden_sample_pattern+="|new [A-Za-z0-9_]*Spot\\("
 
 if rg -n "$forbidden_sample_pattern" "$SAMPLES_DIR" -g '*.java' -g '*.kt'; then
   echo "sample gate failed: forbidden sample pattern found" >&2

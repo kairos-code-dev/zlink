@@ -8020,3 +8020,37 @@ public header compile 여부가 아니라 HTTPS request와 TLS verification을 �
 
 - `http-client-https` label이 실제 HTTP client HTTPS regression test 없이 통과하면
   `test_cpp_framework_label_contract`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 3 public async surface gate 보강
+
+### 발견한 위험 신호
+
+- Goal 3은 public async 표면에서 `std::future`와 `boost::asio::awaitable`을 사용하지 않는다고
+  명시한다.
+- 기존 contract header test는 대표 타입 일부를 compile-time assert로 확인했지만, 모든 public
+  header를 스캔해 future/awaitable/cancellation token 계열 이름이 새로 들어오는 회귀를 막지는
+  않았다.
+- async primitive가 public header에 섞이면 호출자는 framework의 `task_t<T>` 의미 대신 낮은
+  수준 실행 모델을 알아야 하므로 public surface가 얕아진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 대표 static assert만 유지 | 테스트가 이미 있다 | 새 public header에 future/awaitable이 들어오는 회귀를 놓칠 수 있다 |
+| public async API를 전부 수동 리뷰한다 | 유연하다 | 반복 리뷰 때 같은 증거를 다시 모아야 한다 |
+| layout contract가 public include 전체에서 forbidden async primitive를 스캔한다 | 완료 기준을 자동으로 고정한다 | 후속 정책 변경 시 contract와 문서를 함께 바꿔야 한다 |
+
+선택은 세 번째 방식이다. public async model은 framework 전체의 사용성 기준이므로 특정 대표 타입만
+검사하기보다 public include 전체를 gate로 닫는 편이 더 깊은 모듈을 유지한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_layout_contract`의 public dependency scanner에 `std::future`,
+  `std::promise`, `<future>`, `boost::asio::awaitable`, cancellation token/source 계열 이름을
+  금지 항목으로 추가했다.
+
+### 수정 후 점검
+
+- framework, HTTP client, connector, extension public header에 future/awaitable/cancellation
+  primitive가 노출되면 `test_cpp_framework_layout_contract`가 실패한다.

@@ -6630,3 +6630,37 @@ CMake가 생성하는 파일 전체 형식까지 고정할 필요는 없다.
 
 - package config dependency가 누락되거나 두 package target export가 서로 섞이면
   `test_cpp_framework_install_consumer`가 consumer configure 전에 실패한다.
+
+## 추가 리뷰. CTest known label taxonomy gate 보강
+
+### 발견한 위험 신호
+
+- label contract는 plan에 등장하는 주요 label이 비어 있지 않은지는 확인했다.
+- 그러나 CTest에 새 label이 추가될 때 그 label이 의도된 taxonomy인지 직접 제한하지 않았다.
+  오타 label이나 임시 label이 추가되어도 기존 required label만 살아 있으면 통과할 수 있다.
+- plan의 검증 명령은 label을 실행 단위로 사용하므로, label 이름 자체가 drift하면 문서와
+  테스트 선택자의 연결이 약해진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| required label non-empty 검사만 유지 | 유지 비용이 없다 | 새 오타 label이나 임시 label 유입을 잡지 못한다 |
+| CTest 출력 전체를 snapshot으로 비교 | label drift를 가장 강하게 잡는다 | test 순서와 CTest 출력 형식 변화에 취약하다 |
+| 알려진 label taxonomy allowlist를 두고 실제 label 전체를 검사 | 의도하지 않은 label 유입을 잡고 출력 형식에는 덜 민감하다 | 새 label을 의도적으로 추가할 때 allowlist도 갱신해야 한다 |
+
+선택은 세 번째 방식이다. CTest label은 plan의 검증 언어이므로 알려진 taxonomy에 속해야
+하지만, CTest 출력 전체 형식까지 문서 계약으로 만들 필요는 없다.
+
+### 적용한 리팩토링
+
+- `verify_ctest_label_contract.cmake`에 `known_labels` allowlist를 추가했다.
+- required label과 기능별 세부 label을 모두 알려진 label로 등록했다.
+- coverage build에서만 나타나는 `framework-coverage`는 coverage label 기대값이 켜졌을 때만
+  allowlist와 required 목록에 포함되게 했다.
+- `ctest --print-labels`의 모든 실제 label이 `known_labels` 안에 없으면 실패하게 했다.
+
+### 수정 후 점검
+
+- CTest에 오타 label이나 문서화되지 않은 임시 label이 추가되면
+  `test_cpp_framework_label_contract`가 실패한다.

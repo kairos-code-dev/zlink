@@ -51,8 +51,33 @@ set(required_labels
   unreal-connector-smoke
   parity)
 
+set(known_labels
+  ${required_labels}
+  ActorGateway
+  DI
+  actor
+  async
+  backpressure
+  channel
+  execution
+  gtest
+  handler
+  hosted
+  http
+  messaging
+  module
+  monitoring
+  registry
+  reliability
+  runtime
+  scope
+  serializer
+  spot
+  stream)
+
 if(ZLINK_FRAMEWORK_CPP_EXPECT_COVERAGE_LABEL)
   list(APPEND required_labels framework-coverage)
+  list(APPEND known_labels framework-coverage)
 endif()
 
 execute_process(
@@ -75,6 +100,20 @@ foreach(label_line IN LISTS wildcard_label_lines)
   if(required_index EQUAL -1)
     message(FATAL_ERROR
       "CTest wildcard-prefix label is not covered by required_labels: ${wildcard_label}")
+  endif()
+endforeach()
+
+string(REGEX MATCHALL
+  "(^|\n)  [A-Za-z0-9_-]+"
+  label_lines
+  "${print_labels_output}")
+foreach(label_line IN LISTS label_lines)
+  string(REGEX REPLACE "^(\\n)?  " "" actual_label "${label_line}")
+  string(STRIP "${actual_label}" actual_label)
+  list(FIND known_labels "${actual_label}" known_index)
+  if(known_index EQUAL -1)
+    message(FATAL_ERROR
+      "CTest label is not covered by known label taxonomy: ${actual_label}")
   endif()
 endforeach()
 

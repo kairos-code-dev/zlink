@@ -69,6 +69,7 @@ run_client_e2e_stream_server (zlink::stream_socket_t &server,
   std::ofstream log (sample_log_file, std::ios::app);
   log << "bind " << endpoint << '\n';
   log << "monitor stream ready\n";
+  log << "monitor event stream_ready\n";
   log.flush ();
   int handled = 0;
   std::string current_match_id = "tictactoe-game";

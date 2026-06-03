@@ -7627,3 +7627,39 @@ framework, connector, HTTP client public header와 같은 leakage gate를 통과
 - extension public header가 runtime detail이나 Kafka/gRPC/YAML/FlatBuffers SDK 타입을 노출하거나
   contract compile smoke에서 빠지면 `test_cpp_framework_layout_contract` 또는
   `test_cpp_framework_contract_headers`가 실패한다.
+
+## 반복 POSD 재리뷰. Goal 22 sample monitoring event evidence 보강
+
+### 발견한 위험 신호
+
+- Goal 22 완료 기준은 sample e2e가 server file log와 monitoring event를 확인해야 한다고
+  요구한다.
+- 기존 sample e2e는 `monitor stream ready` 로그를 readiness 대기 조건과 검증 항목으로 함께
+  사용했다. 이 문자열은 프로세스가 준비됐다는 신호인지 monitoring event 증거인지 의미가
+  섞여 있었다.
+- 의미가 섞인 로그는 샘플 검증을 통과시키지만, 문서의 monitoring event 완료 기준을 강하게
+  증명하지 못한다. 호출자는 sample log에서 어떤 항목이 관찰 이벤트인지 구분하기 어렵다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 `monitor stream ready`만 유지 | 변경이 없다 | readiness와 monitoring event 의미가 계속 섞인다 |
+| sample e2e 서버를 full framework monitoring runtime으로 재구성 | 실제 runtime monitoring과 가장 가깝다 | client/process e2e의 목적보다 큰 서버 구성이 된다 |
+| readiness 로그와 별도 `monitor event` 로그를 남기고 CTest가 둘 다 확인 | 완료 기준을 명확히 고정한다 | 로그 항목이 하나 늘어난다 |
+
+선택은 세 번째 방식이다. sample e2e의 목적은 실제 client/server 흐름을 검증하면서 사용자가
+로그로 동작을 리뷰할 수 있게 하는 것이다. readiness와 monitoring event를 분리하면 테스트
+증거가 명확해지고, 샘플 서버 구현은 여전히 작게 유지된다.
+
+### 적용한 리팩토링
+
+- Bingo와 TicTacToe sample e2e stream server가 `monitor event stream_ready` 로그를 남기게 했다.
+- sample e2e log 검증과 process e2e 검증의 `EXPECTED_CONTAINS`에 `monitor event stream_ready`를
+  추가했다.
+- 샘플 README의 server log 설명을 monitoring event까지 포함하도록 맞췄다.
+
+### 수정 후 점검
+
+- sample e2e server log에서 monitoring event 항목이 빠지면 `framework-sample-log`,
+  `framework-sample-e2e`, `framework-sample-process-e2e` 라벨이 실패한다.

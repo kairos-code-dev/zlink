@@ -874,7 +874,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     COMMAND ${CMAKE_COMMAND}
       -D SAMPLE_EXECUTABLE=$<TARGET_FILE:sample_cpp_framework_bingo_client>
       -D SAMPLE_LOG=${CMAKE_CURRENT_BINARY_DIR}/sample-e2e-logs/bingo-server.log
-      -D "EXPECTED_CONTAINS=bind |monitor stream ready|recv AuthenticateReq|recv MatchBingoReq|recv StartBingoGameReq|recv LeaveRoomReq|reply AuthenticateReq|reply MatchBingoReq|push PlayerJoinedNotify|push BingoGameStartedNotify|push BingoNumberDrawnNotify|push BingoGameEndedNotify|actor relay player-1|disconnect client|shutdown server"
+      -D "EXPECTED_CONTAINS=bind |monitor stream ready|monitor event stream_ready|recv AuthenticateReq|recv MatchBingoReq|recv StartBingoGameReq|recv LeaveRoomReq|reply AuthenticateReq|reply MatchBingoReq|push PlayerJoinedNotify|push BingoGameStartedNotify|push BingoNumberDrawnNotify|push BingoGameEndedNotify|actor relay player-1|disconnect client|shutdown server"
       -D MIN_RECV=10
       -D MIN_REPLY=9
       -D MIN_PUSH=8
@@ -891,7 +891,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
       $<TARGET_FILE:sample_cpp_framework_bingo_client>
       ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/bingo
       ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/bingo/bingo-server.log
-      "bind |monitor stream ready|recv AuthenticateReq|recv MatchBingoReq|recv StartBingoGameReq|recv LeaveRoomReq|reply AuthenticateReq|reply MatchBingoReq|push PlayerJoinedNotify|push BingoGameStartedNotify|push BingoNumberDrawnNotify|push BingoGameEndedNotify|actor relay player-1|disconnect client|shutdown server"
+      "bind |monitor stream ready|monitor event stream_ready|recv AuthenticateReq|recv MatchBingoReq|recv StartBingoGameReq|recv LeaveRoomReq|reply AuthenticateReq|reply MatchBingoReq|push PlayerJoinedNotify|push BingoGameStartedNotify|push BingoNumberDrawnNotify|push BingoGameEndedNotify|actor relay player-1|disconnect client|shutdown server"
       10
       9
       8)
@@ -906,7 +906,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     COMMAND ${CMAKE_COMMAND}
       -D SAMPLE_EXECUTABLE=$<TARGET_FILE:sample_cpp_framework_tictactoe_client>
       -D SAMPLE_LOG=${CMAKE_CURRENT_BINARY_DIR}/sample-e2e-logs/tictactoe-server.log
-      -D "EXPECTED_CONTAINS=bind |monitor stream ready|http POST /games|recv CreateMatchReq|recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply CreateMatchReq|reply AuthenticateReq|reply JoinMatchReq|reply PlaceMarkReq|push TurnChangedNotify|actor relay player-x|disconnect client|shutdown server"
+      -D "EXPECTED_CONTAINS=bind |monitor stream ready|monitor event stream_ready|http POST /games|recv CreateMatchReq|recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply CreateMatchReq|reply AuthenticateReq|reply JoinMatchReq|reply PlaceMarkReq|push TurnChangedNotify|actor relay player-x|disconnect client|shutdown server"
       -D MIN_RECV=10
       -D MIN_REPLY=10
       -D MIN_PUSH=9
@@ -923,7 +923,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
       $<TARGET_FILE:sample_cpp_framework_tictactoe_client>
       ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/tictactoe
       ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/tictactoe/tictactoe-server.log
-      "bind |monitor stream ready|http POST /games|recv CreateMatchReq|recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply CreateMatchReq|reply AuthenticateReq|reply JoinMatchReq|reply PlaceMarkReq|push TurnChangedNotify|actor relay player-x|disconnect client|shutdown server"
+      "bind |monitor stream ready|monitor event stream_ready|http POST /games|recv CreateMatchReq|recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply CreateMatchReq|reply AuthenticateReq|reply JoinMatchReq|reply PlaceMarkReq|push TurnChangedNotify|actor relay player-x|disconnect client|shutdown server"
       10
       10
       9)

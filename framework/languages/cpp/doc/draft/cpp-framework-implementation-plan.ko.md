@@ -884,6 +884,11 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R http
 - `zlink::stream_connector` namespace
 - `zlink/stream_connector.hpp`
 - Asio 기반 일반 C++ connector transport
+- TCP transport
+- TLS over TCP transport
+- WebSocket binary transport
+- WebSocket over TLS binary transport
+- unsupported transport와 endpoint scheme mismatch validation
 - typed send/request/on
 - callback submit
 - coroutine submit
@@ -901,7 +906,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration -R http
 완료 기준:
 
 - connector는 framework sample이나 framework target이 아니다.
-- 일반 C++ connector는 Asio를 내부 구현으로 사용한다.
+- 일반 C++ connector는 Asio를 내부 구현으로 사용하며, TCP/TLS/WebSocket/WebSocket over TLS가
+  같은 packet API로 동작한다.
 - Unreal connector는 일반 C++ connector wrapper가 아니라 Unreal network library 기반으로
   구현한다.
 - Unreal public API에는 coroutine 표면을 두지 않는다.

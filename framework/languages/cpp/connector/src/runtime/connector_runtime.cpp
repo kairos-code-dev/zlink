@@ -287,9 +287,9 @@ connector_t::connect ()
     try {
       boost::asio::ip::tcp::resolver resolver (_state->io_context);
       auto endpoints = resolver.resolve (parsed->host, parsed->port);
-      _state->socket =
-        std::make_unique<boost::asio::ip::tcp::socket> (_state->io_context);
-      boost::asio::connect (*_state->socket, endpoints);
+      boost::asio::ip::tcp::socket socket (_state->io_context);
+      boost::asio::connect (socket, endpoints);
+      _state->connection = detail::make_tcp_connection (std::move (socket));
       const auto now = std::chrono::steady_clock::now ();
       _state->last_heartbeat_sent = now;
       _state->last_inbound_received = now;
@@ -298,8 +298,8 @@ connector_t::connect ()
     } catch (const std::exception &ex) {
       last_error = ex.what ();
       boost::system::error_code ignored;
-      if (_state->socket) {
-        _state->socket->close (ignored);
+      if (_state->connection) {
+        _state->connection->close (ignored);
       }
       if (attempt < max_attempts) {
         std::this_thread::sleep_for (retry_delay);
@@ -322,11 +322,8 @@ connector_t::connect ()
 task_t<void>
 connector_t::close ()
 {
-  if (_state->socket && _state->socket->is_open ()) {
-    boost::system::error_code ignored;
-    _state->socket->shutdown (
-      boost::asio::ip::tcp::socket::shutdown_both, ignored);
-    _state->socket->close (ignored);
+  if (_state->connection && _state->connection->is_open ()) {
+    _state->connection->shutdown_and_close ();
   }
   detail::change_state (_state, connection_state_t::closed);
   _state->pending_requests.clear ();

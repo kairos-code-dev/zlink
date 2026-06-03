@@ -3,6 +3,8 @@
 
 #include <zlink/stream_connector/contracts/connector.hpp>
 
+#include "runtime/transport/transport_connection.hpp"
+
 #include <boost/asio.hpp>
 
 #include <chrono>
@@ -52,8 +54,7 @@ public:
   std::chrono::steady_clock::time_point last_heartbeat_sent {};
   std::chrono::steady_clock::time_point last_inbound_received {};
   boost::asio::io_context io_context;
-  std::unique_ptr<boost::asio::ip::tcp::socket> socket;
-  boost::asio::streambuf inbound_buffer;
+  std::unique_ptr<stream_connection_t> connection;
   std::mutex transport_mutex;
 };
 

@@ -12,6 +12,61 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 반복 POSD 재리뷰. Stream Connector transport 경계 분리
+
+### 발견한 위험 신호
+
+- 공통 Stream Connector 초안과 `.NET` connector는 TCP, TLS, WebSocket, WebSocket over TLS를
+  같은 packet API로 지원한다. C++ connector는 public enum에는 네 transport가 있지만 runtime은
+  `tcp::socket`을 state에 직접 들고 있어 transport를 추가할 때 request, dispatch, heartbeat,
+  close 경로마다 분기가 번질 수 있었다.
+- `connector_runtime.hpp`가 구체 socket 타입을 소유하면 public contract에는 새지 않더라도
+  runtime 내부 호출자가 TCP connection 세부를 계속 알아야 한다. 이는 transport 결정이 여러
+  모듈로 새는 정보 은닉 위반이다.
+- unsupported transport를 명시 실패로 고정한 회귀는 있었지만, Goal 20 계획 문서는
+  TCP/TLS/WebSocket/WebSocket over TLS parity 범위를 직접 나열하지 않아 남은 미구현 범위를
+  완료 기준이 드러내지 못했다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 각 호출 경로에서 transport별 분기 추가 | 빠르게 한 transport를 붙일 수 있다 | heartbeat, request read, push drain, close 의미가 반복된다 |
+| `connector_state_t`에 TCP/TLS/WS 멤버를 모두 둔다 | type별 상태를 직접 볼 수 있다 | 상태 layout이 transport matrix를 노출하고 얕아진다 |
+| transport별 connection을 `stream_connection_t` runtime interface 뒤에 둔다 | 호출자는 read/write/close 의미만 보고 transport 세부가 숨겨진다 | transport 구현 class가 추가된다 |
+
+선택은 세 번째 방식이다. connector 호출 경로는 packet frame을 읽고 쓰는 의미만 필요하다.
+TLS handshake, WebSocket binary message, TCP socket details는 transport owner가 흡수해야
+한다.
+
+### 적용한 리팩토링
+
+- `transport/transport_connection.hpp`를 추가해 runtime 전용 `stream_connection_t` interface를
+  만들었다.
+- `connector_state_t`가 구체 `tcp::socket` 대신 `std::unique_ptr<stream_connection_t>`를
+  소유하게 바꿨다.
+- 기존 TCP socket read/write/available/shutdown 구현은 `tcp_stream_connection_t`로 숨겼다.
+- request read, push drain, heartbeat timeout close, connector close 경로가
+  `state.connection` helper만 사용하게 정리했다.
+- Goal 20 계획 문서에 TCP, TLS, WebSocket, WebSocket over TLS와 unsupported transport
+  validation을 완료 범위로 명시했다.
+- C++ Stream Connector 초안에 현재 TCP-only 상태와 최종 parity 전까지 TLS/WebSocket
+  connection 구현이 남아 있음을 분명히 적었다.
+
+### 수정 후 점검
+
+- public Stream Connector API는 바꾸지 않았다.
+- TCP 동작은 기존 connector e2e 테스트로 유지된다.
+- TLS/WebSocket parity는 아직 완료되지 않았다. 다음 반복에서는 이 abstraction 아래에
+  transport별 connection 구현과 e2e 회귀를 추가해야 한다.
+
+### 재실행한 검증 명령
+
+```bash
+cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
+ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
+```
+
 ## 반복 POSD 재리뷰. Stream Connector heartbeat 의미 정렬
 
 ### 발견한 위험 신호

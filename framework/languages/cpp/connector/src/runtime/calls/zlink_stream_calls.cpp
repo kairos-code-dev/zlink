@@ -102,7 +102,8 @@ read_exact_until (connector_state_t &state,
         "stream connector request timed out");
     }
     boost::system::error_code error;
-    const auto available = state.socket ? state.socket->available (error) : 0;
+    const auto available =
+      state.connection ? state.connection->available (error) : 0;
     if (error) {
       return result_t<std::vector<std::uint8_t>>::failure (
         error_code_t::disconnected,
@@ -114,8 +115,8 @@ read_exact_until (connector_state_t &state,
     }
     const auto to_read =
       std::min<std::size_t> (available, bytes.size () - offset);
-    const auto read = state.socket->read_some (
-      boost::asio::buffer (bytes.data () + offset, to_read), error);
+    const auto read =
+      state.connection->read_some (bytes.data () + offset, to_read, error);
     if (error) {
       return result_t<std::vector<std::uint8_t>>::failure (
         error_code_t::disconnected,
@@ -342,8 +343,8 @@ dispatch_pending (std::shared_ptr<connector_state_t> state)
     const auto now = steady_clock_t::now ();
     if (monitor.timed_out (state->last_inbound_received, now)) {
       boost::system::error_code ignored;
-      if (state->socket) {
-        state->socket->close (ignored);
+      if (state->connection) {
+        state->connection->close (ignored);
       }
       error_t error { error_code_t::disconnected,
                       "stream connector heartbeat timed out" };

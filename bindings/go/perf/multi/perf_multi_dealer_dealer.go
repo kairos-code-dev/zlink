@@ -44,7 +44,11 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 
 	stopRequested := false
 	for !stopRequested {
-		event, pollErr := perfcommon.WaitPollerOne(poller, events, time.Until(window.StopAt))
+		wait := time.Until(window.StopAt)
+		if wait <= 0 {
+			break
+		}
+		event, pollErr := perfcommon.WaitPollerOne(poller, events, wait)
 		if pollErr != nil {
 			if perfcommon.IsTransient(pollErr) {
 				continue
@@ -377,7 +381,11 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 		if !time.Now().Before(window.StopAt) || pendingCount == 0 {
 			continue
 		}
-		n, waitErr := poller.Wait(events, -1*time.Millisecond)
+		wait := time.Until(window.StopAt)
+		if wait <= 0 {
+			break
+		}
+		n, waitErr := poller.Wait(events, wait)
 		if waitErr != nil {
 			if perfcommon.IsTransient(waitErr) {
 				continue

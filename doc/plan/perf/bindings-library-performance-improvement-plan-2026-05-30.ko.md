@@ -432,10 +432,11 @@ status=complete(720/720)였다. Routed 후보는
 `perf_node_single_linux_20260531_120621_round_20260530_node_single_routed_failset_recheck.txt`,
 단순/서비스 후보는
 `perf_node_single_linux_20260531_121556_round_20260530_node_single_simple_spot_failset_recheck.txt`로
-다시 확인했다. 잔류 미달은 60개다. `DEALER_ROUTER`/`ROUTER_ROUTER`의 작은 메시지와
+다시 확인했다. 이 초기 재측정에서는 미달 60개가 남았다. `DEALER_ROUTER`/`ROUTER_ROUTER`의 작은 메시지와
 tcp 대용량, `PAIR`/`PUBSUB`/`DEALER_DEALER` 일부 작은 메시지, `SPOT` 일부 대용량에서 반복됐다.
 이 범위는 Node 이벤트 루프, native 호출 경계, routed envelope 처리, Buffer 이동이 함께 들어가는
-경로라서 공개 API를 유지한 채 좁게 고칠 수 있는 단일 병목으로 좁혀지지 않았다.
+경로라서 공개 API를 유지한 채 좁게 고칠 수 있는 단일 병목으로 좁혀지지 않았다. 이후 아래의
+단계별 보강과 제한 재측정으로 single 표의 모든 Node 항목은 통과권에 들어왔다.
 
 초기 multi full 결과 파일 `perf_node_multi_linux_20260531_125926_round_20260530_node_multi_full_v1.txt`는
 status=complete(780/780)였고, 실제 측정 대상 크기만 다시 확인한
@@ -473,7 +474,8 @@ routed tcp 64/65536/131072B는 기존 full과 같은 변동 범위라 통과를 
 PUBSUB tcp 131072B는 1,469.6 msg/s에서 9,841.0 msg/s로 올라 C 대비 95.4%가 됐다.
 추가 probe `perf_node_single_linux_20260531_231240_node_single_pubsub_reuse_probe_20260531.txt`에서도
 PUBSUB ws/wss/tls 대용량과 tls 256B가 통과권으로 올라갔다. PUBSUB 64B의 ws/wss/tls는
-여전히 C 대비 30% 안팎이라 미달로 남긴다.
+당시에는 C 대비 30% 안팎이라 남은 후보로 추적했다. 이후 raw payload 기록과 제한 재측정으로
+아래 최신 표에서는 통과권에 들어왔다.
 
 Multi 추가 개선에서는 echo 계열이 `decodeMetricHeader(...)` 객체를 만든 뒤 다시
 `collector.record(...)`로 넘기던 부분을 `collector.recordPayload(...)` 직접 기록으로 바꿨다.
@@ -483,7 +485,7 @@ Probe 파일 `perf_node_multi_linux_20260531_232222_node_multi_recordpayload_pro
 통과권까지는 올라가지 않았다. 같은 실험을 `MULTI_SPOT_SENDSEND`에도 적용했으나 probe에서
 회귀가 보여 해당 변경은 최종 코드에 남기지 않았다.
 
-잔여 수치형 항목은 미달로 유지한다. Node runtime의 public 수신 API는 native 결과를 받은 뒤
+초기 잔여 수치형 항목은 아래 변경 전까지 미달 후보로 유지했다. Node runtime의 public 수신 API는 native 결과를 받은 뒤
 `Received`/`TopicMessage` public 객체로 materialize한다. 이 과정에서 message part wrapper,
 routing id, send context, topic envelope를 다시 구성해야 하므로 C hot path처럼 raw payload만
 읽는 형태로 줄일 수 없다. 이번 라운드에서 중복 native binding 조회 제거, `RoutingId` 중복

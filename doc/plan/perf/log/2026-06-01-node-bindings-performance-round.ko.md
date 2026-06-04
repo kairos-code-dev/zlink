@@ -5135,3 +5135,45 @@ Node 측정과 후보 검토 기록이다. 계획 문서 본문에는 최종 상
     `12/156 (7.7%)`로 줄었다.
   - 남은 multi 미달은 `MULTI_PUBSUB tcp 65536B`, `MULTI_SPOT_SENDSEND wss 256B`,
     `MULTI_STREAM` small 잔여 10개다.
+
+## Node STREAM callback 소유권 후보 검토와 기각
+
+- 대상:
+  - multi `MULTI_STREAM`
+  - `tcp, ws, wss, tls`
+  - `64,256,1024B`
+- 배경:
+  - 이전 direct result send 적용 뒤에도 `MULTI_STREAM` small 잔여가 가장 많았다.
+  - perf-only native echo export인 `socketStreamAttachPacketEcho`는 optimization guard가 금지하므로
+    되살리지 않는다.
+  - public stream handler 의미를 유지하는 범위에서 native callback이 JS Buffer를 만드는 소유권 경로만
+    바꿔 볼 수 있는지 확인했다.
+- 측정:
+  - 변경 전 Node 제한 재측정:
+    `perf_node_multi_linux_20260604_221304_node_stream_small_current_prepatch_20260604.txt`
+    는 status=partial이었다. tcp 64B와 ws 256B가 실패했고, 실행 중 `malloc(): unaligned tcache chunk detected`,
+    `double free or corruption (fasttop)`가 출력됐다.
+  - C 제한 재측정:
+    `perf_c_multi_linux_20260604_221940_node_stream_small_c_recheck_after_copy_20260604.txt`
+    는 wss 3개가 실패해 status=partial이었다. tcp/tls/ws 결과만 참고했다.
+  - JS Buffer copy 후보:
+    `perf_node_multi_linux_20260604_221827_node_stream_small_copy_callback_20260604.txt`
+    는 status=complete였다.
+  - native message copy-owner 후보:
+    `perf_node_multi_linux_20260604_222618_node_stream_small_msg_copy_owner_20260604.txt`
+    는 tcp 64B 실패로 status=partial이었다.
+- 결과:
+  - JS Buffer copy 후보는 crash 없이 complete였지만, tcp 64/256/1024B가 66.814/67.040/62.528 Kops/s로
+    current C tcp 기준 26.5/29.1/24.6%에 머물렀다.
+  - ws/wss/tls small도 30% 기준에 닿지 못했다.
+  - native message copy-owner 후보는 zero-copy 성격을 일부 유지했지만 complete가 아니었고,
+    성공한 cell도 통과권 개선을 만들지 못했다.
+- 검증:
+  - 후보 적용 중 `npm run rebuild-native`: 통과
+  - `node dist-tools/tests/optimization_guard.test.js`: 통과
+  - `node dist-tools/tests/socket_surface.test.js`: 통과
+- 판정:
+  - 두 후보 모두 잔여 미달을 줄이지 못했다.
+  - copy 후보는 안정성은 나아졌지만 성능 표를 개선하지 못하고, copy-owner 후보는 partial이라 최종 근거가
+    될 수 없다.
+  - 최종 코드에는 남기지 않고, `MULTI_STREAM` small 잔여는 public stream handler 경계 비용으로 유지한다.

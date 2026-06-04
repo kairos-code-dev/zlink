@@ -18,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace zlink::framework::detail
 {
@@ -70,6 +71,16 @@ public:
 class channel_runtime_state_t
 {
 public:
+  struct outbound_call_record_t
+  {
+    std::string kind;
+    std::string channel_name;
+    std::string topic;
+    std::string packet_name;
+    std::chrono::milliseconds timeout { 0 };
+    std::map<std::string, std::string> metadata;
+  };
+
   std::map<std::string, channel_snapshot_t> channels;
   std::size_t max_pending = 1024;
   std::size_t pending = 0;
@@ -85,6 +96,7 @@ public:
   std::map<std::string, std::shared_ptr<route_channel_runtime_t>>
     route_channels;
   std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
+  std::vector<outbound_call_record_t> outbound_calls;
   bool shutdown = false;
   bool closed = false;
   retry_hook_t retry_hook;
@@ -141,6 +153,8 @@ public:
   void shutdown () noexcept;
   std::size_t pending_count () const noexcept;
   std::size_t pending_limit () const noexcept;
+  std::vector<channel_runtime_state_t::outbound_call_record_t>
+  outbound_calls () const;
   void drain () noexcept;
 
   static channel_runtime_t from (const message_bus_t &bus);

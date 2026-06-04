@@ -157,26 +157,68 @@ main ()
   }
 
   auto client = zlink.request_client ("profile");
-  auto request_result =
-    client.request<request_t, reply_t> ({ 1 }).submit ().result ();
+  auto outbound_runtime = zlink::framework::detail::channel_runtime_t::from (
+    zlink.message_bus ());
+  auto request_call = client.request<request_t, reply_t> ({ 1 })
+                        .packet_name ("profile.lookup")
+                        .metadata ("trace-id", "request-trace")
+                        .timeout (std::chrono::milliseconds (3000));
+  if (!outbound_runtime.outbound_calls ().empty ()) {
+    return 30;
+  }
+  auto request_result = request_call.submit ().result ();
   if (request_result ||
       request_result.error_kind () !=
         zlink::framework::framework_error_kind_t::timeout) {
     return 2;
   }
+  if (outbound_runtime.outbound_calls ().size () != 1 ||
+      outbound_runtime.outbound_calls ()[0].kind != "request" ||
+      outbound_runtime.outbound_calls ()[0].packet_name != "profile.lookup" ||
+      outbound_runtime.outbound_calls ()[0].timeout !=
+        std::chrono::milliseconds (3000) ||
+      outbound_runtime.outbound_calls ()[0].metadata.at ("trace-id") !=
+        "request-trace") {
+    return 31;
+  }
 
   auto bus = zlink.message_bus ();
-  auto send_result = bus.send ("profile", request_t { 2 }).submit ().result ();
+  auto send_call = bus.send ("profile", request_t { 2 })
+                     .packet_name ("profile.command")
+                     .metadata ("trace-id", "send-trace");
+  if (outbound_runtime.outbound_calls ().size () != 1) {
+    return 32;
+  }
+  auto send_result = send_call.submit ().result ();
   if (!send_result) {
     return 3;
+  }
+  if (outbound_runtime.outbound_calls ().size () != 2 ||
+      outbound_runtime.outbound_calls ()[1].kind != "send" ||
+      outbound_runtime.outbound_calls ()[1].packet_name !=
+        "profile.command" ||
+      outbound_runtime.outbound_calls ()[1].metadata.at ("trace-id") !=
+        "send-trace") {
+    return 33;
   }
 
   auto publish_result =
     zlink.publisher ().publish ("events", "profile.changed", event_t { 3 })
+      .packet_name ("profile.changed.event")
+      .metadata ("trace-id", "publish-trace")
       .submit ()
       .result ();
   if (!publish_result) {
     return 4;
+  }
+  if (outbound_runtime.outbound_calls ().size () != 3 ||
+      outbound_runtime.outbound_calls ()[2].kind != "publish" ||
+      outbound_runtime.outbound_calls ()[2].topic != "profile.changed" ||
+      outbound_runtime.outbound_calls ()[2].packet_name !=
+        "profile.changed.event" ||
+      outbound_runtime.outbound_calls ()[2].metadata.at ("trace-id") !=
+        "publish-trace") {
+    return 34;
   }
 
   auto disconnected_result =
@@ -347,6 +389,30 @@ main ()
     return 21;
   }
 
+  zlink::framework::runtime::messaging::message_parts_t missing_body_parts (
+    std::vector<zlink::message_t> {
+      envelope_codec.encode_header (request_header)
+    });
+  const auto missing_body_error = packet_dispatcher.dispatch_server_message (
+    "local",
+    missing_body_parts,
+    provider,
+    serializers,
+    handlers);
+  if (!missing_body_error) {
+    return 63;
+  }
+  const auto missing_body_header =
+    envelope_codec.decode_header (missing_body_error.value ());
+  if (!missing_body_header ||
+      missing_body_header.value ().kind !=
+        zlink::framework::runtime::messaging::message_kind_t::error ||
+      missing_body_header.value ().correlation_id != "corr-1" ||
+      missing_body_header.value ().error_code.value_or ("") !=
+        "request_protocol_error") {
+    return 64;
+  }
+
   auto local_send = local_runtime.dispatch_send (
     "local",
     "send",
@@ -373,8 +439,6 @@ main ()
     return 11;
   }
 
-  auto outbound_runtime = zlink::framework::detail::channel_runtime_t::from (
-    zlink.message_bus ());
   auto reservation = outbound_runtime.reserve_outbound_request ("profile");
   if (!reservation || outbound_runtime.pending_count () != 1) {
     return 12;
@@ -767,6 +831,7 @@ main ()
       [](zlink::framework::route_channel_builder_t &route) {
         route.bind ("tcp://public-bind:7700")
           .connect ("tcp://public-peer:7701")
+          .enable_spot_route_egress ("play.route")
           .add_handler_group ("public")
           .add_request_handler<local_handler_t, request_t, reply_t> (
             "request",
@@ -785,7 +850,9 @@ main ()
   public_manager.initialize_route_channels (public_route_builder);
   auto &public_route = public_manager.get_route_channel ("public.route");
   if (!public_route.running () ||
-      public_route.list_connections ().size () != 2) {
+      public_route.list_connections ().size () != 2 ||
+      !public_route.spot_route_egress_target () ||
+      *public_route.spot_route_egress_target () != "play.route") {
     return 57;
   }
   auto public_route_client = public_route_builder.route_client (serializers);
@@ -802,7 +869,10 @@ main ()
       -> zlink::framework::result_t<void> {
       auto header = envelope_codec.decode_header (parts);
       if (target.to_string () != "target-node" || !header ||
-          header.value ().message_name != "client.event") {
+          header.value ().message_name != "client.event" ||
+          header.value ().metadata.find ("trace-id") ==
+            header.value ().metadata.end () ||
+          header.value ().metadata.at ("trace-id") != "trace-send") {
         return zlink::framework::result_t<void>::failure (
           zlink::framework::framework_error_kind_t::request_failed,
           "route send backend received unexpected packet");
@@ -816,6 +886,7 @@ main ()
              zlink::routing_id_t::from (std::string ("target-node")),
              event_t { 31 })
       .packet_name ("client.event")
+      .metadata ("trace-id", "trace-send")
       .submit ()
       .result ();
   if (!public_route_send || public_route.outbound_packets ().size () != 1 ||
@@ -829,6 +900,7 @@ main ()
         zlink::framework::runtime::messaging::message_kind_t::command ||
       public_send_header.value ().channel_name != "public.route" ||
       public_send_header.value ().message_name != "client.event" ||
+      public_send_header.value ().metadata.at ("trace-id") != "trace-send" ||
       public_route.outbound_packets ()[0].target_node_rid.to_string () !=
         "target-node") {
     return 59;
@@ -839,6 +911,7 @@ main ()
                 zlink::routing_id_t::from (std::string ("target-node")),
                 request_t { 41 })
       .packet_name ("client.request")
+      .metadata ("trace-id", "trace-request")
       .timeout (std::chrono::milliseconds (25))
       .submit ()
       .result ();
@@ -855,6 +928,8 @@ main ()
         zlink::framework::runtime::messaging::message_kind_t::request ||
       public_request_header.value ().channel_name != "public.route" ||
       public_request_header.value ().message_name != "client.request" ||
+      public_request_header.value ().metadata.at ("trace-id") !=
+        "trace-request" ||
       !public_request_header.value ().deadline) {
     return 61;
   }
@@ -876,6 +951,9 @@ main ()
       auto body = envelope_codec.decode_body (parts);
       if (!header || !body ||
           header.value ().message_name != "typed.client.request" ||
+          header.value ().metadata.find ("trace-id") ==
+            header.value ().metadata.end () ||
+          header.value ().metadata.at ("trace-id") != "trace-typed" ||
           serializers.get<request_t> ().deserialize (body.value ()).value !=
             51) {
         return zlink::framework::result_t<
@@ -905,6 +983,7 @@ main ()
         zlink::routing_id_t::from (std::string ("target-node")),
         request_t { 51 })
       .packet_name ("typed.client.request")
+      .metadata ("trace-id", "trace-typed")
       .timeout (std::chrono::milliseconds (50))
       .submit ()
       .result ();

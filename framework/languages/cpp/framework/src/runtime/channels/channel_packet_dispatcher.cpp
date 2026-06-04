@@ -33,6 +33,18 @@ channel_packet_dispatcher_t::dispatch_server_message (
   }
   auto body = codec.decode_body (parts);
   if (!body) {
+    if (header.value ().kind == runtime::messaging::message_kind_t::request) {
+      channel_reply_writer_t writer;
+      framework_exception_t error (
+        body.error_kind (),
+        body.error () ? body.error ()->what () : "channel body decode failed");
+      return result_t<runtime::messaging::message_parts_t>::success (
+        writer.reply_raw_envelope (
+          writer.create_error_header (std::move (channel_name),
+                                      header.value (),
+                                      error),
+          zlink::message_t::from ("")));
+    }
     return result_t<runtime::messaging::message_parts_t>::failure (
       body.error_kind (),
       body.error () ? body.error ()->what () : "channel body decode failed");

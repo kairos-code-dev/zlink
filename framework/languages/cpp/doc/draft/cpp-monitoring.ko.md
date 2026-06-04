@@ -56,13 +56,22 @@ extension에서 연결한다.
 ## 2. 등록 예시
 
 ```cpp
-monitoring_options_t monitoring;
-monitoring.add_socket_events("profile.server", socket_event_t::all);
+auto &monitoring = app.monitoring();
+monitoring.add_socket_events("profile.server");
+monitoring.add_socket_events(
+  "profile.client",
+  {socket_event_kind_t::connection_ready});
 monitoring.add_discovery_events("profile.client.discovery");
 monitoring.add_registry_events("registry", std::chrono::seconds(1));
 monitoring.add_spot_events("stage-node", std::chrono::seconds(1));
 monitoring.add_spot_timer_events("spot-timer");
 ```
+
+socket event 등록은 source 이름을 기준으로 한다. event 목록을 넘기지 않으면 해당 source의 모든
+socket event를 받는다. event 목록을 넘기면 지정한 kind만 handler와 trace hook으로 전달한다.
+source 이름은 비어 있으면 안 되고, 같은 source를 두 번 등록하면 설정 오류로 처리한다. 이 규칙은
+source별 event filter를 한 곳에서 해석하게 해서 handler가 불필요한 event를 직접 걸러 내는 부담을
+줄이기 위한 것이다.
 
 ## 3. Handler 예시
 
@@ -75,13 +84,20 @@ public:
 };
 ```
 
-source 이름은 logical name을 쓰는 편이 자연스럽다.
+source 이름은 logical name을 쓰는 편이 자연스럽다. 모든 monitoring source 이름은 비어 있으면
+안 되고, 같은 종류 안에서 같은 이름을 두 번 등록할 수 없다. 등록되지 않은 source에서 올라온
+runtime event는 monitoring runtime이 handler 호출 전에 버린다. 이 규칙 때문에 handler는 자신이
+구독한 source인지 매번 다시 검사하지 않아도 된다.
 
 - socket: `profile.server`, `profile.client`
 - discovery: `profile.client.discovery`
 - registry: `registry`
 - spot: `stage-node`
 - spot timer: `spot-timer`
+
+registry와 spot snapshot monitoring은 주기적으로 상태를 읽어 event로 바꾸므로 interval이 0보다
+커야 한다. 0 이하 interval은 polling이 실제로 일어나지 않는 설정이므로 builder가 설정 오류로
+처리한다.
 
 timer handler 예외 event는 interval 설정을 기다리지 않고 즉시 전달한다. payload에는
 exception 객체 자체가 아니라 timer 이름, handler 타입 이름, delivery index,

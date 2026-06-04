@@ -91,7 +91,10 @@ envelope_codec_t::encode_header (const envelope_header_t &header) const
       header.error_message ? nlohmann::json (*header.error_message)
                            : nlohmann::json (nullptr) },
     { "source", header.source ? nlohmann::json (*header.source)
-                              : nlohmann::json (nullptr) }
+                              : nlohmann::json (nullptr) },
+    { "metadata", header.metadata.empty ()
+                    ? nlohmann::json::object ()
+                    : nlohmann::json (header.metadata) }
   };
   return zlink::message_t::from (json.dump ());
 }
@@ -117,6 +120,10 @@ envelope_codec_t::decode_header (const zlink::message_t &message) const
     header.error_message =
       optional_json_value<std::string> (json, "errorMessage");
     header.source = optional_json_value<std::string> (json, "source");
+    if (json.contains ("metadata") && json.at ("metadata").is_object ()) {
+      header.metadata =
+        json.at ("metadata").get<std::map<std::string, std::string>> ();
+    }
     return result_t<envelope_header_t>::success (std::move (header));
   } catch (const std::exception &ex) {
     return result_t<envelope_header_t>::failure (

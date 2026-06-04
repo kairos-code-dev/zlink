@@ -65,13 +65,19 @@ app.add_zlink_framework([](auto &options) {
 ```cpp
 app.add_zlink_framework([](auto &options) {
     options.client_server_channel("profile")
-      .client("tcp://10.0.10.15:7101");
+      .client("tcp://10.0.10.15:7101")
+      .client("tcp://10.0.10.16:7101");
 });
 ```
 
 이 설정은 `profile` channel 전체가 아니라 `profile.client` 연결 집합에만 적용된다.
 같은 `profile` channel이라도 `profile.subscriber`는 별도 연결 집합으로 본다.
 같은 capability 안에서는 수동 연결과 Discovery 연결을 섞지 않는다.
+`client()`는 registry discovery로 peer를 찾는 선언이므로 같은 설정에
+`options.discovery().add(...)`가 필요하다. discovery를 쓰지 않는 경우에는
+`client(endpoint)`로 manual connection을 명시한다. `client(endpoint)`와 fanout
+`subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 manual endpoint를 capability
+snapshot에 추가한다.
 
 ## 3. Handler 등록
 
@@ -98,8 +104,10 @@ messaging 표면에 넣지 않는다. 그런 흐름은 actor 생성 또는 Entry
 handle을 얻은 뒤 ActorGateway/session actor 경로로 연결한다.
 
 request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `submit()`에서
-실행한다. callback 방식은 `submit(callback)`, coroutine 방식은
-`co_await call.submit()`을 사용한다. handler 안에서 blocking wait를 쓰지 않는다.
+실행한다. 반환된 call object에서 `packet_name(...)`, `metadata(key, value)`,
+`timeout(...)`을 설정할 수 있고, 이 값은 submit 시점에 framework envelope 정책으로
+넘어간다. callback 방식은 `submit(callback)`, coroutine 방식은 `co_await call.submit()`을
+사용한다. handler 안에서 blocking wait를 쓰지 않는다.
 
 ## 4. Dispatch 기준
 
@@ -132,15 +140,26 @@ request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `s
   descriptor를 수집하지만, C++는 typed handler installer를 registration에 저장한 뒤
   initializer가 `route_handler_registry_t`로 변환한다. 프레임워크 사용자는
   `options.route_mesh_channel(name)`으로 bind, routing id, manual connection, handler group을
-  설정한다.
+  설정한다. route mesh channel은 local route endpoint를 열기 위해 `bind(...)`가 필요하다.
+  SPOT route ingress에서 `accept_routes_from_channel(name)`으로 참조할 수 있는 channel은
+  client/server channel 또는 route mesh channel뿐이다. 참조한 node는 router capability와
+  registry discovery 또는 accepted route manual endpoint를 가져야 한다.
   `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`는 framework
   내부와 고급 확장용 낮은 수준 표면으로 남긴다.
+- dealer mesh channel은 `options.dealer_mesh_channel(name)`으로 선언하되 `bind(...)`
+  또는 `connect(...)` 중 하나 이상을 함께 둔다. peer 획득 경로가 없으면 framework
+  options 적용 시점에 실패한다.
+- client/server channel은 server 또는 client capability 중 하나 이상이 필요하고, fanout
+  channel은 publisher 또는 subscriber capability 중 하나 이상이 필요하다. 아무 역할도 없는
+  channel 선언은 framework options 적용 시점에 실패한다.
 - route receive path는 `route_receive_pump_t`와 `route_packet_dispatcher_t`가 맡는다.
   route handler가 있으면 `route_handler_registry_t`와 `route_handler_invoker_t`를 통해
   typed payload를 호출하고, handler가 없으면 request에 `route_handler_not_found` error
   envelope를 반환한다. framework 내부 routed packet은
   `route_internal_packet_dispatcher_t`와 composite dispatcher가 먼저 처리한다.
-- 같은 capability에서 Discovery와 manual 연결을 같이 섞지 않는다.
+- 같은 capability에서 Discovery와 manual 연결을 같이 섞지 않는다. endpoint 인자 없는
+  `client()` 또는 `subscriber()`는 discovery mode를 뜻하고, endpoint를 받는 overload는
+  manual endpoint를 추가한다.
 - runtime 연결 제어가 필요하면 framework core의 capability 단위 connection manager가
   담당한다. 사용자는 raw socket이 아니라 channel capability 표면으로 연결을 다룬다.
 
@@ -161,7 +180,9 @@ channel messaging 회귀 테스트는 `.NET` framework의 channel 동작과 같�
 - handler가 없으면 caller는 handler not found 계열 error를 받고 runtime은 계속 동작한다.
 - request timeout은 callback submit과 coroutine submit에서 같은 error kind로 돌아온다.
 - payload decode failure와 reply serialization failure는 server log, monitoring event,
-  caller failure result에 모두 반영된다.
+  caller failure result에 모두 반영된다. 특히 request envelope header를 읽은 뒤 body가
+  없거나 payload를 읽을 수 없으면 dispatcher 자체 실패로 끝내지 않고 error envelope로
+  caller에게 돌려준다.
 - send/event는 reply 없이 handler dispatch만 수행하고, handler exception은 runtime을 죽이지
   않는다.
 - pub/sub은 단일 subscriber, 여러 subscriber, topic mismatch, unsubscribe, subscriber

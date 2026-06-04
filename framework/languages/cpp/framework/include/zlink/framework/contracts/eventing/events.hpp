@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -220,6 +221,9 @@ public:
   monitoring_builder_t &operator= (const monitoring_builder_t &) = delete;
 
   monitoring_builder_t &add_socket_events (std::string source_name);
+  monitoring_builder_t &add_socket_events (
+    std::string source_name,
+    std::initializer_list<socket_event_kind_t> events);
   monitoring_builder_t &add_discovery_events (std::string source_name);
   monitoring_builder_t &add_registry_events (
     std::string source_name,

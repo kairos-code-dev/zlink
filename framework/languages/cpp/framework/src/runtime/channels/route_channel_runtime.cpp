@@ -34,6 +34,19 @@ route_channel_runtime_t::routing_id () const noexcept
 }
 
 void
+route_channel_runtime_t::spot_route_egress_target (
+  std::string target_spot_node_channel_name)
+{
+  _spot_route_egress_target = std::move (target_spot_node_channel_name);
+}
+
+const std::optional<std::string> &
+route_channel_runtime_t::spot_route_egress_target () const noexcept
+{
+  return _spot_route_egress_target;
+}
+
+void
 route_channel_runtime_t::start () noexcept
 {
   _running = true;

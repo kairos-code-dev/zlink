@@ -19,10 +19,16 @@ struct monitoring_source_registration_t
   std::chrono::milliseconds interval { 0 };
 };
 
+struct socket_monitoring_source_registration_t
+{
+  std::string source_name;
+  std::vector<socket_event_kind_t> events;
+};
+
 class monitoring_runtime_state_t
 {
 public:
-  std::vector<std::string> socket_sources;
+  std::vector<socket_monitoring_source_registration_t> socket_sources;
   std::vector<std::string> discovery_sources;
   std::vector<monitoring_source_registration_t> registry_sources;
   std::vector<monitoring_source_registration_t> spot_sources;

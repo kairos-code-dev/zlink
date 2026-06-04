@@ -44,30 +44,85 @@ else
   done
 fi
 
-rm -f "$sample_log"
+port_busy() {
+  local port="$1"
+  if ! command -v ss >/dev/null 2>&1; then
+    return 1
+  fi
+  ss -ltn "sport = :$port" | tail -n +2 | grep -q .
+}
 
-(
-  cd "$work_dir"
-  "$server_executable"
-) &
-server_pid="$!"
+last_busy_reason=""
+sample_offset_busy() {
+  local offset="$1"
+  local base
+  local bases
+  if [[ "$server_executable" == *bingo* ]]; then
+    bases="47101 47102 47103 47104 47110 47111 47112 47113 47114"
+  elif [[ "$server_executable" == *tictactoe* ]]; then
+    bases="48101 48102 48103 48104 48105 48106 48109 48110 48111 48112 48113"
+  else
+    bases="47101 47102 47103 47104 47110 47111 47112 47113 47114 48101 48102 48103 48104 48105 48106 48109 48110 48111 48112 48113"
+  fi
+  for base in $bases; do
+    local port="$((base + offset))"
+    if port_busy "$port"; then
+      last_busy_reason="port $port is already listening"
+      return 0
+    fi
+  done
+  return 1
+}
 
-for _ in $(seq 1 200); do
-  if [[ -f "$sample_log" ]] && grep -q "monitor stream ready" "$sample_log"; then
+server_ready="no"
+last_server_failure=""
+skipped_offsets=0
+for attempt in $(seq 0 79); do
+  port_offset=$((15000 + ((lock_key + $$ + attempt * 97) % 2300)))
+  if sample_offset_busy "$port_offset"; then
+    skipped_offsets=$((skipped_offsets + 1))
+    continue
+  fi
+  export ZLINK_CPP_SAMPLE_PORT_OFFSET="$port_offset"
+
+  rm -f "$sample_log"
+
+  (
+    cd "$work_dir"
+    "$server_executable"
+  ) &
+  server_pid="$!"
+
+  for _ in $(seq 1 200); do
+    if [[ -f "$sample_log" ]] && grep -q "monitor stream ready" "$sample_log"; then
+      server_ready="yes"
+      break
+    fi
+    if ! kill -0 "$server_pid" 2>/dev/null; then
+      wait "$server_pid" || true
+      last_server_failure="$(cat "$sample_log" 2>/dev/null || true)"
+      server_pid=""
+      break
+    fi
+    sleep 0.01
+  done
+
+  if [[ "$server_ready" == "yes" ]]; then
     break
   fi
-  if ! kill -0 "$server_pid" 2>/dev/null; then
-    wait "$server_pid" || true
-    echo "sample server exited before readiness" >&2
-    [[ -f "$sample_log" ]] && cat "$sample_log" >&2
-    exit 1
+  if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
+    kill "$server_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+    server_pid=""
   fi
-  sleep 0.01
 done
 
-if [[ ! -f "$sample_log" ]] || ! grep -q "monitor stream ready" "$sample_log"; then
-  echo "sample server did not report readiness" >&2
-  [[ -f "$sample_log" ]] && cat "$sample_log" >&2
+if [[ "$server_ready" != "yes" ]]; then
+  echo "sample server exited before readiness" >&2
+  if (( skipped_offsets > 0 )); then
+    echo "skipped $skipped_offsets port offsets; last skip: $last_busy_reason" >&2
+  fi
+  [[ -n "$last_server_failure" ]] && printf '%s\n' "$last_server_failure" >&2
   exit 1
 fi
 

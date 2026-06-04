@@ -84,8 +84,14 @@ public:
     if (context.packet_name == "move") {
       spot.packet_seen = request.value;
     }
+    const auto trace = context.metadata.find ("trace-id");
+    last_trace_id = trace ? std::string (*trace) : "";
+    saw_tenant_id = context.metadata.contains ("tenant-id");
     actor.moved_value = request.value;
   }
+
+  std::string last_trace_id;
+  bool saw_tenant_id = false;
 };
 
 class actor_joined_handler_t
@@ -167,6 +173,10 @@ main ()
     .spot_node ("stage-spot-node",
                 [](zlink::framework::spot_node_builder_t &spot_node) {
       spot_node.bind ("tcp://0.0.0.0:9000")
+        .enable_router ("tcp://0.0.0.0:9002")
+        .connect_router ("tcp://127.0.0.1:9003")
+        .enable_pub_sub ("tcp://0.0.0.0:9004")
+        .connect_pub_sub ("tcp://127.0.0.1:9005")
         .enable_actor_gateway ()
         .use_discovery ("game.stage")
         .attach_channel_client ("profile")
@@ -179,11 +189,30 @@ main ()
   const auto snapshots = zlink.spot_nodes ();
   if (snapshots.size () != 1 || snapshots[0].name != "stage-spot-node" ||
       snapshots[0].bind_endpoint != "tcp://0.0.0.0:9000" ||
+      !snapshots[0].router_bind_endpoint ||
+      *snapshots[0].router_bind_endpoint != "tcp://0.0.0.0:9002" ||
+      snapshots[0].router_manual_connections.size () != 1 ||
+      snapshots[0].router_manual_connections[0] !=
+        "tcp://127.0.0.1:9003" ||
+      !snapshots[0].pub_bind_endpoint ||
+      *snapshots[0].pub_bind_endpoint != "tcp://0.0.0.0:9004" ||
+      snapshots[0].pub_sub_manual_connections.size () != 1 ||
+      snapshots[0].pub_sub_manual_connections[0] !=
+        "tcp://127.0.0.1:9005" ||
       !snapshots[0].actor_gateway_enabled ||
       !snapshots[0].discovery_channel_name ||
       *snapshots[0].discovery_channel_name != "game.stage" ||
       snapshots[0].attached_channel_clients.size () != 1 ||
       snapshots[0].attached_publishers.size () != 1 ||
+      snapshots[0].attached_channel_client_details.size () != 1 ||
+      snapshots[0].attached_channel_client_details[0].channel_name !=
+        "profile" ||
+      !snapshots[0].attached_channel_client_details[0]
+         .manual_connections.empty () ||
+      snapshots[0].attached_publisher_details.size () != 1 ||
+      snapshots[0].attached_publisher_details[0].channel_name !=
+        "game.stage" ||
+      !snapshots[0].attached_publisher_details[0].manual_connections.empty () ||
       snapshots[0].spot_names.size () != 2 ||
       snapshots[0].entry_spot_name != "entry" ||
       snapshots[0].actor_types.size () != 1) {
@@ -312,6 +341,78 @@ main ()
     return 11;
   }
 
+  bool empty_router_manual_endpoint_failed = false;
+  try {
+    zlink::framework::spot_node_builder_t invalid;
+    invalid.connect_router (" ");
+  } catch (const zlink::framework::framework_exception_t &error) {
+    empty_router_manual_endpoint_failed =
+      error.kind () == framework_error_kind_t::request_protocol_error;
+  }
+  if (!empty_router_manual_endpoint_failed) {
+    return 40;
+  }
+
+  bool empty_pub_sub_manual_endpoint_failed = false;
+  try {
+    zlink::framework::spot_node_builder_t invalid;
+    invalid.connect_pub_sub (" ");
+  } catch (const zlink::framework::framework_exception_t &error) {
+    empty_pub_sub_manual_endpoint_failed =
+      error.kind () == framework_error_kind_t::request_protocol_error;
+  }
+  if (!empty_pub_sub_manual_endpoint_failed) {
+    return 41;
+  }
+
+  bool empty_attach_failed = false;
+  try {
+    zlink::framework::spot_node_builder_t invalid;
+    invalid.attach_channel_client (" ");
+  } catch (const zlink::framework::framework_exception_t &error) {
+    empty_attach_failed =
+      error.kind () == framework_error_kind_t::request_protocol_error;
+  }
+  if (!empty_attach_failed) {
+    return 30;
+  }
+
+  bool empty_attach_endpoint_failed = false;
+  try {
+    zlink::framework::spot_node_builder_t invalid;
+    invalid.attach_channel_client ("profile", { " " });
+  } catch (const zlink::framework::framework_exception_t &error) {
+    empty_attach_endpoint_failed =
+      error.kind () == framework_error_kind_t::request_protocol_error;
+  }
+  if (!empty_attach_endpoint_failed) {
+    return 32;
+  }
+
+  bool empty_publisher_attach_failed = false;
+  try {
+    zlink::framework::spot_node_builder_t invalid;
+    invalid.attach_publisher (" ");
+  } catch (const zlink::framework::framework_exception_t &error) {
+    empty_publisher_attach_failed =
+      error.kind () == framework_error_kind_t::request_protocol_error;
+  }
+  if (!empty_publisher_attach_failed) {
+    return 31;
+  }
+
+  bool empty_publisher_attach_endpoint_failed = false;
+  try {
+    zlink::framework::spot_node_builder_t invalid;
+    invalid.attach_publisher ("events", { " " });
+  } catch (const zlink::framework::framework_exception_t &error) {
+    empty_publisher_attach_endpoint_failed =
+      error.kind () == framework_error_kind_t::request_protocol_error;
+  }
+  if (!empty_publisher_attach_endpoint_failed) {
+    return 33;
+  }
+
   context.register_packet<state_update_t> ("state.update");
   if (context.packet_registry ().size () != 1 ||
       context.packet_registry ()[0].packet_name != "state.update") {
@@ -432,6 +533,52 @@ main ()
       stage_spot.packet_seen != 55) {
     return 24;
   }
+  auto &move_handler = spot_provider.get_required<move_packet_handler_t> ();
+  if (!move_handler.last_trace_id.empty () || move_handler.saw_tenant_id) {
+    return 36;
+  }
+
+  zlink::framework::message_metadata_policy_t metadata_policy;
+  metadata_policy.forward ("trace-id");
+  try {
+    metadata_policy.forward ("");
+    return 37;
+  } catch (const zlink::framework::framework_exception_t &ex) {
+    if (ex.kind () != framework_error_kind_t::request_protocol_error) {
+      return 38;
+    }
+  }
+  try {
+    metadata_policy.forward (" ");
+    return 42;
+  } catch (const zlink::framework::framework_exception_t &ex) {
+    if (ex.kind () != framework_error_kind_t::request_protocol_error) {
+      return 43;
+    }
+  }
+  std::map<std::string, std::string> stream_metadata {
+    { "trace-id", "trace-1" },
+    { "tenant-id", "tenant-1" }
+  };
+  const auto projected = metadata_policy.project (stream_metadata);
+  const auto projected_trace = projected.find ("trace-id");
+  if (!projected_trace || *projected_trace != "trace-1" ||
+      projected.contains ("tenant-id") || projected.empty ()) {
+    return 39;
+  }
+  const auto metadata_dispatch = context.handlers ().invoke_actor_packet (
+    "move",
+    stage_spot,
+    actor,
+    spot_provider,
+    spot_serializers,
+    zlink::message_t::from (std::string ("56")),
+    projected);
+  if (!metadata_dispatch || actor.moved_value != 56 ||
+      move_handler.last_trace_id != "trace-1" ||
+      move_handler.saw_tenant_id) {
+    return 40;
+  }
 
   const auto joined_dispatch = context.handlers ().invoke_post_actor_joined (
     stage_spot,
@@ -455,10 +602,22 @@ main ()
     zlink::framework::spot_actor_change_result_t (
       zlink::framework::spot_actor_change_kind_t::join_entry_spot));
   if (!left_dispatch || stage_spot.left_count != 1 ||
-      actor.moved_value != 155 ||
+      actor.moved_value != 156 ||
       stage_spot.last_change_kind !=
         zlink::framework::spot_actor_change_kind_t::join_entry_spot) {
     return 26;
+  }
+
+  bool invalid_actor_change_failed = false;
+  try {
+    (void) zlink::framework::spot_actor_change_result_t (
+      static_cast<zlink::framework::spot_actor_change_kind_t> (0));
+  } catch (const zlink::framework::framework_exception_t &error) {
+    invalid_actor_change_failed =
+      error.kind () == framework_error_kind_t::request_protocol_error;
+  }
+  if (!invalid_actor_change_failed) {
+    return 44;
   }
 
   const auto disconnected_dispatch =

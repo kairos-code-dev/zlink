@@ -71,11 +71,15 @@ app.add_zlink_framework([](auto &options) {
 ```cpp
 app.add_zlink_framework([](auto &options) {
     options.client_server_channel("profile")
-      .client("tcp://10.0.10.15:7101");
+      .client("tcp://10.0.10.15:7101")
+      .client("tcp://10.0.10.16:7101");
 });
 ```
 
-수동 연결과 Discovery 연결은 같은 capability 안에서 섞지 않는다.
+`client(endpoint)`를 여러 번 호출하면 같은 client capability에 manual endpoint를 추가한다.
+수동 연결과 Discovery 연결은 같은 capability 안에서 섞지 않는다. endpoint 인자 없는
+`client()`는 discovery mode로 전환하며, 같은 builder에서 앞서 추가한 manual endpoint를
+사용하지 않는다.
 
 ## 4. 일반 event publish
 

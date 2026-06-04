@@ -73,6 +73,17 @@ bound_session_t::send_raw (const zlink::message_t &payload)
 }
 
 send_call_t
+bound_session_t::disconnect ()
+{
+  const auto found = _state->actors_by_id.find (_actor_id);
+  if (found != _state->actors_by_id.end ()) {
+    found->second.bound = false;
+    found->second.disconnected = true;
+  }
+  return send_call_t (result_t<void>::success ());
+}
+
+send_call_t
 bound_session_t::send_erased (const zlink::message_t &payload)
 {
   const auto found = _state->actors_by_id.find (_actor_id);

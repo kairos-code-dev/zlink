@@ -214,6 +214,45 @@ main ()
       runtime.written_headers (stream)[0].request_seq () != 77) {
     return 15;
   }
+
+  auto fluent_stream = runtime.open_session ("client-stream");
+  zlink::framework::stream_header_t send_header (
+    stream_message_kind_t::send,
+    stream_codec_t::json,
+    stream_header_flags_t::none,
+    std::nullopt,
+    "original");
+  auto send_call = fluent_stream.write_packet (
+    send_header,
+    zlink::message_t::from (std::string ("send-payload")));
+  if (!runtime.written_headers (fluent_stream).empty ()) {
+    return 17;
+  }
+  const auto send_result = send_call.metadata ("trace", "send-trace")
+                             .packet_name ("renamed")
+                             .compress ()
+                             .submit ()
+                             .result ();
+  if (!send_result || runtime.written_headers (fluent_stream).size () != 1 ||
+      runtime.written_headers (fluent_stream)[0].packet_name () != "renamed" ||
+      runtime.written_headers (fluent_stream)[0].metadata ("trace") !=
+        "send-trace" ||
+      (runtime.written_headers (fluent_stream)[0].flags () &
+       stream_header_flags_t::payload_compressed) !=
+        stream_header_flags_t::payload_compressed) {
+    return 18;
+  }
+  const auto close_result = fluent_stream.close ().result ();
+  const auto close_write = fluent_stream.write_packet (
+    send_header,
+    zlink::message_t::from (std::string ("after-close")))
+                             .submit ()
+                             .result ();
+  if (!close_result || close_write ||
+      close_write.error_kind () != framework_error_kind_t::disconnected ||
+      runtime.written_headers (fluent_stream).size () != 1) {
+    return 19;
+  }
   const auto disconnected_write = stream.write_packet (
     request_header,
     zlink::message_t::from (std::string ("after-disconnect")))

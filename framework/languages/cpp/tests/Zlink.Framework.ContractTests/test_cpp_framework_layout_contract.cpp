@@ -395,6 +395,43 @@ implementation_plan_goal20_covers_connector_labels (
 }
 
 bool
+registry_draft_matches_monitoring_contract (const std::filesystem::path &root)
+{
+  const auto path = root / "doc/draft/cpp-registry.ko.md";
+  std::ifstream input (path);
+  std::ostringstream buffer;
+  buffer << input.rdbuf ();
+  const auto text = buffer.str ();
+
+  bool ok = true;
+  const std::string required[] = {
+    "Registry snapshot event는 등록된 monitoring source에만 전달",
+    "topology나 service summary",
+    "typed monitoring event"
+  };
+  for (const auto &needle : required) {
+    if (text.find (needle) == std::string::npos) {
+      std::cerr << "registry draft no longer documents implemented "
+                << "monitoring contract: " << needle << '\n';
+      ok = false;
+    }
+  }
+
+  const std::string stale[] = {
+    "Registry snapshot diff event는 설정된 interval을 따르고",
+    "monitoring 통합 단계에서 별도 regression으로 고정한다"
+  };
+  for (const auto &needle : stale) {
+    if (text.find (needle) != std::string::npos) {
+      std::cerr << "registry draft still treats implemented monitoring "
+                << "contract as pending: " << needle << '\n';
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+bool
 implementation_plan_goal21_covers_sample_labels (
   const std::filesystem::path &root)
 {
@@ -1589,6 +1626,7 @@ main ()
   ok &= implementation_plan_goal20_covers_connector_labels (root);
   ok &= implementation_plan_goal21_covers_sample_labels (root);
   ok &= implementation_plan_goal22_covers_final_label_axes (root);
+  ok &= registry_draft_matches_monitoring_contract (root);
   ok &= posd_log_has_current_goal_mapping (root);
   ok &= cmake_extension_boundaries_hold (root);
 

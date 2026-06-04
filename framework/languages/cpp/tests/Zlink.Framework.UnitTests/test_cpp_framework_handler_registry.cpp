@@ -52,16 +52,49 @@ public:
     return { request.value + 1 };
   }
 
+  reply_t get_context_reply (
+    const request_t &request,
+    const zlink::framework::request_context_t &context)
+  {
+    last_thread = std::this_thread::get_id ();
+    last_request = request.value;
+    last_context_channel = context.channel_name;
+    last_context_packet = context.packet_name;
+    return { request.value + 2 };
+  }
+
   void on_command (const command_t &command)
   {
     last_thread = std::this_thread::get_id ();
     last_command = command.value;
   }
 
+  void on_context_command (
+    const command_t &command,
+    const zlink::framework::send_context_t &context)
+  {
+    last_thread = std::this_thread::get_id ();
+    last_command = command.value;
+    last_context_channel = context.channel_name;
+    last_context_packet = context.packet_name;
+  }
+
   zlink::framework::task_t<void> on_event (const event_t &event)
   {
     last_thread = std::this_thread::get_id ();
     last_event = event.value;
+    co_return;
+  }
+
+  zlink::framework::task_t<void> on_context_event (
+    const event_t &event,
+    const zlink::framework::publish_context_t &context)
+  {
+    last_thread = std::this_thread::get_id ();
+    last_event = event.value;
+    last_context_channel = context.channel_name;
+    last_context_packet = context.packet_name;
+    last_context_topic = context.topic;
     co_return;
   }
 
@@ -103,7 +136,53 @@ public:
   int last_request = 0;
   int last_command = 0;
   int last_event = 0;
+  std::string last_context_channel;
+  std::string last_context_packet;
+  std::string last_context_topic;
   std::thread::id last_thread;
+};
+
+class auditing_filter_t
+{
+public:
+  zlink::framework::task_t<zlink::message_t> invoke (
+    const zlink::framework::handler_invocation_context_t &context,
+    zlink::framework::handler_next_t next)
+  {
+    ++before_count;
+    last_packet_name = context.descriptor.packet_name;
+    last_context_channel = context.context.channel_name;
+    last_context_packet = context.context.packet_name;
+    last_message = context.message ? context.message->to_string () : "";
+    auto message = co_await next ();
+    ++after_count;
+    co_return message;
+  }
+
+  int before_count = 0;
+  int after_count = 0;
+  std::string last_packet_name;
+  std::string last_context_channel;
+  std::string last_context_packet;
+  std::string last_message;
+};
+
+class short_circuit_filter_t
+{
+public:
+  zlink::framework::task_t<zlink::message_t> invoke (
+    const zlink::framework::handler_invocation_context_t &context,
+    zlink::framework::handler_next_t next)
+  {
+    if (context.descriptor.packet_name == "blocked") {
+      ++short_circuit_count;
+      co_return zlink::message_t::from (std::string ("99"));
+    }
+    auto message = co_await next ();
+    co_return message;
+  }
+
+  int short_circuit_count = 0;
 };
 
 template<typename T>
@@ -167,6 +246,8 @@ main ()
 {
   zlink::framework::service_collection_t services;
   services.add_singleton<handler_t> ();
+  services.add_singleton<auditing_filter_t> ();
+  services.add_singleton<short_circuit_filter_t> ();
   auto provider = services.build_provider ();
 
   zlink::framework::serializer_registry_t serializers;
@@ -192,17 +273,32 @@ main ()
     "move",
     &handler_t::get_reply,
     { .packet_name = "request" });
+  handlers.on_request<handler_t, request_t, reply_t> (
+    "game",
+    "context-move",
+    &handler_t::get_context_reply,
+    { .packet_name = "context-request" });
   handlers.on_send<handler_t, command_t> (
     "game",
     "command",
     &handler_t::on_command,
     { .packet_name = "command" });
+  handlers.on_send<handler_t, command_t> (
+    "game",
+    "context-command",
+    &handler_t::on_context_command,
+    { .packet_name = "context-command" });
   handlers.on_event<handler_t, event_t> (
     "game",
     "event",
     &handler_t::on_event,
     { .packet_name = "event",
       .execution = zlink::framework::handler_execution_t::offload });
+  handlers.on_event<handler_t, event_t> (
+    "game",
+    "context-event",
+    &handler_t::on_context_event,
+    { .packet_name = "context-event" });
   handlers.on_request<handler_t, async_request_t, reply_t> (
     "game",
     "async",
@@ -218,6 +314,13 @@ main ()
     "throw",
     &handler_t::throw_reply,
     { .packet_name = "throw" });
+  handlers.on_request<handler_t, request_t, reply_t> (
+    "game",
+    "blocked",
+    &handler_t::get_reply,
+    { .packet_name = "blocked" });
+  handlers.use_filter<auditing_filter_t> ()
+    .use_filter<short_circuit_filter_t> ();
 
   const auto *descriptor = handlers.find ("game", "move", "request");
   if (descriptor == nullptr || descriptor->topic != "move") {
@@ -243,6 +346,53 @@ main ()
       std::this_thread::get_id ()) {
     return 30;
   }
+  auto &audit_filter = provider.get_required<auditing_filter_t> ();
+  if (audit_filter.before_count != 1 || audit_filter.after_count != 1 ||
+      audit_filter.last_packet_name != "request" ||
+      audit_filter.last_context_channel != "game" ||
+      audit_filter.last_context_packet != "request" ||
+      audit_filter.last_message != "7") {
+    return 35;
+  }
+
+  auto blocked_result = handlers.invoke (
+    "game",
+    "blocked",
+    "blocked",
+    provider,
+    serializers,
+    zlink::message_t::from (std::string ("123")));
+  if (!blocked_result ||
+      serializers.get<reply_t> ().deserialize (blocked_result.value ()).value !=
+        99) {
+    return 36;
+  }
+  if (provider.get_required<handler_t> ().last_request == 123 ||
+      provider.get_required<short_circuit_filter_t> ().short_circuit_count !=
+        1) {
+    return 37;
+  }
+  if (audit_filter.before_count != 2 || audit_filter.after_count != 2 ||
+      audit_filter.last_packet_name != "blocked") {
+    return 38;
+  }
+
+  auto context_request_result = handlers.invoke (
+    "game",
+    "context-move",
+    "context-request",
+    provider,
+    serializers,
+    zlink::message_t::from (std::string ("8")));
+  auto &handler = provider.get_required<handler_t> ();
+  if (!context_request_result ||
+      serializers.get<reply_t> ()
+          .deserialize (context_request_result.value ())
+          .value != 10 ||
+      handler.last_context_channel != "game" ||
+      handler.last_context_packet != "context-request") {
+    return 39;
+  }
 
   auto send_result = handlers.invoke (
     "game",
@@ -253,6 +403,19 @@ main ()
     zlink::message_t::from (std::string ("9")));
   if (!send_result || provider.get_required<handler_t> ().last_command != 9) {
     return 4;
+  }
+
+  auto context_send_result = handlers.invoke (
+    "game",
+    "context-command",
+    "context-command",
+    provider,
+    serializers,
+    zlink::message_t::from (std::string ("10")));
+  if (!context_send_result || handler.last_command != 10 ||
+      handler.last_context_channel != "game" ||
+      handler.last_context_packet != "context-command") {
+    return 40;
   }
 
   auto event_result = handlers.invoke (
@@ -270,6 +433,20 @@ main ()
       descriptor->execution !=
         zlink::framework::handler_execution_t::offload) {
     return 6;
+  }
+
+  auto context_event_result = handlers.invoke (
+    "game",
+    "context-event",
+    "context-event",
+    provider,
+    serializers,
+    zlink::message_t::from (std::string ("12")));
+  if (!context_event_result || handler.last_event != 12 ||
+      handler.last_context_channel != "game" ||
+      handler.last_context_packet != "context-event" ||
+      handler.last_context_topic != "context-event") {
+    return 41;
   }
 
   auto async_result = handlers.invoke (

@@ -119,6 +119,7 @@ public:
   }
 
   send_call_t send_raw (const zlink::message_t &payload);
+  send_call_t disconnect ();
 
 private:
   friend class actor_context_t;

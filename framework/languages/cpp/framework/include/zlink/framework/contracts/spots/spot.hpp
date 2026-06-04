@@ -11,11 +11,14 @@
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <functional>
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <typeindex>
@@ -38,6 +41,16 @@ struct spot_actor_change_result_t
     spot_actor_change_kind_t kind = spot_actor_change_kind_t::join_spot)
     : kind (kind)
   {
+    switch (kind) {
+    case spot_actor_change_kind_t::join_spot:
+    case spot_actor_change_kind_t::join_entry_spot:
+    case spot_actor_change_kind_t::leave_spot:
+      break;
+    default:
+      throw framework_exception_t (
+        framework_error_kind_t::request_protocol_error,
+        "spot actor change kind must be a membership change");
+    }
   }
 
   spot_actor_change_kind_t kind;
@@ -45,7 +58,65 @@ struct spot_actor_change_result_t
 
 struct spot_actor_message_metadata_t
 {
+  std::optional<std::string_view> find (std::string_view key) const
+  {
+    const auto iterator = values.find (std::string (key));
+    if (iterator == values.end ()) {
+      return std::nullopt;
+    }
+    return iterator->second;
+  }
+
+  bool contains (std::string_view key) const
+  {
+    return values.find (std::string (key)) != values.end ();
+  }
+
+  bool empty () const noexcept { return values.empty (); }
+
   std::map<std::string, std::string> values;
+};
+
+class message_metadata_policy_t
+{
+public:
+  message_metadata_policy_t &forward (std::string key)
+  {
+    if (key.empty () || is_blank (key)) {
+      throw framework_exception_t (
+        framework_error_kind_t::request_protocol_error,
+        "metadata key must not be empty");
+    }
+    _forwarded_keys.insert (std::move (key));
+    return *this;
+  }
+
+  bool can_forward (std::string_view key) const
+  {
+    return _forwarded_keys.find (std::string (key)) != _forwarded_keys.end ();
+  }
+
+  spot_actor_message_metadata_t project (
+    const std::map<std::string, std::string> &metadata) const
+  {
+    spot_actor_message_metadata_t projected;
+    for (const auto &[key, value] : metadata) {
+      if (can_forward (key)) {
+        projected.values.emplace (key, value);
+      }
+    }
+    return projected;
+  }
+
+private:
+  static bool is_blank (const std::string &value)
+  {
+    return std::all_of (value.begin (), value.end (), [](unsigned char ch) {
+      return std::isspace (ch) != 0;
+    });
+  }
+
+  std::set<std::string> _forwarded_keys;
 };
 
 class spot_actor_reply_options_t
@@ -295,6 +366,24 @@ struct spot_route_t
   std::string spot_name;
 };
 
+struct accepted_spot_route_channel_t
+{
+  std::string channel_name;
+  std::vector<std::string> manual_connections;
+};
+
+struct attached_channel_client_t
+{
+  std::string channel_name;
+  std::vector<std::string> manual_connections;
+};
+
+struct attached_publisher_t
+{
+  std::string channel_name;
+  std::vector<std::string> manual_connections;
+};
+
 struct spot_packet_descriptor_t
 {
   std::string packet_name;
@@ -320,14 +409,19 @@ struct spot_node_snapshot_t
   std::optional<std::string> pub_bind_endpoint;
   std::optional<zlink::routing_id_t> router_routing_id;
   std::optional<zlink::routing_id_t> pub_routing_id;
+  std::vector<std::string> router_manual_connections;
+  std::vector<std::string> pub_sub_manual_connections;
   bool actor_gateway_enabled = false;
   std::optional<std::string> discovery_channel_name;
   std::vector<std::string> attached_channel_clients;
   std::vector<std::string> attached_publishers;
+  std::vector<attached_channel_client_t> attached_channel_client_details;
+  std::vector<attached_publisher_t> attached_publisher_details;
   std::vector<std::string> spot_names;
   std::optional<std::string> entry_spot_name;
   bool registry_spot_remote_addresses_enabled = false;
   std::optional<std::string> registry_spot_route_channel;
+  std::vector<accepted_spot_route_channel_t> accepted_route_channels;
   std::vector<std::string> actor_types;
 };
 
@@ -440,6 +534,7 @@ public:
                                             service_provider_t &,
                                             serializer_registry_t &,
                                             const zlink::message_t &,
+                                            const spot_actor_message_metadata_t &,
                                             const spot_actor_change_result_t *)>;
 
   spot_handler_registry_t ();
@@ -468,6 +563,7 @@ public:
          service_provider_t &services,
          serializer_registry_t &serializers,
          const zlink::message_t &message,
+         const spot_actor_message_metadata_t &,
          const spot_actor_change_result_t *) {
         auto &handler = services.get_required<THandler> ();
         auto payload = serializers.get<TMessage> ().deserialize (message);
@@ -503,6 +599,7 @@ public:
          service_provider_t &services,
          serializer_registry_t &serializers,
          const zlink::message_t &message,
+         const spot_actor_message_metadata_t &,
          const spot_actor_change_result_t *) {
         auto &handler = services.get_required<THandler> ();
         auto payload = serializers.get<TEvent> ().deserialize (message);
@@ -537,6 +634,7 @@ public:
          service_provider_t &services,
          serializer_registry_t &serializers,
          const zlink::message_t &message,
+         const spot_actor_message_metadata_t &,
          const spot_actor_change_result_t *) {
         auto &handler = services.get_required<THandler> ();
         auto request = serializers.get<TRequest> ().deserialize (message);
@@ -581,17 +679,18 @@ public:
          service_provider_t &services,
          serializer_registry_t &serializers,
          const zlink::message_t &message,
+         const spot_actor_message_metadata_t &metadata,
          const spot_actor_change_result_t *) {
         auto &handler = services.get_required<THandler> ();
         auto payload = serializers.get<TMessage> ().deserialize (message);
         spot_actor_send_context_t send_context {
           registered_packet_name,
           "application/json",
-          {} };
+          metadata };
         spot_actor_request_context_t request_context {
           registered_packet_name,
           "application/json",
-          {},
+          metadata,
           {} };
         return detail::invoke_spot_actor_packet<THandler,
                                                 TSpot,
@@ -724,6 +823,30 @@ public:
   }
 
   template<typename TSpot, typename TActor>
+  result_t<zlink::message_t> invoke_actor_packet (
+    std::string_view packet_name,
+    TSpot &spot,
+    TActor &actor,
+    service_provider_t &services,
+    serializer_registry_t &serializers,
+    const zlink::message_t &message,
+    spot_actor_message_metadata_t metadata) const
+  {
+    return invoke_erased (spot_handler_kind_t::actor_packet,
+                          packet_name,
+                          {},
+                          std::type_index (typeid (TActor)),
+                          &spot,
+                          &actor,
+                          services,
+                          serializers,
+                          message,
+                          nullptr,
+                          std::move (metadata))
+      .result ();
+  }
+
+  template<typename TSpot, typename TActor>
   result_t<zlink::message_t> invoke_post_actor_joined (
     TSpot &spot,
     TActor &actor,
@@ -788,6 +911,7 @@ private:
          service_provider_t &services,
          serializer_registry_t &serializers,
          const zlink::message_t &,
+         const spot_actor_message_metadata_t &,
          const spot_actor_change_result_t *result) {
         auto &handler = services.get_required<THandler> ();
         return detail::invoke_spot_actor_lifecycle<THandler, TSpot, TActor> (
@@ -815,7 +939,8 @@ private:
     service_provider_t &services,
     serializer_registry_t &serializers,
     const zlink::message_t &message,
-    const spot_actor_change_result_t *change_result = nullptr) const;
+    const spot_actor_change_result_t *change_result = nullptr,
+    spot_actor_message_metadata_t metadata = {}) const;
 
   template<typename TSpot, typename TActor>
   task_t<zlink::message_t> invoke_actor_lifecycle (
@@ -876,16 +1001,25 @@ public:
   spot_node_builder_t &enable_router (std::string endpoint);
   spot_node_builder_t &enable_router (std::string endpoint,
                                       zlink::routing_id_t routing_id);
+  spot_node_builder_t &connect_router (std::string endpoint);
   spot_node_builder_t &enable_pub_sub (std::string endpoint);
   spot_node_builder_t &enable_pub_sub (std::string endpoint,
                                        zlink::routing_id_t routing_id);
+  spot_node_builder_t &connect_pub_sub (std::string endpoint);
   spot_node_builder_t &enable_actor_gateway ();
   spot_node_builder_t &use_discovery (std::string channel_name);
   spot_node_builder_t &use_registry_spot_remote_addresses ();
   spot_node_builder_t &use_registry_spot_remote_addresses (
     std::string route_channel_name);
-  spot_node_builder_t &attach_channel_client (std::string channel_name);
-  spot_node_builder_t &attach_publisher (std::string channel_name);
+  spot_node_builder_t &accept_routes_from_channel (
+    std::string route_channel_name,
+    std::vector<std::string> manual_connections = {});
+  spot_node_builder_t &attach_channel_client (
+    std::string channel_name,
+    std::vector<std::string> manual_connections = {});
+  spot_node_builder_t &attach_publisher (
+    std::string channel_name,
+    std::vector<std::string> manual_connections = {});
 
   template<typename TSpot>
   spot_node_builder_t &add_spot (std::string spot_name)

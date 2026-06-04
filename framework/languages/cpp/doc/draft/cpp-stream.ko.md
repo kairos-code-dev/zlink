@@ -102,9 +102,18 @@ class stream_t {
 public:
     virtual ~stream_t() = default;
     virtual std::string session_id() const = 0;
+    virtual task_t<void> close() = 0;
     virtual stream_write_call_t write_packet(
       const stream_header_t &header,
       const zlink::message_t &payload) = 0;
+};
+
+class stream_write_call_t {
+public:
+    stream_write_call_t &metadata(std::string key, std::string value);
+    stream_write_call_t &packet_name(std::string packet_name);
+    stream_write_call_t &compress();
+    task_t<void> submit();
 };
 
 class session_actor_t {
@@ -145,16 +154,31 @@ STREAM endpoint와 packet session은 `add_zlink_framework(...)` 안의 options b
 구성한다. packet 처리는 `packet_stream_session_t` 구현체의 `on_packet(...)`에서 담당한다.
 
 ```cpp
+class client_session_t : public zlink::framework::packet_stream_session_t {
+public:
+    static constexpr const char *session_name = "client";
+
+    // on_connected/on_packet/on_disconnected/on_error 구현
+};
+
 app.add_zlink_framework([](auto &options) {
     options.spot_node("session-actors")
       .bind("tcp://0.0.0.0:7101")
       .enable_actor_gateway();
     options.stream_node("route-stream")
       .bind("tcp://0.0.0.0:9200")
-      .packet_session("route")
+      .register_session<client_session_t>()
       .attach_actor_gateway("session-actors");
 });
 ```
+
+`register_session<TSession>()`은 `.NET`의 `RegisterSession<TSession>()`에 해당한다.
+`TSession`은 `packet_stream_session_t`를 상속해야 하며 framework service collection에
+stream-session scope 서비스로 등록된다. `TSession::session_name`이 있으면 그 값을 native packet
+session 이름으로 사용하고, 없으면 타입 이름 기반 message name을 사용한다. low-level
+`packet_session(name)`은 session 이름을 직접 지정해야 하는 경우에만 사용한다.
+하나의 stream node에는 packet session을 하나만 선언한다. 같은 stream node에서
+`register_session<T>()`과 `packet_session(...)`을 중복 호출하면 설정 오류로 처리한다.
 
 ## 4. Dispatch 기준
 
@@ -164,9 +188,12 @@ app.add_zlink_framework([](auto &options) {
 - CPU-bound 또는 blocking 가능성이 있는 stream handler는 offload 실행 정책을 명시한다.
 - 같은 stream session의 lifecycle callback과 packet callback은 직렬로 처리한다.
 - Header 검증에 실패한 packet은 application handler로 넘기지 않는다.
-- `stream_t::write_packet(...)`은 async submit으로 본다. backpressure는 pending queue와
-  ready notification으로 처리하며, 실제 실행은 반환된 call object의 `submit()`에서
-  시작한다.
+- `stream_t::write_packet(...)`과 `reply_packet(...)`은 async submit으로 본다. 반환된
+  `stream_write_call_t`에서 `metadata(...)`, `packet_name(...)`, `compress()`를 설정할 수 있고,
+  실제 실행은 `submit()`에서 시작한다.
+- `stream_t::close()`는 session을 닫고 이후 write submit이 `disconnected` 결과를 반환하게
+  한다. 이미 닫힌 stream을 다시 닫는 것은 성공으로 처리해 cleanup 호출자가 중복 close를
+  특별히 구분하지 않아도 되게 한다.
 - session actor dispatch는 STREAM session에서 route mesh channel로 직접 packet을 만들지
   않고, attach된 ActorGateway와 `session_actor_t::relay(...)`를 사용한다.
 - session callback 동안 받은 `payload`는 framework가 빌려준 값이므로 relay 호출자가
@@ -187,7 +214,10 @@ write backpressure, ActorGateway attach 경계를 함께 검증한다.
 - invalid header, unsupported codec, malformed metadata는 application handler에 전달되지
   않고 error log와 monitoring event를 남긴다.
 - `stream_t::write_packet(...)`은 submit 전에는 실행되지 않고, submit 후 backpressure와
-  completion result를 반환한다.
+  completion result를 반환한다. metadata, packet name override, compression flag는 submit
+  시점에 framework header로 반영된다.
+- `stream_t::close()` 후 새 write submit은 `disconnected` 결과를 반환하고, 추가 frame을 쓰지
+  않는다.
 - pending write 중 disconnect가 발생하면 caller는 disconnected 계열 error를 받는다.
 - session-scoped service는 disconnect cleanup 뒤 해제된다.
 - session callback에서 받은 payload는 relay 후에도 framework ownership 규칙을 깨지 않는다.

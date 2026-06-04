@@ -612,7 +612,7 @@ app.add_zlink_framework([](auto &options) {
       .handler_group("orders-api");
     options.spot_mesh("orders")
       .node("orders-spot")
-      .bind("tcp://0.0.0.0:7101");
+      .enable_router("tcp://0.0.0.0:7101");
 });
 ```
 

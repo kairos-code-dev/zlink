@@ -8451,3 +8451,1855 @@ Stream Connector optional codec dependency는 connector package config가 복원
 - Stream Connector package config는 connector를 사용할 때 필요한 optional dependency 복원을
   계속 소유한다.
 - 이번 보정 뒤 framework package optional connector dependency 잔재의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 9 route client metadata parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework의 channel/route client는 gRPC metadata/trailer 대체 흐름을 위해
+  metadata 정책과 전달 가능한 key 개념을 공개 기대값으로 둔다.
+- C++ framework는 STREAM header와 SPOT actor reply에는 metadata 표면이 있었지만,
+  route client가 만드는 framework envelope에는 application metadata를 넣을 fluent 표면이 없었다.
+- 이 상태에서는 trace id나 request context를 route request/send와 함께 보존하는 사용자 기대값이
+  C++ route client에서 끊긴다. metadata 지식이 STREAM/SPOT에만 있고 channel envelope에는 없는
+  정보 누출이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 최상위 metadata forwarding policy 전체를 즉시 구현한다 | `.NET` 표면과 가장 가깝다 | filter, policy, inbound propagation까지 한 번에 커져 Goal 9 경계가 흐려진다 |
+| route call object에 `.metadata(key, value)`를 추가하고 envelope가 값을 보존한다 | 호출자 표면이 단순하고 route envelope owner 한 곳에 지식이 모인다 | forwarding policy와 inbound context policy는 후속 반복에서 더 닫아야 한다 |
+| metadata를 C++ 초기 범위에서 제외한다고 문서화한다 | 변경이 작다 | `.NET` 사용자 기대값을 축소해 parity 목표와 맞지 않는다 |
+
+선택은 두 번째 방식이다. route call object는 이미 `packet_name`, `timeout`, `submit`을 소유하는
+실행 옵션 표면이므로 metadata도 같은 call object에 두는 것이 깊은 모듈에 가깝다. envelope JSON
+구조는 `envelope_codec_t`가 계속 소유하고, 사용자는 header JSON이나 runtime backend seam을
+직접 알 필요가 없다.
+
+### 적용한 리팩토링
+
+- `envelope_header_t`에 metadata map을 추가하고 `envelope_codec_t` encode/decode가 보존하게 했다.
+- `route_send_call_t`, `route_request_call_t`, `typed_route_request_call_t<TReply>`에
+  `.metadata(key, value)` fluent API를 추가했다.
+- route send, request, typed request submit 경로가 metadata를 envelope header에 담도록 연결했다.
+- public contract test가 세 route call object의 metadata fluent surface를 컴파일 계약으로 고정한다.
+- channel messaging regression이 route send/request/typed request envelope의 `trace-id` metadata
+  보존을 검증한다.
+
+### 수정 후 점검
+
+- 관련 빌드 target `test_cpp_framework_channel_messaging`, `test_cpp_framework_contract_headers`가 통과했다.
+- `framework-zlink-channel`, `framework-contract` label이 통과했다.
+- 이번 보정 뒤 route client metadata 전달의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 8 handler filter parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework는 handler filter를 public contract로 두어 handler 호출 앞뒤의 인증,
+  감사, short-circuit 처리를 한 곳에서 연결할 수 있다.
+- C++ framework는 HTTP middleware/filter는 갖고 있었지만 일반 channel handler registry에는
+  filter 등록 표면이 없었다.
+- 이 상태에서는 사용자가 각 handler 안에 공통 처리를 반복하거나, runtime dispatch 세부를
+  우회해야 한다. 이는 공통 정책이 handler method마다 새는 정보 은닉 위반이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 각 handler method 안에서 공통 함수를 직접 호출한다 | 구현이 가장 작다 | 공통 정책이 모든 handler에 반복되고 누락을 잡기 어렵다 |
+| handler registry 밖에 별도 dispatcher wrapper를 둔다 | 기존 registry 변경이 작다 | descriptor lookup, serializer, DI resolve 순서가 wrapper로 샌다 |
+| `handler_registry_t`가 filter chain을 소유하고 `use_filter<TFilter>()`만 공개한다 | 호출자 표면이 단순하고 dispatch 세부가 registry 내부에 남는다 | registry invoke 경로가 filter chain을 구성해야 한다 |
+
+선택은 세 번째 방식이다. handler registry는 이미 handler descriptor와 erased invoker를
+소유하므로 filter chain도 같은 모듈 안에 두는 것이 깊은 모듈에 가깝다. 사용자는 filter
+타입과 `next()` 호출 여부만 알면 되고, serializer나 DI resolve 순서는 알 필요가 없다.
+
+### 적용한 리팩토링
+
+- `handler_invocation_context_t`, `handler_next_t`, `handler_registry_t::use_filter<TFilter>()`를
+  public contract에 추가했다.
+- `zlink_framework_options_t::use_filter<TFilter>()`를 추가해 일반 application 설정에서도
+  `.NET`처럼 top-level options에서 filter를 연결할 수 있게 했다.
+- `handler_registry_t`가 등록 순서대로 filter chain을 실행하고, 마지막 단계에서 기존 erased
+  handler invoker를 호출하도록 했다.
+- filter는 `next()`를 호출해 계속 진행하거나 reply message를 직접 반환해 short-circuit할 수
+  있다.
+- unit regression이 filter before/after 호출, descriptor context 전달, short-circuit 시 handler
+  미호출을 검증한다.
+- module/hosted regression이 `options.use_filter<TFilter>()`로 등록한 filter가 handler group
+  dispatch에 적용되는지 검증한다.
+- public contract test가 `use_filter<TFilter>()` fluent surface를 컴파일 계약으로 고정한다.
+
+### 수정 후 점검
+
+- handler filter chain은 registry 내부 상태에만 저장되고 public header에는 구현 자료구조를
+  노출하지 않는다.
+- 이번 보정 뒤 일반 channel handler filter parity의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 8 handler context parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` request/send/publish handler는 payload와 함께 typed context를 받을 수 있다.
+- C++ 일반 `handler_registry_t`는 payload-only method만 지원했고, route handler만 별도 context를
+  받았다.
+- 이 상태에서는 일반 channel handler가 channel 이름, packet 이름, topic 같은 호출 정보를 알기
+  위해 raw envelope나 외부 상태에 의존해야 한다. 이는 dispatch 세부가 사용자 handler로 새는
+  정보 은닉 위반이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| payload-only handler만 유지한다 | API가 작다 | `.NET` handler contract와 어긋나고 공통 정책 구현이 어렵다 |
+| 모든 handler에 raw envelope를 넘긴다 | 정보가 많다 | binding payload와 runtime frame 구조가 public handler 표면으로 샌다 |
+| request/send/publish별 typed context overload를 추가한다 | 필요한 정보만 공개하고 기존 handler shape를 유지한다 | overload 수가 늘어난다 |
+
+선택은 세 번째 방식이다. context는 handler registry가 descriptor에서 만들고, 사용자는
+`request_context_t`, `send_context_t`, `publish_context_t`만 본다. raw multipart, descriptor map,
+serializer 선택은 계속 registry 내부 구현으로 남긴다.
+
+### 적용한 리팩토링
+
+- `handler_context_t`, `request_context_t`, `send_context_t`, `publish_context_t`를 public
+  contract에 추가했다.
+- `on_request`, `on_send`, `on_event`가 payload-only method와 payload+context method를 모두
+  받을 수 있도록 overload를 추가했다.
+- context handler 공통 invoker helper를 두어 serializer, DI resolve, error mapping 로직이
+  request/send/event별로 흩어지지 않게 했다.
+- unit regression이 request/send/event context에 channel, packet, topic 값이 들어오는지 검증한다.
+- public contract test가 context overload method pointer shape를 컴파일 계약으로 고정한다.
+
+### 수정 후 점검
+
+- 일반 channel handler는 raw frame 없이 호출 정보를 읽을 수 있다.
+- 기존 payload-only handler surface는 그대로 유지된다.
+- 이번 보정 뒤 일반 channel handler context parity의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 14 actor metadata forwarding policy 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework는 `ConfigureMetadata(...Forward(...))`로 stream/session metadata 중
+  application handler에 넘길 key를 명시한다.
+- C++ framework는 `spot_actor_send_context_t`와 `spot_actor_request_context_t`에 metadata
+  필드는 있었지만, actor packet dispatch가 항상 빈 metadata context를 만들었다.
+- 이 상태에서는 trace id 같은 application metadata가 ActorGateway에서 actor handler로 이어지지
+  않고, 사용자가 stream header 전체를 직접 해석하려는 압력이 생긴다. 이는 framework 내부 frame
+  구조가 handler로 새는 정보 은닉 위반이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| stream header metadata 전체를 actor context에 넣는다 | 구현이 단순하다 | internal/control metadata까지 handler에 새고 policy가 없다 |
+| ActorGateway relay API가 metadata key를 직접 고른다 | relay 경로만 빨리 닫힌다 | metadata 정책이 relay 호출자마다 흩어진다 |
+| `message_metadata_policy_t`와 `options.metadata().forward(...)`를 두고 허용 key만 project한다 | `.NET` 사용 흐름과 맞고 policy 지식이 한곳에 모인다 | runtime bridge가 policy projection을 호출해야 한다 |
+
+선택은 세 번째 방식이다. C++에서는 reflection이나 ASP.NET Core middleware를 복제하지 않고,
+명시적인 fluent options builder와 value object로 같은 사용자 경험을 제공한다. actor handler는
+raw stream header가 아니라 `spot_actor_message_metadata_t`만 본다.
+
+### 적용한 리팩토링
+
+- `message_metadata_policy_t`를 추가하고 `forward(key)`, `can_forward(key)`,
+  `project(metadata)`를 제공했다.
+- `zlink_framework_options_t::metadata().forward(key)`가 metadata policy를 구성하고 DI에서
+  `message_metadata_policy_t` singleton으로 resolve될 수 있게 했다.
+- `spot_handler_registry_t::invoke_actor_packet(...)`에 metadata overload를 추가해 ActorGateway/
+  stream bridge가 policy projection 결과를 actor context로 전달할 수 있게 했다.
+- SPOT regression이 허용된 `trace-id`만 actor context에 들어오고 `tenant-id`는 제외되는지
+  검증한다.
+- module/hosted regression이 options metadata policy가 service provider를 통해 resolve되는지
+  검증한다.
+
+### 수정 후 점검
+
+- actor handler는 stream header 전체를 알 필요 없이 허용된 application metadata만 읽는다.
+- 기존 metadata 없는 actor packet dispatch는 빈 context를 유지한다.
+- 이번 보정 뒤 actor metadata forwarding policy의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 14 actor metadata 조회 표면 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework의 `ZLinkMessageMetadata`는 `Find(key)`로 값을 조회하게 해 handler가
+  dictionary 구현 세부에 직접 묶이지 않는다.
+- C++ `spot_actor_message_metadata_t`는 forwarding policy를 갖췄지만 handler 예제가
+  `values.find(...)`를 직접 호출했다.
+- 이 상태에서는 metadata value object가 얕아지고, 호출자가 `std::map` 선택을 public contract로
+  받아들이게 된다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `values` 직접 접근만 유지 | 변경이 없다 | metadata container 구현 지식이 handler로 샌다 |
+| `values`를 private으로 바꾸고 조회 API만 남긴다 | 정보 은닉이 가장 강하다 | 기존 테스트와 호출자 호환을 깨뜨린다 |
+| `values`는 유지하되 `find`, `contains`, `empty`를 추가한다 | 호환을 유지하면서 handler가 value object API를 사용할 수 있다 | map 자체는 아직 public에 남는다 |
+
+선택은 세 번째 방식이다. C++20 포팅 표면에서 `.NET`의 `Find` 사용성을 제공하면서도 기존
+호출자를 깨지 않는다. 이후 breaking 변경이 허용되는 시점에는 `values` private 전환을 별도로
+검토할 수 있다.
+
+### 적용한 리팩토링
+
+- `spot_actor_message_metadata_t::find`, `contains`, `empty`를 추가했다.
+- `message_metadata_policy_t::forward("")`가 직접 사용 경로에서도
+  `framework_exception_t(request_protocol_error)`로 실패하게 했다.
+- SPOT regression이 조회 API, 허용 key projection, 빈 key 거부를 확인하게 했다.
+- contract header regression이 새 조회 API shape을 compile-time으로 고정하게 했다.
+
+### 수정 후 점검
+
+- actor handler는 `std::map` 반복이 필요 없는 단일 key 조회를 value object에 맡긴다.
+- `options.metadata().forward(...)`와 직접 `message_metadata_policy_t::forward(...)`가 같은
+  validation 규칙을 쓴다.
+- 기존 `values` 반복 사용자는 그대로 컴파일된다.
+
+## 반복 POSD 재리뷰. Goal 21 sample e2e port isolation 보강
+
+### 발견한 위험 신호
+
+- C++ sample process e2e는 Bingo/TicTacToe 기본 포트 대역을 그대로 사용했다.
+- 같은 checkout에서 Node sample regression이 동시에 실행되면 동일한 sample port를 선점해
+  C++ sample e2e가 `Address already in use`로 실패할 수 있다.
+- 테스트가 외부 실행 순서에 의존하면 sample parity evidence가 불안정해지고, 검증자가 unrelated
+  프로세스 상태를 알아야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| Node sample이 끝날 때까지 기다린다 | 코드 변경이 없다 | 검증 안정성이 외부 프로세스에 계속 의존한다 |
+| 샘플 기본 포트를 완전히 바꾼다 | 즉시 충돌을 피할 수 있다 | 다른 언어 샘플과 문서의 기본 topology 비교가 어려워진다 |
+| process e2e runner가 port offset을 주입하고 sample topology가 opt-in으로 적용한다 | 기본 샘플 topology는 유지하면서 테스트 실행만 격리된다 | topology에 작은 env override hook이 생긴다 |
+
+선택은 세 번째 방식이다. 사용자 샘플 기본값은 유지하고, CTest process e2e만 고유 offset을
+주입하면 sample 구조 parity와 테스트 격리를 동시에 만족한다.
+
+### 적용한 리팩토링
+
+- Bingo/TicTacToe `sample_topology_t`가 `ZLINK_CPP_SAMPLE_PORT_OFFSET`이 있을 때 endpoint port에
+  offset을 적용하게 했다.
+- `run_sample_process_e2e.sh`가 lock key와 runner PID에서 offset 후보를 만들고, `ss`가 있는
+  Linux host에서는 Bingo/TicTacToe sample port listener가 없는 후보를 먼저 고른다.
+- server가 readiness를 알리기 전에 bind 충돌로 종료되면 다음 offset 후보로 재시도하고,
+  readiness 이후의 client/server 실패는 실제 e2e 실패로 유지한다.
+
+### 수정 후 점검
+
+- 기본 샘플 실행에는 기존 포트가 그대로 남는다.
+- process e2e는 같은 runner 안의 server와 client가 같은 offset topology를 사용한다.
+- 다른 언어 샘플이 기본 포트를 사용 중이거나 직전 실패 포트가 `TIME_WAIT` 상태여도 C++
+  process e2e가 다른 포트 대역으로 재시도한다.
+
+## 반복 POSD 재리뷰. Goal 19 HTTP app_host port isolation 보강
+
+### 발견한 위험 신호
+
+- `test_cpp_framework_app_host`는 PID 기반 offset으로 HTTP/HTTPS test endpoint를 만들었다.
+- 같은 테스트를 짧은 간격으로 반복하면 직전 실행의 `TIME_WAIT` 포트를 다시 선택해
+  `Address already in use`로 실패할 수 있었다.
+- 테스트 검증자가 OS socket 상태를 알아야 하면 HTTP hosting regression 증거가 불안정해진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 실패하면 수동 재실행한다 | 구현 변경이 없다 | 회귀 gate가 외부 상태에 계속 흔들린다 |
+| HTTP host가 port 0을 받고 실제 port를 노출하게 한다 | 가장 근본적이다 | public/runtime API 변경이 커지고 이번 테스트 보정 범위를 넘는다 |
+| 테스트 endpoint 생성 시 실제 bind 가능한 port를 probe한다 | public API 변경 없이 gate 안정성을 높인다 | probe와 실제 bind 사이의 짧은 race는 남는다 |
+
+선택은 세 번째 방식이다. HTTP hosting public 표면을 늘리지 않고, 테스트가 스스로 현재 host에서
+사용 가능한 port를 고르게 해서 반복 검증 안정성을 높인다.
+
+### 적용한 리팩토링
+
+- `process_unique_port(...)`가 Linux host에서 loopback TCP socket bind probe를 수행해 bind 가능한
+  port를 선택하게 했다.
+- 기존 PID 기반 salt는 첫 후보 계산에만 사용하고, 충돌하면 다음 후보로 이동한다.
+
+### 수정 후 점검
+
+- HTTP app_host 테스트의 client endpoint와 server listen endpoint는 같은 helper 결과를 사용한다.
+- public HTTP hosting API와 sample code는 변경하지 않았다.
+
+## 반복 POSD 재리뷰. Goal 16 registry query filter parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework의 registry query는 service summary와 topology 조회에 filter value object를
+  받는다.
+- C++ `registry_query_t`는 전체 snapshot만 반환해서, 특정 channel/service/state만 보려면
+  application code가 직접 반복문과 비교 규칙을 가져야 했다.
+- 이 상태에서는 registry query module이 얕아지고, channel 이름과 topology state 비교 지식이
+  호출자마다 반복된다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 전체 snapshot API만 유지한다 | 변경이 없다 | `.NET` query 사용성보다 얕고 호출자 필터 반복이 생긴다 |
+| SQL-like predicate callback을 받는다 | 유연하다 | public API가 runtime row 구조에 강하게 묶인다 |
+| C++ value filter struct와 overload를 추가한다 | `.NET` 사용 흐름과 맞고 비교 규칙을 query module에 모은다 | filter field가 늘면 struct도 확장해야 한다 |
+
+선택은 세 번째 방식이다. C++에서는 nullable record 대신 `std::optional` field를 가진 value
+struct가 가장 단순하다. query module이 filter 의미를 소유하므로 호출자는 필요한 조건만 채우면
+된다.
+
+### 적용한 리팩토링
+
+- `service_summary_filter_t`와 `topology_filter_t`를 public registry contract에 추가했다.
+- `registry_query_t::service_summary(filter)`와 `registry_query_t::topology(filter)` overload를
+  추가했다.
+- registry runtime query가 name, kind, role, source, state 조건을 한곳에서 적용하게 했다.
+- contract header regression이 filter overload shape를 고정하게 했다.
+- registry topology regression이 service summary filter, topology filter, 빈 결과를 검증하게 했다.
+
+### 수정 후 점검
+
+- 기존 무인자 `service_summary()`와 `topology()`는 전체 snapshot API로 유지된다.
+- filter는 runtime/backend row 타입을 노출하지 않고 public value object만 사용한다.
+
+## 반복 POSD 재리뷰. Goal 9 capability builder draft surface 보정
+
+### 발견한 위험 신호
+
+- `cpp-framework-interfaces.ko.md`는 `client_capability_builder_t`,
+  `publisher_capability_builder_t` 같은 별도 타입과 per-capability timeout/pending option을
+  public pseudo API로 적고 있었다.
+- 실제 C++ public header는 `.NET` channel capability builder와 같은 수준으로
+  `capability_builder_t::bind/connect/use_discovery`만 제공한다.
+- 문서가 구현되지 않은 세부 option을 정식 표면처럼 보여 주면 사용자가 얕은 wrapper와 중복
+  timeout 정책을 요구하게 된다. 이는 timeout/backpressure 지식이 call object, runtime queue,
+  capability builder로 흩어지는 change amplification이다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 문서에 적힌 per-capability timeout API를 구현한다 | 문서와 코드는 맞는다 | `.NET` builder에도 없는 표면을 추가하고 timeout 정책이 분산된다 |
+| pseudo API를 삭제한다 | 거짓 표면이 사라진다 | channel capability의 실제 public shape가 문서에서 약해진다 |
+| pseudo API를 실제 `capability_builder_t`와 call/runtime timeout 정책으로 보정한다 | 문서와 코드가 맞고 public 표면을 늘리지 않는다 | per-capability timeout이 없다는 설명을 유지해야 한다 |
+
+선택은 세 번째 방식이다. C++ channel capability builder는 endpoint/discovery만 소유하고,
+request timeout은 call object가, pending queue 한도는 runtime builder가 소유한다.
+
+### 적용한 리팩토링
+
+- `cpp-framework-interfaces.ko.md`의 channel capability pseudo API를 실제
+  `capability_builder_t` 표면으로 정리했다.
+- 문서에 per-capability timeout/pending option을 만들지 않는 이유와 실제 소유자를 명시했다.
+
+### 수정 후 점검
+
+- draft 문서는 존재하지 않는 `client_capability_builder_t::send_timeout(...)` 같은 public API를
+  더 이상 정식 표면처럼 보여 주지 않는다.
+- 이번 보정 뒤 channel capability builder 문서/구현 불일치의 즉시 수정 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Goal 16 remote registry query client parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework는 `IZLinkRegistryQueryClient`와
+  `IZLinkRegistryQueryClientOptions.Endpoint`로 remote registry topology snapshot을 조회한다.
+- C++ draft도 remote registry query client를 필수 표면으로 적고 있었지만, framework public
+  header에는 in-process `registry_query_t`만 있었다.
+- 사용자가 C++ binding의 `zlink::service::registry_query_client_t`, native context, native
+  topology filter/model을 직접 조합해야 하면 framework registry module이 얕아지고 backend
+  transport 지식이 application code로 새어 나온다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| binding query client를 그대로 문서에 안내한다 | 구현이 없다 | framework 사용자가 native context와 binding model을 알아야 한다 |
+| `registry_query_t`에 remote endpoint option을 섞는다 | 타입 수가 늘지 않는다 | in-process snapshot query와 remote transport lifecycle이 한 타입에 섞인다 |
+| 별도 `registry_query_client_t`와 options value를 둔다 | `.NET` query client 역할과 맞고 native transport를 숨긴다 | 작은 public 타입이 추가된다 |
+
+선택은 세 번째 방식이다. in-process query와 remote client는 lifecycle과 실패 방식이 다르므로
+분리한다. C++에서는 `registry_query_client_options_t`와 RAII client가 `.NET` options/service
+역할을 대신한다.
+
+### 적용한 리팩토링
+
+- `registry_query_client_options_t`와 `registry_query_client_t`를 public registry contract에
+  추가했다.
+- client 구현은 native context와 `zlink::service::registry_query_client_t`를 pimpl 내부에
+  숨긴다.
+- native topology entry/filter는 framework `topology_entry_t`, `topology_filter_t`로 변환한다.
+- 연결되지 않은 client는 `disconnected`, 빈 endpoint는 `request_protocol_error` result로
+  닫히게 했다.
+- contract header regression이 query client shape를 고정하고, registry topology regression이
+  실제 native registry/discovery/provider를 framework query client로 조회한다.
+- `cpp-registry.ko.md`에 remote query client 사용 흐름과 실패 의미를 추가했다.
+
+### 수정 후 점검
+
+- application code는 remote registry 조회를 위해 native context, native filter, binding
+  exception type을 알 필요가 없다.
+- in-process `registry_query_t`는 기존 snapshot API로 유지되고, remote transport lifecycle은
+  `registry_query_client_t`가 소유한다.
+
+## 반복 POSD 재리뷰. Framework dispatch options parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework의 top-level options는 `ConfigureDispatch(...)`로 Spot/STREAM dispatch mode,
+  unhandled request/send/publish 정책, message flow diagnostics 설정을 받는다.
+- C++ `zlink_framework_options_t`에는 handler coroutine worker 수는 있었지만, dispatch 정책을
+  사용자 관점에서 한 곳에 모아 두는 public value가 없었다.
+- 이 상태에서는 사용자가 unhandled dispatch 정책과 diagnostics sampling 의미를 handler, logging,
+  runtime 내부 동작에 흩어 이해해야 한다. 이는 호출자 부담 증가와 정보 누수다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 구현이 연결될 때까지 문서에서만 보류한다 | public API 증가가 없다 | `.NET` top-level configuration parity가 계속 비어 있다 |
+| `.NET`처럼 여러 interface 객체를 만든다 | 원본 구조와 이름이 가깝다 | C++에서 불필요한 얕은 wrapper와 lifetime 관리가 늘어난다 |
+| `dispatch_options_t` value를 `configure_dispatch(...)` 람다에 넘긴다 | C++20 idiom에 맞고 호출자 표면이 작다 | runtime 연결이 늘면 value field를 확장해야 한다 |
+
+선택은 세 번째 방식이다. dispatch 설정은 application configuration value이므로 C++에서는
+interface graph보다 value snapshot이 더 깊은 표면이다. native dispatch token, queue slot,
+handler lookup table은 계속 runtime owner 안에 숨긴다.
+
+### 적용한 리팩토링
+
+- `dispatch_mode_t`, `unhandled_dispatch_action_t`, `message_flow_log_mode_t`,
+  `unhandled_dispatch_options_t`, `dispatch_diagnostics_options_t`,
+  `dispatch_options_t`를 public dispatch contract에 추가했다.
+- `zlink_framework_options_t::configure_dispatch(...)`와 `dispatch_options()` snapshot getter를
+  추가했다.
+- diagnostics sample rate는 `0.0`에서 `1.0` 사이로 검증한다.
+- contract header regression이 `configure_dispatch(...)`와 snapshot 반환형을 고정한다.
+- module/options regression이 Spot/STREAM mode, unhandled policy, diagnostics options와 invalid
+  sample rate 실패를 검증한다.
+- `cpp-framework-interfaces.ko.md`의 high-level options 예제에 dispatch 설정을 추가했다.
+
+### 수정 후 점검
+
+- application code는 dispatch 옵션을 설정하기 위해 runtime dispatcher, native callback,
+  queue internals를 알 필요가 없다.
+- 현재 runtime 동작에 연결되지 않은 lower-level dispatch implementation detail은 public API로
+  노출하지 않았다.
+
+## 반복 POSD 재리뷰. High-level send/publish handler options parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` channel builders는 request handler뿐 아니라 send handler와 publish handler도 같은
+  application configuration 흐름에서 등록한다.
+- C++ high-level `options.handlers()`는 request/reply handler만 group에 설치했다. send/publish
+  handler는 낮은 수준 `handler_registry_t::on_send(...)`, `on_event(...)`를 직접 사용해야 했다.
+- 이 상태에서는 샘플과 사용자 설정이 handler kind별 등록 위치를 기억해야 하므로 configuration
+  표면이 얕아지고, serializer 자동 등록 규칙도 request handler에만 보이는 불일치가 생긴다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| channel builder에 `add_send_handler`/`add_publish_handler`를 직접 추가한다 | `.NET` 이름과 가장 가깝다 | C++의 group 기반 설치 규칙과 handler registry 설치 로직이 channel builder로 퍼진다 |
+| 사용자가 낮은 수준 `handler_registry_t`를 직접 쓰게 둔다 | 변경이 없다 | high-level options가 request-only가 되어 `.NET` 사용 흐름과 어긋난다 |
+| `handler_options_builder_t`에 `add_send`/`add_publish`를 추가한다 | group 기반 깊은 모듈을 유지하고 serializer 자동 등록을 공유한다 | method 이름이 `.NET`과 1:1은 아니다 |
+
+선택은 세 번째 방식이다. C++ high-level configuration은 handler group을 기준으로 channel에
+연결하므로, handler kind별 설치도 같은 builder 안에 모으는 편이 정보 은닉에 맞다.
+
+### 적용한 리팩토링
+
+- `handler_options_builder_t::add_send<THandler>(group_name)`을 추가했다.
+- `handler_options_builder_t::add_publish<THandler>(group_name)`을 추가했다.
+- send handler는 `message_type`, publish handler는 `event_type`을 읽어 JSON serializer 자동
+  등록과 handler registry 설치를 수행한다.
+- topic 이름은 handler의 `topic_name`이 있으면 사용하고, 없으면 payload type의 message name을
+  사용하도록 helper를 일반화했다.
+- contract header regression이 새 high-level handler options 표면을 고정한다.
+- module/options regression이 request/send/publish handler가 같은 group/channel/filter 경로로
+  호출되는지 확인한다.
+- `cpp-framework-interfaces.ko.md`의 high-level options 설명과 예제를 request/send/publish
+  등록 흐름으로 갱신했다.
+
+### 수정 후 점검
+
+- application code는 send/publish handler를 등록하기 위해 낮은 수준 handler registry 설치 순서나
+  serializer 등록 순서를 알 필요가 없다.
+- handler registry 자체의 request/send/event public contract는 그대로 재사용하고, 중복 dispatcher
+  abstraction은 추가하지 않았다.
+
+## 반복 POSD 재리뷰. High-level fanout channel options parity 보강
+
+### 발견한 위험 신호
+
+- `.NET`의 `AddFanoutChannel(...)`은 publisher, subscriber, publish handler group을 같은 사용자
+  설정 흐름에서 표현한다.
+- C++ high-level options에는 `publisher_channel(...).bind(...)`만 있어 publisher-only 채널은
+  쉽게 만들 수 있었지만, subscriber role과 publish handler group 연결은 낮은 수준
+  `channel_builder_t`와 handler group 규칙을 함께 알아야 했다.
+- 이 상태는 fanout channel이라는 개념을 사용자에게 충분히 숨기지 못하고, publish handler는
+  `client_server_channel`에 억지로 붙여도 테스트가 통과하는 얕은 표면을 만든다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 `publisher_channel_builder_t`에 subscriber와 handler group을 추가한다 | API 변경이 작다 | 이름이 publisher-only라 fanout 의도가 흐려진다 |
+| `.NET`처럼 `EnablePublisher`, `EnableSubscriber` 람다 builder를 그대로 옮긴다 | 원본과 이름이 가깝다 | C++ options layer에 capability pass-through 메서드가 늘어난다 |
+| `fanout_channel_builder_t`를 추가하고 `publisher_channel()`은 별칭으로 유지한다 | fanout 의도가 드러나고 기존 publisher-only 호출도 깨지지 않는다 | public 타입이 하나 늘어난다 |
+
+선택은 세 번째 방식이다. C++ options layer는 낮은 수준 capability builder를 그대로 노출하지 않고,
+fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 builder에 모은다.
+
+### 적용한 리팩토링
+
+- `fanout_channel_builder_t`를 추가했다.
+- `fanout_channel(...).bind(...)`, `.subscriber()`, `.subscriber(endpoint)`,
+  `.handler_group(...)`을 제공한다.
+- 기존 `publisher_channel(...)`은 `fanout_channel(...)`을 반환하는 호환 별칭으로 유지했다.
+- contract header regression이 fanout builder 반환형과 fluent 메서드를 고정한다.
+- module/options regression이 event channel의 publisher bind endpoint, subscriber connect endpoint,
+  publish handler group 호출을 함께 검증한다.
+- `cpp-framework-interfaces.ko.md`의 high-level options 예제를 fanout channel과 events handler
+  group 기준으로 갱신했다.
+
+### 수정 후 점검
+
+- application code는 publish handler를 fanout 채널에 연결하기 위해 낮은 수준
+  `channel_builder_t::enable_subscriber(...)` 호출 순서를 알 필요가 없다.
+- publisher-only 샘플은 기존 `publisher_channel(...).bind(...)`를 계속 사용할 수 있지만, 문서의
+  일반 fanout 예시는 `fanout_channel(...)`을 사용한다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. High-level dealer mesh channel options parity 보강
+
+### 발견한 위험 신호
+
+- `.NET`의 `AddDealerMeshChannel(...)`은 client bind, manual connection, handler group을
+  dealer mesh channel이라는 사용자 개념 안에서 표현한다.
+- C++ runtime은 client capability의 bind/connect endpoint와 dealer mesh pending owner를 이미
+  가지고 있었지만, high-level `zlink_framework_options_t`에는 이 의도를 드러내는
+  `dealer_mesh_channel(...)` 표면이 없었다.
+- 사용자가 낮은 수준 `channel_builder_t::enable_client(...)`를 직접 조합해야 하면 dealer mesh와
+  일반 client/server channel의 차이가 options layer 밖으로 새어 나간다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `client_server_channel(...).client(endpoint)`를 dealer mesh 용도로 재사용한다 | public 타입이 늘지 않는다 | 이름과 의미가 맞지 않아 client/server와 dealer mesh 의도가 섞인다 |
+| 낮은 수준 `zlink_builder_t::channel(...)` 사용을 문서화한다 | 구현 변경이 없다 | high-level options가 `.NET` configuration parity를 제공하지 못한다 |
+| `dealer_mesh_channel_builder_t`를 추가한다 | dealer mesh 의도가 드러나고 bind/connect/handler group을 한 곳에 모은다 | public builder 타입이 하나 늘어난다 |
+
+선택은 세 번째 방식이다. dealer mesh는 `.NET`에서도 별도 channel kind이므로 C++ options layer도
+같은 사용자 개념을 제공하되, socket/pending request 구현은 runtime 내부에 숨긴다.
+
+### 적용한 리팩토링
+
+- `dealer_mesh_channel_builder_t`를 추가했다.
+- `dealer_mesh_channel(...).bind(...)`, `.connect(...)`, `.handler_group(...)`을 제공한다.
+- builder는 낮은 수준 `channel.enable_client(...)`에 client bind/connect endpoint를 사상한다.
+- contract header regression이 dealer mesh builder 반환형과 fluent 메서드를 고정한다.
+- module/options regression이 dealer mesh client bind/connect snapshot과 handler group 연결 호출을
+  검증한다.
+- `cpp-framework-interfaces.ko.md`의 high-level options 예제에 dealer mesh channel을 추가했다.
+
+### 수정 후 점검
+
+- application code는 dealer mesh channel을 만들기 위해 client capability의 bind/connect 조합이나
+  pending request owner를 알 필요가 없다.
+- client/server, fanout, dealer mesh, route mesh channel 의도가 options layer에서 서로 분리된다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Discovery-backed client validation parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` registration validation은 channel client role이 discovery 또는 manual connection 같은
+  peer 획득 경로 없이 등록되면 startup 단계에서 실패시킨다.
+- C++ high-level `client_server_channel(...).client()`는 client capability만 enabled로 만들고
+  discovery/manual endpoint를 명시하지 않았다. 이 경우 오류가 설정 시점이 아니라 실제 send/request
+  호출 시점의 disconnected 결과로 밀린다.
+- fanout `subscriber()`도 endpoint 없이 role만 enabled로 만들 수 있었다. 이는 호출자가 설정 오류와
+  런타임 연결 오류를 구분해야 하는 부담을 만든다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재처럼 호출 시 disconnected를 반환한다 | 구현 변경이 작다 | 설정 오류를 늦게 발견하고 `.NET` startup validation 기대와 다르다 |
+| `client()`/`subscriber()`를 금지하고 endpoint 인자만 허용한다 | 모호함이 없다 | registry discovery 기반 샘플 설정이 장황해지고 `.NET EnableClient()` 경험과 멀어진다 |
+| 인자 없는 `client()`/`subscriber()`를 discovery-backed로 정의하고 discovery가 없으면 `apply()`에서 실패시킨다 | 사용자 의도가 분명하고 설정 오류를 startup에서 잡는다 | options state가 discovery-backed capability를 추적해야 한다 |
+
+선택은 세 번째 방식이다. 인자 없는 role 활성화는 registry discovery 기반 연결이라는 의미로 닫고,
+manual 연결은 endpoint 인자를 받는 overload로 분리한다.
+
+### 적용한 리팩토링
+
+- `discovery_options_builder_t::add(...)`가 registry discovery endpoint를 options state에도 기록한다.
+- `client_server_channel(...).client()`는 client capability에 `use_discovery()`를 적용한다.
+- `fanout_channel(...).subscriber()`는 subscriber capability에 `use_discovery()`를 적용한다.
+- discovery-backed capability가 있는데 registry discovery endpoint가 없으면 `zlink_framework_options_t::apply()`가
+  `request_protocol_error`로 실패한다.
+- module/options regression이 정상 `.client()` snapshot의 discovery flag와 discovery 없는 `.client()` 실패를
+  검증한다.
+- `cpp-framework-interfaces.ko.md`와 `cpp-channel-messaging.ko.md`에 discovery-backed role 규칙을 적었다.
+
+### 수정 후 점검
+
+- application code는 endpoint 없는 client/subscriber가 어떤 연결 방식을 의미하는지 따로 추론하지 않아도 된다.
+- 설정 오류는 send/request 호출 시점이 아니라 framework options apply 단계에서 드러난다.
+- manual endpoint와 discovery-backed role은 public API에서 분리된다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Stream packet session 중복 등록 검증 보강
+
+### 발견한 위험 신호
+
+- `.NET` registration validation은 하나의 stream node가 session을 두 번 등록하면 startup 전에
+  설정 오류로 실패시킨다.
+- C++ high-level `stream_node(...).packet_session(...)`은 여러 번 호출하면 마지막 값으로 덮어쓸 수
+  있었다. 이 동작은 사용자가 실수로 중복 등록한 경우를 조용히 숨긴다.
+- 설정 실수를 덮어쓰는 방식은 오류를 늦게 발견하게 하고, stream node의 public 의미를 얕게 만든다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 마지막 `packet_session(...)` 호출이 이기게 둔다 | 기존 동작을 유지한다 | 중복 session 등록 실수를 숨기고 `.NET` validation parity와 다르다 |
+| `apply()`에서 stream snapshot을 검사한다 | 모든 stream 설정을 한 번에 검증할 수 있다 | 중복 호출 위치와 원인을 늦게 알려준다 |
+| 두 번째 `packet_session(...)` 호출에서 바로 실패시킨다 | 오류 위치가 명확하고 stream node의 단일 session 규칙을 표면에서 닫는다 | builder가 session 설정 여부를 추적해야 한다 |
+
+선택은 세 번째 방식이다. stream node는 packet session을 하나만 가진다는 의미를 builder가 직접
+지키는 편이 호출자에게 가장 분명하다.
+
+### 적용한 리팩토링
+
+- `stream_node_options_builder_t`가 packet session 설정 여부를 추적한다.
+- 같은 builder에서 `packet_session(...)`을 두 번 호출하면 `request_protocol_error`로 실패한다.
+- module/options regression이 중복 packet session 등록 실패를 검증한다.
+- `cpp-stream.ko.md`와 `cpp-framework-interfaces.ko.md`에 단일 packet session 규칙을 적었다.
+
+### 수정 후 점검
+
+- application code는 중복 session 등록이 마지막 값으로 조용히 덮이는지 걱정하지 않아도 된다.
+- 오류는 stream runtime 시작 뒤가 아니라 options 작성 단계에서 드러난다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Dealer mesh peer path validation 보강
+
+### 발견한 위험 신호
+
+- `.NET` registration validation은 client role이 실제 peer 획득 경로 없이 등록되면 startup 단계에서
+  설정 오류로 실패시킨다.
+- C++ high-level `dealer_mesh_channel(...)`은 생성자에서 channel client role을 등록하지만,
+  `bind(...)`나 `connect(...)` 없이도 options 적용이 가능했다.
+- 이 상태는 사용자가 설정 실수와 실제 연결 실패를 send/request 시점까지 구분해야 하게 만든다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재처럼 runtime 호출 시점의 disconnected 결과에 맡긴다 | 구현 변경이 작다 | 설정 오류가 늦게 드러나고 `.NET` startup validation 기대와 다르다 |
+| 생성자에서 channel 등록을 하지 않고 `bind(...)`/`connect(...)`가 있을 때만 등록한다 | peer path 없는 channel이 만들어지지 않는다 | `dealer_mesh_channel(...)` 호출 자체가 조용히 무시될 수 있다 |
+| 선언된 dealer mesh channel과 peer path 보유 channel을 options state에서 추적하고 `apply()`에서 검증한다 | 사용자 의도를 보존하면서 설정 오류를 startup에서 잡는다 | options state가 validation bookkeeping을 조금 더 가진다 |
+
+선택은 세 번째 방식이다. channel 선언 의도는 유지하고, `bind(...)` 또는 `connect(...)`가 없는
+선언은 framework options 적용 시점에 명확히 실패시킨다.
+
+### 적용한 리팩토링
+
+- `dealer_mesh_channel(...)` 호출은 dealer mesh 선언을 options state에 기록한다.
+- `bind(...)`와 `connect(...)`는 해당 channel이 peer path를 가진 것으로 기록한다.
+- peer path 없는 dealer mesh channel이 있으면 `zlink_framework_options_t::apply()`가
+  `request_protocol_error`로 실패한다.
+- module/options regression이 `dealer_mesh_channel(...)`만 선언한 뒤 `apply()`하는 경우의 실패를
+  검증한다.
+- `cpp-framework-interfaces.ko.md`와 `cpp-channel-messaging.ko.md`에 dealer mesh peer path 규칙을
+  적었다.
+
+### 수정 후 점검
+
+- application code는 dealer mesh channel 선언이 실제 연결 경로를 갖는지 별도로 추적하지 않아도 된다.
+- 설정 오류는 send/request 호출 시점이 아니라 framework options apply 단계에서 드러난다.
+- channel 선언과 peer path 검증 책임이 options layer에 모여 public API가 얕아지지 않는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Dispatch option validation parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` registration validation은 send와 publish의 unhandled 정책에 `ReplyError`를 금지한다.
+  두 메시지 종류에는 reply path가 없기 때문이다.
+- C++ `configure_dispatch(...)`는 diagnostics sample rate 범위만 확인했고, send/publish에
+  `reply_error`를 설정해도 통과했다.
+- C++ sample rate 검증은 NaN을 별도로 막지 않아 `NaN < 0.0`과 `NaN > 1.0`이 모두 false인
+  상태를 허용할 수 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| runtime dispatch에서 의미 없는 `reply_error`를 drop으로 해석한다 | 실행은 계속된다 | 설정 오류를 숨기고 사용자가 정책 의미를 잘못 이해할 수 있다 |
+| enum에서 `reply_error`를 request 전용 타입으로 분리한다 | 타입으로 오류를 막을 수 있다 | public API 변경 폭이 크고 기존 options 구조와 맞지 않는다 |
+| `configure_dispatch(...)` validation에서 send/publish `reply_error`와 NaN sample rate를 거부한다 | `.NET` startup validation과 맞고 변경 범위가 작다 | enum 자체는 여전히 공통 타입이다 |
+
+선택은 세 번째 방식이다. C++ public enum 구조를 유지하면서 의미 없는 조합은 설정 단계에서
+명확히 실패시킨다.
+
+### 적용한 리팩토링
+
+- `validate_dispatch_options(...)`가 send/publish `reply_error`를 `request_protocol_error`로
+  거부한다.
+- diagnostics sample rate가 NaN이면 `request_protocol_error`로 실패한다.
+- module/options regression이 send `reply_error`, publish `reply_error`, NaN sample rate 실패를
+  검증한다.
+- `cpp-framework-interfaces.ko.md`에 reply path가 없는 메시지 종류의 정책 제한을 적었다.
+
+### 수정 후 점검
+
+- application code는 send/publish에서 응답을 보낼 수 없는 정책 조합을 runtime까지 가져가지 않는다.
+- validation 책임은 dispatch options layer에 모여 handler/runtime 호출자가 방어 코드를 알 필요가 없다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Handler group kind validation 보강
+
+### 발견한 위험 신호
+
+- `.NET` registration validation은 client/server channel에 publish handler group을 매핑하거나
+  fanout channel에 send/request handler group을 매핑하는 설정을 startup 단계에서 실패시킨다.
+- C++ high-level options는 handler group 이름만 추적했고, group 안의 handler kind와 channel kind의
+  호환성을 검증하지 않았다.
+- 이 구조는 fanout, client/server, dealer mesh의 의미 차이를 handler registry/runtime 쪽으로
+  밀어 사용자가 잘못된 group 매핑을 늦게 발견하게 만든다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| runtime dispatch에서 맞지 않는 handler는 호출되지 않게 둔다 | 변경이 작다 | 설정 실수를 숨기고 `.NET` startup validation 기대와 다르다 |
+| 각 channel builder가 group 이름 규칙을 강제한다 | 구현이 단순하다 | group 이름에 의미가 새고 사용자 naming에 불필요한 제약을 만든다 |
+| handler group state가 group의 handler kind와 channel의 허용 kind를 함께 검증한다 | 이름 규칙 없이 의미를 검증하고 지연 설치 순서를 유지한다 | handler group state가 작은 compatibility metadata를 가진다 |
+
+선택은 세 번째 방식이다. group 이름은 사용자 의도 표현으로 남기고, 실제 호환성은 options layer가
+handler kind 정보로 판단한다.
+
+### 적용한 리팩토링
+
+- handler group installer에 request/send/publish kind를 기록한다.
+- channel builder의 `handler_group(...)`은 해당 channel이 허용하는 handler kind를 함께 등록한다.
+- group을 먼저 등록한 뒤 channel에 매핑하는 경우와 channel에 먼저 매핑한 뒤 group을 등록하는 경우를
+  모두 같은 compatibility check로 막는다.
+- module/options regression이 fanout-send group, client/server-publish group 오매핑 실패를 검증한다.
+- `cpp-framework-interfaces.ko.md`에 channel 종류별 handler group 규칙을 적었다.
+
+### 수정 후 점검
+
+- application code는 group 이름에 숨은 규칙을 맞추지 않아도 되고, 잘못된 handler kind 조합은
+  options 작성 시점에 드러난다.
+- 지연 설치 구조는 유지하되 validation 지식이 handler group state에 모여 있다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Inbound channel handler exposure validation 보강
+
+### 발견한 위험 신호
+
+- `.NET` registration validation은 client/server server가 handler group이나 typed handler 없이
+  등록되면 startup 단계에서 실패시킨다. 단, SPOT route channel로 accept된 channel은 route ingress로
+  쓰일 수 있어 예외다.
+- `.NET` fanout subscriber도 publish handler group이나 typed publish handler 없이 등록되면
+  startup 단계에서 실패한다.
+- C++ high-level options는 server/subscriber role만 켜고 handler group 없이 `apply()`할 수 있었다.
+  이 경우 설정 오류가 실제 메시지 dispatch 시점까지 밀린다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| runtime dispatch에서 handler not found로 처리한다 | 구현 변경이 작다 | inbound role 설정 오류가 늦게 드러나고 `.NET` startup validation과 다르다 |
+| channel builder가 `server(endpoint, group)`처럼 group을 필수 인자로 받게 한다 | type surface에서 누락을 줄인다 | fluent builder가 장황해지고 SPOT route 예외를 표현하기 어렵다 |
+| options state가 inbound role과 accepted SPOT route channel을 추적하고 `apply()`에서 handler exposure를 검증한다 | 기존 fluent 표면을 유지하고 예외 규칙을 한 곳에 모은다 | options state와 handler group state 사이의 검증 연결이 필요하다 |
+
+선택은 세 번째 방식이다. role 선언과 handler exposure는 options layer의 같은 startup validation으로
+닫고, public API에는 추가 인자 부담을 만들지 않는다.
+
+### 적용한 리팩토링
+
+- client/server `server(...)` 선언을 options state에 기록한다.
+- fanout `subscriber(...)` 선언을 options state에 기록한다.
+- SPOT `accept_routes_from_channel(...)` 선언을 accepted route channel로 기록한다.
+- `zlink_framework_options_t::apply()`가 client/server server의 request/send exposure와 fanout
+  subscriber의 publish exposure를 검증한다.
+- module/options regression이 handler group 없는 server 실패, SPOT route accept 예외, handler group 없는
+  subscriber 실패를 검증한다.
+- `cpp-framework-interfaces.ko.md`에 inbound role handler exposure 규칙을 적었다.
+
+### 수정 후 점검
+
+- application code는 inbound role만 켜고 handler를 빼먹은 상태를 runtime까지 가져가지 않는다.
+- SPOT route ingress 예외는 options state에서 명시적으로 표현되어 호출자가 내부 route dispatch를 알 필요가 없다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Route mesh bind validation 보강
+
+### 발견한 위험 신호
+
+- `.NET` registration validation은 route mesh channel이 bind endpoint 없이 등록되면 startup 단계에서
+  실패시킨다.
+- C++ high-level `route_mesh_channel(...)`은 생성자에서 low-level route channel action을 등록하지만,
+  `bind(...)` 없이 routing id나 manual connection만 설정해도 options 적용이 가능했다.
+- route mesh channel은 local route endpoint를 열어야 하는 surface인데, bind 누락을 runtime 초기화나
+  send/request 시점으로 미루면 사용자가 설정 오류와 연결 오류를 구분해야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| runtime route channel 초기화에서 bind 누락을 실패시킨다 | low-level validation만 추가하면 된다 | high-level options 오류가 늦게 드러나고 `.NET` startup validation과 다르다 |
+| `route_mesh_channel(...)` 생성자에서 action을 등록하지 않고 `bind(...)`가 있을 때만 등록한다 | bind 없는 route channel은 만들어지지 않는다 | 사용자 선언이 조용히 무시될 수 있어 설정 실수를 숨긴다 |
+| 선언된 route mesh channel과 bind 보유 channel을 options state에서 추적하고 `apply()`에서 검증한다 | 사용자 의도를 보존하면서 startup validation으로 닫는다 | options state가 route mesh validation metadata를 가진다 |
+
+선택은 세 번째 방식이다. route mesh 선언은 그대로 유지하고, bind endpoint가 없는 선언은 framework
+options 적용 시점에 명확히 실패시킨다.
+
+### 적용한 리팩토링
+
+- `route_mesh_channel(...)` 호출은 route mesh 선언을 options state에 기록한다.
+- `bind(...)` 호출은 해당 route mesh channel이 bind endpoint를 가진 것으로 기록한다.
+- bind 없는 route mesh channel이 있으면 `zlink_framework_options_t::apply()`가
+  `request_protocol_error`로 실패한다.
+- module/options regression이 routing id만 설정한 route mesh channel의 apply 실패를 검증한다.
+- `cpp-framework-interfaces.ko.md`와 `cpp-channel-messaging.ko.md`에 route mesh bind 필수 규칙을 적었다.
+
+### 수정 후 점검
+
+- application code는 route mesh channel이 local route endpoint를 여는지 별도로 추적하지 않아도 된다.
+- 설정 오류는 route runtime 초기화 뒤가 아니라 framework options apply 단계에서 드러난다.
+- route mesh 선언과 validation 책임이 options layer에 모여 public API가 얕아지지 않는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. SPOT node capability validation 보강
+
+### 발견한 위험 신호
+
+- `.NET` registration validation은 SPOT node가 router 또는 pub/sub capability 없이 등록되면 startup
+  단계에서 실패시킨다.
+- C++ high-level `spot_mesh(...).node(...)`는 discovery view를 자동으로 붙이지만, discovery는 실행
+  capability가 아니다. `enable_router(...)`와 `enable_pub_sub(...)`가 모두 빠져도 options 적용이
+  가능했다.
+- capability 없는 SPOT node는 실제 메시지 ingress/egress 역할이 불분명해지고, 사용자가 discovery
+  설정과 runtime capability를 혼동하게 만든다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| runtime spot initializer에서 capability 없는 node를 실패시킨다 | runtime snapshot 기준으로 판단할 수 있다 | high-level 설정 오류가 늦게 드러난다 |
+| `spot_mesh(...).node(...)`가 기본 router capability를 자동으로 켠다 | 사용자 코드가 짧다 | endpoint를 추측할 수 없어 호출자에게 숨은 default를 만든다 |
+| options state가 SPOT node 선언과 router/pub-sub capability 보유 여부를 추적하고 `apply()`에서 검증한다 | `.NET` startup validation과 맞고 discovery와 capability 의미를 분리한다 | options state가 작은 validation metadata를 가진다 |
+
+선택은 세 번째 방식이다. discovery는 peer discovery 의미로 유지하고, runtime capability는
+`enable_router(...)` 또는 `enable_pub_sub(...)`로 명시하게 한다.
+
+### 적용한 리팩토링
+
+- SPOT node 선언을 options state에 기록한다.
+- `enable_router(...)`와 `enable_pub_sub(...)` 호출은 해당 node가 runtime capability를 가진 것으로
+  기록한다.
+- runtime capability 없는 SPOT node가 있으면 `zlink_framework_options_t::apply()`가
+  `request_protocol_error`로 실패한다.
+- module/options regression이 capability 없이 spot만 등록한 node의 apply 실패를 검증한다.
+- `cpp-framework-interfaces.ko.md`에 SPOT node capability 필수 규칙을 적었다.
+
+### 수정 후 점검
+
+- application code는 discovery view와 SPOT runtime capability를 혼동하지 않아도 된다.
+- 설정 오류는 SPOT runtime 시작 뒤가 아니라 framework options apply 단계에서 드러난다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Accepted SPOT route channel validation 보강
+
+### 발견한 위험 신호
+
+- `.NET` registration validation은 `AcceptSpotRoutesFromChannel(...)` 대상 channel이
+  router-capable ingress인지 startup 단계에서 검증한다.
+- C++ high-level `accept_routes_from_channel(...)`은 channel 이름을 handler exposure 예외로만
+  기록했다. 그래서 router capability 누락, fanout/dealer mesh 오용, 미등록 channel, 모호한
+  channel 이름, registry discovery 누락이 더 늦은 단계로 흘러갈 수 있었다.
+- route relay는 registry snapshot과 route channel 의미에 의존한다. 이 지식을 호출자나 runtime
+  실패 메시지에 흩어 두면 정보 은닉이 깨진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| low-level `spot_node_builder_t`에서만 실패시킨다 | runtime snapshot과 가깝다 | high-level fluent options에서 생긴 오류를 늦게 보고한다 |
+| `accept_routes_from_channel(...)`이 channel 종류를 직접 조회하지 않고 모든 channel을 허용한다 | public API가 느슨하다 | fanout/dealer mesh를 route ingress로 쓰는 오구성을 숨긴다 |
+| options state가 channel 종류와 node별 accepted route channel을 추적하고 `apply()`에서 검증한다 | `.NET` startup validation과 맞고 오류 정의가 한 곳에 모인다 | options state가 validation metadata를 더 가진다 |
+
+선택은 세 번째 방식이다. route ingress 정책은 framework options layer의 설정 의미이므로,
+runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호출자 부담을 줄인다.
+
+### 적용한 리팩토링
+
+- client/server channel, fanout channel, route mesh channel, dealer mesh channel 선언을
+  options state에서 구분해 추적한다.
+- `accept_routes_from_channel(...)`은 node별 accepted route channel로 기록한다.
+- accepted route channel을 가진 node가 router capability를 켜지 않았거나, 대상 channel이
+  client/server 또는 route mesh가 아니거나, registry discovery가 없으면 `apply()`가
+  `request_protocol_error`로 실패한다.
+- module/options regression이 router capability 누락, unknown channel, fanout channel 오용,
+  ambiguous channel 이름, registry discovery 누락을 검증한다.
+- `cpp-framework-interfaces.ko.md`와 `cpp-channel-messaging.ko.md`에 accepted route channel
+  validation 규칙을 적었다.
+
+### 수정 후 점검
+
+- SPOT route ingress 정책이 fluent options validation에 모여 호출자가 내부 relay 실패를 해석하지
+  않아도 된다.
+- fanout/dealer mesh를 route ingress로 재사용하는 얕은 표면을 막았다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Fluent options 입력 guard 보강
+
+### 발견한 위험 신호
+
+- `.NET` builder는 channel 이름, handler group 이름, endpoint, SPOT/STREAM node 이름 같은
+  public 설정 입력이 비어 있으면 즉시 configuration error로 실패한다.
+- C++ high-level fluent options 일부는 빈 문자열이나 공백 문자열을 low-level builder까지 넘길 수
+  있었다. low-level에서 일부를 다시 막더라도, 오류 위치가 API 표면마다 달라져 호출자가 원인을
+  추적해야 한다.
+- public 설정 값 검증이 흩어지면 정보 은닉이 약해지고, endpoint가 비어 있는 상태 같은 오류가
+  socket/runtime 실패처럼 보일 수 있다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| low-level builder 검증에만 의존한다 | 중복 검증이 적다 | high-level fluent API 사용자는 오류를 늦게 보거나 표면별로 다른 메시지를 본다 |
+| 각 method에 직접 `empty()` 검사를 반복한다 | 구현이 단순하다 | 검증 기준이 반복되어 whitespace 처리 같은 정책이 새기 쉽다 |
+| high-level options 내부 helper로 blank 검증을 모으고 각 fluent method가 호출한다 | 검증 정책이 한 곳에 모이고 caller 오류를 이른 시점에 닫는다 | method별 호출 지점이 늘어난다 |
+
+선택은 세 번째 방식이다. 입력 정책은 public fluent layer의 계약이므로, 작은 helper로 기준을 모으고
+각 method는 자신의 의미에 맞는 오류 메시지만 제공한다.
+
+### 적용한 리팩토링
+
+- `framework_options.hpp` 내부에 blank 문자열 검증 helper를 추가했다.
+- client/server, fanout, dealer mesh, route mesh, SPOT, STREAM, registry spot remote address
+  fluent options에서 빈 이름과 빈 endpoint를 거부한다.
+- handler group 이름도 handler group options state에서 공통으로 검증한다.
+- module/options regression이 빈 channel 이름, server endpoint, handler group, SPOT mesh 이름,
+  STREAM node 이름, registry route channel 이름을 검증한다.
+- `cpp-framework-interfaces.ko.md`에 high-level fluent options 입력 guard 규칙을 적었다.
+
+### 수정 후 점검
+
+- 호출자는 빈 endpoint나 이름 때문에 low-level runtime 오류를 해석하지 않아도 된다.
+- 검증 기준은 helper 한 곳에 모이고, public method는 domain-specific 메시지만 가진다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Attached SPOT client validation 보강
+
+### 발견한 위험 신호
+
+- `.NET` registration validation은 SPOT node가 attach한 channel client와 publisher client가
+  실제 등록된 capability인지 startup 단계에서 검증한다.
+- C++ high-level `attach_channel_client(...)`는 이름만 low-level snapshot으로 넘겼고,
+  `attach_publisher(...)`는 low-level builder에는 있지만 high-level fluent options 표면에는 없었다.
+- attach 대상 channel이 없거나 capability가 맞지 않는 오류가 runtime 내부까지 흘러가면,
+  호출자는 SPOT node 설정 오류와 channel 연결 오류를 구분해야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| low-level `spot_node_builder_t` snapshot만 유지한다 | public options state가 작다 | high-level sample과 `.NET` startup validation의 오류 위치가 어긋난다 |
+| attached client를 일반 `channel_client_t` 주입으로만 대체한다 | surface가 줄어든다 | SPOT node별 attach 의도를 표현하지 못하고 `.NET` sample 구조와 달라진다 |
+| high-level options가 node별 attach 의도와 channel capability를 추적하고 `apply()`에서 검증한다 | attach 정책이 설정 layer에 모이고 오류가 이른 시점에 드러난다 | options state가 validation metadata를 더 가진다 |
+
+선택은 세 번째 방식이다. attached client는 SPOT node configuration의 의미이므로, runtime bundle
+생성 실패가 아니라 framework options validation으로 닫는 편이 호출자 부담을 줄인다.
+
+### 적용한 리팩토링
+
+- `spot_node_options_builder_t::attach_publisher(...)`를 high-level fluent options에 추가했다.
+- client/server channel 등록 여부와 fanout channel의 publisher capability를 options state에서
+  추적한다.
+- node별 attached channel client와 attached publisher를 options state에 기록한다.
+- attached channel client는 등록된 client/server channel과 registry discovery를 요구한다.
+- attached publisher는 등록된 fanout publisher capability와 SPOT node pub/sub capability를
+  요구하고, publisher channel 중복 attach를 거부한다.
+- module/options regression이 정상 publisher attach와 missing channel, missing capability,
+  missing discovery, duplicate publisher attach를 검증한다.
+- `cpp-framework-interfaces.ko.md`에 attached client/publisher validation 규칙을 적었다.
+
+### 수정 후 점검
+
+- SPOT node attach 오류는 runtime 내부 bundle 생성 뒤가 아니라 options 적용 시점에 드러난다.
+- low-level builder 표면과 high-level fluent options 표면의 역할 차이가 줄었다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Channel capability shape validation 보강
+
+### 발견한 위험 신호
+
+- `.NET` `ValidateChannelShape`는 client/server channel이 server 또는 client capability를 하나도
+  켜지 않았거나, fanout channel이 publisher 또는 subscriber capability를 하나도 켜지 않으면
+  startup 단계에서 실패시킨다.
+- C++ high-level `client_server_channel(name)`과 `fanout_channel(name)`은 선언만 해도 action을
+  등록할 수 있었다. 아무 역할도 없는 channel은 public API에서 의미가 없고, 이후 runtime snapshot
+  해석으로 오류가 미뤄질 수 있다.
+- 역할 없는 channel 선언을 허용하면 사용자가 channel kind와 capability를 별도로 추적해야 하므로
+  호출자 부담이 늘어난다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| low-level `zlink_builder_t`가 빈 channel snapshot을 무시한다 | 실행 오류는 줄어든다 | 사용자 설정 실수를 조용히 숨긴다 |
+| builder 생성자에서 즉시 실패시킨다 | 가장 이른 실패다 | fluent builder에서 나중에 `.server(...)`, `.client(...)`를 붙이는 정상 사용을 막는다 |
+| options state가 channel 선언과 capability 보유 여부를 추적하고 `apply()`에서 검증한다 | fluent chaining을 보존하면서 `.NET` startup validation과 맞춘다 | options state가 validation metadata를 가진다 |
+
+선택은 세 번째 방식이다. channel builder는 단계적으로 구성되므로 생성자에서 실패시키지 않고,
+최종 options 적용 시점에 의미 없는 선언을 닫는다.
+
+### 적용한 리팩토링
+
+- client/server channel 선언과 server/client capability 보유 여부를 options state에서 대조한다.
+- fanout channel 선언과 publisher/subscriber capability 보유 여부를 options state에서 대조한다.
+- capability가 하나도 없는 client/server 또는 fanout channel은 `apply()`가
+  `request_protocol_error`로 실패한다.
+- module/options regression이 역할 없는 client/server channel과 fanout channel의 apply 실패를
+  검증한다.
+- `cpp-framework-interfaces.ko.md`와 `cpp-channel-messaging.ko.md`에 channel capability shape
+  validation 규칙을 적었다.
+
+### 수정 후 점검
+
+- application code는 channel kind 선언과 실제 역할이 맞는지 별도로 추적하지 않아도 된다.
+- 의미 없는 channel snapshot이 runtime까지 전달되지 않는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. High-level handler duplicate regression 보강
+
+### 발견한 위험 신호
+
+- `.NET` channel registration validation은 channel에 노출되는 handler packet이 중복되면
+  startup 단계에서 configuration error로 실패시킨다.
+- C++ `handler_registry_t`도 중복 packet 등록을 막지만, high-level fluent options의 handler
+  group 경로에서 같은 보장이 회귀 테스트로 고정되어 있지 않았다.
+- 테스트 공백이 있으면 사용자는 handler group 연결 순서에 따라 중복 노출이 허용되는지 별도로
+  추론해야 한다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| low-level `handler_registry_t` 테스트만 유지한다 | 중복 테스트가 적다 | fluent options 사용자 관점의 parity 증거가 약하다 |
+| handler group state에 별도 packet index를 추가한다 | options state에서 더 이른 메시지를 줄 수 있다 | 같은 정보를 registry와 options가 중복 보유한다 |
+| group 내부 중복은 options state에서, channel 단위 packet 충돌은 registry에서 검증한다 | 설정 순서별 오류 위치가 명확하고 최종 channel 노출 기준도 한 곳에서 닫힌다 | options state와 registry가 서로 다른 수준의 검증을 나눠 가진다 |
+
+선택은 세 번째 방식이다. 같은 group에 같은 packet을 두 번 넣는 오류는 DI 등록보다 먼저 options
+state가 닫고, 서로 다른 group이 같은 channel에 같은 packet을 노출하는 오류는 최종 노출 표면을
+소유한 `handler_registry_t`가 닫는다.
+
+### 적용한 리팩토링
+
+- module/options regression에 channel이 group을 먼저 매핑한 뒤 같은 send handler가 두 번
+  등록되는 경우를 추가했다.
+- module/options regression에 handler가 먼저 두 번 등록되고 나중에 channel이 group을 매핑하는
+  경우를 추가했다.
+- module/options regression에 서로 다른 handler group이 같은 channel에 같은 send packet을 노출하는
+  경우를 추가했다.
+- `handler_registry_t`가 `channel + kind + packet` 기준 duplicate를 거부하도록 보강했다.
+- `handler-interfaces.ko.md`와 `cpp-framework-interfaces.ko.md`에 high-level handler duplicate
+  validation 규칙을 적었다.
+
+### 수정 후 점검
+
+- group 내부 duplicate와 channel 노출 duplicate가 각각 가장 가까운 owner에서 닫힌다.
+- fluent options 사용자는 group/handler 등록 순서와 무관하게 같은 configuration error를 받는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Accepted route manual connection parity 보강
+
+### 발견한 위험 신호
+
+- `.NET`은 `AcceptSpotRoutesFromChannel(name, routes => routes.UseManualConnections(...))`로
+  accepted SPOT route peer를 discovery 없이 직접 지정할 수 있다.
+- C++ high-level `accept_routes_from_channel(name)`은 channel 이름만 받았고, validation도
+  accepted route마다 registry discovery를 항상 요구했다.
+- accepted route ingress와 registry Spot remote address resolver가 같은 snapshot field를 공유하면
+  서로 다른 설계 결정을 한 값으로 표현하게 되어 정보 은닉이 약해진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| registry discovery만 허용한다 | 구현이 작다 | `.NET` manual accepted route 사용 흐름과 맞지 않는다 |
+| accepted route manual endpoint를 client/server channel client endpoint로 합친다 | 기존 channel snapshot을 재사용한다 | route ingress 설정이 channel client capability로 새어 나간다 |
+| accepted route channel snapshot과 manual endpoint builder를 별도로 둔다 | accepted route ingress 의도가 분리되고 `.NET` peer source 정책과 맞는다 | snapshot type과 options state가 늘어난다 |
+
+선택은 세 번째 방식이다. accepted route ingress는 SPOT node의 설정이며, registry remote address
+resolver와 같은 필드에 섞지 않는다. peer source는 discovery 또는 route별 manual endpoint 중
+하나로 검증한다.
+
+### 적용한 리팩토링
+
+- `accepted_spot_route_channel_t` snapshot을 추가해 accepted route channel과 manual endpoint 목록을
+  별도 값으로 보존한다.
+- low-level `spot_node_builder_t::accept_routes_from_channel(...)`을 추가했다.
+- high-level `spot_node_options_builder_t::accept_routes_from_channel(name, configure)` overload와
+  `accepted_spot_route_channel_builder_t::connect(...)`를 추가했다.
+- accepted route validation은 registry discovery 또는 manual endpoint 중 하나가 있으면 통과하도록
+  바꿨다.
+- module/options regression이 discovery 없이 manual accepted route를 허용하고 snapshot에 endpoint가
+  남는지 검증한다.
+- registry topology regression이 discovery 기반 accepted route와 manual 기반 accepted route snapshot을
+  검증한다.
+- `cpp-framework-interfaces.ko.md`, `cpp-channel-messaging.ko.md`, `cpp-registry.ko.md`에 manual
+  accepted route 설정을 적었다.
+
+### 수정 후 점검
+
+- accepted route ingress와 registry remote resolver가 public snapshot에서 분리됐다.
+- 사용자는 registry가 없는 테스트/샘플 topology에서도 accepted route peer를 명시할 수 있다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Attached client manual connection parity 보강
+
+### 발견한 위험 신호
+
+- `.NET`은 `AttachChannelClient(...)`와 `AttachSpotPublisherClient(...)`에 configure callback을
+  제공하고, attached channel client는 discovery 또는 manual connection으로 peer를 얻을 수 있다.
+- C++ high-level attach 표면은 channel 이름만 받았고 attached channel client에 registry discovery를
+  항상 요구했다.
+- C++ validation은 attached channel client 대상이 client/server client capability를 가져야 한다고
+  보았지만, `.NET`은 server-only client/server channel에도 SPOT node가 자체 outbound dealer를
+  attach할 수 있다.
+- attach 호출마다 low-level action을 쌓는 방식은 같은 attach를 다시 configure할 때 duplicate
+  snapshot을 만들 수 있어 attach 의도가 options state에 모이지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 이름-only attach만 유지한다 | 표면이 작다 | `.NET` manual attach flow와 맞지 않는다 |
+| channel client의 `client(endpoint)` 설정을 attach manual endpoint로 재사용한다 | 새 builder가 없다 | channel capability 설정과 SPOT attach 설정이 섞인다 |
+| attach별 builder와 상세 snapshot을 추가하고 apply 시점에 한 번 materialize한다 | attach 의도와 peer source가 분리되고 duplicate action을 피한다 | snapshot type과 options state가 늘어난다 |
+
+선택은 세 번째 방식이다. attached client/publisher는 SPOT node configuration의 일부이므로, channel
+capability 설정과 섞지 않고 attach별 endpoint 목록을 별도 값으로 둔다.
+
+### 적용한 리팩토링
+
+- `attached_channel_client_t`, `attached_publisher_t` snapshot을 추가하고 기존 이름 목록은 유지했다.
+- low-level `spot_node_builder_t::attach_channel_client(...)`와 `attach_publisher(...)`가 manual
+  endpoint 목록을 받을 수 있게 했다.
+- high-level `attach_channel_client(name, configure)`와 `attach_publisher(name, configure)` overload를
+  추가했다.
+- attach 호출은 action list가 아니라 options state에 기록하고, `apply()`에서 한 번 low-level snapshot으로
+  materialize하도록 정리했다.
+- attached channel client validation은 registry discovery 또는 attach별 manual endpoint 중 하나가
+  있으면 통과하도록 바꿨고, 대상 channel은 client capability가 아니라 client/server channel
+  등록 여부만 요구한다.
+- module/options regression이 discovery 없는 attached channel client manual endpoint와 attached
+  publisher manual endpoint snapshot을 검증한다.
+- low-level SPOT runtime regression이 attach 상세 snapshot과 빈 manual endpoint rejection을 검증한다.
+- contract header test와 SPOT 관련 draft 문서를 갱신했다.
+
+### 수정 후 점검
+
+- attached client peer source 정책이 `.NET`과 같은 수준으로 맞춰졌다.
+- attach configuration은 options state가 소유하고 low-level snapshot은 중복 없이 생성된다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Sample process e2e port probe 단순화
+
+### 발견한 위험 신호
+
+- sample process e2e harness가 포트를 고르기 전에 Python socket bind로 사용 가능 여부를 미리
+  판단했다.
+- 이 사전 검사는 실제 sample server의 bind 정책과 별도로 유지되어야 하므로, TIME_WAIT 같은 커널
+  상태를 실제 서버보다 보수적으로 해석할 수 있다.
+- 테스트 harness가 runtime bind 의미를 중복 구현하면 실패 원인이 sample 동작인지 harness 추정인지
+  구분하기 어려워진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| Python bind 사전 검사를 유지한다 | 서버 실행 전 빠르게 스킵할 수 있다 | 실제 서버 bind 의미와 다른 판단이 생긴다 |
+| Python socket에 `SO_REUSEADDR`를 추가한다 | TIME_WAIT 오탐을 일부 줄인다 | 여전히 서버 bind 정책을 harness가 복제한다 |
+| listener 점유만 사전 스킵하고 실제 bind 가능성은 서버 실행 결과로 판단한다 | bind 의미의 owner가 sample server 하나로 모인다 | 실패 offset마다 서버를 실행해 보는 비용이 있다 |
+
+선택은 세 번째 방식이다. 사전 검사는 이미 listen 중인 포트만 피하고, 나머지는 sample server가 실제로
+bind하면서 성공 여부를 결정하게 둔다.
+
+### 적용한 리팩토링
+
+- `run_sample_process_e2e.sh`에서 Python `port_unbindable` 사전 검사를 제거했다.
+- `ss` 기반 listener 점유 검사는 유지해 명백히 사용 중인 포트만 스킵한다.
+- 서버가 실제 bind에 실패하면 기존 readiness failure 경로가 server log를 출력하도록 한다.
+
+### 수정 후 점검
+
+- 테스트 harness가 sample server의 bind 의미를 중복 구현하지 않는다.
+- 포트 선택 실패는 listener 점유와 실제 server startup failure로 구분된다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Channel manual endpoint collection parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` channel client와 fanout subscriber manual connection은 `UseManualConnections(...)`
+  안에서 `Connect(...)`를 여러 번 호출해 endpoint 목록을 만든다.
+- C++ high-level `client_server_channel(...).client(endpoint)`와
+  `fanout_channel(...).subscriber(endpoint)`는 마지막 endpoint만 low-level snapshot에 남겨
+  manual connection collection 의미를 잃었다.
+- low-level `capability_builder_t::connect(...)`는 이미 여러 endpoint를 보존하므로, high-level
+  builder가 더 얕은 wrapper처럼 동작하고 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 단일 endpoint 정책을 문서화한다 | 구현 변경이 작다 | `.NET` manual connection collection 기대와 맞지 않는다 |
+| `clients({ ... })`, `subscribers({ ... })` 같은 새 API를 추가한다 | 복수 endpoint 의도가 드러난다 | 기존 fluent chain과 다르고 public 표면이 불필요하게 늘어난다 |
+| 기존 `client(endpoint)`와 `subscriber(endpoint)` 반복 호출을 endpoint 추가로 정의한다 | C++ fluent style을 유지하고 low-level capability 의미와 맞다 | discovery mode 전환 시 manual 목록을 명확히 비워야 한다 |
+
+선택은 세 번째 방식이다. C++에서는 `Connect(...)` 컬렉션 builder 대신 같은 fluent method를 반복
+호출하는 것이 자연스럽고, low-level capability snapshot도 이미 목록을 소유한다.
+
+### 적용한 리팩토링
+
+- `client_server_channel_builder_t`가 manual client endpoint를 vector로 보존하게 했다.
+- `fanout_channel_builder_t`가 manual subscriber endpoint를 vector로 보존하게 했다.
+- endpoint 인자 없는 `client()`와 `subscriber()`는 discovery mode로 전환하면서 manual endpoint
+  목록을 비운다.
+- module/options regression이 client/server client와 fanout subscriber의 복수 manual endpoint
+  snapshot을 검증한다.
+- channel messaging, sample, framework interface draft 문서에 반복 호출 의미를 적었다.
+
+### 수정 후 점검
+
+- high-level builder가 low-level capability의 manual connection collection 의미를 잃지 않는다.
+- C++ 사용자는 새 public 타입 없이 `.NET`의 manual connection collection과 같은 사용자 흐름을
+  갖는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. TicTacToe e2e readiness gate 보강
+
+### 발견한 위험 신호
+
+- TicTacToe process e2e server는 HTTP API app을 별도 thread로 시작한 뒤 stream socket을 bind하면
+  readiness log를 기록했다.
+- client는 readiness 직후 `zlink::http_client`로 `POST /games`를 보내므로, HTTP listener bind가
+  아직 끝나지 않았거나 bind 실패가 늦게 드러나면 offset retry 없이 client 실패로 끝날 수 있다.
+- readiness가 실제 의존 서비스 준비 상태가 아니라 실행 순서에 묶여 있어 시간적 분해 위험 신호가
+  있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| client retry 횟수를 늘린다 | 구현 변경이 작다 | HTTP bind 실패와 늦은 readiness를 구분하지 못한다 |
+| shell script에서 HTTP port를 별도로 probe한다 | sample 코드 변경이 작다 | sample의 준비 조건을 test harness가 중복해서 알아야 한다 |
+| e2e server가 HTTP listener TCP readiness를 확인한 뒤 stream readiness를 기록한다 | 준비 조건 owner가 sample server 안에 모인다 | server main에 작은 readiness helper가 필요하다 |
+
+선택은 세 번째 방식이다. sample server가 자신이 제공하는 HTTP와 stream endpoint의 준비 조건을
+모두 확인한 뒤 readiness를 기록해야 test harness가 내부 port 목록을 더 알 필요가 없다.
+
+### 적용한 리팩토링
+
+- TicTacToe e2e server main에 HTTP endpoint host/port parser와 TCP connect readiness probe를
+  추가했다.
+- HTTP API thread가 먼저 종료되면 readiness 전에 실패하도록 했다.
+- stream socket bind와 readiness log는 HTTP listener가 실제로 연결 가능해진 뒤 실행된다.
+
+### 수정 후 점검
+
+- client가 HTTP listener bind 완료 전에 시작하지 않는다.
+- HTTP bind 실패는 readiness 전 server startup failure로 드러나므로 process e2e offset retry와
+  결합된다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. SPOT router/pub-sub manual peer parity 보강
+
+### 발견한 위험 신호
+
+- `.NET`의 `ISpotRouterCapabilityBuilder`와 `ISpotPubSubCapabilityBuilder`는
+  `UseManualConnections(...)`를 제공해 registry discovery 없이 capability peer를 직접 지정할
+  수 있다.
+- C++ high-level `enable_router(...)`와 `enable_pub_sub(...)`는 bind endpoint와 routing id만
+  보존했고, manual peer를 표현할 방법이 없었다.
+- attach channel client, attached publisher, accepted route의 manual endpoint를 capability peer로
+  재사용하면 서로 다른 설계 결정을 한 필드에 섞어 정보 은닉이 약해진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| router/pub-sub manual peer를 지원하지 않는다 | public 표면이 작다 | `.NET`의 고정 endpoint SPOT topology 흐름과 맞지 않는다 |
+| attach/accepted route manual endpoint를 capability peer로 재사용한다 | 새 builder가 적다 | attach, route ingress, SPOT capability 의도가 섞인다 |
+| router/pub-sub capability별 configure builder와 snapshot 필드를 추가한다 | peer source 책임이 분리되고 `.NET` configure 흐름과 맞다 | public builder 타입과 snapshot 필드가 늘어난다 |
+
+선택은 세 번째 방식이다. SPOT router/pub-sub manual peer는 capability 자체의 연결 정책이며,
+attached channel client나 accepted route ingress의 peer와 다른 정보다. C++에서는
+`enable_router(endpoint, [](auto &router) { router.connect(peer); })`처럼 fluent configure builder로
+표현한다.
+
+### 적용한 리팩토링
+
+- `spot_node_snapshot_t`에 router/pub-sub manual connection 목록을 추가했다.
+- low-level `spot_node_builder_t::connect_router(...)`,
+  `spot_node_builder_t::connect_pub_sub(...)`를 추가하고 빈 endpoint를 거부하게 했다.
+- high-level `spot_router_capability_builder_t`,
+  `spot_pub_sub_capability_builder_t`를 추가했다.
+- `spot_node_options_builder_t::enable_router(endpoint, configure)`와
+  `enable_pub_sub(endpoint, configure)` overload를 추가해 routing id와 manual peer를 같은
+  capability configure 안에서 설정하게 했다.
+- contract header, SPOT runtime, registry topology regression과 draft 문서를 갱신했다.
+
+### 수정 후 점검
+
+- SPOT capability peer, attached client peer, accepted route peer가 public snapshot에서 분리된다.
+- registry discovery 없이 고정 endpoint SPOT topology를 `.NET`과 같은 사용자 흐름으로 구성할 수
+  있다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. discovery/metadata 공백 입력 검증 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework는 `UseDiscovery(...).Add(endpoint)`와 metadata forwarding key에서 빈 문자열과
+  공백만 있는 문자열을 설정 오류로 거부한다.
+- C++ high-level `options.discovery().add(...)`는 endpoint를 검증하지 않았고,
+  low-level `message_metadata_policy_t::forward(...)`는 빈 문자열만 거부했다.
+- 잘못된 값이 설정 경계를 지나 native 연결이나 actor dispatch 시점까지 내려가면 호출자가 원인을
+  늦게 파악해야 하므로, 오류 처리를 하위 정의로 없애는 POSD 원칙과 맞지 않았다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `apply()` 단계에서만 검증한다 | validation 위치가 한 곳이다 | 어떤 builder 입력이 문제였는지 늦게 드러난다 |
+| native 연결 실패에 맡긴다 | C++ 코드 변경이 가장 작다 | 공백 endpoint와 실제 연결 실패가 섞이고 사용자 경험이 `.NET`과 달라진다 |
+| 입력을 받는 public builder와 policy 경계에서 즉시 거부한다 | 실패 위치가 명확하고 `.NET` 의미와 맞다 | 작은 검증 코드가 추가된다 |
+
+선택은 세 번째 방식이다. discovery endpoint와 metadata key는 framework 설정의 public 계약이므로,
+유효하지 않은 값을 받은 자리에서 바로 거부해야 호출자 부담이 줄어든다.
+
+### 적용한 리팩토링
+
+- `discovery_options_builder_t::add(...)`가 빈 endpoint와 공백 endpoint를 거부하게 했다.
+- `message_metadata_policy_t::forward(...)`가 공백 key도 거부하게 했다.
+- module hosted 회귀 테스트에 discovery/metadata 공백 입력 검증을 추가했다.
+- SPOT runtime 회귀 테스트에 low-level metadata policy 공백 key 검증을 추가했다.
+- draft interface 문서에 공백 입력 거부 규칙을 명시했다.
+
+### 수정 후 점검
+
+- 설정 경계에서 잘못된 discovery endpoint와 metadata key가 즉시 실패한다.
+- `.NET`의 `string.IsNullOrWhiteSpace` 기준과 사용자 관점의 검증 의미가 맞는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. routed SPOT egress configuration parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework는 client/server channel과 route mesh channel builder에
+  `EnableSpotRouteEgress(targetSpotNodeChannelName)`를 제공한다.
+- C++ fluent options에는 같은 사용자 의도를 표현하는 public 메서드가 없어서, routed SPOT ingress
+  설정인 `accept_routes_from_channel(...)`만으로는 outbound relay 의도를 문서와 코드에서 맞출 수
+  없었다.
+- egress target을 handler group이나 accepted route 설정에 섞으면 방향이 다른 설계 결정이 한
+  필드에 섞여 정보 은닉이 약해진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 문서에서 C++ non-goal로 남긴다 | 구현 변경이 없다 | `.NET` sample architecture parity가 깨진다 |
+| accepted route 설정을 egress target으로 재사용한다 | 새 public 메서드가 적다 | ingress와 egress 책임이 섞인다 |
+| egress 전용 builder 메서드와 route registration 필드를 추가한다 | 방향별 책임이 분리되고 `.NET` 사용자 흐름과 맞다 | relay 실행 경로와 registration 보존을 단계적으로 검증해야 한다 |
+
+선택은 세 번째 방식이다. 이번 반복에서는 public configuration 계약과 registration 보존을 먼저
+닫고, 실제 routed relay 실행 경로는 같은 target 정보를 사용하는 후속 단계로 분리한다. 이렇게 해야
+얕은 wrapper를 만들지 않고 egress 설정의 owner를 분명히 둘 수 있다.
+
+### 적용한 리팩토링
+
+- low-level `route_channel_builder_t::enable_spot_route_egress(...)`를 추가했다.
+- `route_channel_registration_t`와 `route_channel_runtime_t`가 target SPOT node channel 이름을
+  보존하고 조회할 수 있게 했다.
+- high-level `client_server_channel_builder_t::enable_spot_route_egress(...)`와
+  `route_mesh_channel_builder_t::enable_spot_route_egress(...)`를 추가했다.
+- client/server channel egress는 client capability가 없으면 options 적용 시점에 실패하게 했다.
+- contract header, channel messaging, registry topology, module hosted regression과 draft 문서를
+  갱신했다.
+
+### 수정 후 점검
+
+- egress target은 handler group, accepted route ingress, manual peer 목록과 분리된다.
+- route mesh egress target은 `options.apply()` 이후 route runtime까지 보존된다.
+- client/server egress는 local client capability가 없으면 즉시 설정 오류로 드러난다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. STREAM typed session registration parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework의 stream node builder는 `RegisterSession<TSession>()`으로 session 타입을
+  등록하고, runtime이 DI scope에서 session을 만든다.
+- C++ high-level stream node builder는 `packet_session(name)`만 제공해 사용자가 native packet
+  session 이름을 직접 골라야 했다.
+- 문자열 session 이름만 public 표면으로 두면 session handler 타입과 native session 이름의 연결
+  지식이 호출자에게 새고, `.NET` 샘플의 타입 중심 사용 흐름과 달라진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `packet_session(name)`만 유지한다 | 변경이 없다 | session handler 타입과 이름 연결을 호출자에게 맡긴다 |
+| `register_session<T>()`를 단순 alias로 추가한다 | public 표면이 맞아 보인다 | DI 등록 기대를 충족하지 못하는 얕은 wrapper다 |
+| `register_session<T>()`가 scoped service 등록과 session 이름 결정을 함께 맡는다 | 타입 중심 사용자 흐름과 `.NET` 의미가 맞고 이름 지식이 builder 안에 숨는다 | builder가 service collection 참조를 가져야 한다 |
+
+선택은 세 번째 방식이다. C++에서는 `packet_stream_session_t` 파생 타입을 session handler 계약으로
+삼고, `TSession::session_name`이 있으면 그 값을, 없으면 타입 기반 message name을 native packet
+session 이름으로 사용한다.
+
+### 적용한 리팩토링
+
+- `stream_node_options_builder_t::register_session<TSession>()`를 추가했다.
+- `TSession`은 `packet_stream_session_t`를 상속해야 하며, framework service collection에 scoped
+  service로 등록된다.
+- 기존 `packet_session(name)`과 같은 단일 session 규칙을 공유하게 했다.
+- contract header, module hosted regression, STREAM draft와 sample draft 문서를 갱신했다.
+
+### 수정 후 점검
+
+- typed session 등록이 `options.apply()` 이후 stream snapshot에 반영된다.
+- typed session 타입은 provider에서 resolve 가능하다.
+- `register_session<T>()`와 `packet_session(...)`을 중복 호출하면 설정 오류가 난다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. STREAM write fluent call parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework의 session send/reply call은 `Metadata(...)`, `PacketName(...)`,
+  `Compress()`를 submit 전에 설정할 수 있다.
+- C++ `stream_t::write_packet(...)`은 header를 미리 직접 만들어야 했고, 기존 구현은 call object를
+  반환하기 전에 written header를 기록했다.
+- 이 구조에서는 metadata나 compression 같은 header 정책을 호출자가 직접 조립해야 하며,
+  `submit()` 전에 call을 구성한다는 framework 공통 call 의미도 약해진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| header 직접 생성 표면만 유지한다 | 변경이 없다 | `.NET` session call 사용자 경험과 다르고 header 조립 부담이 호출자에게 남는다 |
+| `stream_t`에 `send(...)`, `reply(...)` 별도 고수준 API를 추가한다 | `.NET` 이름과 가깝다 | typed serializer/codec 정책까지 한 번에 끌어와 변경 범위가 커진다 |
+| 기존 `stream_write_call_t`를 lazy fluent call로 바꾼다 | public call object 하나가 metadata, packet name, compression, submit을 소유한다 | write 실행 시점이 submit으로 이동하므로 회귀 테스트가 필요하다 |
+
+선택은 세 번째 방식이다. C++는 이미 `stream_header_t`와 payload를 받는 명시적 표면을 가지고
+있으므로, 그 위에 call object가 submit 전 header mutation을 흡수하게 하면 새 얕은 wrapper 없이
+사용자 부담을 줄일 수 있다.
+
+### 적용한 리팩토링
+
+- `stream_write_call_t`에 `metadata(...)`, `packet_name(...)`, `compress()`를 추가했다.
+- `stream_write_call_t`를 pimpl 기반 lazy call로 바꿔 실제 write가 `submit()`에서 실행되게 했다.
+- `stream_t::write_packet(...)`은 call object를 만들고, submit 시점에 disconnected 상태와 최종
+  header를 확인하게 했다.
+- contract header, stream unit regression, STREAM draft와 interface draft 문서를 갱신했다.
+
+### 수정 후 점검
+
+- submit 전에는 stream written header가 증가하지 않는다.
+- metadata, packet name override, compression flag가 submit 시점에 header에 반영된다.
+- disconnected 상태는 submit 결과로 유지된다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. STREAM close와 bound session disconnect parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework의 `IZLinkStream`은 `CloseAsync()`를 제공하고, `IZLinkBoundSession`은
+  `DisconnectAsync()`를 제공한다.
+- C++ draft의 ActorGateway relay 문서는 `bound_session_t::disconnect()`와 stream close cleanup을
+  언급했지만, 실제 public header에는 `stream_t::close()`와 `bound_session_t::disconnect()`가
+  없었다.
+- 호출자가 session close를 흉내 내려면 runtime test helper나 actor manager cleanup 경로를 알아야
+  하므로, lifecycle 결정이 public 표면 아래에 숨겨지지 않는 위험 신호가 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 `notify_disconnected()`와 runtime dispatch만 사용한다 | 코드 변경이 없다 | actor push 쪽 `.NET` disconnect 사용자 흐름과 맞지 않고 문서 불일치가 남는다 |
+| `stream_runtime_t`와 `session_actor_manager_t` helper를 public으로 노출한다 | 테스트 구현이 쉽다 | runtime cleanup 세부가 public API로 새어 나간다 |
+| `stream_t::close()`와 `bound_session_t::disconnect()`를 public lifecycle 표면으로 둔다 | 호출자는 stream/bound session만 알고 close 의미는 runtime state가 숨긴다 | close와 disconnect 결과를 회귀 테스트로 고정해야 한다 |
+
+선택은 세 번째 방식이다. C++ connector에도 `close()` task 표면이 있으므로 stream close는
+`task_t<void>`로 두고, bound session disconnect는 기존 call object 규칙에 맞춰
+`send_call_t`를 반환하게 했다.
+
+### 적용한 리팩토링
+
+- `stream_t::close()`를 추가해 session을 closed 상태로 만들고 이후 write submit이
+  `disconnected`를 반환하게 했다.
+- `bound_session_t::disconnect()`를 추가해 bound flag를 내리고 disconnected 상태를 기록하게
+  했다.
+- contract header, stream runtime regression, actor gateway regression, STREAM draft와
+  ActorGateway relay draft를 갱신했다.
+
+### 수정 후 점검
+
+- `stream_t::close()` 뒤 새 write submit은 추가 frame을 쓰지 않고 `disconnected`를 반환한다.
+- `bound_session_t::disconnect()` 뒤 actor는 bound 상태가 아니며, push와 relay는
+  `disconnected`를 반환한다.
+- 기존 `session_actor_t::notify_disconnected()` 경로도 회귀 테스트에 남아 있다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. 일반 channel call lazy submit parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework의 `IZLinkSendCall`과 `IZLinkRequestCall`은 `PacketName(...)`,
+  `Timeout(...)`, `Submit(...)` 순서로 호출을 구성한다.
+- C++ 일반 `message_bus_t::send(...)`, `publish(...)`, `request(...)`는 call object를 반환했지만
+  생성 시점에 이미 runtime submit 결과를 계산했다.
+- 이 구조에서는 `packet_name`과 metadata를 submit 전에 바꿀 수 없고, plan의 “public 호출은 call
+  object를 만들고 마지막 submit에서 실행한다” 규칙과 다르다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 즉시 완료 call에 `packet_name(...)` no-op만 추가한다 | 변경이 작다 | public 표면만 맞고 submit 의미는 여전히 어긋나는 얕은 wrapper다 |
+| route 전용 call만 일반 channel에도 재사용한다 | packet name과 metadata 전달 구조가 이미 있다 | route target node, router channel 개념이 일반 channel API로 새어 나온다 |
+| `request_call_t`와 `send_call_t`를 lazy fluent call로 바꾼다 | 일반 channel도 `.NET`과 같은 submit 경계를 가지며 route 세부를 노출하지 않는다 | 즉시 실패/성공 call 생성자와 lazy submit 경로를 함께 유지해야 한다 |
+
+선택은 세 번째 방식이다. 즉시 result 기반 call은 spot, actor, 테스트 helper에서 계속 쓸 수 있게
+두고, message bus가 만든 call만 packet name, metadata, timeout을 submit 시점에 runtime으로
+넘기게 했다.
+
+### 적용한 리팩토링
+
+- `request_call_t<TReply>`와 `send_call_t`에 `packet_name(...)`과 `metadata(...)`를 추가했다.
+- 일반 channel `message_bus_t::request/send/publish`가 call 생성 시점에는 side effect를 만들지
+  않고, `submit()`에서 runtime submit을 실행하게 했다.
+- internal channel runtime에 outbound submit 기록을 두어 회귀 테스트가 packet name, metadata,
+  timeout 전달을 검증할 수 있게 했다.
+- contract header, channel messaging regression, channel messaging draft와 interface draft를
+  갱신했다.
+
+### 수정 후 점검
+
+- call object 생성만으로 outbound submit 기록이 생기지 않는다.
+- submit 이후 request/send/publish 기록에 packet name, metadata, timeout이 보존된다.
+- route call의 target node/routing 세부는 일반 channel public API로 노출되지 않는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Handler filter invocation context parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework의 `ZLinkHandlerInvocation`은 filter에 message, handler context, channel name,
+  packet name을 제공한다.
+- C++ `handler_invocation_context_t`는 descriptor만 제공해 filter가 실제 payload나 dispatch
+  context를 보고 감사, 차단, 대체 응답을 결정할 수 없었다.
+- filter가 descriptor map만 알면 application-level 정책을 handler 내부로 밀어 넣게 되어
+  cross-cutting concern이 흩어진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| descriptor만 유지한다 | 변경이 없다 | `.NET` filter 사용성과 다르고 payload/context 기반 정책을 handler에 반복해야 한다 |
+| typed object를 `std::any`로 제공한다 | `.NET`의 object message와 비슷하다 | serializer type erasure와 lifetime 규칙이 public API로 새어 나온다 |
+| immutable `message_t`와 `handler_context_t`를 invocation context에 추가한다 | C++ message boundary를 유지하면서 filter가 payload와 dispatch metadata를 읽을 수 있다 | filter가 typed DTO를 직접 받지는 않는다 |
+
+선택은 세 번째 방식이다. C++ framework는 codec boundary를 `message_t`로 닫고 있으므로 filter도
+같은 immutable payload를 읽게 하면 typed serializer 세부를 public filter 계약에 노출하지 않는다.
+
+### 적용한 리팩토링
+
+- `handler_invocation_context_t`에 `handler_context_t context`와
+  `std::shared_ptr<const zlink::message_t> message`를 추가했다.
+- handler dispatch가 filter chain을 만들 때 owned message와 dispatch context를 함께 전달하게
+  했다.
+- contract header, handler registry regression, handler/interface draft 문서를 갱신했다.
+
+### 수정 후 점검
+
+- 기존 descriptor 기반 filter는 그대로 동작한다.
+- filter는 channel name, packet name, immutable raw message payload를 읽을 수 있다.
+- typed DTO lifetime이나 serializer 내부 캐시는 public filter 계약으로 노출되지 않는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Monitoring socket event filter parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework의 monitoring options는 socket source와 event kind 목록을 함께 등록하고,
+  등록되지 않은 source나 허용되지 않은 event kind는 handler로 올리지 않는다.
+- C++ monitoring builder는 source 이름만 저장했고, runtime은 publish 시점에 source나 event kind
+  허용 여부를 확인하지 않았다.
+- 이 상태에서는 handler마다 source/event filtering을 반복해야 하므로 monitoring policy가 handler
+  구현으로 새어 나가는 정보 은닉 위반 위험이 있었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 기존 source-only 등록을 유지하고 handler에서 직접 걸러 낸다 | runtime 변경이 없다 | source policy가 handler마다 반복되고 `.NET` 사용 흐름과 다르다 |
+| global socket event allow-list를 둔다 | 구현이 단순하다 | source별 정책을 표현할 수 없어 여러 channel을 가진 app에서 호출자 부담이 커진다 |
+| source별 socket event kind 목록을 monitoring state에 저장하고 publish 경계에서 걸러 낸다 | `.NET`과 같은 source별 filtering 의미를 제공하고 handler 복잡성을 줄인다 | 등록 validation과 회귀 테스트가 필요하다 |
+
+선택은 세 번째 방식이다. source별 event filter는 monitoring runtime 내부 정책이므로 public handler
+표면에 누출하지 않고, 빈 event 목록은 해당 source의 모든 socket event를 의미하게 했다.
+
+### 적용한 리팩토링
+
+- `monitoring_builder_t::add_socket_events(source, events)` overload를 추가했다.
+- monitoring runtime state가 socket source 이름과 허용 event kind 목록을 함께 보관하게 했다.
+- `publish_socket(...)`이 등록되지 않은 source와 허용되지 않은 event kind를 publish 전에 차단하게
+  했다.
+- 중복 source와 빈 source 이름을 설정 오류로 고정하고 회귀 테스트를 보강했다.
+- contract header와 monitoring draft 예시를 실제 public API에 맞췄다.
+
+### 수정 후 점검
+
+- event 목록이 없는 source는 기존처럼 모든 socket event를 받을 수 있다.
+- event 목록이 있는 source는 허용된 kind만 typed handler와 trace hook으로 전달된다.
+- 등록되지 않은 socket source는 publish 경계에서 차단된다.
+- source validation은 builder가 담당하므로 handler가 설정 오류를 나중에 해석하지 않는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Monitoring source registration policy parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` framework는 registry/spot monitoring source에서 빈 이름, 중복 source, 0 이하 interval을
+  설정 오류로 막는다.
+- C++ monitoring builder는 socket 외 source를 그대로 저장했고, runtime publish 경계도 등록된
+  source인지 확인하지 않았다.
+- 이 구조에서는 handler가 source filtering과 잘못된 polling 설정을 각자 해석해야 하므로 monitoring
+  등록 정책이 public handler 구현으로 새어 나간다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| registry/spot interval만 검사한다 | `.NET` polling validation 일부를 맞출 수 있다 | 등록되지 않은 source event가 계속 handler로 전달된다 |
+| 각 handler 예시에 source guard를 넣는다 | runtime 변경이 작다 | source policy가 모든 handler에 반복되어 정보 은닉을 해친다 |
+| builder에서 source validation을 통합하고 runtime publish 경계에서 등록 source만 통과시킨다 | source policy를 한 곳에 숨기고 `.NET` polling validation과 C++ 확장 event source를 함께 정리한다 | monitoring runtime helper가 조금 늘어난다 |
+
+선택은 세 번째 방식이다. monitoring source 등록 정책은 handler의 관심사가 아니라 runtime event
+pipeline의 책임이므로, builder와 runtime publish 경계에 모으는 편이 호출자 복잡성을 줄인다.
+
+### 적용한 리팩토링
+
+- source name blank check와 duplicate check를 monitoring builder 내부 helper로 통합했다.
+- registry/spot polling interval이 0 이하이면 설정 오류를 반환하게 했다.
+- discovery, registry, spot, spot timer, stream, actor runtime publish 경계가 등록 source만
+  통과시키게 했다.
+- 등록되지 않은 source가 handler와 trace hook으로 새지 않는지 monitoring regression test를
+  보강했다.
+- monitoring draft에 source registration policy와 interval validation 설명을 추가했다.
+
+### 수정 후 점검
+
+- builder가 잘못된 source 이름, 중복 source, 잘못된 polling interval을 조기에 거부한다.
+- handler는 source 등록 여부를 반복해서 검사하지 않아도 된다.
+- direct publisher는 사용자가 명시적으로 event를 올리는 표면이므로 기존처럼 typed event를 그대로
+  전달한다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. HTTP client fluent validation parity 보강
+
+### 발견한 위험 신호
+
+- HTTP client draft는 timeout, base URL, HTTPS trust 설정, request path를 public fluent builder
+  표면에서 다룬다고 명시한다.
+- 기존 C++ HTTP client는 잘못된 `base_url`이나 request path를 `std::invalid_argument` 또는
+  generic `request_failed`로 흘릴 수 있었다.
+- 이 상태에서는 호출자가 설정 오류와 transport 실패를 같은 방식으로 해석해야 하므로 error model
+  정책이 client 사용자 코드로 새어 나간다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| `std::invalid_argument`를 그대로 둔다 | 구현 변경이 작다 | framework 공통 error model과 다르고 샘플 handler에서 예외 종류를 별도로 알아야 한다 |
+| 모든 오류를 `request_failed` result로 바꾼다 | result 표면만 보면 된다 | 잘못된 fluent 입력과 실제 transport 실패가 구분되지 않는다 |
+| fluent 입력은 즉시 `request_protocol_error`로 검증하고, transport 실패는 기존 request result로 둔다 | 설정 오류와 실행 오류가 분리되고 call object가 잘못된 상태로 만들어지지 않는다 | validation helper와 회귀 테스트가 필요하다 |
+
+선택은 세 번째 방식이다. URL, timeout, header name, trust file, request path는 호출자가 즉시
+고칠 수 있는 설정 입력이므로 request submit 경로로 미루지 않고 builder/call 생성 경계에서 닫는다.
+
+### 적용한 리팩토링
+
+- HTTP client builder가 빈 base URL, 빈 header name, 빈 trust certificate path, 0 이하 timeout을
+  `framework_exception_t(request_protocol_error)`로 거부하게 했다.
+- runtime URL parsing에서 나온 `std::invalid_argument`도 build 경계에서
+  `request_protocol_error`로 변환하게 했다.
+- request path와 request header name validation을 request builder 경계에 추가했다.
+- HTTP client regression test와 draft 문서를 갱신했다.
+
+### 수정 후 점검
+
+- 잘못된 fluent 입력은 transport 실행 전에 protocol/configuration 오류로 닫힌다.
+- HTTP status, timeout, TLS 검증 실패 같은 실행 결과 mapping은 기존 public result 표면을 유지한다.
+- public header에 Beast, Asio, OpenSSL 타입을 노출하지 않는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Registry monitoring draft drift 보강
+
+### 발견한 위험 신호
+
+- Registry draft는 monitoring 통합 항목을 아직 별도 regression 전 상태처럼 설명했다.
+- 실제 C++ monitoring regression은 등록된 source만 Registry snapshot event를 받고,
+  topology와 service summary 변화가 typed event로 올라오는 경로를 이미 검증한다.
+- 문서가 구현된 동작을 pending처럼 남기면 다음 구현자가 이미 닫힌 public 기대값을 다시 해석해야
+  하므로 문서와 코드 사이의 정보 불일치가 생긴다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 문서만 현재 상태에 맞춘다 | 변경이 작다 | 같은 stale 문구가 다시 들어와도 자동으로 잡지 못한다 |
+| Registry monitoring을 별도 public API로 확장한다 | 문구를 큰 기능으로 닫을 수 있다 | 현재 요구보다 넓고 runtime polling worker 설계를 섞게 된다 |
+| 구현된 snapshot event 계약은 현재 구현 항목으로 옮기고, 아직 없는 polling/log worker 정책만 후속으로 남긴다 | 문서가 현재 코드와 같은 말을 하고 scope가 명확하다 | layout contract에 문구 검사가 필요하다 |
+
+선택은 세 번째 방식이다. 이미 구현된 monitoring event projection은 현재 계약으로 설명하고,
+아직 없는 runtime polling worker와 log correlation 정책은 후속 확장으로 분리했다.
+
+### 적용한 리팩토링
+
+- `cpp-registry.ko.md`에서 Registry snapshot event의 현재 구현 상태를 완료 항목으로 옮겼다.
+- remote query timeout과 polling worker/log correlation은 후속 확장 항목으로 좁혀 적었다.
+- layout contract가 registry draft에서 구현된 monitoring 계약 문구와 stale pending 문구를 함께
+  검사하게 했다.
+
+### 수정 후 점검
+
+- registry draft는 현재 monitoring regression과 같은 범위를 설명한다.
+- 아직 구현되지 않은 polling worker/log correlation은 정식 공개 계약처럼 쓰지 않는다.
+- 같은 drift가 다시 들어오면 layout contract에서 실패한다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Request failure mapper regression parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` unit test는 request completion의 `NotConnected`, `NotFound`, `TimedOut`과 error
+  envelope code가 어떤 framework error로 바뀌는지 직접 고정한다.
+- C++에는 `request_failure_mapper_t`가 있었지만 회귀 테스트는 `busy`와
+  `route_not_connected` error header만 확인했다.
+- 매핑 표가 테스트와 문서에 없으면 channel, route, HTTP bridge가 각자 오류를 해석하게 되어
+  request failure policy가 여러 곳으로 흩어진다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 현재 mapper 구현을 신뢰하고 테스트를 늘리지 않는다 | 변경이 없다 | `.NET`과 같은 오류 의미가 regression으로 고정되지 않는다 |
+| 각 channel/route 테스트에서 개별 실패를 추가한다 | end-to-end 의미에 가깝다 | 같은 mapping 지식을 여러 테스트에 반복한다 |
+| mapper unit test와 interface draft에 매핑 표를 추가한다 | 오류 정책 owner가 명확하고 작은 테스트로 drift를 잡는다 | mapper와 상위 e2e를 함께 유지해야 한다 |
+
+선택은 세 번째 방식이다. 오류 사상은 `request_failure_mapper_t`가 소유하고, 상위 runtime은 이
+정책을 재해석하지 않게 한다.
+
+### 적용한 리팩토링
+
+- `test_cpp_framework_messaging`에 `not_connected`, `not_found`, `timed_out`,
+  `request_rejected`, `request_protocol_error`, `handler_not_found` mapping 검증을 추가했다.
+- `cpp-framework-interfaces.ko.md`에 native result/error code와 C++ error kind, retriable 여부
+  표를 추가했다.
+
+### 수정 후 점검
+
+- `.NET` request failure mapping의 핵심 기대값이 C++ mapper unit test에 대응된다.
+- channel, route, connector sample은 error code mapping을 직접 반복하지 않아도 된다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Channel request decode failure reply parity 보강
+
+### 발견한 위험 신호
+
+- `.NET` channel dispatcher test는 request payload decode failure를 caller에게 error envelope로
+  돌려주는 정책을 검증한다.
+- C++ channel dispatcher는 envelope header를 이미 읽은 뒤 body part가 없으면 dispatcher
+  failure로 반환했다. 이 경우 reply 가능한 request 오류가 transport/pump 상위 계층으로 새어
+  caller failure result 계약이 흐려진다.
+- 문서도 payload decode failure가 caller failure result에 반영된다고 적고 있었으나, body
+  decode 실패는 회귀 테스트가 없었다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| 상위 receive loop에서 dispatcher failure를 error reply로 바꾼다 | transport에 가까운 곳에서 처리한다 | header/correlation 정보를 다시 해석해야 하고 reply 정책이 분산된다 |
+| dispatcher가 request body decode failure만 error envelope로 바꾼다 | header를 가진 계층이 correlation과 error code를 한 곳에서 처리한다 | reply path가 없는 command는 기존 failure 의미를 유지해야 한다 |
+| body decode failure를 handler deserialize failure처럼 handler registry로 넘긴다 | 기존 handler 오류 경로를 재사용한다 | body가 없으면 typed handler 호출 전제 자체가 깨진다 |
+
+선택은 두 번째 방식이다. reply 가능한 request protocol error는 dispatcher가 error envelope로
+흡수하고, header decode failure나 command body failure처럼 reply path가 불명확한 경우는 기존
+failure 결과로 둔다.
+
+### 적용한 리팩토링
+
+- `channel_packet_dispatcher_t`가 request header를 읽은 뒤 body decode에 실패하면
+  `request_protocol_error` error envelope를 생성하게 했다.
+- `test_cpp_framework_channel_messaging`에 body 없는 request envelope가 dispatcher failure가
+  아니라 correlation id를 유지한 error envelope로 돌아오는 regression을 추가했다.
+- `cpp-channel-messaging.ko.md`에 request decode failure는 error envelope로 caller에게
+  반환한다는 구체 규칙을 적었다.
+
+### 수정 후 점검
+
+- reply 가능한 request 오류는 상위 receive loop에 누수되지 않는다.
+- send/command처럼 reply path가 없는 메시지의 기존 failure 의미는 바꾸지 않았다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+## 반복 POSD 재리뷰. Spot actor change kind membership guard 보강
+
+### 발견한 위험 신호
+
+- `.NET` contract test는 actor change kind가 `JoinSpot`, `JoinEntrySpot`, `LeaveSpot`
+  membership 변화만 담고, 잘못된 enum 값은 생성 시 거부한다고 고정한다.
+- C++ enum은 동일한 세 값만 선언했지만 `static_cast`로 정의되지 않은 값을 넣어
+  `spot_actor_change_result_t`를 만들 수 있었다.
+- lifecycle handler가 의미 없는 change kind를 받으면 handler 쪽에서 방어해야 하므로 오류 처리가
+  호출자에게 새어 나간다.
+
+### 비교한 대안
+
+| 대안 | 장점 | 단점 |
+|------|------|------|
+| enum 선언만 믿고 추가 검사를 하지 않는다 | 변경이 없다 | C++ enum cast 입력을 막지 못한다 |
+| handler invocation 때마다 change kind를 검사한다 | runtime 경계에서 막을 수 있다 | 같은 membership 지식이 여러 dispatch 경로에 반복된다 |
+| `spot_actor_change_result_t` 생성자에서 허용 값을 검증한다 | lifecycle 의미를 값 객체가 소유하고 호출자는 잘못된 상태를 만들 수 없다 | 생성자가 예외를 던질 수 있다 |
+
+선택은 세 번째 방식이다. membership change의 유효성은 `spot_actor_change_result_t`가 소유하고,
+handler dispatch는 이미 검증된 값을 받는다.
+
+### 적용한 리팩토링
+
+- `spot_actor_change_result_t`가 `join_spot`, `join_entry_spot`, `leave_spot` 외 값을
+  `request_protocol_error`로 거부하게 했다.
+- `test_cpp_framework_spot_runtime`에 invalid enum cast 값이 거부되는 regression을 추가했다.
+- `cpp-framework-interfaces.ko.md`에 세 membership change 외 값은 생성 시 거부된다고 명시했다.
+
+### 수정 후 점검
+
+- actor disconnected는 `.NET`처럼 change result 없이 별도 handler로 남는다.
+- lifecycle handler는 정의된 membership change만 받는다.
+- 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.

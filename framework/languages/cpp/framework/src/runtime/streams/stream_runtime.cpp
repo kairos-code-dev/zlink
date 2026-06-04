@@ -14,6 +14,148 @@
 namespace zlink::framework
 {
 
+namespace detail
+{
+
+class stream_write_call_state_t
+{
+public:
+  explicit stream_write_call_state_t (result_t<void> result)
+    : _immediate (std::move (result))
+  {
+  }
+
+  stream_write_call_state_t (stream_header_t header,
+                             zlink::message_t payload,
+                             stream_write_call_t::submit_fn_t submit)
+    : _header (std::move (header)),
+      _payload (std::move (payload)),
+      _submit (std::move (submit))
+  {
+  }
+
+  void timeout (std::chrono::milliseconds timeout) { _timeout = timeout; }
+
+  void metadata (std::string key, std::string value)
+  {
+    _metadata[std::move (key)] = std::move (value);
+  }
+
+  void packet_name (std::string packet_name)
+  {
+    _packet_name = std::move (packet_name);
+  }
+
+  void compress () { _compressed = true; }
+
+  result_t<void> submit ()
+  {
+    if (_immediate) {
+      return *_immediate;
+    }
+    if (!_submit || !_header || !_payload) {
+      return result_t<void>::failure (
+        framework_error_kind_t::request_protocol_error,
+        "STREAM write call is not bound to a stream");
+    }
+
+    auto metadata = _header->metadata ().values ();
+    for (const auto &[key, value] : _metadata) {
+      metadata[key] = value;
+    }
+    auto flags = _header->flags ();
+    if (_compressed) {
+      flags = flags | stream_header_flags_t::payload_compressed;
+    }
+    const auto packet_name =
+      _packet_name.empty () ? std::string (_header->packet_name ())
+                            : _packet_name;
+    const auto header = stream_header_t (
+      _header->kind (),
+      _header->codec (),
+      flags,
+      _header->request_seq (),
+      packet_name,
+      stream_metadata_t (std::move (metadata)));
+    return _submit (header, *_payload);
+  }
+
+private:
+  std::optional<result_t<void>> _immediate;
+  std::optional<stream_header_t> _header;
+  std::optional<zlink::message_t> _payload;
+  stream_write_call_t::submit_fn_t _submit;
+  std::chrono::milliseconds _timeout { 0 };
+  stream_write_call_t::metadata_map_t _metadata;
+  std::string _packet_name;
+  bool _compressed = false;
+};
+
+} // namespace detail
+
+stream_write_call_t::stream_write_call_t (result_t<void> result)
+  : _state (
+      std::make_shared<detail::stream_write_call_state_t> (std::move (result)))
+{
+}
+
+stream_write_call_t::stream_write_call_t (stream_header_t header,
+                                          zlink::message_t payload,
+                                          submit_fn_t submit)
+  : _state (std::make_shared<detail::stream_write_call_state_t> (
+      std::move (header),
+      std::move (payload),
+      std::move (submit)))
+{
+}
+
+stream_write_call_t::~stream_write_call_t () = default;
+stream_write_call_t::stream_write_call_t (stream_write_call_t &&) noexcept =
+  default;
+stream_write_call_t &stream_write_call_t::operator= (
+  stream_write_call_t &&) noexcept = default;
+
+stream_write_call_t &
+stream_write_call_t::timeout (std::chrono::milliseconds timeout)
+{
+  _state->timeout (timeout);
+  return *this;
+}
+
+stream_write_call_t &
+stream_write_call_t::metadata (std::string key, std::string value)
+{
+  _state->metadata (std::move (key), std::move (value));
+  return *this;
+}
+
+stream_write_call_t &
+stream_write_call_t::packet_name (std::string packet_name)
+{
+  _state->packet_name (std::move (packet_name));
+  return *this;
+}
+
+stream_write_call_t &
+stream_write_call_t::compress ()
+{
+  _state->compress ();
+  return *this;
+}
+
+task_t<void>
+stream_write_call_t::submit ()
+{
+  return task_t<void> (_state->submit ());
+}
+
+pending_operation_t
+stream_write_call_t::submit (std::function<void (result_t<void>)> callback)
+{
+  callback (_state->submit ());
+  return pending_operation_t::make_completed ();
+}
+
 stream_error_t::stream_error_t (stream_session_error_t error,
                                 int native_code,
                                 std::string message)
@@ -163,18 +305,32 @@ stream_t::session_id () const
   return _state->session_id;
 }
 
+task_t<void>
+stream_t::close ()
+{
+  _state->closed = true;
+  return task_t<void> (result_t<void>::success ());
+}
+
 stream_write_call_t
 stream_t::write_packet (const stream_header_t &header,
                         const zlink::message_t &payload)
 {
-  if (_state->closed) {
-    return stream_write_call_t (result_t<void>::failure (
-      framework_error_kind_t::disconnected,
-      "STREAM session is disconnected"));
-  }
-  _state->written_headers.push_back (header);
-  _state->written_payloads.push_back (payload);
-  return stream_write_call_t (result_t<void>::success ());
+  auto state = _state;
+  return stream_write_call_t (
+    header,
+    payload,
+    [state](const stream_header_t &submitted_header,
+            const zlink::message_t &submitted_payload) {
+      if (state->closed) {
+        return result_t<void>::failure (
+          framework_error_kind_t::disconnected,
+          "STREAM session is disconnected");
+      }
+      state->written_headers.push_back (submitted_header);
+      state->written_payloads.push_back (submitted_payload);
+      return result_t<void>::success ();
+    });
 }
 
 stream_write_call_t

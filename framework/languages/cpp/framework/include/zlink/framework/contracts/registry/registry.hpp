@@ -89,6 +89,13 @@ struct service_summary_entry_t
   std::size_t instance_count = 0;
 };
 
+struct service_summary_filter_t
+{
+  std::optional<std::string> name;
+  std::optional<service_kind_t> kind;
+  std::optional<service_role_t> role;
+};
+
 struct topology_entry_t
 {
   std::string node_name;
@@ -97,12 +104,30 @@ struct topology_entry_t
   std::string name;
   topology_source_t source = topology_source_t::embedded;
   topology_state_t state = topology_state_t::active;
+  std::string endpoint;
+  std::optional<zlink::routing_id_t> routing_id;
+};
+
+struct topology_filter_t
+{
+  std::optional<std::string> node_name;
+  std::optional<std::string> name;
+  std::optional<service_kind_t> kind;
+  std::optional<service_role_t> role;
+  std::optional<topology_source_t> source;
+  std::optional<topology_state_t> state;
+  std::optional<zlink::routing_id_t> routing_id;
 };
 
 struct member_peer_t
 {
   std::string channel_name;
   std::string node_name;
+  std::string endpoint;
+};
+
+struct registry_query_client_options_t
+{
   std::string endpoint;
 };
 
@@ -178,7 +203,11 @@ public:
 
   registry_status_t status () const;
   std::vector<service_summary_entry_t> service_summary () const;
+  std::vector<service_summary_entry_t> service_summary (
+    const service_summary_filter_t &filter) const;
   std::vector<topology_entry_t> topology () const;
+  std::vector<topology_entry_t> topology (
+    const topology_filter_t &filter) const;
   std::vector<member_peer_t> member_peers (std::string channel_name) const;
   registry_monitoring_snapshot_t monitoring_snapshot () const;
   result_t<spot_route_t> resolve_spot_remote_address (spot_rid_t spot_rid);
@@ -190,6 +219,30 @@ private:
     std::shared_ptr<detail::registry_runtime_state_t> state);
 
   std::shared_ptr<detail::registry_runtime_state_t> _state;
+};
+
+class registry_query_client_t
+{
+public:
+  registry_query_client_t ();
+  explicit registry_query_client_t (registry_query_client_options_t options);
+  ~registry_query_client_t ();
+
+  registry_query_client_t (registry_query_client_t &&) noexcept;
+  registry_query_client_t &operator= (registry_query_client_t &&) noexcept;
+  registry_query_client_t (const registry_query_client_t &) = delete;
+  registry_query_client_t &operator= (const registry_query_client_t &) = delete;
+
+  result_t<void> connect (registry_query_client_options_t options);
+  result_t<void> connect (std::string endpoint);
+  result_t<std::vector<topology_entry_t>> topology () const;
+  result_t<std::vector<topology_entry_t>> topology (
+    const topology_filter_t &filter) const;
+  void close () noexcept;
+
+private:
+  class impl;
+  std::unique_ptr<impl> _impl;
 };
 
 } // namespace zlink::framework

@@ -89,6 +89,12 @@ client
 - hostname verification
 - test certificate trust option
 
+`base_url(...)`, `timeout(...)`, `default_header(...)`, `trust_certificate_file(...)`,
+request path, request header name은 call을 보내기 전에 검증한다. URL scheme이 `http://` 또는
+`https://`가 아니거나 timeout이 0 이하인 경우, 또는 이름이 비어 있는 경우에는
+`framework_error_kind_t::request_protocol_error`로 설정 오류를 알린다. 이 오류는 transport
+실패와 구분되어야 하므로 `request_failed`로 뭉개지 않는다.
+
 retry, redirect, cookie, proxy, multipart, streaming download는 초기 범위에 넣지 않는다.
 필요하면 별도 extension point로 설계한다.
 
@@ -141,6 +147,8 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
   blocking wait로 기다리지 않는다
 - HTTP status mapping: `400`, `404`, `500` 응답이 client result/error kind로 고정된다
 - timeout: 응답 지연은 timeout error로 닫힌다
+- fluent input validation: 잘못된 base URL, path, header name, timeout은
+  `request_protocol_error`로 닫힌다
 - HTTPS success: test certificate trust 설정이 있으면 `https://` JSON request/response가
   성공한다
 - TLS failure: 신뢰하지 않은 certificate와 hostname mismatch는 명시적인 client error로

@@ -302,6 +302,12 @@ channel_runtime_t::pending_limit () const noexcept
   return _state->max_pending;
 }
 
+std::vector<channel_runtime_state_t::outbound_call_record_t>
+channel_runtime_t::outbound_calls () const
+{
+  return _state->outbound_calls;
+}
+
 void
 channel_runtime_t::drain () noexcept
 {
@@ -491,6 +497,15 @@ route_channel_builder_t::add_handler_group (std::string group_name)
 }
 
 route_channel_builder_t &
+route_channel_builder_t::enable_spot_route_egress (
+  std::string target_spot_node_channel_name)
+{
+  _state->registration.enable_spot_route_egress (
+    std::move (target_spot_node_channel_name));
+  return *this;
+}
+
+route_channel_builder_t &
 route_channel_builder_t::add_handler (
   route_handler_registration_t registration)
 {
@@ -534,9 +549,20 @@ message_bus_t::pending_limit () const noexcept
 }
 
 message_bus_t::erased_request_result_t
-message_bus_t::submit_request (std::string channel_name)
+message_bus_t::submit_request (
+  std::string channel_name,
+  std::string packet_name,
+  std::chrono::milliseconds timeout,
+  const request_call_t<zlink::message_t>::metadata_map_t &metadata)
 {
   detail::channel_runtime_t runtime (_state);
+  _state->outbound_calls.push_back (
+    { "request",
+      channel_name,
+      "",
+      std::move (packet_name),
+      timeout,
+      metadata });
   auto reservation = runtime.reserve_outbound_request (channel_name);
   if (!reservation) {
     return erased_request_result_t (framework_exception_t (
@@ -551,8 +577,18 @@ message_bus_t::submit_request (std::string channel_name)
 }
 
 result_t<void>
-message_bus_t::submit_send (std::string channel_name)
+message_bus_t::submit_send (std::string channel_name,
+                            std::string packet_name,
+                            std::chrono::milliseconds timeout,
+                            const send_call_t::metadata_map_t &metadata)
 {
+  _state->outbound_calls.push_back (
+    { "send",
+      channel_name,
+      "",
+      std::move (packet_name),
+      timeout,
+      metadata });
   const auto *client = detail::client_capability (*_state, channel_name);
   if (!detail::has_connection (client)) {
     return result_t<void>::failure (
@@ -563,9 +599,19 @@ message_bus_t::submit_send (std::string channel_name)
 }
 
 result_t<void>
-message_bus_t::submit_publish (std::string channel_name, std::string topic)
+message_bus_t::submit_publish (std::string channel_name,
+                               std::string topic,
+                               std::string packet_name,
+                               std::chrono::milliseconds timeout,
+                               const send_call_t::metadata_map_t &metadata)
 {
-  (void) topic;
+  _state->outbound_calls.push_back (
+    { "publish",
+      channel_name,
+      topic,
+      std::move (packet_name),
+      timeout,
+      metadata });
   const auto *publisher = detail::publisher_capability (*_state, channel_name);
   if (!detail::has_connection (publisher)) {
     return result_t<void>::failure (
@@ -595,6 +641,13 @@ route_send_call_t::packet_name (std::string packet_name)
   return *this;
 }
 
+route_send_call_t &
+route_send_call_t::metadata (std::string key, std::string value)
+{
+  _metadata[std::move (key)] = std::move (value);
+  return *this;
+}
+
 task_t<void>
 route_send_call_t::submit ()
 {
@@ -603,7 +656,7 @@ route_send_call_t::submit ()
       framework_error_kind_t::request_protocol_error,
       "route send call is not bound to a route client"));
   }
-  return task_t<void> (_submit (_packet_name));
+  return task_t<void> (_submit (_packet_name, _metadata));
 }
 
 pending_operation_t
@@ -634,6 +687,13 @@ route_request_call_t::timeout (std::chrono::milliseconds timeout)
   return *this;
 }
 
+route_request_call_t &
+route_request_call_t::metadata (std::string key, std::string value)
+{
+  _metadata[std::move (key)] = std::move (value);
+  return *this;
+}
+
 task_t<std::uint64_t>
 route_request_call_t::submit ()
 {
@@ -642,7 +702,7 @@ route_request_call_t::submit ()
       framework_error_kind_t::request_protocol_error,
       "route request call is not bound to a route client"));
   }
-  return task_t<std::uint64_t> (_submit (_packet_name, _timeout));
+  return task_t<std::uint64_t> (_submit (_packet_name, _timeout, _metadata));
 }
 
 pending_operation_t
@@ -677,7 +737,8 @@ route_client_t::submit_send_erased (
   const zlink::routing_id_t &target_node_rid,
   const std::string &packet_name,
   std::type_index message_type,
-  const void *message)
+  const void *message,
+  const route_send_call_t::metadata_map_t &metadata)
 {
   if (!state || !state->runtime || state->serializers == nullptr) {
     return result_t<void>::failure (
@@ -692,6 +753,7 @@ route_client_t::submit_send_erased (
       runtime::messaging::message_kind_t::command,
       router_channel_id,
       packet_name);
+    header.metadata = metadata;
     runtime::messaging::envelope_codec_t envelope;
     return runtime.submit_send_parts (
       target_node_rid,
@@ -711,7 +773,8 @@ route_client_t::submit_request_erased (
   const std::string &packet_name,
   std::type_index request_type,
   const void *request,
-  std::chrono::milliseconds timeout)
+  std::chrono::milliseconds timeout,
+  const route_request_call_t::metadata_map_t &metadata)
 {
   if (!state || !state->runtime || state->serializers == nullptr) {
     return result_t<std::uint64_t>::failure (
@@ -727,6 +790,7 @@ route_client_t::submit_request_erased (
       router_channel_id,
       packet_name,
       timeout);
+    header.metadata = metadata;
     runtime::messaging::envelope_codec_t envelope;
     return runtime.submit_request_parts (
       target_node_rid,
@@ -746,7 +810,8 @@ route_client_t::submit_request_reply_erased (
   const std::string &packet_name,
   std::type_index request_type,
   const void *request,
-  std::chrono::milliseconds timeout)
+  std::chrono::milliseconds timeout,
+  const std::map<std::string, std::string> &metadata)
 {
   if (!state || !state->runtime || state->serializers == nullptr) {
     return result_t<zlink::message_t>::failure (
@@ -762,6 +827,7 @@ route_client_t::submit_request_reply_erased (
       router_channel_id,
       packet_name,
       timeout);
+    header.metadata = metadata;
     runtime::messaging::envelope_codec_t envelope;
     auto reply = runtime.request_reply_parts (
       target_node_rid,

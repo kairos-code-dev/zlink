@@ -4,8 +4,13 @@
 
 #include "runtime/dispatch/coroutine_executor.hpp"
 
+#include <algorithm>
+#include <cstddef>
+#include <functional>
 #include <map>
+#include <memory>
 #include <utility>
+#include <vector>
 
 namespace zlink::framework::detail
 {
@@ -49,6 +54,7 @@ class handler_registry_state_t
 {
 public:
   std::map<handler_key_t, handler_entry_t> handlers;
+  std::vector<handler_registry_t::filter_invoker_t> filters;
   handler_registry_t::failure_observer_t failure_observer;
 };
 
@@ -122,6 +128,13 @@ handler_registry_t::observe_failures (failure_observer_t observer)
   return *this;
 }
 
+handler_registry_t &
+handler_registry_t::add_filter (filter_invoker_t filter)
+{
+  _state->filters.push_back (std::move (filter));
+  return *this;
+}
+
 const handler_descriptor_t *
 handler_registry_t::find (std::string_view channel_name,
                           std::string_view packet_name) const
@@ -192,10 +205,12 @@ handler_registry_t::invoke_async (std::string_view channel_name,
         framework_error_kind_t::handler_not_found,
         "handler is not registered"));
   }
-  auto owned_message = message;
+  auto owned_message = std::make_shared<zlink::message_t> (message);
+  auto filters = _state->filters;
   return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
     [this,
      entry = &found->second,
+     filters = std::move (filters),
      &services,
      &serializers,
      owned_message = std::move (owned_message)]()
@@ -205,11 +220,35 @@ handler_registry_t::invoke_async (std::string_view channel_name,
           framework_error_kind_t::request_failed,
           "handler failed");
       try {
-        auto handler_task =
-          entry->invoker (services, serializers, owned_message);
-        result = result_t<zlink::message_t>::success (
-          (co_await runtime::await_task_result (std::move (handler_task)))
-            .value ());
+        handler_invocation_context_t context {
+          entry->descriptor,
+          make_handler_context<handler_context_t> (entry->descriptor),
+          owned_message
+        };
+        using chain_t =
+          std::function<task_t<zlink::message_t> (std::size_t)>;
+        auto chain = std::make_shared<chain_t> ();
+        *chain = [&services,
+                  &serializers,
+                  &context,
+                  &filters,
+                  entry,
+                  owned_message,
+                  chain](std::size_t index) -> task_t<zlink::message_t> {
+          if (index >= filters.size ()) {
+            return entry->invoker (services, serializers, *owned_message);
+          }
+          return filters[index] (
+            services,
+            serializers,
+            context,
+            [chain, next_index = index + 1]() mutable {
+              return (*chain) (next_index);
+            });
+        };
+        auto handler_task = (*chain) (0);
+        result =
+          co_await runtime::await_task_result (std::move (handler_task));
       } catch (const framework_exception_t &error) {
         result = result_t<zlink::message_t>::failure (
           error.kind (), error.what (), error.is_retriable ());
@@ -229,6 +268,20 @@ handler_registry_t &
 handler_registry_t::add_handler (handler_descriptor_t descriptor,
                                  invoker_t invoker)
 {
+  const auto duplicate_packet = std::any_of (
+    _state->handlers.begin (),
+    _state->handlers.end (),
+    [&](const auto &entry) {
+      const auto &existing = entry.second.descriptor;
+      return existing.channel_name == descriptor.channel_name &&
+             existing.kind == descriptor.kind &&
+             existing.packet_name == descriptor.packet_name;
+    });
+  if (duplicate_packet) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "duplicate handler registration");
+  }
   const auto key = detail::make_handler_key (descriptor.channel_name,
                                              descriptor.topic,
                                              descriptor.packet_name);

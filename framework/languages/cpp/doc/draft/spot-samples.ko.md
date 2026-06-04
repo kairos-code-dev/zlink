@@ -24,15 +24,35 @@ app.add_zlink_framework([](auto &options) {
       .client();
     options.spot_mesh("game.stage")
       .node("stage-spot-node")
-      .bind("tcp://0.0.0.0:9000")
+      .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()
       .attach_channel_client("profile")
+      .attach_publisher("game.stage")
       .add_entry_spot<player_entry_spot_t>()
       .add_actor_factory<player_actor_factory_t>("player")
       .add_spot<stage_spot_t>("stage")
       .add_spot<room_spot_t>("room");
 });
 ```
+
+single-process 또는 고정 endpoint 테스트에서는 attach별 manual endpoint를 줄 수 있다.
+
+```cpp
+options.spot_node("stage-spot-node")
+  .enable_router("tcp://0.0.0.0:9000", [](auto &router) {
+      router.connect("tcp://127.0.0.1:9001");
+  })
+  .enable_pub_sub("tcp://0.0.0.0:9002", [](auto &pub_sub) {
+      pub_sub.connect("tcp://127.0.0.1:9003");
+  })
+  .attach_channel_client("profile", [](auto &client) {
+      client.connect("tcp://127.0.0.1:7001");
+  });
+```
+
+router/pub-sub manual endpoint는 SPOT node capability의 peer이고, attached channel manual
+endpoint는 channel client peer다. sample에서는 둘을 분리해 적어야 실제 topology 의도가
+흐려지지 않는다.
 
 ## 2. spot 객체와 publish
 

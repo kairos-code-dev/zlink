@@ -294,7 +294,79 @@ create_game_with_coroutine_submit (const zlink::http_client::client_t &client)
   co_return response;
 }
 
+template<typename TAction>
+bool
+throws_protocol_error (TAction &&action, const std::string &message_part)
+{
+  try {
+    action ();
+  } catch (const zlink::framework::framework_exception_t &error) {
+    return error.kind () ==
+             zlink::framework::framework_error_kind_t::request_protocol_error &&
+           std::string (error.what ()).find (message_part) !=
+             std::string::npos;
+  }
+  return false;
+}
+
 } // namespace
+
+TEST (ZLinkHttpClient, ValidatesFluentInputAsProtocolErrors)
+{
+  EXPECT_TRUE (throws_protocol_error (
+    [] {
+      (void) zlink::http_client::client_t::create ().build ();
+    },
+    "base_url"));
+
+  EXPECT_TRUE (throws_protocol_error (
+    [] {
+      (void) zlink::http_client::client_t::create ()
+        .base_url ("ftp://host")
+        .build ();
+    },
+    "http:// or https://"));
+
+  EXPECT_TRUE (throws_protocol_error (
+    [] {
+      (void) zlink::http_client::client_t::create ()
+        .base_url ("http://127.0.0.1")
+        .timeout (std::chrono::milliseconds (0));
+    },
+    "timeout"));
+
+  EXPECT_TRUE (throws_protocol_error (
+    [] {
+      (void) zlink::http_client::client_t::create ()
+        .base_url ("http://127.0.0.1")
+        .default_header (" ", "value");
+    },
+    "header name"));
+
+  EXPECT_TRUE (throws_protocol_error (
+    [] {
+      (void) zlink::http_client::client_t::create ()
+        .base_url ("http://127.0.0.1")
+        .trust_certificate_file (" ");
+    },
+    "trust certificate"));
+
+  auto client = zlink::http_client::client_t::create ()
+                  .base_url ("http://127.0.0.1")
+                  .json ()
+                  .build ();
+  EXPECT_TRUE (throws_protocol_error (
+    [&client] {
+      (void) client.get ("missing-leading-slash");
+    },
+    "path"));
+
+  EXPECT_TRUE (throws_protocol_error (
+    [&client] {
+      (void) client.get ("/games").header (" ", "value");
+    },
+    "header name"));
+}
 
 TEST (ZLinkHttpClient, ContractBuilderSubmitsTypedJsonRequests)
 {

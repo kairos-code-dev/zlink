@@ -146,6 +146,7 @@ public:
   stream_t &operator= (const stream_t &) = default;
 
   std::string session_id () const;
+  task_t<void> close ();
   stream_write_call_t write_packet (const stream_header_t &header,
                                     const zlink::message_t &payload);
   stream_write_call_t reply_packet (const stream_header_t &request_header,

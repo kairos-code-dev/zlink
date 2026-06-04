@@ -2,10 +2,24 @@
 
 #include "runtime/channels/route_channel_registration.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <utility>
 
 namespace zlink::framework::detail
 {
+namespace
+{
+
+bool
+is_blank (const std::string &value)
+{
+  return std::all_of (value.begin (), value.end (), [](unsigned char ch) {
+    return std::isspace (ch) != 0;
+  });
+}
+
+} // namespace
 
 route_channel_registration_t::route_channel_registration_t (
   std::string router_channel_id)
@@ -58,12 +72,26 @@ route_channel_registration_t::connect (std::string endpoint)
 route_channel_registration_t &
 route_channel_registration_t::add_handler_group (std::string group_name)
 {
-  if (group_name.empty ()) {
+  if (group_name.empty () || is_blank (group_name)) {
     throw framework_exception_t (
       framework_error_kind_t::request_protocol_error,
       "route handler group name is required");
   }
   _handler_groups.push_back (std::move (group_name));
+  return *this;
+}
+
+route_channel_registration_t &
+route_channel_registration_t::enable_spot_route_egress (
+  std::string target_spot_node_channel_name)
+{
+  if (target_spot_node_channel_name.empty () ||
+      is_blank (target_spot_node_channel_name)) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "routed SPOT egress target channel is required");
+  }
+  _spot_route_egress_target = std::move (target_spot_node_channel_name);
   return *this;
 }
 
@@ -102,6 +130,12 @@ const std::vector<std::string> &
 route_channel_registration_t::handler_groups () const noexcept
 {
   return _handler_groups;
+}
+
+const std::optional<std::string> &
+route_channel_registration_t::spot_route_egress_target () const noexcept
+{
+  return _spot_route_egress_target;
 }
 
 route_handler_registry_t
@@ -143,6 +177,10 @@ route_channel_initializer_t::initialize (
   }
   if (registration.routing_id ()) {
     runtime->routing_id (*registration.routing_id ());
+  }
+  if (registration.spot_route_egress_target ()) {
+    runtime->spot_route_egress_target (
+      *registration.spot_route_egress_target ());
   }
   for (const auto &endpoint : registration.manual_connections ()) {
     runtime->connect (endpoint);

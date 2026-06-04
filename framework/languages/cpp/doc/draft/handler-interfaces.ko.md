@@ -142,6 +142,11 @@ app.add_zlink_framework([](auto &options) {
 수동 연결은 capability 안에서 endpoint 기준으로 설정한다. 같은 capability 안에서
 수동 연결과 Discovery 연결을 섞지 않는다.
 
+handler group은 channel에 노출되는 handler packet 집합이다. 같은 channel과 같은
+packet 이름에 대해 request, send, publish handler가 중복 노출되면 framework options
+구성 중 `request_protocol_error`로 실패한다. group을 channel에 먼저 연결한 뒤 handler를
+등록하든, handler를 먼저 등록한 뒤 group을 channel에 연결하든 같은 규칙을 적용한다.
+
 ## 6. SPOT 기준
 
 `SPOT`은 binding의 `zlink::service::spot_node_t`와 `zlink::service::spot_t`를
@@ -155,9 +160,10 @@ app.add_zlink_framework([](auto &options) {
       .client();
     options.spot_mesh("game.stage")
       .node("stage-spot-node")
-      .bind("tcp://0.0.0.0:9000")
+      .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()
       .attach_channel_client("profile")
+      .attach_publisher("game.stage")
       .add_entry_spot<player_entry_spot_t>()
       .add_actor_factory<player_actor_factory_t>("player")
       .add_spot<stage_spot_t>("stage");
@@ -168,6 +174,10 @@ app.add_zlink_framework([](auto &options) {
 제한한다. 일반 application handler와 publisher는 channel name과 topic을 먼저 사용한다.
 current Spot 밖에서 target Spot을 직접 호출하는 별도 public client는 기본 표면에 두지
 않는다.
+
+attached channel client는 registry discovery 또는 attach별 manual endpoint로 peer를 얻는다.
+manual endpoint가 필요한 경우 `attach_channel_client(name, [](auto &client) {
+client.connect(endpoint); })`처럼 attach 설정 안에서 지정한다.
 
 SPOT timer는 CAPI timer 등록을 감싼 framework timer handle과 `timer_tick_t` metadata로
 설명한다. user Spot timer는 core SPOT dispatch boundary에서 순서 정책을 따르고,
@@ -183,6 +193,9 @@ Session actor relay는 application route mesh channel을 쓰지 않는다. STREA
 - 구현 전 설계는 이 디렉토리의 draft 문서에만 둔다.
 - handler public contract는 `contracts/handlers/*`가 소유하고, handler descriptor map,
   DI resolve, serializer 호출 순서, dispatch lookup 구현은 `src/runtime/handlers/*`에 둔다.
+- handler filter는 `handler_invocation_context_t`로 descriptor, dispatch context, immutable
+  message payload를 읽을 수 있다. filter가 payload를 바꾸려면 `next()` 결과 대신 새
+  `message_t`를 반환한다.
 - handler template 코드는 handler shape 검사와 type-erased runtime 호출로 제한한다.
   pending queue, recv loop, monitoring event 생성 구현을 `contracts/detail/*`에 넣지 않는다.
 - public surface는 native socket, poller, callback userdata를 직접 노출하지 않는다.

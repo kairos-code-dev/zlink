@@ -22,7 +22,7 @@ app.add_zlink_framework([](auto &options) {
       .enable_actor_gateway();
     options.stream_node("route-stream")
       .bind("tcp://0.0.0.0:9200")
-      .packet_session("route")
+      .register_session<route_session_t>()
       .attach_actor_gateway("session-actors");
 });
 ```

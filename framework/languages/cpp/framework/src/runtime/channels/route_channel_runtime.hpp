@@ -45,6 +45,9 @@ public:
   const std::string &router_channel_id () const noexcept;
   void routing_id (zlink::routing_id_t routing_id);
   const std::optional<zlink::routing_id_t> &routing_id () const noexcept;
+  void spot_route_egress_target (std::string target_spot_node_channel_name);
+  const std::optional<std::string> &spot_route_egress_target () const
+    noexcept;
   void start () noexcept;
   void stop () noexcept;
   bool running () const noexcept;
@@ -125,6 +128,7 @@ private:
 
   std::string _router_channel_id;
   std::optional<zlink::routing_id_t> _routing_id;
+  std::optional<std::string> _spot_route_egress_target;
   bool _running = false;
   route_connection_set_t _connections;
   channel_pending_requests_t _pending_requests;

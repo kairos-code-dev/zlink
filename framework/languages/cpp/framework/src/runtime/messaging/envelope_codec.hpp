@@ -6,6 +6,7 @@
 #include <zlink/framework/contracts/errors/result.hpp>
 
 #include <chrono>
+#include <map>
 #include <optional>
 #include <string>
 #include <typeindex>
@@ -35,6 +36,7 @@ struct envelope_header_t
   std::optional<std::string> error_code;
   std::optional<std::string> error_message;
   std::optional<std::string> source;
+  std::map<std::string, std::string> metadata;
 };
 
 class message_parts_t

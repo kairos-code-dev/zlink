@@ -7,11 +7,201 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
+#include <zlink/Contracts/Core/context.hpp>
+#include <zlink/Contracts/Errors/errors.hpp>
+#include <zlink/Contracts/Service/registry.hpp>
+
 #include <algorithm>
+#include <stdexcept>
 #include <utility>
 
 namespace zlink::framework
 {
+
+namespace
+{
+
+zlink::service_kind_t
+to_native_service_kind (service_kind_t kind)
+{
+  switch (kind) {
+  case service_kind_t::registry:
+    return zlink::service_kind_t::discovery;
+  case service_kind_t::spot:
+    return zlink::service_kind_t::spot_pub;
+  case service_kind_t::channel:
+  case service_kind_t::stream:
+    return zlink::service_kind_t::socket;
+  }
+  return zlink::service_kind_t::socket;
+}
+
+zlink::service_role_t
+to_native_service_role (service_role_t role)
+{
+  switch (role) {
+  case service_role_t::server:
+    return zlink::service_role_t::router;
+  case service_role_t::client:
+    return zlink::service_role_t::dealer;
+  case service_role_t::publisher:
+    return zlink::service_role_t::pub;
+  case service_role_t::subscriber:
+    return zlink::service_role_t::sub;
+  case service_role_t::spot_node:
+    return zlink::service_role_t::spot;
+  case service_role_t::stream_endpoint:
+    return zlink::service_role_t::invalid;
+  }
+  return zlink::service_role_t::invalid;
+}
+
+zlink::topology_source_t
+to_native_topology_source (topology_source_t source)
+{
+  switch (source) {
+  case topology_source_t::embedded:
+    return zlink::topology_source_t::manual;
+  case topology_source_t::remote:
+    return zlink::topology_source_t::registry;
+  }
+  return zlink::topology_source_t::manual;
+}
+
+zlink::topology_state_t
+to_native_topology_state (topology_state_t state)
+{
+  switch (state) {
+  case topology_state_t::unknown:
+    return zlink::topology_state_t::discovered;
+  case topology_state_t::active:
+    return zlink::topology_state_t::ready;
+  case topology_state_t::stale:
+    return zlink::topology_state_t::lost;
+  }
+  return zlink::topology_state_t::discovered;
+}
+
+service_kind_t
+from_native_service_kind (zlink::service_kind_t kind)
+{
+  switch (kind) {
+  case zlink::service_kind_t::discovery:
+    return service_kind_t::registry;
+  case zlink::service_kind_t::spot_pub:
+  case zlink::service_kind_t::spot_sub:
+    return service_kind_t::spot;
+  case zlink::service_kind_t::socket:
+    return service_kind_t::channel;
+  }
+  return service_kind_t::channel;
+}
+
+service_role_t
+from_native_service_role (zlink::service_role_t role)
+{
+  switch (role) {
+  case zlink::service_role_t::spot:
+    return service_role_t::spot_node;
+  case zlink::service_role_t::router:
+    return service_role_t::server;
+  case zlink::service_role_t::dealer:
+    return service_role_t::client;
+  case zlink::service_role_t::pub:
+    return service_role_t::publisher;
+  case zlink::service_role_t::sub:
+    return service_role_t::subscriber;
+  case zlink::service_role_t::invalid:
+    return service_role_t::server;
+  }
+  return service_role_t::server;
+}
+
+topology_source_t
+from_native_topology_source (zlink::topology_source_t source)
+{
+  switch (source) {
+  case zlink::topology_source_t::manual:
+    return topology_source_t::embedded;
+  case zlink::topology_source_t::discovery:
+  case zlink::topology_source_t::registry:
+    return topology_source_t::remote;
+  }
+  return topology_source_t::embedded;
+}
+
+topology_state_t
+from_native_topology_state (zlink::topology_state_t state)
+{
+  switch (state) {
+  case zlink::topology_state_t::ready:
+  case zlink::topology_state_t::connecting:
+    return topology_state_t::active;
+  case zlink::topology_state_t::lost:
+  case zlink::topology_state_t::error:
+  case zlink::topology_state_t::stopped:
+    return topology_state_t::stale;
+  case zlink::topology_state_t::discovered:
+    return topology_state_t::unknown;
+  }
+  return topology_state_t::unknown;
+}
+
+zlink::registry_topology_filter_t
+to_native_filter (const topology_filter_t &filter)
+{
+  zlink::registry_topology_filter_t native;
+  if (filter.name) {
+    native.channel_name (*filter.name);
+  }
+  if (filter.kind) {
+    native.service_kind (to_native_service_kind (*filter.kind));
+  }
+  if (filter.role) {
+    native.service_role (to_native_service_role (*filter.role));
+  }
+  if (filter.source) {
+    native.source (to_native_topology_source (*filter.source));
+  }
+  if (filter.state) {
+    native.state (to_native_topology_state (*filter.state));
+  }
+  if (filter.routing_id) {
+    native.routing_id (*filter.routing_id);
+  }
+  return native;
+}
+
+topology_entry_t
+from_native_topology_entry (const zlink::registry_topology_entry_t &entry)
+{
+  return topology_entry_t {
+    {},
+    from_native_service_kind (entry.service_kind ()),
+    from_native_service_role (entry.service_role ()),
+    entry.channel_name (),
+    from_native_topology_source (entry.source ()),
+    from_native_topology_state (entry.state ()),
+    entry.endpoint (),
+    entry.routing_id () };
+}
+
+framework_error_kind_t
+map_registry_client_error (const std::exception &ex)
+{
+  if (dynamic_cast<const zlink::connect_error_t *> (&ex) != nullptr) {
+    return framework_error_kind_t::disconnected;
+  }
+  if (dynamic_cast<const zlink::config_error_t *> (&ex) != nullptr) {
+    return framework_error_kind_t::request_failed;
+  }
+  if (dynamic_cast<const std::invalid_argument *> (&ex) != nullptr) {
+    return framework_error_kind_t::request_protocol_error;
+  }
+  return framework_error_kind_t::request_failed;
+}
+
+} // namespace
 
 registry_builder_t::registry_builder_t ()
   : _state (std::make_shared<detail::registry_runtime_state_t> ())
@@ -150,10 +340,63 @@ registry_query_t::service_summary () const
   return _state->services;
 }
 
+std::vector<service_summary_entry_t>
+registry_query_t::service_summary (
+  const service_summary_filter_t &filter) const
+{
+  std::vector<service_summary_entry_t> result;
+  for (const auto &entry : _state->services) {
+    if (filter.name && entry.name != *filter.name) {
+      continue;
+    }
+    if (filter.kind && entry.kind != *filter.kind) {
+      continue;
+    }
+    if (filter.role && entry.role != *filter.role) {
+      continue;
+    }
+    result.push_back (entry);
+  }
+  return result;
+}
+
 std::vector<topology_entry_t>
 registry_query_t::topology () const
 {
   return _state->topology;
+}
+
+std::vector<topology_entry_t>
+registry_query_t::topology (const topology_filter_t &filter) const
+{
+  std::vector<topology_entry_t> result;
+  for (const auto &entry : _state->topology) {
+    if (filter.node_name && entry.node_name != *filter.node_name) {
+      continue;
+    }
+    if (filter.name && entry.name != *filter.name) {
+      continue;
+    }
+    if (filter.kind && entry.kind != *filter.kind) {
+      continue;
+    }
+    if (filter.role && entry.role != *filter.role) {
+      continue;
+    }
+    if (filter.source && entry.source != *filter.source) {
+      continue;
+    }
+    if (filter.state && entry.state != *filter.state) {
+      continue;
+    }
+    if (filter.routing_id) {
+      if (!entry.routing_id || *entry.routing_id != *filter.routing_id) {
+        continue;
+      }
+    }
+    result.push_back (entry);
+  }
+  return result;
 }
 
 std::vector<member_peer_t>
@@ -184,6 +427,124 @@ registry_query_t::resolve_spot_remote_address (spot_rid_t spot_rid)
 {
   return detail::registry_runtime_t (_state).resolve_spot_remote_address (
     std::move (spot_rid));
+}
+
+class registry_query_client_t::impl
+{
+public:
+  std::unique_ptr<zlink::context_t> context;
+  std::unique_ptr<zlink::service::registry_query_client_t> client;
+};
+
+registry_query_client_t::registry_query_client_t ()
+  : _impl (std::make_unique<impl> ())
+{
+}
+
+registry_query_client_t::registry_query_client_t (
+  registry_query_client_options_t options)
+  : registry_query_client_t ()
+{
+  auto connected = connect (std::move (options));
+  if (!connected) {
+    connected.value ();
+  }
+}
+
+registry_query_client_t::~registry_query_client_t () = default;
+registry_query_client_t::registry_query_client_t (
+  registry_query_client_t &&) noexcept = default;
+registry_query_client_t &registry_query_client_t::operator= (
+  registry_query_client_t &&) noexcept = default;
+
+result_t<void>
+registry_query_client_t::connect (registry_query_client_options_t options)
+{
+  if (options.endpoint.empty ()) {
+    return result_t<void>::failure (
+      framework_error_kind_t::request_protocol_error,
+      "registry query client endpoint is required");
+  }
+  try {
+    auto context = std::make_unique<zlink::context_t> ();
+    auto client =
+      std::make_unique<zlink::service::registry_query_client_t> (*context);
+    client->connect (options.endpoint);
+    _impl->client = std::move (client);
+    _impl->context = std::move (context);
+    return result_t<void>::success ();
+  } catch (const std::exception &ex) {
+    return result_t<void>::failure (map_registry_client_error (ex), ex.what ());
+  }
+}
+
+result_t<void>
+registry_query_client_t::connect (std::string endpoint)
+{
+  return connect (registry_query_client_options_t { std::move (endpoint) });
+}
+
+result_t<std::vector<topology_entry_t>>
+registry_query_client_t::topology () const
+{
+  if (!_impl->client) {
+    return result_t<std::vector<topology_entry_t>>::failure (
+      framework_error_kind_t::disconnected,
+      "registry query client is not connected");
+  }
+  try {
+    std::vector<topology_entry_t> mapped;
+    const auto native = _impl->client->topology ();
+    mapped.reserve (native.size ());
+    for (const auto &entry : native) {
+      mapped.push_back (from_native_topology_entry (entry));
+    }
+    return result_t<std::vector<topology_entry_t>>::success (
+      std::move (mapped));
+  } catch (const std::exception &ex) {
+    return result_t<std::vector<topology_entry_t>>::failure (
+      map_registry_client_error (ex), ex.what ());
+  }
+}
+
+result_t<std::vector<topology_entry_t>>
+registry_query_client_t::topology (const topology_filter_t &filter) const
+{
+  if (!_impl->client) {
+    return result_t<std::vector<topology_entry_t>>::failure (
+      framework_error_kind_t::disconnected,
+      "registry query client is not connected");
+  }
+  try {
+    const auto native_filter = to_native_filter (filter);
+    const auto native = _impl->client->topology (&native_filter);
+    std::vector<topology_entry_t> mapped;
+    mapped.reserve (native.size ());
+    for (const auto &entry : native) {
+      mapped.push_back (from_native_topology_entry (entry));
+    }
+    return result_t<std::vector<topology_entry_t>>::success (
+      std::move (mapped));
+  } catch (const std::exception &ex) {
+    return result_t<std::vector<topology_entry_t>>::failure (
+      map_registry_client_error (ex), ex.what ());
+  }
+}
+
+void
+registry_query_client_t::close () noexcept
+{
+  try {
+    if (_impl->client) {
+      _impl->client->close ();
+    }
+    if (_impl->context) {
+      _impl->context->term ();
+    }
+  } catch (...) {
+  }
+  _impl->client.reset ();
+  _impl->context.reset ();
 }
 
 zlink_builder_t &

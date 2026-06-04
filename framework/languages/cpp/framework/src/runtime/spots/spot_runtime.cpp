@@ -8,10 +8,24 @@
 #include "runtime/dispatch/coroutine_executor.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <utility>
 
 namespace zlink::framework
 {
+
+namespace
+{
+
+bool
+is_blank (const std::string &value)
+{
+  return std::all_of (value.begin (), value.end (), [](unsigned char ch) {
+    return std::isspace (ch) != 0;
+  });
+}
+
+} // namespace
 
 node_rid_t::node_rid_t (std::string value) : _value (std::move (value)) {}
 
@@ -231,7 +245,8 @@ spot_handler_registry_t::invoke_erased (
   service_provider_t &services,
   serializer_registry_t &serializers,
   const zlink::message_t &message,
-  const spot_actor_change_result_t *change_result) const
+  const spot_actor_change_result_t *change_result,
+  spot_actor_message_metadata_t metadata) const
 {
   for (std::size_t index = 0; index < _state->handlers.size (); ++index) {
     const auto &descriptor = _state->handlers[index];
@@ -249,10 +264,17 @@ spot_handler_registry_t::invoke_erased (
          &services,
          &serializers,
          owned_message = std::move (owned_message),
+         metadata = std::move (metadata),
          change_result]() -> boost::asio::awaitable<result_t<zlink::message_t>> {
           try {
             auto handler_task = _state->handler_invokers[handler_index] (
-              spot, actor, services, serializers, owned_message, change_result);
+              spot,
+              actor,
+              services,
+              serializers,
+              owned_message,
+              metadata,
+              change_result);
             co_return result_t<zlink::message_t>::success (
               (co_await runtime::await_task_result (
                  std::move (handler_task)))
@@ -318,6 +340,18 @@ spot_node_builder_t::enable_router (std::string endpoint,
 }
 
 spot_node_builder_t &
+spot_node_builder_t::connect_router (std::string endpoint)
+{
+  if (endpoint.empty () || is_blank (endpoint)) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "SPOT router manual endpoint is required");
+  }
+  _state->snapshot.router_manual_connections.push_back (std::move (endpoint));
+  return *this;
+}
+
+spot_node_builder_t &
 spot_node_builder_t::enable_pub_sub (std::string endpoint)
 {
   _state->snapshot.pub_bind_endpoint = endpoint;
@@ -333,6 +367,19 @@ spot_node_builder_t::enable_pub_sub (std::string endpoint,
 {
   enable_pub_sub (std::move (endpoint));
   _state->snapshot.pub_routing_id = std::move (routing_id);
+  return *this;
+}
+
+spot_node_builder_t &
+spot_node_builder_t::connect_pub_sub (std::string endpoint)
+{
+  if (endpoint.empty () || is_blank (endpoint)) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "SPOT pub/sub manual endpoint is required");
+  }
+  _state->snapshot.pub_sub_manual_connections.push_back (
+    std::move (endpoint));
   return *this;
 }
 
@@ -389,15 +436,83 @@ spot_node_builder_t::use_registry_spot_remote_addresses (
 }
 
 spot_node_builder_t &
-spot_node_builder_t::attach_channel_client (std::string channel_name)
+spot_node_builder_t::accept_routes_from_channel (
+  std::string route_channel_name,
+  std::vector<std::string> manual_connections)
 {
+  if (route_channel_name.empty () || is_blank (route_channel_name)) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "accepted SPOT route channel name is required");
+  }
+  for (const auto &endpoint : manual_connections) {
+    if (endpoint.empty () || is_blank (endpoint)) {
+      throw framework_exception_t (
+        framework_error_kind_t::request_protocol_error,
+        "accepted SPOT route manual endpoint is required");
+    }
+  }
+  const auto duplicate = std::any_of (
+    _state->snapshot.accepted_route_channels.begin (),
+    _state->snapshot.accepted_route_channels.end (),
+    [&](const auto &accepted) {
+      return accepted.channel_name == route_channel_name;
+    });
+  if (duplicate) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "duplicate accepted SPOT route channel");
+  }
+  _state->snapshot.accepted_route_channels.push_back (
+    accepted_spot_route_channel_t {
+      std::move (route_channel_name),
+      std::move (manual_connections)
+    });
+  return *this;
+}
+
+spot_node_builder_t &
+spot_node_builder_t::attach_channel_client (
+  std::string channel_name,
+  std::vector<std::string> manual_connections)
+{
+  if (channel_name.empty () || is_blank (channel_name)) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "attached client/server channel client name is required");
+  }
+  for (const auto &endpoint : manual_connections) {
+    if (endpoint.empty () || is_blank (endpoint)) {
+      throw framework_exception_t (
+        framework_error_kind_t::request_protocol_error,
+        "attached channel client manual endpoint is required");
+    }
+  }
+  _state->snapshot.attached_channel_client_details.push_back (
+    attached_channel_client_t { channel_name, std::move (manual_connections) });
   _state->snapshot.attached_channel_clients.push_back (std::move (channel_name));
   return *this;
 }
 
 spot_node_builder_t &
-spot_node_builder_t::attach_publisher (std::string channel_name)
+spot_node_builder_t::attach_publisher (
+  std::string channel_name,
+  std::vector<std::string> manual_connections)
 {
+  if (channel_name.empty () || is_blank (channel_name)) {
+    throw framework_exception_t (
+      framework_error_kind_t::request_protocol_error,
+      "attached SPOT publisher channel name is required");
+  }
+  for (const auto &endpoint : manual_connections) {
+    if (endpoint.empty () || is_blank (endpoint)) {
+      throw framework_exception_t (
+        framework_error_kind_t::request_protocol_error,
+        "attached SPOT publisher manual endpoint is required");
+    }
+  }
+  _state->snapshot.attached_publisher_details.push_back (
+    attached_publisher_t { channel_name, std::move (manual_connections) });
   _state->snapshot.attached_publishers.push_back (std::move (channel_name));
   return *this;
 }

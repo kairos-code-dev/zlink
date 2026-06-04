@@ -4,10 +4,44 @@
 
 #include "runtime/http_client_runtime.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace zlink::http_client
 {
+namespace
+{
+
+bool
+is_blank (const std::string &value)
+{
+  return value.empty () ||
+         std::all_of (value.begin (), value.end (), [](char ch) {
+           return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+         });
+}
+
+void
+require_non_blank (const std::string &value, const char *message)
+{
+  if (is_blank (value)) {
+    throw zlink::framework::framework_exception_t (
+      zlink::framework::framework_error_kind_t::request_protocol_error,
+      message);
+  }
+}
+
+void
+require_positive_timeout (std::chrono::milliseconds value)
+{
+  if (value <= std::chrono::milliseconds::zero ()) {
+    throw zlink::framework::framework_exception_t (
+      zlink::framework::framework_error_kind_t::request_protocol_error,
+      "HTTP client timeout must be greater than zero");
+  }
+}
+
+} // namespace
 
 client_builder_t
 client_t::create ()
@@ -47,6 +81,7 @@ client_t::delete_ (std::string path) const
 client_builder_t &
 client_builder_t::base_url (std::string value)
 {
+  require_non_blank (value, "HTTP client base_url is required");
   _base_url = std::move (value);
   return *this;
 }
@@ -62,6 +97,7 @@ client_builder_t::json ()
 client_builder_t &
 client_builder_t::timeout (std::chrono::milliseconds value)
 {
+  require_positive_timeout (value);
   _timeout = value;
   return *this;
 }
@@ -69,6 +105,7 @@ client_builder_t::timeout (std::chrono::milliseconds value)
 client_builder_t &
 client_builder_t::default_header (std::string name, std::string value)
 {
+  require_non_blank (name, "HTTP client default header name is required");
   _headers[std::move (name)] = std::move (value);
   return *this;
 }
@@ -76,6 +113,7 @@ client_builder_t::default_header (std::string name, std::string value)
 client_builder_t &
 client_builder_t::trust_certificate_file (std::string path)
 {
+  require_non_blank (path, "HTTP client trust certificate file is required");
   _trust_certificate_file = std::move (path);
   return *this;
 }
@@ -83,9 +121,8 @@ client_builder_t::trust_certificate_file (std::string path)
 client_t
 client_builder_t::build () const
 {
-  if (_base_url.empty ()) {
-    throw std::invalid_argument ("HTTP client base_url is required");
-  }
+  require_non_blank (_base_url, "HTTP client base_url is required");
+  require_positive_timeout (_timeout);
   detail::http_client_options_t options {
     .base_url = _base_url,
     .json = _json,
@@ -93,8 +130,14 @@ client_builder_t::build () const
     .headers = _headers,
     .trust_certificate_file = _trust_certificate_file
   };
-  return client_t (
-    std::make_shared<detail::http_client_runtime_t> (std::move (options)));
+  try {
+    return client_t (
+      std::make_shared<detail::http_client_runtime_t> (std::move (options)));
+  } catch (const std::invalid_argument &error) {
+    throw zlink::framework::framework_exception_t (
+      zlink::framework::framework_error_kind_t::request_protocol_error,
+      error.what ());
+  }
 }
 
 request_builder_t::request_builder_t (
@@ -103,11 +146,17 @@ request_builder_t::request_builder_t (
   std::string path)
   : _client (&client), _method (method), _path (std::move (path))
 {
+  if (_path.empty () || _path.front () != '/') {
+    throw zlink::framework::framework_exception_t (
+      zlink::framework::framework_error_kind_t::request_protocol_error,
+      "HTTP request path must start with /");
+  }
 }
 
 request_builder_t &
 request_builder_t::header (std::string name, std::string value)
 {
+  require_non_blank (name, "HTTP request header name is required");
   _headers[std::move (name)] = std::move (value);
   return *this;
 }

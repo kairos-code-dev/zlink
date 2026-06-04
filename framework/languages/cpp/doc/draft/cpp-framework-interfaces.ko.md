@@ -205,8 +205,10 @@ public `route_client_t`, `route_send_call_t`, `route_request_call_t`,
 대응한다. 사용자는 router channel id, target node routing id, typed payload만 넘기고,
 route channel runtime lookup, envelope 작성, serializer 호출은 runtime owner가 처리한다.
 C++는 낮은 수준 검증을 위해 request sequence submission call도 유지하지만, 일반 사용 표면은
-`request<TRequest, TReply>(...).packet_name(...).timeout(...).submit()`으로 typed reply를
-받는다. typed reply completion은 route runtime backend seam을 통해 검증되고,
+`request<TRequest, TReply>(...).packet_name(...).metadata(...).timeout(...).submit()`으로
+typed reply를 받는다. `.metadata(key, value)`로 넣은 값은 framework envelope header에 보존되며,
+route runtime lookup과 serializer 호출은 사용자에게 드러나지 않는다. typed reply completion은
+route runtime backend seam을 통해 검증되고,
 `native_route_backend_t`가 C++ binding `router_socket_t::send/request`로 이 seam에 붙는다.
 현재 완료 범위에서는 route runtime lookup, envelope 작성, backend seam, Registry 기반
 route lookup을 회귀 테스트로 고정한다. router socket lifecycle을 더 자동화해야 하는 경우에도
@@ -263,6 +265,20 @@ reply body decode, error reply 해석을 한 곳에 둔다.
 대응한다. native request result나 error envelope code를 `framework_error_kind_t`와
 retriable 여부로 사상한다. 이 매핑은 handler, channel, connector sample에 흩어져 있으면
 안 된다.
+
+주요 매핑은 아래처럼 고정한다.
+
+| native/error code | C++ error kind | retriable |
+|-------------------|----------------|-----------|
+| `timed_out`, `timeout` | `timeout` | no |
+| `not_connected`, `route_not_connected` | `route_not_connected` | yes |
+| `not_found`, `request_target_not_found` | `request_target_not_found` | no |
+| `rejected`, `request_rejected` | `request_rejected` | no |
+| `busy`, `conflict` | `request_rejected` | yes |
+| `protocol_error`, `request_protocol_error` | `request_protocol_error` | no |
+| `handler_not_found` | `handler_not_found` | no |
+
+이 표는 request completion과 error envelope reply 양쪽에 같은 의미로 적용한다.
 
 `ZLinkMessageNameResolver`에 해당하는 C++ 정책은 DTO의
 `static constexpr const char *packet_name`을 우선 사용하는 것이다. framework handler
@@ -579,6 +595,18 @@ public:
     stream_builder_t &attach_actor_gateway(std::string spot_node_name);
 };
 
+class stream_node_options_builder_t {
+public:
+    stream_node_options_builder_t &bind(std::string endpoint);
+
+    template<typename TSession>
+    stream_node_options_builder_t &register_session();
+
+    stream_node_options_builder_t &packet_session(std::string session_name);
+    stream_node_options_builder_t &attach_actor_gateway(
+      std::string spot_node_name);
+};
+
 } // namespace zlink::framework
 ```
 
@@ -605,50 +633,34 @@ class channel_builder_t {
 public:
     channel_builder_t &enable_server();
     channel_builder_t &enable_server(
-      std::function<void(server_capability_builder_t &)> configure);
+      std::function<void(capability_builder_t &)> configure);
 
     channel_builder_t &enable_client();
     channel_builder_t &enable_client(
-      std::function<void(client_capability_builder_t &)> configure);
+      std::function<void(capability_builder_t &)> configure);
 
     channel_builder_t &enable_publisher();
     channel_builder_t &enable_publisher(
-      std::function<void(publisher_capability_builder_t &)> configure);
+      std::function<void(capability_builder_t &)> configure);
 
     channel_builder_t &enable_subscriber();
     channel_builder_t &enable_subscriber(
-      std::function<void(subscriber_capability_builder_t &)> configure);
+      std::function<void(capability_builder_t &)> configure);
 };
 
-class server_capability_builder_t {
+class capability_builder_t {
 public:
-    server_capability_builder_t &bind(std::string endpoint);
-};
-
-class client_capability_builder_t {
-public:
-    client_capability_builder_t &connect(std::string endpoint);
-    client_capability_builder_t &use_discovery();
-
-    client_capability_builder_t &send_timeout(std::chrono::milliseconds timeout);
-    client_capability_builder_t &request_timeout(std::chrono::milliseconds timeout);
-    client_capability_builder_t &pending_queue_limit(std::size_t count);
-};
-
-class publisher_capability_builder_t {
-public:
-    publisher_capability_builder_t &bind(std::string endpoint);
-    publisher_capability_builder_t &send_timeout(std::chrono::milliseconds timeout);
-};
-
-class subscriber_capability_builder_t {
-public:
-    subscriber_capability_builder_t &connect(std::string endpoint);
-    subscriber_capability_builder_t &use_discovery();
+    capability_builder_t &bind(std::string endpoint);
+    capability_builder_t &connect(std::string endpoint);
+    capability_builder_t &use_discovery();
 };
 
 } // namespace zlink::framework
 ```
+
+요청 timeout은 call object의 `.timeout(...)`과 route request fluent 표면에서 설정한다. pending
+queue 상한은 `zlink_builder_t::max_pending(...)`이 runtime 단위로 소유한다. C++ draft는
+`.NET` capability builder에 없는 per-capability timeout/pending option을 만들지 않는다.
 
 내부 매핑은 아래와 같다.
 
@@ -791,6 +803,8 @@ template <typename TReply>
 class request_call_t {
 public:
     request_call_t &timeout(std::chrono::milliseconds timeout);
+    request_call_t &packet_name(std::string packet_name);
+    request_call_t &metadata(std::string key, std::string value);
     task_t<TReply> submit();
     pending_operation_t submit(std::function<void(result_t<TReply>)> callback);
 };
@@ -798,6 +812,8 @@ public:
 class send_call_t {
 public:
     send_call_t &timeout(std::chrono::milliseconds timeout);
+    send_call_t &packet_name(std::string packet_name);
+    send_call_t &metadata(std::string key, std::string value);
     task_t<void> submit();
     pending_operation_t submit(std::function<void(result_t<void>)> callback);
 };
@@ -812,6 +828,9 @@ public:
 class stream_write_call_t {
 public:
     stream_write_call_t &timeout(std::chrono::milliseconds timeout);
+    stream_write_call_t &metadata(std::string key, std::string value);
+    stream_write_call_t &packet_name(std::string packet_name);
+    stream_write_call_t &compress();
     task_t<void> submit();
     pending_operation_t submit(std::function<void(result_t<void>)> callback);
 };
@@ -874,6 +893,7 @@ class stream_t {
 public:
     virtual ~stream_t() = default;
     virtual std::string session_id() const = 0;
+    virtual task_t<void> close() = 0;
     virtual stream_write_call_t write_packet(
       const stream_header_t &header,
       const zlink::message_t &payload) = 0;
@@ -903,6 +923,28 @@ public:
       const zlink::message_t &payload) = 0;
 };
 
+struct handler_invocation_context_t {
+    handler_descriptor_t descriptor;
+    handler_context_t context;
+    std::shared_ptr<const zlink::message_t> message;
+};
+
+struct handler_context_t {
+    std::string channel_name;
+    std::string packet_name;
+    std::string content_type;
+};
+
+struct request_context_t : handler_context_t {};
+struct send_context_t : handler_context_t {};
+
+struct publish_context_t : handler_context_t {
+    std::string topic;
+    std::string source;
+};
+
+using handler_next_t = std::function<task_t<zlink::message_t>()>;
+
 class handler_registry_t {
 public:
     template <typename TOwner, typename TEvent>
@@ -912,11 +954,25 @@ public:
       void (TOwner::*method)(const TEvent &),
       handler_options_t options = {});
 
+    template <typename TOwner, typename TEvent>
+    handler_registry_t &on_event(
+      std::string channel_name,
+      std::string topic,
+      void (TOwner::*method)(const TEvent &, const publish_context_t &),
+      handler_options_t options = {});
+
     template <typename TOwner, typename TRequest, typename TReply>
     handler_registry_t &on_request(
       std::string channel_name,
       std::string topic,
       TReply (TOwner::*method)(const TRequest &),
+      handler_options_t options = {});
+
+    template <typename TOwner, typename TRequest, typename TReply>
+    handler_registry_t &on_request(
+      std::string channel_name,
+      std::string topic,
+      TReply (TOwner::*method)(const TRequest &, const request_context_t &),
       handler_options_t options = {});
 
     template <typename TOwner, typename TCommand>
@@ -926,12 +982,22 @@ public:
       void (TOwner::*method)(const TCommand &),
       handler_options_t options = {});
 
+    template <typename TOwner, typename TCommand>
+    handler_registry_t &on_send(
+      std::string channel_name,
+      std::string topic,
+      void (TOwner::*method)(const TCommand &, const send_context_t &),
+      handler_options_t options = {});
+
     handler_registry_t &send_raw(
       std::string channel_name,
       std::string topic,
       std::string packet_name,
       std::function<result_t<void>(const payload_view_t &)> handler,
       handler_options_t options = {});
+
+    template <typename TFilter>
+    handler_registry_t &use_filter();
 
     handler_registry_t &observe_failures(
       std::function<void(const handler_failure_event_t &)> observer);
@@ -953,6 +1019,19 @@ options.handlers()
 handler dispatch는 binding의 `zlink::message_t`와 `zlink::multipart_t`를 받은 뒤,
 serializer를 통해 typed payload로 변환하고, DI에서 owner를 resolve한 다음 method를
 호출한다.
+
+handler method는 payload만 받을 수도 있고, payload 뒤에 typed context를 함께 받을 수도
+있다. request handler는 `request_context_t`, send handler는 `send_context_t`, event/publish
+handler는 `publish_context_t`를 받는다. context에는 channel, packet 이름, content type처럼
+사용자가 정책 판단에 쓰는 값만 둔다. raw multipart header나 dispatch table은 public context로
+노출하지 않는다.
+
+handler filter는 `.NET`의 handler filter처럼 handler 호출 앞뒤의 공통 처리를 맡는다.
+일반 application 설정에서는 `options.use_filter<TFilter>()`로 등록한다. 낮은 수준 extension이나
+unit test가 직접 registry를 다룰 때만 `handlers.use_filter<TFilter>()`를 사용한다. filter 타입은
+`invoke(const handler_invocation_context_t &, handler_next_t)`를 제공하며, 계속 처리하려면
+`co_await next()`를 호출하고 요청을 가로채야 하면 reply message를 직접 반환한다. descriptor
+lookup, serializer 선택, DI resolve 순서, filter chain 저장은 registry 내부 구현으로 숨긴다.
 
 STREAM handler는 일반 request/send/event handler와 분리한다. framework core는 packet
 방식만 지원하고, header도 framework가 정의한 `stream_header_t`만 사용한다. raw stream
@@ -1042,6 +1121,30 @@ public:
     typed_route_request_call_t<TReply> request(std::string router_channel_id,
       zlink::routing_id_t target_node_rid,
       TRequest request);
+};
+
+class route_send_call_t {
+public:
+    route_send_call_t &packet_name(std::string packet_name);
+    route_send_call_t &metadata(std::string key, std::string value);
+    task_t<void> submit();
+};
+
+class route_request_call_t {
+public:
+    route_request_call_t &packet_name(std::string packet_name);
+    route_request_call_t &metadata(std::string key, std::string value);
+    route_request_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<std::uint64_t> submit();
+};
+
+template <typename TReply>
+class typed_route_request_call_t {
+public:
+    typed_route_request_call_t &packet_name(std::string packet_name);
+    typed_route_request_call_t &metadata(std::string key, std::string value);
+    typed_route_request_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<TReply> submit();
 };
 
 } // namespace zlink::framework
@@ -1140,10 +1243,12 @@ public:
     spot_node_builder_t &enable_router(
       std::string endpoint,
       zlink::routing_id_t routing_id);
+    spot_node_builder_t &connect_router(std::string endpoint);
     spot_node_builder_t &enable_pub_sub(std::string endpoint);
     spot_node_builder_t &enable_pub_sub(
       std::string endpoint,
       zlink::routing_id_t routing_id);
+    spot_node_builder_t &connect_pub_sub(std::string endpoint);
     spot_node_builder_t &use_discovery(std::string channel_name);
     spot_node_builder_t &enable_actor_gateway();
     spot_node_builder_t &attach_channel_client(std::string channel_name);
@@ -1196,7 +1301,18 @@ struct spot_actor_change_result_t {
 };
 
 struct spot_actor_message_metadata_t {
+    std::optional<std::string_view> find(std::string_view key) const;
+    bool contains(std::string_view key) const;
+    bool empty() const;
     std::map<std::string, std::string> values;
+};
+
+class message_metadata_policy_t {
+public:
+    message_metadata_policy_t &forward(std::string key);
+    bool can_forward(std::string_view key) const;
+    spot_actor_message_metadata_t project(
+      const std::map<std::string, std::string> &metadata) const;
 };
 
 class spot_actor_reply_options_t {
@@ -1333,6 +1449,10 @@ public:
 경로와 Entry Spot join 경로에 제한한다. 일반 application handler와 client는 channel
 name과 topic을 먼저 사용한다.
 
+SPOT node는 router 또는 pub/sub capability 중 하나 이상을 켜야 한다. `spot_mesh(...).node(...)`는
+discovery view만 연결하므로 실행 capability가 아니다. `enable_router(...)`나
+`enable_pub_sub(...)` 없이 node를 선언하면 options 적용 시점에 설정 오류로 실패한다.
+
 `.NET`의 `Context.Handlers.AddHandler`, `AddActorJoin`, `AddActorPacket`과 같은 역할은
 C++에서 `spot_context_t::handlers()`가 맡는다. C++에는 assembly reflection이 없으므로
 handler type은 명시한다. spot, actor, message, reply type은 handler class의
@@ -1367,7 +1487,8 @@ void configure(zlink::framework::spot_context_t &context)
 일반 Spot packet handler와 subscription handler는 `handle(spot, message)` 형태로 호출된다.
 actor lifecycle handler는 `spot_actor_change_result_t`를 받는다. 이 타입은 `.NET`의
 `ZLinkSpotActorChangeResult`에 해당하며, `join_spot`, `join_entry_spot`, `leave_spot`
-change kind를 표현한다. actor disconnected handler는 `.NET`처럼 change result 없이
+change kind만 표현한다. 이 셋이 아닌 값은 membership 변화가 아니므로 생성 시
+`request_protocol_error`로 거부한다. actor disconnected handler는 `.NET`처럼 change result 없이
 `handle(spot, actor)` 형태로 호출된다. C++은 handler interface에서 `TSpot`을 reflection으로
 추론할 수 없으므로 handler class alias로 타입 정보를 제공한다.
 등록된 handler는 descriptor로만 남지 않는다. dispatch 경로는 `serializer_registry_t`로
@@ -1378,6 +1499,15 @@ Entry Spot의 actor packet도 일반 Spot packet으로 등록하지 않는다. `
 등록하고 handler는 `EntrySpot`, actor, `spot_actor_request_context_t` 또는
 `spot_actor_send_context_t`, DTO를 받는다. 이렇게 해야 `.NET` sample의 actor request
 handler와 같은 구조가 된다.
+stream header metadata 전체를 actor handler에 그대로 노출하지 않는다. 사용자는
+`options.metadata().forward("trace-id")`처럼 application metadata forwarding 정책을 선언하고,
+framework는 허용된 key만 `spot_actor_message_metadata_t`로 project해서 actor context에 넣는다.
+handler는 `find(...)` 또는 `contains(...)`로 값을 조회한다. `values`는 단순 반복과 기존
+호출자 호환을 위해 남기지만, handler code가 `std::map` 구조에 직접 묶이지 않아도 되게 조회
+표면을 제공한다. 빈 metadata key와 공백만 있는 key는 의미가 모호하므로 `forward("")`와
+`forward(" ")`에서 거부한다.
+이 정책은 stream frame 구조나 ActorGateway 내부 frame을 public handler 표면에 드러내지 않기
+위한 경계다.
 
 timer는 native timer handle을 application에 넘기지 않는다. `timer_t`는 CAPI timer
 등록의 lifetime과 취소를 표현하는 public handle이며, callback은 user Spot에서는 core
@@ -1401,6 +1531,8 @@ join result code, join 이후 actor ref, typed reply를 함께 담는다. Entry 
 비동기 표면은 `.NET`의 `SubmitAsync()`와 callback submit 모델을 C++로 투영한다.
 `request(...)`, `send(...)`, `relay(...)`, `join_spot(...)`, `join_entry_spot(...)` 같은
 호출은 즉시 실행하지 않는 call object를 반환하고, 마지막 `submit()`이 실제 submit 지점이다.
+일반 channel `request_call_t`와 `send_call_t`는 `packet_name(...)`, `metadata(...)`,
+`timeout(...)`을 submit 전에 모으고, submit 시점에 framework envelope 정책으로 넘긴다.
 
 ```cpp
 auto reply = co_await client
@@ -1473,13 +1605,32 @@ module은 서비스 등록, runtime 구성, handler 등록, monitoring 구성을
 `app_t::add_zlink_framework(options_callback)`는 `.NET`의
 `AddZLinkFramework(options => ...)`에 대응하는 C++ 고수준 구성 진입점이다. C++에는 assembly
 reflection이 없으므로 `.NET`의 `AddHandlersFromAssemblyOf(...)`만 그대로 옮기지 않는다.
-그 대신 handler 타입을 명시해서 `options.handlers().add<THandler>(group_name)`으로 등록한다.
+그 대신 handler 타입을 명시해서 `options.handlers().add<THandler>(group_name)`,
+`add_send<THandler>(group_name)`, `add_publish<THandler>(group_name)`으로 등록한다.
 나머지 codec, discovery, client-server channel, handler group 구성은 `.NET`과 같은 읽기 수준을
 유지한다.
 
 `options.codecs().add_json()`은 JSON codec 사용만 선언한다. 사용자가 모든 request/reply message
 type을 codec 설정에 나열하지 않는다. C++ framework는 `options.handlers().add<THandler>(...)`에서
 handler의 `request_type`, `reply_type`을 읽어 필요한 JSON serializer를 내부에서 등록한다.
+send handler는 `message_type`, publish handler는 `event_type`을 읽어 같은 방식으로 serializer와
+handler registry 항목을 등록한다. 따라서 request/send/publish handler를 같은 group 이름으로
+묶고, channel builder의 `.handler_group(...)`에서 channel에 연결할 수 있다.
+handler group은 channel 종류와 맞아야 한다. client/server와 dealer mesh channel은 request/send
+handler group을 받을 수 있고, fanout channel은 publish handler group만 받을 수 있다. 맞지 않는
+group을 연결하면 options 작성 시점에 설정 오류로 실패한다.
+같은 channel에 같은 packet 이름의 handler가 두 번 노출되면 `request_protocol_error`로 실패한다.
+이 규칙은 low-level `handler_registry_t` 직접 등록뿐 아니라 fluent options의 handler group
+경로에도 적용한다. channel이 group을 먼저 참조한 뒤 handler가 들어오는 경우와 handler가 먼저
+등록되고 channel이 나중에 group을 참조하는 경우 모두 중복을 허용하지 않는다.
+client/server channel은 `server(...)` 또는 `client(...)` 중 하나 이상을 켜야 한다. fanout
+channel은 `bind(...)`로 publisher를 열거나 `subscriber(...)`로 subscriber를 열어야 한다.
+역할이 하나도 없는 channel 선언은 `.NET` registration validation과 같이 options 적용 시점에
+설정 오류로 실패한다.
+client/server channel이 server role을 켜면 request/send handler group을 하나 이상 연결해야 한다.
+단, SPOT route channel로 accept된 server는 SPOT route ingress로 쓰일 수 있으므로 handler group이
+없어도 허용한다. fanout channel이 subscriber role을 켜면 publish handler group을 하나 이상
+연결해야 한다.
 handler에 생성자 의존성이 있으면 `using dependency_types =
 zlink::framework::dependency_list_t<dep1_t, dep2_t>;`처럼 의존 타입을 명시한다. framework는
 handler를 등록할 때 `add_singleton<THandler, dep1_t, dep2_t>()`와 같은 DI 생성자 주입 등록을
@@ -1489,7 +1640,12 @@ handler를 등록할 때 `add_singleton<THandler, dep1_t, dep2_t>()`와 같은 D
 app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &options) {
     options.handlers()
       .add<authenticate_player_handler_t>("api")
-      .add<match_bingo_api_handler_t>("api");
+      .add<match_bingo_api_handler_t>("api")
+      .add_send<player_command_handler_t>("api")
+      .add_publish<notification_event_handler_t>("events");
+
+    options.use_filter<audit_filter_t>();
+    options.metadata().forward("trace-id");
 
     options.codecs().add_json();
 
@@ -1501,8 +1657,25 @@ app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &option
 
     options.client_server_channel(sample_names_t::play_channel)
       .client();
+
+    options.configure_dispatch([](auto &dispatch) {
+      dispatch.spot_dispatch_mode =
+        zlink::framework::dispatch_mode_t::compiled;
+      dispatch.stream_dispatch_mode =
+        zlink::framework::dispatch_mode_t::dynamic;
+      dispatch.diagnostics.message_flow =
+        zlink::framework::message_flow_log_mode_t::errors_only;
+    });
 });
 ```
+
+`client()`처럼 endpoint 인자 없이 client role을 켜면 registry discovery로 peer를 찾는다는 뜻이다.
+이 경우 같은 options 안에 `options.discovery().add(...)`가 있어야 한다. 특정 endpoint를 직접
+붙일 때는 `client(endpoint)`를 사용한다. `client(endpoint)`와 fanout
+`subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 같은 capability의 manual endpoint
+목록에 추가된다. fanout subscriber도 discovery/manual 선택 규칙은 같다. discovery endpoint도
+연결 경계의 일부이므로 빈 문자열이나 공백만 있는 문자열은 `options.discovery().add(...)`에서
+즉시 거부한다.
 
 이 구조에서는 샘플 `main.cpp`, role `*HostFactory`, 일반 사용자 설정 예제가 handler member
 function pointer, handler용 DI factory lambda, monitoring channel 문자열, serializer smoke 검증,
@@ -1514,13 +1687,27 @@ framework options builder가 충분히 깊지 않은 것으로 본다.
 일반 사용자 설정에 두지 않는다. C++ 내부 runtime builder에는 낮은 수준 API가 남아 있을 수 있지만,
 샘플과 guide 수준의 설정은 아래처럼 역할이 바로 보이는 형태를 사용한다.
 
+`options.configure_dispatch(...)`는 `.NET`의 `ConfigureDispatch(...)`에 대응한다. C++에서는
+interface graph를 만들지 않고 `dispatch_options_t` value를 람다에 넘긴다. 이 value는 Spot과
+STREAM dispatch mode, unhandled request/send/publish 정책, message flow diagnostics 설정을
+담는다. native dispatch token, queue slot, handler lookup table은 이 표면에 나오지 않는다.
+diagnostics sample rate는 `0.0`에서 `1.0` 사이여야 하며 NaN은 허용하지 않는다.
+send와 publish는 reply path가 없으므로 unhandled 정책에 `reply_error`를 사용할 수 없다.
+
 ```cpp
 options.client_server_channel(sample_names_t::api_channel)
   .server(topology.api_endpoint)
   .handler_group("api");
 
-options.publisher_channel(sample_names_t::notification_channel)
-  .bind(topology.notification_endpoint);
+options.fanout_channel(sample_names_t::notification_channel)
+  .bind(topology.notification_endpoint)
+  .subscriber(topology.notification_subscriber_endpoint)
+  .handler_group("events");
+
+options.dealer_mesh_channel(sample_names_t::mesh_channel)
+  .bind(topology.mesh_bind_endpoint)
+  .connect(topology.mesh_peer_endpoint)
+  .handler_group("api");
 
 options.use_registry_spot_remote_addresses(sample_names_t::router_channel);
 
@@ -1537,9 +1724,55 @@ options.spot_mesh(sample_names_t::game_spot_discovery)
 
 options.stream_node(sample_names_t::stream_name)
   .bind(topology.stream_endpoint)
-  .packet_session("client-session")
+  .register_session<client_session_t>()
   .attach_actor_gateway(sample_names_t::spot_node);
 ```
+
+`register_session<TSession>()`은 `.NET`의 `RegisterSession<TSession>()`에 맞춘 typed session
+등록 표면이다. `TSession`은 `packet_stream_session_t`를 상속해야 하며, framework service
+collection에 stream-session scope 서비스로 등록된다. `TSession::session_name`이 있으면 그 값을
+native packet session 이름으로 사용하고, 없으면 타입 이름 기반 message name을 사용한다.
+`packet_session(name)`은 session 이름을 직접 지정해야 하는 low-level 구성에 남긴다.
+하나의 stream node에는 packet session을 하나만 선언한다. `register_session<T>()`과
+`packet_session(...)`을 중복 호출하면 마지막 값으로 덮어쓰지 않고 설정 오류로 처리한다.
+
+dealer mesh channel은 최소 하나의 peer 획득 경로를 가져야 한다. `bind(...)` 또는
+`connect(...)` 없이 `dealer_mesh_channel(...)`만 선언하면 options 적용 시점에 설정 오류로
+실패한다. 이 규칙은 메시지를 보내는 시점까지 설정 실수를 숨기지 않기 위한 것이다.
+route mesh channel은 local route endpoint를 열어야 하므로 `bind(...)`가 필수다.
+`route_mesh_channel(...)`만 선언하거나 routing id/manual connection만 설정하면 options 적용
+시점에 설정 오류로 실패한다.
+`.NET`의 `EnableSpotRouteEgress(...)`에 해당하는 C++ fluent 표면은
+`enable_spot_route_egress(target_channel_name)`이다. client/server channel에서 이 설정을 쓰려면
+local client capability가 필요하고, route mesh channel에서는 route channel registration에 target
+SPOT node channel 이름을 보존한다.
+fluent options에서 channel 이름, handler group 이름, endpoint, SPOT node 이름, stream node
+이름처럼 식별자나 연결 주소로 쓰이는 값은 빈 문자열이나 공백 문자열을 허용하지 않는다.
+잘못된 값은 low-level socket/runtime까지 전달하지 않고 builder 호출 또는 options 적용 시점의
+framework error로 닫는다.
+`attach_channel_client(...)`는 등록된 client/server channel을 SPOT node의 outbound client로
+연결한다. attached client peer는 registry discovery 또는 attach별 manual endpoint로 얻는다.
+manual endpoint를 쓰려면
+`attach_channel_client(name, [](auto &client) { client.connect(endpoint); })`처럼 명시한다.
+SPOT router와 pub/sub capability도 registry discovery 없이 고정 peer를 붙일 수 있다. 이때는
+`enable_router(endpoint, [](auto &router) { router.connect(peer); })` 또는
+`enable_pub_sub(endpoint, [](auto &pub_sub) { pub_sub.connect(peer); })`처럼 capability별
+manual endpoint를 기록한다. routing id도 같은 configure callback 안에서
+`router.routing_id(...)`, `pub_sub.routing_id(...)`로 지정할 수 있다.
+`attach_publisher(...)`는 등록된 fanout publisher channel을 SPOT node에 연결하며, 해당 node는
+`enable_pub_sub(...)` capability를 가져야 한다. publisher attach도
+`attach_publisher(name, [](auto &publisher) { publisher.connect(endpoint); })`로 manual endpoint를
+기록할 수 있다. 같은 publisher channel을 여러 SPOT node에 중복 attach하면 options 적용 시점에
+실패한다.
+`accept_routes_from_channel(...)`은 SPOT route ingress를 여는 설정이다. 이 설정을 둔
+SPOT node는 `enable_router(...)`로 router capability를 켜야 하며, 대상 channel은
+client/server channel 또는 route mesh channel이어야 한다. fanout channel, dealer mesh
+channel, 등록되지 않은 channel, client/server와 route mesh가 같은 이름을 쓰는 모호한
+channel은 options 적용 시점에 실패한다. route peer는 registry discovery 또는 accepted route
+별 manual endpoint로 얻는다. manual endpoint를 쓰려면
+`accept_routes_from_channel(name, [](auto &routes) { routes.connect(endpoint); })`처럼
+명시한다. routed SPOT egress는 이 ingress target channel 이름을 향해 설정하므로,
+egress 설정과 accepted route 설정은 같은 이름을 기준으로 맞춘다.
 
 ### 12.1 HTTP Hosting
 
@@ -1813,7 +2046,7 @@ int main(int argc, char **argv)
           .handler_group("orders-api");
         options.spot_mesh("orders")
           .node("orders-spot")
-          .bind("tcp://0.0.0.0:7101");
+          .enable_router("tcp://0.0.0.0:7101");
         options.handlers()
           .add<order_created_handler_t>("orders-api");
     });

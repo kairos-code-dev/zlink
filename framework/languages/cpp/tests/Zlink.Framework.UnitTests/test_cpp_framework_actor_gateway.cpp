@@ -160,7 +160,8 @@ main ()
     return 13;
   }
 
-  auto disconnect = bound.value ().notify_disconnected ().submit ().result ();
+  auto disconnect =
+    bound.value ().bound_session ().disconnect ().submit ().result ();
   if (!disconnect || gateway.actor_bound ("bob") ||
       !gateway.actor_disconnected ("bob")) {
     return 10;
@@ -182,6 +183,17 @@ main ()
   auto rebound = manager.bind (remote_ref).submit ().result ();
   if (!rebound || !gateway.actor_bound ("bob")) {
     return 11;
+  }
+
+  auto actor_disconnect =
+    rebound.value ().notify_disconnected ().submit ().result ();
+  if (!actor_disconnect || gateway.actor_bound ("bob") ||
+      !gateway.actor_disconnected ("bob")) {
+    return 18;
+  }
+  rebound = manager.bind (remote_ref).submit ().result ();
+  if (!rebound || !gateway.actor_bound ("bob")) {
+    return 19;
   }
 
   bool join_spot_seen = false;

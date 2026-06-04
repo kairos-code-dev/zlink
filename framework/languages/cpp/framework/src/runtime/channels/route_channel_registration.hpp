@@ -25,6 +25,8 @@ public:
   route_channel_registration_t &routing_id (zlink::routing_id_t routing_id);
   route_channel_registration_t &connect (std::string endpoint);
   route_channel_registration_t &add_handler_group (std::string group_name);
+  route_channel_registration_t &enable_spot_route_egress (
+    std::string target_spot_node_channel_name);
   route_channel_registration_t &add_handler (
     framework::route_handler_registration_t registration);
 
@@ -69,6 +71,7 @@ public:
   const std::optional<zlink::routing_id_t> &routing_id () const noexcept;
   const std::vector<std::string> &manual_connections () const noexcept;
   const std::vector<std::string> &handler_groups () const noexcept;
+  const std::optional<std::string> &spot_route_egress_target () const noexcept;
 
   route_handler_registry_t create_handler_registry () const;
 
@@ -81,6 +84,7 @@ private:
   std::optional<zlink::routing_id_t> _routing_id;
   std::vector<std::string> _manual_connections;
   std::vector<std::string> _handler_groups;
+  std::optional<std::string> _spot_route_egress_target;
   std::vector<framework::route_handler_registration_t> _handlers;
   std::vector<handler_installer_t> _send_handlers;
   std::vector<handler_installer_t> _request_handlers;

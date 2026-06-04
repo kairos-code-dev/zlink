@@ -18,6 +18,8 @@
 #ifdef _WIN32
 #include <process.h>
 #else
+#include <arpa/inet.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #endif
 
@@ -57,8 +59,31 @@ std::uint16_t
 process_unique_port (std::uint16_t base_port, std::uint16_t salt)
 {
   const auto offset =
-    static_cast<std::uint16_t> ((current_process_id () % 1000U) * 3U);
-  return static_cast<std::uint16_t> (base_port + offset + salt);
+    static_cast<std::uint16_t> ((current_process_id () % 1000U) * 11U);
+  const auto first = static_cast<std::uint16_t> (base_port + offset + salt);
+#ifdef _WIN32
+  return first;
+#else
+  for (std::uint16_t attempt = 0; attempt < 200; ++attempt) {
+    const auto candidate = static_cast<std::uint16_t> (first + attempt * 13U);
+    const int descriptor = ::socket (AF_INET, SOCK_STREAM, 0);
+    if (descriptor < 0) {
+      return first;
+    }
+    sockaddr_in address {};
+    address.sin_family = AF_INET;
+    address.sin_port = htons (candidate);
+    address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+    const bool bindable =
+      ::bind (descriptor, reinterpret_cast<sockaddr *> (&address),
+              sizeof (address)) == 0;
+    ::close (descriptor);
+    if (bindable) {
+      return candidate;
+    }
+  }
+  return first;
+#endif
 }
 
 std::uint16_t

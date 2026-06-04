@@ -127,6 +127,30 @@ main ()
     }
 
     zlink::framework::runtime::messaging::request_failure_mapper_t mapper;
+    const auto not_connected = mapper.completion_exception (
+      zlink::framework::runtime::messaging::request_result_t::not_connected,
+      "profile request");
+    if (not_connected.kind () !=
+          zlink::framework::framework_error_kind_t::route_not_connected ||
+        !not_connected.is_retriable ()) {
+      return 16;
+    }
+    const auto not_found = mapper.completion_exception (
+      zlink::framework::runtime::messaging::request_result_t::not_found,
+      "profile request");
+    if (not_found.kind () !=
+          zlink::framework::framework_error_kind_t::request_target_not_found ||
+        not_found.is_retriable ()) {
+      return 17;
+    }
+    const auto timed_out = mapper.completion_exception (
+      zlink::framework::runtime::messaging::request_result_t::timed_out,
+      "profile request");
+    if (timed_out.kind () !=
+          zlink::framework::framework_error_kind_t::timeout ||
+        timed_out.is_retriable ()) {
+      return 18;
+    }
     const auto busy = mapper.completion_exception (
       zlink::framework::runtime::messaging::request_result_t::busy,
       "profile request");
@@ -134,6 +158,31 @@ main ()
           zlink::framework::framework_error_kind_t::request_rejected ||
         !busy.is_retriable ()) {
       return 15;
+    }
+    const auto rejected_header = mapper.error_header_exception (
+      "request_rejected",
+      "",
+      "profile request");
+    if (rejected_header.kind () !=
+          zlink::framework::framework_error_kind_t::request_rejected ||
+        rejected_header.is_retriable ()) {
+      return 19;
+    }
+    const auto protocol_header = mapper.error_header_exception (
+      "request_protocol_error",
+      "",
+      "profile request");
+    if (protocol_header.kind () !=
+        zlink::framework::framework_error_kind_t::request_protocol_error) {
+      return 20;
+    }
+    const auto missing_handler_header = mapper.error_header_exception (
+      "handler_not_found",
+      "",
+      "profile request");
+    if (missing_handler_header.kind () !=
+        zlink::framework::framework_error_kind_t::handler_not_found) {
+      return 21;
     }
   }
 

@@ -36,7 +36,12 @@ Current alignment notes:
 
 - both runners are recv-only and follow the policy metric header / RESULT
   contract
-- `MULTI_STREAM` uses the Node public API client/server pair in this tree
+- `MULTI_STREAM` uses the Node public API server with the shared core
+  `perf_stream_client` client required by the multi-suite policy. The Node
+  runner passes `--completion-wait-ms` to that client from
+  `PERF_MULTI_STREAM_COMPLETION_WAIT_MS`, then `PERF_STREAM_COMPLETION_WAIT_MS`,
+  and otherwise uses `2000` ms so in-flight replies after the active window are
+  counted without the instability seen with longer waits.
 - SPOT benchmarks attach a dedicated ingress `PUB` with
   `attachPubIngress()` before `createSpot()`, then publish with an explicit
   channel name

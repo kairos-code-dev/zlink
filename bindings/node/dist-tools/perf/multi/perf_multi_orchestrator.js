@@ -407,6 +407,10 @@ function buildClientSpawn(clientPath, clientArgs, args) {
         '--sizes', String(args.msgSize),
         '--runs', '1',
         '--duration', String(args.duration),
+        '--completion-wait-ms',
+        process.env.PERF_MULTI_STREAM_COMPLETION_WAIT_MS
+            || process.env.PERF_STREAM_COMPLETION_WAIT_MS
+            || '2000',
         '--send-stop-token', '1'
     ];
     const ioThreads = Number.isFinite(args.clientIoThreads)

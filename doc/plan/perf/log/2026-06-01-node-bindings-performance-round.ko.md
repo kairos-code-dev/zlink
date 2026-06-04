@@ -5225,3 +5225,52 @@ Node 측정과 후보 검토 기록이다. 계획 문서 본문에는 최종 상
   - 이번 라운드에서 Node multi 미달은 `12/156 (7.7%)`에서 `10/156 (6.4%)`로 줄었다.
   - 남은 Node multi 미달은 `MULTI_STREAM` small 10개다.
   - public stream handler 경계를 유지하면서 시도한 native frame 후보는 안정성 문제 때문에 기각한다.
+
+## Node MULTI_STREAM completion wait 보강
+
+- 대상:
+  - multi `MULTI_STREAM` small
+- 배경:
+  - Python multi에서 shared C `perf_stream_client`의 completion wait 보강으로 stream RESULT 누락이
+    해소됐다.
+  - Node도 같은 shared C client를 쓰지만 completion wait를 전달하지 않아 active window 뒤의
+    in-flight reply를 충분히 수집하지 못할 수 있었다.
+- 변경:
+  - `perf/multi/perf_multi_orchestrator.ts`에서 `MULTI_STREAM` client spawn에
+    `--completion-wait-ms`를 전달한다.
+  - 기본값은 `2000` ms다. `PERF_MULTI_STREAM_COMPLETION_WAIT_MS` 또는
+    `PERF_STREAM_COMPLETION_WAIT_MS`로 조정할 수 있다.
+- 측정:
+  - 현재 Node stream small:
+    `perf_node_multi_linux_20260604_235751_node_multi_stream_small_current_20260604_retry.txt`
+    는 status=complete였다.
+  - C 기준:
+    `perf_c_multi_linux_20260605_000005_node_multi_stream_small_c_compare_20260604.txt`
+    는 status=complete였다.
+  - Node 2000ms completion wait:
+    `perf_node_multi_linux_20260605_001148_node_multi_stream_completion_wait_2000_small_20260604.txt`
+    는 status=complete였다.
+  - 2000ms runs=3 tcp 보강:
+    `perf_node_multi_linux_20260605_000818_node_multi_stream_completion_wait_2000_tcp_probe_20260604.txt`
+    는 status=complete였다.
+  - 3000ms tcp 1024B 단독 보강:
+    `perf_node_multi_linux_20260605_000849_node_multi_stream_completion_wait_3000_tcp1024_probe_20260604.txt`
+    는 status=complete였다.
+- 결과:
+  - 2000ms complete small 재측정 기준으로 `tcp 64/256/1024B`는 37.2/47.9/37.4%,
+    `tls 64/256/1024B`는 33.8/31.9/43.9%, `wss 64/256/1024B`는 35.9/35.9/37.8%로
+    통과권에 들어왔다.
+  - `ws 64/256/1024B`는 26.8/24.8/25.6%로 여전히 미달한다.
+- 기각 후보:
+  - stream server idle wait 50ms를 1ms로 낮춘 후보는 `tcp 1024B` 단독 runs=3 median이
+    C 대비 약 25.8%에 그쳐 통과를 만들지 못해 되돌렸다.
+  - raw `socketStreamAttach` callback에서 `Message` materialization을 건너뛰는 후보는
+    `malloc_consolidate()`/`double free or corruption` 로그와 partial report가 나와 되돌렸다.
+  - 3000ms와 10000ms completion wait는 일부 multi-size run에서 client 메모리 오류로 partial이
+    되어 기본값으로 채택하지 않았다.
+- 검증:
+  - `npm --prefix bindings/node run build`: 통과
+  - `node bindings/node/dist-tools/tests/optimization_guard.test.js`: 통과
+- 판정:
+  - Node multi 미달은 `10/156 (6.4%)`에서 `3/156 (1.9%)`로 줄었다.
+  - 남은 Node multi 미달은 `MULTI_STREAM ws 64/256/1024B` 세 개다.

@@ -26,7 +26,7 @@
 
 | 순서 | 언어 | perf 경로 | Single 상태 | Multi 상태 | 다음 작업 |
 |---|---|---|---|---|---|
-| 1 | C++ | `bindings/cpp/perf` | `미달 없음` | `미달 없음` | Multi는 full+제한 재측정으로 통과. Single은 1개 잔여 항목을 제한 재측정과 수정 실험으로 확인한 뒤 미달로 정리했다. |
+| 1 | C++ | `bindings/cpp/perf` | `미달 없음` | `미달 없음` | Multi는 full+제한 재측정으로 통과. Single 마지막 잔여 `DEALER_ROUTER inproc 131072B`는 active sender가 `message_t::allocate(...)` payload에 직접 metric header를 쓰도록 맞춘 뒤 current C/C++ complete 재측정에서 통과권에 들어왔다. |
 | 2 | .NET | `bindings/dotnet/perf` | `미달 없음` | `미달 없음` | Single은 routed active recv 정렬로 `ROUTER_ROUTER inproc 262144B`를 통과로 올렸고, 나머지 7개는 public API 기준에서 추가 개선 후보가 확인되지 않아 미달했다. Multi는 full+4096B 보강+제한 재측정 뒤 잔여 11개를 미달했으나, 2026-06-05 current C/.NET 재측정과 SPOT send/send echo 경로 정렬 뒤 `MULTI_SPOT_SENDSEND tls/wss 64B`가 통과권으로 회복되어 잔여 9개가 남았다. |
 | 3 | Java | `bindings/java/perf` | `미달 없음` | `미달 없음` | Single은 SPOT 대용량 9개를 재검토하고 wrapper 재사용 실험까지 확인한 뒤 미달했다. Multi는 `MULTI_DEALER_DEALER ws 131072B`와 `MULTI_SPOT wss` 5개를 미달했다. |
 | 4 | Node | `bindings/node/perf` | `미달 없음` | `미달 없음` | Single은 routed metric 수신을 native에서 header/latency만 읽는 경로로 줄여 마지막 잔류 `DEALER_ROUTER tcp 131072B`까지 통과권에 올렸다. Multi는 current C/Node 제한 재측정으로 잔류 `MULTI_STREAM ws 64/256/1024B`까지 통과권으로 회복했다. 2026-06-05 current C 재측정에서 `MULTI_SPOT_SENDSEND` small 5칸이 다시 미달로 드러났고, 이후 SPOT send/send의 단일 payload native submit, routed echo 서버의 single-part 경로, SPOT snapshot 메타데이터 축소로 `tcp 64/256B`, `ws 1024B`를 통과권으로 올렸다. 마지막 `wss 64B`, `tls 64B`는 SPOT routed metric 수신을 native에서 header/latency만 읽는 경로로 줄인 뒤 통과권에 들어왔다. |
@@ -96,7 +96,7 @@ C `perf_c_single_linux_20260531_084343_round_20260530_c_single_dr_inproc_131072_
 C++ `perf_cpp_single_linux_20260531_084403_round_20260530_cpp_single_dr_inproc_131072_runs3.txt`,
 C `perf_c_single_linux_20260531_085029_round_20260530_c_single_dr_inproc_131072_reconfirm.txt`,
 C++ `perf_cpp_single_linux_20260531_085235_round_20260530_cpp_single_dr_inproc_131072_final_residual.txt`.
-미달 cell (1개): `DEALER_ROUTER inproc 131072B`는 runs=3 제한 재측정 median에서도
+마지막 잔여 `DEALER_ROUTER inproc 131072B`는 과거 runs=3 제한 재측정 median에서
 65.1%로 최소 기준 70%에 못 닿았다. `DEALER_ROUTER inproc 262144B`는 제한 재측정에서
 172.9%로 회복됐고 `ROUTER_ROUTER inproc 262144B`는 단발 제한 재측정에서는 40.5%였지만
 runs=3 median에서 88.7%로 회복되어 측정 변동으로 판정했다.
@@ -104,13 +104,14 @@ runs=3 median에서 88.7%로 회복되어 측정 변동으로 판정했다.
 직접 쓰는 실험과, routed recv의 RID assign 비용을 줄이는 실험을 각각 수행했지만
 `perf_cpp_single_linux_20260531_084842_round_20260530_cpp_single_dr_inproc_131072_direct_socket_recheck.txt`,
 `perf_cpp_single_linux_20260531_085121_round_20260530_cpp_single_dr_inproc_131072_rid_assign_recheck.txt`
-모두 개선을 만들지 못했다. 두 실험 변경은 최종 코드에 남기지 않았다. 남은 차이는
-inproc routed 대용량 단일 조건에서만 반복되는 국소 항목이다. 현재 perf driver는
-이미 public `router_socket_t::recv(routing_id_t&, message_t&, ...)` 단일 part 경로를
-사용하고 있어 `received_t` materialize 비용도 피한다. RID assign 실험은 median
-232.52K msg/s로 최종 잔류 측정 224.33K msg/s와 같은 변동 범위였고 C 기준
-344.75K msg/s의 70% 기준에는 못 닿았다. public API를 유지한 상태에서 더 줄일 수 있는
-C++ binding 내부 후보가 확인되지 않아 미달로 둔다.
+모두 개선을 만들지 못했다. 두 실험 변경은 최종 코드에 남기지 않았다.
+2026-06-05 current 재측정에서는 C 기준
+`perf_c_single_linux_20260605_081212_cpp_single_dr_inproc131072_c_current_20260605.txt`가
+284.38K msg/s였고, C++ active sender가 public `message_t::allocate(...)` payload에 직접
+metric header를 쓰도록 바꾼 뒤
+`perf_cpp_single_linux_20260605_081752_cpp_single_dr_inproc131072_direct_message_final_20260605.txt`가
+419.74K msg/s로 complete 통과했다. 이 변경은 기존 public `send`/`recv` 경로를 유지하면서
+perf driver의 불필요한 payload 사본 생성을 없앤 것이다.
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
@@ -141,7 +142,7 @@ C++ binding 내부 후보가 확인되지 않아 미달로 둔다.
 | `inproc` | `PAIR` | `통과(101.2%)` | `통과(88.9%)` | `통과(95.2%)` | `통과(98.9%)` | `통과(99.6%)` | `통과(100.8%)` | C full/C++ full. |
 | `inproc` | `PUBSUB` | `통과(107.7%)` | `통과(109.3%)` | `통과(117.2%)` | `통과(1178.9%)` | `통과(1098.4%)` | `통과(1693.8%)` | C full/C++ full. |
 | `inproc` | `DEALER_DEALER` | `통과(98.5%)` | `통과(111.9%)` | `통과(102.3%)` | `통과(100.6%)` | `통과(99.7%)` | `통과(99.4%)` | C full/C++ full. |
-| `inproc` | `DEALER_ROUTER` | `통과(96.4%)` | `통과(99.1%)` | `통과(95.3%)` | `통과(84.0%)` | `미달(65.1%)` | `통과(172.9%)` | 131072B는 최종 제한 재측정 C `perf_c_single_linux_20260531_085029_round_20260530_c_single_dr_inproc_131072_reconfirm.txt`, C++ `perf_cpp_single_linux_20260531_085235_round_20260530_cpp_single_dr_inproc_131072_final_residual.txt` 기준. perf adapter 직접화와 RID assign 실험은 개선을 만들지 못해 최종 코드에 남기지 않았다. public API를 유지한 상태에서 더 줄일 내부 후보가 확인되지 않아 미달한다. 262144B는 제한 재측정 C `perf_c_single_linux_20260531_083553_round_20260530_c_single_dr_inproc_large_recheck.txt`, C++ `perf_cpp_single_linux_20260531_083607_round_20260530_cpp_single_dr_inproc_large_recheck.txt` 기준. |
+| `inproc` | `DEALER_ROUTER` | `통과(96.4%)` | `통과(99.1%)` | `통과(95.3%)` | `통과(84.0%)` | `통과(147.6%)` | `통과(172.9%)` | 131072B는 current 제한 재측정 C `perf_c_single_linux_20260605_081212_cpp_single_dr_inproc131072_c_current_20260605.txt`, C++ `perf_cpp_single_linux_20260605_081752_cpp_single_dr_inproc131072_direct_message_final_20260605.txt` 기준. active sender가 `message_t::allocate(...)` payload에 직접 metric header를 써서 payload 사본 생성을 없앤 뒤 통과했다. 262144B는 제한 재측정 C `perf_c_single_linux_20260531_083553_round_20260530_c_single_dr_inproc_large_recheck.txt`, C++ `perf_cpp_single_linux_20260531_083607_round_20260530_cpp_single_dr_inproc_large_recheck.txt` 기준. |
 | `inproc` | `ROUTER_ROUTER` | `통과(105.5%)` | `통과(97.4%)` | `통과(100.9%)` | `통과(88.5%)` | `통과(77.6%)` | `통과(88.7%)` | 262144B는 runs=3 제한 재측정 C `perf_c_single_linux_20260531_084303_round_20260530_c_single_rr_inproc_262144_runs3.txt`, C++ `perf_cpp_single_linux_20260531_084322_round_20260530_cpp_single_rr_inproc_262144_runs3.txt` 기준. |
 | `inproc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | full single에서 SPOT inproc 조합은 결과가 없다. |
 | `ipc` | `PAIR` | `통과(99.3%)` | `통과(98.6%)` | `통과(92.8%)` | `통과(98.5%)` | `통과(101.1%)` | `통과(100.0%)` | C full/C++ full. |

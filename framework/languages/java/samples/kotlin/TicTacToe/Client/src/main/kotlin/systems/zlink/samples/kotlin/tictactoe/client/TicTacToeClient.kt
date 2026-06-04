@@ -33,8 +33,8 @@ class TicTacToeClient {
 
     suspend fun run(options: TicTacToeClientOptions): TicTacToeClientResult {
         val game = createGame(options.apiUrl, options.gameName)
-        val hostStream = playerConnector(game.playEndpoint, options.xActorId)
-        val guestStream = playerConnector(game.playEndpoint, options.oActorId)
+        val hostStream = playerConnector(game.playEndpoint)
+        val guestStream = playerConnector(game.playEndpoint)
         val stateNotifications = ConcurrentLinkedQueue<GameStateNotify>()
         val playerJoinedNotifications = ConcurrentLinkedQueue<PlayerJoinedNotify>()
         val handlers = listOf(
@@ -75,19 +75,21 @@ class TicTacToeClient {
                 requestStep("host PlaceMarkReq(0)") {
                     request(hostStream, PlaceMarkReq(0), PlaceMarkRes::class.java)
                 },
-                requestStep("guest PlaceMarkReq(4)") {
-                    request(guestStream, PlaceMarkReq(4), PlaceMarkRes::class.java)
+                requestStep("guest PlaceMarkReq(3)") {
+                    request(guestStream, PlaceMarkReq(3), PlaceMarkRes::class.java)
                 },
                 requestStep("host PlaceMarkReq(1)") {
                     request(hostStream, PlaceMarkReq(1), PlaceMarkRes::class.java)
                 },
-                requestStep("guest PlaceMarkReq(8)") {
-                    request(guestStream, PlaceMarkReq(8), PlaceMarkRes::class.java)
+                requestStep("guest PlaceMarkReq(4)") {
+                    request(guestStream, PlaceMarkReq(4), PlaceMarkRes::class.java)
                 },
                 requestStep("host PlaceMarkReq(2)") {
                     request(hostStream, PlaceMarkReq(2), PlaceMarkRes::class.java)
                 },
             )
+
+            validateFinalState(options, moves)
 
             CompletableFuture.runAsync(
                 {},
@@ -123,10 +125,10 @@ class TicTacToeClient {
         return json.readValue(response.body(), CreateGameHttpRes::class.java)
     }
 
-    private fun playerConnector(endpoint: String, actorId: String): ZLinkStreamConnector =
+    private fun playerConnector(endpoint: String): ZLinkStreamConnector =
         ZLinkStreamConnectorFactory.create(
             ZLinkStreamConnectorOptions(
-                URI.create("$endpoint/$actorId"),
+                URI.create(endpoint),
                 ZLinkStreamDispatchMode.AUTO,
                 Duration.ofSeconds(3),
                 2,
@@ -152,4 +154,12 @@ class TicTacToeClient {
         } catch (error: Throwable) {
             throw IllegalStateException("TicTacToe sample step failed: $step", error)
         }
+
+    private fun validateFinalState(options: TicTacToeClientOptions, moves: List<PlaceMarkRes>) {
+        val finalState = moves.lastOrNull()?.state
+            ?: throw IllegalStateException("TicTacToe sample did not complete any moves.")
+        check(finalState.status == "Won" && finalState.winner == options.xActorId) {
+            "Unexpected final game state: board=${finalState.board}, status=${finalState.status}, winner=${finalState.winner ?: "-"}"
+        }
+    }
 }

@@ -760,9 +760,15 @@ final class SampleReleaseGateContractTest {
         assertTrue(clientSource.contains("ZLinkStreamJson.request")
                 && clientSource.contains("new AuthenticateReq(options.xActorId())")
                 && clientSource.contains("new JoinGameReq(game.gameId())")
+                && clientSource.contains("new PlaceMarkReq(3)")
+                && clientSource.contains("new PlaceMarkReq(4)")
                 && clientSource.contains("new PlaceMarkReq(2)")
+                && clientSource.contains("URI.create(endpoint)")
+                && clientSource.contains("validateFinalState(options, moves)")
+                && clientSource.contains("\"Won\".equals(finalState.status())")
+                && clientSource.contains("options.xActorId().equals(finalState.winner())")
                 && !clientSource.contains("game.gameId() + \"|\""),
-            "TicTacToe stream client path must use typed JSON stream request contracts");
+            "TicTacToe stream client path must use typed JSON stream request contracts and assert the .NET winning scenario");
         assertTrue(clientSource.contains("ZLinkStreamJson.on(host, GameStateNotify.class")
                 && clientSource.contains("ZLinkStreamJson.on(guest, GameStateNotify.class")
                 && clientSource.contains("ZLinkStreamJson.on(host, PlayerJoinedNotify.class")
@@ -1086,9 +1092,15 @@ final class SampleReleaseGateContractTest {
         assertTrue(clientSource.contains("ZLinkStreamJson.request")
                 && clientSource.contains("AuthenticateReq(options.xActorId)")
                 && clientSource.contains("JoinGameReq(game.gameId)")
+                && clientSource.contains("PlaceMarkReq(3)")
+                && clientSource.contains("PlaceMarkReq(4)")
                 && clientSource.contains("PlaceMarkReq(2)")
+                && clientSource.contains("URI.create(endpoint)")
+                && clientSource.contains("validateFinalState(options, moves)")
+                && clientSource.contains("finalState.status == \"Won\"")
+                && clientSource.contains("finalState.winner == options.xActorId")
                 && !clientSource.contains("game.gameId}|"),
-            "Kotlin TicTacToe stream client path must use typed JSON stream request contracts");
+            "Kotlin TicTacToe stream client path must use typed JSON stream request contracts and assert the .NET winning scenario");
         assertTrue(clientSource.contains("ZLinkStreamJson.on(hostStream, GameStateNotify::class.java")
                 && clientSource.contains("ZLinkStreamJson.on(guestStream, GameStateNotify::class.java")
                 && clientSource.contains("ZLinkStreamJson.on(hostStream, PlayerJoinedNotify::class.java")

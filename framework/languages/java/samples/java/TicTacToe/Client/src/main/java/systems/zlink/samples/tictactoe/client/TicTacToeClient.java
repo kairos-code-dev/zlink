@@ -74,8 +74,8 @@ public final class TicTacToeClient {
     private CompletionStage<TicTacToeClientResult> playScenario(
         TicTacToeClientOptions options,
         CreateGameHttpRes game) {
-        ZLinkStreamConnector host = playerConnector(game.playEndpoint(), options.xActorId());
-        ZLinkStreamConnector guest = playerConnector(game.playEndpoint(), options.oActorId());
+        ZLinkStreamConnector host = playerConnector(game.playEndpoint());
+        ZLinkStreamConnector guest = playerConnector(game.playEndpoint());
         Queue<GameStateNotify> stateNotifications = new ConcurrentLinkedQueue<>();
         Queue<PlayerJoinedNotify> playerJoinedNotifications = new ConcurrentLinkedQueue<>();
         List<AutoCloseable> handlers = new ArrayList<>();
@@ -141,31 +141,34 @@ public final class TicTacToeClient {
                 request(host, new PlaceMarkReq(0), PlaceMarkRes.class))
                 .thenApply(reply -> addMove(moves, reply)))
             .thenCompose(ignored -> requestStep(
-                "guest PlaceMarkReq(4)",
-                request(guest, new PlaceMarkReq(4), PlaceMarkRes.class))
+                "guest PlaceMarkReq(3)",
+                request(guest, new PlaceMarkReq(3), PlaceMarkRes.class))
                 .thenApply(reply -> addMove(moves, reply)))
             .thenCompose(ignored -> requestStep(
                 "host PlaceMarkReq(1)",
                 request(host, new PlaceMarkReq(1), PlaceMarkRes.class))
                 .thenApply(reply -> addMove(moves, reply)))
             .thenCompose(ignored -> requestStep(
-                "guest PlaceMarkReq(8)",
-                request(guest, new PlaceMarkReq(8), PlaceMarkRes.class))
+                "guest PlaceMarkReq(4)",
+                request(guest, new PlaceMarkReq(4), PlaceMarkRes.class))
                 .thenApply(reply -> addMove(moves, reply)))
             .thenCompose(ignored -> requestStep(
                 "host PlaceMarkReq(2)",
                 request(host, new PlaceMarkReq(2), PlaceMarkRes.class))
                 .thenApply(reply -> addMove(moves, reply)))
             .thenCompose(finalMove -> CompletableFuture.supplyAsync(
-                () -> new TicTacToeClientResult(
-                    game,
-                    hostAuth.get(),
-                    guestAuth.get(),
-                    hostJoin.get(),
-                    guestJoin.get(),
-                    List.copyOf(moves),
-                    List.copyOf(stateNotifications),
-                    List.copyOf(playerJoinedNotifications)),
+                () -> {
+                    validateFinalState(options, moves);
+                    return new TicTacToeClientResult(
+                        game,
+                        hostAuth.get(),
+                        guestAuth.get(),
+                        hostJoin.get(),
+                        guestJoin.get(),
+                        List.copyOf(moves),
+                        List.copyOf(stateNotifications),
+                        List.copyOf(playerJoinedNotifications));
+                },
                 CompletableFuture.delayedExecutor(250, TimeUnit.MILLISECONDS)))
             .whenComplete((ignored, error) -> {
                 closeHandlers(handlers);
@@ -174,9 +177,9 @@ public final class TicTacToeClient {
             });
     }
 
-    private static ZLinkStreamConnector playerConnector(String endpoint, String actorId) {
+    private static ZLinkStreamConnector playerConnector(String endpoint) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
-            URI.create(endpoint + "/" + actorId),
+            URI.create(endpoint),
             ZLinkStreamDispatchMode.AUTO,
             Duration.ofSeconds(3),
             2));
@@ -203,6 +206,21 @@ public final class TicTacToeClient {
     private static PlaceMarkRes addMove(List<PlaceMarkRes> moves, PlaceMarkRes reply) {
         moves.add(reply);
         return reply;
+    }
+
+    private static void validateFinalState(
+        TicTacToeClientOptions options,
+        List<PlaceMarkRes> moves) {
+        if (moves.isEmpty()) {
+            throw new IllegalStateException("TicTacToe sample did not complete any moves.");
+        }
+        var finalState = moves.get(moves.size() - 1).state();
+        if (!"Won".equals(finalState.status()) || !options.xActorId().equals(finalState.winner())) {
+            throw new IllegalStateException(
+                "Unexpected final game state: board=" + finalState.board()
+                    + ", status=" + finalState.status()
+                    + ", winner=" + (finalState.winner() == null ? "-" : finalState.winner()));
+        }
     }
 
     private static void closeHandlers(List<AutoCloseable> handlers) {

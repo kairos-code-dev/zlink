@@ -182,7 +182,7 @@ role matching = attach된 소켓의 socket role로 결정
 
 - socket마다 `service_name`을 따로 저장할 필요가 없다.
 - attach API 의미가 더 분명하다.
-- 동일 서비스에 대한 observer / cache / update seq를 discovery가 집중 관리할 수 있다.
+- 같은 서비스의 observer / cache / update seq를 discovery가 집중 관리할 수 있다.
 - 서비스 선택 책임이 한 모듈로 모여 POSD 관점에서 더 깊은 추상화가 된다.
 
 ## 4. 설계 원칙
@@ -223,7 +223,7 @@ registry validate, discovery filter, runtime connect diff가 모두 같은 helpe
 
 ### 4.4 family와 role은 분리된 축이다
 
-family는 "어떤 종류의 서비스 view를 다루는가"를 뜻하고,
+family는 "어떤 종류의 서비스 view를 다루는가"를 뜻하고
 role은 "같은 서비스 안에서 어떤 peer와 연결 가능한가"를 뜻한다.
 
 원칙:
@@ -337,7 +337,7 @@ attach 성공 의미:
 - attach 전 bind했다면 그 bind endpoint가 service advertise endpoint가 된다.
 - attach 상태 제약은 [`1.1 핵심 결정 요약`](#11-핵심-결정-요약)과
   [`13.5 attach 상태 API 금지 규칙`](#135-attach-상태-api-금지-규칙)을 따른다.
-- discovery destroy는 attach된 service participant를 cascade shutdown하고, 이후 해당 socket handle은 무효가 된다.
+- discovery destroy는 attach된 service participant를 cascade shutdown하고 이후 해당 socket handle은 무효가 된다.
 
 ### 6.3 gateway / spot에도 같은 철학 적용
 
@@ -385,7 +385,7 @@ int zlink_spot_node_attach_discovery(void *node, void *discovery);
 - `spot_node`도 더 이상 constructor에서 `service_name`을 소유하지 않는다.
 - `spot`도 더 이상 constructor에서 service ownership을 소유하지 않는다.
 - discovery attach 대상은 `gateway`, `spot_node`, raw socket이다.
-- `spot`은 `spot_node` 내부 구성으로 참여하고,
+- `spot`은 `spot_node` 내부 구성으로 참여하고
   service binding / register / peer refresh ownership은 `spot_node`가 가진다.
 - `spot_node`는 callback / publish / subscribe를 직접 노출하지 않는다.
 
@@ -485,7 +485,7 @@ raw socket family의 weight 정책:
 - v1에서는 raw socket용 weight update public API를 추가하지 않는다.
 - registry wire에 `weight` 필드는 유지하되, raw socket family에서는 fixed value로 취급한다.
 
-이 결정으로 wire format은 family 간에 통일되고,
+이 결정으로 wire format은 family 간에 통일되고
 raw socket surface에는 불필요한 control-path가 늘어나지 않는다.
 
 ### 8.2 service list shape
@@ -706,7 +706,7 @@ struct provider_info_t
 };
 ```
 
-`service_name`은 discovery fixed field와 중복될 수 있지만,
+`service_name`은 discovery fixed field와 중복될 수 있지만
 snapshot / event / topology surface에서 self-contained row를 유지하려면 보관해도 된다.
 
 ### 10.3 observer semantics
@@ -840,7 +840,7 @@ refresh는 아래 입력을 사용한다.
 discovery destroy 시 attach state가 있는 service participant는 아래 순서로 cleanup한다.
 
 1. discovery를 `destroying` 상태로 전환해 새 attach / refresh / register를 막음
-2. attached socket 각각에 대해 discovery observer 제거
+2. attached socket마다 discovery observer 제거
 3. bind된 advertise endpoint가 있으면 registry에 마지막 unregister 전송 시도
 4. discovery-managed peer disconnect
 5. socket close 수행
@@ -1019,7 +1019,7 @@ advertise 계약:
 gateway / spot / spot_node 영향 분석:
 
 - constructor에서 `service_name`이 제거되면 기존 생성 경로를 직접 호출하는 테스트는 전부 수정 대상이다.
-- 영향 범위는 최소 `gateway`, `spot_node`, 그리고 `spot_node`를 통해 `spot`을 구성하는 helper를 직접 호출하는 integration / e2e 테스트 전부다.
+- 영향 범위는 최소 `gateway`, `spot_node`, 그리고 `spot_node`를 거쳐 `spot`을 구성하는 helper를 직접 호출하는 integration / e2e 테스트 전부다.
 - 마이그레이션 전략은 점진적 dual surface가 아니라 일괄 전환으로 고정한다.
 - 즉 기존 constructor 호출부를 남겨 두고 병행 유지하지 않는다.
 - 테스트 수정 순서는 아래로 고정한다.
@@ -1145,7 +1145,7 @@ gateway / spot / spot_node 영향 분석:
 - `zlink_spot_new()` 생성 surface에서 constructor service ownership 제거
 - `spot`이 독립 attach 대상이 아님을 public surface에 반영
 - `gateway` / `spot` / `spot_node` 생성 surface에서 constructor service ownership 제거
-- `spot_node` handle에 대한 generic `publish` / `subscribe` / recv callback 진입 제거
+- `spot_node` handle의 generic `publish` / `subscribe` / recv callback 진입 제거
 - attach 상태 raw socket의 `connect` / `disconnect` / `unbind` / `close/destroy` gate 추가
 
 원칙:
@@ -1318,11 +1318,11 @@ v1 목표:
   `core/src/api/service_discovery_api.cpp`,
   `core/src/services/discovery/`에서
   discovery fixed `service_name` / single-service snapshot 방향 구현을 시작했다.
-  `gateway`, `spot_node` attach 경로도 discovery fixed service와 정렬 중이지만,
+  `gateway`, `spot_node` attach 경로도 discovery fixed service와 정렬 중이지만
   기존 helper / e2e / integration 테스트 호출부 이행과 cascade shutdown 검증은
   아직 남아 있다.
 - 2026-03-25: `core/tests/`의 discovery / gateway / spot discovery 시나리오를
-  fixed `service_name` 기준으로 이행했고,
+  fixed `service_name` 기준으로 이행했고
   `test_gateway`, `test_service_introspection`, `test_service_discovery`,
   `test_gateway_with_handler`, `test_gateway_handover`,
   `test_monitor_with_handler`, `test_spot_pubsub_scenario`,
@@ -1331,7 +1331,7 @@ v1 목표:
   final ownership semantics는 아직 코드로 완전히 닫히지 않았다.
 - 2026-03-25: discovery-owned participant shutdown 경로에서
   `gateway`, `spot_node`가 먼저 owner-close 상태로 전환된 뒤 destroy되도록
-  정렬했고, 이후 public API가 `ESHUTDOWN`으로 막히는 회귀를 추가했다.
+  정렬했고 이후 public API가 `ESHUTDOWN`으로 막히는 회귀를 추가했다.
   `test_discovery_destroy_invalidates_attached_gateway_handle`,
   `test_discovery_destroy_invalidates_attached_spot_node_handle`,
   `test_gateway`, `test_spot_pubsub_scenario`,
@@ -1357,7 +1357,7 @@ v1 목표:
   `discovery_uplink.cpp`, `discovery_update.cpp`,
   `core/include/zlink.h`에 role-aware registry 확장을 반영했다.
   register / unregister / heartbeat / update-weight / service-list / peer sync
-  payload에 role을 추가했고, registry provider key를
+  payload에 role을 추가했고 registry provider key를
   `service_type + service_name + service_role + endpoint`로 전환했다.
 - 2026-03-25: `zlink_registry_topology_entry_t`,
   `zlink_registry_topology_filter_t`,
@@ -1367,7 +1367,7 @@ v1 목표:
   `test_gateway_handover`, `unittest_service_mode_policy`
   회귀를 통과했다.
 - 2026-03-25: raw socket attach가 topology report 시 representative
-  routing id를 비어 있지 않게 보장하도록 정렬하고,
+  routing id를 비어 있지 않게 보장하도록 정렬하고
   `test_registry_raw_socket_topology_and_summary_query`를 추가했다.
   이 회귀는 raw `ROUTER/DEALER` attach 이후 registry topology /
   service summary / remote topology query가 실제로
@@ -1392,13 +1392,13 @@ v1 목표:
   `socket_discovery_attachment` 런타임을 추가해
   raw `ROUTER/DEALER/PUB/SUB`가 `ZLINK_SERVICE_TYPE_SOCKET`
   discovery에 attach될 수 있도록 정렬했다.
-  attach 시 local role을 socket type에서 도출하고,
-  discovery observer를 통해 single advertise endpoint 계약과
+  attach 시 local role을 socket type에서 도출하고
+  discovery observer로 single advertise endpoint 계약과
   discovery-owned lifecycle 상태를 보관하도록 구현했다.
 - 2026-03-25: bind 후 register 직전 self refresh가 먼저 들어오면
   raw `ROUTER`가 자기 advertise endpoint에 self-connect할 수 있는 race를
   발견했다.
-  attachment state에 provisional advertise endpoint를 먼저 기록하고,
+  attachment state에 provisional advertise endpoint를 먼저 기록하고
   register 실패 시 rollback하도록 `socket_discovery_attachment.cpp`를
   정렬해 `test_service_discovery` raw auto-connect 회귀를 다시 통과시켰다.
 
@@ -1415,11 +1415,11 @@ v1 목표:
 
 진행 메모:
 
-- 2026-03-25: raw socket bind 성공 시 role-aware register를 수행하고,
+- 2026-03-25: raw socket bind 성공 시 role-aware register를 수행하고
   bind 이후 attach 시 즉시 register 실패를 attach 실패로 롤백하도록
   정렬했다.
   discovery provider snapshot의 role 매칭 결과로
-  connect / disconnect diff를 적용하고,
+  connect / disconnect diff를 적용하고
   discovery destroy에서 unregister / peer disconnect / socket close까지
   cascade cleanup 하도록 연결했다.
 
@@ -1441,17 +1441,17 @@ v1 목표:
 - 2026-03-25: `zlink_gateway_new(ctx)`, `zlink_spot_new(ctx)`,
   `zlink_spot_node_new(ctx)` surface로 constructor 인자를 제거하는 전환을
   시작했다.
-  `gateway`와 `spot_node`는 생성 시 무서비스 local-only mode로 시작하고,
+  `gateway`와 `spot_node`는 생성 시 무서비스 local-only mode로 시작하고
   discovery attach가 service ownership source가 되도록
   `core/src/services/gateway/`, `core/src/services/spot/`를 정렬 중이다.
   `gateway` manual route 경로는 empty service key pool을 허용해 기존
-  local-only semantics를 유지하도록 수정했고,
+  local-only semantics를 유지하도록 수정했고
   `test_gateway_handover`, `test_gateway_with_handler`,
   `unittest_service_mode_policy`, `unittest_typed_option`,
   `test_service_discovery`를 통과했다.
 - 2026-03-25: `test_spot_service_introspection`의 manual `spot_node`
   snapshot 기대값을 discovery attach 전 local-only contract에 맞게
-  정렬했고,
+  정렬했고
   `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|test_service_discovery|test_service_introspection|test_gateway_with_handler|test_gateway_handover|test_spot_pubsub_scenario|test_spot_service_introspection)$'`
   회귀를 통과했다.
   이에 따라 Step F 범위의 constructor ownership 제거와
@@ -1520,14 +1520,14 @@ v1 목표:
 - 2026-03-25: public service dispatch에서 `spot_node` generic
   `publish` / `subscribe` / recv callback / send-ready / poller 진입을
   `ENOTSUP`로 차단하기 시작했다.
-  이 변경으로 Step I의 public surface gate는 착수했지만,
+  이 변경으로 Step I의 public surface gate는 착수했지만
   spot e2e / monitoring 회귀가 아직 기존 `spot_node` data-plane 경로를
   직접 사용하므로 `spot` facade 또는 raw `PUB/SUB` 이관이 계속 필요하다.
 - 2026-03-25: e2e/introspection helper가 `spot_node` 위에 테스트용
   `spot` facade wrapper를 얹어 generic pub/sub 경로를 node 밖으로
   밀어내기 시작했다. 다만 readiness/monitor 관찰면이 아직
   `spot_node` 기준과 `spot` 기준으로 섞여 있어 회귀 테스트는
-  계속 red이며, Step I 완료로 판정할 수 없다.
+  계속 red이라 Step I 완료로 판정할 수 없다.
 - 2026-03-25: `spot` e2e/introspection/monitoring/scaling 회귀를
   `spot_node` 직접 data-plane 호출 대신 테스트용 `spot` facade handle
   기준으로 다시 정렬했다. monitor readiness와 subscription/delivery
@@ -1553,7 +1553,7 @@ v1 목표:
 진행 메모:
 
 - 2026-03-25: `test_registry_raw_socket_topology_and_summary_query`를 추가해
-  raw socket / registry 조회 회귀를 보강했고,
+  raw socket / registry 조회 회귀를 보강했고
   `test_service_introspection`의 gateway topology / summary assertion도
   role-aware query contract 기준으로 함께 정렬했다.
 - 2026-03-25: `test_spot_node_manual_peer_topology_ownership`를 추가해
@@ -1565,7 +1565,7 @@ v1 목표:
   다시 확인했다.
 - 2026-03-25: `core/include/zlink.h`의 public API 주석을 실제 구현과
   다시 맞췄다.
-  `spot_node`는 더 이상 generic subscribe/send-ready subject로 설명하지 않고,
+  `spot_node`는 더 이상 generic subscribe/send-ready subject로 설명하지 않고
   discovery destroy가 attached participant shutdown ownership을 가진다는
   계약을 discovery/gateway/spot_node 주석에 반영했다.
   `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|test_service_discovery|test_service_introspection|test_gateway_with_handler|test_gateway_handover|test_spot_pubsub_scenario|test_spot_service_introspection)$'`
@@ -1594,7 +1594,7 @@ v1 목표:
   `spot_node::_service_name` 잔여 필드를 제거해
   `spot_node` service ownership 상태를 `_discovery_service` 하나로 줄였다.
 - 2026-03-25: `gateway`도 register 상태를 표현하기 위해 따로 들고 있던
-  `_server_service_name`을 제거하고,
+  `_server_service_name`을 제거하고
   fixed discovery service name + advertise endpoint만으로
   unregister / update-weight / destroy cleanup을 수행하도록 정리했다.
 - 2026-03-25: discovery-owned service participant가 registry에

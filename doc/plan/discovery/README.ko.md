@@ -2,7 +2,7 @@
 
 이 디렉토리는 `core`의 discovery / registry를 확장해
 raw `ROUTER`, `DEALER`, `PUB`, `SUB`도
-서비스 단위로 위치투명하게 자동 연결하도록 만드는
+서비스 단위로 위치투명하게 자동 연결하는
 상세 스펙과 설계 문서를 담는다.
 
 현재 상태:
@@ -23,7 +23,7 @@ raw `ROUTER`, `DEALER`, `PUB`, `SUB`도
   메인 스펙을 구현 순서와 종료 판정 기준으로 고정한 실행 문서다.
   단계별 체크리스트, commit / push 규칙, 스펙 섹션 링크를 포함한다.
 - [`owner-bound route 구현 계획`](./discovery-owner-bound-routes-implementation-plan.ko.md)
-  owner-bound route draft를 core, bindings, docs, perf까지 끝까지 반영하기 위한
+  owner-bound route draft를 core, bindings, docs, perf까지 끝까지 반영하는
   실행 계획이다.
 - [`run_discovery_service_execution.sh`](./run_discovery_service_execution.sh)
   discovery 작업 전용 Codex 실행 래퍼다.

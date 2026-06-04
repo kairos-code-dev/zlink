@@ -2,7 +2,7 @@
 
 ## 1. 문서 목적
 
-이 문서는 기존 `SPOT` 구현을 보수하는 계획이 아니라, 기존 구현을
+이 문서는 기존 `SPOT` 구현을 보수하는 계획이 아니다. 기존 구현을
 삭제하고 `proxy` 중심 구조로 다시 작성하기 위한 구현 스펙이다.
 
 핵심 판단은 다음과 같다.
@@ -95,7 +95,7 @@
 registry 연동 계약은 다음처럼 단순화한다.
 
 - discovery는 peer 발견용이자 registry uplink / heartbeat owner다
-- `zlink_spot_node_register()`는 attached discovery의 uplink runtime을 통해 registration을 제출한다
+- `zlink_spot_node_register()`는 attached discovery의 uplink runtime으로 registration을 제출한다
 - SpotNode는 registry raw socket owner가 아니다
 - registry freshness heartbeat는 discovery가 전담한다
 - `connect_registry()` 후 `register()`를 호출하는 2단계 설정은 제거한다
@@ -125,7 +125,7 @@ registry 연동 계약은 다음처럼 단순화한다.
 
 #### discovery-backed connectivity
 
-- registry / discovery를 통해 peer mesh가 바뀌어도 API 의미는 유지된다
+- registry / discovery로 peer mesh가 바뀌어도 API 의미는 유지된다
 - node는 새 peer가 붙으면 자동으로 그 peer를 mesh 수신 대상에 포함한다
 - peer가 사라지면 더 이상 그 peer에서 메시지를 받지 않는다
 
@@ -169,7 +169,7 @@ node 간 상대 순서는 transport / scheduling 영향으로 전역 보장하�
 - `SpotNode`는 local facade와 remote mesh를 이어주는 routing/bridge agent
 
 중요한 점은 `SpotPub` / `SpotSub`이 단순 helper가 아니라
-실제 pollable facade socket이라는 점이다.
+실제 pollable facade socket이라는 것이다.
 
 threading 계약은 다음으로 고정한다.
 
@@ -729,14 +729,14 @@ int zlink_spot_node_register(void *node,
 1. attached discovery 존재 여부 확인
 2. discovery의 registry uplink runtime이 연결 상태인지 확인
 3. publish bind 상태와 advertise endpoint 확인
-4. discovery uplink runtime을 통해 register request 제출
+4. discovery uplink runtime으로 register request 제출
 5. 성공 시
    - `_registered=1`
    - `_registration_service_name` 저장
    - `_registration_advertise_endpoint` 저장
    - discovery uplink runtime의 heartbeat가 node liveness를 포함
 
-`zlink_spot_node_unregister()`는 같은 discovery uplink runtime 경로를 통해
+`zlink_spot_node_unregister()`는 같은 discovery uplink runtime 경로로
 unregister request를 제출한다.
 
 제약:
@@ -761,7 +761,7 @@ discovery와의 관계:
 
 - `zlink_discovery_connect_registry()`는 계속 유지한다
 - discovery는 peer discovery용인 동시에 registry bootstrap/uplink 정보를 제공한다
-- node register/heartbeat는 attached discovery가 소유하는 uplink runtime을 통해 수행한다
+- node register/heartbeat는 attached discovery가 소유하는 uplink runtime으로 수행한다
 - SpotNode는 registry raw socket owner가 아니다
 - 구현 후 discovery 없이 register만 하고 싶은 요구가 생기면, 그때 별도 explicit API를 추가한다
 
@@ -800,7 +800,7 @@ zlink_spot_sub_subscribe(sub, "zone:12:*");
 의미:
 
 - discovery는 bootstrap 과정에서 registry PUB와 uplink/control 정보를 학습한다
-- node register는 attached discovery의 uplink runtime을 통해 registration을 제출한다
+- node register는 attached discovery의 uplink runtime으로 registration을 제출한다
 - registry freshness heartbeat는 discovery가 전담한다
 - 사용자는 discovery를 연결한 뒤 register만 호출하면 된다
 
@@ -1066,7 +1066,7 @@ node는 생성 시점에 data plane을 완전히 준비한 뒤 반환한다.
 
 즉, 호출 스레드나 control task가 `_mesh_pub` / `_mesh_xsub`를 직접 조작하지 않는다.
 
-다음 API는 control plane 경로를 통해 직접 처리한다.
+다음 API는 control plane 경로로 직접 처리한다.
 
 - `zlink_spot_node_register`
 - `zlink_spot_node_unregister`
@@ -1282,7 +1282,7 @@ emit_event() 안에서 바로 registry network send
 
 ### 12.5 SpotNode -> Discovery submit 내부 API
 
-`SpotNode`는 아래 internal helper를 통해 summary를 `Discovery`에 제출한다.
+`SpotNode`는 아래 internal helper로 summary를 `Discovery`에 제출한다.
 
 ```cpp
 int spot_node_t::submit_pub_summary(const spot_pub_t *pub_,
@@ -1519,7 +1519,7 @@ perf baseline 절차:
 기존 문서는 facade 의미 변경 방향을 정의하는 데는 유효했지만,
 실제 구현이 `proxy` 수준 data path를 보장하지 못했다.
 
-이번 재작성은 “facade inproc화”가 아니라 “proxy 기반 data plane 재구축”이 핵심이다.
+이번 재작성의 핵심은 "facade inproc화"가 아니라 "proxy 기반 data plane 재구축"이다.
 
 또한 이 문서는 topology summary reporting의
 SPOT 관련 규칙을 흡수한다.

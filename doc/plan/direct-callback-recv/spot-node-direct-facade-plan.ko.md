@@ -8,7 +8,7 @@
 ## 1. 목적
 
 이 문서는 `SpotNode`를 wiring owner로 유지하면서도,
-node-owned default `SpotPub` / `SpotSub` facade를 통해
+node-owned default `SpotPub` / `SpotSub` facade로
 직접 publish / subscribe / callback 수신을 제공하는 계획을 정리한다.
 
 이 문서의 canonical 전제는
@@ -111,7 +111,7 @@ int zlink_spot_node_set_handler(void *node,
 int zlink_spot_node_recv(...);
 ```
 
-즉 node-owned default sub의 canonical recv path는
+node-owned default sub의 canonical recv path는
 `zlink_spot_node_set_handler()`다.
 
 ### 4.2 내부 위임
@@ -193,7 +193,7 @@ sub defaults:
 - monitor와 poller는 embedded facade에 붙는다.
 - `SpotNode` 자체 monitor는 추가하지 않는다.
 
-즉 한 node 아래에 다음이 함께 존재할 수 있다.
+한 node 아래에 다음이 함께 존재할 수 있다.
 
 - embedded pub 1개
 - embedded sub 1개

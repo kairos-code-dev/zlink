@@ -75,7 +75,7 @@
   debounce 예약을 넣으면서 socket-local 즉시 반영이 필요한 SPOT 내부 경로와
   기존 ctx option 회귀가 깨졌다.
 - 해결 내용
-  role/scope/setopt 경로는 즉시 `refresh_auto_hwm_policy()`를 유지하고,
+  role/scope/setopt 경로는 즉시 `refresh_auto_hwm_policy()`를 유지하고
   attach/detach 같은 연결 변화만 `ctx` 예약 경로로 모으도록 조정했다.
 - 실행 명령
   `ctest --test-dir core/build --output-on-failure -R 'test_ctx_options|test_monitor_socket_contract|unittest_spot_data_plane_budget|test_peer_admission' -j1`
@@ -118,7 +118,7 @@
   공개 헤더에서 `zlink_service_event_t`와 service monitor 선언을 제거한 뒤
   test util과 typed option 테스트가 여전히 그 public surface를 직접 참조했다.
 - 해결 내용
-  내부 전용 service monitor 타입 헤더를 추가해 core 내부 빌드를 먼저 복구하고,
+  내부 전용 service monitor 타입 헤더를 추가해 core 내부 빌드를 먼저 복구하고
   그 다음 core 테스트를 snapshot/query 중심으로 바꿔 service monitor 공개 의존을
   걷어냈다.
 - 실행 명령
@@ -127,7 +127,7 @@
   `ctest`가 새 `unittest_typed_option` 링크 전에 먼저 실행되어 이전 바이너리의
   service monitor 기대를 잡았다.
 - 해결 내용
-  빌드 완료 후 `ctest`를 다시 실행했고, `unittest_typed_option`은 generic service
+  빌드 완료 후 `ctest`를 다시 실행했고 `unittest_typed_option`은 generic service
   monitor open 검증 대신 `zlink_spot_node_internal_sockets_snapshot()` 기반으로
   바꿨다.
 - 실행 명령
@@ -141,7 +141,7 @@
 - 실행 명령
   `rg -n "zlink_service_monitor_open|zlink_service_monitor_handler|zlink_service_monitor_recv|zlink_service_event_t|ZLINK_SERVICE_MONITOR_EVENT_|ZLINK_DISCOVERY_MONITOR_EVENT_|ZLINK_DISCOVERY_SERVICE_|ZLINK_MONITOR_TARGET_DISCOVERY|ZLINK_MONITOR_TARGET_SPOT|ZLINK_MONITOR_TARGET_SPOT_NODE" core/include core/src -g '!**/build/**'`
 - 리뷰 결과
-  `core/include` 공개 surface 제거는 반영됐지만, `core/src`에는 service monitor
+  `core/include` 공개 surface 제거는 반영됐지만 `core/src`에는 service monitor
   내부 허브, open path, event payload가 아직 남아 있어 단계 2가 계속 진행 중이다.
 
 ### 2026-04-27 bindings 전 리뷰 게이트 3차
@@ -210,7 +210,7 @@
 - 실패 원인
   `auto_hwm_policy.cpp`에 `std::max` 인클루드가 빠져 재빌드가 중단됐다.
 - 해결 내용
-  context-wide planning count/share 계산으로 구조를 바꾸고, old role-group
+  context-wide planning count/share 계산으로 구조를 바꾸고 old role-group
   snapshot 필드를 제거한 뒤 누락 헤더를 보강했다. raw socket monitor 내부
   dispatcher에서도 service monitor 전용 분기와 recv path를 제거했다.
 - 실행 명령
@@ -237,10 +237,10 @@
 - 실행 명령
   `./bindings/c/perf/run_benchmarks_multi.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2`
 - 실패 원인
-  `MULTI_SPOT*` 패턴에서 `CLIENT_READY` 단계가 timeout 되었고,
+  `MULTI_SPOT*` 패턴에서 `CLIENT_READY` 단계가 timeout 되었고
   snapshot상 spot/spotnode socket HWM이 `1`까지 내려갔다.
 - 해결 내용
-  planning count는 queue share 계산에만 쓰고, transport buffer 비용은
+  planning count는 queue share 계산에만 쓰고 transport buffer 비용은
   observed connection 기준으로 다시 분리했다. 이 변경 후 spot 경로 HWM이
   다시 정상 수준으로 회복됐다.
 - 실행 명령
@@ -269,7 +269,7 @@
   `go test ./...`
 - 결과
   Go 바인딩에서 `ServiceMonitor` 공개 surface와 discovery `MonitorOpen()`
-  의존을 제거하고, `MonitorSnapshot`을 새 auto HWM 필드로 바꾼 뒤 전체
+  의존을 제거하고 `MonitorSnapshot`을 새 auto HWM 필드로 바꾼 뒤 전체
   테스트 통과.
 
 - 수정 파일
@@ -287,10 +287,10 @@
   `cp core/build/lib/libzlink.so.5.3.4 bindings/python/src/zlink/native/linux-x86_64/libzlink.so.5.3.4`
 - 실패 원인
   Python 표면 테스트가 이전 번들 `libzlink.so`를 읽어 이미 제거된
-  `zlink_service_monitor_*` 심볼을 계속 노출했고, snapshot 구조 불일치로
+  `zlink_service_monitor_*` 심볼을 계속 노출했고 snapshot 구조 불일치로
   `pytest` 실행 중 세그폴트가 났다.
 - 해결 내용
-  service monitor FFI와 공개 export를 제거한 뒤, 번들 native library를
+  service monitor FFI와 공개 export를 제거한 뒤 번들 native library를
   `core/build` 기준으로 다시 동기화했다.
 - 실행 명령
   `python -m pytest bindings/python/tests/test_native_contract.py bindings/python/tests/test_core_api_alignment.py -q`
@@ -314,7 +314,7 @@
   `Discovery::monitor_open()` 제거 후 Rust 샘플과 service surface 테스트가
   이전 API를 계속 호출했다.
 - 해결 내용
-  discovery 샘플을 `member_peers()` polling으로 바꾸고, service surface
+  discovery 샘플을 `member_peers()` polling으로 바꾸고 service surface
   테스트를 snapshot/query 중심으로 정리했다.
 - 실행 명령
   `cargo test`
@@ -429,7 +429,7 @@
 - 두 draft에 적힌 결정은 다시 묻지 않고 그대로 구현한다.
 - 정식 spec, guide, internals 문서는 **구현이 끝난 뒤** 반영한다.
 - 구현 중 충돌이 나면 `core/include/zlink.h`에 들어갈 최종 공개 계약을 먼저
-  고정하고, 테스트와 문서를 그 계약에 맞춘다.
+  고정하고 테스트와 문서를 그 계약에 맞춘다.
 - 기존 사용자 변경은 되돌리지 않는다.
 - 단계별 검증이 끝나기 전에는 다음 단계로 넘어가지 않는다.
 
@@ -440,7 +440,7 @@
 - `doc/spec/`는 공개 계약만 적는다.
 - `doc/guide/`는 사용 목적과 사용법만 적는다.
 - `doc/internals/`는 내부 구조와 계산 흐름만 적는다.
-- 구현 전 내용은 draft에만 남기고, 구현 후 정식 문서에 반영한다.
+- 구현 전 내용은 draft에만 남기고 구현 후 정식 문서에 반영한다.
 
 ### 1.3 빌드 기준
 
@@ -497,7 +497,7 @@ rg -n "auto HWM|auto_hwm|recalculate|AUTO_HWM_RECALC_DEBOUNCE|AUTO_HWM_STREAM_BO
   core doc bindings -g '!**/build/**'
 ```
 
-실행자는 검색 결과를 파일 목록으로 정리하고, 각 단계에서 실제 수정 대상을
+실행자는 검색 결과를 파일 목록으로 정리하고 각 단계에서 실제 수정 대상을
  체크한다.
 
 ### 3.3 기준선 빌드
@@ -631,7 +631,7 @@ cmake --build bindings/c/build -j"$(nproc)"
 2. service monitor 전용 event payload 자체를 internal type으로 다시 정의한다.
 
 즉 "공개 타입 삭제"와 "내부 구현 삭제"를 같은 의미로 취급하지 않는다.
-공개 surface에서 제거하더라도, snapshot/query 전환 작업이 끝날 때까지 내부에서는
+공개 surface에서 제거하더라도 snapshot/query 전환 작업이 끝날 때까지 내부에서는
 필요한 형태로 잠시 유지할 수 있다.
 
 단계 2 구현은 반드시 아래 순서를 따른다.
@@ -661,7 +661,7 @@ cmake --build bindings/c/build -j"$(nproc)"
 
 ### 6.3 core 결과를 바인딩 native 디렉토리에 먼저 동기화
 
-모든 core 테스트와 `bindings/c/perf` 스모크가 끝난 뒤, 바인딩 라이브러리 수정에
+모든 core 테스트와 `bindings/c/perf` 스모크가 끝난 뒤 바인딩 라이브러리 수정에
 들어가기 전에 먼저 native 기준 파일을 각 바인딩 디렉토리에 복사한다.
 
 최소 대상은 아래와 같다.
@@ -950,13 +950,13 @@ pgrep -af "run_benchmarks|run_comparison.py|comp_src_"
 
 ### 9.8 C++
 
-`doc/spec/bindings/cpp/README.md`에 contract를 반영하고, 실제 wrapper가
+`doc/spec/bindings/cpp/README.md`에 contract를 반영하고 실제 wrapper가
 존재하면 같은 원칙으로 service monitor surface 제거와 auto HWM recalc surface를
 추가한다.
 
 ### 9.9 Python
 
-`doc/spec/bindings/python/README.md`에 contract를 반영하고, 실제 binding source에
+`doc/spec/bindings/python/README.md`에 contract를 반영하고 실제 binding source에
 service monitor 노출이 있으면 같은 원칙으로 제거한다.
 
 ## 10. 단계 7. 바인딩 테스트와 최종 재검토

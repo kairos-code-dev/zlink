@@ -3,7 +3,7 @@
 > 상태: 구현 및 최종 검증 완료
 > 기준 문서: `doc/spec/draft/auto-connect-channel-types.ko.md`
 > 대상 범위: `core/`, `bindings/`, `samples/`, `doc/`, `doc/site/`
-> 목적: Discovery 자동 연결 타입 설계를 사용자 개입 없이 구현, 검증, 리팩토링, 문서 반영, 바인딩 배포 준비까지 끝내기 위한 실행 순서를 고정한다.
+> 목적: Discovery 자동 연결 타입 설계를 사용자 개입 없이 구현, 검증, 리팩토링, 문서 반영, 바인딩 배포 준비까지 끝내는 실행 순서를 고정한다.
 > 최종 종료 판정: `미반영 항목이 없습니다. POSD 리팩토링 후보가 없습니다. 전체 테스트와 sample/perf smoke가 모두 통과했습니다.`
 
 ## 1. 문서 목적
@@ -16,7 +16,7 @@
 
 - [`doc/spec/draft/auto-connect-channel-types.ko.md`](../../spec/draft/auto-connect-channel-types.ko.md)
 
-구현 중 draft spec과 충돌하는 판단이 필요하면 먼저 draft spec을 수정하고,
+구현 중 draft spec과 충돌하는 판단이 필요하면 먼저 draft spec을 수정하고
 그 다음 구현과 이 계획을 맞춘다. 코드만 바꾸고 spec을 남겨 두면 완료로 보지
 않는다.
 
@@ -36,14 +36,14 @@
 - 구현은 draft spec의 공개 API, enum, 구조체, errno, lifecycle, 테스트 요구사항을
   모두 반영해야 한다.
 - 각 단계는 코드, 테스트, 문서, 바인딩 영향까지 함께 닫는다.
-- 구현 완료 뒤에는 spec 반영 리뷰를 반복한다. 미반영 항목이 0개가 되기 전에는
+- 구현을 마친 뒤에는 spec 반영 리뷰를 반복한다. 미반영 항목이 0개가 되기 전에는
   다음 단계로 넘어가지 않는다.
 - 전체 테스트가 통과한 뒤에만 POSD 기반 리팩토링 단계로 들어간다.
 - POSD 리팩토링도 반복한다. 의미 있는 리팩토링 후보가 0개가 되기 전에는 다음
   단계로 넘어가지 않는다.
 - 모든 sample과 perf smoke가 통과한 뒤에만 정식 문서와 바인딩 native runtime
   갱신 단계로 넘어간다.
-- 정식 문서 반영 뒤에도 sample/perf smoke를 다시 실행한다.
+- 정식 문서를 반영한 뒤에도 sample/perf smoke를 다시 실행한다.
 
 ## 3. 완료 판정 보드
 
@@ -125,7 +125,7 @@
 
 완료 기준:
 
-- draft spec의 의미 있는 문장이 추적표 또는 테스트 요구사항 중 하나로 연결된다.
+- draft spec의 의미 있는 문장이 추적표나 테스트 요구사항 중 하나로 연결된다.
 - 추적표에 `기타` 같은 포괄 항목이 남지 않는다.
 
 ### 5.2 core public API 구현
@@ -209,7 +209,7 @@ draft spec의 테스트 요구사항을 최소한 아래 자동 테스트로 닫
 
 - 위 20개 테스트가 자동화되어 있고, 각 테스트 이름으로 요구사항을 추적할 수 있다.
 - 실패 path는 errno까지 검증한다.
-- positive path는 실제 connect 또는 observable topology 변화까지 검증한다.
+- positive path는 실제 connect나 observable topology 변화까지 검증한다.
 
 검증:
 
@@ -375,7 +375,7 @@ python3 bindings/python/examples/run_all_examples.py
 ```
 
 명령이 실제 runner 옵션과 다르면 runner의 `--help`를 확인해 같은 의미의 smoke
-명령으로 바꾼다. 변경한 명령은 이 문서에 다시 반영한다.
+명령으로 바꾼다. 바꾼 명령은 이 문서에 다시 반영한다.
 
 ## 10. sample/perf smoke 범위
 
@@ -440,7 +440,7 @@ MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQRE
 ```
 
 C perf의 `run_benchmarks_multi.sh`는 `core/build` runtime을 기준으로 한다.
-`core/src` 또는 `core/include`를 바꾼 뒤에는 반드시 먼저 실행한다.
+`core/src`나 `core/include`를 바꾼 뒤에는 반드시 먼저 실행한다.
 
 ```bash
 cmake --build core/build -j"$(nproc)"
@@ -513,7 +513,7 @@ cmake --build core/build -j"$(nproc)"
 - `doc/spec/`에는 공개 API 계약만 쓴다.
 - `doc/guide/`에는 사용 의도와 예제만 쓴다.
 - `doc/internals/`에는 Registry/Discovery/Spot 내부 구조와 흐름을 쓴다.
-- draft spec은 구현 후에도 변경 이력 확인용으로 남길 수 있지만, 정식 계약은
+- draft spec은 구현 후에도 변경 이력 확인용으로 남길 수 있다. 다만 정식 계약은
   `doc/spec/`와 `core/include/zlink.h`가 기준이 되게 한다.
 
 문서 검증:
@@ -540,7 +540,7 @@ AGENTS.md의 금지 표현 규칙도 함께 직접 확인한다.
 
 ## 12. native runtime 갱신 gate
 
-정식 문서 반영 뒤 core와 C binding 산출물을 최신으로 다시 빌드한다.
+정식 문서를 반영한 뒤 core와 C binding 산출물을 최신으로 다시 빌드한다.
 
 ```bash
 cmake --build core/build -j"$(nproc)"
@@ -588,7 +588,7 @@ find bindings -path '*/native/*' -type f -name 'libzlink*.so*' \
 
 ## 13. 최종 sample/perf smoke gate
 
-native runtime 갱신 뒤 `9. bindings 구현 gate`와 `10. sample/perf smoke 범위`의
+native runtime을 갱신한 뒤 `9. bindings 구현 gate`와 `10. sample/perf smoke 범위`의
 모든 sample/perf smoke를 다시 실행한다.
 
 실패가 있으면 아래 순서로 되돌아간다.
@@ -706,7 +706,7 @@ ctest --test-dir core/build --output-on-failure -j"$(nproc)"
 
 ### 15.4 binding test/sample/perf smoke
 
-native runtime 갱신 뒤 최종 smoke 결과는 아래와 같다.
+native runtime을 갱신한 뒤 최종 smoke 결과는 아래와 같다.
 
 | 바인딩 | tests | samples/examples | single perf | multi perf |
 |--------|-------|------------------|-------------|------------|
@@ -725,7 +725,7 @@ single perf 6개 pattern은 `PAIR`, `PUBSUB`, `DEALER_DEALER`,
 `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM`이지만, 일부 언어 runner에는
 `SPOT_SENDSEND` 구현이 없다. runner가 unsupported 또는 미구현으로 보고한
 pattern은 실패가 아니라 해당 바인딩의 현재 perf surface 밖으로 분류했다.
-Go/Java/Python/Rust의 일부 multi SPOT smoke는 기본 client 수에서 resource 또는
+Go/Java/Python/Rust의 일부 multi SPOT smoke는 기본 client 수에서 resource나
 ready timing이 불안정해 smoke 목적에 맞게 `--clients 2` 또는 `--clients 10`으로
 개별 재실행했다. 같은 자동 연결 API, pattern, transport, message size를 검증한다.
 

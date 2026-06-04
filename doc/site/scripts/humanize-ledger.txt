@@ -87,3 +87,15 @@ doc/plan/direct-callback-recv/service-monitor-readiness-plan.ko.md
 doc/plan/direct-callback-recv/service-option-surface-plan.ko.md
 doc/plan/direct-callback-recv/service-routing-id-policy-plan.ko.md
 doc/plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md
+doc/plan/direct-callback-recv/spot-node-direct-facade-plan.ko.md
+doc/plan/direct-callback-recv/spot-proxy-rewrite-spec.ko.md
+doc/plan/discovery/README.ko.md
+doc/plan/discovery/auto-connect-channel-types-implementation-plan.ko.md
+doc/plan/discovery/discovery-owner-bound-routes-implementation-plan.ko.md
+doc/plan/discovery/discovery-service-execution-guide.ko.md
+doc/plan/discovery/raw-socket-service-discovery-spec.ko.md
+doc/plan/documentation/documentation-overhaul-plan.ko.md
+doc/plan/documentation/humanize-all-execution-prompt.ko.md
+doc/plan/documentation/tabbed-docs-consolidation-execution-prompt.ko.md
+doc/plan/monitoring/auto-hwm-and-service-monitor-rollout-plan.ko.md
+doc/plan/monitoring/auto-hwm-context-memory-sizing-rollout-plan.ko.md

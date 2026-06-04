@@ -5,7 +5,7 @@
 
 - [Auto-HWM 개선 정책 Draft](../../draft/auto-hwm-context-memory-sizing.ko.md)
 
-이 plan의 목적은 "무엇을 만들 것인가"를 다시 설명하는 것이 아니라, 그 설계를
+이 plan의 목적은 "무엇을 만들 것인가"를 다시 설명하는 데 있지 않다. 그 설계를
 사용자 개입 없이 끝까지 반영하는 순서와 통과 조건을 고정하는 것이다.
 
 핵심 원칙은 아래와 같다.
@@ -14,14 +14,14 @@
 2. 공개 계약 기준인 `core/include/zlink.h`, `core/include/zlink_enum.h`를 먼저
    반영한다.
 3. core auto-HWM planner와 SpotNode 내부 적용을 구현한다.
-4. draft 문서 기준으로 core 반영 여부를 반복 리뷰한다.
+4. draft 문서를 기준으로 core 반영 여부를 반복 리뷰한다.
 5. 그 다음 `core/src` 전체를 POSD 기준으로 반복 리팩토링한다.
 6. core, C sample, C perf를 모두 검증한다.
 7. 그 뒤에만 정식 문서와 bindings를 반영한다.
 8. 각 binding native 동기화, binding 라이브러리 수정, binding 검증을 모두 끝낸다.
 
 이 plan에서 "통과"는 한 번 실행했다는 뜻이 아니다. 실패한 항목이 있으면 원인을
-고치고 같은 게이트를 다시 실행해서 성공한 상태를 뜻한다.
+고치고 같은 게이트를 다시 실행해 성공한 상태를 뜻한다.
 
 ---
 
@@ -34,7 +34,7 @@
 
 1. 실패한 명령이 있으면 같은 단계 안에서 원인을 분석하고 수정한 뒤 다시 실행한다.
 2. "대부분 통과"나 "일부 skip"은 통과로 보지 않는다.
-3. sample 또는 perf 디렉터리가 실제로 없을 때만 `N/A`로 기록할 수 있다.
+3. sample 또는 perf 디렉터리가 실제로 없을 때만 `N/A`로 기록한다.
 4. 디렉터리나 runner가 있는데 실패하면 반드시 수정한다.
 5. perf smoke에서 실제 result row 없이 0-result를 성공으로 처리하면 실패로 본다.
 6. `core/src` 또는 `core/include`를 바꾼 뒤에는 항상 `cmake --build core/build`를
@@ -368,7 +368,7 @@ SpotNode publish fanout limit은 기존
 ## 3. core auto-HWM planner 구현 게이트
 
 이 단계에서는 기존 auto-HWM 계산을 draft의 v2 계산식으로 대체한다. context
-memory는 HWM을 크게 만드는 값이 아니라 전체 queue memory 상한으로만 사용한다.
+memory는 HWM을 크게 만드는 값이 아니라 전체 queue memory 상한으로만 쓴다.
 
 ### 3.1 반영 항목
 
@@ -541,7 +541,7 @@ rg -n "return [A-Za-z0-9_:]+\\([^;]*\\);|TODO|FIXME|pass[-_ ]?through" core/src
 rg -n "ZLINK_CTX_OPT_AUTO_HWM_PROFILE|zlink_auto_hwm_profile_t" core/src core/include bindings
 ```
 
-아래 조건이 모두 만족되어야 POSD follow-up을 0개로 기록할 수 있다.
+아래 조건을 모두 만족해야 POSD follow-up을 0개로 기록할 수 있다.
 
 - profile table이 한 모듈에 모여 있다.
 - socket type에서 policy class로 변환하는 지식이 한 곳에 있다.
@@ -554,7 +554,7 @@ rg -n "ZLINK_CTX_OPT_AUTO_HWM_PROFILE|zlink_auto_hwm_profile_t" core/src core/in
 
 1. `core/src` 전체에서 POSD 위험 신호를 열거한다.
 2. 각 위험 신호가 어떤 POSD 원칙에 어긋나는지 기록한다.
-3. 수정 방향을 두 가지 이상 검토하고, 더 나은 쪽을 선택한다.
+3. 수정 방향을 두 가지 이상 검토하고 더 나은 쪽을 선택한다.
 4. core 코드를 수정한다.
 5. `cmake --build core/build`
 6. core 테스트를 다시 실행한다.

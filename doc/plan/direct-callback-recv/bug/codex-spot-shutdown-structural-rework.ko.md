@@ -30,7 +30,7 @@ ack imbalance, late pipe completion, ctx hang, split/full-suite-only failure가
 계속 다른 형태로 튀어 나온다.
 
 따라서 다음 단계는 "문제 케이스 하나를 우회하는 patch"가 아니라,
-**core의 단일 스레드 termination invariant를 복구하고,
+**core의 단일 스레드 termination invariant를 복구하고
 서비스 destroy 계약을 공통 lifecycle kernel로 정렬하는 구조 개선**이어야 한다.
 
 ## 왜 구조 개선이 필요한가
@@ -43,14 +43,14 @@ ack imbalance, late pipe completion, ctx hang, split/full-suite-only failure가
 - `ctx_term()`이 reaper done을 기다리며 hang
 - 드물게 `own.cpp`에서 `_term_acks > 0` assertion
 
-이 셋은 서로 다른 버그처럼 보이지만, 실제로는 공통 뿌리가 있다.
+이 셋은 서로 다른 버그처럼 보이지만 실제로는 공통 뿌리가 있다.
 
 - shutdown 중 어떤 socket의 termination 완료 기준이 흔들림
 - 그 결과 어떤 경우에는 "아직 남은 socket"을 lifecycle tracker가 놓침
 - 어떤 경우에는 "이미 0인 ack"에 추가 unregister가 들어옴
 - 어떤 경우에는 socket이 destroy readiness를 영원히 만족하지 못함
 
-즉 문제의 본질은 "특정 API 호출 한 줄"보다
+문제의 본질은 "특정 API 호출 한 줄"이라기보다
 **종료 상태와 종료 완료 판단이 여러 레이어에 흩어져 있다는 점**이다.
 
 다만 현재 시점의 직접 원인 우선순위는 분명하다.
@@ -58,7 +58,7 @@ ack imbalance, late pipe completion, ctx hang, split/full-suite-only failure가
 - `BUG-01`: service-level tracking loss
 - `BUG-02`: async mailbox vs reaper data race
 
-즉 표면 증상은 구조 문제 전체의 일부이지만,
+표면 증상은 구조 문제 전체의 일부이지만
 지금 남아 있는 1순위 코어 결함은 `BUG-02` 쪽으로 봐야 한다.
 
 ### 2. 현재 모델은 책임이 두 군데에 나뉘어 있다
@@ -74,7 +74,7 @@ ack imbalance, late pipe completion, ctx hang, split/full-suite-only failure가
 - abortive escalation
 - destroy 성공/실패 판단
 
-즉 spot 레이어가 "내가 가진 socket이 다 사라졌는가"를 자체적으로 판단한다.
+말하자면 spot 레이어가 "내가 가진 socket이 다 사라졌는가"를 자체적으로 판단한다.
 
 #### core 쪽 책임
 
@@ -97,10 +97,10 @@ spot이 별도 추적 집합으로 "사실상 끝났다"고 먼저 판단하는 
 그 결과 `tracked=` 로그가 남고, 이전처럼 tracker가 socket을 완전히 잃지는 않는다.
 
 하지만 그 다음엔 `_term_acks` assertion과 잔여 teardown race가 더 선명하게 드러났다.
-이건 "새 버그가 생겼다"기보다,
+이건 "새 버그가 생겼다"기보다
 원래 있던 더 깊은 shutdown 불일치가 위로 올라온 것이다.
 
-즉 지금 보이는 패턴은 이렇다.
+지금 보이는 패턴은 이렇다.
 
 1. 표면 버그 수정
 2. deeper invariant failure 노출
@@ -117,9 +117,9 @@ termination model 자체로 올려야 한다.
 ### 1. 1차 문제는 이미 분리됨
 
 `service_runtime_base_t`의 tracking loss는 실제 버그였고,
-그건 이미 수정 대상으로 식별되었다.
+이미 수정 대상으로 식별되었다.
 
-하지만 그 수정은 "남은 socket을 안 보이는 상태로 만들지 않게" 한 것이지,
+하지만 그 수정은 "남은 socket을 안 보이는 상태로 만들지 않게" 한 것이지
 socket termination 자체를 안정화한 것은 아니다.
 
 ### 2. 현재 남은 직접 원인은 async mailbox vs reaper data race
@@ -128,7 +128,7 @@ socket termination 자체를 안정화한 것은 아니다.
 `socket_base_t`의 async mailbox 처리와 reaper handoff가
 서로 완전히 배타적이지 않다는 점이다.
 
-구체적으로는:
+구체적으로는 이렇다.
 
 - direct callback 활성 소켓은 mailbox 명령을 I/O 스레드의
   `process_async_mailbox()`에서 처리한다
@@ -153,7 +153,7 @@ socket termination 자체를 안정화한 것은 아니다.
 - underflow 쪽이면 `_term_acks > 0` assertion
 - leak 쪽이면 destroy readiness가 오지 않아 socket removal timeout
 
-즉 timeout과 assertion은 다른 문제라기보다,
+말하자면 timeout과 assertion은 다른 문제라기보다
 같은 구조 불일치의 두 방향이다.
 
 중요한 점은, 현재는 이것을 "독립적인 pipe ack 모델 결함"으로 단정하기보다
@@ -172,10 +172,10 @@ socket termination 자체를 안정화한 것은 아니다.
 이 네 가지가 서비스마다 다르고, 같은 서비스 안에서도 handle/runtime/worker/ctx에
 분산되어 있다.
 
-이 구조에서는 core 쪽 race 하나를 줄여도,
+이 구조에서는 core 쪽 race 하나를 줄여도
 다른 서비스나 다른 teardown sequence가 다음 종료 결함을 다시 surface시킨다.
 
-즉 현재 문제는 두 층으로 정리해야 한다.
+그래서 현재 문제는 두 층으로 정리해야 한다.
 
 - 하위 직접 원인: async mailbox vs reaper data race
 - 상위 구조 원인: 공통 lifecycle contract 부재와 ownership 분산
@@ -195,7 +195,7 @@ phase2 문서의 포인트는 중요하다.
 정상 상태기계라면 여전히 각 pipe는 최종적으로 한 번만 completion을
 알려야 하기 때문이다.
 
-따라서 현 단계에서의 판단은 이렇다.
+따라서 현 단계의 판단은 이렇다.
 
 - `term_endpoint()` 선호출은 제거 후보가 맞다
 - 하지만 그것만 제거해도 근본 문제가 끝난다고 보긴 어렵다
@@ -210,7 +210,7 @@ phase2 문서의 포인트는 중요하다.
 close 이후 reaper가 들어오기 전에,
 해당 socket의 async mailbox 처리가 완전히 빠져나왔다는 보장이 필요하다.
 
-즉 `close()` 혹은 `start_reaping()` 경계에서 다음이 성립해야 한다.
+`close()`나 `start_reaping()` 경계에서 다음이 성립해야 한다.
 
 - async handler가 더 이상 `process_commands()`를 실행하지 않음
 - mailbox io_context가 분리됨
@@ -262,7 +262,7 @@ graceful이든 abortive든 끝까지 수렴하지 못했으면 destroy는 실패
 - `start_reaping()`은 이전 async handler가 남아 있으면 진입하면 안 됨
 - reaper handoff 이후에는 socket 내부 상태를 reaper만 만져야 함
 
-즉 termination 모델 개편보다 먼저
+termination 모델 개편보다 먼저
 **core의 단일 스레드 접근 invariant를 복구**해야 한다.
 
 ### 2. core: own_t와 socket_base_t의 역할 분리를 재검토
@@ -270,14 +270,14 @@ graceful이든 abortive든 끝까지 수렴하지 못했으면 destroy는 실패
 이전 버전 문서에서는 `own_t::_term_acks`와 pipe termination 상태를
 아예 분리하는 쪽을 1순위로 썼다.
 
-다른 문서를 반영하면 이건 이렇게 정리하는 것이 더 맞다.
+다른 문서를 반영하면 이건 이렇게 정리하는 편이 더 맞다.
 
 - 1차: async mailbox/reaper 동시 접근 제거
 - 2차: 그 이후에도 accounting ambiguity가 남으면 pipe state를 socket-local
   상태로 분리
 
-즉 pipe ack/state 분리는 여전히 유력한 구조 개선안이지만,
-**data race 제거 이후에 적용 여부를 확정할 2차 core 리팩터링**으로 두는 것이
+pipe ack/state 분리는 여전히 유력한 구조 개선안이지만,
+**data race 제거 이후에 적용 여부를 확정할 2차 core 리팩터링**으로 두는 편이
 안전하다.
 
 #### 2차 리팩터링 후보
@@ -288,7 +288,7 @@ graceful이든 abortive든 끝까지 수렴하지 못했으면 destroy는 실패
 - owned object의 `term_ack`
 - 기타 pipe 외의 owned lifecycle ack
 
-즉 필요 시 pipe termination은 더 이상 `own_t::unregister_term_ack()` 경로를
+필요 시 pipe termination은 더 이상 `own_t::unregister_term_ack()` 경로를
 타지 않게 하고, socket-local pending state로 빼는 방향을 검토한다.
 
 `socket_base_t`는 별도 상태를 가져야 한다.
@@ -357,7 +357,7 @@ late attach는 다음 둘 중 하나로 명확히 처리해야 한다.
 - worker/task/observer/socket ownership과 stop/join/close/wait 순서를
   여기서 공통 계약으로 강제
 
-즉 `service_runtime_base_t`는 단순 socket helper가 아니라
+`service_runtime_base_t`는 단순 socket helper가 아니라
 **서비스 공통 lifecycle kernel**로 키우되,
 socket final removal 자체는 core 판단을 따르게 해야 한다.
 
@@ -372,7 +372,7 @@ destroy 직전의 `term_endpoint()` 선호출을 제거하는 방향이 맞다.
 - handle이 peer internal socket보다 먼저 pipe 상태를 건드리면
   data-plane 쪽 teardown window가 불필요하게 넓어진다
 
-즉 attachment destroy는 다음 역할만 하면 된다.
+attachment destroy는 다음 역할만 하면 된다.
 
 - registry/unregister/monitor 정리
 - attachment socket close 요청
@@ -390,10 +390,10 @@ pipe 종료 순서 자체는 core가 책임진다.
 5. core socket removal wait
 6. 실패 시 error 반환
 
-핵심은 "peer internal socket이 아직 active인 상태에서 attachment 쪽 pipe를 먼저
+핵심은 "peer internal socket이 아직 active한 상태에서 attachment 쪽 pipe를 먼저
 흔들지 않는다"는 것이다.
 
-즉 `spot`은 공통 lifecycle kernel이 정한 순서를 따르고,
+`spot`은 공통 lifecycle kernel이 정한 순서를 따르고
 core removal wait를 통해서만 종료 완료를 확인해야 한다.
 
 ## destroy 정책

@@ -21,9 +21,9 @@
 ## 현재 문제 요약
 핵심 증상은 두 가지다.
 
-1. `spot` 관련 테스트가 단독 실행에서는 통과하지만,
+1. `spot` 관련 테스트가 단독 실행에서는 통과하지만
    split/full 순차 실행에서는 일부 케이스가 `ctest timeout`으로 멈춘다.
-2. `spot_node_destroy()`에서 `shutdown=abortive` 로그가 찍혀도,
+2. `spot_node_destroy()`에서 `shutdown=abortive` 로그가 찍혀도
    그 뒤 `ctx_term()` 또는 테스트 프로세스 종료가 끝까지 수렴하지 않는 경우가 있다.
 
 현재 가장 최근에 명확히 잡힌 blocker:
@@ -91,7 +91,7 @@ done
 
 - `spot_pub_t`, `spot_sub_t`는 직접 socket pointer를 들지 않고
   runtime attachment id를 통해 socket을 조회하도록 변경
-- child handle destroy는 detach 위주로 줄이고,
+- child handle destroy는 detach 위주로 줄이고
   final drain owner를 `spot_node_destroy()`로 몰아가는 방향으로 정리
 
 관련 파일:
@@ -120,7 +120,7 @@ done
   - `force_wait_remaining()`
 
 ### 3. socket identity / ctx helper
-다음도 추가 또는 정리했다.
+다음도 추가하거나 정리했다.
 
 - `core/src/sockets/socket_base.hpp`
 - `core/src/sockets/socket_base.cpp`
@@ -135,7 +135,7 @@ done
 - `ZLINK_CTX_DEBUG=1`일 때 context socket dump
 
 ### 4. abortive fallback 및 종료 로그
-현재 `spot node destroy`는 graceful shutdown을 먼저 시도하고,
+현재 `spot node destroy`는 graceful shutdown을 먼저 시도하고
 실패하면 abortive fallback으로 내려간다.
 
 현재 로그 형식:
@@ -179,12 +179,12 @@ standalone `spot_pub/sub` API를 잘못 쓰던 부분을 수정했다.
 
 - `core/tests/spot/test_spot_service_introspection.cpp`
 
-하지만 여전히 sequence 실행에서 registry 생성 또는 teardown 문제가 남는다.
+하지만 sequence 실행에서는 registry 생성 또는 teardown 문제가 여전히 남는다.
 
 ## 현재 관찰상 중요한 사실
 ### A. abortive fallback이 들어가도 종료가 끝나지 않는 경우가 있음
-이건 `spot node`가 추적하는 socket/attachment는 비웠다고 보는데,
-그 바깥 `ctx/reaper` 레벨에서는 아직 제거 완료가 안 된 자원이 있다는 뜻으로 보고 있다.
+`spot node`가 추적하는 socket/attachment는 비웠다고 보지만
+그 바깥 `ctx/reaper` 레벨에서는 아직 제거가 끝나지 않은 자원이 있다는 뜻으로 본다.
 
 즉 현재 상태는:
 
@@ -192,14 +192,14 @@ standalone `spot_pub/sub` API를 잘못 쓰던 부분을 수정했다.
 - context-level bounded fallback: 없음
 
 ### B. 단독 실행은 통과하는데 split/full 순차 실행에서만 깨지는 경우가 많음
-이 패턴 때문에 다음 두 가지 가설을 보고 있다.
+이 패턴 때문에 두 가지 가설을 보고 있다.
 
 1. `spot/destroy -> ctx_term` 사이 lifecycle race
 2. `spot introspection` 테스트들의 transport/runtime 정리가 다음 프로세스에
    영향을 줄 정도로 늦게 수렴하거나, 특정 transport state가 잔류
 
 ### C. `ZLINK_CTX_DEBUG=1`에서 보였던 잔류 socket 패턴
-실패 run 또는 느린 run에서 다음 류의 socket이 오래 남았다.
+실패하거나 느린 run에서 다음 류의 socket이 오래 남았다.
 
 - `inproc://zlink.spot.<id>.ctrl`
 - `inproc://zlink.spot.<id>.pub-in`
@@ -287,7 +287,7 @@ standalone `spot_pub/sub` API를 잘못 쓰던 부분을 수정했다.
 
 질문:
 
-- 이 증상이 core runtime bug에 더 가깝나?
+- 이 증상이 core runtime bug에 더 가까운가?
 - 아니면 test helper/port seed/transport settle 부족 같은 isolation defect가 큰가?
 - 둘 다라면 경계는 어디인가?
 
@@ -322,7 +322,7 @@ standalone `spot_pub/sub` API를 잘못 쓰던 부분을 수정했다.
 - `doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md`
 
 ## 한 줄 요약
-`spot` runtime/attachment/lifecycle를 많이 정리했지만,
+`spot` runtime/attachment/lifecycle를 많이 정리했지만
 아직 `spot introspection` split sequence, 특히 `tls_lock`에서
 `destroy -> ctx_term` 수렴이 비결정적이다.
 abortive 로그는 찍히지만 프로세스 종료까지는 아직 완전히 보장되지 않는다.

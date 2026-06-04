@@ -11,22 +11,22 @@
 `service_runtime_base_t::wait_drained()`가 타임아웃되면
 내부적으로 `_closing_sockets`를 swap한 로컬 변수가 스코프를 벗어나면서
 소켓 포인터 추적이 완전히 유실된다.
-이후 abortive fallback 경로가 실행되더라도, 추적을 잃은 소켓에 대해
-`force_wait_remaining()`이 아무런 대기를 수행하지 않는다.
+이후 abortive fallback 경로가 실행되더라도 추적을 잃은 소켓은
+`force_wait_remaining()`이 전혀 대기하지 않는다.
 
-결과적으로 `spot_node_destroy()`는 반환하지만,
-`ctx_t::_sockets`에 아직 reaper가 처리 중인 소켓이 남아 있고,
+결과적으로 `spot_node_destroy()`는 반환하지만
+`ctx_t::_sockets`에는 아직 reaper가 처리 중인 소켓이 남아 있고
 `ctx_term()`이 `_term_mailbox.recv(&cmd, -1)`에서 무기한 블로킹된다.
 
 ### 가설 B: TLS 소켓 reaper 처리 지연 (High)
 
 `linger=0`이더라도 TLS 소켓의 세션 종료(close_notify 교환)는
 I/O 스레드의 이벤트 루프에서 비동기적으로 처리된다.
-양쪽 피어가 동시에 종료될 때(테스트 teardown),
+양쪽 피어가 동시에 종료될 때(테스트 teardown)
 close_notify 교환이 지연되거나 상대 피어의 소켓이 이미 닫혀
-응답이 오지 않는 상황이 발생할 수 있다.
+응답이 오지 않는 상황이 생긴다.
 
-이 지연이 `wait_for_socket_removal()`의 직렬 폴링 시간 예산을 소진시키고,
+이 지연이 `wait_for_socket_removal()`의 직렬 폴링 시간 예산을 소진시키고
 결국 `wait_drained()`가 타임아웃되어 가설 A의 버그를 트리거한다.
 
 ### 가설 C: 순차 테스트 간 OS 자원 잔류 (Medium)
@@ -91,7 +91,7 @@ if (_runtime && (first_error != 0 || ...)) {
 
 - `test_spot_tls_settings_lock_after_bind_connect_and_register`에서만 60초 타임아웃
 - 이 테스트는 TLS bind/connect를 사용하는 유일한 introspection 테스트
-- 단독 실행에서는 통과 → TLS 세션이 단독으로는 빠르게 정리되지만,
+- 단독 실행에서는 통과 → TLS 세션이 단독으로는 빠르게 정리되지만
   앞선 테스트들이 reaper를 바쁘게 만들면 지연됨
 
 테스트의 teardown 순서:
@@ -112,8 +112,8 @@ TLS 세션 종료 지연으로 타임아웃 → 가설 A의 소켓 추적 유실
 
 - `test_spot_topology_summary_lifecycle`에서
   `create_started_registry_with_port_seed()`가 NULL 반환
-- 이 테스트의 `registry_seed=22670`은 다른 테스트와 겹치지 않지만,
-  32번 시도 모두 EADDRINUSE로 실패할 수 있음
+- 이 테스트의 `registry_seed=22670`은 다른 테스트와 겹치지 않지만
+  32번 시도가 모두 EADDRINUSE로 실패할 수 있음
 - 앞선 테스트의 TCP 연결이 TIME_WAIT에 있으면 포트 재사용 불가
 
 ---
@@ -124,21 +124,21 @@ TLS 세션 종료 지연으로 타임아웃 → 가설 A의 소켓 추적 유실
 
 이것이 1순위인 이유:
 
-1. **재현 조건과 완벽히 일치**: TLS 소켓이 `wait_drained()` 타임아웃을 유발하면,
-   abortive 경로가 no-op이 되어 `ctx_term()`이 영구 블로킹
+1. **재현 조건과 완벽히 일치**: TLS 소켓이 `wait_drained()` 타임아웃을 유발하면
+   abortive 경로가 no-op이 되어 `ctx_term()`이 영구 블로킹된다
 
 2. **단독 실행 통과 설명**: 단독 실행에서는 시스템 부하가 낮아
-   `wait_drained()` 10초 내에 완료됨. 순차 실행에서는
-   reaper가 이전 테스트의 소켓을 아직 처리 중이라 지연
+   `wait_drained()`가 10초 안에 완료된다. 순차 실행에서는
+   reaper가 이전 테스트의 소켓을 아직 처리 중이라 지연된다
 
 3. **코드에서 명확히 확인 가능**: `wait_drained()` return -1 시점에
-   `_closing_sockets`가 이미 swap되어 비어있고,
-   로컬 `sockets` 변수가 스코프를 벗어나면서 추적 유실
+   `_closing_sockets`가 이미 swap되어 비어 있고
+   로컬 `sockets` 변수가 스코프를 벗어나면서 추적이 유실된다
 
 4. **abortive_stop()이 독립적으로 무력함**: runtime 멤버 포인터가
-   이미 NULL이므로 `_lifecycle` 추적과 무관하게 할 일이 없음
+   이미 NULL이므로 `_lifecycle` 추적과 무관하게 할 일이 없다
 
-가설 B(TLS 지연)는 가설 A를 트리거하는 **원인** 역할이고,
+가설 B(TLS 지연)는 가설 A를 트리거하는 **원인** 역할이고
 가설 C(포트 잔류)는 별개의 isolation 문제다.
 하지만 핵심 blocker는 가설 A의 추적 유실이다.
 
@@ -148,13 +148,13 @@ TLS 세션 종료 지연으로 타임아웃 → 가설 A의 소켓 추적 유실
 
 ### 4.1 `wait_drained()` 소켓 추적 보존
 
-`wait_drained()`가 타임아웃 시 미처리 소켓을 `_closing_sockets`에 되돌려야 한다.
-이렇게 하면 이후 `force_wait_remaining()`이 해당 소켓을 찾아 대기할 수 있다.
+`wait_drained()`가 타임아웃되면 미처리 소켓을 `_closing_sockets`에 되돌려야 한다.
+그래야 이후 `force_wait_remaining()`이 해당 소켓을 찾아 대기한다.
 
 ### 4.2 `ctx_t::terminate()`에 bounded fallback 도입
 
 현재 `ctx_t::terminate()`는 `_term_mailbox.recv(&cmd, -1)`로 무기한 대기한다.
-service 레벨에서 아무리 잘 정리해도, 최종 방어선인 ctx가 무기한이면
+service 레벨에서 아무리 잘 정리해도 최종 방어선인 ctx가 무기한이면
 하나의 느린 소켓이 전체 프로세스를 멈출 수 있다.
 
 옵션:
@@ -163,10 +163,10 @@ service 레벨에서 아무리 잘 정리해도, 최종 방어선인 ctx가 무�
 
 ### 4.3 `abortive_stop()` 경로에서 `_lifecycle` 추적 활용
 
-현재 `abortive_stop()`는 runtime 멤버 포인터만 읽는데,
-이미 NULL이므로 무력하다.
-대신 `_lifecycle._closing_sockets`에 남아있는 소켓을 읽어서
-force-wait하도록 변경해야 한다.
+현재 `abortive_stop()`는 runtime 멤버 포인터만 읽는데
+이미 NULL이라 무력하다.
+대신 `_lifecycle._closing_sockets`에 남아 있는 소켓을 읽어
+force-wait하도록 바꿔야 한다.
 
 ---
 
@@ -260,11 +260,11 @@ void restore_closing_sockets (
 ```
 
 이 수정만으로도 abortive 경로의 `force_wait_remaining()`이
-타임아웃된 소켓을 다시 찾아서 대기할 수 있다.
+타임아웃된 소켓을 다시 찾아 대기한다.
 
 ### 수정 2: `force_wait_remaining()`도 동일하게 보존 (Safety)
 
-`force_wait_remaining()`도 같은 패턴의 swap을 사용하므로,
+`force_wait_remaining()`도 같은 패턴의 swap을 쓰므로
 타임아웃 시 소켓이 유실된다. 동일한 복원 로직을 적용해야 한다.
 
 파일: `core/src/services/common/service_runtime_base.hpp`
@@ -288,8 +288,8 @@ static void destroy_test_ctx (void *ctx_)
 ```
 
 이것은 workaround이지 근본 해결이 아니다.
-수정 1이 적용되면 필요 없을 수 있지만,
-TLS 테스트의 안정성을 위해 적용 권장.
+수정 1이 적용되면 필요 없을 수도 있지만
+TLS 테스트의 안정성을 위해 적용을 권장한다.
 
 ---
 
@@ -330,10 +330,10 @@ int zlink::ctx_t::terminate ()
 
 invariant 요구사항:
 - bounded fallback 이후에도 소켓 정리가 완료되지 않으면
-  ctx 소멸자의 `zlink_assert (_sockets.empty ())` assertion이 실패함
-- 이를 피하려면 assertion을 warning으로 변경하거나,
-  강제 삭제 경로를 추가해야 함
-- 프로덕션에서는 assertion 실패보다 로깅 후 진행이 더 안전
+  ctx 소멸자의 `zlink_assert (_sockets.empty ())` assertion이 실패한다
+- 이를 피하려면 assertion을 warning으로 바꾸거나
+  강제 삭제 경로를 추가해야 한다
+- 프로덕션에서는 assertion 실패보다 로깅 후 진행이 더 안전하다
 
 ### 6.2 `service_runtime_base_t`에 소켓 상태 모델 강화
 
@@ -352,15 +352,15 @@ tracked → owned → close_socket() → closing → wait_confirmed → reaped
 ```
 
 구체적으로:
-- `closing` 상태의 소켓은 swap으로 빼지 말고,
+- `closing` 상태의 소켓은 swap으로 빼지 말고
   상태 플래그(`waited`, `confirmed`)를 추가
-- `wait_drained()`가 타임아웃되어도 소켓이 남아있는 한 추적 유지
+- `wait_drained()`가 타임아웃되어도 소켓이 남아 있는 한 추적 유지
 - `force_wait_remaining()`은 `ctx->wait_for_socket_count_at_most()`처럼
   전체 카운트 기반 대기도 가능하게
 
 ### 6.3 소켓 소유권 명시적 이전 모델
 
-현재 `abortive_stop()`은 runtime 멤버 포인터를 직접 읽는데,
+현재 `abortive_stop()`은 runtime 멤버 포인터를 직접 읽는데
 이 포인터들은 데이터 플레인 스레드와 공유되어 cleanup 후 NULL이다.
 
 개선:
@@ -392,7 +392,7 @@ static std::atomic<int> g_port_cursor{0};
 int registry_seed = 20000 + (g_port_cursor.fetch_add(100) % 40000);
 ```
 
-또는 `tcp://127.0.0.1:0`으로 바인드 후 `getsockname`으로 실제 포트를 가져오는
+또는 `tcp://127.0.0.1:0`으로 바인드한 뒤 `getsockname`으로 실제 포트를 가져오는
 방식으로 전환 (가능한 경우).
 
 ---
@@ -485,9 +485,9 @@ static void destroy_test_ctx (void *ctx_)
 2. `abortive_stop()`이 runtime 멤버 포인터(이미 NULL)에 의존
 3. `first_error = 0` 리셋으로 에러 정보 소실
 
-`destroy()` 반환 전에 enough drain을 **보장하지 않는다.**
-`ctx_term()`에 최종 강제 수렴 책임을 넘겨야 하지만,
-현재 `ctx_term()`도 무기한이므로 이것도 해결이 필요하다.
+`destroy()`는 반환 전에 enough drain을 **보장하지 않는다.**
+`ctx_term()`에 최종 강제 수렴 책임을 넘겨야 하지만
+현재 `ctx_term()`도 무기한이라 이것 역시 해결해야 한다.
 
 ### Q2: `service_runtime_base_t`의 모델이 맞는가?
 
@@ -514,15 +514,15 @@ static void destroy_test_ctx (void *ctx_)
 
 **필요하다.** 이유:
 
-1. service-level teardown이 아무리 완벽해도,
-   비동기 reaper 처리가 느리면 `ctx_term()`이 블로킹
-2. 현재 `ctx_term()` 무기한 대기는 테스트 환경에서 60초 ctest timeout을 유발
-3. 프로덕션에서도 프로세스 종료 지연 위험
+1. service-level teardown이 아무리 완벽해도
+   비동기 reaper 처리가 느리면 `ctx_term()`이 블로킹된다
+2. 현재 `ctx_term()` 무기한 대기는 테스트 환경에서 60초 ctest timeout을 유발한다
+3. 프로덕션에서도 프로세스 종료 지연 위험이 있다
 
 ctx가 최종 강제 종료를 맡는다면 필요한 invariant:
 - bounded wait 후에도 소켓이 남으면 `_reaper->stop()` 강제 호출
 - 이후 `_sockets` assertion을 warning으로 완화
-- 또는 남은 소켓에 대해 `process_destroy()` 강제 실행 (위험하지만 확실)
+- 또는 남은 소켓에 `process_destroy()` 강제 실행 (위험하지만 확실)
 
 ### Q5: Test isolation 문제인지, runtime bug인지?
 
@@ -536,8 +536,8 @@ ctx가 최종 강제 종료를 맡는다면 필요한 invariant:
 | `ctx_term()` 무기한 대기 | **runtime bug** | 최종 blocker |
 | 순차 실행에서만 재현 | 트리거 조건 | N/A |
 
-runtime bug 2개(소켓 추적 유실 + ctx 무기한 대기)를 고치면,
-test isolation 문제가 남아있어도 테스트가 timeout으로 실패하지는 않는다.
+runtime bug 2개(소켓 추적 유실 + ctx 무기한 대기)를 고치면
+test isolation 문제가 남아 있어도 테스트가 timeout으로 실패하지는 않는다.
 isolation 문제는 별도로 포트 관리를 개선하면 된다.
 
 ---

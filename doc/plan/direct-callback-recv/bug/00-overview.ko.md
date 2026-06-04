@@ -19,7 +19,7 @@
 - **상태**: 수정 완료
 - **계층**: service lifecycle (`service_runtime_base_t`)
 - **요약**: `wait_drained()` 타임아웃 시 `_closing_sockets`를 swap으로 빼간 뒤
-  로컬 변수가 drop되면서 소켓 추적 유실. abortive 경로가 no-op이 됨.
+  로컬 변수가 drop되면서 소켓 추적이 유실된다. abortive 경로가 no-op이 된다.
 
 ### [BUG-02](./02-async-mailbox-reaper-data-race.ko.md): async mailbox vs reaper data race
 
@@ -27,8 +27,8 @@
 - **계층**: socket core (`socket_base_t`, `own_t`)
 - **직접 트리거**: direct callback의 async mailbox가 I/O 스레드에서 소켓 명령을
   처리하는 동안 reaper 스레드가 같은 소켓의 `process_term()`을 실행하여
-  `_pipes`/`_term_acks`에 동시 접근 (data race).
-- **구조적 배경**: 이 race는 더 깊은 이중 종료 모델 문제의 트리거이다.
+  `_pipes`/`_term_acks`에 동시 접근한다 (data race).
+- **구조적 배경**: 이 race는 더 깊은 이중 종료 모델 문제의 트리거다.
   아래 "구조적 원인 분석" 참조.
 
 ---
@@ -38,11 +38,11 @@
 ### 왜 하나 고치면 다른 문제가 나오는가
 
 개별 버그를 수정해도 다른 형태의 실패가 반복되는 이유는
-**단일 코드 결함이 아니라 종료 모델 자체가 이중 구조**이기 때문이다.
+**단일 코드 결함이 아니라 종료 모델 자체가 이중 구조**라서다.
 
 ### 이중 종료 모델
 
-현재 종료 완료 판정이 두 곳에서 독립적으로 이루어진다:
+현재 종료 완료 판정이 두 곳에서 독립적으로 이루어진다.
 
 ```
 [spot 계층]                              [core 계층]
@@ -65,7 +65,7 @@ core는 "pipe termination graph가 수렴했는가"를 따로 판단한다.
 
 ### `_term_acks` 혼합 카운터 문제
 
-`own_t::_term_acks`가 두 가지를 같은 카운터로 센다:
+`own_t::_term_acks`가 두 가지를 같은 카운터로 센다.
 
 | 등록 경로 | 해제 경로 |
 |-----------|-----------|
@@ -73,15 +73,15 @@ core는 "pipe termination graph가 수렴했는가"를 따로 판단한다.
 | `register_term_acks(_owned.size())` | `process_term_ack()` → `unregister_term_ack()` |
 | `attach_pipe()` 중 `register_term_acks(1)` | (같은 pipe의 terminated) |
 
-pipe completion과 owned-object completion이 하나의 카운터에 섞여 있어서,
+pipe completion과 owned-object completion이 한 카운터에 섞여 있어
 어느 쪽에서 불일치가 생겼는지 구분하기 어렵다.
 
 ### async mailbox race는 트리거
 
 [BUG-02](./02-async-mailbox-reaper-data-race.ko.md)에서 분석한
-I/O 스레드 vs reaper 간 data race는 이 구조 위에서 작동하는 **직접 트리거**이다.
+I/O 스레드 vs reaper 간 data race는 이 구조 위에서 작동하는 **직접 트리거**다.
 
-async mailbox race가 없더라도, spot의 teardown 순서가 조금만 흔들려도
+async mailbox race가 없더라도 spot의 teardown 순서가 조금만 흔들리면
 같은 계열의 ack 불일치가 다른 경로로 드러날 수 있다:
 
 - data plane thread가 아직 활성인 상태에서 attachment close
@@ -94,7 +94,7 @@ async mailbox race가 없더라도, spot의 teardown 순서가 조금만 흔들�
 
 ### 즉시 적용 (BUG-02 트리거 차단)
 
-`close()` 전에 async mailbox를 완전히 quiesce하여 data race를 방지한다.
+`close()` 전에 async mailbox를 완전히 quiesce하여 data race를 막는다.
 이것만으로 현재 재현되는 assertion과 timeout의 직접 트리거를 차단할 수 있다.
 
 → 상세: [BUG-02 해결 방향](./02-async-mailbox-reaper-data-race.ko.md#해결-방향)

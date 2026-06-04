@@ -10,7 +10,7 @@
 이 문서는 `zlink`의 수신 모델을 `recv()`/`poll()` 기반 pull 방식에서
 **callback-only direct dispatch** 방식으로 전면 전환하기 위한 구현 스펙이다.
 
-이 문서는 기존 direct-callback 아이디어 메모를 구체 구현안으로 확장한 문서다.
+기존 direct-callback 아이디어 메모를 구체적인 구현안으로 확장했다.
 
 관련 문서 관계:
 
@@ -27,7 +27,7 @@
 - 수신 API는 callback-only로 재설계한다.
 - recv-side 내부 큐와 pipe/session 기반 수신 적재 경로를 제거한다.
 - 별도 `resume_recv()` 같은 명시적 재개 API는 도입하지 않는다.
-- 수신이 느리면 transport read가 멈추고, 그 결과 sender 쪽에 자연 backpressure가 전파되게 한다.
+- 수신이 느리면 transport read가 멈추고 그 결과 sender 쪽에 자연 backpressure가 전파되게 한다.
 
 이 문서의 목표는 "callback API를 추가"하는 것이 아니라
 "`zlink`의 기본 수신 의미를 callback으로 다시 정의"하는 것이다.
@@ -36,11 +36,11 @@
 
 ### 2.1 외부 수신 모델
 
-- 모든 recv-capable raw socket/service는 callback을 통해서만 메시지를 전달한다.
+- 모든 recv-capable raw socket/service는 callback으로만 메시지를 전달한다.
 - `recv()` 계열 API는 제거한다.
 - `POLLIN` readiness 기반 소비 모델은 제거한다.
 - recv-capable raw socket/service는 생성 시 callback 등록을 기본으로 한다.
-- 생성 후 callback 교체는 허용하지만, callback 제거는 허용하지 않는다.
+- 생성 후 callback 교체는 허용하지만 callback 제거는 허용하지 않는다.
 - callback 등록 후 message arrival 시 라이브러리가 즉시 사용자 callback을 호출한다.
 - request/reply 성격의 관리/control reply도 예외 없이 callback/async로 전환한다.
 
@@ -63,7 +63,7 @@ network -> decoder -> session->push_msg -> pipe/fq/inproc queue -> recv()
 - callback은 owning I/O thread에서 inline으로 실행한다.
 - callback return이 곧 "해당 메시지 소비 완료"를 의미한다.
 - callback이 끝나기 전에는 같은 connection의 다음 read를 다시 arm하지 않는다.
-- callback이 느리면 해당 connection의 recv-side throughput이 감소하고,
+- callback이 느리면 해당 connection의 recv-side throughput이 감소하고
   transport/OS/TCP backpressure가 sender 쪽으로 전파된다.
 
 ### 2.4 explicit resume API 없음
@@ -82,7 +82,7 @@ network -> decoder -> session->push_msg -> pipe/fq/inproc queue -> recv()
 - `send()`/`msg_send()` 계열은 유지한다.
 - blocking send는 유지한다.
 - nonblocking send와 send-side `POLLOUT`는 유지한다.
-- send-side writable readiness는 poller 기반으로 유지하고,
+- send-side writable readiness는 poller 기반으로 유지하고
   별도 `POLLOUT` callback push API는 도입하지 않는다.
 - recv-side 설계 변경이 send API를 비동기 queue 모델로 강제하지는 않는다.
 
@@ -90,7 +90,7 @@ network -> decoder -> session->push_msg -> pipe/fq/inproc queue -> recv()
 
 - `recv`는 message delivery 자체를 push하는 callback 모델로 자연스럽게 바뀌지만,
   `send`는 애플리케이션이 "지금 보내고 싶은가"를 결정하는 demand-driven 동작이다.
-- `POLLOUT`은 message가 아니라 writable 상태 변화 알림이므로,
+- `POLLOUT`은 message가 아니라 writable 상태 변화 알림이므로
   recv callback과 같은 의미로 다루기 어렵다.
 - `POLLOUT`을 callback push로 바꾸면 one-shot/level-trigger, re-arm 시점,
   callback 폭주 방지 규약까지 새로 정의해야 한다.
@@ -163,9 +163,9 @@ network -> decoder -> session->push_msg -> pipe/fq/inproc queue -> recv()
 
 비고:
 
-- `XPUB`의 downstream subscription/unsubscription 수신 기능 자체를 제거하는 것은 아니다.
+- `XPUB`의 downstream subscription/unsubscription 수신 기능 자체를 제거하지는 않는다.
 - `XPUB`는 SPOT data plane 내부 구현에서 subscription propagation 용도로 계속 사용할 수 있다.
-- 단지 이를 public recv/callback 대상 socket으로 노출하지 않는다는 의미다.
+- 다만 이를 public recv/callback 대상 socket으로 노출하지 않는다는 뜻이다.
 
 ### 4.2 service
 
@@ -228,7 +228,7 @@ service 통합 방향은 다음으로 고정한다.
 
 비고:
 
-- control/status/ack/reply 성격의 public recv API도 동일 원칙으로 삭제 또는 callback API로 전환한다.
+- control/status/ack/reply 성격의 public recv API도 같은 원칙으로 삭제하거나 callback API로 전환한다.
 - 이번 재작성에서 public 관리/control plane recv 예외는 두지 않는다.
 
 ### 5.1.3 service 타입 통합으로 삭제되는 API
@@ -351,7 +351,7 @@ int zlink_socket_set_msg_handler (void *s_,
 - `PUB`, `XPUB`, `STREAM`은 `zlink_socket()`를 사용한다.
 - `source_rid`는 "이 메시지를 누가 보냈는지"를 식별하는 sender peer routing id다.
 - 메시지 shape는 과거 `recv()`가 노출하던 multipart shape를 최대한 유지한다.
-- `ROUTER`는 routing id를 callback 첫 인자로 전달하고, payload multipart에서는 routing-id frame을 제거한다.
+- `ROUTER`는 routing id를 callback 첫 인자로 전달하고 payload multipart에서는 routing-id frame을 제거한다.
 - `SUB`의 topic frame은 기존 frame layout을 유지한다.
 - 각 `zlink_msg_t`의 ownership은 callback에 전달된다.
 - callback은 각 part를 정확히 한 번 `zlink_msg_close()` 하거나,
@@ -377,7 +377,7 @@ int zlink_socket_set_msg_handler (void *s_,
 
 ### 5.3.2 stream callback API 정리
 
-기존 `STREAM` callback API는 유지하되, 의미를 다음으로 정렬한다.
+기존 `STREAM` callback API는 유지하되 의미를 다음으로 정렬한다.
 
 - `zlink_stream_attach_raw`
 - `zlink_stream_attach_len32be`
@@ -485,21 +485,21 @@ int zlink_gateway_set_handler (void *gateway,
 - `source_rid`는 항상 sender peer routing id다.
 - service name은 `zlink_gateway_new()`에서 고정되므로 callback과 send 계열 함수는
   이를 다시 받지 않는다.
-- `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 유지하되, callback 안에서 reply 송신에도 사용한다.
+- `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 유지하되 callback 안에서 reply 송신에도 사용한다.
 - `gateway` 공개 surface는 data-plane/LB handle로 제한하고 별도 public register/unregister API는 두지 않는다.
 - 공개 가중치 변경 surface는 `zlink_gateway_update_peer_weight()` 하나로 정리한다.
 - `zlink_gateway_peer_info()` / `zlink_gateway_router_peers()`는 `weight`를 포함한
   `zlink_gateway_peer_info_t`를 사용한다.
-- `zlink_gateway_update_peer_weight()` 성공 후에는 local snapshot이 먼저 갱신되고,
+- `zlink_gateway_update_peer_weight()` 성공 후에는 local snapshot이 먼저 갱신되고
   이후 discovery/registry runtime을 통해 같은 service를 보는 다른 handle에도 동기화되어야 한다.
 - 생성 후 handler 교체가 필요하면 `zlink_gateway_set_handler()`를 다시 호출해 새 callback으로 덮어쓴다.
 - 통합 `gateway`는 single handle에서 client-side TLS와 server-side TLS 설정을 모두 가질 수 있다.
 - `zlink_gateway_set_tls_client()`와 `zlink_gateway_set_tls_server()`는 서로 배타적이지 않다.
-- 실제로 필요한 역할을 시작하기 전 첫 `connect`/`bind` 이전에 관련 TLS 설정을 끝내는 것을 기본 계약으로 둔다.
+- 실제로 필요한 역할을 시작하기 전, 첫 `connect`/`bind` 이전에 관련 TLS 설정을 끝내는 것을 기본 계약으로 둔다.
 - `REQUEST` / `REPLY` demux는 unified gateway ROUTER 수신 경로에서 수행한다.
 - `CONTROL` demux는 discovery/service-control runtime의 topology/error/status를
   unified gateway callback shape로 정규화하는 경로에서 수행한다.
-- gateway monitor는 route/service availability 변화만 공개하고,
+- gateway monitor는 route/service availability 변화만 공개하고
   registration result event는 공개하지 않는다.
 
 ### 5.3.4 spot facade callback API
@@ -622,9 +622,9 @@ int zlink_service_monitor_set_handler (void *monitor,
 
 - 모든 `*_set_handler()` / `attach_*()` 계열은 `NULL` callback을 허용하지 않는다.
 - callback 제거 API는 제공하지 않는다.
-- raw socket과 service는 생성 시 callback 등록을 기본으로 하고,
+- raw socket과 service는 생성 시 callback 등록을 기본으로 하고
   생성 후 callback 교체는 같은 setter/attach API를 재호출해 수행한다.
-- monitor도 open 시 callback 등록을 기본으로 하고,
+- monitor도 open 시 callback 등록을 기본으로 하고
   생성 후 callback 교체는 같은 setter를 재호출해 수행한다.
 - `userdata`는 어떤 callback API에도 제공하지 않는다.
 - "일시 정지 후 나중에 재개"를 위한 handler clear/pause API도 제공하지 않는다.
@@ -638,7 +638,7 @@ int zlink_service_monitor_set_handler (void *monitor,
 - 단 `spot`은 `PUB` only role일 때만 `handler == NULL`을 허용한다.
 - `STREAM`은 예외이며 `zlink_socket()`로 생성하고 `attach_*()`로 최초 등록한다.
 - callback 교체는 허용하지만 제거는 허용하지 않는다.
-- callback 교체 시 이미 실행 중인 in-flight callback은 기존 handler로 마무리하고,
+- callback 교체 시 이미 실행 중인 in-flight callback은 기존 handler로 마무리하고
   이후 새로 도착한 메시지부터 새 handler를 사용한다.
 - 생성 시 callback 등록 실패는 object 생성 실패로 처리한다.
 - 생성 이후 `set_handler()` 실패는 기존 handler를 유지한 채 오류를 반환한다.
@@ -823,7 +823,7 @@ Monitor 규칙:
 - callback 바깥으로 message pointer/array pointer를 보관하면 안 된다.
 - `parts` 배열 메모리 자체는 라이브러리 소유이며 callback return 이후 자동으로 회수된다.
 - 비동기 handoff가 필요하면 callback 내부에서 `zlink_msg_move()`로
-  사용자 큐로 이동한 뒤 return 해야 한다.
+  사용자 큐로 옮긴 뒤 return 해야 한다.
 
 ### 6.2 허용 동작
 
@@ -1229,7 +1229,7 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
 - `gateway/receiver` split을 전제로 한 서비스 테스트를 통합 `gateway` 기준으로
   재작성한다.
 - `spot_node` / `spot` callback 모델을 기준으로 서비스 테스트를 재작성한다.
-- perf benchmark도 동일 원칙으로 callback-only 수신 모델에 맞춰 수정한다.
+- perf benchmark도 같은 원칙으로 callback-only 수신 모델에 맞춰 수정한다.
 
 ### 9.8.1 `core/tests`
 

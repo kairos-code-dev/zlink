@@ -63,3 +63,15 @@ doc/plan/bindings/c-binding-layer-split-manager-plan.ko.md
 doc/plan/callback-to-recv/README.ko.md
 doc/plan/callback-to-recv/core-surface-reduction-plan.ko.md
 doc/plan/callback-to-recv/perf-policy-alignment-plan.ko.md
+doc/plan/direct-callback-recv/bug/00-overview.ko.md
+doc/plan/direct-callback-recv/bug/01-wait-drained-socket-tracking-loss.ko.md
+doc/plan/direct-callback-recv/bug/02-async-mailbox-reaper-data-race.ko.md
+doc/plan/direct-callback-recv/bug/codex-spot-shutdown-structural-rework.ko.md
+doc/plan/direct-callback-recv/bug/deterministic-lifecycle-root-cause-review.ko.md
+doc/plan/direct-callback-recv/claude-spot-shutdown-review-request.ko.md
+doc/plan/direct-callback-recv/claude-spot-shutdown-review-response-phase2.ko.md
+doc/plan/direct-callback-recv/claude-spot-shutdown-review-response-phase3.ko.md
+doc/plan/direct-callback-recv/claude-spot-shutdown-review-response.ko.md
+doc/plan/direct-callback-recv/codex-spot-shutdown-review.ko.md
+doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md
+doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md

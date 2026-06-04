@@ -3,7 +3,7 @@
 ## 요약
 현재 `spot/gateway/discovery/registry` 계열에서 반복적으로 나타나는
 timeout, hang, split/full-suite-only failure는 개별 테스트나 개별 transport의
-우연한 문제라기보다, service lifecycle contract 부재와 socket core의
+우연한 문제가 아니다. service lifecycle contract 부재와 socket core의
 termination thread model 위반이 겹친 구조적 문제다.
 
 핵심은 다음과 같다.
@@ -20,31 +20,31 @@ termination thread model 위반이 겹친 구조적 문제다.
 대표적으로 다음 패턴이 반복된다.
 
 1. 단독 실행은 통과하지만 split/full 순차 실행에서 timeout이 난다.
-2. `shutdown=abortive` 로그가 찍혀도 테스트 프로세스는 끝까지 수렴하지 않는
-   경우가 있다.
+2. `shutdown=abortive` 로그가 찍혀도 테스트 프로세스가 끝까지 수렴하지 않을
+   때가 있다.
 3. `spot` 계열에서는 `tls_lock`, `topology_summary`, `peer_ws`,
    `peer_tls` 등에서 teardown이 비결정적으로 길어진다.
 4. `registry/discovery` 계열에서는 startup/rollback 이후 secondary 증상
-   (`NULL`, `EPROTONOSUPPORT`, `EADDRINUSE`)로 나타나기도 한다.
+   (`NULL`, `EPROTONOSUPPORT`, `EADDRINUSE`)으로 나타나기도 한다.
 
-즉 최종 증상은 다양하지만, 공통점은 `destroy -> ctx_term` 경계에서 내부
-자원 수렴이 deterministic하지 않다는 점이다.
+최종 증상은 다양하지만 공통점은 하나다. `destroy -> ctx_term` 경계에서 내부
+자원 수렴이 deterministic하지 않다.
 
 ## 현재까지 분리된 문제
-bug 폴더의 다른 문서 기준으로 보면, 이 이슈는 이미 두 층으로 분리돼 있다.
+bug 폴더의 다른 문서를 기준으로 보면 이 이슈는 이미 두 층으로 분리돼 있다.
 
 ### BUG-01: service lifecycle tracking loss
 - `service_runtime_base_t::wait_drained()`가 timeout 시 `_closing_sockets`
   추적을 잃어버리던 문제
-- 이건 service 계층 helper 결함이었고, 별도 수정으로 해결된 상태다.
+- service 계층 helper 결함이었고, 별도 수정으로 해결된 상태다.
 
 ### BUG-02: async mailbox vs reaper data race
 - direct callback의 async mailbox가 I/O thread에서 socket command를 처리하는 동안
   reaper thread가 같은 socket의 termination을 진행
 - `_pipes`, `_term_acks`, pipe termination graph에 동시 접근
-- 이건 service helper가 아니라 socket core thread model 위반 문제다.
+- service helper가 아니라 socket core thread model 위반 문제다.
 
-즉 현재 남은 본질은 "service helper가 약하다"만으로는 설명이 부족하고,
+따라서 현재 남은 본질은 "service helper가 약하다"만으로는 설명이 부족하다.
 "service-level 종료 계약 부재"와 "core-level socket termination race"를
 같이 봐야 한다.
 
@@ -57,14 +57,14 @@ bug 폴더의 다른 문서 기준으로 보면, 이 이슈는 이미 두 층으
 - worker thread
 - `ctx/reaper`
 
-이 구조에서는 같은 서비스 안에서도 다음 질문의 답이 분산된다.
+이 구조에서는 같은 서비스 안에서도 다음 질문의 답이 흩어진다.
 
 - 누가 새 work를 막는가
 - 누가 socket을 닫는가
 - 누가 drain을 기다리는가
 - 누가 성공/실패를 판정하는가
 
-이 책임이 한 곳에 고정되지 않으니, 종료 순서가 조금만 흔들려도 다음과 같은
+이 책임이 한 곳에 고정되지 않으니 종료 순서가 조금만 흔들려도 다음과 같은
 증상이 반복된다.
 
 - child handle destroy는 끝났다고 보이는데 runtime socket은 남아 있음
@@ -89,9 +89,9 @@ bug 폴더의 다른 문서 기준으로 보면, 이 이슈는 이미 두 층으
 - startup/rollback state
 - graceful 실패 시 반환 계약
 
-즉 이름은 runtime base이지만, 실제로는 공통 lifecycle state machine이 아니다.
-다만 bug 문서 기준으로 보면 이것은 "현재 남아 있는 모든 문제의 단일 root cause"는
-아니다. BUG-01의 직접 원인은 맞았지만, BUG-02까지 설명하지는 못한다.
+이름은 runtime base이지만 실제로는 공통 lifecycle state machine이 아니다.
+다만 bug 문서를 기준으로 보면 이것이 "현재 남아 있는 모든 문제의 단일 root cause"는
+아니다. BUG-01의 직접 원인은 맞았지만 BUG-02까지 설명하지는 못한다.
 
 ### 3. `ctx_term()`이 무기한 최종 cleanup owner로 남아 있다
 현재 `ctx_t::terminate()`는 서비스가 내부 자원을 모두 수렴시켰다고 가정하고
@@ -117,7 +117,7 @@ reaper `done`을 기다린다.
 - node destroy는 runtime field와 lifecycle registry를 보고 종료를 판단한다.
 - child handle도 attachment/detach 경로에 간접적으로 관여한다.
 
-즉 socket lifetime과 shutdown decision이 한 층에 고정돼 있지 않다.
+socket lifetime과 shutdown decision이 한 층에 고정돼 있지 않은 것이다.
 
 이 구조에서는 다음 race가 자연스럽게 생긴다.
 
@@ -126,7 +126,7 @@ reaper `done`을 기다린다.
 - abortive fallback을 써도 `ctx` 단계까지 잔여 lifetime이 밀린다
 
 다만 이것 역시 "spot만의 독립 root cause"로 단정하면 안 된다.
-`spot`은 direct callback과 async mailbox를 가장 강하게 쓰는 경로라서,
+`spot`은 direct callback과 async mailbox를 가장 강하게 쓰는 경로라서
 core race를 가장 자주 드러내는 서비스에 가깝다.
 
 ### 5. socket core의 termination thread model이 direct callback 이후 깨졌다
@@ -146,7 +146,7 @@ core race를 가장 자주 드러내는 서비스에 가깝다.
 
 bug 문서의 분석대로, 현재 남은 deeper issue는 여기다.
 
-즉 지금 패턴은:
+지금 패턴을 정리하면 이렇다.
 - 표면에서는 `spot tls_lock timeout`, `ctx_term hang`처럼 보이고
 - 한 단계 아래에서는 `wait_drained`/abortive 실패처럼 보이며
 - 더 아래 core에서는 `async mailbox vs reaper` race가 termination graph를
@@ -164,7 +164,7 @@ bug 문서의 분석대로, 현재 남은 deeper issue는 여기다.
 - `registry`
   - startup rollback과 destroy final drain이 완전히 동일 모델로 묶여 있지 않음
 
-즉 공통 helper를 일부 쓴다고 해서 공통 lifecycle contract가 생긴 것은 아니다.
+공통 helper를 일부 쓴다고 해서 공통 lifecycle contract가 생긴 것은 아니다.
 그리고 이 불일치는 core race를 더 잘 드러내는 증폭기로 작동한다.
 
 ## 왜 하나 고치면 다른 게 다시 터지는가
@@ -175,7 +175,7 @@ bug 문서의 분석대로, 현재 남은 deeper issue는 여기다.
 - 다른 서비스, 다른 transport, 다른 테스트 sequence가 다음 race를 드러낸다.
 
 그래서 현재 보이는 `tls_lock`, `topology_summary`, `peer_ws`, `peer_tls`는
-서로 별개의 버그라기보다, 같은 클래스의 teardown/termination defect가
+서로 별개의 버그가 아니다. 같은 클래스의 teardown/termination defect가
 드러나는 창구가 바뀌는 것으로 봐야 한다.
 
 정확히는 두 층이 같이 있다.
@@ -230,7 +230,7 @@ worker가 만든 socket은 다음 둘 중 하나여야 한다.
 - `ctx_term()`은 drained context 종료만 담당
 
 단, graceful 실패를 제대로 드러내도록 바꿔도 core termination race가 남아 있으면
-실패 빈도는 줄어도 완전히 끝나진 않을 수 있다.
+실패 빈도는 줄어도 완전히 끝나지는 않을 수 있다.
 
 ### 4. `ctx`는 cleanup owner가 아니라 final shutdown 단계여야 한다
 `ctx`가 서비스 lifecycle 실수를 떠안는 구조는 장기적으로 유지하면 안 된다.
@@ -271,10 +271,10 @@ core race가 남아 있는 상태에서 `ctx` fallback만 강화하면 원인을
 - `wait_drained()`
 - `assert_drained()`
 
-즉 지금의 socket helper를 서비스 공통 state machine으로 올려야 한다.
+지금의 socket helper를 서비스 공통 state machine으로 올려야 한다.
 
 ### 2. core 계층: async mailbox와 reaper의 종료 모델을 다시 고정
-bug 문서 관점에서 보면, 장기적으로는 다음이 필요하다.
+bug 문서 관점에서 보면 장기적으로는 다음이 필요하다.
 
 - `close()` 전에 async mailbox가 완전히 quiesce되도록 보장
 - `start_reaping()` 시점에 이전 I/O handler가 socket 내부 상태를 더 이상
@@ -282,7 +282,7 @@ bug 문서 관점에서 보면, 장기적으로는 다음이 필요하다.
 - pipe termination/accounting과 owned-object termination/accounting을
   동일 카운터/동일 완료 모델에 섞지 않도록 분리
 
-즉 service 재설계만이 아니라 socket core termination invariant 복구가 필요하다.
+service 재설계만이 아니라 socket core termination invariant 복구가 필요하다.
 
 ### 3. 서비스별 이관 방향
 #### spot
@@ -309,7 +309,7 @@ bug 문서 관점에서 보면, 장기적으로는 다음이 필요하다.
 현재 포트 seed, split sequence, transport 조합이 문제를 더 잘 드러내는 것은
 맞다. 하지만 그건 본질이 아니라 증폭기다.
 
-즉 테스트를 아무리 조정해도 다음 조건이 먼저 맞아야 한다.
+테스트를 아무리 조정해도 다음 조건이 먼저 맞아야 한다.
 
 - `destroy()` 성공 후 즉시 `ctx_term()` 가능
 - split/full sequence 모두 동일 결과

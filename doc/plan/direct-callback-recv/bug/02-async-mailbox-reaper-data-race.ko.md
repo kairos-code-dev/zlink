@@ -22,7 +22,7 @@ BUG-01 수정 후 stress 반복에서 새로 드러난 문제:
 
 ### 배경: direct callback의 async mailbox 구조
 
-`spot_sub_t::set_direct_handler()` → `sub_dispatch_start()` 호출 시,
+`spot_sub_t::set_direct_handler()` → `sub_dispatch_start()`를 호출하면,
 SUB attachment 소켓의 mailbox가 **I/O 스레드**에서 처리되도록 등록된다.
 
 ```
@@ -34,7 +34,7 @@ start_async_mailbox_processing(io_thread):
 
 이후 소켓의 모든 명령(pipe_term, pipe_term_ack 포함)이
 I/O 스레드의 `process_async_mailbox()` → `process_commands()`에서 처리된다.
-이 과정에서 `_pipes`, `_term_acks` 등 소켓 내부 상태가 변경된다.
+이 과정에서 `_pipes`, `_term_acks` 등 소켓 내부 상태가 바뀐다.
 
 ### data race 발생 경로
 
@@ -103,7 +103,7 @@ void socket_base_t::start_reaping (poller_t *poller_)
 | pipe 상태 | `process_pipe_term_ack()` → delete | `pipe->terminate()` |
 
 이것은 `_pipes`와 `_term_acks`에 대한 **동기화 없는 동시 접근**(data race)이며,
-결과:
+결과는 이렇다:
 - `_pipes.size()`가 부정확 → `register_term_acks()` 과다/과소 등록
 - 이미 정리된 pipe에 대한 `pipe_terminated()` → `unregister_term_ack()` 초과 호출
 - `_term_acks == 0`인데 `unregister_term_ack()` → **assertion 실패**
@@ -111,7 +111,7 @@ void socket_base_t::start_reaping (poller_t *poller_)
 ### 왜 stress에서만 재현되는가
 
 - 단일 실행: I/O 스레드가 flag를 빠르게 확인하고 종료
-- stress 반복: I/O 스레드에 pending 명령이 많거나 스케줄링 지연
+- stress 반복: I/O 스레드에 pending 명령이 많거나 스케줄링이 지연됨
   → `process_commands()` 실행 시간 증가
   → `close_socket()` → reaper 시작 시점에 I/O 스레드가 아직 활성
 
@@ -120,7 +120,7 @@ void socket_base_t::start_reaping (poller_t *poller_)
 ## 왜 이것이 구조적 문제인가
 
 소켓 내부 상태(`_pipes`, `_term_acks`, `_terminating`)는
-**단일 스레드에서만 접근된다는 암묵적 가정**에 의존한다.
+**단일 스레드에서만 접근된다는 암묵적 가정**에 기댄다.
 ZMQ/zlink의 원래 소켓 모델에서는 이 가정이 성립했다:
 
 - API 호출: application thread (close 전까지)
@@ -132,7 +132,7 @@ I/O 스레드에 등록하면서 이 가정이 **무효화**된다:
 
 - I/O 스레드: `process_commands()` → pipe 명령 처리 → `_pipes` 변경
 - Reaper 스레드: `process_term()` → `_pipes` 순회 + `_term_acks` 등록
-- 두 접근이 **동시에** 발생할 수 있음
+- 두 접근이 **동시에** 일어날 수 있음
 
 이것이 "하나를 고치면 다른 문제가 나오는" 근본 원인이다.
 개별 수정(tracking 보존, term_endpoint 제거)은 증상을 일부 완화하지만,
@@ -155,13 +155,13 @@ spot 계층(`service_runtime_base_t`)과 core 계층(`own_t`/`socket_base_t`)이
 
 두 판정이 어긋나면 timeout 또는 assertion으로 드러난다.
 async mailbox race는 이 어긋남을 트리거하는 직접 경로이지만,
-data plane 활성 중 attachment close, `term_endpoint()` 선호출 등
+data plane 활성 중 attachment close나 `term_endpoint()` 선호출 등
 **다른 경로로도 같은 계열의 불일치가 발생할 수 있다.**
 
 ### `_term_acks` 혼합 카운터 문제
 
 `own_t::_term_acks`가 pipe completion과 owned-object completion을
-같은 카운터로 세고 있어서, 어느 쪽에서 불일치가 생겼는지 구분이 어렵다.
+같은 카운터로 세는 탓에, 어느 쪽에서 불일치가 생겼는지 구분하기 어렵다.
 
 장기적으로는 pipe termination 상태를 `socket_base_t` 전용으로 분리하여
 `own_t::_term_acks`는 owned-object ack만 담당하게 하는 것이 맞다.
@@ -178,11 +178,11 @@ data plane 활성 중 attachment close, `term_endpoint()` 선호출 등
 동일 증상이 재현되어 기각되었다.
 
 다만 `term_endpoint()` 선호출 자체는 teardown window를 넓히는
-**경합 증폭기** 역할을 하므로, 구조 개선 시 제거 대상이다.
-이유:
-- 어차피 socket close가 core termination graph를 타며 pipe를 정리
+**경합 증폭기**라서, 구조 개선 시 제거 대상이다.
+이유는 이렇다:
+- 어차피 socket close가 core termination graph를 타며 pipe를 정리한다
 - handle이 peer internal socket보다 먼저 pipe 상태를 건드리면
-  data plane 쪽 teardown window가 불필요하게 넓어짐
+  data plane 쪽 teardown window가 불필요하게 넓어진다
 
 ---
 
@@ -190,8 +190,8 @@ data plane 활성 중 attachment close, `term_endpoint()` 선호출 등
 
 ### 방향 A: close() 내부에서 async mailbox quiesce 강제 (권장)
 
-소켓의 `close()`가 호출될 때, async mailbox가 활성이면
-I/O 스레드가 완전히 빠져나올 때까지 대기한 후 reaper로 전송한다.
+소켓의 `close()`가 호출될 때 async mailbox가 활성이면,
+I/O 스레드가 완전히 빠져나올 때까지 대기한 뒤 reaper로 전송한다.
 
 ```cpp
 int socket_base_t::close ()
@@ -222,7 +222,7 @@ int socket_base_t::close ()
 
 ### 방향 B: start_reaping()에서 async 완료 보장 (방어적 보조)
 
-방향 A의 safety net. `start_reaping()`에서도 확인:
+방향 A의 safety net. `start_reaping()`에서도 확인한다:
 
 ```cpp
 void socket_base_t::start_reaping (poller_t *poller_)

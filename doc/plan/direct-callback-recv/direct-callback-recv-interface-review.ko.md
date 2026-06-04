@@ -18,20 +18,20 @@
 - [`direct-callback-recv-rewrite-spec.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md),
   [`service-option-surface-plan.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/service-option-surface-plan.ko.md),
   [`spot-node-direct-facade-plan.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-node-direct-facade-plan.ko.md)
-  를 포함한 다른 계획 문서는 참고 문서이며, 충돌 시 이 문서를 우선한다.
+  를 포함한 다른 계획 문서는 참고 문서이며, 충돌하면 이 문서를 우선한다.
 - 이 문서에 나오는 구체 숫자 값(`0x2101`, `0x1001`, `0x3001` 등)은
   이 문서 기준 canonical 값이다.
 
 핵심 원칙:
 
 - 이름은 가능한 한 짧고 직접적으로 유지한다.
-- `gateway`의 recv callback shape는 `ROUTER` callback shape와 동일하게 유지하고,
+- `gateway`의 recv callback shape는 `ROUTER` callback shape와 동일하게 유지하고
   `service_name`은 handle 생성 시점 identity로만 고정한다.
 - 생성 시점에 handle의 정체성(routing id, attach 대상 등)을 가능한 범위에서 고정한다.
 - `send`/`recv` 데이터 전달 surface는 `zlink_msg_t` 중심으로 단순화한다.
 - `msg_t` 중심 통일은 bytes convenience helper를 제거한다는 뜻이며,
   `zlink_msg_t` 생성/ownership API를 통한 zero-copy 경로는 유지한다.
-- option 값은 각 service/socket family별 enum으로 분리하되,
+- option 값은 각 service/socket family별 enum으로 분리하되
   실제 정수 값은 전역에서 서로 겹치지 않게 배정한다.
 - libzmq 숫자와의 정렬 자체는 목표가 아니다. 더 단순하고 견고한 public ABI를
   우선한다.
@@ -132,14 +132,14 @@ int zlink_recv_xpub_handler(void *s, zlink_xpub_handler_fn handler, void *userda
 - recv-capable raw socket은 socket type에 맞는 direct handler 등록 함수로
   non-`NULL` callback을 제공해야 한다.
 - send-only 타입은 `PUB`만 본다.
-- recv-capable raw socket을 애플리케이션이 사실상 send-only처럼 사용하더라도
+- recv-capable raw socket을 애플리케이션이 사실상 send-only처럼 쓰더라도
   public 정책은 동일하다. 이 경우에도 socket type에 맞는 no-op callback을 등록하는 쪽을 canonical 사용법으로 본다.
 - raw `XPUB`의 recv는 subscriber의 subscribe/unsubscribe control message를 받는 의미이므로
   dedicated `zlink_recv_xpub_handler()` 등록이 필수다.
 
 ### 0.3 service option 지원 snapshot
 
-이 표는 새 컨텍스트에서 option membership/support 판단을 위해 필요한 현재 요약본이다.
+이 표는 새 컨텍스트에서 option membership/support를 판단할 때 필요한 현재 요약본이다.
 
 | family | 유지 | `ENOTSUP` | 삭제/비공개 |
 |---|---|---|---|
@@ -324,8 +324,8 @@ int zlink_gateway_set_lb_strategy (void *gateway,
 
 ## 2. Service option enum / 값 재배치 원칙
 
-현재 header에는 다음처럼 서로 다른 family가 동일한 option 값 `1`부터 다시 시작하는
-형태가 존재한다.
+현재 header에는 서로 다른 family가 동일한 option 값 `1`부터 다시 시작하는
+형태가 있다.
 
 - `ZLINK_GATEWAY_OPT_*`
 - `ZLINK_SPOT_PUB_OPT_*`
@@ -336,7 +336,7 @@ int zlink_gateway_set_lb_strategy (void *gateway,
 각 option의 support/`ENOTSUP` 상태를 어떻게 둘지,
 그리고 그 값을 어떤 typed enum/전역 유일 값 체계로 배치할지를
 이 문서 기준으로 확정한다.
-따라서 아래 내용은 enum typing/값 배치 원칙과 support 매트릭스를 함께 포함하는
+따라서 아래 내용은 enum typing/값 배치 원칙과 support 매트릭스를 함께 담은
 canonical 계약으로 읽는다.
 
 | 항목 | 변경안 | 이유 |
@@ -405,13 +405,13 @@ typedef enum zlink_spot_sub_option_t
 
 정리:
 
-- C API에서도 enum을 사용하는 것은 문제되지 않는다.
+- C API에서도 enum을 쓰는 것은 문제되지 않는다.
 - 중요한 것은 "enum type을 분리"하는 것만이 아니라
   "실제 정수 값도 전역에서 겹치지 않게 유지"하는 것이다.
 - 특히 binding과 logging, generic option dispatch helper를 고려하면
   값 대역을 family별로 미리 예약하는 방식이 가장 단순하다.
 - option membership와 실제 public 지원/`ENOTSUP` 매트릭스도 이 문서 기준으로 읽는다.
-- 이 문서에 남겨진 enum member와 숫자 값 자체는 canonical 값으로 본다.
+- 이 문서에 남긴 enum member와 숫자 값 자체는 canonical 값으로 본다.
 - 따라서 `zlink_gateway_option_t` enum에서
   `ZLINK_GATEWAY_OPT_RCVTIMEO`를 제외하고 `ZLINK_GATEWAY_OPT_SNDBUF` /
   `ZLINK_GATEWAY_OPT_RCVBUF`를 포함한 것은
@@ -541,7 +541,7 @@ int zlink_spot_node_set_sub_option (void *node,
   baseline option setter로 정의한다.
 - public `spot_node`는 별도 `register()` / `unregister()` surface를 두지 않는다.
 - `zlink_spot_node_attach_discovery()`는 service name을 인자로 받지 않는다.
-  대상 service는 `spot_node` 생성 시점 identity를 그대로 사용한다.
+  대상 service는 `spot_node` 생성 시점 identity를 그대로 쓴다.
 - discovery를 attach하지 않은 상태에서는 manual `connect` / `disconnect`를 허용한다.
 - 이미 manual peer가 존재하는 상태에서는 `zlink_spot_node_attach_discovery()`를 허용하지 않는다.
   이 경우 `EBUSY`를 반환해 topology ownership 전환 시점을 호출자가 먼저 정리하게 한다.
@@ -549,7 +549,7 @@ int zlink_spot_node_set_sub_option (void *node,
   manual `connect` / `disconnect`는 허용하지 않는다.
 - unified `zlink_spot_monitor_open()`은 attached unified `spot` facade를 위한
   유일한 public monitor entrypoint로 유지한다.
-- unified facade의 peer 조회는 C API 이름 충돌을 피하기 위해
+- unified facade의 peer 조회는 C API 이름 충돌을 피하려고
   `zlink_spot_peers_pub()` / `zlink_spot_peers_sub()`로 분리한다.
 - unified `spot` naming policy는 다음으로 고정하는 편이 일관적이다.
   - query/list API는 return subject를 suffix로 드러낸다:
@@ -1077,7 +1077,7 @@ int zlink_spot_send_ready_handler (void *spot,
   `zlink_poller_wait_all()`.
 - blocking send가 기본 backpressure 경로다.
 - `set_send_ready_handler()`는 nonblocking send가 `EAGAIN`을 반환한 뒤 재시도 시점을
-  감지하는 보조 메커니즘으로 사용한다.
+  감지하는 보조 메커니즘으로 쓴다.
 - `zlink_socket_send_ready_handler()`는 send-capable raw socket에만 허용한다.
   즉 raw `PAIR`, `DEALER`, `ROUTER`, `STREAM`, `PUB`, `XPUB`에는 허용하고,
   recv-only raw `SUB`, `XSUB`에는 허용하지 않는다.
@@ -1088,7 +1088,7 @@ int zlink_spot_send_ready_handler (void *spot,
   `zlink_spot_send_ready_handler()`는 허용한다.
 - send-ready callback은 "지금 한 번의 send 성공이 보장된다"는 의미가 아니라,
   "queue full -> writable transition이 있었으니 drain을 다시 시도하라"는 힌트다.
-- callback은 가능한 한 lightweight signal 용도에만 사용한다.
+- callback은 가능한 한 lightweight signal 용도에만 쓴다.
   canonical 사용법은 atomic flag set, condition notify, worker wake-up 중 하나다.
 - callback 안에서 직접 drain loop를 수행할 수는 있지만, canonical 사용법으로 권장하지 않는다.
 - nonblocking send 경로는 `EAGAIN` 시 애플리케이션 queue에 적재하고,
@@ -1125,7 +1125,7 @@ int zlink_spot_send_ready_handler (void *spot,
   대표 mismatch 조합은 모두 `EINVAL`로 실패해야 한다.
 - raw `PUB`에 handler 등록을 시도하면 모두 `EINVAL`로 실패해야 한다.
 - `DEALER` / `ROUTER` / `PAIR` / `XPUB` 등을 애플리케이션이 사실상 send-only처럼
-  사용하더라도 recv-capable raw socket 분류는 유지되며, family에 맞는 no-op callback
+  쓰더라도 recv-capable raw socket 분류는 유지되며, family에 맞는 no-op callback
   등록 경로가 성공해야 한다.
 - unified `spot`은 항상 recv-capable facade이므로
   `zlink_spot_new()`에서 non-`NULL` handler가 없으면 실패해야 한다.
@@ -1197,7 +1197,7 @@ int zlink_spot_send_ready_handler (void *spot,
 - `zlink_msg_init_data()` 등 `zlink_msg_t` 생성/ownership API를 통한 zero-copy 경로는
   계속 지원되어야 하며, `msg_t` only 정책과 충돌하지 않아야 한다.
 - callback에서 받은 multipart ownership 규약이 worker handoff 이후에도 유지되어야 한다.
-- zero-copy `msg_t`를 send/publish/callback handoff에 사용하더라도 free callback,
+- zero-copy `msg_t`를 send/publish/callback handoff에 쓰더라도 free callback,
   close, move ownership 규약이 깨지지 않아야 한다.
 - same-handle callback 안 `send` / `send_rid` / `publish`가 deadlock 없이 가능해야 한다.
 
@@ -1227,7 +1227,7 @@ int zlink_spot_send_ready_handler (void *spot,
 
 - `Gateway`, `SpotPub`, `SpotSub` option 지원/`ENOTSUP` 매트릭스가
   이 문서의 snapshot과 일치해야 한다.
-- `spot_node`는 별도 option family 없이 pub/sub enum을 그대로 사용해야 한다.
+- `spot_node`는 별도 option family 없이 pub/sub enum을 그대로 써야 한다.
 - raw socket / gateway / spot pub / spot sub option 값은 전역에서 겹치지 않아야 한다.
 
 ### 6.9 Monitor/event 정책

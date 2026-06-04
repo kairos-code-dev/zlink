@@ -8,16 +8,16 @@
 
 ### 1차 수정으로 해결된 것
 - `wait_drained()` 타임아웃 시 `_closing_sockets` 추적 유실 → **수정 완료**
-- abortive 경로에서 `tracked=3`이 찍히는 것으로 추적 보존 확인
+- abortive 경로에서 `tracked=3`이 찍혀 추적 보존을 확인
 - 새 unit test 통과
 
 ### 2차로 드러난 문제
-반복 stress 중 두 가지 증상:
+반복 stress 중 두 가지 증상이 나타났다.
 1. split ctest 반복 중 `test_spot_service_introspection_explicit_handles` 60초 timeout
 2. 단독 반복 중 `Assertion failed: _term_acks > 0 at own.cpp:153`
 
-핵심: 이 테스트는 **TLS도, monitor도, TCP도 없는** 순수 inproc 테스트.
-따라서 문제의 중심은 transport가 아니라 **pipe termination ack accounting**.
+핵심은 이 테스트가 **TLS도, monitor도, TCP도 없는** 순수 inproc 테스트라는 점이다.
+따라서 문제의 중심은 transport가 아니라 **pipe termination ack accounting**이다.
 
 ---
 
@@ -25,8 +25,8 @@
 
 ### 가설 A: `term_endpoint()` + `close()` 시퀀스에서 pipe 상태에 따른 ack 불일치 (Primary)
 
-`spot_pub_t::destroy_internal()`과 `spot_sub_t::destroy_internal()`에서
-`term_endpoint()`를 호출한 뒤 곧바로 `close_socket()`을 호출한다.
+`spot_pub_t::destroy_internal()`과 `spot_sub_t::destroy_internal()`은
+`term_endpoint()`를 호출한 직후 곧바로 `close_socket()`을 호출한다.
 
 ```cpp
 // spot_pub.cpp:556-567
@@ -39,7 +39,7 @@ if (socket) {
 }
 ```
 
-이 시퀀스에서 pipe 상태에 따라 ack 불일치가 발생할 수 있다.
+이 시퀀스에서 pipe 상태에 따라 ack 불일치가 생길 수 있다.
 
 #### 핵심 메커니즘: `erase_pipes()` → `terminate(true)` → `_delay = true`
 
@@ -53,7 +53,7 @@ for (auto it = range.first; it != range.second; ++it) {
 }
 ```
 
-`terminate(true)`는 pipe를 `term_req_sent1`으로 전환하면서
+`terminate(true)`는 pipe를 `term_req_sent1`로 전환하면서
 PIPE_TERM을 peer에 보낸다.
 
 peer pipe (data plane측 ingress/fanout 소켓)가 PIPE_TERM을 받으면:
@@ -114,7 +114,7 @@ peer pipe의 `_delay`가 true이면 `waiting_for_delimiter` 상태로 진입하�
                                                is_terminating()가 ??
 ```
 
-여기까지는 정상이다. 하지만 **타이밍이 다르면** 문제가 발생한다:
+여기까지는 정상이다. 하지만 **타이밍이 다르면** 문제가 생긴다.
 
 #### 타이밍 변형: pipe_B 완료가 먼저, ingress process_term이 나중에
 
@@ -150,7 +150,7 @@ peer pipe의 `_delay`가 true이면 `waiting_for_delimiter` 상태로 진입하�
         check_term_acks() → _term_acks = 0 → 즉시 destroy
 ```
 
-이 시나리오에서는 ack가 올바르게 균형 맞음 (0 registered, 0 unregistered).
+이 시나리오에서는 ack가 올바르게 균형을 맞춘다 (0 registered, 0 unregistered).
 **이 경로 자체는 정상이다.**
 
 #### 문제가 되는 진짜 시나리오: 중간 상태에서의 새 pipe 연결
@@ -167,7 +167,7 @@ for (...) {
 }
 ```
 
-만약 spot 내부 소켓이 pending 상태였다면 (startup race),
+spot 내부 소켓이 pending 상태였다면 (startup race),
 이 해소 과정에서 **이미 reaper에서 terminating 중인 소켓에 새 pipe가 attach**된다.
 
 ```cpp
@@ -178,8 +178,8 @@ if (is_terminating ()) {
 }
 ```
 
-이 경로는 올바르지만, `connect_inproc_sockets()`에서
-**application thread가 직접 `process_command(bind)`를 호출**:
+이 경로 자체는 올바르지만, `connect_inproc_sockets()`에서는
+**application thread가 직접 `process_command(bind)`를 호출**한다.
 
 ```cpp
 // ctx.cpp:996-999
@@ -190,15 +190,15 @@ bind_socket_->process_command (cmd);
 ```
 
 이것이 **reaper thread와 동시에 같은 소켓의 `_pipes`/`_term_acks`에 접근**하면
-thread safety 위반이 발생할 수 있다.
+thread safety 위반이 생길 수 있다.
 
 ### 가설 B: data plane 소켓 close와 attachment term_endpoint 간 pipe 상태 경합
 
-`destroy_handles()`가 attachment pipe를 `term_endpoint()`로 종료한 뒤,
+`destroy_handles()`가 attachment pipe를 `term_endpoint()`로 종료한 뒤
 **data plane thread가 아직 실행 중**인 상태에서 관련 소켓을 통해
 pipe 명령이 처리된다.
 
-data plane thread가 poll loop에서 `recv()` → `process_commands()`를 호출하면,
+data plane thread가 poll loop에서 `recv()` → `process_commands()`를 호출하면
 pending PIPE_TERM/PIPE_TERM_ACK 명령을 **data plane thread의 context에서** 처리한다.
 
 그런데 `stop_and_join()`은 `destroy_handles()` **이후**에 호출된다:
@@ -210,11 +210,11 @@ _runtime->stop_and_join() ← 여기서야 data plane thread 정지
 
 이 창(window)에서 data plane측 pipe가 완료되면서
 ingress/fanout 소켓의 `_pipes`에서 pipe가 제거되고,
-이후 `process_term()`이 pipe를 못 세는 경우가 발생할 수 있다.
+이후 `process_term()`이 pipe를 못 세는 경우가 생길 수 있다.
 
 ### 가설 C: `terminate(true)` vs `terminate(false)` delay 불일치
 
-`erase_pipes()`가 `terminate(true)` (delay=true)를 사용하는데,
+`erase_pipes()`는 `terminate(true)` (delay=true)를 쓰는데
 이후 `process_term()`이 같은 pipe에 `terminate(false)` (delay=false)를 호출한다.
 
 ```cpp
@@ -230,31 +230,31 @@ void pipe_t::terminate (bool delay_)
 }
 ```
 
-`_delay`가 true→false로 변경되지만 함수가 즉시 return한다.
-pipe 자체에는 영향이 없지만, **peer pipe의 응답 타이밍**은 peer의 `_delay`에 따라 달라진다.
-이 비대칭이 드물게 ack 타이밍 불일치를 유발할 수 있다.
+`_delay`가 true→false로 바뀌지만 함수는 즉시 return한다.
+pipe 자체에는 영향이 없으나 **peer pipe의 응답 타이밍**은 peer의 `_delay`에 따라 달라진다.
+이 비대칭이 드물게 ack 타이밍 불일치를 일으킬 수 있다.
 
 ---
 
 ## 3. 가장 가능성 높은 원인
 
-**가설 B + 가설 A의 조합**이 가장 가능성 높다:
+**가설 B와 가설 A의 조합**이 가장 유력하다.
 
 1. `destroy_handles()`가 attachment pipe를 `term_endpoint()`로 종료
-2. data plane thread가 아직 실행 중이므로,
-   pipe_B(data plane측)가 data plane의 `recv()` → `process_commands()` 내에서
+2. data plane thread가 아직 실행 중이므로
+   pipe_B(data plane측)가 data plane의 `recv()` → `process_commands()` 안에서
    PIPE_TERM을 처리하고 상태를 전환
 3. pipe 완료 콜백(`pipe_terminated()`)이 data plane측 소켓에서 호출
-4. 이 시점에서 data plane 소켓은 terminating이 아니므로 `unregister_term_ack()` 호출 안 함
+4. 이 시점에서 data plane 소켓은 terminating이 아니므로 `unregister_term_ack()`를 호출하지 않음
 5. pipe가 `_pipes`에서 제거됨
 6. 나중에 data plane 소켓이 close → `process_term()` → `_pipes.size()`에 이미 제거된 pipe 미포함
 7. 여기까지는 정상 (0 registered, 0 unregistered)
 
-문제는 이 과정에서 **또 다른 pipe나 소유 객체의 ack가 어긋나는 경우**:
+문제는 이 과정에서 **또 다른 pipe나 소유 객체의 ack가 어긋나는 경우**다.
 
-- 같은 소켓에 여러 pipe가 있을 때,
+- 같은 소켓에 여러 pipe가 있을 때
   일부는 `term_endpoint()`로 이미 완료되고 일부는 아직 active
-- `process_term()`이 남은 pipe만 세지만,
+- `process_term()`은 남은 pipe만 세지만
   완료된 pipe의 처리 순서에 따라 `pipe_terminated()` 콜백이
   `process_term()` 이후에 도착하면 **이미 0인 `_term_acks`를 또 감소**시킴
 
@@ -270,11 +270,11 @@ pipe 자체에는 영향이 없지만, **peer pipe의 응답 타이밍**은 peer
 `term_endpoint()` 호출을 **제거**한다.
 
 이유:
-- `term_endpoint()`는 특정 endpoint의 pipe만 선택적으로 종료하는 API
-- 하지만 `destroy_internal()`에서는 소켓 자체를 곧바로 닫음
+- `term_endpoint()`는 특정 endpoint의 pipe만 골라서 종료하는 API다
+- 하지만 `destroy_internal()`에서는 소켓 자체를 곧바로 닫는다
 - `close()` → reaper → `process_term()`이 **모든 pipe를 일괄 종료**하므로
-  `term_endpoint()`의 선제 종료가 불필요
-- 오히려 pipe 상태를 미리 변경해서 `process_term()`의 ack counting과 충돌
+  `term_endpoint()`의 선제 종료가 불필요하다
+- 오히려 pipe 상태를 미리 바꿔 `process_term()`의 ack counting과 충돌한다
 
 ```cpp
 // spot_pub.cpp: 수정 전
@@ -296,12 +296,12 @@ if (socket) {
 }
 ```
 
-spot_sub.cpp도 동일하게 `term_endpoint()` 호출 제거.
+spot_sub.cpp도 똑같이 `term_endpoint()` 호출을 제거한다.
 
 ### 4.2 대안: `term_endpoint()` 유지 시 ack 보호
 
-`term_endpoint()`를 유지해야 한다면,
-`pipe_terminated()`에서 **이미 제거된 pipe에 대한 중복 unregister를 방지**:
+`term_endpoint()`를 유지해야 한다면
+`pipe_terminated()`에서 **이미 제거된 pipe에 대한 중복 unregister를 막는다**.
 
 ```cpp
 // socket_base.cpp:2027-2055
@@ -320,12 +320,12 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 }
 ```
 
-그러나 현재 `_pipes.erase()`의 반환값이 void인지 bool인지 확인 필요.
-`array_t::erase()`가 실제로 무엇을 반환하는지에 따라 다름.
+다만 현재 `_pipes.erase()`의 반환값이 void인지 bool인지 확인이 필요하다.
+`array_t::erase()`가 실제로 무엇을 반환하는지에 따라 달라진다.
 
 ### 4.3 `destroy_handles()` 순서 변경
 
-data plane thread를 먼저 정지한 뒤 handle을 destroy:
+data plane thread를 먼저 정지한 뒤 handle을 destroy한다.
 
 ```cpp
 // 현재 순서 (spot_node.cpp:1772-1777)
@@ -339,13 +339,13 @@ if (_runtime)
 preserve_first_error (destroy_handles (), &first_error);
 ```
 
-이렇게 하면 data plane thread가 이미 종료된 상태에서 handle을 destroy하므로,
-data plane측 소켓의 pipe 상태가 안정화된 상태에서 작업한다.
+이렇게 하면 data plane thread가 이미 종료된 상태에서 handle을 destroy하므로
+data plane측 소켓의 pipe 상태가 안정된 상태에서 작업한다.
 
-단, `stop_and_join()` 내부에서 "terminate" 명령을 ctrl 채널로 보내는데,
-이 시점에서 attachment pipe가 아직 살아있으면
+단, `stop_and_join()` 내부에서 "terminate" 명령을 ctrl 채널로 보내는데
+이 시점에 attachment pipe가 아직 살아 있으면
 data plane의 `recv_and_forward()`가 에러를 내며 종료될 수 있다.
-이 변경을 적용하려면 `stop_and_join()`의 동작도 검토 필요.
+이 변경을 적용하려면 `stop_and_join()`의 동작도 함께 검토해야 한다.
 
 ---
 
@@ -402,10 +402,10 @@ if (is_terminating () && _term_acks > 0)
     unregister_term_ack ();
 ```
 
-로 변경하면 assertion crash는 방지되지만,
-**근본 원인(ack 불일치)을 숨기므로 디버깅 목적으로만 사용 권장.**
+로 바꾸면 assertion crash는 막지만
+**근본 원인(ack 불일치)을 가리므로 디버깅 목적으로만 권장한다.**
 
-프로덕션에서는 assertion 대신 경고 로그가 더 안전:
+프로덕션에서는 assertion 대신 경고 로그가 더 안전하다:
 
 ```cpp
 if (is_terminating ()) {
@@ -424,7 +424,7 @@ if (is_terminating ()) {
 
 ### 6.1 pipe 종료 경로 단일화 원칙
 
-현재 pipe를 종료하는 경로가 3개 있다:
+현재 pipe를 종료하는 경로가 3개다:
 
 | 경로 | 호출처 | `terminate(delay)` | ack 등록 |
 |------|--------|-------------------|---------|
@@ -438,7 +438,7 @@ if (is_terminating ()) {
 - socket이 terminating이면 → ack 감소 시도 (불일치 위험)
 
 **원칙**: service 레벨 코드(`spot_pub`, `spot_sub`)에서는
-`term_endpoint()`로 개별 pipe를 종료하지 말고,
+`term_endpoint()`로 개별 pipe를 종료하지 말고
 `close()` → `process_term()`의 일괄 종료에 맡긴다.
 
 ### 6.2 소멸 순서 직렬화
@@ -455,8 +455,8 @@ if (is_terminating ()) {
          (소켓 안정 상태)       (경합 없음)
 ```
 
-이렇게 하면 data plane 소켓이 close된 후에 attachment pipe를 종료하므로,
-pipe 상태 경합이 원천적으로 제거된다.
+이렇게 하면 data plane 소켓이 close된 뒤에 attachment pipe를 종료하므로
+pipe 상태 경합이 원천적으로 사라진다.
 
 ### 6.3 `_term_acks` 디버그 계측
 
@@ -480,8 +480,8 @@ void own_t::unregister_term_ack ()
 #endif
 ```
 
-이 계측을 활성화하고 실패를 재현하면,
-어떤 소켓에서 register/unregister 불균형이 발생하는지 정확히 추적 가능.
+이 계측을 켜고 실패를 재현하면
+어떤 소켓에서 register/unregister 불균형이 생기는지 정확히 추적할 수 있다.
 
 ---
 

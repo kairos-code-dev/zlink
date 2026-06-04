@@ -3,14 +3,14 @@
 기준 문서: `doc/plan/direct-callback-recv/claude-spot-shutdown-review-request.ko.md`
 
 ## 한 줄 결론
-현재 증상의 1순위 원인은 `spot` 자체의 개별 teardown 순서보다
+현재 증상의 1순위 원인은 `spot` 자체의 개별 teardown 순서가 아니라
 `service_runtime_base_t`가 timeout 시 아직 제거되지 않은 socket을
 추적 집합에서 잃어버리는 구조라고 본다.
 
 즉 지금 보이는 `shutdown=abortive` 로그는 "강제 종료를 시도했다"는 뜻이지,
-실제로 남은 socket을 끝까지 추적해서 정리했다는 뜻이 아니다.
+남은 socket을 끝까지 추적해서 정리했다는 뜻이 아니다.
 그래서 `spot_node_destroy()`는 끝난 것처럼 보이는데 `ctx_term()`은 계속
-reaper `done`을 기다리게 된다.
+reaper `done`을 기다린다.
 
 ## 현재 판단
 
@@ -23,11 +23,11 @@ reaper `done`을 기다리게 된다.
 
 - `wait_drained()`는 `_closing_sockets`를 `swap()`으로 꺼낸 뒤
   `ctx->wait_for_socket_removal()`을 돈다.
-- 그 과정에서 하나라도 timeout 되면 즉시 `-1` 반환한다.
+- 그 과정에서 하나라도 timeout 되면 즉시 `-1`을 반환한다.
 - 그런데 그때 아직 제거되지 않은 socket들은 `_closing_sockets`로
   되돌아가지 않는다.
 - 이후 abortive path가 다시 `force_wait_remaining()`을 호출해도,
-  lifecycle 쪽에서는 이미 "추적 대상이 없다"고 보일 수 있다.
+  lifecycle 쪽에서는 이미 "추적 대상이 없다"고 보인다.
 - 반면 `ctx_t`는 실제 `_sockets` 목록에서 그 socket들을 계속 들고 있으므로
   `ctx_term()`은 무기한 대기한다.
 
@@ -76,7 +76,7 @@ abortive path 이후에도 실패를 사실상 성공으로 바꿔 버린다.
 context에 생성한다. split ctest 재현이 `tls_lock`가 아니라
 `monitors` 케이스에서 먼저 터진 점을 보면, TLS/WS transport 자체가 단독 root
 cause라기보다 "늦게 사라지는 socket이 하나라도 생기면 lifecycle tracker가
-그걸 놓치는 구조"가 더 본질적이라고 본다.
+그걸 놓치는 구조"가 더 본질이라고 본다.
 
 ## 근거
 
@@ -85,8 +85,8 @@ cause라기보다 "늦게 사라지는 socket이 하나라도 생기면 lifecycl
 
 - `close_socket()`은 socket을 `_closing_sockets`에 넣고 즉시 `stop/close`만 한다.
 - `wait_drained()`는 `_closing_sockets`를 로컬 map으로 `swap()`해 간다.
-- timeout 시 복구 없이 바로 `-1` 반환한다.
-- `force_wait_remaining()`도 같은 스타일로 `owned/closing` map을 통째로
+- timeout 시 복구 없이 바로 `-1`을 반환한다.
+- `force_wait_remaining()`도 같은 식으로 `owned/closing` map을 통째로
   `swap()`해 간다.
 
 이 구현에서는 timeout 한 번이 "추적 포기"와 거의 같다.
@@ -99,7 +99,7 @@ cause라기보다 "늦게 사라지는 socket이 하나라도 생기면 lifecycl
 - `terminate()`는 reaper의 `done`을 timeout 없이 기다린다.
 
 즉 service layer가 socket 추적을 잃어버리면,
-최종 hang은 자연스럽게 `ctx_term()`으로 이동한다.
+최종 hang은 자연스럽게 `ctx_term()`으로 옮겨간다.
 
 ### C. 현재 워크스페이스에서 본 재현 결과
 2026-03-12 기준 로컬 확인 결과는 다음과 같았다.
@@ -116,13 +116,13 @@ cause라기보다 "늦게 사라지는 socket이 하나라도 생기면 lifecycl
   로그는 다음 형태였다.
   `service=spot ... shutdown=abortive reason=110 live_slots=0 attachments=0`
 
-이 결과는 "특정 테스트 하나의 논리 버그"보다는
-"split/full 실행에서 더 잘 드러나는 lifecycle race"라는 해석을 지지한다.
+이 결과는 "특정 테스트 하나의 논리 버그"보다
+"split/full 실행에서 더 잘 드러나는 lifecycle race"라는 해석을 뒷받침한다.
 
 ## 가장 가능성 높은 1순위 원인
 1순위는 `service_runtime_base_t`의 timeout 후 추적 상실이다.
 
-이 가설이 맞다면 아래 현상을 한 번에 설명할 수 있다.
+이 가설이 맞다면 아래 현상을 한 번에 설명한다.
 
 - 단독 실행은 자주 통과
 - split/full 순차 실행에서만 가끔 timeout
@@ -131,7 +131,7 @@ cause라기보다 "늦게 사라지는 socket이 하나라도 생기면 lifecycl
   넓게 퍼짐
 
 반대로 TLS teardown 자체만 원인이라면,
-`monitors` 케이스 split timeout 재현까지 설명하기가 약해진다.
+`monitors` 케이스 split timeout 재현까지 설명하기가 약하다.
 
 ## 구조적으로 맞는 해결책
 
@@ -149,7 +149,7 @@ tracker에서 절대 사라지면 안 된다.
 abortive path 이후에도 socket removal이 끝나지 않으면
 `return -1`로 surface 해야 한다.
 
-지금처럼 성공 반환 후 `errno`만 남기는 방식은 테스트도 놓치기 쉽고,
+지금처럼 성공을 반환하고 `errno`만 남기는 방식은 테스트도 놓치기 쉽고,
 실제 hang 지점을 `ctx_term()`으로 뒤로 미뤄 버린다.
 
 ### 3. `ctx_term()`의 bounded fallback은 마지막 단계여야 한다
@@ -175,7 +175,7 @@ abortive path 이후에도 socket removal이 끝나지 않으면
   로그로 찍을 수 있게 한다.
 
 이 수정만으로도 abortive 이후 "더 이상 정리할 대상이 없다"는
-거짓 상태는 크게 줄어들 것이다.
+거짓 상태는 크게 줄어든다.
 
 ### 2. `spot_node_t::destroy()` 계약 수정
 
@@ -195,7 +195,7 @@ abortive path 이후에도 socket removal이 끝나지 않으면
 - `core/src/services/spot/spot_sub.cpp`
 
 특히 monitor socket close도 결국 lifecycle tracker 정확성에 기대고 있으므로,
-tracker 수정 전에는 재현 양상이 계속 흔들릴 가능성이 높다.
+tracker를 고치기 전에는 재현 양상이 계속 흔들릴 가능성이 높다.
 
 ## 장기적으로 더 나은 구조
 
@@ -229,7 +229,7 @@ tracker 수정 전에는 재현 양상이 계속 흔들릴 가능성이 높다.
 - socket type / endpoint
 - service-level tracker에 잡혔는지 여부
 
-그래야 상위 계층 누락과 transport 자체 문제를 구분할 수 있다.
+그래야 상위 계층 누락과 transport 자체 문제를 구분한다.
 
 ## 테스트에서 꼭 보강해야 할 회귀
 
@@ -274,5 +274,5 @@ abortive 이후에도 socket이 남아 있으면
 3. monitor bridge 경로 포함 split 회귀 추가
 4. 그 다음에 `ctx_term()` bounded fallback 검토
 
-즉 현재는 `ctx`가 약해서 hang이 생긴다기보다,
+즉 지금은 `ctx`가 약해서 hang이 생긴다기보다,
 그 전에 service-level lifecycle이 아직 "끝까지 책임지는 추적기"가 아니라고 본다.

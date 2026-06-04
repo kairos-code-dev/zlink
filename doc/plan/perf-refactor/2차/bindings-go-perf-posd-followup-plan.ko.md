@@ -1,6 +1,6 @@
 # `bindings/go/perf` POSD 후속 리팩토링 계획
 
-> 후속 검토 결론: follow-up 리팩토링 가치가 있다. `ready.go` 의 ready-wait 구조와 `multi/spot.go` 의 ready/barrier/drain 흐름은 정책 범위 안에서 더 깊게 나눌 수 있다.
+> 후속 검토 결론: follow-up 리팩토링 가치가 있다. `ready.go` 의 ready-wait 구조와 `multi/spot.go` 의 ready/barrier/drain 흐름은 정책 범위 안에서 더 잘게 나눌 수 있다.
 > 전제: perf 목적 범위 내, PERF 정책 준수, `core/perf`와 동일한 측정 의미 유지.
 > 대상: `bindings/go/perf/`
 
@@ -18,39 +18,39 @@
 ## 1. 목표
 
 - `internal/perfcommon/ready.go` 의 ready-wait 정책을 더 명확한 helper 로 나눈다.
-- `multi/spot.go` 의 ready/barrier/drain 흐름을 분리해 SPOT 제어와 측정 경계를 더 깊게 만든다.
-- measurement 의미와 RESULT 포맷은 `core/perf` 와 동일하게 유지한다.
+- `multi/spot.go` 의 ready/barrier/drain 흐름을 나눠 SPOT 제어와 측정의 경계를 분명히 한다.
+- measurement 의미와 RESULT 포맷은 `core/perf` 와 똑같이 유지한다.
 
 ## 2. 현재 구조 요약
 
 - 공통 책임은 [common.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/common.go), [measurement.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/measurement.go), [ready.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/ready.go), [runtime.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/runtime.go) 등으로 나뉘어 있다.
-- 다만 [ready.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/ready.go) 는 monitor/probe ready wait 를 하나의 helper 로 묶고 있고, [multi/spot.go](/home/hep7/project/kairos/zlink/bindings/go/perf/multi/spot.go) 는 ready tracking, active publish, recv drain 를 같은 흐름으로 처리한다.
+- 다만 [ready.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/ready.go) 는 monitor/probe ready wait 를 하나의 helper 로 묶고 있고, [multi/spot.go](/home/hep7/project/kairos/zlink/bindings/go/perf/multi/spot.go) 는 ready tracking, active publish, recv drain 을 같은 흐름에서 처리한다.
 - [ready.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/ready.go) 는 99라인, [multi/spot.go](/home/hep7/project/kairos/zlink/bindings/go/perf/multi/spot.go) 는 164라인이다.
-- single/multi 패턴은 각 파일에서 직접 시나리오를 보여주므로 hot path 가시성은 이미 확보되어 있다.
+- single/multi 패턴은 각 파일에서 시나리오를 직접 보여주므로 hot path 가시성은 이미 확보돼 있다.
 
 ## 3. 남은 POSD 문제
 
-- `ready.go` 는 `WaitReady` 안에서 monitor 기반 wait 와 probe 기반 wait 를 함께 다루고, probe 경로는 사실상 busy wait 성격을 가진다.
-- `waitMonitorReady` 는 goroutine + `time.After` 반복을 쓰고 있어 ready gate 정책이 한 눈에 드러나지 않는다.
-- `multi/spot.go` 의 `waitForMultiSpotReady` 와 `drainMultiSpotOnce` 는 SPOT barrier, callback ready tracking, active publish, recv drain 을 한 파일의 한 흐름에 섞는다.
-- 따라서 ready-wait 와 SPOT barrier 는 현재 상태에서 follow-up 가치가 분명하다.
+- `ready.go` 는 `WaitReady` 에서 monitor 기반 wait 와 probe 기반 wait 를 함께 다루고, probe 경로는 사실상 busy wait 에 가깝다.
+- `waitMonitorReady` 는 goroutine 과 `time.After` 반복을 쓰고 있어 ready gate 정책이 한눈에 드러나지 않는다.
+- `multi/spot.go` 의 `waitForMultiSpotReady` 와 `drainMultiSpotOnce` 는 SPOT barrier, callback ready tracking, active publish, recv drain 을 한 파일의 한 흐름에 섞어 둔다.
+- 그래서 ready-wait 와 SPOT barrier 는 지금 상태에서 follow-up 가치가 분명하다.
 
 ## 4. 우선순위
 
-- P1: `ready.go` 의 monitor/probe ready wait 를 정책별 helper 로 분리한다.
-- P2: `multi/spot.go` 의 barrier/discovery/ready tracking/drain 흐름을 분리한다.
-- P3: 측정 의미, RESULT 포맷, policy 제약은 그대로 두고, 변경 증폭이 큰 ready path 만 먼저 줄인다.
+- P1: `ready.go` 의 monitor/probe ready wait 를 정책별 helper 로 나눈다.
+- P2: `multi/spot.go` 의 barrier/discovery/ready tracking/drain 흐름을 나눈다.
+- P3: 측정 의미, RESULT 포맷, policy 제약은 그대로 두고, 변경 증폭이 큰 ready path 부터 먼저 줄인다.
 
 ## 5. 단계별 작업
 
 1. ready-wait 책임 정리
-- `WaitReady` 의 monitor/probe 분기와 timeout 정책을 따로 설명 가능한 수준으로 나눈다.
+- `WaitReady` 의 monitor/probe 분기와 timeout 정책을 따로 설명할 수 있을 만큼 나눈다.
 
 2. SPOT barrier 흐름 분리
-- `waitForMultiSpotReady` 와 `drainMultiSpotOnce` 의 역할을 분리하고, ready tracking 과 active drain 을 분리한다.
+- `waitForMultiSpotReady` 와 `drainMultiSpotOnce` 의 역할을 나누고, ready tracking 과 active drain 도 따로 떼어 낸다.
 
 3. 계약 유지
-- `core/perf` 와 동일한 측정 의미를 유지하고, perf 정책 밖의 새 경로는 추가하지 않는다.
+- `core/perf` 와 동일한 측정 의미를 지키고, perf 정책 밖의 새 경로는 더하지 않는다.
 
 ## 6. 검증 방법
 
@@ -64,7 +64,7 @@
 - ready-wait helper 가 monitor/probe 정책별로 더 명확해진다.
 - SPOT barrier/readiness/drain 흐름이 더 좁은 책임 단위로 나뉜다.
 - `core/perf` 와 동일한 측정 의미가 유지된다.
-- follow-up 범위가 ready gate 와 SPOT control/ drain 경계 정리로 명확히 고정된다.
+- follow-up 범위가 ready gate 와 SPOT control/drain 경계 정리로 분명히 고정된다.
 
 ## 8. 비범위
 

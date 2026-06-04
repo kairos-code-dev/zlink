@@ -3,7 +3,7 @@
 > 범위: `core/` monitoring public surface를 호환성 제약 없이 한 번에
 > 정리한다.
 >
-> 목표: public readiness event를 모두 `*_READY_CHANGED` 형식으로 통일하고,
+> 목표: public readiness event를 모두 `*_READY_CHANGED` 형식으로 통일하고
 > `event.value`와 snapshot count가 항상 같은 의미를 갖게 만든다.
 
 ## 1. 결론
@@ -12,7 +12,7 @@
 
 이번 변경의 기준은 아래 하나다.
 
-> readiness public event는 모두 `*_READY_CHANGED` 형식으로 정의하고,
+> readiness public event는 모두 `*_READY_CHANGED` 형식으로 정의하고
 > `event.value`는 현재 ready count의 absolute value를 반환한다.
 
 즉:
@@ -45,10 +45,10 @@
 - count event
 - generic alias
 
-이 구조에서는 caller가 event별 예외 규칙을 알아야 한다.
+이 구조에서는 caller가 event마다 예외 규칙을 알아야 한다.
 POSD 관점에서 이런 API는 얕다.
 
-좋은 public contract는 아래처럼 설명되어야 한다.
+좋은 public contract는 아래처럼 설명된다.
 
 - 이름만 보면 형식을 알 수 있다.
 - `value` 의미가 event family 전체에서 같다.
@@ -106,7 +106,7 @@ readiness count를 대신하지 않는다.
 - service local readiness count
 - spot subject별 subscriber readiness count
 
-중요한 것은 count 대상이 문서에 명시되어 있고,
+중요한 것은 count 대상이 문서에 명시되어 있고
 event와 snapshot이 같은 대상을 세야 한다는 점이다.
 
 ---
@@ -160,8 +160,8 @@ ready count 감소를 `DISCONNECTED.value`에 싣지 않는다.
   - scope: 해당 SUB socket의 delivery readiness
   - 현재는 사실상 `0/1` count
 
-즉 `PUB`는 `1, 2, ..., N`까지 올라갈 수 있어야 하고,
-`SUB`는 scope상 `0/1` count일 수 있어도 형식은 동일하다.
+즉 `PUB`는 `1, 2, ..., N`까지 올라갈 수 있어야 하고
+`SUB`는 scope상 `0/1` count여도 형식은 동일하다.
 
 ## 3.3 discovery service
 
@@ -183,7 +183,7 @@ ready count 감소를 `DISCONNECTED.value`에 싣지 않는다.
 ### 의미
 
 - scope: discovery service 인스턴스의 local operational readiness
-- `event.value`는 현재는 `0/1` count
+- `event.value`는 현재 `0/1` count
 
 즉 discovery service 자체가 요청을 처리할 준비가 되었으면 `1`,
 아니면 `0`이다.
@@ -264,7 +264,7 @@ ready count 감소를 `DISCONNECTED.value`에 싣지 않는다.
   - scope: 특정 subject에서 "첫 delivery-ready subscriber 존재" 상태
   - 현재는 사실상 `0/1` count
 
-`PUB_FIRST_DELIVERY_READY_CHANGED`는 이름상 aggregate count처럼 보이지 않지만,
+`PUB_FIRST_DELIVERY_READY_CHANGED`는 이름만 보면 aggregate count처럼 보이지 않지만
 의미를 따지면 "첫 ready subscriber가 있는지"라는 별도 contract다.
 이번 변경에서는 public format만 `0/1` count로 맞추고 이름은 유지한다.
 
@@ -367,7 +367,7 @@ detail flag도 같이 바꾼다.
 
 단, `zlink_spot_node_subject_entry_t.ready_peer_count` 같은
 introspection/status row field는 이번 monitoring contract 변경의 직접 범위가 아니다.
-그 필드들은 별도 문서에서 필요 시 rename 여부를 판단한다.
+그 필드들은 별도 문서에서 필요할 때 rename 여부를 판단한다.
 
 ## 5.2 snapshot 규칙
 
@@ -377,7 +377,7 @@ introspection/status row field는 이번 monitoring contract 변경의 직접 �
 
 - `zlink_monitor_snapshot()`은 discovery monitor에는 적용하지 않는다.
 - `snapshot.ready_count`는 monitor handle의 `source_kind`마다 정확히 하나의 scope만 가진다.
-- local service readiness와 aggregate send readiness가 둘 다 필요한 경우,
+- local service readiness와 aggregate send readiness가 둘 다 필요하면
   snapshot은 "실제 data plane readiness" 축을 선택한다.
 
 source kind별 의미:
@@ -400,12 +400,12 @@ source kind별 의미:
 이렇게 정하는 이유는 snapshot의 주된 용도가
 "지금 실제 데이터 흐름이 가능한 대상 수"를 즉시 읽는 것이기 때문이다.
 
-local lifecycle readiness는 event로 구독하고,
+local lifecycle readiness는 event로 구독하고
 aggregate data-plane readiness는 snapshot과 `*_READY_CHANGED`에서 읽는다.
 
 ### socket source 추가 규칙
 
-`ZLINK_MONITOR_SOURCE_SOCKET`은 socket family를 따로 싣지 않으므로,
+`ZLINK_MONITOR_SOURCE_SOCKET`은 socket family를 따로 싣지 않으므로
 `snapshot.ready_count`의 정확한 의미는 monitor를 연 socket type의 contract를 따른다.
 
 즉:
@@ -417,7 +417,7 @@ aggregate data-plane readiness는 snapshot과 `*_READY_CHANGED`에서 읽는다.
 - `SUB/XSUB`
   - local delivery-ready count (`0/1`)
 
-consumer는 `source_kind == SOCKET`만 보고 공통 해석하지 않고,
+consumer는 `source_kind == SOCKET`만 보고 공통 해석하지 않고
 자신이 연 socket type과 함께 해석해야 한다.
 
 ## 5.3 snapshot state flag 규칙
@@ -433,7 +433,7 @@ snapshot의 state flag도 `ready_count`와 같은 축을 따라야 한다.
 - `ZLINK_MONITOR_STATE_CLOSED`
   - closed terminal state 전용
 
-즉 state flag는 별도 숨은 의미를 만들지 않고,
+즉 state flag는 별도 숨은 의미를 만들지 않고
 `ready_count`에서 파생되는 boolean surface여야 한다.
 
 ## 5.4 source-of-truth 규칙
@@ -639,7 +639,7 @@ snapshot의 state flag도 `ready_count`와 같은 축을 따라야 한다.
 
 ## 10. 최종 판단
 
-이번 개편의 핵심은 "ready처럼 보이는 것을 비슷하게 두지 말고,
+이번 개편의 핵심은 "ready처럼 보이는 것을 비슷하게 두지 말고
 정말 같은 계약으로 만들자"이다.
 
 최종 public contract는 아래로 요약된다.
@@ -650,5 +650,5 @@ snapshot의 state flag도 `ready_count`와 같은 축을 따라야 한다.
 - edge/topology event는 readiness와 분리
 - generic `READY` / `LOST` alias는 제거
 
-즉 caller는 더 이상 event별 예외 규칙을 외울 필요가 없다.
+즉 caller는 더 이상 event마다 예외 규칙을 외울 필요가 없다.
 `*_READY_CHANGED`를 보면 항상 같은 형식으로 해석할 수 있어야 한다.

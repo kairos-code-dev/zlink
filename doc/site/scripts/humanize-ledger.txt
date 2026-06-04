@@ -99,3 +99,15 @@ doc/plan/documentation/humanize-all-execution-prompt.ko.md
 doc/plan/documentation/tabbed-docs-consolidation-execution-prompt.ko.md
 doc/plan/monitoring/auto-hwm-and-service-monitor-rollout-plan.ko.md
 doc/plan/monitoring/auto-hwm-context-memory-sizing-rollout-plan.ko.md
+doc/plan/monitoring/auto-hwm-per-connection-profile-rollout-plan.ko.md
+doc/plan/monitoring/context-auto-hwm-msg-unit-rollout-plan.ko.md
+doc/plan/monitoring/high-performance-poller-interface-rollout-plan.ko.md
+doc/plan/monitoring/monitoring-perf-improvement.ko.md
+doc/plan/monitoring/pub-delivery-ready-peer-count-plan.ko.md
+doc/plan/monitoring/socket-default-and-spot-admission-hwm-rollout-plan.ko.md
+doc/plan/peer-runtime-policy/auto-hwm-peer-disconnect-weight-execution-plan.ko.md
+doc/plan/perf-refactor/2차/bindings-cpp-perf-posd-followup-plan.ko.md
+doc/plan/perf-refactor/2차/bindings-dotnet-perf-posd-followup-plan.ko.md
+doc/plan/perf-refactor/2차/bindings-go-perf-posd-followup-plan.ko.md
+doc/plan/perf-refactor/2차/bindings-java-perf-posd-followup-plan.ko.md
+doc/plan/perf-refactor/2차/bindings-node-perf-posd-followup-plan.ko.md

@@ -7,7 +7,7 @@
 > - `doc/draft/auto-hwm.ko.md`
 >
 > 목표:
-> 세 초안의 요구 항목을 사람의 판단 대기 없이 끝까지 구현할 수 있도록,
+> 세 초안의 요구 항목을 사람의 판단 대기 없이 끝까지 구현하도록,
 > 기능별 개발, 전체 테스트, POSD 리팩토링, perf smoke, 문서 반영, 커밋과 푸시,
 > 최종 재검토 루프를 하나의 실행 절차로 고정한다.
 
@@ -51,7 +51,7 @@
 
 - 초안에 확정안이 있는 항목은 질문하지 않고 그대로 구현한다.
 - 코드와 초안이 충돌하면 `core/include/zlink.h`에 최종 반영될 공개 계약을 기준으로
-  테스트를 먼저 세우고, 구현은 그 계약을 만족하게 맞춘다.
+  테스트를 먼저 세우고 구현은 그 계약을 만족하게 맞춘다.
 - 초안에 열린 위험이 있으면 구현 중 코드로 확인하고, 둘 이상의 방법이 가능할 때는
   변경 파급이 가장 작은 방법을 고른다.
 - 일시적 테스트 실패는 같은 단계 안에서 원인을 찾아 수정한다.
@@ -63,13 +63,13 @@
 - 원격 branch가 앞서 있어서 push가 거부되면 destructive 명령을 쓰지 않는다.
   `git fetch`, non-destructive rebase 또는 merge로 원격 변경을 반영하고, 충돌이
   없으면 해당 단계의 build, test, perf smoke를 다시 실행한 뒤 push한다.
-  충돌이 나면 충돌 파일과 이유를 로그에 남기고, 기존 사용자 변경을 되돌리지 않는
+  충돌이 나면 충돌 파일과 이유를 로그에 남기고 기존 사용자 변경을 되돌리지 않는
   방향으로 해결한다.
 
 ### 2.2 기존 변경 보호
 
 실행 전 `git status --short`를 저장한다. 이미 존재하는 변경은 사용자 또는 다른
-작업의 변경으로 본다.
+작업이 만든 변경으로 본다.
 
 - 관련 없는 기존 변경은 되돌리지 않는다.
 - 같은 파일을 수정해야 하면 먼저 diff를 읽고 현재 변경 위에 이어서 작업한다.
@@ -167,7 +167,7 @@ cmake --build core/build -j"$(nproc)"
   runtime을 먼저 다시 만든다.
 - perf 실행 전에 runner가 출력하는 실제 `libzlink.so` 경로가 `core/build` 아래인지
   확인한다.
-- perf 실행 전에 `core/build` runtime이 source보다 오래되면 그 실행은 실패로 보고,
+- perf 실행 전에 `core/build` runtime이 source보다 오래되면 그 실행은 실패로 보고
   rebuild 뒤 다시 실행한다.
 - 아래 명령은 `bindings/c/perf` runner가 현재 지원하는 option만 사용한다. runner에
   없는 `warmup` 성격의 option을 임의로 넣지 않는다.
@@ -252,7 +252,7 @@ cmake --build core/build -j"$(nproc)"
 ```
 
 perf smoke가 실패하면 다음 기능으로 넘어가지 않는다. 기능 자체가 성능 측정 경로를
-바꾸지 않았더라도, smoke 실패 원인을 확인하고 같은 단계에서 수정한다.
+바꾸지 않았더라도 smoke 실패 원인을 확인하고 같은 단계에서 수정한다.
 
 ### 3.4 문서 반영
 
@@ -263,13 +263,13 @@ perf smoke가 실패하면 다음 기능으로 넘어가지 않는다. 기능 �
 - `doc/spec/`: `core/include/zlink.h`와 테스트로 확정된 공개 API 계약만 쓴다.
 - `doc/guide/`: 사용자가 왜, 언제, 어떻게 쓰는지 설명한다. 내부 socket 배선이나
   inproc endpoint 같은 구현 세부는 넣지 않는다.
-- `doc/internals/`: 유지보수자가 구조를 이해할 수 있게 data flow, lifecycle,
+- `doc/internals/`: 유지보수자가 구조를 이해하도록 data flow, lifecycle,
   socket 역할, 진단 경로를 설명한다.
 - `doc/spec/bindings/`: 각 언어의 public surface, 이름, 에러 매핑, 옵션 범위를
   C core 계약과 맞춘다.
 - `doc/site/docs/`: 배포용 복사본이 있는 문서는 같은 의미로 동기화한다.
 
-문서 반영 뒤에는 아래 확인을 한다.
+문서 반영 뒤에는 아래를 확인한다.
 
 ```bash
 rg -n -f /tmp/zlink-doc-forbidden-terms.txt doc
@@ -330,7 +330,7 @@ git push -u origin HEAD
 ### 완료 기준
 
 - 시작 전 실패가 있으면 기능 작업 전에 원인을 분류하고 먼저 복구한다.
-- 기존 실패가 외부 환경 문제로 확인되어 즉시 복구할 수 없는 경우에는 실패 명령,
+- 기존 실패가 외부 환경 문제로 확인되어 즉시 복구할 수 없으면 실패 명령,
   실패 원인, 재시도 결과를 로그에 남긴다. 제품 코드나 테스트 실패가 남아 있으면
   다음 기능 단계로 넘어가지 않는다.
 - plan 문서 자체를 별도 커밋으로 올리고 push한다.

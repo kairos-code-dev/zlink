@@ -8,7 +8,7 @@
 ## 1. 결정
 
 Auto-HWM message unit은 SpotNode나 Spot handle마다 별도 public API를 추가하지 않는다.
-core/C API에 context-level message unit option을 추가하고, 모든 binding은 context 옵션 하나만
+core/C API에 context-level message unit option을 추가하고 모든 binding은 context 옵션 하나만
 public API로 노출한다.
 
 핵심 목표는 아래와 같다.
@@ -19,7 +19,7 @@ public API로 노출한다.
 - 기존 per-handle `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 남겨 둔다. 이 옵션은 특정 socket만
   다른 message unit을 써야 할 때의 명시적 override다.
 - binding public API에서는 socket별, SpotNode별, Spot별 message unit 설정을 제거한다.
-  실제 사용 사례는 context 단위 정책으로 충분하므로, 언어 binding에서 socket마다 값을
+  실제 사용 사례는 context 단위 정책으로 충분하므로 언어 binding에서 socket마다 값을
   따로 조절하는 인터페이스를 유지하지 않는다.
 - binding perf는 per-socket, SpotNode, Spot별 message unit 설정을 제거하고 context 옵션만
   사용한다.
@@ -117,7 +117,7 @@ zlink_ctx_auto_hwm_recalculate (ctx);
   unit을 유지한다. 현재 non-STREAM socket의 built-in 기본값은 `4096`이고 STREAM 기본값은
   `1024`다.
 - `zlink_ctx_set()` 성공 시 `ZLINK_CONFIG_OK`를 반환한다.
-- `zlink_ctx_get()` 성공 시 설정된 int 값을 반환하고, `error_out_`이 NULL이 아니면
+- `zlink_ctx_get()` 성공 시 설정된 int 값을 반환하고 `error_out_`이 NULL이 아니면
   `*error_out_ = ZLINK_CONFIG_OK`를 쓴다.
 - NULL 또는 invalid context는 기존 context API 규칙대로 `ZLINK_CONFIG_INVALID_HANDLE`을
   반환하거나 `error_out_`에 쓴다.
@@ -161,7 +161,7 @@ zlink_ctx_auto_hwm_recalculate (ctx);
      두고 recalc를 호출해, override socket은 자기 값을 유지하고 나머지는 context option
      값을 따르는지 확인한다.
    - per-handle `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0`의 의미를 테스트로 고정한다. 이 값은
-     explicit override 해제로 정의하고, 이후 recalc에서 context option 값을 다시 따르는지
+     explicit override 해제로 정의하고 이후 recalc에서 context option 값을 다시 따르는지
      확인한다.
    - per-handle override 해제 뒤 context option 값을 다시 `0`으로 바꾸면 해당 socket도
      socket-type 기본 message unit으로 돌아가는지 확인한다.
@@ -174,7 +174,7 @@ zlink_ctx_auto_hwm_recalculate (ctx);
 2. core enum과 기본값을 추가한다.
    - `core/include/zlink_enum.h`
    - `core/include/zlink/core.h`
-   - `bindings/c/include/zlink_enum.h`와 `bindings/c/include/zlink.h`는 직접 수정하지 않고,
+   - `bindings/c/include/zlink_enum.h`와 `bindings/c/include/zlink.h`는 직접 수정하지 않고
      core 검증 뒤 sync 단계에서 갱신한다.
 
 3. context 저장소에 option을 추가한다.
@@ -218,12 +218,12 @@ zlink_ctx_auto_hwm_recalculate (ctx);
 ## 4. Binding API 적용 계획
 
 binding public API는 context option에만 추가한다. SpotNode/Spot별 message unit API는
-추가하지 않고, 기존 socket별 message unit public API도 제거한다.
+추가하지 않고 기존 socket별 message unit public API도 제거한다.
 이 절은 core 구현, core 테스트,
 `/home/hep7/project/kairos/zlink/bindings/dev_sync_local_core_libs.sh` 실행이 모두 끝난 뒤에만
 진행한다.
 socket별 message unit API 제거는 breaking change로 처리한다. 삭제된 API의 호환 별칭은
-추가하지 않고, migration 문서와 contract test로 context option 대체 경로를 고정한다.
+추가하지 않고 migration 문서와 contract test로 context option 대체 경로를 고정한다.
 
 | 언어 | 추가/수정할 public API | 적용 위치 |
 |------|-------------------------|-----------|
@@ -275,7 +275,7 @@ socket별 message unit API 제거는 breaking change로 처리한다. 삭제된 
 - socket별, SpotNode별, Spot별 message unit public API가 남아 있지 않다.
 - 각 binding의 perf, sample, contract test가 삭제된 socket별 message unit API를 import,
   reflect, compile, typecheck, 호출하지 않는지 확인한다.
-- 각 binding은 sync된 C header의 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18` 값을 사용하고,
+- 각 binding은 sync된 C header의 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18` 값을 사용하고
   binding 내부에 다른 숫자를 중복 정의하지 않는다. 불가피하게 enum을 복제하는 언어는 C
   header와 같은 값을 검증하는 테스트를 둔다.
 
@@ -333,7 +333,7 @@ zlink_ctx_auto_hwm_recalculate(ctx);
 
 1. 구현 전 draft
    - `doc/spec/draft/context-auto-hwm-msg-unit.ko.md`
-   - 이 문서에는 "현재 공개 계약이 아님"을 첫머리에 적고, context option 값과 per-handle
+   - 이 문서에는 "현재 공개 계약이 아님"을 첫머리에 적고 context option 값과 per-handle
      override의 우선순위를 명시한다.
 
 2. core 구현 완료 뒤 정식 spec
@@ -345,7 +345,7 @@ zlink_ctx_auto_hwm_recalculate(ctx);
    - `doc/guide/10-performance.ko.md`
    - `doc/guide/10-performance.md`
    - 사용자는 perf나 애플리케이션 초기화에서 context에 한 번 설정하면 된다고 설명한다.
-   - 내부 socket 구조 설명은 넣지 않고, 필요하면 internals 문서로 링크한다.
+   - 내부 socket 구조 설명은 넣지 않고 필요하면 internals 문서로 링크한다.
 
 4. internals
    - `doc/internals/socket-option-defaults.ko.md`

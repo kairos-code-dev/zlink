@@ -1,6 +1,6 @@
 # Monitoring 성능 개선 계획
 
-> 범위: `core/` 내부의 socket monitor 및 service monitor 경로가 socket messaging 성능에 주는 영향을 분석하고, 개선 우선순위를 정리한다.
+> 범위: `core/` 내부의 socket monitor 및 service monitor 경로가 socket messaging 성능에 주는 영향을 분석하고 개선 우선순위를 정리한다.
 
 ## 1. 결론
 
@@ -111,7 +111,7 @@
 
 ### 판단
 
-- block 위험은 socket monitor보다 낮지만, watcher 수가 커질수록 비용이 예측 가능하게 증가한다.
+- block 위험은 socket monitor보다 낮지만 watcher 수가 커질수록 비용이 예측 가능하게 증가한다.
 
 ---
 
@@ -143,7 +143,7 @@
 
 ### 판단
 
-- steady-state 영향은 제한적이지만, 경로의 성격상 "messageing에 영향 주지 않아야 한다" 기준에는 부적합하다.
+- steady-state 영향은 제한적이지만 경로의 성격상 "messageing에 영향 주지 않아야 한다" 기준에는 부적합하다.
 
 ---
 
@@ -202,7 +202,7 @@
 
 ### 판단
 
-- 의미론 유지가 중요해서 위험도는 약간 있지만, 효과 대비 개선 여지가 크다.
+- 의미론 유지가 중요해서 위험도는 약간 있지만 효과 대비 개선 여지가 크다.
 
 ---
 
@@ -229,7 +229,7 @@
 
 ### 판단
 
-- 구조 자체는 이해 가능하지만, monitor fanout을 동기 수행하는 현재 방식은 확장성에 불리하다.
+- 구조 자체는 이해 가능하지만 monitor fanout을 동기 수행하는 현재 방식은 확장성에 불리하다.
 
 ---
 

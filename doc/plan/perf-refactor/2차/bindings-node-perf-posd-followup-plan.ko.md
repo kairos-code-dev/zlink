@@ -1,6 +1,6 @@
 # `bindings/node/perf` POSD 후속 리팩토링 계획
 
-> 후속 검토 결론: follow-up 리팩토링 가치가 있다. `perf_metrics.ts` 가 args/payload/report/collector 를 광범위하게 품고 있고, `perf_multi_orchestrator.ts` 와 `run_benchmarks.ts` 의 orchestration/dispatch 분리 여지도 분명하다.
+> 후속 검토 결론: follow-up 리팩토링 가치가 있다. `perf_metrics.ts` 가 args/payload/report/collector 를 광범위하게 떠안고 있고, `perf_multi_orchestrator.ts` 와 `run_benchmarks.ts` 의 orchestration/dispatch 분리 여지도 분명하다.
 > 전제: perf 목적 범위 내, PERF 정책 준수, `core/perf`와 동일한 측정 의미 유지.
 > 대상: `bindings/node/perf/`
 
@@ -28,14 +28,14 @@
 - [run_benchmarks.ts](/home/hep7/project/kairos/zlink/bindings/node/perf/multi/run_benchmarks.ts) 는 pattern matrix, result accumulation, report emission 을 한 번에 처리한다.
 - [single/run_benchmarks.ts](/home/hep7/project/kairos/zlink/bindings/node/perf/single/run_benchmarks.ts) 는 상대적으로 얇지만, pattern loop 와 result/report emission 을 함께 다루므로 shared runner 규칙을 볼 때 참고 대상이다.
 - [perf_metrics.ts](/home/hep7/project/kairos/zlink/bindings/node/perf/common/perf_metrics.ts) 는 477라인, [perf_multi_orchestrator.ts](/home/hep7/project/kairos/zlink/bindings/node/perf/multi/perf_multi_orchestrator.ts) 는 283라인, [run_benchmarks.ts](/home/hep7/project/kairos/zlink/bindings/node/perf/multi/run_benchmarks.ts) 는 325라인이다.
-- single/multi pattern 파일은 이미 send/recv 루프를 직접 보여주고 있어 hot path 가시성은 유지된다.
+- single/multi pattern 파일은 이미 send/recv 루프를 직접 보여주므로 hot path 가시성은 그대로다.
 
 ## 3. 남은 POSD 문제
 
-- `perf_metrics.ts` 에 `parseCommonArgs`, `resolveSinglePatternNames`, `resolveMultiPatternNames`, `createPayload`, `stampPayload`, `callbackSendBurstLimit`, `callbackDrainTicks`, `computeMetrics`, `writeReport` 계열이 공존해 있다.
-- `perf_multi_orchestrator.ts` 는 process spawn, stdout/stderr capture, server stop, stream client 특례를 한 파일에 함께 품고 있다.
+- `perf_metrics.ts` 에 `parseCommonArgs`, `resolveSinglePatternNames`, `resolveMultiPatternNames`, `createPayload`, `stampPayload`, `callbackSendBurstLimit`, `callbackDrainTicks`, `computeMetrics`, `writeReport` 계열이 공존한다.
+- `perf_multi_orchestrator.ts` 는 process spawn, stdout/stderr capture, server stop, stream client 특례를 한 파일에 함께 떠안고 있다.
 - `run_benchmarks.ts` 는 orchestration, pattern dispatch, report write, stream client execution policy 를 모두 조율한다.
-- 그래서 args/payload/report/collector 책임과 orchestration/dispatch 책임을 분리하면 change amplification 을 줄일 수 있다.
+- args/payload/report/collector 책임과 orchestration/dispatch 책임을 분리하면 change amplification 을 줄인다.
 
 ## 4. 우선순위
 

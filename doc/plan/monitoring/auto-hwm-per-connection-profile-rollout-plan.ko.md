@@ -27,7 +27,7 @@
 8. 실패한 게이트는 원인을 수정하고 같은 게이트를 다시 실행한다.
 9. 각 단계가 끝날 때 `## 14. 진행 로그`에 수정 파일, 실행 명령, 실패 원인,
    해결 내용을 짧게 기록한다.
-10. command나 binding 경로가 문서와 다르면 코드 기준으로 실제 경로를 찾아 실행하고,
+10. command나 binding 경로가 문서와 다르면 코드 기준으로 실제 경로를 찾아 실행하고
     plan의 진행 로그에 차이를 남긴다. 경로가 없으면 성공으로 넘기지 말고
     "해당 경로 없음"을 검증 결과로 기록한다.
 
@@ -143,7 +143,7 @@ ctest --test-dir core/build --output-on-failure -R "test_ctx_options|unittest_ct
 - connection count, observed count, planning count로 HWM을 나누는 경로를 제거한다.
 - draft의 per-connection profile table과 message unit scaling을 구현한다.
 - 수동 `SNDHWM` / `RCVHWM` override가 자동 계산보다 우선하게 유지한다.
-- draft의 재계산 정책에 맞지 않는 connection 변화 기반 재계산 의미를 제거한다.
+- draft의 재계산 정책에 맞지 않는, connection 변화 기반 재계산 의미를 제거한다.
 
 ### 수정 파일 후보
 
@@ -361,7 +361,7 @@ PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks_multi.sh --patter
 
 - `bindings/c/perf`가 `core/build` runtime을 사용한다.
 - 모든 perf는 실제 result row를 출력한다.
-- SPOT_REQREP, SPOT_SENDSEND 100 clients 64B가 200 Kops/s 이상을 회복하거나,
+- SPOT_REQREP, SPOT_SENDSEND 100 clients 64B가 200 Kops/s 이상을 회복하거나
   미달 시 core 원인을 찾아 수정한다.
 
 ---
@@ -595,7 +595,7 @@ rg -n "ZLINK_CTX_OPT_AUTO_HWM|ZLINK_OPT_AUTO_HWM|zlink_auto_hwm|auto_hwm_" core/
 - 실패 원인:
   - 새 context에서 바로 실행하기에는 시작 시 읽어야 할 기준 파일, 최초 보고 형식,
     게이트 실패 시 반복 규칙이 plan에 충분히 명시되어 있지 않았다.
-  - draft에 확정되지 않은 변경 표현이 남아 구현자가 판단 대기할 여지가 있었다.
+  - draft에 확정되지 않은 변경 표현이 남아 구현자가 판단을 대기할 여지가 있었다.
   - binding 구현 후 binding spec과 실제 API를 다시 대조하는 최종 게이트가 없었다.
 - 해결 내용:
   - 새 컨텍스트 시작 절차, 단계 진행 원칙, 진행 로그 갱신 규칙을 추가했다.
@@ -691,7 +691,7 @@ rg -n "ZLINK_CTX_OPT_AUTO_HWM|ZLINK_OPT_AUTO_HWM|zlink_auto_hwm|auto_hwm_" core/
     바꿨다.
   - single/multi comparison 스크립트가 실제 result line 수가 부족하면 실패하는 것을
     확인했다.
-  - 금지 표현과 모호한 결정 표현을 다시 검색했고, 추가 수정이 필요한 항목이
+  - 금지 표현과 모호한 결정 표현을 다시 검색했고 추가 수정이 필요한 항목이
     없음을 확인했다.
 
 ### 2026-04-30 C sample/perf 검증

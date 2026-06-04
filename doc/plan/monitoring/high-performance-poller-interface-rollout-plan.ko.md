@@ -1,19 +1,19 @@
 # 고성능 Poller 인터페이스 적용 계획
 
 > 이 문서는 모든 바인딩의 poller public API를 하나의 고성능 형태로 정렬하기 위한
-> 실행 계획이다. 아직 구현 전 계획이며, 실제 공개 계약은 별도 draft spec 작성,
+> 실행 계획이다. 아직 구현 전 계획이며 실제 공개 계약은 별도 draft spec 작성,
 > core/header 반영, 언어별 회귀 테스트를 거친 뒤 확정한다.
 
 ## 1. 목표
 
 현재 multi perf에서 single 대비 성능 차이가 크게 벌어지는 원인 후보 중 하나는
 poller 결과를 언어 런타임에 전달하는 방식이다. C 기준은 호출자가 준비한 이벤트
-배열을 `zlink_poller_wait`에 넘기고, 함수가 그 배열 앞쪽에 ready event만 채운 뒤
-개수를 반환한다. 이 방식은 매 wait마다 새 list/object를 만들 필요가 없고,
+배열을 `zlink_poller_wait`에 넘기면, 함수가 그 배열 앞쪽에 ready event만 채운 뒤
+개수를 반환한다. 이 방식은 매 wait마다 새 list/object를 만들 필요가 없고
 ready가 아닌 소켓을 다시 훑을 필요도 없다.
 
 이번 작업의 목표는 이 C 기준 의미를 모든 바인딩에 같은 public API 형태로 제공하는
-것이다. perf 전용 우회 API를 만들지 않고, 일반 애플리케이션 event loop에서도 쓸 수
+것이다. perf 전용 우회 API를 만들지 않고 일반 애플리케이션 event loop에서도 쓸 수
 있는 단일 고성능 poller 인터페이스로 정리한다.
 
 ## 2. 고정 결정
@@ -57,11 +57,11 @@ for i where 0 <= i < count:
     event = events_buffer[i]
 ```
 
-언어에 따라 `add(...)` overload 하나로 socket/fd/timer를 받거나,
+언어에 따라 `add(...)` overload 하나로 socket/fd/timer를 받아도 되고
 `add_socket` / `add_fd` / `add_timer`처럼 나누어도 된다. 다만 모든 등록 경로는
 정수 slot을 받아야 하며 object tag를 받는 overload를 표준 public surface로 두지 않는다.
 `modify`와 `remove`는 C poller처럼 등록 source(socket, fd, timer)를 기준으로 해도
-된다. 이 경로는 hot path가 아니며, wait 결과 dispatch를 위해 wrapper나 tag를
+된다. 이 경로는 hot path가 아니므로 wait 결과 dispatch를 위해 wrapper나 tag를
 조회해서는 안 된다. timer source는 C처럼 별도 event mask 없이 읽기 준비 신호와
 같은 의미로 등록해도 된다.
 
@@ -110,9 +110,9 @@ slot 타입은 언어별로 아래 원칙을 따른다.
 | Python | `int` |
 
 slot은 pointer 값을 표현하기 위한 API가 아니라 사용자 dispatch key를 표현하는 API다.
-slot은 음수가 아닌 정수여야 하며, 각 binding은 자기 언어의 slot 타입과 native
+slot은 음수가 아닌 정수여야 하며 각 binding은 자기 언어의 slot 타입과 native
 `uintptr_t` 사이에서 손실 없이 왕복할 수 없는 값을 거부한다. Node binding은
-`Number.isSafeInteger` 범위를 벗어난 값을 거부하고, perf와 samples는 작은 정수
+`Number.isSafeInteger` 범위를 벗어난 값을 거부하고 perf와 samples는 작은 정수
 slot을 사용한다.
 
 timeout 표현은 아래처럼 고정한다.
@@ -180,7 +180,7 @@ int n = poller.Wait(events, timeout);
 - list/array 반환형 wait API가 있으면 제거하거나 public surface에서 제외한다.
 - `Poller.Wait(..., out int totalReady)`처럼 buffer 기록 개수와 별도의 ready 총수를
   반환하는 API는 표준 public surface에 두지 않는다.
-- `PollEvent`는 struct로 유지하고, wait 중 allocation이 발생하지 않도록 확인한다.
+- `PollEvent`는 struct로 유지하고 wait 중 allocation이 발생하지 않도록 확인한다.
 - `PollEvent`의 hot path 필드는 `SourceKind`, `Slot`, `Revents`, `Fd`로 제한한다.
   `Socket`, `Timer`, object `Tag` 같은 wrapper/object 필드는 표준 event struct에 두지 않는다.
 - framework runtime이 poller를 사용할 때도 이 Span 기반 API만 사용한다.
@@ -230,7 +230,7 @@ n, err := poller.Wait(events, timeout)
   인자로 교체한다.
 - `PollEvent`에는 `SourceKind`, `Slot`, ready event mask, `Fd`만 남긴다. `Socket`,
   `Timer`, `UserData interface{}` 필드는 public event에서 제거한다.
-- `events` slice 길이가 capacity이며, 반환값 `n`만큼만 유효하다는 계약을 테스트한다.
+- `events` slice 길이가 capacity이고 반환값 `n`만큼만 유효하다는 계약을 테스트한다.
 - `nil` 또는 길이 0 slice 입력은 명확한 오류로 처리한다.
 - perf dispatch는 `PollEvent.Slot` 또는 같은 의미의 정수 값을 사용한다.
 
@@ -338,7 +338,7 @@ n = poller.wait(events, timeout_ms)
 - `zlink_poller_wait`의 buffer fill 계약이 테스트로 고정된다.
 - `user_data`가 event에 그대로 돌아오는 회귀 테스트가 있다.
 - `n_events_`가 0 이하일 때의 오류 의미가 명확하다.
-- timer source는 기존 C 계약처럼 별도 event mask 없이 등록되는지 확인하고,
+- timer source는 기존 C 계약처럼 별도 event mask 없이 등록되는지 확인하고
   바인딩 draft에서 같은 의미를 유지한다.
 
 ### Phase 3. 바인딩 public API 반영
@@ -417,7 +417,7 @@ vendored `include/zlink*.h` 파일은 core header 변경이 있을 때만 동기
 - `modify` 후 관심 이벤트가 바뀐다.
 - `remove` 후 event가 나오지 않는다.
 - timeout 시 count가 0이다.
-- buffer capacity보다 많은 ready source가 있을 때 반환값은 capacity를 넘지 않고,
+- buffer capacity보다 많은 ready source가 있을 때 반환값은 capacity를 넘지 않고
   buffer 밖을 쓰지 않는다. 아직 ready 상태인 source는 다음 wait에서 다시 관찰될 수
   있어야 한다.
 - timer source와 socket source를 같은 buffer에서 구분한다.
@@ -540,7 +540,7 @@ vendored `include/zlink*.h` 파일은 core header 변경이 있을 때만 동기
 | Python | pytest, surface tests, perf smoke |
 | Framework | framework tests, sample regression tests |
 
-perf 검증은 smoke-first로 진행한다. timeout/no-result는 통과 근거가 아니며,
+perf 검증은 smoke-first로 진행한다. timeout/no-result는 통과 근거가 아니며
 poller API 변경 후 수치가 좋아져도 C perf와 테스트 의미가 달라졌다면 반영하지 않는다.
 
 ## 7. 진행 상태

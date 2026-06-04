@@ -758,3 +758,47 @@
   - current public Python multi는 아직 full matrix로 갈 수 있는 상태가 아니다.
   - 먼저 `MULTI_STREAM` RESULT 누락과 `MULTI_SPOT` 제어선 누락을 고친 뒤, `MULTI_PUBSUB`,
     `MULTI_SPOT`, `MULTI_SPOT_REQREP`의 current C 대비 미달을 다시 줄인다.
+
+## current Python multi stream native echo 후보 기각
+
+- 대상:
+  - `MULTI_STREAM tcp 64B`
+- 후보:
+  - Python stream perf server의 public `on_packet(...)` callback/queue loop 대신 기존 CPython
+    extension의 `stream_echo_install(...)`/`stream_echo_drain(...)` native echo session을 직접 호출했다.
+- 결과:
+  - `perf_python_multi_linux_20260604_215505_python_multi_stream_native_tcp64_20260604.txt`
+  - status=complete, expected/actual result lines 15/15
+  - median 309,132 ops/s로 current C `perf_c_multi_linux_20260604_213725_python_multi_tcp64_c_recheck_20260604.txt`
+    대비 94.8%였다.
+- 기각:
+  - `PYTHONPATH=src pytest -q tests`에서 `test_optimization_guard.py`가 실패했다.
+  - 이 저장소의 current guard는 perf script가 `stream_echo_install(...)`/`stream_echo_drain(...)`
+    같은 private native active-loop helper를 직접 호출하는 것을 금지한다.
+  - 후보 코드는 되돌렸고, 되돌린 뒤 `PYTHONPATH=src pytest -q tests/test_optimization_guard.py`는
+    통과했다.
+- 추가 확인:
+  - public Python stream server는 `--clients 100`에서는
+    `perf_python_multi_linux_20260604_215350_python_multi_stream_tcp64_clients100_debug_20260604.txt`
+    기준 status=complete지만 1,044 ops/s에 그쳤다.
+  - default stream `--clients 10000`에서는 RESULT 없이 실패하므로, public API-safe stream 개선은
+    별도 설계가 필요하다.
+
+## current Python multi SPOT_SENDSEND tcp64 단독 보강
+
+- 대상:
+  - `MULTI_SPOT_SENDSEND tcp 64B`
+- 배경:
+  - stream native 후보를 되돌린 뒤 전체 tcp/64 smoke
+    `perf_python_multi_linux_20260604_215953_python_multi_tcp64_after_stream_native_20260604.txt`는
+    `MULTI_SPOT_SENDSEND` 첫 run readiness 누락으로 status=partial이었다.
+- 단독 재측정:
+  - `perf_python_multi_linux_20260604_220423_python_multi_spot_sendsend_tcp64_current_recheck_20260604.txt`
+  - status=complete, expected/actual result lines 15/15
+- 결과:
+  - median 84,604 ops/s.
+  - current C `perf_c_multi_linux_20260604_213725_python_multi_tcp64_c_recheck_20260604.txt`의
+    `MULTI_SPOT_SENDSEND tcp 64B` 237,319 ops/s 대비 35.7%다.
+- 판정:
+  - 성능 비율은 node_python SPOT 계열 기준 33%를 넘지만, 전체 smoke에서는 readiness 누락이
+    재현됐으므로 runner 안정성 보강이 아직 필요하다.

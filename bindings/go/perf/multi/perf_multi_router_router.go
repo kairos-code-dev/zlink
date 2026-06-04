@@ -122,7 +122,11 @@ func runMultiRouterRouterEchoWindow(
 			break
 		}
 
-		n, waitErr := poller.Wait(events, -1*time.Millisecond)
+		wait := time.Until(window.StopAt)
+		if wait <= 0 {
+			break
+		}
+		n, waitErr := poller.Wait(events, wait)
 		if waitErr != nil {
 			if perfcommon.IsTransient(waitErr) {
 				continue

@@ -5091,3 +5091,47 @@ Node 측정과 후보 검토 기록이다. 계획 문서 본문에는 최종 상
   - main 문서의 Node single은 `미달 6/144 (4.2%)`에서 `미달 1/144 (0.7%)`로 갱신한다.
   - 남은 single 미달은 `DEALER_ROUTER tcp 131072B` 하나다.
   - HWM 96/192와 number sequence 후보는 성능 개선 근거가 없어 코드에 남기지 않는다.
+
+## Node multi stream echo direct result send 적용
+
+- 대상:
+  - multi `MULTI_STREAM`
+  - `tcp, ws, wss, tls`
+  - `64,256,1024B`
+- 배경:
+  - `MULTI_STREAM`은 Node server와 공용 C stream client 조합이다.
+  - 잔여 small 미달은 server packet handler가 매 echo마다 public send operation builder를 만들고
+    다시 submit하는 비용에 집중된다.
+  - 새 native helper를 노출하지 않고, 이미 runtime binding surface에 있는
+    `socketSendRoutingNoWaitResult`를 perf server 내부에서 직접 사용해 builder 생성만 줄였다.
+- 변경:
+  - `perf/multi/perf_multi_stream_server.ts`의 echo send 경로가 stream public packet handler와
+    packet framing 의미는 유지하되, direct result send로 `DontWait` routed frame을 제출한다.
+  - public `.d.ts`, 공개 stream API, C 기준, HWM/profile은 바꾸지 않았다.
+- 측정:
+  - Node current 재측정:
+    `perf_node_multi_linux_20260604_204406_node_multi_stream_small_current_retry_20260604.txt`
+  - Node 적용 후보:
+    `perf_node_multi_linux_20260604_204847_node_multi_stream_direct_native_send_probe_20260604.txt`
+  - C tcp/ws/wss 기준:
+    `perf_c_multi_linux_20260604_204854_node_multi_stream_small_c_recheck_20260604.txt`
+    (`tls` 3개는 partial이라 판정에서 제외)
+  - C tls 기준:
+    `perf_c_multi_linux_20260604_205009_node_multi_stream_tls_small_c_recheck_retry_20260604.txt`
+  - server IO thread 8 기각 후보:
+    `perf_node_multi_linux_20260604_205312_node_multi_stream_server_io8_probe_20260604.txt`
+- 결과:
+  - `MULTI_STREAM tcp 64B`: Node 87.954 Kops/s, C 291.148 Kops/s, 30.2%로 통과.
+  - `MULTI_STREAM tcp 256B`: 29.7%로 기준에 근접했지만 아직 미달.
+  - `MULTI_STREAM tcp 1024B`: 25.8%로 미달.
+  - `ws`, `wss`, `tls` small은 direct result send 뒤에도 기준에 못 닿았다.
+  - server IO thread 8은 tcp/tls 모두 direct result send 후보보다 낮아 코드에 반영하지 않는다.
+- 검증:
+  - `npm run build`: 통과
+  - `node --test dist-tools/tests/optimization_guard.test.js`: 통과
+  - `git diff -- bindings/node/dist/index.d.ts`: 변경 없음
+- 판정:
+  - `MULTI_STREAM tcp 64B` 1개가 추가 통과해 Node multi 미달은 `13/156 (8.3%)`에서
+    `12/156 (7.7%)`로 줄었다.
+  - 남은 multi 미달은 `MULTI_PUBSUB tcp 65536B`, `MULTI_SPOT_SENDSEND wss 256B`,
+    `MULTI_STREAM` small 잔여 10개다.

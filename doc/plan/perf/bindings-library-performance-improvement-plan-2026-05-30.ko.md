@@ -27,7 +27,7 @@
 | 순서 | 언어 | perf 경로 | Single 상태 | Multi 상태 | 다음 작업 |
 |---|---|---|---|---|---|
 | 1 | C++ | `bindings/cpp/perf` | `미달 없음` | `미달 없음` | Multi는 full+제한 재측정으로 통과. Single 마지막 잔여 `DEALER_ROUTER inproc 131072B`는 active sender가 `message_t::allocate(...)` payload에 직접 metric header를 쓰도록 맞춘 뒤 current C/C++ complete 재측정에서 통과권에 들어왔다. |
-| 2 | .NET | `bindings/dotnet/perf` | `미달 4/144 (2.8%)` | `미달 9/192 (4.7%)` | Single은 routed active recv 정렬로 `ROUTER_ROUTER inproc 262144B`를 통과로 올렸고, active sender가 public `Message.Allocate(...)` payload에 직접 metric header를 쓰도록 바꾼 뒤 `DEALER_ROUTER inproc 131072/262144B`, `ROUTER_ROUTER inproc 131072B`도 통과권에 들어왔다. Multi는 full+4096B 보강+제한 재측정 뒤 잔여 11개를 미달했으나, 2026-06-05 current C/.NET 재측정과 SPOT send/send echo 경로 정렬 뒤 `MULTI_SPOT_SENDSEND tls/wss 64B`가 통과권으로 회복되어 잔여 9개가 남았다. |
+| 2 | .NET | `bindings/dotnet/perf` | `미달 4/144 (2.8%)` | `미달 4/192 (2.1%)` | Single은 routed active recv 정렬로 `ROUTER_ROUTER inproc 262144B`를 통과로 올렸고, active sender가 public `Message.Allocate(...)` payload에 직접 metric header를 쓰도록 바꾼 뒤 `DEALER_ROUTER inproc 131072/262144B`, `ROUTER_ROUTER inproc 131072B`도 통과권에 들어왔다. Multi는 SPOT send/send echo 경로 정렬로 `MULTI_SPOT_SENDSEND tls/wss 64B`를 통과권으로 회복했고, routed echo client가 public `Message.Allocate(...)` payload에 header만 직접 쓰도록 바꾼 뒤 `MULTI_DEALER_ROUTER tcp 65536/131072B`, `MULTI_ROUTER_ROUTER tcp 4096/65536/131072B`도 통과했다. |
 | 3 | Java | `bindings/java/perf` | `미달 없음` | `미달 없음` | Single은 SPOT 대용량 9개를 재검토하고 wrapper 재사용 실험까지 확인한 뒤 미달했다. Multi는 `MULTI_DEALER_DEALER ws 131072B`와 `MULTI_SPOT wss` 5개를 미달했다. |
 | 4 | Node | `bindings/node/perf` | `미달 없음` | `미달 없음` | Single은 routed metric 수신을 native에서 header/latency만 읽는 경로로 줄여 마지막 잔류 `DEALER_ROUTER tcp 131072B`까지 통과권에 올렸다. Multi는 current C/Node 제한 재측정으로 잔류 `MULTI_STREAM ws 64/256/1024B`까지 통과권으로 회복했다. 2026-06-05 current C 재측정에서 `MULTI_SPOT_SENDSEND` small 5칸이 다시 미달로 드러났고, 이후 SPOT send/send의 단일 payload native submit, routed echo 서버의 single-part 경로, SPOT snapshot 메타데이터 축소로 `tcp 64/256B`, `ws 1024B`를 통과권으로 올렸다. 마지막 `wss 64B`, `tls 64B`는 SPOT routed metric 수신을 native에서 header/latency만 읽는 경로로 줄인 뒤 통과권에 들어왔다. |
 | 5 | Go | `bindings/go/perf` | `미달 3/144 (2.1%)` | `미달 9/192 (4.7%)` | Single `DEALER_ROUTER tcp 65536B`와 `ROUTER_ROUTER tcp 131072B`는 current C/Go complete 재측정에서 통과권으로 회복했다. `SPOT wss 256B`는 case별 GOMAXPROCS 8 override 뒤 complete 재측정에서 통과권에 들어왔다. `MULTI_SPOT_REQREP tcp 4096B`는 request message 누수 수정으로 통과했고, 같은 complete 검증에서 `ws 131072B`도 통과로 회복했다. 2026-06-04 current C/Go 제한 재측정에서 `MULTI_ROUTER_ROUTER tcp 256B`도 통과로 회복했다. `MULTI_DEALER_DEALER tcp 4096B`는 Go client/server active poll wait를 deadline으로 제한해 partial에서 complete로 회복했고 통과권에 들어왔다. Go routed multi client active poll wait도 deadline으로 제한해 `MULTI_DEALER_ROUTER tcp/ws 65536B`와 `MULTI_ROUTER_ROUTER tcp 1024/65536B`를 통과권에 올렸다. `MULTI_ROUTER_ROUTER tcp 64B`, `ws 64B`, `tls 64/256/1024B`는 current 제한 재측정 또는 case별 GOMAXPROCS 8 override 뒤 complete 재측정에서 통과권에 들어왔다. |
@@ -48,7 +48,7 @@ p10은 하위 10% 경계값이고 최저 10% 평균은 가장 느린 구간의 �
 | 언어 | 측정 셀 수 | 평균 | 중앙값 | p10 | 최저 10% 평균 | Single 평균 | Multi 평균 |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | C++ | 389 | 119.6% | 99.6% | 91.5% | 87.1% | 136.4% | 101.1% |
-| .NET | 388 | 88.3% | 93.1% | 61.8% | 52.5% | 94.6% | 81.4% |
+| .NET | 388 | 89.2% | 93.4% | 63.4% | 56.4% | 94.6% | 83.2% |
 | Java | 328 | 92.1% | 89.2% | 59.2% | 47.9% | 103.9% | 82.9% |
 | Node | 300 | 60.9% | 41.7% | 28.0% | 23.0% | 70.5% | 52.1% |
 | Go | 335 | 73.8% | 68.2% | 45.0% | 38.2% | 81.8% | 67.7% |
@@ -287,16 +287,19 @@ C 기준 full 파일은 `perf_c_multi_linux_20260530_234108_round_20260530_c_mul
 `perf_dotnet_multi_linux_20260531_102129_round_20260530_dotnet_multi_spot_tls_1024_timeout_recheck.txt`는
 complete였다.
 
-잔류 미달 cell은 9개다. tcp routed large payload는 public .NET wrapper가 routed envelope를
-관리하는 비용이 C hot path보다 크게 드러나는 구간이고 `MULTI_SPOT wss`와
-managed dispatch와 WebSocket 경계 비용이 같이 드러나는 구간이다. public API를 우회하거나 native envelope를 그대로 노출하지 않는 한
-좁게 줄일 수 있는 내부 변경점은 확인되지 않아 코드 변경 없이 문서화한다.
+잔류 미달 cell은 4개다. tcp routed large payload는 routed echo client가 public
+`Message.Allocate(...)` payload에 metric header만 직접 쓰도록 바꿔 payload 사본 생성을
+없앤 뒤 current C `perf_c_multi_linux_20260605_083809_dotnet_multi_routed_tcp_failset_c_current_20260605.txt`와
+.NET `perf_dotnet_multi_linux_20260605_084536_dotnet_multi_routed_tcp_header_only_probe_20260605.txt`
+complete 재측정에서 통과권에 들어왔다. 남은 `MULTI_SPOT wss`는 managed dispatch와 WebSocket
+경계 비용이 같이 드러나는 구간이다. public API를 우회하거나 native envelope를 그대로 노출하지 않는 한
+좁게 줄일 수 있는 내부 변경점은 아직 확인되지 않았다.
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
 | `tcp` | `MULTI_DEALER_DEALER` | `미달(56.9%)` | `통과(68.0%)` | `통과(75.4%)` | `통과(63.4%)` | `통과(106.4%)` | `통과(103.0%)` | tcp routed failset 제한 재측정 기준. C full/.NET full. public send/recv 경로를 유지한 상태에서 추가 내부 후보가 확인되지 않았다. |
-| `tcp` | `MULTI_DEALER_ROUTER` | `통과(65.2%)` | `통과(66.1%)` | `통과(63.6%)` | `통과(56.6%)` | `미달(46.5%)` | `미달(18.0%)` | tcp routed failset 제한 재측정 기준. C full/.NET full. public routed envelope 비용을 우회하지 않는 추가 내부 후보가 확인되지 않았다. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `통과(52.0%)` | `통과(51.1%)` | `통과(52.1%)` | `미달(48.9%)` | `미달(37.9%)` | `미달(16.0%)` | tcp routed failset 제한 재측정 기준. C full/.NET full. public routed envelope 비용을 우회하지 않는 추가 내부 후보가 확인되지 않았다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `통과(65.2%)` | `통과(66.1%)` | `통과(63.6%)` | `통과(70.9%)` | `통과(96.3%)` | `통과(114.1%)` | 4096/65536/131072B는 current C `perf_c_multi_linux_20260605_083809_dotnet_multi_routed_tcp_failset_c_current_20260605.txt`, .NET `perf_dotnet_multi_linux_20260605_084536_dotnet_multi_routed_tcp_header_only_probe_20260605.txt` 기준. routed echo client가 public `Message.Allocate(...)` payload에 metric header만 직접 써서 payload 사본 생성을 없앤 뒤 통과했다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `통과(52.0%)` | `통과(51.1%)` | `통과(52.1%)` | `통과(58.7%)` | `통과(95.8%)` | `통과(134.9%)` | 4096/65536/131072B는 current C `perf_c_multi_linux_20260605_083809_dotnet_multi_routed_tcp_failset_c_current_20260605.txt`, .NET `perf_dotnet_multi_linux_20260605_084536_dotnet_multi_routed_tcp_header_only_probe_20260605.txt` 기준. routed echo client가 public `Message.Allocate(...)` payload에 metric header만 직접 써서 payload 사본 생성을 없앤 뒤 통과했다. |
 | `tcp` | `MULTI_PUBSUB` | `통과(71.2%)` | `통과(80.5%)` | `통과(153.3%)` | `통과(181.7%)` | `통과(71.9%)` | `통과(100.4%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
 | `tcp` | `MULTI_SPOT` | `통과(74.1%)` | `통과(77.1%)` | `통과(67.5%)` | `통과(80.2%)` | `통과(105.2%)` | `통과(102.6%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
 | `tcp` | `MULTI_SPOT_REQREP` | `통과(70.5%)` | `통과(73.8%)` | `통과(80.4%)` | `통과(90.0%)` | `통과(98.8%)` | `통과(109.8%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |

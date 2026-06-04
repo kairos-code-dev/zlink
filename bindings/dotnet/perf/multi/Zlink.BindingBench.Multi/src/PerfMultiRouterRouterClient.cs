@@ -58,8 +58,7 @@ internal static class PerfMultiRouterRouterClient
                 PrintAutoHwmSnapshot(clients[0], "endpoint",
                     options.Transport, size);
 
-            var slots = CreateSlots(activeClients, serverRoutingId, size,
-                options.Transport == "tcp");
+            var slots = CreateSlots(activeClients, serverRoutingId, size);
             (double throughput, double latencyNs, double latencyP95Ns,
                 double latencyP99Ns, long measureCount) result;
             try
@@ -97,15 +96,14 @@ internal static class PerfMultiRouterRouterClient
 
     private static RouterRouterClientSlot[] CreateSlots(
         List<ISocket> activeClients, ReadOnlySpan<byte> serverRoutingId,
-        int msgSize, bool borrowPayload)
+        int msgSize)
     {
         var slots = new RouterRouterClientSlot[activeClients.Count];
         for (int i = 0; i < activeClients.Count; i++)
         {
             var payload = new byte[Math.Max(msgSize, PerfMetricHeaderSize)];
-            Array.Fill(payload, (byte)'a');
             slots[i] = new RouterRouterClientSlot(activeClients[i],
-                RoutingId.From(serverRoutingId), payload, borrowPayload);
+                RoutingId.From(serverRoutingId), payload);
         }
 
         return slots;
@@ -318,9 +316,8 @@ internal static class PerfMultiRouterRouterClient
 
     private static bool TrySend(RouterRouterClientSlot slot)
     {
-        using Message message = slot.BorrowPayload
-            ? Message.From(slot.Payload)
-            : new Message(slot.Payload.AsSpan());
+        using Message message = Message.Allocate(slot.Payload.Length);
+        slot.Payload.AsSpan(0, PerfMetricHeaderSize).CopyTo(message.AsSpan());
         return ((IRouterSocket)slot.Socket).Send(slot.ServerRoutingId)
             .Message(message)
             .Flags(SendFlags.DontWait)
@@ -343,19 +340,17 @@ internal static class PerfMultiRouterRouterClient
     private sealed class RouterRouterClientSlot
     {
         internal RouterRouterClientSlot(ISocket socket, RoutingId serverRoutingId,
-            byte[] payload, bool borrowPayload)
+            byte[] payload)
         {
             Socket = socket;
             ServerRoutingId = serverRoutingId;
             Payload = payload;
-            BorrowPayload = borrowPayload;
             ReusableReceived = Received.Create();
         }
 
         internal ISocket Socket { get; }
         internal RoutingId ServerRoutingId { get; }
         internal byte[] Payload { get; }
-        internal bool BorrowPayload { get; }
         // Caller-provided storage reused across every recv on this slot.
         internal Received ReusableReceived { get; }
         internal bool WaitingForWritable { get; set; }

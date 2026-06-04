@@ -1,38 +1,33 @@
-class TicTacToeBoard {
-  constructor() {
-    this.cells = Array(9).fill('.');
-  }
+const PacketNames = Object.freeze({
+  authenticateReq: 'AuthenticateReq',
+  authenticateRes: 'AuthenticateRes',
+  authenticatePlayerReq: 'AuthenticatePlayerReq',
+  authenticatePlayerRes: 'AuthenticatePlayerRes',
+  createGame: 'CreateGame',
+  createGameHttpReq: 'CreateGameHttpReq',
+  createGameHttpRes: 'CreateGameHttpRes',
+  joinGameReq: 'JoinGameReq',
+  joinGameRes: 'JoinGameRes',
+  placeMarkReq: 'PlaceMarkReq',
+  placeMarkRes: 'PlaceMarkRes',
+  playerJoinedNotify: 'PlayerJoinedNotify',
+  gameStateNotify: 'GameStateNotify'
+});
 
-  place(actorId, mark, cell) {
-    if (this.cells[cell] !== '.') {
-      throw new Error(`Cell ${cell} is already occupied.`);
-    }
-    this.cells[cell] = mark;
-    return this.winnerMark();
-  }
+const SampleNames = Object.freeze({
+  apiChannel: 'tictactoe.api',
+  playChannel: 'tictactoe.play',
+  clientStreamNode: 'client.stream',
+  playerActorType: 'player',
+  playActorNodeRid: 'tictactoe.play.node'
+});
 
-  snapshot() {
-    return this.cells.join('');
-  }
+const SampleTimings = Object.freeze({
+  requestTimeout: 7000
+});
 
-  winnerMark() {
-    const lines = [
-      [0, 1, 2],
-      [3, 4, 5],
-      [6, 7, 8],
-      [0, 3, 6],
-      [1, 4, 7],
-      [2, 5, 8],
-      [0, 4, 8],
-      [2, 4, 6]
-    ];
-    for (const [a, b, c] of lines) {
-      if (this.cells[a] !== '.' && this.cells[a] === this.cells[b] && this.cells[a] === this.cells[c]) {
-        return this.cells[a];
-      }
-    }
-    return undefined;
-  }
+function actorDisplayName(actorId) {
+  return actorId === 'p1' ? 'Player X' : 'Player O';
 }
 
-module.exports = { TicTacToeBoard };
+module.exports = { PacketNames, SampleNames, SampleTimings, actorDisplayName };

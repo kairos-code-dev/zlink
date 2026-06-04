@@ -1,8 +1,9 @@
 # TicTacToe.SessionGateway Sample
 
-stream session gateway 를 통해 actor 가 client 로 bound session push 를 보내는 흐름을
-검증한다. self-check 는 reconnect 뒤 같은 actor binding 을 회복한 뒤 두 actor 가
-deterministic TicTacToe round 를 끝내는 시나리오까지 확인한다.
+Session 서버가 client-facing gateway 가 되고, API 서버와 Play 서버가 각각 인증,
+match 생성, actor binding, round 진행을 담당하는 샘플이다. .NET
+`TicTacToe.SessionGateway` 샘플처럼 actor bound session push 와 reconnect-safe binding
+의미를 Node public framework API 위에서 확인한다.
 
 ## 실행
 
@@ -12,33 +13,33 @@ node framework/languages/node/samples/TicTacToe.SessionGateway/Client/self-check
 
 ## Topology
 
-- `Client/`: Registry, API, Play, Session 서버 process 를 시작하고 Session 서버의
-  실제 TCP route endpoint 로 reconnect scenario request 를 보낸다.
-- `Server/Session/`: `ZLinkStreamBindingRuntime` 으로 actor bound session 을 갱신하고
-  push 를 관찰하는 역할.
-- `Server/Play/`: actor 와 game Spot 을 호스팅하는 역할.
-- `Server/Api/`: match 시작 요청을 받는 역할.
-- `Server/Registry/`: 실제 배포에서는 topology 를 제공한다.
-- `Shared/`: actor 와 round 계약을 공유한다.
-
-이 self-check 는 현재 public framework API 위에서 actor bound session 의미와 reconnect
-token 갱신을 deterministic 하게 검증한다. sample 이 별도 actor-session 저장소를 만들지
-않고 framework runtime 의 binding token guard 를 사용한다. server role 은 별도 process 로
-실행되고, client 는 관찰 가능한 `ready` 이벤트를 받은 뒤 TCP route request 로
-scenario 를 시작한다.
+- `Client/`: 두 route client 를 만든다. 각 client 는 Session 서버에
+  `AuthenticateSessionReq` 를 보낸 뒤 match 생성, 참가, mark 배치를 요청한다.
+- `Server/Session/`: client packet 을 받고 API/Play 서버로 route request 를 보낸다.
+  인증된 actor id 와 session id 를 저장해 이후 request 에 붙인다.
+- `Server/Api/`: `AuthenticateActorReq` 로 actor id 를 확인하고, `CreateMatchReq` 를
+  Play 서버에 전달한다.
+- `Server/Play/`: actor manager, bound session runtime, match room 을 소유한다.
+  `EnsurePlayerActorReq`, `JoinMatchReq`, `PlaceMarkReq`,
+  `SessionGatewayNotificationsReq` 를 처리한다.
+- `Server/Registry/`: 실제 배포 topology 의 registry role 을 보존한다.
+- `Shared/Actors/`: bound session 으로 opponent joined, turn changed, game ended push 를
+  보내는 player actor 를 정의한다.
+- `Shared/Contracts/`: round 규칙과 packet 이름을 공유한다.
 
 ## Success Condition
 
-- 같은 actor id 가 reconnect 뒤에도 같은 actor 인스턴스를 유지한다.
-- 새 binding token 으로 bound session push 가 도착한다.
-- 이전 stale token push 는 새 session 을 지우거나 사용하지 못한다.
-- `p1`, `p2` 두 actor 가 같은 match 에 참가한다.
-- reconnect 된 `p1` 과 `p2` 가 `0,3,1,4,2` 순서로 mark 를 두고 최종 board 는
-  `XXXOO....` 가 된다.
+- `p1`, `p2` 두 actor 가 각각 Session 서버에서 인증되고 Play 서버에 보장된다.
+- `p1` 이 match 를 만들고 `p2` 가 같은 match 에 참가한다.
+- `p1`, `p2` 가 `0,3,1,4,2` 순서로 mark 를 두고 최종 board 는 `XXXOO....` 가 된다.
 - 최종 status 는 `Won` 이고 winner 는 `p1` 이다.
-- opponent joined, turn changed, game ended notification 이 두 actor 의 bound
-  session 으로 전달된다.
+- `OpponentJoinedNotify`, `TurnChangedNotify`, `GameEndedNotify` 가 actor bound session
+  push 로 전달된다.
+- client 는 Server process 의 관찰 가능한 `ready` 이벤트를 받은 뒤 TCP route request 로
+  scenario 를 진행한다.
 
 ## 회귀 테스트
 
-`run_samples.sh` 와 `sample-regression.test.js` 에서 실행 및 import 정책을 확인한다.
+`run_samples.sh` 와 `sample-regression.test.js` 에서 실행, role 분리, API/Session/Play
+handler 구성, packet 이름, bound session push, synthetic `RunSessionGateway` 경로 부재를
+확인한다.

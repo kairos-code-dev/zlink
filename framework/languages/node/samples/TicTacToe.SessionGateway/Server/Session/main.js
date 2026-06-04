@@ -1,77 +1,82 @@
-const framework = require('../../../../packages/framework/dist');
-const { startRouteServer } = require('../../../shared/route-runtime');
-const { SampleBoundSessionRuntime } = require('../../../shared/bound-session-runtime');
-const { SessionPlayerActorFactory } = require('../../Shared/Actors/player-actor');
-const { SessionGatewayRound } = require('../../Shared/Contracts/round');
+const { createRouteClient, startRouteServer } = require('../../../shared/route-runtime');
+const { SampleNames, SampleTimings } = require('../../Shared/Configuration/sample-names');
+const { PacketNames } = require('../../Shared/Contracts/messages');
+const { AuthenticateSessionPacketHandler } = require('./Sessions/Handlers/authenticate-session-packet-handler');
+const { CreateMatchSessionPacketHandler } = require('./Sessions/Handlers/create-match-session-packet-handler');
+const { PlaceMarkSessionPacketHandler } = require('./Sessions/Handlers/place-mark-session-packet-handler');
 
 async function main() {
-  const gateway = createGateway();
+  const apiClient = await createRouteClient({
+    endpoint: process.env.TICTACTOE_SG_SESSION_API_CLIENT_ENDPOINT,
+    routingId: 'session-api-client',
+    peers: [process.env.TICTACTOE_SG_API_ENDPOINT]
+  });
+  const playClient = await createRouteClient({
+    endpoint: process.env.TICTACTOE_SG_SESSION_PLAY_CLIENT_ENDPOINT,
+    routingId: 'session-play-client',
+    peers: [process.env.TICTACTOE_SG_PLAY_ENDPOINT]
+  });
+  const sessions = new Map();
+  const authenticate = new AuthenticateSessionPacketHandler(apiClient, playClient);
+  const createMatch = new CreateMatchSessionPacketHandler(apiClient, playClient);
+  const placeMark = new PlaceMarkSessionPacketHandler(playClient);
+
   await startRouteServer({
     endpoint: process.env.TICTACTOE_SG_SESSION_ENDPOINT,
-    routingId: 'session-server',
-    handlers: [{ packetName: 'RunSessionGateway', handle: () => runScenario(gateway) }]
+    routingId: SampleNames.sessionNode,
+    handlers: [
+      {
+        packetName: PacketNames.authenticateSessionReq,
+        handle: async (request, routeContext) => {
+          const sessionId = sessionKey(routeContext);
+          const result = await authenticate.handle({ ...request, sessionId });
+          sessions.set(sessionId, result.session);
+          return result.response;
+        }
+      },
+      {
+        packetName: PacketNames.createMatchSessionReq,
+        handle: (request, routeContext) => createMatch.handle(request, requireSession(sessions, routeContext))
+      },
+      {
+        packetName: PacketNames.joinMatchReq,
+        handle: (request, routeContext) => playClient.request(
+          SampleNames.playNode,
+          PacketNames.joinMatchReq,
+          { matchId: request.matchId, actorId: requireSession(sessions, routeContext).actorId },
+          SampleTimings.requestTimeout
+        )
+      },
+      {
+        packetName: PacketNames.placeMarkSessionReq,
+        handle: (request, routeContext) => placeMark.handle(request, requireSession(sessions, routeContext))
+      },
+      {
+        packetName: PacketNames.notificationsReq,
+        handle: (request, routeContext) => playClient.request(
+          SampleNames.playNode,
+          PacketNames.notificationsReq,
+          { actorId: requireSession(sessions, routeContext).actorId, afterSeq: request.afterSeq ?? 0 },
+          SampleTimings.requestTimeout
+        )
+      },
+      { packetName: 'Ping', handle: () => ({ role: SampleNames.sessionNode }) }
+    ]
   });
+  await apiClient.stop();
+  await playClient.stop();
 }
 
-function createGateway() {
-  const boundSessions = new SampleBoundSessionRuntime();
-  const manager = new framework.DefaultZLinkActorManager({
-    actorFactories: new Map([['player', SessionPlayerActorFactory]]),
-    boundSessionFactory(actorId) {
-      return boundSessions.createBoundSession(actorId);
-    }
-  });
-  return { boundSessions, manager };
+function requireSession(sessions, routeContext) {
+  const session = sessions.get(sessionKey(routeContext));
+  if (session === undefined) {
+    throw new Error('AuthenticateSessionReq is required before session gateway packets.');
+  }
+  return session;
 }
 
-async function bind(gateway, actorId, sessionId, generation) {
-  const context = gateway.boundSessions.runtime.createSessionContext({
-    sessionId,
-    routingId: `rid-${sessionId}`,
-    async close() {},
-    write() { return true; }
-  });
-  const actor = await context.actors.bind({ nodeRid: 'session-node', actorId, generation: BigInt(generation) });
-  return { actor, context, sessionId };
-}
-
-async function runScenario(gateway) {
-  const firstBinding = await bind(gateway, 'p1', 'session-1', 1);
-  const opponentBinding = await bind(gateway, 'p2', 'session-o', 1);
-  const first = await gateway.manager.getOrCreate('p1', 'player');
-  const opponent = await gateway.manager.getOrCreate('p2', 'player');
-  await first.notifyTurn(0);
-  const secondBinding = await bind(gateway, 'p1', 'session-2', 2);
-  const second = await gateway.manager.getOrCreate('p1', 'player');
-  await second.notifyTurn(1);
-  gateway.boundSessions.unbind(firstBinding);
-  const round = new SessionGatewayRound('match-1', second, opponent);
-  await round.notifyJoined();
-  const moves = [
-    await round.place('p1', 0),
-    await round.place('p2', 3),
-    await round.place('p1', 1),
-    await round.place('p2', 4),
-    await round.place('p1', 2)
-  ];
-  return {
-    sameActor: first === second,
-    finalState: moves.at(-1),
-    moves,
-    delivered: gateway.boundSessions.delivered.map((entry) => ({
-      sessionId: sessionIdForToken(entry.token, firstBinding, secondBinding, opponentBinding),
-      actorId: entry.actorId,
-      packetName: entry.packetName,
-      cell: entry.payload.cell
-    }))
-  };
-}
-
-function sessionIdForToken(token, firstBinding, secondBinding, opponentBinding) {
-  if (token === firstBinding.actor.bindingToken) return firstBinding.sessionId;
-  if (token === secondBinding.actor.bindingToken) return secondBinding.sessionId;
-  if (token === opponentBinding.actor.bindingToken) return opponentBinding.sessionId;
-  return 'unknown';
+function sessionKey(routeContext) {
+  return String(routeContext.sourceNodeRid ?? routeContext.sourcePeerRid ?? 'unknown');
 }
 
 main().catch((error) => {

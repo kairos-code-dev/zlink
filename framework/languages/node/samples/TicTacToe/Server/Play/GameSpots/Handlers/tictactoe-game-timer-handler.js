@@ -1,5 +1,6 @@
 class TicTacToeGameTimerHandler {
-  register() {
+  register(room) {
+    room.timerRegistered = true;
     return { timerRegistered: true };
   }
 }

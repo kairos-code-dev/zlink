@@ -1,11 +1,23 @@
+const { PacketNames, SampleNames, SampleTimings } = require('../../../Shared/Contracts/messages');
+
 class CreateGameHttpHandler {
-  constructor(playClientFactory) {
-    this.playClientFactory = playClientFactory;
+  constructor(playClient) {
+    this.playClient = playClient;
   }
 
   async handle(request) {
-    const client = await this.playClientFactory();
-    return await client.request('CreateGame', request, 5000);
+    const response = await this.playClient
+      .requestToChannel(SampleNames.playChannel, {
+        gameName: request.gameName
+      })
+      .packetName(PacketNames.createGame)
+      .timeout(SampleTimings.requestTimeout)
+      .submit();
+    return {
+      gameId: response.gameId,
+      gameName: response.gameName,
+      playEndpoint: response.playEndpoint
+    };
   }
 }
 

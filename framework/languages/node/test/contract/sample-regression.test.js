@@ -36,23 +36,49 @@ test('node topology samples mirror dotnet role layout', () => {
     StreamingClient: ['Client/self-check.js', 'Server/main.js'],
     TicTacToe: [
       'Client/self-check.js',
+      'Server/Api/Handlers/authenticate-player-handler.js',
       'Server/Api/Handlers/create-game-http-handler.js',
       'Server/Api/main.js',
+      'Server/Play/Actors/play-actor.js',
+      'Server/Play/Actors/play-actor-factory.js',
+      'Server/Play/EntrySpot/play-entry-spot.js',
       'Server/Play/EntrySpot/Handlers/play-actor-join-game-handler.js',
       'Server/Play/GameSpots/Handlers/play-actor-place-mark-handler.js',
+      'Server/Play/GameSpots/Handlers/tictactoe-game-created-handler.js',
       'Server/Play/GameSpots/Handlers/tictactoe-game-join-handler.js',
       'Server/Play/GameSpots/Handlers/tictactoe-game-timer-handler.js',
+      'Server/Play/GameSpots/tictactoe-game.js',
+      'Server/Play/GameSpots/tictactoe-game-models.js',
       'Server/Play/Handlers/create-game-handler.js',
+      'Server/Play/Sessions/play-session.js',
       'Server/Play/main.js',
       'Shared/Contracts/messages.js'
     ],
     'TicTacToe.SessionGateway': [
       'Client/self-check.js',
+      'Server/Api/Handlers/authenticate-actor-handler.js',
+      'Server/Api/Handlers/create-match-handler.js',
       'Server/Api/main.js',
+      'Server/Play/EntrySpot/Handlers/join-match-handler.js',
+      'Server/Play/EntrySpot/Handlers/tictactoe-entry-spot-actor-joined-handler.js',
+      'Server/Play/EntrySpot/Handlers/tictactoe-entry-spot-actor-left-handler.js',
+      'Server/Play/EntrySpot/tictactoe-entry-spot.js',
+      'Server/Play/GameSpots/Handlers/place-mark-handler.js',
+      'Server/Play/GameSpots/Handlers/tictactoe-game-spot-created-handler.js',
+      'Server/Play/GameSpots/tictactoe-match-directory.js',
+      'Server/Play/GameSpots/tictactoe-match-room.js',
+      'Server/Play/Handlers/create-match-room-handler.js',
+      'Server/Play/Handlers/ensure-player-actor-handler.js',
       'Server/Play/main.js',
       'Server/Registry/main.js',
+      'Server/Session/Sessions/Handlers/authenticate-session-packet-handler.js',
+      'Server/Session/Sessions/Handlers/create-match-session-packet-handler.js',
+      'Server/Session/Sessions/Handlers/place-mark-session-packet-handler.js',
+      'Server/Session/Sessions/session-relay-session.js',
       'Server/Session/main.js',
+      'Shared/Configuration/sample-names.js',
       'Shared/Actors/player-actor.js',
+      'Shared/Contracts/messages.js',
       'Shared/Contracts/round.js'
     ],
     Bingo: [
@@ -372,51 +398,120 @@ test('TicTacToe sample covers separated api play roles timer and push notificati
   const client = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Client', 'self-check.js'), 'utf8');
   const api = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Server', 'Api', 'main.js'), 'utf8');
   const play = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Server', 'Play', 'main.js'), 'utf8');
+  const authenticate = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Server', 'Api', 'Handlers', 'authenticate-player-handler.js'), 'utf8');
   const apiHandler = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Server', 'Api', 'Handlers', 'create-game-http-handler.js'), 'utf8');
   const createGame = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Server', 'Play', 'Handlers', 'create-game-handler.js'), 'utf8');
+  const playSession = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Server', 'Play', 'Sessions', 'play-session.js'), 'utf8');
+  const actorFactory = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Server', 'Play', 'Actors', 'play-actor-factory.js'), 'utf8');
+  const entrySpot = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Server', 'Play', 'EntrySpot', 'play-entry-spot.js'), 'utf8');
   const entryJoin = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Server', 'Play', 'EntrySpot', 'Handlers', 'play-actor-join-game-handler.js'), 'utf8');
   const placeMark = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Server', 'Play', 'GameSpots', 'Handlers', 'play-actor-place-mark-handler.js'), 'utf8');
+  const contracts = fs.readFileSync(path.join(samplesRoot, 'TicTacToe', 'Shared', 'Contracts', 'messages.js'), 'utf8');
   const required = [
     [client, '../Server/Api/main.js'],
     [client, '../Server/Play/main.js'],
-    [client, "createChannelClient"],
-    [client, "client.request('RunTicTacToe'"],
-    [client, 'PlayerJoinedNotify'],
-    [client, 'GameStateNotify'],
-    [client, 'timerRegistered'],
-    [api, "channelName: 'api'"],
-    [api, "channelName: 'play'"],
-    [api, "packetName: 'RunTicTacToe'"],
-    [apiHandler, "client.request('CreateGame'"],
-    [play, "channelName: 'play'"],
-    [play, "packetName: 'CreateGame'"],
-    [createGame, 'timerRegistered'],
-    [entryJoin, 'PlayerJoinedNotify'],
-    [placeMark, 'winner']
+    [client, 'createGame(apiHttpEndpoint'],
+    [client, 'zlinkStreamConnectorFactory.create'],
+    [client, 'PacketNames.authenticateReq'],
+    [client, 'PacketNames.joinGameReq'],
+    [client, 'PacketNames.placeMarkReq'],
+    [client, 'PacketNames.playerJoinedNotify'],
+    [client, 'PacketNames.gameStateNotify'],
+    [client, "assert.equal(moves.at(-1).state.board, 'XXXOO....')"],
+    [client, "assert.equal(moves.at(-1).state.winner, 'p1')"],
+    [api, "request.url !== '/games'"],
+    [api, 'PacketNames.authenticatePlayerReq'],
+    [api, 'TICTACTOE_API_HTTP_ENDPOINT'],
+    [apiHandler, 'PacketNames.createGame'],
+    [authenticate, 'accessToken is required'],
+    [play, 'net.createServer'],
+    [play, 'ZlinkStreamFrameCodec.decode'],
+    [play, 'SampleNames.playChannel'],
+    [play, 'PacketNames.createGame'],
+    [play, 'TICTACTOE_PLAY_STREAM_ENDPOINT'],
+    [createGame, 'timerHandler.register(room)'],
+    [playSession, 'PacketNames.authenticateReq'],
+    [playSession, 'PacketNames.joinGameReq'],
+    [playSession, 'PacketNames.placeMarkReq'],
+    [playSession, 'flushAllNotifications'],
+    [actorFactory, 'new PlayActor'],
+    [entrySpot, 'class PlayEntrySpot'],
+    [entryJoin, 'PacketNames.playerJoinedNotify'],
+    [placeMark, 'gameStateNotify'],
+    [contracts, 'authenticatePlayerReq'],
+    [contracts, 'createGameHttpReq'],
+    [contracts, 'placeMarkRes']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
     .map(([, text]) => text);
+  const banned = [
+    [client, 'RunTicTacToe'],
+    [api, 'RunTicTacToe'],
+    [play, 'RunTicTacToe']
+  ].filter(([content, text]) => content.includes(text)).map(([, text]) => text);
 
   assert.deepEqual(missing, []);
+  assert.deepEqual(banned, []);
 });
 
 test('TicTacToe SessionGateway sample covers reconnect two-actor round and bound push', () => {
   const client = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Client', 'self-check.js'), 'utf8');
+  const api = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Api', 'main.js'), 'utf8');
+  const apiAuth = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Api', 'Handlers', 'authenticate-actor-handler.js'), 'utf8');
+  const apiCreate = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Api', 'Handlers', 'create-match-handler.js'), 'utf8');
+  const play = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Play', 'main.js'), 'utf8');
+  const ensureActor = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Play', 'Handlers', 'ensure-player-actor-handler.js'), 'utf8');
+  const createRoom = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Play', 'Handlers', 'create-match-room-handler.js'), 'utf8');
+  const joinMatch = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Play', 'EntrySpot', 'Handlers', 'join-match-handler.js'), 'utf8');
+  const placeMark = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Play', 'GameSpots', 'Handlers', 'place-mark-handler.js'), 'utf8');
   const session = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Session', 'main.js'), 'utf8');
+  const authenticateSession = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Session', 'Sessions', 'Handlers', 'authenticate-session-packet-handler.js'), 'utf8');
+  const createSession = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Session', 'Sessions', 'Handlers', 'create-match-session-packet-handler.js'), 'utf8');
+  const placeSession = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Session', 'Sessions', 'Handlers', 'place-mark-session-packet-handler.js'), 'utf8');
   const round = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Shared', 'Contracts', 'round.js'), 'utf8');
+  const messages = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Shared', 'Contracts', 'messages.js'), 'utf8');
   const actor = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Shared', 'Actors', 'player-actor.js'), 'utf8');
   const readme = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'README.ko.md'), 'utf8');
   const required = [
-    [session, "bind(gateway, 'p2', 'session-o', 1)"],
-    [session, "new SessionGatewayRound('match-1', second, opponent)"],
-    [session, "await round.place('p1', 0)"],
-    [session, "await round.place('p2', 4)"],
-    [client, "assert.equal(result.finalState.board, 'XXXOO....')"],
-    [client, "assert.equal(result.finalState.winnerActorId, 'p1')"],
+    [client, 'PacketNames.authenticateSessionReq'],
+    [client, 'PacketNames.createMatchSessionReq'],
+    [client, 'PacketNames.joinMatchReq'],
+    [client, 'PacketNames.placeMarkSessionReq'],
+    [client, "assert.equal(moves.at(-1).state.board, 'XXXOO....')"],
+    [client, "assert.equal(moves.at(-1).state.winnerActorId, 'p1')"],
     [client, 'pushedByPacket.OpponentJoinedNotify'],
     [client, 'pushedByPacket.TurnChangedNotify'],
     [client, 'pushedByPacket.GameEndedNotify'],
+    [api, 'AuthenticateActorHandler'],
+    [api, 'CreateMatchHandler'],
+    [api, 'TICTACTOE_SG_API_CLIENT_ENDPOINT'],
+    [apiAuth, 'accessToken is required'],
+    [apiCreate, 'PacketNames.createMatchReq'],
+    [play, 'SampleBoundSessionRuntime'],
+    [play, 'DefaultZLinkActorManager'],
+    [play, 'PacketNames.ensurePlayerActorReq'],
+    [play, 'PacketNames.createMatchReq'],
+    [play, 'PacketNames.joinMatchReq'],
+    [play, 'PacketNames.placeMarkReq'],
+    [play, 'PacketNames.notificationsReq'],
+    [ensureActor, 'this.boundSessions.bind'],
+    [createRoom, 'this.matches.create'],
+    [joinMatch, 'this.actorManager.getOrCreate'],
+    [placeMark, 'room.place'],
+    [session, 'AuthenticateSessionPacketHandler'],
+    [session, 'CreateMatchSessionPacketHandler'],
+    [session, 'PlaceMarkSessionPacketHandler'],
+    [session, 'TICTACTOE_SG_SESSION_API_CLIENT_ENDPOINT'],
+    [session, 'TICTACTOE_SG_SESSION_PLAY_CLIENT_ENDPOINT'],
+    [authenticateSession, 'PacketNames.authenticateActorReq'],
+    [authenticateSession, 'PacketNames.ensurePlayerActorReq'],
+    [createSession, 'PacketNames.createMatchReq'],
+    [createSession, 'PacketNames.joinMatchReq'],
+    [placeSession, 'PacketNames.placeMarkReq'],
+    [messages, 'authenticateSessionReq'],
+    [messages, 'createMatchSessionReq'],
+    [messages, 'placeMarkSessionReq'],
     [round, 'class SessionGatewayRound'],
     [actor, 'notifyOpponentJoined'],
     [actor, 'notifyTurnChanged'],
@@ -430,8 +525,14 @@ test('TicTacToe SessionGateway sample covers reconnect two-actor round and bound
   const missing = required
     .filter(([content, text]) => !content.includes(text))
     .map(([, text]) => text);
+  const banned = [
+    [client, 'RunSessionGateway'],
+    [session, 'RunSessionGateway'],
+    [session, 'runScenario']
+  ].filter(([content, text]) => content.includes(text)).map(([, text]) => text);
 
   assert.deepEqual(missing, []);
+  assert.deepEqual(banned, []);
 });
 
 test('Bingo sample covers four-player host start guards timer draws and bound push fanout', () => {

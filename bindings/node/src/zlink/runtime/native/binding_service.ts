@@ -241,6 +241,14 @@ export interface ServiceNativeBinding {
   spotRecvNoWait: (spot: NativeHandle) => NativeTopicMessageRaw | null;
   spotRecvRouted: (spot: NativeHandle, flags: number) => SpotRoutedRaw | null;
   spotRecvRoutedNoWait: (spot: NativeHandle) => SpotRoutedRaw | null;
+  spotRecvRoutedMetricLatency: (
+    spot: NativeHandle,
+    runId: number,
+    msgSize: number,
+    expectedSize: number,
+    activeStartNs: bigint,
+    activeStopNs: bigint
+  ) => number | false | null;
   spotReplyRouter: (
     spot: NativeHandle,
     peerRid: Buffer,

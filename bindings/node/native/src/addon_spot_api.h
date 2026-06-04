@@ -65,6 +65,7 @@ napi_value spot_reply_router(napi_env env, napi_callback_info info);
 napi_value spot_dispatch_event_handler(napi_env env, napi_callback_info info);
 napi_value spot_recv_routed(napi_env env, napi_callback_info info);
 napi_value spot_recv_routed_no_wait(napi_env env, napi_callback_info info);
+napi_value spot_recv_routed_metric_latency(napi_env env, napi_callback_info info);
 napi_value spot_recv_actor_lifecycle(napi_env env, napi_callback_info info);
 napi_value spot_actor_join_recv(napi_env env, napi_callback_info info);
 napi_value spot_actor_join_reply(napi_env env, napi_callback_info info);

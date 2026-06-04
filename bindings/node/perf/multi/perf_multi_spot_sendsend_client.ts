@@ -3,6 +3,7 @@
 'use strict';
 
 const zlink = require('@zlink-systems/zlink');
+const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const {
   createMetricCollector,
   createPayload,
@@ -38,13 +39,10 @@ const {
 } = require('./perf_multi_runtime');
 
 const CONTROL_TOPIC = 'bench';
-const SERVER_NODE_ROUTING_ID = zlink.RoutingId.from(
-  Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii')
-);
-const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.from(
-  Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii')
-);
+const SERVER_NODE_ROUTING_ID_BYTES = Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii');
+const SERVER_SPOT_ROUTING_ID_BYTES = Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii');
 const TRACE = process.env.PERF_MULTI_SPOT_SENDSEND_TRACE === '1';
+const native = requireNative();
 
 function trace(message) {
   if (TRACE) {
@@ -62,10 +60,20 @@ function isTransientSendError(error) {
 
 function sendToServer(slot) {
   try {
-    return slot.spot.sendToSpot(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID)
-      .message(slot.payload)
-      .flags(zlink.SendFlags.DontWait)
-      .submit();
+    const result = native.spotSendToSpotNoWaitResult(
+      slot.spot.nativeHandle(),
+      SERVER_NODE_ROUTING_ID_BYTES,
+      SERVER_SPOT_ROUTING_ID_BYTES,
+      slot.payload
+    );
+    if (result === zlink.SubmitResult.Ok) return true;
+    if (result === zlink.SubmitResult.Backpressured
+        || result === zlink.SubmitResult.NotConnected
+        || result === zlink.SubmitResult.NotFound
+        || result === zlink.SubmitResult.NotAdmitted) {
+      return false;
+    }
+    throw new zlink.SubmitError(result, 0, 'spot sendToSpot failed');
   } catch (error) {
     if (isTransientSendError(error)) {
       return false;
@@ -147,7 +155,6 @@ async function main() {
       slots.push({
         spot,
         payload: createPayload(options.msgSize),
-        received: new zlink.Received(),
         waitingReply: false,
         nextSeq: 1n
       });
@@ -216,24 +223,24 @@ async function main() {
     const drainSlot = (index) => {
       const slot = activeSlots[index];
       let progressed = false;
-      const received = slot.received;
       while (true) {
-        try {
-          if (!slot.spot.recvRouted(received, zlink.RecvFlags.DontWait)) {
-            break;
-          }
-        } catch (error) {
-          if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
-            break;
-          }
-          throw error;
-        }
-        if (!received.routingId || !received.spotRid || received.requestSeq !== 0n
-            || received.parts.length === 0) {
-          continue;
+        const latencyNs = native.spotRecvRoutedMetricLatency(
+          slot.spot.nativeHandle(),
+          runId,
+          options.msgSize,
+          options.msgSize,
+          activeStartNs,
+          activeStopNs
+        );
+        if (latencyNs === null) {
+          break;
         }
         slot.waitingReply = false;
-        collector.recordPayload(received.parts[0].data(), currentEpochNs());
+        if (latencyNs === false) {
+          progressed = true;
+          continue;
+        }
+        collector.recordLatencyNs(latencyNs);
         progressed = true;
       }
       return progressed;
@@ -323,7 +330,6 @@ async function main() {
     closeQuietly(controlSub);
     closeQuietly(controlPub);
     for (const slot of slots) {
-      closeQuietly(slot.received);
       closeQuietly(slot.spot);
     }
     closeQuietly(node);

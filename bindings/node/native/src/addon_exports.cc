@@ -222,6 +222,7 @@ void define_spot_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("spotDispatchEventHandler", spot_dispatch_event_handler),
         ZLINK_METHOD("spotRecvRouted", spot_recv_routed),
         ZLINK_METHOD("spotRecvRoutedNoWait", spot_recv_routed_no_wait),
+        ZLINK_METHOD("spotRecvRoutedMetricLatency", spot_recv_routed_metric_latency),
         ZLINK_METHOD("spotActorJoinRecv", spot_actor_join_recv),
         ZLINK_METHOD("spotRecvActorLifecycle", spot_recv_actor_lifecycle),
         ZLINK_METHOD("spotActorJoinReply", spot_actor_join_reply),

@@ -838,3 +838,45 @@
   - `MULTI_SPOT_SENDSEND tcp 64B`는 isolated complete 근거가 있지만, 전체 smoke 안정성은 아직 부족하다.
   - `MULTI_STREAM tcp 64B`는 private native stream echo helper 없이 public API 경로로 기본 10000 client를
     처리하지 못한다. 다음 후보는 public callback 생명주기와 stream server shutdown crash를 먼저 줄여야 한다.
+
+## current Python multi stream completion wait 보강
+
+- 대상:
+  - `MULTI_STREAM tcp 64B`, 기본 stream client 수 10000.
+- 배경:
+  - shared C `perf_stream_client`는 active window 뒤 기본 500ms만 in-flight reply를 기다린다.
+  - public Python stream server는 callback/queue 경로가 느려 기본 10000 client에서 active 중 보낸
+    reply tail이 500ms 안에 다 돌아오지 않았다.
+  - 직접 debug 실행에서 `connect_ok=10000`, `connect_fail=0`, `timeout_error=7877`,
+    `samples=6141`로 확인했다.
+- 후보:
+  - Python multi runner가 `MULTI_STREAM` external client를 띄울 때 `--completion-wait-ms`를
+    `PERF_MULTI_STREAM_COMPLETION_WAIT_MS`, `PERF_STREAM_COMPLETION_WAIT_MS`, 기본 `10000`
+    순서로 넘기도록 했다.
+  - active duration은 그대로 유지하고, shared client가 active 중 보낸 요청의 reply tail을 기다리는 시간만
+    늘린다.
+- 검증:
+  - `python3 -m compileall -q bindings/python/perf/multi/run_benchmarks.py`: 통과.
+  - `PYTHONPATH=bindings/python/src pytest -q bindings/python/tests/test_optimization_guard.py`: 통과.
+  - `perf_python_multi_linux_20260604_234619_python_multi_stream_tcp64_completion_wait_default_clients_20260604.txt`
+    는 status=complete, expected/actual result lines 5/5.
+  - 기본 10000 client에서 throughput 4,146.5 ops/s, latency mean 728.493ms였다.
+- 추가 확인:
+  - 전체 tcp/64 smoke `perf_python_multi_linux_20260604_235011_python_multi_tcp64_after_stream_completion_wait_20260604.txt`
+    에서 `MULTI_STREAM tcp 64B`는 RESULT를 냈다.
+  - 같은 smoke는 `MULTI_SPOT_REQREP tcp 64B`의 intermittent `ConfigError(code=702, internal_errno=22)`로
+    status=partial이었다.
+  - `MULTI_SPOT_REQREP tcp 64B` 단독 실행
+    `perf_python_multi_linux_20260604_235025_python_multi_spot_reqrep_tcp64_config_error_repro_20260604.txt`
+    는 status=complete였다.
+- 기각 후보:
+  - stream packet callback에서 public `send(...)`를 즉시 시도하는 후보는 `--clients 100`에서도
+    RESULT 0개로 회귀해 제거했다.
+  - callback enqueue 뒤 `threading.Event`로 drain loop를 깨우는 후보는 `--clients 100` 처리량은
+    3,907 ops/s로 올렸지만, 기본 10000 client debug에서 `timeout_error=8419`로 악화되어 제거했다.
+  - stream callback message를 bytes 왕복 대신 native copy로 감싸는 후보는 `--clients 100` 처리량이
+    1,113.5 ops/s에 머물러 개선이 없었고, 기본 10000 client도 partial이라 제거했다.
+- 판정:
+  - `MULTI_STREAM tcp 64B` RESULT 누락은 public API 경로를 유지한 runner completion-wait 보강으로
+    해소했다.
+  - Python multi tcp/64 전체 smoke의 남은 안정성 문제는 SPOT control/cleanup 쪽 intermittent다.

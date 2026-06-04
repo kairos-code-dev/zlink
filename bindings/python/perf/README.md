@@ -84,10 +84,8 @@ runtimes that report `protocol not supported`, are reported as
 `UNSUPPORTED,current,...`; other failures remain `fail`.
 
 The multi runner exposes the same common CLI surface plus `--clients`.
-Python multi defaults server and client context I/O threads to `1`. This keeps
-native callback fan-out from saturating every CPU while Python callbacks are
-serialized by the GIL. Use `--io-threads 4` or `PERF_IO_THREADS=4` only when
-you intentionally need a C-baseline resource diagnostic.
+Python multi defaults server and client context I/O threads to `4`, matching
+the current C multi baseline resource profile.
 
 Patterns:
 
@@ -103,7 +101,11 @@ Patterns:
 Shared component contract:
 
 - `MULTI_STREAM` client uses the shared core `perf_stream_client` path required
-  by the perf policy and execution guide.
+  by the perf policy and execution guide. Python sets
+  `--completion-wait-ms` to `PERF_MULTI_STREAM_COMPLETION_WAIT_MS`, then
+  `PERF_STREAM_COMPLETION_WAIT_MS`, then `10000` so the shared client can wait
+  for the slower public Python stream server's in-flight replies after the
+  active window.
 
 ## Cost Model Rules
 

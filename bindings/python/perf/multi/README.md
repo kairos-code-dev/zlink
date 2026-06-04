@@ -54,11 +54,14 @@ required by the perf policy and execution guide.
   failures remain `fail`
 
 The suite uses the recv path only. Server and client context I/O threads
-default to `1` for Python multi perf. The role processes still exercise the
-same public binding surface, but this avoids creating extra native callback
-threads that contend on the Python GIL and can drive all CPUs to 100% during
-SPOT request/reply runs. Set `--io-threads 4` or `PERF_IO_THREADS=4` for an
-explicit C-baseline resource comparison.
+default to `4` for Python multi perf, matching the current C multi baseline
+resource profile.
+
+`MULTI_STREAM` uses the shared core `perf_stream_client`. Python passes a
+stream completion wait to that client so the slower public Python stream server
+can finish in-flight replies after the active window. Override the default
+`10000` ms with `PERF_MULTI_STREAM_COMPLETION_WAIT_MS` or
+`PERF_STREAM_COMPLETION_WAIT_MS`.
 
 SPOT follows the same service-aware contract as the single-suite benchmark:
 the sender publishes with the explicit `channel_name`, and the receiver drains

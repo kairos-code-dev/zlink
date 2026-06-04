@@ -501,6 +501,12 @@ def _env_pair_value(primary_env, fallback_env, default):
     return os.environ.get(primary_env) or os.environ.get(fallback_env, default)
 
 
+def _stream_completion_wait_ms():
+    return os.environ.get("PERF_MULTI_STREAM_COMPLETION_WAIT_MS") or os.environ.get(
+        "PERF_STREAM_COMPLETION_WAIT_MS", "10000"
+    )
+
+
 def _append_line(lines, line=""):
     print(line, flush=True)
     lines.append(line)
@@ -876,6 +882,8 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 stream_clients,
                 "--io-threads",
                 _effective_role_io_threads(args, "client").split()[0],
+                "--completion-wait-ms",
+                _stream_completion_wait_ms(),
                 "--send-stop-token",
                 "1",
                 "--endpoint",

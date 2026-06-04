@@ -211,3 +211,49 @@ Complete 측정:
   - 이번 보강은 코드 변경 없이 current baseline 반영으로 통과한 셀만 main 문서에 overlay한다.
   - routed large는 public `Received` envelope와 routed receive path 비용이 여전히 지배적이므로,
     다음 후보는 public contract를 훼손하지 않는 범위에서 단일 조합으로 검증한다.
+
+## Rust single PUBSUB 64B와 routed large current 재측정 보강
+
+- 대상:
+  - single `PUBSUB tcp/tls 64B`
+  - single `DEALER_ROUTER`/`ROUTER_ROUTER` `ws/tls 65536/131072/262144B`
+- 배경:
+  - Rust single은 main 문서 기준 `20/144 (13.9%)`로 10% gate를 넘고 있었다.
+  - `PUBSUB tcp/tls 64B`는 기준 바로 아래였고, routed `ws/tls` 대용량은 current C 기준 변동이
+    크므로 complete 재측정으로 회복 여부를 확인했다.
+- 측정:
+  - PUBSUB C runs=7:
+    `perf_c_single_linux_20260604_225608_rust_single_pubsub64_c_current_runs7_20260604.txt`
+    는 status=complete였다.
+  - PUBSUB Rust runs=7:
+    `perf_rust_single_linux_20260604_225653_rust_single_pubsub64_current_runs7_20260604.txt`
+    는 status=complete였다.
+  - PUBSUB `TopicMessage` 재사용 후보:
+    `perf_rust_single_linux_20260604_225803_rust_single_pubsub64_reuse_topicmessage_probe_20260604.txt`
+    는 status=complete였다.
+  - routed large C:
+    `perf_c_single_linux_20260604_225849_rust_single_routed_large_c_current_recheck_20260604.txt`
+    는 status=complete였다.
+  - routed large Rust:
+    `perf_rust_single_linux_20260604_230758_rust_single_routed_tls_ws_large_current_recheck_20260604.txt`
+    는 status=complete였다.
+- 결과:
+  - `PUBSUB tls 64B`: Rust 1,033,101 msg/s, C 1,246,559 msg/s 대비 82.9%로 통과.
+  - `PUBSUB tcp 64B`: Rust 984,526 msg/s, C 1,240,706.5 msg/s 대비 79.4%로 아직 미달.
+  - `TopicMessage` 재사용 후보의 `PUBSUB tcp 64B`는 985,337 msg/s로 79.4%에 머물러 통과를
+    만들지 못했다. 후보 코드는 최종 코드에 남기지 않았다.
+  - `DEALER_ROUTER ws 65536/131072B`: 38.7%/34.2%로 통과.
+  - `DEALER_ROUTER ws 262144B`: 24.6%로 미달.
+  - `DEALER_ROUTER tls 65536/131072B`: 77.5%/73.2%로 통과.
+  - `DEALER_ROUTER tls 262144B`: 64.6%로 미달.
+  - `ROUTER_ROUTER ws 65536/131072B`: 43.2%/36.2%로 통과.
+  - `ROUTER_ROUTER ws 262144B`: 28.5%로 미달.
+  - `ROUTER_ROUTER tls 65536/131072B`: 85.9%/74.4%로 통과.
+  - `ROUTER_ROUTER tls 262144B`: 69.9%로 기준에 근접했지만 아직 미달.
+- 검증:
+  - `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`: 통과.
+  - broad routed large Rust run은 너무 오래 걸려 report 없이 종료했고, 최종 판정에는 사용하지 않았다.
+- 판정:
+  - 이번 보강은 코드 변경 없이 current baseline 반영으로 통과한 셀만 main 문서에 overlay한다.
+  - Rust single 미달은 `20/144 (13.9%)`에서 `11/144 (7.6%)`로 줄어 10% gate 아래로 내려왔다.
+  - 남은 Rust single 미달은 `PUBSUB tcp 64B`, routed `tcp` 대용량 6개, `ws/tls 262144B` 일부다.

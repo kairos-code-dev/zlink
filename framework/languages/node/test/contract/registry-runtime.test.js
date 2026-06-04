@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const net = require('node:net');
 const test = require('node:test');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
@@ -121,13 +122,15 @@ test('registry modules expose runtime query and remote query client providers', 
 
 test('registry modules support NestJS async imports inject and lifecycle', async () => {
   const REGISTRY_CONFIG = Symbol('registry-config');
+  const pubEndpoint = await reserveTcpEndpoint();
+  const routerEndpoint = await reserveTcpEndpoint();
   class ConfigModule {}
   Module({
     providers: [{
       provide: REGISTRY_CONFIG,
       useValue: {
-        pubEndpoint: 'tcp://127.0.0.1:7962',
-        routerEndpoint: 'tcp://127.0.0.1:7963'
+        pubEndpoint,
+        routerEndpoint
       }
     }],
     exports: [REGISTRY_CONFIG]
@@ -203,6 +206,19 @@ test('codec registry builder tracks dotnet named codecs and custom serializers',
 
 function providerTokens(module) {
   return new Set(module.providers.map((provider) => provider.provide));
+}
+
+async function reserveTcpEndpoint() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = server.address();
+  await new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+  return `tcp://127.0.0.1:${port}`;
 }
 
 function fakeRegistryBackend(calls) {

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const net = require('node:net');
 const test = require('node:test');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
@@ -141,6 +142,7 @@ test('ZLinkModule.forRoot boots through the real NestJS DI container and lifecyc
 });
 
 test('ZLinkModule.forRoot discovers annotated request handlers from NestJS providers', async () => {
+  const apiEndpoint = await reserveTcpEndpoint();
   class ProfileHandler {
     async handle(request) {
       return { profileId: request.profileId, source: 'annotation' };
@@ -154,7 +156,7 @@ test('ZLinkModule.forRoot discovers annotated request handlers from NestJS provi
     imports: [nestjs.ZLinkModule.forRoot({
       channels: {
         api: {
-          server: { bind: 'tcp://127.0.0.1:7955' },
+          server: { bind: apiEndpoint },
           handlerGroups: ['api']
         }
       }
@@ -177,6 +179,7 @@ test('ZLinkModule.forRoot discovers annotated request handlers from NestJS provi
 });
 
 test('ZLinkModule.forRoot discovers annotated handlers from custom NestJS provider tokens', async () => {
+  const apiEndpoint = await reserveTcpEndpoint();
   const PROFILE_HANDLER = Symbol('profile-handler');
   class ProfileHandler {
     async handle(request) {
@@ -191,7 +194,7 @@ test('ZLinkModule.forRoot discovers annotated handlers from custom NestJS provid
     imports: [nestjs.ZLinkModule.forRoot({
       channels: {
         api: {
-          server: { bind: 'tcp://127.0.0.1:7958' },
+          server: { bind: apiEndpoint },
           handlerGroups: ['api']
         }
       }
@@ -212,6 +215,7 @@ test('ZLinkModule.forRoot discovers annotated handlers from custom NestJS provid
 });
 
 test('ZLinkModule.forRoot deduplicates useExisting annotated handler aliases', async () => {
+  const apiEndpoint = await reserveTcpEndpoint();
   const PROFILE_HANDLER = Symbol('profile-handler');
   class ProfileHandler {
     async handle(request) {
@@ -226,7 +230,7 @@ test('ZLinkModule.forRoot deduplicates useExisting annotated handler aliases', a
     imports: [nestjs.ZLinkModule.forRoot({
       channels: {
         api: {
-          server: { bind: 'tcp://127.0.0.1:7959' },
+          server: { bind: apiEndpoint },
           handlerGroups: ['api']
         }
       }
@@ -243,6 +247,7 @@ test('ZLinkModule.forRoot deduplicates useExisting annotated handler aliases', a
 });
 
 test('ZLinkModule.forRoot rejects duplicate discovered packet handlers for one channel', async () => {
+  const apiEndpoint = await reserveTcpEndpoint();
   class FirstProfileHandler {
     async handle() {
       return {};
@@ -263,7 +268,7 @@ test('ZLinkModule.forRoot rejects duplicate discovered packet handlers for one c
     imports: [nestjs.ZLinkModule.forRoot({
       channels: {
         api: {
-          server: { bind: 'tcp://127.0.0.1:7960' },
+          server: { bind: apiEndpoint },
           handlerGroups: ['api']
         }
       }
@@ -278,6 +283,7 @@ test('ZLinkModule.forRoot rejects duplicate discovered packet handlers for one c
 });
 
 test('ZLinkModule.forRoot discovers routeMesh send handlers from NestJS annotations', async () => {
+  const routeEndpoint = await reserveTcpEndpoint();
   class NoticeHandler {
     constructor() {
       this.notices = [];
@@ -296,7 +302,7 @@ test('ZLinkModule.forRoot discovers routeMesh send handlers from NestJS annotati
       channels: {
         route: {
           routeMesh: {
-            bind: 'tcp://127.0.0.1:7964',
+            bind: routeEndpoint,
             routingId: 'node-a'
           },
           handlerGroups: ['route-api']
@@ -322,6 +328,7 @@ test('ZLinkModule.forRoot discovers routeMesh send handlers from NestJS annotati
 });
 
 test('ZLinkModule.forRoot discovers fanout publish handlers from NestJS annotations', async () => {
+  const subscriberEndpoint = await reserveTcpEndpoint();
   const PROFILE_EVENTS = Symbol('profile-events');
   class ProfileEventHandler {
     constructor() {
@@ -340,7 +347,7 @@ test('ZLinkModule.forRoot discovers fanout publish handlers from NestJS annotati
     imports: [nestjs.ZLinkModule.forRoot({
       channels: {
         events: {
-          subscriber: { manualConnections: ['tcp://127.0.0.1:7965'] },
+          subscriber: { manualConnections: [subscriberEndpoint] },
           handlerGroups: ['events']
         }
       }
@@ -369,6 +376,7 @@ test('ZLinkModule.forRoot discovers fanout publish handlers from NestJS annotati
 });
 
 test('ZLinkModule.forRoot rejects duplicate discovered publish handlers for one channel', async () => {
+  const subscriberEndpoint = await reserveTcpEndpoint();
   class FirstEventHandler {
     async handle() {}
   }
@@ -385,7 +393,7 @@ test('ZLinkModule.forRoot rejects duplicate discovered publish handlers for one 
     imports: [nestjs.ZLinkModule.forRoot({
       channels: {
         events: {
-          subscriber: { manualConnections: ['tcp://127.0.0.1:7966'] },
+          subscriber: { manualConnections: [subscriberEndpoint] },
           handlerGroups: ['events']
         }
       }
@@ -400,6 +408,7 @@ test('ZLinkModule.forRoot rejects duplicate discovered publish handlers for one 
 });
 
 test('ZLinkModule.forRoot with handler discovery exposes capability providers through NestJS context', async () => {
+  const apiEndpoint = await reserveTcpEndpoint();
   class ActorFactory {
     async create(actorId, context) {
       return { actorId, context };
@@ -426,7 +435,7 @@ test('ZLinkModule.forRoot with handler discovery exposes capability providers th
       spotPublisherClients: ['events'],
       channels: {
         api: {
-          server: { bind: 'tcp://127.0.0.1:7956' },
+          server: { bind: apiEndpoint },
           handlerTypes: [ProfileHandler]
         }
       }
@@ -448,6 +457,7 @@ test('ZLinkModule.forRoot with handler discovery exposes capability providers th
 });
 
 test('ZLinkModule.forRoot with handler discovery returns null for absent optional capability providers', async () => {
+  const apiEndpoint = await reserveTcpEndpoint();
   class ProfileHandler {
     async handle(request) {
       return { profileId: request.profileId };
@@ -460,7 +470,7 @@ test('ZLinkModule.forRoot with handler discovery returns null for absent optiona
     imports: [nestjs.ZLinkModule.forRoot({
       channels: {
         api: {
-          server: { bind: 'tcp://127.0.0.1:7957' },
+          server: { bind: apiEndpoint },
           handlerTypes: [ProfileHandler]
         }
       }
@@ -1000,9 +1010,10 @@ test('ZLinkModule.forRootAsync exposes capability providers through the real Nes
 
 test('ZLinkModule.forRootAsync resolves factory dependencies from imported NestJS modules', async () => {
   const CONFIG = Symbol('config');
+  const apiEndpoint = await reserveTcpEndpoint();
   class ConfigModule {}
   Module({
-    providers: [{ provide: CONFIG, useValue: { channelName: 'api', bind: 'tcp://127.0.0.1:7961' } }],
+    providers: [{ provide: CONFIG, useValue: { channelName: 'api', bind: apiEndpoint } }],
     exports: [CONFIG]
   })(ConfigModule);
 
@@ -1025,7 +1036,7 @@ test('ZLinkModule.forRootAsync resolves factory dependencies from imported NestJ
   const app = await NestFactory.createApplicationContext(AsyncModule, { logger: false, abortOnError: false });
   const registration = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION, { strict: false });
 
-  assert.equal(registration.channels.get('api').server.bind, 'tcp://127.0.0.1:7961');
+  assert.equal(registration.channels.get('api').server.bind, apiEndpoint);
   await app.close();
 });
 
@@ -1698,4 +1709,17 @@ async function resolveModuleProviders(module, requestedTokens) {
 
     throw new Error(`Provider ${String(token)} has no supported value or factory.`);
   }
+}
+
+async function reserveTcpEndpoint() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = server.address();
+  await new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+  return `tcp://127.0.0.1:${port}`;
 }

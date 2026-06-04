@@ -2,6 +2,7 @@
 const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ensureNodeBindingDist } = require('./ensure_node_binding_dist');
 
 const nodeRoot = path.resolve(__dirname, '..');
 const expectedMajor = Number(process.env.ZLINK_EXPECT_NODE_MAJOR ?? '0');
@@ -12,6 +13,7 @@ if (expectedMajor !== 0 && actualMajor !== expectedMajor) {
   process.exit(1);
 }
 
+ensureNodeBindingDist();
 run(process.execPath, [
   path.resolve(nodeRoot, '../../../bindings/node/node_modules/typescript/bin/tsc'),
   '-b',

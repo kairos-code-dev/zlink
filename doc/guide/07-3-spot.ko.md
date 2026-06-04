@@ -183,7 +183,7 @@ weight가 `0`이면 다른 피어가 이 노드를 새 outbound 후보에서 제
 ## 4. 토픽 publish/subscribe
 
 SPOT 토픽 평면은 `service_name + topic_id`를 함께 사용한다.
-현재 공개 함수의 인자 이름은 `service_name`이지만, 실질적으로는 토픽 네임스페이스를
+현재 공개 함수의 인자 이름은 `service_name`이지만 실질적으로는 토픽 네임스페이스를
 구분하는 이름이다.
 
 ### 4.1 publish
@@ -225,8 +225,8 @@ int rc = zlink_spot_subscribe(
 성공하면 소스 라우팅 ID, 토픽 이름, multipart payload(메시지의 실제 데이터 내용)를 함께 받는다.
 
 같은 노드 안에서 여러 `Spot`이 같은 토픽이나 접두사를 구독해도, 원격 피어에는
-노드 단위 집계 구독으로 반영된다. 첫 구독이 생길 때 원격 구독이 등록되고,
-마지막 구독이 사라질 때 해제된다. 애플리케이션은 이 집계를 직접 관리할 필요 없다.
+노드 단위 집계 구독으로 반영된다. 첫 구독이 생길 때 원격 구독이 등록되고
+마지막 구독이 사라질 때 해제된다. 애플리케이션은 이 집계를 직접 관리하지 않아도 된다.
 
 ## 5. 다른 channel 호출
 
@@ -240,7 +240,7 @@ int rc = zlink_spot_subscribe(
 
 **자동 경로**는 Discovery가 `DEALER` 연결을 대신 관리한다. 피어가 Registry에 등록되면
 자동으로 연결이 맺어진다. **수동 경로**는 호출자가 `DEALER` 소켓을 만들고 직접
-`connect()`를 호출해야 한다. 두 방식의 채널 호출 동작은 동일하며, 피어 발견과 연결
+`connect()`를 호출해야 한다. 두 방식의 채널 호출 동작은 동일하며 피어 발견과 연결
 관리 방식만 다르다.
 
 ### 5.1 자동 연결 경로
@@ -269,7 +269,7 @@ zlink_socket_attach_discovery(dealer, orders_discovery);
 zlink_spot_node_attach_channel_dealer(node, orders_discovery, dealer);
 ```
 
-여기서 `SpotNode` 자신이 속한 SPOT 채널은 `"alpha"`이고,
+여기서 `SpotNode` 자신이 속한 SPOT 채널은 `"alpha"`이고
 등록하는 `DEALER`는 `"orders"` 채널을 바라본다.
 같은 이름을 써도 계약 위반은 아니지만, 혼동을 피하려면 다른 이름을
 사용하는 편이 낫다.
@@ -349,7 +349,7 @@ void my_dispatch_handler(
 
 디스패치 우선순위는 `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
 `CHANNEL_REPLY_READABLE` → `TIMER_READABLE` → `ACTOR_JOIN_READABLE` →
-`ACTOR_READABLE` 순이다. 모든 이벤트가 같은 콜백에서 처리되므로,
+`ACTOR_READABLE` 순이다. 모든 이벤트가 같은 콜백에서 처리되므로
 하나의 Spot에서 라우팅 핸들러, 구독 핸들러, 타이머 핸들러, 채널 응답 콜백은
 동일한 실행 문맥에서 순차적으로 실행된다.
 
@@ -470,7 +470,7 @@ int rc = zlink_spot_recv(
 ## 10. Spot에서 라우팅 요청 시작하기
 
 `Spot`은 라우팅 요청과 단방향 직접 전송을 직접 시작할 수 있다.
-기본 경로는 `send_channel()` / `request_channel()`이지만, 특정 피어를 직접
+기본 경로는 `send_channel()` / `request_channel()`이지만 특정 피어를 직접
 지목할 때는 아래 API를 사용한다.
 
 ### 10.1 다른 Spot으로 요청 보내기
@@ -543,7 +543,7 @@ void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_spot_node_attach_pub_ingress(node, pub);
 ```
 
-이 `PUB`는 `SpotNode` 전용 유입 소스(ingress source)로 취급한다. 노드당 하나만 붙일 수 있고,
+이 `PUB`는 `SpotNode` 전용 유입 소스(ingress source)로 취급한다. 노드당 하나만 붙일 수 있고
 연결 후에는 다른 용도로 사용하지 않는 편이 맞다.
 
 ## 13. 상태 확인
@@ -562,15 +562,15 @@ zlink_spot_node_peers(node, NULL, &peer_count);
 `status.disconnected_sub_target_count`와 `status.disconnected_routed_target_count`는
 **ABI 호환 필드**로 항상 `0`을 보고한다. 이 필드들은 이전 API 버전에서 내부 큐가 커지면
 delivery target을 끊던 모델의 잔재다. 현재 SPOT delivery 모델은 큐 증가를 이유로 target을
-끊지 않으므로, 이 카운터는 진단에 사용하지 않는다.
+끊지 않으므로 이 카운터는 진단에 사용하지 않는다.
 
 **HWM 진단**: 입장 허용(admission, 큐 수용 여부 판단)은 `publish_ingress_queue`와
 `routed_send_queue` 큐 한도로 적용된다. `ingress-sub`와 `internal-router`는
 제거되었으며 스냅샷에 나타나지 않는다.
 `zlink_spot_node_internal_sockets()`으로 반환되는 `mesh-pub`,
 `mesh-xsub`, `external-router`의 `snapshot` 필드는 transport 소켓 HWM을 보여준다.
-relay 및 delivery 소켓은 HWM `0`을 보고하며, 이는 정상이다.
-큐 입장 허용 한도는 HWM 프로필 옵션으로 제어하며, 프로필별 메시지 수 기준은
+relay 및 delivery 소켓은 HWM `0`을 보고하며 이는 정상이다.
+큐 입장 허용 한도는 HWM 프로필 옵션으로 제어하며 프로필별 메시지 수 기준은
 BALANCED 256 (기본), COMPACT 64, LOW_LATENCY 128, THROUGHPUT 512다.
 
 SpotNode HWM(High Water Mark, 큐 상한선) 옵션은 입장 허용 경계에만 적용된다 — 토픽 발행 입장 허용과 라우팅 입장 허용이 해당된다. Actor 전용 HWM 옵션은 없다. Actor 처리 적체(backlog)는 디스패치 이벤트, 수신 결과, `zlink_spot_actors()`의 `unread` 카운트로 진단한다.

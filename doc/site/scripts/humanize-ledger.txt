@@ -1,0 +1,21 @@
+# humanize-korean 처리 원장 — 1줄 1문서(정본 경로). goal 실행이 자동 append.
+doc/guide/07-3-spot.ko.md
+doc/guide/bindings/cpp/index.ko.md
+doc/guide/bindings/dotnet/index.ko.md
+doc/guide/bindings/go/index.ko.md
+doc/guide/bindings/java/index.ko.md
+doc/guide/bindings/node/index.ko.md
+doc/guide/bindings/python/index.ko.md
+doc/guide/bindings/rust/index.ko.md
+doc/guide/03-0-socket-patterns.ko.md
+doc/guide/03-1-pair.ko.md
+doc/guide/03-2-pubsub.ko.md
+doc/guide/03-3-dealer.ko.md
+doc/guide/03-4-router.ko.md
+doc/guide/03-5-stream.ko.md
+doc/guide/03-6-proxy.ko.md
+doc/guide/07-0-services.ko.md
+doc/guide/07-1-discovery.ko.md
+doc/guide/07-4-actor.ko.md
+doc/guide/07-4-registry.ko.md
+doc/plan/documentation/tabbed-docs-consolidation-plan.ko.md

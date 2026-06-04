@@ -170,17 +170,19 @@ internal static class PerfDealerRouter
         {
             try
             {
+                int payloadSize = payload.Length;
                 while (true)
                 {
                     long nowTicks = Stopwatch.GetTimestamp();
                     if (nowTicks >= deadlineTicks)
                         break;
-                    StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize,
+                    using Message message = Message.Allocate(payloadSize);
+                    StampMetricHeader(message.AsSpan(), RunId, ActivePhase, msgSize,
                         seq, EpochNsFromTimestamp(nowTicks));
                     seq++;
                     try
                     {
-                        if (PerfSocketIo.Send(sender, payload, SendFlags.None) <= 0)
+                        if (PerfSocketIo.Send(sender, message, SendFlags.None) <= 0)
                             continue;
                     }
                     catch (ZlinkException ex)

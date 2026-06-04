@@ -268,17 +268,19 @@ internal static class PerfRouterRouter
             try
             {
                 ulong seq = 1;
+                int payloadSize = payload.Length;
                 while (true)
                 {
                     long nowTicks = Stopwatch.GetTimestamp();
                     if (nowTicks >= deadlineTicks)
                         break;
-                    StampMetricHeader(payload.AsSpan(), RunId, ActivePhase,
+                    using Message message = Message.Allocate(payloadSize);
+                    StampMetricHeader(message.AsSpan(), RunId, ActivePhase,
                         msgSize, seq, EpochNsFromTimestamp(nowTicks));
                     seq++;
                     try
                     {
-                        if (PerfSocketIo.Send(sender, targetRoutingId, payload,
+                        if (PerfSocketIo.Send(sender, targetRoutingId, message,
                                 SendFlags.None) == 0)
                             continue;
                     }

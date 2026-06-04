@@ -21,6 +21,15 @@ public static class PerfSocketIo
         }
     }
 
+    public static int Send(IMessageSocket socket, Message message,
+        SendFlags flags = SendFlags.None)
+    {
+        int size = message.Size;
+        return socket.Send().Message(message).Flags(flags).Submit()
+            ? size
+            : 0;
+    }
+
     public static int Send(IRoutedMessageSocket socket, string routingId,
         ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)
     {
@@ -44,6 +53,15 @@ public static class PerfSocketIo
             message.Dispose();
             throw;
         }
+    }
+
+    public static int Send(IRoutedMessageSocket socket, RoutingId routingId,
+        Message message, SendFlags flags = SendFlags.None)
+    {
+        int size = message.Size;
+        return socket.Send(routingId).Message(message).Flags(flags).Submit()
+            ? size
+            : 0;
     }
 
     public static int Publish(IPublisherSocket socket, string topic,

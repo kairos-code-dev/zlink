@@ -833,3 +833,38 @@
 - 판정:
   - `MULTI_ROUTER_ROUTER tls 64B`를 통과로 overlay한다.
   - Go multi 미달은 `12/192 (6.3%)`에서 `11/192 (5.7%)`로 줄었다.
+
+## Go multi routed tls256 GOMAXPROCS 보강
+
+- 대상:
+  - `MULTI_ROUTER_ROUTER tls 256B`
+- 배경:
+  - 기존 표에서는 C 대비 37.8%로 routed echo 기준 40%에 못 닿았다.
+  - 같은 패턴의 `tls 64B`와 `tls 1024B`가 case별 GOMAXPROCS 8로 통과했으므로
+    `tls 256B`도 같은 방식으로 complete 재확인했다.
+- 변경:
+  - `bindings/go/perf/run_benchmarks_multi.sh`의 default case override에
+    `MULTI_ROUTER_ROUTER/tls/256=8`을 추가했다.
+  - 기존 `MULTI_DEALER_DEALER/tcp/262144=8`, `MULTI_ROUTER_ROUTER/tcp/64=8`,
+    `MULTI_ROUTER_ROUTER/tls/64=8`, `MULTI_ROUTER_ROUTER/tls/1024=8` override는
+    그대로 유지한다.
+- 측정:
+  - C current 기준:
+    `perf_c_multi_linux_20260605_022317_go_multi_rr_ws64_tls256_c_current_runs7_20260605.txt`
+    는 status=complete였다.
+  - Go `PERF_GO_GOMAXPROCS=8` probe:
+    `perf_go_multi_linux_20260605_022645_go_multi_rr_ws64_tls256_gomax8_probe_20260605.txt`
+    는 status=complete였다.
+  - Go 기본 runner verify:
+    `perf_go_multi_linux_20260605_022849_go_multi_rr_tls256_case_gomax8_verify_20260605.txt`
+    는 status=complete였고, effective options에
+    `MULTI_ROUTER_ROUTER/tls/256=8` case override가 표시됐다.
+- 결과:
+  - `MULTI_ROUTER_ROUTER tls 256B`: Go 141,407.0 ops/s, C 329,233.0 ops/s.
+  - Go/C 비율은 43.0%로 routed echo 기준 40%를 넘는다.
+- 기각/보류 후보:
+  - 같은 probe의 `MULTI_ROUTER_ROUTER ws 64B`는 Go 145,959.0 ops/s,
+    C 365,647.0 ops/s 대비 약 39.9%라 기준선에 못 닿았다.
+- 판정:
+  - `MULTI_ROUTER_ROUTER tls 256B`를 통과로 overlay한다.
+  - Go multi 미달은 `11/192 (5.7%)`에서 `10/192 (5.2%)`로 줄었다.

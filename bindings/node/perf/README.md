@@ -42,6 +42,10 @@ Current alignment notes:
   `PERF_MULTI_STREAM_COMPLETION_WAIT_MS`, then `PERF_STREAM_COMPLETION_WAIT_MS`,
   and otherwise uses `2000` ms so in-flight replies after the active window are
   counted without the instability seen with longer waits.
+- For `MULTI_STREAM` over `ws` and `wss`, the Node runner caps the shared
+  stream client fanout at `1000` by default. Override it with
+  `PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX` or `PERF_STREAM_NON_TCP_CLIENTS_MAX`
+  when a run intentionally needs higher non-TCP concurrency.
 - SPOT benchmarks attach a dedicated ingress `PUB` with
   `attachPubIngress()` before `createSpot()`, then publish with an explicit
   channel name

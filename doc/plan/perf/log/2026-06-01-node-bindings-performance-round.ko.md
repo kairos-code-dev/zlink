@@ -4965,3 +4965,88 @@ Node 측정과 후보 검토 기록이다. 계획 문서 본문에는 최종 상
   - HWM floor 64와 sender native submit은 public contract 변경 없이 잔여 single failset을 줄이므로 유지한다.
   - HWM floor 128은 이득이 작고 tail latency와 queue 폭 비용이 커서 기본값으로 채택하지 않는다.
   - main 문서의 single residual count는 6개 그대로 두되, 해당 6개 셀의 비율과 결과 파일을 갱신한다.
+
+## Node multi 잔여 cluster 재측정과 SPOT large active slot 16 채택
+
+- 대상:
+  - multi `MULTI_PUBSUB`
+  - multi `MULTI_SPOT_REQREP`
+  - multi `MULTI_SPOT_SENDSEND`
+  - multi `MULTI_STREAM`
+- 배경:
+  - Node multi는 문서 기준 `미달 21/156 (13.5%)`로 10% gate를 넘고 있었다.
+  - 잔여 cluster는 같은 multi script 계열이라, Python/Go/Rust에서 확인한 것처럼 active loop와
+    current C baseline 재측정 효과를 먼저 분리해 확인했다.
+  - public API 또는 benchmark-only native helper를 새로 노출하지 않고, perf client 내부 scheduling만
+    바꾸는 후보를 우선했다.
+- 변경:
+  - `perf/multi/perf_multi_spot_reqrep_client.ts`와
+    `perf/multi/perf_multi_spot_sendsend_client.ts`에서 131072B 이상 active slot 기본값을 8에서 16으로
+    올렸다.
+  - `PERF_MULTI_SPOT_REQREP_ACTIVE_SLOTS`, `PERF_MULTI_SPOT_SENDSEND_ACTIVE_SLOTS` env override는
+    보조 실험용으로 남겼다.
+  - 새 공개 API, public contract, C baseline, HWM/profile 기준은 바꾸지 않았다.
+- 검증:
+  - `npm run build`: 통과
+- 측정:
+  - `MULTI_PUBSUB tcp 65536/131072B` Node:
+    `perf_node_multi_linux_20260604_193459_node_multi_pubsub_tcp_large_hwm2000_cli_probe_20260604.txt`
+  - `MULTI_PUBSUB tcp 65536/131072B` C:
+    `perf_c_multi_linux_20260604_193537_node_pubsub_tcp_large_c_recheck_20260604.txt`
+  - `MULTI_PUBSUB ws 256B`, `wss 64B` Node:
+    `perf_node_multi_linux_20260604_193723_node_multi_pubsub_ws256_wss64_recheck_20260604.txt`
+  - `MULTI_PUBSUB ws 256B`, `wss 64B` C:
+    `perf_c_multi_linux_20260604_193731_node_pubsub_ws256_wss64_c_recheck_20260604.txt`
+  - `MULTI_SPOT_REQREP tcp/ws 131072B` Node 기본값 검증:
+    `perf_node_multi_linux_20260604_195337_node_multi_spot_reqrep_active16_default_verify_20260604.txt`
+  - `MULTI_SPOT_REQREP tcp/ws 131072B` C:
+    `perf_c_multi_linux_20260604_193920_node_spot_reqrep_131072_c_recheck_20260604.txt`
+  - `MULTI_SPOT_SENDSEND tcp/wss 256/65536/131072B` Node:
+    `perf_node_multi_linux_20260604_194459_node_multi_spot_sendsend_residual_recheck_20260604.txt`
+  - `MULTI_SPOT_SENDSEND tcp/wss 256/65536/131072B` C:
+    `perf_c_multi_linux_20260604_194510_node_spot_sendsend_residual_c_recheck_20260604.txt`
+  - `MULTI_SPOT_SENDSEND tcp 131072B` Node 기본값 검증:
+    `perf_node_multi_linux_20260604_195408_node_multi_spot_sendsend_active16_default_verify_20260604.txt`
+  - `MULTI_STREAM tcp/ws/wss/tls 64/256/1024B` Node:
+    `perf_node_multi_linux_20260604_195155_node_multi_stream_small_recheck_20260604.txt`
+  - `MULTI_STREAM tcp/ws/wss/tls 64/256/1024B` C:
+    `perf_c_multi_linux_20260604_195416_node_multi_stream_small_c_recheck_20260604.txt`
+- 결과:
+  - `MULTI_PUBSUB tcp 131072B`: 32.5%로 통과.
+  - `MULTI_PUBSUB ws 256B`: 34.0%로 통과.
+  - `MULTI_PUBSUB wss 64B`: 31.7%로 통과.
+  - `MULTI_SPOT_REQREP tcp 131072B`: 48.2%로 통과.
+  - `MULTI_SPOT_REQREP ws 131072B`: 42.9%로 통과.
+  - `MULTI_SPOT_SENDSEND tcp 65536B`: 33.2%로 통과.
+  - `MULTI_SPOT_SENDSEND tcp 131072B`: 41.4%로 통과.
+  - `MULTI_STREAM wss 256B`: 30.5%로 통과.
+- 잔여:
+  - `MULTI_PUBSUB tcp 65536B`는 22.1%로 여전히 미달이다.
+  - `MULTI_SPOT_SENDSEND wss 256B`는 25.1%로 올랐지만 SPOT 기준에는 아직 못 닿는다.
+  - `MULTI_STREAM` small은 `wss 256B`만 통과했고, 나머지 tcp/ws/wss/tls 64/256/1024B 조합은
+    단순/stream 기준 30%에 못 닿는다.
+- 판정:
+  - SPOT large active slot 16은 public contract 변경 없이 두 SPOT large failset을 통과시키므로
+    유지한다.
+  - current C/Node 제한 재측정으로 통과한 셀은 main 문서 표에 반영한다.
+  - Node multi 미달은 `21/156 (13.5%)`에서 `13/156 (8.3%)`로 줄어 10% gate 아래로 내려왔다.
+
+## MULTI_SPOT_SENDSEND wss 256B active slot 16 후보 기각
+
+- 대상:
+  - multi `MULTI_SPOT_SENDSEND`
+  - `wss`
+  - `256B`
+- 배경:
+  - SPOT large에서 active slot 16이 통과를 만들었으므로, 같은 정책을 남은 WSS 256B에도
+    적용할 수 있는지 확인했다.
+  - 이 후보는 env override만 사용한 probe라 최종 코드 기본값은 바꾸지 않았다.
+- 측정:
+  - 명령: `PERF_MULTI_SPOT_SENDSEND_ACTIVE_SLOTS=16 ./perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_SPOT_SENDSEND --transports wss --msg-sizes 256 --duration 1 --runs 3 --results-tag node_multi_spot_sendsend_wss256_active16_probe_20260604`
+  - Node: `perf_node_multi_linux_20260604_200031_node_multi_spot_sendsend_wss256_active16_probe_20260604.txt`
+  - status: complete
+- 결과:
+  - median throughput은 12.670 Kops/s로, 현행 재측정 54.669 Kops/s보다 크게 낮다.
+- 판정:
+  - active slot 16은 131072B 이상 large 구간에만 유지한다.
+  - small WSS 잔여 미달에는 적용하지 않는다.

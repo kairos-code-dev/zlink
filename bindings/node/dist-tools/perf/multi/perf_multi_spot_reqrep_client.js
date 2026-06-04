@@ -19,8 +19,12 @@ function traceValue(label, value) {
     trace(`${label}=${JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? item.toString() : item)}`);
 }
 function activeSpotSlotLimit(totalSlots, msgSize) {
+    const override = Number(process.env.PERF_MULTI_SPOT_REQREP_ACTIVE_SLOTS || 0);
+    if (Number.isFinite(override) && override > 0) {
+        return Math.min(totalSlots, Math.max(1, Math.trunc(override)));
+    }
     if (msgSize >= 131072) {
-        return Math.min(totalSlots, 8);
+        return Math.min(totalSlots, 16);
     }
     if (msgSize >= 65536) {
         return Math.min(totalSlots, 32);

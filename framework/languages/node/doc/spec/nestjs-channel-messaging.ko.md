@@ -71,7 +71,7 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | dotnet builder 호출 | node options 키 |
 | --- | --- |
 | `AddClientServerChannel(name, ch => ...)` | `channels[name] = { server, client, requestHandlers, handlerGroups }` |
-| `AddFanoutChannel(name, ch => ...)` | `channels[name] = { publisher, subscriber }` |
+| `AddFanoutChannel(name, ch => ...)` | `channels[name] = { publisher, subscriber, publishHandlers, handlerGroups }` |
 | `AddDealerMeshChannel(name, ch => ...)` | `channels[name] = { dealerMesh: { bind?, client } }` |
 | `AddRouteMeshChannel(name, ch => ...)` | `channels[name] = { routeMesh: { bind, manualConnections?, requestHandlers, sendHandlers, handlerGroups } }` |
 | `channel.EnableServer(s => s.Bind(...))` | `server: { bind: '...' }` |
@@ -83,7 +83,7 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | `channel.AddHandlerGroup("api")` | `handlerGroups: ['api']` |
 | `channel.AddRequestHandler<H, TReq, TRep>()` | `requestHandlers: [H]` |
 | `channel.AddSendHandler<H, TMsg>()` | `routeMesh.sendHandlers: [H]` |
-| `channel.AddPublishHandler<H, TMsg>()` | 현재 NestJS fanout subscriber registration 에는 아직 없음 |
+| `channel.AddPublishHandler<H, TMsg>()` | `publishHandlers: [H]` 또는 `@ZLinkPublish` + `handlerGroups` |
 | `options.UseDiscovery(...)` | `discovery: { registries: [...] }` |
 | `options.DefaultTimeout = ...` | `defaultTimeoutMs: number` |
 | `options.Codecs.AddProtobuf()` | `codecs: [...]` |
@@ -341,16 +341,16 @@ ZLinkModule.forRoot({
 이 호출이 두 가지 일을 한꺼번에 한다.
 
 1. NestJS DI 컨테이너에 등록된 provider 들을 handler 후보로 본다.
-2. decorator/interface 메타데이터(`reflect-metadata`)로 request / send handler 후보를
-   찾아 둔다. `@ZLinkPublish` metadata 는 contract 에 정의되어 있지만, fanout subscriber
-   handler registration 표면은 아직 정식 구현되지 않았다.
+2. decorator/interface 메타데이터(`reflect-metadata`)로 request / send / publish
+   handler 후보를 찾아 둔다.
 
 여기서 발견된 handler 가 곧장 **모든** channel 에 노출되는 것은 아니다. 실제로 어느
 channel 에서 동작할지는, 별도로 묶어서 알려 주어야 한다.
 현재 handler 노출은 `channels[name].handlerGroups` 가 지정한 group 을 기준으로 한다.
 client-server `server` channel 에서는 `@ZLinkRequest` 가 `requestHandlers` 로
 등록된다. `routeMesh` channel 에서는 `@ZLinkRequest` 가 route request handler 로,
-`@ZLinkSend` 가 route send handler 로 등록된다.
+`@ZLinkSend` 가 route send handler 로 등록된다. fanout `subscriber` channel 에서는
+`@ZLinkPublish` 가 `publishHandlers` 로 등록된다.
 
 #### handler group[^handlergroup]으로 묶기
 
@@ -422,16 +422,12 @@ ZLinkModule.forRoot({
 - handler 코드는 어느 물리 channel 로 매핑될지 신경 쓸 필요가 없다. 그룹 이름만 알면
   된다. 배포 시점에 channel topology 가 바뀌어도, handler 코드는 그대로 유지된다.
 
-fanout publish 수신 handler 는 아직 같은 방식으로 자동 등록되지 않는다. 현재
-`@ZLinkPublish` 는 metadata contract 만 제공하며, subscriber capability 에 연결되는
-정식 registration 표면이 생긴 뒤 `handlerGroups` 와 연결한다.
-
 ```ts
 ZLinkModule.forRoot({
   channels: {
-    'api.route': {
-      routeMesh: { bind: 'tcp://0.0.0.0:7102', routingId: 'api-node' },
-      handlerGroups: ['api.route'],
+    'profile.events': {
+      subscriber: { manualConnections: ['tcp://127.0.0.1:7201'] },
+      handlerGroups: ['profile.events'],
     },
   },
 });
@@ -461,8 +457,8 @@ export class ProfileHandler {
   @ZLinkSend()                             // 메서드 decorator. one-way send handler
   notify(/* ... */): void { /* ... */ }
 
-  // @ZLinkPublish metadata 는 정의되어 있지만 fanout subscriber 자동 등록은
-  // 아직 정식 runtime registration 표면이 없다.
+  @ZLinkPublish()                          // 메서드 decorator. fanout publish handler
+  onProfileChanged(/* ... */): void { /* ... */ }
 }
 ```
 
@@ -627,8 +623,9 @@ export class CacheEventHandlers {
 ```
 
 request-response 와 event 는, 서로 별도 표면으로 보이는 편이 자연스럽다.
-다만 현재 NestJS channel registration 에는 fanout subscriber handler 슬롯이 없으므로
-위 decorator 는 metadata contract 로만 남아 있다.
+fanout subscriber channel 에 `handlerGroups` 나 `handlerTypes` 로 이 handler 를
+노출하면, runtime 은 publish envelope 의 packet name 으로 handler 를 선택하고 topic 은
+`ZLinkPublishContext` 로 전달한다.
 
 ### 4.3 inbound dispatch 시퀀스
 
@@ -820,10 +817,9 @@ export interface ZLinkFanoutClient {
 - 같은 channel 안에서도, topic 으로 fan-out scope 를 좁힐 수 있다.
 - 기본 packet key 는 publish 인자 타입(클래스 생성자) 이름이다. decorator 나 `options`
   로 override 할 수 있다.
-- subscriber 쪽 publish handler dispatch 는 아직 NestJS registration 에 연결되지 않았다.
 - topic 은 publisher 가 어느 fan-out 그룹으로 뿌릴지 결정하는 라우팅 값일 뿐이다.
-  subscriber handler registration 이 추가되면 packet name 과 topic 을 함께 context 로
-  전달한다.
+  subscriber handler 는 packet name 으로 선택되고, topic 은 `ZLinkPublishContext` 로
+  전달된다.
 
 ```ts
 @Controller('profiles')

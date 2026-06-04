@@ -1,4 +1,4 @@
-import type { Context, MonitorEvent } from '@zlink-systems/zlink';
+import type { Context, MonitorEvent, TopicMessage } from '@zlink-systems/zlink';
 import { loadBinding } from '../node-backend-adapter';
 import type {
   ZLinkBackendAdapterFactory,
@@ -8,6 +8,7 @@ import type {
   ZLinkBackendDiscovery,
   ZLinkBackendObject,
   ZLinkBackendPublisherSocket,
+  ZLinkBackendReadablePoller,
   ZLinkBackendRegistry,
   ZLinkBackendRegistryQueryClient,
   ZLinkBackendRouterSocket,
@@ -53,6 +54,10 @@ class ZLinkNodeChannelBackendAdapter implements ZLinkChannelBackendAdapter {
     return new ZLinkNodeBackendContext(zlink.createContext());
   }
 
+  createTopicMessage(): TopicMessage {
+    return new zlink.TopicMessage();
+  }
+
   createDiscovery(
     context: ZLinkBackendContext,
     autoConnectType: number,
@@ -81,6 +86,21 @@ class ZLinkNodeChannelBackendAdapter implements ZLinkChannelBackendAdapter {
 
   createSubscriberSocket(context: ZLinkBackendContext): ZLinkBackendSubscriberSocket {
     return wrapSocket(zlink.createSubSocket(asNodeContext(context))) as unknown as ZLinkBackendSubscriberSocket;
+  }
+
+  createReadablePoller(socket: ZLinkBackendSubscriberSocket): ZLinkBackendReadablePoller {
+    const poller = zlink.createPoller();
+    const events = zlink.createPollEvents(1);
+    poller.add(socket.nativeInstance as never, [zlink.PollEventFlag.PollIn], 0);
+    return {
+      wait(timeoutMs: number): boolean {
+        return poller.wait(events, timeoutMs) > 0 && events.hasEvent(0, zlink.PollEventFlag.PollIn);
+      },
+      dispose(): void {
+        events.close();
+        poller.close();
+      }
+    };
   }
 }
 

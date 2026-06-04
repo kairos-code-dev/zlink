@@ -321,6 +321,84 @@ test('ZLinkModule.forRoot discovers routeMesh send handlers from NestJS annotati
   await app.close();
 });
 
+test('ZLinkModule.forRoot discovers fanout publish handlers from NestJS annotations', async () => {
+  const PROFILE_EVENTS = Symbol('profile-events');
+  class ProfileEventHandler {
+    constructor() {
+      this.events = [];
+    }
+
+    async handle(message, context) {
+      this.events.push({ message, topic: context.topic, packetName: context.packetName });
+    }
+  }
+  framework.ZLinkHandlerGroup('events')(ProfileEventHandler);
+  framework.ZLinkPublish('ProfileChanged')(ProfileEventHandler.prototype, 'handle', descriptor());
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot({
+      channels: {
+        events: {
+          subscriber: { manualConnections: ['tcp://127.0.0.1:7965'] },
+          handlerGroups: ['events']
+        }
+      }
+    })],
+    providers: [{ provide: PROFILE_EVENTS, useClass: ProfileEventHandler }]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const registration = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION);
+  const publishHandlers = registration.channels.get('events').publishHandlers;
+  const profileEvents = app.get(PROFILE_EVENTS, { strict: false });
+
+  assert.equal(publishHandlers.length, 1);
+  assert.equal(publishHandlers[0].packetName, 'ProfileChanged');
+  await publishHandlers[0].handler.handle(
+    Buffer.from(JSON.stringify({ profileId: 'p1' })),
+    { channelName: 'events', packetName: 'ProfileChanged', topic: 'profile.updated' }
+  );
+  assert.deepEqual(profileEvents.events, [{
+    message: { profileId: 'p1' },
+    topic: 'profile.updated',
+    packetName: 'ProfileChanged'
+  }]);
+
+  await app.close();
+});
+
+test('ZLinkModule.forRoot rejects duplicate discovered publish handlers for one channel', async () => {
+  class FirstEventHandler {
+    async handle() {}
+  }
+  class SecondEventHandler {
+    async handle() {}
+  }
+  for (const handlerType of [FirstEventHandler, SecondEventHandler]) {
+    framework.ZLinkHandlerGroup('events')(handlerType);
+    framework.ZLinkPublish('ProfileChanged')(handlerType.prototype, 'handle', descriptor());
+  }
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot({
+      channels: {
+        events: {
+          subscriber: { manualConnections: ['tcp://127.0.0.1:7966'] },
+          handlerGroups: ['events']
+        }
+      }
+    })],
+    providers: [FirstEventHandler, SecondEventHandler]
+  })(HandlerModule);
+
+  await assert.rejects(
+    () => NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false }),
+    /Duplicate discovered handler 'publish:ProfileChanged'/
+  );
+});
+
 test('ZLinkModule.forRoot with handler discovery exposes capability providers through NestJS context', async () => {
   class ActorFactory {
     async create(actorId, context) {

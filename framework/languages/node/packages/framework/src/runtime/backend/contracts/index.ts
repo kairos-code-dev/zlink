@@ -208,6 +208,11 @@ export interface ZLinkBackendSubscriberSocket extends ZLinkBackendConnectableSoc
   subscribe(result: TopicMessage, flags?: ZLinkBackendRecvFlags): boolean;
 }
 
+export interface ZLinkBackendReadablePoller {
+  wait(timeoutMs: number): boolean;
+  dispose(): void;
+}
+
 export interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
   onFramedPacket(handler: (peer: string, header: Message, payload: Message) => void): void;
   send(routingId: RoutingId, payload: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
@@ -347,6 +352,7 @@ export interface ZLinkBackendRegistryQueryClient extends ZLinkBackendObject {
 
 export interface ZLinkChannelBackendAdapter {
   createContext(): ZLinkBackendContext;
+  createTopicMessage(): TopicMessage;
   createDiscovery(
     context: ZLinkBackendContext,
     autoConnectType: number,
@@ -356,6 +362,7 @@ export interface ZLinkChannelBackendAdapter {
   createRouterSocket(context: ZLinkBackendContext): ZLinkBackendRouterSocket;
   createPublisherSocket(context: ZLinkBackendContext): ZLinkBackendPublisherSocket;
   createSubscriberSocket(context: ZLinkBackendContext): ZLinkBackendSubscriberSocket;
+  createReadablePoller(socket: ZLinkBackendConnectableSocket): ZLinkBackendReadablePoller;
 }
 
 export interface ZLinkSpotBackendAdapter {

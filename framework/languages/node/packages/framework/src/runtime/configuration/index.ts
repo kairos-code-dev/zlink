@@ -17,6 +17,7 @@ import type {
   ZLinkEntrySpotOptions,
   ZLinkFanoutChannelBuilder,
   ZLinkFrameworkOptions,
+  ZLinkPublishContext,
   ZLinkRequestContext,
   ZLinkRouteChannelBuilder,
   ZLinkRouteMeshChannelBuilder,
@@ -81,6 +82,7 @@ export interface ZLinkChannelOptions {
   readonly dealerMesh?: ZLinkDealerMeshChannelOptions;
   readonly publisher?: ZLinkPublisherCapabilityOptions;
   readonly routeMesh?: ZLinkRouteMeshChannelOptions;
+  readonly publishHandlers?: readonly ZLinkChannelPublishHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkChannelRequestHandlerRegistration[];
   readonly server?: { readonly bind?: string };
   readonly subscriber?: ZLinkClientCapabilityOptions;
@@ -179,11 +181,20 @@ export interface ZLinkRouteChannelRequestHandlerRegistration {
   readonly handler: ZLinkRouteChannelRequestHandler;
 }
 
+export interface ZLinkChannelPublishHandlerRegistration {
+  readonly packetName: string;
+  readonly handler: ZLinkChannelPublishHandler;
+}
+
 export interface ZLinkChannelRequestHandlerRegistration {
   readonly packetName: string;
   readonly handler: {
     handle(payload: Buffer, context: ZLinkRequestContext): Promise<unknown> | unknown;
   };
+}
+
+export interface ZLinkChannelPublishHandler {
+  handle(payload: Buffer, context: ZLinkPublishContext): Promise<void> | void;
 }
 
 export interface ZLinkRouteChannelSendHandler {
@@ -597,6 +608,7 @@ interface MutableChannelOptions {
   dealerMesh?: MutableDealerMeshChannelOptions;
   publisher?: MutablePublisherCapabilityOptions;
   routeMesh?: MutableRouteMeshChannelOptions;
+  publishHandlers?: ZLinkChannelPublishHandlerRegistration[];
   requestHandlers?: ZLinkChannelRequestHandlerRegistration[];
   server?: { bind?: string };
   subscriber?: MutableClientCapabilityOptions;
@@ -839,6 +851,15 @@ function validateChannelCapabilities(
     if (channel.subscriber !== undefined) {
       requirePeerSource(`channel '${channelName}' subscriber`, channel.subscriber.manualConnections, discoveryConfigured);
     }
+    if ((channel.publishHandlers ?? []).length > 0 && channel.subscriber === undefined) {
+      throw new ZLinkConfigurationException(
+        `Channel '${channelName}' publish handlers require a subscriber capability.`
+      );
+    }
+    validateDuplicatePacketNames(
+      `channel '${channelName}' publish handler`,
+      channel.publishHandlers?.map((handler) => handler.packetName)
+    );
     if (channel.routeMesh !== undefined) {
       requireEndpoint(`channel '${channelName}' route mesh`, channel.routeMesh.bind);
       if ((channel.routeMesh.manualConnections ?? []).some((endpoint) => endpoint.trim().length === 0)) {
@@ -966,6 +987,17 @@ function validateSpotNodeCapability(
 function validateManualConnections(capabilityName: string, manualConnections: readonly string[] | undefined): void {
   if ((manualConnections ?? []).some((endpoint) => endpoint.trim().length === 0)) {
     throw new ZLinkConfigurationException(`${capabilityName} manual connection endpoint must not be empty.`);
+  }
+}
+
+function validateDuplicatePacketNames(label: string, packetNames: readonly string[] | undefined): void {
+  const seen = new Set<string>();
+  for (const packetName of packetNames ?? []) {
+    requireName(label, packetName);
+    if (seen.has(packetName)) {
+      throw new ZLinkConfigurationException(`Duplicate ${label} packet '${packetName}'.`);
+    }
+    seen.add(packetName);
   }
 }
 

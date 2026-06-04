@@ -4,6 +4,7 @@ import type {
   ZLinkHandlerContext,
   ZLinkHandlerFilter,
   ZLinkPublishCall,
+  ZLinkPublishContext,
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
   ZLinkRequestCall,
@@ -30,6 +31,7 @@ import type {
   ZLinkBackendDealerSocket,
   ZLinkBackendPublisherSocket,
   ZLinkBackendRouterSocket,
+  ZLinkBackendSubscriberSocket,
   ZLinkChannelBackendAdapter
 } from '../backend/contracts';
 import type { ZLinkRuntimeTaskRunner } from '../execution';
@@ -181,8 +183,10 @@ export class ZLinkChannelRuntimeManager {
   private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
   private readonly channelRouters = new Map<string, ZLinkBackendRouterSocket>();
   private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
+  private readonly subscribers = new Map<string, ZLinkBackendSubscriberSocket>();
   private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
   private readonly channelReceiveLoops: ZLinkChannelReceiveLoop[] = [];
+  private readonly subscriberReceiveLoops: ZLinkSubscriberReceiveLoop[] = [];
   private readonly routeReceiveLoops: ZLinkRouteReceiveLoop[] = [];
   private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
   private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
@@ -210,6 +214,22 @@ export class ZLinkChannelRuntimeManager {
       const loop = new ZLinkChannelReceiveLoop(router, dispatcher);
       this.channelReceiveLoops.push(loop);
       tasks.push(taskRunner.run(`channel:${channelName}`, (signal) => loop.run(signal)));
+    }
+    for (const [channelName, channel] of this.registration.channels) {
+      if (channel.subscriber === undefined || (channel.publishHandlers ?? []).length === 0) {
+        continue;
+      }
+      if (taskRunner === undefined) {
+        throw new ZLinkConfigurationException(`Fanout channel '${channelName}' publish handler dispatch requires a runtime task runner.`);
+      }
+      const subscriber = this.getOrCreateSubscriber(channelName);
+      const dispatcher = new ZLinkChannelPublishDispatcher({
+        channelName,
+        handlers: new Map(channel.publishHandlers?.map((handler) => [handler.packetName, handler.handler]))
+      });
+      const loop = new ZLinkSubscriberReceiveLoop(this.adapter, subscriber, dispatcher);
+      this.subscriberReceiveLoops.push(loop);
+      tasks.push(taskRunner.run(`subscriber:${channelName}`, (signal) => loop.run(signal)));
     }
     for (const routeChannel of this.registration.routeChannelOptions.values()) {
       if (routeChannel.bind !== undefined) {
@@ -395,17 +415,24 @@ export class ZLinkChannelRuntimeManager {
       ...this.clientDealers.values(),
       ...this.channelRouters.values(),
       ...this.publishers.values(),
+      ...this.subscribers.values(),
       ...this.routeRouters.values()
     ];
     const channelLoops = [...this.channelReceiveLoops];
+    const subscriberLoops = [...this.subscriberReceiveLoops];
     const loops = [...this.routeReceiveLoops];
     this.clientDealers.clear();
     this.channelRouters.clear();
     this.publishers.clear();
+    this.subscribers.clear();
     this.routeRouters.clear();
     this.channelReceiveLoops.length = 0;
+    this.subscriberReceiveLoops.length = 0;
     this.routeReceiveLoops.length = 0;
     for (const loop of channelLoops) {
+      loop.stop();
+    }
+    for (const loop of subscriberLoops) {
       loop.stop();
     }
     for (const loop of loops) {
@@ -483,6 +510,27 @@ export class ZLinkChannelRuntimeManager {
     publisher.bind(channel.publisher.bind);
     this.publishers.set(channelName, publisher);
     return publisher;
+  }
+
+  private getOrCreateSubscriber(channelName: string): ZLinkBackendSubscriberSocket {
+    const existing = this.subscribers.get(channelName);
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const channel = this.registration.channels.get(channelName);
+    if (channel?.subscriber === undefined) {
+      throw new ZLinkConfigurationException(`Channel subscriber '${channelName}' is not registered.`);
+    }
+
+    const subscriber = this.adapter.createSubscriberSocket(this.context);
+    subscriber.setChannelName(channelName);
+    subscriber.setSubscription('');
+    for (const endpoint of channel.subscriber.manualConnections ?? []) {
+      subscriber.connect(endpoint);
+    }
+    this.subscribers.set(channelName, subscriber);
+    return subscriber;
   }
 
   private getOrCreateRouteRouter(routerChannelId: string): ZLinkBackendRouterSocket {
@@ -677,6 +725,90 @@ export class ZLinkChannelReceiveLoop {
 
   stop(): void {
     this.stopped = true;
+  }
+}
+
+export interface ZLinkChannelPublishDispatcherOptions {
+  readonly channelName: string;
+  readonly handlers: ReadonlyMap<string, ZLinkRuntimePublishHandler>;
+  readonly filters?: readonly ZLinkHandlerFilter[];
+}
+
+export interface ZLinkRuntimePublishHandler {
+  handle(payload: Buffer, context: ZLinkPublishContext): Promise<void> | void;
+}
+
+export class ZLinkChannelPublishDispatcher {
+  private readonly filters: readonly ZLinkHandlerFilter[];
+
+  constructor(private readonly options: ZLinkChannelPublishDispatcherOptions) {
+    this.filters = options.filters ?? [];
+  }
+
+  async dispatch(topicMessage: { readonly topic: string; readonly parts: readonly Message[] }): Promise<void> {
+    if (topicMessage.parts.length === 0 || topicMessage.parts[0].data().length === 0) {
+      return;
+    }
+    const envelope = decodeChannelEnvelope(topicMessage.parts);
+    if (envelope.header.kind !== ZLinkChannelMessageKind.Publish) {
+      return;
+    }
+    const packetName = envelope.packetName;
+    if (packetName === undefined) {
+      throw new ZLinkConfigurationException('Fanout publish message is missing packetName.');
+    }
+    const handler = this.options.handlers.get(packetName);
+    if (handler === undefined) {
+      return;
+    }
+
+    const context: ZLinkPublishContext = {
+      channelName: this.options.channelName,
+      packetName,
+      contentType: envelope.header.contentType,
+      topic: envelope.header.topic ?? topicMessage.topic,
+      source: envelope.header.source ?? undefined
+    };
+    await invokeZLinkHandlerFilters(
+      this.filters,
+      { context, handler },
+      () => Promise.resolve(handler.handle(envelope.payload, context))
+    );
+  }
+}
+
+export class ZLinkSubscriberReceiveLoop {
+  private stopped = false;
+
+  constructor(
+    private readonly adapter: ZLinkChannelBackendAdapter,
+    private readonly subscriber: ZLinkBackendSubscriberSocket,
+    private readonly dispatcher: ZLinkChannelPublishDispatcher
+  ) {
+    this.poller = adapter.createReadablePoller(subscriber);
+  }
+
+  private readonly poller: ReturnType<ZLinkChannelBackendAdapter['createReadablePoller']>;
+
+  async run(signal?: AbortSignal): Promise<void> {
+    while (!this.stopped && !signal?.aborted) {
+      if (!this.poller.wait(10)) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        continue;
+      }
+      const topicMessage = this.adapter.createTopicMessage();
+      this.subscriber.subscribe(topicMessage);
+      try {
+        await this.dispatcher.dispatch(topicMessage);
+      } finally {
+        closeMessages(topicMessage.parts as readonly Message[]);
+      }
+    }
+  }
+
+  stop(): void {
+    this.stopped = true;
+    this.poller.dispose();
   }
 }
 

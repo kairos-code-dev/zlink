@@ -301,6 +301,70 @@ test('ZLinkFrameworkRuntimeHost dispatches client-server channel request handler
   }
 });
 
+test('ZLinkFrameworkRuntimeHost dispatches fanout subscriber publish handlers', async () => {
+  const ctx = zlink.createContext();
+  const publisher = zlink.createPubSocket(ctx);
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const topic = 'profile.updated';
+  const calls = [];
+  const publisherMonitor = publisher.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
+  publisher.bind(endpoint);
+  const subscriberRegistration = framework.createFrameworkRegistration({
+    channels: {
+      events: {
+        subscriber: { manualConnections: [endpoint] },
+        publishHandlers: [{
+          packetName: 'ProfileChanged',
+          handler: {
+            handle(payload, context) {
+              calls.push({
+                payload: JSON.parse(payload.toString()),
+                channelName: context.channelName,
+                packetName: context.packetName,
+                topic: context.topic,
+                contentType: context.contentType
+              });
+            }
+          }
+        }]
+      }
+    }
+  });
+  const subscriberRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: subscriberRegistration });
+
+  try {
+    await subscriberRuntime.start();
+    publisherMonitor.recv();
+    publisherMonitor.close();
+
+    submitMultipart(publisher.publish(topic), encodeDotnetEnvelope({
+      kind: 4,
+      channelName: 'events',
+      messageName: 'ProfileChanged',
+      contentType: 'application/json',
+      correlationId: null,
+      deadline: null,
+      topic,
+      errorCode: null,
+      errorMessage: null,
+      source: 'publisher-node'
+    }, { profileId: 'p1' }));
+
+    await waitFor(() => calls.length === 1, 'fanout subscriber publish handler');
+    assert.deepEqual(calls, [{
+      payload: { profileId: 'p1' },
+      channelName: 'events',
+      packetName: 'ProfileChanged',
+      topic,
+      contentType: 'application/json'
+    }]);
+  } finally {
+    await subscriberRuntime.stop();
+    publisher.close();
+    ctx.close();
+  }
+});
+
 test('ZLinkModule route client uses runtime host route transport after bootstrap', async () => {
   const ctx = zlink.createContext();
   const remoteRouter = zlink.createRouterSocket(ctx);

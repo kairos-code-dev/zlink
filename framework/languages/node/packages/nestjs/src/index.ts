@@ -10,6 +10,7 @@ import type {
   ZLinkDecoratorMetadata,
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
+  ZLinkPublishContext,
   ZLinkRequestContext,
   ZLinkRouteSendContext,
   ZLinkRegistryOptions,
@@ -248,6 +249,7 @@ function createDiscoveredOptions(
     const { handlerGroups, handlerTypes, ...baseChannel } = channel;
     const requestHandlers = createDiscoveredRequestHandlers(providerRefs, handlerGroups, handlerTypes, moduleRef);
     const sendHandlers = createDiscoveredSendHandlers(providerRefs, handlerGroups, handlerTypes, moduleRef);
+    const publishHandlers = createDiscoveredPublishHandlers(providerRefs, handlerGroups, handlerTypes, moduleRef);
     const routeMesh = baseChannel.routeMesh === undefined
       ? undefined
       : {
@@ -271,6 +273,10 @@ function createDiscoveredOptions(
     channels[channelName] = {
       ...baseChannel,
       routeMesh,
+      publishHandlers: [
+        ...(baseChannel.publishHandlers ?? []),
+        ...publishHandlers
+      ],
       requestHandlers: channelRequestHandlers
     };
   }
@@ -317,6 +323,24 @@ function createDiscoveredSendHandlers(
     packetName: metadata.packetName ?? ref.handlerType.name,
     handler: {
       async handle(payload: Buffer, context: ZLinkRouteSendContext) {
+        await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
+      }
+    }
+  }));
+}
+
+function createDiscoveredPublishHandlers(
+  providerRefs: readonly DiscoveredNestProvider[],
+  handlerGroups: readonly string[] | undefined,
+  explicitHandlerTypes: readonly Type[] | undefined,
+  moduleRef: ModuleRef
+): NonNullable<ZLinkChannelOptions['publishHandlers']> {
+  const descriptors = createDiscoveredHandlerDescriptors(providerRefs, handlerGroups, explicitHandlerTypes, 'publish');
+
+  return descriptors.map(({ ref, metadata }) => ({
+    packetName: metadata.packetName ?? ref.handlerType.name,
+    handler: {
+      async handle(payload: Buffer, context: ZLinkPublishContext) {
         await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
       }
     }
@@ -416,7 +440,7 @@ async function invokeDiscoveredHandler(
   ref: DiscoveredNestProvider,
   metadata: ZLinkDecoratorMetadata,
   payload: Buffer,
-  context: ZLinkRequestContext | ZLinkRouteSendContext
+  context: ZLinkRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
 ): Promise<unknown> {
   const instance = ref.instance ?? moduleRef.get(ref.token, { strict: false }) as Record<string, unknown>;
   const methodName = metadata.methodName ?? 'handle';

@@ -724,6 +724,19 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void clientServerChannelServerWithRepeatedScannedHandlerGroupIsAccepted() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
+        options.addClientServerChannel("profile", channel -> {
+            channel.enableServer(server -> server.bind("inproc://profile-server"));
+            channel.addHandlerGroup("scanned-secondary");
+        });
+
+        options.validate();
+    }
+
+    @Test
     void dealerMeshClientRequiresPeerAcquisitionPath() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
@@ -808,6 +821,16 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class ScannedRequestHandler implements ZLinkRequestHandler<String, String> {
         @Override
         public CompletionStage<String> handleAsync(String request, ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(request);
+        }
+    }
+
+    @ZLinkHandlerGroup("scanned-primary")
+    @ZLinkHandlerGroup("scanned-secondary")
+    public static final class MultiGroupScannedRequestHandler
+        implements ZLinkRequestHandler<Integer, Integer> {
+        @Override
+        public CompletionStage<Integer> handleAsync(Integer request, ZLinkRequestContext context) {
             return CompletableFuture.completedFuture(request);
         }
     }

@@ -314,11 +314,17 @@ public final class ZLinkHandlerScanner {
     }
 
     private static Set<String> resolveGroups(Class<?> type) {
-        ZLinkHandlerGroup group = type.getAnnotation(ZLinkHandlerGroup.class);
-        if (group == null || group.value().isBlank()) {
+        ZLinkHandlerGroup[] groups = type.getAnnotationsByType(ZLinkHandlerGroup.class);
+        if (groups.length == 0) {
             return Set.of();
         }
-        return Set.of(group.value());
+        Set<String> resolved = new LinkedHashSet<>();
+        for (ZLinkHandlerGroup group : groups) {
+            if (!group.value().isBlank()) {
+                resolved.add(group.value());
+            }
+        }
+        return Set.copyOf(resolved);
     }
 
     @SuppressWarnings("rawtypes")

@@ -1,11 +1,15 @@
 package systems.zlink.framework;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.annotation.Repeatable;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.handlers.ZLinkHandlerGroups;
 import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
@@ -18,6 +22,8 @@ import systems.zlink.framework.handlers.ZLinkStreamPacket;
 final class HandlerContractTest {
     @Test
     void packetAnnotationsUseDocumentedAttributeNames() {
+        assertAnnotationMethods(ZLinkHandlerGroup.class, "value");
+        assertAnnotationMethods(ZLinkHandlerGroups.class, "value");
         assertAnnotationMethods(ZLinkRequest.class, "packetName");
         assertAnnotationMethods(ZLinkSend.class, "packetName");
         assertAnnotationMethods(ZLinkPublish.class, "packetName");
@@ -26,6 +32,13 @@ final class HandlerContractTest {
         assertAnnotationMethods(ZLinkSpotActorSend.class, "packetName");
         assertAnnotationMethods(ZLinkSpotSubscription.class, "spotNodeName", "topic");
         assertAnnotationMethods(ZLinkStreamPacket.class);
+    }
+
+    @Test
+    void handlerGroupAnnotationIsRepeatable() {
+        Repeatable repeatable = ZLinkHandlerGroup.class.getAnnotation(Repeatable.class);
+
+        assertSame(ZLinkHandlerGroups.class, repeatable.value());
     }
 
     @Test

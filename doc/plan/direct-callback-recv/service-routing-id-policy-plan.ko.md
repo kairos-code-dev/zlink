@@ -12,7 +12,7 @@
 핵심 목표:
 
 - 모든 public service-facing handle이 대표 `routing_id`를 갖게 한다.
-- `routing_id`를 monitor와 registry topology에서 공통 식별자로 사용한다.
+- `routing_id`를 monitor와 registry topology에서 공통 식별자로 쓴다.
 - first-use 이후 identity 변경을 금지해 handle identity를 안정화한다.
 
 ## 2. 범위와 비범위
@@ -55,8 +55,8 @@
 
 ### 4.1 기본 정책
 
-- representative socket 생성 시 RID가 없으면 자동 생성한다.
-- 사용자가 override를 지정하면 자동 생성 대신 그 값을 사용한다.
+- representative socket을 생성할 때 RID가 없으면 자동 생성한다.
+- 사용자가 override를 지정하면 자동 생성 대신 그 값을 쓴다.
 - 생성된 RID는 monitor와 registry reporting의 대표 식별자로 재사용한다.
 
 ### 4.2 first-use 정책
@@ -108,7 +108,7 @@ int zlink_discovery_routing_id(void *discovery, zlink_routing_id_t *out);
 ### 5.1 기본 정책
 
 - RID 충돌 책임은 사용자에게 있다.
-- 구현은 충돌을 조용히 무시하면 안 된다.
+- 구현이 충돌을 조용히 무시하면 안 된다.
 - 충돌이 감지되면 반드시 오류를 반환해야 한다.
 
 ### 5.2 registry key 범위
@@ -135,11 +135,11 @@ RID의 의미:
 ```
 
 service-level event든 peer 변화 event든
-event subject의 representative RID는 유지한다.
+event subject의 representative RID는 그대로 유지한다.
 
 ## 7. registry와의 관계
 
-registry topology entry의 대표 식별자도 representative RID를 사용한다.
+registry topology entry의 대표 식별자도 representative RID를 쓴다.
 
 즉 registry는 다음 전제를 따른다.
 
@@ -148,7 +148,7 @@ registry topology entry의 대표 식별자도 representative RID를 사용한�
 - `SpotSub` entry는 `sub rid`
 - `Discovery` entry는 `sub rid`
 
-`instance_id`는 보조 grouping 정보일 수는 있어도
+`instance_id`는 보조 grouping 정보는 될 수 있어도
 1차 identity key는 아니다.
 
 ## 8. 구현 차이와 우선순위
@@ -185,5 +185,5 @@ registry topology entry의 대표 식별자도 representative RID를 사용한�
 
 - `Gateway`, `SpotPub`, `SpotSub`, `Discovery` representative RID 계약이 문서에 고정되어 있다.
 - first-use 이후 RID 변경 금지 규칙이 명시되어 있다.
-- monitor와 registry topology가 같은 RID 의미를 사용한다.
+- monitor와 registry topology가 같은 RID 의미를 쓴다.
 - `receiver`가 public RID subject에서 제거되어 있다.

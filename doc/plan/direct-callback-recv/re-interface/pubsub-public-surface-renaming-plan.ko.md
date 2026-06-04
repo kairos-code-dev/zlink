@@ -76,7 +76,7 @@
 ### 2.5 Migration 결과
 
 - 기존 `spot` / `spot_node` / `XPUB` public 이름은 바로 compatibility wrapper로
-  남기지 않고, 새 family로 일괄 치환하는 방향을 기본으로 한다.
+  남기지 않고 새 family로 일괄 치환하는 방향을 기본으로 한다.
 - 다만 실제 적용 시점에는 guide, 테스트, bench/perf 호출부를 같은 단계에서
   함께 정리해야 한다.
 - public header, implementation, tests, API guide를 새 family 기준으로 함께 갱신했다.
@@ -173,7 +173,7 @@ ZLINK_EXPORT int zlink_subscribe_recv (void *subject_,
 - raw `SUB` / `XSUB`에서 sender identity가 없으면 zeroed `source_rid_out_`
 - `topic_id_out_` / `topic_id_len_out_`는 binary-safe
 - 버퍼가 작으면 `EMSGSIZE`
-- raw `SUB` / `XSUB`의 topic은 wire first-part에서 해석하며,
+- raw `SUB` / `XSUB`의 topic은 wire first-part에서 해석하며
   public payload에는 topic frame을 다시 포함하지 않는다.
 
 ### 3.4 Topic-bearing Subscribe Callback

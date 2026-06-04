@@ -75,7 +75,7 @@ callback-only recv 모델로 의미가 사라진 항목은 삭제한다.
 - public recv queue policy
 - public recv queue full policy
 
-반대로 send path나 transport tuning 의미가 남아 있는 항목은 유지 가능하다.
+반대로 send path나 transport tuning 의미가 남은 항목은 유지한다.
 
 대표 예:
 
@@ -138,9 +138,9 @@ public support 대상이 아니다.
 설명:
 
 - `SNDBUF` / `RCVBUF`는 facade의 논리적 publish direction이 아니라
-  underlying transport socket의 OS buffer tuning을 의미한다.
-- 따라서 `SpotPub`에 `RCVBUF`가 남는 것은 "pub이 recv API를 가진다"는 뜻이 아니라,
-  full-duplex transport layer의 receive buffer 크기를 조정할 수 있다는 의미다.
+  underlying transport socket의 OS buffer tuning을 가리킨다.
+- 따라서 `SpotPub`에 `RCVBUF`가 남는 것은 "pub이 recv API를 가진다"는 뜻이 아니라
+  full-duplex transport layer의 receive buffer 크기를 조정한다는 의미다.
 
 ### 4.3 SpotSub
 
@@ -157,9 +157,9 @@ public support 대상이 아니다.
 설명:
 
 - `SNDBUF` / `RCVBUF`는 facade의 논리적 subscribe direction이 아니라
-  underlying transport socket의 OS buffer tuning을 의미한다.
-- 따라서 `SpotSub`에 `SNDBUF`가 남는 것도 "sub가 publish를 한다"는 뜻이 아니라,
-  full-duplex transport layer의 send buffer 크기를 조정할 수 있다는 의미다.
+  underlying transport socket의 OS buffer tuning을 가리킨다.
+- 따라서 `SpotSub`에 `SNDBUF`가 남는 것도 "sub가 publish를 한다"는 뜻이 아니라
+  full-duplex transport layer의 send buffer 크기를 조정한다는 의미다.
 
 ## 5. 권장 public API 모양
 
@@ -187,7 +187,7 @@ int zlink_spot_sub_set_option(void *sub,
 이유:
 
 - 현재 문제의 핵심은 설정 surface 단순화다.
-- callback-only 전환과 같이 value normalization 정책까지 넓히면 범위가 커진다.
+- callback-only 전환처럼 value normalization 정책까지 넓히면 범위가 커진다.
 
 ## 6. 현재 API 정리 방향
 

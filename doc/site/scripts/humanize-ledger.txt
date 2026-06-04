@@ -75,3 +75,15 @@ doc/plan/direct-callback-recv/claude-spot-shutdown-review-response.ko.md
 doc/plan/direct-callback-recv/codex-spot-shutdown-review.ko.md
 doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md
 doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md
+doc/plan/direct-callback-recv/re-interface/capi-canonical-surface-legacy-removal-plan.ko.md
+doc/plan/direct-callback-recv/re-interface/monitor-public-surface-reinterface-plan.ko.md
+doc/plan/direct-callback-recv/re-interface/msg-only-data-plane-realignment-plan.ko.md
+doc/plan/direct-callback-recv/re-interface/pubsub-public-surface-renaming-plan.ko.md
+doc/plan/direct-callback-recv/re-interface/subscribe-surface-renaming-plan.ko.md
+doc/plan/direct-callback-recv/re-interface/typed-socket-option-plan.ko.md
+doc/plan/direct-callback-recv/receive-revision-3phase-manager-plan.ko.md
+doc/plan/direct-callback-recv/registry-topology-introspection-plan.ko.md
+doc/plan/direct-callback-recv/service-monitor-readiness-plan.ko.md
+doc/plan/direct-callback-recv/service-option-surface-plan.ko.md
+doc/plan/direct-callback-recv/service-routing-id-policy-plan.ko.md
+doc/plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md

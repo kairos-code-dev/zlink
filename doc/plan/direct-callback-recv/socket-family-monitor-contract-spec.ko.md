@@ -15,7 +15,7 @@
 
 ## 2. 배경
 
-최근 readiness 관련 버그는 공통 패턴을 가진다.
+최근 readiness 관련 버그는 공통된 패턴을 보인다.
 
 - raw transport event를 실제 first-delivery gate로 과하게 해석했다.
 - service readiness event가 실제 data-plane readiness보다 앞서 발생했다.
@@ -49,7 +49,7 @@
 
 ### 4.1 모든 public event는 제어 의미가 있어야 한다
 
-public event는 적어도 하나의 명시적인 제어에 써도 되는 의미를 가져야 한다.
+public event는 적어도 하나의 명시적인 제어에 써도 되는 의미가 있어야 한다.
 
 다만 모든 event가 같은 제어에 쓰일 필요는 없다.
 
@@ -74,7 +74,7 @@ public event는 적어도 하나의 명시적인 제어에 써도 되는 의미�
 - raw `CONNECTION_READY`를 `PUB/SUB` 첫 publish gate로 쓰면 안 된다.
 - `PEER_UP`를 `SPOT` publisher first-delivery gate로 쓰면 안 된다.
 
-### 4.3 readiness event는 monotonic한 postcondition을 가져야 한다
+### 4.3 readiness event는 monotonic한 postcondition을 갖춰야 한다
 
 readiness 성격의 public event는 emit 직후 아래 성질을 만족해야 한다.
 
@@ -178,7 +178,7 @@ router가 실제 data plane 제어에 쓸 수 있는 기준은 `CONNECTION_READY
 - router는 `CONNECTION_READY` event의 `routing_id`를 사용해 즉시 첫 reply를
   보낼 수 있어야 한다.
 - router snapshot은 `READY`, `ready_peer_count >= 1`을 보여야 한다.
-- `DISCONNECTED`는 handshake 완료된 peer에 대해 동일한 `routing_id`를
+- `DISCONNECTED`는 handshake가 완료된 peer에는 동일한 `routing_id`를
   유지해야 한다.
 
 #### 회귀 테스트 요구사항
@@ -393,7 +393,7 @@ stream routing 대상 식별과 첫 payload 송수신 가능은 `CONNECTION_READ
 
 이 문서 기준으로 앞으로 monitor event는 다음 규칙을 따른다.
 
-1. public event는 최소 하나의 명시적 제어 의미를 가진다.
+1. public event는 최소 하나의 명시적 제어 의미를 갖는다.
 2. 그 의미는 event 이름과 같은 레벨이어야 한다.
 3. readiness 성격의 event는 emit 직후 추가 sleep/retry 없이 사용할 수 있어야 한다.
 4. raw monitor로 표현할 수 없는 first-delivery readiness는 service overlay event로

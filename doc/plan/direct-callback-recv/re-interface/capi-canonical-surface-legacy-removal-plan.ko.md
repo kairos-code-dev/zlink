@@ -1,7 +1,7 @@
 # zlink.h Current-State Has-More Surface Cleanup Plan
 
 > 상태: 현재 `zlink.h` 공개 상태 기준 상세 계획.
-> 범위: 이미 제거된 과거 pub/sub 이름은 제외하고, 지금도 `zlink.h`에 남아
+> 범위: 이미 제거된 과거 pub/sub 이름은 제외하고 지금도 `zlink.h`에 남아
 > 있는 공개 surface만 기준으로 정리한다.
 > 수정 범위: `core/`만 포함한다. bindings/외부 래퍼는 이번 범위에서 제외한다.
 
@@ -79,9 +79,9 @@
 - `zlink_msg_get()` / `zlink_msg_set()`은 현재 `ZLINK_MORE` 같은 공개
   property 축을 함께 실어 나른다.
 - 다만 `zlink_msg_get()` / `zlink_msg_set()`은 `ZLINK_SHARED` 같은
-  비 has-more 성격의 property 접근에도 쓰이고 있으므로, 최종 제거 전에는
+  비 has-more 성격의 property 접근에도 쓰이고 있어 최종 제거 전에는
   `core/` 내부 사용을 더 좁은 API로 치환하는 선행 정리가 필요하다.
-- canonical public surface는 이미 `parts array`로 shape를 설명하므로,
+- canonical public surface는 이미 `parts array`로 shape를 설명하므로
   공개 설명 관점에서는 중복 축이다.
 
 ### 3.3 구 callback 이름 alias typedef
@@ -117,7 +117,7 @@
 - 따라서 `ZLINK_SNDMORE`는 `현재 zlink.h 공개 제거 대상`이 아니라
   `내부 리팩터링 관련 참고 항목`으로만 다룬다.
 - bindings/외부 래퍼 영향은 이번 문서 범위에 넣지 않는다.
-- 이번 문서는 `core/` 내부 정리와 `core/include/zlink.h` 공개 축소만 다루고,
+- 이번 문서는 `core/` 내부 정리와 `core/include/zlink.h` 공개 축소만 다루고
   bindings 후속 정리는 별도 작업으로 남긴다.
 
 ## 5. 왜 지금도 정리가 필요한가
@@ -129,10 +129,10 @@
 - `zlink_subscription_event_recv`
 
 그런데 공개 헤더에 `RCVMORE`/`MORE`와 `zlink_msg_more/get/set` 축이 남아
-있으면 사용자는 다시 `frame-by-frame recv + has more 조회` 모델을 같이
+있으면 사용자는 `frame-by-frame recv + has more 조회` 모델을 다시
 배워야 한다.
 
-또한 공개 함수 이름은 이미 canonical pub/sub 이름으로 정리됐는데,
+또한 공개 함수 이름은 이미 canonical pub/sub 이름으로 정리됐는데
 typedef alias에만 `spot`/`xpub` 구 naming이 남아 있으면
 공개 surface 설명이 다시 혼합된다.
 
@@ -144,7 +144,7 @@ typedef alias에만 `spot`/`xpub` 구 naming이 남아 있으면
 
 ## 6. 제거를 막는 실제 blocker
 
-공개 헤더 기준 제거 대상은 작지만, 내부 의존은 아직 남아 있다.
+공개 헤더 기준 제거 대상은 작지만 내부 의존은 아직 남아 있다.
 
 ### 6.1 internal recv forwarding이 `RCVMORE`에 의존
 
@@ -201,7 +201,7 @@ multipart 경계를 판단한다.
 
 - 공개 헤더에서 alias typedef를 제거하려면 내부 코드도
   canonical typedef 이름으로 함께 치환해야 한다.
-- 이 작업은 의미 보존 rename에 가깝고, `RCVMORE` 제거보다 범위가 작다.
+- 이 작업은 의미 보존 rename에 가깝고 `RCVMORE` 제거보다 범위가 작다.
 
 ## 7. 영향 범위
 
@@ -386,8 +386,8 @@ multipart 경계를 판단한다.
 - 이미 제거된 구 pub/sub 함수 이름은 이 문서의 현재 제거 대상이 아니다.
 - 현재 `zlink.h` 기준 실질 제거 대상은
   `RCVMORE`/`MORE`/`zlink_msg_more/get/set` 축과 구 callback alias typedef다.
-- 이 중 alias typedef 제거는 먼저 진행 가능하고,
-  has-more surface 제거는 내부 multipart forwarding 정리가 먼저다.
+- 이 중 alias typedef 제거는 먼저 진행 가능하고 has-more surface 제거는
+  내부 multipart forwarding 정리가 먼저다.
 
 즉, 지금 기준 작업의 본질은
 `pub/sub 함수 이름 정리`가 아니라

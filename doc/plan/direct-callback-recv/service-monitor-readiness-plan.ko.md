@@ -9,7 +9,7 @@
 ## 1. 목적
 
 이 문서는 service facade 기준의 monitor/readiness surface를
-callback-only 모델로 정리하기 위한 구현 계획을 정의한다.
+callback-only 모델로 정리하는 구현 계획을 정의한다.
 
 이 문서의 canonical 전제는
 [`direct-callback-recv-rewrite-spec.ko.md`](./direct-callback-recv-rewrite-spec.ko.md)
@@ -18,7 +18,7 @@ callback-only 모델로 정리하기 위한 구현 계획을 정의한다.
 핵심 목표는 다음과 같다.
 
 - 사용자가 raw internal socket을 직접 꺼내지 않고도
-  service의 상태 전이(topology/readiness/registration)를 관찰할 수 있게 한다.
+  service의 상태 전이(topology/readiness/registration)를 관찰하게 한다.
 - data readiness와 state transition을 분리한다.
 - monitor도 data recv와 같은 방향으로 callback-only로 정렬한다.
 
@@ -79,7 +79,7 @@ monitor = state transition callback
 
 ### 3.2 callback-only delivery
 
-monitor event는 open 시점에 callback을 등록하고,
+monitor event는 open 시점에 callback을 등록하고
 이후 라이브러리가 상태 전이 시 callback을 직접 호출하는 방식으로 정렬한다.
 
 공통 규칙:

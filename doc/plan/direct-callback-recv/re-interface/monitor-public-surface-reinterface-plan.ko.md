@@ -13,10 +13,10 @@ public API 관점에서는 다음 문제가 남아 있다.
 - monitor를 여는 함수 이름이 대상마다 제각각이다.
 - event payload는 service 계열에서 이미 상당히 통일돼 있는데,
   호출자가 그 사실을 API shape만 보고 바로 이해하기 어렵다.
-- `spot` / `spot_node` monitor는 `role` 인자를 통해 내부 구조를 알아야만
-  사용할 수 있다.
+- `spot` / `spot_node` monitor는 `role` 인자로 내부 구조를 알아야만
+  쓸 수 있다.
 - `zlink_service_monitor_handler_fn`과 `zlink_service_event_t`는
-  실제 적용 범위에 비해 naming이 좁고, socket monitor와의 관계도 흐리다.
+  실제 적용 범위에 비해 naming이 좁고 socket monitor와의 관계도 흐리다.
 
 즉 현재 표면은 "무슨 대상인지"보다 "어떤 서브시스템 내부 구조를 아는지"를
 사용자에게 더 많이 요구한다.
@@ -544,7 +544,7 @@ typedef struct zlink_service_monitor_event_t
 
 `subject_kind`를 별도 enum으로 두는 대신,
 `subject` 문자열과 detail flag만으로 충분한 범위만 남긴다.
-현재 public API에서 topic/pattern 구분은 이미 문자열 규칙으로 충분히 설명되며,
+현재 public API에서 topic/pattern 구분은 이미 문자열 규칙으로 충분히 설명되고,
 service event가 그 이상 복잡한 subject taxonomy를 드러낼 필요는 없다.
 
 
@@ -658,7 +658,7 @@ typedef struct zlink_monitor_snapshot_t
 
 원칙:
 
-- snapshot은 모든 subject에 대해 하나의 함수로 읽는다.
+- snapshot은 모든 subject를 함수 하나로 읽는다.
 - top-level에서는 `kind`와 `target_kind`만 공통으로 둔다.
 - 실제 수치 필드는 class별 nested snapshot에 둔다.
 - nested snapshot 내부에서도 `detail_flags`로 유효 필드를 판별한다.
@@ -1436,8 +1436,8 @@ ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
 - `zlink_service_monitor_open()`은 target runtime tag로
   discovery/gateway/spot/spot_node를 판별해야 한다.
 - `zlink_socket_monitor_handler()` /
-  `zlink_service_monitor_handler()`는 한 번만 성공해야 하며,
-  성공 이후 recv는 `EBUSY`여야 한다.
+  `zlink_service_monitor_handler()`는 한 번만 성공해야 하고
+  그 뒤 recv는 `EBUSY`여야 한다.
 - `zlink_socket_monitor_recv()` /
   `zlink_service_monitor_recv()`는 monitor stream decode thin wrapper여야 한다.
 - `zlink_monitor_snapshot()`은 현재 monitor handle 기반 provider lookup 구조를
@@ -1497,8 +1497,8 @@ ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
   공통 monitor state registry에 연결된다.
 - `spot_node`는 현재 별도 open 함수로 노출되지만,
   새 surface에서는 같은 service monitor family로 흡수 가능하다.
-- `ignore handler`는 callback 없는 recv/direct poll 수요를 우회하기 위한
-  legacy 장치이며, 새 설계에서는 제거 대상이다.
+- `ignore handler`는 callback 없는 recv/direct poll 수요를 우회하려는
+  legacy 장치이고 새 설계에서는 제거 대상이다.
 
 즉 1차 구현의 본질은 새 엔진을 만드는 작업이 아니라
 기존 monitor stream + registry + snapshot 구조를

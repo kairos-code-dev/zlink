@@ -5,7 +5,7 @@
 > [`pubsub-public-surface-renaming-plan.ko.md`](./pubsub-public-surface-renaming-plan.ko.md)에서
 > 확정한 subscribe 관련 naming을 후속 재편한다.
 > 범위: `core/include/zlink.h` public C API 이름 변경을 다룬다.
-> 내부 구현 구조 변경은 이 문서 범위가 아니다. 다만 public option 상수 제거에
+> 내부 구현 구조 변경은 이 문서 범위가 아니다. 다만 public option 상수를 제거하는 데
 > 필수적인 내부 상수 치환은 포함한다.
 > 수정 범위: `core/`만 포함한다. bindings/외부 래퍼는 이번 범위에서 제외한다.
 
@@ -20,9 +20,9 @@
 - 실제 구독 데이터 수신은 `zlink_subscribe_recv()`인데,
   "recv 하는 게 subscribe다"라는 semantic을 `_recv` suffix로만 구분한다.
 - `zlink_subscription_event_recv()`는 이름이 길고,
-  `_recv` suffix가 general transport `zlink_recv`와 혼동을 유발한다.
+  `_recv` suffix가 general transport `zlink_recv`와 혼동을 부른다.
 - 구독 필터 설정 경로가 `zlink_subscribe()` 전용 함수와
-  `zlink_setsockopt(ZLINK_SUBSCRIBE, ...)` 두 갈래로 공존하여
+  `zlink_setsockopt(ZLINK_SUBSCRIBE, ...)` 두 갈래로 공존해서
   사용자가 어떤 것이 canonical인지 알기 어렵다.
 
 이 문서는 subscribe 관련 public C API 이름을 역할 기반으로 재편하고,
@@ -107,22 +107,22 @@ XPUB subscription event (direct / callback):
 
 ### 3.4 내부 구현 대응
 
-`ZLINK_SUBSCRIBE`/`ZLINK_UNSUBSCRIBE` 옵션 상수를 public header에서 제거하면,
+`ZLINK_SUBSCRIBE`/`ZLINK_UNSUBSCRIBE` 옵션 상수를 public header에서 제거하면
 내부 구현(`sub.cpp`, `xpub.cpp`, `spot_sub.cpp`)에서 이 상수를
-참조하는 부분은 내부 전용 상수로 치환해야 한다.
+참조하는 부분을 내부 전용 상수로 치환해야 한다.
 
 참고: `xsub.cpp`는 `ZLINK_SUBSCRIBE`/`ZLINK_UNSUBSCRIBE`를 코드에서
 참조하지 않는다 (주석만 존재). `xsub.cpp`의 `xsetsockopt`는
 `ZLINK_ONLY_FIRST_SUBSCRIBE`만 처리한다.
 
-이 내부 치환은 "내부 구현 변경"이지만, public surface 제거의 필수 선행 작업이므로
+이 내부 치환은 "내부 구현 변경"이지만 public surface 제거의 필수 선행 작업이므로
 이 문서 범위에 포함한다.
 
 방향:
 
 - `core/src/` 내부에서만 유효한 internal option 값을 유지한다.
 - public `zlink_socket_option_t` enum에서는 제거한다.
-- `zlink_setsockopt(socket, ZLINK_SUBSCRIBE, ...)` 호출은 공개 API에서 불가하게 된다.
+- `zlink_setsockopt(socket, ZLINK_SUBSCRIBE, ...)` 호출은 공개 API에서 불가능해진다.
 
 ## 4. 현재 → 목표 Header 시그니처 비교
 
@@ -218,15 +218,15 @@ ZLINK_EXPORT int zlink_subscription_event (
 
 이 함수에 `set_` prefix를 붙이면:
 
-- 구독 제어임이 이름에서 바로 드러난다.
-- `setsockopt` 기반 구독 설정이 public에서 제거된 후에도
+- 구독 제어라는 점이 이름에서 바로 드러난다.
+- `setsockopt` 기반 구독 설정이 public에서 제거된 뒤에도
   "구독 설정 = `zlink_set_subscribe`"라는 유일한 canonical 경로가 남는다.
-- `unset_subscribe`는 `set_subscribe`의 역연산으로 읽히므로
+- `unset_subscribe`는 `set_subscribe`의 역연산으로 읽혀서
   pair 관계가 명확하다.
 
 ### 6.2 `zlink_subscribe` = 구독 데이터 수신
 
-`zlink_subscribe_recv`에서 `_recv` suffix를 제거하고 `zlink_subscribe`로 승격한다.
+`zlink_subscribe_recv`에서 `_recv` suffix를 떼고 `zlink_subscribe`로 승격한다.
 
 근거:
 
@@ -243,14 +243,14 @@ ZLINK_EXPORT int zlink_subscription_event (
 
 ### 6.3 `zlink_subscription_event`
 
-`_recv` suffix를 제거한다.
+`_recv` suffix를 뗀다.
 
 근거:
 
 - `zlink_subscription_event` + `zlink_subscription_event_handler` pair가
   일반 transport의 `zlink_recv` + `zlink_recv_handler` pair와 같은 패턴이다.
-- XPUB subscription event는 multipart payload가 아니라 metadata event이므로
-  `_recv`보다 event 자체를 이름으로 삼는 것이 역할을 더 정확히 표현한다.
+- XPUB subscription event는 multipart payload가 아니라 metadata event이므로,
+  `_recv`보다 event 자체를 이름으로 삼는 편이 역할을 더 정확히 표현한다.
 
 ## 7. setsockopt 구독 옵션 제거의 설계 근거
 
@@ -259,11 +259,11 @@ ZLINK_EXPORT int zlink_subscription_event (
 1. `zlink_subscribe(socket, filter)` (현재 이름) → 전용 함수
 2. `zlink_setsockopt(socket, ZLINK_SUBSCRIBE, filter, len)` → 범용 옵션
 
-POSD 관점에서 같은 행위에 대한 두 개의 public 경로는 설명 비용을 늘린다.
+POSD 관점에서 같은 행위에 public 경로가 둘이면 설명 비용이 늘어난다.
 
 - 사용자는 "둘 중 어떤 것을 써야 하나"를 배워야 한다.
 - 내부 구현은 두 경로를 모두 유지해야 한다.
-- 전용 함수가 있으면 범용 옵션의 존재 이유가 없다.
+- 전용 함수가 있으면 범용 옵션은 존재할 이유가 없다.
 
 따라서 `ZLINK_SOCKOPT_SUBSCRIBE` / `ZLINK_SOCKOPT_UNSUBSCRIBE`를
 public enum에서 제거하고, `zlink_set_subscribe` / `zlink_unset_subscribe`를
@@ -437,7 +437,7 @@ public enum에서 제거하고, `zlink_set_subscribe` / `zlink_unset_subscribe`�
 - 가이드 예제 코드에서 함수 이름 치환
 - `setsockopt(ZLINK_SUBSCRIBE, ...)` 기반 예제를
   `zlink_set_subscribe()` 기반으로 변환
-- 한국어/영어 문서 모두 동일 적용
+- 한국어/영어 문서 모두 동일하게 적용
 
 완료 기준:
 
@@ -475,7 +475,7 @@ zlink_set_subscribe(sub, "");
 [`bench_common.hpp`](core/bench/with_zmq/single/common/bench_common.hpp)에
 libzmq 호환 `#define ZLINK_SUBSCRIBE ZMQ_SUBSCRIBE` shim이 있다.
 
-이 shim은 `with_zmq` bench에서 libzmq와 zlink를 같은 코드로 빌드하기 위한 것이다.
+이 shim은 `with_zmq` bench에서 libzmq와 zlink를 같은 코드로 빌드하려고 둔 것이다.
 zlink 측 bench 코드는 `zlink_set_subscribe()`로 변환하고,
 libzmq 측 bench 코드는 기존 `ZMQ_SUBSCRIBE` + `zmq_setsockopt` 경로를 유지한다.
 
@@ -553,7 +553,7 @@ cmake --build core/build -j$(nproc)
 nm -D core/build/lib/libzlink.so | grep -w -E 'zlink_set_subscribe|zlink_unset_subscribe|zlink_subscribe$|zlink_subscription_event$|zlink_subscribe_recv|zlink_unsubscribe$|zlink_subscription_event_recv'
 ```
 
-`-w` (word match) 또는 `$` anchor를 사용하여 substring 매칭을 방지한다.
+`-w` (word match) 또는 `$` anchor를 써서 substring 매칭을 막는다.
 예를 들어 `zlink_unsubscribe`가 `zlink_unset_subscribe`에 매칭되지 않게 한다.
 
 기대 결과:
@@ -671,7 +671,7 @@ nm -D core/build/lib/libzlink.so | grep -w -E 'zlink_set_subscribe|zlink_unset_s
 ### 14.5 internal 상수 전략
 
 public `ZLINK_SOCKOPT_SUBSCRIBE` / `ZLINK_SOCKOPT_UNSUBSCRIBE`를 enum에서
-제거한 뒤, 내부 코드가 참조할 상수가 필요하다.
+제거한 뒤에는 내부 코드가 참조할 상수가 필요하다.
 
 방법: `ZLINK_INTERNAL_BUILD` 블록에 internal-only define을 유지한다.
 
@@ -682,7 +682,7 @@ public `ZLINK_SOCKOPT_SUBSCRIBE` / `ZLINK_SOCKOPT_UNSUBSCRIBE`를 enum에서
 ```
 
 이 define은 기존 `ZLINK_SUBSCRIBE` / `ZLINK_UNSUBSCRIBE`의 값(6, 7)을
-그대로 사용한다. wire protocol이나 내부 option dispatch 로직에 영향이 없다.
+그대로 쓴다. wire protocol이나 내부 option dispatch 로직에는 영향이 없다.
 
 치환 규칙:
 
@@ -820,8 +820,8 @@ bench compat shim:
 | `doc/guide/11-thread-safety.md` |
 | `doc/guide/11-thread-safety.ko.md` |
 
-선행 계획 문서 (`pubsub-public-surface-renaming-plan.ko.md`)는 이 문서가
-후속 재편임을 상단에 기술했으므로, 선행 문서 본문은 수정하지 않는다.
+선행 계획 문서(`pubsub-public-surface-renaming-plan.ko.md`)는 이 문서가
+후속 재편임을 상단에 밝혔으므로, 선행 문서 본문은 수정하지 않는다.
 
 ### 14.10 변경하지 않는 호출부 (확인용)
 
@@ -850,8 +850,8 @@ bench compat shim:
 - 이번 작업의 본질은 public C API 이름 변경이다.
 - 내부 구현 구조 변경은 포함하지 않는다.
 - `setsockopt` 기반 구독 설정 옵션 제거는 public surface 단순화의 일환이다.
-- 이름 변경 이후 subscribe 관련 public C API는
+- 이름을 바꾸고 나면 subscribe 관련 public C API는
   "제어는 `set_subscribe`/`unset_subscribe`, 수신은 `subscribe`/`subscribe_handler`"로
-  한 문장으로 설명 가능해진다.
+  한 문장에 설명된다.
 - XPUB event 축은 `subscription_event`/`subscription_event_handler`로
-  subscribe 축과 분리 유지된다.
+  subscribe 축과 분리해 유지한다.

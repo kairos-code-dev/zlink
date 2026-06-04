@@ -20,7 +20,7 @@
 
 - 이 문서는 `core` data-plane surface 정리의 작업 메모다.
 - 구현 전 상세 ABI 이름과 단계별 제거 정책은 이 문서를 기준으로 정리한다.
-- 기존 direct-callback-recv 문서와 충돌하면, "recv는 callback과 동일한 multipart
+- 기존 direct-callback-recv 문서와 충돌하면 "recv는 callback과 동일한 multipart
   + source_rid shape" 원칙을 우선한다.
 - 기존 bytes API와의 source compatibility / ABI compatibility는 유지 목표가 아니다.
 
@@ -292,7 +292,7 @@ int zlink_recv (void *s,
 - `topic_id_out_` / `topic_id_len_` 버퍼 부족 동작과 `EMSGSIZE` 계약 추가
 - unsupported socket/handle 입력에 대한 errno 정책 정리 및 테스트 추가
 - callback/direct parity 테스트 추가
-- public C API는 통합하되, 내부 구현은 socket/handle family별로 분기 가능
+- public C API는 통합하되 내부 구현은 socket/handle family별로 분기 가능
 
 ## 7. 핵심 쟁점
 
@@ -322,7 +322,7 @@ int zlink_recv (void *s,
 ### 7.3 source_rid contract
 
 - `source_rid`는 실제 sender peer identity여야 한다.
-- socket family마다 의미가 달라지더라도, 최소한 "누가 보냈는지"는 한 문장으로
+- socket family마다 의미가 달라지더라도 최소한 "누가 보냈는지"는 한 문장으로
   설명 가능해야 한다.
 - public 문서에서 `source_rid`의 유효 범위와 안정성을 명시해야 한다.
 
@@ -347,7 +347,7 @@ int zlink_recv (void *s,
 ## 10. 회귀테스트 전략
 
 이 작업의 회귀테스트는 "기존 테스트를 새 API로 포팅"만으로 충분하지 않다.
-이번 변경은 rename이 아니라 public contract 변경이므로, 기존 시나리오 이관과
+이번 변경은 rename이 아니라 public contract 변경이므로 기존 시나리오 이관과
 새 계약 검증을 분리해서 다뤄야 한다.
 
 ### 10.1 테스트 구성 원칙
@@ -803,7 +803,7 @@ ZLINK_EXPORT int zlink_poller_remove (void *poller_, void *subject_);
 3. `is_registered_spot_node_handle(subject_)` → spot_node 경로 (events_로 pub/sub 구분)
 4. `as_socket_handle(subject_)` → raw socket / monitor 경로 (현행 유지)
 
-타입 판별 함수는 이미 구현되어 있으며 재사용 가능하다. generic
+타입 판별 함수는 이미 구현되어 있고 재사용 가능하다. generic
 `zlink_poller_add/modify/remove`는 gateway/spot/spot_node/monitor 경로를
 모두 수용하도록 확장되었다.
 

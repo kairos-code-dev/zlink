@@ -23,7 +23,7 @@ registry 중심 summary로 조회하는 계획을 정의한다.
 
 ### 2.1 registry는 global summary다
 
-registry는 local runtime detail의 완전한 복사본이 아니다.
+registry는 local runtime detail을 그대로 복사한 것이 아니다.
 
 registry에 저장하는 정보:
 
@@ -33,8 +33,8 @@ registry에 저장하는 정보:
 
 ### 2.2 local monitor는 상세 분석용이다
 
-registry summary만으로 부족할 때는
-해당 프로세스의 local service monitor를 사용한다.
+registry summary만으로 부족하면
+해당 프로세스의 local service monitor를 쓴다.
 
 예:
 
@@ -129,7 +129,7 @@ service_kind + routing_id + service_name
 - local filter implementation detail
 - per-socket retry/backoff 내부 상태
 
-이 정보는 local monitor 쪽이 맡는다.
+이 정보는 local monitor가 맡는다.
 
 ## 6. 정보 수집 방식
 
@@ -155,7 +155,7 @@ local service가 summary 형태로 보고한다.
 원칙:
 
 - report는 summary 수준만 보낸다
-- state transition 시점과 heartbeat 주기를 우선 사용한다
+- state transition 시점과 heartbeat 주기를 우선 쓴다
 - 불필요한 flood를 피한다
 
 ### 6.3 reporting channel
@@ -169,7 +169,7 @@ local service가 summary 형태로 보고한다.
 
 - `Gateway` topology entry는 gateway가 직접 report
 - `SpotPub` / `SpotSub` summary는 discovery uplink 또는 reporting client로 report
-- `Discovery`도 topology entry가 필요하면 같은 reporting client를 사용
+- `Discovery`도 topology entry가 필요하면 같은 reporting client를 쓴다
 
 ## 7. 조회 API 제안
 
@@ -236,6 +236,6 @@ monitor = local detailed cause
 ## 10. Definition of Done
 
 - registry topology 문서에서 public subject가 `Gateway`, `SpotPub`, `SpotSub`, `Discovery`로 고정되어 있다.
-- representative RID를 entry identity로 사용한다.
+- representative RID를 entry identity로 쓴다.
 - registry summary와 local monitor의 역할 분리가 명확하다.
 - `receiver` 별도 public topology entry 전제가 제거되어 있다.

@@ -5050,3 +5050,44 @@ Node 측정과 후보 검토 기록이다. 계획 문서 본문에는 최종 상
 - 판정:
   - active slot 16은 131072B 이상 large 구간에만 유지한다.
   - small WSS 잔여 미달에는 적용하지 않는다.
+
+## Node single routed tcp large current C 재측정과 잔여 1개 정리
+
+- 대상:
+  - single `DEALER_ROUTER`, `ROUTER_ROUTER`
+  - `tcp`
+  - `65536,131072,262144B`
+- 배경:
+  - 직전 표는 오래된 C full 기준으로 `DEALER_ROUTER`/`ROUTER_ROUTER` tcp 대용량 6개를
+    모두 미달로 남겼다.
+  - Node 쪽 sender native submit과 HWM floor 64는 유지했지만, 같은 현재 runtime에서 C 기준도
+    함께 재측정해야 실제 잔여를 정확히 판단할 수 있다.
+- 측정:
+  - C 명령: `./perf/run_benchmarks.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 65536,131072,262144 --duration 2 --runs 3 --results-tag node_single_routed_tcp_large_c_recheck_20260604`
+  - C report: `perf_c_single_linux_20260604_202935_node_single_routed_tcp_large_c_recheck_20260604.txt`
+  - Node 기준 report: `perf_node_single_linux_20260604_181153_node_single_routed_tcp_large_native_sender_hwm64_20260604.txt`
+  - `DEALER_ROUTER tcp 131072B` 5회 재확인:
+    `perf_node_single_linux_20260604_203042_node_single_dr_tcp131072_confirm_20260604.txt`
+- 결과:
+  - `DEALER_ROUTER tcp 65536/131072/262144B`: 29.3/26.6/29.3%.
+  - `ROUTER_ROUTER tcp 65536/131072/262144B`: 31.2/32.1/28.6%.
+  - 6개 중 `DEALER_ROUTER tcp 131072B`만 routed 기준 28%에 못 닿는다.
+  - `DEALER_ROUTER tcp 131072B` 5회 재확인 중앙값은 14.289 Kmsg/s로 current C 55.089 Kmsg/s 대비
+    25.9%다.
+- 추가 후보:
+  - `PERF_SINGLE_ROUTED_LARGE_HWM_FLOOR=96`:
+    `perf_node_single_linux_20260604_203109_node_single_dr_tcp131072_hwm96_probe_20260604.txt`
+    는 12.188 Kmsg/s로 회귀했다.
+  - `PERF_SINGLE_ROUTED_LARGE_HWM_FLOOR=192`:
+    `perf_node_single_linux_20260604_203109_node_single_dr_tcp131072_hwm192_probe_20260604.txt`
+    는 12.158 Kmsg/s로 회귀했다.
+  - sender worker의 sequence를 `BigInt` 증가 대신 `number` 증가로 바꾸는 후보는
+    `perf_node_single_linux_20260604_203306_node_single_dr_tcp131072_number_seq_retry_20260604.txt`
+    에서 14.137 Kmsg/s로 현행보다 낮아 제거했다.
+- 검증:
+  - `npm run build`: 통과
+  - `node --test dist-tools/tests/optimization_guard.test.js`: 통과
+- 판정:
+  - main 문서의 Node single은 `미달 6/144 (4.2%)`에서 `미달 1/144 (0.7%)`로 갱신한다.
+  - 남은 single 미달은 `DEALER_ROUTER tcp 131072B` 하나다.
+  - HWM 96/192와 number sequence 후보는 성능 개선 근거가 없어 코드에 남기지 않는다.

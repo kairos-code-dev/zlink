@@ -802,3 +802,34 @@
 - 판정:
   - `SPOT wss 256B`를 통과로 overlay한다.
   - Go single 미달은 `6/144 (4.2%)`에서 `5/144 (3.5%)`로 줄었다.
+
+## Go multi routed tls64 GOMAXPROCS 보강
+
+- 대상:
+  - `MULTI_ROUTER_ROUTER tls 64B`
+- 배경:
+  - 기존 표에서는 C 대비 37.8%로 routed echo 기준 40%에 못 닿았다.
+  - 같은 transport의 1024B가 case별 GOMAXPROCS 8로 통과한 뒤, 64B도 같은 기법을 확인했다.
+- 변경:
+  - `bindings/go/perf/run_benchmarks_multi.sh`의 default case override에
+    `MULTI_ROUTER_ROUTER/tls/64=8`을 추가했다.
+  - 기존 `MULTI_DEALER_DEALER/tcp/262144=8`, `MULTI_ROUTER_ROUTER/tcp/64=8`,
+    `MULTI_ROUTER_ROUTER/tls/1024=8` override는 그대로 유지한다.
+- 측정:
+  - C current 기준:
+    `perf_c_multi_linux_20260605_020810_go_multi_rr_tls64_c_current_runs7_20260605.txt`
+    는 status=complete였다.
+  - Go 기본 runner verify:
+    `perf_go_multi_linux_20260605_021103_go_multi_rr_tls64_case_gomax8_verify_20260605.txt`
+    는 status=complete였고, effective options에
+    `MULTI_ROUTER_ROUTER/tls/64=8` case override가 표시됐다.
+- 결과:
+  - `MULTI_ROUTER_ROUTER tls 64B`: Go 147,659.4 ops/s, C 323,287.2 ops/s.
+  - Go/C 비율은 45.7%로 routed echo 기준 40%를 넘는다.
+- 기각/보류 후보:
+  - `MULTI_ROUTER_ROUTER tls 256B`는 C current runs=7 묶음 재측정에서
+    `malloc_consolidate(): unaligned fastbin chunk detected`로 partial이어서 새 통과 근거로
+    쓰지 않았다.
+- 판정:
+  - `MULTI_ROUTER_ROUTER tls 64B`를 통과로 overlay한다.
+  - Go multi 미달은 `12/192 (6.3%)`에서 `11/192 (5.7%)`로 줄었다.

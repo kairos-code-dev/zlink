@@ -90,11 +90,18 @@ public final class StreamNodeRegistration {
             throw new ZLinkConfigurationException("stream node session type is required: " + name);
         }
         if (actorGatewaySpotNodeName != null) {
-            boolean found = spotNodes.stream()
-                .anyMatch(node -> actorGatewaySpotNodeName.equals(node.nodeName()));
-            if (!found) {
+            SpotNodeRegistration target = spotNodes.stream()
+                .filter(node -> actorGatewaySpotNodeName.equals(node.nodeName()))
+                .findFirst()
+                .orElse(null);
+            if (target == null) {
                 throw new ZLinkConfigurationException(
                     "stream node actor gateway SpotNode is not configured: "
+                        + actorGatewaySpotNodeName);
+            }
+            if (!target.routerEnabled()) {
+                throw new ZLinkConfigurationException(
+                    "stream node actor gateway SpotNode does not enable router capability: "
                         + actorGatewaySpotNodeName);
             }
         }

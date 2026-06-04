@@ -782,11 +782,29 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void streamNodeWithActorGatewayAndSpotNodeIsAccepted() {
+    void streamNodeActorGatewayRequiresRouterSpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> node.addSpotFactory(TestSpot.class)));
+        options.addStreamNode("gateway", stream -> {
+            stream.bind("inproc://gateway");
+            stream.attachActorGateway("play");
+            stream.registerSession(GameSession.class);
+        });
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void streamNodeWithActorGatewayAndRouterSpotNodeIsAccepted() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> {
+                node.enableRouter();
+                node.addSpotFactory(TestSpot.class);
+            }));
         options.addStreamNode("gateway", stream -> {
             stream.bind("inproc://gateway");
             stream.attachActorGateway("play");

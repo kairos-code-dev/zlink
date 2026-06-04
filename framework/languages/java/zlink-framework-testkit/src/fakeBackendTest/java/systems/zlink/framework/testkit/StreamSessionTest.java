@@ -27,7 +27,10 @@ final class StreamSessionTest {
     void streamNodeBindsAndAttachesConfiguredActorGatewaySpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
+            mesh.addNode("play", node -> {
+                node.enableRouter();
+                node.addSpotFactory(GameSpot.class);
+            }));
         options.addStreamNode("gateway", stream -> {
             stream.bind("inproc://gateway");
             stream.attachActorGateway("play");
@@ -139,7 +142,10 @@ final class StreamSessionTest {
         ContextSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
+            mesh.addNode("play", node -> {
+                node.enableRouter();
+                node.addSpotFactory(GameSpot.class);
+            }));
         options.addActorFactory("player", systems.zlink.framework.testkit.ActorRuntimeFakeBackendTest.PlayerActorFactory.class);
         options.addStreamNode("gateway", stream -> {
             stream.bind("inproc://gateway");

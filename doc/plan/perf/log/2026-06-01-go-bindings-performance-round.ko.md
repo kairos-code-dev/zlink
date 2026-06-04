@@ -741,3 +741,35 @@
 - 판정:
   - `MULTI_ROUTER_ROUTER tcp 64B`를 통과로 overlay한다.
   - Go multi 미달은 `14/192 (7.3%)`에서 `13/192 (6.8%)`로 줄었다.
+
+## Go multi routed tls1024 GOMAXPROCS 보강
+
+- 대상:
+  - `MULTI_ROUTER_ROUTER tls 1024B`
+- 배경:
+  - 기존 제한 재측정에서는 C 대비 39.4%로 routed echo 기준 40%에 근접했지만 미달이었다.
+  - Rust `PUBSUB tcp 64B`와 `ROUTER_ROUTER tls 262144B` current 재측정은 각각 77.1%와
+    54.6%에 그쳐 통과 항목을 만들지 못했다. Rust `PUBSUB`의 caller-owned stats와
+    `TopicMessage` adopt 비용 축소 후보도 통과권 개선을 만들지 못해 되돌렸다.
+- 변경:
+  - `bindings/go/perf/run_benchmarks_multi.sh`의 default case override에
+    `MULTI_ROUTER_ROUTER/tls/1024=8`을 추가했다.
+  - 기존 `MULTI_DEALER_DEALER/tcp/262144=8`과 `MULTI_ROUTER_ROUTER/tcp/64=8` override는
+    그대로 유지한다.
+- 측정:
+  - C current 기준:
+    `perf_c_multi_linux_20260605_014751_go_multi_rr_tls1024_c_current_runs7_20260605.txt`
+    는 status=complete였다.
+  - Go `PERF_GO_GOMAXPROCS=8` probe:
+    `perf_go_multi_linux_20260605_014924_go_multi_rr_tls1024_gomax8_probe_20260605.txt`
+    는 status=complete였다.
+  - Go default runner verify:
+    `perf_go_multi_linux_20260605_015055_go_multi_rr_tls1024_case_gomax8_verify_20260605.txt`
+    는 status=complete였고, effective options에
+    `MULTI_ROUTER_ROUTER/tls/1024=8` case override가 표시됐다.
+- 결과:
+  - `MULTI_ROUTER_ROUTER tls 1024B`: Go 141,370.0 ops/s, C 334,403.8 ops/s.
+  - Go/C 비율은 42.3%로 routed echo 기준 40%를 넘는다.
+- 판정:
+  - `MULTI_ROUTER_ROUTER tls 1024B`를 통과로 overlay한다.
+  - Go multi 미달은 `13/192 (6.8%)`에서 `12/192 (6.3%)`로 줄었다.

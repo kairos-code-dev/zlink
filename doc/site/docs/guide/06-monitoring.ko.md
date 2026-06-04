@@ -114,7 +114,7 @@ flowchart LR
 
 핸드셰이크 완료 후 발생한다. 이 이벤트를 받으면 즉시 메시지를 보내고 받을 수 있다.
 `CONNECTION_READY` 이벤트의 `value` 필드는 예약(reserved)이며, 집계 준비 카운트 계약이 아니다.
-준비 상태 판정은 이벤트 에지(edge)와 주체별 이벤트 카운팅으로 해야 한다.
+준비 상태 판정은 이벤트 에지(edge)와 주체별 이벤트 카운팅으로 한다.
 
 - ROUTER/STREAM에서는 `ev->routing_id`에 피어 신원(peer identity)이 포함된다.
 - PAIR/DEALER에서는 `routing_id`가 비어 있다.
@@ -169,7 +169,7 @@ DEALER는 가중치가 `0`인 ROUTER를 후보에서 자동으로 제외하므�
 ROUTER가 모두 `0`이면 새 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로
 실패하기 시작한다.
 
-서비스 계층에서 같은 변화를 보고 싶다면
+서비스 계층에서 같은 변화를 보려면
 `zlink_discovery_member_peers()`를 주기적으로 읽고 이전 결과와 비교한다.
 현재 공개 계약에는 별도 서비스 이벤트 스트림이 없다.
 
@@ -217,7 +217,7 @@ flowchart LR
 
 ## 6. DISCONNECTED reason 코드
 
-`DISCONNECTED` 이벤트의 `value` 필드에 해제 사유가 포함된다.
+`DISCONNECTED` 이벤트의 `value` 필드에 해제 사유가 담긴다.
 
 | 코드 | 이름 | 의미 | 대응 방법 |
 |------|------|------|-----------|
@@ -316,7 +316,7 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 | `auto_hwm_deferred_sndhwm` / `auto_hwm_deferred_rcvhwm` | 지연 중인 HWM 축소값. 없으면 `-1` |
 
 `snd_pending_msgs`와 `rcv_pending_msgs`는 HWM 설정과 직접 관련된다.
-이 값이 HWM에 근접하면 배압(backpressure)이 발생하고 있다는 의미이다.
+이 값이 HWM에 근접하면 배압(backpressure)이 발생한다는 뜻이다.
 자동 HWM을 쓰는 경우에는 같은 스냅샷에서 "왜 이 HWM이 나왔는지"를
 프로파일, 단위 예산, 메시지 단위, 적용 HWM 필드로 함께 확인할 수 있다.
 
@@ -328,9 +328,9 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 2. **HWM을 약간 초과하는 경우**: 쓰기 측이 보는 읽기 카운트(`_peers_msgs_read`)는
    실시간 값이 아니라 읽기 측이 저수위(LWM) 도달 시에만 비동기로 알려주는 스냅샷이다.
-   매 메시지마다 동기화하면 잠금 없는(lock-free) 파이프의 성능 이점이 사라지므로,
-   일괄 알림 방식을 사용한다. 그 결과 HWM은 정확한 강제 한도가 아닌
-   **근사 한도**이며, 알림 사이에 소폭 초과할 수 있다.
+   매 메시지마다 동기화하면 잠금 없는(lock-free) 파이프의 성능 이점이 사라지므로
+   일괄 알림 방식을 쓴다. 그 결과 HWM은 정확한 강제 한도가 아닌
+   **근사 한도**이며 알림 사이에 소폭 초과할 수 있다.
 
 | transport | 실제 파이프 HWM | 이유 |
 |-----------|----------------|------|
@@ -408,7 +408,7 @@ zlink_monitor_close(&mon_b);
 저빈도 제어 경로(설정/관리 경로) 계약에 속한다.
 즉 애플리케이션 스레드에서 호출할 수 있고,
 같은 핸들과 섞여도 정확성(동시 사용 시 데이터 무결성)이 유지된다.
-다만 모니터 콜백은 I/O 경로에서 실행되므로, 콜백 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
+다만 모니터 콜백은 I/O 경로에서 실행되므로 콜백 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
 
 ```c
 /* Open a monitor from an application thread */
@@ -543,7 +543,7 @@ STREAM도 다른 기반 소켓과 동일하게
 ### 11.3 기반 소켓 — PUB/SUB
 
 기반 PUB/SUB 성능 측정 코드는 `CONNECTION_READY`를 예상 클라이언트 수만큼 받은 뒤
-메시징을 시작한다. 전달 준비 정확도를 게이트로 사용하지는 않는다.
+메시징을 시작한다. 전달 준비 정확도를 게이트로 쓰지는 않는다.
 
 ```c
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
@@ -596,7 +596,7 @@ printf("state=%d\n", status.state);
 
 Poller API(`zlink_poller_*`)는 zlink 소켓, 파일 디스크립터(fd), 타이머를
 단일 `wait` 호출로 다중화(멀티플렉싱)하는 이벤트 루프를 제공한다. 여러 소스를 관리하는
-이벤트 기반 애플리케이션에서 권장되는 방식이다.
+이벤트 기반 애플리케이션에서 권장하는 방식이다.
 
 ### 12.1 기본 사용법
 

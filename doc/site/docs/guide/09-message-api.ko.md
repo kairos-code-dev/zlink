@@ -24,9 +24,9 @@
 
 ## 1. 개요
 
-zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이다.
+zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기다.
 작은 data는 struct 내부에 inline 저장(VSM)하고,
-큰 data는 heap buffer를 reference counting으로 관리(LMSG)한다.
+큰 data는 heap buffer를 reference counting으로 관리한다(LMSG).
 
 ## 2. Message Type
 
@@ -43,8 +43,8 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 
 ### 3.1 Memory Model
 
-`zlink_msg_t`는 항상 64 byte 고정 struct이다. data 크기에 따라
-내부 저장 전략이 자동으로 결정된다:
+`zlink_msg_t`는 항상 64 byte 고정 struct다. data 크기에 따라
+내부 저장 전략이 자동으로 정해진다:
 
 ```text
 +------------------------------------------------------+
@@ -82,8 +82,8 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 +------------------------------------------------------+
 ```
 
-핵심: `zlink_msg_t` struct 자체는 stack/배열에 놓이고, 큰 data만 heap을
-사용한다. 이 구조 덕분에 message array를 stack에 선언하고 바로 send할 수
+핵심: `zlink_msg_t` struct 자체는 stack이나 배열에 놓이고, 큰 data만 heap을
+쓴다. 이 구조 덕분에 message array를 stack에 선언하고 바로 send할 수
 있다.
 
 ### 3.2 Function Overview
@@ -122,8 +122,8 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 ```
 
-- **move**: 소유권 이전. src를 더 이상 사용할 수 없다. 참조 카운트 변화 없음.
-- **copy**: 소유권 공유. VSM이면 바이트 복사, LMSG이면 참조 카운트를 증가시켜 같은 버퍼를 가리킨다. 양쪽 모두 `zlink_msg_close()` 필요.
+- **move**: 소유권 이전. src를 더 이상 쓸 수 없다. 참조 카운트 변화 없음.
+- **copy**: 소유권 공유. VSM이면 바이트 복사, LMSG이면 참조 카운트를 늘려 같은 버퍼를 가리킨다. 양쪽 모두 `zlink_msg_close()`가 필요하다.
 
 ### 3.4 Close와 Reference Counting
 
@@ -156,7 +156,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 #### zlink_msg_init — Empty Message
 
-Recv용 message나 `zlink_msg_copy()` target으로 사용. Data 없이 생성.
+Recv용 message나 `zlink_msg_copy()` target으로 쓴다. Data 없이 생성한다.
 
 ```c
 zlink_msg_t msg;
@@ -166,7 +166,7 @@ zlink_msg_init(&msg);
 
 #### zlink_msg_init_size — Size 지정 (copy 필요)
 
-지정된 size의 buffer를 할당한 후, `zlink_msg_data()`로 data를 직접 채운다.
+지정한 size의 buffer를 할당한 뒤 `zlink_msg_data()`로 data를 직접 채운다.
 ≤33B이면 VSM(inline), >33B이면 LMSG(heap)로 자동 결정된다.
 
 ```c
@@ -176,12 +176,12 @@ memcpy(zlink_msg_data(&msg), source_data, 1024);
 zlink_send(socket, &msg, 1, 0);
 ```
 
-**사용 시점:** 자체 buffer의 data를 message로 만들 때. 원본 buffer를 바로 해제해도 안전.
+**사용 시점:** 자체 buffer의 data를 message로 만들 때. 원본 buffer를 바로 해제해도 안전하다.
 
 #### zlink_msg_init_data — 외부 Buffer 참조 (zero-copy)
 
-외부 buffer의 ownership을 message에 이전. Copy 없이 전송.
-Free callback(ffn)으로 buffer 정리.
+외부 buffer의 ownership을 message로 넘긴다. Copy 없이 전송한다.
+Free callback(ffn)으로 buffer를 정리한다.
 
 ```c
 void my_free(void *data, void *hint) {
@@ -199,14 +199,14 @@ zlink_send(socket, &msg, 1, 0);
 ```
 
 **`ffn=NULL`인 경우 (CMSG):** buffer를 해제하지 않고 borrowed reference로
-유지한다. String literal이나 static data를 copy 없이 전송할 때 사용.
+유지한다. String literal이나 static data를 copy 없이 전송할 때 쓴다.
 이 경우 `zlink_msg_refcnt()`는 항상 1을 반환한다.
 
 ```c
 int zlink_send(void *s_, zlink_msg_t *parts_, size_t part_count_, zlink_send_flags_t flags_);
 ```
 
-**사용 시점:** 대용량 data의 copy를 피하고 싶을 때. Buffer 해제 시점을 library에 위임.
+**사용 시점:** 대용량 data의 copy를 피하고 싶을 때. Buffer 해제 시점을 library에 맡긴다.
 
 > 참고: `core/tests/integration/test_msg_ffn.cpp` — free function callback 동작 검증
 
@@ -219,14 +219,14 @@ size_t size = zlink_msg_size(&msg);
 
 > **참고:** header 에는 `zlink_msg_more()` 나 `ZLINK_MORE` 가 없다.
 > 애플리케이션 코드는 per-message `more` flag 대신 multipart parts-array
-> API 를 사용한다.
+> API 를 쓴다.
 
 ### 4.3 Move와 Copy
 
 #### zlink_msg_move — Ownership 이전 (zero-copy)
 
-Message 내용을 dest로 이동시키고 src는 빈 상태가 된다.
-LMSG의 경우 refcount를 증가시키지 않고 pointer만 이전한다.
+Message 내용을 dest로 옮기고 src는 빈 상태가 된다.
+LMSG는 refcount를 늘리지 않고 pointer만 넘긴다.
 
 ```c
 /* Single frame */
@@ -247,7 +247,7 @@ refcount 증가가 없어 단순하다.
 #### zlink_msg_copy — Reference Counted Copy
 
 VSM은 byte 단위 value copy, LMSG/ZCLMSG는 같은 buffer를 공유하며
-refcount를 증가시킨다. 양쪽 모두 `zlink_msg_close()` 필요.
+refcount를 늘린다. 양쪽 모두 `zlink_msg_close()`가 필요하다.
 
 ```c
 zlink_msg_t original, copy;
@@ -270,7 +270,7 @@ zlink_msg_close(&copy);  /* Actual memory freed when last reference is released 
 
 ### 4.4 Metadata Property — zlink_msg_gets
 
-Message에 부착된 metadata property를 string으로 반환한다.
+Message에 붙은 metadata property를 string으로 반환한다.
 해당 property가 없으면 `NULL`을 반환한다.
 
 ```c
@@ -298,8 +298,8 @@ if (rc != ZLINK_SUBMIT_OK) {
 
 ### 4.6 Recv
 
-메시지는 소켓에 등록한 핸들러 콜백으로 수신된다.
-콜백이 `zlink_msg_t` 파트를 직접 제공한다:
+메시지는 소켓에 등록한 핸들러 콜백으로 받는다.
+콜백이 `zlink_msg_t` 파트를 직접 넘겨준다:
 
 ```c
 zlink_msg_t part;
@@ -519,9 +519,9 @@ refcnt = zlink_msg_refcnt(&const_msg);  /* 1: not internally refcounted */
 `zlink_msg_refcnt()`는 message storage의 reference count를 반환한다.
 Refcounted storage가 아니면 1을 반환한다.
 
-내부 reference count는 atomic 연산으로 관리된다. `zlink_msg_copy()`로
+내부 reference count는 atomic 연산으로 관리한다. `zlink_msg_copy()`로
 만든 별도 handle을 서로 다른 스레드에서 copy/close하는 것은 안전하다.
-`zlink_msg_refcnt()` 반환값은 시점 스냅샷이므로 진단/assertion 용도로 쓴다.
+`zlink_msg_refcnt()` 반환값은 시점 스냅샷이므로 진단이나 assertion 용도로 쓴다.
 단일 `zlink_msg_t` 인스턴스를 여러 스레드에서 동시에 접근하면 안 된다.
 
 | 상황 | `refcnt` 반환값 |
@@ -602,7 +602,7 @@ memcpy(zlink_msg_data(&parts[1]), "body", 4);
 zlink_send(socket, parts, 2, 0);
 ```
 
-ROUTER directed send에는 `zlink_send_rid()`를 사용한다:
+ROUTER directed send에는 `zlink_send_rid()`를 쓴다:
 
 ```c
 zlink_send_rid(router, &target_rid, parts, part_count, 0);

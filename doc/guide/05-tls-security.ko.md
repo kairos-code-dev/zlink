@@ -4,13 +4,13 @@
 
 ## 1. 개요
 
-zlink는 OpenSSL을 통해 `tls://`와 `wss://` transport를 네이티브 지원한다.
+zlink는 OpenSSL로 `tls://`와 `wss://` transport를 네이티브 지원한다.
 외부 프록시 없이 암호화된 통신을 직접 구성할 수 있다.
 
 SPOT 서비스에서 TLS/WSS 설정은 노드 소유자(node owner)의 책임이다.
 `zlink_set_tls_server()` / `zlink_set_tls_client()`는 bind/connect 전에
-`SpotNode` 핸들에 적용해야 한다. 통합 `spot` 및 SPOT 하위 pub/sub
-핸들에는 TLS 설정을 적용할 수 없으며 `ZLINK_CONFIG_NOT_SUPPORTED` 를 반환한다.
+`SpotNode` 핸들에 적용한다. 통합 `spot` 및 SPOT 하위 pub/sub
+핸들에는 TLS 설정을 적용할 수 없으며, 적용을 시도하면 `ZLINK_CONFIG_NOT_SUPPORTED`를 반환한다.
 
 ## 2. TLS 서버 설정
 
@@ -38,7 +38,7 @@ zlink_connect(socket, "tls://server.example.com:5555");
 
 ## 4. WSS (WebSocket + TLS) 설정
 
-WSS는 ws에 TLS 암호화를 추가한 transport이다. ws 대비 추가 설정이 필요하다.
+WSS는 ws에 TLS 암호화를 더한 transport다. ws보다 설정이 더 필요하다.
 
 ### WSS 서버
 
@@ -54,7 +54,7 @@ zlink_bind(socket, "wss://*:8443");
 
 ### WSS 클라이언트 (외부 Raw 클라이언트)
 
-`ZLINK_SOCKET_STREAM`은 서버 전용이므로, WSS 클라이언트는 외부 WebSocket/TLS 클라이언트 스택을 사용해야 한다.
+`ZLINK_SOCKET_STREAM`은 서버 전용이다. 따라서 WSS 클라이언트는 외부 WebSocket/TLS 클라이언트 스택을 써야 한다.
 
 개념 예시:
 

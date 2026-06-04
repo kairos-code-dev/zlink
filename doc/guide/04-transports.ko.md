@@ -49,7 +49,7 @@ zlink_connect(socket, "tcp://server.example.com:5555");
 
 ### 와일드카드 포트 (자동 할당)
 
-OS가 사용 가능한 포트를 자동 할당한다. 테스트나 동적 포트 환경에서 유용하다.
+OS가 사용 가능한 포트를 자동으로 할당한다. 테스트나 동적 포트 환경에서 쓰기 좋다.
 
 ```c
 /* Use port 0 or * */
@@ -69,14 +69,14 @@ zlink_connect(other_socket, endpoint);
 
 ### DNS 이름 사용
 
-connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행된다.
+connect 시 호스트명을 쓰면 내부적으로 DNS를 리졸빙한다.
 
 ```c
 /* Connect using DNS name */
 zlink_connect(socket, "tcp://localhost:5555");
 ```
 
-> 주의: DNS 리졸빙은 블로킹으로 수행된다. 프로덕션에서는 IP 주소 사용을 권장한다.
+> 주의: DNS 리졸빙은 블로킹으로 동작한다. 프로덕션에서는 IP 주소를 권장한다.
 > 참고: `core/tests/integration/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
 
 ### 에러 처리
@@ -100,7 +100,7 @@ if (conn_rc != ZLINK_CONNECT_OK) {
 
 - **TCP_NODELAY** 활성화 (Nagle 알고리즘 비활성화)
 - **투기적 쓰기(speculative write)** — 동기 쓰기를 먼저 시도하고 실패하면 비동기로 전환
-- **모아 쓰기(gather write)** — 헤더와 바디를 한 번에 전송하여 시스템 콜 횟수를 줄임
+- **모아 쓰기(gather write)** — 헤더와 바디를 한 번에 보내 시스템 콜 횟수를 줄임
 
 > 투기적 쓰기 등 내부 최적화 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
 

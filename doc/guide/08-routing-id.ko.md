@@ -36,7 +36,7 @@ typedef struct {
 | **사용** | 핸드셰이크에서 전송 | 수신 메시지에 자동 첨부 |
 | **설정** | `zlink_set_routing_id()` | 피어가 설정한 값 사용 |
 
-자체 라우팅 ID는 소켓 생성 시 자동으로 UUID가 할당되며, 핸드셰이크 시 피어에게 전송된다.
+자체 라우팅 ID는 소켓 생성 시 자동으로 UUID가 할당되며 핸드셰이크 시 피어에게 전송된다.
 
 피어 라우팅 ID는 피어가 보낸 자체 라우팅 ID이며, ROUTER/STREAM 소켓에서 수신 메시지에 자동으로 첨부된다.
 
@@ -110,7 +110,7 @@ zlink_connect(socket, "tcp://server2:5556");
 
 ROUTER 소켓에서 `zlink_recv()`와 recv 콜백은 송신자의 라우팅 ID를
 **별도 파라미터**(`source_rid`)로 반환한다. 메시지 프레임에는 데이터만 포함된다.
-응답 시 `zlink_send_rid()`에 동일 라우팅 ID를 전달하여 올바른 피어에게 전송한다.
+응답할 때는 `zlink_send_rid()`에 동일 라우팅 ID를 전달해 올바른 피어에게 전송한다.
 
 > **libzmq와의 차이:** libzmq ROUTER는 `zmq_recv()`의 첫 프레임으로
 > 라우팅 ID를 반환했지만, zlink에서는 모든 소켓 타입에서 라우팅 ID가
@@ -263,7 +263,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ### hex 출력
 
-라우팅 ID는 바이너리 데이터이므로 문자열로 출력하면 깨질 수 있다. hex 형식을 사용한다.
+라우팅 ID는 바이너리 데이터라서 문자열로 출력하면 깨진다. hex 형식을 사용한다.
 
 ```c
 void print_routing_id(const void *data, size_t size) {
@@ -287,7 +287,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ### 문자열 라우팅 ID
 
-사용자가 설정한 라우팅 ID가 ASCII 문자열이면 직접 출력 가능하다.
+사용자가 설정한 라우팅 ID가 ASCII 문자열이면 그대로 출력할 수 있다.
 
 ```c
 zlink_set_routing_id(dealer, "D1", 2);

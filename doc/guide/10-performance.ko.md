@@ -51,7 +51,7 @@ zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);
 ## 3. HWM (High Water Mark) 설정 가이드
 
 HWM은 **연결별(per-connection) 큐 크기** 제한이다.
-zlink에서 각 연결(pipe)은 독립적인 송수신 큐를 가지며,
+zlink에서 각 연결(pipe)은 독립적인 송수신 큐를 가지며
 HWM은 각 큐가 보관할 수 있는 최대 메시지 수를 설정한다.
 
 ```c
@@ -172,7 +172,7 @@ Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
 ### 4.1 Send Backpressure
 
 sender가 receiver보다 빠르면 메시지가 전송 큐에 누적된다. High Water
-Mark(HWM)이 큐 깊이를 제한하며, HWM 도달 시 동작은 소켓 타입과 송신
+Mark(HWM)이 큐 깊이를 제한하며 HWM 도달 시 동작은 소켓 타입과 송신
 플래그에 따라 다르다 (위 [HWM 동작 패턴](#hwm-동작-패턴) 참고).
 
 #### 블로킹 송신 (기본)
@@ -229,7 +229,7 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 
 이 API는 전송 가능한 모든 핸들(raw 소켓, SPOT)에서 동일하게 동작한다.
 기본적으로 송신 역압(backpressure)은 폴러(poller) `ZLINK_POLLOUT`으로
-감지하며, `zlink_send_ready_handler()`를 등록하면 해당 콜백으로 전환된다.
+감지하며 `zlink_send_ready_handler()`를 등록하면 해당 콜백으로 전환된다.
 콜백 등록 이후 데이터 평면 `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
 
 **동작 규칙:**

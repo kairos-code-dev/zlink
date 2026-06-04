@@ -5,7 +5,7 @@
 ## 1. zlink이란?
 
 zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 메시징 라이브러리이다.
-핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공한다.
+핵심 패턴에 집중하면서 Boost.Asio 기반 I/O와 개발 친화적 API를 제공한다.
 
 ### libzmq 대비 변경 사항
 
@@ -17,7 +17,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 | **Transport** | 10종+ (PGM, TIPC, VMCI 등) | **6종** — `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls` |
 | **의존성** | libsodium, libbsd 등 | **OpenSSL만** |
 
-참고: `pgm://`, `epgm://`는 현재 zlink에서 임시 비활성화 상태이며 지원하지 않는다.
+참고: `pgm://`, `epgm://`는 현재 zlink에서 임시로 비활성화되어 있으며 지원하지 않는다.
 
 ## 2. 아키텍처 개요
 
@@ -102,8 +102,8 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 
 ## 6. 서비스 계층
 
-서비스 계층은 소켓 위에 올라가는 고수준 분산 기능이다. 소켓 연결 관리, 피어 주소 추적,
-서비스 수명주기를 자동화한다.
+서비스 계층은 소켓 위에 놓이는 고수준 분산 기능이다. 소켓 연결 관리, 피어 주소 추적,
+서비스 수명주기를 자동으로 처리한다.
 
 | 서비스 | 역할 |
 |--------|------|

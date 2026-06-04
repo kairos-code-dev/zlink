@@ -4,7 +4,7 @@
 
 ## 1. Context API
 
-Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한다.
+Context는 zlink의 최상위 객체다. I/O thread pool과 socket을 관리한다.
 
 > I/O 스레드가 내부에서 어떤 일을 하는지(이벤트 루프, 명령 처리,
 > 소켓 할당) 상세 설명은
@@ -37,7 +37,7 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 ## 2. Socket API
 
 공개 소켓 핸들 API는 기본적으로 스레드 안전(thread-safe)하다. 여러 스레드에서
-같은 소켓 핸들을 공유하여 send/recv/bind/connect 등을 호출할 수 있다.
+같은 소켓 핸들을 공유해 send/recv/bind/connect 등을 호출할 수 있다.
 
 > 세부 threading 규칙은 [Thread Safety 가이드](./11-thread-safety.ko.md)를 참고.
 
@@ -192,7 +192,7 @@ if (rc == ZLINK_RECV_NO_DATA) {
 
 소켓 생성 후 핸들러 콜백을 부착하면 메시지 도착 시 I/O 스레드에서
 비동기로 호출된다. 한 번 부착하면 소켓 수명 동안 해제할 수 없다.
-핸들러가 부착된 상태에서 `zlink_recv()` 호출 시 `ZLINK_RECV_BUSY` 를
+핸들러가 부착된 상태에서 `zlink_recv()`를 호출하면 `ZLINK_RECV_BUSY` 를
 반환한다.
 
 ```c
@@ -235,7 +235,7 @@ zlink의 수신 모델은 두 가지 기본 방식으로 나뉜다.
 
 - **SPOT**: 같은 핸들에 `zlink_spot_handler()`(routed 전용 직접 콜백)와
   `zlink_spot_dispatch_event_handler()`(모든 이벤트 통합 readiness) 중 하나만 등록할 수
-  있다. 먼저 attach한 쪽이 우선하고, 두 번째 attach는 `EBUSY`로 실패한다.
+  있다. 먼저 attach한 쪽이 우선하며 두 번째 attach는 `EBUSY`로 실패한다.
 - **STREAM**: `zlink_recv()`, raw 콜백, packet 콜백 세 가지 수신 모드 중
   하나를 선택하면 이후 모드 변경이 불가하다.
 

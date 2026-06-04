@@ -19,3 +19,11 @@ doc/guide/07-1-discovery.ko.md
 doc/guide/07-4-actor.ko.md
 doc/guide/07-4-registry.ko.md
 doc/plan/documentation/tabbed-docs-consolidation-plan.ko.md
+doc/guide/01-overview.ko.md
+doc/guide/02-core-api.ko.md
+doc/guide/04-transports.ko.md
+doc/guide/05-tls-security.ko.md
+doc/guide/06-monitoring.ko.md
+doc/guide/08-routing-id.ko.md
+doc/guide/09-message-api.ko.md
+doc/guide/10-performance.ko.md

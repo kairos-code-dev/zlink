@@ -260,7 +260,7 @@ git push
 
 - `core/include/zlink.h`, `core/src/api/`, `core/tests/`, `bindings/` 기준으로 `zlink_discovery_set_value`, `zlink_discovery_set_metadata`, `zlink_registry_member_peers`, `zlink_discovery_member_peers`, `zlink_member_peer_entry_t` 같은 generic metadata/member query surface는 아직 없다.
 - discovery 내부에는 `provider_info_t.weight`, `register_service(..., uint32_t weight_)`, `update_service_weight(..., uint32_t weight_)`와 registry register/update-weight plumbing이 남아 있어 numeric attribute 자체는 internal 전용 contract로만 존재한다.
-- migration guide만으로는 이 공백을 메울 수 없고, `gateway` 삭제 뒤에도 "remote service peer attribute를 generic하게 읽고 배포하는 최소 contract"가 실제로 비어 있으므로 metadata 작업을 계속 진행한다.
+- migration guide만으로는 이 공백을 메울 수 없고 `gateway` 삭제 뒤에도 "remote service peer attribute를 generic하게 읽고 배포하는 최소 contract"가 실제로 비어 있으므로 metadata 작업을 계속 진행한다.
 
 작업:
 
@@ -314,8 +314,8 @@ git push
 진행 메모:
 
 - registry/discovery query surface가 실제로 `value` row와 metadata blob query를 반환하도록 연결했다.
-- `core/src/services/spot/spot_node_control.cpp`와 `core/src/services/discovery/socket_discovery_attachment.cpp`는 topology refresh를 provider snapshot 경계에 남기고, `member_peers` surface는 policy/attribute query 경계로만 유지하도록 정리했다.
-- `core/tests/e2e/spot/test_spot_service_introspection.cpp`에 local contract 회귀와 registry/discovery member peer query 회귀를 추가했고, 새 query surface 위에서 discovery-managed pub/sub 왕복도 같이 검증한다.
+- `core/src/services/spot/spot_node_control.cpp`와 `core/src/services/discovery/socket_discovery_attachment.cpp`는 topology refresh를 provider snapshot 경계에 남기고 `member_peers` surface는 policy/attribute query 경계로만 유지하도록 정리했다.
+- `core/tests/e2e/spot/test_spot_service_introspection.cpp`에 local contract 회귀와 registry/discovery member peer query 회귀를 추가했고 새 query surface 위에서 discovery-managed pub/sub 왕복도 같이 검증한다.
 - 검증: `ctest --test-dir core/build --output-on-failure -R '^(test_spot_service_introspection_metadata_local|test_spot_service_introspection_member_peers|test_spot_service_introspection)$' -j1`
 
 작업:
@@ -342,7 +342,7 @@ git push
 진행 메모:
 
 - discovery가 remote member row 계산과 local member 제외 규칙을 `snapshot_member_peers()` 안으로 모아 public query 구현 중복을 줄였다.
-- metadata query surface를 붙인 뒤 topology refresh와 attribute query 책임을 다시 분리해 `spot_node_control`과 `socket_discovery_attachment`는 provider snapshot 경계를 유지하고, `member_peers`는 정책/attribute query 전용 surface로 남겼다.
+- metadata query surface를 붙인 뒤 topology refresh와 attribute query 책임을 다시 분리해 `spot_node_control`과 `socket_discovery_attachment`는 provider snapshot 경계를 유지하고 `member_peers`는 정책/attribute query 전용 surface로 남겼다.
 - full lane 재실행 중 드러난 `test_spot_pubsub_scenario_recv_service_isolation` 회귀는 위 경계 복원으로 수정했고 단일 재현과 전체 lane에서 모두 사라졌다.
 - `./core/tools/run_execution_gate_loop.sh --label gateway_removal_metadata_gate --count 1`는 2026-03-26 07:03:36 +0900 시작, 2026-03-26 07:04:32 +0900 종료로 success였고 stress log는 `doc/plan/refactor/2nd/logs/gateway_removal_metadata_gate_20260326_070336.log`에 남겼다.
 - `./core/tests/run_test_lanes.sh --include-e2e` 전체 lane 재실행도 2026-03-26에 끝까지 통과했다.
@@ -370,8 +370,8 @@ git push
 진행 메모:
 
 - `README.ko.md`, `gateway-removal-plan.ko.md`, `socket-metadata-sharing-plan.ko.md`, execution guide를 실제 구현/authority 기준으로 정렬했다.
-- master plan 문서 상태를 `completed`로 올리고, metadata query와 topology/provider 경계가 다시 섞이지 않도록 구현 결과를 문서에 남겼다.
-- 최종 grep 기준 source 쪽 `gateway` 구현 잔여물은 없고, 남은 검색 hit는 execution/master plan의 historical checklist 설명뿐이다.
+- master plan 문서 상태를 `completed`로 올리고 metadata query와 topology/provider 경계가 다시 섞이지 않도록 구현 결과를 문서에 남겼다.
+- 최종 grep 기준 source 쪽 `gateway` 구현 잔여물은 없고 남은 검색 hit는 execution/master plan의 historical checklist 설명뿐이다.
 - 검증: `cmake --build core/build -j"$(nproc)"`
 - 검증: `./core/tests/run_test_lanes.sh --include-e2e`
 - 검증: `./core/tools/run_execution_gate_loop.sh --label gateway_removal_metadata_gate --count 1`

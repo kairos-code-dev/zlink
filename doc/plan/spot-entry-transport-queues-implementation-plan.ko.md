@@ -34,7 +34,7 @@ draft spec과 plan이 충돌하면 draft spec을 먼저 고친 뒤 plan, 코드,
 ## Draft Spec 확인 규칙
 
 Codex 에이전트는 각 단계 시작 전에 아래 표의 draft spec 절을 반드시 열고 해당 절의
-계약을 확인한다. plan 체크리스트는 순서와 gate를 나누기 위한 도구이고, 세부 계약은
+계약을 확인한다. plan 체크리스트는 순서와 gate를 나누기 위한 도구이고 세부 계약은
 항상 draft spec이 우선한다.
 
 | plan 단계 | 반드시 확인할 draft spec 절 |
@@ -126,7 +126,7 @@ matrix 생성 시 반드시 추출할 항목:
 
 초기 matrix 작성 때 아래 심볼은 draft spec에서 비교, 기존 동작 변경, drain 대상,
 또는 비목표 설명으로 등장할 수 있다. 새 구현 대상인지 기존 참조인지 바로 단정하지
-말고, draft의 해당 절을 확인해 `changed-api`, `removed-api`, `non-goal`,
+말고 draft의 해당 절을 확인해 `changed-api`, `removed-api`, `non-goal`,
 `existing-reference` 중 하나로 분류한다.
 
 - 기존 common/Spot API:

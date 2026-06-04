@@ -8,10 +8,10 @@
 - Spot Actor create / join 계열 payload를 단일 message에서 multipart payload로 확장한다.
 - Registry의 scalar 설정 함수를 registry option API로 정리한다.
 
-두 작업은 서로 다른 기능을 다루지만 같은 문제를 가진다. 공개 API가 너무 이른
-시점에 좁은 형태로 고정되면, 이후 확장 때 새 함수와 wrapper가 늘어난다. 이번
-정리는 사용자에게 보이는 계약을 더 일관된 형태로 만들고, 내부 구현 세부 사항은
-core 안에 숨기는 것을 목표로 한다.
+두 작업은 서로 다른 기능을 다루지만 문제는 같다. 공개 API가 너무 이른 시점에 좁은
+형태로 고정되면 이후 확장 때 새 함수와 wrapper가 늘어난다. 이번 정리는 사용자에게
+보이는 계약을 더 일관된 형태로 만들고, 내부 구현 세부 사항은 core 안에 숨기는 것을
+목표로 한다.
 
 이 문서는 구현 전 실행 계획이다. 정식 공개 계약은 구현과 테스트가 끝난 뒤
 `core/include/zlink.h`, `doc/spec/core/service/*.ko.md`, errno 문서, binding 문서에
@@ -23,7 +23,7 @@ core 안에 숨기는 것을 목표로 한다.
 정리한다.
 
 1. Actor create / join C API는 기존 함수 이름을 유지하고 multipart 시그니처로
-   바꾼다. 이는 C ABI와 source를 모두 바꾸는 작업이므로 core version은 `6.0.0`으로
+   바꾼다. C ABI와 source를 모두 바꾸는 작업이므로 core version은 `6.0.0`으로
    올린다. `*_multipart` 별도 symbol은 만들지 않는다.
 2. Registry scalar setter는 제거하지 않는다. `zlink_registry_set_id()`,
    `zlink_registry_set_heartbeat()`, `zlink_registry_set_broadcast_interval()`은
@@ -35,7 +35,7 @@ core 안에 숨기는 것을 목표로 한다.
    동기화하는 경로다. 기존 `bindings/update_zlink_libs.sh`는 GitHub release asset
    동기화 전용으로 유지하고, 이 작업에서는 local build 동기화 스크립트를 새로
    만든다.
-5. core 구현 완료 뒤 binding 코드를 수정하기 전에 `doc/spec/bindings/` 문서를 먼저
+5. core 구현을 끝낸 뒤 binding 코드를 수정하기 전에 `doc/spec/bindings/` 문서를 먼저
    갱신한다. binding 코드는 이 문서를 기준으로 언어별 typed surface를 구현한다.
 6. Codex 에이전트는 이 문서의 단계를 순서대로 수행하고, 실패한 gate는 직접 수정한 뒤
    같은 gate를 다시 실행한다. 사용자에게 설계 선택을 되묻지 않는다.
@@ -72,19 +72,19 @@ binding 문서와 binding 코드는 core 공개 계약이 안정화된 뒤 이 �
 
 ### 4.1 Multipart는 aggregate payload로 다룬다
 
-Actor create / join 요청은 하나의 논리 요청이다. 따라서 public API는 여러 part를
-한 번에 넘기고 받는 aggregate multipart 모양을 사용한다.
+Actor create / join 요청은 하나의 논리 요청이다. 그래서 public API는 여러 part를
+한 번에 넘기고 받는 aggregate multipart 모양을 쓴다.
 
 part-by-part streaming API로 열지 않는다. streaming 형태는 호출자가 중간 상태,
 재시도, 실패 복구를 직접 알아야 하므로 create / join 요청 표면에는 맞지 않는다.
 
 ### 4.2 payload ownership은 기존 send / recv 계열과 맞춘다
 
-send 계열 API가 성공하면 `parts` 전체의 소유권은 라이브러리로 이전된다. validation
+send 계열 API가 성공하면 `parts` 전체의 소유권은 라이브러리로 넘어간다. validation
 실패나 submit 전 실패에서는 호출자에게 남는다.
 
 recv 계열 API가 성공하면 `parts_out`과 `part_count_out`이 가리키는 payload 소유권은
-호출자에게 이전된다. 호출자는 `zlink_multipart_close()`로 닫거나 각 part를 정확히
+호출자에게 넘어간다. 호출자는 `zlink_multipart_close()`로 닫거나 각 part를 정확히
 한 번 소비해야 한다.
 
 ### 4.3 Registry scalar 설정은 option으로 모은다
@@ -98,7 +98,7 @@ registry의 단일 정수 설정은 `zlink_registry_option_t`와 `zlink_registry
 ## 5. Public API 변경안
 
 이 절은 구현자가 헤더 변경 범위를 놓치지 않도록 public C API, typedef, enum, option
-값을 명시한다. Actor create / join 계열은 기존 symbol의 시그니처를 바꾸고, registry
+값을 명시한다. Actor create / join 계열은 기존 symbol의 시그니처를 바꾸고 registry
 named setter symbol은 compatibility wrapper로 유지한다.
 
 ### 5.1 변경되는 public C API 목록
@@ -145,7 +145,7 @@ handler shape로 그대로 전달한다.
 - 빈 message 하나를 명시적으로 보내고 싶으면 size 0인 `zlink_msg_t` 하나를
   `part_count == 1`로 넘긴다.
 - `zlink_registry_set()`에서 `value == 0`은 invalid argument다.
-- `zlink_registry_get()`은 성공 시 option 값을 반환하고 `error_out`에
+- `zlink_registry_get()`은 성공하면 option 값을 반환하고 `error_out`에
   `ZLINK_CONFIG_OK`를 기록한다.
 - `zlink_registry_get()` 실패 시 반환값은 0이며, `error_out`이 NULL이 아니면 실패
   result를 기록한다.
@@ -336,7 +336,7 @@ runtime tick에서 반영되는 내부 흐름만 적는다. 사용법 예제는 
 
 ### 7.5 단계 4. Actor join recv / reply 변경
 
-- `zlink_spot_actor_join_recv()`는 TLS multipart view를 사용해 `parts_out` /
+- `zlink_spot_actor_join_recv()`는 TLS multipart view를 써서 `parts_out` /
   `part_count_out`을 채운다.
 - `zlink_spot_actor_join_reply()`는 reply multipart를 request에 move/adopt한다.
 - accept / reject completion callback은 기존 `zlink_reply_handler_fn` shape에 맞춰
@@ -357,7 +357,7 @@ runtime tick에서 반영되는 내부 흐름만 적는다. 사용법 예제는 
 - `value == 0`은 invalid argument로 처리한다.
 - 알 수 없는 option은 `ZLINK_CONFIG_NOT_SUPPORTED`와 `ENOTSUP`로 처리한다.
 - `zlink_registry_set_heartbeat()` wrapper는 interval과 timeout을 한 lock 안에서
-  함께 갱신한다. 이 wrapper는 중간에 한 값만 바뀐 상태를 외부 tick이 관찰하지 않도록
+  함께 갱신한다. 외부 tick이 한 값만 바뀐 중간 상태를 관찰하지 않도록 이 wrapper는
   기존 `registry_t::set_heartbeat()` 경로를 호출한다.
 - `zlink_registry_get()`은 `error_out == NULL`도 허용한다. 실패 시 반환값은 0이다.
 
@@ -394,7 +394,7 @@ ctest --test-dir core/build --output-on-failure -R "test_spot_actor_dispatch|uni
 ctest --test-dir core/build --output-on-failure -R "test_discovery_resolve_spot|test_spot_multi_service_discovery|test_discovery_socket_auto_connect_policy"
 ```
 
-targeted test 통과 뒤 전체 core test를 실행한다.
+targeted test를 통과한 뒤 전체 core test를 실행한다.
 
 ```sh
 ctest --test-dir core/build --output-on-failure
@@ -428,9 +428,9 @@ inproc endpoint, request queue 구현은 guide에 넣지 않는다.
 
 ## 8. Core library 배포 단계
 
-core C API 변경 뒤에는 언어별 binding이 로드하는 native library가 같은 ABI를 보도록
+core C API를 바꾼 뒤에는 언어별 binding이 로드하는 native library가 같은 ABI를 보도록
 local native 동기화 단계를 별도 gate로 둔다. 이 gate는 GitHub release 없이 로컬에서
-완료되어야 한다.
+끝나야 한다.
 
 ### 8.1 local core 검증
 
@@ -441,7 +441,7 @@ local native 동기화 단계를 별도 gate로 둔다. 이 gate는 GitHub relea
   확인한다.
 - binding 코드 수정 전 local smoke는 `bindings/sync_local_zlink_libs.sh --expect-version 6.0.0`
   실행 뒤 진행한다. `core/build` 산출물을 임시 복사하는 test script를 모두 찾아
-  새 soname `libzlink.so.6`을 사용하도록 고친다.
+  새 soname `libzlink.so.6`을 쓰도록 고친다.
 
 ### 8.2 local native 동기화
 
@@ -457,7 +457,7 @@ bindings/sync_local_zlink_libs.sh --expect-version 6.0.0
 이 스크립트는 다음을 수행해야 한다.
 
 - 현재 OS/architecture를 repo 표준 platform key로 변환한다. Linux x86_64는
-  `linux-x86_64`와 `linux-x64` 양쪽 naming을 필요한 binding 경로에 맞춰 사용한다.
+  `linux-x86_64`와 `linux-x64` 양쪽 naming을 필요한 binding 경로에 맞춰 쓴다.
 - `core/build/lib/libzlink.so`, `libzlink.so.6`, versioned soname 파일을 현재 platform
   native 경로에 복사한다.
 - `bindings/cpp/include/zlink.h`, `bindings/cpp/include/zlink_enum.h`,
@@ -480,8 +480,8 @@ bindings/sync_local_zlink_libs.sh --expect-version 6.0.0
 | Python | `bindings/python/src/zlink/native/*` |
 | Rust | `bindings/rust/native/*` |
 
-수동 복사는 사용하지 않는다. 동기화 경로가 빠지면 `bindings/sync_local_zlink_libs.sh`를
-수정하고 다시 실행한다.
+수동 복사는 쓰지 않는다. 동기화 경로가 빠지면 `bindings/sync_local_zlink_libs.sh`를
+고치고 다시 실행한다.
 
 ### 8.4 배포 후 확인
 
@@ -495,7 +495,7 @@ bindings/sync_local_zlink_libs.sh --expect-version 6.0.0
 ## 9. Binding 수정 계획
 
 binding 수정은 core native 배포 뒤 진행한다. 각 binding은 native C 함수를 그대로
-노출하는 것이 아니라 언어별 typed API로 깊은 표면을 제공해야 한다.
+노출하지 않고 언어별 typed API로 깊은 표면을 제공해야 한다.
 
 ### 9.1 공통 binding 정책
 
@@ -550,8 +550,8 @@ binding 수정은 core native 배포 뒤 진행한다. 각 binding은 native C �
 Actor payload는 aggregate multipart API를 선택한다. 이 방식은 단일 요청이라는
 인터페이스 의미를 유지하면서 payload 표현력만 넓힌다.
 
-Registry 설정은 option API를 선택한다. scalar 설정은 하나의 set / get 표면으로 모아
-새 설정 추가 때 public 함수 수가 계속 늘어나는 문제를 줄인다.
+Registry 설정은 option API를 선택한다. scalar 설정을 하나의 set / get 표면으로 모아
+새 설정을 추가할 때 public 함수 수가 계속 늘어나는 문제를 줄인다.
 
 ### 10.3 대안과 배제 이유
 
@@ -575,7 +575,7 @@ Registry 설정은 option API를 선택한다. scalar 설정은 하나의 set / 
 - `bindings/sync_local_zlink_libs.sh --expect-version 6.0.0`이 새 core library를 현재
   platform의 언어별 native 경로에 배포한다.
 - C/C++/.NET/Go/Java/Node/Python/Rust binding의 native interop 선언과 public wrapper가
-  새 core API를 사용한다.
+  새 core API를 쓴다.
 - 각 binding의 Actor multipart와 Registry option 테스트가 통과한다.
 
 ## 12. Codex 무인 실행 루프

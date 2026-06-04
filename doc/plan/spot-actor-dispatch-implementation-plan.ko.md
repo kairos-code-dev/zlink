@@ -14,13 +14,13 @@ Codex 에이전트가 사용자의 추가 판단을 기다리지 않고 끝까�
 - `test_spot_actor_dispatch` 대상 build/ctest는 STREAM Actor bind, Actor-to-session
   send, join timeout, remote create-or-get 보강 뒤 통과했다.
 - 2026-05-05 전체 plan 재확인에서 true remote mesh forwarding과 remote target
-  drop 검증은 아직 완료 상태가 아님을 확인했고, 해당 체크 항목은 미완료로 되돌렸다.
+  drop 검증은 아직 완료 상태가 아님을 확인했다. 해당 체크 항목은 미완료로 되돌렸다.
 - core release는 `core/vX.Y.Z` tag push로 GitHub Actions에서 진행하는 경로를
-  확인했지만, core 구현과 문서 gate가 끝나지 않아 아직 version bump/tag는 실행하지
+  확인했지만 core 구현과 문서 gate가 끝나지 않아 아직 version bump/tag는 실행하지
   않았다.
 
 구현 중 API 이름, enum 숫자, 내부 파일 배치는 draft spec과 충돌하지 않는 범위에서
-조정할 수 있다. 조정이 필요하면 Codex 에이전트가 먼저 draft spec을 고치고, 그 다음
+조정할 수 있다. 조정이 필요하면 Codex 에이전트가 먼저 draft spec을 고친 다음
 코드와 테스트를 맞춘다. 구현이 끝난 뒤에는 draft 내용을 정식 spec, errno 문서,
 binding 문서로 나누어 반영한다.
 
@@ -43,8 +43,8 @@ binding 문서로 나누어 반영한다.
 ## Draft spec 참조 규칙
 
 Codex 에이전트는 이 plan의 체크리스트만 보고 구현하면 안 된다. 각 단계에 들어가기
-전에 아래 traceability 표의 draft spec 절을 반드시 열고, 그 절의 계약을 기준으로
-구현한다. plan의 체크리스트는 작업 순서를 나누기 위한 보조 도구일 뿐이며, 세부
+전에 아래 traceability 표의 draft spec 절을 반드시 열고 그 절의 계약을 기준으로
+구현한다. plan의 체크리스트는 작업 순서를 나누기 위한 보조 도구일 뿐이며 세부
 계약은 항상 draft spec 절이 우선한다.
 
 아래 링크는 draft spec의 절 제목 anchor를 기준으로 한다. draft spec의 절 제목이
@@ -129,7 +129,7 @@ matrix는 최소한 아래 컬럼을 가진다.
 
 `existing-reference` 행은 구현 대상이 아니다. 이 행은 draft에서 추출한 심볼이 누락된
 것이 아니라 기존 계약 참조임을 표시하기 위해 둔다. `Implementation Owner`는
-`existing`으로 적고, `Test ID`는 관련 테스트가 없으면 `N/A`로 둔다.
+`existing`으로 적고 `Test ID`는 관련 테스트가 없으면 `N/A`로 둔다.
 
 초기 matrix 작성 시 아래처럼 draft 예시나 비교 설명에서 잡히는 기존 심볼은
 `existing-reference`로 분류한다. 단, 구현 중 실제 계약 변경이 필요하다고 판단되면
@@ -225,7 +225,7 @@ plan traceability 표, contract matrix, 테스트 목록을 함께 갱신한다.
 - generic discovery route 제거 계획이 공개 헤더, binding, sample, 문서에 반영되어 있다.
 - 구현 후 draft spec, 정식 spec, errno 문서, binding 문서, sample 문서를 코드와
   반복 대조했고 미반영 항목이 없다.
-- 전체 코드에 대해 POSD 기반 리팩토링 루프를 반복했고, 더 진행할 리팩토링 항목이 없다.
+- 전체 코드를 대상으로 POSD 기반 리팩토링 루프를 반복했고 더 진행할 리팩토링 항목이 없다.
 - 최종 작업트리에는 의도한 코드, 테스트, 문서 변경만 남아 있다.
 
 ## 진행 원칙
@@ -233,7 +233,7 @@ plan traceability 표, contract matrix, 테스트 목록을 함께 갱신한다.
 - 사용자에게 설계 결정을 다시 묻지 않는다. draft spec을 기준으로 결정한다.
 - 구현 중 불명확한 점은 draft spec에 먼저 명확한 계약으로 추가한 뒤 코드에 반영한다.
 - 호환성 유예는 두지 않는다. draft spec에 제거로 명시된 API는 첫 구현에서 제거한다.
-- 단계마다 테스트를 추가하고, 가능한 한 같은 단계 안에서 실패 테스트를 먼저 만든다.
+- 단계마다 테스트를 추가하고 가능한 한 같은 단계 안에서 실패 테스트를 먼저 만든다.
 - 변경 범위가 커져도 unrelated cleanup은 섞지 않는다. POSD 리팩토링은 기능 완료와
   문서-코드 검토가 끝난 뒤 별도 루프로 진행한다.
 - destructive git 명령은 사용하지 않는다.
@@ -247,9 +247,9 @@ Codex 에이전트는 아래 상황에서도 사용자 결정을 기다리지 �
 - enum 숫자 충돌: 비어 있는 값으로 조정하고 draft spec과 errno 문서를 같이 고친다.
 - 파일 위치 선택: 기존 SPOT, STREAM, Discovery 모듈의 ownership을 따른다.
 - 테스트 위치 선택: 기존 core 테스트 구조와 가장 가까운 suite에 추가한다.
-- binding 반영 순서: C API와 core 테스트를 먼저 닫고, 그 다음 binding을 얇게 맞춘다.
+- binding 반영 순서: C API와 core 테스트를 먼저 닫은 다음 binding을 얇게 맞춘다.
 - 문서 불일치 발견: draft spec을 먼저 고친 뒤 코드, 테스트, 정식 문서를 맞춘다.
-- POSD 리팩토링 후보 발견: 기능 완료 전에는 기록만 하고, 기능 완료 후 refactor loop에서 처리한다.
+- POSD 리팩토링 후보 발견: 기능 완료 전에는 기록만 하고 기능 완료 후 refactor loop에서 처리한다.
 
 외부 인증, remote push 권한, 네트워크 장애처럼 Codex 에이전트가 해결할 수 없는
 실행 환경 문제는 blocker log에 남기고 로컬에서 가능한 검증을 모두 끝낸다.
@@ -449,8 +449,8 @@ Actor 내부 상태를 `SpotNode`가 소유하도록 만든다.
 - [x] ACT-REMOTE-13
 
 `ACT-REMOTE-12`와 `ACT-REMOTE-13`은 remote create/destroy 테스트 묶음에도
-나오지만, 구현 위치는 ref 생성 API가 들어가는 lifecycle 단계다. 이 단계에서 먼저
-구현하고, remote control plane 단계에서 다른 remote 테스트와 함께 다시 검증한다.
+나오지만 구현 위치는 ref 생성 API가 들어가는 lifecycle 단계다. 이 단계에서 먼저
+구현하고 remote control plane 단계에서 다른 remote 테스트와 함께 다시 검증한다.
 
 ## 단계 4. Actor queue와 dispatch event
 
@@ -806,7 +806,7 @@ remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태�
 
 세부 검증:
 
-- [x] ACT-DISC-04는 Actor 생성 직후에는 `resolve_actor`가 실패하고, session bind 성공
+- [x] ACT-DISC-04는 Actor 생성 직후에는 `resolve_actor`가 실패하고 session bind 성공
       뒤에는 `joined = 1`, `joined_spot_rid = Entry Spot rid`로 조회되는지 확인한다.
 - [x] ACT-DISC-14는 같은 SpotNode 안 user Spot join 성공 뒤 같은 Actor ref를 유지하면서
       `joined_spot_rid`만 user Spot rid로 갱신되는지 확인한다.
@@ -983,7 +983,7 @@ binding 정식 문서는 core release 뒤 native library를 최신화한 다음,
 
 구현 완료 뒤 sample과 perf가 실제로 동작하는지 별도로 확인한다. 이 단계는 전체
 테스트가 통과하더라도 반드시 수행한다. sample은 사용자-facing 예제의 회귀를 잡기
-위한 검증이고, perf smoke는 Actor 변경이 기존 single/multi benchmark runner와
+위한 검증이고 perf smoke는 Actor 변경이 기존 single/multi benchmark runner와
 core runtime 연결을 깨지 않았는지 확인하기 위한 검증이다.
 
 ### 사전 조건
@@ -1011,7 +1011,7 @@ binding sample은 core release와 native library 최신화 뒤, bindings 순차 
 
 perf smoke는 수치 비교가 아니라 실행 성공 여부를 검증한다. 모든 smoke는 `runs=1`,
 짧은 duration, 작은 client 수, 명시적인 message size sweep으로 실행한다. 기본
-성능 판단은 별도 perf 계획에서 다루며, 이 단계에서는 runner와 runtime이 깨지지
+성능 판단은 별도 perf 계획에서 다루며 이 단계에서는 runner와 runtime이 깨지지
 않았는지만 확인한다.
 
 필수 message size sweep:
@@ -1252,7 +1252,7 @@ POSD 기반 리팩토링이 끝나면 `doc/guide`, `doc/internals`, `doc/spec` �
    확인한다.
 3. draft spec의 첫 구현 범위와 core 정식 문서의 반영 상태를 다시 대조한다.
 4. 회귀 테스트 ID와 정식 문서의 계약이 서로 어긋나지 않는지 확인한다.
-5. mismatch가 있으면 문서나 코드를 수정하고, 3차를 다시 시작한다.
+5. mismatch가 있으면 문서나 코드를 수정하고 3차를 다시 시작한다.
 6. mismatch 없이 3차가 끝나면 final doc review log에 `3차 완료`를 기록한다.
 
 ### 종료 조건
@@ -1357,7 +1357,7 @@ bindings/update_zlink_libs.sh core/vX.Y.Z --expect-version X.Y.Z
 
 ## Bindings 순차 적용, 문서 5회 리뷰, 검증
 
-bindings 작업은 동시에 진행하지 않는다. 언어별로 하나씩 끝까지 진행하고, 해당
+bindings 작업은 동시에 진행하지 않는다. 언어별로 하나씩 끝까지 진행하고 해당
 언어가 spec, sample, perf, POSD 검토까지 완료된 뒤 다음 언어로 넘어간다.
 
 진행 순서는 아래와 같이 고정한다.
@@ -1383,12 +1383,12 @@ bindings 작업은 동시에 진행하지 않는다. 언어별로 하나씩 끝�
 7. binding 문서와 sample을 실행한다.
 8. binding 테스트와 perf smoke를 실행한다.
 9. binding 대상 코드에 POSD 기반 리팩토링을 수행한다.
-10. 해당 언어에 대해 mismatch가 없을 때 다음 언어로 넘어간다.
+10. 해당 언어에서 mismatch가 없을 때 다음 언어로 넘어간다.
 
 ### Bindings spec 문서 5회 리뷰
 
 `doc/spec/bindings` 아래 문서는 draft spec과 5번 비교 리뷰한다. 5회 리뷰는 전체
-bindings spec을 대상으로 수행하며, 각 회차에서 발견한 mismatch를 수정한 뒤 다음
+bindings spec을 대상으로 수행하며 각 회차에서 발견한 mismatch를 수정한 뒤 다음
 회차로 넘어간다.
 
 각 회차 공통 절차:
@@ -1456,7 +1456,7 @@ bindings spec 5회 리뷰가 끝난 뒤에도, spec 문서에 적힌 내용이 �
 - [x] `SPOT`, `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM` 관련 smoke 성공
 - [x] 실패하면 원인 수정 뒤 해당 언어의 sample/perf 검증을 처음부터 다시 수행
 
-언어별 perf runner가 없는 경우에는 그 이유를 bindings update log에 기록하고,
+언어별 perf runner가 없는 경우에는 그 이유를 bindings update log에 기록하고
 해당 언어의 테스트와 sample smoke를 더 엄격하게 실행한다. perf runner가 있는데
 runtime 환경이 없어 실행하지 못한 경우에는 blocker log에 환경 사유를 기록한다.
 

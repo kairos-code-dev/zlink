@@ -123,3 +123,15 @@ doc/plan/recv-refactor/tls-multipart-recv-refactor-plan.ko.md
 doc/plan/recv-with-callback/README.ko.md
 doc/plan/recv-with-callback/core-surface-restoration-plan.ko.md
 doc/plan/recv-with-callback/perf-lane-realignment-plan.ko.md
+doc/plan/recv-with-callback/regression-and-doc-alignment-plan.ko.md
+doc/plan/registry/spot-node-topology-introspection-plan.ko.md
+doc/plan/request-reply-wakeup/request-reply-wakeup-implementation-plan.ko.md
+doc/plan/service/core-api-surface-alignment-plan.ko.md
+doc/plan/service/gateway/README.ko.md
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+doc/plan/service/gateway/gateway-removal-plan.ko.md
+doc/plan/service/gateway/socket-metadata-sharing-plan.ko.md
+doc/plan/service/service-control-path-architecture.ko.md
+doc/plan/spot-actor-dispatch-implementation-plan.ko.md
+doc/plan/spot-actor-dispatch/join-entry-spot-api-rollout-plan.ko.md
+doc/plan/spot-entry-transport-queues-implementation-plan.ko.md

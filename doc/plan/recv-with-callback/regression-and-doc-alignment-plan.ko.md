@@ -24,7 +24,7 @@
 ### 2.1 `callback-to-recv` 문서
 
 기존 [`doc/plan/callback-to-recv/`](/home/hep7/project/kairos/zlink/doc/plan/callback-to-recv)
-문서는 historical context로 남겨 둘 수 있다. 다만 아래 정리가 필요하다.
+문서는 historical context로 남겨 둔다. 다만 아래 정리가 필요하다.
 
 - `README.ko.md` 상단에 superseded 표기를 넣는다.
 - 새 canonical 방향이 [`doc/plan/recv-with-callback/`](/home/hep7/project/kairos/zlink/doc/plan/recv-with-callback)
@@ -39,13 +39,13 @@
 - test rewrite baseline
 - API/doc/perf alignment baseline
 
-즉 구현 전 참조 문서는 `callback-to-recv`가 아니라 `recv-with-callback`이 된다.
+구현 전 참조 문서는 `callback-to-recv`가 아니라 `recv-with-callback`이 된다.
 
 ## 3. 테스트 재작성 순서
 
 ### 3.1 1단계: 정책 실패 회귀 제거
 
-우선 아래 테스트에서 "attach should fail" 전제를 뒤집는다.
+먼저 아래 테스트에서 "attach should fail" 전제를 뒤집는다.
 
 - [`core/tests/integration/test_socket_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_socket_with_handler.cpp)
   - raw socket support matrix
@@ -57,7 +57,7 @@
 전환 규칙:
 
 - `ENOTSUP` 기대는 success 회귀로 바꾼다.
-- 단순히 기대값만 바꾸지 말고, 실제 attach 후 `EBUSY` 규칙과 parity를 같이
+- 기대값만 바꾸지 말고 실제 attach 후 `EBUSY` 규칙과 parity까지 함께
   검증한다.
 - 예전 fail-fast 회귀 이름도 새 의미에 맞게 바꾼다.
 
@@ -128,7 +128,7 @@ plan 문서는 아래 순서로 정리한다.
 
 1. `recv-with-callback` 문서를 먼저 작성해 baseline을 만든다.
 2. `callback-to-recv`에는 superseded/historical 성격을 표시한다.
-3. 관련 하위 plan에서 callback 축소를 전제로 단정한 문구가 있으면 링크 또는
+3. 관련 하위 plan에서 callback 축소를 전제로 단정한 문구가 있으면 링크나
    한 줄 주석으로 현재 baseline을 안내한다.
 
 ## 5. 구현 순서 권장안

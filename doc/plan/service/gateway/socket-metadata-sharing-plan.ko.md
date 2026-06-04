@@ -11,9 +11,9 @@
   `zlink_registry_member_peers`, `zlink_registry_member_peer_metadata`,
   `zlink_discovery_member_peers`, `zlink_discovery_member_peer_metadata`,
   `zlink_member_peer_entry_t`, `ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE` 기준으로 고정됐다.
-- registry/discovery는 `value + metadata`를 canonical row/blob query로 배포하고,
+- registry/discovery는 `value + metadata`를 canonical row/blob query로 배포하고
   discovery peer-view는 remote member attribute snapshot만 반환한다.
-- topology refresh는 provider snapshot 경계를 유지하고,
+- topology refresh는 provider snapshot 경계를 유지하고
   member peer query는 정책/attribute query 경계로만 남겨
   local attached participant 제외 규칙과 연결 그래프 계산을 다시 섞지 않도록 정리했다.
 - 검증: `./core/tests/run_test_lanes.sh --include-e2e`
@@ -41,7 +41,7 @@ weighted routing 같은 후속 기능은
 이 정보가 특정 family에 종속되면
 `gateway` 같은 별도 abstraction이 계속 필요해질 수 있다.
 
-반대로 registry/discovery 공통 기능으로 끌어올리면,
+반대로 registry/discovery 공통 기능으로 끌어올리면
 각 family/profile은 같은 distribution layer를 공유할 수 있다.
 
 ## 2. 목표
@@ -107,7 +107,7 @@ metadata distribution path는 아래로 고정한다.
 이유:
 
 - `value`는 metadata blob보다 가볍고 query-friendly한 simple typed channel이다
-- `value`를 별도 field로 두면 common infra는 단순한 정수 하나를 빠르게 전달할 수 있다
+- `value`를 별도 field로 두면 common infra는 단순한 정수 하나를 빠르게 전달한다
 - 그 값을 `weight`, `priority`, `bias` 등으로 해석할지는 consumer policy가 정하게 둘 수 있다
 - 나머지 확장 정보는 opaque blob으로 두는 편이 registry/discovery 책임과 잘 맞는다
 
@@ -236,8 +236,8 @@ int zlink_discovery_member_peer_metadata(
 - registry/discovery는 같은 `zlink_member_peer_entry_t`를 공유한다
 - 이 row는 discovery가 생성 시 고정된
   `(service_type, service_name)` view 안에서 현재 보고 있는 remote peer를 표현한다
-- weighted routing local policy는 peer row에서 `value`를 읽고,
-  필요한 peer에 한해 metadata blob을 추가 조회한다
+- weighted routing local policy는 peer row에서 `value`를 읽고
+  필요한 peer에 한해 metadata blob을 추가로 조회한다
 - discovery peer view는 local attached participant를 제외한 remote peer만 반환한다
 - `service_role_ + endpoint_`는 해당 discovery peer view 안에서 target peer를 식별하는 key다
 

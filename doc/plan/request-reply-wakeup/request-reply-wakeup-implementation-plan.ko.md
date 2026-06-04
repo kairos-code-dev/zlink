@@ -2,12 +2,12 @@
 
 > 작성일: 2026-05-10
 >
-> 목적: dealer/router의 `request → reply` 흐름에서, reply 도착 시
-> `zlink_poller_wait` 가 timeout 만료 전에 즉시 깨어나도록 core poller가
-> internal completion signal을 OS-level wakeup source로 연결한다.
+> 목적: dealer/router의 `request → reply` 흐름에서 reply가 도착하면
+> `zlink_poller_wait` 가 timeout 만료를 기다리지 않고 즉시 깨어나도록, core poller가
+> internal completion signal을 OS-level wakeup source에 연결한다.
 >
-> 본 문서의 사실은 모두 작성 시점에 직접 측정/검증한 것만 기록한다.
-> 추측은 별도로 구분 표시한다.
+> 본 문서의 사실은 모두 작성 시점에 직접 측정하거나 검증한 것만 기록한다.
+> 추측은 별도로 구분해 표시한다.
 
 ## TODO
 
@@ -41,10 +41,10 @@ cpp binding: `bindings/cpp/include/zlink/async_result.hpp:171` 의
 | c SPOT_REQREP (busy) | 10,327 ops/s | 7,984 ops/s | 12.0x / 9.2x |
 | cpp SPOT_REQREP (busy) | 11,716 ops/s | 11,599 ops/s | 13.7x / 13.5x |
 
-→ **확정**: 1ms timeout이 throughput을 직접 cap. signal/dispatch 자체는 정상.
-busy poll 시 latency 0.05–0.09ms 로 떨어진다(원래 1.16ms).
+→ **확정**: 1ms timeout이 throughput을 직접 cap 한다. signal/dispatch 자체는 정상이다.
+busy poll 시 latency가 1.16ms에서 0.05–0.09ms 로 떨어진다.
 
-실험 후 두 파일 모두 원본으로 복원함.
+실험 후 두 파일 모두 원본으로 복원했다.
 
 ### 1.3 코드 경로 (직접 grep 으로 확인된 파일/줄)
 
@@ -59,7 +59,7 @@ busy poll 시 latency 0.05–0.09ms 로 떨어진다(원래 1.16ms).
 | `bindings/cpp/include/zlink/async_result.hpp:46-58, 169-172` | `wait()` / `progress_slice` (1ms) |
 | `bindings/c/perf/single/src/perf_spot_reqrep.cpp:352-360` | `poll_client_progress` (1ms) |
 
-`zlink_socket_request_progress_internal` 의 호출처는 모두 forward declaration:
+`zlink_socket_request_progress_internal` 의 호출처는 모두 forward declaration이다:
 - `core/tests/integration/test_zmp_request_reply.cpp:23,181,207`
 - `core/tests/integration/test_helper_request_sequence_failure.cpp:14,79`
 - `core/tests/integration/test_spot_poller.cpp:13,259`
@@ -84,11 +84,11 @@ busy poll 시 latency 0.05–0.09ms 로 떨어진다(원래 1.16ms).
 - 그 socket을 epoll/poll/select 의 OS wakeup source로 등록한다 (정상).
 - 동시에 hidden completion registration도 만들어서 wait 끝에 drain 한다
   (`drain_hidden_completion_registration`).
-- 그러나 **completion signal fd 자체는 OS wakeup source에 연결되지 않은 것으로 측정됨**
-  (1ms timeout 만료 전엔 깨어나지 않음).
+- 그러나 **completion signal fd 자체는 OS wakeup source에 연결되지 않은 것으로 측정됐다**
+  (1ms timeout 만료 전엔 깨어나지 않는다).
 
 cpp `async_result_t` 는 poller를 쓰지 않고 자기 폴링(1ms slice)으로 progress를
-호출. 같은 cap.
+호출한다. 같은 cap에 걸린다.
 
 ## 3. 설계
 
@@ -98,45 +98,45 @@ cpp `async_result_t` 는 poller를 쓰지 않고 자기 폴링(1ms slice)으로 
 
 `zlink_poller_add` 가 socket을 등록할 때:
 - 그 socket의 `socket_request_reply_state_t::signal.rx` 를 함께 epoll/poll
-  wakeup 소스로 등록.
-- spot의 경우 `spot_request_reply_state_t::signal.rx` 도 등록.
-- ROUTER spot dispatch도 동일.
-- 등록은 idempotent.
+  wakeup 소스로 등록한다.
+- spot의 경우 `spot_request_reply_state_t::signal.rx` 도 등록한다.
+- ROUTER spot dispatch도 동일하다.
+- 등록은 idempotent하다.
 
 내부 구현:
 - `core/src/api/poller_api.cpp` 의 `zlink_poller_add` 본체에서 socket 종류에 따라
-  `completion_signal_socket()` 결과를 wakeup source로 추가.
-- registration 구조체에 wakeup fd / handle 필드 추가.
-- `zlink_poller_remove` / socket close 시 wakeup source도 같이 해제.
+  `completion_signal_socket()` 결과를 wakeup source로 추가한다.
+- registration 구조체에 wakeup fd / handle 필드를 추가한다.
+- `zlink_poller_remove` / socket close 시 wakeup source도 같이 해제한다.
 
 **effect**: 기존 `drain_hidden_completion_registration` 흐름은 유지된다.
-달라지는 건 wakeup 시점뿐 — timeout 만료 전에 epoll 이 깨어나서 drain.
+달라지는 건 wakeup 시점뿐이다. timeout 만료 전에 epoll 이 깨어나서 drain 한다.
 
 ### 3.2 cpp binding 변경
 
-`async_result_t::wait()` 의 1ms slice는 **유지해도 무방**하다 (core 측 wakeup이
+`async_result_t::wait()` 의 1ms slice는 **유지해도 무방하다** (core 측 wakeup이
 즉시 깨우면 1ms 이전에 이미 future ready이므로 slice 길이는 비결정적이 된다).
-다만 깔끔하게 하려면:
+다만 더 깔끔하게 하려면 다음과 같다.
 
-옵션 A (최소 변경): `progress_slice` 만 길게(예: 100ms). core가 즉시 깨우므로
-실제로는 100ms를 다 쓸 일이 없음. CPU 사용 ↓.
+옵션 A (최소 변경): `progress_slice` 만 길게(예: 100ms) 잡는다. core가 즉시 깨우므로
+실제로는 100ms를 다 쓸 일이 없다. CPU 사용 ↓.
 
 옵션 B (구조 변경): `progress` 콜백을 nonblocking pump로만 두고, blocking 대기는
-`zlink_poller_wait` 또는 새 internal blocking helper로 교체. coroutine 통합 시 더
-깔끔하지만 변경 범위가 큼.
+`zlink_poller_wait` 또는 새 internal blocking helper로 교체한다. coroutine 통합 시 더
+깔끔하지만 변경 범위가 크다.
 
-이번 변경에서는 **옵션 A**만 적용하고 측정으로 효과 확인. 옵션 B는 후속.
+이번 변경에서는 **옵션 A**만 적용하고 측정으로 효과를 확인한다. 옵션 B는 후속이다.
 
 ### 3.3 c reference perf 변경
 
-c reference도 자기 코드의 `zlink_poller_wait(..., 1ms, ...)` timeout만 길게 잡으면 됨
-(예: 100ms). 깨움이 즉시 일어나므로 timeout은 fallback 용으로만 의미 있음.
-실제 코드 수정은 1줄.
+c reference도 자기 코드의 `zlink_poller_wait(..., 1ms, ...)` timeout만 길게 잡으면 된다
+(예: 100ms). 깨움이 즉시 일어나므로 timeout은 fallback 용으로만 의미가 있다.
+실제 코드 수정은 1줄이다.
 
 ### 3.4 다른 binding 변경
 
-binding 내부의 1ms slice 패턴(있다면)을 동일하게 길게 잡거나 제거. 각 binding
-주체 코드는 stage 5에서 별도로 검토.
+binding 내부의 1ms slice 패턴(있다면)을 동일하게 길게 잡거나 제거한다. 각 binding
+주체 코드는 stage 5에서 별도로 검토한다.
 
 ## 4. 변경되는 인터페이스
 
@@ -148,14 +148,14 @@ binding 내부의 1ms slice 패턴(있다면)을 동일하게 길게 잡거나 �
 | 내부 구현 (`zlink_poller_add` 본체, registration 구조체) | wakeup source 추가 |
 | binding 측 폴링 timeout 상수 | 1ms → 100ms (또는 더 큰 값) |
 
-→ 외부 사용자가 코드 수정해야 할 부분은 0.
+→ 외부 사용자가 코드를 수정해야 할 부분은 0이다.
 
 ## 5. 구현 단계
 
 ### 단계 1 — core poller에 wakeup 연결
 
 **파일**:
-- `core/src/api/poller_api.cpp` — `zlink_poller_add` 가 socket 종류 식별 후
+- `core/src/api/poller_api.cpp` — `zlink_poller_add` 가 socket 종류를 식별한 뒤
   internal completion signal fd를 wakeup source 로 추가. registration 구조체에
   signal fd 필드 추가.
 - `core/src/api/poller_internal.hpp` (또는 동등) — registration 구조 갱신.
@@ -188,7 +188,7 @@ binding 내부의 1ms slice 패턴(있다면)을 동일하게 길게 잡거나 �
 
 ### 단계 5 — 다른 binding 검토
 
-각 binding의 wait/await 코드에서 1ms slice 또는 동일 패턴이 있는지 확인 후 제거.
+각 binding의 wait/await 코드에서 1ms slice 또는 동일 패턴이 있는지 확인한 뒤 제거한다.
 
 | binding | 검토 대상 |
 |---|---|
@@ -234,5 +234,5 @@ binding 내부의 1ms slice 패턴(있다면)을 동일하게 길게 잡거나 �
 ## 8. 검증 약속
 
 본 문서의 모든 사실(파일 경로, 줄 번호, 함수 이름, 측정값)은 작성 시점에 직접
-grep / 빌드 / 측정으로 확인되었다. 단계 진행 중 새 fact 가 드러나면 본 문서를
+grep / 빌드 / 측정으로 확인했다. 단계 진행 중 새 fact 가 드러나면 본 문서를
 즉시 갱신한다. 추측이 필요한 항목은 "추측" 또는 "가설" 로 명시한다.

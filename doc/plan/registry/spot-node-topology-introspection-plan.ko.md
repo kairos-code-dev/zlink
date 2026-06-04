@@ -4,7 +4,7 @@
 
 이 문서는 운영 모니터링 관점에서
 `spot_node`, `gateway`, `registry` 계열의 snapshot / introspection API를
-정의하고, 현재 구현 기준의 계약과 내부 매핑을 정리하는 문서다.
+정의하고, 현재 구현 기준의 계약과 내부 매핑을 정리한다.
 
 구현 상태 메모:
 
@@ -47,8 +47,8 @@
 
 핵심 목표:
 
-- 운영 모니터링에서 바로 쓸 수 있는 node-level summary API를 먼저 제공한다.
-- `spot_node`에서 직접 읽을 수 있는 로컬 토폴로지 snapshot API를 제공한다.
+- 운영 모니터링에서 바로 쓸 node-level summary API를 먼저 제공한다.
+- `spot_node`에서 직접 읽는 로컬 토폴로지 snapshot API를 제공한다.
 - registry global summary와 local node detail의 역할을 분리한다.
 - 내부 구현 set/map를 그대로 노출하지 않고,
   사용자가 실제로 필요한 개념 모델을 제공한다.
@@ -110,7 +110,7 @@ registry global summary를 우회해서 다음 상태를 재구성해야 한다.
 이 방식은 다음 단점이 있다.
 
 - service monitor는 event stream이라 현재 상태를 얻기 어렵다.
-- registry는 global summary라 local runtime detail을 대체할 수 없다.
+- registry는 global summary라 local runtime detail을 대체하지 못한다.
 - 내부 set 단위 helper를 여러 개 내놓으면 shallow wrapper가 늘어난다.
 
 또한 운영 관점에서 다음 공백도 있다.
@@ -134,7 +134,7 @@ service monitor = transition/event detail
 registry는 프로세스 경계를 넘는 전역 summary를 담당한다.
 
 `spot_node` query는 특정 프로세스 안의 한 node가
-현재 무엇을 알고 있고 무엇과 연결돼 있는지를 보여준다.
+현재 무엇을 알고 무엇과 연결돼 있는지를 보여준다.
 
 ### 3.2 내부 컬렉션을 그대로 공개하지 않는다
 
@@ -946,7 +946,7 @@ spot_node local query에 남겨야 할 것:
 
 ### 10.2 gateway status summary 제안
 
-운영자가 gateway에 대해 먼저 알고 싶은 것은 다음이다.
+운영자가 gateway에서 먼저 알고 싶은 것은 다음이다.
 
 - 이 gateway가 어떤 service를 보고 있는가
 - provider가 전혀 없는가, 일부라도 ready 인가
@@ -1022,7 +1022,7 @@ ZLINK_EXPORT int zlink_gateway_status_snapshot (
 
 ### 10.3 registry process status summary 제안
 
-운영자가 registry 프로세스에 대해 먼저 알고 싶은 것은 다음이다.
+운영자가 registry 프로세스에서 먼저 알고 싶은 것은 다음이다.
 
 - peer sync가 살아 있는가
 - topology row 총량이 어느 정도인가

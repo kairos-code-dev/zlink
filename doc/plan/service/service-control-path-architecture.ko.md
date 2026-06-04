@@ -84,7 +84,7 @@ send_rid() in message handler context:
 
 ### 2.3 Control Path 흐름
 
-모든 control 조작은 `_sync` lock 안에서 상태를 변경하고, 필요 시
+모든 control 조작은 `_sync` lock 안에서 상태를 변경하며, 필요하면
 refresh task를 깨워 실제 소켓 연결/해제를 수행한다.
 
 ```
@@ -477,7 +477,7 @@ gateway와 spot 모두 동일한 monitoring hub 구조를 사용한다.
 
 ### 4.2 service_public_api_guard_t
 
-lifecycle admission gate로, gateway와 spot 모두 동일하게 사용한다.
+lifecycle admission gate이며, gateway와 spot 모두 동일하게 사용한다.
 
 ```
 ┌──────────────────────────────────────────────┐

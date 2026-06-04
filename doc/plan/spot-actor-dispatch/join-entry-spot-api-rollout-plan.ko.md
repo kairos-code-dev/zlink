@@ -72,7 +72,7 @@ application payload 를 join callback 으로 전달해야 하는지 혼란이 �
 ### 3.1 callback typedef
 
 `core/include/zlink/actor.h` 에 Entry Spot join 완료 전용 result struct 를 추가한다.
-기존 user Spot join result 와 같은 형태를 유지하되, Entry Spot join 은 user Spot rid 가 아니라
+기존 user Spot join result 와 같은 형태를 유지하되 Entry Spot join 은 user Spot rid 가 아니라
 target SpotNode rid 를 돌려준다.
 
 ```c
@@ -154,8 +154,8 @@ user Spot join 과 Entry Spot join 의 차이는 target state 선택과 callback
 - `dest_spot_rid_` 는 반드시 user Spot 이어야 한다.
 - target state 가 Entry Spot 이면 기존처럼 invalid argument 로 거부한다.
 - `zlink_spot_actor_join_recv(...)` 와
-  `zlink_spot_actor_join_reply(...)` 를 통한 application join handler 흐름을 유지한다.
-- callback 인자 형태와 reply parts 전달 의미는 유지하되, typedef 이름은
+  `zlink_spot_actor_join_reply(...)` 로 이어지는 application join handler 흐름을 유지한다.
+- callback 인자 형태와 reply parts 전달 의미는 유지하되 typedef 이름은
   `zlink_actor_join_spot_handler_fn` 으로 교체한다.
 
 ### 4.3 Entry Spot join 추가
@@ -172,7 +172,7 @@ user Spot join 과 Entry Spot join 의 차이는 target state 선택과 callback
   갱신을 수행한다.
 - application join queue 에 넣지 않는다.
 - 성공 시 바로 commit 흐름을 실행한다.
-- commit 은 기존 accepted join commit 과 같은 actor 이동 규칙을 재사용하되,
+- commit 은 기존 accepted join commit 과 같은 actor 이동 규칙을 재사용하되
   target state 가 Entry Spot 이어도 허용한다.
 - 이전 위치가 user Spot 이면 leave lifecycle 을 예약한다.
 - target Entry Spot joined lifecycle 을 예약한다. 단, 이미 같은 target SpotNode 의 Entry Spot 에
@@ -257,7 +257,7 @@ core 구현과 core 테스트가 통과한 뒤 아래 스크립트로 local core
 ## 7. Binding 적용 계획
 
 core C API 의 handler typedef 이름을 바꾸므로 이번 작업은 모든 binding 을 같은 rollout 에서
-고친다. 한 언어라도 이전 이름을 유지하면 synced header 와 wrapper 구현이 서로 어긋나고,
+고친다. 한 언어라도 이전 이름을 유지하면 synced header 와 wrapper 구현이 서로 어긋나고
 사용자는 언어마다 다른 계약을 보게 된다.
 
 ### 7.1 공통 binding 규칙
@@ -511,7 +511,7 @@ native 경로 조건:
 - native join completion 이 돌려준 target Actor ref 를 framework 의 `ActorRef` 로 노출한다.
   router channel id 는 framework route mesh 설정에서 결정한다.
 - lifecycle 호출부는 `OnActorJoinedAsync(info, ct)` / `OnActorLeftAsync(info, ct)` 같은
-  Spot class virtual hook 을 더 이상 호출하지 않는다. core/binding lifecycle info 로부터 actor
+  Spot class virtual hook 을 더 이상 호출하지 않는다. core/binding lifecycle info 에서 actor
   instance 와 `ZLinkSpotActorChangeResult` 를 만든 뒤 등록된 `PostActorJoined` /
   `ActorLeft` handler 를 호출한다.
 

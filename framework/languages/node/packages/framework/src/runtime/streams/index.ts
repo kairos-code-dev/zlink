@@ -478,9 +478,13 @@ async function runNow(work: () => Promise<void>): Promise<void> {
 }
 
 export class ZLinkStreamBindingRuntime {
-  private readonly routes = new Map<string, ZLinkActorSessionRoute>();
+  private readonly routes: ZLinkActorSessionBindingRegistry;
+  private readonly frameMessages: ZLinkStreamFrameMessageFactory;
 
-  constructor(private readonly options: ZLinkStreamBindingRuntimeOptions = {}) {}
+  constructor(private readonly options: ZLinkStreamBindingRuntimeOptions = {}) {
+    this.routes = new ZLinkActorSessionBindingRegistry();
+    this.frameMessages = new ZLinkStreamFrameMessageFactory(options);
+  }
 
   createSessionContext(stream: ZLinkStream, close?: (signal?: AbortSignal) => Promise<void>): DefaultZLinkSessionContext {
     return new DefaultZLinkSessionContext(this, stream, close ?? ((signal) => stream.close(signal)));
@@ -516,9 +520,154 @@ export class ZLinkStreamBindingRuntime {
 
     const bindingToken = createBindingToken();
     const sessionActor = new DefaultZLinkSessionActor(this, actorRef, bindingToken);
-    this.routes.set(actorRef.actorId, { context, actor: sessionActor, bindingToken });
-    context.bindLocal(sessionActor, bindingToken);
+    this.routes.bind(context, sessionActor, bindingToken);
     return sessionActor;
+  }
+
+  find(actorId: string): DefaultZLinkSessionActor | undefined {
+    return this.routes.find(actorId);
+  }
+
+  unbind(actorId: string, context: DefaultZLinkSessionContext, bindingToken: string): void {
+    this.routes.unbind(actorId, context, bindingToken);
+  }
+
+  cleanup(context: DefaultZLinkSessionContext): void {
+    this.routes.cleanup(context);
+  }
+
+  async sendBoundSession(
+    actorId: string,
+    message: unknown,
+    packetName: string | undefined,
+    metadata: ReadonlyMap<string, string>,
+    signal?: AbortSignal
+  ): Promise<void> {
+    throwIfAborted(signal);
+    const route = this.routes.require(actorId);
+    const frame = this.frameMessages.createJsonFrameMessage(
+      ZLinkStreamMessageKind.Send,
+      resolvePacketName(message, packetName),
+      metadata,
+      false,
+      undefined,
+      message
+    );
+    try {
+      await this.requireTransport().send(actorId, frame, {
+        bindingToken: route.bindingToken,
+        packetName,
+        metadata,
+        signal
+      });
+      this.routes.requireCurrentToken(actorId, route.bindingToken);
+    } finally {
+      frame.close();
+    }
+  }
+
+  async disconnectBoundSession(actorId: string, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    const route = this.routes.require(actorId);
+    try {
+      await this.requireTransport().disconnect(actorId, {
+        bindingToken: route.bindingToken,
+        signal
+      });
+    } finally {
+      this.unbind(actorId, route.context, route.bindingToken);
+    }
+  }
+
+  async relay(actor: DefaultZLinkSessionActor, header: ZlinkStreamHeader, payload: Message, signal?: AbortSignal): Promise<void> {
+    this.routes.requireCurrentToken(actor.actorId, actor.bindingToken);
+    if (this.options.relay !== undefined) {
+      await this.options.relay(actor, header, payload, signal);
+      return;
+    }
+    const route = this.routes.require(actor.actorId);
+    if (!(route.context.stream instanceof ZLinkManagedStream)) {
+      return;
+    }
+    const headerMessage = this.frameMessages.createBinaryMessage(encodeStreamHeader(requireStreamFrameHeader(header)));
+    const payloadMessage = this.frameMessages.createBinaryMessage(messageToBytes(payload));
+    try {
+      if (!route.context.stream.sendBoundActor(actor.actorId, [headerMessage, payloadMessage], 0)) {
+        throw new Error('Actor session relay failed because the ActorGateway route was not ready before timeout.');
+      }
+    } finally {
+      headerMessage.close();
+      payloadMessage.close();
+    }
+  }
+
+  async notifyDisconnected(actor: DefaultZLinkSessionActor, signal?: AbortSignal): Promise<void> {
+    this.routes.requireCurrentToken(actor.actorId, actor.bindingToken);
+    await this.options.notifyDisconnected?.(actor, signal);
+  }
+
+  createTextMessage(payload: string): Message {
+    return this.frameMessages.createTextMessage(payload);
+  }
+
+  createBinaryMessage(payload: Uint8Array): Message {
+    return this.frameMessages.createBinaryMessage(payload);
+  }
+
+  createJsonFrameMessage(
+    kind: ZLinkStreamMessageKind,
+    packetName: string,
+    metadata: ReadonlyMap<string, string>,
+    compressed: boolean,
+    requestSeq: bigint | undefined,
+    payload: unknown
+  ): Message {
+    return this.frameMessages.createJsonFrameMessage(kind, packetName, metadata, compressed, requestSeq, payload);
+  }
+
+  private resolveActorRef(actor: ZLinkActor): ActorRef {
+    if (this.options.actorRefResolver !== undefined) {
+      return this.options.actorRefResolver(actor);
+    }
+    const state = actor.context as unknown as { actorRef?: ActorRef };
+    if (state.actorRef !== undefined) {
+      return state.actorRef;
+    }
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      `Actor '${actor.actorId}' does not have a concrete actor ref.`
+    );
+  }
+
+  private async bindNativeActor(
+    context: DefaultZLinkSessionContext,
+    actorRef: ActorRef,
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (!(context.stream instanceof ZLinkManagedStream)) {
+      return;
+    }
+    await context.stream.bindActor(actorRef, this.options.actorBindTimeoutMs ?? 2000, signal);
+  }
+
+  private requireTransport(): ZLinkBoundSessionTransport {
+    if (this.options.transport === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorSessionNotBound,
+        'Bound session transport is not started.',
+        true
+      );
+    }
+    return this.options.transport;
+  }
+}
+
+class ZLinkActorSessionBindingRegistry {
+  private readonly routes = new Map<string, ZLinkActorSessionRoute>();
+
+  bind(context: DefaultZLinkSessionContext, actor: DefaultZLinkSessionActor, bindingToken: string): void {
+    this.routes.set(actor.actorId, { context, actor, bindingToken });
+    context.bindLocal(actor, bindingToken);
   }
 
   find(actorId: string): DefaultZLinkSessionActor | undefined {
@@ -542,99 +691,44 @@ export class ZLinkStreamBindingRuntime {
     }
   }
 
-  async sendBoundSession(
-    actorId: string,
-    message: unknown,
-    packetName: string | undefined,
-    metadata: ReadonlyMap<string, string>,
-    signal?: AbortSignal
-  ): Promise<void> {
-    throwIfAborted(signal);
-    const route = this.requireRoute(actorId);
-    const frame = this.createJsonFrameMessage(
-      ZLinkStreamMessageKind.Send,
-      resolvePacketName(message, packetName),
-      metadata,
-      false,
-      undefined,
-      message
+  require(actorId: string): ZLinkActorSessionRoute {
+    const route = this.routes.get(actorId);
+    if (route !== undefined) {
+      return route;
+    }
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.ActorSessionNotBound,
+      `No current session binding exists for actor '${actorId}'.`,
+      true
     );
-    try {
-      await this.requireTransport().send(actorId, frame, {
-        bindingToken: route.bindingToken,
-        packetName,
-        metadata,
-        signal
-      });
-      this.requireCurrentToken(actorId, route.bindingToken);
-    } finally {
-      frame.close();
-    }
   }
 
-  async disconnectBoundSession(actorId: string, signal?: AbortSignal): Promise<void> {
-    throwIfAborted(signal);
-    const route = this.requireRoute(actorId);
-    try {
-      await this.requireTransport().disconnect(actorId, {
-        bindingToken: route.bindingToken,
-        signal
-      });
-    } finally {
-      this.unbind(actorId, route.context, route.bindingToken);
-    }
-  }
-
-  async relay(actor: DefaultZLinkSessionActor, header: ZlinkStreamHeader, payload: Message, signal?: AbortSignal): Promise<void> {
-    this.requireCurrentToken(actor.actorId, actor.bindingToken);
-    if (this.options.relay !== undefined) {
-      await this.options.relay(actor, header, payload, signal);
+  requireCurrentToken(actorId: string, bindingToken: string): void {
+    const route = this.require(actorId);
+    if (route.bindingToken === bindingToken) {
       return;
     }
-    const route = this.requireRoute(actor.actorId);
-    if (!(route.context.stream instanceof ZLinkManagedStream)) {
-      return;
-    }
-    const headerMessage = this.createBinaryMessage(encodeStreamHeader(requireStreamFrameHeader(header)));
-    const payloadMessage = this.createBinaryMessage(messageToBytes(payload));
-    try {
-      if (!route.context.stream.sendBoundActor(actor.actorId, [headerMessage, payloadMessage], 0)) {
-        throw new Error('Actor session relay failed because the ActorGateway route was not ready before timeout.');
-      }
-    } finally {
-      headerMessage.close();
-      payloadMessage.close();
-    }
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.ActorSessionNotBound,
+      `Actor '${actorId}' session binding is stale.`,
+      true
+    );
   }
+}
 
-  async notifyDisconnected(actor: DefaultZLinkSessionActor, signal?: AbortSignal): Promise<void> {
-    this.requireCurrentToken(actor.actorId, actor.bindingToken);
-    await this.options.notifyDisconnected?.(actor, signal);
-  }
+class ZLinkStreamFrameMessageFactory {
+  constructor(private readonly options: ZLinkStreamBindingRuntimeOptions) {}
 
   createTextMessage(payload: string): Message {
-    if (this.options.messageFactory === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RouteNotConnected,
-        'Stream message factory is not started.',
-        true
-      );
-    }
-    return this.options.messageFactory.createTextMessage(payload);
+    return this.requireMessageFactory().createTextMessage(payload);
   }
 
   createBinaryMessage(payload: Uint8Array): Message {
-    if (this.options.messageFactory === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RouteNotConnected,
-        'Stream message factory is not started.',
-        true
-      );
+    const factory = this.requireMessageFactory();
+    if (factory.createBinaryMessage !== undefined) {
+      return factory.createBinaryMessage(payload);
     }
-    if (this.options.messageFactory.createBinaryMessage !== undefined) {
-      return this.options.messageFactory.createBinaryMessage(payload);
-    }
-    return this.options.messageFactory.createTextMessage(utf8Decode(payload));
+    return factory.createTextMessage(utf8Decode(payload));
   }
 
   createJsonFrameMessage(
@@ -664,71 +758,22 @@ export class ZLinkStreamBindingRuntime {
     return this.createBinaryMessage(frame);
   }
 
-  private resolveActorRef(actor: ZLinkActor): ActorRef {
-    if (this.options.actorRefResolver !== undefined) {
-      return this.options.actorRefResolver(actor);
-    }
-    const state = actor.context as unknown as { actorRef?: ActorRef };
-    if (state.actorRef !== undefined) {
-      return state.actorRef;
-    }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorRouteNotFound,
-      `Actor '${actor.actorId}' does not have a concrete actor ref.`
-    );
-  }
-
-  private async bindNativeActor(
-    context: DefaultZLinkSessionContext,
-    actorRef: ActorRef,
-    signal?: AbortSignal
-  ): Promise<void> {
-    if (!(context.stream instanceof ZLinkManagedStream)) {
-      return;
-    }
-    await context.stream.bindActor(actorRef, this.options.actorBindTimeoutMs ?? 2000, signal);
-  }
-
-  private requireRoute(actorId: string): ZLinkActorSessionRoute {
-    const route = this.routes.get(actorId);
-    if (route !== undefined) {
-      return route;
-    }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorSessionNotBound,
-      `No current session binding exists for actor '${actorId}'.`,
-      true
-    );
-  }
-
-  private requireCurrentToken(actorId: string, bindingToken: string): void {
-    const route = this.requireRoute(actorId);
-    if (route.bindingToken === bindingToken) {
-      return;
-    }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorSessionNotBound,
-      `Actor '${actorId}' session binding is stale.`,
-      true
-    );
-  }
-
-  private requireTransport(): ZLinkBoundSessionTransport {
-    if (this.options.transport === undefined) {
+  private requireMessageFactory(): ZLinkStreamMessageFactory {
+    if (this.options.messageFactory === undefined) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorSessionNotBound,
-        'Bound session transport is not started.',
+        ZLinkFrameworkErrorKind.RouteNotConnected,
+        'Stream message factory is not started.',
         true
       );
     }
-    return this.options.transport;
+    return this.options.messageFactory;
   }
 }
 
 export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   readonly client: ZLinkSessionClient;
   readonly actors: ZLinkSessionActors;
-  private readonly localActors = new Map<string, { actor: DefaultZLinkSessionActor; token: string }>();
+  private readonly localActors = new ZLinkSessionLocalActorBindings();
   private readonly requests = new ZLinkSessionRequestTracker();
   private currentDispatchHeader: ZLinkStreamFrameHeader | undefined;
 
@@ -825,17 +870,33 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   }
 
   get boundActors(): readonly DefaultZLinkSessionActor[] {
-    return [...this.localActors.values()].map((entry) => entry.actor);
+    return this.localActors.snapshot();
   }
 
   bindLocal(actor: DefaultZLinkSessionActor, token: string): void {
-    this.localActors.set(actor.actorId, { actor, token });
+    this.localActors.bind(actor, token);
   }
 
   unbindLocal(actorId: string, token: string): void {
-    const current = this.localActors.get(actorId);
+    this.localActors.unbind(actorId, token);
+  }
+}
+
+class ZLinkSessionLocalActorBindings {
+  private readonly actors = new Map<string, { actor: DefaultZLinkSessionActor; token: string }>();
+
+  snapshot(): readonly DefaultZLinkSessionActor[] {
+    return [...this.actors.values()].map((entry) => entry.actor);
+  }
+
+  bind(actor: DefaultZLinkSessionActor, token: string): void {
+    this.actors.set(actor.actorId, { actor, token });
+  }
+
+  unbind(actorId: string, token: string): void {
+    const current = this.actors.get(actorId);
     if (current?.token === token) {
-      this.localActors.delete(actorId);
+      this.actors.delete(actorId);
     }
   }
 }

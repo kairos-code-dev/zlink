@@ -43,16 +43,14 @@ export function inferTransport(endpoint: string): ZlinkStreamTransport {
 
 
 class NodeDuplexStreamConnection implements ZlinkStreamConnection {
-  private readonly chunks: Buffer[] = [];
-  private bufferedBytes = 0;
+  private readonly buffer = new BufferedByteQueue();
   private closed = false;
   private readWaiter: (() => void) | undefined;
   private error: Error | undefined;
 
   constructor(private readonly socket: net.Socket | tls.TLSSocket) {
     socket.on('data', (chunk: Buffer) => {
-      this.chunks.push(chunk);
-      this.bufferedBytes += chunk.length;
+      this.buffer.push(chunk);
       this.wakeReader();
     });
     socket.on('close', () => {
@@ -103,49 +101,17 @@ class NodeDuplexStreamConnection implements ZlinkStreamConnection {
   }
 
   private tryReadFrame(): Uint8Array | undefined {
-    if (this.bufferedBytes < 6) {
+    if (this.buffer.size < 6) {
       return undefined;
     }
-    const prefix = this.peek(6);
+    const prefix = this.buffer.peek(6);
     const headerLength = readUInt16BE(prefix, 0);
     const payloadLength = readUInt32BE(prefix, 2);
     const frameLength = 6 + headerLength + payloadLength;
-    if (this.bufferedBytes < frameLength) {
+    if (this.buffer.size < frameLength) {
       return undefined;
     }
-    return this.consume(frameLength);
-  }
-
-  private peek(length: number): Uint8Array {
-    const output = new Uint8Array(length);
-    let offset = 0;
-    for (const chunk of this.chunks) {
-      const take = Math.min(chunk.length, length - offset);
-      output.set(chunk.subarray(0, take), offset);
-      offset += take;
-      if (offset === length) {
-        break;
-      }
-    }
-    return output;
-  }
-
-  private consume(length: number): Uint8Array {
-    const output = new Uint8Array(length);
-    let offset = 0;
-    while (offset < length) {
-      const chunk = this.chunks[0];
-      const take = Math.min(chunk.length, length - offset);
-      output.set(chunk.subarray(0, take), offset);
-      offset += take;
-      this.bufferedBytes -= take;
-      if (take === chunk.length) {
-        this.chunks.shift();
-      } else {
-        this.chunks[0] = chunk.subarray(take);
-      }
-    }
-    return output;
+    return this.buffer.consume(frameLength);
   }
 
   private waitForData(signal: AbortSignal | undefined): Promise<void> {
@@ -176,8 +142,7 @@ class NodeDuplexStreamConnection implements ZlinkStreamConnection {
 }
 
 class NodeWebSocketConnection implements ZlinkStreamConnection {
-  private readonly chunks: Buffer[] = [];
-  private bufferedBytes = 0;
+  private readonly buffer = new BufferedByteQueue();
   private closed = false;
   private readWaiter: (() => void) | undefined;
   private error: Error | undefined;
@@ -186,8 +151,7 @@ class NodeWebSocketConnection implements ZlinkStreamConnection {
 
   constructor(private readonly socket: net.Socket | tls.TLSSocket, initialData?: Buffer) {
     socket.on('data', (chunk: Buffer) => {
-      this.chunks.push(chunk);
-      this.bufferedBytes += chunk.length;
+      this.buffer.push(chunk);
       this.drainFrames();
       this.wakeReader();
     });
@@ -202,8 +166,7 @@ class NodeWebSocketConnection implements ZlinkStreamConnection {
     });
 
     if (initialData !== undefined && initialData.length > 0) {
-      this.chunks.push(initialData);
-      this.bufferedBytes += initialData.length;
+      this.buffer.push(initialData);
       this.drainFrames();
     }
   }
@@ -287,27 +250,27 @@ class NodeWebSocketConnection implements ZlinkStreamConnection {
   }
 
   private tryReadWebSocketFrame(): WebSocketFrame | undefined {
-    if (this.bufferedBytes < 2) {
+    if (this.buffer.size < 2) {
       return undefined;
     }
-    const firstTwo = this.peek(2);
+    const firstTwo = this.buffer.peek(2);
     const fin = (firstTwo[0] & 0x80) !== 0;
     const opcode = firstTwo[0] & 0x0f;
     const masked = (firstTwo[1] & 0x80) !== 0;
     let payloadLength = firstTwo[1] & 0x7f;
     let headerLength = 2;
     if (payloadLength === 126) {
-      if (this.bufferedBytes < 4) {
+      if (this.buffer.size < 4) {
         return undefined;
       }
-      const extended = this.peek(4);
+      const extended = this.buffer.peek(4);
       payloadLength = readUInt16BE(extended, 2);
       headerLength = 4;
     } else if (payloadLength === 127) {
-      if (this.bufferedBytes < 10) {
+      if (this.buffer.size < 10) {
         return undefined;
       }
-      const extended = this.peek(10);
+      const extended = this.buffer.peek(10);
       const high = readUInt32BE(extended, 2);
       const low = readUInt32BE(extended, 6);
       if (high !== 0 || low > Number.MAX_SAFE_INTEGER) {
@@ -321,11 +284,11 @@ class NodeWebSocketConnection implements ZlinkStreamConnection {
 
     const maskLength = masked ? 4 : 0;
     const frameLength = headerLength + maskLength + payloadLength;
-    if (this.bufferedBytes < frameLength) {
+    if (this.buffer.size < frameLength) {
       return undefined;
     }
 
-    const raw = this.consume(frameLength);
+    const raw = this.buffer.consume(frameLength);
     const mask = masked ? raw.subarray(headerLength, headerLength + 4) : undefined;
     const payloadStart = headerLength + maskLength;
     const payload = raw.slice(payloadStart);
@@ -335,38 +298,6 @@ class NodeWebSocketConnection implements ZlinkStreamConnection {
       }
     }
     return { fin, opcode, payload };
-  }
-
-  private peek(length: number): Uint8Array {
-    const output = new Uint8Array(length);
-    let offset = 0;
-    for (const chunk of this.chunks) {
-      const take = Math.min(chunk.length, length - offset);
-      output.set(chunk.subarray(0, take), offset);
-      offset += take;
-      if (offset === length) {
-        break;
-      }
-    }
-    return output;
-  }
-
-  private consume(length: number): Uint8Array {
-    const output = new Uint8Array(length);
-    let offset = 0;
-    while (offset < length) {
-      const chunk = this.chunks[0];
-      const take = Math.min(chunk.length, length - offset);
-      output.set(chunk.subarray(0, take), offset);
-      offset += take;
-      this.bufferedBytes -= take;
-      if (take === chunk.length) {
-        this.chunks.shift();
-      } else {
-        this.chunks[0] = chunk.subarray(take);
-      }
-    }
-    return output;
   }
 
   private waitForData(signal: AbortSignal | undefined): Promise<void> {
@@ -396,6 +327,52 @@ class NodeWebSocketConnection implements ZlinkStreamConnection {
   }
 }
 
+
+class BufferedByteQueue {
+  private readonly chunks: Buffer[] = [];
+  private bufferedBytes = 0;
+
+  get size(): number {
+    return this.bufferedBytes;
+  }
+
+  push(chunk: Buffer): void {
+    this.chunks.push(chunk);
+    this.bufferedBytes += chunk.length;
+  }
+
+  peek(length: number): Uint8Array {
+    const output = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of this.chunks) {
+      const take = Math.min(chunk.length, length - offset);
+      output.set(chunk.subarray(0, take), offset);
+      offset += take;
+      if (offset === length) {
+        break;
+      }
+    }
+    return output;
+  }
+
+  consume(length: number): Uint8Array {
+    const output = new Uint8Array(length);
+    let offset = 0;
+    while (offset < length) {
+      const chunk = this.chunks[0];
+      const take = Math.min(chunk.length, length - offset);
+      output.set(chunk.subarray(0, take), offset);
+      offset += take;
+      this.bufferedBytes -= take;
+      if (take === chunk.length) {
+        this.chunks.shift();
+      } else {
+        this.chunks[0] = chunk.subarray(take);
+      }
+    }
+    return output;
+  }
+}
 
 function parseEndpoint(endpoint: string): URL {
   try {

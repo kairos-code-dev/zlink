@@ -71,12 +71,16 @@ export class ZLinkSpotNodeRuntimeManager {
     }
     const spotAdapter = this.options.backendAdapterFactory.createSpotAdapter();
     const channelAdapter = this.options.backendAdapterFactory.createChannelAdapter();
+    const connector = new ZLinkSpotNodeConnector({
+      registration: this.options.registration,
+      context: this.options.context,
+      channelAdapter,
+      ownedObjects: this.ownedObjects,
+      publisherBundles: this.publisherBundles
+    });
     for (const [spotNodeName, spotNode] of this.options.registration.spotNodes.entries()) {
       const node = spotAdapter.createSpotNode(this.options.context, ZLINK_BACKEND_SPOT_NODE_MODE_ALL);
-      this.applySpotNodeOptions(node, spotNode);
-      this.attachChannelClients(channelAdapter, node, spotNode);
-      this.attachSpotRouteChannels(channelAdapter, node, spotNode);
-      this.initializeSpotPublisherClients(node, spotNode);
+      connector.configure(node, spotNode);
       await this.initializeEntrySpot(spotNodeName, node, spotNode);
       this.nodes.set(spotNodeName, node);
     }
@@ -108,79 +112,6 @@ export class ZLinkSpotNodeRuntimeManager {
     }
   }
 
-  private applySpotNodeOptions(node: ZLinkBackendSpotNode, spotNode: ZLinkSpotNodeOptions): void {
-    const routingId = spotNode.router?.routingId ?? spotNode.pubSub?.routingId;
-    if (routingId !== undefined) {
-      node.setRoutingId(routingId);
-    }
-    if (spotNode.entrySpot?.routingId !== undefined) {
-      node.entrySpot().setRoutingId(spotNode.entrySpot.routingId);
-    }
-    if (spotNode.router?.bind !== undefined) {
-      node.setRouterBind(spotNode.router.bind);
-    }
-    if (spotNode.pubSub?.bind !== undefined) {
-      node.setPubBind(spotNode.pubSub.bind);
-    }
-    for (const endpoint of spotNode.router?.manualConnections ?? []) {
-      node.connectPeer(endpoint);
-    }
-    for (const endpoint of spotNode.pubSub?.manualConnections ?? []) {
-      node.connectPeer(endpoint);
-    }
-  }
-
-  private attachChannelClients(
-    channelAdapter: ZLinkChannelBackendAdapter,
-    node: ZLinkBackendSpotNode,
-    spotNode: ZLinkSpotNodeOptions
-  ): void {
-    for (const [channelName, attached] of Object.entries(spotNode.attachedChannelClients ?? {})) {
-      const dealer = channelAdapter.createDealerSocket(this.options.context);
-      dealer.setChannelName(channelName);
-      this.ownedObjects.push(dealer);
-      if ((attached.manualConnections ?? []).length > 0) {
-        for (const endpoint of attached.manualConnections ?? []) {
-          dealer.connect(endpoint);
-        }
-        node.attachChannelDealerManual(channelName, dealer);
-        continue;
-      }
-      const discovery = this.createDiscovery(channelAdapter, channelName, ZLinkAutoConnectType.ClientServer);
-      dealer.attachDiscovery(discovery);
-      node.attachChannelDealer(discovery, dealer);
-    }
-  }
-
-  private attachSpotRouteChannels(
-    channelAdapter: ZLinkChannelBackendAdapter,
-    node: ZLinkBackendSpotNode,
-    spotNode: ZLinkSpotNodeOptions
-  ): void {
-    for (const [channelName, acceptance] of Object.entries(spotNode.acceptedSpotRouteChannels ?? {})) {
-      if ((acceptance.manualConnections ?? []).length > 0) {
-        for (const endpoint of acceptance.manualConnections ?? []) {
-          node.connectRouterChannelPeer(channelName, endpoint);
-        }
-        continue;
-      }
-      const discovery = this.createDiscovery(channelAdapter, channelName, this.resolveSpotRouteAutoConnectType(channelName));
-      node.attachSpotRouteChannelDiscovery(channelName, discovery);
-    }
-  }
-
-  private initializeSpotPublisherClients(node: ZLinkBackendSpotNode, spotNode: ZLinkSpotNodeOptions): void {
-    for (const [channelName, attached] of Object.entries(spotNode.attachedSpotPublisherClients ?? {})) {
-      const publisher = node.createSpot();
-      const submitter = new ZLinkAsyncSubmitter((handler) => publisher.onSendReady(handler));
-      this.ownedObjects.push(publisher);
-      this.publisherBundles.set(channelName, { spot: publisher, submitter });
-      for (const endpoint of attached.manualConnections ?? []) {
-        node.connectPeer(endpoint);
-      }
-    }
-  }
-
   private async initializeEntrySpot(
     spotNodeName: string,
     node: ZLinkBackendSpotNode,
@@ -206,26 +137,6 @@ export class ZLinkSpotNodeRuntimeManager {
     this.entryActivations.set(spotNodeName, activation);
   }
 
-  private createDiscovery(
-    channelAdapter: ZLinkChannelBackendAdapter,
-    channelName: string,
-    autoConnectType: ZLinkAutoConnectType
-  ): ZLinkBackendDiscovery {
-    const discovery = channelAdapter.createDiscovery(this.options.context, autoConnectType, channelName);
-    for (const endpoint of this.options.registration.discovery?.registries ?? []) {
-      discovery.connectRegistry(endpoint);
-    }
-    this.ownedObjects.push(discovery);
-    return discovery;
-  }
-
-  private resolveSpotRouteAutoConnectType(channelName: string): ZLinkAutoConnectType {
-    if (this.options.registration.routeChannelOptions.has(channelName)) {
-      return ZLinkAutoConnectType.RouteMesh;
-    }
-    return ZLinkAutoConnectType.ClientServer;
-  }
-
   publishSpot(
     channelName: string,
     topic: string,
@@ -247,6 +158,115 @@ export class ZLinkSpotNodeRuntimeManager {
       () => bundle.spot.publish(topic, parts, 0),
       signal
     );
+  }
+}
+
+interface ZLinkSpotNodeConnectorOptions {
+  readonly registration: ZLinkFrameworkRegistration;
+  readonly context: ZLinkBackendContext;
+  readonly channelAdapter: ZLinkChannelBackendAdapter;
+  readonly ownedObjects: ZLinkOwnedBackendObject[];
+  readonly publisherBundles: Map<string, ZLinkSpotPublisherBundle>;
+}
+
+class ZLinkSpotNodeConnector {
+  constructor(private readonly options: ZLinkSpotNodeConnectorOptions) {}
+
+  configure(node: ZLinkBackendSpotNode, spotNode: ZLinkSpotNodeOptions): void {
+    this.applySpotNodeOptions(node, spotNode);
+    this.attachChannelClients(node, spotNode);
+    this.attachSpotRouteChannels(node, spotNode);
+    this.initializeSpotPublisherClients(node, spotNode);
+  }
+
+  private applySpotNodeOptions(node: ZLinkBackendSpotNode, spotNode: ZLinkSpotNodeOptions): void {
+    const routingId = spotNode.router?.routingId ?? spotNode.pubSub?.routingId;
+    if (routingId !== undefined) {
+      node.setRoutingId(routingId);
+    }
+    if (spotNode.entrySpot?.routingId !== undefined) {
+      node.entrySpot().setRoutingId(spotNode.entrySpot.routingId);
+    }
+    if (spotNode.router?.bind !== undefined) {
+      node.setRouterBind(spotNode.router.bind);
+    }
+    if (spotNode.pubSub?.bind !== undefined) {
+      node.setPubBind(spotNode.pubSub.bind);
+    }
+    for (const endpoint of spotNode.router?.manualConnections ?? []) {
+      node.connectPeer(endpoint);
+    }
+    for (const endpoint of spotNode.pubSub?.manualConnections ?? []) {
+      node.connectPeer(endpoint);
+    }
+  }
+
+  private attachChannelClients(
+    node: ZLinkBackendSpotNode,
+    spotNode: ZLinkSpotNodeOptions
+  ): void {
+    for (const [channelName, attached] of Object.entries(spotNode.attachedChannelClients ?? {})) {
+      const dealer = this.options.channelAdapter.createDealerSocket(this.options.context);
+      dealer.setChannelName(channelName);
+      this.options.ownedObjects.push(dealer);
+      if ((attached.manualConnections ?? []).length > 0) {
+        for (const endpoint of attached.manualConnections ?? []) {
+          dealer.connect(endpoint);
+        }
+        node.attachChannelDealerManual(channelName, dealer);
+        continue;
+      }
+      const discovery = this.createDiscovery(channelName, ZLinkAutoConnectType.ClientServer);
+      dealer.attachDiscovery(discovery);
+      node.attachChannelDealer(discovery, dealer);
+    }
+  }
+
+  private attachSpotRouteChannels(
+    node: ZLinkBackendSpotNode,
+    spotNode: ZLinkSpotNodeOptions
+  ): void {
+    for (const [channelName, acceptance] of Object.entries(spotNode.acceptedSpotRouteChannels ?? {})) {
+      if ((acceptance.manualConnections ?? []).length > 0) {
+        for (const endpoint of acceptance.manualConnections ?? []) {
+          node.connectRouterChannelPeer(channelName, endpoint);
+        }
+        continue;
+      }
+      const discovery = this.createDiscovery(channelName, this.resolveSpotRouteAutoConnectType(channelName));
+      node.attachSpotRouteChannelDiscovery(channelName, discovery);
+    }
+  }
+
+  private initializeSpotPublisherClients(node: ZLinkBackendSpotNode, spotNode: ZLinkSpotNodeOptions): void {
+    for (const [channelName, attached] of Object.entries(spotNode.attachedSpotPublisherClients ?? {})) {
+      const publisher = node.createSpot();
+      const submitter = new ZLinkAsyncSubmitter((handler) => publisher.onSendReady(handler));
+      this.options.ownedObjects.push(publisher);
+      this.options.publisherBundles.set(channelName, { spot: publisher, submitter });
+      for (const endpoint of attached.manualConnections ?? []) {
+        node.connectPeer(endpoint);
+      }
+    }
+  }
+
+  private createDiscovery(
+    channelName: string,
+    autoConnectType: ZLinkAutoConnectType
+  ): ZLinkBackendDiscovery {
+    const discovery = this.options.channelAdapter.createDiscovery(this.options.context, autoConnectType, channelName);
+    for (const endpoint of this.options.registration.discovery?.registries ?? []) {
+      discovery.connectRegistry(endpoint);
+    }
+    this.options.ownedObjects.push(discovery);
+    return discovery;
+  }
+
+  private resolveSpotRouteAutoConnectType(channelName: string): ZLinkAutoConnectType {
+    if (this.options.registration.routeChannelOptions.has(channelName)) {
+      return ZLinkAutoConnectType.RouteMesh;
+    }
+    return ZLinkAutoConnectType.ClientServer;
   }
 }
 

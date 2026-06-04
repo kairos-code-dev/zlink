@@ -13,7 +13,6 @@ import type {
   ZLinkSpotRemoteAddress,
   ZLinkSpotPublisherClient
 } from '../../contracts';
-import { randomUUID } from 'node:crypto';
 import { invokeZLinkHandlerFilters } from '../handlers';
 import type {
   DealerSocket,
@@ -36,29 +35,16 @@ import type {
 } from '../backend/contracts';
 import type { ZLinkRuntimeTaskRunner } from '../execution';
 import { ZLinkAsyncSubmitter } from '../messaging';
-
-const JSON_CONTENT_TYPE = 'application/json';
-
-const enum ZLinkChannelMessageKind {
-  Request = 1,
-  Response = 2,
-  Command = 3,
-  Publish = 4,
-  Error = 5
-}
-
-interface ZLinkChannelEnvelopeHeader {
-  readonly kind: ZLinkChannelMessageKind;
-  readonly channelName: string;
-  readonly messageName: string;
-  readonly contentType: string;
-  readonly correlationId: string | null;
-  readonly deadline: string | null;
-  readonly topic: string | null;
-  readonly errorCode: string | null;
-  readonly errorMessage: string | null;
-  readonly source?: string | null;
-}
+import {
+  closeMessages,
+  decodeChannelEnvelope,
+  decodeChannelReply,
+  encodeChannelEnvelopeParts,
+  encodeChannelErrorReplyParts,
+  encodeChannelReplyParts,
+  JSON_CONTENT_TYPE,
+  ZLinkChannelMessageKind
+} from './channel-envelope';
 
 export interface ZLinkChannelClientTransport {
   send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void>;
@@ -180,22 +166,18 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
 }
 
 export class ZLinkChannelRuntimeManager {
-  private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
-  private readonly channelRouters = new Map<string, ZLinkBackendRouterSocket>();
-  private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
-  private readonly subscribers = new Map<string, ZLinkBackendSubscriberSocket>();
-  private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
   private readonly channelReceiveLoops: ZLinkChannelReceiveLoop[] = [];
   private readonly subscriberReceiveLoops: ZLinkSubscriberReceiveLoop[] = [];
   private readonly routeReceiveLoops: ZLinkRouteReceiveLoop[] = [];
-  private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
-  private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
+  private readonly sockets: ZLinkChannelSocketRegistry;
 
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
     private readonly adapter: ZLinkChannelBackendAdapter,
     private readonly context: ZLinkBackendContext
-  ) {}
+  ) {
+    this.sockets = new ZLinkChannelSocketRegistry(registration, adapter, context);
+  }
 
   start(taskRunner?: ZLinkRuntimeTaskRunner): Promise<void>[] {
     const tasks: Promise<void>[] = [];
@@ -206,7 +188,7 @@ export class ZLinkChannelRuntimeManager {
       if (taskRunner === undefined) {
         throw new ZLinkConfigurationException(`Channel '${channelName}' handler dispatch requires a runtime task runner.`);
       }
-      const router = this.getOrCreateChannelRouter(channelName);
+      const router = this.sockets.channelRouter(channelName);
       const dispatcher = new ZLinkChannelRequestDispatcher({
         channelName,
         handlers: new Map(channel.requestHandlers?.map((handler) => [handler.packetName, handler.handler]))
@@ -222,7 +204,7 @@ export class ZLinkChannelRuntimeManager {
       if (taskRunner === undefined) {
         throw new ZLinkConfigurationException(`Fanout channel '${channelName}' publish handler dispatch requires a runtime task runner.`);
       }
-      const subscriber = this.getOrCreateSubscriber(channelName);
+      const subscriber = this.sockets.subscriber(channelName);
       const dispatcher = new ZLinkChannelPublishDispatcher({
         channelName,
         handlers: new Map(channel.publishHandlers?.map((handler) => [handler.packetName, handler.handler]))
@@ -233,7 +215,7 @@ export class ZLinkChannelRuntimeManager {
     }
     for (const routeChannel of this.registration.routeChannelOptions.values()) {
       if (routeChannel.bind !== undefined) {
-        const router = this.getOrCreateRouteRouter(routeChannel.routerChannelId);
+          const router = this.sockets.routeRouter(routeChannel.routerChannelId);
         const handlers = collectRouteChannelHandlers(routeChannel);
         if (handlers.length > 0) {
           if (taskRunner === undefined) {
@@ -254,9 +236,9 @@ export class ZLinkChannelRuntimeManager {
 
   async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    const dealer = this.getOrCreateClientDealer(channelName);
+    const dealer = this.sockets.clientDealer(channelName);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, channelName, packetName, message) as readonly Message[];
-    await this.requireSubmitter(dealer).submitCommand(
+    await this.sockets.requireSubmitter(dealer).submitCommand(
       () => dealer.send(parts, 0),
       signal
     );
@@ -270,9 +252,9 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<TReply> {
     throwIfAborted(signal);
-    const dealer = this.getOrCreateClientDealer(channelName);
+    const dealer = this.sockets.clientDealer(channelName);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, channelName, packetName, request, timeoutMs) as readonly Message[];
-    return this.requireSubmitter(dealer).submitRequest(
+    return this.sockets.requireSubmitter(dealer).submitRequest(
       (resolve, reject) => dealer.request(
         parts,
         (result, parts) => {
@@ -297,9 +279,9 @@ export class ZLinkChannelRuntimeManager {
 
   async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    const publisher = this.getOrCreatePublisher(channelName);
+    const publisher = this.sockets.publisher(channelName);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Publish, channelName, packetName, event, undefined, topic) as readonly Message[];
-    await this.requireSubmitter(publisher).submitCommand(
+    await this.sockets.requireSubmitter(publisher).submitCommand(
       () => publisher.publish(
         topic,
         parts,
@@ -317,9 +299,9 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
-    const router = this.getOrCreateRouteRouter(routerChannelId);
+    const router = this.sockets.routeRouter(routerChannelId);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, routerChannelId, packetName, message) as readonly Message[];
-    await this.requireSubmitter(router).submitCommand(
+    await this.sockets.requireSubmitter(router).submitCommand(
       () => router.send(targetNodeRid, parts, 0),
       signal
     );
@@ -334,9 +316,9 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<TReply> {
     throwIfAborted(signal);
-    const router = this.getOrCreateRouteRouter(routerChannelId);
+    const router = this.sockets.routeRouter(routerChannelId);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, routerChannelId, packetName, request, timeoutMs) as readonly Message[];
-    return this.requireSubmitter(router).submitRequest(
+    return this.sockets.requireSubmitter(router).submitRequest(
       (resolve, reject) => router.request(
         targetNodeRid,
         parts,
@@ -367,9 +349,9 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
-    const router = this.getOrCreateRouteRouter(remoteAddress.routerChannelId);
+    const router = this.sockets.routeRouter(remoteAddress.routerChannelId);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, remoteAddress.routerChannelId, packetName, message) as readonly Message[];
-    await this.requireSubmitter(router).submitCommand(
+    await this.sockets.requireSubmitter(router).submitCommand(
       () => router.sendToSpot(remoteAddress.targetNodeRid, remoteAddress.spotRid, parts, 0),
       signal
     );
@@ -383,9 +365,9 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<TReply> {
     throwIfAborted(signal);
-    const router = this.getOrCreateRouteRouter(remoteAddress.routerChannelId);
+    const router = this.sockets.routeRouter(remoteAddress.routerChannelId);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, remoteAddress.routerChannelId, packetName, request, timeoutMs) as readonly Message[];
-    return this.requireSubmitter(router).submitRequest(
+    return this.sockets.requireSubmitter(router).submitRequest(
       (resolve, reject) => router.requestToSpot(
         remoteAddress.targetNodeRid,
         remoteAddress.spotRid,
@@ -411,21 +393,9 @@ export class ZLinkChannelRuntimeManager {
   }
 
   async dispose(): Promise<void> {
-    const sockets = [
-      ...this.clientDealers.values(),
-      ...this.channelRouters.values(),
-      ...this.publishers.values(),
-      ...this.subscribers.values(),
-      ...this.routeRouters.values()
-    ];
     const channelLoops = [...this.channelReceiveLoops];
     const subscriberLoops = [...this.subscriberReceiveLoops];
     const loops = [...this.routeReceiveLoops];
-    this.clientDealers.clear();
-    this.channelRouters.clear();
-    this.publishers.clear();
-    this.subscribers.clear();
-    this.routeRouters.clear();
     this.channelReceiveLoops.length = 0;
     this.subscriberReceiveLoops.length = 0;
     this.routeReceiveLoops.length = 0;
@@ -438,15 +408,47 @@ export class ZLinkChannelRuntimeManager {
     for (const loop of loops) {
       loop.stop();
     }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await this.sockets.dispose();
+  }
+}
+
+class ZLinkChannelSocketRegistry {
+  private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
+  private readonly channelRouters = new Map<string, ZLinkBackendRouterSocket>();
+  private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
+  private readonly subscribers = new Map<string, ZLinkBackendSubscriberSocket>();
+  private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
+  private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
+  private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
+
+  constructor(
+    private readonly registration: ZLinkFrameworkRegistration,
+    private readonly adapter: ZLinkChannelBackendAdapter,
+    private readonly context: ZLinkBackendContext
+  ) {}
+
+  async dispose(): Promise<void> {
+    const sockets = [
+      ...this.clientDealers.values(),
+      ...this.channelRouters.values(),
+      ...this.publishers.values(),
+      ...this.subscribers.values(),
+      ...this.routeRouters.values()
+    ];
+    this.clientDealers.clear();
+    this.channelRouters.clear();
+    this.publishers.clear();
+    this.subscribers.clear();
+    this.routeRouters.clear();
     for (const submitter of this.ownedSubmitters) {
       submitter.dispose();
     }
     this.ownedSubmitters.clear();
-    await new Promise<void>((resolve) => setImmediate(resolve));
     await Promise.all(sockets.map((socket) => socket.dispose()));
   }
 
-  private getOrCreateClientDealer(channelName: string): ZLinkBackendDealerSocket {
+  clientDealer(channelName: string): ZLinkBackendDealerSocket {
     const existing = this.clientDealers.get(channelName);
     if (existing !== undefined) {
       return existing;
@@ -468,7 +470,7 @@ export class ZLinkChannelRuntimeManager {
     return dealer;
   }
 
-  private getOrCreateChannelRouter(channelName: string): ZLinkBackendRouterSocket {
+  channelRouter(channelName: string): ZLinkBackendRouterSocket {
     const existing = this.channelRouters.get(channelName);
     if (existing !== undefined) {
       return existing;
@@ -490,7 +492,7 @@ export class ZLinkChannelRuntimeManager {
     return router;
   }
 
-  private getOrCreatePublisher(channelName: string): ZLinkBackendPublisherSocket {
+  publisher(channelName: string): ZLinkBackendPublisherSocket {
     const existing = this.publishers.get(channelName);
     if (existing !== undefined) {
       return existing;
@@ -512,7 +514,7 @@ export class ZLinkChannelRuntimeManager {
     return publisher;
   }
 
-  private getOrCreateSubscriber(channelName: string): ZLinkBackendSubscriberSocket {
+  subscriber(channelName: string): ZLinkBackendSubscriberSocket {
     const existing = this.subscribers.get(channelName);
     if (existing !== undefined) {
       return existing;
@@ -533,7 +535,7 @@ export class ZLinkChannelRuntimeManager {
     return subscriber;
   }
 
-  private getOrCreateRouteRouter(routerChannelId: string): ZLinkBackendRouterSocket {
+  routeRouter(routerChannelId: string): ZLinkBackendRouterSocket {
     const existing = this.routeRouters.get(routerChannelId);
     if (existing !== undefined) {
       return existing;
@@ -576,7 +578,7 @@ export class ZLinkChannelRuntimeManager {
     this.ownedSubmitters.add(submitter);
   }
 
-  private requireSubmitter(socket: ZLinkBackendDealerSocket | ZLinkBackendPublisherSocket | ZLinkBackendRouterSocket): ZLinkAsyncSubmitter {
+  requireSubmitter(socket: ZLinkBackendDealerSocket | ZLinkBackendPublisherSocket | ZLinkBackendRouterSocket): ZLinkAsyncSubmitter {
     const submitter = this.submitters.get(socket);
     if (submitter === undefined) {
       throw new ZLinkConfigurationException('Channel submit runtime is not started.');
@@ -628,11 +630,6 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
       encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Publish, channelName, packetName, event, undefined, topic)
     ).submit();
   }
-}
-
-export interface ZLinkChannelEnvelope {
-  readonly packetName?: string;
-  readonly payload: Buffer;
 }
 
 export interface ZLinkChannelRequestDispatcherOptions {
@@ -1023,118 +1020,6 @@ function appendParts<TNext extends ZLinkMultipartOperation<TNext>>(
     current = current.message(parts[index]);
   }
   return current;
-}
-
-function toMessageLike(value: unknown): MessageLike {
-  if (Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value)) {
-    return value;
-  }
-  return encodeJsonBytes(value);
-}
-
-function isMessage(value: unknown): value is Message {
-  return typeof value === 'object' && value !== null && typeof (value as { data?: unknown }).data === 'function';
-}
-
-function encodeChannelEnvelopeParts(
-  kind: ZLinkChannelMessageKind,
-  channelName: string,
-  packetName: string | undefined,
-  payload: unknown,
-  timeoutMs?: number,
-  topic?: string
-): readonly MessageLike[] {
-  const header: ZLinkChannelEnvelopeHeader = {
-    kind,
-    channelName,
-    messageName: packetName ?? resolveChannelPacketName(payload),
-    contentType: JSON_CONTENT_TYPE,
-    correlationId: randomUUID().replaceAll('-', ''),
-    deadline: timeoutMs === undefined ? null : new Date(Date.now() + timeoutMs).toISOString(),
-    topic: topic ?? null,
-    errorCode: null,
-    errorMessage: null
-  };
-  return [encodeJsonBytes(header), toMessageLike(payload)];
-}
-
-function encodeChannelReplyParts(request: ZLinkChannelEnvelopeHeader, payload: unknown): readonly MessageLike[] {
-  const header: ZLinkChannelEnvelopeHeader = {
-    kind: ZLinkChannelMessageKind.Response,
-    channelName: request.channelName,
-    messageName: request.messageName,
-    contentType: JSON_CONTENT_TYPE,
-    correlationId: request.correlationId,
-    deadline: null,
-    topic: null,
-    errorCode: null,
-    errorMessage: null
-  };
-  return [encodeJsonBytes(header), toMessageLike(payload ?? Buffer.alloc(0))];
-}
-
-function encodeChannelErrorReplyParts(request: ZLinkChannelEnvelopeHeader, message: string): readonly MessageLike[] {
-  const header: ZLinkChannelEnvelopeHeader = {
-    kind: ZLinkChannelMessageKind.Error,
-    channelName: request.channelName,
-    messageName: request.messageName,
-    contentType: JSON_CONTENT_TYPE,
-    correlationId: request.correlationId,
-    deadline: null,
-    topic: null,
-    errorCode: 'ZLinkRouteHandlerError',
-    errorMessage: message
-  };
-  return [encodeJsonBytes(header), encodeJsonBytes(null)];
-}
-
-function decodeChannelReply<TReply>(parts: readonly Message[]): TReply {
-  const header = decodeChannelHeader(parts);
-  if (header.kind === ZLinkChannelMessageKind.Error) {
-    throw new ZLinkConfigurationException(header.errorMessage ?? 'ZLink channel request failed.');
-  }
-  if (header.kind !== ZLinkChannelMessageKind.Response) {
-    throw new ZLinkConfigurationException(`Channel reply kind '${header.kind}' is not a response.`);
-  }
-  if (parts.length < 2 || parts[1].data().length === 0) {
-    return undefined as TReply;
-  }
-  return JSON.parse(parts[1].data().toString()) as TReply;
-}
-
-function closeMessages(parts: readonly Message[]): void {
-  for (const part of parts) {
-    part.close();
-  }
-}
-
-function decodeChannelEnvelope(parts: readonly Message[]): ZLinkChannelEnvelope & { readonly header: ZLinkChannelEnvelopeHeader } {
-  const header = decodeChannelHeader(parts);
-  if (parts.length < 2) {
-    throw new ZLinkConfigurationException('Channel envelope body part is missing.');
-  }
-  return { header, packetName: header.messageName, payload: Buffer.from(parts[1].data()) };
-}
-
-function decodeChannelHeader(parts: readonly Message[]): ZLinkChannelEnvelopeHeader {
-  if (parts.length === 0) {
-    throw new ZLinkConfigurationException('Channel envelope header part is missing.');
-  }
-  return JSON.parse(parts[0].data().toString()) as ZLinkChannelEnvelopeHeader;
-}
-
-function encodeJsonBytes(value: unknown): Buffer {
-  return Buffer.from(JSON.stringify(value ?? null));
-}
-
-function resolveChannelPacketName(payload: unknown): string {
-  if (payload !== null && typeof payload === 'object' && 'constructor' in payload) {
-    const name = (payload as { constructor?: { name?: string } }).constructor?.name;
-    if (name !== undefined && name !== 'Object') {
-      return name;
-    }
-  }
-  throw new ZLinkConfigurationException('Channel packetName is required when the payload type cannot provide one.');
 }
 
 export class DefaultZLinkFanoutClient implements ZLinkFanoutClient {

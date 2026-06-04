@@ -299,14 +299,9 @@ function createDiscoveredRequestHandlers(
   explicitHandlerTypes: readonly Type[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['requestHandlers']> {
-  const descriptors = createDiscoveredHandlerDescriptors(providerRefs, handlerGroups, explicitHandlerTypes, 'request');
-
-  return descriptors.map(({ ref, metadata }) => ({
-    packetName: metadata.packetName ?? ref.handlerType.name,
-    handler: {
-      async handle(payload: Buffer, context: ZLinkRequestContext) {
-        return await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
-      }
+  return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, explicitHandlerTypes, 'request', (ref, metadata) => ({
+    async handle(payload: Buffer, context: ZLinkRequestContext) {
+      return await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
     }
   }));
 }
@@ -317,14 +312,9 @@ function createDiscoveredSendHandlers(
   explicitHandlerTypes: readonly Type[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<NonNullable<ZLinkChannelOptions['routeMesh']>['sendHandlers']> {
-  const descriptors = createDiscoveredHandlerDescriptors(providerRefs, handlerGroups, explicitHandlerTypes, 'send');
-
-  return descriptors.map(({ ref, metadata }) => ({
-    packetName: metadata.packetName ?? ref.handlerType.name,
-    handler: {
-      async handle(payload: Buffer, context: ZLinkRouteSendContext) {
-        await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
-      }
+  return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, explicitHandlerTypes, 'send', (ref, metadata) => ({
+    async handle(payload: Buffer, context: ZLinkRouteSendContext) {
+      await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
     }
   }));
 }
@@ -335,15 +325,25 @@ function createDiscoveredPublishHandlers(
   explicitHandlerTypes: readonly Type[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['publishHandlers']> {
-  const descriptors = createDiscoveredHandlerDescriptors(providerRefs, handlerGroups, explicitHandlerTypes, 'publish');
+  return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, explicitHandlerTypes, 'publish', (ref, metadata) => ({
+    async handle(payload: Buffer, context: ZLinkPublishContext) {
+      await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
+    }
+  }));
+}
+
+function createDiscoveredHandlerRegistrations<THandler>(
+  providerRefs: readonly DiscoveredNestProvider[],
+  handlerGroups: readonly string[] | undefined,
+  explicitHandlerTypes: readonly Type[] | undefined,
+  kind: string,
+  createHandler: (ref: DiscoveredNestProvider, metadata: ZLinkDecoratorMetadata) => THandler
+): Array<{ readonly packetName: string; readonly handler: THandler }> {
+  const descriptors = createDiscoveredHandlerDescriptors(providerRefs, handlerGroups, explicitHandlerTypes, kind);
 
   return descriptors.map(({ ref, metadata }) => ({
     packetName: metadata.packetName ?? ref.handlerType.name,
-    handler: {
-      async handle(payload: Buffer, context: ZLinkPublishContext) {
-        await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
-      }
-    }
+    handler: createHandler(ref, metadata)
   }));
 }
 
@@ -469,68 +469,58 @@ function hasNestHandlerDiscovery(options: ZLinkModuleOptions): boolean {
   );
 }
 
-function alwaysAvailableClientProviders(registration?: ZLinkFrameworkRegistration): Provider[] {
-  if (registration === undefined) {
-    return [
-      {
-        provide: ZLINK_CHANNEL_CLIENT,
-        inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
-        useFactory: (
-          resolved: ZLinkFrameworkRegistration,
-          runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
-        ) => new framework.DefaultZLinkChannelClient(resolved, runtime.channelTransport)
-      },
-      {
-        provide: ZLINK_FANOUT_CLIENT,
-        inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
-        useFactory: (
-          resolved: ZLinkFrameworkRegistration,
-          runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
-        ) => new framework.DefaultZLinkFanoutClient(resolved, runtime.channelTransport)
-      },
-      {
-        provide: ZLINK_ROUTE_CLIENT,
-        inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
-        useFactory: (
-          resolved: ZLinkFrameworkRegistration,
-          runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
-        ) => new framework.DefaultZLinkRouteClient(resolved, runtime.routeTransport)
-      },
-      {
-        provide: ZLINK_BOUND_SESSION_FACTORY,
-        inject: [ZLINK_FRAMEWORK_RUNTIME],
-        useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) => runtime.boundSessionFactory
-      },
-      { provide: ZLINK_MESSAGE_METADATA_POLICY, useValue: Object.freeze({ forward: true }) }
-    ];
-  }
+type FrameworkRuntimeHost = InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>;
 
+interface AlwaysAvailableClientProviderSpec {
+  readonly token: InjectionToken;
+  create(registration: ZLinkFrameworkRegistration, runtime: FrameworkRuntimeHost): unknown;
+}
+
+const ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS: readonly AlwaysAvailableClientProviderSpec[] = [
+  {
+    token: ZLINK_CHANNEL_CLIENT,
+    create: (registration, runtime) => new framework.DefaultZLinkChannelClient(registration, runtime.channelTransport)
+  },
+  {
+    token: ZLINK_FANOUT_CLIENT,
+    create: (registration, runtime) => new framework.DefaultZLinkFanoutClient(registration, runtime.channelTransport)
+  },
+  {
+    token: ZLINK_ROUTE_CLIENT,
+    create: (registration, runtime) => new framework.DefaultZLinkRouteClient(registration, runtime.routeTransport)
+  },
+  {
+    token: ZLINK_BOUND_SESSION_FACTORY,
+    create: (_registration, runtime) => runtime.boundSessionFactory
+  }
+];
+
+function alwaysAvailableClientProviders(registration?: ZLinkFrameworkRegistration): Provider[] {
   return [
-    {
-      provide: ZLINK_CHANNEL_CLIENT,
-      inject: [ZLINK_FRAMEWORK_RUNTIME],
-      useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
-        new framework.DefaultZLinkChannelClient(registration, runtime.channelTransport)
-    },
-    {
-      provide: ZLINK_FANOUT_CLIENT,
-      inject: [ZLINK_FRAMEWORK_RUNTIME],
-      useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
-        new framework.DefaultZLinkFanoutClient(registration, runtime.channelTransport)
-    },
-    {
-      provide: ZLINK_ROUTE_CLIENT,
-      inject: [ZLINK_FRAMEWORK_RUNTIME],
-      useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
-        new framework.DefaultZLinkRouteClient(registration, runtime.routeTransport)
-    },
-    {
-      provide: ZLINK_BOUND_SESSION_FACTORY,
-      inject: [ZLINK_FRAMEWORK_RUNTIME],
-      useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) => runtime.boundSessionFactory
-    },
+    ...ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS.map((spec) =>
+      createAlwaysAvailableClientProvider(spec, registration)
+    ),
     { provide: ZLINK_MESSAGE_METADATA_POLICY, useValue: Object.freeze({ forward: true }) }
   ];
+}
+
+function createAlwaysAvailableClientProvider(
+  spec: AlwaysAvailableClientProviderSpec,
+  registration: ZLinkFrameworkRegistration | undefined
+): Provider {
+  if (registration !== undefined) {
+    return {
+      provide: spec.token,
+      inject: [ZLINK_FRAMEWORK_RUNTIME],
+      useFactory: (runtime: FrameworkRuntimeHost) => spec.create(registration, runtime)
+    };
+  }
+  return {
+    provide: spec.token,
+    inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
+    useFactory: (resolved: ZLinkFrameworkRegistration, runtime: FrameworkRuntimeHost) =>
+      spec.create(resolved, runtime)
+  };
 }
 
 function alwaysAvailableClientTokens(): InjectionToken[] {
@@ -544,36 +534,9 @@ function alwaysAvailableClientTokens(): InjectionToken[] {
 }
 
 function conditionalClientProviders(registration: ZLinkFrameworkRegistration): Provider[] {
-  const providers: Provider[] = [];
-
-  if (framework.hasSpotNode(registration)) {
-    providers.push(
-      { provide: ZLINK_SPOT_MANAGER, useValue: createSpotManager(registration) },
-      {
-        provide: ZLINK_SPOT_OUTBOUND,
-        inject: [ZLINK_FRAMEWORK_RUNTIME],
-        useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
-          createSpotOutbound(registration, runtime)
-      }
-    );
-  }
-
-  if (framework.hasSpotPublisherClient(registration)) {
-    providers.push({
-      provide: ZLINK_SPOT_PUBLISHER_CLIENT,
-      inject: [ZLINK_FRAMEWORK_RUNTIME],
-      useFactory: (runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>) =>
-        new framework.DefaultZLinkSpotPublisherClient(registration, runtime.spotPublisherTransport)
-    });
-  }
-
-  if (framework.hasActorManager(registration)) {
-    providers.push({
-      provide: ZLINK_ACTOR_MANAGER,
-      useValue: new framework.DefaultZLinkActorManager({ actorFactories: registration.actorFactories })
-    });
-  }
-
+  const providers = CONDITIONAL_CLIENT_PROVIDER_SPECS
+    .filter((spec) => spec.isEnabled(registration))
+    .map((spec) => createConditionalClientProvider(spec, registration));
   if (framework.hasSpotRemoteAddressResolver(registration)) {
     providers.push(...spotRemoteAddressResolverProviders(registration));
   }
@@ -581,54 +544,44 @@ function conditionalClientProviders(registration: ZLinkFrameworkRegistration): P
   return providers;
 }
 
+interface ConditionalClientProviderSpec {
+  readonly token: InjectionToken;
+  readonly requiresRuntime: boolean;
+  isEnabled(registration: ZLinkFrameworkRegistration): boolean;
+  create(registration: ZLinkFrameworkRegistration, runtime: FrameworkRuntimeHost | undefined): unknown;
+}
+
+const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[] = [
+  {
+    token: ZLINK_SPOT_MANAGER,
+    requiresRuntime: false,
+    isEnabled: (registration) => framework.hasSpotNode(registration),
+    create: (registration) => createSpotManager(registration)
+  },
+  {
+    token: ZLINK_SPOT_OUTBOUND,
+    requiresRuntime: true,
+    isEnabled: (registration) => framework.hasSpotNode(registration),
+    create: (registration, runtime) => createSpotOutbound(registration, requireRuntime(runtime))
+  },
+  {
+    token: ZLINK_SPOT_PUBLISHER_CLIENT,
+    requiresRuntime: true,
+    isEnabled: (registration) => framework.hasSpotPublisherClient(registration),
+    create: (registration, runtime) =>
+      new framework.DefaultZLinkSpotPublisherClient(registration, requireRuntime(runtime).spotPublisherTransport)
+  },
+  {
+    token: ZLINK_ACTOR_MANAGER,
+    requiresRuntime: false,
+    isEnabled: (registration) => framework.hasActorManager(registration),
+    create: (registration) => new framework.DefaultZLinkActorManager({ actorFactories: registration.actorFactories })
+  }
+];
+
 function conditionalClientProvidersForAsync(): Provider[] {
   return [
-    {
-      provide: ZLINK_SPOT_MANAGER,
-      inject: [ZLINK_FRAMEWORK_REGISTRATION],
-      useFactory: (registration: ZLinkFrameworkRegistration) => {
-        if (!framework.hasSpotNode(registration)) {
-          return null;
-        }
-        return createSpotManager(registration);
-      }
-    },
-    {
-      provide: ZLINK_SPOT_OUTBOUND,
-      inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
-      useFactory: (
-        registration: ZLinkFrameworkRegistration,
-        runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
-      ) => {
-        if (!framework.hasSpotNode(registration)) {
-          return null;
-        }
-        return createSpotOutbound(registration, runtime);
-      }
-    },
-    {
-      provide: ZLINK_SPOT_PUBLISHER_CLIENT,
-      inject: [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME],
-      useFactory: (
-        registration: ZLinkFrameworkRegistration,
-        runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
-      ) => {
-        if (!framework.hasSpotPublisherClient(registration)) {
-          return null;
-        }
-        return new framework.DefaultZLinkSpotPublisherClient(registration, runtime.spotPublisherTransport);
-      }
-    },
-    {
-      provide: ZLINK_ACTOR_MANAGER,
-      inject: [ZLINK_FRAMEWORK_REGISTRATION],
-      useFactory: (registration: ZLinkFrameworkRegistration) => {
-        if (!framework.hasActorManager(registration)) {
-          return null;
-        }
-        return new framework.DefaultZLinkActorManager({ actorFactories: registration.actorFactories });
-      }
-    },
+    ...CONDITIONAL_CLIENT_PROVIDER_SPECS.map(createConditionalClientProviderForAsync),
     {
       provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
       inject: [ZLINK_FRAMEWORK_REGISTRATION],
@@ -640,6 +593,42 @@ function conditionalClientProvidersForAsync(): Provider[] {
       }
     }
   ];
+}
+
+function createConditionalClientProviderForAsync(spec: ConditionalClientProviderSpec): Provider {
+  return {
+    provide: spec.token,
+    inject: spec.requiresRuntime
+      ? [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME]
+      : [ZLINK_FRAMEWORK_REGISTRATION],
+    useFactory: (registration: ZLinkFrameworkRegistration, runtime?: FrameworkRuntimeHost) => {
+      if (!spec.isEnabled(registration)) {
+        return null;
+      }
+      return spec.create(registration, runtime);
+    }
+  };
+}
+
+function createConditionalClientProvider(
+  spec: ConditionalClientProviderSpec,
+  registration: ZLinkFrameworkRegistration
+): Provider {
+  if (!spec.requiresRuntime) {
+    return { provide: spec.token, useValue: spec.create(registration, undefined) };
+  }
+  return {
+    provide: spec.token,
+    inject: [ZLINK_FRAMEWORK_RUNTIME],
+    useFactory: (runtime: FrameworkRuntimeHost) => spec.create(registration, runtime)
+  };
+}
+
+function requireRuntime(runtime: FrameworkRuntimeHost | undefined): FrameworkRuntimeHost {
+  if (runtime === undefined) {
+    throw new framework.ZLinkConfigurationException('ZLink runtime host is not available.');
+  }
+  return runtime;
 }
 
 function conditionalClientTokens(): InjectionToken[] {

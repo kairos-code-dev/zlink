@@ -181,184 +181,228 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
   const peerRoutingIds = new Set<unknown>();
   return new Proxy(nativeInstance, {
     get(target, property, receiver) {
-      if (property === 'nativeInstance') {
-        return target;
+      const lifecycle = resolveSocketLifecycleProperty(target, property, receiver, {
+        boundEndpoints,
+        connectedEndpoints,
+        peerRoutingIds
+      });
+      if (lifecycle !== undefined) {
+        return lifecycle;
       }
-      if (property === 'dispose') {
-        return async () => {
-          closeSocketRoutes(target, peerRoutingIds);
-          closeSocketEndpoints(target, boundEndpoints, connectedEndpoints);
-          disableSocketLinger(target);
-          await closeWithBusyRetry(target);
-        };
+      const messaging = resolveSocketMessagingProperty(target, property, receiver, peerRoutingIds);
+      if (messaging !== undefined) {
+        return messaging;
       }
-      if (property === 'bind') {
-        return (endpoint: string) => {
-          (target as unknown as { bind(endpoint: string): void }).bind(endpoint);
-          boundEndpoints.add(endpoint);
-        };
-      }
-      if (property === 'unbind') {
-        return (endpoint: string) => {
-          (target as unknown as { unbind(endpoint: string): void }).unbind(endpoint);
-          boundEndpoints.delete(endpoint);
-        };
-      }
-      if (property === 'connect') {
-        return (endpoint: string) => {
-          (target as unknown as { connect(endpoint: string): void }).connect(endpoint);
-          connectedEndpoints.add(endpoint);
-        };
-      }
-      if (property === 'disconnect') {
-        return (endpoint: string) => {
-          (target as unknown as { disconnect(endpoint: string): void }).disconnect(endpoint);
-          connectedEndpoints.delete(endpoint);
-        };
-      }
-      if (property === 'setChannelName' && typeof Reflect.get(target, property, receiver) !== 'function') {
-        return () => undefined;
-      }
-      if (property === 'setRoutingId') {
-        return (routingId: unknown) =>
-          (target as unknown as { setRoutingId(routingId: unknown): void }).setRoutingId(toNativeRoutingId(routingId));
-      }
-      if (property === 'onSendReady') {
-        return (handler: () => void) =>
-          (target as unknown as { setSendReadyHandler(handler: () => void): void }).setSendReadyHandler(handler);
-      }
-      if (property === 'send') {
-        return (...args: unknown[]) => {
-          if (args.length >= 3) {
-            const [routingId, payload, flags] = args as [unknown, unknown, number];
-            peerRoutingIds.add(routingId);
-            return submitBindingSend(
-              (target as unknown as { send(routingId: unknown): ZLinkBindingSendOperation }).send(toNativeRoutingId(routingId)),
-              payload,
-              flags
-            );
-          }
-          const [payload, flags] = args as [unknown, number | undefined];
-          return submitBindingSend(
-            (target as unknown as { send(): ZLinkBindingSendOperation }).send(),
-            payload,
-            flags ?? 0
-          );
-        };
-      }
-      if (property === 'request') {
-        return (...args: unknown[]) => {
-          if (args.length >= 5) {
-            const [routingId, payload, callback, flags, timeoutMs] = args as [unknown, unknown, unknown, number, number | undefined];
-            void flags;
-            peerRoutingIds.add(routingId);
-            return submitBindingRequestAsync(
-              (target as unknown as { request(routingId: unknown): ZLinkBindingRequestOperation }).request(toNativeRoutingId(routingId)),
-              payload,
-              callback,
-              timeoutMs
-            );
-          }
-          if (args.length >= 4) {
-            const [payload, callback, flags, timeoutMs] = args as [unknown, unknown, number, number | undefined];
-            void flags;
-            return submitBindingRequestAsync(
-              (target as unknown as { request(): ZLinkBindingRequestOperation }).request(),
-              payload,
-              callback,
-              timeoutMs
-            );
-          }
-          return (Reflect.get(target, property, receiver) as (...values: unknown[]) => unknown)(...args);
-        };
-      }
-      if (property === 'reply') {
-        return (...args: unknown[]) => {
-          const [routingId, requestSeq, payload] = args as [unknown, bigint, unknown];
-          peerRoutingIds.add(routingId);
-          const operation = (target as unknown as {
-            reply(routingId: unknown, requestSeq: bigint): ZLinkBindingSendOperation;
-          }).reply(toNativeRoutingId(routingId), requestSeq);
-          if (args.length < 3) {
-            return operation;
-          }
-          return submitBindingSend(operation, payload, 0);
-        };
-      }
-      if (property === 'recv') {
-        return (flags?: number) => {
-          const received = new zlink.Received();
-          const ok = (target as unknown as {
-            recv(result: unknown, flags?: number): boolean;
-          }).recv(received, flags);
-          return ok ? received : undefined;
-        };
-      }
-      if (property === 'publish') {
-        return (...args: unknown[]) => {
-          if (args.length >= 3) {
-            const [topic, payload, flags] = args as [string, unknown, number];
-            return submitBindingSend(
-              (target as unknown as { publish(topic: string): ZLinkBindingSendOperation }).publish(topic),
-              payload,
-              flags
-            );
-          }
-          return (Reflect.get(target, property, receiver) as (...values: unknown[]) => unknown)(...args);
-        };
-      }
-      if (property === 'disconnectPeer') {
-        return (routingId: unknown) =>
-          (target as unknown as { disconnectRid(routingId: unknown): void }).disconnectRid(toNativeRoutingId(routingId));
-      }
-      if (property === 'onFramedPacket') {
-        return (handler: unknown) =>
-          (target as unknown as { setPacketHandler(handler: unknown): void }).setPacketHandler(handler);
-      }
-      if (property === 'bindActor') {
-        return async (sessionRid: unknown, actor: unknown, timeoutMs: number) => {
-          const operation = (target as unknown as {
-            bindActor(sessionRid: unknown, actor: unknown): {
-              timeout(timeoutMs: number): { submitAsync(): Promise<Array<{ close(): void }>> };
-            };
-          }).bindActor(sessionRid, actor);
-          const replies = await operation.timeout(timeoutMs).submitAsync();
-          for (const reply of replies) {
-            reply.close();
-          }
-        };
-      }
-      if (property === 'unbindActor') {
-        return async (sessionRid: unknown, actorId: string, timeoutMs: number) => {
-          const operation = (target as unknown as {
-            unbindActor(sessionRid: unknown, actorId: string): {
-              timeout(timeoutMs: number): { submitAsync(): Promise<Array<{ close(): void }>> };
-            };
-          }).unbindActor(sessionRid, actorId);
-          const replies = await operation.timeout(timeoutMs).submitAsync();
-          for (const reply of replies) {
-            reply.close();
-          }
-        };
-      }
-      if (property === 'sendBoundActor') {
-        return (sessionRid: unknown, actorId: string, parts: readonly unknown[], flags: number) => {
-          const operation = (target as unknown as {
-            sendBoundActor(sessionRid: unknown, actorId: string): {
-              message(part: unknown): { message(part: unknown): unknown; flags(flags: number): { submit(): boolean } };
-              flags(flags: number): { submit(): boolean };
-            };
-          }).sendBoundActor(sessionRid, actorId);
-          let submitter = operation;
-          for (const part of parts) {
-            submitter = submitter.message(part) as typeof operation;
-          }
-          return submitter.flags(flags).submit();
-        };
+      const actorGateway = resolveSocketActorGatewayProperty(target, property);
+      if (actorGateway !== undefined) {
+        return actorGateway;
       }
       return Reflect.get(target, property, receiver);
     }
   }) as T & ZLinkBackendObject;
+}
+
+interface ZLinkSocketLifecycleState {
+  readonly boundEndpoints: Set<string>;
+  readonly connectedEndpoints: Set<string>;
+  readonly peerRoutingIds: Set<unknown>;
+}
+
+function resolveSocketLifecycleProperty(
+  target: unknown,
+  property: string | symbol,
+  receiver: unknown,
+  state: ZLinkSocketLifecycleState
+): unknown {
+  if (property === 'nativeInstance') {
+    return target;
+  }
+  if (property === 'dispose') {
+    return async () => {
+      closeSocketRoutes(target, state.peerRoutingIds);
+      closeSocketEndpoints(target, state.boundEndpoints, state.connectedEndpoints);
+      disableSocketLinger(target);
+      await closeWithBusyRetry(target as { close(): void });
+    };
+  }
+  if (property === 'bind') {
+    return (endpoint: string) => {
+      (target as { bind(endpoint: string): void }).bind(endpoint);
+      state.boundEndpoints.add(endpoint);
+    };
+  }
+  if (property === 'unbind') {
+    return (endpoint: string) => {
+      (target as { unbind(endpoint: string): void }).unbind(endpoint);
+      state.boundEndpoints.delete(endpoint);
+    };
+  }
+  if (property === 'connect') {
+    return (endpoint: string) => {
+      (target as { connect(endpoint: string): void }).connect(endpoint);
+      state.connectedEndpoints.add(endpoint);
+    };
+  }
+  if (property === 'disconnect') {
+    return (endpoint: string) => {
+      (target as { disconnect(endpoint: string): void }).disconnect(endpoint);
+      state.connectedEndpoints.delete(endpoint);
+    };
+  }
+  if (property === 'setChannelName' && typeof Reflect.get(target as object, property, receiver) !== 'function') {
+    return () => undefined;
+  }
+  if (property === 'setRoutingId') {
+    return (routingId: unknown) =>
+      (target as { setRoutingId(routingId: unknown): void }).setRoutingId(toNativeRoutingId(routingId));
+  }
+  if (property === 'onSendReady') {
+    return (handler: () => void) =>
+      (target as { setSendReadyHandler(handler: () => void): void }).setSendReadyHandler(handler);
+  }
+  return undefined;
+}
+
+function resolveSocketMessagingProperty(
+  target: unknown,
+  property: string | symbol,
+  receiver: unknown,
+  peerRoutingIds: Set<unknown>
+): unknown {
+  if (property === 'send') {
+    return (...args: unknown[]) => {
+      if (args.length >= 3) {
+        const [routingId, payload, flags] = args as [unknown, unknown, number];
+        peerRoutingIds.add(routingId);
+        return submitBindingSend(
+          (target as { send(routingId: unknown): ZLinkBindingSendOperation }).send(toNativeRoutingId(routingId)),
+          payload,
+          flags
+        );
+      }
+      const [payload, flags] = args as [unknown, number | undefined];
+      return submitBindingSend(
+        (target as { send(): ZLinkBindingSendOperation }).send(),
+        payload,
+        flags ?? 0
+      );
+    };
+  }
+  if (property === 'request') {
+    return (...args: unknown[]) => {
+      if (args.length >= 5) {
+        const [routingId, payload, callback, flags, timeoutMs] = args as [unknown, unknown, unknown, number, number | undefined];
+        void flags;
+        peerRoutingIds.add(routingId);
+        return submitBindingRequestAsync(
+          (target as { request(routingId: unknown): ZLinkBindingRequestOperation }).request(toNativeRoutingId(routingId)),
+          payload,
+          callback,
+          timeoutMs
+        );
+      }
+      if (args.length >= 4) {
+        const [payload, callback, flags, timeoutMs] = args as [unknown, unknown, number, number | undefined];
+        void flags;
+        return submitBindingRequestAsync(
+          (target as { request(): ZLinkBindingRequestOperation }).request(),
+          payload,
+          callback,
+          timeoutMs
+        );
+      }
+      return (Reflect.get(target as object, property, receiver) as (...values: unknown[]) => unknown)(...args);
+    };
+  }
+  if (property === 'reply') {
+    return (...args: unknown[]) => {
+      const [routingId, requestSeq, payload] = args as [unknown, bigint, unknown];
+      peerRoutingIds.add(routingId);
+      const operation = (target as {
+        reply(routingId: unknown, requestSeq: bigint): ZLinkBindingSendOperation;
+      }).reply(toNativeRoutingId(routingId), requestSeq);
+      if (args.length < 3) {
+        return operation;
+      }
+      return submitBindingSend(operation, payload, 0);
+    };
+  }
+  if (property === 'recv') {
+    return (flags?: number) => {
+      const received = new zlink.Received();
+      const ok = (target as {
+        recv(result: unknown, flags?: number): boolean;
+      }).recv(received, flags);
+      return ok ? received : undefined;
+    };
+  }
+  if (property === 'publish') {
+    return (...args: unknown[]) => {
+      if (args.length >= 3) {
+        const [topic, payload, flags] = args as [string, unknown, number];
+        return submitBindingSend(
+          (target as { publish(topic: string): ZLinkBindingSendOperation }).publish(topic),
+          payload,
+          flags
+        );
+      }
+      return (Reflect.get(target as object, property, receiver) as (...values: unknown[]) => unknown)(...args);
+    };
+  }
+  return undefined;
+}
+
+function resolveSocketActorGatewayProperty(target: unknown, property: string | symbol): unknown {
+  if (property === 'disconnectPeer') {
+    return (routingId: unknown) =>
+      (target as { disconnectRid(routingId: unknown): void }).disconnectRid(toNativeRoutingId(routingId));
+  }
+  if (property === 'onFramedPacket') {
+    return (handler: unknown) =>
+      (target as { setPacketHandler(handler: unknown): void }).setPacketHandler(handler);
+  }
+  if (property === 'bindActor') {
+    return async (sessionRid: unknown, actor: unknown, timeoutMs: number) => {
+      const operation = (target as {
+        bindActor(sessionRid: unknown, actor: unknown): {
+          timeout(timeoutMs: number): { submitAsync(): Promise<Array<{ close(): void }>> };
+        };
+      }).bindActor(sessionRid, actor);
+      const replies = await operation.timeout(timeoutMs).submitAsync();
+      for (const reply of replies) {
+        reply.close();
+      }
+    };
+  }
+  if (property === 'unbindActor') {
+    return async (sessionRid: unknown, actorId: string, timeoutMs: number) => {
+      const operation = (target as {
+        unbindActor(sessionRid: unknown, actorId: string): {
+          timeout(timeoutMs: number): { submitAsync(): Promise<Array<{ close(): void }>> };
+        };
+      }).unbindActor(sessionRid, actorId);
+      const replies = await operation.timeout(timeoutMs).submitAsync();
+      for (const reply of replies) {
+        reply.close();
+      }
+    };
+  }
+  if (property === 'sendBoundActor') {
+    return (sessionRid: unknown, actorId: string, parts: readonly unknown[], flags: number) => {
+      const operation = (target as {
+        sendBoundActor(sessionRid: unknown, actorId: string): {
+          message(part: unknown): { message(part: unknown): unknown; flags(flags: number): { submit(): boolean } };
+          flags(flags: number): { submit(): boolean };
+        };
+      }).sendBoundActor(sessionRid, actorId);
+      let submitter = operation;
+      for (const part of parts) {
+        submitter = submitter.message(part) as typeof operation;
+      }
+      return submitter.flags(flags).submit();
+    };
+  }
+  return undefined;
 }
 
 function closeSocketRoutes(target: unknown, peerRoutingIds: Set<unknown>): void {

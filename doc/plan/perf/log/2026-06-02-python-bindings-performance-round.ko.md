@@ -802,3 +802,39 @@
 - 판정:
   - 성능 비율은 node_python SPOT 계열 기준 33%를 넘지만, 전체 smoke에서는 readiness 누락이
     재현됐으므로 runner 안정성 보강이 아직 필요하다.
+
+## current Python multi tcp64 추가 재확인
+
+- 준비:
+  - `python3 setup.py build_ext --inplace --force`: 통과.
+  - `python3 -m compileall -q src tests perf`: 통과.
+  - `PYTHONPATH=src pytest -q tests`: 전체 테스트가 장시간 출력 없이 멈춰 중단했다. 이번 확인의
+    최종 판정 근거로 쓰지 않는다.
+- 전체 tcp/64 smoke:
+  - `perf_python_multi_linux_20260604_232936_python_multi_tcp64_current_smoke_20260604.txt`
+  - status=partial, expected/actual result lines 40/30.
+  - `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`,
+    `MULTI_SPOT`, `MULTI_SPOT_REQREP`는 RESULT를 냈다.
+  - `MULTI_SPOT_SENDSEND tcp 64B`: `CLIENT_CONTROL_ENDPOINT` 제어선 누락.
+  - `MULTI_STREAM tcp 64B`: server `READY,...` 뒤 RESULT 누락.
+- `MULTI_SPOT_SENDSEND tcp 64B` 단독 보강:
+  - `perf_python_multi_linux_20260604_233407_python_multi_sendsend_tcp64_timeout90_clean_20260604.txt`
+  - status=complete, expected/actual result lines 5/5.
+  - throughput 66,715 ops/s, latency mean 0.415ms였다.
+  - 같은 단독 실행에서도 총 101초가 걸려, 전체 smoke 안에서는 readiness 지연을 다시 일으킬 수 있다.
+- `MULTI_STREAM tcp 64B` public 경로 재확인:
+  - `perf_python_multi_linux_20260604_233208_python_multi_stream_tcp64_clients100_20260604.txt`
+  - `--clients 100`에서는 status=complete, expected/actual result lines 5/5.
+  - throughput 1,143 ops/s라 current C 기준 통과 근거로 쓰기에는 부족하다.
+  - `perf_python_multi_linux_20260604_233431_python_multi_stream_tcp64_default_clients_timeout180_20260604.txt`
+    는 기본 stream client 수 10000에서 status=partial, RESULT 0개였다.
+  - 직접 실행으로 확인하면 같은 기본 10000 client에서 Python stream server가 SIGSEGV로 종료했다.
+- public immediate-send 후보:
+  - Python stream packet callback에서 queue에 넣기 전에 public `send(...)`를 먼저 시도하도록 바꿨다.
+  - `perf_python_multi_linux_20260604_233614_python_multi_stream_tcp64_immediate_send_clients100_20260604.txt`
+    는 `--clients 100`에서도 status=partial, RESULT 0개로 회귀했다.
+  - 후보 코드는 최종 코드에 남기지 않았다.
+- 판정:
+  - `MULTI_SPOT_SENDSEND tcp 64B`는 isolated complete 근거가 있지만, 전체 smoke 안정성은 아직 부족하다.
+  - `MULTI_STREAM tcp 64B`는 private native stream echo helper 없이 public API 경로로 기본 10000 client를
+    처리하지 못한다. 다음 후보는 public callback 생명주기와 stream server shutdown crash를 먼저 줄여야 한다.

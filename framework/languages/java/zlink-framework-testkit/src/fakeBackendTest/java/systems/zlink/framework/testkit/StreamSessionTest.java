@@ -3,6 +3,7 @@ package systems.zlink.framework.testkit;
 import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -131,10 +133,28 @@ final class StreamSessionTest {
             backendFactory.dispatchStreamTransportError(222, "remote-disconnect");
 
             assertEquals(List.of("TRANSPORT_ERROR:222:remote-disconnect"), GameSession.errors);
-            assertEquals(0, GameSession.disconnectedCount);
+            assertEquals(1, GameSession.disconnectedCount);
         }
 
         assertEquals(1, GameSession.disconnectedCount);
+    }
+
+    @Test
+    void streamSessionMustExposeRuntimeProvidedContext() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addStreamNode("gateway", stream -> {
+            stream.bind("inproc://gateway");
+            stream.registerSession(WrongContextSession.class);
+        });
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+            assertThrows(
+                ZLinkConfigurationException.class,
+                () -> backendFactory.dispatchStreamPacket("Join", "hello"));
+        }
     }
 
     @Test
@@ -225,6 +245,11 @@ final class StreamSessionTest {
         static int disconnectedCount;
         static List<String> dispatches = new java.util.ArrayList<>();
         static List<String> errors = new java.util.ArrayList<>();
+        private final ZLinkSessionContext context;
+
+        public GameSession(ZLinkSessionContext context) {
+            this.context = context;
+        }
 
         static void reset() {
             connectedCount = 0;
@@ -235,7 +260,7 @@ final class StreamSessionTest {
 
         @Override
         public ZLinkSessionContext context() {
-            return null;
+            return context;
         }
 
         @Override
@@ -441,6 +466,31 @@ final class StreamSessionTest {
                         errorMessage = error.getMessage();
                     }
                 });
+        }
+    }
+
+    public static final class WrongContextSession implements ZLinkSession {
+        public WrongContextSession(ZLinkSessionContext context) {
+        }
+
+        @Override
+        public ZLinkSessionContext context() {
+            return null;
+        }
+
+        @Override
+        public CompletionStage<Void> onConnectedAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onDisconnectedAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

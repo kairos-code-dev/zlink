@@ -120,9 +120,12 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         if (state == null) {
             return;
         }
-        state.queue().enqueue(() -> state.session().onErrorAsync(new ZLinkStreamError(
+        sessions.remove(sessionKey(streamNode, routingId));
+        state.queue().enqueue(() -> state.session()
+            .onErrorAsync(new ZLinkStreamError(
                 ZLinkStreamSessionError.TRANSPORT_ERROR,
-                Optional.of(new ZLinkStreamDiagnostic(nativeCode, message)))));
+                Optional.of(new ZLinkStreamDiagnostic(nativeCode, message))))
+            .thenCompose(ignored -> state.session().onDisconnectedAsync()));
     }
 
     private SessionState createSessionState(
@@ -151,6 +154,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         if (!(createdSession instanceof ZLinkSession session)) {
             throw new ZLinkConfigurationException(
                 "stream session type must implement ZLinkSession: "
+                    + streamNode.sessionType().getName());
+        }
+        if (session.context() != context) {
+            throw new ZLinkConfigurationException(
+                "stream session must expose the context provided by the runtime: "
                     + streamNode.sessionType().getName());
         }
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();

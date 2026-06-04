@@ -13,6 +13,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
+import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.spots.SpotChannelClientRegistration;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
@@ -88,6 +89,29 @@ public final class ZLinkFrameworkRegistration {
 
     public Class<? extends ZLinkSpotRemoteAddressResolver> spotRemoteAddressResolverType() {
         return spotRemoteAddressResolverType;
+    }
+
+    public Set<Class<?>> applicationTypes() {
+        Set<Class<?>> types = new LinkedHashSet<>();
+        types.addAll(filters);
+        types.addAll(actorFactories.values());
+        if (spotRemoteAddressResolverType != null) {
+            types.add(spotRemoteAddressResolverType);
+        }
+        for (ChannelRegistration channel : channels) {
+            types.addAll(channel.handlerTypes());
+        }
+        for (SpotNodeRegistration spotNode : spotNodes) {
+            types.addAll(spotNode.spotFactories());
+            types.addAll(spotNode.entrySpots());
+        }
+        for (StreamNodeRegistration streamNode : streamNodes) {
+            types.addAll(streamNode.applicationTypes());
+        }
+        for (ZLinkScannedHandler handler : ZLinkHandlerScanner.scan(handlerPackageMarkers).handlers()) {
+            types.add(handler.handlerType());
+        }
+        return Set.copyOf(types);
     }
 
     void setSpotRemoteAddressResolverType(

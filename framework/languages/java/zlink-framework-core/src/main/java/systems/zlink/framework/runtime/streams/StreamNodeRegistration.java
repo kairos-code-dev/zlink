@@ -39,6 +39,15 @@ public final class StreamNodeRegistration {
         return List.copyOf(sessionPacketHandlers);
     }
 
+    public List<Class<?>> applicationTypes() {
+        List<Class<?>> types = new ArrayList<>();
+        if (sessionType != null) {
+            types.add(sessionType);
+        }
+        types.addAll(sessionPacketHandlers);
+        return List.copyOf(types);
+    }
+
     void bind(String endpoint) {
         if (endpoint == null || endpoint.isBlank()) {
             throw new ZLinkConfigurationException("stream bind endpoint is required: " + name);

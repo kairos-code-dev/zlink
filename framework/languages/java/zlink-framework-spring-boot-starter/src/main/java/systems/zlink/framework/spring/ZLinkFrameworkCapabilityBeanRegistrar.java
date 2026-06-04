@@ -1,11 +1,21 @@
 package systems.zlink.framework.spring;
 
+import java.beans.Introspector;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.core.type.filter.AssignableTypeFilter;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -32,6 +42,7 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
         DefaultZLinkFrameworkOptions options =
             beanFactory.getBean(DefaultZLinkFrameworkOptions.class);
         options.validate();
+        registerApplicationBeans(registry, beanFactory, options);
 
         boolean hasSpotNode = !options.registration().spotNodes().isEmpty();
         boolean hasActorFactory = !options.registration().actorFactories().isEmpty();
@@ -68,6 +79,89 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
         if (hasSpotNode && hasActorFactory && !hasBean(beanFactory, ZLinkActorManager.class)) {
             registerDelegate(registry, ACTOR_MANAGER_BEAN_NAME, ZLinkFrameworkActorManagerBean.class);
         }
+    }
+
+    private static void registerApplicationBeans(
+        BeanDefinitionRegistry registry,
+        ConfigurableListableBeanFactory beanFactory,
+        DefaultZLinkFrameworkOptions options) {
+        Set<Class<?>> applicationTypes = new LinkedHashSet<>(options.registration().applicationTypes());
+        for (Class<?> applicationType : List.copyOf(applicationTypes)) {
+            applicationTypes.addAll(findCollectionDependencyImplementations(applicationType));
+        }
+        for (Class<?> applicationType : applicationTypes) {
+            registerPrototypeIfMissing(registry, beanFactory, applicationType);
+        }
+    }
+
+    private static Set<Class<?>> findCollectionDependencyImplementations(Class<?> applicationType) {
+        Set<Class<?>> implementations = new LinkedHashSet<>();
+        for (var constructor : applicationType.getConstructors()) {
+            for (Type parameter : constructor.getGenericParameterTypes()) {
+                Class<?> serviceType = collectionElementType(parameter);
+                if (serviceType == null || !serviceType.isInterface()) {
+                    continue;
+                }
+                implementations.addAll(findAssignableTypes(applicationType.getPackageName(), serviceType));
+                implementations.addAll(findAssignableTypes(serviceType.getPackageName(), serviceType));
+            }
+        }
+        implementations.remove(applicationType);
+        return implementations;
+    }
+
+    private static Class<?> collectionElementType(Type parameter) {
+        if (!(parameter instanceof ParameterizedType parameterized)
+            || !(parameterized.getRawType() instanceof Class<?> rawType)
+            || !(rawType == List.class
+                || rawType == Collection.class
+                || rawType == Iterable.class)) {
+            return null;
+        }
+        Type argument = parameterized.getActualTypeArguments()[0];
+        return argument instanceof Class<?> elementType ? elementType : null;
+    }
+
+    private static Set<Class<?>> findAssignableTypes(String packageName, Class<?> serviceType) {
+        ClassPathScanningCandidateComponentProvider scanner =
+            new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter(new AssignableTypeFilter(serviceType));
+        Set<Class<?>> types = new LinkedHashSet<>();
+        for (BeanDefinition candidate : scanner.findCandidateComponents(packageName)) {
+            String className = candidate.getBeanClassName();
+            if (className == null) {
+                continue;
+            }
+            try {
+                Class<?> type = Class.forName(className, false, contextClassLoader(serviceType));
+                if (type != serviceType && serviceType.isAssignableFrom(type)) {
+                    types.add(type);
+                }
+            } catch (ClassNotFoundException ignored) {
+                // Optional package contents should not make framework registration unusable.
+            }
+        }
+        return types;
+    }
+
+    private static ClassLoader contextClassLoader(Class<?> fallbackType) {
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        return loader == null ? fallbackType.getClassLoader() : loader;
+    }
+
+    private static void registerPrototypeIfMissing(
+        BeanDefinitionRegistry registry,
+        ConfigurableListableBeanFactory beanFactory,
+        Class<?> beanClass) {
+        if (hasBean(beanFactory, beanClass)) {
+            return;
+        }
+        RootBeanDefinition definition = new RootBeanDefinition(beanClass);
+        definition.setAutowireMode(AbstractBeanDefinition.AUTOWIRE_CONSTRUCTOR);
+        definition.setScope(BeanDefinition.SCOPE_PROTOTYPE);
+        registry.registerBeanDefinition(
+            "zlinkApplication." + Introspector.decapitalize(beanClass.getName()),
+            definition);
     }
 
     private static boolean hasBean(

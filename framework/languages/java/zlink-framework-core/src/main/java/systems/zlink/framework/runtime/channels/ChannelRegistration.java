@@ -99,6 +99,26 @@ public final class ChannelRegistration {
         return handlerGroups;
     }
 
+    public List<Class<?>> handlerTypes() {
+        List<Class<?>> types = new ArrayList<>();
+        for (ChannelSendHandlerRegistration<?, ?> handler : sendHandlers) {
+            types.add(handler.handlerType());
+        }
+        for (ChannelRequestHandlerRegistration<?, ?, ?> handler : requestHandlers) {
+            types.add(handler.handlerType());
+        }
+        for (ChannelPublishHandlerRegistration<?, ?> handler : publishHandlers) {
+            types.add(handler.handlerType());
+        }
+        for (ChannelRouteSendHandlerRegistration<?, ?> handler : routeSendHandlers) {
+            types.add(handler.handlerType());
+        }
+        for (ChannelRouteRequestHandlerRegistration<?, ?, ?> handler : routeRequestHandlers) {
+            types.add(handler.handlerType());
+        }
+        return List.copyOf(types);
+    }
+
     public RoutingId routeRoutingId() {
         return routeRoutingId;
     }

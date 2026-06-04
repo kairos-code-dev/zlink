@@ -250,6 +250,29 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
+    void scannedHandlersAndCollectionDependenciesAreSpringBeans() {
+        String endpoint = "inproc://zlink-spring-auto-registered-" + UUID.randomUUID();
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean("autoRegisteredEndpoint", String.class, () -> endpoint);
+            context.register(
+                AutoRegisteredHandlerConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            ProfileReply reply = context.getBean(ZLinkClient.class)
+                .requestToChannel("profile", new ProfileRequest("42"))
+                .packetName("DecorateProfile")
+                .submitAsync(ProfileReply.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(new ProfileReply("profile:42:decorated"), reply);
+            assertTrue(context.getBean(ZLinkFrameworkLifecycle.class).isRunning());
+        }
+    }
+
+    @Test
     void runtimeEventDispatcherIsAlwaysRegistered() {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
@@ -403,6 +426,29 @@ final class ZLinkFrameworkAutoConfigurationTest {
                     channel.enableClient(client -> client.useManualConnections(
                         endpoints -> endpoints.connect(springAnnotatedEndpoint)));
                     channel.addHandlerGroup("spring-scanned");
+                });
+            };
+        }
+    }
+
+    @Configuration
+    static class AutoRegisteredHandlerConfig {
+        @Bean
+        HandlerDependency autoRegisteredDependency() {
+            return new HandlerDependency("profile");
+        }
+
+        @Bean
+        ZLinkFrameworkOptionsCustomizer autoRegisteredHandlerCustomizer(
+            String autoRegisteredEndpoint) {
+            return options -> {
+                options.codecs().addJson();
+                options.addHandlersFromPackageOf(AutoRegisteredHandlerConfig.class);
+                options.addClientServerChannel("profile", channel -> {
+                    channel.enableServer(server -> server.bind(autoRegisteredEndpoint));
+                    channel.enableClient(client -> client.useManualConnections(
+                        endpoints -> endpoints.connect(autoRegisteredEndpoint)));
+                    channel.addHandlerGroup("spring-auto-registered");
                 });
             };
         }
@@ -570,6 +616,39 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     public record ProfileReply(String value) {
+    }
+
+    interface ProfileDecorator {
+        String decorate(String value);
+    }
+
+    public static final class ProfileSuffixDecorator implements ProfileDecorator {
+        @Override
+        public String decorate(String value) {
+            return value + ":decorated";
+        }
+    }
+
+    @ZLinkHandlerGroup("spring-auto-registered")
+    public static final class AutoRegisteredRequestHandler {
+        private final HandlerDependency dependency;
+        private final List<ProfileDecorator> decorators;
+
+        public AutoRegisteredRequestHandler(
+            HandlerDependency dependency,
+            List<ProfileDecorator> decorators) {
+            this.dependency = dependency;
+            this.decorators = decorators;
+        }
+
+        @ZLinkRequest(packetName = "DecorateProfile")
+        public CompletionStage<ProfileReply> handleAsync(ProfileRequest request) {
+            String value = dependency.format(request.profileId());
+            for (ProfileDecorator decorator : decorators) {
+                value = decorator.decorate(value);
+            }
+            return CompletableFuture.completedFuture(new ProfileReply(value));
+        }
     }
 
     private static systems.zlink.framework.channels.ZLinkRequestContext requestContext() {

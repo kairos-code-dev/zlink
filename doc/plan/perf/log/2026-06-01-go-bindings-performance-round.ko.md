@@ -685,3 +685,27 @@
     검증에서 새 통과를 만들지 못했다.
   - public contract-safe 후보가 추가로 확인되지 않아 Go는 추가 후보 소진으로 정리하고 다음
     언어인 Rust로 넘어간다.
+
+## Go multi current C/Go 제한 재측정 보강
+
+- 대상:
+  - `MULTI_DEALER_DEALER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB` small 후보
+  - 최종 overlay는 `MULTI_ROUTER_ROUTER tcp 256B`
+- 배경:
+  - Go multi는 기존 표 기준 `20/192 (10.4%)`로 10% gate를 한 셀만 초과했다.
+  - 코드 후보를 추가하기 전에 현재 core runtime 기준 C와 Go를 같은 제한 범위에서 다시 비교했다.
+- broad 재측정:
+  - C: `perf_c_multi_linux_20260604_211907_go_multi_simple_small_c_recheck_20260604.txt`
+  - Go: `perf_go_multi_linux_20260604_212615_go_multi_simple_small_recheck_20260604.txt`
+  - C는 status=complete였지만 Go는 status=partial이었다.
+  - partial report는 최종 표의 새 통과 근거로 쓰지 않는다.
+- 단일 complete 재측정:
+  - C: `perf_c_multi_linux_20260604_213420_go_multi_rr_tcp256_c_recheck_20260604.txt`
+  - Go: `perf_go_multi_linux_20260604_213420_go_multi_rr_tcp256_recheck_20260604.txt`
+  - 두 파일 모두 status=complete였다.
+- 결과:
+  - `MULTI_ROUTER_ROUTER tcp 256B`: C 346,155 ops/s, Go 146,324 ops/s.
+  - Go/C 비율은 42.3%로 routed echo 기준 40%를 넘는다.
+- 판정:
+  - 코드 변경 없이 current baseline 반영으로 `MULTI_ROUTER_ROUTER tcp 256B`를 통과로 overlay한다.
+  - Go multi 미달은 `20/192 (10.4%)`에서 `19/192 (9.9%)`로 줄어 10% gate 아래로 내려왔다.

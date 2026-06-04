@@ -27,7 +27,7 @@
 | 순서 | 언어 | perf 경로 | Single 상태 | Multi 상태 | 다음 작업 |
 |---|---|---|---|---|---|
 | 1 | C++ | `bindings/cpp/perf` | `미달 없음` | `미달 없음` | Multi는 full+제한 재측정으로 통과. Single은 1개 잔여 항목을 제한 재측정과 수정 실험으로 확인한 뒤 미달로 정리했다. |
-| 2 | .NET | `bindings/dotnet/perf` | `미달 없음` | `미달 없음` | Single은 routed active recv 정렬로 `ROUTER_ROUTER inproc 262144B`를 통과로 올렸고, 나머지 7개는 public API 기준에서 추가 개선 후보가 확인되지 않아 미달했다. Multi는 full+4096B 보강+제한 재측정 뒤 잔여 11개를 미달했다. |
+| 2 | .NET | `bindings/dotnet/perf` | `미달 없음` | `미달 없음` | Single은 routed active recv 정렬로 `ROUTER_ROUTER inproc 262144B`를 통과로 올렸고, 나머지 7개는 public API 기준에서 추가 개선 후보가 확인되지 않아 미달했다. Multi는 full+4096B 보강+제한 재측정 뒤 잔여 11개를 미달했으나, 2026-06-05 current C/.NET 재측정에서 `MULTI_SPOT_SENDSEND tls 64B`가 통과권으로 회복되어 잔여 10개가 남았다. |
 | 3 | Java | `bindings/java/perf` | `미달 없음` | `미달 없음` | Single은 SPOT 대용량 9개를 재검토하고 wrapper 재사용 실험까지 확인한 뒤 미달했다. Multi는 `MULTI_DEALER_DEALER ws 131072B`와 `MULTI_SPOT wss` 5개를 미달했다. |
 | 4 | Node | `bindings/node/perf` | `미달 없음` | `미달 없음` | Single은 routed metric 수신을 native에서 header/latency만 읽는 경로로 줄여 마지막 잔류 `DEALER_ROUTER tcp 131072B`까지 통과권에 올렸다. Multi는 current C/Node 제한 재측정으로 잔류 `MULTI_STREAM ws 64/256/1024B`까지 통과권으로 회복했다. 2026-06-05 current C 재측정에서 `MULTI_SPOT_SENDSEND` small 5칸이 다시 미달로 드러났고, 이후 SPOT send/send의 단일 payload native submit, routed echo 서버의 single-part 경로, SPOT snapshot 메타데이터 축소로 `tcp 64/256B`, `ws 1024B`를 통과권으로 올렸다. 마지막 `wss 64B`, `tls 64B`는 SPOT routed metric 수신을 native에서 header/latency만 읽는 경로로 줄인 뒤 통과권에 들어왔다. |
 | 5 | Go | `bindings/go/perf` | `미달 3/144 (2.1%)` | `미달 10/192 (5.2%)` | Single `DEALER_ROUTER tcp 65536B`와 `ROUTER_ROUTER tcp 131072B`는 current C/Go complete 재측정에서 통과권으로 회복했다. `SPOT wss 256B`는 case별 GOMAXPROCS 8 override 뒤 complete 재측정에서 통과권에 들어왔다. `MULTI_SPOT_REQREP tcp 4096B`는 request message 누수 수정으로 통과했고, 같은 complete 검증에서 `ws 131072B`도 통과로 회복했다. 2026-06-04 current C/Go 제한 재측정에서 `MULTI_ROUTER_ROUTER tcp 256B`도 통과로 회복했다. `MULTI_DEALER_DEALER tcp 4096B`는 Go client/server active poll wait를 deadline으로 제한해 partial에서 complete로 회복했고 통과권에 들어왔다. Go routed multi client active poll wait도 deadline으로 제한해 `MULTI_DEALER_ROUTER tcp/ws 65536B`와 `MULTI_ROUTER_ROUTER tcp 1024/65536B`를 통과권에 올렸다. `MULTI_ROUTER_ROUTER tcp 64B`와 `tls 64/256/1024B`는 case별 GOMAXPROCS 8 override 뒤 complete 재측정에서 통과권에 들어왔다. |
@@ -280,9 +280,9 @@ C 기준 full 파일은 `perf_c_multi_linux_20260530_234108_round_20260530_c_mul
 `perf_dotnet_multi_linux_20260531_102129_round_20260530_dotnet_multi_spot_tls_1024_timeout_recheck.txt`는
 complete였다.
 
-잔류 미달 cell은 11개다. tcp routed large payload는 public .NET wrapper가 routed envelope를
+잔류 미달 cell은 10개다. tcp routed large payload는 public .NET wrapper가 routed envelope를
 관리하는 비용이 C hot path보다 크게 드러나는 구간이고 `MULTI_SPOT wss`와
-`MULTI_SPOT_SENDSEND` 소형 일부는 managed dispatch와 TLS/WebSocket 경계 비용이 같이
+`MULTI_SPOT_SENDSEND wss 64B`는 managed dispatch와 WebSocket 경계 비용이 같이
 드러나는 구간이다. public API를 우회하거나 native envelope를 그대로 노출하지 않는 한
 좁게 줄일 수 있는 내부 변경점은 확인되지 않아 코드 변경 없이 문서화한다.
 
@@ -310,7 +310,7 @@ complete였다.
 | `wss` | `MULTI_PUBSUB` | `통과(74.2%)` | `통과(66.4%)` | `통과(91.2%)` | `통과(97.7%)` | `통과(110.8%)` | `통과(112.3%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
 | `wss` | `MULTI_SPOT` | `통과(69.9%)` | `미달(42.1%)` | `미달(27.2%)` | `미달(54.9%)` | `통과(66.2%)` | `통과(78.1%)` | SPOT failset 제한 재측정 기준. C full/.NET full. managed dispatch와 WSS 경계 비용을 줄일 public API-safe 내부 후보가 확인되지 않았다. |
 | `wss` | `MULTI_SPOT_REQREP` | `통과(76.5%)` | `통과(87.1%)` | `통과(88.9%)` | `통과(102.6%)` | `통과(108.0%)` | `통과(97.4%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미달(59.5%)` | `통과(60.8%)` | `통과(69.1%)` | `통과(100.9%)` | `통과(98.1%)` | `통과(94.6%)` | SPOT failset 제한 재측정 기준. C full/.NET full. managed dispatch와 WSS 경계 비용을 줄일 public API-safe 내부 후보가 확인되지 않았다. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미달(56.4%)` | `통과(60.8%)` | `통과(69.1%)` | `통과(100.9%)` | `통과(98.1%)` | `통과(94.6%)` | 64B는 current 제한 재측정 C `perf_c_multi_linux_20260605_065259_dotnet_multi_spot_sendsend_small_c_current_20260605.txt`, .NET `perf_dotnet_multi_linux_20260605_065430_dotnet_multi_spot_sendsend_small_current_20260605.txt` 기준이며 아직 기준에 못 닿는다. 나머지는 SPOT failset 제한 재측정 기준. C full/.NET full. |
 | `wss` | `MULTI_STREAM` | `통과(98.8%)` | `통과(100.3%)` | `통과(93.3%)` | `해당 없음` | `통과(98.6%)` | `해당 없음` | C full/.NET full. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
 | `tls` | `MULTI_DEALER_DEALER` | `통과(67.0%)` | `통과(74.5%)` | `통과(79.1%)` | `통과(91.4%)` | `통과(98.6%)` | `통과(97.3%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
 | `tls` | `MULTI_DEALER_ROUTER` | `통과(65.6%)` | `통과(61.3%)` | `통과(60.3%)` | `통과(66.6%)` | `통과(97.2%)` | `통과(112.4%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
@@ -318,7 +318,7 @@ complete였다.
 | `tls` | `MULTI_PUBSUB` | `통과(76.4%)` | `통과(70.3%)` | `통과(84.8%)` | `통과(97.3%)` | `통과(92.4%)` | `통과(114.3%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
 | `tls` | `MULTI_SPOT` | `통과(67.6%)` | `통과(74.0%)` | `통과(68.3%)` | `통과(63.4%)` | `통과(101.0%)` | `통과(99.7%)` | SPOT failset 제한 재측정 기준. SPOT tls 1024B는 partial timeout 후 단독 재측정 complete 기준. C full/.NET full. |
 | `tls` | `MULTI_SPOT_REQREP` | `통과(70.4%)` | `통과(83.1%)` | `통과(86.6%)` | `통과(91.4%)` | `통과(87.5%)` | `통과(93.9%)` | C full/.NET full. 4096B는 .NET 4096B 보강 파일 기준. |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미달(55.7%)` | `통과(63.6%)` | `통과(65.8%)` | `통과(85.2%)` | `통과(107.2%)` | `통과(94.4%)` | SPOT failset 제한 재측정 기준. C full/.NET full. managed dispatch와 TLS 경계 비용을 줄일 public API-safe 내부 후보가 확인되지 않았다. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `통과(60.8%)` | `통과(63.6%)` | `통과(65.8%)` | `통과(85.2%)` | `통과(107.2%)` | `통과(94.4%)` | 64B는 current 제한 재측정 C `perf_c_multi_linux_20260605_065259_dotnet_multi_spot_sendsend_small_c_current_20260605.txt`, .NET `perf_dotnet_multi_linux_20260605_065430_dotnet_multi_spot_sendsend_small_current_20260605.txt` 기준으로 통과권에 회복했다. 나머지는 SPOT failset 제한 재측정 기준. C full/.NET full. |
 | `tls` | `MULTI_STREAM` | `통과(99.9%)` | `통과(100.3%)` | `통과(92.6%)` | `해당 없음` | `통과(97.9%)` | `해당 없음` | C full/.NET full. 4096B/131072B는 이번 계획의 MULTI_STREAM 판정 대상이 아니다. |
 
 

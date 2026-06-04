@@ -26,6 +26,7 @@ import systems.zlink.framework.handlers.ZLinkSpotActorJoin;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotPostActorJoined;
+import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.registry.ZLinkRegistrySpotRemoteAddressResolver;
@@ -35,6 +36,8 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
+import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 
 final class SpotRuntimeFakeBackendTest {
     @Test
@@ -151,6 +154,39 @@ final class SpotRuntimeFakeBackendTest {
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
+    }
+
+    @Test
+    void spotContextDispatchesRegisteredPacketRequestAndSubscriptionHandlers() {
+        HandlerSpot.dispatches.clear();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> {
+                node.enablePubSub();
+                node.addSpotFactory(HandlerSpot.class);
+            }));
+        FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+            runtime.spotManager()
+                .createAsync(HandlerSpot.class, RoutingId.from("handler-spot"))
+                .toCompletableFuture()
+                .join();
+
+            backendFactory.dispatchSpotRoute("String", "hello");
+            backendFactory.dispatchSpotRequest("SpotQuery", "ping", 7);
+            backendFactory.dispatchSpotSubscription("stage.events", "String", "opened");
+        }
+
+        assertEquals(
+            List.of(
+                "packet:hello",
+                "request:ping",
+                "subscription:opened"),
+            HandlerSpot.dispatches);
+        assertEquals(List.of("reply:ping"), backendFactory.spotReplies());
+        assertTrue(backendFactory.calls().contains("spot.1.setSubscription.stage.events"));
     }
 
     @Test
@@ -1092,6 +1128,53 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public ZLinkSpotContext context() {
             return context;
+        }
+    }
+
+    public static final class HandlerSpot implements ZLinkSpot {
+        static final List<String> dispatches = new java.util.ArrayList<>();
+        private final ZLinkSpotContext context;
+
+        public HandlerSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addPacket(SpotCommandHandler.class);
+            context.handlers().addPacket(SpotQueryHandler.class);
+            context.handlers().addSubscribe("stage.events", SpotEventHandler.class);
+        }
+    }
+
+    public static final class SpotCommandHandler
+        implements ZLinkSpotPacketHandler<HandlerSpot, String> {
+        @Override
+        public CompletionStage<Void> handleAsync(HandlerSpot spot, String message) {
+            HandlerSpot.dispatches.add("packet:" + message);
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class SpotQueryHandler {
+        @ZLinkSpotRequest(packetName = "SpotQuery")
+        public CompletionStage<String> handleAsync(HandlerSpot spot, String request) {
+            HandlerSpot.dispatches.add("request:" + request);
+            return CompletableFuture.completedFuture("reply:" + request);
+        }
+    }
+
+    public static final class SpotEventHandler
+        implements ZLinkSpotSubscriptionHandler<HandlerSpot, String> {
+        @Override
+        public CompletionStage<Void> handleAsync(HandlerSpot spot, String message) {
+            HandlerSpot.dispatches.add("subscription:" + message);
+            return CompletableFuture.completedFuture(null);
         }
     }
 

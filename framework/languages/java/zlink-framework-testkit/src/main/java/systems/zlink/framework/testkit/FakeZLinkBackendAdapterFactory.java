@@ -177,6 +177,37 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         entrySpot.dispatchActorLifecycleReadable();
     }
 
+    public void dispatchSpotRoute(String packetName, String payload) {
+        FakeSpot spot = firstUserSpot();
+        spot.enqueueRoute(packetName, payload, Optional.empty());
+        spot.dispatchRouteReadable();
+    }
+
+    public void dispatchSpotRequest(String packetName, String payload, long requestSeq) {
+        FakeSpot spot = firstUserSpot();
+        spot.enqueueRoute(packetName, payload, Optional.of(requestSeq));
+        spot.dispatchRouteReadable();
+    }
+
+    public void dispatchSpotSubscription(String topic, String packetName, String payload) {
+        FakeSpot spot = firstUserSpot();
+        spot.enqueueSubscription(topic, packetName, payload);
+        spot.dispatchSubscribeReadable();
+    }
+
+    public List<String> spotReplies() {
+        return spots.stream()
+            .flatMap(spot -> spot.replies().stream())
+            .toList();
+    }
+
+    private FakeSpot firstUserSpot() {
+        return spots.stream()
+            .filter(spot -> spot.name().startsWith("spot."))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("no fake user spot is available"));
+    }
+
     @Override
     public ZLinkChannelBackendAdapter createChannelAdapter(ZLinkBackendAdapterOptions options) {
         calls.add("factory.channel");
@@ -670,6 +701,9 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private static final class FakeSpot extends FakeBackendObject implements ZLinkBackendSpot {
         private final Deque<ZLinkBackendActorJoinRequest> actorJoins = new ArrayDeque<>();
         private final Deque<ZLinkBackendActorLifecycleEvent> actorLifecycles = new ArrayDeque<>();
+        private final Deque<ZLinkBackendReceived> routes = new ArrayDeque<>();
+        private final Deque<ZLinkBackendTopicMessage> subscriptions = new ArrayDeque<>();
+        private final List<String> replies = new ArrayList<>();
         private ZLinkBackendSpotDispatchHandler dispatchHandler;
 
         FakeSpot(List<String> calls, String name) {
@@ -735,6 +769,46 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 List.of()));
         }
 
+        void enqueueRoute(String packetName, String payload, Optional<Long> requestSeq) {
+            routes.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("source")),
+                Optional.of(RoutingId.from(name())),
+                requestSeq,
+                List.of(Message.from(packetName), Message.from(payload)),
+                replyParts -> replies.add(replyParts.isEmpty()
+                    ? ""
+                    : replyParts.get(0).toUtf8String())));
+        }
+
+        void dispatchRouteReadable() {
+            if (dispatchHandler == null) {
+                throw new IllegalStateException("fake spot dispatch handler is not registered");
+            }
+            dispatchHandler.handle(new ZLinkBackendSpotDispatchInfo(
+                ZLinkBackendSpotDispatchEvent.ROUTED_READABLE,
+                List.of()));
+        }
+
+        void enqueueSubscription(String topic, String packetName, String payload) {
+            subscriptions.add(new ZLinkBackendTopicMessage(
+                Optional.of(RoutingId.from("publisher")),
+                topic,
+                List.of(Message.from(packetName), Message.from(payload))));
+        }
+
+        void dispatchSubscribeReadable() {
+            if (dispatchHandler == null) {
+                throw new IllegalStateException("fake spot dispatch handler is not registered");
+            }
+            dispatchHandler.handle(new ZLinkBackendSpotDispatchInfo(
+                ZLinkBackendSpotDispatchEvent.SUBSCRIBE_READABLE,
+                List.of()));
+        }
+
+        List<String> replies() {
+            return List.copyOf(replies);
+        }
+
         void dispatchActorMessage(
             String actorId,
             String packetName,
@@ -781,8 +855,8 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public RoutingId routingId() { return RoutingId.from(name()); }
         @Override public void setRoutingId(RoutingId routingId) { record("setRoutingId"); }
         @Override public void setSubscription(String topic) { record("setSubscription." + topic); }
-        @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }
-        @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) { return null; }
+        @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return subscriptions.pollFirst(); }
+        @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) { return routes.pollFirst(); }
         @Override public boolean sendToChannel(String channelName, List<Message> parts, SendFlags flags) { record("sendToChannel." + channelName); return true; }
         @Override public boolean requestToChannel(String channelName, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { record("requestToChannel." + channelName); return true; }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { record("publish." + topic); return true; }

@@ -18,6 +18,10 @@ import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.handlers.ZLinkStreamPacket;
+import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
+import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
+import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 
 final class HandlerContractTest {
     @Test
@@ -49,6 +53,16 @@ final class HandlerContractTest {
             ZLinkNext.class);
 
         assertEquals(1, method.getTypeParameters().length);
+    }
+
+    @Test
+    void spotHandlerRegistryMatchesDotnetRegistrationSurface() throws NoSuchMethodException {
+        ZLinkSpotHandlerRegistry.class.getMethod("addPacket", Class.class);
+        ZLinkSpotHandlerRegistry.class.getMethod("addSubscribe", String.class, Class.class);
+
+        ZLinkSpotPacketHandler.class.getMethod("handleAsync", Object.class, Object.class);
+        ZLinkSpotRequestHandler.class.getMethod("handleAsync", Object.class, Object.class);
+        ZLinkSpotSubscriptionHandler.class.getMethod("handleAsync", Object.class, Object.class);
     }
 
     private static void assertAnnotationMethods(Class<?> annotationType, String... expectedNames) {

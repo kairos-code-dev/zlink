@@ -518,9 +518,12 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             }
         }
         @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) {
-            try (Received result = new Received()) {
-                return spot.recvRouted(result, map(mode)) ? fromReceived(result) : null;
+            Received result = new Received();
+            if (spot.recvRouted(result, map(mode))) {
+                return fromReceived(result);
             }
+            result.close();
+            return null;
         }
         @Override public boolean sendToChannel(String channelName, List<Message> parts, SendFlags flags) { return submit(spot.sendToChannel(channelName), parts, flags); }
         @Override public boolean requestToChannel(String channelName, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { return submitRequest(spot.requestToChannel(channelName), parts, callback, flags, timeout); }
@@ -787,7 +790,9 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             received.getRoutingId(),
             received.spotRid(),
             received.requestSeq(),
-            received.parts().stream().map(Message::from).toList());
+            received.parts().stream().map(Message::from).toList(),
+            replyParts -> submitReply(received.reply(), replyParts),
+            received::close);
     }
 
     private static ZLinkBackendActorRef fromActorRef(ActorRef actorRef) {

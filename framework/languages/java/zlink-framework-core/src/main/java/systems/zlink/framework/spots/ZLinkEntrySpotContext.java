@@ -9,6 +9,11 @@ public interface ZLinkEntrySpotContext {
 
     RoutingId nodeRid();
 
+    default ZLinkSpotHandlerRegistry handlers() {
+        throw new UnsupportedOperationException(
+            "SPOT handler registration is only available on runtime-created contexts");
+    }
+
     ZLinkSpotOutbound outbound();
 
     CompletionStage<ZLinkTimer> addTimer(

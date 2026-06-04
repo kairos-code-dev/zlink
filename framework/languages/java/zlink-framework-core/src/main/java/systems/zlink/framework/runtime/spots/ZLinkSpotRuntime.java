@@ -2,8 +2,10 @@ package systems.zlink.framework.runtime.spots;
 
 import systems.zlink.framework.runtime.backend.*;
 
-import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -33,6 +35,9 @@ import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
+import systems.zlink.framework.handlers.ZLinkPacket;
+import systems.zlink.framework.handlers.ZLinkSpotRequest;
+import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
@@ -54,10 +59,14 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotInfo;
 import systems.zlink.framework.spots.ZLinkSpotKind;
+import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
+import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
+import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
@@ -555,6 +564,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
         spotContext.setSpot(spot);
         spot.configure();
+        spotContext.closeRegistration();
+        spotContext.bindSubscriptions(backendSpot);
         return withCurrentOutbound(spotContext.outbound, () -> spot.onCreateAsync(List.of()))
             .thenCompose(ignored -> withCurrentOutbound(spotContext.outbound, spot::onInitializeAsync))
             .thenApply(ignored -> {
@@ -592,7 +603,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 "entry spot must expose the context provided by the runtime: "
                     + entrySpotType.getName());
         }
+        entryContext.setEntrySpot(entrySpot);
         entrySpot.configure();
+        entryContext.closeRegistration();
+        entryContext.bindSubscriptions(backendSpot);
         withCurrentOutbound(entryContext.outbound, entrySpot::onInitializeAsync)
             .whenComplete((ignored, error) -> {
                 if (error != null) {
@@ -844,6 +858,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         private final ZLinkBackendSpot backendSpot;
         private final DefaultSpotOutbound outbound;
         private final List<DefaultSpotContext> timerContexts = new ArrayList<>();
+        private final List<Class<?>> packetHandlerTypes = new ArrayList<>();
+        private final List<SpotSubscriptionRegistration> subscriptionHandlerTypes = new ArrayList<>();
+        private final Map<String, SpotPacketHandlerRegistration> packetHandlers = new HashMap<>();
+        private final Map<String, List<SpotSubscriptionHandlerRegistration>> subscriptionHandlers =
+            new HashMap<>();
+        private boolean registrationOpen = true;
+        private ZLinkEntrySpot entrySpot;
 
         DefaultEntrySpotContext(RoutingId nodeRid, ZLinkBackendSpot backendSpot) {
             this.nodeRid = nodeRid;
@@ -861,9 +882,32 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             return nodeRid;
         }
 
+        void setEntrySpot(ZLinkEntrySpot entrySpot) {
+            this.entrySpot = entrySpot;
+        }
+
         @Override
         public ZLinkSpotOutbound outbound() {
             return outbound;
+        }
+
+        @Override
+        public ZLinkSpotHandlerRegistry handlers() {
+            return new ZLinkSpotHandlerRegistry() {
+                @Override
+                public void addPacket(Class<?> handlerType) {
+                    ensureRegistrationOpen();
+                    packetHandlerTypes.add(requireHandlerType(handlerType));
+                }
+
+                @Override
+                public void addSubscribe(String topic, Class<?> handlerType) {
+                    ensureRegistrationOpen();
+                    subscriptionHandlerTypes.add(new SpotSubscriptionRegistration(
+                        requireTopic(topic),
+                        requireHandlerType(handlerType)));
+                }
+            };
         }
 
         @Override
@@ -881,6 +925,49 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         void closeTimers() {
             timerContexts.forEach(DefaultSpotContext::closeTimers);
             timerContexts.clear();
+        }
+
+        void closeRegistration() {
+            registrationOpen = false;
+            for (Class<?> handlerType : packetHandlerTypes) {
+                SpotPacketHandlerRegistration registration =
+                    createSpotPacketRegistration(handlerType, entrySpot.getClass());
+                if (packetHandlers.putIfAbsent(registration.packetName(), registration) != null) {
+                    throw new ZLinkConfigurationException(
+                        "duplicate EntrySpot packet handler packet: " + registration.packetName());
+                }
+            }
+            for (SpotSubscriptionRegistration subscription : subscriptionHandlerTypes) {
+                SpotSubscriptionHandlerRegistration registration =
+                    createSpotSubscriptionRegistration(
+                        subscription.topic(),
+                        subscription.handlerType(),
+                        entrySpot.getClass());
+                subscriptionHandlers
+                    .computeIfAbsent(subscription.topic(), ignored -> new ArrayList<>())
+                    .add(registration);
+            }
+        }
+
+        void bindSubscriptions(ZLinkBackendSpot backendSpot) {
+            for (String topic : subscriptionHandlers.keySet()) {
+                backendSpot.setSubscription(topic);
+            }
+        }
+
+        SpotPacketHandlerRegistration packetHandler(String packetName) {
+            return packetHandlers.get(packetName);
+        }
+
+        List<SpotSubscriptionHandlerRegistration> subscriptionHandlers(String topic) {
+            return subscriptionHandlers.getOrDefault(topic, List.of());
+        }
+
+        private void ensureRegistrationOpen() {
+            if (!registrationOpen) {
+                throw new ZLinkConfigurationException(
+                    "EntrySpot handler registration is only allowed while configure is running");
+            }
         }
     }
 
@@ -945,6 +1032,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         void handleDispatchEvent(ZLinkBackendSpotDispatchInfo info) {
+            if (info.event() == ZLinkBackendSpotDispatchEvent.ROUTED_READABLE) {
+                drainRoutes();
+            }
+            if (info.event() == ZLinkBackendSpotDispatchEvent.SUBSCRIBE_READABLE) {
+                drainSubscriptions();
+            }
             if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_JOIN_READABLE) {
                 drainUnhandledActorJoins();
             }
@@ -956,6 +1049,84 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             }
             for (ZLinkBackendActorReceived actorMessage : info.actorMessages()) {
                 actorMessage.close();
+            }
+        }
+
+        private void drainRoutes() {
+            while (true) {
+                ZLinkBackendReceived received =
+                    backendSpot.recvRoute(ZLinkBackendRecvMode.DONT_WAIT);
+                if (received == null) {
+                    return;
+                }
+                dispatchRoute(received);
+            }
+        }
+
+        private void dispatchRoute(ZLinkBackendReceived received) {
+            if (received.parts().isEmpty()) {
+                received.close();
+                return;
+            }
+            ParsedPacket packet = parsePacket(received.parts());
+            SpotPacketHandlerRegistration handler =
+                context.packetHandler(packet.packetName());
+            if (handler == null) {
+                received.close();
+                return;
+            }
+            if (received.requestSeq().isPresent()) {
+                if (!handler.request()) {
+                    received.close();
+                    return;
+                }
+                Message payloadCopy = Message.from(packet.payload());
+                invokeSpotRequestHandler(handler, entrySpot, payloadCopy)
+                    .thenAccept(reply -> received.reply(List.of(reply)))
+                    .whenComplete((ignored, error) -> {
+                        payloadCopy.close();
+                        received.close();
+                    });
+                return;
+            }
+            try (received) {
+                if (handler.request()) {
+                    return;
+                }
+                Message payloadCopy = Message.from(packet.payload());
+                invokeSpotPacketHandler(handler, entrySpot, payloadCopy)
+                    .whenComplete((ignored, error) -> payloadCopy.close());
+            }
+        }
+
+        private void drainSubscriptions() {
+            while (true) {
+                ZLinkBackendTopicMessage received =
+                    backendSpot.subscribe(ZLinkBackendRecvMode.DONT_WAIT);
+                if (received == null) {
+                    return;
+                }
+                dispatchSubscription(received);
+            }
+        }
+
+        private void dispatchSubscription(ZLinkBackendTopicMessage received) {
+            try {
+                if (received.parts().isEmpty()) {
+                    return;
+                }
+                ParsedPacket packet = parsePacket(received.parts());
+                for (SpotSubscriptionHandlerRegistration handler :
+                    context.subscriptionHandlers(received.topic())) {
+                    if (!handler.packetName().equals(packet.packetName())) {
+                        continue;
+                    }
+                    Message payloadCopy = Message.from(packet.payload());
+                    invokeSpotSubscriptionHandler(handler, entrySpot, payloadCopy)
+                        .whenComplete((ignored, error) -> payloadCopy.close());
+                }
+            } finally {
+                received.parts().forEach(Message::close);
             }
         }
 
@@ -1391,6 +1562,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         private final ZLinkBackendSpot backendSpot;
         private final DefaultSpotOutbound outbound;
         private final List<ManagedTimer> timers = new ArrayList<>();
+        private final List<Class<?>> packetHandlerTypes = new ArrayList<>();
+        private final List<SpotSubscriptionRegistration> subscriptionHandlerTypes = new ArrayList<>();
+        private final Map<String, SpotPacketHandlerRegistration> packetHandlers = new HashMap<>();
+        private final Map<String, List<SpotSubscriptionHandlerRegistration>> subscriptionHandlers =
+            new HashMap<>();
+        private boolean registrationOpen = true;
         private ZLinkSpot spot;
 
         DefaultSpotContext(RoutingId nodeRid, ZLinkBackendSpot backendSpot) {
@@ -1416,6 +1593,25 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         @Override
         public ZLinkSpotOutbound outbound() {
             return outbound;
+        }
+
+        @Override
+        public ZLinkSpotHandlerRegistry handlers() {
+            return new ZLinkSpotHandlerRegistry() {
+                @Override
+                public void addPacket(Class<?> handlerType) {
+                    ensureRegistrationOpen();
+                    packetHandlerTypes.add(requireHandlerType(handlerType));
+                }
+
+                @Override
+                public void addSubscribe(String topic, Class<?> handlerType) {
+                    ensureRegistrationOpen();
+                    subscriptionHandlerTypes.add(new SpotSubscriptionRegistration(
+                        requireTopic(topic),
+                        requireHandlerType(handlerType)));
+                }
+            };
         }
 
         @Override
@@ -1455,6 +1651,49 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         void closeTimers() {
             timers.forEach(ManagedTimer::close);
             timers.clear();
+        }
+
+        void closeRegistration() {
+            registrationOpen = false;
+            for (Class<?> handlerType : packetHandlerTypes) {
+                SpotPacketHandlerRegistration registration =
+                    createSpotPacketRegistration(handlerType, spot.getClass());
+                if (packetHandlers.putIfAbsent(registration.packetName(), registration) != null) {
+                    throw new ZLinkConfigurationException(
+                        "duplicate SPOT packet handler packet: " + registration.packetName());
+                }
+            }
+            for (SpotSubscriptionRegistration subscription : subscriptionHandlerTypes) {
+                SpotSubscriptionHandlerRegistration registration =
+                    createSpotSubscriptionRegistration(
+                        subscription.topic(),
+                        subscription.handlerType(),
+                        spot.getClass());
+                subscriptionHandlers
+                    .computeIfAbsent(subscription.topic(), ignored -> new ArrayList<>())
+                    .add(registration);
+            }
+        }
+
+        void bindSubscriptions(ZLinkBackendSpot backendSpot) {
+            for (String topic : subscriptionHandlers.keySet()) {
+                backendSpot.setSubscription(topic);
+            }
+        }
+
+        SpotPacketHandlerRegistration packetHandler(String packetName) {
+            return packetHandlers.get(packetName);
+        }
+
+        List<SpotSubscriptionHandlerRegistration> subscriptionHandlers(String topic) {
+            return subscriptionHandlers.getOrDefault(topic, List.of());
+        }
+
+        private void ensureRegistrationOpen() {
+            if (!registrationOpen) {
+                throw new ZLinkConfigurationException(
+                    "SPOT handler registration is only allowed while configure is running");
+            }
         }
 
         private final class ManagedTimer implements ZLinkTimer {
@@ -1536,6 +1775,87 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "failed to create timer handler: " + handlerType.getName(),
                 ex));
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private CompletionStage<Void> invokeSpotPacketHandler(
+        SpotPacketHandlerRegistration registration,
+        Object spot,
+        Message payload) {
+        Object message = serializer.deserialize(payload, registration.messageType());
+        try {
+            Object handler = handlerFactory.create(registration.handlerType());
+            if (registration.handlerMethod() != null) {
+                Object result = registration.handlerMethod().invoke(handler, spot, message);
+                if (result instanceof CompletionStage<?> stage) {
+                    return stage.thenApply(ignored -> null);
+                }
+                return CompletableFuture.completedFuture(null);
+            }
+            return ((ZLinkSpotPacketHandler) handler)
+                .handleAsync(spot, message)
+                .thenApply(ignored -> null);
+        } catch (IllegalAccessException | InvocationTargetException ex) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "failed to invoke SPOT packet handler: "
+                    + registration.handlerType().getName(),
+                ex));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private CompletionStage<Message> invokeSpotRequestHandler(
+        SpotPacketHandlerRegistration registration,
+        Object spot,
+        Message payload) {
+        Object message = serializer.deserialize(payload, registration.messageType());
+        try {
+            Object handler = handlerFactory.create(registration.handlerType());
+            Object result = registration.handlerMethod() != null
+                ? registration.handlerMethod().invoke(handler, spot, message)
+                : ((ZLinkSpotRequestHandler) handler).handleAsync(spot, message);
+            CompletionStage<?> stage = result instanceof CompletionStage<?> completion
+                ? completion
+                : CompletableFuture.completedFuture(result);
+            return stage.thenApply(serializer::serialize);
+        } catch (IllegalAccessException | InvocationTargetException ex) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "failed to invoke SPOT request handler: "
+                    + registration.handlerType().getName(),
+                ex));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private CompletionStage<Void> invokeSpotSubscriptionHandler(
+        SpotSubscriptionHandlerRegistration registration,
+        Object spot,
+        Message payload) {
+        Object message = serializer.deserialize(payload, registration.messageType());
+        try {
+            Object handler = handlerFactory.create(registration.handlerType());
+            if (registration.handlerMethod() != null) {
+                Object result = registration.handlerMethod().invoke(handler, spot, message);
+                if (result instanceof CompletionStage<?> stage) {
+                    return stage.thenApply(ignored -> null);
+                }
+                return CompletableFuture.completedFuture(null);
+            }
+            return ((ZLinkSpotSubscriptionHandler) handler)
+                .handleAsync(spot, message)
+                .thenApply(ignored -> null);
+        } catch (IllegalAccessException | InvocationTargetException ex) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "failed to invoke SPOT subscription handler: "
+                    + registration.handlerType().getName(),
+                ex));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
         }
     }
 
@@ -2098,6 +2418,210 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             .orElseGet(() -> List.of(payload));
     }
 
+    private static ParsedPacket parsePacket(List<Message> parts) {
+        if (parts.size() >= 2) {
+            return new ParsedPacket(parts.get(0).toUtf8String(), parts.get(1));
+        }
+        return new ParsedPacket("", parts.get(0));
+    }
+
+    private record ParsedPacket(String packetName, Message payload) {
+    }
+
+    private record SpotSubscriptionRegistration(String topic, Class<?> handlerType) {
+    }
+
+    private record SpotPacketHandlerRegistration(
+        Class<?> handlerType,
+        Method handlerMethod,
+        Class<?> spotType,
+        Class<?> messageType,
+        Class<?> replyType,
+        String packetName,
+        boolean request) {
+    }
+
+    private record SpotSubscriptionHandlerRegistration(
+        String topic,
+        Class<?> handlerType,
+        Method handlerMethod,
+        Class<?> spotType,
+        Class<?> messageType,
+        String packetName) {
+    }
+
+    private static SpotPacketHandlerRegistration createSpotPacketRegistration(
+        Class<?> handlerType,
+        Class<?> expectedSpotType) {
+        ParameterizedType packet = findInterface(handlerType, ZLinkSpotPacketHandler.class);
+        if (packet != null) {
+            Type[] arguments = packet.getActualTypeArguments();
+            Class<?> spotType = requireClassArgument(handlerType, arguments[0]);
+            requireExactSpotType(handlerType, expectedSpotType, spotType);
+            Class<?> messageType = requireClassArgument(handlerType, arguments[1]);
+            return new SpotPacketHandlerRegistration(
+                handlerType, null, spotType, messageType, Void.class,
+                resolvePacketName(messageType), false);
+        }
+
+        ParameterizedType request = findInterface(handlerType, ZLinkSpotRequestHandler.class);
+        if (request != null) {
+            Type[] arguments = request.getActualTypeArguments();
+            Class<?> spotType = requireClassArgument(handlerType, arguments[0]);
+            requireExactSpotType(handlerType, expectedSpotType, spotType);
+            Class<?> messageType = requireClassArgument(handlerType, arguments[1]);
+            Class<?> replyType = requireClassArgument(handlerType, arguments[2]);
+            return new SpotPacketHandlerRegistration(
+                handlerType, null, spotType, messageType, replyType,
+                resolvePacketName(messageType), true);
+        }
+
+        for (Method method : handlerType.getMethods()) {
+            ZLinkSpotRequest annotation = method.getAnnotation(ZLinkSpotRequest.class);
+            if (annotation == null) {
+                continue;
+            }
+            Class<?>[] parameters = method.getParameterTypes();
+            if (parameters.length != 2) {
+                throw new ZLinkConfigurationException(
+                    "SPOT request handler method must have spot and request parameters: "
+                        + handlerType.getName() + "." + method.getName());
+            }
+            requireExactSpotType(handlerType, expectedSpotType, parameters[0]);
+            return new SpotPacketHandlerRegistration(
+                handlerType, method, parameters[0], parameters[1],
+                resolveReplyType(handlerType, method),
+                resolvePacketName(parameters[1], annotation.packetName()), true);
+        }
+
+        throw new ZLinkConfigurationException(
+            "SPOT packet handler must implement ZLinkSpotPacketHandler or ZLinkSpotRequestHandler: "
+                + handlerType.getName());
+    }
+
+    private static SpotSubscriptionHandlerRegistration createSpotSubscriptionRegistration(
+        String topic,
+        Class<?> handlerType,
+        Class<?> expectedSpotType) {
+        ParameterizedType subscription = findInterface(handlerType, ZLinkSpotSubscriptionHandler.class);
+        if (subscription != null) {
+            Type[] arguments = subscription.getActualTypeArguments();
+            Class<?> spotType = requireClassArgument(handlerType, arguments[0]);
+            requireExactSpotType(handlerType, expectedSpotType, spotType);
+            Class<?> messageType = requireClassArgument(handlerType, arguments[1]);
+            return new SpotSubscriptionHandlerRegistration(
+                topic, handlerType, null, spotType, messageType, resolvePacketName(messageType));
+        }
+
+        for (Method method : handlerType.getMethods()) {
+            ZLinkSpotSubscription annotation = method.getAnnotation(ZLinkSpotSubscription.class);
+            if (annotation == null) {
+                continue;
+            }
+            Class<?>[] parameters = method.getParameterTypes();
+            if (parameters.length != 2) {
+                throw new ZLinkConfigurationException(
+                    "SPOT subscription handler method must have spot and event parameters: "
+                        + handlerType.getName() + "." + method.getName());
+            }
+            requireExactSpotType(handlerType, expectedSpotType, parameters[0]);
+            return new SpotSubscriptionHandlerRegistration(
+                topic, handlerType, method, parameters[0], parameters[1],
+                resolvePacketName(parameters[1]));
+        }
+
+        throw new ZLinkConfigurationException(
+            "SPOT subscription handler must implement ZLinkSpotSubscriptionHandler: "
+                + handlerType.getName());
+    }
+
+    private static void requireExactSpotType(
+        Class<?> handlerType,
+        Class<?> expectedSpotType,
+        Class<?> actualSpotType) {
+        if (actualSpotType != expectedSpotType) {
+            throw new ZLinkConfigurationException(
+                "SPOT handler " + handlerType.getName()
+                    + " targets " + actualSpotType.getName()
+                    + " but expected " + expectedSpotType.getName());
+        }
+    }
+
+    private static ParameterizedType findInterface(Class<?> type, Class<?> targetRawType) {
+        for (Type interfaceType : type.getGenericInterfaces()) {
+            ParameterizedType matched = matchInterface(interfaceType, targetRawType);
+            if (matched != null) {
+                return matched;
+            }
+        }
+        Class<?> superclass = type.getSuperclass();
+        return superclass == null || superclass == Object.class
+            ? null
+            : findInterface(superclass, targetRawType);
+    }
+
+    private static ParameterizedType matchInterface(Type interfaceType, Class<?> targetRawType) {
+        if (interfaceType instanceof ParameterizedType parameterized
+            && parameterized.getRawType() == targetRawType) {
+            return parameterized;
+        }
+        if (interfaceType instanceof Class<?> raw) {
+            return findInterface(raw, targetRawType);
+        }
+        return null;
+    }
+
+    private static Class<?> requireClassArgument(Class<?> handlerType, Type argument) {
+        if (argument instanceof Class<?> klass) {
+            return klass;
+        }
+        if (argument instanceof ParameterizedType parameterized
+            && parameterized.getRawType() instanceof Class<?> raw) {
+            return raw;
+        }
+        throw new ZLinkConfigurationException(
+            "handler generic argument must resolve to a class: " + handlerType.getName());
+    }
+
+    private static Class<?> resolveReplyType(Class<?> handlerType, Method method) {
+        Type returnType = method.getGenericReturnType();
+        if (returnType instanceof ParameterizedType parameterized
+            && parameterized.getRawType() == CompletionStage.class) {
+            return requireClassArgument(handlerType, parameterized.getActualTypeArguments()[0]);
+        }
+        if (method.getReturnType() == Void.TYPE || method.getReturnType() == Void.class) {
+            throw new ZLinkConfigurationException(
+                "SPOT request handler method must return a reply: "
+                    + handlerType.getName() + "." + method.getName());
+        }
+        return method.getReturnType();
+    }
+
+    private static String resolvePacketName(Class<?> messageType) {
+        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
+        return packet == null ? messageType.getSimpleName() : packet.value();
+    }
+
+    private static String resolvePacketName(Class<?> messageType, String explicitPacketName) {
+        return explicitPacketName == null || explicitPacketName.isBlank()
+            ? resolvePacketName(messageType)
+            : explicitPacketName;
+    }
+
+    private static Class<?> requireHandlerType(Class<?> handlerType) {
+        if (handlerType == null) {
+            throw new ZLinkConfigurationException("SPOT handler type is required");
+        }
+        return handlerType;
+    }
+
+    private static String requireTopic(String topic) {
+        if (topic == null || topic.isBlank()) {
+            throw new ZLinkConfigurationException("SPOT subscription topic must not be empty");
+        }
+        return topic;
+    }
+
     private final class SpotActivation implements AutoCloseable {
         private final ZLinkSpot spot;
         private final ZLinkBackendSpot backendSpot;
@@ -2113,6 +2637,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         void handleDispatchEvent(ZLinkBackendSpotDispatchInfo info) {
+            if (info.event() == ZLinkBackendSpotDispatchEvent.ROUTED_READABLE) {
+                drainRoutes();
+            }
+            if (info.event() == ZLinkBackendSpotDispatchEvent.SUBSCRIBE_READABLE) {
+                drainSubscriptions();
+            }
             if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_JOIN_READABLE) {
                 drainUnhandledActorJoins();
             }
@@ -2124,6 +2654,84 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             }
             for (ZLinkBackendActorReceived actorMessage : info.actorMessages()) {
                 actorMessage.close();
+            }
+        }
+
+        private void drainRoutes() {
+            while (true) {
+                ZLinkBackendReceived received =
+                    backendSpot.recvRoute(ZLinkBackendRecvMode.DONT_WAIT);
+                if (received == null) {
+                    return;
+                }
+                dispatchRoute(received);
+            }
+        }
+
+        private void dispatchRoute(ZLinkBackendReceived received) {
+            if (received.parts().isEmpty()) {
+                received.close();
+                return;
+            }
+            ParsedPacket packet = parsePacket(received.parts());
+            SpotPacketHandlerRegistration handler =
+                context.packetHandler(packet.packetName());
+            if (handler == null) {
+                received.close();
+                return;
+            }
+            if (received.requestSeq().isPresent()) {
+                if (!handler.request()) {
+                    received.close();
+                    return;
+                }
+                Message payloadCopy = Message.from(packet.payload());
+                invokeSpotRequestHandler(handler, spot, payloadCopy)
+                    .thenAccept(reply -> received.reply(List.of(reply)))
+                    .whenComplete((ignored, error) -> {
+                        payloadCopy.close();
+                        received.close();
+                    });
+                return;
+            }
+            try (received) {
+                if (handler.request()) {
+                    return;
+                }
+                Message payloadCopy = Message.from(packet.payload());
+                invokeSpotPacketHandler(handler, spot, payloadCopy)
+                    .whenComplete((ignored, error) -> payloadCopy.close());
+            }
+        }
+
+        private void drainSubscriptions() {
+            while (true) {
+                ZLinkBackendTopicMessage received =
+                    backendSpot.subscribe(ZLinkBackendRecvMode.DONT_WAIT);
+                if (received == null) {
+                    return;
+                }
+                dispatchSubscription(received);
+            }
+        }
+
+        private void dispatchSubscription(ZLinkBackendTopicMessage received) {
+            try {
+                if (received.parts().isEmpty()) {
+                    return;
+                }
+                ParsedPacket packet = parsePacket(received.parts());
+                for (SpotSubscriptionHandlerRegistration handler :
+                    context.subscriptionHandlers(received.topic())) {
+                    if (!handler.packetName().equals(packet.packetName())) {
+                        continue;
+                    }
+                    Message payloadCopy = Message.from(packet.payload());
+                    invokeSpotSubscriptionHandler(handler, spot, payloadCopy)
+                        .whenComplete((ignored, error) -> payloadCopy.close());
+                }
+            } finally {
+                received.parts().forEach(Message::close);
             }
         }
 

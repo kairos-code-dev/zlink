@@ -10,6 +10,11 @@ public interface ZLinkSpotContext {
 
     RoutingId nodeRid();
 
+    default ZLinkSpotHandlerRegistry handlers() {
+        throw new UnsupportedOperationException(
+            "SPOT handler registration is only available on runtime-created contexts");
+    }
+
     ZLinkSpotOutbound outbound();
 
     CompletionStage<Void> leaveActorAsync(ZLinkActor actor);

@@ -3,6 +3,8 @@ package systems.zlink.framework.runtime.backend;
 import java.util.List;
 
 public interface ZLinkBackendRegistry extends ZLinkBackendObject {
+    void setId(int registryId);
+
     void bind(String pubEndpoint, String routerEndpoint);
 
     void connectPeer(String pubEndpoint, String routerEndpoint);

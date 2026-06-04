@@ -33,6 +33,9 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
             backendFactory.createRegistryAdapter(adapterOptions);
         this.context = channelAdapter.createContext();
         this.registry = registryAdapter.createRegistry(context);
+        if (options.registryId() != 0) {
+            registry.setId(options.registryId());
+        }
         registry.bind(options.pubEndpoint(), options.routerEndpoint());
         for (String peerPubEndpoint : options.peerPubEndpoints()) {
             registry.connectPeer(peerPubEndpoint, "");
@@ -52,7 +55,16 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
     public CompletionStage<ZLinkRegistryStatus> statusAsync() {
         ZLinkBackendRegistryStatus status = registry.status();
         return CompletableFuture.completedFuture(
-            new ZLinkRegistryStatus(status.state(), status.topologyEntryCount()));
+            new ZLinkRegistryStatus(
+                status.registryId(),
+                status.bindEndpoint(),
+                status.state(),
+                status.topologyEntryCount(),
+                status.peerRegistryCount(),
+                status.connectedPeerRegistryCount(),
+                status.listSeq(),
+                status.lastError(),
+                status.lastChangedMs()));
     }
 
     @Override

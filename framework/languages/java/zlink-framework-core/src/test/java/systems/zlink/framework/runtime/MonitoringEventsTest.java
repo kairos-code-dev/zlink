@@ -186,6 +186,10 @@ final class MonitoringEventsTest {
         int entryCount = 1;
 
         @Override
+        public void setId(int registryId) {
+        }
+
+        @Override
         public void bind(String pubEndpoint, String routerEndpoint) {
         }
 

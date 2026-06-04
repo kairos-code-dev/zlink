@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime;
 
 import systems.zlink.framework.runtime.backend.*;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -24,17 +25,22 @@ final class EmbeddedRegistryTest {
     void embeddedRegistry_queryService_resolvesAndReadsStatus() {
         Zlink.version();
         ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
-        options.setPubEndpoint(tcpEndpoint());
-        options.setRouterEndpoint(tcpEndpoint());
+        options.setRegistryId(7);
+        String pubEndpoint = tcpEndpoint();
+        String routerEndpoint = tcpEndpoint();
+        options.setPubEndpoint(pubEndpoint);
+        options.setRouterEndpoint(routerEndpoint);
 
         try (ZLinkRegistryRuntime runtime = new ZLinkRegistryRuntime(
                  options,
                  new ZLinkJavaBackendAdapterFactory(),
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
-            assertTrue(runtime.statusAsync()
+            var status = runtime.statusAsync()
                 .toCompletableFuture()
-                .join()
-                .topologyEntryCount() >= 0);
+                .join();
+            assertEquals(7, status.registryId());
+            assertEquals(routerEndpoint, status.bindEndpoint());
+            assertTrue(status.topologyEntryCount() >= 0);
             assertTrue(runtime.serviceSummaryAsync(ZLinkRegistryQueryFilter.all())
                 .toCompletableFuture()
                 .join()

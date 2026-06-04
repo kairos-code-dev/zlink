@@ -5,9 +5,21 @@ import java.util.List;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 public final class ZLinkEmbeddedRegistryOptions {
+    private int registryId;
     private String pubEndpoint;
     private String routerEndpoint;
     private final List<String> peerPubEndpoints = new ArrayList<>();
+
+    public int registryId() {
+        return registryId;
+    }
+
+    public void setRegistryId(int registryId) {
+        if (registryId < 0) {
+            throw new ZLinkConfigurationException("registryId must be non-negative");
+        }
+        this.registryId = registryId;
+    }
 
     public String pubEndpoint() {
         return pubEndpoint;

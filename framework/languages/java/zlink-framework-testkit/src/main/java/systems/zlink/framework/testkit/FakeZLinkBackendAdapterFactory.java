@@ -511,6 +511,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             super(calls, "registry");
         }
 
+        @Override public void setId(int registryId) { record("setId." + registryId); }
         @Override public void bind(String pubEndpoint, String routerEndpoint) { record("bind." + pubEndpoint + "." + routerEndpoint); }
         @Override public void connectPeer(String pubEndpoint, String routerEndpoint) { record("connectPeer." + pubEndpoint); }
         @Override public ZLinkBackendRegistryStatus status() { record("status"); return new ZLinkBackendRegistryStatus("BOUND", 1); }

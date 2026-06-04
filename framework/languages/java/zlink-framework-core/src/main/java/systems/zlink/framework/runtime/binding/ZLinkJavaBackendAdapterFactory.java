@@ -334,9 +334,22 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
 
     private record JavaRegistry(Registry registry) implements ZLinkBackendRegistry {
         @Override public String name() { return "registry"; }
+        @Override public void setId(int registryId) { registry.setId(registryId); }
         @Override public void bind(String pubEndpoint, String routerEndpoint) { registry.bind(pubEndpoint, routerEndpoint); }
         @Override public void connectPeer(String pubEndpoint, String routerEndpoint) { registry.addPeer(pubEndpoint); }
-        @Override public ZLinkBackendRegistryStatus status() { var status = registry.status(); return new ZLinkBackendRegistryStatus(status.state().name(), status.topologyEntryCount()); }
+        @Override public ZLinkBackendRegistryStatus status() {
+            var status = registry.status();
+            return new ZLinkBackendRegistryStatus(
+                status.registryId(),
+                status.bindEndpoint(),
+                status.state().name(),
+                status.topologyEntryCount(),
+                status.peerRegistryCount(),
+                status.connectedPeerRegistryCount(),
+                status.listSeq(),
+                status.lastError(),
+                status.lastChangedMs());
+        }
         @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) { return registry.serviceSummary(serviceSummaryFilter(filter)).stream().map(entry -> new ZLinkBackendRegistryServiceSummaryEntry(entry.channelName(), entry.serviceRole().name(), entry.totalCount())).toList(); }
         @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) { return registry.topology(topologyFilter(filter)).stream().map(entry -> new ZLinkBackendRegistryTopologyEntry(entry.channelName(), entry.routingId(), entry.serviceKind().name(), entry.endpoint())).toList(); }
         @Override public void close() { registry.close(); }

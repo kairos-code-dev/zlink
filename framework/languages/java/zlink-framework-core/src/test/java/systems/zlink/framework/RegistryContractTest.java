@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
 import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
 import systems.zlink.framework.registry.ZLinkRegistryQueryFilter;
+import systems.zlink.framework.registry.ZLinkRegistryStatus;
 
 final class RegistryContractTest {
     @Test
@@ -24,6 +25,24 @@ final class RegistryContractTest {
         assertEquals(CompletionStage.class, status.getReturnType());
         assertEquals(CompletionStage.class, serviceSummary.getReturnType());
         assertEquals(CompletionStage.class, topology.getReturnType());
+    }
+
+    @Test
+    void registryStatusCarriesDotnetStatusSnapshotFields() {
+        assertEquals(
+            List.of(
+                "registryId",
+                "bindEndpoint",
+                "state",
+                "topologyEntryCount",
+                "peerRegistryCount",
+                "connectedPeerRegistryCount",
+                "listSeq",
+                "lastError",
+                "lastChangedMs"),
+            java.util.Arrays.stream(ZLinkRegistryStatus.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName)
+                .toList());
     }
 
     @Test

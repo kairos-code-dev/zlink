@@ -68,6 +68,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistry;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryMemberPeerEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryQueryClient;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryQueryFilter;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryServiceSummaryEntry;
@@ -393,6 +394,18 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                     entry.errorCode(),
                     entry.lastReportedMs(),
                     toFrameworkSpotKind(entry.spotKind())))
+                .toList();
+        }
+        @Override public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers(String channelName) {
+            return registry.memberPeers(channelName).stream()
+                .map(peer -> new ZLinkBackendRegistryMemberPeerEntry(
+                    peer.autoConnectType().name(),
+                    peer.serviceRole().name(),
+                    peer.channelName(),
+                    peer.endpoint(),
+                    peer.routingId(),
+                    peer.value(),
+                    peer.weight()))
                 .toList();
         }
         @Override public void close() { registry.close(); }

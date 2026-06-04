@@ -11,4 +11,6 @@ public interface ZLinkRegistryQuery {
 
     CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
         ZLinkRegistryTopologyFilter filter);
+
+    CompletionStage<List<ZLinkMemberPeerEntry>> memberPeersAsync(String channelName);
 }

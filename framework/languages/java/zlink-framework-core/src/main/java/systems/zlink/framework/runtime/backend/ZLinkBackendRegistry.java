@@ -14,4 +14,6 @@ public interface ZLinkBackendRegistry extends ZLinkBackendObject {
     List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter);
 
     List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter);
+
+    List<ZLinkBackendRegistryMemberPeerEntry> memberPeers(String channelName);
 }

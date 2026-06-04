@@ -47,6 +47,12 @@ public final class ZLinkRegistry implements ZLinkRegistryQuery, AutoCloseable {
     }
 
     @Override
+    public java.util.concurrent.CompletionStage<java.util.List<systems.zlink.framework.registry.ZLinkMemberPeerEntry>>
+        memberPeersAsync(String channelName) {
+        return runtime.memberPeersAsync(channelName);
+    }
+
+    @Override
     public void close() {
         runtime.close();
     }

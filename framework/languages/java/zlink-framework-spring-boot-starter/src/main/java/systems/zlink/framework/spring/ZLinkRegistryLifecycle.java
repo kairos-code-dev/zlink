@@ -6,6 +6,7 @@ import java.util.concurrent.CompletionStage;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
+import systems.zlink.framework.registry.ZLinkMemberPeerEntry;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
 import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter;
 import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry;
@@ -93,6 +94,11 @@ public final class ZLinkRegistryLifecycle implements SmartLifecycle, ZLinkRegist
     public CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
         ZLinkRegistryTopologyFilter filter) {
         return requireRuntime().topologyAsync(filter);
+    }
+
+    @Override
+    public CompletionStage<List<ZLinkMemberPeerEntry>> memberPeersAsync(String channelName) {
+        return requireRuntime().memberPeersAsync(channelName);
     }
 
     private synchronized ZLinkRegistryRuntime requireRuntime() {

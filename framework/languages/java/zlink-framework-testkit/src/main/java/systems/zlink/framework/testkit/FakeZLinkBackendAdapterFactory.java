@@ -36,6 +36,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistry;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryMemberPeerEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryQueryClient;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryQueryFilter;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryServiceSummaryEntry;
@@ -553,6 +554,17 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 0,
                 12,
                 ZLinkSpotKind.INVALID));
+        }
+        @Override public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers(String channelName) {
+            record("memberPeers." + channelName);
+            return List.of(new ZLinkBackendRegistryMemberPeerEntry(
+                "CLIENT_SERVER",
+                "ROUTER",
+                channelName,
+                "inproc://" + channelName + "-member",
+                RoutingId.from(channelName + "-member"),
+                4,
+                5));
         }
     }
 

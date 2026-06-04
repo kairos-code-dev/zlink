@@ -40,6 +40,12 @@ final class RegistryRuntimeFakeBackendTest {
                     .join()
                     .get(0)
                     .endpoint());
+            assertEquals("inproc://profile-member",
+                runtime.memberPeersAsync("profile")
+                    .toCompletableFuture()
+                    .join()
+                    .get(0)
+                    .endpoint());
         }
 
         assertEquals(
@@ -53,6 +59,7 @@ final class RegistryRuntimeFakeBackendTest {
                 "registry.status",
                 "registry.serviceSummary.*",
                 "registry.topology.profile",
+                "registry.memberPeers.profile",
                 "close.registry",
                 "close.context"),
             backendFactory.calls());

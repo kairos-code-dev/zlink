@@ -6,6 +6,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.registry.ZLinkMemberPeerEntry;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
 import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
 import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry;
@@ -24,10 +25,14 @@ final class RegistryContractTest {
         Method topology = ZLinkRegistryQuery.class.getMethod(
             "topologyAsync",
             ZLinkRegistryTopologyFilter.class);
+        Method memberPeers = ZLinkRegistryQuery.class.getMethod(
+            "memberPeersAsync",
+            String.class);
 
         assertEquals(CompletionStage.class, status.getReturnType());
         assertEquals(CompletionStage.class, serviceSummary.getReturnType());
         assertEquals(CompletionStage.class, topology.getReturnType());
+        assertEquals(CompletionStage.class, memberPeers.getReturnType());
     }
 
     @Test
@@ -84,6 +89,22 @@ final class RegistryContractTest {
                 "lastReportedMs",
                 "spotKind"),
             java.util.Arrays.stream(ZLinkRegistryTopologyEntry.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName)
+                .toList());
+    }
+
+    @Test
+    void registryMemberPeerCarriesDotnetMemberPeerFields() {
+        assertEquals(
+            List.of(
+                "autoConnectType",
+                "serviceRole",
+                "channelName",
+                "endpoint",
+                "routingId",
+                "value",
+                "weight"),
+            java.util.Arrays.stream(ZLinkMemberPeerEntry.class.getRecordComponents())
                 .map(java.lang.reflect.RecordComponent::getName)
                 .toList());
     }

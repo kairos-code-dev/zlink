@@ -237,6 +237,18 @@ final class MonitoringEventsTest {
         }
 
         @Override
+        public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers(String channelName) {
+            return List.of(new ZLinkBackendRegistryMemberPeerEntry(
+                "CLIENT_SERVER",
+                "ROUTER",
+                channelName,
+                "inproc://" + channelName,
+                systems.zlink.contracts.core.RoutingId.from(channelName + "-peer"),
+                1,
+                1));
+        }
+
+        @Override
         public String name() {
             return "registry";
         }

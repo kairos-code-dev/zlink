@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
+import systems.zlink.framework.registry.ZLinkMemberPeerEntry;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
 import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter;
 import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry;
@@ -15,6 +16,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistry;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryMemberPeerEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryQueryFilter;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryStatus;
 import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
@@ -110,6 +112,17 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
     }
 
     @Override
+    public CompletionStage<List<ZLinkMemberPeerEntry>> memberPeersAsync(String channelName) {
+        if (channelName == null || channelName.isBlank()) {
+            throw new IllegalArgumentException("channelName is required");
+        }
+        return CompletableFuture.completedFuture(
+            registry.memberPeers(channelName).stream()
+                .map(ZLinkRegistryRuntime::toMemberPeer)
+                .toList());
+    }
+
+    @Override
     public void close() {
         try {
             registry.close();
@@ -144,5 +157,17 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
             resolved.routingId(),
             resolved.state(),
             resolved.source());
+    }
+
+    private static ZLinkMemberPeerEntry toMemberPeer(
+        ZLinkBackendRegistryMemberPeerEntry entry) {
+        return new ZLinkMemberPeerEntry(
+            entry.autoConnectType(),
+            entry.serviceRole(),
+            entry.channelName(),
+            entry.endpoint(),
+            entry.routingId(),
+            entry.value(),
+            entry.weight());
     }
 }

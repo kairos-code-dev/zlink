@@ -257,3 +257,29 @@ Complete 측정:
   - 이번 보강은 코드 변경 없이 current baseline 반영으로 통과한 셀만 main 문서에 overlay한다.
   - Rust single 미달은 `20/144 (13.9%)`에서 `11/144 (7.6%)`로 줄어 10% gate 아래로 내려왔다.
   - 남은 Rust single 미달은 `PUBSUB tcp 64B`, routed `tcp` 대용량 6개, `ws/tls 262144B` 일부다.
+
+## Rust multi PUBSUB tcp65536 current 재측정 보강
+
+- 대상:
+  - `MULTI_PUBSUB tcp 65536B`
+  - Rust multi는 main 문서 기준 `11/192 (5.7%)`로 10% gate 아래였지만, 남은 셀 중
+    current C 기준 변동으로 회복 가능한 항목을 complete 재측정으로 확인했다.
+- 측정:
+  - C runs=7:
+    `perf_c_multi_linux_20260605_021656_rust_multi_pubsub_tcp65536_c_current_runs7_20260605.txt`
+    는 status=complete였다.
+  - Rust runs=7:
+    `perf_rust_multi_linux_20260605_021755_rust_multi_pubsub_tcp65536_current_runs7_20260605.txt`
+    는 status=complete였다.
+- 결과:
+  - `MULTI_PUBSUB tcp 65536B`: Rust 194,277.4 msg/s, C 206,038.8 msg/s 대비
+    94.3%로 통과.
+  - 비교 후보였던 `MULTI_DEALER_DEALER tls 4096B`는 C
+    `perf_c_multi_linux_20260605_021425_rust_multi_dd_tls4096_c_current_runs7_20260605.txt`,
+    Rust `perf_rust_multi_linux_20260605_021540_rust_multi_dd_tls4096_current_runs7_20260605.txt`
+    모두 status=complete였지만, Rust 574,045.0 msg/s, C 802,975.6 msg/s 대비
+    71.5%라 기준에 못 닿았다.
+- 판정:
+  - 이번 보강은 코드 변경 없이 complete report 기준으로 통과한 `MULTI_PUBSUB tcp 65536B`만
+    main 문서에 overlay한다.
+  - Rust multi 미달은 `11/192 (5.7%)`에서 `10/192 (5.2%)`로 줄었다.

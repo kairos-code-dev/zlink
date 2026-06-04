@@ -709,3 +709,35 @@
 - 판정:
   - 코드 변경 없이 current baseline 반영으로 `MULTI_ROUTER_ROUTER tcp 256B`를 통과로 overlay한다.
   - Go multi 미달은 `20/192 (10.4%)`에서 `19/192 (9.9%)`로 줄어 10% gate 아래로 내려왔다.
+
+## Go multi routed tcp64 GOMAXPROCS 보강
+
+- 대상:
+  - `MULTI_ROUTER_ROUTER tcp 64B`
+- 배경:
+  - routed multi client active poll wait deadline 정렬 뒤에도 `MULTI_ROUTER_ROUTER tcp 64B`는
+    C 대비 39.8%로 기준에 근접했지만 미달이었다.
+  - 전체 `PERF_GO_GOMAXPROCS=8` runs=7 probe에서는 이 항목이 통과권으로 올라갔지만,
+    전체 runner 기본값을 바꾸면 다른 Go perf case 의미가 흔들릴 수 있다.
+- 변경:
+  - `bindings/go/perf/run_benchmarks_multi.sh`의 default case override에
+    `MULTI_ROUTER_ROUTER/tcp/64=8`을 추가했다.
+  - 기존 `MULTI_DEALER_DEALER/tcp/262144=8` override는 그대로 유지한다.
+- 측정:
+  - Go default runner verify:
+    `perf_go_multi_linux_20260605_013210_go_multi_rr_tcp64_case_gomax8_runs7_verify_20260605.txt`
+    는 status=complete였다.
+  - C compare:
+    `perf_c_multi_linux_20260605_013210_go_multi_rr_tcp64_case_gomax8_c_runs7_compare_20260605.txt`
+    는 status=complete였다.
+- 결과:
+  - `MULTI_ROUTER_ROUTER tcp 64B`: Go 147,422.8 ops/s, C 356,393.6 ops/s.
+  - Go/C 비율은 41.4%로 routed echo 기준 40%를 넘는다.
+- 기각 후보:
+  - `MULTI_DEALER_DEALER 64B` current 재측정은 Go/C 비율이 tcp/tls/ws/wss
+    40.8/45.9/45.3/43.1%라 one-way 기준에 못 닿았다.
+  - `PERF_GO_GOMAXPROCS=8` probe도 43%대 중반에 머물러 통과를 만들지 못했다.
+  - `PERF_MULTI_DEALER_DEALER_LATENCY_SAMPLE_STRIDE=32` probe도 통과권 개선을 만들지 못했다.
+- 판정:
+  - `MULTI_ROUTER_ROUTER tcp 64B`를 통과로 overlay한다.
+  - Go multi 미달은 `14/192 (7.3%)`에서 `13/192 (6.8%)`로 줄었다.

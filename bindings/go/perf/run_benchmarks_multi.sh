@@ -816,7 +816,7 @@ emit_effective_options_multi() {
   echo "- go_gomaxprocs: ${GOMAXPROCS:-unset}"
   echo "- go_gomaxprocs_source: ${GO_GOMAXPROCS_SOURCE}"
   if [[ "${GO_GOMAXPROCS_SOURCE}" == "default" ]]; then
-    echo "- go_gomaxprocs_case_overrides: MULTI_DEALER_DEALER/tcp/262144=8"
+    echo "- go_gomaxprocs_case_overrides: MULTI_DEALER_DEALER/tcp/262144=8,MULTI_ROUTER_ROUTER/tcp/64=8"
   else
     echo "- go_gomaxprocs_case_overrides: none"
   fi
@@ -1034,6 +1034,13 @@ resolve_case_gomaxprocs() {
     && "${pattern}" == "MULTI_DEALER_DEALER" \
     && "${transport}" == "tcp" \
     && "${size}" == "262144" ]]; then
+    echo "8"
+    return
+  fi
+  if [[ "${GO_GOMAXPROCS_SOURCE}" == "default" \
+    && "${pattern}" == "MULTI_ROUTER_ROUTER" \
+    && "${transport}" == "tcp" \
+    && "${size}" == "64" ]]; then
     echo "8"
     return
   fi

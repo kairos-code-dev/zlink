@@ -111,3 +111,15 @@ doc/plan/perf-refactor/2차/bindings-dotnet-perf-posd-followup-plan.ko.md
 doc/plan/perf-refactor/2차/bindings-go-perf-posd-followup-plan.ko.md
 doc/plan/perf-refactor/2차/bindings-java-perf-posd-followup-plan.ko.md
 doc/plan/perf-refactor/2차/bindings-node-perf-posd-followup-plan.ko.md
+doc/plan/perf-refactor/2차/bindings-python-perf-posd-followup-plan.ko.md
+doc/plan/perf-refactor/2차/bindings-rust-perf-posd-followup-plan.ko.md
+doc/plan/perf-refactor/2차/core-perf-posd-followup-plan.ko.md
+doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+doc/plan/perf-refactor/4차/perf-policy-sync-manager-plan.ko.md
+doc/plan/perf/bindings-library-performance-improvement-plan-2026-05-30.ko.md
+doc/plan/perf/bindings-library-performance-improvement-plan.ko.md (skip:191KB-clean-perflog)
+doc/plan/recv-poller/recv-poller-public-surface-realignment-plan.ko.md
+doc/plan/recv-refactor/tls-multipart-recv-refactor-plan.ko.md
+doc/plan/recv-with-callback/README.ko.md
+doc/plan/recv-with-callback/core-surface-restoration-plan.ko.md
+doc/plan/recv-with-callback/perf-lane-realignment-plan.ko.md

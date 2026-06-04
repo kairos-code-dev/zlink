@@ -327,7 +327,7 @@ callback model은 라이브러리가 receive를 직접 소비하고 callback으�
 
 ### 2. Recv model
 
-recv model은 사용자가 direct recv와 poller를 통해 I/O를 직접 구동하는
+recv model은 사용자가 direct recv와 poller로 I/O를 직접 구동하는
 모델이다.
 
 계약:
@@ -1142,12 +1142,12 @@ usage가 아니며, 명시적으로 실패시킨다.
 
 주의:
 
-- 여기서 금지하는 것은 data-plane handle에 대한 poller 사용이다.
+- 여기서 금지하는 것은 data-plane handle의 poller 사용이다.
 - monitor handle 자체는 별도의 public handle이며, callback model subject를
   감시하는 경우에도 monitor handle polling은 허용한다.
-- 즉 mode separation은 parent service/socket handle의 I/O 모델에 대한
-  규칙이며, opened monitor handle의 event consumption 방식까지 금지하는
-  규칙은 아니다.
+- 즉 mode separation은 parent service/socket handle의 I/O 모델에 적용되는
+  규칙이며, opened monitor handle의 event consumption 방식까지 금지하지는
+  않는다.
 - monitor handle polling은 recv model의 부속 기능이 아니라,
   parent handle mode와 독립된 별도 handle 소비 방식이다.
 

@@ -17,7 +17,7 @@
 
 ## 1. 목표
 
-Rust perf 코드가 아래 성질을 유지하면서, 남아 있는 구조적 냄새만 더 줄인다.
+Rust perf 코드가 아래 성질을 유지하면서 남아 있는 구조적 냄새만 더 줄인다.
 
 - `core/perf` 와 동일한 측정 의미를 유지한다.
 - ready → warmup → active phase 의미는 그대로 둔다.
@@ -31,7 +31,7 @@ Rust perf 코드가 아래 성질을 유지하면서, 남아 있는 구조적 �
 ## 2. 현재 구조 요약
 
 - `single/src/common.rs` 는 metric header, latency stats, `MetricCollector`, ready gate, callback handler, send loop, 종료 대기, CLI config 를 모두 담고 있다.
-- `multi/src/common.rs` 는 metric header, latency stats, result 출력, env 기반 settings, CLI args, stdin stop helper 를 함께 가진다.
+- `multi/src/common.rs` 는 metric header, latency stats, result 출력, env 기반 settings, CLI args, stdin stop helper 를 함께 담는다.
 - single 패턴 파일은 `common::send_loop()`, `common::handle_recv()`, `common::wait_finished()` 를 조합해 각 소켓 모델을 실행한다.
 - multi 패턴 파일은 각 파일이 자체 `Poller` 와 `pending` / `pollout_on` 상태를 갖고 backpressure 를 처리한다.
 
@@ -60,7 +60,7 @@ Rust perf 코드가 아래 성질을 유지하면서, 남아 있는 구조적 �
 이 구조의 문제는 다음과 같다.
 
 - 종료 조건이 데이터 흐름이 아니라 시간 경과에 의존한다.
-- `AtomicBool` 인자는 의미가 약하다. 호출 측에서는 완료 신호처럼 보이지만, 실제 종료 제어는 시간 폴링이 담당한다.
+- `AtomicBool` 인자는 의미가 약하다. 호출 측에서는 완료 신호처럼 보이지만 실제 종료 제어는 시간 폴링이 담당한다.
 - single 패턴 전부가 같은 게이트를 공유하므로, 한 곳의 waiting 정책 수정이 전체 benchmark lifecycle 에 영향을 준다.
 
 근거:
@@ -75,19 +75,19 @@ POSD 관점 문제:
 
 - temporal decomposition 이 약하다.
 - 완료 신호와 시간 대기가 분리되어 있지 않다.
-- `core/perf` 와 같은 phase 의미를 유지하면서도, 종료 대기만 더 명시적으로 만들 여지가 있다.
+- `core/perf` 와 같은 phase 의미를 유지하면서도 종료 대기만 더 명시적으로 만들 여지가 있다.
 
 ### 3.2 multi backpressure 상태가 파일별로 반복된다
 
 `perf_multi_dealer_dealer_client.rs`, `perf_multi_router_router_client.rs`, `perf_multi_dealer_router_server.rs`, `perf_multi_router_router_server.rs`, `perf_multi_stream_server.rs` 는 모두 `pending` / `pollout_on` / `modify_socket()` / `wait_all()` 패턴을 자체적으로 구현한다.
 
-핵심 알고리즘은 같지만, 각 파일이 상태 전이와 readiness 관리까지 직접 소유한다.
+핵심 알고리즘은 같지만 각 파일이 상태 전이와 readiness 관리까지 직접 소유한다.
 
 이 구조의 문제는 다음과 같다.
 
 - 같은 backpressure 상태 머신이 여러 파일에 중복된다.
-- `pollout_on` 과 `pending` 의 책임 경계가 패턴마다 조금씩 달라져, 유지보수 시 차이를 추적하기 어렵다.
-- send/recv API 는 inline 으로 남겨야 하지만, readiness bookkeeping 은 더 좁은 보조 타입으로 빼도 된다.
+- `pollout_on` 과 `pending` 의 책임 경계가 패턴마다 조금씩 달라져 유지보수 시 차이를 추적하기 어렵다.
+- send/recv API 는 inline 으로 남겨야 하지만 readiness bookkeeping 은 더 좁은 보조 타입으로 빼도 된다.
 
 근거:
 
@@ -108,7 +108,7 @@ POSD 관점 문제:
 
 `single/src/common.rs` 와 `multi/src/common.rs` 는 각각 deep module 에 가깝지만, 아직도 측정 primitives 와 lifecycle/config helper 가 한 파일에 함께 있다.
 
-이건 즉시 분리하지 않아도 되지만, follow-up 이후 유지보수 기준에서는 분리 후보가 된다.
+이건 즉시 분리하지 않아도 되지만 follow-up 이후 유지보수 기준에서는 분리 후보가 된다.
 
 근거:
 
@@ -123,7 +123,7 @@ POSD 관점 문제:
 ### P0. single 종료 게이트를 시간 폴링에서 명시적 완료 신호로 바꾼다
 
 가장 먼저 정리할 부분이다.
-이는 측정값 자체를 바꾸지 않으면서, 불필요한 grace time 의존성과 잘못된 의미의 `AtomicBool` 사용을 제거한다.
+이는 측정값 자체를 바꾸지 않으면서 불필요한 grace time 의존성과 잘못된 의미의 `AtomicBool` 사용을 제거한다.
 
 ### P1. multi backpressure 상태를 좁은 보조 타입으로 분리한다
 

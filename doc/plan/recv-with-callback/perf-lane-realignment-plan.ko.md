@@ -7,8 +7,8 @@
 ## 1. 목적
 
 callback surface를 다시 넓게 열더라도 perf가 모든 `pattern x recv_mode` 조합을
-같은 무게로 검증할 필요는 없다. 이번 계획의 목적은 callback 복원과 perf 운영
-복잡도를 분리하는 것이다.
+같은 무게로 검증할 필요는 없다. 이번 계획은 callback 복원과 perf 운영
+복잡도를 분리하는 데 목적이 있다.
 
 고정 정책:
 
@@ -18,7 +18,7 @@ callback surface를 다시 넓게 열더라도 perf가 모든 `pattern x recv_mo
 - multi의 dual-mode 예외는 `SPOT`, `STREAM`만 둔다.
 - monitor는 perf pattern이 아니며, perf 관련 monitor 검증은 모두 callback 기준으로
   둔다.
-- 이 perf 정책은 기본 검증 경로에 대한 것이고, `core`의
+- 이 perf 정책은 기본 검증 경로에 한정하며, `core`의
   `receive_callback`/`send_ready` 독립 상태 모델과는 별개다.
 
 ## 2. canonical lane
@@ -30,7 +30,7 @@ single suite는 callback receive 쪽 대표 surface를 검증하는 lane으로 �
 정책:
 
 - single 기본 문서와 예시는 callback 기준으로 쓴다.
-- single 기본 runner와 policy test는 callback만 실행한다고 가정한다.
+- single 기본 runner와 policy test는 callback만 실행한다고 본다.
 - single에서 dual-mode 비교가 필요한 예외 패턴은 `SPOT`만 허용한다.
 - monitor 기반 ready/start gate와 monitor 검증은 callback 기준으로 동작해야 한다.
 
@@ -44,13 +44,13 @@ single suite는 callback receive 쪽 대표 surface를 검증하는 lane으로 �
 ### 2.2 multi = recv only
 
 multi suite는 fan-out, client orchestration, shutdown, monitor handoff를 가장
-안정적으로 검증할 수 있는 recv lane으로 다시 고정한다.
+안정적으로 검증하는 recv lane으로 다시 고정한다.
 
 정책:
 
 - multi 기본 lane은 recv path를 사용한다.
 - multi README와 예시는 recv를 기준으로 쓴다.
-- multi 기본 runner와 policy test는 recv만 실행한다고 가정한다.
+- multi 기본 runner와 policy test는 recv만 실행한다고 본다.
 - multi에서 dual-mode 비교가 필요한 예외 패턴은 `SPOT`, `STREAM`만 허용한다.
 - monitor 기반 connect-ready, delivery-ready gate와 monitor 검증은 callback 기준
   으로 유지한다.
@@ -82,7 +82,7 @@ multi suite는 fan-out, client orchestration, shutdown, monitor handoff를 가�
 중요한 점:
 
 - callback 복원과 perf 검증 범위를 분리해서 적는다.
-- `SPOT`, `STREAM`만 perf dual-mode 예외라는 점을 표와 예시에서 반복해서 명시한다.
+- `SPOT`, `STREAM`만 perf dual-mode 예외라는 점을 표와 예시에서 거듭 명시한다.
 - monitor는 모든 perf 관련 검증에서 callback 기준이라는 점을 분명히 적는다.
 
 ### 3.3 pattern별 허용 mode 고정
@@ -126,7 +126,7 @@ multi suite는 fan-out, client orchestration, shutdown, monitor handoff를 가�
 - 여러 pattern을 한 번에 고를 때 하나라도 허용되지 않은 조합이 섞이면 전체 실행을
   실패로 본다.
 - silent fallback으로 mode를 바꾸지 않는다.
-- multi에서 `--recv callback`을 사용할 때는 실질적으로 `SPOT`, `STREAM`만 선택
+- multi에서 `--recv callback`을 쓸 때는 실질적으로 `SPOT`, `STREAM`만 선택
   가능하다.
 
 ## 4. `core/perf` 구현 정렬
@@ -167,7 +167,7 @@ multi suite는 fan-out, client orchestration, shutdown, monitor handoff를 가�
 
 ### 4.3 pattern 내부 mode 선택
 
-이번 계획에서는 `recv`와 `callback`을 별도 파일/별도 public pattern으로 분리하지
+이번 계획에서는 `recv`와 `callback`을 별도 파일이나 별도 public pattern으로 분리하지
 않는다.
 
 정렬 요구:
@@ -193,7 +193,7 @@ multi suite는 fan-out, client orchestration, shutdown, monitor handoff를 가�
 
 - single 섹션은 callback lane을 기본값으로 설명한다.
 - multi 섹션은 recv lane을 기본값으로 설명한다.
-- `--recv` 옵션은 single=`SPOT`, multi=`SPOT`/`STREAM` 예외에만 의미가 크다고
+- `--recv` 옵션은 single=`SPOT`, multi=`SPOT`/`STREAM` 예외에서만 의미가 크다고
   명시한다.
 - monitor는 dual-mode 유지 대상이지만 perf pattern matrix에는 넣지 않고,
   callback 기준으로만 설명한다고 적는다.

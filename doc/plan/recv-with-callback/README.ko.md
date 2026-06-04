@@ -3,11 +3,11 @@
 이 디렉터리는 `callback-to-recv` 축소 방향을 되돌려, `recv`와 `callback`을
 다시 공통 규칙으로 정렬하는 계획 문서를 모은다.
 
-이번 계획의 핵심은 "소켓별 예외 매트릭스" 대신 아래 두 규칙으로 public contract를
-설명 가능하게 만드는 것이다.
+이번 계획의 핵심은 "소켓별 예외 매트릭스" 대신 아래 두 규칙만으로 public contract를
+설명하는 것이다.
 
-중요한 점은 `receive_callback`과 `send_ready`를 하나의 callback mode로 묶지
-않는다는 점이다. 둘은 별개 축이며, 영향 범위도 다르다.
+여기서 `receive_callback`과 `send_ready`는 하나의 callback mode로 묶지 않는다.
+둘은 별개 축이며, 영향 범위도 다르다.
 
 - receive callback이 붙은 subject는 sync `recv` 계열 호출과 data-plane
   `POLLIN` poller 사용이 `EBUSY`로 막힌다.

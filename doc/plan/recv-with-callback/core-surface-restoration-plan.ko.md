@@ -7,15 +7,15 @@
 
 ## 1. 목표
 
-이번 작업의 목표는 callback surface를 예전처럼 무작정 되살리는 것이 아니다.
-핵심은 이미 남아 있는 dispatch 인프라를 활용해 사용자에게 설명하기 쉬운 공통
-규칙으로 다시 정렬하는 것이다.
+이번 작업은 callback surface를 예전처럼 무작정 되살리려는 게 아니다.
+이미 남아 있는 dispatch 인프라를 활용해, 사용자에게 설명하기 쉬운 공통
+규칙으로 다시 정렬하는 데 핵심이 있다.
 
 고정 목표:
 
-- recv-capable subject에 대해 "recv 또는 callback 중 하나를 고른다"는 모델을
+- recv-capable subject에서는 "recv 또는 callback 중 하나를 고른다"는 모델을
   다시 기본값으로 둔다.
-- send-capable subject에 대해 "poller `POLLOUT` 또는 send-ready callback 중
+- send-capable subject에서는 "poller `POLLOUT` 또는 send-ready callback 중
   하나를 고른다"는 모델을 다시 기본값으로 둔다.
 - 소켓 family별 예외 나열보다 attach 이후의 공통 동작 규칙을 public contract의
   중심으로 둔다.
@@ -26,7 +26,7 @@
 - callback attach는 "추가 기능"이 아니라 동일 subject의 대체 I/O 모델 전환으로
   본다.
 - receive와 writable readiness는 서로 다른 축이다. receive callback이 없어도
-  send-ready callback은 붙을 수 있고, 반대도 가능하다.
+  send-ready callback은 붙을 수 있고 그 반대도 가능하다.
 - 구현 상태도 `receive_callback_active`와 `send_ready_active`를 별도 축으로
   다룬다. 하나가 켜졌다고 다른 하나가 자동으로 켜지거나 prerequisite가 되지
   않는다.
@@ -95,11 +95,11 @@
 
 - `receive_callback_active`는 sync recv 계열 호출과 data-plane `POLLIN`을 막는다.
 - `send_ready_active`는 data-plane `POLLOUT`을 막는다.
-- 두 축은 독립적이므로, receive callback 없이 send-ready만 켠 subject도 허용한다.
+- 두 축은 독립적이므로 receive callback 없이 send-ready만 켠 subject도 허용한다.
 
 ### 3.1 receive callback 규칙
 
-receive callback attach가 성공한 subject는 아래 계약을 갖는다.
+receive callback attach가 성공한 subject는 아래 계약을 따른다.
 
 - 동일 subject의 sync receive API는 `EBUSY`를 반환한다.
   - multipart family: `zlink_recv()`
@@ -121,7 +121,7 @@ receive callback attach가 성공한 subject는 아래 계약을 갖는다.
 
 ### 3.2 send-ready 규칙
 
-`zlink_send_ready_handler()` attach가 성공한 subject는 아래 계약을 갖는다.
+`zlink_send_ready_handler()` attach가 성공한 subject는 아래 계약을 따른다.
 
 - writable readiness는 callback으로만 노출한다.
 - 동일 subject의 data-plane `ZLINK_POLLOUT` poller 등록은 `EBUSY`를 반환한다.
@@ -192,7 +192,7 @@ header 주석은 family별 장황한 열거보다 아래 구조로 정리한다.
 - `zlink_recv_handler()` type gate를 raw `STREAM` 전용에서 multipart callback
   family 전체로 다시 연다.
 - `zlink_subscribe_handler()`의 raw `SUB`/`XSUB` fast-fail `ENOTSUP`를 제거한다.
-- `gateway`에 대한 callback receive fast-fail `ENOTSUP`를 제거한다.
+- `gateway`의 callback receive fast-fail `ENOTSUP`를 제거한다.
 - `zlink_send_ready_handler()`의 "callback mode여야만 허용" gate를 일반화한다.
 - `STREAM` 전용 `POLLOUT` 차단 로직을 send-ready active general rule로 올린다.
 

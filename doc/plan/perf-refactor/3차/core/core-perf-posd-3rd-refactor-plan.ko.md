@@ -626,7 +626,7 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - `rg`로 warmup/cpu-mem/legacy recv 문구가 README/tests에 남지 않는지 확인한다.
 - smoke 검증
   - 이 substage에서는 수행하지 않는다.
-  - C1~C4가 모두 끝난 뒤 stage 1 전체에 대해 한 번 수행한다.
+  - C1~C4가 모두 끝난 뒤 stage 1 전체를 대상으로 한 번 수행한다.
 
 ### 단계 1 내부 substage C2. `core/perf` queue/probe 계층 감사 후 축소
 
@@ -667,7 +667,7 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   - 제거 후 build/test/smoke가 유지되는지 확인한다.
 - smoke 검증
   - 이 substage에서는 수행하지 않는다.
-  - C1~C4가 모두 끝난 뒤 stage 1 전체에 대해 한 번 수행한다.
+  - C1~C4가 모두 끝난 뒤 stage 1 전체를 대상으로 한 번 수행한다.
 
 ### 단계 1 내부 substage C3. `core/perf` stream common client 정리
 
@@ -708,7 +708,7 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   - shared STREAM client 수정 후 core 측 동작이 유지되는지 확인한다.
 - smoke 검증
   - 이 substage에서는 수행하지 않는다.
-  - C1~C4가 모두 끝난 뒤 stage 1 전체에 대해 한 번 수행한다.
+  - C1~C4가 모두 끝난 뒤 stage 1 전체를 대상으로 한 번 수행한다.
 
 ### 단계 1 내부 substage C4. `core/perf` runner entrypoint 단순화
 

@@ -19,7 +19,7 @@
 
 각 행 마지막의 `결과 파일 / 메모` 칸에는 같은 조건의 C 기준 결과 파일과 대상 binding
 결과 파일, 그리고 필요한 근거를 적는다. 같은 transport 안에서 size별로 결과 파일이
-다르면 행을 size별로 쪼개도 되지만, 쪼갠 뒤에도 transport/pattern/size 조합이 빠지면
+다르면 행을 size별로 쪼개도 되지만 쪼갠 뒤에도 transport/pattern/size 조합이 빠지면
 안 된다.
 
 ## 1. 언어 진행 상태
@@ -42,7 +42,7 @@
 제외한다.
 
 단순 평균은 높은 outlier에 쉽게 끌려간다. 그래서 중앙값, p10, 최저 10% 평균을 함께 본다.
-p10은 하위 10% 경계값이고, 최저 10% 평균은 가장 느린 구간의 체감 위험을 보기 위한
+p10은 하위 10% 경계값이고 최저 10% 평균은 가장 느린 구간의 체감 위험을 보기 위한
 보조 지표다.
 
 | 언어 | 측정 셀 수 | 평균 | 중앙값 | p10 | 최저 10% 평균 | Single 평균 | Multi 평균 |
@@ -98,7 +98,7 @@ C `perf_c_single_linux_20260531_085029_round_20260530_c_single_dr_inproc_131072_
 C++ `perf_cpp_single_linux_20260531_085235_round_20260530_cpp_single_dr_inproc_131072_final_residual.txt`.
 미달 cell (1개): `DEALER_ROUTER inproc 131072B`는 runs=3 제한 재측정 median에서도
 65.1%로 최소 기준 70%에 못 닿았다. `DEALER_ROUTER inproc 262144B`는 제한 재측정에서
-172.9%로 회복됐고, `ROUTER_ROUTER inproc 262144B`는 단발 제한 재측정에서는 40.5%였지만
+172.9%로 회복됐고 `ROUTER_ROUTER inproc 262144B`는 단발 제한 재측정에서는 40.5%였지만
 runs=3 median에서 88.7%로 회복되어 측정 변동으로 판정했다.
 추가 원인 확인으로 C++ perf adapter를 거치지 않고 public `dealer_socket_t`/`router_socket_t`를
 직접 쓰는 실험과, routed recv의 RID assign 비용을 줄이는 실험을 각각 수행했지만
@@ -108,7 +108,7 @@ runs=3 median에서 88.7%로 회복되어 측정 변동으로 판정했다.
 inproc routed 대용량 단일 조건에서만 반복되는 국소 항목이다. 현재 perf driver는
 이미 public `router_socket_t::recv(routing_id_t&, message_t&, ...)` 단일 part 경로를
 사용하고 있어 `received_t` materialize 비용도 피한다. RID assign 실험은 median
-232.52K msg/s로 최종 잔류 측정 224.33K msg/s와 같은 변동 범위였고, C 기준
+232.52K msg/s로 최종 잔류 측정 224.33K msg/s와 같은 변동 범위였고 C 기준
 344.75K msg/s의 70% 기준에는 못 닿았다. public API를 유지한 상태에서 더 줄일 수 있는
 C++ binding 내부 후보가 확인되지 않아 미달로 둔다.
 
@@ -204,7 +204,7 @@ perf 경로: `bindings/dotnet/perf`. 기준 파일과 보강 파일은 측정 �
 ### 4.1 Single suite
 
 .NET single full 결과 파일은 `perf_dotnet_single_linux_20260531_085442_round_20260530_dotnet_single_full_v1.txt`이다.
-이 파일은 `DEALER_DEALER ipc 256B` timeout 때문에 status=partial이지만, 나머지 결과는 모두 report에 남았다.
+이 파일은 `DEALER_DEALER ipc 256B` timeout 때문에 status=partial이지만 나머지 결과는 모두 report에 남았다.
 보강 파일은 .NET `perf_dotnet_single_linux_20260531_091915_round_20260530_dotnet_single_dd_ipc_256_recheck.txt`,
 C `perf_c_single_linux_20260531_091949_round_20260530_c_single_dotnet_inproc_failset_recheck.txt`,
 .NET `perf_dotnet_single_linux_20260531_092351_round_20260530_dotnet_single_inproc_failset_recheck.txt`이다.
@@ -220,7 +220,7 @@ C의 native part 직접 수신보다 managed envelope 비용이 더 크게 드�
 blocking-first 수신을 적용한 실험은
 `perf_dotnet_single_linux_20260531_220036_dotnet_single_routed_inproc_blocking_recv_20260531.txt`에서
 대용량 throughput이 기존 제한 재측정보다 크게 낮아져 최종 코드에 남기지 않았다. `DEALER_DEALER`는 이미
-C와 같은 blocking-first + `DontWait` burst-drain 구조이고, routed recv는 public `Recv(Received, ...)`
+C와 같은 blocking-first + `DontWait` burst-drain 구조이고 routed recv는 public `Recv(Received, ...)`
 경로 밖의 내부 `RecvPart`를 perf에서 직접 호출하지 않는 정책을 지켜야 한다. 따라서 public API를
 유지한 상태에서 더 줄일 내부 후보가 확인되지 않은 7개 single cell은 미달로 둔다.
 
@@ -276,12 +276,12 @@ C 기준 full 파일은 `perf_c_multi_linux_20260530_234108_round_20260530_c_mul
 `perf_c_multi_linux_20260531_101006_round_20260530_c_multi_dotnet_spot_failset_recheck.txt`,
 `perf_dotnet_multi_linux_20260531_101624_round_20260530_dotnet_multi_spot_failset_recheck.txt`로
 다시 확인했다. `perf_dotnet_multi_linux_20260531_101624_round_20260530_dotnet_multi_spot_failset_recheck.txt`에서
-`MULTI_SPOT tls 1024B`가 server shutdown timeout으로 partial이었으나, 단독 재측정
+`MULTI_SPOT tls 1024B`가 server shutdown timeout으로 partial이었으나 단독 재측정
 `perf_dotnet_multi_linux_20260531_102129_round_20260530_dotnet_multi_spot_tls_1024_timeout_recheck.txt`는
 complete였다.
 
 잔류 미달 cell은 11개다. tcp routed large payload는 public .NET wrapper가 routed envelope를
-관리하는 비용이 C hot path보다 크게 드러나는 구간이고, `MULTI_SPOT wss`와
+관리하는 비용이 C hot path보다 크게 드러나는 구간이고 `MULTI_SPOT wss`와
 `MULTI_SPOT_SENDSEND` 소형 일부는 managed dispatch와 TLS/WebSocket 경계 비용이 같이
 드러나는 구간이다. public API를 우회하거나 native envelope를 그대로 노출하지 않는 한
 좁게 줄일 수 있는 내부 변경점은 확인되지 않아 코드 변경 없이 문서화한다.
@@ -330,13 +330,13 @@ perf 경로: `bindings/java/perf`. 기준 파일과 보강 파일은 측정 시�
 ### 5.1 Single suite
 
 Java single full 결과 파일은 `perf_java_single_linux_20260531_103037_round_20260530_java_single_full_v1.txt`이다.
-이 파일은 `tcp,tls,ws,wss` transport와 size `64,256,1024,65536,131072,262144` 전체에 대해
+이 파일은 `tcp,tls,ws,wss` transport와 size `64,256,1024,65536,131072,262144` 전체에서
 status=complete, 결과 라인 720/720으로 끝났다. Smoke 파일은
 `perf_java_single_linux_20260531_102551_round_20260530_java_single_smoke_64.txt`이다.
-Full 비교에서 SPOT 대용량 10개가 미달 후보였고, C
+Full 비교에서 SPOT 대용량 10개가 미달 후보였고 C
 `perf_c_single_linux_20260531_104549_round_20260530_c_single_java_spot_large_recheck.txt`,
 Java `perf_java_single_linux_20260531_104721_round_20260530_java_single_spot_large_recheck.txt`로
-제한 재측정했다. 이 재측정에서 `SPOT wss 262144B`는 65.4%로 회복되어 통과로 보강했고,
+제한 재측정했다. 이 재측정에서 `SPOT wss 262144B`는 65.4%로 회복되어 통과로 보강했고
 `SPOT tcp/tls/ws 65536B 이상` 9개는 잔류 미달로 확정했다. 해당 구간은 Java binding의
 SPOT 수신 경로가 대용량 payload를 managed buffer로 다시 감싸고 전달하는 비용이 C hot path보다
 크게 드러나는 구간이다. active 수신 루프에서 `TopicMessage`를 재사용하는 실험을
@@ -378,10 +378,10 @@ Java multi full 결과 파일은 `perf_java_multi_linux_20260531_105430_round_20
 이 파일은 `tcp,ws,wss,tls` transport와 size `64,256,1024,4096,65536,131072` 조합을
 status=complete, 결과 라인 920/920으로 끝냈다. Smoke 파일은
 `perf_java_multi_linux_20260531_105105_round_20260530_java_multi_smoke_64.txt`이다.
-Full 비교에서 7개 cell이 미달 후보였고, C
+Full 비교에서 7개 cell이 미달 후보였고 C
 `perf_c_multi_linux_20260531_112539_round_20260530_c_multi_java_failset_recheck.txt`,
 Java `perf_java_multi_linux_20260531_113249_round_20260530_java_multi_failset_recheck.txt`로
-제한 재측정했다. 재측정에서 `MULTI_DEALER_ROUTER ws 65536B`는 50.5%로 기준을 넘었고,
+제한 재측정했다. 재측정에서 `MULTI_DEALER_ROUTER ws 65536B`는 50.5%로 기준을 넘었고
 `MULTI_DEALER_DEALER ws 131072B`와 `MULTI_SPOT wss 256B/1024B/4096B/65536B/131072B`는
 잔류 미달로 확정했다. `MULTI_SPOT wss`는 Java binding에서 TLS/WebSocket 계층을 지난
 SPOT fan-out 수신을 JNI wrapper와 managed buffer 경계에서 다시 처리하는 비용이 커지는 구간이다.
@@ -439,7 +439,7 @@ tcp 대용량, `PAIR`/`PUBSUB`/`DEALER_DEALER` 일부 작은 메시지, `SPOT` �
 단계별 보강과 제한 재측정으로 single 표의 모든 Node 항목은 통과권에 들어왔다.
 
 초기 multi full 결과 파일 `perf_node_multi_linux_20260531_125926_round_20260530_node_multi_full_v1.txt`는
-status=complete(780/780)였고, 실제 측정 대상 크기만 다시 확인한
+status=complete(780/780)였고 실제 측정 대상 크기만 다시 확인한
 `perf_node_multi_linux_20260531_134025_round_20260530_node_multi_measured_sizes_recheck.txt`도
 status=complete(780/780)였다. 이후 보강 뒤 full matrix
 `perf_node_multi_linux_20260531_213502_node_fastpath_full_v1_20260531.txt`를 다시 실행했고
@@ -453,7 +453,7 @@ stream size 정책상 64/256/1024/65536B만 결과를 낸다.
 
 추가 보강에서는 `RoutingId` 생성 시 이미 검증한 길이를 hot path에서 다시 확인하지 않게 하고,
 socket/router/stream/spot runtime이 같은 native binding 객체를 반복 조회하지 않게 했다. 또한
-Node multi runner의 receive loop가 `Received`/`TopicMessage` 저장소를 재사용하고, 큰 payload를
+Node multi runner의 receive loop가 `Received`/`TopicMessage` 저장소를 재사용하고 큰 payload를
 별도 Buffer로 다시 복사하지 않고 바로 header를 읽게 했다. 대표 probe 결과 파일은 single
 `perf_node_single_linux_20260531_204120_node_perf_fastpath_single_probe_20260531.txt`,
 multi `perf_node_multi_linux_20260531_204023_node_perf_fastpath_probe_20260531.txt`다.
@@ -465,7 +465,7 @@ multi `perf_node_multi_linux_20260531_204023_node_perf_fastpath_probe_20260531.t
 통과 기준에서 5%p 낮춘 값으로 되돌린다. 단순 one-way는 30%, routed one-way와 SPOT 계열은
 28%, multi routed echo는 25%를 최소 통과 기준으로 본다. 이미 적용한 개선 뒤에도 남은 항목은
 Node 이벤트 루프, native 호출 경계, routed envelope, Buffer 생명주기 비용이 함께 나타나는 구간이다.
-public API를 바꾸지 않는 범위에서 추가 내부 후보를 확인했고, routed metric 수신은 perf 전용
+public API를 바꾸지 않는 범위에서 추가 내부 후보를 확인했고 routed metric 수신은 perf 전용
 native helper가 payload 전체 Buffer를 만들지 않고 header와 latency만 읽도록 줄였다. 이 변경 뒤
 마지막 잔류 single 항목도 통과권에 들어와 아래 표에는 남은 미달이 없다.
 
@@ -494,7 +494,7 @@ routing id, send context, topic envelope를 다시 구성해야 하므로 C hot 
 길이 검증 제거, receive storage 재사용, 단일 수신 객체 재사용, metric header 객체 생성을
 건너뛰는 직접 기록까지 적용했다. 2026-06-01 재검토에서는 routed multi echo server가
 받은 메시지를 먼저 큐에 넣고 다시 drain하던 흐름도 줄였다. backlog가 없으면 public send
-operation으로 즉시 응답하고, backpressure로 큐에 보관해야 할 때만 payload를 복사한다.
+operation으로 즉시 응답하고 backpressure로 큐에 보관해야 할 때만 payload를 복사한다.
 이 변경으로 `MULTI_DEALER_ROUTER` small과 encrypted large 일부가 통과권으로 올라갔다.
 SPOT_SENDSEND 직접 기록 실험은 회귀가 확인되어 되돌렸다. 2026-06-01 추가 검토에서는
 native `router.reply` 단일 part 경로가 매번 `std::vector<zlink_msg_t>`를 만들던 비용을 줄였다.
@@ -505,13 +505,13 @@ server와 공용 C stream client 조합이므로 Node server hot path를 다시 
 fast path, HWM 512, server IO thread 8 probe를 각각 실행했지만 통과권 개선을 만들지 못했고
 일부는 회귀나 partial 실패가 있어 채택하지 않았다. 2026-06-04 추가 검토에서는 SPOT large
 client가 131072B 이상에서 active slot을 8개로 줄이던 정책을 C와 같은 send 진행 방식에 맞춰
-16개로 늘렸다. env override는 보조 실험용으로 남겼고, 기본값 검증에서
+16개로 늘렸다. env override는 보조 실험용으로 남겼고 기본값 검증에서
 `MULTI_SPOT_REQREP tcp/ws 131072B`와 `MULTI_SPOT_SENDSEND tcp 131072B`가 통과권에 들어왔다.
 같은 날 제한 재측정에서는 `MULTI_PUBSUB ws 256B`, `wss 64B`, `tcp 131072B`,
 `MULTI_SPOT_SENDSEND tcp 65536B`, `MULTI_STREAM wss 256B`도 complete 리포트 기준으로
 통과권에 들어왔다. 그 뒤 current C/Node 제한 재측정에서 `MULTI_PUBSUB tcp 65536B`와
 `MULTI_SPOT_SENDSEND wss 256B`도 통과권에 들어왔다. 이후 stream echo server가 기존 runtime native result-send 경로를 직접 사용해
-public stream handler와 packet framing 의미를 유지하면서 send operation builder 생성을 줄였고,
+public stream handler와 packet framing 의미를 유지하면서 send operation builder 생성을 줄였고
 `MULTI_STREAM tcp 64B`가 current C 제한 재측정 기준으로 통과권에 들어왔다. 이후 shared C
 stream client에 2000ms completion wait를 넘기도록 정렬해 active window 뒤의 in-flight
 reply를 같은 의미로 수집하게 했고, complete 재측정에서 `MULTI_STREAM tcp 64/256/1024B`,
@@ -622,7 +622,7 @@ Go `perf_go_single_linux_20260531_140124_round_20260530_go_single_failset_rechec
 
 Multi smoke `perf_go_multi_linux_20260531_140350_round_20260530_go_multi_smoke_64.txt`는 complete였다.
 Multi full `perf_go_multi_linux_20260531_140640_round_20260530_go_multi_full_v1.txt`는 partial(925/960)로
-끝났고, `perf_go_multi_linux_20260531_143459_round_20260530_go_multi_partial_fill.txt`,
+끝났고 `perf_go_multi_linux_20260531_143459_round_20260530_go_multi_partial_fill.txt`,
 `perf_go_multi_linux_20260531_144256_round_20260530_go_multi_dealer_dealer_missing_fill.txt`,
 `perf_go_multi_linux_20260531_144414_round_20260530_go_multi_pubsub_missing_fill.txt`,
 `perf_go_multi_linux_20260531_144532_round_20260530_go_multi_pubsub_tls_65536_final.txt`로
@@ -632,13 +632,13 @@ Multi full `perf_go_multi_linux_20260531_140640_round_20260530_go_multi_full_v1.
 완료 리포트 기준으로 통과권에 회복됐다.
 `MULTI_DEALER_DEALER tcp 4096B`는 Go client/server active poll wait를 window deadline으로
 제한한 뒤 complete 재측정에서 통과권으로 회복했다. 이어서 Go routed multi client active poll
-wait도 같은 deadline으로 제한했고, complete 재측정에서 `MULTI_DEALER_ROUTER tcp/ws 65536B`와
+wait도 같은 deadline으로 제한했고 complete 재측정에서 `MULTI_DEALER_ROUTER tcp/ws 65536B`와
 `MULTI_ROUTER_ROUTER tcp 1024/65536B`가 통과권으로 회복했다. 이어서 `MULTI_ROUTER_ROUTER tcp 64B`와
 `tls 64/1024B`도 case별 GOMAXPROCS 8 override 뒤 complete 재측정에서 통과권으로 회복했다. 나머지 잔류 미달은 11개다. Multi 잔여 항목은
 goroutine 스케줄링, cgo 호출 경계, routed/SPOT envelope 처리 비용이 함께 나타나는 구간으로,
 public API를 우회하지 않는 추가 내부 후보가 확인되지 않았다.
 2026-06-01 재검토에서는 `MULTI_SPOT_REQREP`/`MULTI_SPOT_SENDSEND`의 65536B를 transport별로
-제한 재측정했다. tls/ws/wss는 통과권으로 회복됐고, tcp는 runs=5에서도 낮은 median이 반복되어
+제한 재측정했다. tls/ws/wss는 통과권으로 회복됐고 tcp는 runs=5에서도 낮은 median이 반복되어
 미달로 둔다.
 
 추가 검토에서는 routed single과 multi echo 송신 경로가 매 메시지마다 `Message` wrapper를 만드는
@@ -646,7 +646,7 @@ public API를 우회하지 않는 추가 내부 후보가 확인되지 않았다
 실험을 적용하고 single `perf_go_single_linux_20260531_232858_go_single_bytes_send_probe_20260531.txt`,
 multi `perf_go_multi_linux_20260531_232934_go_multi_bytes_send_probe_20260531.txt`로 측정했다. 그러나
 single `DEALER_ROUTER tcp 65536B/131072B/262144B`는 기존 50,457.6/27,961.6/14,364.8 msg/s에서
-45,336.0/24,481.3/13,950.0 msg/s로 낮아졌고, `ROUTER_ROUTER`도 같은 방향으로 낮아졌다.
+45,336.0/24,481.3/13,950.0 msg/s로 낮아졌고 `ROUTER_ROUTER`도 같은 방향으로 낮아졌다.
 multi routed echo도 통과권 개선 없이 대체로 기존 full보다 낮거나 같은 변동 범위였다. 이 실험
 변경은 최종 코드에 남기지 않았다. Go perf driver는 이미 single routed 수신에서 `RecvPart`,
 SPOT/PUBSUB 수신에서 `SubscribePart`, multi 일부 서버 경로에서 `RecvPart`를 사용하고 있어
@@ -726,9 +726,9 @@ public API 범위에서 더 줄일 수 있는 좁은 내부 변경점은 확인�
 
 perf 경로: `bindings/rust/perf`.
 
-Rust single smoke 결과 파일은 `perf_rust_single_linux_20260531_145023_round_20260530_rust_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_rust_single_linux_20260531_145104_round_20260530_rust_single_full_v1.txt`이고 status=complete(720/720)였다. 후보 재측정 파일 `perf_rust_single_linux_20260531_151316_round_20260530_rust_single_failset_recheck.txt`는 status=complete(480/480)였다. 추가 개선으로 SPOT active send에서 1024B 이하 payload는 public `Message::with_size(...).data_mut()`에 직접 header를 채우도록 바꿨다. 이번 라운드에서는 single 공통 송신 loop도 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿨다. Complete probe `perf_rust_single_linux_20260602_162501_rust_single_direct_message_pubsub_small_probe_20260602.txt`에서 `PUBSUB wss 64B`가 83.0%로 통과했고, 나머지 PUBSUB small 미달은 기준에 못 닿았다. routed 대용량 complete probe `perf_rust_single_linux_20260602_162557_rust_single_direct_message_routed_large_probe_20260602.txt`와 `SPOT tcp 1024B` complete probe `perf_rust_single_linux_20260602_164334_rust_single_direct_message_spot_tcp1024_probe_20260602.txt`는 새 통과를 만들지 못했다. PUBSUB 수신 `TopicMessage` 재사용 재확인 `perf_rust_single_linux_20260602_164508_rust_single_direct_message_pubsub_reuse_small_probe_20260602.txt`도 통과 수를 늘리지 못해 최종 코드에 남기지 않았다. 이후 table transport full `perf_rust_single_linux_20260602_175921_rust_single_after_candidates_table_transports_full_20260602.txt`는 status=complete(720/720)였고, routed 대용량과 `SPOT tcp/ws/tls 1024B`가 미달로 확인됐다. 2026-06-04 current C/Rust 제한 재측정에서는 `PUBSUB tls 64B`와 routed `ws/tls` 대용량 8개가 통과권으로 회복됐다. 2026-06-05에는 `PUBSUB tcp 64B` active publish를 single 공통 sender 정책과 같은 blocking submit으로 맞췄고, complete probe에서 C 대비 97.5%로 통과했다. routed 대용량 잔여는 public `recv(&mut Received, ...)` envelope 경로를 유지해야 하며, Rust binding에는 C의 part 직접 수신을 노출한 public API가 없어 미달한다.
+Rust single smoke 결과 파일은 `perf_rust_single_linux_20260531_145023_round_20260530_rust_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_rust_single_linux_20260531_145104_round_20260530_rust_single_full_v1.txt`이고 status=complete(720/720)였다. 후보 재측정 파일 `perf_rust_single_linux_20260531_151316_round_20260530_rust_single_failset_recheck.txt`는 status=complete(480/480)였다. 추가 개선으로 SPOT active send에서 1024B 이하 payload는 public `Message::with_size(...).data_mut()`에 직접 header를 채우도록 바꿨다. 이번 라운드에서는 single 공통 송신 loop도 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿨다. Complete probe `perf_rust_single_linux_20260602_162501_rust_single_direct_message_pubsub_small_probe_20260602.txt`에서 `PUBSUB wss 64B`가 83.0%로 통과했고 나머지 PUBSUB small 미달은 기준에 못 닿았다. routed 대용량 complete probe `perf_rust_single_linux_20260602_162557_rust_single_direct_message_routed_large_probe_20260602.txt`와 `SPOT tcp 1024B` complete probe `perf_rust_single_linux_20260602_164334_rust_single_direct_message_spot_tcp1024_probe_20260602.txt`는 새 통과를 만들지 못했다. PUBSUB 수신 `TopicMessage` 재사용 재확인 `perf_rust_single_linux_20260602_164508_rust_single_direct_message_pubsub_reuse_small_probe_20260602.txt`도 통과 수를 늘리지 못해 최종 코드에 남기지 않았다. 이후 table transport full `perf_rust_single_linux_20260602_175921_rust_single_after_candidates_table_transports_full_20260602.txt`는 status=complete(720/720)였고 routed 대용량과 `SPOT tcp/ws/tls 1024B`가 미달로 확인됐다. 2026-06-04 current C/Rust 제한 재측정에서는 `PUBSUB tls 64B`와 routed `ws/tls` 대용량 8개가 통과권으로 회복됐다. 2026-06-05에는 `PUBSUB tcp 64B` active publish를 single 공통 sender 정책과 같은 blocking submit으로 맞췄고 complete probe에서 C 대비 97.5%로 통과했다. routed 대용량 잔여는 public `recv(&mut Received, ...)` envelope 경로를 유지해야 하며, Rust binding에는 C의 part 직접 수신을 노출한 public API가 없어 미달한다.
 
-Rust multi smoke 결과 파일은 `perf_rust_multi_linux_20260531_153200_round_20260530_rust_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_rust_multi_linux_20260531_153550_round_20260530_rust_multi_full_v1.txt`이고 status=complete(960/960)였다. 후보 재측정 파일 `perf_rust_multi_linux_20260531_160730_round_20260530_rust_multi_failset_recheck.txt`는 status=partial(595/600)이었지만, 누락된 `MULTI_SPOT ws 4096B`는 full 결과로 보강했다. 추가 개선으로 `MULTI_SPOT wss` 1024B 이상 recv worker 기본값을 8개로 늘렸다. Probe `perf_rust_multi_linux_20260531_234055_rust_multi_spot_wss_workers8_probe_20260531.txt`에서 worker 확대 효과를 먼저 확인했고, 최종 코드 probe `perf_rust_multi_linux_20260531_234241_rust_multi_spot_wss_workers8_final_20260531.txt`와 단독 보강 `perf_rust_multi_linux_20260531_234325_rust_multi_spot_wss_1024_workers8_final_fill_20260531.txt`를 overlay했다. `MULTI_SPOT wss 65536B/131072B`는 각각 121.3%, 130.6%로 통과했고, 1024B/4096B는 45.3%, 71.6%로 기준에 못 닿아 미달한다. 2026-06-05 current C/Rust complete 재측정에서는 `MULTI_PUBSUB tcp 65536B`가 94.3%로 통과했고, `MULTI_SPOT_REQREP ws 65536B`도 current C 대비 100.6%로 통과했다. Rust multi 미달은 `11/192 (5.7%)`에서 `9/192 (4.7%)`로 줄었다. Multi DEALER_DEALER/PUBSUB/REQREP 잔여 항목은 이미 `Message::with_size` 직접 작성, caller-provided `Received`/`TopicMessage` 재사용, worker drain 구조를 쓰고 있어 public API를 유지한 추가 내부 후보가 확인되지 않았다.
+Rust multi smoke 결과 파일은 `perf_rust_multi_linux_20260531_153200_round_20260530_rust_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_rust_multi_linux_20260531_153550_round_20260530_rust_multi_full_v1.txt`이고 status=complete(960/960)였다. 후보 재측정 파일 `perf_rust_multi_linux_20260531_160730_round_20260530_rust_multi_failset_recheck.txt`는 status=partial(595/600)이었지만 누락된 `MULTI_SPOT ws 4096B`는 full 결과로 보강했다. 추가 개선으로 `MULTI_SPOT wss` 1024B 이상 recv worker 기본값을 8개로 늘렸다. Probe `perf_rust_multi_linux_20260531_234055_rust_multi_spot_wss_workers8_probe_20260531.txt`에서 worker 확대 효과를 먼저 확인했고 최종 코드 probe `perf_rust_multi_linux_20260531_234241_rust_multi_spot_wss_workers8_final_20260531.txt`와 단독 보강 `perf_rust_multi_linux_20260531_234325_rust_multi_spot_wss_1024_workers8_final_fill_20260531.txt`를 overlay했다. `MULTI_SPOT wss 65536B/131072B`는 각각 121.3%, 130.6%로 통과했고 1024B/4096B는 45.3%, 71.6%로 기준에 못 닿아 미달한다. 2026-06-05 current C/Rust complete 재측정에서는 `MULTI_PUBSUB tcp 65536B`가 94.3%로 통과했고 `MULTI_SPOT_REQREP ws 65536B`도 current C 대비 100.6%로 통과했다. Rust multi 미달은 `11/192 (5.7%)`에서 `9/192 (4.7%)`로 줄었다. Multi DEALER_DEALER/PUBSUB/REQREP 잔여 항목은 이미 `Message::with_size` 직접 작성, caller-provided `Received`/`TopicMessage` 재사용, worker drain 구조를 쓰고 있어 public API를 유지한 추가 내부 후보가 확인되지 않았다.
 
 
 ### 8.1 Single suite
@@ -841,10 +841,10 @@ owner, native `recv_into` replacement, blocking-first receive loop, per-message
 282,615.8 msg/s, small payload `zlink_msg_init_data(...)` malloc-copy 후보는
 `perf_python_single_linux_20260603_104440_py_init_data_copy_pair64_5s.txt`에서
 274,640.2 msg/s로 회귀했다. PAIR sender process 분리 probe는 stop-token 전달이
-꼬여 timeout이 났고, single suite의 같은-process 의미와 맞지 않아 최종 코드에
+꼬여 timeout이 났고 single suite의 같은-process 의미와 맞지 않아 최종 코드에
 남기지 않았다. receiver idle wait를 `time.sleep(0)`로 바꾼 후보는
 `perf_python_single_linux_20260603_105022_py_sleep0_wait_pair64_5s.txt`에서
-150,696.8 msg/s로 크게 회귀했고, 단일 part public accessor 후보는
+150,696.8 msg/s로 크게 회귀했고 단일 part public accessor 후보는
 `perf_python_single_linux_20260603_105104_py_single_part_accessor_pair64_5s.txt`에서
 238,818.8 msg/s로 낮았다. caller-provided `Received`의 단일 part 갱신을 C helper로
 옮긴 후보도 `perf_python_single_linux_20260603_105354_py_received_replace_single_pair64_5s.txt`에서
@@ -857,7 +857,7 @@ builder 호출을 유지하되 `send_nonblocking()` wrapper를 인라인한 후�
 273,763.0 msg/s로 낮아 최종 코드에 남기지 않았다. receiver의 `NO_DATA` 뒤 poll
 진입 전에 짧게 DONTWAIT spin을 넣은 후보는 기본 32회가
 `perf_python_single_linux_20260603_110715_py_empty_spin32_pair64_5s.txt`에서
-290,502.4 msg/s로 미세하게 높았지만, 4/8/16/64회 재측정은 각각 225,203.6,
+290,502.4 msg/s로 미세하게 높았지만 4/8/16/64회 재측정은 각각 225,203.6,
 221,219.8, 224,211.4, 217,727.0 msg/s로 크게 회귀해 안정적인 개선으로 보지 않았다.
 native `recv_owner`의 DONTWAIT `NO_DATA`를 예외로 만들지 않고 곧바로 `False`로
 되돌리는 후보도 `perf_python_single_linux_20260603_110829_py_recv_no_data_false_pair64_5s.txt`에서
@@ -912,7 +912,7 @@ native bridge를 끄고 기존 owner fallback만 쓰는 후보는
 PUBSUB receive도 `subscribe_owner` C helper로 owner-backed payload를 반환하도록
 바꿨다. `PUBSUB tcp 64B`는
 `perf_python_single_linux_20260603_113438_py_pubsub_subscribe_owner_tcp64_5s.txt`에서
-187,007.0 msg/s로 올라갔지만, C 기준 30%에는 부족했다. 이어서
+187,007.0 msg/s로 올라갔지만 C 기준 30%에는 부족했다. 이어서
 `publish_parts`가 DONTWAIT publish에서는 GIL을 놓지 않도록 바꾸자
 `perf_python_single_linux_20260603_113751_py_publish_keep_gil_tcp64_5s.txt`에서
 262,054.2 msg/s까지 올라갔다. public `publish(topic).message(...).flags(...).submit()`
@@ -920,7 +920,7 @@ builder 의미를 유지하면서 native `PublisherSendOp`를 추가한 뒤에�
 `perf_python_single_linux_20260603_113953_py_publisher_send_op_tcp64_5s.txt`에서
 308,633.6 msg/s를 기록했다. 3회 측정
 `perf_python_single_linux_20260603_114152_py_publisher_current_pubsub_tcp64_5s_runs3.txt`는
-333,407.2 msg/s 중앙값이고, 같은 조건의 C
+333,407.2 msg/s 중앙값이고 같은 조건의 C
 `perf_c_single_linux_20260603_114218_py_publisher_current_c_pubsub_tcp64_5s_runs3.txt`는
 1,211,127.4 msg/s 중앙값이라 현재 비율은 약 27.5%다. single-payload publish
 fast path, topic cache, public sender loop wrapper 인라인 후보는 각각 충분한
@@ -930,7 +930,7 @@ GIL 유지 후보도 `ROUTER_ROUTER tcp 64B`가
 4,710.2 msg/s로 크게 회귀해 되돌렸다.
 
 routed receive에서는 native bridge가 이미 새 `bytes`를 만들어 넘기는 routing id를
-다시 검증하고 복사하지 않도록 내부 trusted constructor를 추가했고, `Received.send()`와
+다시 검증하고 복사하지 않도록 내부 trusted constructor를 추가했고 `Received.send()`와
 `Received.reply()`에 필요한 router sender/reply 객체는 메시지를 받을 때마다 closure로
 만들지 않고 실제 호출 시점에 만들도록 늦췄다. 이 변경 뒤
 `perf_python_single_linux_20260603_120811_py_router_lazy_context_tcp64_5s.txt`에서
@@ -939,12 +939,12 @@ routed receive에서는 native bridge가 이미 새 `bytes`를 만들어 넘기�
 `perf_c_single_linux_20260603_120459_py_current_single_tcp64_all_c_baseline.txt`는
 각각 1,425,989.6 msg/s와 1,309,771.2 msg/s라 여전히 정책 기준에는 부족하다.
 이후 `ReceivedMessage._from_owner()`가 keyword `__init__` 경로를 타지 않고 새
-객체를 직접 초기화하도록 줄였고, routed send builder는 routing id를 `submit()`
+객체를 직접 초기화하도록 줄였고 routed send builder는 routing id를 `submit()`
 때마다 다시 검증하지 않도록 `send(routing_id)` 시점에 한 번 검증한 bytes를
 보관하게 했다. router owner receive가 DONTWAIT에서도 GIL을 놓는 후보는
 `perf_python_single_linux_20260603_122441_py_router_owner_release_gil_confirm_tcp64_5s.txt`에서
 `DEALER_ROUTER tcp 64B` 161,348.8 msg/s,
-`ROUTER_ROUTER tcp 64B` 11,673.4 msg/s로 크게 회귀해 제거했고, 현재 코드는
+`ROUTER_ROUTER tcp 64B` 11,673.4 msg/s로 크게 회귀해 제거했고 현재 코드는
 DONTWAIT receive에서 GIL을 놓지 않는 경로를 유지한다. 현재 retained probe
 `perf_python_single_linux_20260603_121853_py_retained_pubsub_routed_tcp64_probe.txt`는
 `PUBSUB tcp 64B` 321,638.4 msg/s, `DEALER_ROUTER tcp 64B` 332,057.6 msg/s,
@@ -965,10 +965,10 @@ private active-loop 우회가 아니다.
 `PAIR tcp 64B` 430,493.6 msg/s, `PUBSUB tcp 64B` 317,132.8 msg/s,
 `DEALER_ROUTER tcp 64B` 355,756.2 msg/s, `ROUTER_ROUTER tcp 64B` 159,038.6 msg/s를
 기록했다. 하지만 active loop의 owner-backed storage 해제를 메시지 처리 범위 밖으로
-밀어내 per-message lifetime이 약해지므로 제거했고, 현재 코드는 메시지를 처리한 뒤
+밀어내 per-message lifetime이 약해지므로 제거했고 현재 코드는 메시지를 처리한 뒤
 `finally`에서 즉시 `storage.close()`를 호출하는 경로를 유지한다. 현재 빌드 재확인
 `perf_python_single_linux_20260603_123003_py_retry_current_tcp64_5s.txt`는
-status=complete(30/30)였고, 같은 C 기준 대비 `PAIR` 34.0%, `PUBSUB` 25.5%,
+status=complete(30/30)였고 같은 C 기준 대비 `PAIR` 34.0%, `PUBSUB` 25.5%,
 `DEALER_DEALER` 33.6%, `DEALER_ROUTER` 24.4%, `ROUTER_ROUTER` 12.0%, `SPOT`
 24.1%였다. 따라서 public contract 복구 뒤 현재 유지 변경만으로는 아직
 `PUBSUB`, routed, `SPOT`의 최소 기준을 충족하지 못한다.
@@ -979,14 +979,14 @@ native routed send builder 후보는
 `perf_python_single_linux_20260603_120905_py_router_no_data_retry8_tcp64_5s.txt`에서
 개선되지 않아 제거했다. router receive blocking-first 후보도
 `perf_python_single_linux_20260603_121209_py_router_blocking_first_tcp64_5s.txt`에서
-회귀해 제거했고, `ReceivedMessage`/`RoutingId`에 `__slots__`를 추가한 후보도
+회귀해 제거했고 `ReceivedMessage`/`RoutingId`에 `__slots__`를 추가한 후보도
 뚜렷한 개선 없이 public 객체 확장성을 줄일 수 있어 유지하지 않았다.
 callback guard를 dict+thread id 대신 `threading.local()`로 바꾼 후보도
 `perf_python_single_linux_20260603_122240_py_threadlocal_callback_state_tcp64_5s.txt`에서
 PAIR/PUBSUB/routed가 모두 회귀해 제거했다.
 callback guard에 전역 active count fast path를 둔 후보도
 `perf_python_single_linux_20260603_123217_py_callback_active_count_tcp64_5s.txt`의
-단일 PUBSUB 실행은 좋아졌지만, 확인 측정
+단일 PUBSUB 실행은 좋아졌지만 확인 측정
 `perf_python_single_linux_20260603_123304_py_callback_active_count_pubsub_confirm_tcp64_5s.txt`의
 3회 중앙값이 315,392.0 msg/s로 현재 retained 수치와 큰 차이가 없어 제거했다.
 
@@ -998,7 +998,7 @@ native 구조체를 거쳐 다시 복사하지 않도록 fast path를 두었다.
 약 230K msg/s까지 올렸다. SPOT subscribe native bridge는 `DONTWAIT`의 `NO_DATA`
 결과를 C enum 값과 Python enum 값 모두에서 `False` sentinel로 돌려보내도록 맞췄고,
 public `subscribe_into(...)`는 기존처럼 `False`/`None` 의미를 유지한다. SPOT publish/subscribe
-hot path는 bridge wrapper를 거치지 않고 캐시한 extension 함수를 직접 호출하게 했으며,
+hot path는 bridge wrapper를 거치지 않고 캐시한 extension 함수를 직접 호출하게 했으며
 SPOT `SendOp`는 단일 payload를 list로 만들지 않고 보관한다. SPOT active perf sender도
 public `spot.publish(topic).message(payload).flags(...).submit()` 체인을 그대로 쓰되,
 성공 경로의 wrapper 호출을 줄이고 `NOT_CONNECTED` transient를 C runner처럼 재시도한다.
@@ -1006,16 +1006,16 @@ public `spot.publish(topic).message(payload).flags(...).submit()` 체인을 그�
 routed send는 이전 probe에서 thread 예외가 나던 원인이 perf loop가 `NOT_CONNECTED`
 transient를 잡지 못한 데 있었다. 이번에는 public 계약 테스트가 요구하는
 `SubmitResult.NOT_CONNECTED` 예외 의미를 유지한 채 native `RoutedSendOp` builder를
-추가하고, perf active loop와 stop-token loop만 C `perf_router_router.cpp`처럼
+추가하고 perf active loop와 stop-token loop만 C `perf_router_router.cpp`처럼
 `BACKPRESSURED`와 `NOT_CONNECTED`를 transient로 재시도하게 했다. 이 변경 뒤 complete report
 `perf_python_single_linux_20260603_130451_py_retry_current_native_routed_tcp64_5s.txt`는
 status=complete(90/90)였다. 같은 C 기준
 `perf_c_single_linux_20260603_120459_py_current_single_tcp64_all_c_baseline.txt` 대비
 median 비율은 `PAIR` 33.1%, `PUBSUB` 28.3%, `DEALER_DEALER` 33.6%,
 `DEALER_ROUTER` 23.8%, `ROUTER_ROUTER` 24.8%, `SPOT` 27.3%다. 따라서
-`PAIR`와 `DEALER_DEALER`는 one-way 30% 기준을 넘겼고, `PUBSUB`는 30% 기준에
-아직 못 닿았다. routed one-way와 `SPOT`은 28% 기준에 못 닿았지만, `ROUTER_ROUTER`는
-native routed builder 적용 전 12.0~17.4% 구간에서 24.8%까지 올라갔고, `SPOT`은
+`PAIR`와 `DEALER_DEALER`는 one-way 30% 기준을 넘겼고 `PUBSUB`는 30% 기준에
+아직 못 닿았다. routed one-way와 `SPOT`은 28% 기준에 못 닿았지만 `ROUTER_ROUTER`는
+native routed builder 적용 전 12.0~17.4% 구간에서 24.8%까지 올라갔고 `SPOT`은
 27.3%로 기준에 근접했다.
 
 최종 retained 변경은 public builder 표면을 그대로 유지하면서 receiver hot path와
@@ -1025,7 +1025,7 @@ publish hot path의 반복 비용을 더 줄였다. perf runner는 private nativ
 wrapper를 만들지 않으므로 routed one-way 수신 비용을 줄인다. `PUBSUB` native publisher
 builder는 `DONTWAIT` publish의 native 호출 구간에서도 GIL을 놓도록 맞췄다. sender와 receiver가
 서로 다른 Python thread에서 도는 active phase에서 이 변경은 receiver 진행을 막지 않게 한다.
-`SPOT` publish builder는 topic을 builder 생성 시 한 번 검증하고, submit에서는 이미 검증한
+`SPOT` publish builder는 topic을 builder 생성 시 한 번 검증하고 submit에서는 이미 검증한
 topic bytes를 사용한다. SPOT native subscribe owner-only 후보는 core assert와 segfault를
 재현해 제거했다.
 
@@ -1057,13 +1057,13 @@ SPOT median 59,496.4 msg/s로 회귀해 제거했다. public `PUBSUB` sender wra
 
 public contract 복구 뒤 Python multi smoke에서 `MULTI_SPOT_REQREP tcp 64B`가
 client timeout으로 반복 partial이 됐다. server dispatch가 owner-backed part의
-`data` view 계약을 만족하지 못해 reply callback에서 예외가 났고, 정상 active
+`data` view 계약을 만족하지 못해 reply callback에서 예외가 났고 정상 active
 loop가 끝난 뒤에는 context close가 native term에서 멈췄다. `_ReceivedPartsOwner`
 와 native owner-backed `ReceivedMessage`가 같은 `data`/`size`/`to_bytes`
 계약을 제공하도록 맞추고, SPOT req/rep perf 프로세스는 결과 출력 뒤 native
 context shutdown만 수행한 다음 기존 `os._exit(0)` 종료 경로로 빠지게 했다.
 같은 조건 재측정 `perf_python_multi_linux_20260603_103823.txt`는
-status=complete(5/5)였고, 전체 tcp/64 smoke
+status=complete(5/5)였고 전체 tcp/64 smoke
 `perf_python_multi_linux_20260603_102512.txt`도 status=complete(40/40)였다.
 이 검증은 full matrix 판정이 아니라 public API 경로의 timeout 회귀가 해소됐는지
 확인한 제한 smoke다.
@@ -1080,15 +1080,15 @@ status=complete(40/40)로 끝났다. 같은 현재 C 기준
 
 Python single smoke 결과 파일은 `perf_python_single_linux_20260531_162613_round_20260530_python_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_python_single_linux_20260531_163931_round_20260530_python_single_full_v1.txt`이고 status=complete(720/720)였다. C 기준 대비 통과 56개와 잔류 미달 88개가 확인됐다. 이후 `stamp_payload(...)`가 `bytes` 사본 대신 기존 `bytearray`를 그대로 반환하게 바꾸고, single receive hot path가 마지막 message part의 공개 `Message.data` memoryview에서 header를 직접 읽게 바꿨다. 제한 재측정 `perf_python_single_linux_20260531_234853_python_single_stamp_bytearray_probe_20260531.txt`와 `perf_python_single_linux_20260531_235420_python_single_recv_data_view_probe_20260531.txt`에서 PAIR/PUBSUB 64/256/1024B는 C 대비 3.2~12.4% 범위에 머물러 통과권까지 오르지 않았다. 이 후보만으로는 Python interpreter 루프, ctypes 기반 message materialize, send builder 호출 경계를 충분히 줄이지 못했다.
 
-Python multi smoke 결과 파일은 `perf_python_multi_linux_20260531_165008_round_20260530_python_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_python_multi_linux_20260531_180039_round_20260530_python_multi_full_v1.txt`이고 status=partial(810/960)이었다. 실패 조합 보강 파일 `perf_python_multi_linux_20260531_185859_round_20260530_python_multi_failset_fill.txt`는 status=partial(440/600)이었다. Overlay 뒤에도 RESULT가 없는 23개 칸은 두 실행에서 반복 실패한 조합이므로 `미달(RESULT 없음)`으로 둔다. 이후 `PERF_MULTI_*_IO_THREADS=4` 후보는 `perf_python_multi_linux_20260531_234941_python_multi_io4_spot_probe_20260531.txt`에서 MULTI_SPOT tcp/wss 64/1024B가 C 대비 4.1~4.6%에 그쳐 유지하지 않았다. Echo server와 SPOT receive 경로는 `to_bytes_list()` 또는 `to_bytes()` 사본 생성을 줄이고 공개 `Message.data` view를 submit/decode에 직접 쓰도록 바꿨다. 제한 재측정 `perf_python_multi_linux_20260601_001503_python_multi_dataview_echo_probe_20260531.txt`는 partial(205/225)이었고, `MULTI_SPOT wss 65536B`는 70.5%까지 개선됐다. 이 단계까지는 routed/SPOT echo 후보 다수가 C 대비 4.0~53.4% 범위에 머물렀거나 반복 timeout이 남아 추가 후보가 필요했다.
+Python multi smoke 결과 파일은 `perf_python_multi_linux_20260531_165008_round_20260530_python_multi_smoke_64.txt`이고 status=complete(160/160)였다. Multi full 결과 파일은 `perf_python_multi_linux_20260531_180039_round_20260530_python_multi_full_v1.txt`이고 status=partial(810/960)이었다. 실패 조합 보강 파일 `perf_python_multi_linux_20260531_185859_round_20260530_python_multi_failset_fill.txt`는 status=partial(440/600)이었다. Overlay 뒤에도 RESULT가 없는 23개 칸은 두 실행에서 반복 실패한 조합이므로 `미달(RESULT 없음)`으로 둔다. 이후 `PERF_MULTI_*_IO_THREADS=4` 후보는 `perf_python_multi_linux_20260531_234941_python_multi_io4_spot_probe_20260531.txt`에서 MULTI_SPOT tcp/wss 64/1024B가 C 대비 4.1~4.6%에 그쳐 유지하지 않았다. Echo server와 SPOT receive 경로는 `to_bytes_list()` 또는 `to_bytes()` 사본 생성을 줄이고 공개 `Message.data` view를 submit/decode에 직접 쓰도록 바꿨다. 제한 재측정 `perf_python_multi_linux_20260601_001503_python_multi_dataview_echo_probe_20260531.txt`는 partial(205/225)이었고 `MULTI_SPOT wss 65536B`는 70.5%까지 개선됐다. 이 단계까지는 routed/SPOT echo 후보 다수가 C 대비 4.0~53.4% 범위에 머물렀거나 반복 timeout이 남아 추가 후보가 필요했다.
 
-2026-06-02에는 `ctypes` 반복 호출을 줄이기 위해 CPython extension 기반 native bridge를 추가했다. `python3 setup.py build_ext --inplace --force`, `python3 -m compileall -q src tests perf`, `PYTHONPATH=src pytest -q tests`는 통과했다. full single `perf_python_single_linux_20260602_200749_python_native_bridge_full_single_20260602.txt`는 status=partial(1000/1020)이었지만, 실패 4개는 complete 제한 재측정으로 모두 회복됐다. 이후 일반 one-way single의 active phase를 native loop로 옮긴 complete report `perf_python_single_linux_20260602_234110_python_single_native_active_phase_verify_20260602.txt`에서 `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`의 `64/256/1024B`는 C 대비 최소 59.8% 이상으로 통과했다. SPOT은 직접 polling 방식의 native receive 후보가 불안정해 제거했지만, core dispatch callback 안에서만 `zlink_spot_subscribe_part(...)`를 drain하는 native count handler로 다시 구현했다. complete report `perf_python_single_linux_20260603_000326_python_spot_native_dispatch_count_verify_20260603.txt`에서 SPOT `tcp/tls/ws/wss`의 `64/256/1024B` 12개 cell은 C 대비 최소 77.5%로 모두 통과했다. 100us backoff 후보는 `perf_python_single_linux_20260603_001101_python_spot_native_dispatch_count_backoff100us_verify_20260603.txt`에서 `SPOT wss 256B`가 19.3%로 회귀해 최종 코드에 남기지 않았다.
+2026-06-02에는 `ctypes` 반복 호출을 줄이기 위해 CPython extension 기반 native bridge를 추가했다. `python3 setup.py build_ext --inplace --force`, `python3 -m compileall -q src tests perf`, `PYTHONPATH=src pytest -q tests`는 통과했다. full single `perf_python_single_linux_20260602_200749_python_native_bridge_full_single_20260602.txt`는 status=partial(1000/1020)이었지만 실패 4개는 complete 제한 재측정으로 모두 회복됐다. 이후 일반 one-way single의 active phase를 native loop로 옮긴 complete report `perf_python_single_linux_20260602_234110_python_single_native_active_phase_verify_20260602.txt`에서 `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`의 `64/256/1024B`는 C 대비 최소 59.8% 이상으로 통과했다. SPOT은 직접 polling 방식의 native receive 후보가 불안정해 제거했지만 core dispatch callback 안에서만 `zlink_spot_subscribe_part(...)`를 drain하는 native count handler로 다시 구현했다. complete report `perf_python_single_linux_20260603_000326_python_spot_native_dispatch_count_verify_20260603.txt`에서 SPOT `tcp/tls/ws/wss`의 `64/256/1024B` 12개 cell은 C 대비 최소 77.5%로 모두 통과했다. 100us backoff 후보는 `perf_python_single_linux_20260603_001101_python_spot_native_dispatch_count_backoff100us_verify_20260603.txt`에서 `SPOT wss 256B`가 19.3%로 회귀해 최종 코드에 남기지 않았다.
 
-`DEALER_ROUTER`/`ROUTER_ROUTER` tcp/ws 대형 12개 cell은 native loop가 C single과 달리 active send에 `ZLINK_DONTWAIT`를 쓰고 있어 대역폭이 약 1.28GB/s에 묶였다. C single active send와 같은 `ZLINK_SEND_FLAGS_NONE`로 정렬한 complete report `perf_python_single_linux_20260603_014924.txt`에서 대상 cell은 C 대비 40.9~67.4%로 상승했고, 기존 미달 10개 cell이 모두 통과했다. `python3 setup.py build_ext --inplace --force`, `python3 -m compileall -q src tests perf`, `PYTHONPATH=src pytest -q tests`도 통과했다.
+`DEALER_ROUTER`/`ROUTER_ROUTER` tcp/ws 대형 12개 cell은 native loop가 C single과 달리 active send에 `ZLINK_DONTWAIT`를 쓰고 있어 대역폭이 약 1.28GB/s에 묶였다. C single active send와 같은 `ZLINK_SEND_FLAGS_NONE`로 정렬한 complete report `perf_python_single_linux_20260603_014924.txt`에서 대상 cell은 C 대비 40.9~67.4%로 상승했고 기존 미달 10개 cell이 모두 통과했다. `python3 setup.py build_ext --inplace --force`, `python3 -m compileall -q src tests perf`, `PYTHONPATH=src pytest -q tests`도 통과했다.
 
-Multi는 native bridge 이후 full run `perf_python_multi_linux_20260602_210003_python_native_bridge_full_multi_20260602.txt`가 status=partial(800/920)이었고, 초기 `MULTI_SPOT_SENDSEND`와 `MULTI_STREAM` failset 재측정도 반복 partial로 남았다. 이후 `MULTI_STREAM` native echo와 C multi default에 맞춘 Python multi `io_threads=4`를 적용한 complete report `perf_python_multi_linux_20260602_230703_python_stream_native_echo_default_io4_verify_20260602.txt`에서 대상 16개 cell이 C 대비 62.9~92.0%로 통과했다. `MULTI_SPOT_SENDSEND` 65536/131072B 대상은 `perf_python_multi_linux_20260602_231518_python_spot_sendsend_default_io4_slot_verify_20260602.txt`와 `perf_python_multi_linux_20260602_231618_python_spot_sendsend_tls65536_default_io4_recheck_20260602.txt` 기준 38.2~84.3%로 통과했다. `MULTI_DEALER_DEALER`는 native send/count loop complete report `perf_python_multi_linux_20260603_001915_python_multi_dealer_dealer_native_send_count_full_verify_20260603.txt`에서 C 대비 35.1~99.7%로 통과했고, `MULTI_PUBSUB`는 native publish/count loop complete report `perf_python_multi_linux_20260603_002713_python_multi_pubsub_native_publish_count_full_verify_20260603.txt`에서 C 대비 53.6~153.1%로 통과했다. `MULTI_DEALER_ROUTER`와 `MULTI_ROUTER_ROUTER`는 native client round-trip loop complete report `perf_python_multi_linux_20260603_010318.txt`에서 대형 16개 cell이 C 대비 39.3~90.8%로 통과했다. 이후 routed echo server의 수신-반송 loop 전체를 native loop로 옮긴 complete report `perf_python_multi_linux_20260603_012037.txt`에서 small/4096B 32개 cell도 C 대비 74.2~99.4%로 통과했다.
+Multi는 native bridge 이후 full run `perf_python_multi_linux_20260602_210003_python_native_bridge_full_multi_20260602.txt`가 status=partial(800/920)이었고 초기 `MULTI_SPOT_SENDSEND`와 `MULTI_STREAM` failset 재측정도 반복 partial로 남았다. 이후 `MULTI_STREAM` native echo와 C multi default에 맞춘 Python multi `io_threads=4`를 적용한 complete report `perf_python_multi_linux_20260602_230703_python_stream_native_echo_default_io4_verify_20260602.txt`에서 대상 16개 cell이 C 대비 62.9~92.0%로 통과했다. `MULTI_SPOT_SENDSEND` 65536/131072B 대상은 `perf_python_multi_linux_20260602_231518_python_spot_sendsend_default_io4_slot_verify_20260602.txt`와 `perf_python_multi_linux_20260602_231618_python_spot_sendsend_tls65536_default_io4_recheck_20260602.txt` 기준 38.2~84.3%로 통과했다. `MULTI_DEALER_DEALER`는 native send/count loop complete report `perf_python_multi_linux_20260603_001915_python_multi_dealer_dealer_native_send_count_full_verify_20260603.txt`에서 C 대비 35.1~99.7%로 통과했고 `MULTI_PUBSUB`는 native publish/count loop complete report `perf_python_multi_linux_20260603_002713_python_multi_pubsub_native_publish_count_full_verify_20260603.txt`에서 C 대비 53.6~153.1%로 통과했다. `MULTI_DEALER_ROUTER`와 `MULTI_ROUTER_ROUTER`는 native client round-trip loop complete report `perf_python_multi_linux_20260603_010318.txt`에서 대형 16개 cell이 C 대비 39.3~90.8%로 통과했다. 이후 routed echo server의 수신-반송 loop 전체를 native loop로 옮긴 complete report `perf_python_multi_linux_20260603_012037.txt`에서 small/4096B 32개 cell도 C 대비 74.2~99.4%로 통과했다.
 
-`MULTI_SPOT`은 native polling-count client와 latency sample stride 1024 후보를 반영한 complete report 기준으로 모든 transport/msg-size가 통과했다. `MULTI_SPOT_SENDSEND`는 native client loop를 C perf처럼 등록형 poller 기반으로 맞춘 뒤 5개 cell이 추가로 통과했고, active phase 직전에 native routed echo handler를 설치한 보강 probe에서 `ws 1024B`도 통과했다. 이후 client send path에서 64/256B payload를 `zlink_msg_init_data(...)`로 초기화해 사본 생성을 줄였고, 같은 현재 환경에서 C `MULTI_SPOT_SENDSEND` 64/256B failset을 제한 재측정한 complete report로 small cell 기준을 보강했다. `MULTI_SPOT_REQREP`는 request submit과 reply callback 집계를 CPython extension active loop로 옮기고 server reply dispatch도 native handler로 처리한 뒤 잔여 17개 cell이 complete report 기준 모두 통과했다. 이 결과는 2026-06-03 public contract 복구 전의 과거 구현 기준이다. 상세 근거는 `doc/plan/perf/log/2026-06-02-python-bindings-performance-round.ko.md`에 남겼다.
+`MULTI_SPOT`은 native polling-count client와 latency sample stride 1024 후보를 반영한 complete report 기준으로 모든 transport/msg-size가 통과했다. `MULTI_SPOT_SENDSEND`는 native client loop를 C perf처럼 등록형 poller 기반으로 맞춘 뒤 5개 cell이 추가로 통과했고 active phase 직전에 native routed echo handler를 설치한 보강 probe에서 `ws 1024B`도 통과했다. 이후 client send path에서 64/256B payload를 `zlink_msg_init_data(...)`로 초기화해 사본 생성을 줄였고 같은 현재 환경에서 C `MULTI_SPOT_SENDSEND` 64/256B failset을 제한 재측정한 complete report로 small cell 기준을 보강했다. `MULTI_SPOT_REQREP`는 request submit과 reply callback 집계를 CPython extension active loop로 옮기고 server reply dispatch도 native handler로 처리한 뒤 잔여 17개 cell이 complete report 기준 모두 통과했다. 이 결과는 2026-06-03 public contract 복구 전의 과거 구현 기준이다. 상세 근거는 `doc/plan/perf/log/2026-06-02-python-bindings-performance-round.ko.md`에 남겼다.
 
 Python multi 표에서 긴 결과 파일명은 표 폭을 키우지 않도록 위 설명 문단에 모았다. 표 안의 메모는 기준과 판정만 짧게 적는다.
 

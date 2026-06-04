@@ -1,6 +1,6 @@
 # `core/perf` POSD 후속 리팩토링 계획
 
-> 후속 검토 결론: 현재 `core/perf`는 완료 상태이지만, `multi/common` 쪽에 아직 큰 공통 헤더가 남아 있어 유지보수 관점의 추가 분리가 가능하다.
+> 후속 검토 결론: 현재 `core/perf`는 완료 상태이지만 `multi/common` 쪽에 아직 큰 공통 헤더가 남아 있어 유지보수 관점의 추가 분리가 가능하다.
 > 전제: perf 목적 범위 내, PERF 정책 준수, `core/perf`와 동일한 측정 의미 유지.
 > 대상: `core/perf/` (single, multi, common, runner scripts)
 
@@ -22,16 +22,16 @@
 
 ## 2. 현재 구조 요약
 
-- single 측은 `bench_common.hpp`와 `bench_common_runtime.hpp`로 큰 분리가 이미 완료되어 있다.
+- single 측은 `bench_common.hpp`와 `bench_common_runtime.hpp`로 큰 분리가 이미 끝나 있다.
 - multi 측은 `perf_common.hpp`, `perf_common_multi.hpp`, `perf_multi_client_helpers.hpp`, `perf_multi_spot_control.hpp`가 아직 비교적 큰 편이다.
-- `perf_multi_stream_session.hpp`, `perf_multi_relay_server.hpp`, `perf_multi_handshake.hpp`는 역할이 분리되어 있으나, 공통 제어 흐름은 아직 넓은 헤더에 걸쳐 있다.
+- `perf_multi_stream_session.hpp`, `perf_multi_relay_server.hpp`, `perf_multi_handshake.hpp`는 역할이 분리되어 있으나 공통 제어 흐름은 아직 넓은 헤더에 걸쳐 있다.
 
 ## 3. 남은 POSD 문제
 
-- `core/perf/multi/common/perf_common.hpp`는 여전히 transport/metric/control 성격의 공용 코드가 함께 모여 있다.
+- `core/perf/multi/common/perf_common.hpp`에는 여전히 transport/metric/control 성격의 공용 코드가 함께 모여 있다.
 - `core/perf/multi/common/perf_multi_client_helpers.hpp`는 client fan-out, ready gate, send loop 보조를 함께 다룬다.
 - `core/perf/multi/common/perf_multi_spot_control.hpp`는 SPOT barrier, discovery, ready state, stop path를 넓게 감싸고 있어 변경 증폭이 크다.
-- 현재 구조는 정책상 hot path를 숨기지는 않지만, 작은 정책 변경에도 넓은 헤더를 함께 손대야 하는 temporal coupling이 남아 있다.
+- 현재 구조가 정책상 hot path를 숨기지는 않지만 작은 정책 변경에도 넓은 헤더를 함께 손대야 하는 temporal coupling이 남아 있다.
 
 ## 4. 우선순위
 

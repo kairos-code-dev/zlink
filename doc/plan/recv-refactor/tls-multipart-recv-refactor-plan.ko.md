@@ -12,12 +12,12 @@
 ## 1. 목적
 
 현재 public multipart recv surface는 `zlink_recv()` / `zlink_subscribe()`가
-`zlink_msg_t *parts[]` 배열을 heap에 할당해서 caller에게 넘기고, caller가
-`zlink_multipart_close(parts, count)` 후 `free(parts)`까지 수행하는 구조다.
+`zlink_msg_t *parts[]` 배열을 heap에 할당해 caller에게 넘기고, caller가
+`zlink_multipart_close(parts, count)` 뒤에 `free(parts)`까지 수행하는 구조다.
 
 이 구조는 다음 문제를 만든다.
 
-- single-part 메시지에서도 `malloc/free(parts)`가 매 메시지마다 발생한다.
+- single-part 메시지에서도 메시지마다 `malloc/free(parts)`가 발생한다.
 - `zlink_msg_t` 개별 ownership과 배열 container ownership이 한 API에 섞여 있다.
 - callback payload shape와 direct recv payload shape를 맞추려는 일반화가 hot path에
   그대로 전파된다.
@@ -30,7 +30,7 @@
 - caller는 **개별 message만 close**하고 `free(parts)`는 더 이상 하지 않는다.
 - `spot`을 포함한 direct recv/subscribe surface를 같은 lifetime 규칙으로 통일한다.
 - send 경로는 `single-part`와 `multipart`가 가능한 한 같은 처리 구조를 공유하고,
-  차이는 `part` 반복과 `more`/rollback 필요성만 남기도록 정리한다.
+  차이는 `part` 반복과 `more`/rollback 필요성만 남도록 정리한다.
 
 ## 2. 최종 public 계약
 
@@ -71,7 +71,7 @@ TLS view lifetime은 다음으로 고정한다.
 - 다른 스레드로 넘겨서 사용하면 안 됨
 - caller가 message를 close하지 않았더라도 다음 recv 시 view는 덮일 수 있음
 
-이 규약은 libzmq의 frame-by-frame recv와 동일하진 않지만, aggregate payload shape를
+이 규약은 libzmq의 frame-by-frame recv와 똑같지는 않지만, aggregate payload shape를
 유지하면서 heap container 제거를 가능하게 하는 최소 규칙이다.
 
 ## 3. 비목표
@@ -86,7 +86,7 @@ TLS view lifetime은 다음으로 고정한다.
 언어 바인딩은 native 계약이 안정화된 뒤 별도 후속 작업으로 분리한다.
 
 다만 send 경로의 내부 clone 제거와 fast path 정리는 이번 리팩토링과 같은 흐름으로
-설계/구현한다.
+설계하고 구현한다.
 
 ## 4. 설정 정책
 
@@ -99,7 +99,7 @@ TLS view는 고정 최대 part 수를 가진다. 기본값은 `2`로 둔다.
 - callback handler의 `parts_ + part_count_`
 - direct recv/subscribe의 `parts_out + part_count_out`
 
-즉 사용자는 이 payload part 개수만 신경 쓰고, 내부 framing은 cap 정의에 포함되지
+즉 사용자는 이 payload part 개수만 신경 쓰면 되고, 내부 framing은 cap 정의에 들어가지
 않는다.
 
 내부 framing 예:
@@ -111,7 +111,7 @@ TLS view는 고정 최대 part 수를 가진다. 기본값은 `2`로 둔다.
 이들은 구현이 내부 조립/전송에서 별도로 처리해야 하는 frame이며, public payload cap
 계산에는 넣지 않는다.
 
-이 값은 대부분의 실제 **external payload shape**가 아래에 수렴한다는 전제를 둔다.
+이 값은 실제 **external payload shape** 대부분이 아래로 수렴한다는 전제를 둔다.
 
 - single payload recv: `1`
 - 사용자에게 노출되는 multipart payload: 많아야 `2`
@@ -134,7 +134,7 @@ TLS view는 고정 최대 part 수를 가진다. 기본값은 `2`로 둔다.
 이 정책을 택한 이유:
 
 - 계약을 단순하게 유지
-- 다시 heap fallback을 넣어 성능/수명 모델을 혼합하지 않기 위함
+- heap fallback을 다시 넣어 성능/수명 모델을 섞지 않으려고
 
 사전 확인 요구:
 
@@ -169,7 +169,7 @@ struct recv_tls_view_t {
 - storage는 thread-local
 - slot별 `zlink_msg_t` init 상태를 추적
 - 새 recv 시작 전 이전 slot 상태를 정리(reset)
-- close되지 않은 message가 남아 있어도 다음 recv 전에 내부가 회수 가능해야 함
+- close되지 않은 message가 남아 있어도 다음 recv 전에 내부가 회수할 수 있어야 함
 
 reset 규칙:
 
@@ -198,7 +198,7 @@ reset 규칙:
 - multi-part: 각 frame을 TLS slot으로 move 후 `parts_out = tls.parts`
 - `part_count_out = payload_count`
 
-즉 export 단계는 `heap array materialization`이 아니라
+즉 export 단계가 `heap array materialization`이 아니라
 `TLS slot population`으로 바뀐다.
 
 ### 5.3 multipart 후속 frame 수집 규칙
@@ -224,10 +224,10 @@ multipart recv는 `more` flag를 기준으로 frame 경계를 판단한다.
 
 - 후속 frame 수집 중 일반 `EAGAIN`/timeout semantics를 caller에게 그대로 노출하지
   않는다.
-- multipart가 시작된 뒤에는 필요한 후속 frame을 내부적으로 끝까지 조립한다.
+- multipart가 시작된 뒤에는 필요한 후속 frame을 내부에서 끝까지 조립한다.
 - 조립 중 비정상 오류가 나면 내부에서 이미 받은 frame들을 close하고 에러를 반환한다.
 
-즉 multipart recv의 blocking point는 첫 frame에만 존재하고, 그 이후는
+즉 multipart recv의 blocking point는 첫 frame에만 있고, 그 이후는
 internal assembly 단계로 고정한다.
 
 ### 5.4 single-part fast path와의 관계
@@ -245,8 +245,8 @@ internal assembly 단계로 고정한다.
 
 이렇게 하면:
 
-- single-part direct path는 최저 비용 유지
-- 기존 aggregate 사용처는 heap container만 제거
+- single-part direct path는 최저 비용을 유지하고
+- 기존 aggregate 사용처는 heap container만 제거한다.
 
 ### 5.5 routed / stream / router payload
 
@@ -303,7 +303,7 @@ subscribe frame assembly 규칙은 multipart recv 규칙과 동일하게 고정�
 ### 6.2 callback과 direct recv의 shape 정렬
 
 callback handler는 이미 `parts_ + part_count_` shape를 받는다.
-이번 변경 후 direct recv도 동일한 aggregate shape를 유지하되, ownership 규칙만
+이번 변경 뒤 direct recv도 같은 aggregate shape를 유지하되, ownership 규칙만
 달라진다.
 
 정렬 결과:
@@ -319,8 +319,8 @@ callback handler는 이미 `parts_ + part_count_` shape를 받는다.
 
 다음 류의 테스트를 전부 새 계약으로 바꾼다.
 
-- `zlink_recv(..., &parts, &part_count, ...)` 후 `free(parts)` 하던 테스트
-- `zlink_subscribe(..., &parts, &part_count, ...)` 후 `free(parts)` 하던 테스트
+- `zlink_recv(..., &parts, &part_count, ...)` 뒤 `free(parts)` 하던 테스트
+- `zlink_subscribe(..., &parts, &part_count, ...)` 뒤 `free(parts)` 하던 테스트
 - `spot` e2e/introspection tests
 - monitor / socket contract tests
 - multi socket contract regression tests
@@ -373,7 +373,7 @@ callback handler는 이미 `parts_ + part_count_` shape를 받는다.
 - 필요 시 native part close만 수행
 - wrapper 승격 중 중간 실패가 나면 아직 wrapper로 move되지 않은 native view part는
   `zlink_multipart_close(parts, count)`로 정리하고 종료한다
-- socket wrapper와 `service::spot` wrapper가 동일한 helper/규약을 공유하도록 맞춘다
+- socket wrapper와 `service::spot` wrapper가 같은 helper/규약을 공유하도록 맞춘다
 
 즉 wrapper boundary에서 native TLS lifetime을 끊고, C++ 객체 lifetime으로 다시
 승격시킨다.
@@ -418,7 +418,7 @@ recv 리팩토링과 함께 send도 다음 원칙으로 정렬한다.
 
 `single-part`와 `multipart`는 가능한 한 같은 send 구조를 공유해야 한다.
 
-수정 후 남아야 하는 차이는 아래뿐이다.
+수정 뒤에 남아야 하는 차이는 아래뿐이다.
 
 - `part_count == 1`이면 send loop 1회
 - `part_count > 1`이면 part 수만큼 send loop 반복
@@ -426,7 +426,7 @@ recv 리팩토링과 함께 send도 다음 원칙으로 정렬한다.
 - multipart일 때만 rollback 상태가 의미를 가짐
 
 즉 send 경로의 차이는 frame 개수와 `more`/rollback semantics만 남고,
-정상 경로에서의 별도 clone/temporary container 비용은 제거한다.
+정상 경로의 별도 clone/temporary container 비용은 제거한다.
 
 ### 9.2 제거 대상
 
@@ -456,13 +456,13 @@ recv 리팩토링과 함께 send도 다음 원칙으로 정렬한다.
 - 성공 시에만 caller 원본 parts를 consume/reset
 - 실패 시 caller 원본 parts는 payload/shape/재사용 가능 상태를 유지해야 함
 - multipart 중간 실패 시 `socket->rollback()`으로 소켓 상태를 되감는다
-- nonblocking send는 1회 시도 후 즉시 반환
+- nonblocking send는 1회 시도 뒤 즉시 반환
 - blocking send는 retry가 필요할 때만 wait/retry를 수행하되, retry를 위해 payload를
   clone하지 않는다
 
 원본 parts 보존 계약을 더 구체적으로 고정한다.
 
-- send 실패 후 caller는 같은 `parts[]`를 그대로 다시 `zlink_send()` /
+- send 실패 뒤 caller는 같은 `parts[]`를 그대로 다시 `zlink_send()` /
   `zlink_send_rid()` / `zlink_publish()`에 넘길 수 있어야 한다.
 - send 실패 경로는 caller 원본 `zlink_msg_t`의 payload ownership, part count, part 순서,
   routing/publish용 payload shape를 훼손하면 안 된다.
@@ -477,7 +477,7 @@ send clone 제거는 아래 항목을 같은 변경 안에서 모두 만족시�
   같은 규칙을 만족하는지
 - single-part direct send와 multipart direct send가 같은 ownership 규약을 유지하는지
 
-구현 시작 순서는 아래 순서로 고정한다.
+구현 시작 순서는 아래로 고정한다.
 
 1. `PAIR`/`DEALER` 계열 single-part direct send fast path
 2. `ROUTER` routed single-part direct send fast path
@@ -540,7 +540,7 @@ native 계약이 바뀐 뒤 예전 관용구가 남아 있으면 즉시 문제�
 
 ### 11.4 send rollback 보장
 
-send clone 제거 후 가장 큰 리스크는 multipart 중간 실패 시 원본과 socket state가
+send clone 제거 뒤 가장 큰 리스크는 multipart 중간 실패 시 원본과 socket state가
 엇갈리는 경우다.
 
 대응:
@@ -557,7 +557,7 @@ send clone 제거 후 가장 큰 리스크는 multipart 중간 실패 시 원본
 2. core recv 구현에서 `malloc(parts)` 기반 export가 제거되어 있다.
 3. `zlink_multipart_close()`는 close-only helper가 되어 있다.
 4. native/core/tests/perf/bench/C++ wrapper에 `free(parts)`가 남아 있지 않다.
-5. `spot` 포함 direct recv/subscribe 경로가 동일 lifetime 규약을 따른다.
+5. `spot` 포함 direct recv/subscribe 경로가 같은 lifetime 규약을 따른다.
 6. send 경로에서 정상 hot path의 frame clone이 제거되어 있다.
 7. cap 초과, 연속 recv view overwrite, message close-only cleanup, multipart send
    rollback에 대한 테스트가 있다.

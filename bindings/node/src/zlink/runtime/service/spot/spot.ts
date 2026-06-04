@@ -163,6 +163,9 @@ export class Spot extends NativeHandle {
   private sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadParts: MessageLike | readonly MessageLike[], flags: SendFlags): boolean {
     const nodeRid = normalizeRoutingId(destNodeRid);
     const spotRid = normalizeRoutingId(destSpotRid);
+    return this.sendToSpotRawDirect(nodeRid, spotRid, payloadParts, flags);
+  }
+  private sendToSpotRawDirect(nodeRid: Buffer, spotRid: Buffer, payloadParts: MessageLike | readonly MessageLike[], flags: SendFlags): boolean {
     const payload = normalizeOperationPayload(payloadParts);
     if ((flags | 0) & (SendFlags.DontWait | 0)) {
       let result;
@@ -366,12 +369,7 @@ export class Spot extends NativeHandle {
         if (!raw.sourceRid || !raw.spotRid) {
           throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
         }
-        return this.sendToSpotDirect(
-          RoutingId.from(raw.sourceRid),
-          RoutingId.from(raw.spotRid),
-          parts,
-          flags
-        );
+        return this.sendToSpotRawDirect(raw.sourceRid, raw.spotRid, parts, flags);
       }
     );
     return true;

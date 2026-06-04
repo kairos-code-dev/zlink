@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeader, sleepMillis, summarizeMetrics, stampPayload, } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, currentEpochNs, sleepMillis, summarizeMetrics, stampPayload, } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, subscribeNoWait, trySocketPublish, waitForSpotNodeConnectedPeerCount, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
@@ -184,7 +184,7 @@ async function main() {
                     continue;
                 }
                 slot.waitingReply = false;
-                collector.record(decodeMetricHeader(received.parts[0].data()), currentEpochNs());
+                collector.recordPayload(received.parts[0].data(), currentEpochNs());
                 progressed = true;
             }
             return progressed;

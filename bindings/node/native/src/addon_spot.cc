@@ -58,11 +58,7 @@ static napi_value create_spot_message_snapshot_value(
   const zlink_routing_id_t *routing_id,
   zlink_msg_t *msg)
 {
-    return create_message_snapshot_value(
-      env,
-      routing_id,
-      msg,
-      MESSAGE_SNAPSHOT_ALWAYS_REF_COUNT | MESSAGE_SNAPSHOT_ALWAYS_PROPERTIES);
+    return create_message_snapshot_value(env, routing_id, msg);
 }
 
 static bool parse_routing_id_value(napi_env env,
@@ -1816,13 +1812,22 @@ napi_value spot_send_spot_no_wait_result(napi_env env, napi_callback_info info)
     if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
         return NULL;
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector_or_single(env, argv[3], &parts))
-        return NULL;
+    zlink_msg_t single_part;
+    bool use_single_part = false;
+    bool is_array = false;
+    if (napi_is_array(env, argv[3], &is_array) == napi_ok && is_array) {
+        if (!build_msg_vector(env, argv[3], &parts))
+            return NULL;
+    } else {
+        if (!init_msg_from_value(env, argv[3], &single_part))
+            return NULL;
+        use_single_part = true;
+    }
     int rc = spot_send_spot_parts(spot,
                                   &dest_node_rid,
                                   &dest_spot_rid,
-                                  parts.data(),
-                                  parts.size(),
+                                  use_single_part ? &single_part : parts.data(),
+                                  use_single_part ? 1 : parts.size(),
                                   ZLINK_SEND_FLAGS_DONTWAIT);
     napi_value out;
     napi_create_int32(env, rc, &out);

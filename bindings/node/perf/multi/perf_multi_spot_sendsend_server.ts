@@ -40,12 +40,15 @@ function sleepMillis(ms) {
 }
 
 function echoRouted(spot, received) {
-  if (!received.routingId || !received.spotRid || received.parts.length === 0) {
-    return;
-  }
+  const parts = received.parts;
+  if (parts.length === 0) return;
   try {
+    if (parts.length === 1) {
+      received.send().message(parts[0]).flags(zlink.SendFlags.DontWait).submit();
+      return;
+    }
     let op = received.send();
-    for (const part of received.parts) {
+    for (const part of parts) {
       op = op.message(part);
     }
     op.flags(zlink.SendFlags.DontWait).submit();

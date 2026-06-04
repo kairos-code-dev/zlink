@@ -4919,3 +4919,49 @@ Node 측정과 후보 검토 기록이다. 계획 문서 본문에는 최종 상
 - 판정:
   - 이 재확인은 complete report지만 표 개선 근거가 아니므로 main 문서 수치에는 반영하지 않는다.
   - 현행 public 동작은 유지하되, Node multi 미달 해소 후보로는 추가 개선 효과가 없다고 본다.
+
+## single routed tcp large sender native submit 재검토
+
+- 대상:
+  - single `DEALER_ROUTER`, `ROUTER_ROUTER`
+  - `tcp`
+  - `65536,131072,262144B`
+- 배경:
+  - 수신 쪽은 이미 `routerRecvSinglePayload` 내부 경로를 써서 public envelope materialize 비용을
+    피하고 있다.
+  - 송신 worker는 매 active payload마다 public send operation builder를 만들고 있었다.
+    runtime-owned native submit 함수는 이미 public facade 내부에서 쓰이는 함수이므로 새 공개 API나
+    benchmark-only borrowed helper를 추가하지 않고 같은 비용을 줄일 수 있다.
+  - 이전 로그에는 tcp routed large HWM floor 64를 유지한다고 적혀 있었지만 현재 코드는 기본 32였다.
+    tcp 대용량 routed 구간에만 floor 64를 되살리고 non-tcp 기본값은 유지했다.
+- 변경:
+  - `perf/single/perf_single_sender_worker.ts`에서 `dealer_router`/`router_router` active send와
+    stop token send가 `native.socketSend(...)`, `native.socketSendRouting(...)`을 직접 호출한다.
+  - 일반 one-way `DontWait` send는 기존 public builder 대신 runtime-owned
+    `native.socketSendNoWaitResult(...)`를 사용한다.
+  - `perf/single/perf_single_common.ts`는 `options.transport === 'tcp'`이고 메시지가 65536B 이상일 때
+    기본 HWM floor를 64로 둔다. `PERF_SINGLE_ROUTED_LARGE_HWM_FLOOR` 환경 변수는 그대로 우선한다.
+- 검증:
+  - `npm run build`: 통과
+  - `node --test tests/optimization_guard.test.ts`: 통과
+- 측정:
+  - 기본 채택 후보: `./perf/single/run_benchmarks.sh --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 65536,131072,262144 --duration 2 --runs 3 --results-tag node_single_routed_tcp_large_native_sender_hwm64_20260604`
+  - Node report: `perf_node_single_linux_20260604_181153_node_single_routed_tcp_large_native_sender_hwm64_20260604.txt`
+  - status: complete
+  - C 기준: `perf_c_single_linux_20260530_231803_round_20260530_c_single_baseline.txt`
+- 결과:
+  - `DEALER_ROUTER tcp 65536/131072/262144B`: 28.337/14.634/7.541 Kmsg/s,
+    C 대비 25.8/23.3/22.3%.
+  - `ROUTER_ROUTER tcp 65536/131072/262144B`: 29.604/14.994/7.854 Kmsg/s,
+    C 대비 27.4/24.0/23.2%.
+  - 기존 표의 21.7/22.9/10.2%와 21.8/23.1/10.2%보다 전 셀이 개선됐지만,
+    routed one-way 기준 28%에는 아직 닿지 않았다.
+- 추가 probe:
+  - `PERF_SINGLE_ROUTED_LARGE_HWM_FLOOR=128`으로 같은 범위를 측정했다.
+  - Node report: `perf_node_single_linux_20260604_181317_node_single_routed_tcp_large_native_sender_hwm128_probe_20260604.txt`
+  - status: complete
+  - throughput은 일부 셀에서 조금 더 높았지만 p95/p99 latency가 크게 나빠지고 RR 262144B는 floor 64보다 낮았다.
+- 판정:
+  - HWM floor 64와 sender native submit은 public contract 변경 없이 잔여 single failset을 줄이므로 유지한다.
+  - HWM floor 128은 이득이 작고 tail latency와 queue 폭 비용이 커서 기본값으로 채택하지 않는다.
+  - main 문서의 single residual count는 6개 그대로 두되, 해당 6개 셀의 비율과 결과 파일을 갱신한다.

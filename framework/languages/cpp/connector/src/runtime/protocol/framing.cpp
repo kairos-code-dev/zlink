@@ -18,8 +18,7 @@ namespace
 zlink::message_t
 message_from_bytes (const std::vector<std::uint8_t> &bytes)
 {
-  return zlink::message_t::from (
-    std::string (bytes.begin (), bytes.end ()));
+  return zlink::message_t::from (bytes);
 }
 
 bool

@@ -6,8 +6,10 @@
 #include <lz4.h>
 #endif
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -28,16 +30,12 @@ write_u32 (std::string &output, std::uint32_t value)
 }
 
 std::uint32_t
-read_u32 (const std::string &input)
+read_u32 (std::span<const std::byte> input)
 {
-  return (static_cast<std::uint32_t> (
-            static_cast<unsigned char> (input[0])) << 24) |
-         (static_cast<std::uint32_t> (
-            static_cast<unsigned char> (input[1])) << 16) |
-         (static_cast<std::uint32_t> (
-            static_cast<unsigned char> (input[2])) << 8) |
-         static_cast<std::uint32_t> (
-           static_cast<unsigned char> (input[3]));
+  return (std::to_integer<std::uint32_t> (input[0]) << 24) |
+         (std::to_integer<std::uint32_t> (input[1]) << 16) |
+         (std::to_integer<std::uint32_t> (input[2]) << 8) |
+         std::to_integer<std::uint32_t> (input[3]);
 }
 
 } // namespace
@@ -59,7 +57,7 @@ lz4_compression_codec_t::compress (const zlink::message_t &payload) const
   throw std::runtime_error (
     "LZ4 compression is not linked into this connector build");
 #else
-  const auto input = payload.to_string ();
+  const auto input = payload.bytes ();
   if (input.size () > static_cast<std::size_t> (
                        std::numeric_limits<std::int32_t>::max ())) {
     throw std::runtime_error ("LZ4 input exceeds fixed size limit");
@@ -71,8 +69,9 @@ lz4_compression_codec_t::compress (const zlink::message_t &payload) const
   }
   const int bound = LZ4_compressBound (static_cast<int> (input.size ()));
   std::vector<char> compressed (static_cast<std::size_t> (bound));
+  const auto *input_data = reinterpret_cast<const char *> (input.data ());
   const int written = LZ4_compress_default (
-    input.data (),
+    input_data,
     compressed.data (),
     static_cast<int> (input.size ()),
     bound);
@@ -91,7 +90,7 @@ lz4_compression_codec_t::decompress (const zlink::message_t &payload) const
   throw std::runtime_error (
     "LZ4 decompression is not linked into this connector build");
 #else
-  const auto input = payload.to_string ();
+  const auto input = payload.bytes ();
   if (input.size () < 4) {
     throw std::runtime_error ("LZ4 payload is missing original size");
   }
@@ -104,8 +103,9 @@ lz4_compression_codec_t::decompress (const zlink::message_t &payload) const
     return zlink::message_t::from (std::string {});
   }
   std::string output (original_size, '\0');
+  const auto *input_data = reinterpret_cast<const char *> (input.data ());
   const int decoded = LZ4_decompress_safe (
-    input.data () + 4,
+    input_data + 4,
     output.data (),
     static_cast<int> (input.size () - 4),
     static_cast<int> (output.size ()));

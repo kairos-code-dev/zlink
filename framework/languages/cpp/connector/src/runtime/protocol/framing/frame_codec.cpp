@@ -7,6 +7,24 @@
 namespace zlink::stream_connector::detail
 {
 
+namespace
+{
+
+void
+write_prefix (std::vector<std::uint8_t> &frame,
+              std::size_t header_size,
+              std::size_t payload_size)
+{
+  frame.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
+  frame.push_back (static_cast<std::uint8_t> (header_size & 0xff));
+  frame.push_back (static_cast<std::uint8_t> ((payload_size >> 24) & 0xff));
+  frame.push_back (static_cast<std::uint8_t> ((payload_size >> 16) & 0xff));
+  frame.push_back (static_cast<std::uint8_t> ((payload_size >> 8) & 0xff));
+  frame.push_back (static_cast<std::uint8_t> (payload_size & 0xff));
+}
+
+} // namespace
+
 bool
 frame_codec_t::validate_frame_size (std::size_t header_size,
                                     std::size_t payload_size,
@@ -29,13 +47,9 @@ frame_codec_t::encode_prefix (std::size_t header_size,
     return result_t<std::vector<std::uint8_t>>::failure (
       error_code_t::frame_too_large, "Payload exceeds u32 payload_size.");
   }
-  std::vector<std::uint8_t> prefix (6);
-  prefix[0] = static_cast<std::uint8_t> ((header_size >> 8) & 0xff);
-  prefix[1] = static_cast<std::uint8_t> (header_size & 0xff);
-  prefix[2] = static_cast<std::uint8_t> ((payload_size >> 24) & 0xff);
-  prefix[3] = static_cast<std::uint8_t> ((payload_size >> 16) & 0xff);
-  prefix[4] = static_cast<std::uint8_t> ((payload_size >> 8) & 0xff);
-  prefix[5] = static_cast<std::uint8_t> (payload_size & 0xff);
+  std::vector<std::uint8_t> prefix;
+  prefix.reserve (6);
+  write_prefix (prefix, header_size, payload_size);
   return result_t<std::vector<std::uint8_t>>::success (std::move (prefix));
 }
 
@@ -48,14 +62,17 @@ frame_codec_t::encode (const std::vector<std::uint8_t> &header,
     return result_t<std::vector<std::uint8_t>>::failure (
       error_code_t::frame_too_large, "Stream frame exceeds configured limits.");
   }
-  auto prefix = encode_prefix (header.size (), payload.size ());
-  if (!prefix) {
+  if (header.size () > std::numeric_limits<std::uint16_t>::max ()) {
     return result_t<std::vector<std::uint8_t>>::failure (
-      prefix.error_code (), prefix.error ()->message);
+      error_code_t::frame_too_large, "Header exceeds u16 header_size.");
+  }
+  if (payload.size () > std::numeric_limits<std::uint32_t>::max ()) {
+    return result_t<std::vector<std::uint8_t>>::failure (
+      error_code_t::frame_too_large, "Payload exceeds u32 payload_size.");
   }
   std::vector<std::uint8_t> frame;
-  frame.reserve (prefix.value ().size () + header.size () + payload.size ());
-  frame.insert (frame.end (), prefix.value ().begin (), prefix.value ().end ());
+  frame.reserve (6 + header.size () + payload.size ());
+  write_prefix (frame, header.size (), payload.size ());
   frame.insert (frame.end (), header.begin (), header.end ());
   frame.insert (frame.end (), payload.begin (), payload.end ());
   return result_t<std::vector<std::uint8_t>>::success (std::move (frame));

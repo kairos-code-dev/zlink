@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 namespace zlink::stream_connector::detail
@@ -68,15 +69,13 @@ publish_error (const connector_state_t &state, const error_t &error)
 std::vector<std::uint8_t>
 message_to_bytes (const zlink::message_t &message)
 {
-  const auto text = message.to_string ();
-  return std::vector<std::uint8_t> (text.begin (), text.end ());
+  return message.to_bytes ();
 }
 
 zlink::message_t
 message_from_bytes (const std::vector<std::uint8_t> &bytes)
 {
-  return zlink::message_t::from (
-    std::string (bytes.begin (), bytes.end ()));
+  return zlink::message_t::from (bytes);
 }
 
 bool
@@ -149,16 +148,19 @@ write_packet_frame (connector_state_t &state,
     return result_t<void>::failure (
       header.error_code (), header.error ()->message);
   }
-  auto payload_message = packet.payload;
+  const zlink::message_t *payload_message = &packet.payload;
+  std::optional<zlink::message_t> compressed_payload;
   if (packet.compressed && state.options.compression == compression_t::lz4) {
     try {
-      payload_message = lz4_compression_codec_t {}.compress (payload_message);
+      compressed_payload =
+        lz4_compression_codec_t {}.compress (packet.payload);
+      payload_message = &*compressed_payload;
     } catch (const std::exception &ex) {
       return result_t<void>::failure (error_code_t::compression_failed,
                                       ex.what ());
     }
   }
-  auto payload = message_to_bytes (payload_message);
+  auto payload = message_to_bytes (*payload_message);
   auto frame = frame_codec_t::encode (header.value (), payload, state.options);
   if (!frame) {
     return result_t<void>::failure (

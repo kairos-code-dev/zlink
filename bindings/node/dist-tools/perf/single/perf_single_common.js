@@ -100,7 +100,10 @@ function routedLargeMessageSocketPolicy(options = {}, msgSize) {
     if (!Number.isFinite(msgSize) || msgSize < 65536) {
         return options;
     }
-    const floor = integerEnv('PERF_SINGLE_ROUTED_LARGE_HWM_FLOOR', 32);
+    const defaultFloor = String(options.transport || '').trim().toLowerCase() === 'tcp'
+        ? 64
+        : 32;
+    const floor = integerEnv('PERF_SINGLE_ROUTED_LARGE_HWM_FLOOR', defaultFloor);
     if (!Number.isFinite(floor) || floor <= 0) {
         return options;
     }

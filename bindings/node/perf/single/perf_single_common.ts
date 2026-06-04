@@ -51,6 +51,7 @@ async function benchmarkEndpoint(transport, token) {
 }
 
 interface SingleSocketPolicyOptions {
+  transport?: string;
   hwm?: number;
   sendHwm?: number;
   recvHwm?: number;
@@ -142,7 +143,10 @@ function routedLargeMessageSocketPolicy(
     return options;
   }
 
-  const floor = integerEnv('PERF_SINGLE_ROUTED_LARGE_HWM_FLOOR', 32);
+  const defaultFloor = String(options.transport || '').trim().toLowerCase() === 'tcp'
+    ? 64
+    : 32;
+  const floor = integerEnv('PERF_SINGLE_ROUTED_LARGE_HWM_FLOOR', defaultFloor);
   if (!Number.isFinite(floor) || floor <= 0) {
     return options;
   }

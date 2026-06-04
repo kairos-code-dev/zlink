@@ -5,7 +5,7 @@ import java.util.concurrent.CompletionStage;
 
 public interface ZLinkRegistryQueryClient extends AutoCloseable {
     CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
-        ZLinkRegistryQueryFilter filter);
+        ZLinkRegistryTopologyFilter filter);
 
     @Override
     void close();

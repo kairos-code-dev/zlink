@@ -475,8 +475,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             if (!targetSpotNodeChannelName.equals(peer.channelName())) {
                 continue;
             }
-            if (!"ROUTER".equalsIgnoreCase(peer.serviceKind())
-                && !"SOCKET".equalsIgnoreCase(peer.serviceKind())) {
+            if (!"ROUTER".equalsIgnoreCase(peer.serviceRole())) {
                 continue;
             }
             if (peer.routingId() == null) {
@@ -513,12 +512,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 client.connect(endpoint);
                 for (ZLinkBackendRegistryTopologyEntry entry :
                     client.topology(new ZLinkBackendRegistryQueryFilter(
-                        Optional.of(targetSpotNodeChannelName)))) {
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("ROUTER"),
+                        Optional.of(targetSpotNodeChannelName),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty()))) {
                     if (!targetSpotNodeChannelName.equals(entry.channelName())) {
                         continue;
                     }
-                    if (!"ROUTER".equalsIgnoreCase(entry.serviceKind())
-                        && !"SOCKET".equalsIgnoreCase(entry.serviceKind())) {
+                    if (!"ROUTER".equalsIgnoreCase(entry.serviceRole())) {
                         continue;
                     }
                     if (entry.routingId() == null) {

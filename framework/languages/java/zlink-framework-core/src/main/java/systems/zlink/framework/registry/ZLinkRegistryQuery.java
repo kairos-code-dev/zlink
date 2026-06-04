@@ -7,8 +7,8 @@ public interface ZLinkRegistryQuery {
     CompletionStage<ZLinkRegistryStatus> statusAsync();
 
     CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummaryAsync(
-        ZLinkRegistryQueryFilter filter);
+        ZLinkRegistryServiceSummaryFilter filter);
 
     CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
-        ZLinkRegistryQueryFilter filter);
+        ZLinkRegistryTopologyFilter filter);
 }

@@ -1,10 +1,20 @@
 package systems.zlink.framework.registry;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.spots.ZLinkSpotKind;
 
 public record ZLinkRegistryTopologyEntry(
-    String channelName,
+    String autoConnectType,
     RoutingId routingId,
     String serviceKind,
-    String endpoint) {
+    String serviceRole,
+    String channelName,
+    String endpoint,
+    String source,
+    String state,
+    int desiredCount,
+    int readyCount,
+    int errorCode,
+    long lastReportedMs,
+    ZLinkSpotKind spotKind) {
 }

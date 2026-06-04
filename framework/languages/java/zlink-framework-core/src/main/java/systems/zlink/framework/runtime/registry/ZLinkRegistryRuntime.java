@@ -1,13 +1,15 @@
 package systems.zlink.framework.runtime.registry;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
-import systems.zlink.framework.registry.ZLinkRegistryQueryFilter;
+import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter;
 import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry;
 import systems.zlink.framework.registry.ZLinkRegistryStatus;
+import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
 import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
@@ -69,26 +71,41 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
 
     @Override
     public CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummaryAsync(
-        ZLinkRegistryQueryFilter filter) {
+        ZLinkRegistryServiceSummaryFilter filter) {
         return CompletableFuture.completedFuture(
             registry.serviceSummary(toBackendFilter(filter)).stream()
                 .map(entry -> new ZLinkRegistryServiceSummaryEntry(
+                    entry.autoConnectType(),
+                    entry.serviceRole(),
                     entry.channelName(),
-                    entry.serviceKind(),
-                    entry.serviceCount()))
+                    entry.totalCount(),
+                    entry.connectingCount(),
+                    entry.readyCount(),
+                    entry.errorCount(),
+                    entry.stoppedCount(),
+                    entry.lastReportedMs()))
                 .toList());
     }
 
     @Override
     public CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
-        ZLinkRegistryQueryFilter filter) {
+        ZLinkRegistryTopologyFilter filter) {
         return CompletableFuture.completedFuture(
             registry.topology(toBackendFilter(filter)).stream()
                 .map(entry -> new ZLinkRegistryTopologyEntry(
-                    entry.channelName(),
+                    entry.autoConnectType(),
                     entry.routingId(),
                     entry.serviceKind(),
-                    entry.endpoint()))
+                    entry.serviceRole(),
+                    entry.channelName(),
+                    entry.endpoint(),
+                    entry.source(),
+                    entry.state(),
+                    entry.desiredCount(),
+                    entry.readyCount(),
+                    entry.errorCode(),
+                    entry.lastReportedMs(),
+                    entry.spotKind()))
                 .toList());
     }
 
@@ -102,9 +119,30 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
     }
 
     private static ZLinkBackendRegistryQueryFilter toBackendFilter(
-        ZLinkRegistryQueryFilter filter) {
-        ZLinkRegistryQueryFilter resolved =
-            filter == null ? ZLinkRegistryQueryFilter.all() : filter;
-        return new ZLinkBackendRegistryQueryFilter(resolved.channelName());
+        ZLinkRegistryServiceSummaryFilter filter) {
+        ZLinkRegistryServiceSummaryFilter resolved =
+            filter == null ? ZLinkRegistryServiceSummaryFilter.all() : filter;
+        return new ZLinkBackendRegistryQueryFilter(
+            resolved.autoConnectType(),
+            Optional.empty(),
+            resolved.serviceRole(),
+            resolved.channelName(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
+    }
+
+    private static ZLinkBackendRegistryQueryFilter toBackendFilter(
+        ZLinkRegistryTopologyFilter filter) {
+        ZLinkRegistryTopologyFilter resolved =
+            filter == null ? ZLinkRegistryTopologyFilter.all() : filter;
+        return new ZLinkBackendRegistryQueryFilter(
+            resolved.autoConnectType(),
+            resolved.serviceKind(),
+            resolved.serviceRole(),
+            resolved.channelName(),
+            resolved.routingId(),
+            resolved.state(),
+            resolved.source());
     }
 }

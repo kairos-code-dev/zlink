@@ -1,9 +1,9 @@
-package systems.zlink.framework.runtime.backend;
+package systems.zlink.framework.registry;
 
 import java.util.Optional;
 import systems.zlink.contracts.core.RoutingId;
 
-public record ZLinkBackendRegistryQueryFilter(
+public record ZLinkRegistryTopologyFilter(
     Optional<String> autoConnectType,
     Optional<String> serviceKind,
     Optional<String> serviceRole,
@@ -11,7 +11,7 @@ public record ZLinkBackendRegistryQueryFilter(
     Optional<RoutingId> routingId,
     Optional<String> state,
     Optional<String> source) {
-    public ZLinkBackendRegistryQueryFilter {
+    public ZLinkRegistryTopologyFilter {
         autoConnectType = autoConnectType == null ? Optional.empty() : autoConnectType;
         serviceKind = serviceKind == null ? Optional.empty() : serviceKind;
         serviceRole = serviceRole == null ? Optional.empty() : serviceRole;
@@ -21,8 +21,8 @@ public record ZLinkBackendRegistryQueryFilter(
         source = source == null ? Optional.empty() : source;
     }
 
-    public static ZLinkBackendRegistryQueryFilter all() {
-        return new ZLinkBackendRegistryQueryFilter(
+    public static ZLinkRegistryTopologyFilter all() {
+        return new ZLinkRegistryTopologyFilter(
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
@@ -30,5 +30,23 @@ public record ZLinkBackendRegistryQueryFilter(
             Optional.empty(),
             Optional.empty(),
             Optional.empty());
+    }
+
+    public static ZLinkRegistryTopologyFilter channel(String channelName) {
+        return new ZLinkRegistryTopologyFilter(
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(requireName(channelName, "channelName")),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
+    }
+
+    private static String requireName(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(label + " is required");
+        }
+        return value;
     }
 }

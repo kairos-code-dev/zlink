@@ -8,8 +8,11 @@ import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
 import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
-import systems.zlink.framework.registry.ZLinkRegistryQueryFilter;
+import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry;
+import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter;
 import systems.zlink.framework.registry.ZLinkRegistryStatus;
+import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
+import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
 
 final class RegistryContractTest {
     @Test
@@ -17,10 +20,10 @@ final class RegistryContractTest {
         Method status = ZLinkRegistryQuery.class.getMethod("statusAsync");
         Method serviceSummary = ZLinkRegistryQuery.class.getMethod(
             "serviceSummaryAsync",
-            ZLinkRegistryQueryFilter.class);
+            ZLinkRegistryServiceSummaryFilter.class);
         Method topology = ZLinkRegistryQuery.class.getMethod(
             "topologyAsync",
-            ZLinkRegistryQueryFilter.class);
+            ZLinkRegistryTopologyFilter.class);
 
         assertEquals(CompletionStage.class, status.getReturnType());
         assertEquals(CompletionStage.class, serviceSummary.getReturnType());
@@ -46,10 +49,50 @@ final class RegistryContractTest {
     }
 
     @Test
+    void registryServiceSummaryCarriesDotnetSummaryFields() {
+        assertEquals(
+            List.of(
+                "autoConnectType",
+                "serviceRole",
+                "channelName",
+                "totalCount",
+                "connectingCount",
+                "readyCount",
+                "errorCount",
+                "stoppedCount",
+                "lastReportedMs"),
+            java.util.Arrays.stream(ZLinkRegistryServiceSummaryEntry.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName)
+                .toList());
+    }
+
+    @Test
+    void registryTopologyCarriesDotnetTopologyFields() {
+        assertEquals(
+            List.of(
+                "autoConnectType",
+                "routingId",
+                "serviceKind",
+                "serviceRole",
+                "channelName",
+                "endpoint",
+                "source",
+                "state",
+                "desiredCount",
+                "readyCount",
+                "errorCode",
+                "lastReportedMs",
+                "spotKind"),
+            java.util.Arrays.stream(ZLinkRegistryTopologyEntry.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName)
+                .toList());
+    }
+
+    @Test
     void registryQueryClientOnlyExposesRemoteTopologyQuery() throws Exception {
         Method topology = ZLinkRegistryQueryClient.class.getMethod(
             "topologyAsync",
-            ZLinkRegistryQueryFilter.class);
+            ZLinkRegistryTopologyFilter.class);
 
         assertEquals(CompletionStage.class, topology.getReturnType());
         assertEquals(List.of("close", "topologyAsync"),

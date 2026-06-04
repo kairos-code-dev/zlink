@@ -1,7 +1,13 @@
 package systems.zlink.framework.runtime.backend;
 
 public record ZLinkBackendRegistryServiceSummaryEntry(
+    String autoConnectType,
+    String serviceRole,
     String channelName,
-    String serviceKind,
-    int serviceCount) {
+    int totalCount,
+    int connectingCount,
+    int readyCount,
+    int errorCount,
+    int stoppedCount,
+    long lastReportedMs) {
 }

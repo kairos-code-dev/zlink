@@ -36,13 +36,13 @@ public final class ZLinkRegistry implements ZLinkRegistryQuery, AutoCloseable {
 
     @Override
     public java.util.concurrent.CompletionStage<java.util.List<systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry>>
-        serviceSummaryAsync(systems.zlink.framework.registry.ZLinkRegistryQueryFilter filter) {
+        serviceSummaryAsync(systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter filter) {
         return runtime.serviceSummaryAsync(filter);
     }
 
     @Override
     public java.util.concurrent.CompletionStage<java.util.List<systems.zlink.framework.registry.ZLinkRegistryTopologyEntry>>
-        topologyAsync(systems.zlink.framework.registry.ZLinkRegistryQueryFilter filter) {
+        topologyAsync(systems.zlink.framework.registry.ZLinkRegistryTopologyFilter filter) {
         return runtime.topologyAsync(filter);
     }
 

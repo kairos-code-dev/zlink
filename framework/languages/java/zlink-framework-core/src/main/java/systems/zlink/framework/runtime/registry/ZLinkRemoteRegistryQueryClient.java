@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
-import systems.zlink.framework.registry.ZLinkRegistryQueryFilter;
+import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
 import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
@@ -46,18 +46,34 @@ public final class ZLinkRemoteRegistryQueryClient implements ZLinkRegistryQueryC
 
     @Override
     public CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
-        ZLinkRegistryQueryFilter filter) {
-        ZLinkRegistryQueryFilter resolved =
-            filter == null ? ZLinkRegistryQueryFilter.all() : filter;
+        ZLinkRegistryTopologyFilter filter) {
+        ZLinkRegistryTopologyFilter resolved =
+            filter == null ? ZLinkRegistryTopologyFilter.all() : filter;
         ZLinkBackendRegistryQueryFilter backendFilter =
-            new ZLinkBackendRegistryQueryFilter(resolved.channelName());
+            new ZLinkBackendRegistryQueryFilter(
+                resolved.autoConnectType(),
+                resolved.serviceKind(),
+                resolved.serviceRole(),
+                resolved.channelName(),
+                resolved.routingId(),
+                resolved.state(),
+                resolved.source());
         return CompletableFuture.completedFuture(
             client.topology(backendFilter).stream()
                 .map(entry -> new ZLinkRegistryTopologyEntry(
-                    entry.channelName(),
+                    entry.autoConnectType(),
                     entry.routingId(),
                     entry.serviceKind(),
-                    entry.endpoint()))
+                    entry.serviceRole(),
+                    entry.channelName(),
+                    entry.endpoint(),
+                    entry.source(),
+                    entry.state(),
+                    entry.desiredCount(),
+                    entry.readyCount(),
+                    entry.errorCode(),
+                    entry.lastReportedMs(),
+                    entry.spotKind()))
                 .toList());
     }
 

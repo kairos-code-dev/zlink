@@ -6,7 +6,8 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
-import systems.zlink.framework.registry.ZLinkRegistryQueryFilter;
+import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter;
+import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 import systems.zlink.framework.runtime.registry.ZLinkRemoteRegistryQueryClient;
@@ -28,13 +29,13 @@ final class RegistryRuntimeFakeBackendTest {
             assertEquals("BOUND",
                 runtime.statusAsync().toCompletableFuture().join().state());
             assertEquals("profile",
-                runtime.serviceSummaryAsync(ZLinkRegistryQueryFilter.all())
+                runtime.serviceSummaryAsync(ZLinkRegistryServiceSummaryFilter.all())
                     .toCompletableFuture()
                     .join()
                     .get(0)
                     .channelName());
             assertEquals("inproc://profile-server",
-                runtime.topologyAsync(ZLinkRegistryQueryFilter.channel("profile"))
+                runtime.topologyAsync(ZLinkRegistryTopologyFilter.channel("profile"))
                     .toCompletableFuture()
                     .join()
                     .get(0)
@@ -68,7 +69,7 @@ final class RegistryRuntimeFakeBackendTest {
                      backendFactory,
                      new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
             assertEquals("tcp://127.0.0.1:7100",
-                client.topologyAsync(ZLinkRegistryQueryFilter.channel("profile"))
+                client.topologyAsync(ZLinkRegistryTopologyFilter.channel("profile"))
                     .toCompletableFuture()
                     .join()
                     .get(0)

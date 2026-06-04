@@ -206,19 +206,34 @@ final class MonitoringEventsTest {
         public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(
             ZLinkBackendRegistryQueryFilter filter) {
             return List.of(new ZLinkBackendRegistryServiceSummaryEntry(
-                "profile",
                 "CLIENT_SERVER",
-                entryCount));
+                "DEALER",
+                "profile",
+                entryCount,
+                0,
+                entryCount,
+                0,
+                0,
+                11));
         }
 
         @Override
         public List<ZLinkBackendRegistryTopologyEntry> topology(
             ZLinkBackendRegistryQueryFilter filter) {
             return List.of(new ZLinkBackendRegistryTopologyEntry(
-                "profile",
+                "CLIENT_SERVER",
                 systems.zlink.contracts.core.RoutingId.from("profile-" + entryCount),
+                "SOCKET",
                 "SERVER",
-                "inproc://profile-" + entryCount));
+                "profile",
+                "inproc://profile-" + entryCount,
+                "MANUAL",
+                "READY",
+                1,
+                1,
+                0,
+                12,
+                systems.zlink.framework.spots.ZLinkSpotKind.INVALID));
         }
 
         @Override

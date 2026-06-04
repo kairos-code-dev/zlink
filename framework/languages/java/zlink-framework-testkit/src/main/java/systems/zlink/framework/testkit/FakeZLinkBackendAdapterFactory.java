@@ -400,10 +400,19 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         public List<ZLinkBackendRegistryTopologyEntry> memberPeers() {
             if ("discovery.egress-discovery".equals(name())) {
                 return List.of(new ZLinkBackendRegistryTopologyEntry(
-                    "ingress-discovery",
+                    "ROUTE_MESH",
                     RoutingId.from("discovery-route-peer"),
+                    "DISCOVERY",
                     "ROUTER",
-                    "inproc://ingress-discovery"));
+                    "ingress-discovery",
+                    "inproc://ingress-discovery",
+                    "DISCOVERY",
+                    "READY",
+                    1,
+                    1,
+                    0,
+                    0,
+                    ZLinkSpotKind.INVALID));
             }
             return List.of();
         }
@@ -517,15 +526,33 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public ZLinkBackendRegistryStatus status() { record("status"); return new ZLinkBackendRegistryStatus("BOUND", 1); }
         @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) {
             record("serviceSummary." + filter.channelName().orElse("*"));
-            return List.of(new ZLinkBackendRegistryServiceSummaryEntry("profile", "CLIENT_SERVER", 2));
+            return List.of(new ZLinkBackendRegistryServiceSummaryEntry(
+                "CLIENT_SERVER",
+                "DEALER",
+                "profile",
+                2,
+                0,
+                2,
+                0,
+                0,
+                11));
         }
         @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) {
             record("topology." + filter.channelName().orElse("*"));
             return List.of(new ZLinkBackendRegistryTopologyEntry(
-                "profile",
+                "CLIENT_SERVER",
                 RoutingId.from("profile-server"),
-                "SERVER",
-                "inproc://profile-server"));
+                "SOCKET",
+                "ROUTER",
+                "profile",
+                "inproc://profile-server",
+                "MANUAL",
+                "READY",
+                1,
+                1,
+                0,
+                12,
+                ZLinkSpotKind.INVALID));
         }
     }
 
@@ -539,10 +566,19 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) {
             record("topology." + filter.channelName().orElse("*"));
             return List.of(new ZLinkBackendRegistryTopologyEntry(
-                filter.channelName().orElse("profile"),
+                "CLIENT_SERVER",
                 RoutingId.from("registry-route-peer"),
+                "SOCKET",
                 "ROUTER",
-                "tcp://127.0.0.1:7100"));
+                filter.channelName().orElse("profile"),
+                "tcp://127.0.0.1:7100",
+                "REGISTRY",
+                "READY",
+                1,
+                1,
+                0,
+                13,
+                ZLinkSpotKind.INVALID));
         }
     }
 

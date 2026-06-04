@@ -18,6 +18,20 @@ import systems.zlink.contracts.messaging.Message;
 
 final class ZLinkStreamConnectorTest {
     @Test
+    void defaultNameResolverUsesPacketNameAnnotationValue() {
+        assertEquals(
+            "custom.packet",
+            ZLinkStreamPacketNameResolver.defaultResolver().resolve(NamedPayload.class));
+    }
+
+    @Test
+    void defaultNameResolverPreservesBlankPacketNameAnnotationValue() {
+        assertEquals(
+            "",
+            ZLinkStreamPacketNameResolver.defaultResolver().resolve(BlankNamedPayload.class));
+    }
+
+    @Test
     void manualDispatchInvokesRegisteredHandlerOnlyWhenDispatched() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
              ZLinkStreamConnector connector =
@@ -381,5 +395,13 @@ final class ZLinkStreamConnectorTest {
             dispatchMode,
             Duration.ofSeconds(1),
             1);
+    }
+
+    @ZLinkStreamPacketName("custom.packet")
+    private record NamedPayload(String value) {
+    }
+
+    @ZLinkStreamPacketName("")
+    private record BlankNamedPayload(String value) {
     }
 }

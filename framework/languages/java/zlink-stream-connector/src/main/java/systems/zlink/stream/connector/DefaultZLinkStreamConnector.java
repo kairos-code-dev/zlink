@@ -579,6 +579,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         Objects.requireNonNull(options.endpoint(), "endpoint");
         requireSupportedEndpointScheme(options.endpoint().getScheme());
         Objects.requireNonNull(options.dispatchMode(), "dispatchMode");
+        Objects.requireNonNull(options.nameResolver(), "nameResolver");
         requirePositive(options.connectTimeout(), "connectTimeout");
         requirePositive(options.requestTimeout(), "requestTimeout");
         requirePositive(options.heartbeatInterval(), "heartbeatInterval");

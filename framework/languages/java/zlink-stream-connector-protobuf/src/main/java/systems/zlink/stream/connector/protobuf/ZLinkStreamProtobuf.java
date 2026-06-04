@@ -19,20 +19,24 @@ public final class ZLinkStreamProtobuf {
     public static ZLinkStreamSendCall send(
         ZLinkStreamConnector connector,
         Object payload) {
-        return connector.send(encode(packetName(payload), payload));
+        return connector.send(encode(packetName(connector, payload), payload));
     }
 
     public static ZLinkStreamRequestCall request(
         ZLinkStreamConnector connector,
         Object payload) {
-        return connector.request(encode(packetName(payload), payload));
+        return connector.request(encode(packetName(connector, payload), payload));
     }
 
     public static <TPayload> AutoCloseable on(
         ZLinkStreamConnector connector,
         Class<TPayload> payloadType,
         ZLinkStreamMessageHandler<TPayload> handler) {
-        return on(connector, payloadType.getSimpleName(), payloadType, handler);
+        return on(
+            connector,
+            connector.options().nameResolver().resolve(payloadType),
+            payloadType,
+            handler);
     }
 
     public static <TPayload> AutoCloseable on(
@@ -76,7 +80,9 @@ public final class ZLinkStreamProtobuf {
         return String.valueOf(value).getBytes(StandardCharsets.UTF_8);
     }
 
-    private static String packetName(Object payload) {
-        return payload == null ? "Null" : payload.getClass().getSimpleName();
+    private static String packetName(ZLinkStreamConnector connector, Object payload) {
+        return payload == null
+            ? "Null"
+            : connector.options().nameResolver().resolve(payload.getClass());
     }
 }

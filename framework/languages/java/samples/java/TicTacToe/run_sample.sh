@@ -24,12 +24,43 @@ wait_port() {
   return 1
 }
 
-gradle :Server:run --quiet --args='server' &
-pids+=("$!")
-wait_port 18080
-wait_port 47201
-wait_port 47202
-wait_port 47203
-wait_port 18080
+reserve_ports() {
+  python3 - <<'PY'
+import socket
+reserved = []
+ports = []
+try:
+    for _ in range(6):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        reserved.append(sock)
+        ports.append(str(sock.getsockname()[1]))
+    print(" ".join(ports))
+finally:
+    for sock in reserved:
+        sock.close()
+PY
+}
 
-gradle :Client:run --quiet
+read -r api_port api_channel_port play_stream_port play_channel_port play_router_port spot_port < <(reserve_ports)
+
+server_args=(
+  "server"
+  "--api-bind" "http://127.0.0.1:${api_port}"
+  "--api-url" "http://127.0.0.1:${api_port}"
+  "--api-channel-endpoint" "tcp://127.0.0.1:${api_channel_port}"
+  "--play-channel-endpoint" "tcp://127.0.0.1:${play_channel_port}"
+  "--play-router-endpoint" "tcp://127.0.0.1:${play_router_port}"
+  "--play-endpoint" "tcp://127.0.0.1:${play_stream_port}"
+  "--spot-endpoint" "tcp://127.0.0.1:${spot_port}"
+)
+
+gradle :Server:run --quiet --args="${server_args[*]}" &
+pids+=("$!")
+wait_port "${api_port}"
+wait_port "${api_channel_port}"
+wait_port "${play_stream_port}"
+wait_port "${play_channel_port}"
+wait_port "${api_port}"
+
+gradle :Client:run --quiet --args="--api-url http://127.0.0.1:${api_port}"

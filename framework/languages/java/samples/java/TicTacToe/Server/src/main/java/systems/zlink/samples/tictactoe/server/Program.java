@@ -27,7 +27,7 @@ public final class Program {
             case "play" -> runServer(settings, true, false);
             case "client" -> runClient(settings);
             default -> throw new IllegalArgumentException(
-                "Usage: gradle :Server:run --args='[all|server|api|play|client] [--api-url URL] [--api-bind URL] [--api-channel-endpoint tcp://HOST:PORT] [--play-channel-endpoint tcp://HOST:PORT] [--play-endpoint tcp://HOST:PORT] [--spot-endpoint tcp://HOST:PORT] [--log-dir DIR]'");
+                "Usage: gradle :Server:run --args='[all|server|api|play|client] [--api-url URL] [--api-bind URL] [--api-channel-endpoint tcp://HOST:PORT] [--play-channel-endpoint tcp://HOST:PORT] [--play-router-endpoint tcp://HOST:PORT] [--play-endpoint tcp://HOST:PORT] [--spot-endpoint tcp://HOST:PORT] [--log-dir DIR]'");
         }
     }
 

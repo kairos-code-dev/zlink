@@ -16,7 +16,7 @@ fun main(args: Array<String>) = runBlocking {
         "play" -> runServer(settings, startPlay = true, startApi = false)
         "client" -> runClient(settings)
         else -> error(
-            "Usage: gradle :Server:run --args='[all|server|api|play|client] [--api-url URL] [--api-bind URL] [--api-channel-endpoint tcp://HOST:PORT] [--play-channel-endpoint tcp://HOST:PORT] [--play-endpoint tcp://HOST:PORT] [--spot-endpoint tcp://HOST:PORT] [--log-dir DIR]'",
+            "Usage: gradle :Server:run --args='[all|server|api|play|client] [--api-url URL] [--api-bind URL] [--api-channel-endpoint tcp://HOST:PORT] [--play-channel-endpoint tcp://HOST:PORT] [--play-router-endpoint tcp://HOST:PORT] [--play-endpoint tcp://HOST:PORT] [--spot-endpoint tcp://HOST:PORT] [--log-dir DIR]'",
         )
     }
 }

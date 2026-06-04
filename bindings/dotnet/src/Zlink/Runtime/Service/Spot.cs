@@ -326,9 +326,13 @@ internal sealed partial class Spot : ISpot
         ReceivedReplyHandler? replyHandler = requestSeq == 0
             ? null
             : CreateRoutedReplyHandler(nodeRid, spotRid, requestSeq);
+        ReceivedSendHandler? sendHandler = CreateRoutedSendHandler(nodeRid,
+            spotRid);
+        ReceivedSendSingleHandler? sendSingleHandler =
+            CreateRoutedSendSingleHandler(nodeRid, spotRid);
         result.PopulateRoutedMultipart(parts, nodeRidSnapshot, spotRidSnapshot,
-            requestSeq == 0 ? null : requestSeq, replyHandler,
-            CreateRoutedSendHandler(nodeRid, spotRid));
+            requestSeq == 0 ? null : requestSeq, replyHandler, sendHandler,
+            sendSingleHandler);
         return true;
     }
 

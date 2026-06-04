@@ -690,8 +690,7 @@ internal static class PerfMultiSpotReqRep
                     continue;
                 if (received.RoutingId.HasValue && received.SpotRid.HasValue)
                 {
-                    _ = replier.SendToSpot(received.RoutingId.Value,
-                            received.SpotRid.Value)
+                    _ = received.Send()
                         .Message(received.FirstPart())
                         .Flags(SendFlags.DontWait)
                         .Submit();

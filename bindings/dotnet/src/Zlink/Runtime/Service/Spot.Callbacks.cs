@@ -39,6 +39,17 @@ internal sealed partial class Spot
             sendParts, sendFlags);
     }
 
+    private ReceivedSendSingleHandler? CreateRoutedSendSingleHandler(
+        RoutingId? nodeRid, RoutingId? spotRid)
+    {
+        if (!nodeRid.HasValue || !spotRid.HasValue)
+            return null;
+        RoutingId targetNode = nodeRid.Value;
+        RoutingId targetSpot = spotRid.Value;
+        return (sendPart, sendFlags) => SendToSpot(targetNode, targetSpot,
+            sendPart, sendFlags);
+    }
+
     private unsafe void OnNativeDispatchEvent(IntPtr spot,
         ZlinkSpotDispatchInfoNative* info, IntPtr userData)
     {

@@ -27,3 +27,15 @@ doc/guide/06-monitoring.ko.md
 doc/guide/08-routing-id.ko.md
 doc/guide/09-message-api.ko.md
 doc/guide/10-performance.ko.md
+doc/guide/11-thread-safety.ko.md
+doc/guide/12-socket-options.ko.md
+doc/guide/EXAMPLES.ko.md
+doc/guide/README.ko.md
+doc/guide/STYLE.ko.md
+doc/guide/bindings/README.ko.md
+doc/guide/design-rationale.ko.md
+doc/guide/glossary.ko.md
+doc/guide/reliability.ko.md
+doc/guide/scenarios.ko.md
+doc/guide/unity-stream-connector.ko.md
+doc/guide/zmp-protocol.ko.md

@@ -55,7 +55,7 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 
 **LWM (Low Water Mark) 공식:** `(HWM + 1) / 2`
 
-HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 재개된다.
+HWM=100이면 LWM=50. 큐가 100에서 block되고 50 이하로 drain되어야 재개된다.
 이 간격이 writable/non-writable 진동을 방지하는 히스테리시스다.
 
 **소켓 타입별 차이:** 의미는 같지만 자동 정책 클래스가 다르다.
@@ -82,7 +82,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
 ```
 
-자동 HWM의 최소값은 `1`이고, 결과는 profile별 메시지 수 cap으로 제한된다.
+자동 HWM의 최소값은 `1`이고 결과는 profile별 메시지 수 cap으로 제한된다.
 
 사용자가 `SNDHWM` / `RCVHWM`을 직접 설정하면 자동 HWM보다 그 값이 항상 우선한다.
 
@@ -114,7 +114,7 @@ context 옵션을 조정합니다. 기본값 `0`은 소켓 타입별 기본 메�
 | 그 외 소켓 | `4096` bytes |
 
 `zlink_ctx_get()`은 사용자가 설정한 context raw 값을 반환합니다. 반환값이
-`0`이면 소켓 타입별 기본값을 쓴다는 뜻이고, 실제 계산에 쓰인 값은 monitor
+`0`이면 소켓 타입별 기본값을 쓴다는 뜻이고 실제 계산에 쓰인 값은 monitor
 snapshot의 `auto_hwm_effective_message_bytes`에서 확인합니다.
 
 ```c
@@ -154,7 +154,7 @@ auto HWM이 비활성화(`ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 0`)된 경우 no-op이
 | **0** | 즉시 종료 — 미전송 메시지 폐기 |
 | **>0** | 지정 시간(ms)까지 대기 후 강제 종료 |
 
-**실제 동작:** linger > 0이면 타이머를 설정하고, 타이머 만료 시 파이프를
+**실제 동작:** linger > 0이면 타이머를 설정하고 타이머 만료 시 파이프를
 강제 종료한다. `pipe->terminate(linger != 0)`으로 delay 여부를 전달한다.
 
 **소켓 타입별 차이:**
@@ -306,7 +306,7 @@ Keepalive보다 빠른 dead peer 감지가 필요할 때 사용.
 2. 원격 피어는 TTL 시간 안에 메시지/PONG을 받지 못하면 연결 종료
 3. 로컬에서는 TIMEOUT 시간 안에 PONG을 받지 못하면 연결 끊김 감지
 
-**TCP 킵얼라이브와의 차이:** TCP 킵얼라이브는 OS 수준 프로브이고,
+**TCP 킵얼라이브와의 차이:** TCP 킵얼라이브는 OS 수준 프로브이고
 ZMP(zlink 메시징 프로토콜) 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정하면 더 빠른 쪽이
 먼저 감지한다.
 
@@ -331,7 +331,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 | **기본값** | `0` (즉시 연결) |
 
 **`0` (기본):** connect() 호출 즉시 파이프를 소켓에 연결한다. 연결 완료 전에도 `send()`가
-가능하고, 메시지는 큐에 쌓인다.
+가능하고 메시지는 큐에 쌓인다.
 
 **`1`:** 연결이 실제로 완료된 후에만 파이프가 소켓에 연결된다. 연결 전 `send()`는
 차단되거나 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 또한 일시적 연결 끊김(hiccup) 시 파이프가 즉시
@@ -363,7 +363,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 | **0** | OS 기본값 사용 |
 | **>0** | 지정 크기(바이트)로 설정 |
 
-HWM과 독립적이다. HWM은 zlink 파이프 수준의 메시지 수 제한이고,
+HWM과 독립적이다. HWM은 zlink 파이프 수준의 메시지 수 제한이고
 SNDBUF/RCVBUF는 OS 커널 소켓 버퍼의 바이트 크기다.
 
 **소켓 타입별 차이:**
@@ -456,7 +456,7 @@ PGM transport에서만 적용. 현재 PGM은 임시 비활성화 상태.
 | **적용 위치** | `xsub.cpp` |
 | **기본값** | `0` (정상 매칭) |
 
-`1`로 설정하면 구독하지 않은 토픽의 메시지를 받고, 구독한 토픽은 받지 않는다.
+`1`로 설정하면 구독하지 않은 토픽의 메시지를 받고 구독한 토픽은 받지 않는다.
 
 ---
 

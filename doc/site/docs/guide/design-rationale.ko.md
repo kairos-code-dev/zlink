@@ -20,8 +20,8 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5에서 출발해 **핵
 - 암호화를 CURVE(libsodium) → **TLS**(OpenSSL).
 - 의존성을 **OpenSSL 하나로** 축소.
 
-좁힌 이유는 단순하다. 적게 노출할수록 **각 패턴을 깊게 다듬고 일관되게 유지**할 수
-있고, 사용자가 고를 것이 줄어 잘못 고를 여지도 준다.
+좁힌 이유는 단순하다. 적게 노출할수록 **각 패턴을 깊게 다듬고 일관되게 유지**하기
+좋고, 사용자가 고를 것이 줄어 잘못 고를 여지도 준다.
 
 ## 핵심 설계 원칙
 
@@ -52,9 +52,9 @@ API](./09-message-api.ko.md)).
 Boost.Asio 기반으로 I/O **완료** 이벤트를 핸들러로 전달한다(Proactor). I/O를 직접
 폴링하지 않고 완료를 통지받는 구조다.
 
-**사용자에게 의미**: 콜백은 Context가 소유한 I/O 스레드에서 실행된다 — 콜백은 짧고
-lock 없이 유지하고, 그 안에서 핸들을 닫지 않는다. 다중 소켓을 한 루프에서 다루려면
-폴러를 쓴다([운영 — 폴러/타이머](./bindings/dotnet/04-operations.ko.md#폴러--타이머)는
+**사용자에게 의미**: 콜백은 Context가 소유한 I/O 스레드에서 실행된다 — 콜백은 짧게
+유지하고 lock을 잡지 않으며, 그 안에서 핸들을 닫지 않는다. 다중 소켓을 한 루프에서
+다루려면 폴러를 쓴다([운영 — 폴러/타이머](./bindings/dotnet/04-operations.ko.md#폴러--타이머)는
 언어별, 개념은 [02 Core API](./02-core-api.ko.md)).
 
 ### Protocol Agnostic — Transport와 Protocol의 분리

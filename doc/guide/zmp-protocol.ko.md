@@ -6,11 +6,11 @@
 
 ZMP(zlink Message Protocol)는 zlink가 wire 위에서 쓰는 프레이밍 프로토콜이다. 이
 문서는 **새 언어 바인딩을 작성하거나 다른 시스템과 interop**하려는 독자를 위한
-사용자용 요약이다. 비트 단위 정식 정의·인코딩/디코딩 흐름은
+사용자용 요약이다. 비트 단위 정식 정의와 인코딩/디코딩 흐름은
 [internals/protocol-zmp](../internals/protocol-zmp.ko.md)가 소유한다.
 
 > **ZMP는 ZMTP(ZeroMQ 프로토콜)와 호환되지 않는 별개 프로토콜이다.** 이름이나
-> 표면이 비슷해 보여도 wire 형식이 다르므로 ZMTP 구현과 직접 통신할 수 없다
+> 표면이 비슷해 보여도 wire 형식이 달라 ZMTP 구현과 직접 통신할 수 없다
 > ([internals/design-decisions](../internals/design-decisions.ko.md)).
 
 ---
@@ -63,20 +63,20 @@ Client ──── HELLO ────▶ Server
 ```
 
 control part 타입: `HELLO`(인사) · `READY`(메타데이터 교환) · `HEARTBEAT` /
-`HEARTBEAT_ACK` · `ERROR`. HELLO는 socket type과 routing id를 싣고, READY는 소켓
-타입·routing id 속성을 교환한다. 정확한 페이로드 레이아웃은 internals를 본다.
+`HEARTBEAT_ACK` · `ERROR`. HELLO는 socket type과 routing id를 싣고 READY는 소켓
+타입과 routing id 속성을 교환한다. 정확한 페이로드 레이아웃은 internals를 본다.
 
 ## 4. 상위 envelope (요청/응답 · SPOT routed)
 
-ZMP 데이터 프레임 위에, 요청/응답과 SPOT 라우팅은 **멀티파트 control part**를
-페이로드 앞에 덧붙이는 방식으로 구현된다(메시지 구조에 끼워 넣지 않음).
+ZMP 데이터 프레임 위에서, 요청/응답과 SPOT 라우팅은 **멀티파트 control part**를
+페이로드 앞에 덧붙이는 방식으로 구현한다(메시지 구조에 끼워 넣지 않음).
 
 - **요청/응답 envelope**: 페이로드 앞에 4개 control part(protocol id · version ·
   message type[request/reply/error] · request seq[8B BE uint64]).
 - **SPOT routed envelope**: source/destination의 class·node rid·endpoint rid를
   담는 control part. SPOT 요청/응답은 두 envelope이 함께 쌓인다.
 
-정확한 part 수·바이트 레이아웃·인코딩 순서는
+정확한 part 수와 바이트 레이아웃, 인코딩 순서는
 [internals/protocol-zmp](../internals/protocol-zmp.ko.md) §3~6이 정식으로 정의한다.
 
 ## 5. VSM과 wire의 관계

@@ -81,4 +81,4 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) 기반의 현대적 메시�
 
 > **언어별 사용 가이드**: [.NET](./bindings/dotnet/index.ko.md) 등은
 > [바인딩 가이드 목록](./bindings/README.ko.md)에서 고른다. 개념은 이 코어 가이드가
-> 한 번만 소유하고, 언어 가이드는 그 언어의 사용법·타입 매핑만 다룬다.
+> 한 번만 소유하며, 언어 가이드는 그 언어의 사용법·타입 매핑만 다룬다.

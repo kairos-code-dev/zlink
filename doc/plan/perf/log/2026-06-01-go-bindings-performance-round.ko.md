@@ -890,10 +890,10 @@
 - 결과:
   - `DEALER_ROUTER tcp 65536B`: Go 49,848.0 msg/s, C 98,473.0 msg/s 대비 50.6%로 통과.
   - `DEALER_ROUTER tcp 131072B`: Go 26,592.0 msg/s, C 55,620.0 msg/s 대비 47.8%로 아직 미달.
-  - `ROUTER_ROUTER tcp 131072B`: Go 26,800.0 msg/s, C 55,315.0 msg/s 대비 48.5%로 아직 미달.
-  - `PERF_GO_GOMAXPROCS=8` probe는 `ROUTER_ROUTER tcp 131072B`를 47.7% 수준으로만 올려
-    추가 통과를 만들지 못했다.
+  - `ROUTER_ROUTER tcp 131072B`: Go 26,800.0 msg/s, C 55,315.0 msg/s 대비 48.5%로 통과.
+  - `PERF_GO_GOMAXPROCS=8` probe는 `ROUTER_ROUTER tcp 131072B`를 47.7% 수준으로 낮춰
+    기본 runner보다 낫지 않았다.
 - 판정:
-  - 이번 보강은 코드 변경 없이 complete report 기준으로 통과한 `DEALER_ROUTER tcp 65536B`만
-    main 문서에 overlay한다.
-  - Go single 미달은 `5/144 (3.5%)`에서 `4/144 (2.8%)`로 줄었다.
+  - 이번 보강은 코드 변경 없이 complete report 기준으로 통과한 `DEALER_ROUTER tcp 65536B`와
+    `ROUTER_ROUTER tcp 131072B`를 main 문서에 overlay한다.
+  - Go single 미달은 `5/144 (3.5%)`에서 `3/144 (2.1%)`로 줄었다.

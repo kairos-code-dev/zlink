@@ -5177,3 +5177,51 @@ Node 측정과 후보 검토 기록이다. 계획 문서 본문에는 최종 상
   - copy 후보는 안정성은 나아졌지만 성능 표를 개선하지 못하고, copy-owner 후보는 partial이라 최종 근거가
     될 수 없다.
   - 최종 코드에는 남기지 않고, `MULTI_STREAM` small 잔여는 public stream handler 경계 비용으로 유지한다.
+
+## Node multi current 제한 재측정과 stream native frame 후보 기각
+
+- 대상:
+  - single `DEALER_ROUTER tcp 131072B`
+  - multi `MULTI_STREAM` small
+  - multi `MULTI_PUBSUB tcp 65536B`
+  - multi `MULTI_SPOT_SENDSEND wss 256B`
+- 배경:
+  - Node single 잔여 1개와 multi 잔여 cluster를 current C 기준으로 다시 확인했다.
+  - `MULTI_STREAM`은 JS에서 frame Buffer를 만들고 native result-send helper를 호출하는 경계가 남아 있어,
+    packet frame 조립을 internal native helper로 내리면 줄어드는지 확인했다.
+- 측정:
+  - `DEALER_ROUTER tcp 131072B` Node:
+    `perf_node_single_linux_20260604_223147_node_single_dr_tcp131072_current_recheck_20260604.txt`
+  - `DEALER_ROUTER tcp 131072B` C:
+    `perf_c_single_linux_20260604_223154_node_single_dr_tcp131072_c_current_recheck_20260604.txt`
+  - `DEALER_ROUTER tcp 131072B` HWM 8 probe:
+    `perf_node_single_linux_20260604_223229_node_single_dr_tcp131072_hwm8_probe_20260604.txt`
+  - `MULTI_STREAM` current 재측정:
+    `perf_node_multi_linux_20260604_223654_node_multi_stream_small_current_recheck2_20260604.txt`
+    는 ws 64B 실패로 status=partial이었다.
+  - `MULTI_STREAM` native frame 후보:
+    `perf_node_multi_linux_20260604_224346_node_multi_stream_native_frame_probe_20260604.txt`
+    는 tcp 64B, tcp 1024B, ws 1024B 실패로 status=partial이었다. 실행 중
+    `double free or corruption (fasttop)`가 출력됐다.
+  - 안정 잔여 current Node:
+    `perf_node_multi_linux_20260604_224911_node_multi_pubsub_spot_residual_current_recheck_20260604.txt`
+    는 status=complete였다.
+  - 안정 잔여 current C:
+    `perf_c_multi_linux_20260604_224926_node_multi_pubsub_spot_residual_c_recheck_20260604.txt`
+    는 status=complete였다.
+- 결과:
+  - `DEALER_ROUTER tcp 131072B`는 Node 14.138 Kmsg/s, C 53.012 Kmsg/s로 26.7%에 그쳤다.
+    HWM 8 probe도 effective HWM이 64로 유지됐고 median 13.972 Kmsg/s라 개선되지 않았다.
+  - `MULTI_STREAM` native frame 후보는 complete가 아니고 corruption 로그가 있어 최종 코드에 남기지 않았다.
+  - `MULTI_PUBSUB tcp 65536B`는 Node 43.032 Kmsg/s, C 146.725 Kmsg/s로 29.3%가 되어 통과했다.
+  - `MULTI_SPOT_SENDSEND wss 256B`는 Node 47.415 Kops/s, C 167.631 Kops/s로 28.3%가 되어 통과했다.
+- 검증:
+  - native frame 후보 적용 중 `npm --prefix bindings/node run rebuild-native`: 통과
+  - `npm --prefix bindings/node run build`: 통과
+  - `node bindings/node/dist-tools/tests/optimization_guard.test.js`: 통과
+  - `node bindings/node/dist-tools/tests/socket_surface.test.js`: 통과
+  - 후보 제거 뒤에도 같은 build/guard/socket-surface 검증을 다시 통과했다.
+- 판정:
+  - 이번 라운드에서 Node multi 미달은 `12/156 (7.7%)`에서 `10/156 (6.4%)`로 줄었다.
+  - 남은 Node multi 미달은 `MULTI_STREAM` small 10개다.
+  - public stream handler 경계를 유지하면서 시도한 native frame 후보는 안정성 문제 때문에 기각한다.

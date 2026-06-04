@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { Module } from '@nestjs/common';
-import type { DynamicModule, InjectionToken, OnModuleDestroy, OnModuleInit, Provider } from '@nestjs/common';
+import type { DynamicModule, InjectionToken, ModuleMetadata, OnModuleDestroy, OnModuleInit, Provider } from '@nestjs/common';
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 import type {
   Type,
@@ -11,6 +11,7 @@ import type {
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
   ZLinkRequestContext,
+  ZLinkRouteSendContext,
   ZLinkRegistryOptions,
   ZLinkRegistryQueryClientOptions,
   ZLinkSpotRemoteAddressResolver
@@ -26,6 +27,19 @@ type RuntimeHostWithNestLifecycle = RuntimeHost & OnModuleInit & OnModuleDestroy
 export interface ZLinkModuleAsyncOptions {
   readonly useFactory: (...args: unknown[]) => ZLinkModuleOptions | Promise<ZLinkModuleOptions>;
   readonly inject?: readonly InjectionToken[];
+  readonly imports?: ModuleMetadata['imports'];
+}
+
+export interface ZLinkRegistryModuleAsyncOptions {
+  readonly useFactory: (...args: unknown[]) => ZLinkRegistryOptions | Promise<ZLinkRegistryOptions>;
+  readonly inject?: readonly InjectionToken[];
+  readonly imports?: ModuleMetadata['imports'];
+}
+
+export interface ZLinkRegistryQueryClientModuleAsyncOptions {
+  readonly useFactory: (...args: unknown[]) => ZLinkRegistryQueryClientOptions | Promise<ZLinkRegistryQueryClientOptions>;
+  readonly inject?: readonly InjectionToken[];
+  readonly imports?: ModuleMetadata['imports'];
 }
 
 export interface ZLinkNestChannelOptions extends ZLinkChannelOptions {
@@ -71,6 +85,7 @@ export class ZLinkModule {
 
     return {
       module: ZLinkModule,
+      imports: options.imports,
       providers: [
         registrationProvider,
         {
@@ -105,6 +120,19 @@ export class ZLinkRegistryModule {
       exports: providers.map(providerToken)
     };
   }
+
+  static forRootAsync(options: ZLinkRegistryModuleAsyncOptions): DynamicModule {
+    return createAsyncRegistryDynamicModule({
+      module: ZLinkRegistryModule,
+      options,
+      runtimeToken: ZLINK_REGISTRY_RUNTIME,
+      queryToken: ZLINK_REGISTRY_QUERY,
+      createRuntime: (registration: ZLinkRegistryOptions) =>
+        new framework.ZLinkRegistryRuntime({ registration }),
+      createQuery: (runtime: InstanceType<FrameworkModule['ZLinkRegistryRuntime']>) =>
+        new framework.DefaultZLinkRegistryQuery(runtime)
+    });
+  }
 }
 
 @Module({})
@@ -115,6 +143,20 @@ export class ZLinkRegistryQueryClientModule {
       providers: [{
         provide: ZLINK_REGISTRY_QUERY_CLIENT,
         useFactory: () => new framework.DefaultZLinkRegistryQueryClient({ registration: options })
+      }],
+      exports: [ZLINK_REGISTRY_QUERY_CLIENT]
+    };
+  }
+
+  static forRootAsync(options: ZLinkRegistryQueryClientModuleAsyncOptions): DynamicModule {
+    return {
+      module: ZLinkRegistryQueryClientModule,
+      imports: options.imports,
+      providers: [{
+        provide: ZLINK_REGISTRY_QUERY_CLIENT,
+        inject: options.inject === undefined ? undefined : [...options.inject],
+        useFactory: async (...args: unknown[]) =>
+          new framework.DefaultZLinkRegistryQueryClient({ registration: await options.useFactory(...args) })
       }],
       exports: [ZLINK_REGISTRY_QUERY_CLIENT]
     };
@@ -133,6 +175,35 @@ export function createZLinkDynamicModule(registration: ZLinkFrameworkRegistratio
     module: ZLinkModule,
     providers,
     exports: providers.map(providerToken)
+  };
+}
+
+function createAsyncRegistryDynamicModule(options: {
+  readonly module: Type;
+  readonly options: ZLinkRegistryModuleAsyncOptions;
+  readonly runtimeToken: InjectionToken;
+  readonly queryToken: InjectionToken;
+  readonly createRuntime: (registration: ZLinkRegistryOptions) => InstanceType<FrameworkModule['ZLinkRegistryRuntime']>;
+  readonly createQuery: (
+    runtime: InstanceType<FrameworkModule['ZLinkRegistryRuntime']>
+  ) => InstanceType<FrameworkModule['DefaultZLinkRegistryQuery']>;
+}): DynamicModule {
+  return {
+    module: options.module,
+    imports: options.options.imports,
+    providers: [
+      {
+        provide: options.runtimeToken,
+        inject: options.options.inject === undefined ? undefined : [...options.options.inject],
+        useFactory: async (...args: unknown[]) => options.createRuntime(await options.options.useFactory(...args))
+      },
+      {
+        provide: options.queryToken,
+        inject: [options.runtimeToken],
+        useFactory: options.createQuery
+      }
+    ],
+    exports: [options.runtimeToken, options.queryToken]
   };
 }
 
@@ -171,17 +242,37 @@ function createDiscoveredOptions(
   moduleRef: ModuleRef
 ): ZLinkFrameworkRegistrationOptions {
   const channels: Record<string, ZLinkChannelOptions> = {};
-  const providerTypes = discoverProviderTypes(discovery);
+  const providerRefs = discoverProviderRefs(discovery);
 
   for (const [channelName, channel] of Object.entries(options.channels ?? {})) {
     const { handlerGroups, handlerTypes, ...baseChannel } = channel;
-    const requestHandlers = [
-      ...(baseChannel.requestHandlers ?? []),
-      ...createDiscoveredRequestHandlers(providerTypes, handlerGroups, handlerTypes, moduleRef)
-    ];
-    channels[channelName] = requestHandlers.length === 0
-      ? baseChannel
-      : { ...baseChannel, requestHandlers };
+    const requestHandlers = createDiscoveredRequestHandlers(providerRefs, handlerGroups, handlerTypes, moduleRef);
+    const sendHandlers = createDiscoveredSendHandlers(providerRefs, handlerGroups, handlerTypes, moduleRef);
+    const routeMesh = baseChannel.routeMesh === undefined
+      ? undefined
+      : {
+          ...baseChannel.routeMesh,
+          requestHandlers: [
+            ...(baseChannel.routeMesh.requestHandlers ?? []),
+            ...requestHandlers
+          ],
+          sendHandlers: [
+            ...(baseChannel.routeMesh.sendHandlers ?? []),
+            ...sendHandlers
+          ]
+        };
+    const channelRequestHandlers = baseChannel.server === undefined
+      ? baseChannel.requestHandlers
+      : [
+          ...(baseChannel.requestHandlers ?? []),
+          ...requestHandlers
+        ];
+
+    channels[channelName] = {
+      ...baseChannel,
+      routeMesh,
+      requestHandlers: channelRequestHandlers
+    };
   }
 
   return {
@@ -190,51 +281,149 @@ function createDiscoveredOptions(
   };
 }
 
+interface DiscoveredNestProvider {
+  readonly handlerType: Type;
+  readonly token: InjectionToken;
+  readonly instance?: Record<string, unknown>;
+}
+
 function createDiscoveredRequestHandlers(
-  providerTypes: readonly Type[],
+  providerRefs: readonly DiscoveredNestProvider[],
   handlerGroups: readonly string[] | undefined,
   explicitHandlerTypes: readonly Type[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['requestHandlers']> {
-  if ((handlerGroups ?? []).length === 0 && (explicitHandlerTypes ?? []).length === 0) {
-    return [];
-  }
+  const descriptors = createDiscoveredHandlerDescriptors(providerRefs, handlerGroups, explicitHandlerTypes, 'request');
 
-  const knownTypes = [...new Set([...providerTypes, ...(explicitHandlerTypes ?? [])])];
-  const descriptors = framework.exposeZLinkHandlers(knownTypes, {
-    handlerGroups,
-    explicitHandlers: explicitHandlerTypes
-  }).filter((descriptor) => descriptor.metadata.kind === 'request');
-
-  return descriptors.map(({ handlerType, metadata }) => ({
-    packetName: metadata.packetName ?? handlerType.name,
+  return descriptors.map(({ ref, metadata }) => ({
+    packetName: metadata.packetName ?? ref.handlerType.name,
     handler: {
       async handle(payload: Buffer, context: ZLinkRequestContext) {
-        return await invokeDiscoveredHandler(moduleRef, handlerType, metadata, payload, context);
+        return await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
       }
     }
   }));
 }
 
-function discoverProviderTypes(discovery: DiscoveryService): Type[] {
-  return discovery.getProviders()
-    .flatMap((wrapper) => [wrapper.token, wrapper.metatype, wrapper.instance?.constructor])
-    .filter((value): value is Type => typeof value === 'function');
+function createDiscoveredSendHandlers(
+  providerRefs: readonly DiscoveredNestProvider[],
+  handlerGroups: readonly string[] | undefined,
+  explicitHandlerTypes: readonly Type[] | undefined,
+  moduleRef: ModuleRef
+): NonNullable<NonNullable<ZLinkChannelOptions['routeMesh']>['sendHandlers']> {
+  const descriptors = createDiscoveredHandlerDescriptors(providerRefs, handlerGroups, explicitHandlerTypes, 'send');
+
+  return descriptors.map(({ ref, metadata }) => ({
+    packetName: metadata.packetName ?? ref.handlerType.name,
+    handler: {
+      async handle(payload: Buffer, context: ZLinkRouteSendContext) {
+        await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
+      }
+    }
+  }));
+}
+
+function createDiscoveredHandlerDescriptors(
+  providerRefs: readonly DiscoveredNestProvider[],
+  handlerGroups: readonly string[] | undefined,
+  explicitHandlerTypes: readonly Type[] | undefined,
+  kind: string
+): Array<{ readonly ref: DiscoveredNestProvider; readonly metadata: ZLinkDecoratorMetadata }> {
+  if ((handlerGroups ?? []).length === 0 && (explicitHandlerTypes ?? []).length === 0) {
+    return [];
+  }
+
+  const refs = mergeExplicitProviderRefs(providerRefs, explicitHandlerTypes);
+  const refByType = new Map<Type, DiscoveredNestProvider>();
+  for (const ref of refs) {
+    if (!refByType.has(ref.handlerType)) {
+      refByType.set(ref.handlerType, ref);
+    }
+  }
+
+  const descriptors = framework.exposeZLinkHandlers([...refByType.keys()], {
+    handlerGroups,
+    explicitHandlers: explicitHandlerTypes
+  }).filter((descriptor) => descriptor.metadata.kind === kind);
+
+  const seen = new Set<string>();
+  const selected: Array<{ readonly ref: DiscoveredNestProvider; readonly metadata: ZLinkDecoratorMetadata }> = [];
+  for (const descriptor of descriptors) {
+    const ref = refByType.get(descriptor.handlerType);
+    if (ref === undefined) {
+      continue;
+    }
+    const packetName = descriptor.metadata.packetName ?? descriptor.handlerType.name;
+    const key = `${descriptor.metadata.kind}:${packetName}`;
+    if (seen.has(key)) {
+      throw new framework.ZLinkConfigurationException(
+        `Duplicate discovered handler '${descriptor.metadata.kind}:${packetName}'.`
+      );
+    }
+    seen.add(key);
+    selected.push({ ref, metadata: descriptor.metadata });
+  }
+  return selected;
+}
+
+function mergeExplicitProviderRefs(
+  providerRefs: readonly DiscoveredNestProvider[],
+  explicitHandlerTypes: readonly Type[] | undefined
+): DiscoveredNestProvider[] {
+  const refs = [...providerRefs];
+  for (const handlerType of explicitHandlerTypes ?? []) {
+    if (!refs.some((ref) => ref.handlerType === handlerType)) {
+      refs.push({ handlerType, token: handlerType });
+    }
+  }
+  return refs;
+}
+
+function discoverProviderRefs(discovery: DiscoveryService): DiscoveredNestProvider[] {
+  const refs: DiscoveredNestProvider[] = [];
+  const seen = new Set<string>();
+
+  for (const wrapper of discovery.getProviders()) {
+    const token = wrapper.token as InjectionToken | undefined;
+    if (token === undefined) {
+      continue;
+    }
+
+    const candidates = [wrapper.metatype, wrapper.instance?.constructor, token]
+      .filter((value): value is Type => typeof value === 'function');
+    for (const handlerType of new Set(candidates)) {
+      if (framework.readZLinkDecoratorMetadata(handlerType).length === 0) {
+        continue;
+      }
+      const key = `${String(token)}:${handlerType.name}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      refs.push({
+        handlerType,
+        token,
+        instance: wrapper.instance === undefined ? undefined : wrapper.instance as Record<string, unknown>
+      });
+    }
+  }
+
+  return refs;
 }
 
 async function invokeDiscoveredHandler(
   moduleRef: ModuleRef,
-  handlerType: Type,
+  ref: DiscoveredNestProvider,
   metadata: ZLinkDecoratorMetadata,
   payload: Buffer,
-  context: ZLinkRequestContext
+  context: ZLinkRequestContext | ZLinkRouteSendContext
 ): Promise<unknown> {
-  const instance = moduleRef.get(handlerType, { strict: false }) as Record<string, unknown>;
+  const instance = ref.instance ?? moduleRef.get(ref.token, { strict: false }) as Record<string, unknown>;
   const methodName = metadata.methodName ?? 'handle';
   const method = instance[methodName];
   if (typeof method !== 'function') {
     throw new framework.ZLinkConfigurationException(
-      `Discovered handler ${handlerType.name}.${methodName} is not callable.`
+      `Discovered handler ${ref.handlerType.name}.${methodName} is not callable.`
     );
   }
   return await method.call(instance, decodePayload(payload), context);

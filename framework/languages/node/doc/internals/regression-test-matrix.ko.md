@@ -114,9 +114,9 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | handler group mapping | `unit` | `@ZLinkHandlerGroup(...)` scan 만으로는 전역 dispatch 대상이 되지 않고, `channel.addHandlerGroup('...')`로 매핑한 그룹의 handler만 해당 채널에서 dispatch된다 |
 | handler exposure 없는 server channel | `unit` | scan 된 handler 가 있어도 `addHandlerGroup(...)` 또는 `add*Handler(...)`가 없으면 application handler 가 자동 노출되지 않는다 |
 | handler exposure 없는 server channel validation | `unit` | handler exposure 없는 server channel 은 `acceptSpotRoutesFromChannel(...)` 명시 참조가 없으면 startup validation 오류다 |
-| empty fanout subscriber validation | `unit` | publish handler exposure 없는 fanout subscriber 는 빈 수신자로 허용하지 않고 startup validation 오류다 |
+| fanout subscriber handler exposure | `unit` | 현재 NestJS registration 에는 publish handler exposure 표면이 없으므로 정식 dispatch 대상으로 검증하지 않는다 |
 | typed handler registration | `unit` | channel 의 `add*Handler(...)`로 직접 등록한 handler 는 group mapping 없이도 해당 channel 에 노출된다 |
-| channel type handler compatibility | `unit` | client-server 는 send/request, fanout subscriber 는 publish, route mesh 는 route send/request handler 만 허용하고 dealer mesh 는 handler registration 을 노출하지 않는다 |
+| channel type handler compatibility | `unit` | client-server 는 request, route mesh 는 route send/request handler 만 허용하고 dealer mesh 와 fanout subscriber 는 handler registration 을 노출하지 않는다 |
 | incompatible handler group mapping | `unit` | channel type 과 맞지 않는 handler 가 group 안에 섞이면 일부만 제외하지 않고 startup validation 오류로 실패한다 |
 | route mesh handler group mapping | `integration-single-process` | route mesh channel 의 `addHandlerGroup(...)`은 route send/request handler group 을 실제 routed dispatch 대상으로 노출한다 |
 | route mesh packet dispatcher | `integration-single-process` | route mesh `ROUTER` 로 들어온 routed send/request packet 을 handler 로 dispatch 하고 request reply/error 를 돌려주며 빈 probe frame 은 application handler 로 넘기지 않는다 |
@@ -127,7 +127,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | 다른 channel server에 같은 packet handler | `integration-single-process` | 같은 `kind + packetName`을 서로 다른 channel에 매핑해도 각 채널이 독립적으로 dispatch된다 |
 | 같은 그룹을 여러 채널에 매핑 | `integration-single-process` | 같은 `@ZLinkHandlerGroup('api')`를 두 채널에 `addHandlerGroup`으로 노출해도 채널마다 dispatch namespace가 독립이다 |
 | `addHandlerGroup`이 가리키는 그룹 없음 | `unit` | 매핑한 그룹에 handler가 하나도 없으면 startup validation 오류 |
-| event handler group mapping | `unit` | `channel.addHandlerGroup('...')`로 매핑한 그룹의 publish handler만 해당 subscriber channel에서 dispatch된다 |
+| event handler group mapping | `unit` | publish handler group mapping 은 subscriber handler registration 표면이 생긴 뒤 추가한다 |
 | HTTP(REST controller) handler에서 `ZLinkChannelClient` 사용 | `integration-single-process` | route handler와 동일한 NestJS DI[^di] 컨테이너에서 정상 동작 |
 | DI channel client host transport | `integration-single-process` | `ZLinkModule.forRoot(...)`가 노출한 `ZLinkChannelClient`가 framework runtime host 시작 이후 host-owned DEALER transport로 manual channel request/reply를 수행한다 |
 | channel handler에서 `ZLinkChannelClient` 사용 | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `ZLinkChannelClient`로 다른 channel 에 request 하고 reply 를 받는다 |

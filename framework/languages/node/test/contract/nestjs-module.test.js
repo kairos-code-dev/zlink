@@ -176,6 +176,151 @@ test('ZLinkModule.forRoot discovers annotated request handlers from NestJS provi
   await app.close();
 });
 
+test('ZLinkModule.forRoot discovers annotated handlers from custom NestJS provider tokens', async () => {
+  const PROFILE_HANDLER = Symbol('profile-handler');
+  class ProfileHandler {
+    async handle(request) {
+      return { profileId: request.profileId, source: 'custom-token' };
+    }
+  }
+  framework.ZLinkHandlerGroup('api')(ProfileHandler);
+  framework.ZLinkRequest('GetProfile')(ProfileHandler.prototype, 'handle', descriptor());
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot({
+      channels: {
+        api: {
+          server: { bind: 'tcp://127.0.0.1:7958' },
+          handlerGroups: ['api']
+        }
+      }
+    })],
+    providers: [{ provide: PROFILE_HANDLER, useClass: ProfileHandler }]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const handlers = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION).channels.get('api').requestHandlers;
+
+  assert.equal(handlers.length, 1);
+  assert.deepEqual(
+    await handlers[0].handler.handle(Buffer.from(JSON.stringify({ profileId: 'p1' })), {}),
+    { profileId: 'p1', source: 'custom-token' }
+  );
+
+  await app.close();
+});
+
+test('ZLinkModule.forRoot deduplicates useExisting annotated handler aliases', async () => {
+  const PROFILE_HANDLER = Symbol('profile-handler');
+  class ProfileHandler {
+    async handle(request) {
+      return { profileId: request.profileId };
+    }
+  }
+  framework.ZLinkHandlerGroup('api')(ProfileHandler);
+  framework.ZLinkRequest('GetProfile')(ProfileHandler.prototype, 'handle', descriptor());
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot({
+      channels: {
+        api: {
+          server: { bind: 'tcp://127.0.0.1:7959' },
+          handlerGroups: ['api']
+        }
+      }
+    })],
+    providers: [ProfileHandler, { provide: PROFILE_HANDLER, useExisting: ProfileHandler }]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const handlers = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION).channels.get('api').requestHandlers;
+
+  assert.equal(handlers.length, 1);
+
+  await app.close();
+});
+
+test('ZLinkModule.forRoot rejects duplicate discovered packet handlers for one channel', async () => {
+  class FirstProfileHandler {
+    async handle() {
+      return {};
+    }
+  }
+  class SecondProfileHandler {
+    async handle() {
+      return {};
+    }
+  }
+  for (const handlerType of [FirstProfileHandler, SecondProfileHandler]) {
+    framework.ZLinkHandlerGroup('api')(handlerType);
+    framework.ZLinkRequest('GetProfile')(handlerType.prototype, 'handle', descriptor());
+  }
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot({
+      channels: {
+        api: {
+          server: { bind: 'tcp://127.0.0.1:7960' },
+          handlerGroups: ['api']
+        }
+      }
+    })],
+    providers: [FirstProfileHandler, SecondProfileHandler]
+  })(HandlerModule);
+
+  await assert.rejects(
+    () => NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false }),
+    /Duplicate discovered handler 'request:GetProfile'/
+  );
+});
+
+test('ZLinkModule.forRoot discovers routeMesh send handlers from NestJS annotations', async () => {
+  class NoticeHandler {
+    constructor() {
+      this.notices = [];
+    }
+
+    async handle(message, context) {
+      this.notices.push({ message, sourceNodeRid: context.sourceNodeRid });
+    }
+  }
+  framework.ZLinkHandlerGroup('route-api')(NoticeHandler);
+  framework.ZLinkSend('RouteNotice')(NoticeHandler.prototype, 'handle', descriptor());
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot({
+      channels: {
+        route: {
+          routeMesh: {
+            bind: 'tcp://127.0.0.1:7964',
+            routingId: 'node-a'
+          },
+          handlerGroups: ['route-api']
+        }
+      }
+    })],
+    providers: [NoticeHandler]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const routeMesh = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION).channels.get('route').routeMesh;
+  const noticeHandler = app.get(NoticeHandler, { strict: false });
+
+  assert.equal(routeMesh.sendHandlers.length, 1);
+  assert.equal(routeMesh.sendHandlers[0].packetName, 'RouteNotice');
+  await routeMesh.sendHandlers[0].handler.handle(
+    Buffer.from(JSON.stringify({ text: 'hello' })),
+    { sourceNodeRid: 'node-b', sourcePeerRid: 'peer-b', channelName: 'route', packetName: 'RouteNotice' }
+  );
+  assert.deepEqual(noticeHandler.notices, [{ message: { text: 'hello' }, sourceNodeRid: 'node-b' }]);
+
+  await app.close();
+});
+
 test('ZLinkModule.forRoot with handler discovery exposes capability providers through NestJS context', async () => {
   class ActorFactory {
     async create(actorId, context) {
@@ -772,6 +917,37 @@ test('ZLinkModule.forRootAsync exposes capability providers through the real Nes
   assert.equal((await spotManager.create(AsyncSpot)).created, true);
   assert.equal((await actorManager.getOrCreate('p1', 'player')).actorId, 'p1');
   assert.equal(app.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }) instanceof framework.DefaultZLinkSpotPublisherClient, true);
+  await app.close();
+});
+
+test('ZLinkModule.forRootAsync resolves factory dependencies from imported NestJS modules', async () => {
+  const CONFIG = Symbol('config');
+  class ConfigModule {}
+  Module({
+    providers: [{ provide: CONFIG, useValue: { channelName: 'api', bind: 'tcp://127.0.0.1:7961' } }],
+    exports: [CONFIG]
+  })(ConfigModule);
+
+  const module = nestjs.ZLinkModule.forRootAsync({
+    imports: [ConfigModule],
+    inject: [CONFIG],
+    async useFactory(config) {
+      return {
+        channels: {
+          [config.channelName]: {
+            server: { bind: config.bind }
+          }
+        }
+      };
+    }
+  });
+  class AsyncModule {}
+  Module({ imports: [module] })(AsyncModule);
+
+  const app = await NestFactory.createApplicationContext(AsyncModule, { logger: false, abortOnError: false });
+  const registration = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION, { strict: false });
+
+  assert.equal(registration.channels.get('api').server.bind, 'tcp://127.0.0.1:7961');
   await app.close();
 });
 

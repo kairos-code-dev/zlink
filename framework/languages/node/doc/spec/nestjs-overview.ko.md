@@ -154,8 +154,10 @@ export class PricingModule {}
   imports: [
     ZLinkRegistryModule.forRoot({
       registryId: 1,
-      bind: { pub: 'tcp://0.0.0.0:7401', router: 'tcp://0.0.0.0:7402' },
-      heartbeat: { intervalMs: 1_000, timeoutMs: 5_000 },
+      pubEndpoint: 'tcp://0.0.0.0:7401',
+      routerEndpoint: 'tcp://0.0.0.0:7402',
+      heartbeatIntervalMs: 1_000,
+      heartbeatTimeoutMs: 5_000,
       peers: ['tcp://registry-2.internal:7402'],
     }),
   ],
@@ -168,12 +170,16 @@ export class RegistryModule {}
 @Module({
   imports: [
     ZLinkRegistryQueryClientModule.forRoot({
-      connect: 'tcp://registry-1.internal:7402',
+      endpoint: 'tcp://registry-1.internal:7402',
     }),
   ],
 })
 export class TopologyDashboardModule {}
 ```
+
+Registry module 과 Registry query client module 도 `forRootAsync({ imports,
+inject, useFactory })` 를 지원한다. 설정 provider 에서 endpoint 를 읽어야 할 때
+NestJS 표준 async module 패턴과 같은 방식으로 쓴다.
 
 > embedded registry 와 framework runtime 이 같은 프로세스에 공존할 때의 시동·
 > 종료 순서(registry 먼저 시동, framework 뒤 — 종료는 그 역순)는 §4 와

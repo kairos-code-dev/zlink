@@ -381,7 +381,10 @@ export interface ZLinkPublishHandler<TMessage> {
 request / send / publish 세 표면이 같은 패턴으로 읽힌다. topic 이나 source 가 필요하면
 별도 handler 이름을 늘리지 않고 `ZLinkPublishContext` 에서 읽는다.
 
-interface 방식과 `@ZLinkPublish()` decorator 방식을 모두 지원한다.
+interface 와 `@ZLinkPublish()` decorator metadata 는 contract 에 남겨 둔다. 다만
+현재 NestJS module 자동 discovery 는 fanout subscriber publish handler 를 registration
+에 연결하지 않는다. 이 기능은 subscriber runtime 에 handler registration 슬롯이 추가된
+뒤 정식 사용 계약으로 올린다.
 
 ### 4.3.1 SPOT lifecycle handler
 
@@ -2267,8 +2270,13 @@ export function ZLinkPublish(packetName?: string): MethodDecorator;
 
 이름을 `Event` 가 아니라 `Publish` 로 둔 까닭은 producer 동사(`ZLinkFanoutClient.publish(...)`)에
 맞추기 위해서다. 그래야 `@ZLinkRequest` / `@ZLinkSend` / `@ZLinkPublish` 세 표면이 같은 패턴으로
-읽힌다. publish handler 도 모든 subscriber channel 에 전역 자동 노출되지 않는다. 노출할 그룹은
-`addHandlerGroup(...)` 으로 명시한다.
+읽힌다.
+
+현재 NestJS module 자동 discovery 는 `@ZLinkRequest` 와 routeMesh `@ZLinkSend` 를
+registration 에 연결한다. fanout subscriber publish handler registration 표면은 아직
+정식 구현되어 있지 않으므로, `@ZLinkPublish` 는 metadata contract 로만 존재한다.
+이 기능을 사용 계약으로 승격하려면 subscriber runtime 에 publish handler registration
+슬롯을 먼저 추가해야 한다.
 
 ### 11.4 SPOT
 
@@ -2296,7 +2304,8 @@ decorator 기반 handler 의 메서드 시그니처 규칙:
 - 첫 인자: decoded payload 타입
 - 두 번째 인자: context 타입(생략 가능)
 - request handler 반환: `Promise<T>`
-- send/publish handler 반환: `Promise<void>`
+- send handler 반환: `Promise<void>`
+- publish handler 반환: `Promise<void>` (`@ZLinkPublish` 자동 등록은 아직 미지원)
 
 framework scanner 와 runtime invoker 는 반환 타입을 등록 단계에서 먼저 판정한다. 허용되지
 않는 반환형은 startup validation 오류다(C# 의 `Task`/`Task<T>`/`ValueTask`/`ValueTask<T>` 구분에

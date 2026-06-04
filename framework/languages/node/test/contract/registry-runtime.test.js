@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { Module } = require('@nestjs/common');
+const { NestFactory } = require('@nestjs/core');
 
 const framework = require('../../packages/framework/dist');
 const nestjs = require('../../packages/nestjs/dist');
@@ -115,6 +117,70 @@ test('registry modules expose runtime query and remote query client providers', 
   assert.equal(runtime instanceof framework.ZLinkRegistryRuntime, true);
   assert.equal(query instanceof framework.DefaultZLinkRegistryQuery, true);
   assert.equal(typeof client.useFactory, 'function');
+});
+
+test('registry modules support NestJS async imports inject and lifecycle', async () => {
+  const REGISTRY_CONFIG = Symbol('registry-config');
+  class ConfigModule {}
+  Module({
+    providers: [{
+      provide: REGISTRY_CONFIG,
+      useValue: {
+        pubEndpoint: 'tcp://127.0.0.1:7962',
+        routerEndpoint: 'tcp://127.0.0.1:7963'
+      }
+    }],
+    exports: [REGISTRY_CONFIG]
+  })(ConfigModule);
+
+  class RegistryModule {}
+  Module({
+    imports: [
+      nestjs.ZLinkRegistryModule.forRootAsync({
+        imports: [ConfigModule],
+        inject: [REGISTRY_CONFIG],
+        useFactory: (config) => config
+      })
+    ]
+  })(RegistryModule);
+
+  const app = await NestFactory.createApplicationContext(RegistryModule, { logger: false, abortOnError: false });
+  const runtime = app.get(nestjs.ZLINK_REGISTRY_RUNTIME, { strict: false });
+  const query = app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+
+  assert.equal(runtime instanceof framework.ZLinkRegistryRuntime, true);
+  assert.equal(query instanceof framework.DefaultZLinkRegistryQuery, true);
+  assert.equal(runtime.isStarted, true);
+
+  await app.close();
+  assert.equal(runtime.isStarted, false);
+});
+
+test('registry query client module supports NestJS async imports and inject', async () => {
+  const QUERY_CONFIG = Symbol('query-config');
+  class ConfigModule {}
+  Module({
+    providers: [{ provide: QUERY_CONFIG, useValue: { endpoint: 'tcp://registry:5551' } }],
+    exports: [QUERY_CONFIG]
+  })(ConfigModule);
+
+  class QueryClientModule {}
+  Module({
+    imports: [
+      nestjs.ZLinkRegistryQueryClientModule.forRootAsync({
+        imports: [ConfigModule],
+        inject: [QUERY_CONFIG],
+        useFactory: (config) => config
+      })
+    ]
+  })(QueryClientModule);
+
+  const app = await NestFactory.createApplicationContext(QueryClientModule, { logger: false, abortOnError: false });
+  const client = app.get(nestjs.ZLINK_REGISTRY_QUERY_CLIENT, { strict: false });
+
+  assert.equal(client instanceof framework.DefaultZLinkRegistryQueryClient, true);
+
+  await app.close();
 });
 
 test('codec registry builder tracks dotnet named codecs and custom serializers', () => {

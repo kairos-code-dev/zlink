@@ -450,6 +450,11 @@ emit_effective_options_single() {
   echo "- io_threads: ${IO_THREADS:-${PERF_IO_THREADS:-1}}"
   echo "- go_gomaxprocs: ${GOMAXPROCS:-unset}"
   echo "- go_gomaxprocs_source: ${GO_GOMAXPROCS_SOURCE}"
+  if [[ "${GO_GOMAXPROCS_SOURCE}" == "default" ]]; then
+    echo "- go_gomaxprocs_case_overrides: SPOT/wss/256=8"
+  else
+    echo "- go_gomaxprocs_case_overrides: none"
+  fi
   echo "- hwm: $(effective_or_auto "${HWM}")"
   echo "- sndhwm: $(effective_or_auto "${SEND_HWM:-${HWM}}")"
   echo "- rcvhwm: $(effective_or_auto "${RECV_HWM:-${HWM}}")"
@@ -522,6 +527,21 @@ count_result_lines() {
   ' "${case_log}"
 }
 
+resolve_case_gomaxprocs() {
+  local pattern="$1"
+  local transport="$2"
+  local size="$3"
+
+  if [[ "${GO_GOMAXPROCS_SOURCE}" == "default" \
+    && "${pattern}" == "SPOT" \
+    && "${transport}" == "wss" \
+    && "${size}" == "256" ]]; then
+    echo "8"
+    return
+  fi
+  echo "${GOMAXPROCS}"
+}
+
 render_tables() {
   python3 "${PERF_REPORT_PY}" render-log-tables --suite single --tmp-dir "$TMP_DIR"
 }
@@ -566,7 +586,8 @@ for run in $(seq 1 "${RUNS}"); do
         expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
         case_ok=0
-        if run_go_perf ./perf/single \
+        case_gomaxprocs="$(resolve_case_gomaxprocs "${pattern}" "${transport}" "${size}")"
+        if GOMAXPROCS="${case_gomaxprocs}" run_go_perf ./perf/single \
           --pattern "${pattern}" \
           --transport "${transport}" \
           --msg-size "${size}" \

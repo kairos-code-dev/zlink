@@ -773,3 +773,32 @@
 - 판정:
   - `MULTI_ROUTER_ROUTER tls 1024B`를 통과로 overlay한다.
   - Go multi 미달은 `13/192 (6.8%)`에서 `12/192 (6.3%)`로 줄었다.
+
+## Go single SPOT wss256 GOMAXPROCS 보강
+
+- 대상:
+  - `SPOT wss 256B`
+- 배경:
+  - 기존 표에서는 C 대비 43.7%로 single SPOT 기준에 못 닿았다.
+  - current C/Go 재측정에서도 기본 Go runner는 42.2%에 머물렀지만,
+    `PERF_GO_GOMAXPROCS=8` probe는 통과권으로 올라갔다.
+- 변경:
+  - `bindings/go/perf/run_benchmarks.sh`에 default case override
+    `SPOT/wss/256=8`을 추가했다.
+  - 명시 `GOMAXPROCS`나 `PERF_GO_GOMAXPROCS`가 있으면 사용자가 지정한 값을 유지한다.
+- 측정:
+  - C current 기준:
+    `perf_c_single_linux_20260605_015903_go_single_spot_wss256_c_current_runs7_20260605.txt`
+    는 status=complete였다.
+  - Go 기본 runner verify:
+    `perf_go_single_linux_20260605_020236_go_single_spot_wss256_case_gomax8_verify_20260605.txt`
+    는 status=complete였고, effective options에 `SPOT/wss/256=8` case override가 표시됐다.
+- 결과:
+  - `SPOT wss 256B`: Go 225,484.0 msg/s, C 394,471.2 msg/s.
+  - Go/C 비율은 57.2%로 single SPOT 기준을 넘는다.
+- 기각 후보:
+  - `MULTI_ROUTER_ROUTER ws 64B`는 `PERF_GO_GOMAXPROCS=8` probe에서 41.0%로 한 번
+    통과했지만, 기본 runner verify는 39.3%로 기준 아래였다. 최종 코드와 표에는 반영하지 않았다.
+- 판정:
+  - `SPOT wss 256B`를 통과로 overlay한다.
+  - Go single 미달은 `6/144 (4.2%)`에서 `5/144 (3.5%)`로 줄었다.

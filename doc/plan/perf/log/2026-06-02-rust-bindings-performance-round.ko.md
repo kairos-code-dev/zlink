@@ -175,3 +175,39 @@ Complete 측정:
 - `SPOT tcp/ws/tls 1024B`는 direct-message/no-fill/recv storage 후보 뒤에도 기준에 못 닿았다.
 - Rust single은 10% gate를 넘지만, 현재 public contract와 perf 원칙을 지키는 추가 내부 후보가
   확인되지 않아 잔여 항목은 미달로 유지한다.
+
+## Rust single current C/Rust 제한 재측정 보강
+
+- 대상:
+  - single `PUBSUB` small
+  - single `SPOT 1024B`
+  - single routed large 일부
+- 배경:
+  - 이전 Rust single 표는 2026-06-02 full/table transport 기준이라, 현재 core runtime과 C 기준이
+    바뀐 뒤 실제 잔여를 다시 확인할 필요가 있었다.
+  - code path는 바꾸지 않고 current C/Rust complete report만 비교했다.
+- 측정:
+  - PUBSUB C: `perf_c_single_linux_20260604_205634_rust_single_pubsub_small_c_recheck_20260604.txt`
+  - PUBSUB Rust: `perf_rust_single_linux_20260604_205723_rust_single_pubsub_small_recheck_20260604.txt`
+  - SPOT 1024B C: `perf_c_single_linux_20260604_211212_rust_single_spot1024_c_recheck_20260604.txt`
+  - SPOT 1024B Rust: `perf_rust_single_linux_20260604_211243_rust_single_spot1024_recheck_20260604.txt`
+  - routed large C: `perf_c_single_linux_20260604_205808_rust_single_routed_large_c_recheck_20260604.txt`
+  - routed large Rust 단일 확인: `perf_rust_single_linux_20260604_211316_rust_single_dr_tcp65536_recheck_20260604.txt`
+- 결과:
+  - `PUBSUB ws 64B`: 86.3%로 통과.
+  - `PUBSUB tls 256B`: 91.1%로 통과.
+  - `PUBSUB tcp 64B`: 77.7%로 아직 미달.
+  - `PUBSUB tls 64B`: 79.7%로 기준에 근접했지만 아직 미달.
+  - `SPOT tcp 1024B`: 85.1%로 통과.
+  - `SPOT ws 1024B`: 140.1%로 통과.
+  - `SPOT tls 1024B`: 138.7%로 통과.
+  - `DEALER_ROUTER tcp 65536B`: Rust 13.951 Kmsg/s, current C 100.321 Kmsg/s 대비
+    13.9%라 여전히 크게 미달한다.
+- 추가 관찰:
+  - routed large 전체 Rust 재측정은 ws/tcp 대형 조합에서 timeout 경계까지 오래 걸려 report 없이
+    중단했다. complete evidence가 필요한 셀은 단일 조합으로 나눠 재측정한다.
+  - current C 기준 재측정만으로 Rust single 미달은 `25/144 (17.4%)`에서 `20/144 (13.9%)`로 줄었다.
+- 판정:
+  - 이번 보강은 코드 변경 없이 current baseline 반영으로 통과한 셀만 main 문서에 overlay한다.
+  - routed large는 public `Received` envelope와 routed receive path 비용이 여전히 지배적이므로,
+    다음 후보는 public contract를 훼손하지 않는 범위에서 단일 조합으로 검증한다.

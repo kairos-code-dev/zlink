@@ -1,14 +1,17 @@
 package systems.zlink.samples.kotlin.bingo.shared.configuration
 
 object SampleTopology {
-    const val RegistryPubEndpoint: String = "tcp://127.0.0.1:47101"
-    const val RegistryRouterEndpoint: String = "tcp://127.0.0.1:47102"
-    const val ApiChannelEndpoint: String = "tcp://127.0.0.1:47103"
-    const val PlayChannelEndpoint: String = "tcp://127.0.0.1:47104"
-    const val SessionSpotEndpoint: String = "tcp://127.0.0.1:47105"
-    const val SessionRouterEndpoint: String = "tcp://127.0.0.1:47106"
-    const val PlaySpotEndpoint: String = "tcp://127.0.0.1:47110"
-    const val PlaySpotRouterEndpoint: String = "tcp://127.0.0.1:47111"
-    const val StreamEndpoint: String = "tcp://127.0.0.1:47112"
+    val RegistryPubEndpoint: String = property("registryPubEndpoint", "tcp://127.0.0.1:47101")
+    val RegistryRouterEndpoint: String = property("registryRouterEndpoint", "tcp://127.0.0.1:47102")
+    val ApiChannelEndpoint: String = property("apiChannelEndpoint", "tcp://127.0.0.1:47103")
+    val PlayChannelEndpoint: String = property("playChannelEndpoint", "tcp://127.0.0.1:47104")
+    val SessionSpotEndpoint: String = property("sessionSpotEndpoint", "tcp://127.0.0.1:47105")
+    val SessionRouterEndpoint: String = property("sessionRouterEndpoint", "tcp://127.0.0.1:47106")
+    val PlaySpotEndpoint: String = property("playSpotEndpoint", "tcp://127.0.0.1:47110")
+    val PlaySpotRouterEndpoint: String = property("playSpotRouterEndpoint", "tcp://127.0.0.1:47111")
+    val StreamEndpoint: String = property("streamEndpoint", "tcp://127.0.0.1:47112")
     const val SessionPort: Int = 29100
+
+    private fun property(name: String, defaultValue: String): String =
+        System.getProperty("zlink.samples.bingo.$name", defaultValue)
 }

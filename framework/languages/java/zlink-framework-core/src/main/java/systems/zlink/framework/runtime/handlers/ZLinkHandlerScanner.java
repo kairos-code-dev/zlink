@@ -54,9 +54,6 @@ public final class ZLinkHandlerScanner {
                 continue;
             }
             Set<String> groups = resolveGroups(candidate);
-            if (groups.isEmpty()) {
-                continue;
-            }
             addMethodHandlers(handlers, candidate, groups);
             addInterfaceHandler(handlers, candidate, groups, ZLinkSendHandler.class,
                 ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.SEND);

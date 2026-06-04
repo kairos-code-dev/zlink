@@ -1,10 +1,13 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration
 
 object SampleTopology {
-    const val RegistryPubEndpoint: String = "tcp://127.0.0.1:19191"
-    const val RegistryRouterEndpoint: String = "tcp://127.0.0.1:19192"
-    const val PlayRouteEndpoint: String = "tcp://127.0.0.1:47520"
-    const val ApiEndpoint: String = "tcp://127.0.0.1:47503"
-    const val PlayEndpoint: String = "tcp://127.0.0.1:47504"
-    const val SessionEndpoint: String = "tcp://127.0.0.1:47512"
+    val RegistryPubEndpoint: String = property("registryPubEndpoint", "tcp://127.0.0.1:19191")
+    val RegistryRouterEndpoint: String = property("registryRouterEndpoint", "tcp://127.0.0.1:19192")
+    val PlayRouteEndpoint: String = property("playRouteEndpoint", "tcp://127.0.0.1:47520")
+    val ApiEndpoint: String = property("apiEndpoint", "tcp://127.0.0.1:47503")
+    val PlayEndpoint: String = property("playEndpoint", "tcp://127.0.0.1:47504")
+    val SessionEndpoint: String = property("sessionEndpoint", "tcp://127.0.0.1:47512")
+
+    private fun property(name: String, defaultValue: String): String =
+        System.getProperty("zlink.samples.tictactoe.sessiongateway.$name", defaultValue)
 }

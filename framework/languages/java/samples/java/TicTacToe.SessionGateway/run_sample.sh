@@ -24,17 +24,42 @@ wait_port() {
   return 1
 }
 
-gradle :Server:Registry:run --quiet &
-pids+=("$!")
-wait_port 19182
-gradle :Server:Api:run --quiet &
-pids+=("$!")
-wait_port 47403
-gradle :Server:Play:run --quiet &
-pids+=("$!")
-wait_port 47404
-gradle :Server:Session:run --quiet &
-pids+=("$!")
-wait_port 47412
+reserve_ports() {
+  python3 - <<'PY'
+import socket
+reserved = []
+ports = []
+try:
+    for _ in range(6):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        reserved.append(sock)
+        ports.append(str(sock.getsockname()[1]))
+    print(" ".join(ports))
+finally:
+    for sock in reserved:
+        sock.close()
+PY
+}
 
-gradle :Client:run --quiet
+gradle_run() {
+  gradle --no-daemon "$@" --quiet
+}
+
+read -r registry_pub_port registry_router_port play_route_port api_port play_port session_port < <(reserve_ports)
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.tictactoe.sessiongateway.registryPubEndpoint=tcp://127.0.0.1:${registry_pub_port} -Dzlink.samples.tictactoe.sessiongateway.registryRouterEndpoint=tcp://127.0.0.1:${registry_router_port} -Dzlink.samples.tictactoe.sessiongateway.playRouteEndpoint=tcp://127.0.0.1:${play_route_port} -Dzlink.samples.tictactoe.sessiongateway.apiEndpoint=tcp://127.0.0.1:${api_port} -Dzlink.samples.tictactoe.sessiongateway.playEndpoint=tcp://127.0.0.1:${play_port} -Dzlink.samples.tictactoe.sessiongateway.sessionEndpoint=tcp://127.0.0.1:${session_port}"
+
+gradle_run :Server:Registry:run &
+pids+=("$!")
+wait_port "${registry_router_port}"
+gradle_run :Server:Api:run &
+pids+=("$!")
+wait_port "${api_port}"
+gradle_run :Server:Play:run &
+pids+=("$!")
+wait_port "${play_port}"
+gradle_run :Server:Session:run &
+pids+=("$!")
+wait_port "${session_port}"
+
+gradle_run :Client:run

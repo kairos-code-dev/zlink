@@ -1,14 +1,14 @@
 # SPOT Topology Redesign Rollout Plan
 
-이 문서는 구현 순서와 검증 게이트를 정리한 **실행 계획 문서**다.
+이 문서는 구현 순서와 검증 게이트를 정리한 실행 계획 문서다.
 설계 자체는 아래 draft 문서를 기준으로 삼는다.
 
 - [SPOT Topic / Routed Topology Redesign Draft](../../draft/spot-topology-redesign.ko.md)
 
-이 plan의 목적은 "무엇을 만들 것인가"를 다시 설명하는 것이 아니라, 그 설계를
-**사용자 개입 없이 끝까지 반영하는 순서와 통과 조건**을 고정하는 것이다.
+이 plan은 "무엇을 만들 것인가"를 다시 설명하지 않는다. 그 설계를
+사용자 개입 없이 끝까지 반영하는 순서와 통과 조건을 고정하는 것이 목적이다.
 
-핵심 원칙은 아래와 같다.
+핵심 원칙은 다음과 같다.
 
 1. 먼저 core를 바꾼다.
 2. draft 문서 기준으로 core 반영 여부를 반복 리뷰한다.
@@ -20,11 +20,11 @@
 
 ## 1. core 변경 뒤 문서 적용 리뷰 게이트
 
-이번 작업은 pub/sub, routed, discovery, HWM, queue 정책을 함께 바꾸기 때문에,
+이번 작업은 pub/sub, routed, discovery, HWM, queue 정책을 함께 바꾼다. 그래서
 core 코드가 일부만 바뀐 상태에서 bindings나 정식 문서로 넘어가면 빠진 항목을
 놓치기 쉽다.
 
-따라서 구현 순서는 아래처럼 고정한다.
+따라서 구현 순서를 다음처럼 고정한다.
 
 1. 먼저 core를 변경한다.
 2. core 빌드와 core 테스트를 다시 돌린다.
@@ -40,7 +40,7 @@ core 코드가 일부만 바뀐 상태에서 bindings나 정식 문서로 넘어
 
 ### 1.1 리뷰 체크 항목
 
-core 변경 뒤 review에서는 최소 아래를 같이 확인해야 한다.
+core 변경 뒤 review에서는 최소 아래를 같이 확인한다.
 
 - `core/include/zlink.h`
 - `core/include/zlink_enum.h`
@@ -51,7 +51,7 @@ core 변경 뒤 review에서는 최소 아래를 같이 확인해야 한다.
 - local delivery queue hard limit 구현
 - snapshot / query / perf detail 노출
 
-그리고 각 review 반복에서 아래를 기록해야 한다.
+그리고 각 review 반복에서 아래를 기록한다.
 
 - 이번 반복에서 확인한 문서 항목
 - 실제 반영된 코드 위치
@@ -66,12 +66,12 @@ core 변경 뒤 review에서는 최소 아래를 같이 확인해야 한다.
 
 문서 항목이 모두 core에 반영된 뒤에도 바로 bindings나 정식 문서 단계로 넘어가지
 않는다. 그 다음에는 `core/src` 전체를 대상으로 POSD 기반 리팩토링 단계를
-수행해야 한다.
+수행한다.
 
 이 단계의 목적은 "기능이 들어갔다"에서 멈추지 않고, 새 구조가 실제로도 변경
 파급이 낮고 책임이 분명한 형태로 정리되었는지 확인하는 것이다.
 
-범위는 아래처럼 고정한다.
+범위는 다음처럼 고정한다.
 
 - `core/src/api/`
 - `core/src/core/`
@@ -90,7 +90,7 @@ core 변경 뒤 review에서는 최소 아래를 같이 확인해야 한다.
    - 인터페이스는 단순한데 구현 복잡도를 내부에서 충분히 흡수하는가
 2. 정보 은닉
    - peer wiring, aggregate subscription, routed envelope, HWM 적용 규칙 같은
-     설계 지식이 한 모듈 안에 가둬져 있는가
+     설계 지식이 한 모듈 안에 갇혀 있는가
 3. 복잡성을 아래로
    - 호출자가 알아야 할 내부 socket 평면 지식이 불필요하게 새어 나오지 않는가
 4. 오류를 정의로 없애기
@@ -173,9 +173,9 @@ core 구현 반영과 POSD 기반 리팩토링이 끝난 뒤에는 최종 검증
 
 ## 4. 정식 문서 반영 게이트
 
-전체 검증 게이트를 통과한 뒤에만 정식 문서를 수정한다. 이 순서를 강제하는 이유는
-draft 설계를 먼저 정식 문서에 섞어 넣으면, 아직 검증되지 않은 계약과 설명이
-공개 문서에 들어가 버리기 때문이다.
+전체 검증 게이트를 통과한 뒤에만 정식 문서를 수정한다. 이 순서를 강제하는 이유가
+있다. draft 설계를 먼저 정식 문서에 섞어 넣으면, 아직 검증되지 않은 계약과 설명이
+공개 문서에 들어가 버린다.
 
 이 단계에서는 아래 문서를 순서대로 반영한다.
 
@@ -184,7 +184,7 @@ draft 설계를 먼저 정식 문서에 섞어 넣으면, 아직 검증되지 �
 3. `doc/guide/`
 4. `doc/spec/bindings/`
 
-특히 `doc/spec/bindings/언어별/` 문서는 반드시 최신화해야 한다.
+특히 `doc/spec/bindings/언어별/` 문서는 반드시 최신화한다.
 
 - 새 enum 이름
 - 새 HWM 옵션 이름
@@ -199,9 +199,9 @@ draft 설계를 먼저 정식 문서에 섞어 넣으면, 아직 검증되지 �
 ## 5. bindings native 동기화 게이트
 
 정식 문서를 반영한 뒤에는 각 바인딩의 native 폴더를 최신 core 기준으로
-동기화해야 한다. 이 단계는 바인딩 수정 전에 먼저 수행해야 한다.
+동기화한다. 이 단계는 바인딩 수정 전에 먼저 수행한다.
 
-순서는 아래와 같다.
+순서는 다음과 같다.
 
 1. `core/include/` 공개 헤더 최신화 확인
 2. `core/build` runtime 최신화 확인
@@ -223,7 +223,7 @@ draft 설계를 먼저 정식 문서에 섞어 넣으면, 아직 검증되지 �
 
 ## 6. bindings 라이브러리 반영 게이트
 
-native 동기화가 끝난 뒤에는 각 바인딩 라이브러리를 새 계약에 맞춰 수정해야 한다.
+native 동기화가 끝난 뒤에는 각 바인딩 라이브러리를 새 계약에 맞춰 수정한다.
 
 이 단계에서 최소 아래를 반영한다.
 
@@ -234,15 +234,15 @@ native 동기화가 끝난 뒤에는 각 바인딩 라이브러리를 새 계약
 - discovery / peer 연결 의미 변화 반영
 - sample / helper / wrapper 코드 최신화
 
-특히 `doc/spec/bindings/언어별/` 문서와 실제 바인딩 public surface가 서로 다르면
-안 된다. 문서와 라이브러리를 같이 맞춰야 한다.
+특히 `doc/spec/bindings/언어별/` 문서와 실제 바인딩 public surface가 서로 달라서는
+안 된다. 문서와 라이브러리를 같이 맞춘다.
 
 ---
 
 ## 7. bindings 검증 게이트
 
 각 바인딩 라이브러리를 반영한 뒤에는 언어별로 다시 빌드, 테스트, sample, perf
-검증을 수행해야 한다.
+검증을 수행한다.
 
 이 단계는 언어별로 아래 순서를 따른다.
 
@@ -683,7 +683,7 @@ native 동기화가 끝난 뒤에는 각 바인딩 라이브러리를 새 계약
 - 실패 원인:
   - Python과 Rust의 `Spot.recv_routed()` wrapper가 router-origin routed request의
     빈 source spot route id를 null로 받을 수 있는데도 항상 spot-to-spot request로
-    해석했다. 이 때문에 Python responder thread는 예외로 죽고, Rust는 null
+    해석했다. 그래서 Python responder thread는 예외로 죽고, Rust는 null
     역참조 또는 잘못된 reply context를 만들 수 있었다.
   - Rust single `SPOT_REQREP` perf가 request contract가 아니라 one-way
     `send_to_spot` 뒤 router `recv`를 기다리는 예전 경로를 사용했다.

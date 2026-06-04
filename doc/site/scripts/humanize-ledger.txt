@@ -135,3 +135,10 @@ doc/plan/service/service-control-path-architecture.ko.md
 doc/plan/spot-actor-dispatch-implementation-plan.ko.md
 doc/plan/spot-actor-dispatch/join-entry-spot-api-rollout-plan.ko.md
 doc/plan/spot-entry-transport-queues-implementation-plan.ko.md
+doc/plan/spot-refactor/TIMER_POLLER_SPEC.ko.md
+doc/plan/spot-refactor/spot-topology-redesign-rollout-plan.ko.md
+doc/plan/spot-refactor/zmp-request-reply-spot-migration-plan.ko.md
+doc/plan/stream-perf/README.ko.md (skip:too-short)
+doc/plan/stream-perf/stream-socket-performance-improvement-plan.ko.md
+doc/plan/thread-safe/thread-safe-socket-plan.ko.md
+doc/plan/thread-safe/thread-safe-socket-status.ko.md

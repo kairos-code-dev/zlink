@@ -45,7 +45,7 @@
 
 - raw `RCVMORE` 전용 runtime read 경합 회귀 추가
   현재 blocker: 이 build surface에서는 recv API export/link 경로가 노출되지 않아
-  `RCVMORE` 경합 회귀를 public test로 바로 추가하기 어렵다.
+  `RCVMORE` 경합 회귀를 public test로 곧바로 추가하기 어렵다.
 - gateway attach/query ordering full matrix
 - discovery-side full control-path ordering matrix
 - monitor reopen/snapshot, parent-child open/destroy 세부 matrix

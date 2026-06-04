@@ -13,12 +13,12 @@
   [`doc/plan/thread-safe/thread-safe-socket-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/thread-safe/thread-safe-socket-plan.ko.md)
 
 이 문서는 `STREAM` socket의 user-visible API를 다시 설계하는 문서가 아니다.
-목표는 `STREAM`의 내부 data plane을 더 깊은 모듈로 정리해서, 공개 계약은
-단순하게 유지하면서도 실제 처리량을 올리는 것이다.
+목표는 `STREAM`의 내부 data plane을 더 깊은 모듈로 정리해, 공개 계약은
+단순하게 유지하면서도 실제 처리량을 올리는 데 있다.
 
 ## 2. 배경
 
-현재 `STREAM` socket은 다음 계약을 가진다.
+현재 `STREAM` socket의 계약은 다음과 같다.
 
 - 생성은 `recv-first` 모델로 시작한다.
 - callback 진입은 public attach API로만 들어간다.
@@ -26,12 +26,12 @@
 - `STREAM` receive hot path는 generic `socket_base` callback bridge가 아니라
   `stream.cpp` 내부의 direct dispatch 경로를 사용한다.
 
-이 정리로 callback 공통 surface는 단순해졌지만, small-message benchmark에서는
-여전히 `STREAM` 고유 data plane 비용이 남아 있다. 특히 `64B` 수준의 callback
+이렇게 정리하면서 callback 공통 surface는 단순해졌지만, small-message benchmark에서는
+여전히 `STREAM` 고유 data plane 비용이 남는다. 특히 `64B` 수준의 callback
 workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughput을
 직접 제한한다.
 
-이번 계획의 기본 전제는 아래와 같다.
+이번 계획의 기본 전제는 다음과 같다.
 
 - public API는 유지한다.
 - `STREAM` 전용 성능 API는 추가하지 않는다.
@@ -41,7 +41,7 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 
 ## 3. 현재 상태와 기준 수치
 
-현재 기준 workload는 다음이다.
+현재 기준 workload는 다음과 같다.
 
 - benchmark: `STREAM_CALLBACK/tcp/64B`
 - clients: `10000`
@@ -49,7 +49,7 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 - runner:
   `./core/perf/run_benchmarks_multi.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern STREAM_CALLBACK --transports tcp --msg-sizes 64 --runs 1 --warmup 1 --duration 3`
 
-현재 기준 수치는 아래 파일에 기록되어 있다.
+현재 기준 수치는 다음 파일에 기록해 두었다.
 
 - 현재 기준 결과:
   [`perf_linux_20260317_100613.txt`](/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_20260317_100613.txt)
@@ -58,7 +58,7 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
   [`perf_linux_20260317_095831.txt`](/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_20260317_095831.txt)
   - `STREAM_CALLBACK/tcp/64B = 361.234 Kops/s`
 
-이 문서의 1차 목표는 다음이다.
+이 문서의 1차 목표는 다음과 같다.
 
 - `STREAM_CALLBACK/tcp/64B` throughput을 현재 기준 대비 `10%+` 향상
 - 기능 계약 회귀 없음
@@ -80,9 +80,9 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 - 현재 경로는 callback 전달 전에 `msg_t init -> move -> src init`를 수행한다.
 - 메시지가 작을수록 이 고정비가 더 크게 드러난다.
 
-2. callback context의 send path가 여전히 route lookup과 flush 비용을 가진다
+2. callback context의 send path가 여전히 route lookup과 flush 비용을 떠안는다
 - callback 안에서 보내는 경로도 `routing_id -> route shard -> pipe` 해석을 다시 탄다.
-- same-connection send에서도 동일한 구조를 사용하므로 불필요한 비용이 남는다.
+- same-connection send에서도 같은 구조를 쓰므로 불필요한 비용이 남는다.
 
 3. small-message transport flush/wakeup 성격의 고정비
 - `STREAM` send path는 결과적으로 작은 payload에서도 빠르게 flush를 유발한다.
@@ -97,15 +97,15 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 
 ### 4.2 주병목이 아닌 것으로 판단한 것
 
-아래 시도들은 주효과가 아니거나 오히려 손해였다.
+다음 시도들은 주효과가 아니거나 오히려 손해였다.
 
 1. route table 자료구조 교체
-- `std::map`을 hash table로 바꾸고 shard 수를 늘리는 실험은 유의미한 개선을
+- `std::map`을 hash table로 바꾸고 shard 수를 늘린 실험은 유의미한 개선을
   만들지 못했고 오히려 throughput이 내려갔다.
 - 결론: 현재 주병목은 route 자료구조 자체가 아니다.
 
 2. `pipe` write/flush lock 병합
-- `write()`와 `flush()`를 한 lock 범위에서 처리하는 실험도 오히려 throughput이
+- `write()`와 `flush()`를 한 lock 범위에서 처리한 실험도 오히려 throughput이
   더 낮아졌다.
 - 결론: 단순 lock 횟수보다 lock 범위 확대가 더 나쁜 영향이었다.
 
@@ -113,10 +113,10 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 
 - 자료구조 미세 튜닝은 우선순위가 낮다.
 - `STREAM` 전용 data plane ownership과 handoff 구조를 줄여야 socket-level 이득을
-  먼저 확보할 수 있다.
+  먼저 확보한다.
 - 다만 `10%+`를 보장하려면 transport/engine 단계가 후속 병목일 가능성을
   계획에 포함해야 한다.
-- 따라서 `stream.cpp` 단계의 목표와 `asio_engine` 승격 기준을 분리해서 다룬다.
+- 그래서 `stream.cpp` 단계의 목표와 `asio_engine` 승격 기준을 분리해 다룬다.
 
 ## 5. 최종 개선 방향
 
@@ -134,8 +134,8 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 - `STREAM` 송신 경로를 `routing_id -> route table -> pipe` 한 단계 모델로만 보지 않고,
   내부적으로 `per-pipe send state`를 캐시하는 방향으로 재구성한다.
 - callback context의 same-connection send는 그 상태를 활용하는 첫 번째 fast path일 뿐,
-  목표는 callback 안/밖을 포함한 일반 `STREAM` send 경로의 해석 비용을 줄이는 것이다.
-- direct pipe path를 쓸 수 없는 경우만 기존 route-table 경로로 떨어진다.
+  목표는 callback 안/밖을 포함한 일반 `STREAM` send 경로의 해석 비용을 줄이는 데 있다.
+- direct pipe path를 쓸 수 없는 경우에만 기존 route-table 경로로 떨어진다.
 - `per-pipe send state`의 canonical owner는 `stream_t` 내부 side-table이다.
   `stream_dispatch_tls`는 현재 callback context의 fast-path 힌트만 보관하고,
   `pipe_t`나 public surface에는 새 상태를 추가하지 않는다.
@@ -156,8 +156,8 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 
 구현 원칙:
 - `STREAM callback delivery` 내부 helper를 `stream.cpp`에 둔다.
-- callback 전달에 필요한 ownership 정리와 정리는 helper가 전담한다.
-- `socket_base` generic callback path는 사용하지 않는다.
+- callback 전달에 필요한 ownership 정리는 helper가 전담한다.
+- `socket_base` generic callback path는 쓰지 않는다.
 
 완료 조건:
 - `STREAM` receive hot path에서 heap allocation, generic multipart wrapping,
@@ -169,14 +169,14 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 - 일반 `STREAM` send 경로의 route 해석 비용을 줄인다.
 
 구현 원칙:
-- `stream_dispatch_tls`에 현재 callback pipe와 routing id 외에 현재 send target pipe를
+- `stream_dispatch_tls`에 현재 callback pipe와 routing id 외에 현재 send target pipe도
   함께 보관한다.
 - `stream.cpp` 내부에 `per-pipe send state`를 두고, callback 안/밖 모두에서 활용할
   수 있는 일반 fast path를 설계한다.
 - `per-pipe send state`는 `stream_t`가 보유하는 side-table로 구현한다.
-- callback TLS는 해당 side-table entry를 빠르게 찾기 위한 힌트로만 사용한다.
+- callback TLS는 해당 side-table entry를 빠르게 찾는 힌트로만 쓴다.
 - callback context same-connection send는 direct pipe path를 탄다.
-- direct pipe path를 쓸 수 없는 경우만 기존 route-table 경로를 유지한다.
+- direct pipe path를 쓸 수 없는 경우에만 기존 route-table 경로를 유지한다.
 
 완료 조건:
 - callback context same-connection send 경로가 route shard lock 없이 동작한다.
@@ -191,7 +191,7 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 구현 원칙:
 - callback context direct send는 per-pipe pending write 수를 추적한다.
 - 미flush write는 callback 종료 시 반드시 정리한다.
-- multipart 경계와 pending threshold를 flush trigger로 사용한다.
+- multipart 경계와 pending threshold를 flush trigger로 쓴다.
 - public option 추가 없이 내부 상수로 시작한다.
 
 완료 조건:
@@ -274,7 +274,7 @@ socket-level data plane 개편이 `10%`에 못 미치면 아래를 다음 단계
 ## 9. 명시적 가정
 
 - public API는 유지한다.
-- 기준 빌드 디렉토리는 `core/build/` 하나만 사용한다.
+- 기준 빌드 디렉토리는 `core/build/` 하나만 쓴다.
 - route 자료구조 교체는 이번 계획에서 제외한다.
 - echo 전용 최적화는 금지한다.
 - transport/asio 수정은 2단계 후보로 남기되, socket-level 결과가 `5~10%`에 그치면

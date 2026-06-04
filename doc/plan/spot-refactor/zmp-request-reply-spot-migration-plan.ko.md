@@ -1,23 +1,23 @@
 # ZMP Request-Reply / SPOT Routed 전환 작업 계획
 
 > 상태 메모
-> 이 문서는 현재 정리된 문서 방향을 실제 작업 순서로 옮긴 실행 계획이다.
-> 이번 작업의 핵심은 기존 message-level request 표식을 걷어내고,
-> request-reply 와 SPOT 직접 전달을 모두 ZMP 상위 프로토콜로 다시 맞추는 것이다.
+> 이 문서는 지금까지 정리한 문서 방향을 실제 작업 순서로 옮긴 실행 계획이다.
+> 이번 작업의 핵심은 기존 message-level request 표식을 걷어내고
+> request-reply 와 SPOT 직접 전달을 모두 ZMP 상위 프로토콜로 다시 맞추는 데 있다.
 >
-> 이번 계획은 아래 순서를 전제로 한다.
+> 계획은 아래 순서를 전제로 한다.
 >
 > - 먼저 문서와 core 작업만 진행한다.
-> - core 기본 경로 구현과 core 테스트가 끝나면 POSD 기반 리팩토링을 먼저 진행한다.
+> - core 기본 경로 구현과 core 테스트가 끝나면 POSD 기반 리팩토링부터 진행한다.
 > - timeout 은 POSD 정리 다음 순서에서 바로 붙인다.
-> - bindings 적용은 core 작업을 정리한 흐름 안에서 바로 이어서 진행한다.
+> - bindings 적용은 core 작업을 정리한 흐름 안에서 곧바로 이어 간다.
 > - 구현을 시작하면 사용자 추가 응답을 기다리지 않고 합리적인 가정으로 계속 진행한다.
 > - 특별한 blocker 가 없는 한 중간 단계에서 멈추지 않는다.
-> - 이 계획 문서의 마지막 완료 조건까지 한 흐름으로 완료한다.
+> - 이 계획 문서의 마지막 완료 조건까지 한 흐름으로 끝낸다.
 
 ## 1. 목적
 
-이번 작업은 아래 세 가지를 한 흐름으로 정리하는 것이 목적이다.
+이번 작업은 아래 세 가지를 한 흐름으로 정리한다.
 
 - 기존 core 의 message-level metadata 기능을 제거한다.
 - 기존 core 의 message-level request 기능을 제거한다.
@@ -28,7 +28,7 @@
 
 이 작업이 끝나면 request-reply 의미는 `zlink_msg_t` 내부 상태가 아니라
 ZMP multipart control part 로 표현된다.
-또한 SPOT 은 자기 routed envelope 바깥에 request-reply envelope 를 한 겹 더 두는
+또 SPOT 은 자기 routed envelope 바깥에 request-reply envelope 를 한 겹 더 두는
 방식으로 request-reply 를 지원한다.
 
 ## 2. 이번 작업에서 끝내는 것
@@ -54,7 +54,7 @@ ZMP multipart control part 로 표현된다.
 
 이번 작업에서는 `doc/spec/core` 가 아니라
 `doc/plan/spot-refactor` 아래 문서와
-공통 timer 스펙 문서를 구현 기준으로 사용한다.
+공통 timer 스펙 문서를 구현 기준으로 삼는다.
 구현과 테스트를 마치면 정리된 공개 API 문서와 설명 문서를
 `doc/spec/core`, `doc/guide`, `doc/internals` 에 반영한다.
 
@@ -118,7 +118,7 @@ ZMP multipart control part 로 표현된다.
 
 정리 원칙:
 
-- metadata 는 현재 채택하지 않는 방향으로 본다.
+- metadata 는 더 이상 채택하지 않는 방향으로 본다.
 - 필요한 부가 정보는 사용자가 multipart payload 로 직접 표현한다.
 - core 는 metadata 를 공통 message 기능으로 더 이상 제공하지 않는다.
 - 제거 범위는 C API 선언만이 아니라 내부 구현 코드, 헬퍼, 테스트까지 포함한다.
@@ -152,7 +152,7 @@ ZMP multipart control part 로 표현된다.
 - 기존 bindings 와 샘플이 metadata API 에 어디까지 의존하는지 목록을 만든다.
 - 기존 bindings 와 샘플이 request message API 에 어디까지 의존하는지 목록을 만든다.
 - 기존 bindings 와 샘플이 `zlink_timers_*()` API 에 어디까지 의존하는지 목록을 만든다.
-- core 에서 제거한 뒤에도 ordinary send/recv 는 기존과 같은 의미를 유지하는지 확인한다.
+- core 에서 제거한 뒤에도 ordinary send/recv 가 기존과 같은 의미를 유지하는지 확인한다.
 - 제거 대상 테스트가 새 구조 테스트와 중복되지 않는지 확인한다.
 
 정리 원칙:
@@ -160,7 +160,7 @@ ZMP multipart control part 로 표현된다.
 - 기존 timer API 는 유지하지 않는다.
 - 새 기준은 공통 `zlink_timer_*()` 와 `zlink_poller_add_timer()` 조합이다.
 - timer 도 기존 소켓과 같은 수신 정책을 따른다.
-- 기본은 `recv` 또는 `poller` 이고, callback 등록 시 callback 전용 모드로 전환한다.
+- 기본은 `recv` 또는 `poller` 이고, callback 을 등록하면 callback 전용 모드로 전환한다.
 - timer 에서도 수신 모델 충돌은 `EBUSY` 로 맞춘다.
 - 제거 범위는 C API 선언만이 아니라 내부 구현 코드, 헬퍼, 테스트, 샘플까지 포함한다.
 
@@ -170,7 +170,7 @@ ZMP multipart control part 로 표현된다.
 - core 안에 request-reply message marking 경로가 더 이상 남지 않는다.
 - core 안에 기존 `zlink_timers_*()` 경로가 더 이상 남지 않는다.
 - 제거 대상 회귀 테스트와 내부 보조 코드도 함께 정리된다.
-- 이 단계에서 core 헤더 변경으로 bindings 빌드가 일시적으로 깨지는 것은 허용한다
+- 이 단계에서 core 헤더 변경으로 bindings 빌드가 잠시 깨지는 것은 허용한다
 - 단, bindings 이관 전까지 old API 제거 목록과 영향 범위는 문서로 남겨야 한다
 
 ### 5.3 3단계: core request-reply 공개 API 추가
@@ -196,7 +196,7 @@ ZMP multipart control part 로 표현된다.
 
 완료 조건:
 
-- C 공개 헤더와 내부 호출 경로가 새 API 기준으로 빌드 가능해진다.
+- C 공개 헤더와 내부 호출 경로가 새 API 기준으로 빌드된다.
 
 ### 5.4 4단계: core request-reply 프로토콜 구현
 
@@ -251,7 +251,7 @@ ZMP multipart control part 로 표현된다.
 
 목적:
 
-- 현재 `deque + condition_variable` 기반 임시 큐 구현을 걷어내고,
+- 현재 `deque + condition_variable` 기반 임시 큐 구현을 걷어내고
   문서가 전제하는 내부 `inproc` 소켓 경로로 다시 맞춘다.
 
 작업:
@@ -265,7 +265,7 @@ ZMP multipart control part 로 표현된다.
 완료 조건:
 
 - SPOT routed / reqrep 수신 경로에 임시 메모리 큐가 남지 않는다.
-- 내부 구조가 `SpotNode` 의 routed `inproc` 경로와 `node router` 경로 기준으로 설명 가능해진다.
+- 내부 구조가 `SpotNode` 의 routed `inproc` 경로와 `node router` 경로 기준으로 설명된다.
 
 ### 5.5B 내부 리팩토링: ROUTER request-reply 수신 경로 정리
 
@@ -276,7 +276,7 @@ ZMP multipart control part 로 표현된다.
 작업:
 
 - `zlink_router_recv()` 와 `zlink_router_handler()` 의 내부 수신 경로를 raw socket recv 와 envelope parse 기준으로 단순화한다.
-- request-reply 수신을 위해 따로 쌓아 두는 임시 `deque` 와 `condition_variable` 경로를 제거하거나 최소화한다.
+- request-reply 수신용으로 따로 쌓아 두는 임시 `deque` 와 `condition_variable` 경로를 제거하거나 최소화한다.
 - ordinary message 와 request-reply message 구분은 `request_seq` parse 결과로만 처리한다.
 
 완료 조건:
@@ -287,7 +287,7 @@ ZMP multipart control part 로 표현된다.
 
 목적:
 
-- 기존 callback 중심 timer API 를 제거하고,
+- 기존 callback 중심 timer API 를 제거하고
   공통 `timer + poller` 모델을 core 에 고정한다.
 
 작업:
@@ -314,7 +314,7 @@ ZMP multipart control part 로 표현된다.
 
 목적:
 
-- 기존 공통 HWM 의미를 `SpotNode` 전용 option 으로 분리하고,
+- 기존 공통 HWM 의미를 `SpotNode` 전용 option 으로 분리하고
   topic 경로와 routed 경로를 따로 제어할 수 있게 한다.
 
 작업:
@@ -329,11 +329,11 @@ ZMP multipart control part 로 표현된다.
 
 완료 조건:
 
-- `SpotNode` 는 topic 과 routed 경로의 HWM 을 별도로 설정할 수 있다.
+- `SpotNode` 는 topic 과 routed 경로의 HWM 을 따로 설정할 수 있다.
 
 핵심 규칙:
 
-- 기본 사용 모델은 `recv` 또는 `poller` 이다.
+- 기본 사용 모델은 `recv` 또는 `poller` 다.
 - callback 을 등록하면 callback 전용 모드로 전환한다.
 - callback 과 `recv/poller` 를 섞으면 `EBUSY` 다.
 - 새 timer 기준은 [`TIMER_POLLER_SPEC.ko.md`](../../spec/core/utilities.ko.md) 를 따른다.
@@ -378,17 +378,17 @@ ZMP multipart control part 로 표현된다.
 - request-reply 와 SPOT request-reply 경로를 POSD 원칙에 맞게 다시 다듬는다.
 
 이 단계는 기능 추가 단계가 아니다.
-이미 동작하는 구현을 기준으로,
+이미 동작하는 구현을 기준으로
 change amplification, 정보 누출, 얕은 모듈, 중복 표면이 남아 있는지 다시 보는 단계다.
 
 집중해서 볼 항목:
 
-- request-reply encode/decode 경로가 ordinary send/recv 와 불필요하게 강하게 결합되어 있지 않은지
+- request-reply encode/decode 경로가 ordinary send/recv 와 불필요하게 강하게 결합돼 있지 않은지
 - pending map, dispatch, reply 경로 ownership 이 한 곳에 모여 있는지
 - `ROUTER` request/reply 와 `SPOT` request/reply 가 같은 개념을 중복 구현하고 있지 않은지
 - helper 함수, 내부 struct, callback 경로가 지나치게 얕은 wrapper 로 쪼개져 있지 않은지
 - old 구조 제거 후에도 dead branch, compat glue, 임시 우회 코드가 남아 있지 않은지
-- hot path 에서 avoid 가능한 복사, 할당, 추가 hop 이 남아 있지 않은지
+- hot path 에서 피할 수 있는 복사, 할당, 추가 hop 이 남아 있지 않은지
 
 완료 조건:
 
@@ -405,7 +405,7 @@ change amplification, 정보 누출, 얕은 모듈, 중복 표면이 남아 있�
 이 순서를 쓰는 이유:
 
 - timeout 까지 동시에 넣으면 routing 문제와 timeout 문제를 분리해서 보기 어렵다.
-- 먼저 request/reply 매칭과 reply 경로를 안정화한 뒤 timeout 을 추가하는 편이 디버깅이 쉽다.
+- 먼저 request/reply 매칭과 reply 경로를 안정화한 뒤 timeout 을 추가해야 디버깅이 쉽다.
 
 작업:
 
@@ -417,7 +417,7 @@ change amplification, 정보 누출, 얕은 모듈, 중복 표면이 남아 있�
 
 완료 조건:
 
-- request/reply 와 SPOT request/reply 모두 timeout 계약이 동일한 방식으로 동작한다.
+- request/reply 와 SPOT request/reply 모두 timeout 계약이 같은 방식으로 동작한다.
 
 ### 5.10 10단계: bindings native 라이브러리 임시 최신화
 
@@ -431,7 +431,7 @@ change amplification, 정보 누출, 얕은 모듈, 중복 표면이 남아 있�
 - bindings 코드 이관 전에 native 라이브러리부터 최신 상태여야
   언어별 로딩 문제와 API 누락 문제를 빨리 확인할 수 있다.
 - bindings 이관 중에 core 산출물과 언어별 `native` 디렉터리 내용이 어긋나면
-  원인 추적이 어려워진다.
+  원인을 추적하기 어려워진다.
 
 작업:
 
@@ -463,7 +463,7 @@ change amplification, 정보 누출, 얕은 모듈, 중복 표면이 남아 있�
 
 순서:
 
-core 와 가장 가까운 구현부터 먼저 옮기고,
+core 와 가장 가까운 구현부터 먼저 옮기고
 현재 bindings request 구현이 비교적 분명한 언어 순서로 내려간다.
 
 1. Rust

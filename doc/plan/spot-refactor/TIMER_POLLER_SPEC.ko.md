@@ -9,9 +9,9 @@
 
 이 규칙이 필요한 이유는 다음과 같다.
 
-- 한 스레드에서 메시지와 시간을 함께 다루는 event loop 구성이 쉬워진다.
+- 한 스레드에서 메시지와 시간을 함께 다루는 event loop 를 쉽게 구성한다.
 - 기존 수신 정책과 같은 방식으로 timer 도 이해할 수 있다.
-- callback 과 pull 모델을 섞었을 때 생기는 혼란을 줄일 수 있다.
+- callback 과 pull 모델을 섞었을 때 생기는 혼란을 줄인다.
 
 ## 기준 API
 
@@ -64,11 +64,11 @@ bindings, 샘플, 테스트도 모두 새 기준으로 옮긴다.
 
 timer 의 기본 수신 모델은 `recv` 또는 `poller` 이다.
 
-- `zlink_timer_recv()` 로 직접 fire event 를 읽을 수 있다.
-- `zlink_poller_add_timer()` 로 poller 에 등록할 수 있다.
+- `zlink_timer_recv()` 로 직접 fire event 를 읽는다.
+- `zlink_poller_add_timer()` 로 poller 에 등록한다.
 - `poller` 에서 timer readable 이벤트를 받은 뒤 `zlink_timer_recv()` 로 소비한다.
 
-즉 timer 도 소켓과 같은 식으로 “읽을 것이 생겼다”는 신호와
+즉 timer 도 소켓과 마찬가지로 “읽을 것이 생겼다”는 신호와
 실제 소비를 분리한다.
 
 ## callback 모델
@@ -78,9 +78,9 @@ callback 은 선택적 수신 모델이다.
 - `zlink_timer_handler()` 를 등록하면 callback 전용 모드로 전환된다.
 - callback 전용 모드에서는 `zlink_timer_recv()` 와 `zlink_poller_add_timer()`
   를 함께 쓰지 않는다.
-- `recv` 또는 `poller` 모델을 쓰는 중 `zlink_timer_handler()` 를 등록하면 안 된다.
+- `recv` 또는 `poller` 모델을 쓰는 중에 `zlink_timer_handler()` 를 등록하면 안 된다.
 
-이 규칙은 기존 수신 정책과 맞춘 것이다.
+이 규칙은 기존 수신 정책에 맞춘 것이다.
 기본은 pull 모델이고, callback 은 명시적으로 선택하는 방식이다.
 
 ## 충돌 규칙
@@ -92,7 +92,7 @@ callback 은 선택적 수신 모델이다.
 - `poller` 에 등록된 timer 에 callback 등록: `EBUSY`
 - `recv` 사용 중 callback 등록: `EBUSY`
 
-하나의 timer 는 한 시점에 하나의 수신 모델만 활성화될 수 있다.
+하나의 timer 는 한 시점에 하나의 수신 모델만 활성화할 수 있다.
 
 ## repeat 규칙
 
@@ -187,20 +187,20 @@ timer 를 destroy 하기 전에 poller 에서 먼저 제거해야 한다.
 ### 일반 timer
 
 - low-count 일반 용도로 시작하더라도 구현 backend 는 global shared scheduler 로 통합한다
-- timer 수가 늘어도 thread 수가 같이 늘지 않아야 한다
-- request timeout 과 poller 연동이 같은 scheduler 계층 위에서 동작할 수 있어야 한다
+- timer 수가 늘어도 thread 수는 같이 늘지 않아야 한다
+- request timeout 과 poller 연동이 같은 scheduler 계층 위에서 동작해야 한다
 
 ### spot timer
 
-- 수천에서 수만 개 timer 까지 고려
-- `SpotNode` 단위 shared scheduler 사용
+- 수천에서 수만 개 timer 까지 고려한다
+- `SpotNode` 단위 shared scheduler 를 사용한다
 - scheduler 는 deadline 기준 자료구조를 사용한다
   예: min-heap, ordered set, timer wheel
 - scheduler thread 수는 매우 적어야 한다
 
 ### request timeout 과의 통합
 
-request-reply timeout 도 별도 thread 를 요청마다 띄우지 않는다.
+request-reply timeout 도 요청마다 별도 thread 를 띄우지 않는다.
 일반 timer 와 spot timer 가 쓰는 shared scheduler 계층에 등록해서 처리한다.
 
 이 규칙이 필요한 이유는 다음과 같다.
@@ -228,8 +228,8 @@ request-reply timeout 도 별도 thread 를 요청마다 띄우지 않는다.
 ## 결론
 
 timer 는 이제 단순 callback helper 가 아니다.
-소켓과 함께 같은 loop 에서 다룰 수 있는 공통 event source 로 본다.
+소켓과 함께 같은 loop 에서 다루는 공통 event source 로 본다.
 
-기본은 `recv` 와 `poller`, callback 은 선택 모델이다.
+기본은 `recv` 와 `poller` 이고, callback 은 선택 모델이다.
 그리고 일반 timer 와 `Spot` 귀속 timer, request timeout 은 모두
 thread-per-timer 가 아닌 shared scheduler 계층 위에서 관리한다.

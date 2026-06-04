@@ -868,3 +868,32 @@
 - 판정:
   - `MULTI_ROUTER_ROUTER tls 256B`를 통과로 overlay한다.
   - Go multi 미달은 `11/192 (5.7%)`에서 `10/192 (5.2%)`로 줄었다.
+
+## Go single routed tcp large current 재측정 보강
+
+- 대상:
+  - `DEALER_ROUTER tcp 65536/131072B`
+  - `ROUTER_ROUTER tcp 65536/131072B`
+- 배경:
+  - Go single은 main 문서 기준 `5/144 (3.5%)`로 10% gate 아래였지만,
+    routed `tcp` 대용량 잔여 중 current C 기준 변동으로 회복 가능한 항목을 complete 재측정했다.
+- 측정:
+  - C current 기준:
+    `perf_c_single_linux_20260605_023431_go_single_routed_tcp_large_c_current_runs7_20260605.txt`
+    는 status=complete였다.
+  - Go 기본 runner:
+    `perf_go_single_linux_20260605_023506_go_single_routed_tcp_large_current_runs7_20260605.txt`
+    는 status=complete였다.
+  - Go `PERF_GO_GOMAXPROCS=8` probe:
+    `perf_go_single_linux_20260605_023546_go_single_routed_tcp_large_gomax8_probe_20260605.txt`
+    는 status=complete였다.
+- 결과:
+  - `DEALER_ROUTER tcp 65536B`: Go 49,848.0 msg/s, C 98,473.0 msg/s 대비 50.6%로 통과.
+  - `DEALER_ROUTER tcp 131072B`: Go 26,592.0 msg/s, C 55,620.0 msg/s 대비 47.8%로 아직 미달.
+  - `ROUTER_ROUTER tcp 131072B`: Go 26,800.0 msg/s, C 55,315.0 msg/s 대비 48.5%로 아직 미달.
+  - `PERF_GO_GOMAXPROCS=8` probe는 `ROUTER_ROUTER tcp 131072B`를 47.7% 수준으로만 올려
+    추가 통과를 만들지 못했다.
+- 판정:
+  - 이번 보강은 코드 변경 없이 complete report 기준으로 통과한 `DEALER_ROUTER tcp 65536B`만
+    main 문서에 overlay한다.
+  - Go single 미달은 `5/144 (3.5%)`에서 `4/144 (2.8%)`로 줄었다.

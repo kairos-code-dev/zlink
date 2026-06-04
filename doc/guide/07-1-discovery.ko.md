@@ -8,7 +8,7 @@
 
 ## 1. 개요
 
-마이크로서비스 환경에서 서비스들은 통신을 위해 상대방의 네트워크
+마이크로서비스 환경에서 서비스들은 통신하려면 상대방의 네트워크
 엔드포인트를 알아야 한다. Discovery 없이는 각 서비스가 피어 주소를
 직접 설정해야 하며, 인스턴스가 확장·이동·재시작될 때마다 수동으로
 주소를 갱신해야 한다.
@@ -102,12 +102,12 @@ flowchart TB
 
 **구체적 시나리오** — 위 아키텍처 다이어그램의 `price-feed` 예시:
 
-1. **Node B**가 PUB 소켓을 생성하고 `tcp://*:9100`에 바인딩한 뒤,
+1. **Node B**가 PUB 소켓을 생성하고 `tcp://*:9100`에 바인딩한 뒤
    서비스명 `"price-feed"`로 Discovery에 등록한다.
 2. Discovery가 확정된 엔드포인트(예: `tcp://10.0.1.8:9100`)를
    Registry 2에 등록한다.
 3. Registry 2가 다음 서비스 목록 브로드캐스트에 이 엔드포인트를 포함한다.
-   플러딩(flooding, 전체 브로드캐스트 전파)을 통해 Registry 1, 3도 이 정보를 수신한다.
+   플러딩(flooding, 전체 브로드캐스트 전파)으로 Registry 1, 3도 이 정보를 받는다.
 4. **Node C**는 자신의 `"price-feed"` Discovery에 SUB 소켓을 연결해 둔
    상태다. 브로드캐스트가 도착하면 Discovery가 PUB 프로바이더를 확인하고
    SUB 소켓을 `tcp://10.0.1.8:9100`에 **자동 연결**한다.
@@ -165,7 +165,7 @@ sequenceDiagram
 ROUTER ↔ ROUTER 자동 연결처럼 양쪽 모두 outbound를 시작할 수 있는 경우,
 **자동 연결 방향은 라이브러리가 쌍마다 한쪽만 결정한다.** 즉 두 ROUTER가
 서로를 발견해도 `connect`는 한 번만 만들어진다. 어느 쪽이 dial할지
-따로 설정할 필요 없으며, 중복 연결 경쟁과 handover churn도 발생하지 않는다.
+따로 설정하지 않아도 되며, 중복 연결 경쟁과 handover churn도 발생하지 않는다.
 이 규칙은 Discovery가 관리하는 자동 연결에만 적용되며, raw API로
 직접 호출한 `zlink_connect()`는 라이브러리가 중재하지 않는다.
 
@@ -173,9 +173,9 @@ ROUTER ↔ ROUTER 자동 연결처럼 양쪽 모두 outbound를 시작할 수 �
 
 Discovery가 같은 서비스의 ROUTER 피어 두 개를 쌍으로 묶을 때, 라이브러리는
 쌍마다 한쪽만 개시자(initiator)로 선택한다. 비교 키는 광고된 `routing_id`의
-전체 순서(total order)가 먼저이고, 동점이면 광고 엔드포인트가 동점 해결자(tie-breaker)가 된다.
-두 ROUTER가 독립적으로 평가해도 동일한 결과에 도달하므로, 이
-결정을 별도로 설정할 필요가 없다. 같은 서비스에 속한 ROUTER들은 Discovery에
+전체 순서(total order)가 먼저이고 동점이면 광고 엔드포인트가 동점 해결자(tie-breaker)가 된다.
+두 ROUTER가 독립적으로 평가해도 같은 결과에 도달하므로, 이
+결정을 따로 설정하지 않아도 된다. 같은 서비스에 속한 ROUTER들은 Discovery에
 대칭적으로 추가해도 되고, 선택된 한쪽에서만 `connect`가 발생한다.
 
 ```mermaid
@@ -267,7 +267,7 @@ zlink_discovery_destroy(&discovery);
 
 ## 4.1 소켓 패밀리 Discovery
 
-raw ROUTER/DEALER/PUB/SUB 소켓은 Discovery를 사용하여 자동 피어 발견과
+raw ROUTER/DEALER/PUB/SUB 소켓은 Discovery로 자동 피어 발견과
 lifecycle 관리를 할 수 있다. SPOT 추상화 없이 소켓 수준에서 위치투명
 통신을 가능하게 한다.
 
@@ -372,7 +372,7 @@ sequenceDiagram
     Reg--xDisc: entry expires (LOST)
 ```
 
-- Registry에서의 가시성은 Discovery가 담당하는 하트비트/토폴로지 업링크로 유지된다.
+- Registry에서 서비스가 보이는 상태는 Discovery가 담당하는 하트비트/토폴로지 업링크로 유지된다.
 - SPOT과 소켓 패밀리 서비스는 로컬 등록/요약 변경을 제출하지만,
   주기적 업링크는 Discovery가 담당한다.
 - Registry 요약은 결과적으로 일관된(eventually consistent) 대략적인 전역 뷰이며,
@@ -395,7 +395,7 @@ Discovery가 하나의 Registry에만 연결해도 다른 Registry에 등록된 
 
 - Discovery는 하나 이상의 Registry control endpoint에 부트스트랩 연결한다.
 - 부트스트랩 metadata로 내부 broadcast/uplink 경로를 학습한다.
-- 한 Registry 노드가 실패해도 다른 부트스트랩 control endpoint를 통해
+- 한 Registry 노드가 실패해도 다른 부트스트랩 control endpoint로
   계속 동작할 수 있다.
 
 ## 언어별 완전한 예제

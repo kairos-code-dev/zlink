@@ -24,7 +24,7 @@ external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
 > **client session을 Actor에 연결하기.** STREAM 서버는 SpotNode Actor의 진입점 역할도
 > 할 수 있다. 각 client session을 Actor에 bind하면 session 트래픽이 그 Actor와 주고받는
 > 형태로 relay된다. 이 패턴은 STREAM 소켓을 `zlink_stream_attach_actor_gateway()`로
-> SpotNode에 attach하는 것에서 시작한다. session-to-Actor 전체 흐름은
+> SpotNode에 attach하는 데서 출발한다. session-to-Actor 전체 흐름은
 > [Actor 가이드](./07-4-actor.ko.md)를 참고한다.
 
 ---
@@ -49,7 +49,7 @@ zlink_bind(stream, "tcp://0.0.0.0:8080");
 ## 3. STREAM 고유 동작
 
 STREAM은 기반 소켓 계열(raw socket family)에서 유일한 예외 타입이다. 한 핸들에서 세
-가지 수신 모델 중 정확히 하나를 선택한다.
+가지 수신 모델 중 정확히 하나를 고른다.
 
 - **직접 수신(raw recv)**: `zlink_recv()`로 transport 조각을 직접 가져온다. poller의
   `ZLINK_POLLIN`과 함께 사용한다.
@@ -60,7 +60,7 @@ STREAM은 기반 소켓 계열(raw socket family)에서 유일한 예외 타입�
   따르는 패킷을 조립된 header/body 형태로 받는다.
 
 세 모델은 상호 배타이며, 한 핸들에서 두 번째 모드로 전환하려 하면
-`EBUSY`로 실패한다. 응용이 필요에 맞는 모드 하나만 선택한다.
+`EBUSY`로 실패한다. 응용은 필요에 맞는 모드 하나만 고른다.
 
 STREAM만의 고유 동작은 다음과 같다.
 
@@ -164,7 +164,7 @@ zlink_recv_handler(stream, on_message, NULL);
 고정 프레이밍 규약(2바이트 big-endian header size + 4바이트 big-endian
 body size + header payload + body payload)을 사용하는 상위 프로토콜에서는
 `zlink_stream_packet_handler()`로 패킷 단위 콜백을 등록할 수 있다.
-core가 조각(fragment) 누적과 길이 해석을 직접 처리하므로, 응용은 header/body를
+core가 조각(fragment) 누적과 길이 해석을 직접 처리하므로 응용은 header/body를
 그대로 받아 처리한다.
 
 ```c
@@ -190,7 +190,7 @@ zlink_stream_packet_handler(stream, on_packet, NULL);
 
 패킷 콜백 모드의 규칙은 다음과 같다.
 
-- `header_size` 와 `body_size` 각각 0 도 허용된다. 길이가 0 이어도 msg_t 는
+- `header_size` 와 `body_size` 는 각각 0 도 허용된다. 길이가 0 이어도 msg_t 는
   유효한 객체로 전달된다.
 - `header` 와 `body` 의 소유권은 콜백으로 이전된다. 콜백은 두 msg_t 를 각각
   정확히 한 번 close 하거나 소비해야 한다.
@@ -201,15 +201,15 @@ zlink_stream_packet_handler(stream, on_packet, NULL);
   불완전 상태 연결 종료 등)은 연결을 닫는 기본 동작으로 이어진다. 이
   이벤트는 소켓 모니터(socket monitor) 경로로 관찰한다.
 
-이 모드는 조각 누적을 응용 쪽에서 다시 구현하지 않아도 되는 편의상 이점을
-주지만, transport 조각 경계와 패킷 경계가 다르다는 점 자체를 바꾸지는 않는다.
+이 모드는 조각 누적을 응용 쪽에서 다시 구현하지 않아도 되는 편의를
+주지만 transport 조각 경계와 패킷 경계가 다르다는 점 자체를 바꾸지는 않는다.
 
 ---
 
 ## 5. 클라이언트 구현 원칙
 
 클라이언트는 raw socket/websocket로 구현한다.
-STREAM은 raw 바이트를 그대로 전달하므로, **패킷 경계(프레이밍)는 애플리케이션이 정의**해야 한다.
+STREAM은 raw 바이트를 그대로 전달하므로 **패킷 경계(프레이밍)는 애플리케이션이 정의**해야 한다.
 
 아래는 `[4B length][body]` 형식을 사용자가 정의한 POSIX TCP 예시(개념):
 

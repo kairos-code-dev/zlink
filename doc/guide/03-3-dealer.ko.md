@@ -34,7 +34,7 @@ zlink_send(dealer, parts, 2, 0);
 ### 구체적 시나리오: 3개 DEALER가 1개 ROUTER로 전송
 
 3개의 DEALER 클라이언트가 하나의 ROUTER 서버에 연결한다. 각 DEALER는
-독립적으로 요청을 전송하며, ROUTER는 페어 큐잉으로 수신하고
+독립적으로 요청을 전송하며 ROUTER는 페어 큐잉으로 수신하고
 `source_rid`로 각 송신자를 구분한다.
 
 | 송신자 | routing_id | 메시지 | ROUTER 수신 |
@@ -44,7 +44,7 @@ zlink_send(dealer, parts, 2, 0);
 | DEALER 3 | `D3` | `"buy MSFT 200"` | source_rid=`D3`, data=`"buy MSFT 200"` |
 
 ROUTER는 `zlink_send_rid()`에 해당 `source_rid`를 전달하여 각 DEALER에
-응답한다. DEALER는 *송신* 연결에 라운드 로빈을 사용하므로, 하나의
+응답한다. DEALER는 *송신* 연결에 라운드 로빈을 사용하므로 하나의
 DEALER가 여러 ROUTER에 연결하면 메시지가 라운드 로빈으로 순환 분배된다
 (msg1 -> ROUTER-A, msg2 -> ROUTER-B, ...).
 
@@ -200,7 +200,7 @@ zlink_submit_result_t rc = zlink_dealer_request(
 if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 ```
 
-`timeout_ms = 0`은 소켓 기본값을 사용한다는 의미이며, 소켓 기본값도 `0`이면
+`timeout_ms = 0`은 소켓 기본값을 사용한다는 뜻이며, 소켓 기본값도 `0`이면
 구현 기본값 `5000ms`가 적용된다.
 
 ## 5. 사용 패턴
@@ -301,8 +301,8 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 
 연결된 ROUTER가 모두 가중치 `0`이면 `zlink_send()`와
 `zlink_dealer_request()`는 `ZLINK_SUBMIT_NOT_ADMITTED`를 반환한다.
-연결이 끊긴 것이 아니라 보낼 대상이 일시적으로 없는 상태이므로,
-호출자는 최소 한 대의 ROUTER가 양수 가중치로 복귀할 때까지 기다렸다가
+연결이 끊긴 것이 아니라 보낼 대상이 일시적으로 없는 상태이므로 호출자는
+최소 한 대의 ROUTER가 양수 가중치로 복귀할 때까지 기다렸다가
 재시도해야 한다.
 
 > 상세 규약은 DEALER spec

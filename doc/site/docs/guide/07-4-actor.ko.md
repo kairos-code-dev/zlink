@@ -54,7 +54,7 @@ Actor는 raw 소켓의 대안이 아니라 Spot 위에 얹는 한 단계 더 높
 ## 시나리오 1 — 한 방의 두 플레이어 (id 주소 지정)
 
 두 플레이어 `player-1`, `player-2`가 Entry Spot에서 생성돼 한 방(user Spot)으로
-join한다. 각 Actor는 STREAM 세션에 bind되고, 서버가 STREAM으로 각 플레이어 앞으로
+join한다. 각 Actor는 STREAM 세션에 bind되며 서버가 STREAM으로 각 플레이어 앞으로
 패킷을 relay하면(`player-1`←`your-turn`, `player-2`←`wait`) **그 Actor만** 받는다.
 같은 방을 공유해도 메시지는 actor id로 정확히 그 플레이어에게 간다.
 

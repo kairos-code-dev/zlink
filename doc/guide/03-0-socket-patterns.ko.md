@@ -5,7 +5,7 @@
 ## 1. 개요
 
 zlink는 8종의 소켓 타입을 제공한다.
-각 소켓은 고유한 메시징 패턴을 구현하며, 유효한 소켓 조합 내에서만 통신이 가능하다.
+각 소켓은 고유한 메시징 패턴을 구현하며, 유효한 소켓 조합 안에서만 통신한다.
 
 > 이 문서 전체에서 사용되는 **hot path**, **control path**, **admission guard** 등의 용어는 [8절 (용어 정리)](#8-용어-정리)에 정의되어 있다.
 
@@ -24,7 +24,7 @@ zlink는 8종의 소켓 타입을 제공한다.
 
 ## 3. 소켓 호환성 매트릭스
 
-유효한 소켓 조합만 연결이 가능하다. 비호환 소켓을 연결하면 핸드셰이크가 실패한다.
+유효한 소켓 조합만 연결된다. 비호환 소켓을 연결하면 핸드셰이크가 실패한다.
 
 | 소켓 | PAIR | PUB | SUB | XPUB | XSUB | DEALER | ROUTER | STREAM |
 |------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -49,7 +49,7 @@ zlink는 8종의 소켓 타입을 제공한다.
 | **Fan-out** (`dist_t`) | 모든 구독자에게 복제 전송 | PUB/XPUB |
 | **ID 라우팅** | routing_id 프레임으로 특정 피어 지정 | ROUTER/STREAM |
 
-> `lb_t`, `fq_t`, `dist_t`는 소스 트리와 internals 문서에 등장하는 **내부 구현 타입 이름**이다. 괄호 안의 표현(Round-robin, Fair-queue, Fan-out)이 일상적으로 사용하는 기능 설명이며, 소스를 직접 수정하지 않는다면 내부 타입 이름을 알 필요는 없다.
+> `lb_t`, `fq_t`, `dist_t`는 소스 트리와 internals 문서에 등장하는 **내부 구현 타입 이름**이다. 괄호 안의 표현(Round-robin, Fair-queue, Fan-out)이 일상적으로 쓰는 기능 설명이며, 소스를 직접 수정하지 않는다면 내부 타입 이름까지 알 필요는 없다.
 
 > 라우팅 전략의 내부 구현 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
 
@@ -104,7 +104,7 @@ Is the communication peer an external client (browser, game)?
 
 일반적인 연결/해제 수명 주기는 엔드포인트 문자열을 기준으로 동작한다. 그런데
 메시지를 수신하면 `source_rid`(송신 피어의 고유 식별자)로 상대방을 직접 특정할 수 있다.
-엔드포인트 문자열을 저장하지 않아도 수신한 `source_rid`만으로 해당 피어 연결을 끊으려면
+엔드포인트 문자열을 저장하지 않고 수신한 `source_rid`만으로 해당 피어 연결을 끊으려면
 `zlink_disconnect_rid()`를 사용한다.
 
 ```c
@@ -135,20 +135,20 @@ zlink_recv_result_t zlink_recv (
   routing_id가 채워진다. 메시지 프레임이 아니라 zlink가 피어의 identity를
   자동으로 resolve해 전달하는 별도 파라미터다.
 - **`parts` / `part_count`**: 모든 소켓에서 멀티파트가 기본이다.
-  `part_count=1` 이면 단일 프레임, `part_count=2+` 이면 멀티파트.
+  `part_count=1`이면 단일 프레임, `part_count=2+`이면 멀티파트.
 
-> **libzmq 와의 차이:** libzmq ROUTER 는 `zmq_recv()` 첫 프레임이
-> routing_id 였지만, zlink 는 routing_id 를 별도 파라미터로 분리했다.
+> **libzmq와의 차이:** libzmq ROUTER는 `zmq_recv()` 첫 프레임이
+> routing_id였지만, zlink는 routing_id를 별도 파라미터로 분리했다.
 
 **소켓별 전용 수신 표면:**
 
 - **PAIR / DEALER**: `zlink_recv()`로 수신한다. DEALER는 추가로
   `zlink_dealer_request()`의 완료 콜백으로 reply를 받는다.
-- **ROUTER**: ROUTER 핸들에 `zlink_recv()` 를 호출하면
-  `ZLINK_RECV_NOT_SUPPORTED` 로 실패한다. ROUTER 는 통합된 단일 typed
-  표면 — `zlink_router_recv()` — 를 사용하며, `source_node_rid`,
-  `source_spot_rid`, `request_seq` 를 함께 반환한다. 이 하나의 표면이 일반
-  ROUTER 트래픽과 SPOT 에서 시작된 routed 트래픽을 모두 전달한다.
+- **ROUTER**: ROUTER 핸들에 `zlink_recv()`를 호출하면
+  `ZLINK_RECV_NOT_SUPPORTED`로 실패한다. ROUTER는 통합된 단일 typed
+  표면 — `zlink_router_recv()` — 을 사용하며, `source_node_rid`,
+  `source_spot_rid`, `request_seq`를 함께 반환한다. 이 하나의 표면이 일반
+  ROUTER 트래픽과 SPOT에서 시작된 routed 트래픽을 모두 전달한다.
   반대로 router capability가 있는 channel의 ROUTER에서 SPOT으로 보내려면
   target `SpotNode`가 그 router channel의 peer로 연결되어 있어야 한다.
   request의 reply는 별도 완료 콜백으로 받는다. 자세한 내용은
@@ -162,8 +162,8 @@ zlink_recv_result_t zlink_recv (
 - **SPOT**: `zlink_spot_dispatch_event_handler()`로 readiness를 통합 수신한다. subscribe, routed, channel reply, timer, Actor join, Actor readable, Actor lifecycle event는 readiness 뒤 각 drain API로 읽는다.
 - **monitor / 타이머**: recv와 콜백 두 방식을 모두 지원한다.
 
-data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`, monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 사용한다. SPOT은 `zlink_spot_dispatch_event_handler()`를 readiness 신호로만 사용하고 payload는 receive API로 읽는다. request completion
-콜백은 data-plane 수신이 아닌 비동기 작업 완료 통지임에 유의한다.
+data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`, monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 쓴다. SPOT은 `zlink_spot_dispatch_event_handler()`를 readiness 신호로만 사용하고 payload는 receive API로 읽는다. request completion
+콜백은 data-plane 수신이 아니라 비동기 작업 완료 통지임에 유의한다.
 
 ## 8. 용어 정리
 
@@ -238,7 +238,7 @@ zlink_ctx_term(ctx);
 > `ROUTER`는 recv-only다. 여러 소켓, monitor, 타이머를 같은 poller에서
 > 다루기 쉽고, 호출자가 실행 스레드와 순서를 직접 통제할 수 있기 때문이다.
 > 콜백은 `STREAM`, monitor/타이머, SPOT dispatch event, request
-> completion처럼 사용 패턴이 분명한 경우에만 사용한다.
+> completion처럼 사용 패턴이 분명한 경우에만 쓴다.
 
 ---
 [← Core API](./02-core-api.ko.md) | [PAIR →](./03-1-pair.ko.md)

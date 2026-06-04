@@ -5,8 +5,8 @@
 ## 1. 개요
 
 ROUTER 소켓은 **routing_id 기반 라우팅** 소켓이다.
-수신 메시지에 routing_id 프레임을 자동으로 추가하고,
-송신 시 첫 번째 프레임의 routing_id로 대상 피어를 지정한다.
+수신 메시지에 routing_id 프레임을 자동으로 붙이고,
+송신할 때는 첫 번째 프레임의 routing_id로 대상 피어를 지정한다.
 
 **핵심 특성:**
 - 수신 시 routing_id 프레임 자동 추가 (메시지 출처 식별)
@@ -169,7 +169,7 @@ if (zlink_router_recv(router,
 `ZLINK_ROUTER_OPT_MANDATORY` 의 기본값은 `1` 이다. 도달할 수 없는 피어로
 `zlink_send_rid()` 를 보내면 조용히 드롭하지 않고
 `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다. 호출자가 `NOT_CONNECTED` 를
-처리하거나 재시도/에러 로그로 남길 기회가 생긴다.
+처리하거나 재시도나 에러 로그로 남길 기회가 생긴다.
 
 ```c
 /* 기본 상태 (MANDATORY=1) */
@@ -262,7 +262,7 @@ if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 ```
 
 **주의:** ROUTER 의 inbound routed delivery 는 `zlink_router_recv()` 로만
-받는다. `zlink_router_request()` 의 reply 는 별도 완료 콜백으로 전달되며,
+받는다. `zlink_router_request()` 의 reply 는 별도 완료 콜백으로 전달되며
 data-plane receive 와 섞이지 않는다. `zlink_router_recv()`
 는 SPOT 에서 시작된 routed 트래픽도 같은 표면으로 전달한다.
 `source_spot_rid` 가 채워져 있으면 `zlink_router_reply_spot()` 으로
@@ -272,7 +272,7 @@ data-plane receive 와 섞이지 않는다. `zlink_router_recv()`
 
 ### 패턴 1: ROUTER ↔ ROUTER 메시/클러스터
 
-ROUTER의 핵심 패턴이다. N개 노드가 각각 상대의 routing_id를 지정하여 특정 노드에 전송한다.
+ROUTER의 핵심 패턴이다. N개 노드가 각각 상대의 routing_id를 지정해 특정 노드에 전송한다.
 1:1이면 DEALER로 충분하므로, ROUTER ↔ ROUTER는 N개 이상 노드 간 통신에서 의미가 있다.
 
 ```c
@@ -599,7 +599,7 @@ if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
 
 ### 패턴 7: 연결 확인 후 전송
 
-DEALER가 먼저 메시지를 전송하여 ROUTER에 연결을 알린 후, ROUTER가 응답.
+DEALER가 먼저 메시지를 전송해 ROUTER에 연결을 알린 뒤, ROUTER가 응답한다.
 
 ```
   +----------+    ① "Hello"       +----------+
@@ -642,7 +642,7 @@ zlink_send(dealer, &hello, 1, 0);
 
 ### 패턴 8: 다중 Transport
 
-같은 ROUTER에 다양한 transport로 연결할 수 있으며, routing_id로 통합 관리한다.
+같은 ROUTER에 여러 transport로 연결할 수 있으며, routing_id로 통합 관리한다.
 
 ```
   +----------+                       +----------+
@@ -679,11 +679,11 @@ zlink_bind(router, "inproc://router");
 
 ### 기본 드롭 동작
 
-`ROUTER_MANDATORY`를 설정하지 않으면, 존재하지 않는 routing_id로 전송 시 메시지가 **조용히 드롭**된다. 프로덕션에서는 `ROUTER_MANDATORY` 활성화를 권장한다.
+`ROUTER_MANDATORY`를 설정하지 않으면 존재하지 않는 routing_id로 전송할 때 메시지가 **조용히 드롭**된다. 프로덕션에서는 `ROUTER_MANDATORY` 활성화를 권장한다.
 
 ### 재연결 시 routing_id 변경
 
-DEALER가 재연결하면 자동 생성된 routing_id가 변경될 수 있다. 안정적인 통신을 위해 명시적 routing_id 설정을 권장한다.
+DEALER가 재연결하면 자동 생성된 routing_id가 바뀔 수 있다. 안정적인 통신을 위해 명시적 routing_id 설정을 권장한다.
 
 ```c
 /* 명시적 routing_id — 재연결 시에도 동일 */
@@ -692,14 +692,14 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 
 ### routing_id 충돌
 
-같은 routing_id를 가진 두 DEALER가 동시에 연결되면, 기본적으로 두 번째 연결이 거부된다. `ZLINK_OPT_RID_DUPLICATE_POLICY`를 `ZLINK_RID_DUPLICATE_HANDOVER`로 설정하면 새 파이프가 기존 파이프를 대체한다.
+같은 routing_id를 가진 두 DEALER가 동시에 연결되면 기본적으로 두 번째 연결이 거부된다. `ZLINK_OPT_RID_DUPLICATE_POLICY`를 `ZLINK_RID_DUPLICATE_HANDOVER`로 설정하면 새 파이프가 기존 파이프를 대체한다.
 
 > routing_id의 상세 개념은 [08-routing-id.ko.md](./08-routing-id.ko.md)를 참고.
 
 ### 점진적 유지보수를 위한 가중치
 
 롤링 재시작이나 설정 리로드 직전, 로컬 ROUTER의 가중치를 `0`으로
-바꿔 원격 피어들이 이 ROUTER를 새 아웃바운드 대상으로 선택하지 않도록
+바꿔 원격 피어들이 이 ROUTER를 새 아웃바운드 대상으로 선택하지 않게
 만들 수 있다.
 
 ```c
@@ -723,9 +723,9 @@ zlink_get_router_option(
 ```
 
 가중치 `0`은 로컬 동작을 멈추는 것이 아니라 원격 피어에 전달되는 권고 신호다. 로컬 핸들은
-평상시와 같이 수신(inbound)을 처리한다. 즉 `zlink_router_recv()`,
+평상시처럼 수신(inbound)을 처리한다. 즉 `zlink_router_recv()`,
 `zlink_send_rid()`, `zlink_router_reply()` 모두 정상 동작하므로 진행
-중인 요청은 마저 완료할 수 있다. 달라지는 부분은 원격 피어가 이
+중인 요청은 마저 완료한다. 달라지는 부분은 원격 피어가 이
 ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 
 - 원격 DEALER는 이 ROUTER를 라운드 로빈 후보에서 제외한다.
@@ -738,7 +738,7 @@ ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 송신 쪽 규칙은 반대 방향에서도 동일하다. 로컬 ROUTER가
 `zlink_send_rid()` 또는 `zlink_router_request()`로 원격 RID에 보낼
 때, 해당 RID의 광고된 가중치가 `0`이면 `ZLINK_SUBMIT_NOT_ADMITTED`로
-실패한다. 가중치 전파는 최선 노력(best-effort) 방식이므로, 경합 상황에서는 같은 거절이 먼저
+실패한다. 가중치 전파는 최선 노력(best-effort) 방식이라 경합 상황에서는 같은 거절이 먼저
 `ZLINK_SUBMIT_NOT_CONNECTED`로 관찰될 수도 있다.
 
 일반적인 유지보수 순서:

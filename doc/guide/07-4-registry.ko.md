@@ -9,7 +9,7 @@
 ## 1. 개요
 
 Registry는 zlink 서비스 계층의 중앙 서비스 디렉토리이자 토폴로지 요약 소스다.
-SPOT 노드와 소켓 패밀리 서비스의 등록(Discovery를 통해)을 수락하고,
+SPOT 노드와 소켓 패밀리 서비스가 Discovery로 등록하면 이를 수락하고,
 하트비트 기반 생존 확인을 관리하며,
 집계된 서비스 목록을 연결된 Discovery에 주기적으로 브로드캐스트한다.
 
@@ -21,14 +21,14 @@ SPOT 노드와 소켓 패밀리 서비스의 등록(Discovery를 통해)을 수�
 | **임베디드** | 애플리케이션 프로세스 내에 Registry를 Discovery, 서비스(SPOT/Socket)와 함께 직접 생성. |
 
 **Registry는 스레드 안전(thread-safe)하다.**
-하나의 Registry 핸들을 여러 스레드에서 동시에 사용할 수 있다.
+하나의 Registry 핸들을 여러 스레드에서 동시에 쓸 수 있다.
 
 - **구성 API** (`set_id`, `add_peer`, `set_heartbeat` 등): `bind` 전에 호출한다.
 - **조회 API** (`topology`, `topology(filter)` 등): bind 이후 어떤 스레드에서든 호출할 수 있다.
 
 ## 2. Quick Start
 
-Registry를 실행하고 Discovery를 통해 ROUTER 소켓을 연결하는 최소 예제.
+Registry를 실행하고 Discovery로 ROUTER 소켓을 연결하는 최소 예제.
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -85,7 +85,7 @@ zlink_registry_set(registry, ZLINK_REGISTRY_OPT_ID, 1);
 
 ### 3.4 TLS 설정
 
-TLS는 `zlink_set_tls_server`/`zlink_set_tls_client` API를 통해 Registry
+TLS는 `zlink_set_tls_server`/`zlink_set_tls_client` API로 Registry
 handle에 직접 구성한다:
 
 ```c
@@ -101,9 +101,9 @@ zlink_set_tls_client(registry, ca_pem, NULL /* hostname */, 0 /* trust_system */
 ### 4.1 독립 프로세스 배포
 
 Registry를 전용 서비스로 실행한다. 여러 애플리케이션이 각자의 Discovery
-인스턴스를 통해 연결한다. 애플리케이션 재시작 시에도 Registry가 유지되어야
+인스턴스로 연결한다. 애플리케이션이 재시작해도 Registry가 유지되어야
 하거나, 여러 독립 서비스가 하나의 Registry 클러스터를 공유할 때 이 모드를
-사용한다.
+쓴다.
 
 ```mermaid
 flowchart TB
@@ -117,13 +117,13 @@ flowchart TB
 
 - Registry 수명주기가 애플리케이션 재시작과 독립적이다.
 - 여러 서비스가 단일 Registry(또는 클러스터)를 공유한다.
-- 인프라와 애플리케이션의 관심사가 명확히 분리된다.
+- 인프라와 애플리케이션의 관심사가 명확히 나뉜다.
 
 ### 4.2 임베디드 배포
 
 Registry, Discovery, 서비스(SPOT/Socket)가 모두 단일 프로세스에 존재한다.
-개발, 테스트, 또는 단일 노드 배포에 유용하다. 외부 인프라 의존 없이
-자체 완결형 애플리케이션이 필요할 때 임베디드 모드를 선택한다. 아래 코드는
+개발, 테스트, 또는 단일 노드 배포에 유용하다. 외부 인프라에 기대지 않는
+자체 완결형 애플리케이션이 필요할 때 임베디드 모드를 고른다. 아래 코드는
 하나의 프로세스 안에서 Registry를 생성하고 ROUTER 서버를 등록하고
 DEALER 클라이언트를 연결하는 예제다.
 
@@ -173,7 +173,7 @@ zlink_ctx_term(ctx);
 ```
 
 > **팁**: 모든 컴포넌트가 같은 프로세스에 있을 때 `inproc://`(프로세스 내부) 전송 방식을
-> 사용하면 Registry와 Discovery 간 제로카피(zero-copy, 메모리 복사 없이 전달) 통신이 가능하다.
+> 쓰면 Registry와 Discovery 간 제로카피(zero-copy, 메모리 복사 없이 전달) 통신이 가능하다.
 
 ## 5. 클러스터 구성 및 데이터 동기화
 
@@ -193,7 +193,7 @@ zlink_registry_bind(reg1, "tcp://*:5550", "tcp://*:5551");
 
 ### 5.2 동기화 메커니즘
 
-Registry는 PUB/SUB 기반 플러딩(flooding, 전체 브로드캐스트 전파) 동기화를 사용한다:
+Registry는 PUB/SUB 기반 플러딩(flooding, 전체 브로드캐스트 전파) 동기화를 쓴다:
 
 ```mermaid
 flowchart LR
@@ -206,13 +206,13 @@ flowchart LR
 ```
 
 - 각 Registry가 다른 모든 Registry의 PUB 엔드포인트를 구독
-- 서비스 목록 변경이 다음 브로드캐스트 주기에 플러딩을 통해 전파
+- 서비스 목록 변경이 다음 브로드캐스트 주기에 플러딩으로 전파
 - **Eventually Consistent**: 모든 Registry가 동일한 상태로 수렴
-- `registry_id` + `list_seq`를 통해 중복/역전 업데이트를 안전하게 무시
+- `registry_id` + `list_seq`로 중복/역전 업데이트를 안전하게 무시
 
 **Discovery 관점:** 서비스 목록이 플러딩으로 전파되므로, Discovery는 클러스터의
-**하나의** Registry에만 연결해도 전체 서비스를 발견할 수 있다. 여러 Registry에
-연결하는 것은 서비스 가시성이 아닌 장애 시 페일오버를 위해서다.
+**하나의** Registry에만 연결해도 전체 서비스를 발견한다. 여러 Registry에
+연결하는 것은 서비스 가시성이 아니라 장애 시 페일오버를 위해서다.
 
 ### 5.3 3노드 클러스터 전체 예제
 
@@ -336,7 +336,7 @@ free(entries);
 | `stopped_count` | 중지된 인스턴스 수 |
 | `last_reported_ms` | 가장 최근 heartbeat의 epoch ms |
 
-`auto_connect_type`, `service_role`, `channel_name`으로 필터링 가능
+`auto_connect_type`, `service_role`, `channel_name`으로 필터링한다
 (0 값은 와일드카드):
 
 ```c
@@ -413,7 +413,7 @@ for (size_t i = 0; i < count; i++) {
 #### 필터 필드
 
 필드를 0이 아닌 값으로 설정하면 해당 기준으로 필터링한다. 0 값 필드는
-와일드카드(전체 매칭)로 처리된다.
+와일드카드(전체 매칭)로 처리한다.
 
 | 필드 | 설명 |
 |------|------|
@@ -425,8 +425,8 @@ for (size_t i = 0; i < count; i++) {
 
 ### 6.2 원격 조회 (다른 프로세스)
 
-쿼리 클라이언트를 사용하여 별도 프로세스의 Registry를 조회한다.
-운영 도구나 CLI 유틸리티에서 주로 사용하는 패턴이다.
+쿼리 클라이언트로 별도 프로세스의 Registry를 조회한다.
+운영 도구나 CLI 유틸리티에서 주로 쓰는 패턴이다.
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -540,7 +540,7 @@ free(peers);
 
 #### Actor Active Route 조회
 
-Actor 주소는 애플리케이션 키-값 저장소가 아닌 핵심 Actor 활성 경로(active route)로
+Actor 주소는 애플리케이션 키-값 저장소가 아니라 핵심 Actor 활성 경로(active route)로
 조회한다. Actor 소유 Discovery에서 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜면
 `zlink_discovery_resolve_actor()`가 `actor_id -> node_rid + current_spot_rid +
 current_spot_kind`를 반환한다. Actor가 생성 직후 Entry Spot에 있으면 Entry Spot
@@ -582,15 +582,15 @@ sequenceDiagram
 ### 7.2 하트비트 타임아웃 및 자동 제거
 
 서비스가 `timeout_ms`(기본 15초) 이내에 하트비트를 보내지 않으면, Registry가
-자동으로 서비스 목록에서 제거한다. 제거는 다음 SERVICE_LIST 발행 시 모든
+서비스 목록에서 자동으로 제거한다. 제거 사실은 다음 SERVICE_LIST 발행 시 모든
 Discovery 인스턴스에 브로드캐스트된다.
 
 ### 7.3 Discovery 페일오버
 
 - Discovery는 하나 이상의 Registry ROUTER 엔드포인트에 부트스트랩(bootstrap, 초기 연결) 연결한다.
 - 부트스트랩 메타데이터로 내부 broadcast/uplink 경로를 학습한다.
-- 한 Registry 노드가 실패해도 다른 부트스트랩 엔드포인트를 통해 계속 동작한다.
-- Discovery의 페일오버 로직을 통해 서비스가 자동으로 재등록된다.
+- 한 Registry 노드가 실패해도 다른 부트스트랩 엔드포인트로 계속 동작한다.
+- Discovery의 페일오버 로직이 서비스를 자동으로 재등록한다.
 
 ### 7.4 클러스터 내 Registry 노드 장애
 
@@ -602,7 +602,7 @@ Discovery 인스턴스에 브로드캐스트된다.
 
 ## 8. 역할 분리: Registry vs Monitor
 
-Registry와 로컬 서비스 모니터는 다른 목적을 가진다:
+Registry와 로컬 서비스 모니터는 목적이 다르다:
 
 | 측면 | Registry 토폴로지 | 로컬 서비스 모니터 |
 |------|-------------------|-------------------|

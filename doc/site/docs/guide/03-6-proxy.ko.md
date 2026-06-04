@@ -14,11 +14,11 @@
 int zlink_proxy (void *frontend, void *backend, void *capture);
 ```
 
-- `frontend` → `backend` 방향으로 메시지를 전달하고, 동시에 반대 방향도 처리
-- `capture`가 NULL이 아니면 통과하는 모든 메시지를 capture 소켓에 복사
-- **블로킹 함수** — 별도 스레드에서 실행
+- `frontend` → `backend` 방향으로 메시지를 전달하고 동시에 반대 방향도 처리한다
+- `capture`가 NULL이 아니면 통과하는 모든 메시지를 capture 소켓에 복사한다
+- **블로킹 함수** — 별도 스레드에서 실행한다
 - **소켓 타입 제한 없음** — 내부적으로 `socket_base_t`의 internal recv/send를
-  직접 호출하므로 공개 API 의 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 제한과 무관하게 동작
+  직접 호출하므로 공개 API의 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 제한과 무관하게 동작한다
 
 ### 지원 소켓 조합 예시
 
@@ -64,7 +64,7 @@ zlink_proxy(xsub, xpub, capture);      /* blocking */
 
 ### 3.2 수동 프록시 구성
 
-중간에 로깅, 필터링, 토픽 변환 등 맞춤 로직이 필요하면
+중간에 로깅, 필터링, 토픽 변환 같은 맞춤 로직이 필요하면
 공개 API만으로 수동 프록시를 구성할 수 있다.
 
 #### 데이터 흐름
@@ -132,9 +132,9 @@ while (running) {
 | 프록시 적합성 | 프록시가 토픽을 직접 관리해야 함 | **중계만 하면 되므로 적합** |
 
 > **핵심:** `zlink_proxy()` 내부는 공개 API가 아닌 `socket_base_t`의
-> internal method를 직접 호출하여 데이터를 전달한다.
-> 공개 API에서 XSUB에 `zlink_send()`나 XPUB에 `zlink_recv()`를
-> 호출하면 `ZLINK_RECV_NOT_SUPPORTED` 를 반환한다. 프록시 동작은 `zlink_proxy()` 함수 또는
+> internal method를 직접 호출해 데이터를 전달한다.
+> 공개 API에서 XSUB에 `zlink_send()`를 호출하거나 XPUB에 `zlink_recv()`를
+> 호출하면 `ZLINK_RECV_NOT_SUPPORTED`를 반환한다. 프록시 동작은 `zlink_proxy()` 함수나
 > 위의 수동 구성(전용 API 조합)으로만 가능하다.
 
 ## 4. 요청/응답 프록시 — ROUTER/DEALER

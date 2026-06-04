@@ -4,7 +4,7 @@
 
 ## 1. 개요
 
-PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형성한다. 두 번째 피어가 연결하면 첫 번째 연결은 끊어진다.
+PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 맺는다. 두 번째 피어가 연결하면 첫 번째 연결은 끊어진다.
 
 **핵심 특성:**
 - 단일 파이프만 허용 (1:1 독점)
@@ -122,7 +122,7 @@ if (rc == ZLINK_RECV_OK) {
 
 ## 3. 메시지 형식
 
-PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포함된다.
+PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 들어간다.
 
 ```
 Single frame:     [data]
@@ -189,7 +189,7 @@ zlink_send(worker_signal, &msg, 1, 0);
 
 ### 패턴 2: TCP 통신
 
-네트워크를 통한 1:1 통신. 와일드카드 바인드로 포트 자동 할당 가능.
+네트워크를 통한 1:1 통신. 와일드카드 바인드로 포트를 자동 할당할 수 있다.
 
 ```c
 /* Server: wildcard port */
@@ -210,7 +210,7 @@ zlink_connect(client, endpoint);
 
 ### 패턴 3: DNS 이름 연결
 
-호스트명으로도 연결 가능하다.
+호스트명으로도 연결할 수 있다.
 
 ```c
 void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
@@ -263,7 +263,7 @@ zlink_bind(a, "inproc://signal");
 
 ### IPC 경로 길이
 
-IPC 엔드포인트의 파일 경로는 시스템 제한(보통 108자)을 초과할 수 없다.
+IPC 엔드포인트의 파일 경로는 시스템 제한(보통 108자)을 넘을 수 없다.
 
 ```c
 /* Path too long → ENAMETOOLONG error */
@@ -274,11 +274,11 @@ zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 
 ### HWM 동작
 
-피어가 없거나 느릴 때 송신 메시지는 HWM까지 큐에 쌓인다. HWM 초과 시 `zlink_send()`가 대기(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환(`ZLINK_DONTWAIT`).
+피어가 없거나 느릴 때 송신 메시지는 HWM까지 큐에 쌓인다. HWM을 넘으면 `zlink_send()`가 대기(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다(`ZLINK_DONTWAIT`).
 
 ### LINGER 설정
 
-`zlink_close()` 호출 시 미전송 메시지가 남아 있으면 LINGER 시간만큼 대기한다. 테스트나 빠른 종료가 필요한 경우:
+`zlink_close()`를 호출할 때 미전송 메시지가 남아 있으면 LINGER 시간만큼 대기한다. 테스트나 빠른 종료가 필요한 경우:
 
 ```c
 int linger = 0;

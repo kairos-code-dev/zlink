@@ -21,7 +21,7 @@ zlink는 기본 PUB/SUB과 고급 XPUB/XSUB 두 가지 레벨을 제공한다.
 ### SUB vs XSUB — 핵심 차이
 
 SUB와 XSUB은 모두 `zlink_set_subscription()`으로 구독 정보를
-upstream PUB에 전송한다. 공개 API 사용법은 동일하다.
+upstream PUB에 전송한다. 공개 API 사용법은 같다.
 차이는 **로컬 필터 엔진의 on/off**다.
 
 | | SUB (`filter=true`) | XSUB (`filter=false`) |
@@ -36,10 +36,10 @@ SUB(`filter=true`)은 매 메시지마다 `match()`를 평가하고,
 XSUB(`filter=false`)은 `!false = true`이므로 `match()`를 건너뛴다.
 
 > **흔한 혼동:** "SUB에 `""` 빈 구독을 넣으면 XSUB과 같지 않나?"
-> → 결과적으로 모든 메시지를 수신하는 것은 같지만,
+> → 모든 메시지를 받는다는 결과는 같지만,
 > SUB은 매 메시지마다 trie match 비용이 발생하고,
 > XSUB은 필터 체크 자체를 건너뛴다.
-> 또한 SUB은 구독이 **없으면** 아무것도 받지 못하지만,
+> 또 SUB은 구독이 **없으면** 아무것도 받지 못하지만,
 > XSUB은 구독 없이도 전부 받는다.
 
 **프록시 패턴에서 XSUB/XPUB을 쓰는 이유:**
@@ -54,8 +54,8 @@ flowchart LR
 ```
 
 - XSUB은 구독 상태 없이 PUB의 모든 메시지를 통과시킨다.
-- XPUB은 SUB의 구독 이벤트를 `zlink_xpub_recv_part()`로 노출하여
-  프록시가 구독 관리 로직(필터링, 로깅, 인가 등)을 삽입할 수 있다.
+- XPUB은 SUB의 구독 이벤트를 `zlink_xpub_recv_part()`로 노출해
+  프록시가 구독 관리 로직(필터링, 로깅, 인가 등)을 끼워 넣을 수 있다.
 - 일반 SUB/PUB으로는 이 중계 구조를 만들 수 없다.
 
 ```mermaid
@@ -121,9 +121,9 @@ zlink_set_subscription(sub, "weather");
 
 > **참고:** PUB/SUB 계열 4소켓에서 `zlink_send()`/`zlink_recv()`는
 > 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 이다. 발행은
-> `zlink_publish()`, 수신은 `zlink_subscribe()`를 사용한다.
+> `zlink_publish()`, 수신은 `zlink_subscribe()`를 쓴다.
 
-SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 사용해
+SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 써서
 서버 루프에서 readable을 관찰한 뒤 `zlink_subscribe()`로 토픽 메시지를
 가져온다. 직접 토픽 콜백 표면은 제공하지 않는다.
 
@@ -209,11 +209,11 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
 ```
 
 토픽은 와이어(프로토콜 전송 레벨)에서 첫 프레임으로 전송되고,
-`zlink_subscribe()`가 토픽과 데이터를 분리하여 반환한다.
+`zlink_subscribe()`가 토픽과 데이터를 분리해 반환한다.
 호출자가 토픽 프레임을 직접 조립할 필요는 없다.
 
 > **참고:** `zlink_publish(pub, NULL, parts, ...)`처럼 topic을 NULL로 전달하면
-> parts[0]이 토픽 프레임으로 사용되는 호환 경로가 동작하지만,
+> parts[0]이 토픽 프레임으로 쓰이는 호환 경로가 동작하지만,
 > 이 방식은 권장하지 않는다. 항상 `topic_id` 파라미터를 명시적으로 전달한다.
 
 ## 5. PUB/SUB 소켓 옵션
@@ -261,7 +261,7 @@ zlink_publish(pub, NULL, &msg, 1, 0);
 
 ### 패턴 2: 다중 SUB
 
-하나의 PUB에 여러 SUB가 연결. 각 SUB는 자신의 토픽만 수신.
+하나의 PUB에 여러 SUB가 연결된다. 각 SUB는 자신의 토픽만 받는다.
 
 ```c
 void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
@@ -280,7 +280,7 @@ zlink_set_subscription(sub_sports, "sports");
 
 ### 패턴 3: 다중 PUB → SUB
 
-SUB는 여러 PUB에 connect 가능. Fair-queue로 모든 PUB의 메시지를 수신.
+SUB는 여러 PUB에 connect할 수 있다. Fair-queue로 모든 PUB의 메시지를 받는다.
 
 ```c
 void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
@@ -294,7 +294,7 @@ zlink_connect(sub, "tcp://pub2:5557");
 ### Slow Subscriber (HWM 초과 시 drop)
 
 PUB/XPUB는 기본적으로 **손실 허용 모드(lossy mode)**로 동작한다. 느린 구독자의
-송신 큐가 HWM(High-Water Mark, 큐 최대 허용 메시지 수)에 도달하면, 해당 구독자에게 보내는 메시지를
+송신 큐가 HWM(High-Water Mark, 큐 최대 허용 메시지 수)에 도달하면 그 구독자에게 보내는 메시지를
 오류 반환 없이 **조용히 버린다(silent drop)**.
 
 ```c
@@ -305,8 +305,8 @@ zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
 #### XPUB_NODROP — 버리지 않고 배압(backpressure) 반환
 
-`ZLINK_PUB_OPT_NODROP`을 활성화하면 손실 허용 모드가 꺼진다. HWM 도달 시
-메시지를 버리지 않고 `ZLINK_SUBMIT_BACKPRESSURED`를 반환하여 호출자가 직접
+`ZLINK_PUB_OPT_NODROP`을 켜면 손실 허용 모드가 꺼진다. HWM 도달 시
+메시지를 버리지 않고 `ZLINK_SUBMIT_BACKPRESSURED`를 반환해 호출자가 직접
 배압(backpressure)을 제어할 수 있다.
 
 ```c
@@ -333,11 +333,11 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 | `XPUB_NODROP=1` | `ZLINK_SUBMIT_BACKPRESSURED` 반환 — 호출자가 배압 제어 | 메시지 유실이 허용되지 않는 경우 |
 
 > `ZLINK_PUB_OPT_NODROP`은 XPUB socket 전용 option이다.
-> 일반 PUB에서는 사용할 수 없다.
+> 일반 PUB에서는 쓸 수 없다.
 
 ### Late Joiner (구독 전 메시지 유실)
 
-SUB가 connect한 뒤 구독 정보가 PUB에 전파되기 전에 발행된 메시지는 수신할 수 없다.
+SUB가 connect한 뒤 구독 정보가 PUB에 전파되기 전에 발행된 메시지는 받을 수 없다.
 
 ```c
 /* Time needed for subscription to propagate to PUB */
@@ -349,7 +349,7 @@ msleep(100);  /* wait for subscription propagation */
 
 ### 방향 제약
 
-PUB/SUB는 각각 전용 API만 사용 가능하다:
+PUB/SUB는 각각 전용 API만 쓸 수 있다:
 
 ```c
 /* PUB: send via zlink_publish(). Cannot attach recv handler */
@@ -374,7 +374,7 @@ zlink_send(sub, &part, 1, 0);                /* ZLINK_SUBMIT_NOT_SUPPORTED */
 
 XPUB/XSUB는 구독 프레임을 애플리케이션에서 직접 다룰 수 있는
 고급 publish-subscribe 소켓이다. 프록시/브로커 구축, 구독 모니터링,
-Last-Value Caching에 사용된다.
+Last-Value Caching에 쓴다.
 
 ### SUB vs XSUB — 핵심 차이
 
@@ -397,7 +397,7 @@ XSUB이 프록시에서 필요한 이유는 구독 상태 없이도 모든 메�
 | **메시지 발행** | `zlink_publish()` | `zlink_publish()` (동일) |
 | **구독 이벤트** | 노출 안 함 | `zlink_xpub_recv_part()`로 수신 |
 
-XPUB는 어떤 클라이언트가 어떤 토픽을 구독하거나 해지했는지 파악할 수 있다.
+XPUB는 어떤 클라이언트가 어떤 토픽을 구독하거나 해지했는지 파악한다.
 
 ### PUB/SUB 소켓 공개 API 요약
 
@@ -410,9 +410,9 @@ XPUB는 어떤 클라이언트가 어떤 토픽을 구독하거나 해지했는�
 | 로컬 필터 | N/A | **켜짐** | N/A | **꺼짐** |
 
 > `zlink_send()` / `zlink_recv()`는 PUB/SUB 계열 4소켓 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 이다.
-> 발행은 `zlink_publish()`, 수신은 `zlink_subscribe()` 전용 API를 사용한다.
+> 발행은 `zlink_publish()`, 수신은 `zlink_subscribe()` 전용 API를 쓴다.
 
-> Proxy 패턴에서 XSUB/XPUB을 사용하는 방법은
+> Proxy 패턴에서 XSUB/XPUB을 쓰는 방법은
 > [Proxy 가이드](./03-6-proxy.ko.md)를 참고.
 
 ## 9. 구독 프레임 형식
@@ -432,7 +432,7 @@ zlink_set_subscription(xsub, "A");
 zlink_unset_subscription(xsub, "A");
 ```
 
-XPUB는 `zlink_xpub_recv_part()`로 구독 프레임을 수신한다:
+XPUB는 `zlink_xpub_recv_part()`로 구독 프레임을 받는다:
 
 ```c
 void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
@@ -461,7 +461,7 @@ zlink_recv_result_t rc = zlink_xpub_recv_part(
 ### XPUB_MANUAL 모드
 
 기본적으로 XPUB는 SUB의 구독을 자동 처리한다.
-MANUAL 모드에서는 구독 프레임을 수신한 후, 애플리케이션이 직접
+MANUAL 모드에서는 구독 프레임을 받은 뒤 애플리케이션이 직접
 `zlink_set_subscription()` / `zlink_unset_subscription()`로 실제 구독을 결정한다.
 
 ```c
@@ -544,7 +544,7 @@ for (;;) {
 
 ### 패턴 3: 구독 모니터링
 
-XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
+XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰한다.
 
 ```c
 void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
@@ -583,7 +583,7 @@ zlink_close(sub);
 
 ### 구독 전파 타이밍
 
-구독 메시지는 비동기로 전파된다. 구독 직후 발행된 메시지는 수신하지 못할 수 있다.
+구독 메시지는 비동기로 전파된다. 구독 직후 발행된 메시지는 받지 못할 수 있다.
 
 ```c
 void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
@@ -594,11 +594,11 @@ zlink_connect(sub, "tcp://pub2:5557");
 
 ### XPUB MANUAL 모드에서 구독 관리
 
-MANUAL 모드에서 구독 프레임을 수신한 후 `zlink_set_subscription()`를 호출하지 않으면 해당 구독은 등록되지 않는다. 반드시 명시적으로 구독을 처리해야 한다.
+MANUAL 모드에서 구독 프레임을 받은 뒤 `zlink_set_subscription()`를 호출하지 않으면 그 구독은 등록되지 않는다. 반드시 명시적으로 구독을 처리해야 한다.
 
 ### 다중 구독자 → 단일 XPUB
 
-여러 SUB가 같은 토픽을 구독하면, 모든 SUB가 해제될 때까지 XPUB의 구독이 유지된다.
+여러 SUB가 같은 토픽을 구독하면 모든 SUB가 해제될 때까지 XPUB의 구독이 유지된다.
 
 > 참고: `core/tests/integration/test_xpub_manual.cpp` — `test_missing_subscriptions()`: 두 구독자를 순차 처리하여 누락 방지
 

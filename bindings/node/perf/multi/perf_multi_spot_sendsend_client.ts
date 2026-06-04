@@ -8,7 +8,6 @@ const {
   createPayload,
   createRunId,
   currentEpochNs,
-  decodeMetricHeader,
   sleepMillis,
   summarizeMetrics,
   stampPayload,
@@ -234,10 +233,7 @@ async function main() {
           continue;
         }
         slot.waitingReply = false;
-        collector.record(
-          decodeMetricHeader(received.parts[0].data()),
-          currentEpochNs()
-        );
+        collector.recordPayload(received.parts[0].data(), currentEpochNs());
         progressed = true;
       }
       return progressed;

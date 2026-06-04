@@ -6,7 +6,7 @@
 > 현재 baseline은
 > [`doc/plan/recv-with-callback/core-surface-restoration-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/recv-with-callback/core-surface-restoration-plan.ko.md)
 > 를 따른다.
-> 특히 receive callback과 send-ready는 별도 상태 축으로 다루며,
+> 특히 receive callback과 send-ready는 별도 상태 축으로 다루며
 > callback attach 축소가 아니라 공통 `EBUSY`/poller 규칙 정렬이 현재 방향이다.
 
 > 범위:
@@ -20,8 +20,8 @@
 
 - 사용자 가치가 높은 subject에는 callback을 유지한다.
 - 가치 대비 관리 포인트만 큰 subject에서는 callback을 걷어낸다.
-- public contract를 "모든 recv-capable subject가 dual-mode"라는 가정에서
-  벗어나게 만든다.
+- public contract가 "모든 recv-capable subject가 dual-mode"라는 가정에서
+  벗어나게 한다.
 - `core/tests/`의 회귀 범위도 축소된 support matrix에 맞게 다시 고정한다.
 
 핵심 설계 원칙:
@@ -161,7 +161,7 @@
 - `gateway` callback receive / `send_ready` success를 전제로 한 회귀
 - raw socket `send_ready` success를 전제로 한 회귀
 
-위 항목들은 단순 수정이 아니라, 새 정책과 맞지 않으면 삭제 또는 실패 회귀로
+위 항목들은 단순 수정이 아니라, 새 정책과 맞지 않으면 삭제하거나 실패 회귀로
 교체한다.
 
 #### 문서/가이드에서 실제 제거할 항목

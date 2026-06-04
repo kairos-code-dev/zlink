@@ -5,7 +5,7 @@
 ## 1. 개요
 
 STREAM 소켓은 ZMP(zlink Message Protocol) 핸드셰이크 없이 연결하는 외부 클라이언트
-(웹 브라우저, 게임 클라이언트 등)와의 RAW 통신을 지원한다. tcp, tls, ws, wss transport를
+(웹 브라우저, 게임 클라이언트 등)와 RAW 통신을 지원한다. tcp, tls, ws, wss transport를
 지원하며, 특히 WS/WSS 경로의 성능 최적화에 집중한다.
 
 ## 2. 아키텍처
@@ -46,8 +46,8 @@ sequenceDiagram
 - `msg_t` payload 를 Beast write 버퍼로 직접 전달한다 (중간 copy 없음).
 
 ### 3.3 Beast Write Buffer
-- 64KB write 버퍼. 여러 소형 메시지가 하나의 Beast write 로 배치되도록
-  선택된 크기다.
+- 64KB write 버퍼. 여러 소형 메시지가 하나의 Beast write 로 묶이도록
+  선택한 크기다.
 
 ### 3.4 프레임 분할
 - `auto_fragment(false)` — 논리 메시지 하나가 하나의 WebSocket 프레임에
@@ -63,19 +63,19 @@ sequenceDiagram
 | WS        |  696 MB/s  |
 | WSS 1KB   |  382 MB/s  |
 
-WS 프레이밍 선택의 이득은 대용량 메시지에서 가장 크다. 64KB 이상
+WS 프레이밍을 택해서 얻는 이득은 대용량 메시지에서 가장 크다. 64KB 이상
 payload 에서는 WS 가 TCP 라인 레이트에 근접하고, WSS 비용은 TLS 암호화
-오버헤드가 지배한다.
+오버헤드가 좌우한다.
 
 ## 5. 설계 트레이드오프
 
 - Speculative write 미지원 (WebSocket 프레임 기반)
-- Gather write는 WS/WSS에서 지원 (Beast가 내부 버퍼링)
+- Gather write는 WS/WSS에서 지원 (Beast가 내부에서 버퍼링)
 - TLS/WSS는 암호화 오버헤드 존재
 
 ## 6. Packet Handler 수신 모드
 
-STREAM 소켓은 상호 배타적인 세 가지 수신 모드를 가진다. 소켓 하나당 하나만
+STREAM 소켓에는 서로 배타적인 수신 모드가 셋 있다. 소켓 하나당 하나만
 활성화할 수 있으며, 같은 소켓에 두 번째 활성화를 시도하면 `EBUSY`로
 실패한다.
 
@@ -87,10 +87,10 @@ STREAM 소켓은 상호 배타적인 세 가지 수신 모드를 가진다. 소�
 
 Packet handler 모드는 raw STREAM 바이트 파이프 위에 `header + body` 프레이밍을
 올리는 애플리케이션 프로토콜을 위한 것이다 — 예를 들어 주문 처리 게이트웨이가
-작은 제어 헤더 뒤에 큰 payload를 싣는 경우. 각 호출자가 동일한
-length-prefix(길이 접두사) 디코더와 버퍼링 상태 머신을 반복해서 구현하는
+작은 제어 헤더 뒤에 큰 payload를 싣는 경우다. 호출자마다 똑같은
+length-prefix(길이 접두사) 디코더와 버퍼링 상태 머신을 거듭 구현하는
 대신, STREAM 이 내부에서 frame 을 파싱하고 이미 할당된
-`zlink_msg_t` 를 콜백에 전달한다.
+`zlink_msg_t` 를 콜백에 넘긴다.
 
 ### 6.1 Wire framing
 
@@ -106,14 +106,14 @@ length-prefix(길이 접두사) 디코더와 버퍼링 상태 머신을 반복�
 - `header_size` 는 2-byte big-endian unsigned integer.
 - `body_size` 는 4-byte big-endian unsigned integer.
 - 두 size 는 모두 `0` 일 수 있다. `header_size=0 && body_size=0` 인 패킷도
-  콜백을 그대로 유발하며, header 와 body 는 비어 있으면서도 non-`NULL`
+  콜백을 그대로 유발하며, header 와 body 가 비어 있어도 non-`NULL`
   인 `zlink_msg_t` 두 개로 전달된다.
 - 최대 크기는 내부 한계로 제한된다. 한계를 넘는 size 광고는 malformed
   framing 으로 취급된다 (6.4 참고).
 
 ### 6.2 Per-connection 누적기
 
-들어오는 바이트는 `source_rid` (원격쪽 STREAM routing identity) 로 키잉된
+들어오는 바이트는 `source_rid` (원격쪽 STREAM routing identity) 를 키로 삼은
 per-connection decoder 를 거친다.
 
 ```
@@ -134,11 +134,11 @@ per-connection decoder 를 거친다.
   callback(stream, source_rid, header_msg, body_msg, userdata)
 ```
 
-먼저 length field 가 파싱된다. `header_size` 와 `body_size` 가 모두 확정된
-시점에 구현이 header / body 용 `zlink_msg_t` 를 미리 allocation 하고, 이후
-socket read 는 바이트를 그 message 들의 backing buffer 에 직접 흘려넣는다.
-Delivery 시점에 두 번째 copy 가 없다 — 콜백이 실행될 때 payload는
-이미 전달받을 message 내부에 존재한다.
+먼저 length field 가 파싱된다. `header_size` 와 `body_size` 가 모두 확정되면
+구현이 header / body 용 `zlink_msg_t` 를 미리 allocation 하고, 이후
+socket read 는 바이트를 그 message 들의 backing buffer 에 곧장 흘려넣는다.
+Delivery 시점에는 두 번째 copy 가 없다 — 콜백이 실행될 때 payload는
+이미 넘겨받을 message 안에 들어 있다.
 
 ### 6.3 Callback 규약
 
@@ -153,42 +153,42 @@ zlink_stream_packet_handler_fn(stream,
 ```
 
 - `source_rid` 는 콜백 실행 동안만 유효한 빌린 참조(borrowed view)다. 콜백
-  이후 보존하려면 복사해야 한다.
-- `header_msg` 와 `body_msg` 는 wire size 가 `0` 인 경우에도 항상
-  non-`NULL` 로 전달된다. 두 메시지의 ownership 이 콜백으로 이전되며,
+  뒤에도 보존하려면 복사해야 한다.
+- `header_msg` 와 `body_msg` 는 wire size 가 `0` 이어도 항상
+  non-`NULL` 로 전달된다. 두 메시지의 ownership 이 콜백으로 넘어가며,
   콜백이 `zlink_msg_close()` 로 닫을 책임을 진다.
 - 같은 `source_rid` 에서 오는 패킷들은 직렬화된다. 같은 피어의 뒤
   패킷이 앞 패킷을 앞지를 수 없다. 서로 다른 `source_rid` 의 패킷
-  은 서로 다른 worker 스레드에서 병렬 디스패치될 수 있다.
-- 콜백 내부에서의 self-close 는 raw `zlink_recv_handler` 케이스와 같은
-  규칙을 따른다. 콜백 내부에서 수신 모드를 바꾸거나 소켓을 닫으려
+  은 서로 다른 worker 스레드에서 병렬로 디스패치될 수 있다.
+- 콜백 안에서의 self-close 는 raw `zlink_recv_handler` 케이스와 같은
+  규칙을 따른다. 콜백 안에서 수신 모드를 바꾸거나 소켓을 닫으려
   하면 `EBUSY` 로 실패한다.
 
 ### 6.4 Malformed framing
 
 다음 상황은 malformed 로 보고 해당 연결을 닫는다.
 
-- 선언된 `header_size` 또는 `body_size` 가 내부 한계를 초과하는 경우.
+- 선언된 `header_size` 또는 `body_size` 가 내부 한계를 넘는 경우.
 - Length field 는 도착했지만 전체 패킷이 도착하기 전에 피어가 close /
   reset 되는 경우 — 즉 mid-length 또는 mid-payload close.
 
-이 경우 STREAM monitor 에 해당 `source_rid` 에 대한 disconnect 이벤트로
+이 경우 STREAM monitor 에 해당 `source_rid` 의 disconnect 이벤트로
 노출된다. 불완전한 패킷은 절대 콜백으로 전달되지 않으며,
 연결과 함께 decoder state 도 폐기된다.
 
 ### 6.5 왜 STREAM 안에서 decode 하는가
 
-각 애플리케이션에서 하는 대신 STREAM 안에서 decode 하도록 둔 이유는 두 가지다.
+애플리케이션마다 따로 하는 대신 STREAM 안에서 decode 하도록 둔 이유는 두 가지다.
 
 - **복사 한 번 감소.** 애플리케이션이 "조립된" contiguous buffer 를 한 번
-  만져보고 다시 쪼갤 필요가 없다. header / body message 가 소켓 read 의
+  만졌다가 다시 쪼갤 필요가 없다. header / body message 가 곧 소켓 read 의
   목적 버퍼다.
-- **순서 보장.** Per-`source_rid` 직렬화가 decoder 쪽에서 강제되므로,
+- **순서 보장.** Per-`source_rid` 직렬화를 decoder 쪽에서 강제하므로,
   호출자가 raw byte delivery 위에 별도 reorder 로직을 올릴 필요가 없다.
 
 ## 7. 현재 STREAM 런타임 기본값
 
-STREAM 은 transport 전반에 공통된 기본 성능 프로파일을 사용한다.
+STREAM 은 transport 전반에 공통된 기본 성능 프로파일을 쓴다.
 STREAM 외 공통 소켓 기본값은
 [socket-option-defaults.ko.md](./socket-option-defaults.ko.md)를 참고한다.
 
@@ -233,8 +233,8 @@ pipe를 찾고 종료 요청을 넣는다. 4바이트가 아닌 rid는 잘못된
 ## 9. Session Actor relay (ActorGateway attach)
 
 STREAM socket은 client session 메시지를 SpotNode Actor로 relay할 수 있다. 각 client
-연결의 `source_rid`가 STREAM session이 되고, `zlink_stream_bind_actor()`로 한 개 이상의
-Actor에 bind될 수 있다. bind를 실행하려면 그 전에 STREAM handle이 자신의 session을
+연결의 `source_rid`가 STREAM session이 되고, `zlink_stream_bind_actor()`로 Actor 하나
+이상에 bind될 수 있다. bind를 실행하려면 그 전에 STREAM handle이 자신의 session을
 소유하는 SpotNode를 알고 있어야 한다. 이것이 ActorGateway attach다.
 
 ```c
@@ -246,7 +246,7 @@ STREAM handle이 session owner SpotNode를 얻는 경로는 두 가지다.
 
 - **명시적 attach.** `zlink_stream_attach_actor_gateway(stream, node)`는 stream을
   routed-capable `node`가 소유하도록 기록한다. raw STREAM socket과 connector 기반
-  stream은 library가 handle에서 SpotNode로 가는 구조적 연결이 없으므로 이 경로가 필수다.
+  stream은 library가 handle에서 SpotNode로 이어지는 구조적 연결이 없으므로 이 경로가 필수다.
   attach는 one-way이고 sticky하다. 다른 node로 다시 붙이려 하면 거부하고(`EBUSY` /
   `ZLINK_CONFIG_INVALID_STATE`), 같은 stream/node 쌍이면 멱등으로 받아들이며, stream close
   또는 node destroy 때만 해제된다. routed가 아닌 node는 `ENOTSUP` /
@@ -258,5 +258,5 @@ STREAM socket은 relay 상태를 직접 보관하지 않는다. owner 매핑, se
 relay 경로는 모두 SpotNode Actor runtime에 있다. 배선과 local/remote relay 경로, cleanup
 규칙은 [spot-internals.ko.md](./spot-internals.ko.md) 12절("STREAM session과 Actor
 binding")에 정리되어 있다. STREAM 계층에서 중요한 것은 `source_rid`별 byte pipe가 relay가
-타는 transport라는 점과, session disconnect가 bound Actor의 joined Spot을 바꾸지 않고 그
+타는 transport라는 점, 그리고 session disconnect가 bound Actor의 joined Spot은 바꾸지 않고 그
 session의 binding만 제거한다는 점뿐이다.

@@ -205,10 +205,10 @@ SpotNode끼리 topic과 routed 메시지를 주고받는 기본 mesh 연결이�
 peer는 외부 router-capable channel의 `ROUTER`가 특정 `Spot`으로 들어오는 ingress
 경로를 갖도록 만드는 연결이다.
 
-상위 framework 에서 routed Spot egress client 를 제공하더라도, 내부 기준은 같다.
+상위 framework에서 routed Spot egress client를 제공하더라도 내부 기준은 같다.
 target SpotNode 쪽에는 router channel peer가 먼저 연결되어 있어야 하며, source 쪽
-client는 자신이 보유한 local egress channel 을 통해 그 ingress channel 로 메시지를
-보낸다. target Spot rid 만으로 source connection 을 역조회하지 않는다.
+client는 자신이 보유한 local egress channel을 통해 그 ingress channel로 메시지를
+보낸다. target Spot rid만으로 source connection을 역조회하지 않는다.
 
 ```mermaid
 flowchart LR

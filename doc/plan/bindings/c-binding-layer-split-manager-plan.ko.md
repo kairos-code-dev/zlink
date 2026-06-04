@@ -1,10 +1,10 @@
 # C Binding 계층 분리 + 전체 바인딩 `*_part` 재배선 감독 계획
 
-> 성격: 이 문서는 구현 로그가 아니라, 현재 main Claude가 **감독(manager)** 으로서
-> 언어별 하위 Codex 에이전트들에게 작업을 분배하고, 응답을 직접 리뷰한 뒤,
+> 성격: 이 문서는 구현 로그가 아니다. 현재 main Claude가 **감독(manager)** 으로서
+> 언어별 하위 Codex 에이전트에게 작업을 나눠 주고, 응답을 직접 리뷰한 뒤,
 > `doc/spec/draft/c-binding-layer-plan.ko.md` 와
 > `doc/spec/draft/bindings-helper-capi-partwise-send-recv.ko.md` 의 구현 방향이
-> 실제 코드에 전부 반영될 때까지 반복해서 재지시하는
+> 실제 코드에 전부 반영될 때까지 거듭 재지시하기 위한
 > **감독용 실행 기준 문서**다.
 >
 > source of truth:
@@ -14,9 +14,9 @@
 >
 > 이번 라운드의 핵심은 `core/include/zlink.h` 에 섞여 있던
 > **C binding convenience layer (aggregate)** 와
-> **Helper substrate layer (`*_part`)** 두 계층을 실제로 분리하고,
-> 각 언어 바인딩이 `*_part` substrate 위에서 현재 public 인터페이스를
-> 유지하도록 다시 구현하는 것이다.
+> **Helper substrate layer (`*_part`)** 두 계층을 실제로 떼어 내고,
+> 각 언어 바인딩을 `*_part` substrate 위에서 다시 구현하되 현재 public 인터페이스는
+> 그대로 두는 것이다.
 >
 > 감독과 하위 에이전트는 draft spec 의 설계 의도를 절대 기준으로 삼고,
 > hot path 성능(특히 Java, .NET 벤치)에서 regression 이 없는지까지 확인한다.
@@ -203,8 +203,8 @@
 
 ### Phase A 고정 순서
 
-> **순서 근거**: samples/perf 이동(A-2/A-3)을 aggregate 제거(A-4) 이전에 먼저 수행해야
-> 컴파일 파괴 없이 단계별 진행이 가능하다. perf baseline(A-0)은 이동 전에 측정해야
+> **순서 근거**: samples/perf 이동(A-2/A-3)을 aggregate 제거(A-4)보다 먼저 해야
+> 컴파일이 깨지지 않고 단계별로 진행된다. perf baseline(A-0)도 이동 전에 측정해야
 > 비교 기준이 유효하다.
 
 1. A-0: perf baseline 측정 — Java perf, C++ perf 현재 수치 파일로 저장
@@ -364,7 +364,7 @@
 - 지시받은 범위를 draft spec 기준으로 수정한다.
 - 변경 전후의 aggregate 심볼 grep 결과를 보고한다.
 - 기본 검증 진입점을 실행하고 결과를 첨부한다.
-- hot path 성능에 영향 가능한 변경이면 간단한 대비 결과를 첨부한다.
+- hot path 성능에 영향을 줄 수 있는 변경이면 간단한 대비 결과를 첨부한다.
 - draft spec 해석이 애매하면 감독에게 확인을 요청한다. 임의 해석 금지.
 
 ## 6. 파일별 체크리스트 (감독 리뷰 기준)
@@ -650,5 +650,5 @@ A-7 완료 후 각 바인딩의 native 라이브러리 디렉토리에 `libzlink
 ## 9. 이 문서의 갱신 규칙
 
 - 감독은 각 단계 완료/rework/blocked 시마다 §2 상태표를 즉시 갱신한다.
-- 단계별 상세 작업 로그는 이 문서에 남기지 않고, 에이전트 응답을 통해 추적한다.
+- 단계별 상세 작업 로그는 이 문서에 남기지 않고, 에이전트 응답으로 추적한다.
 - draft spec 해석이 바뀌면 먼저 `doc/spec/draft/*` 를 갱신한 뒤 이 문서를 갱신한다.

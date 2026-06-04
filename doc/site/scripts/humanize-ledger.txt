@@ -51,3 +51,15 @@ doc/internals/protocol-raw.ko.md
 doc/internals/protocol-zmp.ko.md
 doc/internals/registry-internals.ko.md
 doc/internals/services-internals.ko.md
+doc/internals/socket-option-defaults.ko.md
+doc/internals/spot-internals.ko.md
+doc/internals/stream-socket.ko.md
+doc/internals/thread-safety.ko.md
+doc/internals/threading-model.ko.md
+doc/principal/documentation/documentation-principles.ko.md
+doc/principal/software-design-principles.ko.md
+doc/plan/bindings/bindings-policy-sync-manager-plan.ko.md
+doc/plan/bindings/c-binding-layer-split-manager-plan.ko.md
+doc/plan/callback-to-recv/README.ko.md
+doc/plan/callback-to-recv/core-surface-reduction-plan.ko.md
+doc/plan/callback-to-recv/perf-policy-alignment-plan.ko.md

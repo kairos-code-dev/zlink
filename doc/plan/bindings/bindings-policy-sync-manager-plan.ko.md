@@ -1,8 +1,8 @@
 # `bindings/*` 정책 동기화 + POSD 리팩토링 감독 계획
 
 > 성격: 이 문서는 구현 로그가 아니라, 현재 main Codex가 **감독(manager)** 으로서
-> 언어별 하위 Codex 에이전트들에게 작업을 분배하고, 응답을 직접 리뷰한 뒤,
-> 1차로 `bindings/README.md` 정책 문서의 미구현/불일치 항목을 전부 구현하게 하고,
+> 언어별 하위 Codex 에이전트들에게 작업을 분배하고 응답을 직접 리뷰한 뒤,
+> 1차로 `bindings/README.md` 정책 문서의 미구현/불일치 항목을 전부 구현하게 하고
 > 2차로 POSD 원칙 기반 리팩토링을 반복 지시하는
 > **감독용 실행 기준 문서**다.
 >
@@ -15,10 +15,10 @@
 > `bindings/README.md` 기준으로 다시 정렬하는 것이다.
 > 감독과 하위 에이전트는 “기존 구현 관성”보다 정책 문서를 우선하며,
 > 특히 POSD 구조 원칙, public surface 중복 제거, raw option bag 비노출,
-> canonical naming, core 계약 준수를 최우선으로 감사해야 한다.
+> canonical naming, core 계약 준수를 최우선으로 감사한다.
 >
 > 추가 최우선 원칙:
-> - 모든 `bindings/*` 라이브러리는 **가능한 한 고성능으로 동작하도록 구현되어야 한다.**
+> - 모든 `bindings/*` 라이브러리는 **가능한 한 고성능으로 동작하도록 구현한다.**
 > - 정책 동기화와 POSD 리팩토링은 readability나 표면 정리만이 목적이 아니며,
 >   불필요한 allocation, 복사, wrapper hop, hidden conversion, needless abstraction,
 >   hot path branch를 줄여 실제 런타임 비용을 낮추는 방향이어야 한다.
@@ -53,7 +53,7 @@
 - 2단계에서는 `bindings/README.md`의 `POSD Structure Policy` 및 관련 public surface 규칙을 기준으로,
   복잡도 감소, 의미 중복 제거, ownership 명확화, change amplification 감소가
   더 가능하면 반복해서 수정하게 한다.
-- 감독 리뷰에서 추가 누락, 구조 문제, 문서 불일치가 발견되면 완료 처리하지 않고
+- 감독 리뷰에서 추가 누락, 구조 문제, 문서 불일치가 나오면 완료 처리하지 않고
   재지시한다.
 - 특정 언어에 대해 문서의 모든 내용이 구현되었고, POSD 리팩토링 여지도 감독 리뷰상
   더 없으며, 해당 언어 검증까지 확인되었을 때만 완료 처리한다.
@@ -65,13 +65,13 @@
 - 모든 언어 바인딩을 `bindings/README.md` 기준으로 다시 감사한다.
 - 먼저 각 언어별로 정책이 아직 적용되지 않은 부분을 **명시적 리스트**로 만들고 수정한다.
 - 그 다음 POSD 원칙에 따라 public surface와 내부 구조를 다시 정리한다.
-- 이 전체 작업은 각 바인딩이 가능한 한 낮은 오버헤드와 높은 처리량, 낮은 지연 특성을 유지하도록 만드는 것을 전제로 한다.
-- 감독은 하위 에이전트의 응답을 리뷰하고, 필요하면 추가 지시사항을 내려 이 과정을 반복한다.
+- 이 전체 작업은 각 바인딩이 가능한 한 낮은 오버헤드와 높은 처리량, 낮은 지연 특성을 유지하는 것을 전제로 한다.
+- 감독은 하위 에이전트의 응답을 리뷰하고 필요하면 추가 지시사항을 내려 이 과정을 반복한다.
 - 모든 언어가 1단계와 2단계를 모두 끝낼 때까지 종료하지 않는다.
 
 ## 2. 감독 진행표
 
-감독 에이전트는 아래 표를 작업 보드로 사용하고, 각 단계 상태를 직접 갱신한다.
+감독 에이전트는 아래 표를 작업 보드로 삼아 각 단계 상태를 직접 갱신한다.
 
 상태 규칙:
 - `pending`: 아직 시작 전
@@ -109,7 +109,7 @@
 2. 에이전트가 `bindings/README.md`를 기준으로 정책 미구현/불일치 목록을 만들고 수정한다.
 3. 에이전트가 검증 결과와 함께 응답한다.
 4. 감독이 직접 리뷰한다.
-5. 정책 미구현 또는 문서 불일치가 남아 있으면 1단계를 다시 지시한다.
+5. 정책 미구현이나 문서 불일치가 남아 있으면 1단계를 다시 지시한다.
 6. 1단계 감독 리뷰에서 남은 항목이 0개일 때 2단계 POSD 리팩토링을 지시한다.
 7. 에이전트가 구조 단순화와 중복 제거를 수행하고 검증 결과와 함께 응답한다.
 8. 감독이 직접 리뷰한다.
@@ -118,7 +118,7 @@
 
 ## 4. 언어별 담당 및 기본 검증 진입점
 
-감독은 언어별로 에이전트 ownership을 고정하고, 리뷰와 재지시도 같은 ownership 단위로 반복한다.
+감독은 언어별로 에이전트 ownership을 고정하고 리뷰와 재지시도 같은 ownership 단위로 반복한다.
 
 | 대상 | 담당 에이전트 | 주 검토 범위 | 기본 검증 진입점 |
 |------|----------------|--------------|------------------|
@@ -131,9 +131,9 @@
 | `bindings/rust` | `codex-rust-binding-agent` | Rust type system mapping, ownership/lifetime, surface/options/service | `cargo test` |
 
 - 기본 검증 진입점은 출발점일 뿐이다.
-- 수정 범위가 더 넓으면 surface test, typecheck, sample verification, 문서 정합성 확인을 추가해야 한다.
+- 수정 범위가 더 넓으면 surface test, typecheck, sample verification, 문서 정합성 확인을 추가한다.
 - 감독은 에이전트가 “무엇을 실행했는가”뿐 아니라 “왜 그 검증이 수정 범위를 커버하는가”까지 확인한다.
-- 성능에 민감한 경로를 건드린 경우, 에이전트는 추가로 allocation/copy/hot path overhead 관점의 근거를 보고해야 한다.
+- 성능에 민감한 경로를 건드린 경우, 에이전트는 추가로 allocation/copy/hot path overhead 관점의 근거를 보고한다.
 
 ## 5. 감독과 하위 에이전트의 역할 분리
 
@@ -171,7 +171,7 @@
 - 목록은 반드시 public surface, naming, option facade, error mapping, ownership,
   monitor/service exposure, coverage scope, POSD 위반 징후를 포함해 점검한다.
 - 기존 구현이 문서와 충돌하면 구현을 바꾼다.
-- 언어별 관례는 표현 방식에만 적용하고, 의미 계약은 바꾸지 않는다.
+- 언어별 관례는 표현 방식에만 적용하고 의미 계약은 바꾸지 않는다.
 - raw option bag, legacy convenience, 얕은 compat wrapper, 숨은 failure path를
   public에 새로 추가하지 않는다.
 - core 상태 오류를 바인딩이 임의 추론하거나 숨기지 않는다.
@@ -200,7 +200,7 @@
 실제 병목 위치를 고려해 적용 여부를 판단한다.
 
 - send/recv hot path에서 avoid 가능한 heap allocation이 남아 있지 않은가
-- message payload 전달이 가능한 곳에서 zero-copy 또는 ownership move 경로를 사용하고 있는가
+- message payload 전달이 가능한 곳에서 zero-copy 또는 ownership move 경로를 쓰고 있는가
 - language-native buffer와 native message 사이에서 불필요한 재복사나 재인코딩이 없는가
 - 작은 convenience API 때문에 공통 hot path에 boxing, wrapper object 생성, dynamic dispatch가 추가되지 않았는가
 - callback 기반 API가 필요 이상으로 trampoline, closure capture, thread hop을 만들지 않는가
@@ -229,8 +229,8 @@
 - `Public Surface Rules`
 - 문서 하위의 socket/service/monitor/registry/query/poller/proxy 관련 세부 규칙
 
-- 각 언어 에이전트는 위 항목을 기준으로 “적용 완료 / 불일치 / 비적용 사유”를 남겨야 한다.
-- 감독은 불일치 목록이 특정 섹션에 편중되어 있으면, 누락된 섹션 재감사를 다시 지시한다.
+- 각 언어 에이전트는 위 항목을 기준으로 “적용 완료 / 불일치 / 비적용 사유”를 남긴다.
+- 감독은 불일치 목록이 특정 섹션에 편중되어 있으면 누락된 섹션 재감사를 다시 지시한다.
 
 ### 6.6 감독 리뷰 체크리스트
 
@@ -308,7 +308,7 @@
 ## 9. 검증 규칙
 
 - 하위 에이전트는 해당 언어에 맞는 빌드, 테스트, 샘플, surface 검증 중
-  정책 변경의 영향이 직접 드러나는 검증만 사용한다.
+  정책 변경의 영향이 직접 드러나는 검증만 쓴다.
 - 검증은 “최소 1회 실행”이 아니라 수정 범위를 실제로 커버해야 한다.
 - 컴파일만 통과시키고 public surface 회귀를 확인하지 않은 경우 완료로 보지 않는다.
 - 검증 실패, 미실행, 환경 제약은 모두 명시적으로 보고한다.

@@ -63,12 +63,12 @@
 - `STREAM` / `MULTI_STREAM`
 - 수신 방식은 `--recv recv` 또는 `--recv callback`으로 선택
 
-즉 "패턴명에 callback이 박힌 legacy alias"는 정책 문서에서 제거한다.
+곧 "패턴명에 callback이 박힌 legacy alias"는 정책 문서에서 뺀다.
 
 ### 3.2 유지 이유
 
 - pattern과 receive mode는 서로 다른 축이다.
-- `STREAM_CALLBACK` 같은 이름은 mode를 pattern 이름에 중복 encode한다.
+- `STREAM_CALLBACK` 같은 이름은 mode를 pattern 이름에 중복으로 encode한다.
 - 이후 support matrix를 읽을 때 `pattern x recv_mode` 대신 `pattern alias x recv_mode`
   형태가 되어 설명 비용만 늘어난다.
 
@@ -117,7 +117,7 @@
 
 ## 5. `core/perf` 구현 정렬 항목
 
-정책 문서 수정과 `core/perf` 구현 정리는 같은 작업에서 같이 끝낸다.
+정책 문서 수정과 `core/perf` 구현 정리는 같은 작업에서 함께 끝낸다.
 
 ### 5.1 runner / matrix
 
@@ -168,17 +168,17 @@
 
 ## 6. monitor와 perf의 관계
 
-monitor는 callback 유지 대상이지만 perf pattern이 아니다. 따라서:
+monitor는 callback 유지 대상이지만 perf pattern은 아니다. 따라서:
 
 - callback 유지 정책 문서에는 monitor를 포함한다
 - perf `--recv` support matrix에는 monitor를 넣지 않는다
 - perf start gate는 계속 monitor delivery-ready event를 사용한다
-- 이는 "monitor callback이 남아 있다"와 "monitor가 perf dual-mode pattern이다"를
-  구분하기 위한 것이다
+- 이렇게 해야 "monitor callback이 남아 있다"와 "monitor가 perf dual-mode pattern이다"를
+  구분할 수 있다
 
 ## 7. 완료 기준
 
-아래가 모두 만족되면 문서 정렬 완료로 본다.
+아래가 모두 만족되면 문서 정렬을 완료로 본다.
 
 1. `doc/perf/` 어디에도 `STREAM_CALLBACK` / `MULTI_STREAM_CALLBACK`가 남지 않는다.
 2. single 정책 문서에서 callback 허용 패턴은 `SPOT`만 남는다.

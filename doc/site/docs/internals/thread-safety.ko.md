@@ -9,13 +9,13 @@
 ## 1. 개요
 
 zlink의 공개 핸들(소켓, SPOT, Discovery, Registry, 모니터)은
-기본적으로 thread-safe이지만, 모든 API가 같은 비용을 가지지는 않습니다.
-내부적으로 라이브러리는 모든 공개 API를 세 가지 계층 중 하나로 분류하며,
-각 계층은 고유한 순서 의미론, 성능 제약, 에러 규칙을 가집니다.
+기본적으로 thread-safe이지만, 모든 API의 비용이 같지는 않습니다.
+내부적으로 라이브러리는 모든 공개 API를 세 가지 계층 중 하나로 분류하고,
+각 계층은 고유한 순서 의미론과 성능 제약, 에러 규칙을 따릅니다.
 
-3계층 계약(three-tier contract)은 내부 설계 도구다 — 사용자에게는 "자유롭게
+3계층 계약(three-tier contract)은 내부 설계 도구다. 사용자에게는 "자유롭게
 보내고, 언제든 설정하고, 명확한 에러 코드로 닫기"로 보인다. 이 문서는
-각 계층이 어떻게 구현되는지 설명한다.
+각 계층을 어떻게 구현하는지 설명한다.
 
 ## 2. Three-Tier Contract (형식 정의)
 
@@ -31,7 +31,7 @@ zlink의 공개 핸들(소켓, SPOT, Discovery, Registry, 모니터)은
 
 - 단일 스레드 순차: 한 스레드에서의 호출은 호출 순서를 보존합니다.
 - 다중 스레드 동시: 각 메시지는 온전하게 전달됩니다. 인터리빙 순서는
-  내부 직렬화 순서를 따르며, 호출자 스케줄링 순서를 따르지 않습니다.
+  내부 직렬화 순서를 따르며 호출자 스케줄링 순서를 따르지 않습니다.
   스레드 간 순서는 보장되지 않습니다.
 - Callback 스레드 send와 worker 스레드 send가 같은 핸들에서 동시에
   발생하면 동일한 concurrent 계약이 적용됩니다.
@@ -63,7 +63,7 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 **정확성 우선 직렬화:**
 
 - Same-handle concurrent control-path 호출은 안전합니다. 실행 순서는
-  내부 직렬화에 의해 결정되며, 호출자 스케줄링 순서와는 다릅니다.
+  내부 직렬화가 결정하며, 호출자 스케줄링 순서와는 다릅니다.
 - 성공적으로 반환된 control-path 호출의 효과는 이후 admitted된 모든
   호출에서 관측 가능합니다.
 
@@ -88,8 +88,8 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 
 **입장 허용 게이트(Admission gate) 메커니즘:**
 
-Lifecycle 게이트는 두 가지 상태를 추적하는 단일 원자 워드다: closing
-bit 와 in-flight(현재 실행 중인 API 호출) 카운트. 이를 통해 광범위 잠금(broad lock) 없이
+Lifecycle 게이트는 두 가지 상태를 추적하는 단일 원자 워드다. 즉 closing
+bit 와 in-flight(현재 실행 중인 API 호출) 카운트다. 이 덕분에 광범위 잠금(broad lock) 없이
 빠른 실패(fail-fast) 결정이 가능하다.
 
 ```mermaid
@@ -127,7 +127,7 @@ stateDiagram-v2
 ### 3.1 Raw Socket
 
 Raw socket은 최우선 hot-path subject입니다. `send()` 구현은 내부
-send queue에 발행합니다 — 단일 스레드 send에 사용되는 것과 같은
+send queue에 발행합니다 — 단일 스레드 send에 쓰는 것과 같은
 경로에 concurrent 진입을 위한 admission gate를 추가한 것입니다.
 
 - **입장 허용 게이트:** 소켓당 단일 `atomic<uint32_t>` 워드가
@@ -135,7 +135,7 @@ send queue에 발행합니다 — 단일 스레드 send에 사용되는 것과 �
   (`socket_base.hpp` / `socket_base.cpp`).
 - **Send queue publication:** 동시 producer 들이 기존
   pipe/YPipe 인프라를 통해 enqueue 한다. I/O 스레드 consumer
-  측은 변경되지 않는다.
+  측은 바뀌지 않는다.
 - **Control-path lock:** `bind`, `connect`, `set_option` 등은
   hot-path 입장 허용 게이트와 상태나 캐시 라인을 공유하지 않는
   별도 직렬화 경로를 거친다.
@@ -158,7 +158,7 @@ send API가 없습니다.
 - 정확성과 가시성이 주요 관심사입니다.
 - 내부 직렬화가 topology query, peer mutation, heartbeat 설정의
   일관성을 보장합니다.
-- `attach_discovery`를 통해 SPOT Node에 연결될 때,
+- `attach_discovery`로 SPOT Node에 연결될 때,
   Discovery/Registry 직렬화가 parent data-plane 성능을 저하시키면
   안 됩니다.
 
@@ -175,12 +175,12 @@ Monitor는 control-plane 중심 subject입니다.
 ## 4. Service Public API Guard
 
 `service_public_api.hpp` 는 SPOT, SPOT Node, Discovery,
-Registry 가 lifecycle 과 control-path 계층을 구현하는 데 사용하는
+Registry 가 lifecycle 과 control-path 계층을 구현할 때 쓰는
 `service_public_api_guard_t` 클래스를 제공합니다.
 
 **구현:**
 
-가드는 단일 `atomic<uint32_t>` 를 사용하며, 하나의 워드에 두 필드를
+가드는 단일 `atomic<uint32_t>` 를 쓰며, 하나의 워드에 두 필드를
 패킹합니다:
 
 - **Bit 31 (closing bit):** close/destroy 가 수락되면 설정됩니다.
@@ -196,14 +196,14 @@ Registry 가 lifecycle 과 control-path 계층을 구현하는 데 사용하는
 | Hot path | Send 경로는 가드의 broad lock 경로를 우회합니다. Control-path 직렬화와의 경합을 피하기 위해 별도의 최소 비용 입장 허용(소켓 수준 입장 허용 게이트)을 사용합니다. |
 
 **Cancel close:** `cancel_close()` 가 closing bit 를 지워 no-latch
-속성을 지원한다 — 상위 수준에서 `begin_close_or_fail_busy()` 가
+속성을 뒷받침한다 — 상위 수준에서 `begin_close_or_fail_busy()` 가
 실패하면 핸들을 operational 상태로 복원할 수 있다.
 
 ## 5. Callback Dispatch 구현
 
 대부분의 콜백은 I/O 스레드에서 실행된다. 다만
 `zlink_spot_dispatch_event_handler()` 는 Spot 전용 worker runtime 에서
-실행된다. 디스패치 메커니즘은 원자적 load 를 사용하여 핸들러 포인터를 읽으며,
+실행된다. 디스패치 메커니즘은 원자적 load 로 핸들러 포인터를 읽으며,
 hot path 에 광범위 잠금 없이 핸들러 교체의 가시성을 보장한다.
 
 **핸들러 로딩:**
@@ -213,8 +213,8 @@ handler = _socket_msg_handler.load(std::memory_order_acquire);
 ```
 
 모든 핸들러 함수 포인터와 관련 subject/userdata 포인터는
-`memory_order_acquire` load 를 사용합니다. Setter 함수는 대응하는
-`memory_order_release` store 를 사용합니다. 이를 통해 콜백 디스패치가
+`memory_order_acquire` load 를 씁니다. Setter 함수는 대응하는
+`memory_order_release` store 를 씁니다. 이 덕분에 콜백 디스패치가
 핸들러 포인터를 읽을 때, setter 스레드가 핸들러를 설치하기 전에 쓴
 모든 데이터도 함께 볼 수 있습니다.
 
@@ -227,7 +227,7 @@ leave_callback_api();   // clears in-flight flag
 ```
 
 `enter_callback_api` / `leave_callback_api` 쌍은 `close` 가 콜백을
-in-flight 연산으로 인식하여 핸들을 콜백 실행 중에 teardown 하는 대신
+in-flight 연산으로 인식하게 하여, 핸들을 콜백 실행 중에 teardown 하는 대신
 `EBUSY` 를 반환하도록 보장합니다.
 
 **STREAM raw 콜백 제약 근거:**
@@ -240,14 +240,14 @@ STREAM raw 콜백은 더 엄격한 제한을 가진다 — raw 콜백 내에서�
 **Send-ready 핸들러 `EDEADLK` 제약 근거:**
 
 자기 콜백 내에서 send-ready 핸들러를 교체하면 재진입(reentrant) 디스패치
-상황이 발생한다. 이는 감지되어 `EDEADLK` 로 거부된다.
+상황이 벌어진다. 이를 감지해 `EDEADLK` 로 거부한다.
 
 ## 6. 설계 원칙
 
 ### Hot path / control-plane 분리
 
-- Hot-path 상태와 control-plane 상태는 별도 데이터 구조를 사용합니다.
-- Hot-path 캐시 라인과 control-plane 캐시 라인을 분리하여 false sharing 을 방지합니다.
+- Hot-path 상태와 control-plane 상태는 별도 데이터 구조를 씁니다.
+- Hot-path 캐시 라인과 control-plane 캐시 라인을 분리해 false sharing 을 방지합니다.
 - Hot-path 입장 허용과 lifecycle 입장 허용은 최소한의 필요 상태만
   공유합니다 (closing bit 확인).
 
@@ -259,7 +259,7 @@ STREAM raw 콜백은 더 엄격한 제한을 가진다 — raw 콜백 내에서�
 
 ### Control path: 직렬화 허용, hot path 저해 금지
 
-- Control-path 연산은 내부 직렬화 레인과 짧은 critical section 을 사용할 수 있습니다.
+- Control-path 연산은 내부 직렬화 레인과 짧은 critical section 을 쓸 수 있습니다.
 - Control-plane lock 은 hot-path 입장 허용 게이트와 캐시 라인이나 lock 인스턴스를 공유하면 안 됩니다.
 - Control-path 호출은 동시에 진행 중인 hot-path send 를 절대 블로킹하면 안 됩니다.
 

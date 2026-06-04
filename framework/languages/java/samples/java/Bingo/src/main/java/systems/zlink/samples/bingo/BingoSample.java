@@ -1,7 +1,6 @@
 package systems.zlink.samples.bingo;
 
 import java.util.List;
-import systems.zlink.framework.ZLinkRegistry;
 import systems.zlink.samples.bingo.client.BingoClientApp;
 import systems.zlink.samples.bingo.client.BingoClientOptions;
 import systems.zlink.samples.bingo.server.api.ApiServerHostFactory;
@@ -15,7 +14,7 @@ public final class BingoSample {
 
     public static void main(String[] args) throws Exception {
         List<Integer> drawSequence = List.of(7, 11, 42, 42);
-        try (ZLinkRegistry registry = RegistryHostFactory.start();
+        try (var registry = RegistryHostFactory.start();
              var api = ApiServerHostFactory.start();
              var play = PlayServerHostFactory.start();
              var session = SessionServerHostFactory.start()) {

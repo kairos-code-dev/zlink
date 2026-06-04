@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.bingo
 
 import kotlinx.coroutines.runBlocking
-import systems.zlink.framework.ZLinkRegistry
 import systems.zlink.samples.kotlin.bingo.client.BingoClientApp
 import systems.zlink.samples.kotlin.bingo.client.BingoClientOptions
 import systems.zlink.samples.kotlin.bingo.server.api.ApiServerHostFactory
@@ -11,7 +10,7 @@ import systems.zlink.samples.kotlin.bingo.server.session.SessionServerHostFactor
 
 fun main() = runBlocking {
     val drawSequence = listOf(7, 11, 42, 42)
-    RegistryHostFactory.start().use { _: ZLinkRegistry ->
+    RegistryHostFactory.start().use {
         ApiServerHostFactory.start().use {
             PlayServerHostFactory.start().use {
                 SessionServerHostFactory.start().use {

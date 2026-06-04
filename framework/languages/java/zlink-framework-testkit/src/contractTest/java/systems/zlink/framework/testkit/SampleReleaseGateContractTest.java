@@ -1208,6 +1208,30 @@ final class SampleReleaseGateContractTest {
             "Bingo",
             "Server/Play/src/main/java",
             "systems/zlink/samples/bingo/server/play/PlayServerHostFactory.java");
+        String registryHostSource = sampleJavaSource(
+            "Bingo",
+            "Server/Registry/src/main/java",
+            "systems/zlink/samples/bingo/server/registry/RegistryHostFactory.java");
+        String sessionHostSource = sampleJavaSource(
+            "Bingo",
+            "Server/Session/src/main/java",
+            "systems/zlink/samples/bingo/server/session/SessionServerHostFactory.java");
+        String apiProgramSource = sampleJavaSource(
+            "Bingo",
+            "Server/Api/src/main/java",
+            "systems/zlink/samples/bingo/server/api/Program.java");
+        String playProgramSource = sampleJavaSource(
+            "Bingo",
+            "Server/Play/src/main/java",
+            "systems/zlink/samples/bingo/server/play/Program.java");
+        String registryProgramSource = sampleJavaSource(
+            "Bingo",
+            "Server/Registry/src/main/java",
+            "systems/zlink/samples/bingo/server/registry/Program.java");
+        String sessionProgramSource = sampleJavaSource(
+            "Bingo",
+            "Server/Session/src/main/java",
+            "systems/zlink/samples/bingo/server/session/Program.java");
         String apiHandlerSource = sampleJavaSource(
             "Bingo",
             "Server/Api/src/main/java",
@@ -1238,6 +1262,28 @@ final class SampleReleaseGateContractTest {
                 && playHostSource.contains("addHandlerGroup(\"play\")")
                 && !playHostSource.contains("addRequestHandler"),
             "Bingo Api/Play roles must use annotation-discovered handler groups");
+        assertTrue(apiHostSource.contains("@SpringBootApplication")
+                && apiHostSource.contains("SpringApplicationBuilder")
+                && apiHostSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && !apiHostSource.contains("ZLinkFramework.start")
+                && playHostSource.contains("@SpringBootApplication")
+                && playHostSource.contains("SpringApplicationBuilder")
+                && playHostSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && !playHostSource.contains("ZLinkFramework.start")
+                && sessionHostSource.contains("@SpringBootApplication")
+                && sessionHostSource.contains("SpringApplicationBuilder")
+                && sessionHostSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && !sessionHostSource.contains("ZLinkFramework.start")
+                && registryHostSource.contains("@SpringBootApplication")
+                && registryHostSource.contains("SpringApplicationBuilder")
+                && registryHostSource.contains("ZLinkEmbeddedRegistryOptions")
+                && !registryHostSource.contains("ZLinkRegistry.start"),
+            "Bingo server roles must run ZLink through Spring Boot lifecycle beans");
+        assertFalse(apiProgramSource.contains("CountDownLatch")
+                || playProgramSource.contains("CountDownLatch")
+                || registryProgramSource.contains("CountDownLatch")
+                || sessionProgramSource.contains("CountDownLatch"),
+            "Bingo role entry points must not keep direct ZLink starts alive with CountDownLatch");
         assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
                 && apiHandlerSource.contains("@ZLinkRequest(packetName = \"AuthenticatePlayer\")")
                 && playHandlerSource.contains("@ZLinkHandlerGroup(\"play\")")
@@ -1336,6 +1382,30 @@ final class SampleReleaseGateContractTest {
             "Bingo",
             "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/play/PlayServerHostFactory.kt");
+        String registryHostSource = sampleKotlinSource(
+            "Bingo",
+            "Server/Registry/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/server/registry/RegistryHostFactory.kt");
+        String sessionHostSource = sampleKotlinSource(
+            "Bingo",
+            "Server/Session/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/server/session/SessionServerHostFactory.kt");
+        String apiProgramSource = sampleKotlinSource(
+            "Bingo",
+            "Server/Api/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/server/api/Program.kt");
+        String playProgramSource = sampleKotlinSource(
+            "Bingo",
+            "Server/Play/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/server/play/Program.kt");
+        String registryProgramSource = sampleKotlinSource(
+            "Bingo",
+            "Server/Registry/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/server/registry/Program.kt");
+        String sessionProgramSource = sampleKotlinSource(
+            "Bingo",
+            "Server/Session/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/server/session/Program.kt");
         String apiHandlerSource = sampleKotlinSource(
             "Bingo",
             "Server/Api/src/main/kotlin",
@@ -1367,6 +1437,28 @@ final class SampleReleaseGateContractTest {
                 && playHostSource.contains("addHandlerGroup(\"play\")")
                 && !playHostSource.contains("addRequestHandler"),
             "Kotlin Bingo Api/Play roles must use annotation-discovered handler groups");
+        assertTrue(apiHostSource.contains("@SpringBootApplication")
+                && apiHostSource.contains("SpringApplicationBuilder")
+                && apiHostSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && !apiHostSource.contains("ZLinkFramework.start")
+                && playHostSource.contains("@SpringBootApplication")
+                && playHostSource.contains("SpringApplicationBuilder")
+                && playHostSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && !playHostSource.contains("ZLinkFramework.start")
+                && sessionHostSource.contains("@SpringBootApplication")
+                && sessionHostSource.contains("SpringApplicationBuilder")
+                && sessionHostSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && !sessionHostSource.contains("ZLinkFramework.start")
+                && registryHostSource.contains("@SpringBootApplication")
+                && registryHostSource.contains("SpringApplicationBuilder")
+                && registryHostSource.contains("ZLinkEmbeddedRegistryOptions")
+                && !registryHostSource.contains("ZLinkRegistry.start"),
+            "Kotlin Bingo server roles must run ZLink through Spring Boot lifecycle beans");
+        assertFalse(apiProgramSource.contains("CountDownLatch")
+                || playProgramSource.contains("CountDownLatch")
+                || registryProgramSource.contains("CountDownLatch")
+                || sessionProgramSource.contains("CountDownLatch"),
+            "Kotlin Bingo role entry points must not keep direct ZLink starts alive with CountDownLatch");
         assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
                 && apiHandlerSource.contains("@ZLinkRequest(packetName = \"AuthenticatePlayer\")")
                 && playHandlerSource.contains("@ZLinkHandlerGroup(\"play\")")

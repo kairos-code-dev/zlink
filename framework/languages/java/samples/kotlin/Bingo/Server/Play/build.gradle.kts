@@ -4,6 +4,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":Shared"))
     implementation(files("../../../../../zlink-framework-core/build/libs/zlink-framework-core-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../../../zlink-framework-kotlin/build/libs/zlink-framework-kotlin-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../../../../../../bindings/java/build/libs/zlink-java-6.0.4.jar"))
@@ -14,18 +15,6 @@ dependencies {
 
 kotlin {
     jvmToolchain(22)
-}
-
-sourceSets {
-    main {
-        kotlin {
-            srcDir("../../src/main/kotlin")
-            srcDir("src/main/kotlin")
-            include("systems/zlink/samples/kotlin/bingo/server/play/**")
-            include("systems/zlink/samples/kotlin/bingo/shared/**")
-            exclude("systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoRoomState.kt")
-        }
-    }
 }
 
 application {

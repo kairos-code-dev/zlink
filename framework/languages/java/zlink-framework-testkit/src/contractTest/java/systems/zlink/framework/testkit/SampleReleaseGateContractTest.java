@@ -1133,14 +1133,25 @@ final class SampleReleaseGateContractTest {
     @Test
     void bingoMirrorsFourClientMatchingTimerAndBoundPushGate() throws IOException {
         assertSampleFilesExist("java", "Bingo", "src/main/java", List.of(
-            "systems/zlink/samples/bingo/BingoSample.java",
+            "systems/zlink/samples/bingo/BingoSample.java"));
+        assertNoSampleSourcesUnder("java", "Bingo", "src/main/java", List.of(
+            "systems/zlink/samples/bingo/client",
+            "systems/zlink/samples/bingo/server",
+            "systems/zlink/samples/bingo/shared"));
+        assertSampleFilesExist("java", "Bingo", "Client/src/main/java", List.of(
+            "systems/zlink/samples/bingo/client/Program.java",
             "systems/zlink/samples/bingo/client/BingoClientApp.java",
             "systems/zlink/samples/bingo/client/BingoClientOptions.java",
             "systems/zlink/samples/bingo/client/BingoNotificationInbox.java",
             "systems/zlink/samples/bingo/client/BingoPlayerClient.java",
+            "systems/zlink/samples/bingo/client/SampleAsync.java"));
+        assertSampleFilesExist("java", "Bingo", "Server/Api/src/main/java", List.of(
+            "systems/zlink/samples/bingo/server/api/Program.java",
             "systems/zlink/samples/bingo/server/api/ApiServerHostFactory.java",
             "systems/zlink/samples/bingo/server/api/handlers/AuthenticatePlayerHandler.java",
-            "systems/zlink/samples/bingo/server/api/handlers/MatchBingoHandler.java",
+            "systems/zlink/samples/bingo/server/api/handlers/MatchBingoHandler.java"));
+        assertSampleFilesExist("java", "Bingo", "Server/Play/src/main/java", List.of(
+            "systems/zlink/samples/bingo/server/play/Program.java",
             "systems/zlink/samples/bingo/server/play/PlayServerHostFactory.java",
             "systems/zlink/samples/bingo/server/play/actors/PlayerActor.java",
             "systems/zlink/samples/bingo/server/play/actors/PlayerActorFactory.java",
@@ -1148,7 +1159,6 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoNotificationPublisher.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoRoomModels.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoRoomSpot.java",
-            "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoWinnerSink.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/BingoRoomJoinHandler.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/BingoRoomActorJoinedHandler.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/BingoRoomActorLeftHandler.java",
@@ -1161,11 +1171,16 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/server/play/entryspot/handlers/BingoEntrySpotActorLeftHandler.java",
             "systems/zlink/samples/bingo/server/play/handlers/AllocateBingoRoomHandler.java",
             "systems/zlink/samples/bingo/server/play/handlers/BingoRoomDirectory.java",
-            "systems/zlink/samples/bingo/server/play/handlers/EnsurePlayerActorHandler.java",
-            "systems/zlink/samples/bingo/server/registry/RegistryHostFactory.java",
+            "systems/zlink/samples/bingo/server/play/handlers/EnsurePlayerActorHandler.java"));
+        assertSampleFilesExist("java", "Bingo", "Server/Registry/src/main/java", List.of(
+            "systems/zlink/samples/bingo/server/registry/Program.java",
+            "systems/zlink/samples/bingo/server/registry/RegistryHostFactory.java"));
+        assertSampleFilesExist("java", "Bingo", "Server/Session/src/main/java", List.of(
+            "systems/zlink/samples/bingo/server/session/Program.java",
             "systems/zlink/samples/bingo/server/session/SessionServerHostFactory.java",
             "systems/zlink/samples/bingo/server/session/sessions/BingoSession.java",
-            "systems/zlink/samples/bingo/server/session/sessions/handlers/AuthenticateSessionHandler.java",
+            "systems/zlink/samples/bingo/server/session/sessions/handlers/AuthenticateSessionHandler.java"));
+        assertSampleFilesExist("java", "Bingo", "Shared/src/main/java", List.of(
             "systems/zlink/samples/bingo/shared/configuration/SampleNames.java",
             "systems/zlink/samples/bingo/shared/configuration/SampleTopology.java",
             "systems/zlink/samples/bingo/shared/contracts/Messages.java"));
@@ -1175,24 +1190,31 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/BingoSample.java");
         String clientSource = sampleJavaSource(
             "Bingo",
+            "Client/src/main/java",
             "systems/zlink/samples/bingo/client/BingoPlayerClient.java");
         String roomSource = sampleJavaSource(
             "Bingo",
+            "Server/Play/src/main/java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoRoomSpot.java");
         String publisherSource = sampleJavaSource(
             "Bingo",
+            "Server/Play/src/main/java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoNotificationPublisher.java");
         String apiHostSource = sampleJavaSource(
             "Bingo",
+            "Server/Api/src/main/java",
             "systems/zlink/samples/bingo/server/api/ApiServerHostFactory.java");
         String playHostSource = sampleJavaSource(
             "Bingo",
+            "Server/Play/src/main/java",
             "systems/zlink/samples/bingo/server/play/PlayServerHostFactory.java");
         String apiHandlerSource = sampleJavaSource(
             "Bingo",
+            "Server/Api/src/main/java",
             "systems/zlink/samples/bingo/server/api/handlers/AuthenticatePlayerHandler.java");
         String playHandlerSource = sampleJavaSource(
             "Bingo",
+            "Server/Play/src/main/java",
             "systems/zlink/samples/bingo/server/play/handlers/EnsurePlayerActorHandler.java");
 
         assertTrue(mainSource.contains("new BingoClientOptions(4)"),
@@ -1206,8 +1228,9 @@ final class SampleReleaseGateContractTest {
         assertTrue(roomSource.contains("\"player-2\", \"player-3\""),
             "Bingo sample must verify same-sequence winners");
         assertTrue(clientSource.contains("BingoWinner")
-                && publisherSource.contains("BingoWinnerSink"),
-            "Bingo sample must push winner notifications through a narrow sink port");
+                && !clientSource.contains("server.play")
+                && !publisherSource.contains("BingoWinnerSink"),
+            "Bingo sample must not couple client notification handling to server implementation types");
         assertTrue(apiHostSource.contains("addHandlersFromPackageOf")
                 && apiHostSource.contains("addHandlerGroup(\"api\")")
                 && !apiHostSource.contains("addRequestHandler")
@@ -1239,14 +1262,24 @@ final class SampleReleaseGateContractTest {
     @Test
     void bingoKotlinSampleMirrorsJavaRoleLayout() throws IOException {
         assertSampleFilesExist("kotlin", "Bingo", "src/main/kotlin", List.of(
-            "systems/zlink/samples/kotlin/bingo/BingoKotlinSample.kt",
+            "systems/zlink/samples/kotlin/bingo/BingoKotlinSample.kt"));
+        assertNoSampleSourcesUnder("kotlin", "Bingo", "src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/bingo/client",
+            "systems/zlink/samples/kotlin/bingo/server",
+            "systems/zlink/samples/kotlin/bingo/shared"));
+        assertSampleFilesExist("kotlin", "Bingo", "Client/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/bingo/client/Program.kt",
             "systems/zlink/samples/kotlin/bingo/client/BingoClientApp.kt",
             "systems/zlink/samples/kotlin/bingo/client/BingoClientOptions.kt",
             "systems/zlink/samples/kotlin/bingo/client/BingoNotificationInbox.kt",
-            "systems/zlink/samples/kotlin/bingo/client/BingoPlayerClient.kt",
+            "systems/zlink/samples/kotlin/bingo/client/BingoPlayerClient.kt"));
+        assertSampleFilesExist("kotlin", "Bingo", "Server/Api/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/bingo/server/api/Program.kt",
             "systems/zlink/samples/kotlin/bingo/server/api/ApiServerHostFactory.kt",
             "systems/zlink/samples/kotlin/bingo/server/api/handlers/AuthenticatePlayerHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/api/handlers/MatchBingoHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/api/handlers/MatchBingoHandler.kt"));
+        assertSampleFilesExist("kotlin", "Bingo", "Server/Play/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/bingo/server/play/Program.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/PlayServerHostFactory.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/actors/PlayerActor.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/actors/PlayerActorFactory.kt",
@@ -1254,7 +1287,6 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoNotificationPublisher.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoRoomModels.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoRoomSpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoWinnerSink.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/handlers/BingoRoomJoinHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/handlers/BingoRoomActorJoinedHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/handlers/BingoRoomActorLeftHandler.kt",
@@ -1267,11 +1299,16 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/server/play/entryspot/handlers/BingoEntrySpotActorLeftHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/handlers/AllocateBingoRoomHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/handlers/BingoRoomDirectory.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/handlers/EnsurePlayerActorHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/registry/RegistryHostFactory.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/handlers/EnsurePlayerActorHandler.kt"));
+        assertSampleFilesExist("kotlin", "Bingo", "Server/Registry/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/bingo/server/registry/Program.kt",
+            "systems/zlink/samples/kotlin/bingo/server/registry/RegistryHostFactory.kt"));
+        assertSampleFilesExist("kotlin", "Bingo", "Server/Session/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/bingo/server/session/Program.kt",
             "systems/zlink/samples/kotlin/bingo/server/session/SessionServerHostFactory.kt",
             "systems/zlink/samples/kotlin/bingo/server/session/sessions/BingoSession.kt",
-            "systems/zlink/samples/kotlin/bingo/server/session/sessions/handlers/AuthenticateSessionHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/session/sessions/handlers/AuthenticateSessionHandler.kt"));
+        assertSampleFilesExist("kotlin", "Bingo", "Shared/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/shared/configuration/SampleNames.kt",
             "systems/zlink/samples/kotlin/bingo/shared/configuration/SampleTopology.kt",
             "systems/zlink/samples/kotlin/bingo/shared/contracts/Messages.kt"));
@@ -1281,24 +1318,31 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/BingoKotlinSample.kt");
         String clientSource = sampleKotlinSource(
             "Bingo",
+            "Client/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/client/BingoPlayerClient.kt");
         String roomSource = sampleKotlinSource(
             "Bingo",
+            "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoRoomSpot.kt");
         String publisherSource = sampleKotlinSource(
             "Bingo",
+            "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoNotificationPublisher.kt");
         String apiHostSource = sampleKotlinSource(
             "Bingo",
+            "Server/Api/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/api/ApiServerHostFactory.kt");
         String playHostSource = sampleKotlinSource(
             "Bingo",
+            "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/play/PlayServerHostFactory.kt");
         String apiHandlerSource = sampleKotlinSource(
             "Bingo",
+            "Server/Api/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/api/handlers/AuthenticatePlayerHandler.kt");
         String playHandlerSource = sampleKotlinSource(
             "Bingo",
+            "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/play/handlers/EnsurePlayerActorHandler.kt");
 
         assertTrue(mainSource.contains("BingoClientOptions(4)")
@@ -1313,8 +1357,9 @@ final class SampleReleaseGateContractTest {
         assertTrue(roomSource.contains("\"player-2\", \"player-3\""),
             "Kotlin Bingo sample must verify same-sequence winners");
         assertTrue(clientSource.contains("BingoWinner")
-                && publisherSource.contains("BingoWinnerSink"),
-            "Kotlin Bingo sample must push winner notifications through a narrow sink port");
+                && !clientSource.contains("server.play")
+                && !publisherSource.contains("BingoWinnerSink"),
+            "Kotlin Bingo sample must not couple client notification handling to server implementation types");
         assertTrue(apiHostSource.contains("addHandlersFromPackageOf")
                 && apiHostSource.contains("addHandlerGroup(\"api\")")
                 && !apiHostSource.contains("addRequestHandler")

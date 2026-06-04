@@ -4,6 +4,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":Shared"))
     implementation(files("../../../../../zlink-framework-core/build/libs/zlink-framework-core-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../../../zlink-framework-kotlin/build/libs/zlink-framework-kotlin-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../../../zlink-stream-connector/build/libs/zlink-stream-connector-0.1.0-SNAPSHOT.jar"))
@@ -15,17 +16,6 @@ dependencies {
 
 kotlin {
     jvmToolchain(22)
-}
-
-sourceSets {
-    main {
-        kotlin {
-            srcDir("../../src/main/kotlin")
-            srcDir("src/main/kotlin")
-            include("systems/zlink/samples/kotlin/bingo/server/session/**")
-            include("systems/zlink/samples/kotlin/bingo/shared/**")
-        }
-    }
 }
 
 application {

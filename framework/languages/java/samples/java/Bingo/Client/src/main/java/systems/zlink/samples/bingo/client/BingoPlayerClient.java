@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoWinnerSink;
 import systems.zlink.samples.bingo.shared.configuration.SampleTopology;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
@@ -14,7 +13,7 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 
-public final class BingoPlayerClient implements BingoWinnerSink, AutoCloseable {
+public final class BingoPlayerClient implements AutoCloseable {
     private final String playerId;
     private final ZLinkStreamConnector connector;
     private final BingoNotificationInbox inbox = new BingoNotificationInbox();
@@ -56,7 +55,6 @@ public final class BingoPlayerClient implements BingoWinnerSink, AutoCloseable {
             .submitAsync();
     }
 
-    @Override
     public CompletionStage<Void> publishWinnerAsync(String payload, String roomId) {
         return pushAsync("BingoWinner", payload, roomId);
     }
@@ -65,7 +63,6 @@ public final class BingoPlayerClient implements BingoWinnerSink, AutoCloseable {
         return connector.dispatchAsync();
     }
 
-    @Override
     public String playerId() {
         return playerId;
     }

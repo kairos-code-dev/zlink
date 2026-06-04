@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -146,6 +147,33 @@ final class ZLinkFrameworkAutoConfigurationTest {
             assertInstanceOf(
                 ZLinkActorManager.class,
                 context.getBean(ZLinkActorManager.class));
+        }
+    }
+
+    @Test
+    void springLifecycleCreatesSpotAndActorFactoryWithSpringDependencyInjection() {
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(
+                ZLinkBackendAdapterFactory.class,
+                FakeZLinkBackendAdapterFactory::new);
+            context.register(
+                InjectedSpotAndActorConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            context.getBean(ZLinkSpotManager.class)
+                .createAsync(InjectedGameSpot.class)
+                .toCompletableFuture()
+                .join();
+            ZLinkActor actor = context.getBean(ZLinkActorManager.class)
+                .createAsync("player-1", "player")
+                .toCompletableFuture()
+                .join();
+
+            assertEquals("spring:spot", InjectedGameSpot.dependencyValue());
+            assertInstanceOf(InjectedPlayerActor.class, actor);
+            assertEquals("spring:player-1", ((InjectedPlayerActor) actor).dependencyValue());
         }
     }
 
@@ -316,6 +344,23 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    static class InjectedSpotAndActorConfig {
+        @Bean
+        HandlerDependency handlerDependency() {
+            return new HandlerDependency("spring");
+        }
+
+        @Bean
+        ZLinkFrameworkOptionsCustomizer injectedSpotAndActorCustomizer() {
+            return options -> {
+                options.addSpotMesh("game", mesh ->
+                    mesh.addNode("play", node -> node.addSpotFactory(InjectedGameSpot.class)));
+                options.addActorFactory("player", InjectedPlayerActorFactory.class);
+            };
+        }
+    }
+
+    @Configuration
     static class SpotPublisherConfig {
         @Bean
         ZLinkFrameworkOptionsCustomizer spotPublisherCustomizer() {
@@ -376,6 +421,26 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
+    public static final class InjectedGameSpot implements ZLinkSpot {
+        private static final AtomicReference<String> DEPENDENCY_VALUE =
+            new AtomicReference<>();
+        private final ZLinkSpotContext context;
+
+        public InjectedGameSpot(ZLinkSpotContext context, HandlerDependency dependency) {
+            this.context = context;
+            DEPENDENCY_VALUE.set(dependency.format("spot"));
+        }
+
+        static String dependencyValue() {
+            return DEPENDENCY_VALUE.get();
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+    }
+
     public static final class PlayerActor implements ZLinkActor {
         private final String actorId;
         private final ZLinkActorContext context;
@@ -396,12 +461,59 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
+    public static final class InjectedPlayerActor implements ZLinkActor {
+        private final String actorId;
+        private final ZLinkActorContext context;
+        private final String dependencyValue;
+
+        InjectedPlayerActor(
+            String actorId,
+            ZLinkActorContext context,
+            String dependencyValue) {
+            this.actorId = actorId;
+            this.context = context;
+            this.dependencyValue = dependencyValue;
+        }
+
+        @Override
+        public String actorId() {
+            return actorId;
+        }
+
+        @Override
+        public ZLinkActorContext context() {
+            return context;
+        }
+
+        String dependencyValue() {
+            return dependencyValue;
+        }
+    }
+
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
         public CompletionStage<ZLinkActor> createAsync(
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+        }
+    }
+
+    public static final class InjectedPlayerActorFactory implements ZLinkActorFactory {
+        private final HandlerDependency dependency;
+
+        public InjectedPlayerActorFactory(HandlerDependency dependency) {
+            this.dependency = dependency;
+        }
+
+        @Override
+        public CompletionStage<ZLinkActor> createAsync(
+            String actorId,
+            ZLinkActorContext context) {
+            return CompletableFuture.completedFuture(new InjectedPlayerActor(
+                actorId,
+                context,
+                dependency.format(actorId)));
         }
     }
 

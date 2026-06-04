@@ -1,19 +1,35 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.registry
 
-import java.util.concurrent.CountDownLatch
-import systems.zlink.framework.ZLinkRegistry
+import org.springframework.boot.WebApplicationType
+import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.context.annotation.Bean
+import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleTopology
 
-fun main() {
-    RegistryHostFactory.start().use {
-        CountDownLatch(1).await()
-    }
+fun main(args: Array<String>) {
+    RegistryServerApplication.start(args)
 }
 
-object RegistryHostFactory {
-    fun start(): ZLinkRegistry =
-        ZLinkRegistry.start { options ->
+@SpringBootApplication(
+    proxyBeanMethods = false,
+    scanBasePackageClasses = [RegistryServerApplication::class],
+)
+class RegistryServerApplication {
+    @Bean
+    fun registryOptions(): ZLinkEmbeddedRegistryOptions =
+        ZLinkEmbeddedRegistryOptions().also { options ->
             options.setPubEndpoint(SampleTopology.RegistryPubEndpoint)
             options.setRouterEndpoint(SampleTopology.RegistryRouterEndpoint)
         }
+
+    companion object {
+        fun start(args: Array<String> = emptyArray()): AutoCloseable {
+            val builder = SpringApplicationBuilder(RegistryServerApplication::class.java)
+                .web(WebApplicationType.NONE)
+            builder.application().setKeepAlive(true)
+            val context = builder.run(*args)
+            return AutoCloseable { context.close() }
+        }
+    }
 }

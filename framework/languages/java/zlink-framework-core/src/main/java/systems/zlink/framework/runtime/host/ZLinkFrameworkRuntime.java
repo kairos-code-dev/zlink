@@ -75,7 +75,8 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                 spots.primaryNode(),
                 options.registration().actorFactories(),
                 options.registration().defaultTimeout(),
-                serializer)
+                serializer,
+                runtimeHandlers)
             : null;
         if (this.actors != null) {
             runtimeHandlers.add(ZLinkActorManager.class, this.actors);

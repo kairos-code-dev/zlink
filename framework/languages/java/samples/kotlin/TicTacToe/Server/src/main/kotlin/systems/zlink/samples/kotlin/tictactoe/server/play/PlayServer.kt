@@ -68,7 +68,9 @@ class PlayServer {
 
     companion object {
         fun start(settings: SampleSettings): ConfigurableApplicationContext =
-            SpringApplicationBuilder(PlayServer::class.java)
+            SpringApplicationBuilder(PlayServer::class.java).also { builder ->
+                builder.application().setKeepAlive(true)
+            }
                 .web(WebApplicationType.NONE)
                 .initializers(ApplicationContextInitializer<ConfigurableApplicationContext> { context ->
                     context.beanFactory.registerSingleton("sampleSettings", settings)

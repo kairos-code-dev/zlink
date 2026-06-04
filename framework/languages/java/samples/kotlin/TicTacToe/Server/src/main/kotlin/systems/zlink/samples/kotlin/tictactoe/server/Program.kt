@@ -1,9 +1,6 @@
 package systems.zlink.samples.kotlin.tictactoe.server
 
-import java.util.concurrent.CountDownLatch
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import org.springframework.context.ConfigurableApplicationContext
 import systems.zlink.samples.kotlin.tictactoe.client.TicTacToeClient
 import systems.zlink.samples.kotlin.tictactoe.client.TicTacToeClientOptions
@@ -24,11 +21,11 @@ fun main(args: Array<String>) = runBlocking {
     }
 }
 
-private suspend fun runServer(
+fun startServer(
     settings: SampleSettings,
     startPlay: Boolean,
     startApi: Boolean,
-) {
+): ServerHost {
     SampleSettings.setCurrent(settings)
     var play: ConfigurableApplicationContext? = null
     var api: ConfigurableApplicationContext? = null
@@ -39,13 +36,20 @@ private suspend fun runServer(
         if (startApi) {
             api = ApiServer.start(settings)
         }
-        withContext(Dispatchers.IO) {
-            CountDownLatch(1).await()
-        }
-    } finally {
+        return ServerHost(play, api)
+    } catch (error: RuntimeException) {
         api?.close()
         play?.close()
+        throw error
     }
+}
+
+private fun runServer(
+    settings: SampleSettings,
+    startPlay: Boolean,
+    startApi: Boolean,
+) {
+    startServer(settings, startPlay, startApi)
 }
 
 private suspend fun runClient(settings: SampleSettings) {
@@ -58,4 +62,14 @@ private suspend fun runClient(settings: SampleSettings) {
         ),
     )
     result.writeTo(System.out)
+}
+
+class ServerHost(
+    private val play: ConfigurableApplicationContext?,
+    private val api: ConfigurableApplicationContext?,
+) : AutoCloseable {
+    override fun close() {
+        api?.close()
+        play?.close()
+    }
 }

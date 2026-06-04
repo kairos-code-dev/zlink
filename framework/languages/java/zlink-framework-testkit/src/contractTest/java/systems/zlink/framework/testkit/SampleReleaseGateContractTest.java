@@ -171,14 +171,24 @@ final class SampleReleaseGateContractTest {
     @Test
     void ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator() throws IOException {
         assertSampleFilesExist("java", "TicTacToe.SessionGateway", "src/main/java", List.of(
-            "systems/zlink/samples/tictactoe/sessiongateway/TicTacToeSessionGatewaySample.java",
+            "systems/zlink/samples/tictactoe/sessiongateway/TicTacToeSessionGatewaySample.java"));
+        assertNoSampleSourcesUnder("java", "TicTacToe.SessionGateway", "src/main/java", List.of(
+            "systems/zlink/samples/tictactoe/sessiongateway/client",
+            "systems/zlink/samples/tictactoe/sessiongateway/server",
+            "systems/zlink/samples/tictactoe/sessiongateway/shared"));
+        assertSampleFilesExist("java", "TicTacToe.SessionGateway", "Client/src/main/java", List.of(
+            "systems/zlink/samples/tictactoe/sessiongateway/client/Program.java",
             "systems/zlink/samples/tictactoe/sessiongateway/client/SessionActorDispatchClient.java",
             "systems/zlink/samples/tictactoe/sessiongateway/client/SessionActorDispatchClientOptions.java",
             "systems/zlink/samples/tictactoe/sessiongateway/client/SessionActorDispatchPlayerClient.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/client/SessionActorNotificationInbox.java",
+            "systems/zlink/samples/tictactoe/sessiongateway/client/SessionActorNotificationInbox.java"));
+        assertSampleFilesExist("java", "TicTacToe.SessionGateway", "Server/Api/src/main/java", List.of(
+            "systems/zlink/samples/tictactoe/sessiongateway/server/api/Program.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/api/ApiServer.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/api/handlers/AuthenticateActorHandler.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/api/handlers/CreateMatchHandler.java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/api/handlers/CreateMatchHandler.java"));
+        assertSampleFilesExist("java", "TicTacToe.SessionGateway", "Server/Play/src/main/java", List.of(
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/Program.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/PlayServer.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/handlers/CreateMatchRoomHandler.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/handlers/EnsurePlayerActorHandler.java",
@@ -194,67 +204,119 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/JoinMatchHandler.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorJoinedHandler.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorLeftHandler.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/registry/RegistryServer.java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorLeftHandler.java"));
+        assertSampleFilesExist("java", "TicTacToe.SessionGateway", "Server/Registry/src/main/java", List.of(
+            "systems/zlink/samples/tictactoe/sessiongateway/server/registry/Program.java"));
+        assertSampleFilesExist("java", "TicTacToe.SessionGateway", "Server/Session/src/main/java", List.of(
+            "systems/zlink/samples/tictactoe/sessiongateway/server/session/Program.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/SessionServer.java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/session/SessionRelaySpot.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/PlayerSession.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/PlayerSessionDirectory.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/handlers/AuthenticateSessionPacketHandler.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/handlers/CreateMatchSessionPacketHandler.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/handlers/JoinMatchSessionPacketHandler.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/handlers/PlayNotificationRelay.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/handlers/PlaceMarkSessionPacketHandler.java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/handlers/PlaceMarkSessionPacketHandler.java"));
+        assertSampleFilesExist("java", "TicTacToe.SessionGateway", "Shared/src/main/java", List.of(
             "systems/zlink/samples/tictactoe/sessiongateway/shared/actors/PlayerActor.java",
             "systems/zlink/samples/tictactoe/sessiongateway/shared/actors/PlayerActorFactory.java",
             "systems/zlink/samples/tictactoe/sessiongateway/shared/configuration/SampleNames.java",
             "systems/zlink/samples/tictactoe/sessiongateway/shared/configuration/SampleTopology.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/shared/contracts/Messages.java"));
+            "systems/zlink/samples/tictactoe/sessiongateway/shared/contracts/Messages.java",
+            "systems/zlink/samples/tictactoe/sessiongateway/shared/contracts/PlayResponseEnvelope.java"));
 
         String sessionServerSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Server/Session/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/SessionServer.java");
         String playServerSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/PlayServer.java");
         String apiServerSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Server/Api/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/api/ApiServer.java");
         String clientSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Client/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/client/SessionActorDispatchClient.java");
         String playerClientSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Client/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/client/SessionActorDispatchPlayerClient.java");
         String playerSessionSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Server/Session/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/PlayerSession.java");
         String joinSessionHandlerSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Server/Session/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/handlers/JoinMatchSessionPacketHandler.java");
         String placeSessionHandlerSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Server/Session/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/handlers/PlaceMarkSessionPacketHandler.java");
         String relaySource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Server/Session/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/handlers/PlayNotificationRelay.java");
         String notificationPublisherSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/GameNotificationPublisher.java");
         String playDirectorySource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameDirectory.java");
         String playGameSpotSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameSpot.java");
         String mainSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
             "systems/zlink/samples/tictactoe/sessiongateway/TicTacToeSessionGatewaySample.java");
+        String apiProgramSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Api/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/api/Program.java");
+        String playProgramSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/Program.java");
+        String registryProgramSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Registry/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/registry/Program.java");
+        String sessionProgramSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Session/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/session/Program.java");
 
         assertTrue(sessionServerSource.contains("attachActorGateway(SampleNames.SessionRelayNode)")
                 || sessionServerSource.contains("attachActorGateway(\"session-relay\")"),
             "SessionGateway sample must attach stream node to local ActorGateway SpotNode");
-        assertTrue(mainSource.contains("ZLinkFramework.start"),
-            "SessionGateway sample must start the framework through the public facade");
+        assertTrue(mainSource.contains("Program.start()")
+                && !mainSource.contains("ZLinkFramework.start")
+                && apiProgramSource.contains("@SpringBootApplication")
+                && playProgramSource.contains("@SpringBootApplication")
+                && registryProgramSource.contains("@SpringBootApplication")
+                && sessionProgramSource.contains("@SpringBootApplication")
+                && apiProgramSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && playProgramSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && registryProgramSource.contains("ZLinkEmbeddedRegistryOptions")
+                && sessionProgramSource.contains("ZLinkFrameworkOptionsCustomizer"),
+            "SessionGateway server roles must run through Spring Boot lifecycle beans");
+        assertFalse(apiProgramSource.contains("CountDownLatch")
+                || playProgramSource.contains("CountDownLatch")
+                || registryProgramSource.contains("CountDownLatch")
+                || sessionProgramSource.contains("CountDownLatch")
+                || apiProgramSource.contains("ZLinkFramework.start")
+                || playProgramSource.contains("ZLinkFramework.start")
+                || registryProgramSource.contains("ZLinkRegistry.start")
+                || sessionProgramSource.contains("ZLinkFramework.start"),
+            "SessionGateway role entry points must not directly start ZLink or keep it alive with CountDownLatch");
         assertTrue(playServerSource.contains("useRegistrySpotRemoteAddresses"),
             "SessionGateway sample must use registry-backed Spot remote addresses");
         assertTrue(apiServerSource.contains("addHandlersFromPackageOf")
@@ -324,14 +386,24 @@ final class SampleReleaseGateContractTest {
     @Test
     void ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout() throws IOException {
         assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "src/main/kotlin", List.of(
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/TicTacToeSessionGatewayKotlinSample.kt",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/TicTacToeSessionGatewayKotlinSample.kt"));
+        assertNoSampleSourcesUnder("kotlin", "TicTacToe.SessionGateway", "src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared"));
+        assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "Client/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/Program.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorDispatchClient.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorDispatchClientOptions.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorDispatchPlayerClient.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorNotificationInbox.kt",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorNotificationInbox.kt"));
+        assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "Server/Api/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/api/Program.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/api/ApiServer.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/api/handlers/AuthenticateActorHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/api/handlers/CreateMatchHandler.kt",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/api/handlers/CreateMatchHandler.kt"));
+        assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "Server/Play/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/Program.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/PlayServer.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/handlers/CreateMatchRoomHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/handlers/EnsurePlayerActorHandler.kt",
@@ -347,67 +419,119 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/JoinMatchHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorJoinedHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorLeftHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/registry/RegistryServer.kt",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorLeftHandler.kt"));
+        assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "Server/Registry/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/registry/Program.kt"));
+        assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "Server/Session/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/Program.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/SessionServer.kt",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/SessionRelaySpot.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/PlayerSession.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/PlayerSessionDirectory.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/handlers/AuthenticateSessionPacketHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/handlers/CreateMatchSessionPacketHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/handlers/JoinMatchSessionPacketHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/handlers/PlayNotificationRelay.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/handlers/PlaceMarkSessionPacketHandler.kt",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/handlers/PlaceMarkSessionPacketHandler.kt"));
+        assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "Shared/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared/actors/PlayerActor.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared/actors/PlayerActorFactory.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared/configuration/SampleNames.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared/configuration/SampleTopology.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared/contracts/Messages.kt"));
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared/contracts/Messages.kt",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared/contracts/PlayResponseEnvelope.kt"));
 
         String sessionServerSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/SessionServer.kt");
         String mainSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/TicTacToeSessionGatewayKotlinSample.kt");
         String playServerSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/PlayServer.kt");
         String apiServerSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Server/Api/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/api/ApiServer.kt");
         String clientSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Client/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorDispatchClient.kt");
         String playerClientSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Client/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorDispatchPlayerClient.kt");
         String playerSessionSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/PlayerSession.kt");
         String joinSessionHandlerSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/handlers/JoinMatchSessionPacketHandler.kt");
         String placeSessionHandlerSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/handlers/PlaceMarkSessionPacketHandler.kt");
         String relaySource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/handlers/PlayNotificationRelay.kt");
         String notificationPublisherSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/GameNotificationPublisher.kt");
         String playDirectorySource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameDirectory.kt");
         String playGameSpotSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameSpot.kt");
+        String apiProgramSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Api/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/api/Program.kt");
+        String playProgramSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/Program.kt");
+        String registryProgramSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Registry/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/registry/Program.kt");
+        String sessionProgramSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Session/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/Program.kt");
 
         assertTrue(sessionServerSource.contains("attachActorGateway(SampleNames.SessionRelayNode)")
                 || sessionServerSource.contains("attachActorGateway(\"session-relay\")"),
             "Kotlin SessionGateway sample must attach stream node to local ActorGateway SpotNode");
-        assertTrue(mainSource.contains("ZLinkFramework.start"),
-            "Kotlin SessionGateway sample must start the framework through the public facade");
+        assertTrue(mainSource.contains("Application.start()")
+                && !mainSource.contains("ZLinkFramework.start")
+                && apiProgramSource.contains("@SpringBootApplication")
+                && playProgramSource.contains("@SpringBootApplication")
+                && registryProgramSource.contains("@SpringBootApplication")
+                && sessionProgramSource.contains("@SpringBootApplication")
+                && apiProgramSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && playProgramSource.contains("ZLinkFrameworkOptionsCustomizer")
+                && registryProgramSource.contains("ZLinkEmbeddedRegistryOptions")
+                && sessionProgramSource.contains("ZLinkFrameworkOptionsCustomizer"),
+            "Kotlin SessionGateway server roles must run through Spring Boot lifecycle beans");
+        assertFalse(apiProgramSource.contains("CountDownLatch")
+                || playProgramSource.contains("CountDownLatch")
+                || registryProgramSource.contains("CountDownLatch")
+                || sessionProgramSource.contains("CountDownLatch")
+                || apiProgramSource.contains("ZLinkFramework.start")
+                || playProgramSource.contains("ZLinkFramework.start")
+                || registryProgramSource.contains("ZLinkRegistry.start")
+                || sessionProgramSource.contains("ZLinkFramework.start"),
+            "Kotlin SessionGateway role entry points must not directly start ZLink or keep it alive with CountDownLatch");
         assertTrue(playServerSource.contains("useRegistrySpotRemoteAddresses"),
             "Kotlin SessionGateway sample must use registry-backed Spot remote addresses");
         assertTrue(apiServerSource.contains("addHandlersFromPackageOf")
@@ -597,16 +721,20 @@ final class SampleReleaseGateContractTest {
                 && serverProgramSource.contains("result.writeTo(System.out)")
                 && serverBuildSource.contains("implementation(project(\":Client\"))"),
             "TicTacToe Java Server role must expose the .NET-style client run mode through the aggregate server entry point");
+        assertFalse(serverProgramSource.contains("CountDownLatch"),
+            "TicTacToe Java Server role must rely on Spring lifecycle keep-alive instead of manual latches");
         assertTrue(mainSource.contains("SampleSettings.fromArgs(args).withEphemeralDefaults()")
                 && apiSource.contains("ZLinkFrameworkOptionsCustomizer")
                 && apiSource.contains("@SpringBootApplication")
                 && apiSource.contains("SpringApplicationBuilder")
                 && apiSource.contains(".web(WebApplicationType.SERVLET)")
+                && apiSource.contains("setKeepAlive(true)")
                 && apiSource.contains("options.codecs().addJson()")
                 && playSource.contains("ZLinkFrameworkOptionsCustomizer")
                 && playSource.contains("@SpringBootApplication")
                 && playSource.contains("SpringApplicationBuilder")
                 && playSource.contains(".web(WebApplicationType.NONE)")
+                && playSource.contains("setKeepAlive(true)")
                 && playSource.contains("options.codecs().addJson()"),
             "TicTacToe direct Api and Play framework hosts must enable JSON codecs and expose HTTP create-game with shared settings");
         assertTrue(settingsSource.contains("withEphemeralDefaults()")
@@ -923,16 +1051,20 @@ final class SampleReleaseGateContractTest {
                 && serverProgramSource.contains("result.writeTo(System.out)")
                 && serverBuildSource.contains("implementation(project(\":Client\"))"),
             "Kotlin TicTacToe Server role must expose the .NET-style client run mode through the aggregate server entry point");
+        assertFalse(serverProgramSource.contains("CountDownLatch"),
+            "Kotlin TicTacToe Server role must rely on Spring lifecycle keep-alive instead of manual latches");
         assertTrue(mainSource.contains("SampleSettings.fromArgs(args).withEphemeralDefaults()")
                 && apiSource.contains("ZLinkFrameworkOptionsCustomizer")
                 && apiSource.contains("@SpringBootApplication")
                 && apiSource.contains("SpringApplicationBuilder")
                 && apiSource.contains(".web(WebApplicationType.SERVLET)")
+                && apiSource.contains("setKeepAlive(true)")
                 && apiSource.contains("options.codecs().addJson()")
                 && playSource.contains("ZLinkFrameworkOptionsCustomizer")
                 && playSource.contains("@SpringBootApplication")
                 && playSource.contains("SpringApplicationBuilder")
                 && playSource.contains(".web(WebApplicationType.NONE)")
+                && playSource.contains("setKeepAlive(true)")
                 && playSource.contains("options.codecs().addJson()"),
             "Kotlin TicTacToe direct Api and Play framework hosts must enable JSON codecs and expose HTTP create-game with shared settings");
         assertTrue(settingsSource.contains("withEphemeralDefaults()")

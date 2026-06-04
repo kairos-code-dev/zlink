@@ -1,28 +1,35 @@
 package systems.zlink.samples.tictactoe.sessiongateway.server.registry;
 
-import java.util.concurrent.CountDownLatch;
-import systems.zlink.framework.ZLinkRegistry;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.annotation.Bean;
+import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleTopology;
 
+@SpringBootApplication(
+    proxyBeanMethods = false,
+    scanBasePackageClasses = Program.class)
 public final class Program {
     private Program() {
     }
 
-    public static void main(String[] args) throws Exception {
-        try (ZLinkRegistry ignored = RegistryHostFactory.start()) {
-            new CountDownLatch(1).await();
-        }
-    }
-}
-
-final class RegistryHostFactory {
-    private RegistryHostFactory() {
+    public static void main(String[] args) {
+        start(args);
     }
 
-    static ZLinkRegistry start() {
-        return ZLinkRegistry.start(options -> {
-            options.setPubEndpoint(SampleTopology.RegistryPubEndpoint);
-            options.setRouterEndpoint(SampleTopology.RegistryRouterEndpoint);
-        });
+    public static AutoCloseable start(String... args) {
+        SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .web(WebApplicationType.NONE);
+        builder.application().setKeepAlive(true);
+        return builder.run(args)::close;
+    }
+
+    @Bean
+    ZLinkEmbeddedRegistryOptions registryOptions() {
+        ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
+        options.setPubEndpoint(SampleTopology.RegistryPubEndpoint);
+        options.setRouterEndpoint(SampleTopology.RegistryRouterEndpoint);
+        return options;
     }
 }

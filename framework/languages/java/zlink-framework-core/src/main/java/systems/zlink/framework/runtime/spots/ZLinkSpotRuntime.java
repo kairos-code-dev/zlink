@@ -2,7 +2,6 @@ package systems.zlink.framework.runtime.spots;
 
 import systems.zlink.framework.runtime.backend.*;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
@@ -806,49 +805,37 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 "accepted SPOT route channel is not registered: " + channelName));
     }
 
-    private static ZLinkSpot tryCreateSpot(
+    private ZLinkSpot tryCreateSpot(
         Class<? extends ZLinkSpot> spotType,
         ZLinkSpotContext context) {
         try {
-            Constructor<? extends ZLinkSpot> contextConstructor =
-                spotType.getConstructor(ZLinkSpotContext.class);
-            return contextConstructor.newInstance(context);
-        } catch (NoSuchMethodException ignored) {
-            try {
-                Constructor<? extends ZLinkSpot> constructor = spotType.getConstructor();
-                return constructor.newInstance();
-            } catch (NoSuchMethodException ex) {
+            return (ZLinkSpot) ZLinkHandlerFactory.services(handlerFactory)
+                .add(ZLinkSpotContext.class, context)
+                .create(spotType);
+        } catch (RuntimeException ex) {
+            if (spotType.getConstructors().length == 0) {
                 return null;
-            } catch (ReflectiveOperationException ex) {
-                throw new ZLinkConfigurationException(
-                    "failed to create spot: " + spotType.getName());
             }
-        } catch (ReflectiveOperationException ex) {
             throw new ZLinkConfigurationException(
-                "failed to create spot: " + spotType.getName());
+                "failed to create spot: " + spotType.getName(),
+                ex);
         }
     }
 
-    private static ZLinkEntrySpot createEntrySpot(
+    private ZLinkEntrySpot createEntrySpot(
         Class<? extends ZLinkEntrySpot> entrySpotType,
         ZLinkEntrySpotContext context) {
         try {
-            Constructor<? extends ZLinkEntrySpot> contextConstructor =
-                entrySpotType.getConstructor(ZLinkEntrySpotContext.class);
-            return contextConstructor.newInstance(context);
-        } catch (NoSuchMethodException ignored) {
-            try {
-                Constructor<? extends ZLinkEntrySpot> constructor = entrySpotType.getConstructor();
-                return constructor.newInstance();
-            } catch (NoSuchMethodException ex) {
+            return (ZLinkEntrySpot) ZLinkHandlerFactory.services(handlerFactory)
+                .add(ZLinkEntrySpotContext.class, context)
+                .create(entrySpotType);
+        } catch (RuntimeException ex) {
+            if (entrySpotType.getConstructors().length == 0) {
                 return null;
-            } catch (ReflectiveOperationException ex) {
-                throw new ZLinkConfigurationException(
-                    "failed to create entry spot: " + entrySpotType.getName());
             }
-        } catch (ReflectiveOperationException ex) {
             throw new ZLinkConfigurationException(
-                "failed to create entry spot: " + entrySpotType.getName());
+                "failed to create entry spot: " + entrySpotType.getName(),
+                ex);
         }
     }
 
@@ -1540,16 +1527,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     @SuppressWarnings({"rawtypes", "unchecked"})
     private CompletionStage<Void> invokeTimerHandler(Class<?> handlerType, ZLinkSpot spot, ZLinkTimerTick tick) {
         try {
-            Object handler = handlerType.getDeclaredConstructor().newInstance();
+            Object handler = handlerFactory.create(handlerType);
             if (handler instanceof ZLinkSpotTimerHandler timerHandler) {
                 return timerHandler.handleAsync(spot, tick);
             }
             return CompletableFuture.completedFuture(null);
-        } catch (ReflectiveOperationException ex) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "failed to create timer handler: " + handlerType.getName()));
         } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "failed to create timer handler: " + handlerType.getName(),
+                ex));
         }
     }
 

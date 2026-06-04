@@ -61,8 +61,18 @@ public interface ZLinkHandlerFactory {
 
         private Object[] resolveArguments(Class<?>[] parameterTypes) {
             Object[] arguments = new Object[parameterTypes.length];
+            boolean allowFallbackServices = false;
+            for (Class<?> parameterType : parameterTypes) {
+                if (findRuntimeService(parameterType) != null) {
+                    allowFallbackServices = true;
+                    break;
+                }
+            }
             for (int i = 0; i < parameterTypes.length; i++) {
-                Object service = findService(parameterTypes[i]);
+                Object service = findRuntimeService(parameterTypes[i]);
+                if (service == null && allowFallbackServices) {
+                    service = findFallbackService(parameterTypes[i]);
+                }
                 if (service == null) {
                     return null;
                 }
@@ -71,16 +81,24 @@ public interface ZLinkHandlerFactory {
             return arguments;
         }
 
-        private Object findService(Class<?> parameterType) {
+        private Object findRuntimeService(Class<?> parameterType) {
             for (Map.Entry<Class<?>, Object> entry : services.entrySet()) {
                 if (parameterType.isAssignableFrom(entry.getKey())) {
                     return entry.getValue();
                 }
             }
             if (fallback instanceof MutableServices parentServices) {
-                return parentServices.findService(parameterType);
+                return parentServices.findRuntimeService(parameterType);
             }
             return null;
+        }
+
+        private Object findFallbackService(Class<?> parameterType) {
+            try {
+                return fallback.create(parameterType);
+            } catch (RuntimeException ignored) {
+                return null;
+            }
         }
     }
 }

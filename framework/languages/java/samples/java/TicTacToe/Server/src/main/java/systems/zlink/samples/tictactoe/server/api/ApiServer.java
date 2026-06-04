@@ -21,14 +21,15 @@ import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
     })
 public class ApiServer {
     public static ConfigurableApplicationContext start(SampleSettings settings) {
-        return new SpringApplicationBuilder(ApiServer.class)
+        SpringApplicationBuilder builder = new SpringApplicationBuilder(ApiServer.class)
             .web(WebApplicationType.SERVLET)
             .properties(
                 "server.address=127.0.0.1",
                 "server.port=" + settings.apiHttpPort())
             .initializers(context ->
-                context.getBeanFactory().registerSingleton("sampleSettings", settings))
-            .run();
+                context.getBeanFactory().registerSingleton("sampleSettings", settings));
+        builder.application().setKeepAlive(true);
+        return builder.run();
     }
 
     @Bean

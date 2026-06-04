@@ -20,11 +20,12 @@ import systems.zlink.samples.tictactoe.server.play.sessions.PlaySession;
     scanBasePackageClasses = PlayServer.class)
 public class PlayServer {
     public static ConfigurableApplicationContext start(SampleSettings settings) {
-        return new SpringApplicationBuilder(PlayServer.class)
+        SpringApplicationBuilder builder = new SpringApplicationBuilder(PlayServer.class)
             .web(WebApplicationType.NONE)
             .initializers(context ->
-                context.getBeanFactory().registerSingleton("sampleSettings", settings))
-            .run();
+                context.getBeanFactory().registerSingleton("sampleSettings", settings));
+        builder.application().setKeepAlive(true);
+        return builder.run();
     }
 
     @Bean

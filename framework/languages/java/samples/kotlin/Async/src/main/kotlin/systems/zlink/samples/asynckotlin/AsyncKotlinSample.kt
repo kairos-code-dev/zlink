@@ -5,11 +5,9 @@ import java.util.Optional
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.ZLinkFramework
 import systems.zlink.framework.channels.ZLinkRequestContext
@@ -20,8 +18,7 @@ import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.kotlin.awaitReply
 import systems.zlink.framework.kotlin.submit
 
-private val warmupReceived = CountDownLatch(1)
-private val warmupUser = AtomicReference<String>()
+private val warmupUser = CompletableFuture<String>()
 
 fun main() = runBlocking {
     val endpoint = "inproc://zlink-kotlin-async-${UUID.randomUUID()}"
@@ -48,8 +45,7 @@ fun main() = runBlocking {
             .timeout(Duration.ofSeconds(1))
             .awaitReply<String>()
 
-        require(warmupReceived.await(1, TimeUnit.SECONDS)) { "warmup send was not delivered" }
-        require(warmupUser.get() == "42") { "warmup user id mismatch" }
+        require(withTimeout(1_000) { warmupUser.await() } == "42") { "warmup user id mismatch" }
         require(reply == "42:ready") { "reply mismatch" }
     }
 
@@ -69,8 +65,7 @@ fun main() = runBlocking {
 class WarmupHandler : ZLinkSendHandler<String> {
     override fun handleAsync(message: String, context: ZLinkSendContext): CompletionStage<Void> {
         require(context.packetName().orElseThrow() == "Warmup") { "send packet mismatch" }
-        warmupUser.set(message)
-        warmupReceived.countDown()
+        warmupUser.complete(message)
         return CompletableFuture.completedFuture(null)
     }
 }

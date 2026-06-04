@@ -2,7 +2,6 @@ package systems.zlink.framework.runtime.actors;
 
 import systems.zlink.framework.runtime.backend.*;
 
-import java.lang.reflect.InvocationTargetException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -26,6 +25,7 @@ import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkPacket;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.spots.ZLinkSpot;
 
 public final class ZLinkActorRuntime implements ZLinkActorManager {
@@ -33,6 +33,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     private final Map<String, Class<? extends ZLinkActorFactory>> factories;
     private final Duration defaultTimeout;
     private final ZLinkMessageSerializer serializer;
+    private final ZLinkHandlerFactory handlerFactory;
     private final Map<String, ZLinkActor> actors = new HashMap<>();
     private final Map<String, String> actorTypes = new HashMap<>();
     private final Map<ZLinkActor, DefaultActorContext> contextsByActor = new HashMap<>();
@@ -47,16 +48,29 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         Map<String, Class<? extends ZLinkActorFactory>> factories,
         Duration defaultTimeout,
         ZLinkMessageSerializer serializer) {
+        this(spotNode, factories, defaultTimeout, serializer, ZLinkHandlerFactory.reflection());
+    }
+
+    public ZLinkActorRuntime(
+        ZLinkBackendSpotNode spotNode,
+        Map<String, Class<? extends ZLinkActorFactory>> factories,
+        Duration defaultTimeout,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerFactory handlerFactory) {
         if (factories.isEmpty()) {
             throw new ZLinkConfigurationException("at least one actor factory is required");
         }
         if (serializer == null) {
             throw new ZLinkConfigurationException("serializer is required");
         }
+        if (handlerFactory == null) {
+            throw new ZLinkConfigurationException("handlerFactory is required");
+        }
         this.spotNode = spotNode;
         this.factories = Map.copyOf(factories);
         this.defaultTimeout = defaultTimeout;
         this.serializer = serializer;
+        this.handlerFactory = handlerFactory;
     }
 
     @Override
@@ -114,16 +128,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
     }
 
-    private static ZLinkActorFactory createFactory(
+    private ZLinkActorFactory createFactory(
         Class<? extends ZLinkActorFactory> factoryType) {
         try {
-            return factoryType.getDeclaredConstructor().newInstance();
-        } catch (InstantiationException
-                 | IllegalAccessException
-                 | InvocationTargetException
-                 | NoSuchMethodException ex) {
+            return (ZLinkActorFactory) handlerFactory.create(factoryType);
+        } catch (RuntimeException ex) {
             throw new ZLinkConfigurationException(
-                "failed to create actor factory: " + factoryType.getName());
+                "failed to create actor factory: " + factoryType.getName(),
+                ex);
         }
     }
 

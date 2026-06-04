@@ -41,7 +41,9 @@ class ApiServer {
 
     companion object {
         fun start(settings: SampleSettings): ConfigurableApplicationContext =
-            SpringApplicationBuilder(ApiServer::class.java)
+            SpringApplicationBuilder(ApiServer::class.java).also { builder ->
+                builder.application().setKeepAlive(true)
+            }
                 .web(WebApplicationType.SERVLET)
                 .properties(
                     "server.address=127.0.0.1",

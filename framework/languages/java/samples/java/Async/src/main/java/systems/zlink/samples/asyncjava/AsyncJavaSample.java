@@ -2,11 +2,9 @@ package systems.zlink.samples.asyncjava;
 
 import java.time.Duration;
 import java.util.UUID;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import systems.zlink.framework.ZLinkFramework;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
@@ -14,10 +12,9 @@ import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 
 public final class AsyncJavaSample {
-    private static final CountDownLatch WARMUP_RECEIVED = new CountDownLatch(1);
-    private static final AtomicReference<String> WARMUP_USER = new AtomicReference<>();
+    private static final CompletableFuture<String> WARMUP_USER = new CompletableFuture<>();
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) throws Exception {
         String endpoint = "inproc://zlink-java-async-" + UUID.randomUUID();
 
         try (ZLinkFramework framework = ZLinkFramework.start(options ->
@@ -29,11 +26,7 @@ public final class AsyncJavaSample {
                 channel.addRequestHandler(GetProfileHandler.class, String.class, String.class, "GetProfile");
             }))) {
 
-            CountDownLatch scenarioDone = new CountDownLatch(1);
-            AtomicReference<String> replyRef = new AtomicReference<>();
-            AtomicReference<Throwable> errorRef = new AtomicReference<>();
-
-            CompletionStage<Void> scenario = framework.client()
+            CompletionStage<String> scenario = framework.client()
                 .sendToChannel("profile", "42")
                 .packetName("Warmup")
                 .metadata("sample", "java")
@@ -42,21 +35,21 @@ public final class AsyncJavaSample {
                     .requestToChannel("profile", "42")
                     .packetName("GetProfile")
                     .timeout(Duration.ofSeconds(1))
-                    .submitAsync(String.class))
-                .thenAccept(replyRef::set);
+                    .submitAsync(String.class));
 
-            scenario.whenComplete((ignored, error) -> {
-                errorRef.set(error);
-                scenarioDone.countDown();
+            CompletableFuture<String> replyFuture = new CompletableFuture<>();
+            scenario.whenComplete((reply, error) -> {
+                if (error != null) {
+                    replyFuture.completeExceptionally(error);
+                } else {
+                    replyFuture.complete(reply);
+                }
             });
 
-            require(scenarioDone.await(3, TimeUnit.SECONDS), "sample scenario did not complete");
-            if (errorRef.get() != null) {
-                throw new CompletionException(errorRef.get());
-            }
-            require(WARMUP_RECEIVED.await(1, TimeUnit.SECONDS), "warmup send was not delivered");
-            require("42".equals(WARMUP_USER.get()), "warmup user id mismatch");
-            require("42:ready".equals(replyRef.get()), "reply mismatch");
+            String reply = replyFuture.get(3, TimeUnit.SECONDS);
+            String warmupUser = WARMUP_USER.get(1, TimeUnit.SECONDS);
+            require("42".equals(warmupUser), "warmup user id mismatch");
+            require("42:ready".equals(reply), "reply mismatch");
         }
 
         System.out.println("AsyncJava sample self-check passed");
@@ -66,8 +59,7 @@ public final class AsyncJavaSample {
         @Override
         public CompletionStage<Void> handleAsync(String userId, ZLinkSendContext context) {
             require(context.packetName().orElseThrow().equals("Warmup"), "send packet mismatch");
-            WARMUP_USER.set(userId);
-            WARMUP_RECEIVED.countDown();
+            WARMUP_USER.complete(userId);
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
     }

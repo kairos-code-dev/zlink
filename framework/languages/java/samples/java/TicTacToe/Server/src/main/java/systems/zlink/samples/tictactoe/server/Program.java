@@ -3,7 +3,6 @@ package systems.zlink.samples.tictactoe.server;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CountDownLatch;
 import org.springframework.context.ConfigurableApplicationContext;
 import systems.zlink.samples.tictactoe.client.TicTacToeClient;
 import systems.zlink.samples.tictactoe.client.TicTacToeClientOptions;
@@ -32,10 +31,10 @@ public final class Program {
         }
     }
 
-    private static void runServer(
+    public static ServerHost startServer(
         SampleSettings settings,
         boolean startPlay,
-        boolean startApi) throws Exception {
+        boolean startApi) {
         SampleSettings.setCurrent(settings);
         ConfigurableApplicationContext play = null;
         ConfigurableApplicationContext api = null;
@@ -46,15 +45,19 @@ public final class Program {
             if (startApi) {
                 api = ApiServer.start(settings);
             }
-            new CountDownLatch(1).await();
-        } finally {
-            if (api != null) {
-                api.close();
-            }
-            if (play != null) {
-                play.close();
-            }
+            return new ServerHost(play, api);
+        } catch (RuntimeException error) {
+            close(api);
+            close(play);
+            throw error;
         }
+    }
+
+    private static void runServer(
+        SampleSettings settings,
+        boolean startPlay,
+        boolean startApi) {
+        startServer(settings, startPlay, startApi);
     }
 
     private static void runClient(SampleSettings settings) throws Exception {
@@ -77,5 +80,21 @@ public final class Program {
             }
         });
         return done.get();
+    }
+
+    public record ServerHost(
+        ConfigurableApplicationContext play,
+        ConfigurableApplicationContext api) implements AutoCloseable {
+        @Override
+        public void close() {
+            Program.close(api);
+            Program.close(play);
+        }
+    }
+
+    private static void close(ConfigurableApplicationContext context) {
+        if (context != null) {
+            context.close();
+        }
     }
 }

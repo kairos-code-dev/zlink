@@ -17,9 +17,16 @@ public final class SampleTopology {
         property("playSpotEndpoint", "tcp://127.0.0.1:47110");
     public static final String PlaySpotRouterEndpoint =
         property("playSpotRouterEndpoint", "tcp://127.0.0.1:47111");
+    public static final String SessionRouteEndpoint =
+        property("sessionRouteEndpoint", "tcp://127.0.0.1:47112");
+    public static final String PlayRouteEndpoint =
+        property("playRouteEndpoint", "tcp://127.0.0.1:47113");
     public static final String StreamEndpoint =
-        property("streamEndpoint", "tcp://127.0.0.1:47112");
+        property("streamEndpoint", "tcp://127.0.0.1:47114");
     public static final int SessionPort = 29100;
+    public static final String SessionRouterRid = "1101";
+    public static final String SessionPubRid = "1102";
+    public static final String PlayRid = "2202";
 
     private SampleTopology() {
     }

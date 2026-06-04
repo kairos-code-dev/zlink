@@ -52,7 +52,8 @@ final class RemoteActorGatewayTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
-                node.enableRouter();
+                node.enableRouter(router ->
+                    router.setRoutingId(RoutingId.from("play-node")));
                 node.addSpotFactory(GameSpot.class);
             }));
         options.addActorFactory("player", PlayerActorFactory.class);

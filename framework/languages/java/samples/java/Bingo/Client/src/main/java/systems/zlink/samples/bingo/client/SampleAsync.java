@@ -2,6 +2,7 @@ package systems.zlink.samples.bingo.client;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 
 public final class SampleAsync {
     private SampleAsync() {
@@ -16,6 +17,14 @@ public final class SampleAsync {
                 done.complete(value);
             }
         });
-        return done.get();
+        try {
+            return done.get();
+        } catch (ExecutionException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw ex;
+        }
     }
 }

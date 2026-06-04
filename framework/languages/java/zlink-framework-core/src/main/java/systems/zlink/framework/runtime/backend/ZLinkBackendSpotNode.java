@@ -22,6 +22,8 @@ public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
 
     void connectRouterChannelPeer(String channelName, String endpoint);
 
+    void connectRouterChannelPeerRid(String channelName, RoutingId peerRid, String endpoint);
+
     void attachSpotRouteChannelDiscovery(
         String channelName,
         ZLinkBackendDiscovery discovery);
@@ -51,6 +53,8 @@ public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
         Duration timeout);
 
     boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags);
+
+    void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout);
 
     ZLinkBackendSpotNodeStatus status();
 

@@ -4,8 +4,11 @@ object SampleTopology {
     val RegistryPubEndpoint: String = property("registryPubEndpoint", "tcp://127.0.0.1:19191")
     val RegistryRouterEndpoint: String = property("registryRouterEndpoint", "tcp://127.0.0.1:19192")
     val PlayRouteEndpoint: String = property("playRouteEndpoint", "tcp://127.0.0.1:47520")
+    val PlaySpotRouterEndpoint: String = property("playSpotRouterEndpoint", "tcp://127.0.0.1:47521")
+    val SessionRouteEndpoint: String = property("sessionRouteEndpoint", "tcp://127.0.0.1:47522")
+    val SessionRouterEndpoint: String = property("sessionRouterEndpoint", "tcp://127.0.0.1:47523")
     val ApiEndpoint: String = property("apiEndpoint", "tcp://127.0.0.1:47503")
-    val PlayEndpoint: String = property("playEndpoint", "tcp://127.0.0.1:47504")
+    val PlayChannelEndpoint: String = property("playEndpoint", "tcp://127.0.0.1:47504")
     val SessionEndpoint: String = property("sessionEndpoint", "tcp://127.0.0.1:47512")
 
     private fun property(name: String, defaultValue: String): String =

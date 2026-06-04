@@ -291,6 +291,13 @@ final class MonitoringEventsTest {
         }
 
         @Override
+        public void connectRouterChannelPeerRid(
+            String channelName,
+            systems.zlink.contracts.core.RoutingId peerRid,
+            String endpoint) {
+        }
+
+        @Override
         public void attachSpotRouteChannelDiscovery(
             String channelName,
             ZLinkBackendDiscovery discovery) {
@@ -350,6 +357,12 @@ final class MonitoringEventsTest {
             List<systems.zlink.contracts.messaging.Message> parts,
             systems.zlink.contracts.sockets.SendFlags flags) {
             return false;
+        }
+
+        @Override
+        public void closeActorBoundSession(
+            ZLinkBackendActorRef actor,
+            java.time.Duration timeout) {
         }
 
         @Override

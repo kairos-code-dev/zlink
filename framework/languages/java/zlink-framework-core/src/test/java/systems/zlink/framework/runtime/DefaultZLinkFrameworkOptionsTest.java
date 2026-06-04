@@ -232,6 +232,8 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         systems.zlink.contracts.core.RoutingId nodeRid =
             systems.zlink.contracts.core.RoutingId.from("spot-node-1");
+        systems.zlink.contracts.core.RoutingId pubSubRid =
+            systems.zlink.contracts.core.RoutingId.from("spot-pub-1");
 
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
@@ -240,13 +242,17 @@ final class DefaultZLinkFrameworkOptionsTest {
                     router.useManualConnections(endpoints ->
                         endpoints.connect("inproc://spot-router-peer"));
                 });
-                node.enablePubSub(pubsub ->
+                node.enablePubSub(pubsub -> {
+                    pubsub.setRoutingId(pubSubRid);
                     pubsub.useManualConnections(endpoints ->
-                        endpoints.connect("inproc://spot-pub-peer")));
+                        endpoints.connect("inproc://spot-pub-peer"));
+                });
             }));
 
         options.validate();
-        assertEquals(nodeRid, options.registration().spotNodes().get(0).routingId());
+        assertEquals(nodeRid, options.registration().spotNodes().get(0).routerRoutingId());
+        assertEquals(pubSubRid, options.registration().spotNodes().get(0).pubSubRoutingId());
+        assertEquals(nodeRid, options.registration().spotNodes().get(0).nodeRoutingId());
         assertEquals(
             List.of("inproc://spot-router-peer"),
             options.registration().spotNodes().get(0).routerManualConnections());
@@ -278,16 +284,17 @@ final class DefaultZLinkFrameworkOptionsTest {
     void spotNodeRejectsConflictingRouterAndPubSubRoutingIds() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        assertThrows(ZLinkConfigurationException.class, () ->
-            options.addSpotMesh("game", mesh ->
-                mesh.addNode("play", node -> {
-                    node.enableRouter(router ->
-                        router.setRoutingId(
-                            systems.zlink.contracts.core.RoutingId.from("node-a")));
-                    node.enablePubSub(pubsub ->
-                        pubsub.setRoutingId(
-                            systems.zlink.contracts.core.RoutingId.from("node-b")));
-                })));
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> {
+                node.enableRouter(router ->
+                    router.setRoutingId(
+                        systems.zlink.contracts.core.RoutingId.from("node-a")));
+                node.enablePubSub(pubsub ->
+                    pubsub.setRoutingId(
+                        systems.zlink.contracts.core.RoutingId.from("node-b")));
+            }));
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
     }
 
     @Test
@@ -786,7 +793,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> node.addSpotFactory(TestSpot.class)));
+            mesh.addNode("play", node -> { }));
         options.addStreamNode("gateway", stream -> {
             stream.bind("inproc://gateway");
             stream.attachActorGateway("play");

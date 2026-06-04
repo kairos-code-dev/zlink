@@ -12,13 +12,16 @@ object PlayServer {
     fun configure(options: ZLinkFrameworkOptions) {
         options.addHandlersFromPackageOf(PlayServer::class.java)
         options.addClientServerChannel(SampleNames.PlayChannel) { channel ->
-            channel.enableServer { server -> server.bind(SampleTopology.PlayEndpoint) }
+            channel.enableServer { server -> server.bind(SampleTopology.PlayChannelEndpoint) }
             channel.addHandlerGroup("play")
         }
         options.addRouteMeshChannel(SampleNames.PlayRouteChannel) { route ->
             route.bind(SampleTopology.PlayRouteEndpoint)
+            route.configureRouting { routing ->
+                routing.setRoutingId(RoutingId.from(SampleNames.PlayRid))
+            }
             route.useManualConnections { endpoints ->
-                endpoints.connect(SampleTopology.PlayRouteEndpoint)
+                endpoints.connect(SampleTopology.SessionRouteEndpoint)
             }
         }
         options.useRegistrySpotRemoteAddresses(SampleNames.SpotMesh) { registry ->
@@ -26,7 +29,11 @@ object PlayServer {
         }
         options.addSpotMesh(SampleNames.SpotMesh) { mesh ->
             mesh.addNode(SampleNames.PlayNode) { node ->
-                node.enableRouter()
+                node.enableRouter { router ->
+                    router.setRouterBind(SampleTopology.PlaySpotRouterEndpoint)
+                    router.setRoutingId(RoutingId.from(SampleNames.PlayRid))
+                }
+                node.acceptSpotRoutesFromChannel(SampleNames.PlayRouteChannel)
                 node.configureEntrySpot { entry ->
                     entry.setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId))
                 }

@@ -59,16 +59,34 @@ class TicTacToeClient {
             hostStream.connectAsync().await()
             guestStream.connectAsync().await()
 
-            val xAuthentication = request(hostStream, AuthenticateReq(options.xActorId), AuthenticateRes::class.java)
-            val oAuthentication = request(guestStream, AuthenticateReq(options.oActorId), AuthenticateRes::class.java)
-            val xJoin = request(hostStream, JoinGameReq(game.gameId), JoinGameRes::class.java)
-            val oJoin = request(guestStream, JoinGameReq(game.gameId), JoinGameRes::class.java)
+            val xAuthentication = requestStep("host AuthenticateReq") {
+                request(hostStream, AuthenticateReq(options.xActorId), AuthenticateRes::class.java)
+            }
+            val oAuthentication = requestStep("guest AuthenticateReq") {
+                request(guestStream, AuthenticateReq(options.oActorId), AuthenticateRes::class.java)
+            }
+            val xJoin = requestStep("host JoinGameReq") {
+                request(hostStream, JoinGameReq(game.gameId), JoinGameRes::class.java)
+            }
+            val oJoin = requestStep("guest JoinGameReq") {
+                request(guestStream, JoinGameReq(game.gameId), JoinGameRes::class.java)
+            }
             val moves = listOf(
-                request(hostStream, PlaceMarkReq(0), PlaceMarkRes::class.java),
-                request(guestStream, PlaceMarkReq(4), PlaceMarkRes::class.java),
-                request(hostStream, PlaceMarkReq(1), PlaceMarkRes::class.java),
-                request(guestStream, PlaceMarkReq(8), PlaceMarkRes::class.java),
-                request(hostStream, PlaceMarkReq(2), PlaceMarkRes::class.java),
+                requestStep("host PlaceMarkReq(0)") {
+                    request(hostStream, PlaceMarkReq(0), PlaceMarkRes::class.java)
+                },
+                requestStep("guest PlaceMarkReq(4)") {
+                    request(guestStream, PlaceMarkReq(4), PlaceMarkRes::class.java)
+                },
+                requestStep("host PlaceMarkReq(1)") {
+                    request(hostStream, PlaceMarkReq(1), PlaceMarkRes::class.java)
+                },
+                requestStep("guest PlaceMarkReq(8)") {
+                    request(guestStream, PlaceMarkReq(8), PlaceMarkRes::class.java)
+                },
+                requestStep("host PlaceMarkReq(2)") {
+                    request(hostStream, PlaceMarkReq(2), PlaceMarkRes::class.java)
+                },
             )
 
             CompletableFuture.runAsync(
@@ -124,4 +142,14 @@ class TicTacToeClient {
             .submitAsync()
             .await()
             .let { reply -> ZLinkStreamJson.decode(reply, replyType) }
+
+    private suspend fun <TReply> requestStep(
+        step: String,
+        request: suspend () -> TReply,
+    ): TReply =
+        try {
+            request()
+        } catch (error: Throwable) {
+            throw IllegalStateException("TicTacToe sample step failed: $step", error)
+        }
 }

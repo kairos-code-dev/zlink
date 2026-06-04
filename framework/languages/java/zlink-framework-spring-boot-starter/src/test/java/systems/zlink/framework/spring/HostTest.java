@@ -43,6 +43,7 @@ final class HostTest {
                 "factory.channel",
                 "create.context",
                 "create.dealer",
+                "dealer.setChannelName.profile",
                 "dealer.connect.inproc://profile-server",
                 "close.dealer",
                 "close.context"),
@@ -78,6 +79,7 @@ final class HostTest {
                     "factory.channel",
                     "create.context",
                     "create.dealer",
+                    "dealer.setChannelName.profile",
                     "dealer.connect.inproc://profile-server"),
                 backendFactory.calls());
         }
@@ -92,6 +94,7 @@ final class HostTest {
                 "factory.channel",
                 "create.context",
                 "create.dealer",
+                "dealer.setChannelName.profile",
                 "dealer.connect.inproc://profile-server",
                 "close.dealer",
                 "close.context",

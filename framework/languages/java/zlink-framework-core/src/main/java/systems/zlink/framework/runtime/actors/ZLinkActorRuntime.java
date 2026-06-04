@@ -260,6 +260,21 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         context.joined = true;
     }
 
+    public void bindNativeSession(
+        ZLinkActor actor,
+        ZLinkBackendSpotNode spotNode,
+        ZLinkBackendActorRef actorRef) {
+        ZLinkNativeBoundSessionRuntime boundSession = new ZLinkNativeBoundSessionRuntime(
+            spotNode,
+            actorRef,
+            serializer,
+            this,
+            actor,
+            defaultTimeout);
+        long bindingToken = bindSession(actor, boundSession);
+        boundSession.setBindingToken(bindingToken);
+    }
+
     public void markLeft(ZLinkActor actor) {
         DefaultActorContext context = contextsByActor.get(actor);
         if (context == null) {

@@ -14,19 +14,25 @@ public final class PlayServer {
     public static void configure(ZLinkFrameworkOptions options) {
         options.addHandlersFromPackageOf(PlayServer.class);
         options.addClientServerChannel(SampleNames.PlayChannel, channel -> {
-            channel.enableServer(server -> server.bind(SampleTopology.PlayEndpoint));
+            channel.enableServer(server -> server.bind(SampleTopology.PlayChannelEndpoint));
             channel.addHandlerGroup("play");
         });
         options.addRouteMeshChannel(SampleNames.PlayRouteChannel, route -> {
             route.bind(SampleTopology.PlayRouteEndpoint);
+            route.configureRouting(routing ->
+                routing.setRoutingId(systems.zlink.contracts.core.RoutingId.from(SampleNames.PlayRid)));
             route.useManualConnections(endpoints ->
-                endpoints.connect(SampleTopology.PlayRouteEndpoint));
+                endpoints.connect(SampleTopology.SessionRouteEndpoint));
         });
         options.useRegistrySpotRemoteAddresses(SampleNames.SpotMesh, registry ->
             registry.setRouterChannelId(SampleNames.PlayRouteChannel));
         options.addSpotMesh(SampleNames.SpotMesh, mesh -> {
             mesh.addNode(SampleNames.PlayNode, node -> {
-                node.enableRouter();
+                node.enableRouter(router -> {
+                    router.setRouterBind(SampleTopology.PlaySpotRouterEndpoint);
+                    router.setRoutingId(systems.zlink.contracts.core.RoutingId.from(SampleNames.PlayRid));
+                });
+                node.acceptSpotRoutesFromChannel(SampleNames.PlayRouteChannel);
                 node.configureEntrySpot(entry ->
                     entry.setRoutingId(systems.zlink.contracts.core.RoutingId.from(
                         SampleNames.EntrySpotRoutingId)));

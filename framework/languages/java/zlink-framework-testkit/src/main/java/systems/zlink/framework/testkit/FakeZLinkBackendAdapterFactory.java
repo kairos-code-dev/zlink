@@ -411,6 +411,11 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
 
         @Override
+        public void bindRoute(long kind, byte[] key, byte[] value) {
+            record("bindRoute." + kind);
+        }
+
+        @Override
         public ZLinkBackendDiscoveryRoute resolveRoute(long kind, byte[] key) {
             return new ZLinkBackendDiscoveryRoute(Optional.empty(), Optional.empty());
         }
@@ -429,22 +434,16 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
 
         @Override
-        public List<ZLinkBackendRegistryTopologyEntry> memberPeers() {
+        public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers() {
             if ("discovery.egress-discovery".equals(name())) {
-                return List.of(new ZLinkBackendRegistryTopologyEntry(
+                return List.of(new ZLinkBackendRegistryMemberPeerEntry(
                     "ROUTE_MESH",
-                    RoutingId.from("discovery-route-peer"),
-                    "DISCOVERY",
                     "ROUTER",
                     "ingress-discovery",
                     "inproc://ingress-discovery",
-                    "DISCOVERY",
-                    "READY",
+                    RoutingId.from("discovery-route-peer"),
                     1,
-                    1,
-                    0,
-                    0,
-                    ZLinkSpotKind.INVALID));
+                    1));
             }
             return List.of();
         }
@@ -481,6 +480,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
 
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
+        @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public boolean send(List<Message> parts, SendFlags flags) { record("send." + firstPart(parts)); return true; }
         @Override public boolean request(List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             record("request." + firstPart(parts));
@@ -500,6 +500,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
 
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
+        @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public void setRoutingId(RoutingId routingId) { record("setRoutingId"); }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return null; }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { record("send." + routingId + "." + firstPart(parts)); return true; }
@@ -534,6 +535,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
 
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
+        @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { record("publish." + topic); return true; }
     }
 
@@ -543,6 +545,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
 
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
+        @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public void setSubscription(String topic) { record("setSubscription." + topic); }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }
     }
@@ -628,19 +631,21 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private static final class FakeSpotNode extends FakeBackendObject implements ZLinkBackendSpotNode {
         private int nextSpotId = 1;
         private final List<FakeSpot> spots;
+        private RoutingId routingId = RoutingId.from("spot-node");
 
         FakeSpotNode(List<String> calls, List<FakeSpot> spots) {
             super(calls, "spotNode");
             this.spots = spots;
         }
 
-        @Override public RoutingId routingId() { return RoutingId.from("spot-node"); }
-        @Override public void setRoutingId(RoutingId routingId) { record("setRoutingId"); }
+        @Override public RoutingId routingId() { return routingId; }
+        @Override public void setRoutingId(RoutingId routingId) { this.routingId = routingId; record("setRoutingId"); }
         @Override public void setRouterBind(String endpoint) { record("setRouterBind." + endpoint); }
         @Override public void setPubBind(String endpoint) { record("setPubBind." + endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void connectPeer(String endpoint) { record("connectPeer." + endpoint); }
         @Override public void connectRouterChannelPeer(String channelName, String endpoint) { record("connectRouterChannelPeer." + channelName + "." + endpoint); }
+        @Override public void connectRouterChannelPeerRid(String channelName, RoutingId peerRid, String endpoint) { record("connectRouterChannelPeerRid." + channelName + "." + peerRid + "." + endpoint); }
         @Override public void attachSpotRouteChannelDiscovery(String channelName, ZLinkBackendDiscovery discovery) { record("attachSpotRouteChannelDiscovery." + channelName + "." + discovery.name()); }
         @Override public void attachChannelDealer(ZLinkBackendDiscovery discovery, ZLinkBackendDealerSocket dealer) { record("attachChannelDealer"); }
         @Override public void attachChannelDealerManual(String channelName, ZLinkBackendDealerSocket dealer) { record("attachChannelDealerManual." + channelName); }
@@ -692,6 +697,9 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) {
             record("sendActorBoundSession." + actor.actorId() + "." + firstPart(parts));
             return true;
+        }
+        @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) {
+            record("closeActorBoundSession." + actor.actorId());
         }
         @Override public ZLinkBackendSpotNodeStatus status() { return null; }
         @Override public List<ZLinkBackendSpotNodePeerEntry> peers() { return List.of(); }
@@ -917,7 +925,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) { record("bindActor." + actor.actorId()); return timeout -> CompletableFuture.completedFuture(null); }
         @Override public ZLinkBackendActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId) { record("unbindActor." + actorId); return timeout -> CompletableFuture.completedFuture(null); }
         @Override public boolean sendBoundActor(RoutingId sessionRid, String actorId, List<Message> parts, SendFlags flags) { record("sendBoundActor." + actorId); return true; }
-        @Override public boolean relayBoundActor(RoutingId sessionRid, String actorId, String packetName, Optional<Long> requestSeq, List<Message> parts, SendFlags flags) { record("relayBoundActor." + actorId + "." + packetName); return true; }
+        @Override public boolean relayBoundActor(RoutingId sessionRid, String actorId, systems.zlink.framework.streams.ZLinkStreamHeader header, List<Message> parts, SendFlags flags) { record("relayBoundActor." + actorId + "." + header.codec() + "." + header.packetName()); return true; }
 
         void dispatchPacket(RoutingId routingId, Message header, Message payload) {
             if (packetHandler == null) {

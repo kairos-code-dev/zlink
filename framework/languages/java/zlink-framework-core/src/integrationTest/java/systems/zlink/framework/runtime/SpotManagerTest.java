@@ -29,10 +29,17 @@ final class SpotManagerTest {
     @Test
     void spotManager_createListRemoveAndPublish_workThroughFrameworkRuntime() {
         Zlink.version();
+        String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
-        RoutingId spotRid = RoutingId.from("game-1");
+            mesh.addNode("play", node -> {
+                node.enableRouter(router -> {
+                    router.setRoutingId(RoutingId.from("spot-manager-node-" + suffix));
+                    router.setRouterBind("inproc://spot-manager-router-" + suffix);
+                });
+                node.addSpotFactory(GameSpot.class);
+            }));
+        RoutingId spotRid = RoutingId.from("game-1-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -62,10 +69,17 @@ final class SpotManagerTest {
     @Test
     void spotManager_getOrCreate_createsOnceAndReusesExistingSpot() {
         Zlink.version();
+        String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
-        RoutingId spotRid = RoutingId.from("game-once");
+            mesh.addNode("play", node -> {
+                node.enableRouter(router -> {
+                    router.setRoutingId(RoutingId.from("spot-once-node-" + suffix));
+                    router.setRouterBind("inproc://spot-once-router-" + suffix);
+                });
+                node.addSpotFactory(GameSpot.class);
+            }));
+        RoutingId spotRid = RoutingId.from("game-once-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -86,13 +100,21 @@ final class SpotManagerTest {
     void spot_publishTimerAndRemove_stopCallbacksWork() throws InterruptedException {
         Zlink.version();
         PublishingSpot.reset();
+        String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
-                node.enablePubSub(pubsub -> pubsub.setPubBind("inproc://spot-pub"));
+                node.enableRouter(router -> {
+                    router.setRoutingId(RoutingId.from("spot-timer-router-node-" + suffix));
+                    router.setRouterBind("inproc://spot-timer-router-" + suffix);
+                });
+                node.enablePubSub(pubsub -> {
+                    pubsub.setRoutingId(RoutingId.from("spot-pub-node-" + suffix));
+                    pubsub.setPubBind("inproc://spot-pub-" + suffix);
+                });
                 node.addSpotFactory(PublishingSpot.class);
             }));
-        RoutingId spotRid = RoutingId.from("timer-room");
+        RoutingId spotRid = RoutingId.from("timer-room-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {

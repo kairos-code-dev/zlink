@@ -1,9 +1,16 @@
 package systems.zlink.samples.bingo.server.play.bingoroomspots.handlers;
 
-import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoRoomModels;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.handlers.ZLinkSpotActorLeft;
+import systems.zlink.framework.spots.ZLinkSpotActorChangeResult;
+import systems.zlink.samples.bingo.server.play.actors.PlayerActor;
 
 public final class BingoRoomActorLeftHandler {
-    public BingoRoomModels.BingoRoomMembership handle(String roomId, String actorId) {
-        return new BingoRoomModels.BingoRoomMembership(roomId, actorId, false);
+    @ZLinkSpotActorLeft
+    public CompletionStage<Void> handleAsync(
+        PlayerActor actor,
+        ZLinkSpotActorChangeResult result) {
+        return CompletableFuture.completedFuture(null);
     }
 }

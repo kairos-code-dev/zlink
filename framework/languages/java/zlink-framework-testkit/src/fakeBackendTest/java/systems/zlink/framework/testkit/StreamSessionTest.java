@@ -30,7 +30,8 @@ final class StreamSessionTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
-                node.enableRouter();
+                node.enableRouter(router ->
+                    router.setRoutingId(systems.zlink.contracts.core.RoutingId.from("play-node")));
                 node.addSpotFactory(GameSpot.class);
             }));
         options.addStreamNode("gateway", stream -> {
@@ -53,6 +54,7 @@ final class StreamSessionTest {
                 "factory.spot",
                 "create.context",
                 "create.spotNode",
+                "spotNode.setRoutingId",
                 "factory.channel",
                 "factory.stream",
                 "create.context",
@@ -163,7 +165,8 @@ final class StreamSessionTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
-                node.enableRouter();
+                node.enableRouter(router ->
+                    router.setRoutingId(systems.zlink.contracts.core.RoutingId.from("play-node")));
                 node.addSpotFactory(GameSpot.class);
             }));
         options.addActorFactory("player", systems.zlink.framework.testkit.ActorRuntimeFakeBackendTest.PlayerActorFactory.class);

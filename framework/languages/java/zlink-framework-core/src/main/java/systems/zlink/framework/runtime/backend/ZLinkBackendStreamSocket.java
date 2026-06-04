@@ -1,10 +1,10 @@
 package systems.zlink.framework.runtime.backend;
 
 import java.util.List;
-import java.util.Optional;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 public interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
     void onPacket(ZLinkBackendStreamPacketHandler handler);
@@ -33,8 +33,7 @@ public interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
     boolean relayBoundActor(
         RoutingId sessionRid,
         String actorId,
-        String packetName,
-        Optional<Long> requestSeq,
+        ZLinkStreamHeader header,
         List<Message> parts,
         SendFlags flags);
 }

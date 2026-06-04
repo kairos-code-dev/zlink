@@ -4,9 +4,84 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
+role_pattern='systems\.zlink\.samples\.tictactoe\.server\.Program|systems\.zlink\.samples\.tictactoe\.client\.Program'
+log_dir="build/sample-logs"
+mkdir -p "${log_dir}"
+rm -f "${log_dir}"/*.log
+
+print_logs() {
+  local status="$1"
+  if [[ "${status}" == "0" ]]; then
+    return
+  fi
+  for log in "${log_dir}"/*.log; do
+    [[ -f "${log}" ]] || continue
+    echo "===== ${log} =====" >&2
+    tail -n 200 "${log}" >&2 || true
+  done
+}
+
+descendants() {
+  local pid="$1"
+  local child
+  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
+    descendants "${child}"
+    echo "${child}"
+  done
+}
+
+kill_role_processes() {
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
+    kill "${pid}" >/dev/null 2>&1 || true
+  done
+}
+
+kill_role_processes_forcibly() {
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
+    kill -9 "${pid}" >/dev/null 2>&1 || true
+  done
+}
+
 cleanup() {
+  local status="$?"
+  print_logs "${status}"
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    local pid="${pids[$i]}"
+    for child in $(descendants "${pid}"); do
+      kill "${child}" >/dev/null 2>&1 || true
+    done
+    kill "${pid}" >/dev/null 2>&1 || true
+  done
+  kill_role_processes
+  for _ in $(seq 1 20); do
+    local any_alive=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "${pid}" >/dev/null 2>&1; then
+        any_alive=1
+        break
+      fi
+      for child in $(descendants "${pid}"); do
+        if kill -0 "${child}" >/dev/null 2>&1; then
+          any_alive=1
+          break
+        fi
+      done
+    done
+    if [[ "${any_alive}" == "0" ]]; then
+      break
+    fi
+    sleep 0.1
+  done
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    local pid="${pids[$i]}"
+    for child in $(descendants "${pid}"); do
+      kill -9 "${child}" >/dev/null 2>&1 || true
+    done
+    kill -9 "${pid}" >/dev/null 2>&1 || true
+  done
+  kill_role_processes_forcibly
   for pid in "${pids[@]}"; do
-    kill "$pid" >/dev/null 2>&1 || true
+    wait "${pid}" 2>/dev/null || true
   done
 }
 trap cleanup EXIT
@@ -26,15 +101,25 @@ wait_port() {
 
 reserve_ports() {
   python3 - <<'PY'
+import random
 import socket
 reserved = []
 ports = []
 try:
-    for _ in range(6):
+    chosen = set()
+    while len(reserved) < 6:
+        port = random.randint(20000, 32767)
+        if port in chosen:
+            continue
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 0))
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            sock.close()
+            continue
+        chosen.add(port)
         reserved.append(sock)
-        ports.append(str(sock.getsockname()[1]))
+        ports.append(str(port))
     print(" ".join(ports))
 finally:
     for sock in reserved:
@@ -44,8 +129,7 @@ PY
 
 read -r api_port api_channel_port play_stream_port play_channel_port play_router_port spot_port < <(reserve_ports)
 
-server_args=(
-  "server"
+common_args=(
   "--api-bind" "http://127.0.0.1:${api_port}"
   "--api-url" "http://127.0.0.1:${api_port}"
   "--api-channel-endpoint" "tcp://127.0.0.1:${api_channel_port}"
@@ -55,12 +139,15 @@ server_args=(
   "--spot-endpoint" "tcp://127.0.0.1:${spot_port}"
 )
 
-gradle :Server:run --quiet --args="${server_args[*]}" &
+gradle :Server:run --quiet --args="play ${common_args[*]}" >"${log_dir}/play.log" 2>&1 &
+pids+=("$!")
+wait_port "${play_stream_port}"
+wait_port "${play_channel_port}"
+wait_port "${play_router_port}"
+
+gradle :Server:run --quiet --args="api ${common_args[*]}" >"${log_dir}/api.log" 2>&1 &
 pids+=("$!")
 wait_port "${api_port}"
 wait_port "${api_channel_port}"
-wait_port "${play_stream_port}"
-wait_port "${play_channel_port}"
-wait_port "${api_port}"
 
-gradle :Client:run --quiet --args="--api-url http://127.0.0.1:${api_port}"
+gradle :Client:run --quiet --args="--api-url http://127.0.0.1:${api_port}" >"${log_dir}/client.log" 2>&1

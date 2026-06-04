@@ -57,6 +57,15 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
         }
     }
 
+    @Override
+    public void prepare(Class<?> type) {
+        if (type == null || type == Void.class || type == Message.class || type == byte[].class) {
+            return;
+        }
+        mapper.canSerialize(type);
+        mapper.canDeserialize(mapper.constructType(type));
+    }
+
     private static String valueTypeName(Object value) {
         return value == null ? "null" : value.getClass().getName();
     }

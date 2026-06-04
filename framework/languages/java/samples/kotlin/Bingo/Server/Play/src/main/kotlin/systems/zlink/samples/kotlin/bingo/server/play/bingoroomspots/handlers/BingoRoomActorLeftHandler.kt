@@ -1,8 +1,16 @@
 package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers
 
-import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoRoomMembership
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionStage
+import systems.zlink.framework.handlers.ZLinkSpotActorLeft
+import systems.zlink.framework.spots.ZLinkSpotActorChangeResult
+import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActor
 
 class BingoRoomActorLeftHandler {
-    fun handle(roomId: String, actorId: String): BingoRoomMembership =
-        BingoRoomMembership(roomId, actorId, joined = false)
+    @ZLinkSpotActorLeft
+    fun handleAsync(
+        actor: PlayerActor,
+        result: ZLinkSpotActorChangeResult,
+    ): CompletionStage<Void> =
+        CompletableFuture.completedFuture(null)
 }

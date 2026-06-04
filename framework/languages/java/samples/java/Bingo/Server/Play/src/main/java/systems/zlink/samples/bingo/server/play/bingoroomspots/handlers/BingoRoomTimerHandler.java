@@ -1,6 +1,13 @@
 package systems.zlink.samples.bingo.server.play.bingoroomspots.handlers;
 
-public final class BingoRoomTimerHandler {
-    public void tick() {
+import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
+import systems.zlink.framework.spots.ZLinkTimerTick;
+import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoRoomSpot;
+
+public final class BingoRoomTimerHandler implements ZLinkSpotTimerHandler<BingoRoomSpot> {
+    @Override
+    public CompletionStage<Void> handleAsync(BingoRoomSpot spot, ZLinkTimerTick tick) {
+        return spot.tickAsync();
     }
 }

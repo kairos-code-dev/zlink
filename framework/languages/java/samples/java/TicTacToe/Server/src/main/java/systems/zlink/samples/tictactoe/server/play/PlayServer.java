@@ -40,18 +40,21 @@ public class PlayServer {
                 channel.enableClient(client -> client.useManualConnections(
                     endpoints -> endpoints.connect(settings.apiChannelEndpoint()))));
             options.addClientServerChannel(SampleNames.PlayChannel, channel -> {
-                channel.enableClient(client -> client.useManualConnections(
-                    endpoints -> endpoints.connect(settings.playChannelEndpoint())));
                 channel.enableServer(server -> server.bind(settings.playChannelEndpoint()));
                 channel.addHandlerGroup(SampleNames.PlayChannel);
+            });
+            options.addRouteMeshChannel(SampleNames.PlayRouteChannel, route -> {
+                route.bind(settings.playRouterEndpoint());
+                route.configureRouting(routing ->
+                    routing.setRoutingId(RoutingId.from(SampleNames.PlayRouterId)));
+                route.useManualConnections(endpoints ->
+                    endpoints.connect(settings.playRouterEndpoint()));
             });
             options.addSpotMesh(SampleNames.SpotMesh, mesh ->
                 mesh.addNode(SampleNames.PlayNode, node -> {
                     node.enableRouter(router -> {
                         router.setRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId));
-                        router.setRouterBind(settings.playRouterEndpoint());
-                        router.useManualConnections(endpoints ->
-                            endpoints.connect(settings.playRouterEndpoint()));
+                        router.setRouterBind(settings.spotEndpoint());
                     });
                     node.configureEntrySpot(entry ->
                         entry.setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId)));

@@ -659,6 +659,7 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "create.spotNode",
                 "create.dealer",
+                "dealer.setChannelName.profile",
                 "dealer.connect.inproc://profile-server",
                 "spotNode.attachChannelDealerManual.profile",
                 "close.context",
@@ -689,13 +690,18 @@ final class SpotRuntimeFakeBackendTest {
                 "factory.spot",
                 "create.context",
                 "create.spotNode",
+                "create.discovery.game",
+                "discovery.game.connectRegistry.tcp://127.0.0.1:17001",
+                "spotNode.attachDiscovery.discovery.game",
                 "create.dealer",
+                "dealer.setChannelName.profile",
                 "create.discovery.profile",
                 "discovery.profile.connectRegistry.tcp://127.0.0.1:17001",
                 "dealer.attachDiscovery.discovery.profile",
                 "spotNode.attachChannelDealer",
                 "close.context",
                 "close.dealer",
+                "close.discovery.game",
                 "close.discovery.profile",
                 "close.spotNode",
                 "close.context"),
@@ -730,6 +736,7 @@ final class SpotRuntimeFakeBackendTest {
                 "factory.channel",
                 "create.context",
                 "create.router",
+                "router.setChannelName.api",
                 "router.connect.inproc://api-route-peer",
                 "router.bind.inproc://api-route",
                 "factory.channel",
@@ -977,11 +984,13 @@ final class SpotRuntimeFakeBackendTest {
                 "ActorRequestString",
                 "7",
                 42);
+            awaitCall(backendFactory, "spotNode.sendActorBoundSession.player-1.");
         }
 
         assertEquals("player-1:7", ActorRequestHandler.lastRequest.get());
         assertTrue(backendFactory.calls().stream()
-            .anyMatch(call -> call.startsWith("spotNode.sendActorBoundSession.player-1.")));
+            .anyMatch(call -> call.startsWith("spotNode.sendActorBoundSession.player-1.")),
+            () -> "calls: " + backendFactory.calls());
     }
 
     @Test
@@ -1113,6 +1122,18 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public CompletionStage<Void> onInitializeAsync() {
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    private static void awaitCall(
+        FakeZLinkBackendAdapterFactory backendFactory,
+        String prefix) {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(1).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (backendFactory.calls().stream().anyMatch(call -> call.startsWith(prefix))) {
+                return;
+            }
+            Thread.onSpinWait();
         }
     }
 

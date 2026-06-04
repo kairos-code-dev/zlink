@@ -1,6 +1,7 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.client
 
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleTopology
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleNames
 
 data class SessionActorDispatchClientOptions(
     val xActorId: String,
@@ -11,8 +12,8 @@ data class SessionActorDispatchClientOptions(
     companion object {
         fun defaults(): SessionActorDispatchClientOptions =
             SessionActorDispatchClientOptions(
-                xActorId = "alice",
-                oActorId = "bob",
+                xActorId = SampleNames.XActorId,
+                oActorId = SampleNames.OActorId,
                 primaryStreamEndpoint = SampleTopology.SessionEndpoint,
                 reconnectStreamEndpoint = SampleTopology.SessionEndpoint,
             )

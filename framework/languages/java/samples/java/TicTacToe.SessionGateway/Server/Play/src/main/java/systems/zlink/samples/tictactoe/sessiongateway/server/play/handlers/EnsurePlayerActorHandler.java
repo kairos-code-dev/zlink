@@ -20,7 +20,7 @@ public final class EnsurePlayerActorHandler {
     public CompletionStage<String> handleAsync(String actorId) {
         return actors.getOrCreateAsync(actorId, SampleNames.PlayerActorType)
             .thenCompose(actor -> actor.context()
-                .joinEntrySpot(RoutingId.from(SampleNames.EntrySpotRoutingId))
+                .joinEntrySpot(RoutingId.from(SampleNames.PlayRid))
                 .submitAsync()
                 .thenApply(joined -> snapshot(actor, joined)));
     }

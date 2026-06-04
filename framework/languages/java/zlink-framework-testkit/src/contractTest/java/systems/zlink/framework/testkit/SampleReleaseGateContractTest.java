@@ -170,12 +170,7 @@ final class SampleReleaseGateContractTest {
 
     @Test
     void ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator() throws IOException {
-        assertSampleFilesExist("java", "TicTacToe.SessionGateway", "src/main/java", List.of(
-            "systems/zlink/samples/tictactoe/sessiongateway/TicTacToeSessionGatewaySample.java"));
-        assertNoSampleSourcesUnder("java", "TicTacToe.SessionGateway", "src/main/java", List.of(
-            "systems/zlink/samples/tictactoe/sessiongateway/client",
-            "systems/zlink/samples/tictactoe/sessiongateway/server",
-            "systems/zlink/samples/tictactoe/sessiongateway/shared"));
+        assertNoSampleSourcesUnder("java", "TicTacToe.SessionGateway", "src/main/java");
         assertSampleFilesExist("java", "TicTacToe.SessionGateway", "Client/src/main/java", List.of(
             "systems/zlink/samples/tictactoe/sessiongateway/client/Program.java",
             "systems/zlink/samples/tictactoe/sessiongateway/client/SessionActorDispatchClient.java",
@@ -274,9 +269,11 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameSpot.java");
-        String mainSource = sampleJavaSource(
+        String rootBuildSource = sampleFile(
+            "java",
             "TicTacToe.SessionGateway",
-            "systems/zlink/samples/tictactoe/sessiongateway/TicTacToeSessionGatewaySample.java");
+            "",
+            "build.gradle.kts");
         String apiProgramSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
             "Server/Api/src/main/java",
@@ -297,8 +294,8 @@ final class SampleReleaseGateContractTest {
         assertTrue(sessionServerSource.contains("attachActorGateway(SampleNames.SessionRelayNode)")
                 || sessionServerSource.contains("attachActorGateway(\"session-relay\")"),
             "SessionGateway sample must attach stream node to local ActorGateway SpotNode");
-        assertTrue(mainSource.contains("Program.start()")
-                && !mainSource.contains("ZLinkFramework.start")
+        assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
+                && !rootBuildSource.contains("application")
                 && apiProgramSource.contains("@SpringBootApplication")
                 && playProgramSource.contains("@SpringBootApplication")
                 && registryProgramSource.contains("@SpringBootApplication")
@@ -324,8 +321,6 @@ final class SampleReleaseGateContractTest {
                 && playServerSource.contains("addHandlersFromPackageOf")
                 && playServerSource.contains("addHandlerGroup(\"play\")"),
             "SessionGateway Api/Play roles must use annotation-discovered handler groups");
-        assertFalse(mainSource.contains("RecordingStreamNodeBuilder"),
-            "SessionGateway sample must not replace stream node configuration with a recording builder");
         assertTrue(clientSource.contains("validateFinalState")
                 && clientSource.contains("XXXOO....")
                 && clientSource.contains("validateNotifications"),
@@ -385,12 +380,7 @@ final class SampleReleaseGateContractTest {
 
     @Test
     void ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout() throws IOException {
-        assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "src/main/kotlin", List.of(
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/TicTacToeSessionGatewayKotlinSample.kt"));
-        assertNoSampleSourcesUnder("kotlin", "TicTacToe.SessionGateway", "src/main/kotlin", List.of(
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/shared"));
+        assertNoSampleSourcesUnder("kotlin", "TicTacToe.SessionGateway", "src/main/kotlin");
         assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "Client/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/Program.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/client/SessionActorDispatchClient.kt",
@@ -445,9 +435,11 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/SessionServer.kt");
-        String mainSource = sampleKotlinSource(
+        String rootBuildSource = sampleFile(
+            "kotlin",
             "TicTacToe.SessionGateway",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/TicTacToeSessionGatewayKotlinSample.kt");
+            "",
+            "build.gradle.kts");
         String playServerSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/kotlin",
@@ -512,8 +504,8 @@ final class SampleReleaseGateContractTest {
         assertTrue(sessionServerSource.contains("attachActorGateway(SampleNames.SessionRelayNode)")
                 || sessionServerSource.contains("attachActorGateway(\"session-relay\")"),
             "Kotlin SessionGateway sample must attach stream node to local ActorGateway SpotNode");
-        assertTrue(mainSource.contains("Application.start()")
-                && !mainSource.contains("ZLinkFramework.start")
+        assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
+                && !rootBuildSource.contains("application")
                 && apiProgramSource.contains("@SpringBootApplication")
                 && playProgramSource.contains("@SpringBootApplication")
                 && registryProgramSource.contains("@SpringBootApplication")
@@ -596,8 +588,6 @@ final class SampleReleaseGateContractTest {
 
     @Test
     void ticTacToeDirectSampleUsesFrameworkRuntimePublicFacade() throws IOException {
-        assertSampleFilesExist("java", "TicTacToe", "src/main/java", List.of(
-            "systems/zlink/samples/tictactoe/TicTacToeSample.java"));
         assertNoSampleSourcesUnder("java", "TicTacToe", "src/main/java",
             List.of(
                 "systems/zlink/samples/tictactoe/client",
@@ -655,9 +645,6 @@ final class SampleReleaseGateContractTest {
                 "systems/zlink/samples/tictactoe/server/Program.java", "PlayServer.start(settings)"),
             "Java TicTacToe Server role Program must live in the Server project folder");
 
-        String mainSource = sampleJavaSource(
-            "TicTacToe",
-            "systems/zlink/samples/tictactoe/TicTacToeSample.java");
         String serverProgramSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
@@ -712,19 +699,19 @@ final class SampleReleaseGateContractTest {
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/sessions/PlaySession.java");
 
-        assertTrue(mainSource.contains("PlayServer.start(settings)")
-                && mainSource.contains("ApiServer.start(settings)")
-                && mainSource.contains("ConfigurableApplicationContext"),
-            "TicTacToe direct Java sample must start roles through the Spring Boot public facade");
-        assertTrue(serverProgramSource.contains("case \"client\"")
-                && serverProgramSource.contains("new TicTacToeClient().run")
-                && serverProgramSource.contains("result.writeTo(System.out)")
-                && serverBuildSource.contains("implementation(project(\":Client\"))"),
-            "TicTacToe Java Server role must expose the .NET-style client run mode through the aggregate server entry point");
-        assertFalse(serverProgramSource.contains("CountDownLatch"),
-            "TicTacToe Java Server role must rely on Spring lifecycle keep-alive instead of manual latches");
-        assertTrue(mainSource.contains("SampleSettings.fromArgs(args).withEphemeralDefaults()")
-                && apiSource.contains("ZLinkFrameworkOptionsCustomizer")
+        assertTrue(serverProgramSource.contains("case \"api\" -> ApiServer.start(settings)")
+                && serverProgramSource.contains("case \"play\" -> PlayServer.start(settings)")
+                && serverProgramSource.contains("SampleSettings.fromArgs(args)")
+                && !serverProgramSource.contains("case \"client\"")
+                && !serverProgramSource.contains("case \"server\"")
+                && !serverProgramSource.contains("case \"all\"")
+                && !serverBuildSource.contains("implementation(project(\":Client\"))"),
+            "TicTacToe Java Server role Program must expose only Spring Boot api/play role entry points");
+        assertFalse(serverProgramSource.contains("CountDownLatch")
+                || serverProgramSource.contains("ZLinkFramework.start")
+                || serverProgramSource.contains("new TicTacToeClient().run"),
+            "TicTacToe Java Server role must rely on Spring lifecycle keep-alive instead of direct framework/client execution");
+        assertTrue(apiSource.contains("ZLinkFrameworkOptionsCustomizer")
                 && apiSource.contains("@SpringBootApplication")
                 && apiSource.contains("SpringApplicationBuilder")
                 && apiSource.contains(".web(WebApplicationType.SERVLET)")
@@ -937,14 +924,12 @@ final class SampleReleaseGateContractTest {
             "TicTacToe Spot instances must be created by the framework runtime, not sample-owned fallback contexts");
         assertTrue(playSource.contains(".addStreamNode("),
             "TicTacToe direct sample must register the STREAM entry point");
-        assertFalse(mainSource.contains("CreateGameHandler"),
-            "TicTacToe main must not collapse Play handler wiring into the entry point");
+        assertFalse(serverProgramSource.contains("CreateGameHandler"),
+            "TicTacToe role Program must not collapse Play handler wiring into the entry point");
     }
 
     @Test
     void ticTacToeKotlinSampleMirrorsJavaRoleLayout() throws IOException {
-        assertSampleFilesExist("kotlin", "TicTacToe", "src/main/kotlin", List.of(
-            "systems/zlink/samples/kotlin/tictactoe/TicTacToeKotlinSample.kt"));
         assertNoSampleSourcesUnder("kotlin", "TicTacToe", "src/main/kotlin",
             List.of(
                 "systems/zlink/samples/kotlin/tictactoe/client",
@@ -986,9 +971,6 @@ final class SampleReleaseGateContractTest {
                 "systems/zlink/samples/kotlin/tictactoe/server/Program.kt", "PlayServer.start(settings)"),
             "Kotlin TicTacToe Server role Program must live in the Server project folder");
 
-        String mainSource = sampleKotlinSource(
-            "TicTacToe",
-            "systems/zlink/samples/kotlin/tictactoe/TicTacToeKotlinSample.kt");
         String serverProgramSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
@@ -1043,18 +1025,19 @@ final class SampleReleaseGateContractTest {
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/sessions/PlaySession.kt");
 
-        assertTrue(mainSource.contains("PlayServer.start(settings)")
-                && mainSource.contains("ApiServer.start(settings)"),
-            "Kotlin TicTacToe direct sample must start roles through the Spring Boot public facade");
-        assertTrue(serverProgramSource.contains("\"client\" -> runClient(settings)")
-                && serverProgramSource.contains("TicTacToeClient().run")
-                && serverProgramSource.contains("result.writeTo(System.out)")
-                && serverBuildSource.contains("implementation(project(\":Client\"))"),
-            "Kotlin TicTacToe Server role must expose the .NET-style client run mode through the aggregate server entry point");
-        assertFalse(serverProgramSource.contains("CountDownLatch"),
-            "Kotlin TicTacToe Server role must rely on Spring lifecycle keep-alive instead of manual latches");
-        assertTrue(mainSource.contains("SampleSettings.fromArgs(args).withEphemeralDefaults()")
-                && apiSource.contains("ZLinkFrameworkOptionsCustomizer")
+        assertTrue(serverProgramSource.contains("\"api\" -> ApiServer.start(settings)")
+                && serverProgramSource.contains("\"play\" -> PlayServer.start(settings)")
+                && serverProgramSource.contains("SampleSettings.fromArgs(args)")
+                && !serverProgramSource.contains("\"client\"")
+                && !serverProgramSource.contains("\"server\"")
+                && !serverProgramSource.contains("\"all\"")
+                && !serverBuildSource.contains("implementation(project(\":Client\"))"),
+            "Kotlin TicTacToe Server role Program must expose only Spring Boot api/play role entry points");
+        assertFalse(serverProgramSource.contains("CountDownLatch")
+                || serverProgramSource.contains("ZLinkFramework.start")
+                || serverProgramSource.contains("TicTacToeClient().run"),
+            "Kotlin TicTacToe Server role must rely on Spring lifecycle keep-alive instead of direct framework/client execution");
+        assertTrue(apiSource.contains("ZLinkFrameworkOptionsCustomizer")
                 && apiSource.contains("@SpringBootApplication")
                 && apiSource.contains("SpringApplicationBuilder")
                 && apiSource.contains(".web(WebApplicationType.SERVLET)")
@@ -1258,18 +1241,13 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe Spot instances must be created by the framework runtime, not sample-owned fallback contexts");
         assertTrue(playSource.contains(".addStreamNode("),
             "Kotlin TicTacToe direct sample must register the STREAM entry point");
-        assertFalse(mainSource.contains("CreateGameHandler"),
-            "Kotlin TicTacToe main must not collapse Play handler wiring into the entry point");
+        assertFalse(serverProgramSource.contains("CreateGameHandler"),
+            "Kotlin TicTacToe role Program must not collapse Play handler wiring into the entry point");
     }
 
     @Test
     void bingoMirrorsFourClientMatchingTimerAndBoundPushGate() throws IOException {
-        assertSampleFilesExist("java", "Bingo", "src/main/java", List.of(
-            "systems/zlink/samples/bingo/BingoSample.java"));
-        assertNoSampleSourcesUnder("java", "Bingo", "src/main/java", List.of(
-            "systems/zlink/samples/bingo/client",
-            "systems/zlink/samples/bingo/server",
-            "systems/zlink/samples/bingo/shared"));
+        assertNoSampleSourcesUnder("java", "Bingo", "src/main/java");
         assertSampleFilesExist("java", "Bingo", "Client/src/main/java", List.of(
             "systems/zlink/samples/bingo/client/Program.java",
             "systems/zlink/samples/bingo/client/BingoClientApp.java",
@@ -1317,9 +1295,15 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/shared/configuration/SampleTopology.java",
             "systems/zlink/samples/bingo/shared/contracts/Messages.java"));
 
-        String mainSource = sampleJavaSource(
+        String rootBuildSource = sampleFile(
+            "java",
             "Bingo",
-            "systems/zlink/samples/bingo/BingoSample.java");
+            "",
+            "build.gradle.kts");
+        String clientProgramSource = sampleJavaSource(
+            "Bingo",
+            "Client/src/main/java",
+            "systems/zlink/samples/bingo/client/Program.java");
         String clientSource = sampleJavaSource(
             "Bingo",
             "Client/src/main/java",
@@ -1373,13 +1357,16 @@ final class SampleReleaseGateContractTest {
             "Server/Play/src/main/java",
             "systems/zlink/samples/bingo/server/play/handlers/EnsurePlayerActorHandler.java");
 
-        assertTrue(mainSource.contains("new BingoClientOptions(4)"),
+        assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
+                && !rootBuildSource.contains("application"),
+            "Bingo root project must not expose an aggregate in-process runner");
+        assertTrue(clientProgramSource.contains("new BingoClientOptions(4)"),
             "Bingo sample must create four connector clients");
         assertTrue(clientSource.contains("ZLinkStreamConnectorFactory.create"),
             "Bingo sample must use connector public factory");
         assertTrue(clientSource.contains("ZLinkStreamDispatchMode.MANUAL"),
             "Bingo sample must verify manual dispatch connector path");
-        assertTrue(mainSource.contains("List.of(7, 11, 42, 42)"),
+        assertTrue(clientProgramSource.contains("List.of(7, 11, 42, 42)"),
             "Bingo sample must use deterministic draw sequence");
         assertTrue(roomSource.contains("\"player-2\", \"player-3\""),
             "Bingo sample must verify same-sequence winners");
@@ -1439,12 +1426,7 @@ final class SampleReleaseGateContractTest {
 
     @Test
     void bingoKotlinSampleMirrorsJavaRoleLayout() throws IOException {
-        assertSampleFilesExist("kotlin", "Bingo", "src/main/kotlin", List.of(
-            "systems/zlink/samples/kotlin/bingo/BingoKotlinSample.kt"));
-        assertNoSampleSourcesUnder("kotlin", "Bingo", "src/main/kotlin", List.of(
-            "systems/zlink/samples/kotlin/bingo/client",
-            "systems/zlink/samples/kotlin/bingo/server",
-            "systems/zlink/samples/kotlin/bingo/shared"));
+        assertNoSampleSourcesUnder("kotlin", "Bingo", "src/main/kotlin");
         assertSampleFilesExist("kotlin", "Bingo", "Client/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/client/Program.kt",
             "systems/zlink/samples/kotlin/bingo/client/BingoClientApp.kt",
@@ -1491,9 +1473,15 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/shared/configuration/SampleTopology.kt",
             "systems/zlink/samples/kotlin/bingo/shared/contracts/Messages.kt"));
 
-        String mainSource = sampleKotlinSource(
+        String rootBuildSource = sampleFile(
+            "kotlin",
             "Bingo",
-            "systems/zlink/samples/kotlin/bingo/BingoKotlinSample.kt");
+            "",
+            "build.gradle.kts");
+        String clientProgramSource = sampleKotlinSource(
+            "Bingo",
+            "Client/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/client/Program.kt");
         String clientSource = sampleKotlinSource(
             "Bingo",
             "Client/src/main/kotlin",
@@ -1547,14 +1535,17 @@ final class SampleReleaseGateContractTest {
             "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/play/handlers/EnsurePlayerActorHandler.kt");
 
-        assertTrue(mainSource.contains("BingoClientOptions(4)")
-                || mainSource.contains("BingoClientOptions(playerCount = 4)"),
+        assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
+                && !rootBuildSource.contains("application"),
+            "Kotlin Bingo root project must not expose an aggregate in-process runner");
+        assertTrue(clientProgramSource.contains("BingoClientOptions(4)")
+                || clientProgramSource.contains("BingoClientOptions(playerCount = 4)"),
             "Kotlin Bingo sample must create four connector clients");
         assertTrue(clientSource.contains("ZLinkStreamConnectorFactory.create"),
             "Kotlin Bingo sample must use connector public factory");
         assertTrue(clientSource.contains("ZLinkStreamDispatchMode.MANUAL"),
             "Kotlin Bingo sample must verify manual dispatch connector path");
-        assertTrue(mainSource.contains("listOf(7, 11, 42, 42)"),
+        assertTrue(clientProgramSource.contains("listOf(7, 11, 42, 42)"),
             "Kotlin Bingo sample must use deterministic draw sequence");
         assertTrue(roomSource.contains("\"player-2\", \"player-3\""),
             "Kotlin Bingo sample must verify same-sequence winners");
@@ -1774,6 +1765,24 @@ final class SampleReleaseGateContractTest {
                     "role source must not remain under aggregate source root: "
                         + language + "/" + sample + "/" + sourceRoot + "/" + relativeDirectory);
             }
+        }
+    }
+
+    private static void assertNoSampleSourcesUnder(
+        String language,
+        String sample,
+        String sourceRoot) throws IOException {
+        Path sampleSourceRoot = samplesRoot()
+            .resolve(language)
+            .resolve(sample)
+            .resolve(sourceRoot);
+        if (!Files.exists(sampleSourceRoot)) {
+            return;
+        }
+        try (var paths = Files.walk(sampleSourceRoot)) {
+            assertTrue(paths.noneMatch(SampleReleaseGateContractTest::isSampleSource),
+                "aggregate source root must not contain sample sources: "
+                    + language + "/" + sample + "/" + sourceRoot);
         }
     }
 

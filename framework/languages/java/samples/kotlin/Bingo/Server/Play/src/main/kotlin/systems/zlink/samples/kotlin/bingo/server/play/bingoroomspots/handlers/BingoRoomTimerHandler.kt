@@ -1,6 +1,14 @@
 package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers
 
-class BingoRoomTimerHandler {
-    fun tick() {
-    }
+import java.util.concurrent.CompletionStage
+import systems.zlink.framework.spots.ZLinkSpotTimerHandler
+import systems.zlink.framework.spots.ZLinkTimerTick
+import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoRoomSpot
+
+class BingoRoomTimerHandler : ZLinkSpotTimerHandler<BingoRoomSpot> {
+    override fun handleAsync(
+        spot: BingoRoomSpot,
+        tick: ZLinkTimerTick,
+    ): CompletionStage<Void> =
+        spot.tickAsync()
 }

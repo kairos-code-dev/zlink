@@ -1,6 +1,8 @@
 package systems.zlink.samples.kotlin.bingo.shared.contracts
 
-data class BingoWinner(val payload: String)
+data class AuthenticateReq(val accessToken: String)
+
+data class AuthenticateRes(val actorId: String, val displayName: String)
 
 data class AuthenticatePlayerReq(val accessToken: String)
 
@@ -13,7 +15,17 @@ data class AuthenticatePlayerRes(
 
 data class EnsurePlayerActorReq(val actorId: String, val displayName: String)
 
-data class EnsurePlayerActorRes(val actorId: String, val actorType: String)
+data class ActorRefSnapshot(val nodeRid: ByteArray, val actorId: String, val generation: Long)
+
+data class EnsurePlayerActorRes(
+    val actorId: String,
+    val actorType: String,
+    val actor: ActorRefSnapshot,
+)
+
+data class MatchBingoReq(val mode: String)
+
+data class MatchBingoRes(val roomId: String, val state: BingoRoomState)
 
 data class MatchBingoApiReq(
     val actorId: String,
@@ -23,6 +35,60 @@ data class MatchBingoApiReq(
 
 data class MatchBingoApiRes(val roomId: String)
 
-data class AllocateBingoRoomReq(val mode: String)
+data class AllocateBingoRoomReq(val actorId: String, val mode: String)
 
 data class AllocateBingoRoomRes(val roomId: String)
+
+data class BingoRoomJoinReq(val roomId: String, val actorId: String, val displayName: String)
+
+data class BingoRoomJoinRes(val state: BingoRoomState)
+
+data class StartBingoGameReq(val roomId: String)
+
+data class StartBingoGameRes(val state: BingoRoomState)
+
+data class PlayerJoinedNotify(
+    val roomId: String,
+    val actorId: String,
+    val displayName: String,
+    val seat: Int,
+    val isHost: Boolean,
+    val state: BingoRoomState,
+)
+
+data class BingoGameStartedNotify(val state: BingoRoomState)
+
+data class BingoNumberDrawnNotify(
+    val roomId: String,
+    val drawSeq: Int,
+    val number: Int,
+    val state: BingoRoomState,
+)
+
+data class BingoStateNotify(val state: BingoRoomState)
+
+data class BingoGameEndedNotify(val state: BingoRoomState)
+
+data class BingoWinner(val actorId: String)
+
+data class BingoRoomState(
+    val roomId: String,
+    val status: String,
+    val hostActorId: String,
+    val canStart: Boolean,
+    val drawSeq: Int,
+    val lastDrawnNumber: Int?,
+    val drawnNumbers: List<Int>,
+    val players: List<BingoPlayerState>,
+    val winners: List<String>,
+)
+
+data class BingoPlayerState(
+    val actorId: String,
+    val displayName: String,
+    val seat: Int,
+    val isHost: Boolean,
+    val card: List<Int>,
+    val marks: List<Boolean>,
+    val completedLines: Int,
+)

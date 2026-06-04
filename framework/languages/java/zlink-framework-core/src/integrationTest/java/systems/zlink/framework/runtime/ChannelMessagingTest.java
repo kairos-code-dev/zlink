@@ -244,6 +244,39 @@ final class ChannelMessagingTest {
     }
 
     @Test
+    void discoveryClientServer_clientStartedBeforeServerFindsLaterProvider() {
+        String registryPub = tcpEndpoint();
+        String registryRouter = tcpEndpoint();
+        String serverEndpoint = tcpEndpoint();
+        ZLinkEmbeddedRegistryOptions registryOptions = new ZLinkEmbeddedRegistryOptions();
+        registryOptions.setPubEndpoint(registryPub);
+        registryOptions.setRouterEndpoint(registryRouter);
+
+        DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
+        clientOptions.setDefaultTimeout(Duration.ofMillis(100));
+        clientOptions.useDiscovery(registry -> registry.add(registryRouter));
+        clientOptions.addClientServerChannel("profile", channel -> channel.enableClient());
+
+        DefaultZLinkFrameworkOptions serverOptions = new DefaultZLinkFrameworkOptions();
+        serverOptions.useDiscovery(registry -> registry.add(registryRouter));
+        serverOptions.addClientServerChannel("profile", channel -> {
+            channel.enableServer(server -> server.bind(serverEndpoint));
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
+        });
+
+        try (ZLinkRegistryRuntime ignoredRegistry = new ZLinkRegistryRuntime(
+                 registryOptions,
+                 new ZLinkJavaBackendAdapterFactory(),
+                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
+             ZLinkFrameworkRuntime client =
+                 ZLinkFrameworkRuntime.start(clientOptions, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime ignoredServer =
+                 ZLinkFrameworkRuntime.start(serverOptions, new ZLinkJavaBackendAdapterFactory())) {
+            assertEquals("hello", awaitDiscoveryReply(client));
+        }
+    }
+
+    @Test
     void publisherAndSubscriber_workAcrossHosts() throws InterruptedException {
         String endpoint = tcpEndpoint();
         CountDownLatch latch = new CountDownLatch(1);

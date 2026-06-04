@@ -97,6 +97,10 @@ subprojects {
                 classpath = sourceSet.runtimeClasspath
                 shouldRunAfter(tasks.named("test"))
                 useJUnitPlatform()
+                if (taskName == "integrationTest") {
+                    forkEvery = 1
+                    maxParallelForks = 1
+                }
             }
             tasks.named("check") {
                 dependsOn(taskName)

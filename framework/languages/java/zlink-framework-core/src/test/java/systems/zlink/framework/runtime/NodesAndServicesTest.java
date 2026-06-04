@@ -99,7 +99,10 @@ final class NodesAndServicesTest {
     private static DefaultZLinkFrameworkOptions optionsWithSpotNodeAndActorFactory() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
+            mesh.addNode("play", node -> {
+                node.enableRouter();
+                node.addSpotFactory(GameSpot.class);
+            }));
         options.addActorFactory("player", PlayerActorFactory.class);
         return options;
     }

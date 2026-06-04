@@ -8,5 +8,10 @@ object SampleNames {
     const val PlayerActorType: String = "bingo.player"
     const val RoomSpotDiscovery: String = "bingo.rooms"
     const val RoomSpotNode: String = "bingo.room.node"
-    const val BingoWinnerPacket: String = "BingoWinner"
+    const val RoomRouteChannel: String = "bingo.rooms.route"
+    const val PlayerJoinedPacket: String = "PlayerJoinedNotify"
+    const val GameStartedPacket: String = "BingoGameStartedNotify"
+    const val NumberDrawnPacket: String = "BingoNumberDrawnNotify"
+    const val StatePacket: String = "BingoStateNotify"
+    const val GameEndedPacket: String = "BingoGameEndedNotify"
 }

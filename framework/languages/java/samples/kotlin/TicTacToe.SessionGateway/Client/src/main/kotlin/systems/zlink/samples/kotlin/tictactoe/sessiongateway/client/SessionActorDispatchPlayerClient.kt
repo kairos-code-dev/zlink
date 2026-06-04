@@ -23,9 +23,18 @@ class SessionActorDispatchPlayerClient private constructor(
             val connector = ZLinkStreamConnectorFactory.create(
                 ZLinkStreamConnectorOptions(
                     URI.create("$streamEndpoint/$actorId"),
-                    ZLinkStreamDispatchMode.MANUAL,
+                    ZLinkStreamDispatchMode.AUTO,
                     Duration.ofSeconds(10),
                     2,
+                    Duration.ofSeconds(5),
+                    64 * 1024,
+                    true,
+                    Duration.ofSeconds(1),
+                    Duration.ofSeconds(15),
+                    true,
+                    Duration.ofMillis(250),
+                    Duration.ofSeconds(5),
+                    2.0,
                 ),
             )
             connector.connectAsync().await()

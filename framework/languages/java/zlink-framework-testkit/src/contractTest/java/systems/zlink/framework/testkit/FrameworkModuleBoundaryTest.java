@@ -99,7 +99,13 @@ final class FrameworkModuleBoundaryTest {
         Set<String> allowedImports = Set.of(
             "import systems.zlink.contracts.core.RoutingId;",
             "import systems.zlink.contracts.messaging.Message;",
-            "import systems.zlink.contracts.sockets.SendFlags;");
+            "import systems.zlink.contracts.sockets.SendFlags;",
+            "import systems.zlink.contracts.errors.ConnectResult;",
+            "import systems.zlink.contracts.errors.ZlinkConnectException;",
+            "import systems.zlink.contracts.errors.ZlinkRequestException;",
+            "import systems.zlink.contracts.errors.ZlinkSubmitException;",
+            "import systems.zlink.contracts.sockets.RequestResult;",
+            "import systems.zlink.contracts.sockets.SubmitResult;");
 
         try (Stream<Path> files = Files.walk(runtimeRoot)) {
             List<String> offenders = files

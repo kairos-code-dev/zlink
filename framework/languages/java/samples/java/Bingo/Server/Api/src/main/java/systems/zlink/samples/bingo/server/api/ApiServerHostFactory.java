@@ -26,6 +26,7 @@ public final class ApiServerHostFactory {
     ZLinkFrameworkOptionsCustomizer apiOptions() {
         return options -> {
             options.useDiscovery(discovery -> discovery.add(SampleTopology.RegistryRouterEndpoint));
+            options.codecs().addJson();
             options.addHandlersFromPackageOf(ApiServerHostFactory.class);
             options.addClientServerChannel(SampleNames.ApiChannel, channel -> {
                 channel.enableServer(server -> server.bind(SampleTopology.ApiChannelEndpoint));

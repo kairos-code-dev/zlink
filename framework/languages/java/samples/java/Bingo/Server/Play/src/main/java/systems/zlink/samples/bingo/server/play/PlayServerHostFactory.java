@@ -7,8 +7,10 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
 import systems.zlink.samples.bingo.server.play.actors.PlayerActorFactory;
+import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoNotificationPublisher;
 import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoRoomSpot;
 import systems.zlink.samples.bingo.server.play.entryspot.BingoEntrySpot;
+import systems.zlink.samples.bingo.server.play.handlers.BingoRoomDirectory;
 import systems.zlink.samples.bingo.shared.configuration.SampleNames;
 import systems.zlink.samples.bingo.shared.configuration.SampleTopology;
 
@@ -30,26 +32,45 @@ public final class PlayServerHostFactory {
     ZLinkFrameworkOptionsCustomizer playOptions() {
         return options -> {
             options.useDiscovery(discovery -> discovery.add(SampleTopology.RegistryRouterEndpoint));
+            options.codecs().addJson();
             options.addHandlersFromPackageOf(PlayServerHostFactory.class);
             options.addClientServerChannel(SampleNames.PlayChannel, channel -> {
                 channel.enableServer(server -> server.bind(SampleTopology.PlayChannelEndpoint));
                 channel.addHandlerGroup("play");
             });
             options.addClientServerChannel(SampleNames.ApiChannel, channel -> channel.enableClient());
+            options.addRouteMeshChannel(SampleNames.RoomRouteChannel, route -> {
+                route.bind(SampleTopology.PlayRouteEndpoint);
+                route.configureRouting(routing ->
+                    routing.setRoutingId(RoutingId.from(SampleTopology.PlayRid)));
+                route.useManualConnections(endpoints ->
+                    endpoints.connect(SampleTopology.SessionRouteEndpoint));
+            });
+            options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery, registry ->
+                registry.setRouterChannelId(SampleNames.RoomRouteChannel));
             options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);
             options.addSpotMesh(SampleNames.RoomSpotDiscovery, mesh ->
                 mesh.addNode(SampleNames.RoomSpotNode, node -> {
                     node.enableRouter(router -> {
                         router.setRouterBind(SampleTopology.PlaySpotRouterEndpoint);
-                        router.setRoutingId(RoutingId.from("2202"));
+                        router.setRoutingId(RoutingId.from(SampleTopology.PlayRid));
                     });
-                    node.configureEntrySpot(entry ->
-                        entry.setRoutingId(RoutingId.from("2202")));
                     node.enablePubSub(pubSub -> pubSub.setPubBind(SampleTopology.PlaySpotEndpoint));
                     node.attachChannelClient(SampleNames.ApiChannel);
+                    node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel);
                     node.addEntrySpot(BingoEntrySpot.class);
                     node.addSpotFactory(BingoRoomSpot.class);
                 }));
         };
+    }
+
+    @Bean
+    BingoRoomDirectory bingoRoomDirectory(systems.zlink.framework.spots.ZLinkSpotManager spots) {
+        return new BingoRoomDirectory(spots);
+    }
+
+    @Bean
+    BingoNotificationPublisher bingoNotificationPublisher() {
+        return new BingoNotificationPublisher();
     }
 }

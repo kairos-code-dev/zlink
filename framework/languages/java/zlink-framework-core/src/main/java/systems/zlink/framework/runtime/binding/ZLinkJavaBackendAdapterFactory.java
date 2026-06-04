@@ -46,6 +46,7 @@ import systems.zlink.contracts.sockets.SpotDispatchEvent;
 import systems.zlink.contracts.sockets.SpotDispatchInfo;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.sockets.SubSocket;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorBindOperation;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
@@ -101,6 +102,8 @@ import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkRegistryBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapterFactory {
     @Override
@@ -184,7 +187,18 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
     private record JavaDiscovery(Discovery nativeDiscovery) implements ZLinkBackendDiscovery {
         @Override public String name() { return "discovery"; }
         @Override public void connectRegistry(String endpoint) { nativeDiscovery.connectRegistry(endpoint); }
-        @Override public ZLinkBackendDiscoveryRoute resolveRoute(long kind, byte[] key) { return new ZLinkBackendDiscoveryRoute(Optional.empty(), Optional.empty()); }
+        @Override public void bindRoute(long kind, byte[] key, byte[] value) {
+            nativeDiscovery.bindRoute((int) kind, key, value);
+        }
+        @Override public ZLinkBackendDiscoveryRoute resolveRoute(long kind, byte[] key) {
+            try (var route = nativeDiscovery.resolveRoute((int) kind, key)) {
+                return new ZLinkBackendDiscoveryRoute(
+                    Optional.of(route.ownerRoutingId()),
+                    Optional.of(new String(
+                        route.value().toByteArray(),
+                        java.nio.charset.StandardCharsets.UTF_8)));
+            }
+        }
         @Override public ZLinkBackendSpotRoute resolveSpot(RoutingId spotRid) {
             var route = nativeDiscovery.resolveSpot(spotRid);
             return new ZLinkBackendSpotRoute(
@@ -196,22 +210,16 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             var route = nativeDiscovery.resolveActor(actorId);
             return new ZLinkBackendActorRoute(route.actor().nodeRid(), route.actor().actorId());
         }
-        @Override public List<ZLinkBackendRegistryTopologyEntry> memberPeers() {
+        @Override public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers() {
             return nativeDiscovery.memberPeers().stream()
-                .map(peer -> new ZLinkBackendRegistryTopologyEntry(
-                    "INVALID",
-                    peer.routingId(),
-                    "DISCOVERY",
+                .map(peer -> new ZLinkBackendRegistryMemberPeerEntry(
+                    peer.autoConnectType().name(),
                     peer.serviceRole().name(),
                     peer.channelName(),
                     peer.endpoint(),
-                    "DISCOVERY",
-                    "READY",
-                    0,
-                    0,
-                    0,
-                    0,
-                    systems.zlink.framework.spots.ZLinkSpotKind.INVALID))
+                    peer.routingId(),
+                    peer.value(),
+                    peer.weight()))
                 .toList();
         }
         @Override public void close() { nativeDiscovery.close(); }
@@ -233,6 +241,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void connect(String endpoint) { socket.connect(endpoint); }
         @Override public void disconnect(String endpoint) { socket.disconnect(endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { socket.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }
+        @Override public void setChannelName(String channelName) { socket.setChannelName(channelName); }
         @Override public boolean send(List<Message> parts, SendFlags flags) { return submit(socket.send(), parts, flags); }
         @Override public boolean request(List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             return submitRequest(socket.request(), parts, callback, flags, timeout);
@@ -252,6 +261,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void connect(String endpoint) { socket.connect(endpoint); }
         @Override public void disconnect(String endpoint) { socket.disconnect(endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { socket.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }
+        @Override public void setChannelName(String channelName) { socket.setChannelName(channelName); }
         @Override public void setRoutingId(RoutingId routingId) { socket.setRoutingId(routingId); }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) {
             try (Received result = new Received()) {
@@ -277,6 +287,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public String name() { return "publisher"; }
         @Override public void bind(String endpoint) { socket.bind(endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { socket.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }
+        @Override public void setChannelName(String channelName) { socket.setChannelName(channelName); }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { return submit(socket.publish(topic), parts, flags); }
         @Override public void close() { socket.close(); }
     }
@@ -288,6 +299,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void connect(String endpoint) { socket.connect(endpoint); }
         @Override public void disconnect(String endpoint) { socket.disconnect(endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { socket.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }
+        @Override public void setChannelName(String channelName) { socket.setChannelName(channelName); }
         @Override public void setSubscription(String topic) { socket.setSubscription(topic); }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) {
             try (TopicMessage result = new TopicMessage()) {
@@ -303,7 +315,10 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public Socket nativeSocket() { return socket; }
         @Override public String name() { return "stream"; }
         @Override public void bind(String endpoint) { socket.bind(endpoint); }
-        @Override public void onPacket(ZLinkBackendStreamPacketHandler handler) { socket.onPacket(handler::handle); }
+        @Override public void onPacket(ZLinkBackendStreamPacketHandler handler) {
+            socket.options().notify(true);
+            socket.onPacket(handler::handle);
+        }
         @Override public void onTransportError(ZLinkBackendStreamErrorHandler handler) { }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) {
             return submitFramedStream(socket.send(routingId), 1, null, null, parts, flags);
@@ -329,14 +344,10 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean relayBoundActor(
             RoutingId sessionRid,
             String actorId,
-            String packetName,
-            Optional<Long> requestSeq,
+            ZLinkStreamHeader streamHeader,
             List<Message> parts,
             SendFlags flags) {
-            Message header = Message.from(encodeStreamHeader(
-                requestSeq.isPresent() ? 2 : 1,
-                packetName,
-                requestSeq.orElse(null)));
+            Message header = Message.from(ZLinkStreamHeaderCodec.encode(streamHeader));
             try {
                 return submit(socket.sendBoundActor(sessionRid, actorId), prepend(header, parts), flags);
             } finally {
@@ -445,6 +456,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { spotNode.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }
         @Override public void connectPeer(String endpoint) { spotNode.connectPeer(endpoint); }
         @Override public void connectRouterChannelPeer(String channelName, String endpoint) { spotNode.connectRouterChannelPeer(channelName, endpoint); }
+        @Override public void connectRouterChannelPeerRid(String channelName, RoutingId peerRid, String endpoint) { spotNode.connectRouterChannelPeerRid(channelName, peerRid, endpoint); }
         @Override public void attachSpotRouteChannelDiscovery(String channelName, ZLinkBackendDiscovery discovery) { spotNode.attachSpotRouteChannelDiscovery(channelName, ((JavaDiscovery) discovery).nativeDiscovery()); }
         @Override public void attachChannelDealer(ZLinkBackendDiscovery discovery, ZLinkBackendDealerSocket dealer) { spotNode.attachChannelDealer(((JavaDiscovery) discovery).nativeDiscovery(), ((JavaDealerSocket) dealer).socket()); }
         @Override public void attachChannelDealerManual(String channelName, ZLinkBackendDealerSocket dealer) { spotNode.attachChannelDealerManual(channelName, ((JavaDealerSocket) dealer).socket()); }
@@ -486,8 +498,9 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                 });
         }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return submit(spotNode.sendActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch())), parts, flags); }
+        @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { spotNode.closeActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()), timeout); }
         @Override public ZLinkBackendSpotNodeStatus status() { var status = spotNode.status(); return new ZLinkBackendSpotNodeStatus(status.state().name(), status.activePeerCount(), status.subjectCount()); }
-        @Override public List<ZLinkBackendSpotNodePeerEntry> peers() { return spotNode.peers().stream().map(peer -> new ZLinkBackendSpotNodePeerEntry(RoutingId.from(peer.peerEndpoint()), peer.peerEndpoint(), peer.state().name())).toList(); }
+        @Override public List<ZLinkBackendSpotNodePeerEntry> peers() { return spotNode.peers().stream().map(peer -> new ZLinkBackendSpotNodePeerEntry(null, peer.peerEndpoint(), peer.state().name())).toList(); }
         @Override public List<ZLinkBackendSpotNodeSubjectEntry> subjects() { return spotNode.subjects().stream().map(subject -> new ZLinkBackendSpotNodeSubjectEntry(subject.subject(), subject.subjectKind().name(), subject.readyPeerCount() > 0)).toList(); }
         @Override public void close() { spotNode.close(); }
 
@@ -680,13 +693,14 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
 
     private static byte[] encodeStreamHeader(
         int kind,
+        int codec,
         String packetName,
         Long requestSeq) {
         byte[] name = packetName.getBytes(StandardCharsets.UTF_8);
         int flags = requestSeq == null ? 0 : 0x01;
         ByteBuffer buffer = ByteBuffer.allocate(3 + (requestSeq == null ? 0 : Long.BYTES) + 1 + name.length);
         buffer.put((byte) kind);
-        buffer.put((byte) 0);
+        buffer.put((byte) codec);
         buffer.put((byte) flags);
         if (requestSeq != null) {
             buffer.putLong(requestSeq);
@@ -712,7 +726,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         SendFlags flags) {
         StreamPayload payload = streamPayload(packetName, parts);
         Message frame = Message.from(encodeStreamFrame(
-            encodeStreamHeader(kind, payload.packetName(), requestSeq),
+            encodeStreamHeader(kind, 0, payload.packetName(), requestSeq),
             payload.body()));
         try {
             return operation.message(frame).flags(flags).submit();

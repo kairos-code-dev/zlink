@@ -168,6 +168,7 @@ final class ZLinkAsyncSubmitterTest {
         @Override public void connect(String endpoint) { }
         @Override public void disconnect(String endpoint) { }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }
+        @Override public void setChannelName(String channelName) { }
         @Override public boolean send(List<Message> parts, SendFlags flags) { return true; }
         @Override public boolean request(
             List<Message> parts,
@@ -192,6 +193,7 @@ final class ZLinkAsyncSubmitterTest {
         @Override public String name() { return "publisher"; }
         @Override public void bind(String endpoint) { }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }
+        @Override public void setChannelName(String channelName) { }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) {
             entered.countDown();
             try {

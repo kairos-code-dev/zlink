@@ -9,8 +9,13 @@ object SampleTopology {
     val SessionRouterEndpoint: String = property("sessionRouterEndpoint", "tcp://127.0.0.1:47106")
     val PlaySpotEndpoint: String = property("playSpotEndpoint", "tcp://127.0.0.1:47110")
     val PlaySpotRouterEndpoint: String = property("playSpotRouterEndpoint", "tcp://127.0.0.1:47111")
-    val StreamEndpoint: String = property("streamEndpoint", "tcp://127.0.0.1:47112")
+    val SessionRouteEndpoint: String = property("sessionRouteEndpoint", "tcp://127.0.0.1:47112")
+    val PlayRouteEndpoint: String = property("playRouteEndpoint", "tcp://127.0.0.1:47113")
+    val StreamEndpoint: String = property("streamEndpoint", "tcp://127.0.0.1:47114")
     const val SessionPort: Int = 29100
+    const val SessionRouterRid: String = "1101"
+    const val SessionPubRid: String = "1102"
+    const val PlayRid: String = "2202"
 
     private fun property(name: String, defaultValue: String): String =
         System.getProperty("zlink.samples.bingo.$name", defaultValue)

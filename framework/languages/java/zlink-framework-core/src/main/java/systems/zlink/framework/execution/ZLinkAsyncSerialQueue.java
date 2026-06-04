@@ -21,4 +21,5 @@ public final class ZLinkAsyncSerialQueue {
         tail = scheduled.handle((ignored, error) -> null);
         return scheduled;
     }
+
 }

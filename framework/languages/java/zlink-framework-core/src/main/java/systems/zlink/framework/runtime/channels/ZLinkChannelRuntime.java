@@ -139,6 +139,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             ZLinkBackendDiscovery discovery = discoveryFor(backend, registration, channel);
             if (channel.kind() == ChannelKind.CLIENT_SERVER && channel.clientEnabled()) {
                 ZLinkBackendDealerSocket dealer = backend.createDealerSocket(context);
+                dealer.setChannelName(channel.name());
                 if (discovery == null) {
                     for (String endpoint : channel.clientManualEndpoints()) {
                         dealer.connect(endpoint);
@@ -151,6 +152,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             if (channel.kind() == ChannelKind.CLIENT_SERVER && !channel.serverBinds().isEmpty()) {
                 ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
+                router.setChannelName(channel.name());
                 if (discovery != null) {
                     router.attachDiscovery(discovery);
                 } else {
@@ -168,6 +170,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             if (channel.kind() == ChannelKind.FANOUT && channel.publisherEnabled()) {
                 ZLinkBackendPublisherSocket publisher = backend.createPublisherSocket(context);
+                publisher.setChannelName(channel.name());
                 if (discovery != null) {
                     publisher.attachDiscovery(discovery);
                 } else {
@@ -180,6 +183,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             if (channel.kind() == ChannelKind.FANOUT && channel.subscriberEnabled()) {
                 ZLinkBackendSubscriberSocket subscriber = backend.createSubscriberSocket(context);
+                subscriber.setChannelName(channel.name());
                 if (discovery != null) {
                     subscriber.attachDiscovery(discovery);
                 } else {
@@ -196,6 +200,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             if (channel.kind() == ChannelKind.ROUTE_MESH) {
                 ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
+                router.setChannelName(channel.name());
                 if (channel.routeRoutingId() != null) {
                     router.setRoutingId(channel.routeRoutingId());
                 }
@@ -383,7 +388,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
         receiveExecutor.shutdownNow();
         timeoutExecutor.shutdownNow();
+        awaitTerminated(receiveExecutor);
+        awaitTerminated(timeoutExecutor);
         context.close();
+    }
+
+    private static void awaitTerminated(java.util.concurrent.ExecutorService executor) {
+        try {
+            executor.awaitTermination(1, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static ZLinkBackendAutoConnectType autoConnectType(ChannelRegistration channel) {
@@ -471,7 +486,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
         RoutingId matched = null;
         boolean matchedWithoutRoutingId = false;
-        for (ZLinkBackendRegistryTopologyEntry peer : discovery.memberPeers()) {
+        for (ZLinkBackendRegistryMemberPeerEntry peer : discovery.memberPeers()) {
             if (!targetSpotNodeChannelName.equals(peer.channelName())) {
                 continue;
             }
@@ -1298,8 +1313,12 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             CompletableFuture<TReply> result = new CompletableFuture<>();
             trackPendingRequest(result, timeout);
             List<Message> requestParts = parts(packetName, payload);
-            try {
-                client.request(requestParts, reply -> {
+            result.whenComplete((ignored, error) -> requestParts.forEach(Message::close));
+            submitClientRequestWithRetry(
+                client,
+                requestParts,
+                timeout,
+                reply -> {
                     Message emptyReply = null;
                     try {
                         Message firstReply = reply.parts().isEmpty()
@@ -1314,10 +1333,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                         }
                         reply.parts().forEach(Message::close);
                     }
-                }, SendFlags.NONE, timeout);
-            } finally {
-                requestParts.forEach(Message::close);
-            }
+                },
+                result);
             return result;
         }
     }
@@ -1436,6 +1453,45 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             timeoutTask.cancel(false);
             pendingRequests.remove(result);
         });
+    }
+
+    private void submitClientRequestWithRetry(
+        ZLinkBackendDealerSocket client,
+        List<Message> requestParts,
+        Duration timeout,
+        ZLinkBackendRequestCallback callback,
+        CompletableFuture<?> result) {
+        long timeoutNanos = timeout == null || timeout.isZero()
+            ? defaultTimeout.toNanos()
+            : timeout.toNanos();
+        long deadline = System.nanoTime() + timeoutNanos;
+        class Attempt implements Runnable {
+            @Override
+            public void run() {
+                if (result.isDone()) {
+                    return;
+                }
+                try {
+                    boolean submitted = client.request(
+                        requestParts,
+                        callback,
+                        SendFlags.DONT_WAIT,
+                        timeout);
+                    if (submitted) {
+                        return;
+                    }
+                    if (System.nanoTime() >= deadline) {
+                        result.completeExceptionally(new TimeoutException(
+                            "channel request was not ready before timeout"));
+                        return;
+                    }
+                    timeoutExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
+                } catch (RuntimeException ex) {
+                    result.completeExceptionally(ex);
+                }
+            }
+        }
+        new Attempt().run();
     }
 
     private static List<Message> parts(Optional<String> packetName, Message payload) {

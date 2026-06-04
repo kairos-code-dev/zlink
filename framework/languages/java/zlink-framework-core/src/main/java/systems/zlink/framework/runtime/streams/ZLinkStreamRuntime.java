@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
@@ -37,6 +38,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final ZLinkMessageSerializer serializer;
     private final ZLinkActorRuntime actors;
     private final ZLinkHandlerFactory handlerFactory;
+    private final Predicate<RoutingId> actorGatewayRouteReady;
     private final List<ZLinkBackendStreamSocket> streams = new ArrayList<>();
     private final Map<String, ZLinkBackendStreamSocket> streamsByName = new HashMap<>();
     private final Map<String, SessionState> sessions = new HashMap<>();
@@ -49,12 +51,34 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actors,
         ZLinkHandlerFactory handlerFactory) {
+        this(
+            backendFactory,
+            adapterOptions,
+            registration,
+            spotNodes,
+            serializer,
+            actors,
+            handlerFactory,
+            ignored -> true);
+    }
+
+    public ZLinkStreamRuntime(
+        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterOptions adapterOptions,
+        ZLinkFrameworkRegistration registration,
+        Map<String, ZLinkBackendSpotNode> spotNodes,
+        ZLinkMessageSerializer serializer,
+        ZLinkActorRuntime actors,
+        ZLinkHandlerFactory handlerFactory,
+        Predicate<RoutingId> actorGatewayRouteReady) {
         if (registration.streamNodes().isEmpty()) {
             throw new ZLinkConfigurationException("at least one stream node is required");
         }
         this.serializer = serializer;
         this.actors = actors;
         this.handlerFactory = handlerFactory;
+        this.actorGatewayRouteReady =
+            actorGatewayRouteReady == null ? ignored -> true : actorGatewayRouteReady;
         ZLinkChannelBackendAdapter channelAdapter =
             backendFactory.createChannelAdapter(adapterOptions);
         ZLinkStreamBackendAdapter streamAdapter =
@@ -92,7 +116,12 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             throw new ZLinkConfigurationException(
                 "stream node is not running: " + streamNodeName);
         }
-        return new ZLinkSessionActorsRuntime(stream, sessionRid, actors, serializer);
+        return new ZLinkSessionActorsRuntime(
+            stream,
+            sessionRid,
+            actors,
+            serializer,
+            actorGatewayRouteReady);
     }
 
     private void dispatchToSession(
@@ -136,9 +165,14 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             streamNode.name(),
             stream,
             routingId,
-            actors == null
-                ? null
-                : new ZLinkSessionActorsRuntime(stream, routingId, actors, serializer));
+                streamNode.actorGatewaySpotNodeName() == null
+                    ? null
+                    : new ZLinkSessionActorsRuntime(
+                        stream,
+                        routingId,
+                        actors,
+                        serializer,
+                        actorGatewayRouteReady));
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher =
             new ZLinkSessionPacketDispatcherRuntime<>(
                 streamNode.sessionPacketHandlers(),

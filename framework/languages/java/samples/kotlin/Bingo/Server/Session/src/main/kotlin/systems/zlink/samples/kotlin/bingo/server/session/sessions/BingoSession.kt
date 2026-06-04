@@ -34,7 +34,8 @@ class BingoSession(
                 if (handled) {
                     CompletableFuture.completedFuture(null)
                 } else {
-                    requireSingleBoundActor(header.packetName()).relayAsync(header, payload)
+                    val actor = requireSingleBoundActor(header.packetName())
+                    actor.relayAsync(header, payload)
                 }
             }
 

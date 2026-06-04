@@ -9,4 +9,7 @@ public interface ZLinkMessageSerializer {
     <T> Message serialize(T value);
 
     <T> T deserialize(Message message, Class<T> type);
+
+    default void prepare(Class<?> type) {
+    }
 }

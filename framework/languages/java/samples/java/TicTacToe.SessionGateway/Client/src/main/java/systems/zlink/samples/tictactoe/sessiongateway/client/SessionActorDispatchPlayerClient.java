@@ -31,9 +31,18 @@ public final class SessionActorDispatchPlayerClient implements AutoCloseable {
         String streamEndpoint) throws Exception {
         ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(streamEndpoint + "/" + actorId),
-            ZLinkStreamDispatchMode.MANUAL,
+            ZLinkStreamDispatchMode.AUTO,
             Duration.ofSeconds(10),
-            2));
+            2,
+            Duration.ofSeconds(5),
+            64 * 1024,
+            true,
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(15),
+            true,
+            Duration.ofMillis(250),
+            Duration.ofSeconds(5),
+            2.0));
         await(connector.connectAsync());
         SessionActorNotificationInbox inbox = new SessionActorNotificationInbox();
         inbox.register(connector);

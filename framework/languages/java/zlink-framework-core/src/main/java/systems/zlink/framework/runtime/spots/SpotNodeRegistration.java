@@ -29,7 +29,8 @@ public final class SpotNodeRegistration {
     private boolean pubSubEnabled;
     private String routerBind;
     private String pubBind;
-    private RoutingId routingId;
+    private RoutingId routerRoutingId;
+    private RoutingId pubSubRoutingId;
     private RoutingId entrySpotRoutingId;
 
     public SpotNodeRegistration(String meshName, String nodeName) {
@@ -61,8 +62,19 @@ public final class SpotNodeRegistration {
         return pubBind;
     }
 
-    public RoutingId routingId() {
-        return routingId;
+    public RoutingId routerRoutingId() {
+        return routerRoutingId;
+    }
+
+    public RoutingId pubSubRoutingId() {
+        return pubSubRoutingId;
+    }
+
+    public RoutingId nodeRoutingId() {
+        if (routerRoutingId != null) {
+            return routerRoutingId;
+        }
+        return pubSubRoutingId;
     }
 
     public RoutingId entrySpotRoutingId() {
@@ -115,15 +127,26 @@ public final class SpotNodeRegistration {
         pubBind = requireEndpoint(endpoint, "pub endpoint");
     }
 
-    void setRoutingId(RoutingId routingId) {
+    void setRouterRoutingId(RoutingId routingId) {
         if (routingId == null) {
-            throw new ZLinkConfigurationException("spot node routing id is required");
+            throw new ZLinkConfigurationException("spot router routing id is required");
         }
-        if (this.routingId != null && !this.routingId.equals(routingId)) {
+        if (routerRoutingId != null && !routerRoutingId.equals(routingId)) {
             throw new ZLinkConfigurationException(
-                "spot node routing id is already configured: " + nodeName);
+                "spot router routing id is already configured: " + nodeName);
         }
-        this.routingId = routingId;
+        routerRoutingId = routingId;
+    }
+
+    void setPubSubRoutingId(RoutingId routingId) {
+        if (routingId == null) {
+            throw new ZLinkConfigurationException("spot pub/sub routing id is required");
+        }
+        if (pubSubRoutingId != null && !pubSubRoutingId.equals(routingId)) {
+            throw new ZLinkConfigurationException(
+                "spot pub/sub routing id is already configured: " + nodeName);
+        }
+        pubSubRoutingId = routingId;
     }
 
     ZLinkEntrySpotOptions entrySpotOptions() {
@@ -135,6 +158,7 @@ public final class SpotNodeRegistration {
             throw new ZLinkConfigurationException(
                 "attached SPOT publisher channel name is required");
         }
+        enableRouter();
         return attachedSpotPublisherClients.computeIfAbsent(
             channelName,
             SpotPublisherClientRegistration::new);
@@ -145,6 +169,7 @@ public final class SpotNodeRegistration {
             throw new ZLinkConfigurationException(
                 "attached client/server channel name is required");
         }
+        enableRouter();
         return attachedChannelClients.computeIfAbsent(
             channelName,
             SpotChannelClientRegistration::new);
@@ -179,6 +204,7 @@ public final class SpotNodeRegistration {
         if (spotType == null) {
             throw new ZLinkConfigurationException("spot factory type is required");
         }
+        enableRouter();
         spotFactories.add(spotType);
     }
 
@@ -186,6 +212,7 @@ public final class SpotNodeRegistration {
         if (entrySpotType == null) {
             throw new ZLinkConfigurationException("entry spot type is required");
         }
+        enableRouter();
         entrySpots.add(entrySpotType);
     }
 
@@ -216,6 +243,16 @@ public final class SpotNodeRegistration {
         if (entrySpots.size() > 1) {
             throw new ZLinkConfigurationException(
                 "spot node registers multiple entry spots: " + nodeName);
+        }
+        if (routerRoutingId != null
+            && pubSubRoutingId != null
+            && !routerRoutingId.equals(pubSubRoutingId)
+            && routerBind == null
+            && pubBind == null
+            && routerManualConnections.isEmpty()
+            && pubSubManualConnections.isEmpty()) {
+            throw new ZLinkConfigurationException(
+                "spot router and pub/sub routing ids must match on node: " + nodeName);
         }
         if (!attachedSpotPublisherClients.isEmpty() && !pubSubEnabled) {
             throw new ZLinkConfigurationException(

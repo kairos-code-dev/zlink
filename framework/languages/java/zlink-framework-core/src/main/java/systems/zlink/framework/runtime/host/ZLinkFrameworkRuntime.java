@@ -96,7 +96,8 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                 spots == null ? java.util.Map.of() : spots.nodesByName(),
                 serializer,
                 actors,
-                runtimeHandlers);
+                runtimeHandlers,
+                spots == null ? ignored -> true : spots::isActorGatewayRouteReady);
     }
 
     public static ZLinkFrameworkRuntime start(
@@ -180,14 +181,14 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
         if (streams == null) {
             throw new ZLinkConfigurationException("Stream runtime is not configured");
         }
-        if (actors == null) {
-            throw new ZLinkConfigurationException("Actor runtime is not configured");
-        }
         return streams.sessionActors(streamNodeName, sessionRid, actors);
     }
 
     @Override
     public void close() {
+        if (spots != null) {
+            spots.beginClose();
+        }
         try {
             channels.close();
         } finally {

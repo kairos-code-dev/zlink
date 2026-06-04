@@ -319,6 +319,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                     "factory.channel",
                     "create.context",
                     "create.dealer",
+                    "dealer.setChannelName.profile",
                     "dealer.connect.inproc://profile-server"),
                 backendFactory.calls());
         }
@@ -328,6 +329,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 "factory.channel",
                 "create.context",
                 "create.dealer",
+                "dealer.setChannelName.profile",
                 "dealer.connect.inproc://profile-server",
                 "close.dealer",
                 "close.context"),
@@ -350,7 +352,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkOptionsCustomizer spotNodeCustomizer() {
             return options -> options.addSpotMesh("game", mesh ->
-                mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
+                mesh.addNode("play", node -> {
+                    node.enableRouter();
+                    node.addSpotFactory(GameSpot.class);
+                }));
         }
     }
 
@@ -360,7 +365,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkOptionsCustomizer spotNodeWithActorCustomizer() {
             return options -> {
                 options.addSpotMesh("game", mesh ->
-                    mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
+                    mesh.addNode("play", node -> {
+                        node.enableRouter();
+                        node.addSpotFactory(GameSpot.class);
+                    }));
                 options.addActorFactory("player", PlayerActorFactory.class);
             };
         }
@@ -377,7 +385,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkOptionsCustomizer injectedSpotAndActorCustomizer() {
             return options -> {
                 options.addSpotMesh("game", mesh ->
-                    mesh.addNode("play", node -> node.addSpotFactory(InjectedGameSpot.class)));
+                    mesh.addNode("play", node -> {
+                        node.enableRouter();
+                        node.addSpotFactory(InjectedGameSpot.class);
+                    }));
                 options.addActorFactory("player", InjectedPlayerActorFactory.class);
             };
         }

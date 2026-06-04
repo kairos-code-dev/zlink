@@ -126,7 +126,7 @@ public final class SpotBuilders {
         @Override
         public void setRoutingId(RoutingId routingId) {
             registration.enableRouter();
-            registration.setRoutingId(routingId);
+            registration.setRouterRoutingId(routingId);
         }
 
         @Override
@@ -144,7 +144,7 @@ public final class SpotBuilders {
         @Override
         public void setRoutingId(RoutingId routingId) {
             registration.enablePubSub();
-            registration.setRoutingId(routingId);
+            registration.setPubSubRoutingId(routingId);
         }
 
         @Override

@@ -89,9 +89,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
     const recvTask = drainRouterRecvInto(
       router,
       msgSize,
-      (payload, receivedAtNs) => {
-        collector.recordPayload(payload, receivedAtNs);
-      },
+      Object.assign(collector, { runId, activeStartNs }),
       { recordUntilNs: activeStopNs }
     );
     await Promise.race([

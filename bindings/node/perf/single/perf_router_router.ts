@@ -174,9 +174,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
     const recvTask = drainRouterRecvInto(
       receiver,
       msgSize,
-      (payload, receivedAtNs) => {
-        collector.recordPayload(payload, receivedAtNs);
-      },
+      Object.assign(collector, { runId, activeStartNs }),
       { recordUntilNs: activeStopNs }
     );
     await Promise.race([

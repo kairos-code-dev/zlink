@@ -5274,3 +5274,44 @@ Node 측정과 후보 검토 기록이다. 계획 문서 본문에는 최종 상
 - 판정:
   - Node multi 미달은 `10/156 (6.4%)`에서 `3/156 (1.9%)`로 줄었다.
   - 남은 Node multi 미달은 `MULTI_STREAM ws 64/256/1024B` 세 개다.
+
+## Node single routed metric native 수신 보강
+
+- 대상:
+  - single `DEALER_ROUTER tcp 131072B`
+- 배경:
+  - 2026-06-04 current 재측정에서는 Node 14.138 Kmsg/s, C 53.012 Kmsg/s로 26.7%에
+    그쳐 마지막 single 미달로 남았다.
+  - HWM 8, HWM 16, 512KB socket buffer probe는 통과권 개선을 만들지 못했다.
+  - 남은 비용은 routed 수신마다 128KB payload Buffer를 JS로 materialize한 뒤 metric header만
+    읽는 부분으로 좁혀졌다.
+- 변경:
+  - native addon에 perf 전용 `routerRecvSingleMetricLatency`를 추가했다.
+  - 이 helper는 공개 수신 API를 바꾸지 않고, single-part routed message에서 stop token,
+    metric header, active window를 native에서 확인한 뒤 latency ns 숫자만 JS collector에 넘긴다.
+  - JS collector에는 이미 검증된 header를 다시 Buffer로 읽지 않는 `recordLatencyNs(...)` 경로를
+    추가했다.
+- 측정:
+  - 변경 전 Node 5회 current:
+    `perf_node_single_linux_20260605_011611_node_single_dr_tcp131072_current_recheck_20260605.txt`
+    는 status=complete였고 median 13,921.8 msg/s였다.
+  - 변경 전 C 5회 current:
+    `perf_c_single_linux_20260605_011536_node_single_dr_tcp131072_c_current_recheck_20260605.txt`
+    는 status=complete였고 median 53,845.8 msg/s였다.
+  - 변경 후 Node 5회:
+    `perf_node_single_linux_20260605_012112_node_single_dr_tcp131072_native_metric_20260605.txt`
+    는 status=complete였고 median 22,006.6 msg/s였다.
+  - `ROUTER_ROUTER tcp 131072B` guard:
+    `perf_node_single_linux_20260605_012100_node_single_rr_tcp131072_native_metric_guard_20260605.txt`
+    는 status=complete였다.
+- 결과:
+  - `DEALER_ROUTER tcp 131072B`는 current C 대비 40.9%로 통과권에 들어왔다.
+  - `ROUTER_ROUTER tcp 131072B`도 complete guard 기준으로 기존 통과권을 유지했다.
+- 검증:
+  - `npm --prefix bindings/node run build`: 통과
+  - `npm --prefix bindings/node run typecheck`: 통과
+  - `npm --prefix bindings/node run rebuild-native`: 통과
+  - `node bindings/node/dist-tools/tests/optimization_guard.test.js bindings/node/dist-tools/tests/dealer_router.test.js`: 통과
+- 판정:
+  - Node single 미달은 `1/144 (0.7%)`에서 `0/144`로 줄었다.
+  - Node single과 multi 모두 남은 미달이 없다.

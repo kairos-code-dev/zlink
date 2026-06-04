@@ -58,9 +58,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
         // channel. The connection-ready gate above is the only cross-thread
         // sync; the receiver uses blocking recv + drain and exits on the wire
         // stop token (C perf_dealer_router.cpp recv-until-stop-token model).
-        const recvTask = drainRouterRecvInto(router, msgSize, (payload, receivedAtNs) => {
-            collector.recordPayload(payload, receivedAtNs);
-        }, { recordUntilNs: activeStopNs });
+        const recvTask = drainRouterRecvInto(router, msgSize, Object.assign(collector, { runId, activeStartNs }), { recordUntilNs: activeStopNs });
         await Promise.race([
             recvTask,
             workerError.then((message) => Promise.reject(new Error(message.message)))

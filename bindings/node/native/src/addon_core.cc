@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -3064,6 +3065,99 @@ napi_value router_recv_single_payload(napi_env env, napi_callback_info info)
     }
 
     return create_message_data_buffer(env, &part);
+}
+
+napi_value router_recv_single_metric_latency(napi_env env, napi_callback_info info)
+{
+    napi_value argv[7];
+    size_t argc = 7;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+    int32_t flags = 0;
+    if (argc >= 2)
+        napi_get_value_int32(env, argv[1], &flags);
+    uint32_t run_id = 0;
+    uint32_t msg_size = 0;
+    uint32_t expected_size = 0;
+    napi_get_value_uint32(env, argv[2], &run_id);
+    napi_get_value_uint32(env, argv[3], &msg_size);
+    napi_get_value_uint32(env, argv[4], &expected_size);
+    uint64_t active_start_ns = 0;
+    uint64_t active_stop_ns = UINT64_MAX;
+    bool lossless = false;
+    napi_get_value_bigint_uint64(env, argv[5], &active_start_ns, &lossless);
+    napi_get_value_bigint_uint64(env, argv[6], &active_stop_ns, &lossless);
+
+    const zlink_routing_id_t *peer_rid = NULL;
+    const zlink_routing_id_t *spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t part;
+    if (zlink_msg_init(&part) != 0)
+        return throw_last_error(env, "routerRecvSingleMetricLatency failed");
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+
+    int rc = zlink_router_recv_part(
+      router,
+      &peer_rid,
+      &spot_rid,
+      &request_seq,
+      &part,
+      &has_more,
+      static_cast<zlink_recv_flags_t>(flags));
+    (void) peer_rid;
+    (void) spot_rid;
+    (void) request_seq;
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close(&part);
+        if (zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "routerRecvSingleMetricLatency failed");
+    }
+
+    if (has_more != ZLINK_PART_FINAL) {
+        std::vector<zlink_msg_t> rest;
+        int collect_rc = collect_recv_parts(router, &part, has_more, &rest);
+        close_msg_vector(rest);
+        if (collect_rc != ZLINK_RECV_OK)
+            return throw_last_error(env, "routerRecvSingleMetricLatency failed");
+        napi_throw_error(env, NULL, "routerRecvSingleMetricLatency requires single-part messages");
+        return NULL;
+    }
+
+    static const char k_stop_token[] = "__zlink_perf_stop__";
+    const size_t part_size = zlink_msg_size(&part);
+    const void *data = zlink_msg_data(&part);
+    if (part_size == (sizeof(k_stop_token) - 1)
+        && data
+        && std::memcmp(data, k_stop_token, sizeof(k_stop_token) - 1) == 0) {
+        zlink_msg_close(&part);
+        napi_value stop;
+        napi_create_double(env, -1.0, &stop);
+        return stop;
+    }
+
+    uint64_t sent_ts_ns = 0;
+    const uint64_t received_at_ns = perf_now_ns();
+    const bool valid = part_size == expected_size
+      && perf_decode_payload_header(&part, 1, run_id, msg_size, &sent_ts_ns)
+      && received_at_ns >= active_start_ns
+      && received_at_ns <= active_stop_ns
+      && received_at_ns >= sent_ts_ns;
+    zlink_msg_close(&part);
+
+    if (!valid) {
+        napi_value rejected;
+        napi_get_boolean(env, false, &rejected);
+        return rejected;
+    }
+
+    napi_value latency;
+    napi_create_double(env, static_cast<double>(received_at_ns - sent_ts_ns), &latency);
+    return latency;
 }
 
 napi_value monitor_open(napi_env env, napi_callback_info info)

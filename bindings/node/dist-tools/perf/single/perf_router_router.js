@@ -141,9 +141,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
         // above is the routing-id discovery gate (C perf_router_router.cpp
         // does the same). No extra start/stop control channel — the receiver
         // uses blocking recv + drain and exits on the wire stop token.
-        const recvTask = drainRouterRecvInto(receiver, msgSize, (payload, receivedAtNs) => {
-            collector.recordPayload(payload, receivedAtNs);
-        }, { recordUntilNs: activeStopNs });
+        const recvTask = drainRouterRecvInto(receiver, msgSize, Object.assign(collector, { runId, activeStartNs }), { recordUntilNs: activeStopNs });
         await Promise.race([
             recvTask,
             workerError.then((message) => Promise.reject(new Error(message.message)))

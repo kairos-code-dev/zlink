@@ -23,6 +23,15 @@ export interface SocketNativeBinding {
   routerRecvMessage: (socket: NativeHandle, flags: number) => NativeReceivedRaw | null;
   routerRecvMessageNoWait: (socket: NativeHandle) => NativeReceivedRaw | null;
   routerRecvSinglePayload: (socket: NativeHandle, flags: number) => Buffer | null;
+  routerRecvSingleMetricLatency: (
+    socket: NativeHandle,
+    flags: number,
+    runId: number,
+    msgSize: number,
+    expectedSize: number,
+    activeStartNs: bigint,
+    activeStopNs: bigint
+  ) => number | boolean | null;
   routerReply: (
     socket: NativeHandle,
     peerRid: Buffer,

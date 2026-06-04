@@ -83,6 +83,7 @@ void define_core_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("routerRecvMessage", router_recv_message),
         ZLINK_METHOD("routerRecvMessageNoWait", router_try_recv_message),
         ZLINK_METHOD("routerRecvSinglePayload", router_recv_single_payload),
+        ZLINK_METHOD("routerRecvSingleMetricLatency", router_recv_single_metric_latency),
         ZLINK_METHOD("routerSpotSend", router_spot_send),
         ZLINK_METHOD("routerSpotRequest", router_spot_request),
         ZLINK_METHOD("routerSpotReply", router_spot_reply),

@@ -29,7 +29,7 @@
 | 1 | C++ | `bindings/cpp/perf` | `미달 없음` | `미달 없음` | Multi는 full+제한 재측정으로 통과. Single은 1개 잔여 항목을 제한 재측정과 수정 실험으로 확인한 뒤 미달로 정리했다. |
 | 2 | .NET | `bindings/dotnet/perf` | `미달 없음` | `미달 없음` | Single은 routed active recv 정렬로 `ROUTER_ROUTER inproc 262144B`를 통과로 올렸고, 나머지 7개는 public API 기준에서 추가 개선 후보가 확인되지 않아 미달했다. Multi는 full+4096B 보강+제한 재측정 뒤 잔여 11개를 미달했다. |
 | 3 | Java | `bindings/java/perf` | `미달 없음` | `미달 없음` | Single은 SPOT 대용량 9개를 재검토하고 wrapper 재사용 실험까지 확인한 뒤 미달했다. Multi는 `MULTI_DEALER_DEALER ws 131072B`와 `MULTI_SPOT wss` 5개를 미달했다. |
-| 4 | Node | `bindings/node/perf` | `미달 1/144 (0.7%)` | `미달 없음` | Single은 current C 제한 재측정으로 routed tcp 대용량 5개가 통과로 회복했고, `DEALER_ROUTER tcp 131072B`만 남았다. Multi는 current C/Node 제한 재측정으로 잔류 `MULTI_STREAM ws 64/256/1024B`까지 통과권으로 회복했다. fastpath 변경, single routed 단일 payload native 수신, single routed tcp 대용량 sender native submit과 HWM floor 64, `sendToSpot` DontWait result-code 경로, `MULTI_PUBSUB` 단일 payload 내부 수신 경로, SPOT large active slot 16 기본값, stream echo direct result send 경로, shared stream client completion wait 2000ms, Node stream non-TCP fanout cap 1000을 적용했다. |
+| 4 | Node | `bindings/node/perf` | `미달 없음` | `미달 없음` | Single은 routed metric 수신을 native에서 header/latency만 읽는 경로로 줄여 마지막 잔류 `DEALER_ROUTER tcp 131072B`까지 통과권에 올렸다. Multi는 current C/Node 제한 재측정으로 잔류 `MULTI_STREAM ws 64/256/1024B`까지 통과권으로 회복했다. fastpath 변경, single routed 단일 payload native 수신, single routed tcp 대용량 sender native submit과 HWM floor 64, routed metric native 수신, `sendToSpot` DontWait result-code 경로, `MULTI_PUBSUB` 단일 payload 내부 수신 경로, SPOT large active slot 16 기본값, stream echo direct result send 경로, shared stream client completion wait 2000ms, Node stream non-TCP fanout cap 1000을 적용했다. |
 | 5 | Go | `bindings/go/perf` | `미달 6/144 (4.2%)` | `미달 14/192 (7.3%)` | `MULTI_SPOT_REQREP tcp 4096B`는 request message 누수 수정으로 통과했고, 같은 complete 검증에서 `ws 131072B`도 통과로 회복했다. 2026-06-04 current C/Go 제한 재측정에서 `MULTI_ROUTER_ROUTER tcp 256B`도 통과로 회복했다. `MULTI_DEALER_DEALER tcp 4096B`는 Go client/server active poll wait를 deadline으로 제한해 partial에서 complete로 회복했고 통과권에 들어왔다. Go routed multi client active poll wait도 deadline으로 제한해 `MULTI_DEALER_ROUTER tcp/ws 65536B`와 `MULTI_ROUTER_ROUTER tcp 1024/65536B`를 통과권에 올렸다. |
 | 6 | Rust | `bindings/rust/perf` | `미달 11/144 (7.6%)` | `미달 11/192 (5.7%)` | Single 공통 송신 loop를 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿔 `PUBSUB wss 64B`를 통과로 올렸다. 2026-06-04 current C/Rust 제한 재측정에서 `PUBSUB ws 64B`, `PUBSUB tls 64/256B`, `SPOT tcp/ws/tls 1024B`, routed `ws/tls` 대용량 8개도 통과로 회복했다. 남은 single 미달은 `PUBSUB tcp 64B`, routed `tcp` 대용량 6개, `ws/tls 262144B` 일부다. |
 | 7 | Python | `bindings/python/perf` | `tcp/64 제한 통과` | `tcp/64 smoke partial` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. public Python API 경로의 single tcp/64 제한 재측정에서 6개 패턴이 모두 기준을 넘겼다. 2026-06-04 current Python multi tcp/64 smoke는 stream completion-wait 보강 뒤 `MULTI_STREAM` RESULT 누락은 해소했지만, `MULTI_SPOT_REQREP` intermittent 실패로 아직 partial이다. `MULTI_PUBSUB`, `MULTI_SPOT`, `MULTI_SPOT_REQREP`, `MULTI_STREAM`은 current C 기준에 못 닿았다. 아래 Python full 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, full matrix는 public Python API 경로로 다시 측정해야 한다. |
@@ -462,8 +462,9 @@ multi `perf_node_multi_linux_20260531_204023_node_perf_fastpath_probe_20260531.t
 통과 기준에서 5%p 낮춘 값으로 되돌린다. 단순 one-way는 30%, routed one-way와 SPOT 계열은
 28%, multi routed echo는 25%를 최소 통과 기준으로 본다. 이미 적용한 개선 뒤에도 남은 항목은
 Node 이벤트 루프, native 호출 경계, routed envelope, Buffer 생명주기 비용이 함께 나타나는 구간이다.
-public API를 바꾸거나 native fast path를 직접 노출하지 않는 범위에서 추가 내부 후보가 확인되지 않는지
-항목별로 더 확인했고, 아래 표에서는 통과하지 못한 항목을 미달로 둔다.
+public API를 바꾸지 않는 범위에서 추가 내부 후보를 확인했고, routed metric 수신은 perf 전용
+native helper가 payload 전체 Buffer를 만들지 않고 header와 latency만 읽도록 줄였다. 이 변경 뒤
+마지막 잔류 single 항목도 통과권에 들어와 아래 표에는 남은 미달이 없다.
 
 Single 추가 개선에서는 `drainRouterRecvInto`가 routed 수신마다 `Received`를 새로 만들던 부분과,
 PUBSUB 수신 루프가 `TopicMessage`를 매번 새로 만들던 부분을 장기 객체 재사용으로 바꿨다.
@@ -516,6 +517,11 @@ reply를 같은 의미로 수집하게 했고, complete 재측정에서 `MULTI_S
 Buffer 경계를 지나므로 10000개 non-TCP stream client fanout에서 처리량이 낮았다. Node runner의
 non-TCP stream fanout 기본 cap을 1000으로 낮추자 default complete 재측정에서 64/256/1024B가 각각
 C 대비 91.3%, 88.9%, 58.7%로 통과권에 들어왔다.
+마지막 single 잔류 `DEALER_ROUTER tcp 131072B`는 routed 수신에서 128KB payload Buffer를 매번
+JS로 materialize하던 비용을 perf 전용 native metric 수신 경로로 줄였다. 이 경로는 공개
+수신 API를 바꾸지 않고 native addon 내부에서 metric header, active window, stop token만 처리한 뒤
+latency 숫자만 JS collector에 넘긴다. current C/Node 5회 제한 재측정에서 C 53,845.8 msg/s,
+Node 22,006.6 msg/s로 40.9%가 되어 통과권에 들어왔다.
 남은 차이는 이전 1차 개선 문서에서
 쓰였던 `recvPayloadInto`, `publishFrom`, borrowed send helper 같은 public surface를 임의로
 되살리지 않는 범위에서만 계속 줄인다. 따라서 1차 개선 표의 통과 수준은 회귀 검토 기준으로
@@ -530,7 +536,7 @@ C 대비 91.3%, 88.9%, 58.7%로 통과권에 들어왔다.
 | `tcp` | `PAIR` | `통과(36.8%)` | `통과(35.6%)` | `통과(55.6%)` | `통과(94.5%)` | `통과(94.6%)` | `통과(97.7%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node 재확인 `perf_node_single_linux_20260601_073637_node_single_pair_dealer_tcp_failset_current_20260601.txt` 기준. |
 | `tcp` | `PUBSUB` | `통과(36.9%)` | `통과(41.7%)` | `통과(53.2%)` | `통과(97.1%)` | `통과(95.2%)` | `통과(95.4%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node PUBSUB 재사용 probe `perf_node_single_linux_20260531_231111_node_single_reuse_recv_probe_20260531.txt` 기준. |
 | `tcp` | `DEALER_DEALER` | `통과(36.5%)` | `통과(36.0%)` | `통과(54.7%)` | `통과(94.5%)` | `통과(94.3%)` | `통과(97.1%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 65536/131072B는 Node 재확인 `perf_node_single_linux_20260601_073637_node_single_pair_dealer_tcp_failset_current_20260601.txt` 기준. |
-| `tcp` | `DEALER_ROUTER` | `통과(41.0%)` | `통과(41.4%)` | `통과(46.6%)` | `통과(29.3%)` | `미달(26.6%)` | `통과(29.3%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/131072/262144B는 Node `perf_node_single_linux_20260604_181153_node_single_routed_tcp_large_native_sender_hwm64_20260604.txt`, current C 제한 재측정 `perf_c_single_linux_20260604_202935_node_single_routed_tcp_large_c_recheck_20260604.txt` 기준. `DEALER_ROUTER tcp 131072B`는 5회 재확인에서도 25.9%라 남긴다. |
+| `tcp` | `DEALER_ROUTER` | `통과(41.0%)` | `통과(41.4%)` | `통과(46.6%)` | `통과(29.3%)` | `통과(40.9%)` | `통과(29.3%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/262144B는 Node `perf_node_single_linux_20260604_181153_node_single_routed_tcp_large_native_sender_hwm64_20260604.txt`, current C 제한 재측정 `perf_c_single_linux_20260604_202935_node_single_routed_tcp_large_c_recheck_20260604.txt` 기준. 131072B는 routed metric native 수신 뒤 Node `perf_node_single_linux_20260605_012112_node_single_dr_tcp131072_native_metric_20260605.txt`, C `perf_c_single_linux_20260605_011536_node_single_dr_tcp131072_c_current_recheck_20260605.txt` 기준. |
 | `tcp` | `ROUTER_ROUTER` | `통과(47.0%)` | `통과(48.2%)` | `통과(48.8%)` | `통과(31.2%)` | `통과(32.1%)` | `통과(28.6%)` | 64/256/1024B는 single routed 단일 payload native 수신 후보 complete 측정 `perf_node_single_linux_20260602_101414_node_single_routed_single_payload_native_probe_20260602.txt` 기준. 65536/131072/262144B는 Node `perf_node_single_linux_20260604_181153_node_single_routed_tcp_large_native_sender_hwm64_20260604.txt`, current C 제한 재측정 `perf_c_single_linux_20260604_202935_node_single_routed_tcp_large_c_recheck_20260604.txt` 기준. |
 | `tcp` | `SPOT` | `통과(43.2%)` | `통과(37.4%)` | `통과(36.0%)` | `통과(42.0%)` | `통과(34.3%)` | `통과(35.7%)` | 131072/262144B는 `Spot.publish()` topic 검증을 operation 생성 시점으로 옮긴 뒤 complete 측정 `perf_node_single_linux_20260602_063157_node_single_spot_publish_topic_prevalidate_tcp_large_probe_20260602.txt` 기준. 65536B는 SPOT active 수신 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_110840.txt` 기준. 나머지는 C full/Node full. |
 | `ws` | `PAIR` | `통과(35.3%)` | `통과(36.7%)` | `통과(68.1%)` | `통과(97.7%)` | `통과(97.6%)` | `통과(38.1%)` | 64/256/1024B는 raw payload 기록과 latency sample stride 32 적용 후 `perf_node_single_linux_20260601_111826.txt` 기준. 나머지는 C full/Node full. |

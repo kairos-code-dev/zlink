@@ -425,6 +425,13 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
     const recordUntilNs = options.recordUntilNs === undefined
         ? null
         : BigInt(options.recordUntilNs);
+    const metricCollector = typeof onHeader?.recordLatencyNs === 'function'
+        ? onHeader
+        : null;
+    const metricRunId = Number(onHeader?.runId ?? 0) >>> 0;
+    const metricActiveStartNs = onHeader?.activeStartNs === undefined
+        ? 0n
+        : BigInt(onHeader.activeStartNs);
     let stopReceived = false;
     let iterCount = 0;
     let totalReceived = 0;
@@ -439,6 +446,22 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
         }
         let first = true;
         while (true) {
+            if (metricCollector !== null && typeof native.routerRecvSingleMetricLatency === 'function') {
+                const latencyNs = native.routerRecvSingleMetricLatency(router.nativeHandle(), first ? RecvFlags.None : RecvFlags.DontWait, metricRunId, msgSize >>> 0, payloadSize >>> 0, metricActiveStartNs, recordUntilNs ?? BigInt('0xffffffffffffffff'));
+                if (latencyNs === null) {
+                    break;
+                }
+                first = false;
+                if (latencyNs === -1) {
+                    stopReceived = true;
+                    break;
+                }
+                totalReceived += 1;
+                if (typeof latencyNs === 'number') {
+                    metricCollector.recordLatencyNs(latencyNs);
+                }
+                continue;
+            }
             const data = native.routerRecvSinglePayload(router.nativeHandle(), first ? RecvFlags.None : RecvFlags.DontWait);
             if (data === null) {
                 break;

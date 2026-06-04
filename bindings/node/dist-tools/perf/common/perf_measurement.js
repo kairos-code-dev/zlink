@@ -284,6 +284,19 @@ function createMetricCollector(config) {
                 accepted = nextAccepted;
             }
         },
+        recordLatencyNs(latencyNs) {
+            if (closed || typeof latencyNs !== 'number' || latencyNs < 0) {
+                return;
+            }
+            const nextAccepted = accepted + 1;
+            if (shouldSampleLatency(nextAccepted)) {
+                accepted = nextAccepted;
+                latenciesNs.push(latencyNs / Number(rttDivisor));
+            }
+            else {
+                accepted = nextAccepted;
+            }
+        },
         async finish() {
             closed = true;
             return {

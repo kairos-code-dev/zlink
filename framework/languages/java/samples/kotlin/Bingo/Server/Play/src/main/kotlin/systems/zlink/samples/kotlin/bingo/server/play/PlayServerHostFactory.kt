@@ -8,6 +8,7 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
 import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActorFactory
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoRoomSpot
+import systems.zlink.samples.kotlin.bingo.server.play.entryspot.BingoEntrySpot
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
 
@@ -33,8 +34,12 @@ class PlayServerHostFactory {
                         router.setRouterBind(SampleTopology.PlaySpotRouterEndpoint)
                         router.setRoutingId(RoutingId.from("2202"))
                     }
+                    node.configureEntrySpot { entry ->
+                        entry.setRoutingId(RoutingId.from("2202"))
+                    }
                     node.enablePubSub { pubSub -> pubSub.setPubBind(SampleTopology.PlaySpotEndpoint) }
                     node.attachChannelClient(SampleNames.ApiChannel)
+                    node.addEntrySpot(BingoEntrySpot::class.java)
                     node.addSpotFactory(BingoRoomSpot::class.java)
                 }
             }

@@ -728,3 +728,33 @@
   - SENDSEND small 구간은 Python 쪽 사본 생성 비용과 C baseline 변동성이 함께 있었다.
   - client small fast path는 public Python API를 바꾸지 않고 native bridge 내부에서만 사본 생성을 줄인다.
   - C small failset 보강도 status=complete이므로 표 반영 근거로 사용한다.
+
+## current public Python multi tcp64 smoke 재확인
+
+- 배경:
+  - public contract 복구 뒤 main 계획 문서의 Python multi는 current full 판정으로 쓰지 않고 있었다.
+  - full matrix 전에 현재 runner와 public Python multi 경로의 최소 tcp/64 smoke를 다시 확인했다.
+- 준비:
+  - `python3 setup.py build_ext --inplace --force`로 native bridge를 현재 소스 기준으로 다시 빌드했다.
+- C 기준:
+  - `perf_c_multi_linux_20260604_213725_python_multi_tcp64_c_recheck_20260604.txt`
+  - status=complete, expected/actual result lines 40/40
+- Python 재측정:
+  - 재빌드 전 `perf_python_multi_linux_20260604_214417_python_multi_tcp64_recheck_20260604.txt`
+  - 재빌드 후 `perf_python_multi_linux_20260604_215121_python_multi_tcp64_after_rebuild_20260604.txt`
+  - 재빌드 후 파일도 status=partial, expected/actual result lines 120/100
+- 재빌드 후 실패:
+  - `MULTI_SPOT tcp 64B`: `CLIENT_CONTROL_ENDPOINT` 제어선 누락
+  - `MULTI_STREAM tcp 64B`: server `READY,...` 뒤 RESULT 누락 3회
+- 재빌드 후 current C 대비 비율:
+  - `MULTI_DEALER_DEALER tcp 64B`: 35.0%
+  - `MULTI_DEALER_ROUTER tcp 64B`: 45.5%
+  - `MULTI_ROUTER_ROUTER tcp 64B`: 31.2%
+  - `MULTI_PUBSUB tcp 64B`: 22.6%
+  - `MULTI_SPOT tcp 64B`: 11.7%
+  - `MULTI_SPOT_REQREP tcp 64B`: 19.2%
+  - `MULTI_SPOT_SENDSEND tcp 64B`: 37.7%
+- 판정:
+  - current public Python multi는 아직 full matrix로 갈 수 있는 상태가 아니다.
+  - 먼저 `MULTI_STREAM` RESULT 누락과 `MULTI_SPOT` 제어선 누락을 고친 뒤, `MULTI_PUBSUB`,
+    `MULTI_SPOT`, `MULTI_SPOT_REQREP`의 current C 대비 미달을 다시 줄인다.

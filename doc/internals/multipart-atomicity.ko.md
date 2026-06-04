@@ -152,12 +152,12 @@ public contract는 현재 구현과 맞추어 다음처럼 정리돼 있다.
 
 - [zlink.h#L799](../../core/include/zlink.h#L799)
 
-이 계약은 direct-send + rollback 구조와 일치하며, caller 가 moved-from
-handle 을 재사용하지 않는다는 단순한 규칙만 지키면 된다.
+이 계약은 direct-send + rollback 구조와 일치하며, caller가 moved-from
+handle을 재사용하지 않는다는 단순한 규칙만 지키면 된다.
 
 ### 6. clone 없이 동작하는 이유
 
-현재 구조는 retry/rollback 을 위해 frame 을 clone 하지 않는다.
+현재 구조는 retry/rollback을 위해 frame을 clone하지 않는다.
 
 POSD 관점에서의 구성은 다음과 같다.
 
@@ -168,8 +168,8 @@ POSD 관점에서의 구성은 다음과 같다.
 - public contract:
   input moved-from
 
-예외 상황을 위해 정상 경로를 clone 하지 않으므로 small message hot path 에
-불필요한 clone 비용이 붙지 않고, single-part 와 multipart 경로도 같은
+예외 상황을 위해 정상 경로를 clone하지 않으므로 small message hot path에
+불필요한 clone 비용이 붙지 않고, single-part와 multipart 경로도 같은
 공통 흐름을 공유한다.
 
 ---
@@ -232,18 +232,18 @@ public raw recv는 socket 내부에서 받은 frame을 바로 caller에 하나�
 
 ### 4. follow-up recv 의미론
 
-follow-up frame 은 일반 `recv timeout` 의미론이 아니라
+follow-up frame은 일반 `recv timeout` 의미론이 아니라
 **multipart assembly 의미론**으로 읽는다.
 
 관련 코드:
 
 - [recv_internal.cpp#L88](../../core/src/runtime/core/recv_internal.cpp#L88)
 
-`recv_followup_msg_internal()` 의 의미:
+`recv_followup_msg_internal()`의 의미:
 
-- 첫 part 이후 follow-up 은 `ZLINK_DONTWAIT` 로 조회
-- `EAGAIN` / `EINTR` 는 일반 timeout 이 아니라 프로토콜 실패로 승격
-- 호출자에게는 `EPROTO` 로 반환
+- 첫 part 이후 follow-up은 `ZLINK_DONTWAIT`로 조회
+- `EAGAIN` / `EINTR`는 일반 timeout이 아니라 프로토콜 실패로 승격
+- 호출자에게는 `EPROTO`로 반환
 
 즉 raw socket public recv는 libzmq의 fq 모델과 같은 방향이다.
 
@@ -300,7 +300,7 @@ multipart를 aggregate shape로 설명하게 해 준다.
 
 - [spot_sub_recv.cpp](../../core/src/runtime/services/spot/pubsub/spot_sub_recv.cpp)
 
-`spot_sub_t::recv()`는 다음 성격을 가진다.
+`spot_sub_t::recv()`는 다음 성격을 띤다.
 
 - topic frame + payload frame sequence를 service-level semantics로 처리
 - follow-up에서 자체 wait loop 사용
@@ -321,7 +321,7 @@ multipart를 aggregate shape로 설명하게 해 준다.
 
 ## 콜백 경로와 원자성
 
-직접 콜백/핸들러 경로도 결과적으로는 완성된 multipart 를 콜백에
+직접 콜백/핸들러 경로도 결과적으로는 완성된 multipart를 콜백에
 전달하는 방향으로 정리돼 있다.
 
 - [socket_message_handler_api.cpp](../../core/src/api/socket/socket_message_handler_api.cpp)
@@ -329,10 +329,10 @@ multipart를 aggregate shape로 설명하게 해 준다.
 
 핵심 원칙:
 
-- 콜백은 반쪽짜리 multipart 를 part 단위로 흘려받지 않는다.
-- 내부 디스패치가 multipart payload shape 를 맞춰 콜백에 전달한다.
+- 콜백은 반쪽짜리 multipart를 part 단위로 흘려받지 않는다.
+- 내부 디스패치가 multipart payload shape를 맞춰 콜백에 전달한다.
 
-즉 public direct recv 와 콜백 recv 는 같은 payload shape 계약을 공유한다.
+즉 public direct recv와 콜백 recv는 같은 payload shape 계약을 공유한다.
 
 ---
 
@@ -658,7 +658,7 @@ if (_more) {
 }
 ```
 
-이 차이는 의도적이다. pipe가 multipart 전송 도중 disconnect될 수 있는
+이 차이는 의도한 것이다. pipe가 multipart 전송 도중 disconnect될 수 있는
 상황(네트워크 끊김 등)에서 프로세스를 죽이는 대신 에러를 보고한다.
 
 ---
@@ -988,7 +988,7 @@ multipart 원자성은 lb_t와 fq_t가 각각 보장한다.
 
 #### 6.3. ROUTER
 
-ROUTER는 가장 복잡한 multipart 처리를 가진다.
+ROUTER는 multipart 처리가 가장 복잡하다.
 
 **send 경로:**
 
@@ -1139,7 +1139,7 @@ void zmq::xpub_t::xattach_pipe (pipe_t *pipe_, ...)
 ```
 
 multipart 원자성은 `dist_t`가 보장한다 (위 5절 참조).
-PUB는 XPUB의 wrapper이므로 동일한 원자성을 가진다.
+PUB는 XPUB의 wrapper이므로 원자성도 동일하다.
 
 ---
 
@@ -1350,8 +1350,8 @@ public API surface는 다르다.
 `libzmq`의 `dist_t::attach()`는 `_more == true`일 때 새 pipe를
 `_eligible`에만 추가하여 multipart 완료 후 `_active`로 승격한다.
 
-`zlink`에서도 동일한 패턴이 유지되며, 추가로 subscriber 측의
-ready probe filtering이 있어 service 계층에서 추가 보호가 동작한다.
+`zlink`에서도 같은 패턴이 유지되며, 추가로 subscriber 측의
+ready probe filtering이 있어 service 계층에서 한 겹 더 보호가 동작한다.
 
 ### 차이 6. service handles
 
@@ -1392,13 +1392,13 @@ ready probe filtering이 있어 service 계층에서 추가 보호가 동작한�
 
 ### 3. POSD 관점에서 깊은 모듈
 
-caller 가 알아야 하는 범위는 작게 유지된다.
+caller가 알아야 하는 범위는 작게 유지된다.
 
-- recv caller 는 multipart assembly 내부를 알 필요가 없다.
-- send caller 는 clone/retry 구현을 알 필요가 없다.
-- internal framing 은 routing id/topic output 으로 감춰진다.
+- recv caller는 multipart assembly 내부를 알 필요가 없다.
+- send caller는 clone/retry 구현을 알 필요가 없다.
+- internal framing은 routing id/topic output으로 감춰진다.
 
-shallow wrapper 가 아니라 "복잡한 내부를 숨기는 깊은 module" 역할을 한다.
+shallow wrapper가 아니라 "복잡한 내부를 숨기는 깊은 module" 역할을 한다.
 
 ### 4. libzmq의 caller 책임 문제를 구조적으로 해소
 
@@ -1408,7 +1408,7 @@ shallow wrapper 가 아니라 "복잡한 내부를 숨기는 깊은 module" 역�
 - multipart 중간에 다른 작업을 하면 안 된다.
 - recv loop를 완주하지 않으면 fq의 `_more` 상태가 오염된다.
 
-`zlink`는 이 의무를 library 내부로 이동시켜 caller의 실수 가능성을 제거했다.
+`zlink`는 이 의무를 library 내부로 옮겨 caller의 실수 가능성을 없앴다.
 
 ---
 
@@ -1515,5 +1515,5 @@ multipart atomicity가 유지된다고 보려면 아래가 계속 참이어야 �
 - fq는 `_more` 상태로 multipart 도중 pipe를 고정한다.
 
 즉 `zlink`는 `libzmq`의 atomicity 철학을 유지하면서,
-public API는 더 높은 수준의 payload-shape contract로 감싼 구조라고 보는 게
+public API는 더 높은 수준의 payload-shape contract로 감싼 구조로 보는 게
 가장 정확하다.

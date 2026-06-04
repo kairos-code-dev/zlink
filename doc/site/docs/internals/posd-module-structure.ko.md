@@ -3,7 +3,7 @@
 # zlink POSD 모듈 구조
 
 > 이 문서는 `core/` 내부 구조를 설명한다.
-> 공개 C API (`core/include/zlink.h`)와 bindings 계약은 유지되며,
+> 공개 C API (`core/include/zlink.h`)와 bindings 계약은 그대로 유지된다.
 > 이 문서가 설명하는 것은 그 뒤의 내부 모듈 경계와 소유권이다.
 
 ## 1. 설계 원칙
@@ -122,7 +122,7 @@ API facade 의 규칙:
 | `spot_subject_access_t` | `services/spot/` | publish, subscribe, option, handler, monitor, type casting |
 
 `service_public_api_guard_t` 는 모든 서비스에 공통되는 입장 허용/close 가드다.
-콜백 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle 게이트를 제공한다.
+콜백 모드를 추적하고, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle 게이트를 제공한다.
 
 ### 3.3 Service Runtime
 
@@ -148,15 +148,15 @@ API facade 의 규칙:
 | `spot_runtime.cpp/hpp` | runtime lifecycle |
 
 최근 리팩토링으로 `spot_node_t`는 큰 내부 상태 구조체를 헤더 본문 안에 직접
-길게 품지 않고, `spot_node_state.hpp`가 제공하는 상태 묶음을 조합해서
-사용한다. 이 방식은 discovery, service attachment, summary 소유권을 더
-명확하게 분리한다.
+길게 품는 대신, `spot_node_state.hpp`가 제공하는 상태 묶음을 조합해서
+쓴다. 이렇게 하면 discovery, service attachment, summary 소유권이 더
+또렷하게 분리된다.
 
 data plane의 메시지 전달 흐름도 같은 기준으로 나누었다.
 `spot_data_plane_forwarding.cpp`는 ingress, mesh, local fanout 사이의 전달
-순서를 담당하고, 보류 큐의 메모리 제한 검사와 메시지 복사, target별 참조
-해제는 `spot_data_plane_pending.cpp`가 담당한다. 이렇게 나누면 느린 peer로
-인해 생긴 backpressure 처리와 실제 포워딩 순서를 별도로 검토할 수 있다.
+순서를 맡고, 보류 큐의 메모리 제한 검사와 메시지 복사, target별 참조
+해제는 `spot_data_plane_pending.cpp`가 맡는다. 이렇게 나누면 느린 peer 때문에
+생긴 backpressure 처리와 실제 포워딩 순서를 따로 검토할 수 있다.
 
 **Discovery** (`services/discovery/`):
 
@@ -199,14 +199,14 @@ routing/subscription/load-balancing 의미에 집중하고,
 runtime internal field를 직접 참조하지 않는다.
 
 `socket_base_t`는 semantic entrypoint로 남지만, req/reply 상태와 part helper
-상태는 이제 `shared_ptr<void>`가 아니라 typed bridge accessor를 통해 접근한다.
-API 계층은 raw cast를 반복하지 않고 이 bridge를 사용한다.
+상태는 이제 `shared_ptr<void>`가 아니라 typed bridge accessor를 거쳐 접근한다.
+API 계층은 raw cast를 반복하지 않고 이 bridge를 쓴다.
 
 ### 3.5 Runtime Core (`core/src/runtime/core/`)
 
 #### Options Dispatch
 
-Option은 세 카테고리로 분류되어 각 도메인 소유자가 validation/apply를 담당한다.
+Option은 세 카테고리로 나뉘어 각 도메인 소유자가 validation/apply를 맡는다.
 
 | 카테고리 | 파일 | 대표 옵션 |
 |----------|------|-----------|
@@ -218,13 +218,13 @@ Option은 세 카테고리로 분류되어 각 도메인 소유자가 validation
 `options_dispatch_internal.hpp`가 template 유틸리티와 dispatch 함수 선언을 제공한다.
 
 공개 option 번호를 internal option 번호로 바꾸는 경로도 descriptor table로
-정리해 두어, `zlink_option.cpp`가 거대한 switch 허브로 다시 비대해지지 않게
-유지한다.
+정리해, `zlink_option.cpp`가 거대한 switch 허브로 다시 비대해지지 않게
+한다.
 
 #### Logical Multipart Send
 
 `multipart_send_txn.cpp/hpp`는 `zlink_send`와 `spot publish`가 공통으로
-사용하는 logical multipart send 모듈이다.
+쓰는 logical multipart send 모듈이다.
 
 - nonblocking: 1회 시도 후 실패 시 부분 로컬 상태 롤백
 - blocking: `sndtimeo` 데드라인까지 메시지 전체 단위로 재시도

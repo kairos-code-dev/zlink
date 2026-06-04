@@ -29,7 +29,7 @@ multipart control part 로 표현한다. 즉 다음 방식은 이 프로토콜�
 
 ordinary `zlink_send()` / `zlink_recv()` 는 payload part 만 다룬다.
 request-reply 와 SPOT routed 는 전용 공개 API 가 control part 를 앞에
-붙여 보내고, 전용 decode 경로가 이를 해석한다.
+붙여 보내고 전용 decode 경로가 이를 해석한다.
 
 ## 2. 공통 프레임 헤더
 
@@ -279,7 +279,7 @@ sequenceDiagram
 1. 먼저 8개 SPOT routed control part 를 읽는다.
 2. 남은 part 앞 4개를 request-reply envelope 로 읽는다.
 3. destination 이 local `Spot` 인지, local `ROUTER` 인지 정한다.
-4. request 면 해당 handler 로 넘기고, reply 면 pending map 에서 완료한다.
+4. request 면 해당 handler 로 넘기고 reply 면 pending map 에서 완료한다.
 
 ## 7. pending 과 완료 규칙
 

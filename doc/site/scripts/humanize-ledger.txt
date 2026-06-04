@@ -39,3 +39,15 @@ doc/guide/reliability.ko.md
 doc/guide/scenarios.ko.md
 doc/guide/unity-stream-connector.ko.md
 doc/guide/zmp-protocol.ko.md
+doc/internals/architecture.ko.md
+doc/internals/core-source-layout.ko.md
+doc/internals/design-decisions.ko.md
+doc/internals/discovery-internals.ko.md
+doc/internals/io-thread.ko.md
+doc/internals/multipart-atomicity.ko.md
+doc/internals/peer-disconnect-rid.ko.md
+doc/internals/posd-module-structure.ko.md
+doc/internals/protocol-raw.ko.md
+doc/internals/protocol-zmp.ko.md
+doc/internals/registry-internals.ko.md
+doc/internals/services-internals.ko.md

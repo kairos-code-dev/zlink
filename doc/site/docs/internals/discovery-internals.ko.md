@@ -53,7 +53,7 @@ flowchart TB
 | Control DEALER | DEALER | Registry uplink | heartbeat, 속성 업데이트 |
 | SERVICE_LIST SUB | SUB | Registry XPUB | 서비스 목록 브로드캐스트 수신 |
 
-모든 DEALER 소켓은 필요 시 생성되고 shutdown 시 파괴된다.
+모든 DEALER 소켓은 필요할 때 생성되고 shutdown 시 파괴된다.
 
 ## 3. Lifecycle 상태 머신
 
@@ -102,14 +102,14 @@ Registry의 주기 값은 option state에 저장된다. 공개 API
 `ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS`,
 `ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS` 값을 Registry 내부 설정에 반영한다.
 Registry는 bootstrap reply를 만들 때 heartbeat interval 값을 읽어 Discovery에
-전달한다. Discovery는 이 값을 저장하고 control task의 heartbeat 송신 주기로
-사용한다.
+전달한다. Discovery는 이 값을 저장해 control task의 heartbeat 송신 주기로
+쓴다.
 
 Registry runtime tick은 같은 option state에서 heartbeat timeout과 broadcast
-interval을 읽는다. Timeout 값은 provider 만료 판단에 쓰이고, broadcast interval은
+interval을 읽는다. Timeout 값은 provider 만료 판단에 쓰이고 broadcast interval은
 SERVICE_LIST publish 주기를 제한한다. 이렇게 공개 설정 API와 runtime 동작 사이의
-변환 지점을 Registry 내부에 가두어 Discovery와 attachment가 scalar 설정 세부
-형식을 알 필요가 없게 한다.
+변환 지점을 Registry 내부에 가두면 Discovery와 attachment는 scalar 설정 세부
+형식을 알 필요가 없다.
 
 ## 5. 서비스 등록 흐름
 
@@ -206,37 +206,37 @@ Registry 내부 route row는 두 계층으로 나뉜다. raw observation store�
 `route identity + owner identity + advertising registry` 조합을 key로 삼는다.
 materialized route table은 `resolve_route()`가 사용할 winner를 route identity마다
 하나만 노출한다. owner, route identity, advertising registry별 reverse index를 함께
-두기 때문에 owner cleanup, winner 재계산, peer timeout cleanup은 전체 route 수가 아니라
+두므로 owner cleanup, winner 재계산, peer timeout cleanup은 전체 route 수가 아니라
 영향을 받는 record 수에 비례한다.
 
 materialized route table은 Redis `dict`에서 검증된 설계를 따른다. bucket 수는 2의
-거듭제곱으로 유지하고, 나눗셈 대신 mask로 bucket을 고르며, 충돌은 separate chaining
+거듭제곱으로 유지하고, 나눗셈 대신 mask로 bucket을 고르며 충돌은 separate chaining
 (별도 연결 리스트로 같은 bucket의 항목을 연결하는 방식)으로 처리한다. table이 커질
 때는 기존 table에서 새 table로 bucket을 조금씩 옮긴다. resize 비용을 route 조회와
-갱신 경로에 나누어 부담하므로, 큰 route set에서도 한 번에 긴 resize 지연이 생기지
+갱신 경로에 나누어 부담하므로 큰 route set에서도 한 번에 긴 resize 지연이 생기지
 않는다. 각 table entry는 route key를 한 번만 보관하고, value 안에 같은 key를 다시
 들고 있지 않는다. Redis `dictEntry`처럼 key와 value의 책임을 분리해 큰 route set에서
 중복 문자열 비용을 줄인다. entry node는 fixed scalar만 담고, route key와 value는
 packed byte block에 붙여 저장한다. 같은 channel 이름은 table 안에서 intern(중복 없이
 단일 복사본으로 관리)해 반복 저장하지 않는다. owner identity도 intern된 id로 공유하고,
-bucket과 node link는 32비트 entry id를 사용한다. node 자체는 65,536개 단위 chunk로
-할당하므로, 대량 insert 시 단일 vector capacity가 실제 record 수보다 크게 증가하는
+bucket과 node link는 32비트 entry id를 쓴다. node 자체는 65,536개 단위 chunk로
+할당하므로, 대량 insert 시 단일 vector capacity가 실제 record 수보다 크게 늘어나는
 비용을 피한다.
 
 route key와 owner identity hash는 Redis `dict`가 쓰는 SipHash 계열 방식으로 계산한다.
 snapshot chunk를 만들 때는 Redis `dictScan`처럼 cursor로 materialized table을 나누어
-읽고, 순회 중에는 rehash pause guard(재해시 중 순회 보호 잠금)를 잡는다. 그래서
+읽고 순회 중에는 rehash pause guard(재해시 중 순회 보호 잠금)를 잡는다. 그래서
 Registry는 route snapshot을 보낼 때 전체 materialized route를 한 번에 별도 vector로
 만들지 않고 chunk 크기만큼만 담는다.
 
 provider row도 같은 owner-bound 규칙으로 materialize된다. 서로 다른 source generation이
-같은 `channel + role + routing_id`를 claim하거나, 같은 generation이 서로 다른 endpoint를
+같은 `channel + role + routing_id`를 claim하거나 같은 generation이 서로 다른 endpoint를
 claim하면 해당 RID는 peer/member projection에서 제외된다. route resolve도 이런 owner를
 live owner로 보지 않는다.
 
 ## 7. Socket Discovery Attachment
 
-`socket_discovery_attachment_t`는 raw 소켓을 Discovery 와 통합하여
+`socket_discovery_attachment_t`는 raw 소켓을 Discovery와 통합해
 자동 피어 관리를 수행한다.
 
 ```mermaid
@@ -275,12 +275,12 @@ sequenceDiagram
 
 - 소켓당 바인드된 엔드포인트 1개만 허용
 - 수동 `connect`/`disconnect`/`unbind` 차단 (Discovery 독점)
-- 피어 연결은 Discovery 가 전적으로 관리
-- `discovery_destroy()` 시 모든 attachment 에 shutdown 전파
+- 피어 연결은 Discovery가 전적으로 관리
+- `discovery_destroy()` 시 모든 attachment에 shutdown 전파
 
 ## 8. SpotNode Attachment
 
-SpotNode는 동일한 observer 패턴을 사용하지만 다음 특성이 있다:
+SpotNode는 동일한 observer 패턴을 쓰지만 다음 특성이 있다:
 - `auto_connect_type = auto_connect_type_spot_node (2)`
 - `service_role = service_role_spot (2)` (고정)
 - 피어 연결 대상은 mesh 내 다른 SpotNode
@@ -316,12 +316,12 @@ flowchart TD
 ## 10. Spot 소유 노드 조회 (`zlink_discovery_resolve_spot`)
 
 `zlink_discovery_resolve_spot(discovery, spot_rid, &route_out)`는
-**논리적 SPOT routing id** 를 **현재 소유 SpotNode 의 routing id** 와 Spot kind로
+**논리적 SPOT routing id**를 **현재 소유 SpotNode의 routing id**와 Spot kind로
 매핑한다. 호출자가 `(owner_node_rid, spot_rid)` 쌍을 만들어
 ROUTER 쪽 직접 전달 함수(`zlink_router_send_spot()` /
-`zlink_router_request_spot()`)의 대상으로 사용할 수 있게 해주는
+`zlink_router_request_spot()`)의 대상으로 쓰게 해주는
 헬퍼다. 이 조회는
-해당 Discovery 의 현재 서비스 뷰 범위에서만 유효하다.
+해당 Discovery의 현재 서비스 뷰 범위에서만 유효하다.
 
 SPOT owner topology row를 Registry에 publish하는 동작은
 `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`로 제어한다. 기본값은 `0`이다.
@@ -329,17 +329,17 @@ SpotNode를 Discovery에 붙였더라도 이 옵션이 꺼져 있으면 Discover
 `spot_rid -> owner node` summary를 Registry로 올리지 않는다. 옵션을 `1`로
 켠 publish-side Discovery만 owner row를 uplink한다.
 
-이 API 는 **송신/요청 대상 조회 전용**이다. 응답(reply) 경로는
-여전히 들어온 request 와 함께 전달된 구체적인 source 주소를 그대로 써야
-한다. spot 은 노드 간 이동이 가능하고, 캐시된 소유 노드가 실제 request 를
+이 API는 **송신/요청 대상 조회 전용**이다. 응답(reply) 경로는
+여전히 들어온 request와 함께 전달된 구체적인 source 주소를 그대로 써야
+한다. spot은 노드 간 이동이 가능하고, 캐시된 소유 노드가 실제 request를
 보낸 그 노드라는 보장이 없기 때문이다.
 
 ### 10.1 계약 요약
 
-`from_errno()` 는 `EINVAL`/`EFAULT`/`ENOTSUP`/`EOPNOTSUPP`/`ENOENT` 를
-명명된 `zlink_config_result_t` 로 매핑한다. `EAGAIN` 같은 다른 errno 는
-`default` 분기로 `ZLINK_CONFIG_INTERNAL_ERROR` 가 되고, 구체 errno 는
-`zlink_errno()` 로 조회한다.
+`from_errno()`는 `EINVAL`/`EFAULT`/`ENOTSUP`/`EOPNOTSUPP`/`ENOENT`를
+명명된 `zlink_config_result_t`로 매핑한다. `EAGAIN` 같은 다른 errno는
+`default` 분기로 `ZLINK_CONFIG_INTERNAL_ERROR`가 되고, 구체 errno는
+`zlink_errno()`로 조회한다.
 
 | 항목 | 값 |
 |---|---|
@@ -418,27 +418,27 @@ sequenceDiagram
 
 ### 10.4 캐시 신선도 규칙
 
-두 가지 조건이 모두 맞으면 캐시 엔트리를 신선한 것으로 본다.
+두 조건이 모두 맞으면 캐시 엔트리를 신선한 것으로 본다.
 
-1. **Membership-seq 일치** — `validated_service_seq == _service_state.service_update_seq()`. 이 시퀀스 번호는 Discovery 의 provider 뷰가 바뀔 때마다(새 peer 추가, peer 이탈, role 변경) 증가한다.
+1. **Membership-seq 일치** — `validated_service_seq == _service_state.service_update_seq()`. 이 시퀀스 번호는 Discovery의 provider 뷰가 바뀔 때마다(새 peer 추가, peer 이탈, role 변경) 증가한다.
 2. **검증 TTL** — `validated_at_ms > 0 && now - validated_at_ms <= 250 ms`.
 
-둘 중 하나라도 실패하면 stale(오래된 캐시 값)로 간주하고 Registry 왕복을
-강제한다. TTL 이 250 ms 로 짧은 이유는 stale 조회가 옛 소유 노드로 잘못
-라우팅될 수 있기 때문이다. TTL 은 topology row 의 원래 `last_reported_ms` 가
-아니라 이 Discovery 인스턴스가 현재 provider 뷰와 함께 row 를 검증한 시각을
+둘 중 하나라도 실패하면 stale(오래된 캐시 값)로 간주해 Registry 왕복을
+강제한다. TTL이 250 ms로 짧은 이유는 stale 조회가 옛 소유 노드로 잘못
+라우팅될 수 있기 때문이다. TTL은 topology row의 원래 `last_reported_ms`가
+아니라 이 Discovery 인스턴스가 현재 provider 뷰와 함께 row를 검증한 시각을
 기준으로 한다. 짧은 시간 창으로 그 위험을 제한하면서, 짧은 시간 안에 집중되는
-bursty lookup 은 캐시로 흡수한다.
+bursty lookup은 캐시로 흡수한다.
 
 ### 10.5 endpoint → owner rid 역변환
 
-topology summary 에는 `endpoint`(전송 URI) 만 저장되며, owner SpotNode 의 routing id 는 직접 저장되지 않는다. 캐시 hit 후 Discovery 는 `resolve_owner_node_from_endpoint_locked(endpoint, ...)` 를 호출해 다음 순서로 역변환한다.
+topology summary에는 `endpoint`(전송 URI)만 저장되며, owner SpotNode의 routing id는 직접 저장되지 않는다. 캐시 hit 후 Discovery는 `resolve_owner_node_from_endpoint_locked(endpoint, ...)`를 호출해 다음 순서로 역변환한다.
 
-1. 먼저 이 Discovery 가 직접 등록한 local service 중 `service_role == SPOT` 이고 `endpoint` 가 일치하며 `routing_id.size > 0` 인 항목을 찾는다.
-2. local service 에서 찾지 못하면 `_service_state` 의 현재 provider 목록 스냅샷에서 같은 조건의 provider 를 고른다.
-3. 찾은 항목의 `routing_id` 를 `route_out->owner_node_rid`에 복사한다.
+1. 먼저 이 Discovery가 직접 등록한 local service 중 `service_role == SPOT`이고 `endpoint`가 일치하며 `routing_id.size > 0`인 항목을 찾는다.
+2. local service에서 찾지 못하면 `_service_state`의 현재 provider 목록 스냅샷에서 같은 조건의 provider를 고른다.
+3. 찾은 항목의 `routing_id`를 `route_out->owner_node_rid`에 복사한다.
 
-이 2단계 설계 덕분에 spot 소유 노드가 endpoint 를 변경해도, 메시의 provider 명단이 SERVICE_LIST 브로드캐스트 경로로 갱신되어 있기만 하면 resolve_spot 은 일관된 답을 반환할 수 있다.
+이 2단계 설계 덕분에 spot 소유 노드가 endpoint를 바꿔도, 메시의 provider 명단이 SERVICE_LIST 브로드캐스트 경로로 갱신되어 있기만 하면 resolve_spot은 일관된 답을 반환한다.
 
 ## 11. 메시지 프로토콜
 
@@ -464,9 +464,9 @@ topology summary 에는 `endpoint`(전송 URI) 만 저장되며, owner SpotNode 
 
 ## 12. ROUTER ↔ ROUTER pairwise initiator
 
-같은 서비스의 두 ROUTER가 SERVICE_LIST를 통해 서로를 보면, Discovery는
+같은 서비스의 두 ROUTER가 SERVICE_LIST로 서로를 보면, Discovery는
 한쪽만 outbound `connect`를 만든다. 이 결정은 `socket_discovery_attachment_t`
-의 `refresh_peers()` 안에서 새 provider 후보를 처리할 때 수행된다.
+의 `refresh_peers()` 안에서 새 provider 후보를 처리할 때 이뤄진다.
 
 ```mermaid
 sequenceDiagram
@@ -487,36 +487,36 @@ sequenceDiagram
 
 핵심 사항:
 
-- 비교는 새 provider 후보 처리 단계에서 일어난다. 따라서 같은 pair 에 대해
+- 비교는 새 provider 후보 처리 단계에서 일어난다. 그래서 같은 pair에 대해
   매번 같은 결론을 낸다. SERVICE_LIST 브로드캐스트로 provider 집합이 다시
   들어와도 initiator 방향이 흔들리지 않는다.
-- Discovery 는 자신이 만든 outbound 연결과 상대편이 만든 inbound 연결을 별도
-  항목으로 보지 않는다. 한 번의 connect 로 양방향 메시지 경로가 성립한다.
+- Discovery는 자신이 만든 outbound 연결과 상대편이 만든 inbound 연결을 별도
+  항목으로 보지 않는다. 한 번의 connect로 양방향 메시지 경로가 성립한다.
 - 이 규칙은 ROUTER↔ROUTER 자동 연결에만 적용한다. PUB/SUB 같은 단방향
-  pair 는 기존 역할 매칭 그대로 한쪽이 dial 하고 다른 쪽이 받는다.
-- 같은 `routing_id` 를 가진 서로 다른 피어가 동시에 보이는 충돌은 이
+  pair는 기존 역할 매칭 그대로 한쪽이 dial하고 다른 쪽이 받는다.
+- 같은 `routing_id`를 가진 서로 다른 피어가 동시에 보이는 충돌은 이
   규칙이 해결하지 않는다. 충돌은 ROUTER handover 정책으로 처리한다.
-- 사용자 raw API 로 직접 호출한 `zlink_connect()` 는 이 경로를 거치지
+- 사용자 raw API로 직접 호출한 `zlink_connect()`는 이 경로를 거치지
   않으므로 라이브러리가 중재하지 않는다.
 
 ## 13. Actor route 조회와 session relay 경계
 
-`zlink_discovery_resolve_actor()` 는 actor id 를 현재 route 로 해석하며
-`ZLINK_ROUTE_KIND_ACTOR` row 를 사용한다. route value 는 owner SpotNode 가 Actor 의
-현재 위치에서 게시한 `zlink_actor_route_t` 다. Actor ref(node rid + actor id +
-generation)와 current Spot rid, current Spot kind 를 담는다.
+`zlink_discovery_resolve_actor()`는 actor id를 현재 route로 해석하며
+`ZLINK_ROUTE_KIND_ACTOR` row를 쓴다. route value는 owner SpotNode가 Actor의
+현재 위치에서 게시한 `zlink_actor_route_t`다. Actor ref(node rid + actor id +
+generation)와 current Spot rid, current Spot kind를 담는다.
 
-이 row 는 Actor table 현재 위치의 **게시된 파생물**이다. owner SpotNode 가 위치 변경
-(Actor 생성, join accept, leave)을 commit 할 때, 그리고 node 에 `actor_route_sync_enabled()`
-가 켜져 있을 때만 갱신한다. 게시는 SpotNode → registry 한 방향이며, Discovery 가 Actor
-table 로 되쓰지 않는다.
+이 row는 Actor table 현재 위치의 **게시된 파생물**이다. owner SpotNode가 위치 변경
+(Actor 생성, join accept, leave)을 commit할 때, 그리고 node에 `actor_route_sync_enabled()`
+가 켜져 있을 때만 갱신한다. 게시는 SpotNode → registry 한 방향이며, Discovery가 Actor
+table로 되쓰지 않는다.
 
 기억할 경계는 다음과 같다.
 
-- Actor route row 는 **service-to-Actor routing 과 진단** 용도다. 예를 들어 외부 ROUTER 나
-  backend Spot 이 actor id 로 Actor 에 닿아야 할 때 current Spot route 를 해석해 기존 routed
-  transport 로 보낸다.
-- **STREAM session relay hot path 는 Discovery 를 조회하지 않는다.** session binding 은 이미
-  bound Actor ref 를 들고 있고, relay 는 그것을 local Actor table 과 ActorGateway state 로
+- Actor route row는 **service-to-Actor routing과 진단** 용도다. 예를 들어 외부 ROUTER나
+  backend Spot이 actor id로 Actor에 닿아야 할 때 current Spot route를 해석해 기존 routed
+  transport로 보낸다.
+- **STREAM session relay hot path는 Discovery를 조회하지 않는다.** session binding은 이미
+  bound Actor ref를 들고 있고, relay는 그것을 local Actor table과 ActorGateway state로
   해석한다([spot-internals.ko.md](./spot-internals.ko.md) 12절 참고). route 조회를 거치지
-  않는다. Discovery sync 가 최신 join 보다 늦더라도 진행 중인 session relay 에는 영향이 없다.
+  않는다. Discovery sync가 최신 join보다 늦더라도 진행 중인 session relay에는 영향이 없다.

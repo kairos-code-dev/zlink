@@ -34,7 +34,7 @@ void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);  /* triggers thread launc
 내부적으로 `ctx_runtime_resources.cpp:start_io_threads_locked()`가
 `io_thread_count`개의 `io_thread_t` 인스턴스를 생성한다. 각 스레드는
 고유 slot ID를 받고, mailbox가 context의 slot registry에 등록되어
-명령 라우팅에 사용된다.
+명령 라우팅에 쓰인다.
 
 스레드 이름은 `IO/0`, `IO/1`, ... `IO/N-1` 패턴을 따른다.
 
@@ -58,23 +58,23 @@ void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);  /* triggers thread launc
 └─────────────────────────────────────────────┘
 ```
 
-- **2단계**: non-blocking `poll()`로 준비된 이벤트를 한 번에 배치 처리하여
+- **2단계**: non-blocking `poll()`로 준비된 이벤트를 한 번에 배치 처리해
   throughput을 높인다.
-- **3단계**: 대기 중인 이벤트가 없으면 최대 100ms 블로킹하여 busy-wait
+- **3단계**: 대기 중인 이벤트가 없으면 최대 100ms 블로킹해 busy-wait
   CPU 소비를 방지한다.
 
 ## 4. 소켓 I/O 처리
 
-소켓(TCP, IPC)은 `start_wait_read()` / `start_wait_write()`를 통해
+소켓(TCP, IPC)은 `start_wait_read()` / `start_wait_write()`로
 poller에 등록되며, 내부적으로 Boost ASIO의 `async_wait`를 호출한다.
 소켓이 읽기/쓰기 가능해지면:
 
 - **Read ready** → engine의 `in_event()` 콜백이 호출되어 네트워크에서
-  데이터를 읽고, 프로토콜 프레임을 디코딩하고, receive pipe로 메시지를 전달한다.
+  데이터를 읽고 프로토콜 프레임을 디코딩한 뒤 receive pipe로 메시지를 전달한다.
 - **Write ready** → engine의 `out_event()` 콜백이 호출되어 send pipe에서
-  메시지를 꺼내고, 인코딩하여 네트워크에 전송한다.
+  메시지를 꺼내 인코딩한 뒤 네트워크에 전송한다.
 
-콜백은 자동으로 재등록되므로, 소켓이 폐기될 때까지 모니터링이 계속된다.
+콜백은 자동으로 재등록되므로 소켓이 폐기될 때까지 모니터링이 이어진다.
 
 ## 5. 명령(Command) 처리
 
@@ -88,7 +88,7 @@ while (_mailbox.recv(&cmd, 0) == 0)
     cmd.destination->process_command(cmd);
 ```
 
-명령은 application 스레드에서 `ctx_t::send_command()` 를 통해 도착하며,
+명령은 application 스레드에서 `ctx_t::send_command()` 로 도착하며,
 다음과 같은 종류가 있다:
 
 | Command | 용도 |
@@ -110,7 +110,7 @@ mailbox handle 자체도 poller에 등록되어 있어, 명령이 도착하면 �
 1. **어피니티 마스크** — 설정된 경우 후보 집합을 제한
 2. **최소 부하 선택** — 후보 중 등록된 핸들 수가 가장 적은 스레드 선택
 
-이를 통해 네트워크 연결이 I/O 스레드에 분산된다. 할당 단위는
+이렇게 네트워크 연결이 I/O 스레드에 분산된다. 할당 단위는
 소켓이 아닌 **연결(connection)** 이다 — 하나의 소켓이 여러 연결을 가지면
 여러 I/O 스레드에 걸칠 수 있다.
 
@@ -123,7 +123,7 @@ mailbox handle 자체도 poller에 등록되어 있어, 명령이 도착하면 �
 | 고성능 서버 (100+ 연결) | 가용 CPU 코어 수에 맞춤 |
 
 I/O 스레드를 CPU 코어 수 이상으로 설정해도 이점이 없고 context-switch
-오버헤드만 증가한다. 4 이상으로 올리기 전에
+오버헤드만 늘어난다. 4 이상으로 올리기 전에
 [perf 벤치마크](../../core/perf/)로 프로파일링하라.
 
 ## 주요 소스 파일

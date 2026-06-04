@@ -7,10 +7,10 @@
 zlink 서비스 계층은 Discovery와 SPOT 두 가지 고수준 서비스를 제공한다.
 이 문서는 내부 구현 상세를 다룬다.
 
-SPOT 에서 transport 보안 소유권은 의도적으로 좁게 유지한다.
-`SpotNode` 가 mesh/control 소켓의 TLS/WSS 연결 설정을 책임지고, unified `Spot` 은
-빌린 데이터 평면 facade(data-plane facade)로만 남는다. facade 는 node
-수명주기를 소유하지 않으며, 그 자체가 TLS 설정 진입점이 아니다.
+SPOT에서 transport 보안 소유권은 의도적으로 좁게 유지한다.
+`SpotNode`가 mesh/control 소켓의 TLS/WSS 연결 설정을 책임지고, unified `Spot`은
+빌린 데이터 평면 facade(data-plane facade)로만 남는다. 이 facade는 node
+수명주기를 소유하지 않으며, 그 자체가 TLS 설정 진입점도 아니다.
 
 ## 2. Registry 내부 구현
 
@@ -89,8 +89,8 @@ enum service_role_t {
 };
 ```
 
-SPOT 은 고정 SPOT 역할을 가진다. 소켓 패밀리 서비스는 소켓 타입에 맞는
-명시적 역할이 필요하다. 피어 발견 시 적용되는 역할 매칭 규칙은 다음과 같다:
+SPOT은 고정 SPOT 역할을 가진다. 소켓 패밀리 서비스는 소켓 타입에 맞는
+명시적 역할이 필요하다. 피어를 발견할 때 적용하는 역할 매칭 규칙은 다음과 같다:
 - PUB ↔ SUB
 - ROUTER ↔ ROUTER, ROUTER ↔ DEALER, DEALER ↔ DEALER
 - SPOT ↔ SPOT
@@ -98,7 +98,7 @@ SPOT 은 고정 SPOT 역할을 가진다. 소켓 패밀리 서비스는 소켓 �
 ### 3.3 Discovery 소유 서비스 실행
 
 Discovery는 연결된 서비스의 lifecycle owner 역할을 한다. 각 자동 연결 타입은
-`discovery_owned_service` 편의 API를 통해 엔드포인트를 등록한다:
+`discovery_owned_service` 편의 API로 엔드포인트를 등록한다:
 
 ```cpp
 namespace discovery_owned_service {
@@ -116,21 +116,21 @@ namespace discovery_owned_service {
 }
 ```
 
-Discovery 는 내부적으로 `(auto_connect_type, service_role, service_name,
+Discovery는 내부적으로 `(auto_connect_type, service_role, service_name,
 endpoint)` 키의 `_registered_services` 맵을 유지하고,
-`refresh_registered_service_heartbeats()` 로 등록된 모든 서비스의
-heartbeat 를 주기적으로 갱신한다.
+`refresh_registered_service_heartbeats()`로 등록된 모든 서비스의
+heartbeat를 주기적으로 갱신한다.
 
 ### 3.4 소켓 Discovery 연결
 
-`socket_discovery_attachment_t` 는 raw 소켓의 수명주기를 Discovery 와
+`socket_discovery_attachment_t`는 raw 소켓의 수명주기를 Discovery와
 통합한다. 소켓이 연결되면:
 
 1. 소켓 타입 지원 여부 검증 (ROUTER/DEALER/PUB/SUB)
 2. 소켓 타입에서 서비스 역할 파생
-3. `discovery_owned_service` 를 통해 소켓의 bind 엔드포인트 등록
+3. `discovery_owned_service`로 소켓의 bind 엔드포인트 등록
 4. 서비스 목록 업데이트를 관찰하고 피어 연결 갱신
-5. 토폴로지 상태 변경을 Discovery 에 보고
+5. 토폴로지 상태 변경을 Discovery에 보고
 6. 수동 connect/disconnect/unbind/close 차단
 
 ### 3.5 구독 동작
@@ -231,10 +231,10 @@ Frame 4~N: Service entries (repeated service_count times)
   로컬 spot_sub 분배만 (재발행 없음, 루프 방지)
 
 ### 5.4.1 SpotNode HWM 경계
-- unified `Spot` handle HWM 과 SpotNode admission HWM 은 서로 다른 계층이다.
-- `Spot` handle 은 공통 `SNDHWM` 또는 `RCVHWM` 옵션을 받지 않는다.
-- `SpotNode` HWM 은 relay나 delivery queue 예산이 아니라 admission(입력 허가) 예산이다.
-  HWM(High Water Mark)은 큐가 이 값을 초과하면 새 메시지 수락을 제한하는 상한이다.
+- unified `Spot` handle HWM과 SpotNode admission HWM은 서로 다른 계층이다.
+- `Spot` handle은 공통 `SNDHWM` 또는 `RCVHWM` 옵션을 받지 않는다.
+- `SpotNode` HWM은 relay나 delivery queue 예산이 아니라 admission(입력 허가) 예산이다.
+  HWM(High Water Mark)은 큐가 이 값을 넘으면 새 메시지 수락을 제한하는 상한이다.
   - pubsub admission은 local publish 입력을 제어한다.
   - router admission은 local routed 입력을 제어한다.
 - SpotNode admission 기본 profile은 balanced다. 두 admission 채널은 양수 숫자
@@ -243,7 +243,7 @@ Frame 4~N: Service entries (repeated service_count times)
   돌아간다.
 - relay와 delivery 소켓은 HWM `0`을 사용한다. 기존 queue hard-limit 동작은 제거되어
   더 이상 delivery target을 끊지 않는다.
-- `peer_ctrl` 는 control-plane 소켓이므로 SpotNode admission HWM 묶음에
+- `peer_ctrl`는 control-plane 소켓이므로 SpotNode admission HWM 묶음에
   포함하지 않는다.
 
 ### 5.5 Raw 소켓 정책
@@ -404,12 +404,12 @@ sequenceDiagram
 
 ### 6.6 SPOT routed request-reply 조합
 
-SPOT request-reply 는 topic fanout 경로와 별도 상태를 가진다. 구현은 local
-runtime 에서 다음 세 단계를 거친다.
+SPOT request-reply는 topic fanout 경로와 별도 상태를 가진다. 구현은 local
+runtime에서 다음 세 단계를 거친다.
 
 1. SPOT routed envelope 8개 part decode
 2. 남은 payload 앞의 request-reply envelope 4개 part decode
-3. request 면 local handler dispatch, reply 면 pending map completion
+3. request면 local handler dispatch, reply면 pending map completion
 
 의미를 나눠 보면 다음과 같다.
 
@@ -419,7 +419,7 @@ runtime 에서 다음 세 단계를 거친다.
 
 ### 6.7 pending 구조
 
-socket request-reply 와 SPOT request-reply 는 각자 다른 pending key 를 쓴다.
+socket request-reply와 SPOT request-reply는 각자 다른 pending key를 쓴다.
 
 ```cpp
 struct pending_key_t {
@@ -437,33 +437,33 @@ struct pending_spot_key_t {
 
 정리:
 
-- `DEALER` 는 `request_seq` 만으로 reply 를 찾는다.
-- `ROUTER` 는 `source_node_rid + request_seq` 조합으로 reply 를 찾는다.
-  SPOT 에서 시작된 routed 트래픽에서는 `source_spot_rid` 가 함께 실려서
-  통합된 router handler 가 일반 호출자와 SPOT 발원 호출자를 구분한다.
-- `spot -> spot` 은 source class 와 source 주소까지 함께 본다.
-- `router -> spot` 은 local router state 에서 `request_seq` 로 관리한다.
+- `DEALER`는 `request_seq`만으로 reply를 찾는다.
+- `ROUTER`는 `source_node_rid + request_seq` 조합으로 reply를 찾는다.
+  SPOT에서 시작된 routed 트래픽에서는 `source_spot_rid`가 함께 실려서
+  통합된 router handler가 일반 호출자와 SPOT 발원 호출자를 구분한다.
+- `spot -> spot`은 source class와 source 주소까지 함께 본다.
+- `router -> spot`은 local router state에서 `request_seq`로 관리한다.
 
-이렇게 나누는 이유는 같은 `request_seq` 가 다른 상대 주소에서 동시에 보일 수
+이렇게 나누는 이유는 같은 `request_seq`가 다른 상대 주소에서 동시에 보일 수
 있기 때문이다.
 
 ### 6.8 timeout 과 완료
 
-각 request 시작 시 pending entry 를 넣고 timeout thread 를 함께 건다.
+각 request를 시작할 때 pending entry를 넣고 timeout thread를 함께 건다.
 
-- per-call timeout 이 있으면 그 값을 사용
+- per-call timeout이 있으면 그 값을 사용
 - 없으면 socket 기본 timeout 사용
 - 둘 다 없으면 `5000ms`
 
-timeout 이 먼저 오면 pending entry 를 지우고 `ETIMEDOUT` 로 callback 한다.
-reply 가 먼저 오면 pending entry 를 지우고 timeout thread 는 나중에 깨어나도
+timeout이 먼저 오면 pending entry를 지우고 `ETIMEDOUT`로 callback한다.
+reply가 먼저 오면 pending entry를 지우고, timeout thread는 나중에 깨어나도
 아무 일도 하지 않는다.
 
 추가 reply 처리 규칙:
 
-- 첫 reply 로 이미 완료된 key 는 pending map 에서 제거된다.
-- 이후 같은 key 로 reply 가 와도 조용히 drop 한다.
-- `error reply` 는 payload 첫 part 의 4바이트 errno 를 읽어 실패 completion 으로
+- 첫 reply로 이미 완료된 key는 pending map에서 제거된다.
+- 이후 같은 key로 reply가 와도 조용히 drop한다.
+- `error reply`는 payload 첫 part의 4바이트 errno를 읽어 실패 completion으로
   바꾼다.
 
 ## 7. Request-Reply Dispatch 아키텍처
@@ -709,16 +709,16 @@ Queue 생성 (`ensure()`):
 4. linger = 0 설정 (clean shutdown)
 
 ROUTER recv queue frame 인코딩 (routed 표면 통합 — 이 큐는 일반 ROUTER
-트래픽과 SPOT 에서 시작된 routed 트래픽을 같은 framing 으로 전달한다):
+트래픽과 SPOT에서 시작된 routed 트래픽을 같은 framing으로 전달한다):
 - Frame 1: `source_node_rid` 바이트
 - Frame 2: `source_spot_rid` 바이트 (일반 ROUTER 트래픽이면 길이 0)
-- Frame 3: `request_seq` (8바이트 Big Endian; fire-and-forget 이면 `0`)
+- Frame 3: `request_seq` (8바이트 Big Endian; fire-and-forget이면 `0`)
 - Frame 4+: Payload parts
 
 ## 10. 가중치 전파
 
-raw ROUTER 와 DEALER 소켓은 typed option API 로 자기 피어 가중치를 변경할 수
-있다. SpotNode 와 Spot 에는 별도 로컬 weight 설정 옵션이 없다. 내부 구현은 raw
+raw ROUTER와 DEALER 소켓은 typed option API로 자기 피어 가중치를 바꿀 수
+있다. SpotNode와 Spot에는 별도 로컬 weight 설정 옵션이 없다. 내부 구현은 raw
 소켓의 변경을 연결된 피어에게 **최선 노력(best-effort) 런타임 신호**로 알리고,
 피어는 자신의 가중치 캐시를 갱신해서 outbound 후보 선택에 반영한다.
 
@@ -728,10 +728,10 @@ raw ROUTER 와 DEALER 소켓은 typed option API 로 자기 피어 가중치를 
   outbound 경로(예: 로컬 spot 또는 router send)는 그 즉시 새 값을
   본다.
 - peer 쪽 전파는 SpotNode peer control 경로(`peer_ctrl_pub`/
-  `peer_ctrl_sub`)와 raw socket 쪽 전용 weight 신호 경로를 통해
+  `peer_ctrl_sub`)와 raw socket 쪽 전용 weight 신호 경로로
   이루어진다. 이 신호는 누락 가능성을 가정한 best-effort runtime
-  control 신호이며, 강한 동기 모델은 보장하지 않는다.
-- 재연결 시에는 가중치가 다시 동기화된다. 새 세션이 ready
+  control 신호이며, 강한 동기 모델을 보장하지는 않는다.
+- 재연결할 때는 가중치가 다시 동기화된다. 새 세션이 ready
   되면 현재 가중치를 한 번 더 advertise해서 stale cache로 인한
   잘못된 후보 선택을 줄인다.
 - peer 쪽 가중치 cache가 `0`을 보면 outbound 후보에서 그 peer를
@@ -766,8 +766,8 @@ auto-connect path 내부 규칙이다.
 
 provider snapshot과의 상호작용:
 
-- Discovery는 SERVICE_LIST 갱신마다 새 provider 집합을 본다. 같은 pair에
-  대해 매번 같은 비교 결과가 나오므로, snapshot이 갱신되어도 initiator
+- Discovery는 SERVICE_LIST를 갱신할 때마다 새 provider 집합을 본다. 같은
+  pair에 대해 매번 같은 비교 결과가 나오므로, snapshot이 갱신되어도 initiator
   방향이 흔들리지 않는다.
 - `routing_id`가 재시작 후 바뀌는 환경에서는 다음 실행에서 initiator
   방향이 바뀔 수 있다. 이는 오류가 아니다. 같은 시점 안에서 pair마다
@@ -780,4 +780,4 @@ provider snapshot과의 상호작용:
 - 서로 다른 peer가 우연히 같은 `routing_id`를 쓰는 충돌 자체는 이 규칙이
   해결하지 않는다. 그런 충돌은 기존 ROUTER handover 정책으로 처리한다.
 - pairwise initiator는 duplicate dial을 사전에 줄이고, handover는 그래도
-  생긴 duplicate를 사후에 정리하는 두 개의 분리된 계층이다.
+  생긴 duplicate를 사후에 정리하는, 서로 분리된 두 계층이다.

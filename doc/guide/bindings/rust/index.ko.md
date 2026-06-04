@@ -2,7 +2,7 @@
 
 # Rust 바인딩 가이드 (`zlink`)
 
-Rust에서 zlink를 사용하는 방법을 실제 샘플 코드 중심으로 설명합니다.
+Rust에서 zlink를 쓰는 방법을 실제 샘플 코드 중심으로 설명합니다.
 메시징 개념은 [코어 가이드](../../01-overview.ko.md)를 참고하세요.
 
 ---
@@ -70,8 +70,8 @@ let ctx = Context::new().expect("context creation failed");
 
 ### 메시지
 
-`Message`는 페이로드 프레임 하나를 소유합니다. `send`로 전달하면 소유권이
-이전(move)되어 컴파일러가 이후 사용을 막아줍니다.
+`Message`는 페이로드 프레임 하나를 소유합니다. `send`로 넘기면 소유권이
+옮겨가(move) 이후 사용을 컴파일러가 막아줍니다.
 
 ```rust
 // 바이트 슬라이스에서 생성
@@ -139,7 +139,7 @@ match socket.send().message(msg).submit() {
 
 ## 에러 처리
 
-Rust 바인딩은 작업별 에러 타입을 `Result`로 반환합니다.
+Rust 바인딩은 작업별 에러 타입을 `Result`로 돌려줍니다.
 
 ```rust
 match socket.send().message(msg).submit() {

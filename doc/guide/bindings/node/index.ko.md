@@ -2,7 +2,7 @@
 
 # Node.js 바인딩 가이드 (`@zlink-systems/zlink`)
 
-Node.js에서 zlink를 사용하는 방법을 실제 샘플 코드 중심으로 설명합니다.
+Node.js에서 zlink를 쓰는 방법을 실제 샘플 코드 중심으로 설명합니다.
 메시징 개념은 [코어 가이드](../../01-overview.ko.md)를 참고하세요.
 
 ---
@@ -76,8 +76,8 @@ ctx.close();
 
 ### 메시지
 
-Node 바인딩은 `Buffer`를 메시지로 직접 사용합니다. `message()` 호출 시 복사본을
-만들므로 원본 Buffer를 자유롭게 재사용할 수 있습니다.
+Node 바인딩은 `Buffer`를 메시지로 직접 씁니다. `message()`를 호출하면 복사본을
+만들기 때문에 원본 Buffer를 마음껏 재사용할 수 있습니다.
 
 ```javascript
 socket.send().message(Buffer.from('hello')).submit();
@@ -153,8 +153,8 @@ try {
 }
 ```
 
-에러 클래스: `SubmitError`, `RequestError`, `RecvError`, `BindError`,
-`ConnectError`, `ConfigError`, `CloseError`, `HandlerError`.
+에러 클래스는 `SubmitError`, `RequestError`, `RecvError`, `BindError`,
+`ConnectError`, `ConfigError`, `CloseError`, `HandlerError`입니다.
 각각 `.result` 속성으로 결과 코드를 노출합니다.
 
 ---
@@ -183,7 +183,7 @@ try {
 
 ## 네이티브 라이브러리 / 배포
 
-네이티브 코어는 플랫폼별 prebuild로 패키지에 포함됩니다. 별도 빌드 없이
+네이티브 코어는 플랫폼별 prebuild로 패키지에 들어갑니다. 별도 빌드 없이
 `npm install`만으로 동작합니다.
 
 ```javascript
@@ -234,7 +234,7 @@ node dist-tools/samples/pair_recv_sample.js
 ## JavaScript
 
 JavaScript는 **별도 네이티브 바인딩 없이 Node 바인딩(`@zlink-systems/zlink`)을
-그대로** 사용합니다. 위의 설치·핵심 타입·소유권·에러·대응표가 동일하게 적용되고,
+그대로** 씁니다. 위의 설치·핵심 타입·소유권·에러·대응표가 똑같이 적용되고
 TypeScript 타입 표기만 빠집니다.
 
 - **의존성**: `@zlink-systems/zlink`(위와 동일). TypeScript 빌드 단계가 필요 없고

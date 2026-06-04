@@ -158,7 +158,7 @@ major, minor, patch = zlink.version()   # (major, minor, patch) 튜플
 print(f"zlink {major}.{minor}.{patch}")
 ```
 
-네이티브 코어는 플랫폼별 wheel에 포함되어 별도 설치가 불필요합니다.
+네이티브 코어는 플랫폼별 wheel에 들어 있어 따로 설치하지 않아도 됩니다.
 
 **스레딩:** `Context`는 스레드 간 공유 가능하지만 소켓은 **하나의 스레드에서만**
 사용합니다. 블로킹 수신은 `asyncio.to_thread(socket.recv_into, received)`로

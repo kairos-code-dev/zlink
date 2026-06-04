@@ -92,7 +92,7 @@ try (Context ctx = Zlink.createContext();
 ### 1. 컨텍스트 (Context)
 
 프로세스의 런타임 진입점입니다. `AutoCloseable`을 구현하므로 try-with-resources로
-관리합니다. 컨텍스트를 닫으면 하위 소켓·서비스에 대한 블로킹 작업이 중단됩니다.
+관리합니다. 컨텍스트를 닫으면 하위 소켓·서비스의 블로킹 작업이 중단됩니다.
 
 ```java
 try (Context ctx = Zlink.createContext()) {
@@ -112,7 +112,7 @@ ctx.options().ioThreads(4);
 
 페이로드 프레임 하나를 소유합니다. `AutoCloseable`을 구현합니다.
 전송하면 소유권이 이전되어 별도로 닫을 필요가 없습니다.
-전송에 실패하면 소유권이 유지되어 재시도하거나 명시적으로 닫아야 합니다.
+전송에 실패하면 소유권이 유지되므로 재시도하거나 명시적으로 닫아야 합니다.
 
 ```java
 // 문자열에서 복사본 생성
@@ -223,7 +223,7 @@ try (Message msg = Message.from("data")) {
 | `ZlinkCloseException` | 닫기 실패 | `getResult(): CloseResult` |
 | `ZlinkHandlerException` | 핸들러 등록 실패 | `getResult(): HandlerResult` |
 
-모든 예외는 `ZlinkException`을 상속하며, `getCode()`와 `getInternalErrno()`로
+모든 예외는 `ZlinkException`을 상속하며 `getCode()`와 `getInternalErrno()`로
 네이티브 코드를 확인할 수 있습니다.
 
 ---
@@ -276,7 +276,7 @@ if (Zlink.has("draft")) {
 ```
 
 **스레딩:** `Context`는 스레드 간 공유 가능하나, 소켓은 **하나의 스레드에서만** 사용해야 합니다.
-디스패치 핸들러는 zlink 내부 워커 스레드에서 호출되므로 핸들러 내에서 오래 블록하지 않을 것.
+디스패치 핸들러는 zlink 내부 워커 스레드에서 호출되므로 핸들러 안에서 오래 블록하지 않아야 합니다.
 자세한 내용은 [스레드 안전성](../../11-thread-safety.ko.md)을 참고하세요.
 
 ---
@@ -320,8 +320,8 @@ Kotlin은 **별도 네이티브 바인딩 없이 Java 바인딩(`systems.zlink.*
 Kotlin 관용만 다릅니다.
 
 - **의존성**: `systems.zlink:zlink-java`(위와 동일). Kotlin 플러그인은 **2.1.0**
-  이상을 쓴다.
-- **소유권**: `AutoCloseable`이므로 `try`/`finally` 대신 `use { }`로 정리한다.
+  이상을 씁니다.
+- **소유권**: `AutoCloseable`이므로 `try`/`finally` 대신 `use { }`로 정리합니다.
 
 ```kotlin
 Zlink.createContext().use { ctx ->
@@ -332,9 +332,9 @@ Zlink.createContext().use { ctx ->
 }
 ```
 
-- **콜백**: 핸들러는 Kotlin 람다로 그대로 넘긴다 — `timer.onFire { _, n -> ... }`.
+- **콜백**: 핸들러는 Kotlin 람다로 그대로 넘깁니다 — `timer.onFire { _, n -> ... }`.
 - **샘플**: `bindings/kotlin/samples/`(`.kt`)에 Java 샘플과 같은 canonical 세트가
-  있다. Java gradle의 `:kotlin-samples` 서브프로젝트로 빌드·실행한다.
+  있습니다. Java gradle의 `:kotlin-samples` 서브프로젝트로 빌드·실행합니다.
 
 ```bash
 cd bindings/java
@@ -342,7 +342,7 @@ cd bindings/java
 ```
 
 코어 가이드의 언어 탭에는 **Kotlin** 칸이 따로 있어 메시징·서비스 사용법을
-Kotlin 코드로 바로 볼 수 있다.
+Kotlin 코드로 바로 볼 수 있습니다.
 
 ---
 

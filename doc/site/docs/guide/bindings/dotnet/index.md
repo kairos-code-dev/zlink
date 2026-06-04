@@ -8,7 +8,7 @@
 
 ## 설치
 
-단일 NuGet 패키지 **`Systems.Zlink`** 로 제공되며, 네이티브 코어가 함께 번들됩니다.
+단일 NuGet 패키지 **`Systems.Zlink`** 로 제공되며 네이티브 코어가 함께 번들됩니다.
 
 ```bash
 dotnet add package Systems.Zlink
@@ -80,7 +80,7 @@ ctx.Options.MaxSockets = 1024;  // 최대 소켓 수
 ```
 
 `IContext`는 `IDisposable`/`IAsyncDisposable`입니다. 종료 시 `Shutdown()`으로
-진행 중인 작업을 멈출 수 있고, `using`으로 자동 해제됩니다.
+진행 중인 작업을 멈출 수 있고 `using`으로 자동 해제됩니다.
 
 ### 2. 메시지 (Message)
 
@@ -144,7 +144,7 @@ string    h = a.ToHex();                             // 원시 바이트 보존�
 - 소켓은 그것을 만든 컨텍스트보다 **먼저** dispose 하세요.
 - `Request().SubmitAsync()`·`Join(...).SubmitAsync()`로 받은 `Message`는
   **호출자 소유**입니다 — 사용 후 dispose 하세요.
-- span 보관이 필요하면 `ToArray()`/`CopyTo(...)`로 복사하세요.
+- span을 보관하려면 `ToArray()`/`CopyTo(...)`로 복사하세요.
 
 스레드 안전성 규칙은 [스레드 안전성](../../11-thread-safety.md)을 참고하세요.
 `IContext`는 여러 스레드에서 공유해도 안전합니다. **소켓은 안전하지 않습니다** —
@@ -154,7 +154,7 @@ string    h = a.ToHex();                             // 원시 바이트 보존�
 
 ## 에러 처리
 
-하드 실패는 작업별 타입 예외로 표면화됩니다. 모두 `ZlinkException`을 상속하며
+하드 실패는 작업별 타입 예외로 나타납니다. 모두 `ZlinkException`을 상속하며
 `Code`(정수 코드)와 작업별 `Result`(열거형)를 노출합니다.
 
 ```csharp
@@ -195,7 +195,7 @@ if (!socket.Send().Message(m).Flags(SendFlags.DontWait).Submit()) { /* 백프레
 ## C API 대응표
 
 C 코어(`zlink.h`)에서 넘어오거나 다른 언어 바인딩과 비교할 때 쓰는 압축 매핑입니다.
-.NET은 raw 함수 대신 객체와 플루언트 빌더로 감싸므로 1:1은 아니지만, 개념 단위로는
+.NET은 raw 함수 대신 객체와 플루언트 빌더로 감싸므로 1:1은 아니지만 개념 단위로는
 대응합니다. 전체 C 함수 목록은 [코어 C API 가이드](../../02-core-api.md)를
 참고하세요.
 

@@ -2,13 +2,13 @@
 
 # C++ 바인딩 가이드 (`zlink::`)
 
-헤더 전용(header-only는 아님, 컴파일 링크) RAII 래퍼로 C 코어를 감싸며, C++에서 zlink를 사용하는 방법을 실제 샘플 코드 중심으로 설명합니다.
+C 코어를 RAII 래퍼로 감싼 바인딩입니다(header-only는 아니며 컴파일 후 링크). C++에서 zlink를 쓰는 방법을 실제 샘플 코드 중심으로 설명합니다.
 
 ---
 
 ## 설치
 
-C++ 바인딩은 CMake로 제공됩니다.
+C++ 바인딩은 CMake로 제공합니다.
 
 ```cmake
 add_subdirectory(bindings/cpp)
@@ -64,7 +64,7 @@ inbound.close ();
 
 ### 컨텍스트
 
-`context_t`는 RAII로 관리됩니다. 소멸자에서 자동으로 종료됩니다.
+`context_t`는 RAII로 관리합니다. 소멸자에서 자동으로 종료됩니다.
 
 ```cpp
 {
@@ -77,7 +77,7 @@ inbound.close ();
 ### 메시지
 
 `message_t`는 페이로드 프레임 하나를 소유합니다. `send`로 전달하면 소유권이
-이전(move)되며, 이후 사용 시 무효 상태입니다.
+이전(move)되고 이후 사용 시 무효 상태가 됩니다.
 
 ```cpp
 // 문자열에서 생성
@@ -245,7 +245,7 @@ std::thread worker ([&ctx] {
 
 ## 샘플
 
-`bindings/cpp/samples/` 디렉터리의 검증된 샘플입니다.
+`bindings/cpp/samples/` 디렉터리에 검증된 샘플이 있습니다.
 
 | 파일 | 설명 |
 |------|------|

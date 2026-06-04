@@ -3,7 +3,7 @@
 mod common;
 
 use std::time::Duration;
-use zlink::{RecvFlags, SendFlags, SocketMonitor, SubmitResult, TopicMessage};
+use zlink::{RecvFlags, SocketMonitor, SubmitResult, TopicMessage};
 
 fn main() {
     let config = common::PerfConfig::from_env_and_args();
@@ -58,7 +58,6 @@ fn main() {
                 match pub_sock
                     .publish("P")
                     .message(msg)
-                    .flags(SendFlags::DONT_WAIT)
                     .submit()
                 {
                     Ok(sent) => sent,

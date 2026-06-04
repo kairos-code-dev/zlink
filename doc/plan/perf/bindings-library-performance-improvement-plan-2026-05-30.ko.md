@@ -32,7 +32,7 @@
 | 4 | Node | `bindings/node/perf` | `미달 없음` | `미달 없음` | Single은 routed metric 수신을 native에서 header/latency만 읽는 경로로 줄여 마지막 잔류 `DEALER_ROUTER tcp 131072B`까지 통과권에 올렸다. Multi는 current C/Node 제한 재측정으로 잔류 `MULTI_STREAM ws 64/256/1024B`까지 통과권으로 회복했다. fastpath 변경, single routed 단일 payload native 수신, single routed tcp 대용량 sender native submit과 HWM floor 64, routed metric native 수신, `sendToSpot` DontWait result-code 경로, `MULTI_PUBSUB` 단일 payload 내부 수신 경로, SPOT large active slot 16 기본값, stream echo direct result send 경로, shared stream client completion wait 2000ms, Node stream non-TCP fanout cap 1000을 적용했다. |
 | 5 | Go | `bindings/go/perf` | `미달 3/144 (2.1%)` | `미달 10/192 (5.2%)` | Single `DEALER_ROUTER tcp 65536B`와 `ROUTER_ROUTER tcp 131072B`는 current C/Go complete 재측정에서 통과권으로 회복했다. `SPOT wss 256B`는 case별 GOMAXPROCS 8 override 뒤 complete 재측정에서 통과권에 들어왔다. `MULTI_SPOT_REQREP tcp 4096B`는 request message 누수 수정으로 통과했고, 같은 complete 검증에서 `ws 131072B`도 통과로 회복했다. 2026-06-04 current C/Go 제한 재측정에서 `MULTI_ROUTER_ROUTER tcp 256B`도 통과로 회복했다. `MULTI_DEALER_DEALER tcp 4096B`는 Go client/server active poll wait를 deadline으로 제한해 partial에서 complete로 회복했고 통과권에 들어왔다. Go routed multi client active poll wait도 deadline으로 제한해 `MULTI_DEALER_ROUTER tcp/ws 65536B`와 `MULTI_ROUTER_ROUTER tcp 1024/65536B`를 통과권에 올렸다. `MULTI_ROUTER_ROUTER tcp 64B`와 `tls 64/256/1024B`는 case별 GOMAXPROCS 8 override 뒤 complete 재측정에서 통과권에 들어왔다. |
 | 6 | Rust | `bindings/rust/perf` | `미달 11/144 (7.6%)` | `미달 10/192 (5.2%)` | Single 공통 송신 loop를 public `Message::with_size(...).data_mut()` 직접 작성으로 바꿔 `PUBSUB wss 64B`를 통과로 올렸다. 2026-06-04 current C/Rust 제한 재측정에서 `PUBSUB ws 64B`, `PUBSUB tls 64/256B`, `SPOT tcp/ws/tls 1024B`, routed `ws/tls` 대용량 8개도 통과로 회복했다. Multi는 current C/Rust complete 재측정에서 `MULTI_PUBSUB tcp 65536B`가 94.3%로 통과했다. 남은 single 미달은 `PUBSUB tcp 64B`, routed `tcp` 대용량 6개, `ws/tls 262144B` 일부다. |
-| 7 | Python | `bindings/python/perf` | `tcp/64 제한 통과` | `tcp/64 smoke partial` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. public Python API 경로의 single tcp/64 제한 재측정에서 6개 패턴이 모두 기준을 넘겼다. 2026-06-04 current Python multi tcp/64 smoke는 stream completion-wait 보강 뒤 `MULTI_STREAM` RESULT 누락은 해소했지만, `MULTI_SPOT_REQREP` intermittent 실패로 아직 partial이다. `MULTI_PUBSUB`, `MULTI_SPOT`, `MULTI_SPOT_REQREP`, `MULTI_STREAM`은 current C 기준에 못 닿았다. 아래 Python full 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, full matrix는 public Python API 경로로 다시 측정해야 한다. |
+| 7 | Python | `bindings/python/perf` | `tcp/64 제한 통과` | `tcp/64 smoke complete` | 2026-06-03에 public socket contract와 perf 의미를 복구하면서 perf script의 private native active-loop 직접 호출을 제거했다. public Python API 경로의 single tcp/64 제한 재측정에서 6개 패턴이 모두 기준을 넘겼다. 2026-06-05 current Python multi tcp/64 smoke는 status=complete(40/40)로 회복했다. 다만 `MULTI_PUBSUB`, `MULTI_SPOT`, `MULTI_SPOT_REQREP`, `MULTI_STREAM`은 current C 기준에 못 닿았다. 아래 Python full 표의 이전 통과 수치는 현재 코드 기준 판정으로 쓰지 않고, full matrix는 public Python API 경로로 다시 측정해야 한다. |
 
 ### 1.1 언어별 평균 성능
 
@@ -1056,6 +1056,16 @@ status=complete(5/5)였고, 전체 tcp/64 smoke
 `perf_python_multi_linux_20260603_102512.txt`도 status=complete(40/40)였다.
 이 검증은 full matrix 판정이 아니라 public API 경로의 timeout 회귀가 해소됐는지
 확인한 제한 smoke다.
+
+2026-06-05 current Python multi tcp/64 smoke
+`perf_python_multi_linux_20260605_024622_python_multi_tcp64_current_smoke_20260605.txt`는
+status=complete(40/40)로 끝났다. 같은 현재 C 기준
+`perf_c_multi_linux_20260604_213725_python_multi_tcp64_c_recheck_20260604.txt`와 비교하면
+`MULTI_DEALER_DEALER` 32.5%, `MULTI_DEALER_ROUTER` 41.2%,
+`MULTI_ROUTER_ROUTER` 27.2%, `MULTI_PUBSUB` 21.2%, `MULTI_SPOT` 11.4%,
+`MULTI_SPOT_REQREP` 19.7%, `MULTI_SPOT_SENDSEND` 36.3%,
+`MULTI_STREAM` 1.6%다. 따라서 이 smoke는 intermittent 실패와 RESULT 누락이
+해소됐다는 근거로만 쓰고, Python multi 성능 통과 근거로는 쓰지 않는다.
 
 Python single smoke 결과 파일은 `perf_python_single_linux_20260531_162613_round_20260530_python_single_smoke_64.txt`이고 status=complete(120/120)였다. Single full 결과 파일은 `perf_python_single_linux_20260531_163931_round_20260530_python_single_full_v1.txt`이고 status=complete(720/720)였다. C 기준 대비 통과 56개와 잔류 미달 88개가 확인됐다. 이후 `stamp_payload(...)`가 `bytes` 사본 대신 기존 `bytearray`를 그대로 반환하게 바꾸고, single receive hot path가 마지막 message part의 공개 `Message.data` memoryview에서 header를 직접 읽게 바꿨다. 제한 재측정 `perf_python_single_linux_20260531_234853_python_single_stamp_bytearray_probe_20260531.txt`와 `perf_python_single_linux_20260531_235420_python_single_recv_data_view_probe_20260531.txt`에서 PAIR/PUBSUB 64/256/1024B는 C 대비 3.2~12.4% 범위에 머물러 통과권까지 오르지 않았다. 이 후보만으로는 Python interpreter 루프, ctypes 기반 message materialize, send builder 호출 경계를 충분히 줄이지 못했다.
 

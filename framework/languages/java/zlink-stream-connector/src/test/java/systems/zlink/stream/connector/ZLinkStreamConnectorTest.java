@@ -466,16 +466,16 @@ final class ZLinkStreamConnectorTest {
         try (ZLinkStreamConnector connector =
                  ZLinkStreamConnectorFactory.create(options(ZLinkStreamDispatchMode.MANUAL))) {
             assertThrows(IllegalArgumentException.class,
-                () -> connector.on("__zlink.heartbeat", message ->
+                () -> connector.on("$zlink.heartbeat", message ->
                     java.util.concurrent.CompletableFuture.completedFuture(null)));
             assertThrows(IllegalArgumentException.class,
-                () -> connector.send(payload("__zlink.send", "hello")));
+                () -> connector.send(payload("$zlink.send", "hello")));
             assertThrows(IllegalArgumentException.class,
-                () -> connector.request(payload("__zlink.request", "hello")));
+                () -> connector.request(payload("$zlink.request", "hello")));
             assertThrows(IllegalArgumentException.class,
-                () -> connector.send(payload("Ping", "hello")).packetName("__zlink.override"));
+                () -> connector.send(payload("Ping", "hello")).packetName("$zlink.override"));
             assertThrows(IllegalArgumentException.class,
-                () -> connector.request(payload("Ping", "hello")).packetName("__zlink.override"));
+                () -> connector.request(payload("Ping", "hello")).packetName("$zlink.override"));
         }
     }
 

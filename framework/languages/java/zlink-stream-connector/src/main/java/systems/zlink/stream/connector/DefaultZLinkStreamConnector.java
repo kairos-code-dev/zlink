@@ -29,7 +29,7 @@ import javax.net.ssl.X509TrustManager;
 import systems.zlink.contracts.messaging.Message;
 
 final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
-    private static final String RESERVED_PACKET_NAME_PREFIX = "__zlink.";
+    private static final String RESERVED_PACKET_NAME_PREFIX = "$zlink.";
     private static final String HEARTBEAT_PING_NAME = "$zlink.heartbeat.ping";
     private static final String HEARTBEAT_PONG_NAME = "$zlink.heartbeat.pong";
     private static final int MAX_PACKET_NAME_BYTES = 255;

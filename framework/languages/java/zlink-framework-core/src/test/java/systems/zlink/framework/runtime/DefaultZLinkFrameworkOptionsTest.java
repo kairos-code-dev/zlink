@@ -742,17 +742,20 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void channelRejectsDuplicateHandlerGroup() {
+    void channelDeduplicatesHandlerGroupsLikeDotnet() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
+        options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
         options.addClientServerChannel("profile", channel -> {
             channel.enableServer(server -> server.bind("inproc://profile-server"));
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
-            channel.addHandlerGroup("group");
-            channel.addHandlerGroup("group");
+            channel.addHandlerGroup("scanned-request");
+            channel.addHandlerGroup("scanned-request");
         });
 
-        assertThrows(ZLinkConfigurationException.class, options::validate);
+        options.validate();
+        assertEquals(
+            List.of("scanned-request"),
+            options.registration().channels().get(0).handlerGroups());
     }
 
     @Test

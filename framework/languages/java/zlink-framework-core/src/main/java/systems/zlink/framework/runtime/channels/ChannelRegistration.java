@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.channels;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
@@ -20,7 +21,7 @@ public final class ChannelRegistration {
     private final List<String> subscriberManualEndpoints = new ArrayList<>();
     private final List<String> routeBinds = new ArrayList<>();
     private final List<String> routeManualEndpoints = new ArrayList<>();
-    private final List<String> handlerGroups = new ArrayList<>();
+    private final Set<String> handlerGroups = new LinkedHashSet<>();
     private final List<ChannelSendHandlerRegistration<?, ?>> sendHandlers = new ArrayList<>();
     private final List<ChannelRequestHandlerRegistration<?, ?, ?>> requestHandlers = new ArrayList<>();
     private final List<ChannelPublishHandlerRegistration<?, ?>> publishHandlers = new ArrayList<>();
@@ -97,7 +98,7 @@ public final class ChannelRegistration {
     }
 
     public List<String> handlerGroups() {
-        return handlerGroups;
+        return List.copyOf(handlerGroups);
     }
 
     public List<Class<?>> handlerTypes() {
@@ -238,7 +239,6 @@ public final class ChannelRegistration {
     public void validate(
         boolean discoveryEnabled,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        validateHandlerGroups();
         if (kind == ChannelKind.CLIENT_SERVER) {
             validateClientServer(discoveryEnabled, handlerCatalog);
         } else if (kind == ChannelKind.FANOUT) {
@@ -386,16 +386,6 @@ public final class ChannelRegistration {
         }
         validateMappedGroups(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL,
             Set.of(ZLinkScannedHandlerKind.SEND, ZLinkScannedHandlerKind.REQUEST));
-    }
-
-    private void validateHandlerGroups() {
-        Set<String> groups = new HashSet<>();
-        for (String group : handlerGroups) {
-            if (!groups.add(group)) {
-                throw new ZLinkConfigurationException(
-                    "duplicate channel handler group: " + name + "/" + group);
-            }
-        }
     }
 
     private static String requireEndpoint(String endpoint) {

@@ -44,6 +44,8 @@ import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
+import systems.zlink.framework.registry.ZLinkRegistryQuery;
+import systems.zlink.framework.registry.ZLinkRegistryStatus;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
@@ -445,6 +447,38 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
+    void embeddedRegistryStartsInsideSpringLifecycleAndExposesQueryBean() {
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.register(
+                EmbeddedRegistryConfig.class,
+                TestConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            ZLinkRegistryLifecycle lifecycle =
+                context.getBean(ZLinkRegistryLifecycle.class);
+            ZLinkFrameworkLifecycle frameworkLifecycle =
+                context.getBean(ZLinkFrameworkLifecycle.class);
+            ZLinkRegistryQuery query = context.getBean(ZLinkRegistryQuery.class);
+            ZLinkRegistryStatus status = query.statusAsync()
+                .toCompletableFuture()
+                .join();
+
+            assertTrue(lifecycle.isRunning());
+            assertTrue(lifecycle.getPhase() < frameworkLifecycle.getPhase());
+            assertInstanceOf(ZLinkRegistryLifecycle.class, query);
+            assertEquals("BOUND", status.state());
+            assertTrue(backendFactory.calls().contains(
+                "registry.bind.inproc://registry-pub.inproc://registry-router"));
+            assertTrue(backendFactory.calls().contains("registry.status"));
+        }
+    }
+
+    @Test
     void autoConfigurationAppliesCustomizersBeforeRuntimeStarts() {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -474,6 +508,17 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 "close.dealer",
                 "close.context"),
             backendFactory.calls());
+    }
+
+    @Configuration
+    static class EmbeddedRegistryConfig {
+        @Bean
+        ZLinkEmbeddedRegistryOptions zlinkEmbeddedRegistryOptions() {
+            ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
+            options.setPubEndpoint("inproc://registry-pub");
+            options.setRouterEndpoint("inproc://registry-router");
+            return options;
+        }
     }
 
     @Configuration

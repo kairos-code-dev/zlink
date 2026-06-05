@@ -6,7 +6,7 @@ _timer_factory = None
 _spot_timer_factory = None
 
 
-def register_timer_factories(*, timer_factory, spot_timer_factory):
+def _register_timer_factories(*, timer_factory, spot_timer_factory):
     global _timer_factory
     global _spot_timer_factory
     _timer_factory = timer_factory

@@ -8,7 +8,7 @@ _thread_factory = None
 _atomic_counter_factory = None
 
 
-def register_core_implementation(
+def _register_core_implementation(
     runtime,
     *,
     stopwatch_factory,

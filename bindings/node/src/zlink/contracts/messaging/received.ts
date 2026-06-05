@@ -1,15 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import type { BufferLike } from '../core/buffer_like';
-import { SubmitError, SubmitResult } from '../errors/errors';
+import { RecvError, RecvResult, SubmitError, SubmitResult } from '../errors/errors';
 import { SendFlags } from '../sockets/socket_constants';
 import { Message } from './message';
 import { RoutingId } from '../core/routing_id';
-import {
-  MultipartEnvelope,
-  freezeOwnedMessageParts,
-} from './envelope';
-import { OperationPayload } from './operation_payload';
 
 const RECEIVED_CREATE_TOKEN = Symbol('received.create');
 
@@ -36,6 +31,68 @@ interface ReceivedReplySubmitOperation {
   message(message: Message | BufferLike): ReceivedReplySubmitOperation;
   flags(flags: SendFlags): ReceivedReplySubmitOperation;
   submit(): void;
+}
+
+class OperationPayload<TInput, TStored = TInput> {
+  private readonly _normalize: (value: TInput) => TStored;
+  private _single!: TStored;
+  private _hasSingle = false;
+  private _parts: TStored[] | null = null;
+  private _submitted = false;
+
+  constructor(normalize: (value: TInput) => TStored) {
+    this._normalize = normalize;
+  }
+
+  append(message: TInput): void {
+    this.ensureOpen();
+    const normalized = this._normalize(message);
+    if (this._parts) {
+      this._parts.push(normalized);
+    } else if (this._hasSingle) {
+      this._parts = [this._single, normalized];
+      this._hasSingle = false;
+      this._single = undefined as TStored;
+    } else {
+      this._single = normalized;
+      this._hasSingle = true;
+    }
+  }
+
+  ensureOpen(): void {
+    if (this._submitted) {
+      throw new TypeError('operation has already been submitted');
+    }
+  }
+
+  consumeParts(): readonly TStored[] {
+    this.ensureOpen();
+    if (!this._parts && !this._hasSingle) {
+      throw new TypeError('operation requires at least one message');
+    }
+    this._submitted = true;
+    return this._parts ?? [this._single];
+  }
+}
+
+function freezeMessageParts(parts: readonly Message[]): Message[] {
+  return Object.freeze(parts.slice()) as Message[];
+}
+
+function freezeOwnedMessageParts(parts: Message[]): Message[] {
+  return Object.freeze(parts) as Message[];
+}
+
+function invalidMultipartError(partsLength: number): RecvError {
+  return new RecvError(
+    RecvResult.NotSupported,
+    0,
+    `expected exactly 1 part but received ${partsLength}`
+  );
+}
+
+function missingPartError(): RecvError {
+  return new RecvError(RecvResult.NotSupported, 0, 'message has no parts');
 }
 
 class ReceivedSendOperation implements ReceivedSendOperation, ReceivedSendSubmitOperation {
@@ -109,13 +166,15 @@ function invalidSendContextError(): SubmitError {
 }
 
 /**
- * A received message envelope: its routing metadata and message parts (from
- * {@link MultipartEnvelope}), plus an optional reply/send context.
+ * A received message envelope: its routing metadata and message parts, plus an
+ * optional reply/send context.
  *
  * Owns its parts until closed. Reuse one instance across `recv` calls to avoid
  * a per-receive allocation.
  */
-export class Received extends MultipartEnvelope {
+export class Received {
+  /** The message parts, owned by this envelope. */
+  parts: Message[];
   /** The source routing id, or null when the receive path provides none. */
   routingId: RoutingId | null;
   /** The source spot routing id, or null when not from a spot route. */
@@ -146,7 +205,7 @@ export class Received extends MultipartEnvelope {
     sendContext: SendContext | null = null
   ) {
     if (token === undefined && parts === undefined) {
-      super([]);
+      this.parts = freezeMessageParts([]);
       this.routingId = null;
       this.spotRid = null;
       this.requestSeq = null;
@@ -157,12 +216,40 @@ export class Received extends MultipartEnvelope {
     if (token !== RECEIVED_CREATE_TOKEN) {
       throw new TypeError('Received values are created by recv operations');
     }
-    super(parts ?? []);
+    this.parts = freezeMessageParts(parts ?? []);
     this.routingId = routingId;
     this.spotRid = spotRid;
     this.requestSeq = requestSeq;
     this._replyContext = replyContext;
     this._sendContext = sendContext;
+  }
+
+  /** Return true when the envelope holds exactly one part. */
+  isSinglePart(): boolean {
+    return this.parts.length === 1;
+  }
+
+  /** Return the first part without transferring ownership; throws when the envelope has no parts. */
+  firstPart(): Message {
+    if (this.parts.length === 0) {
+      throw missingPartError();
+    }
+    return this.parts[0];
+  }
+
+  /** Return the only part; throws unless the envelope holds exactly one part. */
+  singlePartOrThrow(): Message {
+    if (!this.isSinglePart()) {
+      throw invalidMultipartError(this.parts.length);
+    }
+    return this.parts[0];
+  }
+
+  /** Close every part, releasing their storage. */
+  close(): void {
+    for (const part of this.parts) {
+      part.close();
+    }
   }
 
   /** @internal */

@@ -12,7 +12,7 @@ _xpub_socket_factory = None
 _xsub_socket_factory = None
 
 
-def register_socket_factories(
+def _register_socket_factories(
     *,
     pair_socket_factory,
     dealer_socket_factory,

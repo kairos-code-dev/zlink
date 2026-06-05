@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { normalizeBufferLike } from '../core/buffer_like';
 import type { BufferLike } from '../core/buffer_like';
 
 /** Minimum user-defined metadata key. */
@@ -8,8 +7,7 @@ export const METADATA_KEY_USER_MIN = 0x0100;
 /** Maximum metadata value size in bytes. */
 export const METADATA_VALUE_MAX = 65535;
 
-/** @internal */
-export interface MessageSnapshot {
+interface MessageSnapshot {
   data: Buffer;
   refCount?: number;
   properties?: Readonly<Record<string, string>>;
@@ -26,6 +24,15 @@ function normalizeMessageProperties(
     return EMPTY_PROPERTIES;
   }
   return Object.isFrozen(properties) ? properties : Object.freeze(properties);
+}
+
+function normalizeBufferLike(value: BufferLike | string, label = 'value'): Buffer {
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  }
+  if (typeof value === 'string') return Buffer.from(value);
+  throw new TypeError(`${label} must be Buffer, Uint8Array, or string`);
 }
 
 /**
@@ -84,11 +91,6 @@ export class Message {
       snapshot.metadata
     );
     return message;
-  }
-
-  /** @internal */
-  payloadBuffer(): Buffer {
-    return this._buffer;
   }
 
   /** @internal */

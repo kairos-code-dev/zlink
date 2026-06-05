@@ -5,6 +5,7 @@ import { requireNative } from '../../native/native';
 import { closeCall, configCall, handlerCall, recvNativeError, submitNativeError } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
 import { executeNativeRequest } from '../../messaging/request_executor';
+import { messageFromSnapshot } from '../../messaging/message_snapshot';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { startRequestProgress } from '../../messaging/request_progress';
 import { adoptTopicMessage, materializeReceivedInto, materializeTopicMessage, type NativeTopicMessageRaw } from '../../messaging/message_materializer';
@@ -416,7 +417,7 @@ export class Spot extends NativeHandle {
     }
     return {
       info: actorJoinInfoFromRaw(raw.info),
-      message: Message.fromSnapshot(raw.message)
+      message: messageFromSnapshot(raw.message)
     };
   }
   replyActorJoin(request: ActorJoinRequest, joinResultCode: number): ActorJoinReplyOperation {

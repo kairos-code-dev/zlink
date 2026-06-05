@@ -2,15 +2,36 @@
 
 import { Message } from './message';
 import { RoutingId } from '../core/routing_id';
-import { freezeOwnedMessageParts, MultipartEnvelope } from './envelope';
+import { RecvError, RecvResult } from '../errors/errors';
 
 const TOPIC_MESSAGE_CREATE_TOKEN = Symbol('topic-message.create');
 
+function freezeMessageParts(parts: readonly Message[]): Message[] {
+  return Object.freeze(parts.slice()) as Message[];
+}
+
+function freezeOwnedMessageParts(parts: Message[]): Message[] {
+  return Object.freeze(parts) as Message[];
+}
+
+function invalidMultipartError(partsLength: number): RecvError {
+  return new RecvError(
+    RecvResult.NotSupported,
+    0,
+    `expected exactly 1 part but received ${partsLength}`
+  );
+}
+
+function missingPartError(): RecvError {
+  return new RecvError(RecvResult.NotSupported, 0, 'message has no parts');
+}
+
 /**
- * A received publish: its topic and message parts (from
- * {@link MultipartEnvelope}). Owns its parts until closed.
+ * A received publish: its topic and message parts. Owns its parts until closed.
  */
-export class TopicMessage extends MultipartEnvelope {
+export class TopicMessage {
+  /** The message parts, owned by this envelope. */
+  parts: Message[];
   /** The source routing id, or null when the receive path provides none. */
   routingId: RoutingId | null;
   /** The topic the message was published under. */
@@ -31,7 +52,7 @@ export class TopicMessage extends MultipartEnvelope {
     routingId: RoutingId | null = null
   ) {
     if (token === undefined) {
-      super([]);
+      this.parts = freezeMessageParts([]);
       this.routingId = null;
       this.topic = '';
       return;
@@ -39,9 +60,37 @@ export class TopicMessage extends MultipartEnvelope {
     if (token !== TOPIC_MESSAGE_CREATE_TOKEN) {
       throw new TypeError('TopicMessage values are created by subscribe operations');
     }
-    super(parts);
+    this.parts = freezeMessageParts(parts);
     this.routingId = routingId;
     this.topic = topic;
+  }
+
+  /** Return true when the envelope holds exactly one part. */
+  isSinglePart(): boolean {
+    return this.parts.length === 1;
+  }
+
+  /** Return the first part without transferring ownership; throws when the envelope has no parts. */
+  firstPart(): Message {
+    if (this.parts.length === 0) {
+      throw missingPartError();
+    }
+    return this.parts[0];
+  }
+
+  /** Return the only part; throws unless the envelope holds exactly one part. */
+  singlePartOrThrow(): Message {
+    if (!this.isSinglePart()) {
+      throw invalidMultipartError(this.parts.length);
+    }
+    return this.parts[0];
+  }
+
+  /** Close every part, releasing their storage. */
+  close(): void {
+    for (const part of this.parts) {
+      part.close();
+    }
   }
 
   /** @internal */
@@ -55,7 +104,8 @@ export class TopicMessage extends MultipartEnvelope {
 
   /** @internal */
   adoptFrom(source: TopicMessage): void {
-    this.replaceParts(source.parts);
+    this.close();
+    this.parts = freezeMessageParts(source.parts);
     source.parts = [];
     this.routingId = source.routingId;
     this.topic = source.topic;

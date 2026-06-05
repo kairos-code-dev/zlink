@@ -7,7 +7,7 @@ from .codes import MonitorEventMask
 _socket_monitor_factory = None
 
 
-def register_socket_monitor_factory(factory):
+def _register_socket_monitor_factory(factory):
     global _socket_monitor_factory
     _socket_monitor_factory = factory
 

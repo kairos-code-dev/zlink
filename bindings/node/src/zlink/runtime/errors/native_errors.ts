@@ -7,19 +7,9 @@ import {
   RecvResult,
   SubmitError,
   SubmitResult,
-  ZlinkError,
-  createError
+  ZlinkError
 } from '../../contracts/errors/errors';
-
-export type NativeErrorCategory =
-  | 'submit'
-  | 'request'
-  | 'recv'
-  | 'handler'
-  | 'close'
-  | 'bind'
-  | 'connect'
-  | 'config';
+import { createError, type NativeErrorCategory } from './error_mapping';
 
 export function readErrno(): number {
   const native = requireNative();

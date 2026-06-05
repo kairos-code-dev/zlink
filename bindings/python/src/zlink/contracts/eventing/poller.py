@@ -9,7 +9,7 @@ _poller_factory = None
 _poll_events_factory = None
 
 
-def register_poller_factories(*, poller_factory, poll_events_factory):
+def _register_poller_factories(*, poller_factory, poll_events_factory):
     global _poller_factory
     global _poll_events_factory
     _poller_factory = poller_factory

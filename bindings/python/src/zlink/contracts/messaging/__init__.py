@@ -12,7 +12,6 @@ from .received import (
     create_received,
     create_received_message,
     create_received_multipart,
-    received_message_from_owner,
 )
 from .subscription_event import SubscriptionEvent, create_subscription_event
 from .topic_message import TopicMessage, create_topic_message
@@ -27,7 +26,6 @@ __all__ = [
     "create_received",
     "create_received_message",
     "create_received_multipart",
-    "received_message_from_owner",
     "TopicMessage",
     "create_topic_message",
     "SubscriptionEvent",

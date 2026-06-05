@@ -17,7 +17,7 @@ _topic_message_factory = None
 _subscription_event_factory = None
 
 
-def register_messaging_factories(
+def _register_messaging_factories(
     *,
     message_factory,
     message_from_factory,

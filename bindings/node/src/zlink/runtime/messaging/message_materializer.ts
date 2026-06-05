@@ -5,9 +5,12 @@ import {
   Message,
   Received,
   RoutingId,
-  TopicMessage,
-  type MessageSnapshot
+  TopicMessage
 } from '../../contracts';
+import {
+  messageFromSnapshot,
+  type MessageSnapshot
+} from './message_snapshot';
 
 export interface NativeReceivedRaw {
   parts: MessageSnapshot[];
@@ -31,11 +34,11 @@ function wrapNativeRoutingId(routingId: Buffer | null | undefined): RoutingId | 
 
 function materializeParts(parts: MessageSnapshot[]): Message[] {
   if (parts.length === 1) {
-    return [Message.fromSnapshot(parts[0])];
+    return [messageFromSnapshot(parts[0])];
   }
   const messages = new Array<Message>(parts.length);
   for (let i = 0; i < parts.length; i += 1) {
-    messages[i] = Message.fromSnapshot(parts[i]);
+    messages[i] = messageFromSnapshot(parts[i]);
   }
   return messages;
 }

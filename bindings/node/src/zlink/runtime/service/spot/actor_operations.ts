@@ -22,9 +22,8 @@ import type {
   ActorUnbindOperation,
   ReplyHandler
 } from '../../../contracts/service';
-import { OperationPayload } from '../../../contracts/messaging/operation_payload';
-import type { OperationPayloadValue } from '../../../contracts/messaging/operation_payload';
 import { requestErrorFromResult } from '../../messaging/request_executor';
+import { OperationPayload, type OperationPayloadValue } from '../../messaging/operation_payload';
 
 type ActorJoinInvoker = (
   parts: OperationPayloadValue<MessageLike>,

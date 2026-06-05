@@ -2,10 +2,10 @@
 
 from .discovery import (
     Discovery,
+    _register_discovery_factories,
     create_discovery,
     create_registry,
     create_registry_query_client,
-    register_discovery_factories,
 )
 from .discovery_models import SpotRoute
 from ..registry import (
@@ -33,5 +33,4 @@ __all__ = [
     "RegistryTopologyEntry",
     "RegistryTopologyFilter",
     "SpotRoute",
-    "register_discovery_factories",
 ]

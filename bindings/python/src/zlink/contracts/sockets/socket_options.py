@@ -10,7 +10,7 @@ _pub_socket_options_factory = None
 _router_socket_options_factory = None
 
 
-def register_socket_option_factories(
+def _register_socket_option_factories(
     *,
     common_socket_options_factory,
     dealer_socket_options_factory,

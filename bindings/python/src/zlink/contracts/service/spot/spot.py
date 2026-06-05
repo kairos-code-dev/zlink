@@ -11,7 +11,7 @@ _spot_node_factory = None
 _spot_factory = None
 
 
-def register_spot_factories(*, spot_node_factory, spot_factory):
+def _register_spot_factories(*, spot_node_factory, spot_factory):
     global _spot_node_factory
     global _spot_factory
     _spot_node_factory = spot_node_factory

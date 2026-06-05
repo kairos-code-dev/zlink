@@ -5,7 +5,6 @@ export {
 } from './message';
 export type {
   MessageLike,
-  MessageSnapshot,
 } from './message';
 export {
   Received,

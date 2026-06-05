@@ -4,6 +4,7 @@ import { Message } from '../../contracts';
 import { RequestError, RequestResult, SubmitResult } from '../../contracts/errors/errors';
 import { SendFlags } from '../../contracts/sockets/socket_constants';
 import { submitNativeError } from '../errors/native_errors';
+import { messageFromSnapshot } from './message_snapshot';
 
 export type RequestCallback = (result: RequestResult, replyParts: Message[]) => void;
 
@@ -42,7 +43,7 @@ export function normalizeCallbackFlagsAndTimeout(
 }
 
 export function messagesFromNativeBuffers(buffers: readonly Buffer[] | null | undefined): Message[] {
-  return (buffers ?? []).map((buffer) => Message.fromSnapshot({ data: buffer ?? Buffer.alloc(0) }));
+  return (buffers ?? []).map((buffer) => messageFromSnapshot({ data: buffer ?? Buffer.alloc(0) }));
 }
 
 export function requestErrorFromResult(result: RequestResult, message: string): RequestError {

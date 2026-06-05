@@ -7,7 +7,7 @@ _discovery_factory = None
 _registry_query_client_factory = None
 
 
-def register_discovery_factories(
+def _register_discovery_factories(
     *,
     registry_factory,
     discovery_factory,

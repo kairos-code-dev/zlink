@@ -19,7 +19,7 @@ import type {
   SpotNodeActorEntry,
   SpotNodeSpotEntry
 } from '../../../contracts/service';
-import { wrapRoutingId } from '../../../contracts/service/spot/spot_models';
+import { wrapRoutingId } from '../../core/routing_id_conversion';
 
 export interface ActorRefRaw {
   nodeRid: Buffer;

@@ -5,6 +5,7 @@ package systems.zlink.contracts.messaging;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.internal.ContractAccess;
 import io.netty.buffer.ByteBuf;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -925,6 +926,72 @@ public final class Message implements AutoCloseable {
     private static void validateRange(long total, long offset, long length, String name) {
         if (offset < 0 || length < 0 || offset > total - length)
             throw new IndexOutOfBoundsException(name + " range out of bounds");
+    }
+
+    private static final class UnsafeAccess {
+        private static final Unsafe INSTANCE = lookupUnsafe();
+
+        private UnsafeAccess() {
+        }
+
+        static Unsafe get() {
+            return INSTANCE;
+        }
+
+        private static Unsafe lookupUnsafe() {
+            try {
+                Field field = Unsafe.class.getDeclaredField("theUnsafe");
+                field.setAccessible(true);
+                return (Unsafe) field.get(null);
+            } catch (ReflectiveOperationException ex) {
+                throw new IllegalStateException(
+                    "Unable to access sun.misc.Unsafe", ex);
+            }
+        }
+    }
+
+    private static final class MessageSlotPool {
+        private static final long MESSAGE_LAYOUT_SIZE =
+            ContractAccess.nativeMessageLayoutSize();
+        private static final ThreadLocal<Pool> POOL =
+            ThreadLocal.withInitial(Pool::new);
+
+        private MessageSlotPool() {
+        }
+
+        static long acquire() {
+            return POOL.get().acquire();
+        }
+
+        static void release(long slot) {
+            POOL.get().release(slot);
+        }
+
+        private static final class Pool {
+            private static final int CAPACITY = 32;
+            private final long[] slots = new long[CAPACITY];
+            private int count;
+
+            long acquire() {
+                if (count > 0) {
+                    count--;
+                    long slot = slots[count];
+                    slots[count] = 0L;
+                    return slot;
+                }
+                long address = UNSAFE.allocateMemory(MESSAGE_LAYOUT_SIZE);
+                UNSAFE.setMemory(address, MESSAGE_LAYOUT_SIZE, (byte) 0);
+                return address;
+            }
+
+            void release(long slot) {
+                if (count < CAPACITY) {
+                    slots[count++] = slot;
+                } else {
+                    UNSAFE.freeMemory(slot);
+                }
+            }
+        }
     }
 
 }

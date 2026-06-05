@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { createError } from '../../contracts/errors/errors';
 import type { AutoHwmProfileValue } from '../../contracts/core';
+import { createError } from '../errors/error_mapping';
 import {
   closeCall,
   configCall,

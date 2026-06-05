@@ -8,7 +8,7 @@ import type { RuntimeContext as Context } from '../core/context';
 import { handlerCall, recvNativeError } from '../errors/native_errors';
 import { requireNative } from '../native/native';
 import { SubscriptionEvent } from '../../contracts';
-import { wrapRoutingId } from '../../contracts/service/spot/spot_models';
+import { wrapRoutingId } from '../core/routing_id_conversion';
 import { RecvFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
 import type { SocketSendReadyHandler } from '../../contracts/service';
 

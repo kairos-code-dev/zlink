@@ -13,7 +13,7 @@ def create_received_message(*args, **kwargs):
     )(*args, **kwargs)
 
 
-def received_message_from_owner(owner, index, routing_id=None):
+def _received_message_from_owner(owner, index, routing_id=None):
     return _message_contract._require(
         _message_contract._received_message_from_owner_factory,
         "received message",

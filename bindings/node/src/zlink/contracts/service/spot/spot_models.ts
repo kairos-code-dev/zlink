@@ -177,9 +177,3 @@ export interface SpotDispatchInfo {
 }
 /** Invoked for each spot dispatch event. */
 export type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
-export function wrapRoutingId(routingId: Buffer | Uint8Array | null | undefined): RoutingId | null {
-  if (!routingId || routingId.length === 0) {
-    return null;
-  }
-  return RoutingId.from(routingId);
-}

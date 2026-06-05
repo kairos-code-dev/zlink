@@ -5,7 +5,7 @@ from typing import Protocol, runtime_checkable
 _context_factory = None
 
 
-def register_context_factory(factory):
+def _register_context_factory(factory):
     global _context_factory
     _context_factory = factory
 

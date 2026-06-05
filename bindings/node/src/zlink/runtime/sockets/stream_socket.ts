@@ -28,7 +28,7 @@ import {
   type MessageLike,
 } from '../../contracts';
 import { SubmitResult } from '../../contracts/errors/errors';
-import { wrapRoutingId } from '../../contracts/service/spot/spot_models';
+import { wrapRoutingId } from '../core/routing_id_conversion';
 import { RecvFlags, SendFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
 import type {
   ActorBindOperation,

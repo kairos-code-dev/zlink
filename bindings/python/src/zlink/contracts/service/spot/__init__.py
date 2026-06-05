@@ -3,9 +3,9 @@
 from .actor import Actor
 from .spot import (
     Spot,
+    _register_spot_factories,
     create_spot,
     create_spot_node,
-    register_spot_factories,
     remote_actor_ref,
 )
 from .spot_models import (
@@ -85,5 +85,4 @@ __all__ = [
     "SpotNodeSubjectEntry",
     "SpotNodeSubjectFilter",
     "remote_actor_ref",
-    "register_spot_factories",
 ]

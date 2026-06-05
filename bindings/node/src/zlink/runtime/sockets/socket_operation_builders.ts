@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { Message, type MessageLike } from '../../contracts';
-import { OperationPayload, type OperationPayloadValue } from '../../contracts/messaging/operation_payload';
 import { SendFlags } from '../../contracts/sockets/socket_constants';
+import { OperationPayload, type OperationPayloadValue } from '../messaging/operation_payload';
 import type {
   RequestCallback,
   RequestCallbackSubmitOperation,

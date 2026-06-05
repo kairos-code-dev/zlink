@@ -45,6 +45,7 @@ import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
@@ -268,22 +269,37 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     @Override
     public <TMessage> ZLinkSendCall sendToChannel(String channelName, TMessage message) {
-        return new SendCall(requireClient(channelName), serializer.serialize(message));
+        return new SendCall(
+            requireClient(channelName),
+            serializer.serialize(message),
+            Optional.of(defaultPacketName(message)));
     }
 
     @Override
     public <TMessage> ZLinkRequestCall requestToChannel(String channelName, TMessage message) {
-        return new RequestCall(requireClient(channelName), serializer.serialize(message), defaultTimeout);
+        return new RequestCall(
+            requireClient(channelName),
+            serializer.serialize(message),
+            Optional.of(defaultPacketName(message)),
+            defaultTimeout);
     }
 
     @Override
     public <TMessage> ZLinkPublishCall publish(String channelName, String topic, TMessage message) {
-        return new PublishCall(requirePublisher(channelName), topic, serializer.serialize(message));
+        return new PublishCall(
+            requirePublisher(channelName),
+            topic,
+            serializer.serialize(message),
+            Optional.of(defaultPacketName(message)));
     }
 
     @Override
     public <TMessage> ZLinkSendCall sendTo(String channelName, RoutingId target, TMessage message) {
-        return new RouteSendCall(requireRouteRouter(channelName), target, serializer.serialize(message));
+        return new RouteSendCall(
+            requireRouteRouter(channelName),
+            target,
+            serializer.serialize(message),
+            Optional.of(defaultPacketName(message)));
     }
 
     @Override
@@ -292,6 +308,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             requireRouteRouter(channelName),
             target,
             serializer.serialize(message),
+            Optional.of(defaultPacketName(message)),
             defaultTimeout);
     }
 
@@ -1389,10 +1406,6 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         private final Optional<String> packetName;
         private final Duration timeout;
 
-        RequestCall(ZLinkBackendDealerSocket client, Message payload, Duration timeout) {
-            this(client, payload, Optional.empty(), timeout);
-        }
-
         private RequestCall(
             ZLinkBackendDealerSocket client,
             Message payload,
@@ -1488,14 +1501,6 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         private final Message payload;
         private final Optional<String> packetName;
         private final Duration timeout;
-
-        RouteRequestCall(
-            ZLinkBackendRouterSocket router,
-            RoutingId target,
-            Message payload,
-            Duration timeout) {
-            this(router, target, payload, Optional.empty(), timeout);
-        }
 
         private RouteRequestCall(
             ZLinkBackendRouterSocket router,
@@ -1610,6 +1615,15 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             return List.of(payload);
         }
         return List.of(Message.from(packetName.get().getBytes(StandardCharsets.UTF_8)), payload);
+    }
+
+    private static String defaultPacketName(Object message) {
+        if (message == null) {
+            return "Null";
+        }
+        Class<?> messageType = message.getClass();
+        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
+        return packet == null ? messageType.getSimpleName() : packet.value();
     }
 
     public interface SpotRelayIngress {

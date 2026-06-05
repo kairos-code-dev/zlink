@@ -21,7 +21,7 @@ class CreateGameHttpHandler(
             SampleNames.PlayChannel,
             CreateGameReq(request.gameName?.takeIf { it.isNotBlank() } ?: "tictactoe-game"),
         )
-            .packetName("CreateGameReq")
+            .timeout(SampleNames.RequestTimeout)
             .submitAsync(CreateGameRes::class.java)
             .thenApply { game -> CreateGameHttpRes(game.gameId, game.playEndpoint, game.gameName) }
 }

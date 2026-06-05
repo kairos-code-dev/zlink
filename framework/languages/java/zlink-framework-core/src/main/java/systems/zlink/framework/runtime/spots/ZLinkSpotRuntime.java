@@ -2520,14 +2520,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     egressChannels.get(0),
                     spotRid,
                     serializer.serialize(message),
-                    Optional.empty());
+                    Optional.of(defaultPacketName(message)));
             }
             return new SpotToSpotSendCall(
                 backendSpot,
                 nodeRid,
                 spotRid,
                 serializer.serialize(message),
-                Optional.empty());
+                Optional.of(defaultPacketName(message)));
         }
 
         @Override
@@ -2543,7 +2543,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     egressChannels.get(0),
                     spotRid,
                     serializer.serialize(request),
-                    Optional.empty(),
+                    Optional.of(defaultPacketName(request)),
                     defaultTimeout);
             }
             return new SpotToSpotRequestCall(
@@ -2551,18 +2551,26 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 nodeRid,
                 spotRid,
                 serializer.serialize(request),
-                Optional.empty(),
+                Optional.of(defaultPacketName(request)),
                 defaultTimeout);
         }
 
         @Override
         public <TEvent> ZLinkPublishCall publish(String topic, TEvent message) {
-            return new SpotPublishCall(backendSpot, topic, serializer.serialize(message), Optional.empty());
+            return new SpotPublishCall(
+                backendSpot,
+                topic,
+                serializer.serialize(message),
+                Optional.of(defaultPacketName(message)));
         }
 
         @Override
         public <TMessage> ZLinkSendCall sendToChannel(String channelName, TMessage message) {
-            return new SpotChannelSendCall(backendSpot, channelName, serializer.serialize(message), Optional.empty());
+            return new SpotChannelSendCall(
+                backendSpot,
+                channelName,
+                serializer.serialize(message),
+                Optional.of(defaultPacketName(message)));
         }
 
         @Override
@@ -2571,7 +2579,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 backendSpot,
                 channelName,
                 serializer.serialize(request),
-                Optional.empty(),
+                Optional.of(defaultPacketName(request)),
                 defaultTimeout);
         }
     }
@@ -2743,7 +2751,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 channelName,
                 topic,
                 serializer.serialize(message),
-                Optional.empty());
+                Optional.of(defaultPacketName(message)));
         }
     }
 
@@ -3190,6 +3198,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         return packetName
             .map(name -> List.of(Message.from(name.getBytes(StandardCharsets.UTF_8)), payload))
             .orElseGet(() -> List.of(payload));
+    }
+
+    private static String defaultPacketName(Object message) {
+        if (message == null) {
+            return "Null";
+        }
+        return resolvePacketName(message.getClass());
     }
 
     private static ParsedPacket parsePacket(List<Message> parts) {

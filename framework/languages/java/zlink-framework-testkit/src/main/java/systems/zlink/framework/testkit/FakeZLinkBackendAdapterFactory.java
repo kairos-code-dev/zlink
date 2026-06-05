@@ -554,7 +554,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
-        @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { record("publish." + topic); return true; }
+        @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { record("publish." + topic + "." + firstPart(parts)); return true; }
     }
 
     private static final class FakeSubscriberSocket extends FakeConnectableSocket implements ZLinkBackendSubscriberSocket {
@@ -883,12 +883,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setSubscription(String topic) { record("setSubscription." + topic); }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return subscriptions.pollFirst(); }
         @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) { return routes.pollFirst(); }
-        @Override public boolean sendToChannel(String channelName, List<Message> parts, SendFlags flags) { record("sendToChannel." + channelName); return true; }
-        @Override public boolean requestToChannel(String channelName, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { record("requestToChannel." + channelName); return true; }
-        @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { record("publish." + topic); return true; }
-        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) { record("sendToSpot." + targetNodeRid + "." + spotRid); return true; }
+        @Override public boolean sendToChannel(String channelName, List<Message> parts, SendFlags flags) { record("sendToChannel." + channelName + "." + firstPart(parts)); return true; }
+        @Override public boolean requestToChannel(String channelName, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { record("requestToChannel." + channelName + "." + firstPart(parts)); return true; }
+        @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { record("publish." + topic + "." + firstPart(parts)); return true; }
+        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) { record("sendToSpot." + targetNodeRid + "." + spotRid + "." + firstPart(parts)); return true; }
         @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
-            record("requestToSpot." + targetNodeRid + "." + spotRid);
+            record("requestToSpot." + targetNodeRid + "." + spotRid + "." + firstPart(parts));
             callback.handle(new ZLinkBackendReceived(
                 Optional.empty(),
                 Optional.empty(),

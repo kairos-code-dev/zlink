@@ -8,8 +8,10 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
@@ -50,6 +52,63 @@ final class ChannelRuntimeFakeBackendTest {
                 "dealer.send.Greeting",
                 "dealer.request.Question",
                 "close.dealer",
+                "close.context"),
+            backendFactory.calls());
+    }
+
+    @Test
+    void channelCallsUseMessageTypePacketNameByDefault() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("profile", channel ->
+            channel.enableClient(client ->
+                client.useManualConnections(endpoints ->
+                    endpoints.connect("inproc://profile-server"))));
+        options.addRouteMeshChannel("route", route -> {
+            route.bind("inproc://route");
+            route.useManualConnections(endpoints -> endpoints.connect("inproc://route-peer"));
+        });
+        FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backendFactory)) {
+            runtime.client()
+                .sendToChannel("profile", new ProfileGreeting("hello"))
+                .submitAsync()
+                .toCompletableFuture()
+                .join();
+            runtime.client()
+                .requestToChannel("profile", new ProfileQuestion("question"))
+                .submitAsync(String.class)
+                .toCompletableFuture()
+                .join();
+            runtime.route()
+                .sendTo("route", RoutingId.from("peer"), new ProfileGreeting("hello"))
+                .submitAsync()
+                .toCompletableFuture()
+                .join();
+            runtime.route()
+                .requestTo("route", RoutingId.from("peer"), new ProfileQuestion("question"))
+                .submitAsync(String.class)
+                .toCompletableFuture()
+                .join();
+        }
+
+        assertEquals(
+            List.of(
+                "factory.channel",
+                "create.context",
+                "create.dealer",
+                "dealer.setChannelName.profile",
+                "dealer.connect.inproc://profile-server",
+                "create.router",
+                "router.setChannelName.route",
+                "router.connect.inproc://route-peer",
+                "router.bind.inproc://route",
+                "dealer.send.ProfileGreeting",
+                "dealer.request.ProfileQuestion",
+                "router.send.peer.ProfileGreeting",
+                "router.request.peer.ProfileQuestion",
+                "close.dealer",
+                "close.router",
                 "close.context"),
             backendFactory.calls());
     }
@@ -98,5 +157,12 @@ final class ChannelRuntimeFakeBackendTest {
             ZLinkRequestContext context) {
             return CompletableFuture.completedFuture(request);
         }
+    }
+
+    public record ProfileGreeting(String value) {
+    }
+
+    @ZLinkPacket("ProfileQuestion")
+    public record ProfileQuestion(String value) {
     }
 }

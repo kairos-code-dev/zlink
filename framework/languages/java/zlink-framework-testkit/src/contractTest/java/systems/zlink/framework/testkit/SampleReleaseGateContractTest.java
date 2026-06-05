@@ -853,7 +853,9 @@ final class SampleReleaseGateContractTest {
                 && createGameHandlerSource.contains("CreateGameHttpRes")
                 && createGameHandlerSource.contains("new CreateGameReq")
                 && createGameHandlerSource.contains(".requestToChannel(")
+                && createGameHandlerSource.contains(".timeout(SampleNames.RequestTimeout)")
                 && createGameHandlerSource.contains(".submitAsync(CreateGameRes.class)")
+                && !createGameHandlerSource.contains(".packetName(\"CreateGameReq\")")
                 && !createGameHandlerSource.contains("HttpExchange")
                 && !createGameHandlerSource.contains("HttpServer"),
             "TicTacToe HTTP create-game endpoint must run as a Spring controller and translate to the typed Play channel request");
@@ -1217,7 +1219,9 @@ final class SampleReleaseGateContractTest {
                 && createGameHandlerSource.contains("CreateGameHttpRes")
                 && createGameHandlerSource.contains("CreateGameReq")
                 && createGameHandlerSource.contains(".requestToChannel(")
+                && createGameHandlerSource.contains(".timeout(SampleNames.RequestTimeout)")
                 && createGameHandlerSource.contains(".submitAsync(CreateGameRes::class.java)")
+                && !createGameHandlerSource.contains(".packetName(\"CreateGameReq\")")
                 && !createGameHandlerSource.contains("HttpExchange")
                 && !createGameHandlerSource.contains("HttpServer"),
             "Kotlin TicTacToe HTTP create-game endpoint must run as a Spring controller and translate to the typed Play channel request");

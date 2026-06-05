@@ -28,6 +28,7 @@ import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotPostActorJoined;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -151,8 +152,8 @@ final class SpotRuntimeFakeBackendTest {
                 "create.spot.1",
                 "spot.1.setRoutingId",
                 "spot.1.onDispatchEvent",
-                "spot.1.sendToChannel.play-events",
-                "spot.1.requestToChannel.play-rpc",
+                "spot.1.sendToChannel.play-events.Greeting",
+                "spot.1.requestToChannel.play-rpc.Ping",
                 "close.context",
                 "close.spot.1",
                 "close.spotNode",
@@ -236,8 +237,58 @@ final class SpotRuntimeFakeBackendTest {
                 "create.spot.1",
                 "spot.1.setRoutingId",
                 "spot.1.onDispatchEvent",
-                "spot.1.sendToSpot.spot-node.target-spot",
-                "spot.1.requestToSpot.spot-node.target-spot",
+                "spot.1.sendToSpot.spot-node.target-spot.Greeting",
+                "spot.1.requestToSpot.spot-node.target-spot.Ping",
+                "close.context",
+                "close.spot.1",
+                "close.spotNode",
+                "close.context"),
+            backendFactory.calls());
+    }
+
+    @Test
+    void spotOutboundUsesMessageTypePacketNameByDefault() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> node.addSpotFactory(OutboundSpot.class)));
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+            runtime.spotManager()
+                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .toCompletableFuture()
+                .join();
+
+            OutboundSpot.context.outbound()
+                .sendToSpot(RoutingId.from("target-spot"), new SpotGreeting("hello"))
+                .submitAsync()
+                .toCompletableFuture()
+                .join();
+            assertEquals(
+                "reply",
+                OutboundSpot.context.outbound()
+                    .requestToSpot(RoutingId.from("target-spot"), new SpotQuestion("ping"))
+                    .submitAsync(String.class)
+                    .toCompletableFuture()
+                    .join());
+        }
+
+        assertEquals(
+            List.of(
+                "factory.channel",
+                "create.context",
+                "factory.channel",
+                "factory.spot",
+                "create.context",
+                "create.spotNode",
+                "spotNode.createSpot",
+                "create.spot.1",
+                "spot.1.setRoutingId",
+                "spot.1.onDispatchEvent",
+                "spot.1.sendToSpot.spot-node.target-spot.SpotGreeting",
+                "spot.1.requestToSpot.spot-node.target-spot.SpotQuestion",
                 "close.context",
                 "close.spot.1",
                 "close.spotNode",
@@ -551,7 +602,7 @@ final class SpotRuntimeFakeBackendTest {
 
         assertEquals(
             true,
-            backendFactory.calls().contains("spot.1.sendToChannel.play-events"));
+            backendFactory.calls().contains("spot.1.sendToChannel.play-events.Greeting"));
     }
 
     @Test
@@ -588,7 +639,7 @@ final class SpotRuntimeFakeBackendTest {
                 "spotNode.connectPeer.inproc://game-stage-pub",
                 "spotNode.createSpot",
                 "create.spot.1",
-                "spot.1.publish.stage.events",
+                "spot.1.publish.stage.events.StageOpened",
                 "close.context",
                 "close.spot.1",
                 "close.spotNode",
@@ -1357,5 +1408,12 @@ final class SpotRuntimeFakeBackendTest {
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
         }
+    }
+
+    public record SpotGreeting(String value) {
+    }
+
+    @ZLinkPacket("SpotQuestion")
+    public record SpotQuestion(String value) {
     }
 }

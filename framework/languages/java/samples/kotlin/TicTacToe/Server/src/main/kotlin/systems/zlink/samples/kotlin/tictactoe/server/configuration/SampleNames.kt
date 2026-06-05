@@ -1,5 +1,7 @@
 package systems.zlink.samples.kotlin.tictactoe.server.configuration
 
+import java.time.Duration
+
 object SampleNames {
     const val ApiChannel: String = "tictactoe-api"
     const val PlayChannel: String = "tictactoe-play"
@@ -11,4 +13,5 @@ object SampleNames {
     const val EntrySpotRoutingId: String = "3201"
     const val PlayStream: String = "play-stream"
     const val PlayActor: String = "play-actor"
+    val RequestTimeout: Duration = Duration.ofSeconds(5)
 }

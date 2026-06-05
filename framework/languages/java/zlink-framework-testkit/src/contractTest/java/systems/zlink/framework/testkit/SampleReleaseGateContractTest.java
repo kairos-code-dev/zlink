@@ -156,6 +156,45 @@ final class SampleReleaseGateContractTest {
     }
 
     @Test
+    void serverRoleSamplesRunZLinkThroughSpringLifecycle() throws IOException {
+        for (String language : REQUIRED_LANGUAGES) {
+            for (String sample : List.of("TicTacToe", "TicTacToe.SessionGateway", "Bingo")) {
+                Path sampleRoot = samplesRoot().resolve(language).resolve(sample);
+                try (Stream<Path> files = Files.walk(sampleRoot)) {
+                    Map<Path, List<String>> directStarts = files
+                        .filter(Files::isRegularFile)
+                        .filter(SampleReleaseGateContractTest::isSampleSource)
+                        .filter(SampleReleaseGateContractTest::isServerRoleSource)
+                        .map(path -> Map.entry(path, forbiddenDirectServerStarts(path)))
+                        .filter(entry -> !entry.getValue().isEmpty())
+                        .collect(java.util.stream.Collectors.toMap(
+                            Map.Entry::getKey,
+                            Map.Entry::getValue));
+
+                    assertTrue(directStarts.isEmpty(),
+                        language + "/" + sample + " server roles must not start ZLink directly: "
+                            + directStarts);
+                }
+
+                try (Stream<Path> files = Files.walk(sampleRoot)) {
+                    List<Path> nonSpringHosts = files
+                        .filter(Files::isRegularFile)
+                        .filter(SampleReleaseGateContractTest::isSampleSource)
+                        .filter(SampleReleaseGateContractTest::isServerRoleSource)
+                        .filter(path -> path.getFileName().toString().contains("HostFactory"))
+                        .filter(SampleReleaseGateContractTest::isNotSpringBootHostFactory)
+                        .toList();
+
+                    assertTrue(nonSpringHosts.isEmpty(),
+                        language + "/" + sample
+                            + " server role HostFactory classes must use Spring Boot lifecycle: "
+                            + nonSpringHosts);
+                }
+            }
+        }
+    }
+
+    @Test
     void frameworkRuntimeSourcesStaySplitByDotNetRuntimeCategories() throws IOException {
         Path runtimeRoot = frameworkJavaRoot()
             .resolve("zlink-framework-core/src/main/java/systems/zlink/framework/runtime");
@@ -2138,6 +2177,39 @@ final class SampleReleaseGateContractTest {
     private static boolean isSampleSource(Path path) {
         String pathText = path.toString();
         return pathText.endsWith(".java") || pathText.endsWith(".kt");
+    }
+
+    private static boolean isServerRoleSource(Path path) {
+        String normalized = path.toString().replace('\\', '/');
+        return normalized.contains("/Server/Api/")
+            || normalized.contains("/Server/Play/")
+            || normalized.contains("/Server/Registry/")
+            || normalized.contains("/Server/Session/");
+    }
+
+    private static List<String> forbiddenDirectServerStarts(Path path) {
+        try {
+            String content = Files.readString(path);
+            return List.of(
+                    "ZLinkFramework.start",
+                    "ZLinkRegistry.start",
+                    "CountDownLatch")
+                .stream()
+                .filter(content::contains)
+                .toList();
+        } catch (IOException ex) {
+            throw new IllegalStateException("failed to read " + path, ex);
+        }
+    }
+
+    private static boolean isNotSpringBootHostFactory(Path path) {
+        try {
+            String content = Files.readString(path);
+            return !content.contains("@SpringBootApplication")
+                || !content.contains("SpringApplicationBuilder");
+        } catch (IOException ex) {
+            throw new IllegalStateException("failed to read " + path, ex);
+        }
     }
 
     private static List<String> forbiddenLines(Path path) {

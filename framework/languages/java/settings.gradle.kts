@@ -14,6 +14,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "zlink-framework-java"
 
+includeBuild("samples") {
+    name = "zlink-framework-java-samples"
+}
+
 include(
     "zlink-framework-core",
     "zlink-framework-spring-boot-starter",

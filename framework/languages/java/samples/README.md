@@ -7,11 +7,12 @@ This directory contains executable Java and Kotlin sample checks for the Phase
 Each sample is a standalone Gradle application and exits with a non-zero status
 when its scenario invariant fails.
 
-Open this `samples/` directory as the Gradle project in IntelliJ IDEA. The
-`samples/settings.gradle.kts` file includes every Java and Kotlin sample role as
-an IDE-visible Gradle module, so `Client`, `Server`, and `Shared` projects are
-available from one import. The individual sample `settings.gradle.kts` files are
-kept for command-line standalone sample builds.
+Open `framework/languages/java` in IntelliJ IDEA to work on the framework and
+samples together. The framework root includes this directory as the
+`zlink-framework-java-samples` Gradle build, so every Java and Kotlin sample role
+is visible from one IDE import. You can also open this `samples/` directory
+directly when you only want the sample modules. The individual sample
+`settings.gradle.kts` files are kept for command-line standalone sample builds.
 
 ```text
 samples/
@@ -81,4 +82,12 @@ Check the IDE-importable Gradle project without running the samples:
 ```bash
 ./gradlew projects
 ./gradlew buildAllSamples
+```
+
+From `framework/languages/java`, the same sample build is available through the
+included build name:
+
+```bash
+./gradlew :zlink-framework-java-samples:projects
+./gradlew :zlink-framework-java-samples:buildAllSamples
 ```

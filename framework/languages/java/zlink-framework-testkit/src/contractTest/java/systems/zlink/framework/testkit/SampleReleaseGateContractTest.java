@@ -51,6 +51,7 @@ final class SampleReleaseGateContractTest {
     private static final List<String> FORBIDDEN_SAMPLE_PATTERNS = List.of(
         "import systems.zlink.runtime.",
         "import systems.zlink.internal.",
+        "systems.zlink.contracts.core.RoutingId.",
         "RouteStore",
         "MetadataStore",
         "RemoteAddressResolver",

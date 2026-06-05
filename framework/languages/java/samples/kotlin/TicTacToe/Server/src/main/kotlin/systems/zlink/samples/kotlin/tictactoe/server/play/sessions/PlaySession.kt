@@ -2,7 +2,6 @@ package systems.zlink.samples.kotlin.tictactoe.server.play.sessions
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkClient
@@ -55,12 +54,6 @@ class PlaySession(
                         val authenticatedActorId = authenticated.actorId
                         actorId = authenticatedActorId
                         actors.getOrCreateAsync(authenticatedActorId, SampleNames.PlayActor)
-                    }
-                    .thenCompose { created ->
-                        created.context()
-                            .joinEntrySpot(RoutingId.from(SampleNames.PlayNodeRoutingId))
-                            .submitAsync()
-                            .thenApply { created }
                     }
                     .thenCompose(context.actors()::bindAsync)
                     .thenCompose { bound ->

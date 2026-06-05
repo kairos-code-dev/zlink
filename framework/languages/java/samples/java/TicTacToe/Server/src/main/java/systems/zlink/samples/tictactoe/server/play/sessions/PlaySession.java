@@ -2,7 +2,6 @@ package systems.zlink.samples.tictactoe.server.play.sessions;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
@@ -72,10 +71,6 @@ public final class PlaySession implements ZLinkSession {
                         actorId = authenticated.actorId();
                         return actors.getOrCreateAsync(actorId, SampleNames.PlayActor);
                     })
-                    .thenCompose(created -> created.context()
-                        .joinEntrySpot(RoutingId.from(SampleNames.PlayNodeRoutingId))
-                        .submitAsync()
-                        .thenApply(ignored -> created))
                     .thenCompose(context.actors()::bindAsync)
                     .thenCompose(bound -> {
                         actor = bound;

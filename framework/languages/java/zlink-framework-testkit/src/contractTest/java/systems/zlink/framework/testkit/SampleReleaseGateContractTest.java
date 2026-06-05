@@ -684,13 +684,16 @@ final class SampleReleaseGateContractTest {
             "Java TicTacToe Client role must include a standalone README");
         assertSampleFilesExist("java", "TicTacToe", "Server/src/main/java", List.of(
             "systems/zlink/samples/tictactoe/server/api/ApiServer.java",
+            "systems/zlink/samples/tictactoe/server/api/ApiServerHostFactory.java",
             "systems/zlink/samples/tictactoe/server/api/handlers/AuthenticatePlayerHandler.java",
             "systems/zlink/samples/tictactoe/server/api/handlers/CreateGameHttpHandler.java",
+            "systems/zlink/samples/tictactoe/server/TicTacToeServerHostFactory.java",
             "systems/zlink/samples/tictactoe/server/configuration/SampleLogging.java",
             "systems/zlink/samples/tictactoe/server/configuration/SampleNames.java",
             "systems/zlink/samples/tictactoe/server/configuration/SamplePorts.java",
             "systems/zlink/samples/tictactoe/server/configuration/SampleSettings.java",
             "systems/zlink/samples/tictactoe/server/play/PlayServer.java",
+            "systems/zlink/samples/tictactoe/server/play/PlayServerHostFactory.java",
             "systems/zlink/samples/tictactoe/server/play/actors/PlayActor.java",
             "systems/zlink/samples/tictactoe/server/play/actors/PlayActorFactory.java",
             "systems/zlink/samples/tictactoe/server/play/entryspot/PlayEntrySpot.java",
@@ -722,7 +725,7 @@ final class SampleReleaseGateContractTest {
                 "systems/zlink/samples/tictactoe/client/Program.java", "TicTacToeClientArguments.parse"),
             "Java TicTacToe Client role Program must live in the Client project folder");
         assertTrue(sampleFileContains("java", "TicTacToe", "Server/src/main/java",
-                "systems/zlink/samples/tictactoe/server/Program.java", "PlayServer.start(settings)"),
+                "systems/zlink/samples/tictactoe/server/Program.java", "PlayServerHostFactory.start(settings)"),
             "Java TicTacToe Server role Program must live in the Server project folder");
 
         String serverProgramSource = sampleJavaSource(
@@ -746,6 +749,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/api/ApiServer.java");
+        String apiHostFactorySource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/api/ApiServerHostFactory.java");
         String authHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
@@ -762,6 +769,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/PlayServer.java");
+        String playHostFactorySource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/PlayServerHostFactory.java");
         String playActorSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
@@ -779,11 +790,12 @@ final class SampleReleaseGateContractTest {
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/sessions/PlaySession.java");
 
-        assertTrue(serverProgramSource.contains("case \"api\" -> ApiServer.start(settings)")
-                && serverProgramSource.contains("case \"play\" -> PlayServer.start(settings)")
+        assertTrue(serverProgramSource.contains("case \"api\" -> ApiServerHostFactory.start(settings)")
+                && serverProgramSource.contains("case \"play\" -> PlayServerHostFactory.start(settings)")
                 && serverProgramSource.contains("case \"all\" -> runAll(settings)")
                 && serverProgramSource.contains("case \"client\" -> runClient(settings)")
                 && serverProgramSource.contains("SampleSettings.fromArgs(args)")
+                && serverProgramSource.contains("TicTacToeServerHostFactory.start(effectiveSettings)")
                 && !serverProgramSource.contains("case \"server\"")
                 && serverBuildSource.contains("implementation(project(\":Client\"))"),
             "TicTacToe Java Server Program must expose .NET-style all/play/api/client modes");
@@ -791,17 +803,19 @@ final class SampleReleaseGateContractTest {
                 || serverProgramSource.contains("ZLinkFramework.start"),
             "TicTacToe Java Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
         assertTrue(apiSource.contains("ZLinkFrameworkOptionsCustomizer")
-                && apiSource.contains("@SpringBootApplication")
-                && apiSource.contains("SpringApplicationBuilder")
-                && apiSource.contains(".web(WebApplicationType.SERVLET)")
-                && apiSource.contains("setKeepAlive(true)")
                 && apiSource.contains("options.codecs().addJson()")
                 && playSource.contains("ZLinkFrameworkOptionsCustomizer")
-                && playSource.contains("@SpringBootApplication")
-                && playSource.contains("SpringApplicationBuilder")
-                && playSource.contains(".web(WebApplicationType.NONE)")
-                && playSource.contains("setKeepAlive(true)")
-                && playSource.contains("options.codecs().addJson()"),
+                && playSource.contains("options.codecs().addJson()")
+                && apiHostFactorySource.contains("@SpringBootApplication")
+                && apiHostFactorySource.contains("SpringApplicationBuilder")
+                && apiHostFactorySource.contains(".web(WebApplicationType.SERVLET)")
+                && apiHostFactorySource.contains("setKeepAlive(true)")
+                && apiHostFactorySource.contains("ApiServer.configure(settings)")
+                && playHostFactorySource.contains("@SpringBootApplication")
+                && playHostFactorySource.contains("SpringApplicationBuilder")
+                && playHostFactorySource.contains(".web(WebApplicationType.NONE)")
+                && playHostFactorySource.contains("setKeepAlive(true)")
+                && playHostFactorySource.contains("PlayServer.configure(settings)"),
             "TicTacToe direct Api and Play framework hosts must enable JSON codecs and expose HTTP create-game with shared settings");
         assertTrue(settingsSource.contains("withEphemeralDefaults()")
                 && settingsSource.contains("SamplePorts.reserve()")
@@ -947,6 +961,7 @@ final class SampleReleaseGateContractTest {
                 && playSessionSource.contains("actorId = authenticated.actorId()")
                 && playSessionSource.contains("context.actors()::bindAsync")
                 && playSessionSource.contains("requireActor().relayAsync(header, payload)")
+                && !playSessionSource.contains("joinEntrySpot(")
                 && !playSessionSource.contains("joinSpot(RoutingId.fromHex")
                 && !playSessionSource.contains("split(\"\\\\|\")"),
             "TicTacToe Play stream session must authenticate through the Api role and relay actor packets");
@@ -1047,13 +1062,16 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe Client role must include a standalone README");
         assertSampleFilesExist("kotlin", "TicTacToe", "Server/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/tictactoe/server/api/ApiServer.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/api/ApiServerHostFactory.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/api/handlers/AuthenticatePlayerHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/api/handlers/CreateGameHttpHandler.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/TicTacToeServerHostFactory.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/configuration/SampleLogging.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/configuration/SampleNames.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/configuration/SamplePorts.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/configuration/SampleSettings.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServer.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServerHostFactory.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/actors/PlayActor.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/actors/PlayActorFactory.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/entryspot/PlayEntrySpot.kt",
@@ -1069,7 +1087,7 @@ final class SampleReleaseGateContractTest {
                 "systems/zlink/samples/kotlin/tictactoe/client/Program.kt", "TicTacToeClientArguments.parse"),
             "Kotlin TicTacToe Client role Program must live in the Client project folder");
         assertTrue(sampleFileContains("kotlin", "TicTacToe", "Server/src/main/kotlin",
-                "systems/zlink/samples/kotlin/tictactoe/server/Program.kt", "PlayServer.start(settings)"),
+                "systems/zlink/samples/kotlin/tictactoe/server/Program.kt", "PlayServerHostFactory.start(settings)"),
             "Kotlin TicTacToe Server role Program must live in the Server project folder");
 
         String serverProgramSource = sampleKotlinSource(
@@ -1093,6 +1111,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/api/ApiServer.kt");
+        String apiHostFactorySource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/api/ApiServerHostFactory.kt");
         String authHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
@@ -1109,6 +1131,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServer.kt");
+        String playHostFactorySource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServerHostFactory.kt");
         String playActorSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
@@ -1126,11 +1152,12 @@ final class SampleReleaseGateContractTest {
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/sessions/PlaySession.kt");
 
-        assertTrue(serverProgramSource.contains("\"api\" -> ApiServer.start(settings)")
-                && serverProgramSource.contains("\"play\" -> PlayServer.start(settings)")
+        assertTrue(serverProgramSource.contains("\"api\" -> ApiServerHostFactory.start(settings)")
+                && serverProgramSource.contains("\"play\" -> PlayServerHostFactory.start(settings)")
                 && serverProgramSource.contains("\"all\" -> runAll(settings)")
                 && serverProgramSource.contains("\"client\" -> runClient(settings)")
                 && serverProgramSource.contains("SampleSettings.fromArgs(args)")
+                && serverProgramSource.contains("TicTacToeServerHostFactory.start(effectiveSettings)")
                 && !serverProgramSource.contains("\"server\"")
                 && serverBuildSource.contains("implementation(project(\":Client\"))"),
             "Kotlin TicTacToe Server Program must expose .NET-style all/play/api/client modes");
@@ -1138,17 +1165,19 @@ final class SampleReleaseGateContractTest {
                 || serverProgramSource.contains("ZLinkFramework.start"),
             "Kotlin TicTacToe Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
         assertTrue(apiSource.contains("ZLinkFrameworkOptionsCustomizer")
-                && apiSource.contains("@SpringBootApplication")
-                && apiSource.contains("SpringApplicationBuilder")
-                && apiSource.contains(".web(WebApplicationType.SERVLET)")
-                && apiSource.contains("setKeepAlive(true)")
                 && apiSource.contains("options.codecs().addJson()")
                 && playSource.contains("ZLinkFrameworkOptionsCustomizer")
-                && playSource.contains("@SpringBootApplication")
-                && playSource.contains("SpringApplicationBuilder")
-                && playSource.contains(".web(WebApplicationType.NONE)")
-                && playSource.contains("setKeepAlive(true)")
-                && playSource.contains("options.codecs().addJson()"),
+                && playSource.contains("options.codecs().addJson()")
+                && apiHostFactorySource.contains("@SpringBootApplication")
+                && apiHostFactorySource.contains("SpringApplicationBuilder")
+                && apiHostFactorySource.contains(".web(WebApplicationType.SERVLET)")
+                && apiHostFactorySource.contains("setKeepAlive(true)")
+                && apiHostFactorySource.contains("ApiServer.configure(settings)")
+                && playHostFactorySource.contains("@SpringBootApplication")
+                && playHostFactorySource.contains("SpringApplicationBuilder")
+                && playHostFactorySource.contains(".web(WebApplicationType.NONE)")
+                && playHostFactorySource.contains("setKeepAlive(true)")
+                && playHostFactorySource.contains("PlayServer.configure(settings)"),
             "Kotlin TicTacToe direct Api and Play framework hosts must enable JSON codecs and expose HTTP create-game with shared settings");
         assertTrue(settingsSource.contains("withEphemeralDefaults()")
                 && settingsSource.contains("SamplePorts.reserve()")
@@ -1289,6 +1318,7 @@ final class SampleReleaseGateContractTest {
                 && playSessionSource.contains("actorId = authenticatedActorId")
                 && playSessionSource.contains("context.actors()::bindAsync")
                 && playSessionSource.contains("requireActor().relayAsync(header, payload)")
+                && !playSessionSource.contains("joinEntrySpot(")
                 && !playSessionSource.contains("joinSpot(RoutingId.fromHex")
                 && !playSessionSource.contains("split(\"|\")"),
             "Kotlin TicTacToe Play stream session must authenticate through the Api role and relay actor packets");

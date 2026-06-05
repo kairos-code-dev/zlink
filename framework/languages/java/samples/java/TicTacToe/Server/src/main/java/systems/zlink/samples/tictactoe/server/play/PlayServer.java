@@ -1,10 +1,5 @@
 package systems.zlink.samples.tictactoe.server.play;
 
-import org.springframework.boot.WebApplicationType;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
@@ -15,21 +10,11 @@ import systems.zlink.samples.tictactoe.server.play.entryspot.PlayEntrySpot;
 import systems.zlink.samples.tictactoe.server.play.gamespots.TicTacToeGame;
 import systems.zlink.samples.tictactoe.server.play.sessions.PlaySession;
 
-@SpringBootApplication(
-    proxyBeanMethods = false,
-    scanBasePackageClasses = PlayServer.class)
-public class PlayServer {
-    public static ConfigurableApplicationContext start(SampleSettings settings) {
-        SpringApplicationBuilder builder = new SpringApplicationBuilder(PlayServer.class)
-            .web(WebApplicationType.NONE)
-            .initializers(context ->
-                context.getBeanFactory().registerSingleton("sampleSettings", settings));
-        builder.application().setKeepAlive(true);
-        return builder.run();
+public final class PlayServer {
+    private PlayServer() {
     }
 
-    @Bean
-    ZLinkFrameworkOptionsCustomizer playOptions(SampleSettings settings) {
+    public static ZLinkFrameworkOptionsCustomizer configure(SampleSettings settings) {
         return options -> {
             SampleSettings.setCurrent(settings);
             SampleLogging.configure(settings, "play");

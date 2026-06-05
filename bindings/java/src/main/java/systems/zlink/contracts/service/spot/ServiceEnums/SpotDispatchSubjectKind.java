@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.contracts.sockets;
+package systems.zlink.contracts.service.spot;
 
 /** The kind of subject a spot dispatch event concerns. */
 public enum SpotDispatchSubjectKind {

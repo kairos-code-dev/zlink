@@ -23,10 +23,10 @@ import java.util.Objects;
  * model.
  */
 public final class NativeRegistry implements Registry {
-    public static final int OPTION_ID = 0x3801;
-    public static final int OPTION_HEARTBEAT_INTERVAL_MS = 0x3802;
-    public static final int OPTION_HEARTBEAT_TIMEOUT_MS = 0x3803;
-    public static final int OPTION_BROADCAST_INTERVAL_MS = 0x3804;
+    private static final int OPTION_ID = 0x3801;
+    private static final int OPTION_HEARTBEAT_INTERVAL_MS = 0x3802;
+    private static final int OPTION_HEARTBEAT_TIMEOUT_MS = 0x3803;
+    private static final int OPTION_BROADCAST_INTERVAL_MS = 0x3804;
 
     private MemorySegment handle;
 
@@ -60,14 +60,14 @@ public final class NativeRegistry implements Registry {
     }
 
     /** Sets one typed registry option. */
-    public void setOption(int option, int value) {
+    private void setOption(int option, int value) {
         int rc = setOptionRaw(option, value);
         if (rc != 0)
             throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_set");
     }
 
     /** Reads one typed registry option. */
-    public int getOption(int option) {
+    private int getOption(int option) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment valueOut = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);

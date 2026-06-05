@@ -41,8 +41,8 @@ import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.sockets.SocketType;
 import systems.zlink.contracts.sockets.SubmitRetryMode;
 import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
-import systems.zlink.contracts.sockets.SpotDispatchInfo;
+import systems.zlink.contracts.service.spot.SpotDispatchEventHandler;
+import systems.zlink.contracts.service.spot.SpotDispatchInfo;
 import systems.zlink.contracts.service.spot.SpotKind;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeActorEntry;
@@ -490,9 +490,9 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(Spot.class, "recvActorLifecycle",
             systems.zlink.contracts.sockets.RecvFlags.class));
         assertTrue(hasPublicMethod(Spot.class, "setDispatchHandler",
-            systems.zlink.contracts.sockets.SpotDispatchEventHandler.class));
+            systems.zlink.contracts.service.spot.SpotDispatchEventHandler.class));
         assertFalse(hasPublicMethod(Spot.class, "drainChannelReply",
-            systems.zlink.contracts.sockets.SpotDispatchInfo.class));
+            systems.zlink.contracts.service.spot.SpotDispatchInfo.class));
         assertFalse(hasPublicMethod(Spot.class, "drainChannelReplyFrom",
             MEMORY_SEGMENT_CLASS));
         assertTrue(hasPublicMethod(Spot.class, "setRoutingId",

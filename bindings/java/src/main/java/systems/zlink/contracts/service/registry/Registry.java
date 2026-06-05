@@ -10,18 +10,9 @@ import java.util.List;
  * model.
  */
 public interface Registry extends AutoCloseable {
-    int OPTION_ID = 0x3801;
-    int OPTION_HEARTBEAT_INTERVAL_MS = 0x3802;
-    int OPTION_HEARTBEAT_TIMEOUT_MS = 0x3803;
-    int OPTION_BROADCAST_INTERVAL_MS = 0x3804;
-
     void bind(String pubEndpoint, String routerEndpoint);
 
     void setId(int id);
-
-    void setOption(int option, int value);
-
-    int getOption(int option);
 
     void addPeer(String peerPubEndpoint);
 

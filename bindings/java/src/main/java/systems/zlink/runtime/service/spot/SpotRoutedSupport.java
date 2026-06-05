@@ -13,7 +13,7 @@ import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
+import systems.zlink.contracts.service.spot.SpotDispatchEventHandler;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;

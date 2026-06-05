@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.contracts.sockets;
+package systems.zlink.contracts.service.spot;
 
 /** The kind of readable event surfaced by a spot dispatch. */
 public enum SpotDispatchEvent {

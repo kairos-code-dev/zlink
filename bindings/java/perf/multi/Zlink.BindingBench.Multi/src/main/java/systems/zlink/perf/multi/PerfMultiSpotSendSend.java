@@ -15,7 +15,7 @@ import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.sockets.SpotDispatchEvent;
+import systems.zlink.contracts.service.spot.SpotDispatchEvent;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;

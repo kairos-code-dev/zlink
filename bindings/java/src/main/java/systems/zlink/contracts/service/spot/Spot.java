@@ -9,7 +9,6 @@ import systems.zlink.contracts.messaging.SubscriptionEvent;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.SendReadyHandler;
-import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;

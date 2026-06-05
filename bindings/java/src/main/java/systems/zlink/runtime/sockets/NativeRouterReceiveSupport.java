@@ -12,7 +12,6 @@ import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.sockets.SocketMessageHandler;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeCallbackSupport;

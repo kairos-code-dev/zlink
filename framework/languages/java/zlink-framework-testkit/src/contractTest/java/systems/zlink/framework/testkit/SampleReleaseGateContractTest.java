@@ -303,6 +303,14 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.java");
+        String entryActorJoinedHandlerSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorJoinedHandler.java");
+        String entryActorLeftHandlerSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorLeftHandler.java");
         String rootBuildSource = sampleFile(
             "java",
             "TicTacToe.SessionGateway",
@@ -395,6 +403,17 @@ final class SampleReleaseGateContractTest {
                 && playServerSource.contains("addHandlersFromPackageOf")
                 && playServerSource.contains("addHandlerGroup(\"play\")"),
             "SessionGateway Api/Play roles must use annotation-discovered handler groups");
+        assertTrue(entryActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
+                && entryActorJoinedHandlerSource.contains("TicTacToeEntrySpot entrySpot")
+                && entryActorJoinedHandlerSource.contains("PlayerActor actor")
+                && entryActorJoinedHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && entryActorJoinedHandlerSource.contains("CancellationToken cancellationToken")
+                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
+                && entryActorLeftHandlerSource.contains("TicTacToeEntrySpot entrySpot")
+                && entryActorLeftHandlerSource.contains("PlayerActor actor")
+                && entryActorLeftHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && entryActorLeftHandlerSource.contains("CancellationToken cancellationToken"),
+            "SessionGateway EntrySpot lifecycle handlers must use .NET-shaped spot, actor, change, cancellation annotations");
         assertTrue(clientSource.contains("validateFinalState")
                 && clientSource.contains("XXXOO....")
                 && clientSource.contains("validateNotifications"),
@@ -626,6 +645,14 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.kt");
+        String entryActorJoinedHandlerSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorJoinedHandler.kt");
+        String entryActorLeftHandlerSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorLeftHandler.kt");
         String apiProgramSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
             "Server/Api/src/main/kotlin",
@@ -713,6 +740,17 @@ final class SampleReleaseGateContractTest {
                 && playServerSource.contains("addHandlersFromPackageOf")
                 && playServerSource.contains("addHandlerGroup(\"play\")"),
             "Kotlin SessionGateway Api/Play roles must use annotation-discovered handler groups");
+        assertTrue(entryActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
+                && entryActorJoinedHandlerSource.contains("entrySpot: TicTacToeEntrySpot")
+                && entryActorJoinedHandlerSource.contains("actor: PlayerActor")
+                && entryActorJoinedHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && entryActorJoinedHandlerSource.contains("cancellationToken: CancellationToken")
+                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
+                && entryActorLeftHandlerSource.contains("entrySpot: TicTacToeEntrySpot")
+                && entryActorLeftHandlerSource.contains("actor: PlayerActor")
+                && entryActorLeftHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && entryActorLeftHandlerSource.contains("cancellationToken: CancellationToken"),
+            "Kotlin SessionGateway EntrySpot lifecycle handlers must use .NET-shaped spot, actor, change, cancellation annotations");
         assertTrue(clientSource.contains("validateFinalState")
                 && clientSource.contains("XXXOO....")
                 && clientSource.contains("validateNotifications"),

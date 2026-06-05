@@ -22,16 +22,22 @@ final class RegistryContractTest {
         Method serviceSummary = ZLinkRegistryQuery.class.getMethod(
             "serviceSummaryAsync",
             ZLinkRegistryServiceSummaryFilter.class);
+        Method serviceSummaryAll = ZLinkRegistryQuery.class.getMethod(
+            "serviceSummaryAsync");
         Method topology = ZLinkRegistryQuery.class.getMethod(
             "topologyAsync",
             ZLinkRegistryTopologyFilter.class);
+        Method topologyAll = ZLinkRegistryQuery.class.getMethod(
+            "topologyAsync");
         Method memberPeers = ZLinkRegistryQuery.class.getMethod(
             "memberPeersAsync",
             String.class);
 
         assertEquals(CompletionStage.class, status.getReturnType());
         assertEquals(CompletionStage.class, serviceSummary.getReturnType());
+        assertEquals(CompletionStage.class, serviceSummaryAll.getReturnType());
         assertEquals(CompletionStage.class, topology.getReturnType());
+        assertEquals(CompletionStage.class, topologyAll.getReturnType());
         assertEquals(CompletionStage.class, memberPeers.getReturnType());
     }
 
@@ -114,9 +120,12 @@ final class RegistryContractTest {
         Method topology = ZLinkRegistryQueryClient.class.getMethod(
             "topologyAsync",
             ZLinkRegistryTopologyFilter.class);
+        Method topologyAll = ZLinkRegistryQueryClient.class.getMethod(
+            "topologyAsync");
 
         assertEquals(CompletionStage.class, topology.getReturnType());
-        assertEquals(List.of("close", "topologyAsync"),
+        assertEquals(CompletionStage.class, topologyAll.getReturnType());
+        assertEquals(List.of("close", "topologyAsync", "topologyAsync"),
             java.util.Arrays.stream(ZLinkRegistryQueryClient.class.getMethods())
                 .filter(method -> method.getDeclaringClass() == ZLinkRegistryQueryClient.class)
                 .map(Method::getName)

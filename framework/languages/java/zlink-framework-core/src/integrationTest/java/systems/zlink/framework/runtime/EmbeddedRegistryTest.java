@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
-import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter;
 import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
 import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 import systems.zlink.framework.runtime.registry.ZLinkRemoteRegistryQueryClient;
@@ -42,11 +41,11 @@ final class EmbeddedRegistryTest {
             assertEquals(7, status.registryId());
             assertEquals(routerEndpoint, status.bindEndpoint());
             assertTrue(status.topologyEntryCount() >= 0);
-            assertTrue(runtime.serviceSummaryAsync(ZLinkRegistryServiceSummaryFilter.all())
+            assertTrue(runtime.serviceSummaryAsync()
                 .toCompletableFuture()
                 .join()
                 .isEmpty());
-            assertTrue(runtime.topologyAsync(null)
+            assertTrue(runtime.topologyAsync()
                 .toCompletableFuture()
                 .join()
                 .isEmpty());
@@ -65,11 +64,15 @@ final class EmbeddedRegistryTest {
                  options,
                  new ZLinkJavaBackendAdapterFactory(),
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
-             ZLinkRemoteRegistryQueryClient client =
+            ZLinkRemoteRegistryQueryClient client =
                  new ZLinkRemoteRegistryQueryClient(
                      routerEndpoint,
                      new ZLinkJavaBackendAdapterFactory(),
                      new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
+            assertTrue(client.topologyAsync()
+                .toCompletableFuture()
+                .join()
+                .isEmpty());
             assertTrue(client.topologyAsync(ZLinkRegistryTopologyFilter.channel("profile"))
                 .toCompletableFuture()
                 .join()

@@ -65,13 +65,17 @@ final class SampleReleaseGateContractTest {
         "in-memory route channel replacement");
 
     @Test
-    void requiredSamplesExposeExecutableEntryPoints() {
+    void requiredSamplesExposeExecutableEntryPoints() throws IOException {
         Path samplesRoot = samplesRoot();
 
         assertTrue(Files.isRegularFile(samplesRoot.resolve("run_samples.sh")),
             "missing aggregate sample runner");
         assertTrue(Files.isExecutable(samplesRoot.resolve("run_samples.sh")),
             "aggregate sample runner must be executable");
+        String aggregateRunner = Files.readString(samplesRoot.resolve("run_samples.sh"));
+        assertTrue(aggregateRunner.contains("ZLINK_LIBRARY_PATH")
+                && aggregateRunner.contains("core/build/lib/libzlink.so"),
+            "aggregate sample runner must use the local core runtime when it is available");
 
         for (String language : REQUIRED_LANGUAGES) {
             Path languageRoot = samplesRoot.resolve(language);

@@ -3,6 +3,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SAMPLES_DIR="$ROOT_DIR/samples"
+CORE_LIB="$ROOT_DIR/../../../core/build/lib/libzlink.so"
+
+if [[ -f "$CORE_LIB" ]]; then
+  export ZLINK_LIBRARY_PATH="$CORE_LIB"
+fi
 
 cd "$ROOT_DIR"
 

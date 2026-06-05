@@ -14,33 +14,39 @@ dependencyResolutionManagement {
 
 rootProject.name = "zlink-framework-java-samples"
 
-includeBuild("java/Async") {
-    name = "zlink-java-sample-async"
-}
-includeBuild("java/Bingo") {
-    name = "zlink-java-sample-bingo"
-}
-includeBuild("java/StreamingClient") {
-    name = "zlink-java-sample-streaming-client"
-}
-includeBuild("java/TicTacToe") {
-    name = "zlink-java-sample-tictactoe"
-}
-includeBuild("java/TicTacToe.SessionGateway") {
-    name = "zlink-java-sample-tictactoe-session-gateway"
-}
-includeBuild("kotlin/Async") {
-    name = "zlink-kotlin-sample-async"
-}
-includeBuild("kotlin/Bingo") {
-    name = "zlink-kotlin-sample-bingo"
-}
-includeBuild("kotlin/StreamingClient") {
-    name = "zlink-kotlin-sample-streaming-client"
-}
-includeBuild("kotlin/TicTacToe") {
-    name = "zlink-kotlin-sample-tictactoe"
-}
-includeBuild("kotlin/TicTacToe.SessionGateway") {
-    name = "zlink-kotlin-sample-tictactoe-session-gateway"
-}
+include(
+    ":java:Async",
+    ":java:Bingo:Client",
+    ":java:Bingo:Server:Api",
+    ":java:Bingo:Server:Play",
+    ":java:Bingo:Server:Registry",
+    ":java:Bingo:Server:Session",
+    ":java:Bingo:Shared",
+    ":java:StreamingClient",
+    ":java:TicTacToe:Client",
+    ":java:TicTacToe:Server",
+    ":java:TicTacToe:Shared",
+    ":java:TicTacToe.SessionGateway:Client",
+    ":java:TicTacToe.SessionGateway:Server:Api",
+    ":java:TicTacToe.SessionGateway:Server:Play",
+    ":java:TicTacToe.SessionGateway:Server:Registry",
+    ":java:TicTacToe.SessionGateway:Server:Session",
+    ":java:TicTacToe.SessionGateway:Shared",
+    ":kotlin:Async",
+    ":kotlin:Bingo:Client",
+    ":kotlin:Bingo:Server:Api",
+    ":kotlin:Bingo:Server:Play",
+    ":kotlin:Bingo:Server:Registry",
+    ":kotlin:Bingo:Server:Session",
+    ":kotlin:Bingo:Shared",
+    ":kotlin:StreamingClient",
+    ":kotlin:TicTacToe:Client",
+    ":kotlin:TicTacToe:Server",
+    ":kotlin:TicTacToe:Shared",
+    ":kotlin:TicTacToe.SessionGateway:Client",
+    ":kotlin:TicTacToe.SessionGateway:Server:Api",
+    ":kotlin:TicTacToe.SessionGateway:Server:Play",
+    ":kotlin:TicTacToe.SessionGateway:Server:Registry",
+    ":kotlin:TicTacToe.SessionGateway:Server:Session",
+    ":kotlin:TicTacToe.SessionGateway:Shared",
+)

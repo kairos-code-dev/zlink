@@ -2,8 +2,19 @@ plugins {
     application
 }
 
+fun sampleProject(name: String) = project("${sampleRootPath()}:$name")
+
+fun sampleRootPath(): String {
+    val serverIndex = path.indexOf(":Server")
+    return if (serverIndex >= 0) {
+        path.substring(0, serverIndex)
+    } else {
+        path.substringBeforeLast(":", "")
+    }
+}
+
 dependencies {
-    implementation(project(":Shared"))
+    implementation(sampleProject("Shared"))
     implementation(files("../../../../zlink-framework-core/build/libs/zlink-framework-core-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../../zlink-stream-connector/build/libs/zlink-stream-connector-0.1.0-SNAPSHOT.jar"))
     implementation(files("../../../../../../../bindings/java/build/libs/zlink-java-6.0.4.jar"))

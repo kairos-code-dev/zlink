@@ -2,27 +2,51 @@ plugins {
     base
 }
 
-val sampleBuildNames = listOf(
-    "zlink-java-sample-async",
-    "zlink-java-sample-bingo",
-    "zlink-java-sample-streaming-client",
-    "zlink-java-sample-tictactoe",
-    "zlink-java-sample-tictactoe-session-gateway",
-    "zlink-kotlin-sample-async",
-    "zlink-kotlin-sample-bingo",
-    "zlink-kotlin-sample-streaming-client",
-    "zlink-kotlin-sample-tictactoe",
-    "zlink-kotlin-sample-tictactoe-session-gateway",
+val sampleProjectPaths = listOf(
+    ":java:Async",
+    ":java:Bingo:Client",
+    ":java:Bingo:Server:Api",
+    ":java:Bingo:Server:Play",
+    ":java:Bingo:Server:Registry",
+    ":java:Bingo:Server:Session",
+    ":java:Bingo:Shared",
+    ":java:StreamingClient",
+    ":java:TicTacToe:Client",
+    ":java:TicTacToe:Server",
+    ":java:TicTacToe:Shared",
+    ":java:TicTacToe.SessionGateway:Client",
+    ":java:TicTacToe.SessionGateway:Server:Api",
+    ":java:TicTacToe.SessionGateway:Server:Play",
+    ":java:TicTacToe.SessionGateway:Server:Registry",
+    ":java:TicTacToe.SessionGateway:Server:Session",
+    ":java:TicTacToe.SessionGateway:Shared",
+    ":kotlin:Async",
+    ":kotlin:Bingo:Client",
+    ":kotlin:Bingo:Server:Api",
+    ":kotlin:Bingo:Server:Play",
+    ":kotlin:Bingo:Server:Registry",
+    ":kotlin:Bingo:Server:Session",
+    ":kotlin:Bingo:Shared",
+    ":kotlin:StreamingClient",
+    ":kotlin:TicTacToe:Client",
+    ":kotlin:TicTacToe:Server",
+    ":kotlin:TicTacToe:Shared",
+    ":kotlin:TicTacToe.SessionGateway:Client",
+    ":kotlin:TicTacToe.SessionGateway:Server:Api",
+    ":kotlin:TicTacToe.SessionGateway:Server:Play",
+    ":kotlin:TicTacToe.SessionGateway:Server:Registry",
+    ":kotlin:TicTacToe.SessionGateway:Server:Session",
+    ":kotlin:TicTacToe.SessionGateway:Shared",
 )
 
 tasks.register("buildAllSamples") {
     group = LifecycleBasePlugin.BUILD_GROUP
     description = "Builds every Java and Kotlin ZLink sample included in this IDE project."
-    dependsOn(sampleBuildNames.map { gradle.includedBuild(it).task(":build") })
+    dependsOn(sampleProjectPaths.map { "$it:build" })
 }
 
 tasks.register("cleanAllSamples") {
     group = LifecycleBasePlugin.BUILD_GROUP
     description = "Cleans every Java and Kotlin ZLink sample included in this IDE project."
-    dependsOn(sampleBuildNames.map { gradle.includedBuild(it).task(":clean") })
+    dependsOn(sampleProjectPaths.map { "$it:clean" })
 }

@@ -1,5 +1,6 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.handlers
 
+import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkSpotActorJoin
 import systems.zlink.samples.kotlin.tictactoe.server.play.actors.PlayActor
@@ -11,10 +12,10 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoin
 class TicTacToeGameJoinHandler {
     @ZLinkSpotActorJoin
     fun join(
+        spot: TicTacToeGame,
         actor: PlayActor,
         request: TicTacToeGameJoinReq,
+        cancellationToken: CancellationToken,
     ): java.util.concurrent.CompletionStage<TicTacToeGameJoinRes> =
-        actor.context()
-            .getSpot(TicTacToeGame::class.java)
-            .join(actor, request.gameId)
+        spot.join(actor, request.gameId)
 }

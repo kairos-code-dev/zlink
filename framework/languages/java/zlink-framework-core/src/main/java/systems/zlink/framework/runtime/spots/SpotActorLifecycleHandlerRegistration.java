@@ -6,6 +6,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 record SpotActorLifecycleHandlerRegistration(
     Class<?> handlerType,
     Method handlerMethod,
+    Class<?> spotType,
     Class<?> actorType,
     ZLinkScannedHandlerKind kind) {
 }

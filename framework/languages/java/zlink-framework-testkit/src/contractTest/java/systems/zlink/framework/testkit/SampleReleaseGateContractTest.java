@@ -876,11 +876,19 @@ final class SampleReleaseGateContractTest {
             "TicTacToe direct sample must split client JoinGame contracts from Spot join contracts");
         assertTrue(playJoinHandlerSource.contains("CompletionStage<TicTacToeGameJoinRes>")
                 && playJoinHandlerSource.contains("TicTacToeGameJoinReq request")
+                && playJoinHandlerSource.contains("TicTacToeGame spot")
+                && playJoinHandlerSource.contains("CancellationToken cancellationToken")
                 && playJoinHandlerSource.contains("TicTacToeGameJoinRes")
                 && playActorJoinHandlerSource.contains("new TicTacToeGameJoinReq")
+                && playActorJoinHandlerSource.contains("PlayEntrySpot entrySpot")
+                && playActorJoinHandlerSource.contains("ZLinkSpotActorRequestContext context")
+                && playActorJoinHandlerSource.contains("CancellationToken cancellationToken")
                 && playActorJoinHandlerSource.contains("new JoinGameRes")
-                && playPlaceMarkHandlerSource.contains("PlaceMarkReq request"),
-            "TicTacToe Play actor handlers must receive typed stream request contracts");
+                && playPlaceMarkHandlerSource.contains("TicTacToeGame spot")
+                && playPlaceMarkHandlerSource.contains("ZLinkSpotActorRequestContext context")
+                && playPlaceMarkHandlerSource.contains("PlaceMarkReq request")
+                && playPlaceMarkHandlerSource.contains("CancellationToken cancellationToken"),
+            "TicTacToe Play actor handlers must receive .NET-shaped typed actor contracts");
         assertTrue(gameSpotSource.contains("actor.joinGame")
                 && gameSpotSource.contains("boundSession()")
                 && gameSpotSource.contains(".send(new GameStateNotify")
@@ -903,12 +911,20 @@ final class SampleReleaseGateContractTest {
                 && gameTimerHandlerSource.contains("spot.tickAsync()"),
             "TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
         assertTrue(gameActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
+                && gameActorJoinedHandlerSource.contains("TicTacToeGame spot")
                 && gameActorJoinedHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && gameActorJoinedHandlerSource.contains("CancellationToken cancellationToken")
                 && gameActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
+                && gameActorLeftHandlerSource.contains("TicTacToeGame spot")
                 && gameActorLeftHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && gameActorLeftHandlerSource.contains("CancellationToken cancellationToken")
                 && entryActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
-                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft"),
-            "TicTacToe EntrySpot and GameSpot lifecycle handler files must use framework lifecycle annotations, not placeholder methods");
+                && entryActorJoinedHandlerSource.contains("PlayEntrySpot entrySpot")
+                && entryActorJoinedHandlerSource.contains("CancellationToken cancellationToken")
+                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
+                && entryActorLeftHandlerSource.contains("PlayEntrySpot entrySpot")
+                && entryActorLeftHandlerSource.contains("CancellationToken cancellationToken"),
+            "TicTacToe EntrySpot and GameSpot lifecycle handlers must use .NET-shaped spot, actor, change, cancellation annotations");
         assertTrue(playActorJoinHandlerSource.contains("request.gameId()"),
             "TicTacToe join handler must store the requested game id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),
@@ -1198,11 +1214,19 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe Play stream session must authenticate through the Api role and relay actor packets");
         assertTrue(playJoinHandlerSource.contains("CompletionStage<TicTacToeGameJoinRes>")
                 && playJoinHandlerSource.contains("request: TicTacToeGameJoinReq")
+                && playJoinHandlerSource.contains("spot: TicTacToeGame")
+                && playJoinHandlerSource.contains("cancellationToken: CancellationToken")
                 && playJoinHandlerSource.contains("TicTacToeGameJoinRes")
                 && playActorJoinHandlerSource.contains("TicTacToeGameJoinReq")
+                && playActorJoinHandlerSource.contains("entrySpot: PlayEntrySpot")
+                && playActorJoinHandlerSource.contains("context: ZLinkSpotActorRequestContext")
+                && playActorJoinHandlerSource.contains("cancellationToken: CancellationToken")
                 && playActorJoinHandlerSource.contains("JoinGameRes(result.reply().state)")
-                && playPlaceMarkHandlerSource.contains("request: PlaceMarkReq"),
-            "Kotlin TicTacToe Play actor handlers must receive typed stream request contracts");
+                && playPlaceMarkHandlerSource.contains("spot: TicTacToeGame")
+                && playPlaceMarkHandlerSource.contains("context: ZLinkSpotActorRequestContext")
+                && playPlaceMarkHandlerSource.contains("request: PlaceMarkReq")
+                && playPlaceMarkHandlerSource.contains("cancellationToken: CancellationToken"),
+            "Kotlin TicTacToe Play actor handlers must receive .NET-shaped typed actor contracts");
         assertTrue(gameSpotSource.contains("actor.joinGame")
                 && gameSpotSource.contains("boundSession()")
                 && gameSpotSource.contains(".send(GameStateNotify")
@@ -1225,12 +1249,20 @@ final class SampleReleaseGateContractTest {
                 && gameTimerHandlerSource.contains("spot.tickAsync()"),
             "Kotlin TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
         assertTrue(gameActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
+                && gameActorJoinedHandlerSource.contains("spot: TicTacToeGame")
                 && gameActorJoinedHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && gameActorJoinedHandlerSource.contains("cancellationToken: CancellationToken")
                 && gameActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
+                && gameActorLeftHandlerSource.contains("spot: TicTacToeGame")
                 && gameActorLeftHandlerSource.contains("ZLinkSpotActorChangeResult")
+                && gameActorLeftHandlerSource.contains("cancellationToken: CancellationToken")
                 && entryActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
-                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft"),
-            "Kotlin TicTacToe EntrySpot and GameSpot lifecycle handler files must use framework lifecycle annotations, not placeholder methods");
+                && entryActorJoinedHandlerSource.contains("entrySpot: PlayEntrySpot")
+                && entryActorJoinedHandlerSource.contains("cancellationToken: CancellationToken")
+                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
+                && entryActorLeftHandlerSource.contains("entrySpot: PlayEntrySpot")
+                && entryActorLeftHandlerSource.contains("cancellationToken: CancellationToken"),
+            "Kotlin TicTacToe EntrySpot and GameSpot lifecycle handlers must use .NET-shaped spot, actor, change, cancellation annotations");
         assertTrue(playActorJoinHandlerSource.contains("request.gameId"),
             "Kotlin TicTacToe join handler must store the requested game id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),

@@ -7,12 +7,19 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
+import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
+import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.spots.ZLinkSpotContext;
 
 final class ZLinkHandlerScannerTest {
     @Test
@@ -73,6 +80,23 @@ final class ZLinkHandlerScannerTest {
         assertEquals("ContextSend", sendHandler.packetName());
     }
 
+    @Test
+    void scansSpotActorHandlerWithDotnetAttributedShape() {
+        ZLinkScannedHandlerCatalog catalog =
+            ZLinkHandlerScanner.scan(Set.of(ZLinkHandlerScannerTest.class));
+
+        ZLinkScannedHandler handler = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == DotnetShapeSpotActorHandler.class)
+            .findFirst()
+            .orElseThrow();
+
+        assertEquals(ZLinkScannedHandlerSurface.SPOT, handler.surface());
+        assertEquals(ZLinkScannedHandlerKind.ACTOR_REQUEST, handler.kind());
+        assertEquals(SpotActorRequest.class, handler.messageType());
+        assertEquals(SpotActorReply.class, handler.replyType());
+        assertEquals("SpotActorRequest", handler.packetName());
+    }
+
     public static final class UngroupedInterfaceHandler
         implements ZLinkRequestHandler<String, String> {
         @Override
@@ -102,5 +126,42 @@ final class ZLinkHandlerScannerTest {
         public CompletionStage<Void> handle(String request, ZLinkHandlerContext context) {
             return CompletableFuture.completedFuture(null);
         }
+    }
+
+    public static final class DotnetShapeSpotActorHandler {
+        @ZLinkSpotActorRequest(packetName = "SpotActorRequest")
+        public CompletionStage<SpotActorReply> handle(
+            TestSpot spot,
+            TestActor actor,
+            ZLinkSpotActorRequestContext context,
+            SpotActorRequest request,
+            CancellationToken cancellationToken) {
+            return CompletableFuture.completedFuture(new SpotActorReply());
+        }
+    }
+
+    public static final class TestSpot implements ZLinkSpot {
+        @Override
+        public ZLinkSpotContext context() {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    public static final class TestActor implements ZLinkActor {
+        @Override
+        public String actorId() {
+            return "actor";
+        }
+
+        @Override
+        public ZLinkActorContext context() {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    public record SpotActorRequest() {
+    }
+
+    public record SpotActorReply() {
     }
 }

@@ -36,6 +36,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
@@ -68,6 +69,8 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorChangeKind;
 import systems.zlink.framework.spots.ZLinkSpotActorChangeResult;
+import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotInfo;
@@ -88,6 +91,7 @@ import systems.zlink.framework.spots.ZLinkTimerTick;
 public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRuntime.SpotRelayIngress, AutoCloseable {
     private static final long ROUTER_ENDPOINT_ROUTE_KIND = 0x5a4c5245L;
     private static final int ROUTER_PEER_CONVERGENCE_SNAPSHOTS = 10;
+    private static final CancellationToken NONE_CANCELLATION = () -> false;
     private static final ScheduledThreadPoolExecutor ACTOR_SESSION_REPLY_RETRY_EXECUTOR =
         new ScheduledThreadPoolExecutor(1, task -> {
             Thread thread = new Thread(task, "zlink-actor-session-reply-retry");
@@ -301,12 +305,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 || handler.kind() != ZLinkScannedHandlerKind.ACTOR_JOIN) {
                 continue;
             }
-            Class<?> actorType = handler.handlerMethod().getParameterTypes()[0];
+            ActorMessageShape shape = actorJoinHandlerShape(
+                handler.handlerType(),
+                handler.handlerMethod());
             SpotActorJoinHandlerRegistration registration =
                 new SpotActorJoinHandlerRegistration(
                     handler.handlerType(),
                     handler.handlerMethod(),
-                    actorType,
+                    shape.actorType(),
                     handler.messageType(),
                     handler.replyType(),
                     handler.packetName());
@@ -327,12 +333,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     && handler.kind() != ZLinkScannedHandlerKind.ACTOR_REQUEST)) {
                 continue;
             }
-            Class<?> actorType = handler.handlerMethod().getParameterTypes()[0];
+            ActorMessageShape shape = actorPacketHandlerShape(
+                handler.handlerType(),
+                handler.handlerMethod(),
+                handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST
+                    ? ZLinkSpotActorRequestContext.class
+                    : ZLinkSpotActorSendContext.class);
             SpotActorPacketHandlerRegistration registration =
                 new SpotActorPacketHandlerRegistration(
                     handler.handlerType(),
                     handler.handlerMethod(),
-                    actorType,
+                    shape.actorType(),
                     handler.messageType(),
                     handler.replyType(),
                     handler.packetName(),
@@ -369,10 +380,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 || handler.kind() != kind) {
                 continue;
             }
+            ActorLifecycleShape shape =
+                actorLifecycleHandlerShape(handler.handlerType(), handler.handlerMethod());
             handlers.add(new SpotActorLifecycleHandlerRegistration(
                 handler.handlerType(),
                 handler.handlerMethod(),
-                handler.messageType(),
+                shape.spotType(),
+                shape.actorType(),
                 handler.kind()));
         }
         return List.copyOf(handlers);
@@ -727,39 +741,51 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private CompletionStage<Void> notifySpotActorLifecycle(
+        Object spotSurface,
         ZLinkActor actor,
         ZLinkSpotActorChangeResult result,
         List<SpotActorLifecycleHandlerRegistration> registrations) {
         CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
         for (SpotActorLifecycleHandlerRegistration registration : registrations) {
-            if (!registration.actorType().isInstance(actor)) {
+            if (!matchesActorLifecycleTarget(registration, spotSurface, actor)) {
                 continue;
             }
             tail = tail.thenCompose(ignored ->
-                invokeSpotActorLifecycleHandler(registration, actor, result));
+                invokeSpotActorLifecycleHandler(registration, spotSurface, actor, result));
         }
         return tail;
     }
 
+    private CompletionStage<Void> notifySpotActorLifecycle(
+        ZLinkActor actor,
+        ZLinkSpotActorChangeResult result,
+        List<SpotActorLifecycleHandlerRegistration> registrations) {
+        return notifySpotActorLifecycle(currentSpotSurface(actor), actor, result, registrations);
+    }
+
     private CompletionStage<Void> notifySpotActorDisconnected(ZLinkActor actor) {
         CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
+        Object spotSurface = currentSpotSurface(actor);
         for (SpotActorLifecycleHandlerRegistration registration : actorDisconnectedHandlers) {
-            if (!registration.actorType().isInstance(actor)) {
+            if (!matchesActorLifecycleTarget(registration, spotSurface, actor)) {
                 continue;
             }
             tail = tail.thenCompose(ignored ->
-                invokeSpotActorDisconnectedHandler(registration, actor));
+                invokeSpotActorDisconnectedHandler(registration, spotSurface, actor));
         }
         return tail;
     }
 
     private CompletionStage<Void> invokeSpotActorDisconnectedHandler(
         SpotActorLifecycleHandlerRegistration registration,
+        Object spotSurface,
         ZLinkActor actor) {
         try {
             Object handler = handlerFactory.create(registration.handlerType());
             Object invocationResult =
-                registration.handlerMethod().invoke(handler, actor);
+                registration.handlerMethod().invoke(
+                    handler,
+                    actorDisconnectedArguments(registration.handlerMethod(), spotSurface, actor));
             if (invocationResult instanceof CompletionStage<?> stage) {
                 return stage.thenApply(ignored -> null);
             }
@@ -780,14 +806,38 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         return activation == null ? null : activation.spot;
     }
 
+    private Object spotSurfaceFor(RoutingId spotRid) {
+        SpotActivation activation = spots.get(spotRid);
+        if (activation != null) {
+            return activation.spot;
+        }
+        for (EntrySpotActivation entrySpot : entrySpots) {
+            if (entrySpot.backendSpot.routingId().equals(spotRid)) {
+                return entrySpot.entrySpot;
+            }
+        }
+        return null;
+    }
+
+    private Object currentSpotSurface(ZLinkActor actor) {
+        try {
+            return actor.context().getSpot();
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
     private CompletionStage<Void> invokeSpotActorLifecycleHandler(
         SpotActorLifecycleHandlerRegistration registration,
+        Object spotSurface,
         ZLinkActor actor,
         ZLinkSpotActorChangeResult result) {
         try {
             Object handler = handlerFactory.create(registration.handlerType());
             Object invocationResult =
-                registration.handlerMethod().invoke(handler, actor, result);
+                registration.handlerMethod().invoke(
+                    handler,
+                    actorLifecycleArguments(registration.handlerMethod(), spotSurface, actor, result));
             if (invocationResult instanceof CompletionStage<?> stage) {
                 return stage.thenApply(ignored -> null);
             }
@@ -1478,18 +1528,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.LEAVE_SPOT);
                 actorRuntime.submitActorDispatch(
                     actor.actorId(),
-                    () -> notifySpotActorLifecycle(actor, result, actorLeftHandlers));
+                    () -> notifySpotActorLifecycle(entrySpot, actor, result, actorLeftHandlers));
                 return;
             }
             RoutingId spotRid = event.info()
                 .currentSpotRid()
                 .orElse(backendSpot.routingId());
-            actorRuntime.markJoined(actor, actorRef, spotRid, spotFor(spotRid));
+            actorRuntime.markJoined(
+                actor,
+                actorRef,
+                spotRid,
+                spotSurfaceFor(spotRid) instanceof ZLinkSpot spot ? spot : null);
             ZLinkSpotActorChangeResult result =
                 new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JOIN_ENTRY_SPOT);
             actorRuntime.submitActorDispatch(
                 actor.actorId(),
-                () -> notifySpotActorLifecycle(actor, result, actorJoinedHandlers));
+                () -> notifySpotActorLifecycle(entrySpot, actor, result, actorJoinedHandlers));
         }
 
         private void dispatchActorMessages(List<ZLinkBackendActorReceived> actorMessages) {
@@ -1808,15 +1862,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                         actor.get(),
                         request.targetActor(),
                         backendSpot.routingId(),
-                        spotFor(backendSpot.routingId()));
+                        null);
                     try {
                         Object handler = handlerFactory.create(registration.handlerType());
                         Object requestObject =
                             serializer.deserialize(payload, registration.requestType());
                         Object result = registration.handlerMethod().invoke(
                             handler,
-                            actor.get(),
-                            requestObject);
+                            actorJoinArguments(
+                                registration.handlerMethod(),
+                                entrySpot,
+                                actor.get(),
+                                requestObject));
                         CompletionStage<?> stage =
                             result instanceof CompletionStage<?> completionStage
                                 ? completionStage
@@ -1859,23 +1916,30 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             List<SpotActorLifecycleHandlerRegistration> registrations) {
             CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
             for (SpotActorLifecycleHandlerRegistration registration : registrations) {
-                if (!registration.actorType().isInstance(actor)) {
+                if (!matchesActorLifecycleTarget(registration, entrySpot, actor)) {
                     continue;
                 }
                 tail = tail.thenCompose(ignored ->
-                    invokeActorJoinedHandler(registration, actor, result));
+                    invokeActorJoinedHandler(registration, entrySpot, actor, result));
             }
             return tail;
         }
 
         private CompletionStage<Void> invokeActorJoinedHandler(
             SpotActorLifecycleHandlerRegistration registration,
+            Object spotSurface,
             ZLinkActor actor,
             ZLinkSpotActorChangeResult result) {
             try {
                 Object handler = handlerFactory.create(registration.handlerType());
                 Object invocationResult =
-                    registration.handlerMethod().invoke(handler, actor, result);
+                    registration.handlerMethod().invoke(
+                        handler,
+                        actorLifecycleArguments(
+                            registration.handlerMethod(),
+                            spotSurface,
+                            actor,
+                            result));
                 if (invocationResult instanceof CompletionStage<?> stage) {
                     return stage.thenApply(ignored -> null);
                 }
@@ -1901,7 +1965,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             try {
                 Object handler = handlerFactory.create(registration.handlerType());
                 Object message = serializer.deserialize(payload, registration.messageType());
-                Object result = registration.handlerMethod().invoke(handler, actor, message);
+                Object result = registration.handlerMethod().invoke(
+                    handler,
+                    actorPacketArguments(
+                        registration.handlerMethod(),
+                        entrySpot,
+                        actor,
+                        new DefaultSpotActorSendContext(registration.packetName()),
+                        message));
                 if (result instanceof CompletionStage<?> stage) {
                     return stage.thenApply(ignored -> null);
                 }
@@ -1927,7 +1998,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             try {
                 Object handler = handlerFactory.create(registration.handlerType());
                 Object message = serializer.deserialize(payload, registration.messageType());
-                Object result = registration.handlerMethod().invoke(handler, actor, message);
+                Object result = registration.handlerMethod().invoke(
+                    handler,
+                    actorPacketArguments(
+                        registration.handlerMethod(),
+                        entrySpot,
+                        actor,
+                        new DefaultSpotActorRequestContext(registration.packetName()),
+                        message));
                 CompletionStage<?> stage = result instanceof CompletionStage<?> completionStage
                     ? completionStage
                     : CompletableFuture.completedFuture(result);
@@ -3037,12 +3115,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 matched = true;
             }
             if (method.getAnnotation(ZLinkSpotActorDisconnected.class) != null) {
-                Class<?> actorType = requireActorParameter(handlerType, method);
+                ActorLifecycleShape shape = actorDisconnectedHandlerShape(handlerType, method);
                 addConfiguredActorLifecycleHandler(
                     new SpotActorLifecycleHandlerRegistration(
                         handlerType,
                         method,
-                        actorType,
+                        shape.spotType(),
+                        shape.actorType(),
                         ZLinkScannedHandlerKind.ACTOR_DISCONNECTED),
                     actorDisconnectedHandlers);
                 matched = true;
@@ -3080,15 +3159,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private void addConfiguredActorJoinHandler(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = requireActorAndMessageParameters(handlerType, method);
+        ActorMessageShape shape = actorJoinHandlerShape(handlerType, method);
         Class<?> replyType = resolveReplyType(handlerType, method);
-        String packetName = resolvePacketName(parameters[1]);
+        String packetName = resolvePacketName(shape.messageType());
         SpotActorJoinHandlerRegistration registration =
             new SpotActorJoinHandlerRegistration(
                 handlerType,
                 method,
-                parameters[0],
-                parameters[1],
+                shape.actorType(),
+                shape.messageType(),
                 replyType,
                 packetName);
         SpotActorJoinHandlerRegistration previous =
@@ -3103,20 +3182,25 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Class<?> handlerType,
         Method method,
         ZLinkScannedHandlerKind kind) {
-        Class<?>[] parameters = requireActorAndMessageParameters(handlerType, method);
+        ActorMessageShape shape = actorPacketHandlerShape(
+            handlerType,
+            method,
+            kind == ZLinkScannedHandlerKind.ACTOR_REQUEST
+                ? ZLinkSpotActorRequestContext.class
+                : ZLinkSpotActorSendContext.class);
         Class<?> replyType = kind == ZLinkScannedHandlerKind.ACTOR_REQUEST
             ? resolveReplyType(handlerType, method)
             : Void.class;
         String explicitPacketName = kind == ZLinkScannedHandlerKind.ACTOR_REQUEST
             ? method.getAnnotation(ZLinkSpotActorRequest.class).packetName()
             : method.getAnnotation(ZLinkSpotActorSend.class).packetName();
-        String packetName = resolvePacketName(parameters[1], explicitPacketName);
+        String packetName = resolvePacketName(shape.messageType(), explicitPacketName);
         SpotActorPacketHandlerRegistration registration =
             new SpotActorPacketHandlerRegistration(
                 handlerType,
                 method,
-                parameters[0],
-                parameters[1],
+                shape.actorType(),
+                shape.messageType(),
                 replyType,
                 packetName,
                 kind);
@@ -3133,9 +3217,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Method method,
         List<SpotActorLifecycleHandlerRegistration> registrations,
         ZLinkScannedHandlerKind kind) {
-        Class<?> actorType = requireActorAndChangeParameters(handlerType, method);
+        ActorLifecycleShape shape = actorLifecycleHandlerShape(handlerType, method);
         addConfiguredActorLifecycleHandler(
-            new SpotActorLifecycleHandlerRegistration(handlerType, method, actorType, kind),
+            new SpotActorLifecycleHandlerRegistration(
+                handlerType,
+                method,
+                shape.spotType(),
+                shape.actorType(),
+                kind),
             registrations);
     }
 
@@ -3249,34 +3338,174 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
     }
 
-    private static Class<?> requireActorParameter(Class<?> handlerType, Method method) {
+    private static ActorLifecycleShape actorDisconnectedHandlerShape(Class<?> handlerType, Method method) {
         Class<?>[] parameters = method.getParameterTypes();
-        if (parameters.length != 1) {
-            throw new ZLinkConfigurationException(
-                "Spot actor disconnected handler method must have one actor parameter: "
-                    + handlerType.getName() + "." + method.getName());
+        if (parameters.length == 1) {
+            return new ActorLifecycleShape(null, parameters[0]);
         }
-        return parameters[0];
+        if (parameters.length == 3 && parameters[2] == CancellationToken.class) {
+            return new ActorLifecycleShape(parameters[0], parameters[1]);
+        }
+        throw new ZLinkConfigurationException(
+            "Spot actor disconnected handler method must have actor parameter or spot, actor, CancellationToken parameters: "
+                + handlerType.getName() + "." + method.getName());
     }
 
-    private static Class<?> requireActorAndChangeParameters(Class<?> handlerType, Method method) {
+    private static ActorLifecycleShape actorLifecycleHandlerShape(Class<?> handlerType, Method method) {
         Class<?>[] parameters = method.getParameterTypes();
-        if (parameters.length != 2 || parameters[1] != ZLinkSpotActorChangeResult.class) {
-            throw new ZLinkConfigurationException(
-                "Spot actor lifecycle handler method must have actor and ZLinkSpotActorChangeResult parameters: "
-                    + handlerType.getName() + "." + method.getName());
+        if (parameters.length == 2 && parameters[1] == ZLinkSpotActorChangeResult.class) {
+            return new ActorLifecycleShape(null, parameters[0]);
         }
-        return parameters[0];
+        if (parameters.length == 4
+            && parameters[2] == ZLinkSpotActorChangeResult.class
+            && parameters[3] == CancellationToken.class) {
+            return new ActorLifecycleShape(parameters[0], parameters[1]);
+        }
+        throw new ZLinkConfigurationException(
+            "Spot actor lifecycle handler method must have actor/change or spot, actor, change, CancellationToken parameters: "
+                + handlerType.getName() + "." + method.getName());
     }
 
-    private static Class<?>[] requireActorAndMessageParameters(Class<?> handlerType, Method method) {
+    static boolean matchesActorLifecycleTarget(
+        SpotActorLifecycleHandlerRegistration registration,
+        Object spotSurface,
+        ZLinkActor actor) {
+        return registration.actorType().isInstance(actor)
+            && (registration.spotType() == null || registration.spotType().isInstance(spotSurface));
+    }
+
+    private static ActorMessageShape actorJoinHandlerShape(Class<?> handlerType, Method method) {
         Class<?>[] parameters = method.getParameterTypes();
-        if (parameters.length != 2) {
-            throw new ZLinkConfigurationException(
-                "Spot actor handler method must have actor and message parameters: "
-                    + handlerType.getName() + "." + method.getName());
+        if (parameters.length == 2) {
+            return new ActorMessageShape(parameters[0], parameters[1]);
         }
-        return parameters;
+        if (parameters.length == 4 && parameters[3] == CancellationToken.class) {
+            return new ActorMessageShape(parameters[1], parameters[2]);
+        }
+        throw new ZLinkConfigurationException(
+            "Spot actor join handler method must have actor/request or spot, actor, request, CancellationToken parameters: "
+                + handlerType.getName() + "." + method.getName());
+    }
+
+    private static ActorMessageShape actorPacketHandlerShape(
+        Class<?> handlerType,
+        Method method,
+        Class<? extends ZLinkHandlerContext> contextType) {
+        Class<?>[] parameters = method.getParameterTypes();
+        if (parameters.length == 2) {
+            return new ActorMessageShape(parameters[0], parameters[1]);
+        }
+        if (parameters.length == 5
+            && parameters[2].isAssignableFrom(contextType)
+            && parameters[4] == CancellationToken.class) {
+            return new ActorMessageShape(parameters[1], parameters[3]);
+        }
+        throw new ZLinkConfigurationException(
+            "Spot actor packet handler method must have actor/message or spot, actor, context, message, CancellationToken parameters: "
+                + handlerType.getName() + "." + method.getName());
+    }
+
+    private record ActorMessageShape(Class<?> actorType, Class<?> messageType) {
+    }
+
+    private record ActorLifecycleShape(Class<?> spotType, Class<?> actorType) {
+    }
+
+    static Object[] actorJoinArguments(Method method, Object spot, ZLinkActor actor, Object message) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        if (parameterTypes.length == 2) {
+            return new Object[] {actor, message};
+        }
+        return new Object[] {spot, actor, message, NONE_CANCELLATION};
+    }
+
+    static Object[] actorPacketArguments(
+        Method method,
+        Object spot,
+        ZLinkActor actor,
+        ZLinkHandlerContext context,
+        Object message) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        if (parameterTypes.length == 2) {
+            return new Object[] {actor, message};
+        }
+        return new Object[] {spot, actor, context, message, context.cancellationToken()};
+    }
+
+    static Object[] actorLifecycleArguments(
+        Method method,
+        Object spot,
+        ZLinkActor actor,
+        ZLinkSpotActorChangeResult result) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        if (parameterTypes.length == 2) {
+            return new Object[] {actor, result};
+        }
+        return new Object[] {spot, actor, result, NONE_CANCELLATION};
+    }
+
+    static Object[] actorDisconnectedArguments(Method method, Object spot, ZLinkActor actor) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        if (parameterTypes.length == 1) {
+            return new Object[] {actor};
+        }
+        return new Object[] {spot, actor, NONE_CANCELLATION};
+    }
+
+    private static final class DefaultSpotActorSendContext implements ZLinkSpotActorSendContext {
+        private final String packetName;
+
+        DefaultSpotActorSendContext(String packetName) {
+            this.packetName = packetName;
+        }
+
+        @Override
+        public Optional<String> channelName() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> packetName() {
+            return Optional.ofNullable(packetName);
+        }
+
+        @Override
+        public Optional<String> contentType() {
+            return Optional.empty();
+        }
+
+        @Override
+        public CancellationToken cancellationToken() {
+            return NONE_CANCELLATION;
+        }
+    }
+
+    private static final class DefaultSpotActorRequestContext implements ZLinkSpotActorRequestContext {
+        private final String packetName;
+
+        DefaultSpotActorRequestContext(String packetName) {
+            this.packetName = packetName;
+        }
+
+        @Override
+        public Optional<String> channelName() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> packetName() {
+            return Optional.ofNullable(packetName);
+        }
+
+        @Override
+        public Optional<String> contentType() {
+            return Optional.empty();
+        }
+
+        @Override
+        public CancellationToken cancellationToken() {
+            return NONE_CANCELLATION;
+        }
     }
 
     private static ParameterizedType findInterface(Class<?> type, Class<?> targetRawType) {
@@ -3505,18 +3734,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.LEAVE_SPOT);
                 actorRuntime.submitActorDispatch(
                     actor.actorId(),
-                    () -> notifySpotActorLifecycle(actor, result, actorLeftHandlers));
+                    () -> notifySpotActorLifecycle(spot, actor, result, actorLeftHandlers));
                 return;
             }
             RoutingId spotRid = event.info()
                 .currentSpotRid()
                 .orElse(backendSpot.routingId());
-            actorRuntime.markJoined(actor, actorRef, spotRid, spotFor(spotRid));
+            actorRuntime.markJoined(
+                actor,
+                actorRef,
+                spotRid,
+                spotSurfaceFor(spotRid) instanceof ZLinkSpot spot ? spot : null);
             ZLinkSpotActorChangeResult result =
                 new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JOIN_ENTRY_SPOT);
             actorRuntime.submitActorDispatch(
                 actor.actorId(),
-                () -> notifySpotActorLifecycle(actor, result, actorJoinedHandlers));
+                () -> notifySpotActorLifecycle(spot, actor, result, actorJoinedHandlers));
         }
 
         private void dispatchActorMessages(List<ZLinkBackendActorReceived> actorMessages) {
@@ -3842,8 +4075,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                             serializer.deserialize(payload, registration.requestType());
                         Object result = registration.handlerMethod().invoke(
                             handler,
-                            actor.get(),
-                            requestObject);
+                            actorJoinArguments(
+                                registration.handlerMethod(),
+                                spot,
+                                actor.get(),
+                                requestObject));
                         CompletionStage<?> stage =
                             result instanceof CompletionStage<?> completionStage
                                 ? completionStage
@@ -3886,23 +4122,30 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             List<SpotActorLifecycleHandlerRegistration> registrations) {
             CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
             for (SpotActorLifecycleHandlerRegistration registration : registrations) {
-                if (!registration.actorType().isInstance(actor)) {
+                if (!matchesActorLifecycleTarget(registration, spot, actor)) {
                     continue;
                 }
                 tail = tail.thenCompose(ignored ->
-                    invokeActorJoinedHandler(registration, actor, result));
+                    invokeActorJoinedHandler(registration, spot, actor, result));
             }
             return tail;
         }
 
         private CompletionStage<Void> invokeActorJoinedHandler(
             SpotActorLifecycleHandlerRegistration registration,
+            Object spotSurface,
             ZLinkActor actor,
             ZLinkSpotActorChangeResult result) {
             try {
                 Object handler = handlerFactory.create(registration.handlerType());
                 Object invocationResult =
-                    registration.handlerMethod().invoke(handler, actor, result);
+                    registration.handlerMethod().invoke(
+                        handler,
+                        actorLifecycleArguments(
+                            registration.handlerMethod(),
+                            spotSurface,
+                            actor,
+                            result));
                 if (invocationResult instanceof CompletionStage<?> stage) {
                     return stage.thenApply(ignored -> null);
                 }
@@ -3928,7 +4171,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             try {
                 Object handler = handlerFactory.create(registration.handlerType());
                 Object message = serializer.deserialize(payload, registration.messageType());
-                Object result = registration.handlerMethod().invoke(handler, actor, message);
+                Object result = registration.handlerMethod().invoke(
+                    handler,
+                    actorPacketArguments(
+                        registration.handlerMethod(),
+                        spot,
+                        actor,
+                        new DefaultSpotActorSendContext(registration.packetName()),
+                        message));
                 if (result instanceof CompletionStage<?> stage) {
                     return stage.thenApply(ignored -> null);
                 }
@@ -3954,7 +4204,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             try {
                 Object handler = handlerFactory.create(registration.handlerType());
                 Object message = serializer.deserialize(payload, registration.messageType());
-                Object result = registration.handlerMethod().invoke(handler, actor, message);
+                Object result = registration.handlerMethod().invoke(
+                    handler,
+                    actorPacketArguments(
+                        registration.handlerMethod(),
+                        spot,
+                        actor,
+                        new DefaultSpotActorRequestContext(registration.packetName()),
+                        message));
                 CompletionStage<?> stage = result instanceof CompletionStage<?> completionStage
                     ? completionStage
                     : CompletableFuture.completedFuture(result);

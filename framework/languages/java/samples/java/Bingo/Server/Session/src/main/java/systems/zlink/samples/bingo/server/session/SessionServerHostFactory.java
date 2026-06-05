@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
 import systems.zlink.samples.bingo.server.session.sessions.BingoSession;
-import systems.zlink.samples.bingo.server.session.sessions.handlers.AuthenticateSessionHandler;
 import systems.zlink.samples.bingo.shared.configuration.SampleNames;
 import systems.zlink.samples.bingo.shared.configuration.SampleTopology;
 
@@ -57,7 +56,6 @@ public final class SessionServerHostFactory {
                 stream.attachActorGateway(SampleNames.SessionSpotNode);
                 stream.bind(SampleTopology.StreamEndpoint);
                 stream.registerSession(BingoSession.class);
-                stream.addSessionPacketHandler(AuthenticateSessionHandler.class);
             });
         };
     }

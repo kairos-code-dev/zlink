@@ -516,6 +516,24 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void clientServerChannelRejectsMappedGroupAndExplicitRequestDuplicatePacketName() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
+        options.addClientServerChannel("profile", channel -> {
+            channel.enableServer(server -> server.bind("inproc://profile-server"));
+            channel.addHandlerGroup("scanned-request");
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "String");
+        });
+
+        ZLinkConfigurationException exception =
+            assertThrows(ZLinkConfigurationException.class, options::validate);
+
+        assertTrue(exception.getMessage().contains(
+            "duplicate client/server request handler packet name"));
+    }
+
+    @Test
     void clientServerChannelRejectsDuplicateSendHandlerPacketName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
@@ -611,6 +629,25 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void fanoutChannelRejectsMappedGroupAndExplicitPublishDuplicatePacketName() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
+        options.addFanoutChannel("events", channel -> {
+            channel.enableSubscriber(subscriber ->
+                subscriber.useManualConnections(endpoints -> endpoints.connect("inproc://events")));
+            channel.addHandlerGroup("scanned-publish");
+            channel.addPublishHandler(EventHandler.class, String.class, "String");
+        });
+
+        ZLinkConfigurationException exception =
+            assertThrows(ZLinkConfigurationException.class, options::validate);
+
+        assertTrue(exception.getMessage().contains(
+            "duplicate fanout publish handler packet name"));
+    }
+
+    @Test
     void routeMeshChannelWithoutBindIsRejected() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
@@ -654,6 +691,25 @@ final class DefaultZLinkFrameworkOptionsTest {
         });
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void routeMeshChannelRejectsMappedGroupAndExplicitRequestDuplicatePacketName() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
+        options.addRouteMeshChannel("route", channel -> {
+            channel.bind("inproc://route");
+            channel.useManualConnections(endpoints -> endpoints.connect("inproc://route"));
+            channel.addHandlerGroup("scanned-route");
+            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "String");
+        });
+
+        ZLinkConfigurationException exception =
+            assertThrows(ZLinkConfigurationException.class, options::validate);
+
+        assertTrue(exception.getMessage().contains(
+            "duplicate route mesh request handler packet name"));
     }
 
     @Test
@@ -836,6 +892,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         }
     }
 
+    @ZLinkHandlerGroup("scanned-publish")
     public static final class EventHandler implements ZLinkPublishHandler<String> {
         @Override
         public CompletionStage<Void> handleAsync(String message, ZLinkPublishContext context) {
@@ -875,6 +932,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         }
     }
 
+    @ZLinkHandlerGroup("scanned-route")
     public static final class RouteEchoHandler
         implements ZLinkRouteRequestHandler<String, String> {
         @Override

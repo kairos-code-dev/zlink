@@ -278,7 +278,11 @@ public final class ChannelRegistration {
             throw new ZLinkConfigurationException(
                 "client/server channel server requires a send/request handler or handler group: " + name);
         }
-        Set<String> packetNames = new HashSet<>();
+        Set<String> packetNames = mappedPacketNames(
+            handlerCatalog,
+            ZLinkScannedHandlerSurface.CHANNEL,
+            ZLinkScannedHandlerKind.SEND,
+            "duplicate client/server send handler packet name");
         for (ChannelSendHandlerRegistration<?, ?> handler : sendHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
@@ -286,7 +290,11 @@ public final class ChannelRegistration {
                         + name + "/" + handler.packetName());
             }
         }
-        packetNames.clear();
+        packetNames = mappedPacketNames(
+            handlerCatalog,
+            ZLinkScannedHandlerSurface.CHANNEL,
+            ZLinkScannedHandlerKind.REQUEST,
+            "duplicate client/server request handler packet name");
         for (ChannelRequestHandlerRegistration<?, ?, ?> handler : requestHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
@@ -315,7 +323,11 @@ public final class ChannelRegistration {
             throw new ZLinkConfigurationException(
                 "fanout channel subscriber requires a publish handler or handler group: " + name);
         }
-        Set<String> packetNames = new HashSet<>();
+        Set<String> packetNames = mappedPacketNames(
+            handlerCatalog,
+            ZLinkScannedHandlerSurface.CHANNEL,
+            ZLinkScannedHandlerKind.PUBLISH,
+            "duplicate fanout publish handler packet name");
         for (ChannelPublishHandlerRegistration<?, ?> handler : publishHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
@@ -338,7 +350,11 @@ public final class ChannelRegistration {
         }
         validateMappedGroups(handlerCatalog, ZLinkScannedHandlerSurface.ROUTE,
             Set.of(ZLinkScannedHandlerKind.SEND, ZLinkScannedHandlerKind.REQUEST));
-        Set<String> packetNames = new HashSet<>();
+        Set<String> packetNames = mappedPacketNames(
+            handlerCatalog,
+            ZLinkScannedHandlerSurface.ROUTE,
+            ZLinkScannedHandlerKind.SEND,
+            "duplicate route mesh send handler packet name");
         for (ChannelRouteSendHandlerRegistration<?, ?> handler : routeSendHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
@@ -346,6 +362,12 @@ public final class ChannelRegistration {
                         + name + "/" + handler.packetName());
             }
         }
+        addMappedPacketNames(
+            packetNames,
+            handlerCatalog,
+            ZLinkScannedHandlerSurface.ROUTE,
+            ZLinkScannedHandlerKind.REQUEST,
+            "duplicate route mesh request handler packet name");
         for (ChannelRouteRequestHandlerRegistration<?, ?, ?> handler : routeRequestHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
@@ -408,6 +430,30 @@ public final class ChannelRegistration {
         ZLinkScannedHandlerSurface surface,
         ZLinkScannedHandlerKind kind) {
         return !handlerCatalog.matching(Set.copyOf(handlerGroups), surface, kind).isEmpty();
+    }
+
+    private Set<String> mappedPacketNames(
+        ZLinkScannedHandlerCatalog handlerCatalog,
+        ZLinkScannedHandlerSurface surface,
+        ZLinkScannedHandlerKind kind,
+        String label) {
+        Set<String> packetNames = new HashSet<>();
+        addMappedPacketNames(packetNames, handlerCatalog, surface, kind, label);
+        return packetNames;
+    }
+
+    private void addMappedPacketNames(
+        Set<String> packetNames,
+        ZLinkScannedHandlerCatalog handlerCatalog,
+        ZLinkScannedHandlerSurface surface,
+        ZLinkScannedHandlerKind kind,
+        String label) {
+        for (var handler : handlerCatalog.matching(Set.copyOf(handlerGroups), surface, kind)) {
+            if (!packetNames.add(handler.packetName())) {
+                throw new ZLinkConfigurationException(
+                    label + ": " + name + "/" + handler.packetName());
+            }
+        }
     }
 
 }

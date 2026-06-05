@@ -152,7 +152,7 @@ int main ()
     using zlink::framework::framework_error_kind_t;
 
     zlink::framework::zlink_builder_t zlink;
-    zlink.node ("stage-node")
+    zlink.add_node ("stage-node")
       .channel ("game.stage",
                 [] (zlink::framework::channel_builder_t &channel) {
                     channel.enable_publisher ([] (zlink::framework::capability_builder_t &publisher) {
@@ -449,9 +449,9 @@ int main ()
     }
 
     zlink::framework::message_metadata_policy_t metadata_policy;
-    metadata_policy.forward ("trace-id");
+    metadata_policy.add_forwarded_metadata_key ("trace-id");
     try {
-        metadata_policy.forward ("");
+        metadata_policy.add_forwarded_metadata_key ("");
         return 37;
     }
     catch (const zlink::framework::framework_exception_t &ex) {
@@ -460,7 +460,7 @@ int main ()
         }
     }
     try {
-        metadata_policy.forward (" ");
+        metadata_policy.add_forwarded_metadata_key (" ");
         return 42;
     }
     catch (const zlink::framework::framework_exception_t &ex) {

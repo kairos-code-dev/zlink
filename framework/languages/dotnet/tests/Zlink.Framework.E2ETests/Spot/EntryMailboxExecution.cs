@@ -24,12 +24,11 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
             options.AddActorFactory<RegistryTestActorFactory>("registry");
             options.AddSpotMesh("game.entry-mailbox", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("entry-mailbox-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
                 spot.AddEntrySpot<RegistryEntrySpot>();
             });
@@ -103,12 +102,11 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
 
             options.AddSpotMesh("game.entry-general", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("entry-general-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
                 spot.AddEntrySpot<GeneralEntrySpot>();
             });
@@ -169,12 +167,11 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
             options.AddActorFactory<RegistryTestActorFactory>("registry");
             options.AddSpotMesh("game.entry-native-batch", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("entry-native-batch-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
                 spot.AddEntrySpot<RegistryEntrySpot>();
             });

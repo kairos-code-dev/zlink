@@ -40,12 +40,11 @@ public sealed class LocalProxyDisconnectTests : StreamTestSupport
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(spotEndpoint);
+                        router.BindRouter(spotEndpoint);
                         router.SetRoutingId(RoutingId.From("local-notify-actor-node"));
                     });
                     spot.AddEntrySpot<GatewayEntrySpot>();

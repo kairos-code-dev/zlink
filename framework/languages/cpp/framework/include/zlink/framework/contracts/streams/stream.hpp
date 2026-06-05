@@ -182,7 +182,7 @@ class stream_builder_t
     stream_builder_t &operator= (const stream_builder_t &) = default;
 
     stream_builder_t &bind (std::string endpoint);
-    stream_builder_t &packet_session (std::string session_name);
+    stream_builder_t &register_session (std::string session_name);
     stream_builder_t &attach_actor_gateway (std::string spot_node_name);
     stream_snapshot_t snapshot () const;
 

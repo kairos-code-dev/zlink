@@ -121,7 +121,7 @@ int main(int argc, char **argv)
       .load_cli(argc, argv);
 
     app.add_zlink_framework([](auto &options) {
-        options.discovery().add("tcp://registry:5551");
+        options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
         options.codecs().add_json();
         options.services()
           .add_singleton<order_repository_t>()
@@ -606,12 +606,12 @@ framework의 host factory처럼 필요한 runtime 구성만 선언하게 만들�
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
-    options.discovery().add("tcp://registry:5551");
+    options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
     options.add_client_server_channel("orders")
       .enable_server("tcp://0.0.0.0:7001")
       .use_handler_group("orders-api");
     options.add_spot_mesh("orders")
-      .node("orders-spot")
+      .add_node("orders-spot")
       .enable_router("tcp://0.0.0.0:7101");
 });
 ```

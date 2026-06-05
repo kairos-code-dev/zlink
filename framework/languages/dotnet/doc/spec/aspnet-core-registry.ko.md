@@ -103,10 +103,7 @@ builder.Services.AddZLinkFramework(options =>
             server.Bind("tcp://0.0.0.0:7101");
         });
     });
-    options.UseDiscovery(discovery =>
-    {
-        discovery.Add("tcp://127.0.0.1:5551");
-    });
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
     options.Codecs.AddProtobuf();
     options.AddHandlersFromAssemblyOf<Program>();
 });
@@ -394,10 +391,7 @@ builder.Services.AddZLinkFramework(options =>
             server.Bind("tcp://0.0.0.0:7101");
         });
     });
-    options.UseDiscovery(discovery =>
-    {
-        discovery.Add("tcp://127.0.0.1:5551");
-    });
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
     options.Codecs.AddProtobuf();
     options.AddHandlersFromAssemblyOf<Program>();
 });
@@ -483,10 +477,7 @@ framework 의 Registry 기반 기본 구현을 사용한다. session 위치는 R
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery(discovery =>
-    {
-        discovery.Add("tcp://127.0.0.1:5551");
-    });
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
 
     options.AddRouteMeshChannel("play", channel =>
     {
@@ -516,11 +507,11 @@ payload 형식을 알 필요가 없다. Redis 나 database 같은 별도 저장�
 - Registry 용 health check 는 `IHealthCheck` 로 자동 등록하지 않는다. health
   endpoint 가 필요하다면, 응용 측에서 `IZLinkRegistryQuery` 를 사용해 명시적으로
   노출하는 것을 기본으로 본다.
-- embedded 구성이라 해도 `UseDiscovery(...)` 가 같은 프로세스의 Registry 를
+- embedded 구성이라 해도 `UseDiscovery(...AddRegistryEndpoint...)` 가 같은 프로세스의 Registry 를
   자동으로 찾아 주지는 않는다. Discovery endpoint 는 문서와 설정에 분명히
   드러나도록 명시적으로 적는다.
-- Registry 기반 route 기본 구현은 `UseDiscovery(...)` 와 별개로 명시적으로 켠다.
-  `UseDiscovery(...)` 만으로 actor remote address resolver, Spot remote address resolver,
+- Registry 기반 route 기본 구현은 `UseDiscovery(...AddRegistryEndpoint...)` 와 별개로 명시적으로 켠다.
+  `UseDiscovery(...AddRegistryEndpoint...)` 만으로 actor remote address resolver, Spot remote address resolver,
   actor-session route 저장소는 public API 로 제공하지 않는다.
 - `IZLinkRegistryQuery` 와 `IZLinkRegistryQueryClient` 는 하나로 묶지 않는다.
 - topology 변경 알림은 `IObservable` 보다 framework 의 일반 handler / callback

@@ -15,10 +15,10 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
             options.AddSpotMesh("spot", mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
             });
             options.AddRouteMeshChannel("play", routed =>
             {
@@ -73,10 +73,10 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                 options.AddSpotMesh("spot", mesh =>
                 {
-                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                 });
                 options.AddRouteMeshChannel("play-a", routed =>
                 {

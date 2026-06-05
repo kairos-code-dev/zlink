@@ -7,7 +7,6 @@ public sealed class BuilderContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkFrameworkOptions),
-        typeof(IZLinkDiscoveryBuilder),
         typeof(IZLinkMetadataPolicyBuilder),
         typeof(IZLinkRegistrySpotRemoteAddressesOptions))]
     public void Framework_options_register_the_top_level_runtime_surface()
@@ -18,11 +17,11 @@ public sealed class BuilderContracts
         options.Codecs.AddJson();
         options.AddHandlersFromAssemblyOf<BuilderContracts>();
         options.AddHandlersFromAssembly(typeof(BuilderContracts).Assembly);
-        options.ConfigureMetadata(metadata => metadata.Forward("trace-id"));
+        options.ConfigureMetadata(metadata => metadata.AddForwardedMetadataKey("trace-id"));
         options.AddActorFactory<ActorFactory>("player");
         options.AddSpotRemoteAddressResolver<SpotRemoteAddressResolver>();
         options.UseRegistrySpotRemoteAddresses("game", registry => registry.RouterChannelId = "play-router");
-        options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6000"));
+        options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:6000"));
         options.UseFilter<HandlerFilter>();
         options.ConfigureDispatch(dispatch => dispatch.SpotDispatchMode = ZLinkDispatchMode.Compiled);
 
@@ -142,7 +141,7 @@ public sealed class BuilderContracts
 
         options.AddSpotMesh("play-spots", mesh =>
         {
-            mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6001"));
+            mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:6001"));
             mesh.AddNode("play-spots", spot =>
             {
                 ConfigureSpotNode(spot);
@@ -151,7 +150,7 @@ public sealed class BuilderContracts
 
         options.AddSpotMesh("play-mesh", mesh =>
         {
-            mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6003"));
+            mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:6003"));
             mesh.AddNode("play-spots", spot =>
             {
                 ConfigureSpotNode(spot);
@@ -167,16 +166,16 @@ public sealed class BuilderContracts
     {
         spot.EnableRouter(router =>
         {
-            router.SetRouterBind("tcp://127.0.0.1:5501");
+            router.BindRouter("tcp://127.0.0.1:5501");
             router.ConfigureSocket(socket => socket.TcpNoDelay = true);
             router.SetRoutingId(RoutingId.From("spot-router"));
             router.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5501"));
         });
         spot.EnablePubSub(pubSub =>
         {
-            pubSub.SetPubBind("tcp://127.0.0.1:5500");
-            pubSub.ConfigurePublisherConfig(publisher => publisher.NoDrop = true);
-            pubSub.ConfigureSubscriberConfig(subscriber => subscriber.ReceiveHighWaterMark = 64);
+            pubSub.BindPubSub("tcp://127.0.0.1:5500");
+            pubSub.ConfigurePublisher(publisher => publisher.NoDrop = true);
+            pubSub.ConfigureSubscriber(subscriber => subscriber.ReceiveHighWaterMark = 64);
             pubSub.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5502"));
         });
         spot.AttachChannelClient("api", client =>
@@ -306,7 +305,7 @@ public sealed class BuilderContracts
     {
         public List<string> Endpoints { get; } = [];
 
-        public void Add(string endpoint) => Endpoints.Add(endpoint);
+        public void AddRegistryEndpoint(string endpoint) => Endpoints.Add(endpoint);
     }
 
     private sealed class CodecRegistryBuilder : IZLinkCodecRegistryBuilder
@@ -322,7 +321,7 @@ public sealed class BuilderContracts
     {
         public List<string> ForwardedKeys { get; } = [];
 
-        public void Forward(string key) => ForwardedKeys.Add(key);
+        public void AddForwardedMetadataKey(string key) => ForwardedKeys.Add(key);
     }
 
     private sealed class RegistrySpotRemoteAddressesOptions : IZLinkRegistrySpotRemoteAddressesOptions
@@ -343,9 +342,9 @@ public sealed class BuilderContracts
     {
         public void Bind(string endpoint) { }
 
-        public void SetRouterBind(string endpoint) { }
+        public void BindRouter(string endpoint) { }
 
-        public void SetPubBind(string endpoint) { }
+        public void BindPubSub(string endpoint) { }
 
         public void SetRoutingId(RoutingId routingId) { }
 
@@ -361,10 +360,10 @@ public sealed class BuilderContracts
         public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
             configure(new ConnectionAndConfigContracts.ManualConnections());
 
-        public void ConfigurePublisherConfig(Action<IZLinkSpotPublisherConfig> configure) =>
+        public void ConfigurePublisher(Action<IZLinkSpotPublisherConfig> configure) =>
             configure(new ConnectionAndConfigContracts.SpotPublisherConfig());
 
-        public void ConfigureSubscriberConfig(Action<IZLinkSpotSubscriberConfig> configure) =>
+        public void ConfigureSubscriber(Action<IZLinkSpotSubscriberConfig> configure) =>
             configure(new ConnectionAndConfigContracts.SpotSubscriberConfig());
     }
 
@@ -472,9 +471,9 @@ public sealed class BuilderContracts
 
     private sealed class SpotNodeBuilder : IZLinkSpotMeshNodeBuilder
     {
-        public void SetRouterBind(string endpoint) { }
+        public void BindRouter(string endpoint) { }
 
-        public void SetPubBind(string endpoint) { }
+        public void BindPubSub(string endpoint) { }
 
         public void EnableRouter(Action<ISpotRouterCapabilityBuilder>? configure = null) =>
             configure?.Invoke(new CapabilityBuilder());
@@ -515,8 +514,7 @@ public sealed class BuilderContracts
 
     private sealed class SpotMeshBuilder(List<string> spotNodes) : IZLinkSpotMeshBuilder
     {
-        public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure) =>
-            configure(new DiscoveryBuilder());
+        public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure) => configure(new DiscoveryBuilder());
 
         public void AddNode(
             string spotNodeName,

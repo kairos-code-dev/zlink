@@ -15,7 +15,7 @@ class api_server_host_factory_t
 inline zlink::framework::app_t api_server_host_factory_t::build (const sample_topology_t &topology)
 {
     auto app = zlink::framework::app_t::create ();
-    add_sample_auto_stop (app);
+    app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
     add_bingo_api_server (app, topology);
     return app;
 }

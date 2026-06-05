@@ -30,7 +30,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 || ResolveSpotDiscoveryEndpoints(registration).Count == 0))
         {
             throw new ZLinkConfigurationException(
-                "Registry remote address resolver requires discovery endpoints from UseDiscovery(...) or AddSpotMesh(...).UseDiscovery(...).");
+                "Registry remote address resolver requires discovery endpoints from UseDiscovery(...AddRegistryEndpoint...) or AddSpotMesh(...).UseDiscovery(...AddRegistryEndpoint...).");
         }
 
         ValidateRegistryRouteChannel(

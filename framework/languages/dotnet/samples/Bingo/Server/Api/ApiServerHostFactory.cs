@@ -22,7 +22,7 @@ public static class ApiServerHostFactory
         {
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.AddJson();
-            options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableServer(server => server.Bind(topology.ApiChannelEndpoint));

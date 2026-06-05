@@ -28,10 +28,4 @@ class stop_after_start_service_t final : public zlink::framework::hosted_service
     zlink::framework::app_t &_app;
 };
 
-inline zlink::framework::app_t &add_sample_auto_stop (zlink::framework::app_t &app)
-{
-    app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
-    return app;
-}
-
 } // namespace zlink::samples::tictactoe

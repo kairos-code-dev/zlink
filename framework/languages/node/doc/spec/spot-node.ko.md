@@ -66,12 +66,12 @@ dotnet builder 메서드와 options 키의 대응은 다음과 같다.
 
 | dotnet builder | node 키 | 비고 |
 |------|------|------|
-| `SetRouterBind(endpoint)` / `SetPubBind(endpoint)` | `bind: string` | bind endpoint |
+| `BindRouter(endpoint)` / `BindPubSub(endpoint)` | `bind: string` | bind endpoint |
 | `SetRoutingId(rid)` | `routingId: string` | `RoutingId` → 문자열 |
 | `ConfigureSocket(s => ...)` | `socket: {...}` | socket 옵션 |
 | `ConfigureRouting(r => ...)` | `routing: {...}` | router routing 옵션 |
-| `ConfigurePublisherConfig(p => ...)` | `publisher: {...}` | pub/sub 전용 |
-| `ConfigureSubscriberConfig(s => ...)` | `subscriber: {...}` | pub/sub 전용 |
+| `ConfigurePublisher(p => ...)` | `publisher: {...}` | pub/sub 전용 |
+| `ConfigureSubscriber(s => ...)` | `subscriber: {...}` | pub/sub 전용 |
 | `UseManualConnections(c => c.Connect(ep))` | `manualConnections: string[]` | 수동 연결 endpoint |
 
 `acceptedSpotRouteChannels[name]` 은 dotnet `AcceptSpotRoutesFromChannel` 에

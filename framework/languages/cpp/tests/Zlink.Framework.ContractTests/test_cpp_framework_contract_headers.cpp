@@ -276,7 +276,7 @@ static_assert (std::is_same_v<
                zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ()
-                                          .routing_id (zlink::routing_id_t::from ("router"))),
+                                          .set_routing_id (zlink::routing_id_t::from ("router"))),
                               zlink::framework::spot_router_capability_builder_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ().connect (
@@ -284,7 +284,7 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_rout
                               zlink::framework::spot_router_capability_builder_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_pub_sub_capability_builder_t &> ()
-                                          .routing_id (zlink::routing_id_t::from ("pub-sub"))),
+                                          .set_routing_id (zlink::routing_id_t::from ("pub-sub"))),
                               zlink::framework::spot_pub_sub_capability_builder_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_pub_sub_capability_builder_t &> ().connect (
@@ -340,7 +340,7 @@ static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::reg
                               zlink::framework::result_t<std::vector<zlink::framework::topology_entry_t>>>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::message_metadata_policy_t &> ().forward ("trace-id")),
+  std::is_same_v<decltype (std::declval<zlink::framework::message_metadata_policy_t &> ().add_forwarded_metadata_key ("trace-id")),
                  zlink::framework::message_metadata_policy_t &>);
 
 static_assert (
@@ -355,7 +355,7 @@ static_assert (
   std::is_same_v<decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ().empty ()), bool>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::metadata_policy_builder_t &> ().forward ("trace-id")),
+  std::is_same_v<decltype (std::declval<zlink::framework::metadata_policy_builder_t &> ().add_forwarded_metadata_key ("trace-id")),
                  zlink::framework::metadata_policy_builder_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::config_builder_t &> ()

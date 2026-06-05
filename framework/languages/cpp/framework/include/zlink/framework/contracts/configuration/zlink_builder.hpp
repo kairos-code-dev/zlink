@@ -32,11 +32,11 @@ class zlink_builder_t
     zlink_builder_t (const zlink_builder_t &) = delete;
     zlink_builder_t &operator= (const zlink_builder_t &) = delete;
 
-    zlink_builder_t &node (std::string node_name);
+    zlink_builder_t &add_node (std::string node_name);
     zlink_builder_t &max_pending (std::size_t count);
     zlink_builder_t &on_retry (retry_hook_t hook);
     zlink_builder_t &on_dead_letter (dead_letter_hook_t hook);
-    zlink_builder_t &registry (std::function<void (registry_builder_t &)> configure);
+    zlink_builder_t &enable_registry (std::function<void (registry_builder_t &)> configure);
     zlink_builder_t &discovery (std::function<void (discovery_builder_t &)> configure);
     zlink_builder_t &route_channel (std::string route_channel_name);
     zlink_builder_t &route_channel (std::string route_channel_name,

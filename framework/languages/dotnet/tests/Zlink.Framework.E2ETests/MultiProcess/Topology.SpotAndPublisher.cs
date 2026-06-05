@@ -37,15 +37,12 @@ public sealed partial class TopologyTests
         {
             options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("local-stage-node", spot =>
             {
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(localNodeEndpoint);
+                    pubsub.BindPubSub(localNodeEndpoint);
                 });
                 spot.AddSpotFactory<LocalMonitoringStageSpot>();
             });

@@ -482,7 +482,7 @@ void registry_query_client_t::close () noexcept
     _impl->context.reset ();
 }
 
-zlink_builder_t &zlink_builder_t::registry (std::function<void (registry_builder_t &)> configure)
+zlink_builder_t &zlink_builder_t::enable_registry (std::function<void (registry_builder_t &)> configure)
 {
     registry_builder_t builder (_state->registry_runtime);
     if (configure) {

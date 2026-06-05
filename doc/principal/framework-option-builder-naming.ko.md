@@ -9,13 +9,13 @@ framework option builder 는 설정 객체를 조회하는 표면이 아니라, 
 만드는 표면이다. 따라서 상태를 추가하거나 capability 를 켜는 메서드는 그 동작이
 이름에 드러나야 한다.
 
-- `add*` 는 새 등록 항목을 추가할 때 사용한다.
-  예: `addClientServerChannel`, `addStreamNode`, `add_spot_mesh`
+- `add*` 는 새 등록 항목이나 반복 가능한 값을 추가할 때 사용한다.
+  예: `addClientServerChannel`, `addRegistryEndpoint`, `add_forwarded_metadata_key`
 - `enable*` 는 이미 선택한 등록 항목 안에서 capability 를 켤 때 사용한다.
   예: `enableServer`, `enableClient`, `enable_publisher`
-- `use*` 는 정책, discovery, filter 처럼 등록 항목에 적용되는 선택 기능을 사용할 때
-  사용한다.
-  예: `useDiscovery`, `use_handler_group`
+- `use*` 는 기존 등록 항목에 적용되는 선택 정책이나 설정 영역을 열 때 쓴다. 그 안에서
+  실제로 값을 추가하는 메서드는 `add*` 로 명확하게 쓴다.
+  예: `useDiscovery`, `useRegistrySpotRemoteAddresses`, `use_handler_group`
 - `configure*` 는 하위 option 객체를 넘겨 세부 값을 바꿀 때 사용한다.
   예: `configureDispatch`, `configure_metadata`
 - `bind` 는 local endpoint 를 열 때 사용하고, `connect` 는 remote endpoint 로 연결할 때
@@ -28,16 +28,26 @@ framework option builder 는 설정 객체를 조회하는 표면이 아니라, 
 대부분 capability 를 활성화한다. 실제 동작이 활성화라면 `enableServer()` 또는
 `enable_server()` 처럼 쓴다.
 
+Discovery 자체는 `UseDiscovery` / `useDiscovery` / `use_discovery` 로 연다. 다만 그 안에서
+Registry endpoint 를 추가할 때는 `Add(endpoint)`, `add(endpoint)`, `connectRegistry(endpoint)`
+처럼 의미가 부족한 이름을 쓰지 않는다. Registry endpoint 는 반복 가능한 설정 값이므로
+Discovery builder 의 `AddRegistryEndpoint` / `addRegistryEndpoint` /
+`add_registry_endpoint` 로 추가한다.
+
+metadata forwarding key 도 같은 규칙을 따른다. `Forward(key)` 또는 `forward(key)` 는 정책
+실행처럼 보이므로 쓰지 않고, 전달 허용 목록에 값을 추가한다는 뜻이 드러나게
+`AddForwardedMetadataKey` / `addForwardedMetadataKey` / `add_forwarded_metadata_key` 를 쓴다.
+
 ## 언어별 표기법
 
 각 언어는 그 언어의 일반 표기법을 따른다.
 
-| 언어 | 등록 예 | capability 예 |
-|------|---------|---------------|
-| .NET | `AddClientServerChannel` | `EnableServer` |
-| Java | `addClientServerChannel` | `enableServer` |
-| Node | `addClientServerChannel` | `enableServer` |
-| C++ | `add_client_server_channel` | `enable_server` |
+| 언어 | 등록 예 | capability 예 | discovery 예 |
+|------|---------|---------------|--------------|
+| .NET | `AddClientServerChannel` | `EnableServer` | `UseDiscovery(d => d.AddRegistryEndpoint(...))` |
+| Java | `addClientServerChannel` | `enableServer` | `useDiscovery(d -> d.addRegistryEndpoint(...))` |
+| Node | `addClientServerChannel` | `enableServer` | `useDiscovery().addRegistryEndpoint(...)` |
+| C++ | `add_client_server_channel` | `enable_server` | `use_discovery().add_registry_endpoint(...)` |
 
 Kotlin DSL 은 Java builder 를 감싼 얇은 표면이므로 Java 이름의 의미를 바꾸지 않는다.
 

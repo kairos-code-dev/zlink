@@ -1046,8 +1046,8 @@ public interface IZLinkMessageMetadataPolicy
 ```csharp
 options.ConfigureMetadata(metadata =>
 {
-    metadata.Forward("trace-id");
-    metadata.Forward("tenant-id");
+    metadata.AddForwardedMetadataKey("trace-id");
+    metadata.AddForwardedMetadataKey("tenant-id");
 });
 ```
 
@@ -1210,10 +1210,7 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.AddSpotMesh("game.rooms", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
     });
     options.UseRegistrySpotRemoteAddresses("game");
     // STREAM session 등록 + routed channel 등록 (별도 문서 참고)
@@ -1253,7 +1250,7 @@ session route resolver 나 저장소 계약은 두지 않는다.
 이 절은 host 가 framework 를 띄울 때 작성하는 등록 코드 모양을 보여 준다.
 
 ```csharp
-options.UseDiscovery(discovery => discovery.Add(registryEndpoint));
+options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryEndpoint));
 
 options.AddRoutedChannel("backend", routed =>
 {
@@ -1277,12 +1274,12 @@ spot handler는 spot 객체 안에서 등록한다.
 ```csharp
 options.AddSpotMesh("game.rooms", mesh =>
 {
-    mesh.UseDiscovery(discovery => discovery.Add(registryEndpoint));
+    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryEndpoint));
     mesh.AddNode("play", spot =>
     {
         spot.EnableRouter(router =>
         {
-            router.SetRouterBind(spotEndpoint);
+            router.BindRouter(spotEndpoint);
         });
         spot.AddEntrySpot<TicTacToeEntrySpot>();
         spot.AddSpotFactory<TicTacToeGame>();

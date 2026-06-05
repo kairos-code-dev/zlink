@@ -2,7 +2,7 @@ namespace Zlink.Framework.Contracts.Configuration;
 
 public interface IZLinkDiscoveryBuilder
 {
-    void Add(string endpoint);
+    void AddRegistryEndpoint(string endpoint);
 }
 
 public interface IChannelServerCapabilityBuilder
@@ -44,7 +44,7 @@ public interface IChannelSubscriberCapabilityBuilder
 
 public interface ISpotRouterCapabilityBuilder
 {
-    void SetRouterBind(string endpoint);
+    void BindRouter(string endpoint);
 
     void SetRoutingId(RoutingId routingId);
 
@@ -57,13 +57,13 @@ public interface ISpotRouterCapabilityBuilder
 
 public interface ISpotPubSubCapabilityBuilder
 {
-    void SetPubBind(string endpoint);
+    void BindPubSub(string endpoint);
 
     void SetRoutingId(RoutingId routingId);
 
-    void ConfigurePublisherConfig(Action<IZLinkSpotPublisherConfig> configure);
+    void ConfigurePublisher(Action<IZLinkSpotPublisherConfig> configure);
 
-    void ConfigureSubscriberConfig(Action<IZLinkSpotSubscriberConfig> configure);
+    void ConfigureSubscriber(Action<IZLinkSpotSubscriberConfig> configure);
 
     void UseManualConnections(Action<IZLinkEndpointConnections> configure);
 }
@@ -292,5 +292,5 @@ public interface IZLinkFrameworkOptions
 
 public interface IZLinkMetadataPolicyBuilder
 {
-    void Forward(string key);
+    void AddForwardedMetadataKey(string key);
 }

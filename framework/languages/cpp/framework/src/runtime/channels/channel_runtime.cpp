@@ -386,9 +386,9 @@ route_channel_builder_t &route_channel_builder_t::bind (std::string endpoint)
     return *this;
 }
 
-route_channel_builder_t &route_channel_builder_t::routing_id (zlink::routing_id_t routing_id)
+route_channel_builder_t &route_channel_builder_t::set_routing_id (zlink::routing_id_t routing_id)
 {
-    _state->registration.routing_id (std::move (routing_id));
+    _state->registration.set_routing_id (std::move (routing_id));
     return *this;
 }
 
@@ -704,7 +704,7 @@ zlink_builder_t::zlink_builder_t (zlink_builder_t &&) noexcept = default;
 
 zlink_builder_t &zlink_builder_t::operator= (zlink_builder_t &&) noexcept = default;
 
-zlink_builder_t &zlink_builder_t::node (std::string node_name)
+zlink_builder_t &zlink_builder_t::add_node (std::string node_name)
 {
     _state->node_name = std::move (node_name);
     return *this;

@@ -117,19 +117,19 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                 options.AddFanoutChannel("events", channel =>
                 {
                     channel.EnablePublisher(publisher => publisher.Bind("tcp://127.0.0.1:7102"));
                 });
                 options.AddSpotMesh("spot.mesh", mesh =>
                 {
-                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node", node =>
                     {
                         node.EnableRouter(router =>
                         {
-                            router.SetRouterBind("tcp://127.0.0.1:9100");
+                            router.BindRouter("tcp://127.0.0.1:9100");
                         });
                         node.AcceptSpotRoutesFromChannel(
                             "events",
@@ -149,16 +149,16 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                 options.AddDealerMeshChannel("mesh", channel => channel.EnableClient());
                 options.AddSpotMesh("spot.mesh", mesh =>
                 {
-                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node", node =>
                     {
                         node.EnableRouter(router =>
                         {
-                            router.SetRouterBind("tcp://127.0.0.1:9101");
+                            router.BindRouter("tcp://127.0.0.1:9101");
                         });
                         node.AcceptSpotRoutesFromChannel(
                             "mesh",
@@ -178,17 +178,17 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                 options.AddClientServerChannel("route", channel => channel.EnableClient());
                 options.AddRouteMeshChannel("route", routed => routed.Bind("tcp://127.0.0.1:7104"));
                 options.AddSpotMesh("spot.mesh", mesh =>
                 {
-                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node", node =>
                     {
                         node.EnableRouter(router =>
                         {
-                            router.SetRouterBind("tcp://127.0.0.1:9102");
+                            router.BindRouter("tcp://127.0.0.1:9102");
                         });
                         node.AcceptSpotRoutesFromChannel(
                             "route",
@@ -210,12 +210,11 @@ public sealed class ChannelsTests : RegistrationValidationSupport
             {
                 options.AddSpotMesh("spot.mesh", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("stage-node", node =>
                 {
                     node.EnableRouter(router =>
                     {
-                        router.SetRouterBind("tcp://127.0.0.1:9103");
+                        router.BindRouter("tcp://127.0.0.1:9103");
                     });
                     node.AcceptSpotRoutesFromChannel(
                         "missing",
@@ -240,7 +239,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     channel => channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7105")));
                 options.AddSpotMesh("spot.mesh", mesh =>
                 {
-                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node", node =>
                     {
                         node.AcceptSpotRoutesFromChannel(
@@ -266,12 +265,12 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     channel => channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7106")));
                 options.AddSpotMesh("spot.mesh", mesh =>
                 {
-                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node", node =>
                     {
                         node.EnableRouter(router =>
                         {
-                            router.SetRouterBind("tcp://127.0.0.1:9104");
+                            router.BindRouter("tcp://127.0.0.1:9104");
                         });
                         node.AcceptSpotRoutesFromChannel("api");
                     });
@@ -296,7 +295,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 });
             });
 
-            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
         });
     }
 
@@ -308,7 +307,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                 options.AddRouteMeshChannel("backend", routed =>
                 {
                     routed.Bind("tcp://127.0.0.1:7201");
@@ -326,7 +325,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
             options.AddRouteMeshChannel("backend", routed =>
             {
                 routed.Bind("tcp://127.0.0.1:7203");
@@ -334,12 +333,12 @@ public sealed class ChannelsTests : RegistrationValidationSupport
             });
             options.AddSpotMesh("spot.mesh", mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                 mesh.AddNode("stage-node", node =>
                 {
                     node.EnableRouter(router =>
                     {
-                        router.SetRouterBind("tcp://127.0.0.1:9105");
+                        router.BindRouter("tcp://127.0.0.1:9105");
                     });
                     node.AcceptSpotRoutesFromChannel("backend");
                 });

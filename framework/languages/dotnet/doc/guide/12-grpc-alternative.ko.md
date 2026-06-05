@@ -22,7 +22,7 @@
 
 | 상황 | ZLink 이 좋은 이유 | 쓰는 기능 |
 |------|--------------------|-----------|
-| 내부 `.NET` 서비스끼리 자주 호출 | host/port/stub 대신 **channel name** 으로 호출 | channel + Registry |
+| 내부 `.NET` 서비스끼리 자주 호출 | host/port/stub 대신 **channel name** 으로 호출 | channel  + Registry |
 | 이벤트를 실시간으로 여러 서비스에 뿌림 | 별도 broker 없이 **transport fan-out** | fanout pub/sub |
 | 게임 room·채팅 room·ride zone 같은 동적 상태 단위 | **단일 실행 큐**로 lock 없는 직렬 상태 처리 | SPOT |
 | 모바일·게임 client 와 장기 연결 | 연결 수명·framing·재접속 흐름을 framework 가 소유 | STREAM |
@@ -101,7 +101,7 @@ channel/spot 계약으로 메시징할 수 있다.
 | 케이스 | 무엇을 보나 | ZLink 핵심 기능 |
 |--------|-------------|-----------------|
 | [13 전자상거래 체크아웃](./case-studies/13-case-ecommerce-checkout.ko.md) | channel messaging 기본형(request/send/pub-sub) | channel + pub/sub |
-| [14 내부 마이크로서비스 mesh + 운영](./case-studies/14-case-microservice-mesh.ko.md) | service discovery 와 운영·topology | channel + Registry + monitoring |
+| [14 내부 마이크로서비스 mesh + 운영](./case-studies/14-case-microservice-mesh.ko.md) | service discovery 와 운영·topology | channel  + Registry + monitoring |
 | [15 실시간 멀티플레이 게임](./case-studies/15-case-realtime-game.ko.md) | STREAM+SPOT+actor 가 모두 필요한 강한 사례 | STREAM + SPOT + actor + session dispatch |
 | [16 라이드헤일링 디스패치](./case-studies/16-case-ride-hailing.ko.md) | zone 상태와 위치 fan-out | STREAM + pub/sub + zone SPOT |
 | [17 채팅·메시징](./case-studies/17-case-chat-messaging.ko.md) | room membership 과 presence | STREAM + room SPOT + BoundSession |
@@ -213,7 +213,7 @@ proto 파이프라인**을 함께 운영한다는 뜻이다.
 ```
 
 ```text
-[ZLink] ZLink Framework + Registry
+[ZLink] ZLink Framework  + Registry
 
   +------------------+          +------------------+
   | order-service    |          | payment-service  |
@@ -271,7 +271,7 @@ sequenceDiagram
 | "stub/channel 을 재사용하라" | `IZLinkChannelClient` 가 DI singleton, socket 수명은 framework | 호출마다 만들 일 없음 |
 | RPC deadline | `Request(...).Timeout(...)` | reply 대기 시간 |
 | L7 로드밸런싱(Envoy/Istio) | channel name + `Discovery` 가 peer 분배 | sidecar 불필요 |
-| service discovery(Eureka/xDS) | `UseDiscovery(...)` + Registry | [08-registry](./08-registry.ko.md) |
+| service discovery(Eureka/xDS) | `UseDiscovery(...AddRegistryEndpoint...)`  + Registry | [08-registry](./08-registry.ko.md) |
 | interceptor | `IZLinkHandlerFilter` | [04](./04-channel-messaging.ko.md) §5 |
 | 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay 는 broker 유지 |
 | 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [09-monitoring](./09-monitoring.ko.md) |

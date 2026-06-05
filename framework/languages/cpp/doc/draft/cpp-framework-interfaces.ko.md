@@ -587,7 +587,7 @@ public:
 class stream_builder_t {
 public:
     stream_builder_t &bind(std::string endpoint);
-    stream_builder_t &packet_session(std::string session_name);
+    stream_builder_t &register_session(std::string session_name);
     stream_builder_t &attach_actor_gateway(std::string spot_node_name);
 };
 
@@ -598,7 +598,7 @@ public:
     template<typename TSession>
     stream_node_options_builder_t &register_session();
 
-    stream_node_options_builder_t &packet_session(std::string session_name);
+    stream_node_options_builder_t &register_session(std::string session_name);
     stream_node_options_builder_t &attach_actor_gateway(
       std::string spot_node_name);
 };
@@ -1445,7 +1445,7 @@ public:
 경로와 Entry Spot join 경로에 제한한다. 일반 application handler와 client는 channel
 name과 topic을 먼저 사용한다.
 
-SPOT node는 router 또는 pub/sub capability 중 하나 이상을 켜야 한다. `add_spot_mesh(...).node(...)`는
+SPOT node는 router 또는 pub/sub capability 중 하나 이상을 켜야 한다. `add_spot_mesh(...).add_node(...)`는
 discovery view만 연결하므로 실행 capability가 아니다. `enable_router(...)`나
 `enable_pub_sub(...)` 없이 node를 선언하면 options 적용 시점에 설정 오류로 실패한다.
 
@@ -1496,7 +1496,7 @@ Entry Spot의 actor packet도 일반 Spot packet으로 등록하지 않는다. `
 `spot_actor_send_context_t`, DTO를 받는다. 이렇게 해야 `.NET` sample의 actor request
 handler와 같은 구조가 된다.
 stream header metadata 전체를 actor handler에 그대로 노출하지 않는다. 사용자는
-`options.metadata().forward("trace-id")`처럼 application metadata forwarding 정책을 선언하고,
+`options.metadata().add_forwarded_metadata_key("trace-id")`처럼 application metadata forwarding 정책을 선언하고,
 framework는 허용된 key만 `spot_actor_message_metadata_t`로 project해서 actor context에 넣는다.
 handler는 `find(...)` 또는 `contains(...)`로 값을 조회한다. `values`는 단순 반복과 기존
 호출자 호환을 위해 남기지만, handler code가 `std::map` 구조에 직접 묶이지 않아도 되게 조회
@@ -1641,11 +1641,11 @@ app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &option
       .add_publish<notification_event_handler_t>("events");
 
     options.use_filter<audit_filter_t>();
-    options.metadata().forward("trace-id");
+    options.metadata().add_forwarded_metadata_key("trace-id");
 
     options.codecs().add_json();
 
-    options.discovery().add(topology.registry_router_endpoint);
+    options.use_discovery().add_registry_endpoint (topology.registry_router_endpoint);
 
     options.add_client_server_channel(sample_names_t::api_channel)
       .enable_server(topology.api_channel_endpoint)
@@ -1666,11 +1666,11 @@ app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &option
 ```
 
 `enable_client()`처럼 endpoint 인자 없이 client role을 켜면 registry discovery로 peer를 찾는다는 뜻이다.
-이 경우 같은 options 안에 `options.discovery().add(...)`가 있어야 한다. 특정 endpoint를 직접
+이 경우 같은 options 안에 `options.use_discovery().add_registry_endpoint (...)`가 있어야 한다. 특정 endpoint를 직접
 붙일 때는 `enable_client(endpoint)`를 사용한다. `enable_client(endpoint)`와 fanout
 `enable_subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 같은 capability의 manual endpoint
 목록에 추가된다. fanout subscriber도 discovery/manual 선택 규칙은 같다. discovery endpoint도
-연결 경계의 일부이므로 빈 문자열이나 공백만 있는 문자열은 `options.discovery().add(...)`에서
+연결 경계의 일부이므로 빈 문자열이나 공백만 있는 문자열은 `options.use_discovery().add_registry_endpoint (...)`에서
 즉시 거부한다.
 
 이 구조에서는 샘플 `main.cpp`, role `*HostFactory`, 일반 사용자 설정 예제가 handler member
@@ -1708,11 +1708,11 @@ options.use_registry_spot_remote_addresses(sample_names_t::router_channel);
 
 options.add_route_mesh_channel(sample_names_t::router_channel)
   .bind(topology.session_spot_endpoint)
-  .routing_id(topology.session_router_rid)
+  .set_routing_id(topology.session_router_rid)
   .connect(topology.play_router_endpoint);
 
 options.add_spot_mesh(sample_names_t::game_spot_discovery)
-  .node(sample_names_t::session_spot_node)
+  .add_node(sample_names_t::session_spot_node)
   .enable_router(topology.session_router_endpoint, topology.session_router_rid)
   .enable_pub_sub(topology.session_spot_endpoint, topology.session_pub_rid)
   .accept_routes_from_channel(sample_names_t::router_channel);
@@ -1727,9 +1727,9 @@ options.add_stream_node(sample_names_t::stream_name)
 등록 표면이다. `TSession`은 `packet_stream_session_t`를 상속해야 하며, framework service
 collection에 stream-session scope 서비스로 등록된다. `TSession::session_name`이 있으면 그 값을
 native packet session 이름으로 사용하고, 없으면 타입 이름 기반 message name을 사용한다.
-`packet_session(name)`은 session 이름을 직접 지정해야 하는 low-level 구성에 남긴다.
+`register_session(name)`은 session 이름을 직접 지정해야 하는 low-level 구성에 남긴다.
 하나의 stream node에는 packet session을 하나만 선언한다. `register_session<T>()`과
-`packet_session(...)`을 중복 호출하면 마지막 값으로 덮어쓰지 않고 설정 오류로 처리한다.
+`register_session(...)`을 중복 호출하면 마지막 값으로 덮어쓰지 않고 설정 오류로 처리한다.
 
 dealer mesh channel은 최소 하나의 peer 획득 경로를 가져야 한다. `bind(...)` 또는
 `connect(...)` 없이 `add_dealer_mesh_channel(...)`만 선언하면 options 적용 시점에 설정 오류로
@@ -1753,7 +1753,7 @@ SPOT router와 pub/sub capability도 registry discovery 없이 고정 peer를 �
 `enable_router(endpoint, [](auto &router) { router.connect(peer); })` 또는
 `enable_pub_sub(endpoint, [](auto &pub_sub) { pub_sub.connect(peer); })`처럼 capability별
 manual endpoint를 기록한다. routing id도 같은 configure callback 안에서
-`router.routing_id(...)`, `pub_sub.routing_id(...)`로 지정할 수 있다.
+`router.set_routing_id(...)`, `pub_sub.set_routing_id(...)`로 지정할 수 있다.
 `attach_publisher(...)`는 등록된 fanout publisher channel을 SPOT node에 연결하며, 해당 node는
 `enable_pub_sub(...)` capability를 가져야 한다. publisher attach도
 `attach_publisher(name, [](auto &publisher) { publisher.connect(endpoint); })`로 manual endpoint를
@@ -1831,7 +1831,7 @@ public:
 
 ```cpp
 app.add_zlink_framework([&](auto &options) {
-    options.discovery().add(topology.registry_router_endpoint);
+    options.use_discovery().add_registry_endpoint (topology.registry_router_endpoint);
     options.codecs().add_json();
 
     options.add_client_server_channel(sample_names_t::api_channel)
@@ -2031,7 +2031,7 @@ int main(int argc, char **argv)
       .load_cli(argc, argv);
 
     app.add_zlink_framework([](auto &options) {
-        options.discovery().add("tcp://registry:5551");
+        options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
         options.codecs().add_json();
         options.services()
           .add_singleton<order_repository_t>()
@@ -2040,7 +2040,7 @@ int main(int argc, char **argv)
           .enable_server("tcp://0.0.0.0:7001")
           .use_handler_group("orders-api");
         options.add_spot_mesh("orders")
-          .node("orders-spot")
+          .add_node("orders-spot")
           .enable_router("tcp://0.0.0.0:7101");
         options.handlers()
           .add<order_created_handler_t>("orders-api");

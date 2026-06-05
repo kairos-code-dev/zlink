@@ -170,7 +170,10 @@ public sealed class RegressionTests
             Environment.NewLine,
             EnumerateSourceFiles(sampleRoot).Select(File.ReadAllText));
 
-        Assert.Contains("UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint))", allText, StringComparison.Ordinal);
+        Assert.Contains(
+            "UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint))",
+            allText,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("UseRegistryActorRemoteAddresses", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("UseRegistryActorSessionBindings", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("IZLinkActorSessionClient", allText, StringComparison.Ordinal);

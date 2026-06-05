@@ -29,12 +29,11 @@ public sealed class ActorLifecycleTests : SpotTestSupport
             options.AddActorFactory<TestActorFactory>("test");
             options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("actor-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
                 spot.AddSpotFactory<ActorStageSpot>();
             });
@@ -148,12 +147,11 @@ public sealed class ActorLifecycleTests : SpotTestSupport
             options.AddActorFactory<ConcurrentActorFactory>("test");
             options.AddSpotMesh("actor.factory", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("actor-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
             });
             });

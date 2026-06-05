@@ -89,7 +89,7 @@ int main ()
 
     zlink::framework::zlink_builder_t zlink;
     zlink.stream ("client-stream", [] (zlink::framework::stream_builder_t &stream) {
-        stream.bind ("tcp://0.0.0.0:9200").packet_session ("client").attach_actor_gateway ("session-actors");
+        stream.bind ("tcp://0.0.0.0:9200").register_session ("client").attach_actor_gateway ("session-actors");
     });
 
     const auto snapshots = zlink.streams ();

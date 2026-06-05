@@ -153,7 +153,8 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 
     create_match_room_handler_t rooms;
     sample_topology_t topology;
-    create_match_handler_t create (rooms, topology);
+    auto logger = zlink::framework::logger_factory_t ().create ("test.tictactoe.api");
+    create_match_handler_t create (rooms, topology, logger);
     const auto created = create.handle ({authenticated.actor_id});
     EXPECT_EQ (created.play_endpoint, topology.stream_endpoint);
     tictactoe_match_room_t room (created.match_id);
@@ -366,9 +367,14 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseDiscoveryLikeDotNet)
     const auto session_factory = read_file (tictactoe_root / "Server/Session/session_server_host_factory.hpp");
     const auto registry_factory = read_file (tictactoe_root / "Server/Registry/registry_host_factory.hpp");
 
-    EXPECT_NE (api_factory.find ("options.discovery ().add (topology.registry_router_endpoint)"), std::string::npos);
-    EXPECT_NE (play_factory.find ("options.discovery ().add (topology.registry_router_endpoint)"), std::string::npos);
-    EXPECT_NE (session_factory.find ("options.discovery ().add (topology.registry_router_endpoint)"),
+    EXPECT_NE (
+      api_factory.find ("options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint)"),
+      std::string::npos);
+    EXPECT_NE (
+      play_factory.find ("options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint)"),
+      std::string::npos);
+    EXPECT_NE (session_factory.find (
+                 "options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint)"),
                std::string::npos);
     EXPECT_NE (play_factory.find ("options.use_registry_spot_remote_addresses"), std::string::npos);
     EXPECT_NE (session_factory.find ("options.use_registry_spot_remote_addresses"), std::string::npos);

@@ -22,7 +22,7 @@ class route_channel_registration_t
 
     const std::string &router_channel_id () const noexcept;
     route_channel_registration_t &bind (std::string endpoint);
-    route_channel_registration_t &routing_id (zlink::routing_id_t routing_id);
+    route_channel_registration_t &set_routing_id (zlink::routing_id_t routing_id);
     route_channel_registration_t &connect (std::string endpoint);
     route_channel_registration_t &add_handler_group (std::string group_name);
     route_channel_registration_t &enable_spot_route_egress (std::string target_spot_node_channel_name);

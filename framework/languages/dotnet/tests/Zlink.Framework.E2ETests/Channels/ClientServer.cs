@@ -25,7 +25,7 @@ public sealed class ClientServerTests
         serverBuilder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<ClientServerTests>();
-            options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
@@ -35,7 +35,7 @@ public sealed class ClientServerTests
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableClient();

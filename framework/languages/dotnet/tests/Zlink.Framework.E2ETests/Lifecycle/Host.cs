@@ -15,7 +15,7 @@ public sealed class HostTests
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add($"tcp://127.0.0.1:{routerPort}"));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint($"tcp://127.0.0.1:{routerPort}"));
             options.AddClientServerChannel("profile", channel => channel.EnableClient());
         });
         builder.Services.AddZLinkRegistry(options =>
@@ -48,10 +48,7 @@ public sealed class HostTests
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery =>
-            {
-                discovery.Add($"tcp://127.0.0.1:{routerPort}");
-            });
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint($"tcp://127.0.0.1:{routerPort}"));
             options.AddClientServerChannel("profile", channel => channel.EnableClient());
         });
         builder.Services.AddZLinkRegistry(options =>

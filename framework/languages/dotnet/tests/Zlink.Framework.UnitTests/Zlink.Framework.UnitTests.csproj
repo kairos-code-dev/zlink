@@ -10,6 +10,14 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.msbuild">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -36,6 +44,7 @@
     <Compile Include="Documentation/Regression.cs" />
     <Compile Include="Runtime/BackendAdapterFactoryTests.cs" />
     <Compile Include="Runtime/BackendMonitorWrapperTests.cs" />
+    <Compile Include="Runtime/CoverageCriticalRuntimeTests.cs" />
     <Compile Include="Runtime/HandlerResultAwaiterTests.cs" />
     <Compile Include="Runtime/SerialExecutorTests.cs" />
     <Compile Include="Runtime/RequestFailureMappingTests.cs" />

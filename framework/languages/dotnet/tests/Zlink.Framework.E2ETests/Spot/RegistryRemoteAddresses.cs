@@ -34,10 +34,7 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
         var frameworkBuilder = Host.CreateApplicationBuilder();
         frameworkBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
 
             options.AddRouteMeshChannel("play", routed =>
             {
@@ -46,19 +43,16 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
             options.UseRegistrySpotRemoteAddresses("registry-route");
             options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("registry-route-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNodeEndpoint);
+                    router.BindRouter(spotNodeEndpoint);
                 });
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(spotPubEndpoint);
+                    pubsub.BindPubSub(spotPubEndpoint);
                 });
                 spot.AddSpotFactory<LocalSubscriberStageSpot>();
             });
@@ -116,10 +110,7 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
         var frameworkBuilder = Host.CreateApplicationBuilder();
         frameworkBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
 
             options.AddRouteMeshChannel("play", routed =>
             {
@@ -128,19 +119,16 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
             options.UseRegistrySpotRemoteAddresses("registry-route-rid");
             options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("registry-route-rid-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNodeEndpoint);
+                    router.BindRouter(spotNodeEndpoint);
                 });
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(spotPubEndpoint);
+                    pubsub.BindPubSub(spotPubEndpoint);
                 });
                 spot.AddSpotFactory<LocalSubscriberStageSpot>();
             });

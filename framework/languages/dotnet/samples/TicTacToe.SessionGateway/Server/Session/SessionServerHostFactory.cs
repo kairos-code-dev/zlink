@@ -19,7 +19,7 @@ public static class SessionServerHostFactory
         {
             options.Codecs.AddJson();
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
-            options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
             options.UseRegistrySpotRemoteAddresses("tictactoe");
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
@@ -44,7 +44,7 @@ public static class SessionServerHostFactory
                 {
                     node.EnableRouter(router =>
                     {
-                        router.SetRouterBind(sessionNode.RouterEndpoint);
+                        router.BindRouter(sessionNode.RouterEndpoint);
                         router.SetRoutingId(sessionNode.RoutingId);
                         router.UseManualConnections(connections =>
                         {

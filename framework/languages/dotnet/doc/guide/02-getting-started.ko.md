@@ -70,7 +70,7 @@ builder.Services.AddZLinkFramework(options =>
     });
 
     // 위치 해결: 같은 Registry 를 가리키게 한다.
-    options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
 });
 
 var app = builder.Build();
@@ -115,7 +115,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddZLinkFramework(options =>
 {
     options.AddClientServerChannel("price", channel => channel.EnableClient());
-    options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
 });
 
 var app = builder.Build();

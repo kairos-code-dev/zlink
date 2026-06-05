@@ -36,15 +36,12 @@ public sealed class PublisherTests : SpotTestSupport
         {
             options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("subscriber-node", spot =>
             {
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(subscriberNodeEndpoint);
+                    pubsub.BindPubSub(subscriberNodeEndpoint);
                 });
                 spot.AddSpotFactory<ExternalSubscriberStageSpot>();
             });
@@ -56,15 +53,12 @@ public sealed class PublisherTests : SpotTestSupport
         {
             options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("publisher-node", spot =>
             {
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(publisherNodeEndpoint);
+                    pubsub.BindPubSub(publisherNodeEndpoint);
                 });
                 spot.AttachSpotPublisherClient("game.stage");
             });
@@ -182,15 +176,12 @@ public sealed class PublisherTests : SpotTestSupport
         {
             options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("subscriber-node", spot =>
             {
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(subscriberNodeEndpoint);
+                    pubsub.BindPubSub(subscriberNodeEndpoint);
                 });
             });
             });
@@ -201,15 +192,12 @@ public sealed class PublisherTests : SpotTestSupport
         {
             options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("publisher-node", spot =>
             {
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(publisherNodeEndpoint);
+                    pubsub.BindPubSub(publisherNodeEndpoint);
                 });
                 spot.AttachSpotPublisherClient("game.stage");
             });

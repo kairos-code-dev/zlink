@@ -66,7 +66,7 @@ int main ()
                           spot_node.bind ("tcp://0.0.0.0:7101").enable_actor_gateway ();
                       })
       .stream ("client-stream", [] (zlink::framework::stream_builder_t &stream) {
-          stream.bind ("tcp://0.0.0.0:9200").packet_session ("client").attach_actor_gateway ("session-actors");
+          stream.bind ("tcp://0.0.0.0:9200").register_session ("client").attach_actor_gateway ("session-actors");
       });
 
     if (zlink.streams ().size () != 1 || !zlink.streams ()[0].actor_gateway_spot_node_name

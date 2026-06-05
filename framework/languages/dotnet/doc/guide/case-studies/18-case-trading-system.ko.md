@@ -109,8 +109,8 @@ var decision = await client
 // 등록 골격(정식은 04·05·07): symbol SpotMesh + 시세 fanout + 주변부 channel
 options.AddSpotMesh("books", mesh => mesh.AddNode("book-node", n =>
 {
-    n.EnableRouter(r => r.SetRouterBind("tcp://0.0.0.0:7800"));
-    n.EnablePubSub(p => p.SetPubBind("tcp://0.0.0.0:7801"));   // md.{symbol} 시세 배포
+    n.EnableRouter(r => r.BindRouter("tcp://0.0.0.0:7800"));
+    n.EnablePubSub(p => p.BindPubSub("tcp://0.0.0.0:7801"));   // md.{symbol} 시세 배포
     n.AddSpotFactory<SymbolBookSpot>();
 }));
 options.AddClientServerChannel("risk", c => c.EnableClient());

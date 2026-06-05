@@ -62,7 +62,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | 같은 channel 이름을 client-server와 fanout capability로 동시에 등록 | `unit` | startup validation 예외 |
 | server capability에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | `AddClientServerChannel(...).EnableClient(c => c.UseManualConnections(...))` | `integration-single-process` | manual request/send 성공 |
-| `AddClientServerChannel(...).EnableClient(...)` + 전역 `UseDiscovery(...)` | `integration-single-process` | discovery 기반 request/send 성공 |
+| `AddClientServerChannel(...).EnableClient(...)` + 전역 `UseDiscovery(...AddRegistryEndpoint...)` | `integration-single-process` | discovery 기반 request/send 성공 |
 | `AddFanoutChannel(...).EnableSubscriber(s => s.UseManualConnections(...))` | `integration-single-process` | manual 기반 subscribe 성공 |
 | client capability에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
 | 같은 capability에서 discovery/manual 혼용 | `unit` | startup validation 예외 |
@@ -119,7 +119,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 |------|------|-----------|
 | duplicate Spot factory type | `unit` | startup validation 예외 |
 | duplicate `AddEntrySpot<TEntrySpot>()` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
-| `AddSpotMesh(...)`에 `UseDiscovery(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
+| `AddSpotMesh(...)`에 `UseDiscovery(...AddRegistryEndpoint...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
 | `AddSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
 | `AddSpotMesh(...)` + 빈 `UseDiscovery` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
 | `AddSpotMesh(...)` + router-capable `AddNode(...)` + `AttachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
@@ -171,7 +171,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Registry Spot route 기본 resolver 등록 | `unit` | `UseRegistrySpotRemoteAddresses(...)` 가 custom resolver 없이 기본 `IZLinkSpotRemoteAddressResolver` 와 Spot RID directory 를 등록한다 |
 | actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
 | Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다 |
-| Registry route 기본 구현 discovery validation | `unit` | `UseDiscovery(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
+| Registry route 기본 구현 discovery validation | `unit` | `UseDiscovery(...AddRegistryEndpoint...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
 | Registry Spot RID route | `integration-single-process` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
 | sample-only session metadata store 제거 | `unit` | Bingo 와 TicTacToe session gateway 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |

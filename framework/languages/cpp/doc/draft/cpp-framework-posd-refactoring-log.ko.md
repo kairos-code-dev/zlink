@@ -2700,7 +2700,7 @@ git diff --check -- framework/languages/cpp
 ### 발견한 위험 신호
 
 - `.NET` TicTacToe Api/Play/Session sample의 host factory는 모두
-  `UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint))`를 사용한다.
+  `AddRegistryEndpoint(topology.RegistryRouterEndpoint)`를 사용한다.
   C++ TicTacToe sample은 registry endpoint가 topology에 없고, Api host가 Play channel client를
   직접 endpoint로 연결했다. 이 상태에서는 C++ sample이 discovery 기반 channel 구성이라는
   `.NET` 샘플의 핵심 흐름을 보여 주지 못한다.
@@ -2724,7 +2724,7 @@ git diff --check -- framework/languages/cpp
   추가했다.
 - TicTacToe registry host factory가 hard-coded endpoint 대신 topology 값을 받도록 바꿨다.
 - TicTacToe API 설정은 `.NET`처럼 `api_server_host_factory.hpp` 안에서 직접 보이게 유지했다.
-- TicTacToe Api/Play/Session host factory가 `options.discovery().add(...)`를 사용하게 했다.
+- TicTacToe Api/Play/Session host factory가 `options.use_discovery().add_registry_endpoint (...)`를 사용하게 했다.
 - TicTacToe Api/Session client channels는 `.NET`처럼 discovery 기반 client 표면으로 보이게
   직접 play endpoint 연결을 제거했다.
 - sample parity test가 TicTacToe host factory의 discovery 사용과 registry topology 사용을
@@ -2780,7 +2780,7 @@ git diff --check -- framework/languages/cpp
   connection, routing id를 framework options 표면에서 설정하게 했다.
 - `zlink_framework_options_t::use_registry_spot_remote_addresses(...)`를 추가해 Spot remote
   address resolver 기본값을 framework options에서 켤 수 있게 했다.
-- `zlink_framework_options_t::add_spot_mesh(name).node(nodeName)`을 추가해 Spot node discovery
+- `zlink_framework_options_t::add_spot_mesh(name).add_node(nodeName)`을 추가해 Spot node discovery
   channel과 node 설정을 한 곳에서 표현하게 했다.
 - `spot_node_options_builder_t`에 `accept_routes_from_channel(...)`과
   `attach_channel_client(...)`를 추가해 `.NET` sample의 `AcceptSpotRoutesFromChannel`과
@@ -2791,7 +2791,7 @@ git diff --check -- framework/languages/cpp
 - `enable_router(endpoint, routing_id)`와 `enable_pub_sub(endpoint, routing_id)` overload를
   추가해 `.NET` sample topology의 `PlayRid`, `SessionRouterRid`, `SessionPubRid` 역할을 C++
   sample에서도 보존하게 했다.
-- `add_route_mesh_channel(...).routing_id(...)`와 route channel runtime routing id snapshot을
+- `add_route_mesh_channel(...).set_routing_id(...)`와 route channel runtime routing id snapshot을
   추가해 `.NET`의 `ConfigureRouting(routing => routing.RoutingId = ...)` 정보를 C++ route
   mesh registration에서도 잃지 않게 했다.
 - `zlink_builder_t::route_channel(...)` 재적용 시 registry route channel 이름이 중복되지 않게
@@ -8580,7 +8580,7 @@ serializer 선택은 계속 registry 내부 구현으로 남긴다.
 
 ### 발견한 위험 신호
 
-- `.NET` framework는 `ConfigureMetadata(...Forward(...))`로 stream/session metadata 중
+- `.NET` framework는 `ConfigureMetadata(...AddForwardedMetadataKey(...))`로 stream/session metadata 중
   application handler에 넘길 key를 명시한다.
 - C++ framework는 `spot_actor_send_context_t`와 `spot_actor_request_context_t`에 metadata
   필드는 있었지만, actor packet dispatch가 항상 빈 metadata context를 만들었다.
@@ -8594,7 +8594,7 @@ serializer 선택은 계속 registry 내부 구현으로 남긴다.
 |------|------|------|
 | stream header metadata 전체를 actor context에 넣는다 | 구현이 단순하다 | internal/control metadata까지 handler에 새고 policy가 없다 |
 | ActorGateway relay API가 metadata key를 직접 고른다 | relay 경로만 빨리 닫힌다 | metadata 정책이 relay 호출자마다 흩어진다 |
-| `message_metadata_policy_t`와 `options.metadata().forward(...)`를 두고 허용 key만 project한다 | `.NET` 사용 흐름과 맞고 policy 지식이 한곳에 모인다 | runtime bridge가 policy projection을 호출해야 한다 |
+| `message_metadata_policy_t`와 `options.metadata().add_forwarded_metadata_key(...)`를 두고 허용 key만 project한다 | `.NET` 사용 흐름과 맞고 policy 지식이 한곳에 모인다 | runtime bridge가 policy projection을 호출해야 한다 |
 
 선택은 세 번째 방식이다. C++에서는 reflection이나 ASP.NET Core middleware를 복제하지 않고,
 명시적인 fluent options builder와 value object로 같은 사용자 경험을 제공한다. actor handler는
@@ -8604,7 +8604,7 @@ raw stream header가 아니라 `spot_actor_message_metadata_t`만 본다.
 
 - `message_metadata_policy_t`를 추가하고 `forward(key)`, `can_forward(key)`,
   `project(metadata)`를 제공했다.
-- `zlink_framework_options_t::metadata().forward(key)`가 metadata policy를 구성하고 DI에서
+- `zlink_framework_options_t::metadata().add_forwarded_metadata_key(key)`가 metadata policy를 구성하고 DI에서
   `message_metadata_policy_t` singleton으로 resolve될 수 있게 했다.
 - `spot_handler_registry_t::invoke_actor_packet(...)`에 metadata overload를 추가해 ActorGateway/
   stream bridge가 policy projection 결과를 actor context로 전달할 수 있게 했다.
@@ -8653,7 +8653,7 @@ raw stream header가 아니라 `spot_actor_message_metadata_t`만 본다.
 ### 수정 후 점검
 
 - actor handler는 `std::map` 반복이 필요 없는 단일 key 조회를 value object에 맡긴다.
-- `options.metadata().forward(...)`와 직접 `message_metadata_policy_t::forward(...)`가 같은
+- `options.metadata().add_forwarded_metadata_key(...)`와 직접 `message_metadata_policy_t::forward(...)`가 같은
   validation 규칙을 쓴다.
 - 기존 `values` 반복 사용자는 그대로 컴파일된다.
 
@@ -9059,7 +9059,7 @@ manual 연결은 endpoint 인자를 받는 overload로 분리한다.
 
 - `.NET` registration validation은 하나의 stream node가 session을 두 번 등록하면 startup 전에
   설정 오류로 실패시킨다.
-- C++ high-level `add_stream_node(...).packet_session(...)`은 여러 번 호출하면 마지막 값으로 덮어쓸 수
+- C++ high-level `add_stream_node(...).register_session(...)`은 여러 번 호출하면 마지막 값으로 덮어쓸 수
   있었다. 이 동작은 사용자가 실수로 중복 등록한 경우를 조용히 숨긴다.
 - 설정 실수를 덮어쓰는 방식은 오류를 늦게 발견하게 하고, stream node의 public 의미를 얕게 만든다.
 
@@ -9067,9 +9067,9 @@ manual 연결은 endpoint 인자를 받는 overload로 분리한다.
 
 | 대안 | 장점 | 단점 |
 |------|------|------|
-| 마지막 `packet_session(...)` 호출이 이기게 둔다 | 기존 동작을 유지한다 | 중복 session 등록 실수를 숨기고 `.NET` validation parity와 다르다 |
+| 마지막 `register_session(...)` 호출이 이기게 둔다 | 기존 동작을 유지한다 | 중복 session 등록 실수를 숨기고 `.NET` validation parity와 다르다 |
 | `apply()`에서 stream snapshot을 검사한다 | 모든 stream 설정을 한 번에 검증할 수 있다 | 중복 호출 위치와 원인을 늦게 알려준다 |
-| 두 번째 `packet_session(...)` 호출에서 바로 실패시킨다 | 오류 위치가 명확하고 stream node의 단일 session 규칙을 표면에서 닫는다 | builder가 session 설정 여부를 추적해야 한다 |
+| 두 번째 `register_session(...)` 호출에서 바로 실패시킨다 | 오류 위치가 명확하고 stream node의 단일 session 규칙을 표면에서 닫는다 | builder가 session 설정 여부를 추적해야 한다 |
 
 선택은 세 번째 방식이다. stream node는 packet session을 하나만 가진다는 의미를 builder가 직접
 지키는 편이 호출자에게 가장 분명하다.
@@ -9077,7 +9077,7 @@ manual 연결은 endpoint 인자를 받는 overload로 분리한다.
 ### 적용한 리팩토링
 
 - `stream_node_options_builder_t`가 packet session 설정 여부를 추적한다.
-- 같은 builder에서 `packet_session(...)`을 두 번 호출하면 `request_protocol_error`로 실패한다.
+- 같은 builder에서 `register_session(...)`을 두 번 호출하면 `request_protocol_error`로 실패한다.
 - module/options regression이 중복 packet session 등록 실패를 검증한다.
 - `cpp-stream.ko.md`와 `cpp-framework-interfaces.ko.md`에 단일 packet session 규칙을 적었다.
 
@@ -9285,7 +9285,7 @@ options 적용 시점에 명확히 실패시킨다.
 
 - `.NET` registration validation은 SPOT node가 router 또는 pub/sub capability 없이 등록되면 startup
   단계에서 실패시킨다.
-- C++ high-level `add_spot_mesh(...).node(...)`는 discovery view를 자동으로 붙이지만, discovery는 실행
+- C++ high-level `add_spot_mesh(...).add_node(...)`는 discovery view를 자동으로 붙이지만, discovery는 실행
   capability가 아니다. `enable_router(...)`와 `enable_pub_sub(...)`가 모두 빠져도 options 적용이
   가능했다.
 - capability 없는 SPOT node는 실제 메시지 ingress/egress 역할이 불분명해지고, 사용자가 discovery
@@ -9296,7 +9296,7 @@ options 적용 시점에 명확히 실패시킨다.
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | runtime spot initializer에서 capability 없는 node를 실패시킨다 | runtime snapshot 기준으로 판단할 수 있다 | high-level 설정 오류가 늦게 드러난다 |
-| `add_spot_mesh(...).node(...)`가 기본 router capability를 자동으로 켠다 | 사용자 코드가 짧다 | endpoint를 추측할 수 없어 호출자에게 숨은 default를 만든다 |
+| `add_spot_mesh(...).add_node(...)`가 기본 router capability를 자동으로 켠다 | 사용자 코드가 짧다 | endpoint를 추측할 수 없어 호출자에게 숨은 default를 만든다 |
 | options state가 SPOT node 선언과 router/pub-sub capability 보유 여부를 추적하고 `apply()`에서 검증한다 | `.NET` startup validation과 맞고 discovery와 capability 의미를 분리한다 | options state가 작은 validation metadata를 가진다 |
 
 선택은 세 번째 방식이다. discovery는 peer discovery 의미로 유지하고, runtime capability는
@@ -9774,9 +9774,9 @@ attached channel client나 accepted route ingress의 peer와 다른 정보다. C
 
 ### 발견한 위험 신호
 
-- `.NET` framework는 `UseDiscovery(...).Add(endpoint)`와 metadata forwarding key에서 빈 문자열과
+- `.NET` framework는 `AddRegistryEndpoint(endpoint)`와 metadata forwarding key에서 빈 문자열과
   공백만 있는 문자열을 설정 오류로 거부한다.
-- C++ high-level `options.discovery().add(...)`는 endpoint를 검증하지 않았고,
+- C++ high-level `options.use_discovery().add_registry_endpoint (...)`는 endpoint를 검증하지 않았고,
   low-level `message_metadata_policy_t::forward(...)`는 빈 문자열만 거부했다.
 - 잘못된 값이 설정 경계를 지나 native 연결이나 actor dispatch 시점까지 내려가면 호출자가 원인을
   늦게 파악해야 하므로, 오류 처리를 하위 정의로 없애는 POSD 원칙과 맞지 않았다.
@@ -9854,7 +9854,7 @@ attached channel client나 accepted route ingress의 peer와 다른 정보다. C
 
 - `.NET` framework의 stream node builder는 `RegisterSession<TSession>()`으로 session 타입을
   등록하고, runtime이 DI scope에서 session을 만든다.
-- C++ high-level stream node builder는 `packet_session(name)`만 제공해 사용자가 native packet
+- C++ high-level stream node builder는 `register_session(name)`만 제공해 사용자가 native packet
   session 이름을 직접 골라야 했다.
 - 문자열 session 이름만 public 표면으로 두면 session handler 타입과 native session 이름의 연결
   지식이 호출자에게 새고, `.NET` 샘플의 타입 중심 사용 흐름과 달라진다.
@@ -9863,7 +9863,7 @@ attached channel client나 accepted route ingress의 peer와 다른 정보다. C
 
 | 대안 | 장점 | 단점 |
 |------|------|------|
-| `packet_session(name)`만 유지한다 | 변경이 없다 | session handler 타입과 이름 연결을 호출자에게 맡긴다 |
+| `register_session(name)`만 유지한다 | 변경이 없다 | session handler 타입과 이름 연결을 호출자에게 맡긴다 |
 | `register_session<T>()`를 단순 alias로 추가한다 | public 표면이 맞아 보인다 | DI 등록 기대를 충족하지 못하는 얕은 wrapper다 |
 | `register_session<T>()`가 scoped service 등록과 session 이름 결정을 함께 맡는다 | 타입 중심 사용자 흐름과 `.NET` 의미가 맞고 이름 지식이 builder 안에 숨는다 | builder가 service collection 참조를 가져야 한다 |
 
@@ -9876,14 +9876,14 @@ session 이름으로 사용한다.
 - `stream_node_options_builder_t::register_session<TSession>()`를 추가했다.
 - `TSession`은 `packet_stream_session_t`를 상속해야 하며, framework service collection에 scoped
   service로 등록된다.
-- 기존 `packet_session(name)`과 같은 단일 session 규칙을 공유하게 했다.
+- 기존 `register_session(name)`과 같은 단일 session 규칙을 공유하게 했다.
 - contract header, module hosted regression, STREAM draft와 sample draft 문서를 갱신했다.
 
 ### 수정 후 점검
 
 - typed session 등록이 `options.apply()` 이후 stream snapshot에 반영된다.
 - typed session 타입은 provider에서 resolve 가능하다.
-- `register_session<T>()`와 `packet_session(...)`을 중복 호출하면 설정 오류가 난다.
+- `register_session<T>()`와 `register_session(...)`을 중복 호출하면 설정 오류가 난다.
 - 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
 
 ## 반복 POSD 재리뷰. STREAM write fluent call parity 보강

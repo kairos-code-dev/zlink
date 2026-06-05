@@ -186,7 +186,7 @@ export interface ActorRef {
 | builder | `SpotPublisherClientCapabilityBuilder` | spot publisher client capability builder | 6.3 |
 | builder | `SpotChannelClientCapabilityBuilder` | spot channel client capability builder | 6.3 |
 | builder | `ZLinkSpotRouteChannelAcceptanceBuilder` | spot route 수락 builder | 6.3 |
-| builder | `ZLinkDiscoveryBuilder` | discovery endpoint builder | 6.1 |
+| builder | `useDiscovery().addRegistryEndpoint(endpoint)` | discovery endpoint 직접 추가 | 6.1 |
 | builder | `ZLinkMetadataPolicyBuilder` | metadata forward 정책 builder | 6.1 |
 | options | `ZLinkSocketConfig` | 공통 socket 옵션 | 6.4 |
 | options | `ZLinkRouteConfig` | routed peer 정책 옵션 | 6.4 |
@@ -1454,8 +1454,9 @@ function createFrameworkRegistrationWithBuilder(
   configure: (options: ZLinkFrameworkOptions) => void): ZLinkFrameworkRegistration;
 
 export interface ZLinkFrameworkOptions {
-  useDiscovery(): ZLinkDiscoveryBuilder;
-  spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+  addRegistryEndpoint(endpoint: string): this;
+  addRegistryEndpoint(endpoint: string): this;
+  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
@@ -1466,12 +1467,8 @@ export interface ZLinkFrameworkOptions {
   addSpotNode(name: string): ZLinkSpotNodeBuilder;
 }
 
-export interface ZLinkDiscoveryBuilder {
-  connectRegistry(endpoint: string): this;
-}
-
 export interface ZLinkMetadataPolicyBuilder {
-  forward(key: string): void;
+  forward(enabled?: boolean): this;
 }
 ```
 
@@ -1485,9 +1482,9 @@ export interface ZLinkMetadataPolicyBuilder {
 - `addFanoutChannel(...)`: pub/sub fanout 채널 등록.
 - `addDealerMeshChannel(...)`: DEALER mesh 채널 등록.
 - `addRouteChannel(...)` / `addRouteMeshChannel(...)`: route channel 등록.
-- `useDiscovery().connectRegistry(...)`: 일반 channel capability 가 공유할 registry endpoint 집합 등록.
+- `useDiscovery().addRegistryEndpoint(...)`: 일반 channel capability 가 공유할 registry endpoint 집합 등록.
 - `addStreamNode(...)`: STREAM node 등록(한 node 에 session 하나만).
-- `spotFactory(...)`: `ZLinkSpotManager` 가 사용할 spot factory 타입 등록.
+- `addSpotFactory(...)`: `ZLinkSpotManager` 가 사용할 spot factory 타입 등록.
 - `addSpotMesh(channelName).addNode(...)`: SPOT mesh 아래 SpotNode 등록.
 
 #### (A) NestJS module-options 대응
@@ -1533,7 +1530,7 @@ export class AppModule {}
 | `addRouteMeshChannel(name)` | `channels[name] = { routeMesh: {...} }` | nestjs-channel-messaging |
 | `addSpotMesh(name).addNode(...)` | `spotNodes[name] = {...}` | nestjs-spot |
 | `addStreamNode(name)` | `streamNodes[name] = {...}` | nestjs-stream |
-| `useDiscovery().connectRegistry(...)` | `discovery: { registries: [...] }` | nestjs-registry |
+| `useDiscovery().addRegistryEndpoint(...)` | `discovery: { registries: [...] }` | nestjs-registry |
 | `useFilter(...)` | `filters: [FilterClass]` | handler-interfaces §8 |
 | `configureDispatch(...)` | `dispatch: { spotDispatchMode, streamDispatchMode, unhandled, diagnostics }` | §4.4.3 |
 | `addHandlersFromModule(s)(...)` | `discover: { modules / include }` | 매핑 정책 §4.2 |
@@ -1692,7 +1689,7 @@ export interface ZLinkSpotNodeBuilder {
 export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {}
 
 export interface ZLinkSpotMeshBuilder {
-  useDiscovery(): ZLinkDiscoveryBuilder;
+  addRegistryEndpoint(endpoint: string): this;
   node(spotNodeName: string): ZLinkSpotMeshNodeBuilder;
 }
 
@@ -1722,7 +1719,7 @@ export interface ZLinkSpotRouteChannelAcceptanceBuilder {
 ```
 
 > Node builder 에서도 node 자체 `bind(...)` 는 없다. bind 는 router/pubSub capability
-> builder 에서 지정한다. spot factory 타입은 root `spotFactory(...)` 또는 node-local
+> builder 에서 지정한다. spot factory 타입은 root `addSpotFactory(...)` 또는 node-local
 > `addSpotFactory(...)` 로 등록한다.
 
 builder 함수 의미:
@@ -1737,7 +1734,7 @@ builder 함수 의미:
 - `attachChannelClient(...)`: 다른 channel 로 send/request 할 outbound DEALER(client) 부착.
 - `attachSpotPublisherClient(...)`: 외부 노드가 특정 SPOT channel 로 publish 할 outbound publisher client 부착.
 - `acceptSpotRoutesFromChannel(...)`: 지정 channel 에서 들어오는 spot route 수락.
-- `spotFactory(spotType)`: root 수준에서 이 runtime 이 생성/소유할 spot factory 를 타입
+- `addSpotFactory(spotType)`: root 수준에서 이 runtime 이 생성/소유할 spot factory 를 타입
   기준 등록한다. node-local `addSpotFactory(...)` 도 `ZLinkSpotManager` 등록 집합에
   합산된다. 같은 node 안에서 같은 `TSpot` 재등록은 예외다.
 

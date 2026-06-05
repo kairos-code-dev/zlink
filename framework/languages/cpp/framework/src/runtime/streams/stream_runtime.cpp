@@ -306,7 +306,7 @@ stream_builder_t &stream_builder_t::bind (std::string endpoint)
     return *this;
 }
 
-stream_builder_t &stream_builder_t::packet_session (std::string session_name)
+stream_builder_t &stream_builder_t::register_session (std::string session_name)
 {
     if (session_name.empty ()) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,

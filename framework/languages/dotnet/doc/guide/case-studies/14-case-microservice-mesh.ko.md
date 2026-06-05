@@ -10,7 +10,7 @@
 > 아키텍처 매핑 문서다.
 
 > **이 케이스에서 ZLink 이 좋은 지점**
-> - 다수 서비스 호출·BFF fan-out 을 channel name + Registry 로 묶어 sidecar·별도 discovery 를 줄인다.
+> - 다수 서비스 호출·BFF fan-out 을 channel name  + Registry 로 묶어 sidecar·별도 discovery 를 줄인다.
 > - **그대로 남는 것**: retry·circuit-breaking·correlation 추적·외부 공개 API.
 > - 즉 ZLink 은 호출 배선·위치 해결을 줄이고, 복원력 정책은 그대로 앱이 진다.
 
@@ -116,7 +116,7 @@ public sealed class CorrelationInterceptor : Interceptor
 control plane, Consul/xDS, OpenTelemetry collector + tracing 백엔드, correlation
 interceptor.
 
-## 3. ZLink 스택 — channel 이름 + Registry
+## 3. ZLink 스택 — channel 이름  + Registry
 
 ```csharp
 // BFF: stub 없이 IZLinkChannelClient 하나로 channel 이름만 바꿔 fan-out
@@ -149,7 +149,7 @@ public sealed class QuoteHandler(IPriceStore store)
 // 등록: 위치 해결은 Registry 하나. sidecar/Consul/xDS 없음
 options.AddClientServerChannel("profile", c => c.EnableClient());
 options.AddClientServerChannel("pricing", c => c.EnableClient());
-options.UseDiscovery(d => d.Add("tcp://registry1:5551"));
+options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
 // 운영: standalone Registry 를 다른 프로세스에서 조회
 builder.Services.AddZLinkRegistryQueryClient(query =>
@@ -187,7 +187,7 @@ public sealed class CorrelationFilter(ILogger<CorrelationFilter> log) : IZLinkHa
 | 축 | 기존(gRPC + mesh) | ZLink |
 |----|-------------------|-------|
 | 계약/호출 | 서비스별 생성 stub `profile.GetAsync(...)` | `client.RequestToChannel("profile", ...)` channel 이름 |
-| 위치/분배 | Consul/xDS + Envoy `DestinationRule` | `UseDiscovery` + Registry |
+| 위치/분배 | Consul/xDS + Envoy `DestinationRule` | `UseDiscovery`  + Registry |
 | deadline | `deadline:` 인자 | `.Timeout(...)` |
 | retry/circuit | Polly(앱) | Polly/filter(앱) — 동일 |
 | 관측 | Envoy telemetry + OTel collector | `IZLinkRegistryQueryClient` + `AddZLinkMonitoring` |
@@ -213,7 +213,7 @@ public sealed class CorrelationFilter(ILogger<CorrelationFilter> log) : IZLinkHa
 ```
 
 ```text
-[ZLink]  ZLink Framework + Registry
+[ZLink]  ZLink Framework  + Registry
 
   +--------+ +--------+ +--------+ +--------+
   | bff    | | profile| | pricing| |  ...   |   each app + ZLink Framework

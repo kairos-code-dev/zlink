@@ -378,13 +378,13 @@ class metadata_policy_builder_t
     {
     }
 
-    metadata_policy_builder_t &forward (std::string key)
+    metadata_policy_builder_t &add_forwarded_metadata_key (std::string key)
     {
         if (key.empty ()) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "metadata key must not be empty");
         }
-        _options->metadata_policy.forward (std::move (key));
+        _options->metadata_policy.add_forwarded_metadata_key (std::move (key));
         return *this;
     }
 
@@ -421,7 +421,7 @@ class discovery_options_builder_t
     {
     }
 
-    discovery_options_builder_t &add (std::string registry_router_endpoint)
+    discovery_options_builder_t &add_registry_endpoint (std::string registry_router_endpoint)
     {
         detail::require_non_blank (registry_router_endpoint, "discovery endpoint is required");
         _options->registry_discovery_endpoints.push_back (registry_router_endpoint);
@@ -755,7 +755,7 @@ class route_mesh_channel_builder_t
         return *this;
     }
 
-    route_mesh_channel_builder_t &routing_id (zlink::routing_id_t routing_id)
+    route_mesh_channel_builder_t &set_routing_id (zlink::routing_id_t routing_id)
     {
         _routing_id = std::move (routing_id);
         apply ();
@@ -809,7 +809,7 @@ class route_mesh_channel_builder_t
                       channel.bind (bind_endpoint);
                   }
                   if (routing_id) {
-                      channel.routing_id (*routing_id);
+                      channel.set_routing_id (*routing_id);
                   }
                   for (const auto &endpoint : manual_connections) {
                       channel.connect (endpoint);
@@ -900,7 +900,7 @@ class spot_router_capability_builder_t
     {
     }
 
-    spot_router_capability_builder_t &routing_id (zlink::routing_id_t routing_id)
+    spot_router_capability_builder_t &set_routing_id (zlink::routing_id_t routing_id)
     {
         *_routing_id = std::move (routing_id);
         return *this;
@@ -927,7 +927,7 @@ class spot_pub_sub_capability_builder_t
     {
     }
 
-    spot_pub_sub_capability_builder_t &routing_id (zlink::routing_id_t routing_id)
+    spot_pub_sub_capability_builder_t &set_routing_id (zlink::routing_id_t routing_id)
     {
         *_routing_id = std::move (routing_id);
         return *this;
@@ -1307,9 +1307,9 @@ class spot_mesh_builder_t
         detail::require_non_blank (_channel_name, "SPOT mesh channel name is required");
     }
 
-    discovery_options_builder_t discovery () { return discovery_options_builder_t (_options); }
+    discovery_options_builder_t use_discovery () { return discovery_options_builder_t (_options); }
 
-    spot_node_options_builder_t node (std::string spot_node_name)
+    spot_node_options_builder_t add_node (std::string spot_node_name)
     {
         auto node = spot_node_options_builder_t (std::move (spot_node_name), _options);
         node.use_discovery (_channel_name);
@@ -1340,7 +1340,7 @@ class stream_node_options_builder_t
         return *this;
     }
 
-    stream_node_options_builder_t &packet_session (std::string session_name)
+    stream_node_options_builder_t &register_session (std::string session_name)
     {
         detail::require_non_blank (session_name, "STREAM packet session name is required");
         set_session_name (std::move (session_name));
@@ -1393,7 +1393,7 @@ class stream_node_options_builder_t
                     stream.bind (endpoint);
                 }
                 if (!session_name.empty ()) {
-                    stream.packet_session (session_name);
+                    stream.register_session (session_name);
                 }
                 if (!actor_gateway_spot_node.empty ()) {
                     stream.attach_actor_gateway (actor_gateway_spot_node);
@@ -1458,17 +1458,17 @@ class zlink_framework_options_t
 
     dispatch_options_t dispatch_options () const { return _options->dispatch; }
 
-    discovery_options_builder_t discovery () { return discovery_options_builder_t (_options); }
+    discovery_options_builder_t use_discovery () { return discovery_options_builder_t (_options); }
 
     service_collection_t &services () noexcept { return *_services; }
 
-    zlink_framework_options_t &registry (std::string pub_endpoint, std::string router_endpoint)
+    zlink_framework_options_t &enable_registry (std::string pub_endpoint, std::string router_endpoint)
     {
         detail::require_non_blank (pub_endpoint, "registry pub endpoint is required");
         detail::require_non_blank (router_endpoint, "registry router endpoint is required");
         _options->add_zlink_action ([pub_endpoint = std::move (pub_endpoint),
                                      router_endpoint = std::move (router_endpoint)] (zlink_builder_t &zlink) mutable {
-            zlink.registry ([&] (registry_builder_t &registry) {
+            zlink.enable_registry ([&] (registry_builder_t &registry) {
                 registry.bind (std::move (pub_endpoint), std::move (router_endpoint));
             });
         });

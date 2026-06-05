@@ -210,12 +210,12 @@ await events
 options.DefaultTimeout = TimeSpan.FromSeconds(5);
 options.Codecs.AddJson();
 options.AddHandlersFromAssemblyOf<Program>();
-options.ConfigureMetadata(metadata => metadata.Forward("trace-id"));
+options.ConfigureMetadata(metadata => metadata.AddForwardedMetadataKey("trace-id"));
 options.AddActorFactory<PlayerActorFactory>("player");
 options.AddSpotRemoteAddressResolver<MySpotResolver>();
 options.UseRegistrySpotRemoteAddresses("game", registry => registry.RouterChannelId = "play-router");
-options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6000"));
-options.AddSpotMesh("play-spots", mesh => mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6001")));
+options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:6000"));
+options.AddSpotMesh("play-spots", mesh => mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:6001")));
 options.UseFilter<AuditingFilter>();
 options.ConfigureDispatch(dispatch => dispatch.SpotDispatchMode = ZLinkDispatchMode.Compiled);
 ```
@@ -223,8 +223,8 @@ options.ConfigureDispatch(dispatch => dispatch.SpotDispatchMode = ZLinkDispatchM
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkFrameworkOptions` | framework 최상위 등록 표면. channel/spot/stream node 등록, codec, handler scan, discovery, filter, dispatch, actor factory 를 모두 소유 |
-| `IZLinkDiscoveryBuilder` | discovery endpoint 추가(`Add(endpoint)`). 전역 `UseDiscovery` 또는 mesh `UseDiscovery` 에서 쓰인다 |
-| `IZLinkMetadataPolicyBuilder` | 응용 metadata 전달 정책(`Forward(key)`) |
+| `IZLinkFrameworkOptions.AddRegistryEndpoint` / `IZLinkSpotMeshBuilder.AddRegistryEndpoint` | discovery endpoint 를 직접 추가한다 |
+| `IZLinkMetadataPolicyBuilder` | 응용 metadata 전달 정책(`AddForwardedMetadataKey(key)`) |
 | `IZLinkRegistrySpotRemoteAddressesOptions` | Registry 기반 spot 주소 해석 옵션(`RouterChannelId`) |
 
 검증: `BuilderContracts.Framework_options_register_the_top_level_runtime_surface`.
@@ -278,18 +278,18 @@ options.AddStreamNode("gateway", stream =>
 
 options.AddSpotMesh("play-mesh", mesh =>
 {
-    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6003"));
+    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:6003"));
     mesh.AddNode("play-spots", spot =>
     {
         spot.EnableRouter(router =>
         {
-            router.SetRouterBind("tcp://127.0.0.1:5501");
+            router.BindRouter("tcp://127.0.0.1:5501");
             router.SetRoutingId(RoutingId.From("spot-router"));
         });
         spot.EnablePubSub(pubSub =>
         {
-            pubSub.SetPubBind("tcp://127.0.0.1:5500");
-            pubSub.ConfigurePublisherConfig(p => p.NoDrop = true);
+            pubSub.BindPubSub("tcp://127.0.0.1:5500");
+            pubSub.ConfigurePublisher(p => p.NoDrop = true);
         });
         spot.AttachChannelClient("api", c => c.ConfigureSocket(s => s.Immediate = true));
         spot.AttachChannelClient("api");
@@ -305,7 +305,7 @@ options.AddSpotMesh("play-mesh", mesh =>
     {
         spot.EnableRouter(router =>
         {
-            router.SetRouterBind("tcp://127.0.0.1:5601");
+            router.BindRouter("tcp://127.0.0.1:5601");
             router.ConfigureRouting(r => r.RoutingId = RoutingId.From("session-gateway"));
         });
     });
@@ -320,7 +320,7 @@ options.AddSpotMesh("play-mesh", mesh =>
 | `IZLinkSpotMeshBuilder` | discovery 기반 spot mesh(`UseDiscovery`, `AddNode`) |
 | `IZLinkSpotRouteChannelAcceptanceBuilder` | `AcceptSpotRoutesFromChannel` 의 ingress 연결 설정(`UseManualConnections`) |
 | `ISpotRouterCapabilityBuilder` | spot router capability(`Bind`/`ConfigureSocket`/`ConfigureRouting`/`UseManualConnections`) |
-| `ISpotPubSubCapabilityBuilder` | spot pub/sub capability(`ConfigurePublisherConfig`/`ConfigureSubscriberConfig`/`UseManualConnections`) |
+| `ISpotPubSubCapabilityBuilder` | spot pub/sub capability(`ConfigurePublisher`/`ConfigureSubscriber`/`UseManualConnections`) |
 | `ISpotPublisherClientCapabilityBuilder` | spot publisher client attach 설정 |
 | `ISpotChannelClientCapabilityBuilder` | spot 의 일반 channel client attach 설정 |
 | `IZLinkEndpointConnections` | spot route ingress 수동 연결 집합 |

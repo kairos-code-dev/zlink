@@ -267,7 +267,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return new DefaultDiscoveryBuilder(this.options.discovery);
   }
 
-  spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
+  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
     this.options.spotFactories.push(spotType);
     return this;
   }
@@ -344,15 +344,6 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   private spotNodeOptions(name: string): MutableSpotNodeOptions {
     this.options.spotNodes[name] ??= {};
     return this.options.spotNodes[name];
-  }
-}
-
-class DefaultDiscoveryBuilder implements ZLinkDiscoveryBuilder {
-  constructor(private readonly discovery: MutableDiscoveryOptions) {}
-
-  connectRegistry(endpoint: string): this {
-    this.discovery.registries.push(endpoint);
-    return this;
   }
 }
 
@@ -449,6 +440,15 @@ class DefaultSpotMeshBuilder implements ZLinkSpotMeshBuilder {
 
   addNode(name: string): ZLinkSpotMeshNodeBuilder {
     return this.root.addSpotNode(name);
+  }
+}
+
+class DefaultDiscoveryBuilder implements ZLinkDiscoveryBuilder {
+  constructor(private readonly discovery: MutableDiscoveryOptions) {}
+
+  addRegistryEndpoint(endpoint: string): this {
+    this.discovery.registries.push(endpoint);
+    return this;
   }
 }
 

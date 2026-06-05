@@ -128,7 +128,7 @@ options.AddFanoutChannel("loc.events", c =>
     c.EnablePublisher(p => p.Bind("tcp://0.0.0.0:7600")));
 options.AddSpotMesh("zones", mesh => mesh.AddNode("zone-node", n =>
 {
-    n.EnableRouter(r => r.SetRouterBind("tcp://0.0.0.0:7610"));
+    n.EnableRouter(r => r.BindRouter("tcp://0.0.0.0:7610"));
     n.AddSpotFactory<ZoneSpot>();
 }));
 ```
@@ -176,7 +176,7 @@ options.AddSpotMesh("zones", mesh => mesh.AddNode("zone-node", n =>
                   +--------------+     +--------------+
                   | dispatch     |---->| zone SPOT    |  serial assign
                   +--------------+     +--------------+
-  + Registry (location resolve)
+   + Registry (location resolve)
   + Kafka (kept if location history needs persist)
 ```
 

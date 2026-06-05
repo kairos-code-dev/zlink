@@ -75,7 +75,7 @@ struct spot_actor_message_metadata_t
 class message_metadata_policy_t
 {
   public:
-    message_metadata_policy_t &forward (std::string key)
+    message_metadata_policy_t &add_forwarded_metadata_key (std::string key)
     {
         if (key.empty () || is_blank (key)) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,

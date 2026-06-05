@@ -15,10 +15,10 @@ class bingo_client_app_t
     {
         bingo_client_options_t run_options = options;
 
-        std::array<bingo_player_client_t, 4> clients{bingo_player_client_t::connect ("player-1", run_options),
-                                                     bingo_player_client_t::connect ("player-2", run_options),
-                                                     bingo_player_client_t::connect ("player-3", run_options),
-                                                     bingo_player_client_t::connect ("player-4", run_options)};
+        std::array clients{bingo_player_client_t::connect ("player-1", run_options),
+                           bingo_player_client_t::connect ("player-2", run_options),
+                           bingo_player_client_t::connect ("player-3", run_options),
+                           bingo_player_client_t::connect ("player-4", run_options)};
 
         bingo_client_run_result_t result;
         result.connected = true;

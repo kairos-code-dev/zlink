@@ -75,7 +75,7 @@ binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 
 - `Spot`은 특정 service에 종속되지 않는다.
 - `Spot`은 `SpotNode`에 종속된다.
 - `SpotNode`는 channel 이름을 직접 소유하지 않는다.
-- `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))` 등록이 active
+- `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))` 등록이 active
   channel view[^channel-view]를 공급한다.
 - 같은 `SpotNode`에는 active SPOT channel view를 하나만 둔다.
 - `SpotNode.router`와 pub/sub mesh[^mesh]는 같은 channel에 속한 다른
@@ -120,20 +120,17 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
         mesh.AddNode("stage-node", node =>
         {
             node.EnableRouter(router =>
             {
-                router.SetRouterBind("tcp://0.0.0.0:9001");
+                router.BindRouter("tcp://0.0.0.0:9001");
             });
             node.EnablePubSub(pubsub =>
             {
-                pubsub.SetPubBind("tcp://0.0.0.0:9000");
+                pubsub.BindPubSub("tcp://0.0.0.0:9000");
             });
             node.AttachChannelClient("orders");
             node.AttachSpotPublisherClient("game.stage");
@@ -150,7 +147,7 @@ builder.Services.AddZLinkFramework(options =>
 
 - 논리 `SpotNode` 이름은 `stage-node`
 - 그에 대응하는 backing `SpotNode` 생성
-- `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...))`가 active channel
+- `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))`가 active channel
   view 공급
 - 같은 channel에 속한 다른 `SpotNode`와만 mesh 구성
 - local routed router capability[^capability] 활성화
@@ -166,20 +163,20 @@ builder.Services.AddZLinkFramework(options =>
 등록한다. 그 묶음 안에서 각 항목이 맡는 역할은 다음과 같다.
 
 - mesh 안에서는 `mesh.AddNode(name, configure)` 로 노드를 추가한다.
-- mesh 단위의 discovery 설정은 `mesh.UseDiscovery(...)` 가 담당한다.
+- mesh 단위의 discovery 설정은 `mesh.UseDiscovery(...AddRegistryEndpoint...)` 가 담당한다.
 
 즉 같은 채널을 가리키는 `SpotNode` 묶음을 한 mesh 에 모아 두는 모양이다. 덕분에
 한 앱 안에서 서로 다른 channel mesh 를 따로 등록할 수도 있고, 한 mesh 안에 같은
 channel 을 공유하는 여러 노드를 함께 둘 수도 있다.
 
 discovery endpoint 가 없는 로컬 단일 노드도 `AddSpotMesh(...)` 안에서 표현한다.
-이 경우 `mesh.UseDiscovery(_ => { })` 로 mesh 소유권만 닫고, 필요한 노드를
+이 경우 `mesh.UseDiscovery(...AddRegistryEndpoint...)` 로 mesh 소유권만 닫고, 필요한 노드를
 `mesh.AddNode(...)` 로 등록한다. public 등록 표면은 항상 `AddSpotMesh(...)` 가
 SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 
 이 등록 함수들은 각각 다음과 같이 역할이 나뉜다.
 
-- `EnableRouter(router => router.SetRouterBind(endpoint))`
+- `EnableRouter(router => router.BindRouter(endpoint))`
   - local `SpotNode.router` 경로를 켜고 routed ingress endpoint를 명시한다.
     같은 channel에 속한 다른 `SpotNode`와 routed packet을 주고받는 축이다.
 - `EnablePubSub()`
@@ -206,7 +203,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 즉 `SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
 설명되지 않는다. 현재 방향에서 그 역할 분담은 다음과 같다.
 
-- `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))` 등록이 노드의
+- `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))` 등록이 노드의
   channel 정체성을 닫는다.
 - 다른 channel 호출은 별도로 attach 된 client 경로를 통해 푼다.
 
@@ -216,7 +213,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
   않는다.
 - `AddSpotMesh("game.stage", mesh => { ... })`가 이 노드의 mesh 범위를 정한다.
 - 같은 `SpotNode`에 active SPOT channel view는 하나만 둔다.
-- `EnableRouter(router => router.SetRouterBind(endpoint))`와 `EnablePubSub()`는 별개의
+- `EnableRouter(router => router.BindRouter(endpoint))`와 `EnablePubSub()`는 별개의
   capability다.
 - 다른 channel에 대한 send/request는 attach된 client가 담당한다.
 - 외부 노드에서 SPOT channel로 publish하려면 별도의 spot publisher client를 쓴다.
@@ -242,7 +239,7 @@ builder.Services.AddZLinkFramework(options =>
         {
             node.EnablePubSub(pubsub =>
             {
-                pubsub.SetPubBind("tcp://0.0.0.0:9000");
+                pubsub.BindPubSub("tcp://0.0.0.0:9000");
             });
 
             node.ConfigureEntrySpot(entry =>
@@ -381,10 +378,7 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
         mesh.AddNode("stage-node", node =>
         {
@@ -399,7 +393,7 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
-                pubsub.SetPubBind("tcp://0.0.0.0:9000");
+                pubsub.BindPubSub("tcp://0.0.0.0:9000");
                 pubsub.UseManualConnections(peers =>
                 {
                     // Remote SpotNode mesh PUB endpoint.
@@ -514,10 +508,7 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
         mesh.AddNode("stage-node", node =>
         {
@@ -543,7 +534,7 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
-                pubsub.SetPubBind("tcp://0.0.0.0:9000");
+                pubsub.BindPubSub("tcp://0.0.0.0:9000");
                 pubsub.ConfigurePublisherOptions(pubOpt =>
                 {
                     pubOpt.SendHighWaterMark = 50_000;
@@ -1064,11 +1055,11 @@ client 경로를 함께 가진다. framework 문서에서는 다음 두 종류�
 discovery 와 어떻게 묶이는지를 짧게 정리한다.
 
 최신 topology 초안에서는 `SpotNode` 가 channel 이름을 직접 소유하지 않는다.
-대신 `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))` 등록이 active
+대신 `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))` 등록이 active
 channel view 를 공급한다. 그 view 가 같은 channel 에 속한 peer mesh 의 범위를
 닫는다.
 
-예를 들어 `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...))` 로
+예를 들어 `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))` 로
 등록했다고 하자. 이 경우 그 mesh 에 포함된 `SpotNode` 는 `game.stage` channel
 mesh 안에서 동작한다고 이해하면 된다.
 
@@ -1113,7 +1104,7 @@ metadata로만 남으면 안 되고, 실제 transport로 사용할 router-capabl
 ```csharp
 node.EnableRouter(router =>
 {
-    router.SetRouterBind("tcp://0.0.0.0:9001");
+    router.BindRouter("tcp://0.0.0.0:9001");
 });
 node.AcceptSpotRoutesFromChannel("api");
 ```

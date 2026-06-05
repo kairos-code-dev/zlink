@@ -85,7 +85,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                 options.AddFanoutChannel("profile.events", channel =>
                 {
                     channel.EnableSubscriber();
@@ -269,7 +269,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
             options.AddDealerMeshChannel("mesh", channel =>
             {
                 channel.EnableClient();
@@ -296,7 +296,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
                 options.AddDealerMeshChannel("mesh", channel =>
                 {
@@ -315,7 +315,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
             options.AddDealerMeshChannel("mesh", channel =>
             {
                 channel.EnableClient();
@@ -336,7 +336,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
             options.AddRouteMeshChannel("backend", channel =>
             {
                 channel.Bind("tcp://127.0.0.1:7101");

@@ -21,12 +21,11 @@ public sealed class ActorSessionStateTests : SpotTestSupport
             options.AddActorFactory<TestActorFactory>("test");
             options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("actor-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
                 spot.AddSpotFactory<ActorStageSpot>();
             });

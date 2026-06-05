@@ -25,7 +25,7 @@ options.AddSpotMesh("game.session", mesh =>
     {
         node.EnableRouter(router =>
         {
-            router.SetRouterBind(sessionRouterEndpoint);
+            router.BindRouter(sessionRouterEndpoint);
             router.SetRoutingId(sessionNodeRid);
         });
     });

@@ -622,7 +622,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
   class StageEntrySpot {}
 
   const options = framework.createFrameworkOptions((builder) => {
-    builder.useDiscovery().connectRegistry('tcp://127.0.0.1:9400');
+    builder.useDiscovery().addRegistryEndpoint('tcp://127.0.0.1:9400');
     builder.addClientServerChannel('api').enableServer().bind('tcp://0.0.0.0:9401');
     builder.addClientServerChannel('api').enableClient().connect('tcp://127.0.0.1:9401');
     builder.addFanoutChannel('events').enablePublisher().bind('tcp://0.0.0.0:9402');

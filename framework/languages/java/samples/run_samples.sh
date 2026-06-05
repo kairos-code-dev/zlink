@@ -24,7 +24,8 @@ done
 forbidden_sample_pattern="systems\\.zlink\\.(runtime|internal)"
 forbidden_sample_pattern+="|systems\\.zlink\\.contracts\\.core\\.RoutingId\\."
 forbidden_sample_pattern+="|Route""Store|Metadata""Store|RemoteAddress""Resolver"
-forbidden_sample_pattern+="|Thread\\.sleep|sleep\\(|toCompletable""Future\\(\\)"
+forbidden_sample_pattern+="|Thread\\.sleep|sleep\\(|CountDownLatch|toCompletable""Future\\(\\)"
+forbidden_sample_pattern+="|ZLinkFrameworkRuntime\\.start"
 forbidden_sample_pattern+="|Fake[A-Za-z0-9_]*|Recording[A-Za-z0-9_]*|Catalog"
 forbidden_sample_pattern+="|UnsupportedOperationException\\(\"not needed by sample\"\\)"
 

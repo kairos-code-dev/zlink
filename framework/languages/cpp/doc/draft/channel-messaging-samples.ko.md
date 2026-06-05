@@ -40,7 +40,7 @@ private:
 auto app = zlink::framework::app_t::create();
 
 app.add_zlink_framework([](auto &options) {
-    options.discovery().add("tcp://registry:5551");
+    options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
     options.codecs().add_json();
     options.add_client_server_channel("api")
       .enable_server("tcp://0.0.0.0:7100")
@@ -58,7 +58,7 @@ app.add_zlink_framework([](auto &options) {
 auto app = zlink::framework::app_t::create();
 
 app.add_zlink_framework([](auto &options) {
-    options.discovery().add("tcp://registry:5551");
+    options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
     options.add_client_server_channel("profile")
       .enable_client();
 });

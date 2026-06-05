@@ -44,12 +44,11 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(playSpotRouterEndpoint);
+                        router.BindRouter(playSpotRouterEndpoint);
                         router.SetRoutingId(playRid);
                         router.UseManualConnections(connections => connections.Connect(sessionSpotRouterEndpoint));
                     });
@@ -74,12 +73,11 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
             {
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(sessionSpotRouterEndpoint);
+                        router.BindRouter(sessionSpotRouterEndpoint);
                         router.SetRoutingId(sessionRid);
                         router.UseManualConnections(connections => connections.Connect(playSpotRouterEndpoint));
                     });

@@ -41,7 +41,7 @@ route_channel_registration_t &route_channel_registration_t::bind (std::string en
     return *this;
 }
 
-route_channel_registration_t &route_channel_registration_t::routing_id (zlink::routing_id_t routing_id)
+route_channel_registration_t &route_channel_registration_t::set_routing_id (zlink::routing_id_t routing_id)
 {
     _routing_id = std::move (routing_id);
     return *this;

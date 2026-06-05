@@ -62,10 +62,7 @@ framework 등록은 다음 모양이 자연스럽다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery(discovery =>
-    {
-        discovery.Add("tcp://registry-1:5551");
-    });
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry-1:5551"));
 
     options.AddClientServerChannel("profile", channel =>
     {
@@ -78,15 +75,12 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry-1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry-1:5551"));
         mesh.AddNode("stage-node", spot =>
         {
             spot.EnablePubSub(pubsub =>
             {
-                pubsub.SetPubBind("tcp://0.0.0.0:9000");
+                pubsub.BindPubSub("tcp://0.0.0.0:9000");
             });
         });
     });
@@ -117,8 +111,8 @@ spot source 는 같은 애플리케이션에 `AddZLinkFramework(...)` 또는
 mesh 는 각자 자신의 discovery source 를 가진다. 즉 registry endpoint 집합을
 공급하는 곳이 둘로 나뉜다.
 
-- 일반 channel: framework 등록 루트의 `UseDiscovery(...)` 가 공급한다.
-- SPOT mesh: `AddSpotMesh(...)` 안의 `mesh.UseDiscovery(...)` 가 공급한다.
+- 일반 channel: framework 등록 루트의 `UseDiscovery(...AddRegistryEndpoint...)` 가 공급한다.
+- SPOT mesh: `AddSpotMesh(...)` 안의 `mesh.UseDiscovery(...AddRegistryEndpoint...)` 가 공급한다.
 
 source 이름은 다음 규칙으로 잡는 편이 자연스럽다.
 

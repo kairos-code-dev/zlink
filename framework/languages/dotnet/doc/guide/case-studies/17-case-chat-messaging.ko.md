@@ -132,8 +132,8 @@ options.AddStreamNode("chat", s =>
 options.AddActorFactory<UserActorFactory>("user");
 options.AddSpotMesh("rooms", mesh => mesh.AddNode("room-node", n =>
 {
-    n.EnableRouter(r => r.SetRouterBind("tcp://0.0.0.0:7700"));
-    n.EnablePubSub(p => p.SetPubBind("tcp://0.0.0.0:7701"));   // presence/fan-out
+    n.EnableRouter(r => r.BindRouter("tcp://0.0.0.0:7700"));
+    n.EnablePubSub(p => p.BindPubSub("tcp://0.0.0.0:7701"));   // presence/fan-out
     n.AddSpotFactory<ChatRoomSpot>();
 }));
 ```

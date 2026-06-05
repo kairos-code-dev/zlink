@@ -310,10 +310,7 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
         mesh.AddNode("stage-node", node =>
         {
@@ -341,15 +338,15 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
-                pubsub.SetPubBind("tcp://0.0.0.0:9000");
-                pubsub.ConfigurePublisherConfig(pubOpt =>
+                pubsub.BindPubSub("tcp://0.0.0.0:9000");
+                pubsub.ConfigurePublisher(pubOpt =>
                 {
                     pubOpt.SendHighWaterMark = 50_000;
                     pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
                     pubOpt.NoDrop = true;
                 });
 
-                pubsub.ConfigureSubscriberConfig(subOpt =>
+                pubsub.ConfigureSubscriber(subOpt =>
                 {
                     subOpt.ReceiveHighWaterMark = 50_000;
                     subOpt.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
@@ -399,7 +396,7 @@ app.Run();
 - `AttachChannelClient("orders")`
   - stage spot이 `orders` channel로 send / request를 보낼 때 사용할 outbound
     client를 붙인다.
-- `EnableRouter(router => router.SetRouterBind(endpoint))`
+- `EnableRouter(router => router.BindRouter(endpoint))`
   - 같은 SPOT channel에 속한 다른 `SpotNode`와 routed packet을 주고받기 위한
     local router를 켜고 routed ingress endpoint를 명시한다.
 - `AcceptSpotRoutesFromChannel("play")`
@@ -414,7 +411,7 @@ app.Run();
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     수 있도록 별도의 publisher client를 붙인다.
 - `ConfigureSocket(...)`, `ConfigureRouting(...)`,
-  `ConfigurePublisherConfig(...)`, `ConfigureSubscriberConfig(...)`
+  `ConfigurePublisher(...)`, `ConfigureSubscriber(...)`
   - 실제 `.NET` 바인딩의 `CommonSocketOptions`, route policy 옵션, outbound
     route policy 옵션, `SpotNodePublisherOptions`, `SpotNodeSubscriberOptions`
     같은 typed facade[^typed-facade]를 capability별로 등록한다.
@@ -442,10 +439,7 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
         mesh.AddNode("stage-node", node =>
         {
@@ -461,7 +455,7 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
-                pubsub.SetPubBind("tcp://0.0.0.0:9000");
+                pubsub.BindPubSub("tcp://0.0.0.0:9000");
                 pubsub.UseManualConnections(peers =>
                 {
                     // Remote SpotNode mesh PUB endpoint.
@@ -541,10 +535,7 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
         mesh.AddNode("stage-node", node =>
         {
@@ -570,15 +561,15 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
-                pubsub.SetPubBind("tcp://0.0.0.0:9000");
-                pubsub.ConfigurePublisherConfig(pubOpt =>
+                pubsub.BindPubSub("tcp://0.0.0.0:9000");
+                pubsub.ConfigurePublisher(pubOpt =>
                 {
                     pubOpt.SendHighWaterMark = 50_000;
                     pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
                     pubOpt.NoDrop = true;
                 });
 
-                pubsub.ConfigureSubscriberConfig(subOpt =>
+                pubsub.ConfigureSubscriber(subOpt =>
                 {
                     subOpt.ReceiveHighWaterMark = 50_000;
                     subOpt.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
@@ -621,8 +612,8 @@ builder.Services.AddZLinkFramework(options =>
 
 이 예시가 의도하는 구분은 다음과 같다.
 
-- `pubsub.ConfigurePublisherConfig(...)`,
-  `pubsub.ConfigureSubscriberConfig(...)` 는 실제 `.NET` 바인딩의
+- `pubsub.ConfigurePublisher(...)`,
+  `pubsub.ConfigureSubscriber(...)` 는 실제 `.NET` 바인딩의
   `SpotNode.PublisherOptions`, `SpotNode.SubscriberOptions` 처럼, `SPOT` mesh
   자체가 소유하는 옵션 facade 를 capability 표면으로 끌어올린 것이다.
 - `router.ConfigureSocket(...)`, `client.ConfigureSocket(...)` 같은 표면은
@@ -696,10 +687,7 @@ builder.Services.AddZLinkFramework(options =>
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
 
-    options.UseDiscovery(registry =>
-    {
-        registry.Add("tcp://registry1:5551");
-    });
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
     options.AddClientServerChannel("gateway.client", channel =>
     {
@@ -769,10 +757,7 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
         mesh.AddNode("publisher-node", node =>
         {
@@ -995,10 +980,7 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddSpotMesh("game.room", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
         mesh.AddNode("room.node", node =>
         {
@@ -1713,7 +1695,7 @@ server tick 수를 계산할 수 있다.
 이 샘플에서 중요한 포인트는 다음과 같다.
 
 - `room.node` 는 논리적 `SpotNode` 이름이다. 그리고
-  `AddSpotMesh("game.room", mesh => mesh.UseDiscovery(...))` 가 `game.room`
+  `AddSpotMesh("game.room", mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))` 가 `game.room`
   channel mesh 의 범위를 정한다.
 - `SampleSpot` 은 단순한 handler 클래스가 아니라 실제 spot 객체다.
 - `SampleSpot` 은 `IZLinkSpot` 을 상속받는다. 그리고 자신의

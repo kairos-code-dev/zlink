@@ -179,7 +179,7 @@ export class AppModule {}
 
 - mesh 안에서는 `nodes[name]` 로 노드를 추가한다(dotnet `mesh.AddNode(...)`).
 - mesh 단위의 discovery 설정은 `discovery` 가 담당한다(dotnet
-  `mesh.UseDiscovery(...)`).
+  `mesh.UseDiscovery(...AddRegistryEndpoint...)`).
 
 즉 같은 채널을 가리키는 `SpotNode` 묶음을 한 mesh 에 모아 두는 모양이다. 덕분에
 한 앱 안에서 서로 다른 channel mesh 를 따로 등록할 수도 있고, 한 mesh 안에 같은
@@ -193,10 +193,10 @@ discovery endpoint 가 없는 로컬 단일 노드도 `spotMeshes[channelName]` 
 
 각 capability 키의 역할은 다음과 같다.
 
-- `router: { bind }` (dotnet `EnableRouter(r => r.SetRouterBind(...))`)
+- `router: { bind }` (dotnet `EnableRouter(r => r.BindRouter(...))`)
   - local `SpotNode.router` 경로를 켜고 routed ingress endpoint 를 명시한다.
     같은 channel 에 속한 다른 `SpotNode` 와 routed packet 을 주고받는 축이다.
-- `pubSub: { bind }` (dotnet `EnablePubSub(p => p.SetPubBind(...))`)
+- `pubSub: { bind }` (dotnet `EnablePubSub(p => p.BindPubSub(...))`)
   - 현재 SPOT channel 안의 publish / subscribe 축을 켠다. local spot 안에서
     `context.outbound.publish(...)` 를 쓰려면 이 capability 가 필요하다.
 - `attachedChannelClients: { orders: {} }` (dotnet `AttachChannelClient("orders")`)
@@ -463,9 +463,9 @@ ZLinkModule.forRoot({
   - Node 바인딩의 공통 socket 기본값을 정한다.
 - `router.routing` (dotnet `router.ConfigureRouting(...)`)
   - routed peer 연결에만 적용되는 전용 옵션을 정한다.
-- `pubSub.publisher` (dotnet `pubsub.ConfigurePublisherConfig(...)`)
+- `pubSub.publisher` (dotnet `pubsub.ConfigurePublisher(...)`)
   - `SpotNode` 의 mesh publish 기본값을 정한다.
-- `pubSub.subscriber` (dotnet `pubsub.ConfigureSubscriberConfig(...)`)
+- `pubSub.subscriber` (dotnet `pubsub.ConfigureSubscriber(...)`)
   - `SpotNode` 의 mesh subscribe 기본값을 정한다.
 - `channelClients[name].socket` / `channelClients[name].routing`
   - attach 된 channel client 의 공통 socket 설정과 routed outbound 설정을 나눠

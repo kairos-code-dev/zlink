@@ -54,9 +54,9 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
             {
                 options.ConfigureMetadata(metadata =>
                 {
-                    metadata.Forward("trace-id");
+                    metadata.AddForwardedMetadataKey("trace-id");
                 });
-                options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddSpotMesh("actor-node", mesh =>
                 {
@@ -64,7 +64,7 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(playSpotRouterEndpoint);
+                        router.BindRouter(playSpotRouterEndpoint);
                         router.SetRoutingId(playRid);
                     });
                     spot.AddEntrySpot<GatewayEntrySpot>();
@@ -86,14 +86,14 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 options.AddSpotMesh("actor-node", mesh =>
                 {
                     mesh.AddNode("actor-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(sessionSpotRouterEndpoint);
+                        router.BindRouter(sessionSpotRouterEndpoint);
                         router.SetRoutingId(sessionRid);
                     });
                 });

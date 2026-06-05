@@ -333,7 +333,7 @@ filter 도 `new` 가 아니라 .NET DI 에서 resolve 된다.
 
 ## 6. 연결 제어
 
-기본은 `UseDiscovery(...)` 자동 연결이다([03-concepts](./03-concepts.ko.md) §5).
+기본은 `UseDiscovery(...AddRegistryEndpoint...)` 자동 연결이다([03-concepts](./03-concepts.ko.md) §5).
 수동 연결은 startup builder 에서 capability 단위로 설정한다.
 
 ```csharp
@@ -400,11 +400,8 @@ builder.Services.AddZLinkFramework(options =>
     // 다른 서비스로 나가는 outbound channel
     options.AddClientServerChannel("account", channel => channel.EnableClient());
 
-    options.UseDiscovery(registry =>
-    {
-        registry.Add("tcp://registry1:5551");
-        registry.Add("tcp://registry2:5551");
-    });
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry2:5551"));
     options.AddHandlersFromAssemblyOf<Program>();
 });
 

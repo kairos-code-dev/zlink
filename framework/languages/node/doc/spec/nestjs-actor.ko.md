@@ -1158,7 +1158,7 @@ export interface ZLinkMessageMetadataPolicy {
 ```
 
 어떤 metadata 키를 actor 경계 너머로 forward 할지는 module options 의
-`metadata` 정책으로 정한다. dotnet 의 `ConfigureMetadata(b => b.Forward(key))`
+`metadata` 정책으로 정한다. dotnet 의 `ConfigureMetadata(b => b.AddForwardedMetadataKey(key))`
 는 node 의 `metadata: { forward: [...] }` 로 매핑한다.
 
 ```ts

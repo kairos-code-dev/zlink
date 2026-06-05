@@ -27,7 +27,7 @@ public sealed class EntryOutboundTests : SpotTestSupport
         builder.Services.AddScoped<EntrySpotOrdersRequestHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
 
             options.AddClientServerChannel("orders", channel =>
             {
@@ -36,12 +36,12 @@ public sealed class EntryOutboundTests : SpotTestSupport
             });
             options.AddSpotMesh("entry.test", mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("entry-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
                 spot.AttachChannelClient("orders");
                 spot.AddEntrySpot<GeneralEntrySpot>();

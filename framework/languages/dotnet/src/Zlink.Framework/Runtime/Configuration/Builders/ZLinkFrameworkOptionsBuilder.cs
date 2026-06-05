@@ -123,14 +123,9 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
 
     public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure)
     {
-        if (_registration.Discovery is not null)
-        {
-            throw new ZLinkConfigurationException("Discovery is already configured.");
-        }
-
-        var discovery = new ZLinkDiscoveryRegistration();
-        configure(new ZLinkDiscoveryBuilder(discovery.Endpoints));
-        _registration.Discovery = discovery;
+        ArgumentNullException.ThrowIfNull(configure);
+        _registration.Discovery ??= new ZLinkDiscoveryRegistration();
+        configure(new ZLinkDiscoveryBuilder(_registration.Discovery.Endpoints));
     }
 
     public void UseFilter<TFilter>()
@@ -247,6 +242,7 @@ internal sealed class ZLinkSpotMeshBuilder(
 {
     public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure)
     {
+        ArgumentNullException.ThrowIfNull(configure);
         configure(new ZLinkDiscoveryBuilder(discovery.Endpoints));
     }
 
@@ -312,7 +308,7 @@ internal static class ZLinkRegistrationBuilderGuard
 internal sealed class ZLinkMetadataPolicyBuilder(ZLinkMetadataPolicyRegistration registration)
     : IZLinkMetadataPolicyBuilder
 {
-    public void Forward(string key)
+    public void AddForwardedMetadataKey(string key)
     {
         if (string.IsNullOrWhiteSpace(key))
         {

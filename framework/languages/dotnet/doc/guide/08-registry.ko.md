@@ -63,7 +63,7 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.AddClientServerChannel("api", channel =>
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101")));
-    options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
     options.Codecs.AddProtobuf();
     options.AddHandlersFromAssemblyOf<Program>();
 });
@@ -72,7 +72,7 @@ var app = builder.Build();
 app.Run();
 ```
 
-> embedded 라도 `UseDiscovery(...)` 가 같은 프로세스의 Registry 를 **자동으로
+> embedded 라도 `UseDiscovery(...AddRegistryEndpoint...)` 가 같은 프로세스의 Registry 를 **자동으로
 > 찾아주지 않는다.** Discovery endpoint(`5551`)를 명시해야 한다. framework 는
 > Registry 가 먼저 bind 된 뒤 Discovery 가 연결되도록 startup 순서를 자동
 > 보장한다.
@@ -191,12 +191,12 @@ app.MapGet("/admin/topology", async (IZLinkRegistryQueryClient query) =>
 ## 6. Registry 기반 route 기본 구현
 
 actor/spot 라우팅을 Registry 로 기본 구현하려면 명시적으로 켠다.
-`UseDiscovery(...)` 만으로는 자동 등록되지 않는다.
+`UseDiscovery(...AddRegistryEndpoint...)` 만으로는 자동 등록되지 않는다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
 
     options.AddRouteMeshChannel("play", channel => channel.Bind("tcp://0.0.0.0:7201"));
 

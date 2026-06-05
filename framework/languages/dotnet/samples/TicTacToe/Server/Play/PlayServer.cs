@@ -77,12 +77,11 @@ internal sealed class PlayServer(SampleSettings settings)
 
             options.AddSpotMesh(SampleNodes.PlaySpot, mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode(SampleNodes.PlaySpot, spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(settings.SpotEndpoint);
+                        router.BindRouter(settings.SpotEndpoint);
                     });
                     spot.AddEntrySpot<PlayEntrySpot>();
                     spot.AddSpotFactory<TicTacToeGame>();

@@ -37,12 +37,11 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
             });
             options.AddSpotMesh("spot.route.client-server", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("route-target-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotRouterEndpoint);
+                    router.BindRouter(spotRouterEndpoint);
                 });
                 spot.AcceptSpotRoutesFromChannel(
                     "api",
@@ -75,7 +74,6 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(_ => { });
             options.AddRouteMeshChannel("play", routed =>
             {
                 routed.Bind(routeEndpoint);
@@ -86,12 +84,11 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
             });
             options.AddSpotMesh("spot.route.mesh", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("route-target-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotRouterEndpoint);
+                    router.BindRouter(spotRouterEndpoint);
                 });
                 spot.AcceptSpotRoutesFromChannel(
                     "play",

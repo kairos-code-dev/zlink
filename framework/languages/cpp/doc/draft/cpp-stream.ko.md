@@ -176,9 +176,9 @@ app.add_zlink_framework([](auto &options) {
 `TSession`은 `packet_stream_session_t`를 상속해야 하며 framework service collection에
 stream-session scope 서비스로 등록된다. `TSession::session_name`이 있으면 그 값을 native packet
 session 이름으로 사용하고, 없으면 타입 이름 기반 message name을 사용한다. low-level
-`packet_session(name)`은 session 이름을 직접 지정해야 하는 경우에만 사용한다.
+`register_session(name)`은 session 이름을 직접 지정해야 하는 경우에만 사용한다.
 하나의 stream node에는 packet session을 하나만 선언한다. 같은 stream node에서
-`register_session<T>()`과 `packet_session(...)`을 중복 호출하면 설정 오류로 처리한다.
+`register_session<T>()`과 `register_session(...)`을 중복 호출하면 설정 오류로 처리한다.
 
 ## 4. Dispatch 기준
 

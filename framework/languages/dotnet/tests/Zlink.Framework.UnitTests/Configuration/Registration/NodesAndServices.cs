@@ -40,7 +40,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind("tcp://127.0.0.1:9000");
+                    router.BindRouter("tcp://127.0.0.1:9000");
                 });
                 spot.AddSpotFactory<TestSpot>();
             });
@@ -60,14 +60,14 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
             options.AddSpotMesh("game.stage", mesh =>
             {
                 mesh.AddNode("stage-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind("tcp://127.0.0.1:9000");
+                        router.BindRouter("tcp://127.0.0.1:9000");
                     });
                     spot.AddSpotFactory<TestSpot>();
                 });
@@ -89,12 +89,12 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 options.AddSpotMesh("game.stage", mesh =>
                 {
-                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node-a", spot =>
                     {
                         spot.EnableRouter(router =>
                         {
-                            router.SetRouterBind("tcp://127.0.0.1:6101");
+                            router.BindRouter("tcp://127.0.0.1:6101");
                         });
                         spot.AddSpotFactory<TestSpot>();
                     });
@@ -102,7 +102,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                     {
                         spot.EnableRouter(router =>
                         {
-                            router.SetRouterBind("tcp://127.0.0.1:6102");
+                            router.BindRouter("tcp://127.0.0.1:6102");
                         });
                         spot.AddSpotFactory<TestSpot>();
                     });
@@ -122,12 +122,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 options.AddSpotMesh("game.stage", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("stage-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind("tcp://127.0.0.1:6101");
+                        router.BindRouter("tcp://127.0.0.1:6101");
                     });
                     spot.AddEntrySpot<TestEntrySpot>();
                     spot.AddEntrySpot<TestEntrySpot>();
@@ -200,12 +199,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         {
             options.AddSpotMesh("stage-node", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind("tcp://127.0.0.1:6200");
+                    router.BindRouter("tcp://127.0.0.1:6200");
                 });
             });
             });
@@ -225,12 +223,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         {
             options.AddSpotMesh("stage-node", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind("tcp://127.0.0.1:6203");
+                    router.BindRouter("tcp://127.0.0.1:6203");
                 });
             });
             });
@@ -250,12 +247,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.AddActorFactory<TestActorFactory>("warrior");
             options.AddSpotMesh("actor-node", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("actor-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind("tcp://127.0.0.1:6201");
+                    router.BindRouter("tcp://127.0.0.1:6201");
                 });
             });
             });
@@ -278,7 +274,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind("tcp://127.0.0.1:7302");
+                    router.BindRouter("tcp://127.0.0.1:7302");
                 });
             });
             });
@@ -314,7 +310,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                     {
                         spot.EnablePubSub(pubsub =>
                         {
-                            pubsub.SetPubBind("tcp://127.0.0.1:7301");
+                            pubsub.BindPubSub("tcp://127.0.0.1:7301");
                         });
                     });
                 });
@@ -347,7 +343,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind("tcp://127.0.0.1:6204");
+                        router.BindRouter("tcp://127.0.0.1:6204");
                     });
                     spot.AddSpotFactory<TestSpot>();
                     spot.AddEntrySpot<TestEntrySpot>();
@@ -429,12 +425,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         {
             options.AddSpotMesh("stage-node", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind("tcp://127.0.0.1:6204");
+                    router.BindRouter("tcp://127.0.0.1:6204");
                 });
             });
             });
@@ -453,12 +448,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         {
             options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
                 {
                     spot.EnablePubSub(pubsub =>
                     {
-                        pubsub.SetPubBind("tcp://127.0.0.1:6205");
+                        pubsub.BindPubSub("tcp://127.0.0.1:6205");
                     });
                     spot.AttachSpotPublisherClient("game.stage");
                 });
@@ -476,7 +470,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
             options.AddRouteMeshChannel("gateway", routed =>
             {
                 routed.Bind("tcp://127.0.0.1:6202");

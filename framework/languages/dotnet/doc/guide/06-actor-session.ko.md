@@ -394,7 +394,7 @@ builder.Services.AddZLinkFramework(options =>
         {
             node.EnableRouter(router =>
             {
-                router.SetRouterBind("tcp://0.0.0.0:9101");
+                router.BindRouter("tcp://0.0.0.0:9101");
                 router.SetRoutingId(sessionNodeRid);
             });
         });
@@ -416,18 +416,18 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
     options.AddActorFactory<PlayerActorFactory>("player");
 
     options.AddSpotMesh("game.match", mesh =>
     {
-        mesh.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
         mesh.AddNode("play-node", node =>
         {
             node.EnableRouter(router =>
             {
-                router.SetRouterBind("tcp://0.0.0.0:9201");
+                router.BindRouter("tcp://0.0.0.0:9201");
             });
             node.AddEntrySpot<PlayerEntrySpot>();
             node.AddSpotFactory<MatchSpot>();

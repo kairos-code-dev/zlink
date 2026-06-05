@@ -27,7 +27,7 @@ public sealed class RouteChannelTests
         var leftBuilder = Host.CreateApplicationBuilder();
         leftBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
             options.AddRouteMeshChannel("backend.discovery", routed =>
             {
                 routed.Bind(leftEndpoint);
@@ -38,7 +38,7 @@ public sealed class RouteChannelTests
         var rightBuilder = Host.CreateApplicationBuilder();
         rightBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
             options.AddRouteMeshChannel("backend.discovery", routed =>
             {
                 routed.Bind(rightEndpoint);

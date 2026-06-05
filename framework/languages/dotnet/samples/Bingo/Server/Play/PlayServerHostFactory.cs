@@ -31,7 +31,7 @@ public static class PlayServerHostFactory
         {
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.AddJson();
-            options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
             options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
             {
                 channel.EnableServer(server => server.Bind(topology.PlayChannelEndpoint));
@@ -48,12 +48,12 @@ public static class PlayServerHostFactory
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(topology.PlaySpotRouterEndpoint);
+                        router.BindRouter(topology.PlaySpotRouterEndpoint);
                         router.SetRoutingId(topology.PlayRid);
                     });
                     spot.EnablePubSub(pubsub =>
                     {
-                        pubsub.SetPubBind(topology.PlaySpotEndpoint);
+                        pubsub.BindPubSub(topology.PlaySpotEndpoint);
                     });
                     spot.AttachChannelClient(SampleNames.ApiChannel);
                     spot.AddEntrySpot<BingoEntrySpot>();

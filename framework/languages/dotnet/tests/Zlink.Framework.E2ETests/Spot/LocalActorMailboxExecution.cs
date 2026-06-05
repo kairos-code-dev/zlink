@@ -30,12 +30,11 @@ public sealed class LocalActorMailboxExecutionTests : SpotTestSupport
             options.AddActorFactory<RegistryTestActorFactory>("registry");
             options.AddSpotMesh("actor-node", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("actor-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
                 spot.AddEntrySpot<RegistryEntrySpot>();
             });

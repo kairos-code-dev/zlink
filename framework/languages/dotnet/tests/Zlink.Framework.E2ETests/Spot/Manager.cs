@@ -168,15 +168,12 @@ public sealed class ManagerTests : SpotTestSupport
         {
             options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("publisher-node", spot =>
             {
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(publisherNodeEndpoint);
+                    pubsub.BindPubSub(publisherNodeEndpoint);
                 });
                 spot.AddSpotFactory<PublishingStageSpot>();
             });
@@ -190,15 +187,12 @@ public sealed class ManagerTests : SpotTestSupport
         {
             options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("subscriber-node", spot =>
             {
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(subscriberNodeEndpoint);
+                    pubsub.BindPubSub(subscriberNodeEndpoint);
                     pubsub.UseManualConnections(connections =>
                         connections.Connect(publisherNodeEndpoint));
                 });

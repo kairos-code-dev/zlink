@@ -27,7 +27,7 @@ public static class SessionServerHostFactory
         {
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.AddJson();
-            options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableClient();
@@ -42,12 +42,12 @@ public static class SessionServerHostFactory
                 {
                     node.EnableRouter(router =>
                     {
-                        router.SetRouterBind(session.RouterEndpoint);
+                        router.BindRouter(session.RouterEndpoint);
                         router.SetRoutingId(session.RouterRoutingId);
                     });
                     node.EnablePubSub(pubsub =>
                     {
-                        pubsub.SetPubBind(session.PubEndpoint);
+                        pubsub.BindPubSub(session.PubEndpoint);
                         pubsub.SetRoutingId(session.PubRoutingId);
                     });
                 });

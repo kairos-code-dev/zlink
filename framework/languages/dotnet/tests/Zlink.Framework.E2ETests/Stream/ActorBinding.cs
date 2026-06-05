@@ -26,12 +26,11 @@ public sealed class ActorBindingTests : StreamTestSupport
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(spotEndpoint);
+                        router.BindRouter(spotEndpoint);
                     });
                 });
                 });
@@ -72,12 +71,11 @@ public sealed class ActorBindingTests : StreamTestSupport
                 options.AddActorFactory<GatewayActorFactory>("spectator");
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(spotEndpoint);
+                        router.BindRouter(spotEndpoint);
                     });
                 });
                 });
@@ -118,12 +116,11 @@ public sealed class ActorBindingTests : StreamTestSupport
                 options.AddActorFactory<ConfigureFailureActorFactory>("player");
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(spotEndpoint);
+                        router.BindRouter(spotEndpoint);
                     });
                 });
                 });
@@ -167,12 +164,11 @@ public sealed class ActorBindingTests : StreamTestSupport
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(spotEndpoint);
+                        router.BindRouter(spotEndpoint);
                     });
                 });
                 });
@@ -221,12 +217,11 @@ public sealed class ActorBindingTests : StreamTestSupport
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                     {
                         spot.EnableRouter(router =>
                         {
-                            router.SetRouterBind(spotEndpoint);
+                            router.BindRouter(spotEndpoint);
                         });
                     });
                 });
@@ -285,12 +280,11 @@ public sealed class ActorBindingTests : StreamTestSupport
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(spotEndpoint);
+                        router.BindRouter(spotEndpoint);
                     });
                 });
                 });

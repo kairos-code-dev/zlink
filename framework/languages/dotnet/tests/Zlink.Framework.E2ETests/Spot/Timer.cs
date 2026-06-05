@@ -310,12 +310,11 @@ public sealed class TimerTests : SpotTestSupport
         {
             options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("entry-timer-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
                 spot.AddEntrySpot<EntryTimerSpot>();
             });

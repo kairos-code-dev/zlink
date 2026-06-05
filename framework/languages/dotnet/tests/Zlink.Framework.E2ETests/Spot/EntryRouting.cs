@@ -25,12 +25,11 @@ public sealed class EntryRoutingTests : SpotTestSupport
         {
             options.AddSpotMesh("entry-rid-node", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("entry-rid-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNodeEndpoint);
+                    router.BindRouter(spotNodeEndpoint);
                 });
                 spot.ConfigureEntrySpot(entry =>
                 {
@@ -65,10 +64,7 @@ public sealed class EntryRoutingTests : SpotTestSupport
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery =>
-            {
-                discovery.Add("tcp://127.0.0.1:5551");
-            });
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
 
             options.AddClientServerChannel("api", channel =>
             {
@@ -83,12 +79,11 @@ public sealed class EntryRoutingTests : SpotTestSupport
             });
             options.AddSpotMesh("spot.route.discovery", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("route-target-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotRouterEndpoint);
+                    router.BindRouter(spotRouterEndpoint);
                 });
                 spot.AcceptSpotRoutesFromChannel("api");
             });

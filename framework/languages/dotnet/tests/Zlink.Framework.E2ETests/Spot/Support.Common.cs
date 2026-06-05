@@ -36,12 +36,11 @@ public abstract partial class SpotTestSupport
 
             options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
                 spot.AttachChannelClient("orders", client =>
                 {
@@ -65,12 +64,11 @@ public abstract partial class SpotTestSupport
         {
             options.AddSpotMesh("payload-node", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("payload-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNode);
+                    router.BindRouter(spotNode);
                 });
                 spot.AddSpotFactory<CreatePayloadStageSpot>();
             });
@@ -103,12 +101,11 @@ public abstract partial class SpotTestSupport
 
             options.AddSpotMesh("spot.route.transport", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("route-target-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(GetFreeTcpEndpoint());
+                    router.BindRouter(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
                         routing.RoutingId = RoutingId.From(

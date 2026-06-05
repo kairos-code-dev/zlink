@@ -29,10 +29,9 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
             options.AddActorFactory<RegistryTestActorFactory>("registry");
             options.AddSpotMesh("join-entry-local", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("join-entry-local-node", spot =>
                 {
-                    spot.EnableRouter(router => router.SetRouterBind(spotNode));
+                    spot.EnableRouter(router => router.BindRouter(spotNode));
                     spot.AddEntrySpot<RegistryEntrySpot>();
                     spot.AddSpotFactory<RegistryStageSpot>();
                 });
@@ -112,10 +111,9 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
             options.AddActorFactory<RegistryTestActorFactory>("registry");
             options.AddSpotMesh("join-entry-idempotent", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("join-entry-idempotent-node", spot =>
                 {
-                    spot.EnableRouter(router => router.SetRouterBind(spotNode));
+                    spot.EnableRouter(router => router.BindRouter(spotNode));
                     spot.AddEntrySpot<RegistryEntrySpot>();
                     spot.AddSpotFactory<RegistryStageSpot>();
                 });
@@ -175,12 +173,11 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
             options.AddActorFactory<RegistryTestActorFactory>("registry");
             options.AddSpotMesh("join-entry-remote", mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("join-entry-source-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(sourceNode);
+                        router.BindRouter(sourceNode);
                         router.UseManualConnections(peers => peers.Connect(targetNode));
                     });
                     spot.AddSpotFactory<RegistryStageSpot>();
@@ -189,7 +186,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind(targetNode);
+                        router.BindRouter(targetNode);
                         router.UseManualConnections(peers => peers.Connect(sourceNode));
                     });
                     spot.AddEntrySpot<RegistryEntrySpot>();

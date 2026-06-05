@@ -88,14 +88,14 @@ registry, route mesh, spot mesh를 한 번에 표현한다.
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
-    options.discovery().add("tcp://registry:5551");
+    options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
     options.use_registry_spot_remote_addresses("game.route");
     options.add_route_mesh_channel("game.route")
       .bind("tcp://0.0.0.0:7200")
-      .routing_id(zlink::routing_id_t::from("7200"))
+      .set_routing_id(zlink::routing_id_t::from("7200"))
       .connect("tcp://peer:7201");
     options.add_spot_mesh("game.spots")
-      .node("play-actors")
+      .add_node("play-actors")
       .enable_router("tcp://0.0.0.0:7300")
       .accept_routes_from_channel("game.route");
 });

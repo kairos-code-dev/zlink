@@ -48,8 +48,8 @@ using namespace zlink::framework;
 auto app = app_t::create();
 
 app.add_zlink_framework([](auto &options) {
-    options.discovery().add("tcp://registry1:5551");
-    options.discovery().add("tcp://registry2:5551");
+    options.use_discovery().add_registry_endpoint ("tcp://registry1:5551");
+    options.use_discovery().add_registry_endpoint ("tcp://registry2:5551");
     options.add_client_server_channel("api")
       .enable_server("tcp://0.0.0.0:7100")
       .use_handler_group("api");
@@ -74,7 +74,7 @@ app.add_zlink_framework([](auto &options) {
 같은 `profile` channel이라도 `profile.subscriber`는 별도 연결 집합으로 본다.
 같은 capability 안에서는 수동 연결과 Discovery 연결을 섞지 않는다.
 `client()`는 registry discovery로 peer를 찾는 선언이므로 같은 설정에
-`options.discovery().add(...)`가 필요하다. discovery를 쓰지 않는 경우에는
+`options.use_discovery().add_registry_endpoint (...)`가 필요하다. discovery를 쓰지 않는 경우에는
 `client(endpoint)`로 manual connection을 명시한다. `client(endpoint)`와 fanout
 `subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 manual endpoint를 capability
 snapshot에 추가한다.

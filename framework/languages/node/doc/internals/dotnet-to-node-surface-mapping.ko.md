@@ -241,7 +241,7 @@ dotnet `IZLinkFrameworkOptions` 의 등록 메서드를 node module options 키�
 | `AddRouteMeshChannel(name, ch => ...)` | `channels[name] = { routeMesh: {...} }` | nestjs-channel-messaging |
 | `AddSpotNode(name, sn => ...)` / `AddSpotMesh(...)` | `spotNodes[name] = {...}` / `spotMeshes[...]` | [nestjs-spot](../spec/nestjs-spot.ko.md) |
 | `AddStreamNode(name, st => ...)` | `streamNodes[name] = {...}` | [nestjs-stream](../spec/nestjs-stream.ko.md) |
-| `UseDiscovery(...)` | `discovery: { registries: [...] }` | [nestjs-registry](../spec/nestjs-registry.ko.md) |
+| `useDiscovery().addRegistryEndpoint(...)` | `discovery: { registries: [...] }` | [nestjs-registry](../spec/nestjs-registry.ko.md) |
 | `UseFilter<TFilter>()` | `filters: [FilterClass]` | [handler-interfaces §filter](../spec/handler-interfaces.ko.md) |
 | `ConfigureDispatch(...)` | `dispatch: { mode }` | handler-interfaces |
 | `AddHandlersFromAssemblyOf<TMarker>()` | `discover: { modules / include }`(NestJS DiscoveryService) | §4.2 |

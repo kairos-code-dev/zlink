@@ -37,7 +37,7 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
         frameworkBuilder.Services.AddScoped<SpotRouteRequestCallerHandler>();
         frameworkBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
 
             options.UseRegistrySpotRemoteAddresses("spot-registry-request-send");
             options.AddRouteMeshChannel("play", route =>
@@ -55,7 +55,7 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(GetFreeTcpEndpoint());
+                    router.BindRouter(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
                         routing.RoutingId = RoutingId.From(

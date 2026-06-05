@@ -104,7 +104,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | 같은 channel 이름을 client-server와 fanout capability로 동시에 등록 | `unit` | startup validation 예외 |
 | server capability에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | `registerClientServerChannel(...)` + `enableClient({ manualConnections: [...] })` | `integration-single-process` | manual request/send 성공 |
-| `registerClientServerChannel(...)` + `enableClient(...)` + 전역 `useDiscovery(...)` | `integration-single-process` | discovery 기반 request/send 성공 |
+| `registerClientServerChannel(...)` + `enableClient(...)` + 전역 `useDiscovery().addRegistryEndpoint(...)` | `integration-single-process` | discovery 기반 request/send 성공 |
 | `registerFanoutChannel(...)` + `enableSubscriber({ manualConnections: [...] })` | `integration-single-process` | manual 기반 subscribe 성공 |
 | client capability에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
 | 같은 capability에서 discovery/manual 혼용 | `unit` | startup validation 예외 |
@@ -173,9 +173,9 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 |------|------|-----------|
 | duplicate Spot factory type | `unit` | startup validation 예외 |
 | duplicate `registerEntrySpot(EntrySpotClass)` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
-| `registerSpotMesh(...)`에 `useDiscovery(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
+| `registerSpotMesh(...)`에 `useDiscovery().addRegistryEndpoint(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
 | `registerSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
-| `registerSpotMesh(...)` + 빈 `useDiscovery` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
+| `registerSpotMesh(...)` + 빈 `addRegistryEndpoint` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
 | `registerSpotMesh(...)` + router-capable `addNode(...)` + `attachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
 | `createAsync<TSpot>()` | `integration-single-process` | `spotId`, `created` 값이 일관되게 유지된다 |
 | `createAsync<TSpot>()` empty create payload | `integration-single-process` | payload 없는 생성도 빈 multipart payload로 `ZLinkSpot.onCreate(...)`를 한 번 호출한다 |
@@ -225,7 +225,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | Registry Spot route 기본 resolver 등록 | `unit` | `useRegistrySpotRemoteAddresses(...)` 가 custom resolver 없이 기본 `ZLinkSpotRemoteAddressResolver` 와 Spot RID directory 를 등록한다 |
 | actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
 | Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다 |
-| Registry route 기본 구현 discovery validation | `unit` | `useDiscovery(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
+| Registry route 기본 구현 discovery validation | `unit` | `useDiscovery().addRegistryEndpoint(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
 | Registry Spot RID route | `integration-single-process` | `ZLinkSpotManager.createAsync(spotRid: string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
 | sample-only session metadata store 제거 | `unit` | Bingo 와 TicTacToe session gateway 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |

@@ -138,7 +138,7 @@ internal sealed class ZLinkSpotRouteChannelConnections(ICollection<string> endpo
 internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapabilityRegistration registration)
     : ISpotRouterCapabilityBuilder
 {
-    public void SetRouterBind(string endpoint)
+    public void BindRouter(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
         {
@@ -172,7 +172,7 @@ internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapability
 internal sealed class ZLinkSpotPubSubCapabilityBuilder(ZLinkSpotPubSubCapabilityRegistration registration)
     : ISpotPubSubCapabilityBuilder
 {
-    public void SetPubBind(string endpoint)
+    public void BindPubSub(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
         {
@@ -187,12 +187,12 @@ internal sealed class ZLinkSpotPubSubCapabilityBuilder(ZLinkSpotPubSubCapability
         registration.RoutingId = routingId;
     }
 
-    public void ConfigurePublisherConfig(Action<IZLinkSpotPublisherConfig> configure)
+    public void ConfigurePublisher(Action<IZLinkSpotPublisherConfig> configure)
     {
         configure(registration.PublisherConfig);
     }
 
-    public void ConfigureSubscriberConfig(Action<IZLinkSpotSubscriberConfig> configure)
+    public void ConfigureSubscriber(Action<IZLinkSpotSubscriberConfig> configure)
     {
         configure(registration.SubscriberConfig);
     }

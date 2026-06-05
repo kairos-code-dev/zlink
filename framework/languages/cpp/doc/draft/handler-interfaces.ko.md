@@ -129,7 +129,7 @@ capability builder를 직접 노출하지 않고, framework options의 channel b
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
-    options.discovery().add("tcp://registry:5551");
+    options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
     options.add_client_server_channel("orders")
       .enable_server("tcp://0.0.0.0:7001")
       .enable_client()
@@ -159,7 +159,7 @@ app.add_zlink_framework([](auto &options) {
     options.add_client_server_channel("profile")
       .enable_client();
     options.add_spot_mesh("game.stage")
-      .node("stage-spot-node")
+      .add_node("stage-spot-node")
       .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()
       .attach_channel_client("profile")

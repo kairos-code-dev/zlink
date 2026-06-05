@@ -58,16 +58,15 @@ public sealed class EventsTests
         {
             options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
             {
                 spot.EnableRouter(router =>
                 {
-                    router.SetRouterBind(spotNodeEndpoint);
+                    router.BindRouter(spotNodeEndpoint);
                 });
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(spotPubEndpoint);
+                    pubsub.BindPubSub(spotPubEndpoint);
                 });
                 spot.AddSpotFactory<MonitoringStageSpot>();
             });
@@ -119,10 +118,7 @@ public sealed class EventsTests
         var frameworkBuilder = Host.CreateApplicationBuilder();
         frameworkBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
 
             options.AddClientServerChannel("profile", channel =>
             {
@@ -169,15 +165,12 @@ public sealed class EventsTests
         {
             options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("stage-node", spot =>
             {
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(firstNodeEndpoint);
+                    pubsub.BindPubSub(firstNodeEndpoint);
                 });
             });
             });
@@ -192,15 +185,12 @@ public sealed class EventsTests
         {
             options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
                 mesh.AddNode("remote-stage-node", spot =>
             {
                 spot.EnablePubSub(pubsub =>
                 {
-                    pubsub.SetPubBind(secondNodeEndpoint);
+                    pubsub.BindPubSub(secondNodeEndpoint);
                 });
             });
             });

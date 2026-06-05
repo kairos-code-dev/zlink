@@ -114,7 +114,7 @@ startup 에서 즉시 예외로 막힌다.
 
 ## 5. 연결: Discovery vs 수동
 
-- **기본은 channel 별 `Discovery` 자동 연결**이다. `options.UseDiscovery(...)` 를
+- **기본은 channel 별 `Discovery` 자동 연결**이다. `options.UseDiscovery(...AddRegistryEndpoint...)` 를
   한 번 호출하면 이후 등록되는 모든 client/subscriber 가 이 Registry view 를
   기본 연결로 쓴다.
 - **수동 연결**이 필요하면 capability builder 의

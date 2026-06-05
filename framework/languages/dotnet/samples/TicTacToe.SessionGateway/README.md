@@ -7,7 +7,7 @@ inspect: client, API, Play, and Session are separate assemblies.
 The sample is a separate project and uses real framework routed-channel and
 session actor dispatch APIs:
 
-- embedded registry and framework `UseDiscovery(...)` based service and routed-channel discovery
+- embedded registry and framework `UseDiscovery(...AddRegistryEndpoint...)` based service and routed-channel discovery
 - an API server reached through a normal framework channel for authentication and match creation
 - a Play channel server reached by the API server for match room creation
 - Play server SPOT game rooms created through `IZLinkSpotManager`

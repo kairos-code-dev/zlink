@@ -84,7 +84,7 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | `channel.AddRequestHandler<H, TReq, TRep>()` | `requestHandlers: [H]` |
 | `channel.AddSendHandler<H, TMsg>()` | `routeMesh.sendHandlers: [H]` |
 | `channel.AddPublishHandler<H, TMsg>()` | `publishHandlers: [H]` 또는 `@ZLinkPublish` + `handlerGroups` |
-| `options.UseDiscovery(...)` | `discovery: { registries: [...] }` |
+| `options.UseDiscovery(...AddRegistryEndpoint...)` | `discovery: { registries: [...] }` |
 | `options.DefaultTimeout = ...` | `defaultTimeoutMs: number` |
 | `options.Codecs.AddProtobuf()` | `codecs: [...]` |
 | `options.AddHandlersFromAssemblyOf<T>()` | `discover: { modules / include }` (NestJS DiscoveryService) |
@@ -163,7 +163,7 @@ export class AppModule {}
 ##### 자동 연결을 켜는 방법
 
 자동 연결은 `discovery: { registries: [...] }` 를 **한 번** 두면 켜진다(dotnet
-`options.UseDiscovery(...)` 대응). 그 뒤에 등록되는 모든 client / subscriber capability
+`options.UseDiscovery(...AddRegistryEndpoint...)` 대응). 그 뒤에 등록되는 모든 client / subscriber capability
 는, 별도 신호 없이도 이 전역 Discovery 를 기본 연결 방식으로 쓴다. 즉 `client: {}` 만
 선언해도, 그 channel 은 자동으로 Discovery 기반 연결로 동작한다.
 

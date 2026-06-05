@@ -2464,7 +2464,7 @@ actor id 를 가리키게 된다. 이 경우 configuration 오류로 실패한�
 이 카탈로그에서는 `AddZLinkFramework(...)` 의 builder 표면까지 함께
 고정한다. 이렇게 두는 이유는, 샘플 문서에 등장하는 표면들의 소유자를
 분명히 하기 위해서다. 해당 표면들은 `AddClientServerChannel(...)`,
-`AddFanoutChannel(...)`, `AddSpotMesh(...)`, `UseDiscovery(...)`,
+`AddFanoutChannel(...)`, `AddSpotMesh(...)`, `UseDiscovery(...AddRegistryEndpoint...)`,
 `UseFilter(...)` 다.
 
 SPOT discovery 와 node 집합은 `AddSpotMesh(...)` 안에서 함께 등록한다.
@@ -2500,14 +2500,9 @@ public interface IZLinkEndpointConnections
     IReadOnlyList<string> ListConnections();
 }
 
-public interface IZLinkDiscoveryBuilder
-{
-    void Add(string endpoint);
-}
-
 public interface IZLinkMetadataPolicyBuilder
 {
-    void Forward(string key);
+    void AddForwardedMetadataKey(string key);
 }
 
 public interface IChannelServerCapabilityBuilder
@@ -2734,14 +2729,14 @@ public interface IZLinkFrameworkOptions
 - `AddRouteMeshChannel(...)`
   - route mesh 채널을 등록한다. bind endpoint, socket option, routing option,
     manual connection을 한 builder 안에서 함께 설정한다.
-- `UseDiscovery(...)`
+- `UseDiscovery(...AddRegistryEndpoint...)`
   - 일반 channel capability들이 공유할 registry endpoint 집합을 등록한다.
-  - `client.UseDiscovery(...)`처럼 capability 아래에 다시 두지 않는다.
+  - `client.UseDiscovery(...AddRegistryEndpoint...)`처럼 capability 아래에 다시 두지 않는다.
 - `UseFilter<TFilter>()`
   - handler filter 타입을 framework pipeline에 등록한다.
 - `AddSpotMesh(...)`
   - 여러 `SpotNode`가 같은 SPOT mesh discovery view를 공유하도록 묶어 등록한다.
-    mesh builder는 자체 `UseDiscovery(...)`와 `AddNode(spotNodeName, ...)`를
+    mesh builder는 자체 `UseDiscovery(...AddRegistryEndpoint...)`와 `AddNode(spotNodeName, ...)`를
     노출한다.
     mesh node builder는 `EnableRouter`, `EnablePubSub`,
     `AttachChannelClient`, `AttachSpotPublisherClient`,
@@ -3080,7 +3075,7 @@ public interface IZLinkSpotNodeBuilder
 
 public interface IZLinkSpotMeshBuilder
 {
-    void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure);
+    void AddRegistryEndpoint(string endpoint);
 
     void AddNode(
         string spotNodeName,

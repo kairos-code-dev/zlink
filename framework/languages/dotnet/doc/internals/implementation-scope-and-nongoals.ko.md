@@ -25,7 +25,7 @@
   `EnableSubscriber(...)` 빌더)
 - 채널 등록의 형태별 분기 — `AddClientServerChannel(...)`,
   `AddFanoutChannel(...)`, `AddDealerMeshChannel(...)`, `AddRouteMeshChannel(...)`
-- 전역 `UseDiscovery(...)` 설정
+- 전역 `UseDiscovery(...AddRegistryEndpoint...)` 설정
 - channel 의 startup manual connection 설정(`UseManualConnections(...)`)
 - 클라이언트/퍼블리셔 표면인 `IZLinkChannelClient`, `IZLinkFanoutClient`
 - `AddSpotMesh(...)`, `mesh.AddNode(...)` 같은

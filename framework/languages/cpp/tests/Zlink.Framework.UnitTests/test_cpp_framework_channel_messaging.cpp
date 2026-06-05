@@ -113,7 +113,7 @@ template <typename T> void add_int_serializer (zlink::framework::serializer_regi
 int main ()
 {
     zlink::framework::zlink_builder_t zlink;
-    zlink.node ("outbound-node")
+    zlink.add_node ("outbound-node")
       .channel ("profile",
                 [] (zlink::framework::channel_builder_t &channel) {
                     channel.enable_client (

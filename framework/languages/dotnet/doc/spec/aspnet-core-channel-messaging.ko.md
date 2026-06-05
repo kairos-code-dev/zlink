@@ -101,11 +101,8 @@ builder.Services.AddZLinkFramework(options =>
         channel.EnableClient();
     });
 
-    options.UseDiscovery(registry =>
-    {
-        registry.Add("tcp://registry1:5551");
-        registry.Add("tcp://registry2:5551");
-    });
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry2:5551"));
 });
 ```
 
@@ -128,7 +125,7 @@ builder.Services.AddZLinkFramework(options =>
 
 ##### 자동 연결을 켜는 방법
 
-자동 연결은 `options.UseDiscovery(...)` 를 **한 번** 부르면 켜진다. 그 뒤에 등록되는
+자동 연결은 `options.UseDiscovery(...AddRegistryEndpoint...)` 를 **한 번** 부르면 켜진다. 그 뒤에 등록되는
 모든 client / subscriber capability 는, 별도 신호 없이도 이 전역 Discovery 를 기본
 연결 방식으로 쓴다. 즉 `channel.EnableClient()` 만 호출해도, 그 channel 은 자동으로
 Discovery 기반 연결로 동작한다.
@@ -182,7 +179,7 @@ binding 하부 모델이 "이미 connect 된 DEALER 를 attach 한다" 는 방�
 channel 별 연결 방식은, capability 빌더가 `UseManualConnections(...)` 를 불렀는지
 여부로 정해진다.
 
-| 전역 `UseDiscovery(...)` | capability `UseManualConnections(...)` | 그 capability의 연결 방식 |
+| 전역 `UseDiscovery(...AddRegistryEndpoint...)` | capability `UseManualConnections(...)` | 그 capability의 연결 방식 |
 | --- | --- | --- |
 | 있음 | 없음 | Discovery 자동 연결 |
 | 있음 | 있음 | 수동 연결 (수동 우선) |
@@ -191,7 +188,7 @@ channel 별 연결 방식은, capability 빌더가 `UseManualConnections(...)` �
 
 정리하면 다음과 같다.
 
-- `options.UseDiscovery(...)` 는 모든 client / subscriber capability 의 **기본값**이다.
+- `options.UseDiscovery(...AddRegistryEndpoint...)` 는 모든 client / subscriber capability 의 **기본값**이다.
 - 특정 channel 만 수동으로 바꾸고 싶을 때는, 그 channel 안에서
   `EnableClient(client => client.UseManualConnections(...))` 또는
   `EnableSubscriber(subscriber => subscriber.UseManualConnections(...))` 를 명시한다.
@@ -264,11 +261,8 @@ builder.Services.AddZLinkFramework(options =>
         channel.EnableClient();
     });
 
-    options.UseDiscovery(registry =>
-    {
-        registry.Add("tcp://registry1:5551");
-        registry.Add("tcp://registry2:5551");
-    });
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry2:5551"));
 });
 ```
 

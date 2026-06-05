@@ -28,10 +28,7 @@ internal static class FixtureSamples
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<FixtureSendHandler>();
-            options.UseDiscovery(discovery =>
-            {
-                discovery.Add("tcp://127.0.0.1:7100");
-            });
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:7100"));
 
             options.AddClientServerChannel("orders", channel =>
             {
@@ -77,19 +74,16 @@ internal static class FixtureSamples
         {
             options.AddSpotMesh("game.stage", spotMesh =>
             {
-                spotMesh.UseDiscovery(discovery =>
-                {
-                    discovery.Add("tcp://127.0.0.1:7300");
-                });
+                spotMesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:7300"));
                 spotMesh.AddNode("stage-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind("tcp://127.0.0.1:7302");
+                        router.BindRouter("tcp://127.0.0.1:7302");
                     });
                     spot.EnablePubSub(pubsub =>
                     {
-                        pubsub.SetPubBind("tcp://127.0.0.1:7301");
+                        pubsub.BindPubSub("tcp://127.0.0.1:7301");
                     });
                     spot.AttachChannelClient("orders", client =>
                     {
@@ -142,10 +136,7 @@ internal static class FixtureSamples
         });
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery =>
-            {
-                discovery.Add("tcp://127.0.0.1:7602");
-            });
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:7602"));
 
             options.AddClientServerChannel("orders", channel =>
             {
@@ -157,19 +148,16 @@ internal static class FixtureSamples
 
             options.AddSpotMesh("game.stage", spotMesh =>
             {
-                spotMesh.UseDiscovery(discovery =>
-                {
-                    discovery.Add("tcp://127.0.0.1:7602");
-                });
+                spotMesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:7602"));
                 spotMesh.AddNode("stage-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind("tcp://127.0.0.1:7605");
+                        router.BindRouter("tcp://127.0.0.1:7605");
                     });
                     spot.EnablePubSub(pubsub =>
                     {
-                        pubsub.SetPubBind("tcp://127.0.0.1:7604");
+                        pubsub.BindPubSub("tcp://127.0.0.1:7604");
                     });
                     spot.AddSpotFactory<FixtureStageSpot>();
                 });
@@ -201,15 +189,12 @@ internal static class FixtureSamples
 
             options.AddSpotMesh("game.stage", spotMesh =>
             {
-                spotMesh.UseDiscovery(discovery =>
-                {
-                    discovery.Add("tcp://127.0.0.1:7700");
-                });
+                spotMesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:7700"));
                 spotMesh.AddNode("actor-node", spot =>
                 {
                     spot.EnableRouter(router =>
                     {
-                        router.SetRouterBind("tcp://127.0.0.1:7702");
+                        router.BindRouter("tcp://127.0.0.1:7702");
                     });
                     spot.AddSpotFactory<FixtureActorSpot>();
                 });

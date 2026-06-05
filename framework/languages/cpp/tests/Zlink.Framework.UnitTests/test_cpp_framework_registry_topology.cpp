@@ -83,8 +83,8 @@ int main ()
     const auto embedded_registry_router = unique_tcp ("embedded-registry-router");
     const auto embedded_spot_endpoint = unique_tcp ("embedded-spot");
     zlink::framework::zlink_builder_t zlink;
-    zlink.node ("registry-node")
-      .registry ([&] (zlink::framework::registry_builder_t &registry) {
+    zlink.add_node ("registry-node")
+      .enable_registry ([&] (zlink::framework::registry_builder_t &registry) {
           registry.registry_id ("local-registry")
             .bind (embedded_registry_pub, embedded_registry_router)
             .heartbeat_interval (100ms)
@@ -195,7 +195,7 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t no_discovery;
-    no_discovery.node ("no-discovery")
+    no_discovery.add_node ("no-discovery")
       .route_channel ("game.route")
       .add_spot_node ("actors",
                       [] (zlink::framework::spot_node_builder_t &spot) { spot.use_registry_spot_remote_addresses (); });
@@ -204,7 +204,7 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t no_route;
-    no_route.node ("no-route")
+    no_route.add_node ("no-route")
       .discovery (
         [] (zlink::framework::discovery_builder_t &discovery) { discovery.connect_registry ("tcp://registry:5551"); })
       .add_spot_node ("actors",
@@ -214,7 +214,7 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t ambiguous_route;
-    ambiguous_route.node ("ambiguous")
+    ambiguous_route.add_node ("ambiguous")
       .discovery (
         [] (zlink::framework::discovery_builder_t &discovery) { discovery.connect_registry ("tcp://registry:5551"); })
       .route_channel ("route-a")
@@ -226,7 +226,7 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t unknown_route;
-    unknown_route.node ("unknown")
+    unknown_route.add_node ("unknown")
       .discovery (
         [] (zlink::framework::discovery_builder_t &discovery) { discovery.connect_registry ("tcp://registry:5551"); })
       .route_channel ("route-a")
@@ -278,22 +278,22 @@ int main ()
     const auto framework_route_endpoint = unique_tcp ("framework-route");
     const auto framework_router_endpoint = unique_tcp ("framework-router");
     const auto framework_pub_endpoint = unique_tcp ("framework-pub");
-    options.discovery ().add ("tcp://registry:5551");
+    options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
     options.use_registry_spot_remote_addresses ("game.route");
     options.add_route_mesh_channel ("game.route")
       .bind (framework_route_endpoint)
-      .routing_id (zlink::routing_id_t::from ("7200"))
+      .set_routing_id (zlink::routing_id_t::from ("7200"))
       .connect ("tcp://peer:7201")
       .enable_spot_route_egress ("game.route");
     options.add_spot_mesh ("game.spots")
-      .node ("game-node")
+      .add_node ("game-node")
       .enable_router (framework_router_endpoint,
                       [] (zlink::framework::spot_router_capability_builder_t &router) {
-                          router.routing_id (zlink::routing_id_t::from ("7300")).connect ("tcp://router-peer:7302");
+                          router.set_routing_id (zlink::routing_id_t::from ("7300")).connect ("tcp://router-peer:7302");
                       })
       .enable_pub_sub (framework_pub_endpoint,
                        [] (zlink::framework::spot_pub_sub_capability_builder_t &pub_sub) {
-                           pub_sub.routing_id (zlink::routing_id_t::from ("7301")).connect ("tcp://pub-peer:7303");
+                           pub_sub.set_routing_id (zlink::routing_id_t::from ("7301")).connect ("tcp://pub-peer:7303");
                        })
       .accept_routes_from_channel ("game.route")
       .add_spot<stage_spot_t> ("stage");
@@ -357,12 +357,12 @@ int main ()
     const auto late_route_endpoint = unique_tcp ("late-route");
     const auto late_router_endpoint = unique_tcp ("late-router");
     const auto late_pub_endpoint = unique_tcp ("late-pub");
-    late_options.discovery ().add ("tcp://registry:5551");
+    late_options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
     late_options.add_route_mesh_channel ("late.route")
       .bind (late_route_endpoint)
-      .routing_id (zlink::routing_id_t::from ("7400"));
+      .set_routing_id (zlink::routing_id_t::from ("7400"));
     late_options.add_spot_mesh ("late.spots")
-      .node ("late-node")
+      .add_node ("late-node")
       .enable_router (late_router_endpoint)
       .enable_pub_sub (late_pub_endpoint)
       .add_spot<stage_spot_t> ("stage");

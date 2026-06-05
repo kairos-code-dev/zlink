@@ -156,7 +156,7 @@ class route_channel_builder_t
     route_channel_builder_t &operator= (const route_channel_builder_t &) = default;
 
     route_channel_builder_t &bind (std::string endpoint);
-    route_channel_builder_t &routing_id (zlink::routing_id_t routing_id);
+    route_channel_builder_t &set_routing_id (zlink::routing_id_t routing_id);
     route_channel_builder_t &connect (std::string endpoint);
     route_channel_builder_t &add_handler_group (std::string group_name);
     route_channel_builder_t &enable_spot_route_egress (std::string target_spot_node_channel_name);

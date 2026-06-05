@@ -62,10 +62,7 @@ internal static class TestHostScenarioConfigurator
         {
             if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
             {
-                framework.UseDiscovery(discovery =>
-                {
-                    discovery.Add(options.DiscoveryEndpoint);
-                });
+                framework.UseDiscovery(discovery => discovery.AddRegistryEndpoint(options.DiscoveryEndpoint));
             }
 
             framework.AddClientServerChannel(
@@ -120,11 +117,9 @@ internal static class TestHostScenarioConfigurator
             framework.AddHandlersFromAssemblyOf<Program>();
             if (string.IsNullOrWhiteSpace(options.PublisherEndpoint))
             {
-                framework.UseDiscovery(discovery =>
-                {
-                    discovery.Add(options.DiscoveryEndpoint
-                        ?? throw new InvalidOperationException("Channel subscriber mode requires --discovery-endpoint."));
-                });
+                framework.UseDiscovery(discovery => discovery.AddRegistryEndpoint(
+                    options.DiscoveryEndpoint
+                        ?? throw new InvalidOperationException("Channel subscriber mode requires --discovery-endpoint.")));
             }
 
             framework.AddFanoutChannel(
@@ -153,10 +148,7 @@ internal static class TestHostScenarioConfigurator
         {
             if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
             {
-                framework.UseDiscovery(discovery =>
-                {
-                    discovery.Add(options.DiscoveryEndpoint);
-                });
+                framework.UseDiscovery(discovery => discovery.AddRegistryEndpoint(options.DiscoveryEndpoint));
             }
 
             framework.AddFanoutChannel(
@@ -194,11 +186,9 @@ internal static class TestHostScenarioConfigurator
                     ?? throw new InvalidOperationException("SPOT node mode requires --discovery-channel."),
                 spotMesh =>
                 {
-                    spotMesh.UseDiscovery(discovery =>
-                    {
-                        discovery.Add(options.DiscoveryEndpoint
-                            ?? throw new InvalidOperationException("SPOT node mode requires --discovery-endpoint."));
-                    });
+                    spotMesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(
+                        options.DiscoveryEndpoint
+                            ?? throw new InvalidOperationException("SPOT node mode requires --discovery-endpoint.")));
 
                     spotMesh.AddNode(
                         options.SpotNodeName
@@ -212,14 +202,14 @@ internal static class TestHostScenarioConfigurator
                             {
                                 spot.EnablePubSub(pubsub =>
                                 {
-                                    pubsub.SetPubBind(spotBindEndpoint);
+                                    pubsub.BindPubSub(spotBindEndpoint);
                                 });
                             }
                             else
                             {
                                 spot.EnableRouter(router =>
                                 {
-                                    router.SetRouterBind(spotBindEndpoint);
+                                    router.BindRouter(spotBindEndpoint);
                                 });
                             }
 

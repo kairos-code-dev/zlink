@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Configuration.Builders;
 
 internal sealed class ZLinkDiscoveryBuilder(List<string> endpoints) : IZLinkDiscoveryBuilder
 {
-    public void Add(string endpoint)
+    public void AddRegistryEndpoint(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
         {

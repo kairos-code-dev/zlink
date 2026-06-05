@@ -67,7 +67,7 @@ configuration, logging, zlink messaging을 한 application host 안에서 연결
 auto app = zlink::framework::app_t::create();
 
 app.add_zlink_framework([&](auto &options) {
-    options.discovery().add(topology.registry_router_endpoint);
+    options.use_discovery().add_registry_endpoint (topology.registry_router_endpoint);
     options.codecs().add_json();
 
     options.add_client_server_channel(sample_names_t::api_channel)

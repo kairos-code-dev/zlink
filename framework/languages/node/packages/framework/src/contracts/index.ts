@@ -474,7 +474,7 @@ export interface ZLinkSpotRemoteAddress {
 
 export interface ZLinkFrameworkOptions {
   useDiscovery(): ZLinkDiscoveryBuilder;
-  spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
@@ -490,7 +490,7 @@ export interface ZLinkRegistrySpotRemoteAddressesOptions {
 }
 
 export interface ZLinkDiscoveryBuilder {
-  connectRegistry(endpoint: string): this;
+  addRegistryEndpoint(endpoint: string): this;
 }
 
 export interface ZLinkMetadataPolicyBuilder {

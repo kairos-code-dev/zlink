@@ -1,0 +1,376 @@
+using Google.Protobuf.WellKnownTypes;
+using Systems.Zlink.Stream.Connector.Codecs;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Contracts.Calls;
+using Systems.Zlink.Stream.Connector.MessagePack;
+using Systems.Zlink.Stream.Connector.Protobuf;
+using Xunit;
+using StreamJson = Systems.Zlink.Stream.Connector.Json.ZlinkStreamJsonExtensions;
+using JsonConnector = Systems.Zlink.Stream.Connector.Json.ZlinkStreamJsonConnectorExtensions;
+using MessagePackConnector = Systems.Zlink.Stream.Connector.MessagePack.ZlinkStreamMessagePackConnectorExtensions;
+using ProtobufConnector = Systems.Zlink.Stream.Connector.Protobuf.ZlinkStreamProtobufConnectorExtensions;
+
+public sealed partial class StreamConnectorTests
+{
+    [Fact]
+    public async Task JsonConnectorExtensionsDelegateBuilderAndDecodeReply()
+    {
+        var connector = new RecordingConnector();
+
+        await JsonConnector.Send(connector, new JsonPayload("send"))
+            .PacketName("json.send")
+            .Metadata("k", "v")
+            .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
+            .Compress()
+            .Submit();
+
+        Assert.Equal(ZlinkStreamCodec.Json, connector.SendCall.Payload.Codec);
+        Assert.Equal("json.send", connector.SendCall.Name);
+        Assert.True(connector.SendCall.Compressed);
+        Assert.Equal("v", connector.SendCall.RecordedMetadata.Get("k"));
+        Assert.Equal("n", connector.SendCall.RecordedMetadata.Get("m"));
+
+        connector.NextReply = StreamJson.ToJson(new JsonPayload("reply"));
+        var reply = await JsonConnector.Request(connector, new JsonPayload("request"))
+            .PacketName("json.request")
+            .Metadata("rk", "rv")
+            .Timeout(TimeSpan.FromSeconds(3))
+            .Compress()
+            .SubmitAsync<JsonPayload>();
+
+        Assert.Equal("reply", reply.Text);
+        Assert.Equal("json.request", connector.RequestCall.Name);
+        Assert.Equal(TimeSpan.FromSeconds(3), connector.RequestCall.TimeoutValue);
+        Assert.True(connector.RequestCall.Compressed);
+
+        ZlinkStreamResult<JsonPayload>? callbackResult = null;
+        connector.NextCallbackPayloadResult = ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success(
+            StreamJson.ToJson(new JsonPayload("callback")));
+        JsonConnector.Request(connector, new JsonPayload("request"))
+            .Submit<JsonPayload>(result => callbackResult = result);
+        Assert.True(callbackResult?.IsSuccess);
+        Assert.Equal("callback", callbackResult.GetValueOrDefault().Value!.Text);
+
+        ZlinkStreamResult<JsonPayload>? failedDecode = null;
+        connector.NextCallbackPayloadResult = ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success(new ZlinkStreamEncodedPayload(
+            ZlinkStreamCodec.Json,
+            new byte[] { 0xFF }));
+        JsonConnector.Request(connector, new JsonPayload("request"))
+            .Submit<JsonPayload>(result => failedDecode = result);
+        Assert.False(failedDecode?.IsSuccess);
+        Assert.Equal(ZlinkStreamErrorCode.UserCallbackFailed, failedDecode.GetValueOrDefault().Error!.Code);
+    }
+
+    [Fact]
+    public async Task MessagePackConnectorExtensionsDelegateBuilderAndDecodeReply()
+    {
+        var connector = new RecordingConnector();
+
+        await MessagePackConnector.Send(connector, new PackedConnectorPayload { Text = "send" })
+            .PacketName("packed.send")
+            .Metadata("k", "v")
+            .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
+            .Compress()
+            .Submit();
+
+        Assert.Equal(ZlinkStreamCodec.MessagePack, connector.SendCall.Payload.Codec);
+        Assert.Equal("packed.send", connector.SendCall.Name);
+        Assert.True(connector.SendCall.Compressed);
+
+        connector.NextReply = new PackedConnectorPayload { Text = "reply" }.ToMsgPack();
+        var reply = await MessagePackConnector.Request(connector, new PackedConnectorPayload { Text = "request" })
+            .PacketName("packed.request")
+            .Metadata("rk", "rv")
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Compress()
+            .SubmitAsync<PackedConnectorPayload>();
+
+        Assert.Equal("reply", reply.Text);
+        Assert.Equal("packed.request", connector.RequestCall.Name);
+        Assert.Equal(TimeSpan.FromSeconds(2), connector.RequestCall.TimeoutValue);
+
+        ZlinkStreamResult<PackedConnectorPayload>? callbackResult = null;
+        connector.NextCallbackPayloadResult = ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success(
+            new PackedConnectorPayload { Text = "callback" }.ToMsgPack());
+        MessagePackConnector.Request(connector, new PackedConnectorPayload { Text = "request" })
+            .Submit<PackedConnectorPayload>(result => callbackResult = result);
+        Assert.True(callbackResult?.IsSuccess);
+        Assert.Equal("callback", callbackResult.GetValueOrDefault().Value!.Text);
+    }
+
+    [Fact]
+    public async Task ProtobufConnectorExtensionsDelegateBuilderAndDecodeReply()
+    {
+        var connector = new RecordingConnector();
+        var payload = new StringValue { Value = "send" };
+
+        await ProtobufConnector.Send(connector, payload)
+            .PacketName("proto.send")
+            .Metadata("k", "v")
+            .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
+            .Compress()
+            .Submit();
+
+        Assert.Equal(ZlinkStreamCodec.Protobuf, connector.SendCall.Payload.Codec);
+        Assert.Equal("proto.send", connector.SendCall.Name);
+
+        connector.NextReply = new StringValue { Value = "reply" }.ToProto();
+        var reply = await ProtobufConnector.Request(connector, new StringValue { Value = "request" })
+            .PacketName("proto.request")
+            .Metadata("rk", "rv")
+            .Timeout(TimeSpan.FromSeconds(4))
+            .Compress()
+            .SubmitAsync<StringValue>();
+
+        Assert.Equal("reply", reply.Value);
+        Assert.Equal("proto.request", connector.RequestCall.Name);
+
+        ZlinkStreamResult<StringValue>? callbackResult = null;
+        connector.NextCallbackPayloadResult = ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success(
+            new StringValue { Value = "callback" }.ToProto());
+        ProtobufConnector.Request(connector, new StringValue { Value = "request" })
+            .Submit<StringValue>(result => callbackResult = result);
+        Assert.True(callbackResult?.IsSuccess);
+        Assert.Equal("callback", callbackResult.GetValueOrDefault().Value!.Value);
+    }
+
+    [Fact]
+    public async Task AutoCodecConnectorExtensionsChooseCodecAndDecodeHandlers()
+    {
+        var connector = new RecordingConnector();
+
+        await ZlinkStreamAutoCodecExtensions.Send(connector, new JsonPayload("json"))
+            .PacketName("auto.json")
+            .Submit();
+        Assert.Equal(ZlinkStreamCodec.Json, connector.SendCall.Payload.Codec);
+
+        await ZlinkStreamAutoCodecExtensions.Send(connector, new PackedConnectorPayload { Text = "packed" })
+            .PacketName("auto.packed")
+            .Submit();
+        Assert.Equal(ZlinkStreamCodec.MessagePack, connector.SendCall.Payload.Codec);
+
+        await ZlinkStreamAutoCodecExtensions.Send(connector, new StringValue { Value = "proto" })
+            .PacketName("auto.proto")
+            .Submit();
+        Assert.Equal(ZlinkStreamCodec.Protobuf, connector.SendCall.Payload.Codec);
+
+        JsonPayload? namedPayload = null;
+        using var named = ZlinkStreamAutoCodecExtensions.On<JsonPayload>(
+            connector,
+            "json.name",
+            (message, _) =>
+            {
+                namedPayload = message.Payload;
+                return ValueTask.CompletedTask;
+            });
+        await connector.InvokeHandler("json.name", StreamJson.ToJson(new JsonPayload("handler")));
+        Assert.Equal("handler", namedPayload?.Text);
+
+        PackedConnectorPayload? resolvedPayload = null;
+        using var resolved = ZlinkStreamAutoCodecExtensions.On<PackedConnectorPayload>(
+            connector,
+            (message, _) =>
+            {
+                resolvedPayload = message.Payload;
+                return ValueTask.CompletedTask;
+            });
+        await connector.InvokeHandler(nameof(PackedConnectorPayload), new PackedConnectorPayload { Text = "resolved" }.ToMsgPack());
+        Assert.Equal("resolved", resolvedPayload?.Text);
+    }
+
+    private sealed record JsonPayload(string Text);
+
+    [MessagePack.MessagePackObject]
+    public sealed class PackedConnectorPayload
+    {
+        [MessagePack.Key(0)]
+        public string Text { get; set; } = string.Empty;
+    }
+
+    private sealed class RecordingConnector : IZlinkStreamConnector
+    {
+        private readonly Dictionary<string, Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask>> _handlers = new(StringComparer.Ordinal);
+
+        public event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived;
+
+        public event Func<CancellationToken, ValueTask>? Disconnected;
+
+        public event Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? ConnectionStateChanged;
+
+        public bool IsConnected => true;
+
+        public ZlinkStreamConnectionState State => ZlinkStreamConnectionState.Connected;
+
+        public ZlinkStreamConnectorOptions Options { get; } = new()
+        {
+            Endpoint = new Uri("tcp://127.0.0.1:1"),
+            NameResolver = new TypeNameResolver()
+        };
+
+        public int PendingDispatchCount => 0;
+
+        public RecordingSendCall SendCall { get; private set; } = new(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, Array.Empty<byte>()));
+
+        public RecordingRequestCall RequestCall { get; private set; } = new(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, Array.Empty<byte>()));
+
+        public ZlinkStreamEncodedPayload NextReply { get; set; } = new(ZlinkStreamCodec.Raw, Array.Empty<byte>());
+
+        public ZlinkStreamResult<ZlinkStreamEncodedPayload> NextCallbackPayloadResult { get; set; } =
+            ZlinkStreamResult<ZlinkStreamEncodedPayload>.Failure(new ZlinkStreamError(
+                ZlinkStreamErrorCode.RemoteError,
+                "missing callback result"));
+
+        public ValueTask ConnectAsync(CancellationToken cancellationToken = default)
+            => ValueTask.CompletedTask;
+
+        public ValueTask CloseAsync(CancellationToken cancellationToken = default)
+            => ValueTask.CompletedTask;
+
+        public ValueTask DispatchAsync(CancellationToken cancellationToken = default)
+            => ValueTask.CompletedTask;
+
+        public IZlinkStreamSendCall Send(ZlinkStreamEncodedPayload payload)
+            => SendCall = new RecordingSendCall(payload);
+
+        public IZlinkStreamRequestCall Request(ZlinkStreamEncodedPayload payload)
+            => RequestCall = new RecordingRequestCall(payload)
+            {
+                Reply = NextReply,
+                CallbackPayloadResult = NextCallbackPayloadResult
+            };
+
+        public IDisposable On(
+            string name,
+            Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler)
+        {
+            _handlers.Add(name, handler);
+            return new Subscription(() => _handlers.Remove(name));
+        }
+
+        public ValueTask DisposeAsync()
+            => ValueTask.CompletedTask;
+
+        public ValueTask InvokeHandler(string name, ZlinkStreamEncodedPayload payload)
+            => _handlers[name](new ZlinkStreamMessage<ZlinkStreamEncodedPayload>(
+                name,
+                ZlinkStreamMetadata.Empty,
+                payload), CancellationToken.None);
+
+        private sealed class TypeNameResolver : IZlinkStreamPacketNameResolver
+        {
+            public string Resolve(global::System.Type payloadType) => payloadType.Name;
+        }
+
+        private sealed class Subscription : IDisposable
+        {
+            private readonly Action _dispose;
+
+            public Subscription(Action dispose) => _dispose = dispose;
+
+            public void Dispose() => _dispose();
+        }
+    }
+
+    private sealed class RecordingSendCall : IZlinkStreamSendCall
+    {
+        public RecordingSendCall(ZlinkStreamEncodedPayload payload) => Payload = payload;
+
+        public ZlinkStreamEncodedPayload Payload { get; }
+
+        public string? Name { get; private set; }
+
+        public ZlinkStreamMetadata RecordedMetadata { get; private set; } = ZlinkStreamMetadata.Empty;
+
+        public bool Compressed { get; private set; }
+
+        public IZlinkStreamSendCall PacketName(string name)
+        {
+            Name = name;
+            return this;
+        }
+
+        public IZlinkStreamSendCall Metadata(string key, string value)
+        {
+            RecordedMetadata = RecordedMetadata.With(key, value);
+            return this;
+        }
+
+        public IZlinkStreamSendCall Metadata(ZlinkStreamMetadata metadata)
+        {
+            RecordedMetadata = RecordedMetadata.WithMany(metadata.Values);
+            return this;
+        }
+
+        public IZlinkStreamSendCall Compress()
+        {
+            Compressed = true;
+            return this;
+        }
+
+        public ValueTask Submit(CancellationToken cancellationToken = default)
+            => ValueTask.CompletedTask;
+    }
+
+    private sealed class RecordingRequestCall : IZlinkStreamRequestCall
+    {
+        public RecordingRequestCall(ZlinkStreamEncodedPayload payload) => Payload = payload;
+
+        public ZlinkStreamEncodedPayload Payload { get; }
+
+        public string? Name { get; private set; }
+
+        public ZlinkStreamMetadata RecordedMetadata { get; private set; } = ZlinkStreamMetadata.Empty;
+
+        public TimeSpan? TimeoutValue { get; private set; }
+
+        public bool Compressed { get; private set; }
+
+        public ZlinkStreamEncodedPayload Reply { get; set; } = new(ZlinkStreamCodec.Raw, Array.Empty<byte>());
+
+        public ZlinkStreamResult<ZlinkStreamEncodedPayload> CallbackPayloadResult { get; set; } =
+            ZlinkStreamResult<ZlinkStreamEncodedPayload>.Failure(new ZlinkStreamError(
+            ZlinkStreamErrorCode.RemoteError,
+            "missing callback result"));
+
+        public IZlinkStreamRequestCall PacketName(string name)
+        {
+            Name = name;
+            return this;
+        }
+
+        public IZlinkStreamRequestCall Metadata(string key, string value)
+        {
+            RecordedMetadata = RecordedMetadata.With(key, value);
+            return this;
+        }
+
+        public IZlinkStreamRequestCall Metadata(ZlinkStreamMetadata metadata)
+        {
+            RecordedMetadata = RecordedMetadata.WithMany(metadata.Values);
+            return this;
+        }
+
+        public IZlinkStreamRequestCall Timeout(TimeSpan timeout)
+        {
+            TimeoutValue = timeout;
+            return this;
+        }
+
+        public IZlinkStreamRequestCall Compress()
+        {
+            Compressed = true;
+            return this;
+        }
+
+        public ValueTask<ZlinkStreamEncodedPayload> SubmitAsync(CancellationToken cancellationToken = default)
+            => ValueTask.FromResult(Reply);
+
+        public void Submit(Action<ZlinkStreamResult> callback)
+            => callback(CallbackPayloadResult.IsSuccess
+                ? ZlinkStreamResult.Success()
+                : ZlinkStreamResult.Failure(CallbackPayloadResult.Error!));
+
+        public void Submit(Action<ZlinkStreamResult<ZlinkStreamEncodedPayload>> callback)
+            => callback(CallbackPayloadResult);
+    }
+}

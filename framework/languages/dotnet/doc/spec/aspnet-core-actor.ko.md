@@ -941,12 +941,12 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.AddSpotMesh("game.session", mesh =>
     {
-        mesh.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
         mesh.AddNode("session-node", node =>
         {
             node.EnableRouter(router =>
             {
-                router.SetRouterBind("tcp://0.0.0.0:7201");
+                router.BindRouter("tcp://0.0.0.0:7201");
             });
         });
     });
@@ -969,16 +969,13 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery =>
-        {
-            discovery.Add("tcp://registry1:5551");
-        });
+        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
 
         mesh.AddNode("play-node", node =>
         {
             node.EnableRouter(router =>
             {
-                router.SetRouterBind("tcp://0.0.0.0:9000");
+                router.BindRouter("tcp://0.0.0.0:9000");
             });
             node.AddEntrySpot<PlayerEntrySpot>();
             node.AddSpotFactory<MatchSpot>();

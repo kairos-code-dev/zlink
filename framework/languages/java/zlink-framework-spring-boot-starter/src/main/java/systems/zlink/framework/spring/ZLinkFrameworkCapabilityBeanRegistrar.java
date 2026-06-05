@@ -192,7 +192,8 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
             || !(parameterized.getRawType() instanceof Class<?> rawType)
             || !(rawType == List.class
                 || rawType == Collection.class
-                || rawType == Iterable.class)) {
+                || rawType == Iterable.class
+                || rawType == Set.class)) {
             return null;
         }
         Type argument = parameterized.getActualTypeArguments()[0];

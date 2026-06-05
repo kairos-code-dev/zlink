@@ -10,6 +10,7 @@ import java.net.ServerSocket;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -357,6 +358,29 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ProfileReply reply = context.getBean(ZLinkClient.class)
                 .requestToChannel("profile", new ProfileRequest("42"))
                 .packetName("DecorateProfile")
+                .submitAsync(ProfileReply.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(new ProfileReply("profile:42:decorated"), reply);
+            assertTrue(context.getBean(ZLinkFrameworkLifecycle.class).isRunning());
+        }
+    }
+
+    @Test
+    void scannedHandlersAndSetDependenciesAreSpringBeans() {
+        String endpoint = "inproc://zlink-spring-auto-registered-set-" + UUID.randomUUID();
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean("autoRegisteredSetEndpoint", String.class, () -> endpoint);
+            context.register(
+                AutoRegisteredSetHandlerConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            ProfileReply reply = context.getBean(ZLinkClient.class)
+                .requestToChannel("profile", new ProfileRequest("42"))
+                .packetName("DecorateProfileSet")
                 .submitAsync(ProfileReply.class)
                 .toCompletableFuture()
                 .join();
@@ -819,6 +843,30 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     @Configuration
     @EnableZLinkFramework
+    static class AutoRegisteredSetHandlerConfig {
+        @Bean
+        HandlerDependency autoRegisteredSetDependency() {
+            return new HandlerDependency("profile");
+        }
+
+        @Bean
+        ZLinkFrameworkOptionsCustomizer autoRegisteredSetHandlerCustomizer(
+            String autoRegisteredSetEndpoint) {
+            return options -> {
+                options.codecs().addJson();
+                options.addHandlersFromPackageOf(AutoRegisteredSetHandlerConfig.class);
+                options.addClientServerChannel("profile", channel -> {
+                    channel.enableServer(server -> server.bind(autoRegisteredSetEndpoint));
+                    channel.enableClient(client -> client.useManualConnections(
+                        endpoints -> endpoints.connect(autoRegisteredSetEndpoint)));
+                    channel.addHandlerGroup("spring-auto-registered-set");
+                });
+            };
+        }
+    }
+
+    @Configuration
+    @EnableZLinkFramework
     static class FilteredHandlerConfig {
         @Bean
         HandlerDependency handlerDependency() {
@@ -1232,6 +1280,28 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @ZLinkRequest(packetName = "DecorateProfile")
+        public CompletionStage<ProfileReply> handleAsync(ProfileRequest request) {
+            String value = dependency.format(request.profileId());
+            for (ProfileDecorator decorator : decorators) {
+                value = decorator.decorate(value);
+            }
+            return CompletableFuture.completedFuture(new ProfileReply(value));
+        }
+    }
+
+    @ZLinkHandlerGroup("spring-auto-registered-set")
+    public static final class AutoRegisteredSetRequestHandler {
+        private final HandlerDependency dependency;
+        private final Set<ProfileDecorator> decorators;
+
+        public AutoRegisteredSetRequestHandler(
+            HandlerDependency dependency,
+            Set<ProfileDecorator> decorators) {
+            this.dependency = dependency;
+            this.decorators = decorators;
+        }
+
+        @ZLinkRequest(packetName = "DecorateProfileSet")
         public CompletionStage<ProfileReply> handleAsync(ProfileRequest request) {
             String value = dependency.format(request.profileId());
             for (ProfileDecorator decorator : decorators) {

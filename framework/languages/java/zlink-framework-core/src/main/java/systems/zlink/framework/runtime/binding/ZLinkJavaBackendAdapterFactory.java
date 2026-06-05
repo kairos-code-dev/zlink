@@ -107,8 +107,8 @@ import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkRegistryBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapterFactory {
@@ -331,8 +331,14 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean send(RoutingId routingId, String packetName, List<Message> parts, SendFlags flags) {
             return submitFramedStream(socket.send(routingId), 1, null, packetName, parts, flags);
         }
+        @Override public boolean send(RoutingId routingId, ZLinkStreamHeader header, List<Message> parts, SendFlags flags) {
+            return submitFramedStream(socket.send(routingId), header, parts, flags);
+        }
         @Override public boolean reply(RoutingId routingId, long requestSeq, String packetName, List<Message> parts, SendFlags flags) {
             return submitFramedStream(socket.send(routingId), 3, requestSeq, packetName, parts, flags);
+        }
+        @Override public boolean reply(RoutingId routingId, ZLinkStreamHeader header, List<Message> parts, SendFlags flags) {
+            return submitFramedStream(socket.send(routingId), header, parts, flags);
         }
         @Override public void attachActorGateway(ZLinkBackendSpotNode node) { socket.attachActorGateway(((JavaSpotNode) node).spotNode()); }
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) {
@@ -733,6 +739,24 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         Message frame = Message.from(encodeStreamFrame(
             encodeStreamHeader(kind, 0, payload.packetName(), requestSeq),
             payload.body()));
+        try {
+            return operation.message(frame).flags(flags).submit();
+        } finally {
+            frame.close();
+        }
+    }
+
+    private static boolean submitFramedStream(
+        SendOperation operation,
+        ZLinkStreamHeader header,
+        List<Message> parts,
+        SendFlags flags) {
+        if (parts == null || parts.size() != 1) {
+            throw new IllegalArgumentException("stream frame requires exactly one payload part");
+        }
+        Message frame = Message.from(encodeStreamFrame(
+            ZLinkStreamHeaderCodec.encode(header),
+            parts.get(0).toByteArray()));
         try {
             return operation.message(frame).flags(flags).submit();
         } finally {

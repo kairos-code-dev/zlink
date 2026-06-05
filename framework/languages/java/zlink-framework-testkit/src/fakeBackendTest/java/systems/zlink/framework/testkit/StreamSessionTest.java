@@ -190,8 +190,10 @@ final class StreamSessionTest {
         }
 
         assertTrue(backendFactory.calls().contains("stream.bindActor.player-1"));
-        assertTrue(backendFactory.calls().contains("stream.send.fake-session.Notify"));
-        assertTrue(backendFactory.calls().contains("stream.reply.fake-session.42.Join.reply"));
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("stream.send.fake-session.Notify.")));
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("stream.reply.fake-session.42.String.")));
     }
 
     @Test
@@ -220,7 +222,8 @@ final class StreamSessionTest {
         }
 
         assertTrue(backendFactory.calls().contains("stream.bindActor.player-1"));
-        assertTrue(backendFactory.calls().contains("stream.reply.fake-session.42.Join.reply"));
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("stream.reply.fake-session.42.String.")));
     }
 
     @Test
@@ -244,7 +247,56 @@ final class StreamSessionTest {
             assertEquals(List.of("relay:Move:cell-4"), DispatcherSession.relays);
         }
 
-        assertTrue(backendFactory.calls().contains("stream.reply.fake-session.77.Authenticate.authenticated"));
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("stream.reply.fake-session.77.String.")));
+    }
+
+    @Test
+    void sessionSendAndReplyApplyMetadataAndCompression() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addStreamNode("gateway", stream -> {
+            stream.bind("inproc://gateway");
+            stream.registerSession(CompressedSession.class);
+        });
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+            backendFactory.dispatchStreamRequest("Compress", "hello", 91);
+        }
+
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("stream.send.fake-session.Notify.")
+                && call.contains("PAYLOAD_COMPRESSED")
+                && call.contains("trace=send-trace")));
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("stream.reply.fake-session.91.String.")
+                && call.contains("PAYLOAD_COMPRESSED")
+                && call.contains("trace=reply-trace")));
+    }
+
+    @Test
+    void inboundCompressedSessionPayloadIsDecompressedBeforeDispatch() {
+        GameSession.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addStreamNode("gateway", stream -> {
+            stream.bind("inproc://gateway");
+            stream.registerSession(GameSession.class);
+        });
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+            backendFactory.dispatchStreamRequest(
+                "Compressed",
+                Message.from(hex("00636F6D70726573736564")),
+                92,
+                0x04);
+
+            assertEquals(List.of("Compressed:compressed"), GameSession.dispatches);
+        }
     }
 
     @Test
@@ -281,6 +333,14 @@ final class StreamSessionTest {
                 throw new AssertionError("interrupted while waiting for condition", ex);
             }
         }
+    }
+
+    private static byte[] hex(String value) {
+        byte[] result = new byte[value.length() / 2];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = (byte) Integer.parseInt(value.substring(i * 2, i * 2 + 2), 16);
+        }
+        return result;
     }
 
     public static final class GameSpot implements ZLinkSpot {
@@ -543,6 +603,51 @@ final class StreamSessionTest {
         @Override
         public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class CompressedSession implements ZLinkSession {
+        private final ZLinkSessionContext context;
+
+        public CompressedSession(ZLinkSessionContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSessionContext context() {
+            return context;
+        }
+
+        @Override
+        public CompletionStage<Void> onConnectedAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onDisconnectedAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onDispatchAsync(
+            ZLinkStreamHeader header,
+            Message payload) {
+            return context.client()
+                .send("notify")
+                .packetName("Notify")
+                .metadata("trace", "send-trace")
+                .compress()
+                .submitAsync()
+                .thenCompose(ignored -> context.client()
+                    .reply("reply")
+                    .metadata("trace", "reply-trace")
+                    .compress()
+                    .submitAsync());
         }
     }
 }

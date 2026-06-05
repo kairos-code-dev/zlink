@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.streams;
 import systems.zlink.framework.runtime.backend.*;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
@@ -29,9 +31,12 @@ import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionReplyCall;
 import systems.zlink.framework.streams.ZLinkSessionSendCall;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 import systems.zlink.framework.streams.ZLinkStreamSessionError;
 
 public final class ZLinkStreamRuntime implements AutoCloseable {
@@ -146,7 +151,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             ignored -> createSessionState(streamNode, stream, routingId));
         ZLinkStreamHeader streamHeader =
             ZLinkStreamHeaderCodec.decodeOrPlain(header.toByteArray());
-        Message payloadCopy = Message.from(payload);
+        Message payloadCopy = Message.from(decodePayload(streamHeader, payload));
         state.queue().enqueue(() ->
             state.context().dispatchAsync(streamHeader, payloadCopy, state.session()));
     }
@@ -335,7 +340,9 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 stream,
                 routingId,
                 serializer.serialize(message),
-                Optional.empty());
+                defaultPacketName(message),
+                Map.of(),
+                false);
         }
 
         @Override
@@ -344,7 +351,10 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 stream,
                 routingId,
                 serializer.serialize(message),
-                context);
+                context,
+                defaultPacketName(message),
+                Map.of(),
+                false);
         }
     }
 
@@ -352,10 +362,14 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         ZLinkBackendStreamSocket stream,
         RoutingId routingId,
         Message payload,
-        Optional<String> packetName) implements ZLinkSessionSendCall {
+        String packetName,
+        Map<String, String> metadata,
+        boolean compressed) implements ZLinkSessionSendCall {
         @Override
         public ZLinkSessionSendCall metadata(String key, String value) {
-            return this;
+            Map<String, String> next = new HashMap<>(metadata);
+            next.put(key, value);
+            return new SessionSendCall(stream, routingId, payload, packetName, Map.copyOf(next), compressed);
         }
 
         @Override
@@ -363,25 +377,34 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             if (messageName == null || messageName.isBlank()) {
                 throw new IllegalArgumentException("messageName is required");
             }
-            return new SessionSendCall(stream, routingId, payload, Optional.of(messageName));
+            return new SessionSendCall(stream, routingId, payload, messageName, metadata, compressed);
         }
 
         @Override
         public ZLinkSessionSendCall compress() {
-            return this;
+            return new SessionSendCall(stream, routingId, payload, packetName, metadata, true);
         }
 
         @Override
         public CompletionStage<Void> submitAsync() {
-            List<Message> parts = parts(packetName, payload);
+            EncodedStreamPayload encoded = encodePayload(payload, compressed);
+            ZLinkStreamHeader header = new ZLinkStreamHeader(
+                ZLinkStreamMessageKind.SEND,
+                ZLinkStreamCodec.JSON,
+                encoded.flags(),
+                Optional.empty(),
+                packetName,
+                metadata);
+            List<Message> parts = List.of(Message.from(encoded.payload()));
             try {
-                if (!stream.send(routingId, parts, SendFlags.DONT_WAIT)) {
+                if (!stream.send(routingId, header, parts, SendFlags.DONT_WAIT)) {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "session send failed: " + routingId));
                 }
                 return CompletableFuture.completedFuture(null);
             } finally {
                 parts.forEach(Message::close);
+                payload.close();
             }
         }
     }
@@ -390,15 +413,20 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         ZLinkBackendStreamSocket stream,
         RoutingId routingId,
         Message payload,
-        DefaultSessionContext context) implements ZLinkSessionReplyCall {
+        DefaultSessionContext context,
+        String packetName,
+        Map<String, String> metadata,
+        boolean compressed) implements ZLinkSessionReplyCall {
         @Override
         public ZLinkSessionReplyCall metadata(String key, String value) {
-            return this;
+            Map<String, String> next = new HashMap<>(metadata);
+            next.put(key, value);
+            return new SessionReplyCall(stream, routingId, payload, context, packetName, Map.copyOf(next), compressed);
         }
 
         @Override
         public ZLinkSessionReplyCall compress() {
-            return this;
+            return new SessionReplyCall(stream, routingId, payload, context, packetName, metadata, true);
         }
 
         @Override
@@ -409,28 +437,62 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 return CompletableFuture.failedFuture(new IllegalStateException(
                     "Reply is only available while handling a request packet."));
             }
+            EncodedStreamPayload encoded = encodePayload(payload, compressed);
+            List<Message> parts = List.of(Message.from(encoded.payload()));
             try {
-                ZLinkStreamHeader header = currentHeader.get();
+                ZLinkStreamHeader current = currentHeader.get();
+                ZLinkStreamHeader replyHeader = new ZLinkStreamHeader(
+                    ZLinkStreamMessageKind.RESPONSE,
+                    ZLinkStreamCodec.JSON,
+                    encoded.flags(),
+                    current.requestSequence(),
+                    packetName,
+                    metadata);
                 if (!stream.reply(
                     routingId,
-                    header.requestSequence().get(),
-                    header.packetName(),
-                    List.of(payload),
+                    replyHeader,
+                    parts,
                     SendFlags.DONT_WAIT)) {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "session reply failed: " + routingId));
                 }
                 return CompletableFuture.completedFuture(null);
             } finally {
+                parts.forEach(Message::close);
                 payload.close();
             }
         }
     }
 
-    private static List<Message> parts(Optional<String> packetName, Message payload) {
-        if (packetName.isEmpty()) {
-            return List.of(payload);
+    private static String defaultPacketName(Object message) {
+        if (message == null) {
+            return "Null";
         }
-        return List.of(Message.from(packetName.get()), payload);
+        Class<?> messageType = message.getClass();
+        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
+        return packet == null ? messageType.getSimpleName() : packet.value();
+    }
+
+    private static EncodedStreamPayload encodePayload(Message payload, boolean compress) {
+        byte[] bytes = payload.toByteArray();
+        if (!compress) {
+            return new EncodedStreamPayload(bytes, EnumSet.noneOf(ZLinkStreamHeaderFlag.class));
+        }
+        return new EncodedStreamPayload(
+            ZLinkStreamLz4Pickler.pickle(bytes),
+            EnumSet.of(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
+    }
+
+    private static byte[] decodePayload(ZLinkStreamHeader header, Message payload) {
+        byte[] bytes = payload.toByteArray();
+        if (!header.flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED)) {
+            return bytes;
+        }
+        return ZLinkStreamLz4Pickler.unpickle(bytes);
+    }
+
+    private record EncodedStreamPayload(
+        byte[] payload,
+        EnumSet<ZLinkStreamHeaderFlag> flags) {
     }
 }

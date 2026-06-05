@@ -92,13 +92,21 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     public void dispatchStreamRequest(String packetName, String payload, long requestSeq) {
+        dispatchStreamRequest(packetName, Message.from(payload), requestSeq, 0);
+    }
+
+    public void dispatchStreamRequest(
+        String packetName,
+        Message payload,
+        long requestSeq,
+        int flags) {
         if (streams.isEmpty()) {
             throw new IllegalStateException("no fake stream socket is available");
         }
         streams.get(0).dispatchPacket(
             RoutingId.from("fake-session"),
-            Message.from(encodeStreamHeader(2, 0, packetName, Optional.of(requestSeq))),
-            Message.from(payload));
+            Message.from(encodeStreamHeader(2, 0, packetName, Optional.of(requestSeq), flags)),
+            payload);
     }
 
     public void dispatchStreamTransportError(int nativeCode, String message) {
@@ -238,12 +246,21 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         int codec,
         String packetName,
         Optional<Long> requestSeq) {
+        return encodeStreamHeader(kind, codec, packetName, requestSeq, 0);
+    }
+
+    private static byte[] encodeStreamHeader(
+        int kind,
+        int codec,
+        String packetName,
+        Optional<Long> requestSeq,
+        int additionalFlags) {
         byte[] name = packetName.getBytes(StandardCharsets.UTF_8);
         ByteBuffer buffer = ByteBuffer.allocate(
             3 + (requestSeq.isPresent() ? Long.BYTES : 0) + 1 + name.length);
         buffer.put((byte) kind);
         buffer.put((byte) codec);
-        buffer.put((byte) (requestSeq.isPresent() ? 0x01 : 0));
+        buffer.put((byte) ((requestSeq.isPresent() ? 0x01 : 0) | additionalFlags));
         requestSeq.ifPresent(buffer::putLong);
         buffer.put((byte) name.length);
         buffer.put(name);
@@ -918,8 +935,16 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             record("send." + routingId + "." + packetName + "." + firstPart(parts));
             return true;
         }
+        @Override public boolean send(RoutingId routingId, ZLinkStreamHeader header, List<Message> parts, SendFlags flags) {
+            record("send." + routingId + "." + header.packetName() + "." + header.flags() + "." + header.metadata() + "." + firstPart(parts));
+            return true;
+        }
         @Override public boolean reply(RoutingId routingId, long requestSeq, String packetName, List<Message> parts, SendFlags flags) {
             record("reply." + routingId + "." + requestSeq + "." + packetName + "." + firstPart(parts));
+            return true;
+        }
+        @Override public boolean reply(RoutingId routingId, ZLinkStreamHeader header, List<Message> parts, SendFlags flags) {
+            record("reply." + routingId + "." + header.requestSequence().orElse(0L) + "." + header.packetName() + "." + header.flags() + "." + header.metadata() + "." + firstPart(parts));
             return true;
         }
         @Override public void attachActorGateway(ZLinkBackendSpotNode node) { record("attachActorGateway." + node.name()); }

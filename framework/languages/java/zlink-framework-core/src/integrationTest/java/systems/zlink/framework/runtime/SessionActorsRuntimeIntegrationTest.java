@@ -10,16 +10,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Duration;
 import java.net.ServerSocket;
-import java.util.EnumSet;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
@@ -45,15 +41,11 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
-import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
-import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 final class SessionActorsRuntimeIntegrationTest {
-    private static final LinkedBlockingQueue<String> actorRelayRequests =
+    static final LinkedBlockingQueue<String> actorRelayRequests =
         new LinkedBlockingQueue<>();
 
     @Test
@@ -218,148 +210,6 @@ final class SessionActorsRuntimeIntegrationTest {
     }
 
     @Test
-    @Order(10)
-    void sessionGateway_relaysRemoteActorRequestThroughDiscoveredSpotMesh() throws Exception {
-        actorRelayRequests.clear();
-        Zlink.version();
-        String actorId = uniqueActorId("raw-player");
-        RoutingId sessionRid = RoutingId.from(uniqueActorId("raw-session"));
-        RoutingId playNodeRid = RoutingId.from(uniqueActorId("raw-play-node"));
-        RoutingId sessionNodeRid = RoutingId.from(uniqueActorId("raw-session-node"));
-        String registryPub = tcpEndpoint();
-        String registryRouter = tcpEndpoint();
-        String playRouter = tcpEndpoint();
-        String playPub = tcpEndpoint();
-        String sessionRouter = tcpEndpoint();
-        String sessionPub = tcpEndpoint();
-        String streamEndpoint = tcpEndpoint();
-        ZLinkEmbeddedRegistryOptions registryOptions = new ZLinkEmbeddedRegistryOptions();
-        registryOptions.setPubEndpoint(registryPub);
-        registryOptions.setRouterEndpoint(registryRouter);
-
-        try (ZLinkRegistryRuntime ignoredRegistry = new ZLinkRegistryRuntime(
-                 registryOptions,
-                 new ZLinkJavaBackendAdapterFactory(),
-                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
-             ZLinkFrameworkRuntime play = startDiscoveredPlayRuntime(
-                 registryRouter,
-                 playRouter,
-                 playPub,
-                 false,
-                 playNodeRid);
-             ZLinkFrameworkRuntime session = startDiscoveredSessionRuntime(
-                 registryRouter,
-                 sessionRouter,
-                 sessionPub,
-                 streamEndpoint,
-                 sessionNodeRid)) {
-            ZLinkActor actor = play.actorManager()
-                .createAsync(actorId, "player")
-                .toCompletableFuture()
-                .join();
-            ZLinkActorRef joined = actor.context()
-                .joinEntrySpot(playNodeRid)
-                .timeout(Duration.ofSeconds(2))
-                .submitAsync()
-                .toCompletableFuture()
-                .join();
-
-            ZLinkSessionActor bound = session.sessionActors(
-                    "gateway",
-                    sessionRid)
-                .bindAsync(joined)
-                .toCompletableFuture()
-                .join();
-
-            assertEquals(
-                actorId + ":raw-hello",
-                relayUntilActorReceived(
-                    bound,
-                    new ZLinkStreamHeader(
-                        "ActorEcho",
-                        java.util.Map.of(),
-                        Optional.of(1L)),
-                    "raw-hello".getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                    actorId + ":raw-hello",
-                    10,
-                    TimeUnit.SECONDS));
-        }
-    }
-
-    @Test
-    @Order(20)
-    void sessionGateway_relaysJsonActorRequestWithDefaultPacketNameThroughDiscoveredSpotMesh()
-        throws Exception {
-        actorRelayRequests.clear();
-        Zlink.version();
-        String actorId = uniqueActorId("json-player");
-        RoutingId sessionRid = RoutingId.from(uniqueActorId("json-session"));
-        RoutingId playNodeRid = RoutingId.from(uniqueActorId("json-play-node"));
-        RoutingId sessionNodeRid = RoutingId.from(uniqueActorId("json-session-node"));
-        String registryPub = tcpEndpoint();
-        String registryRouter = tcpEndpoint();
-        String playRouter = tcpEndpoint();
-        String playPub = tcpEndpoint();
-        String sessionRouter = tcpEndpoint();
-        String sessionPub = tcpEndpoint();
-        String streamEndpoint = tcpEndpoint();
-        ZLinkEmbeddedRegistryOptions registryOptions = new ZLinkEmbeddedRegistryOptions();
-        registryOptions.setPubEndpoint(registryPub);
-        registryOptions.setRouterEndpoint(registryRouter);
-
-        try (ZLinkRegistryRuntime ignoredRegistry = new ZLinkRegistryRuntime(
-                 registryOptions,
-                 new ZLinkJavaBackendAdapterFactory(),
-                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
-             ZLinkFrameworkRuntime play = startDiscoveredPlayRuntime(
-                 registryRouter,
-                 playRouter,
-                 playPub,
-                 true,
-                 playNodeRid);
-             ZLinkFrameworkRuntime session = startDiscoveredSessionRuntime(
-                 registryRouter,
-                 sessionRouter,
-                 sessionPub,
-                 streamEndpoint,
-                 sessionNodeRid)) {
-            ZLinkActor actor = play.actorManager()
-                .createAsync(actorId, "player")
-                .toCompletableFuture()
-                .join();
-            ZLinkActorRef joined = actor.context()
-                .joinEntrySpot(playNodeRid)
-                .timeout(Duration.ofSeconds(2))
-                .submitAsync()
-                .toCompletableFuture()
-                .join();
-
-            ZLinkSessionActor bound = session.sessionActors(
-                    "gateway",
-                    sessionRid)
-                .bindAsync(joined)
-                .toCompletableFuture()
-                .join();
-
-            assertEquals(
-                actorId + ":json-hello",
-                relayUntilActorReceived(
-                    bound,
-                    new ZLinkStreamHeader(
-                        ZLinkStreamMessageKind.REQUEST,
-                        ZLinkStreamCodec.JSON,
-                        EnumSet.of(ZLinkStreamHeaderFlag.HAS_REQUEST_SEQUENCE),
-                        Optional.of(1L),
-                        "JsonRelayReq",
-                        java.util.Map.of()),
-                    "{\"value\":\"json-hello\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                    actorId + ":json-hello",
-                    20,
-                    TimeUnit.SECONDS));
-        }
-    }
-
-    @Test
     void sessionAndPlayServers_relaySucceeds() {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
@@ -511,7 +361,7 @@ final class SessionActorsRuntimeIntegrationTest {
             RoutingId.from("play-node"));
     }
 
-    private static ZLinkFrameworkRuntime startDiscoveredPlayRuntime(
+    static ZLinkFrameworkRuntime startDiscoveredPlayRuntime(
         String registryRouter,
         String playRouter,
         String playPub,
@@ -537,7 +387,7 @@ final class SessionActorsRuntimeIntegrationTest {
         return ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
     }
 
-    private static ZLinkFrameworkRuntime startDiscoveredSessionRuntime(
+    static ZLinkFrameworkRuntime startDiscoveredSessionRuntime(
         String registryRouter,
         String sessionRouter,
         String sessionPub,
@@ -550,7 +400,7 @@ final class SessionActorsRuntimeIntegrationTest {
             RoutingId.from("session-node"));
     }
 
-    private static ZLinkFrameworkRuntime startDiscoveredSessionRuntime(
+    static ZLinkFrameworkRuntime startDiscoveredSessionRuntime(
         String registryRouter,
         String sessionRouter,
         String sessionPub,
@@ -575,7 +425,7 @@ final class SessionActorsRuntimeIntegrationTest {
         return ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
     }
 
-    private static String tcpEndpoint() throws Exception {
+    static String tcpEndpoint() throws Exception {
         try (ServerSocket server = new ServerSocket(0)) {
             return "tcp://127.0.0.1:" + server.getLocalPort();
         }
@@ -677,7 +527,7 @@ final class SessionActorsRuntimeIntegrationTest {
         }
     }
 
-    private static String relayUntilActorReceived(
+    static String relayUntilActorReceived(
         ZLinkSessionActor bound,
         ZLinkStreamHeader header,
         byte[] payloadBytes,
@@ -702,7 +552,7 @@ final class SessionActorsRuntimeIntegrationTest {
         }
     }
 
-    private static String uniqueActorId(String prefix) {
+    static String uniqueActorId(String prefix) {
         return prefix + "-" + Long.toUnsignedString(System.nanoTime(), 36);
     }
 

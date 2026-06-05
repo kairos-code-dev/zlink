@@ -21,12 +21,15 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkSpotActorLeft;
 import systems.zlink.framework.handlers.ZLinkSpotActorJoin;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotPostActorJoined;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
+import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.registry.ZLinkRegistrySpotRemoteAddressResolver;
@@ -36,6 +39,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 
@@ -522,7 +526,7 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             assertThrows(
-                systems.zlink.framework.errors.ZLinkConfigurationException.class,
+                ZLinkConfigurationException.class,
                 () -> OutboundSpot.context.outbound()
                     .sendToSpot(RoutingId.from("target-spot"), "hello"));
         }
@@ -1107,7 +1111,7 @@ final class SpotRuntimeFakeBackendTest {
                      options,
                      new FakeZLinkBackendAdapterFactory())) {
             assertThrows(
-                systems.zlink.framework.errors.ZLinkConfigurationException.class,
+                ZLinkConfigurationException.class,
                 () -> runtime.spotPublisherClient()
                     .publishSpot("missing", "stage.events", "opened"));
         }
@@ -1200,17 +1204,17 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     public static final class NoopSendHandler
-        implements systems.zlink.framework.channels.ZLinkSendHandler<String> {
+        implements ZLinkSendHandler<String> {
         @Override
         public CompletionStage<Void> handleAsync(
             String message,
-            systems.zlink.framework.channels.ZLinkSendContext context) {
+            ZLinkSendContext context) {
             return CompletableFuture.completedFuture(null);
         }
     }
 
     public static final class AmbientOutboundSpot implements ZLinkSpot {
-        static systems.zlink.framework.spots.ZLinkSpotOutbound outbound;
+        static ZLinkSpotOutbound outbound;
 
         @Override
         public ZLinkSpotContext context() {

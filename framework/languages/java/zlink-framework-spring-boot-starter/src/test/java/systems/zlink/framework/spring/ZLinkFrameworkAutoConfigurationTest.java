@@ -25,9 +25,12 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkInvocationContext;
@@ -927,7 +930,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     public static final class InjectedRequestHandler
-        implements systems.zlink.framework.channels.ZLinkRequestHandler<String, String> {
+        implements ZLinkRequestHandler<String, String> {
         private final HandlerDependency dependency;
 
         public InjectedRequestHandler(HandlerDependency dependency) {
@@ -937,13 +940,13 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public CompletionStage<String> handleAsync(
             String request,
-            systems.zlink.framework.channels.ZLinkRequestContext context) {
+            ZLinkRequestContext context) {
             return CompletableFuture.completedFuture(dependency.format(request));
         }
     }
 
     public static final class InjectedProfileRequestHandler
-        implements systems.zlink.framework.channels.ZLinkRequestHandler<ProfileRequest, ProfileReply> {
+        implements ZLinkRequestHandler<ProfileRequest, ProfileReply> {
         private final HandlerDependency dependency;
 
         public InjectedProfileRequestHandler(HandlerDependency dependency) {
@@ -953,7 +956,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public CompletionStage<ProfileReply> handleAsync(
             ProfileRequest request,
-            systems.zlink.framework.channels.ZLinkRequestContext context) {
+            ZLinkRequestContext context) {
             return CompletableFuture.completedFuture(
                 new ProfileReply(dependency.format(request.profileId())));
         }
@@ -1038,8 +1041,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
-    private static systems.zlink.framework.channels.ZLinkRequestContext requestContext() {
-        return new systems.zlink.framework.channels.ZLinkRequestContext() {
+    private static ZLinkRequestContext requestContext() {
+        return new ZLinkRequestContext() {
             @Override
             public java.util.Optional<String> channelName() {
                 return java.util.Optional.of("profile");
@@ -1056,7 +1059,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             }
 
             @Override
-            public systems.zlink.framework.CancellationToken cancellationToken() {
+            public CancellationToken cancellationToken() {
                 return () -> false;
             }
         };

@@ -42,6 +42,7 @@ import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkSpotActorDisconnected;
@@ -563,7 +564,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 route.spotRid(),
                 route.spotKind() == null ? ZLinkSpotKind.INVALID : route.spotKind());
         } catch (RuntimeException ex) {
-            throw new systems.zlink.framework.errors.ZLinkFrameworkException(
+            throw new ZLinkFrameworkException(
                 "SPOT route was not found for '" + spotRid + "'.",
                 ex);
         }
@@ -1305,7 +1306,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         return frameworkRegistration.channels().stream()
             .filter(channel -> channel.name().equals(channelName))
             .findFirst()
-            .map(channel -> channel.kind() == systems.zlink.framework.runtime.channels.ChannelKind.ROUTE_MESH
+            .map(channel -> channel.kind() == ChannelKind.ROUTE_MESH
                 ? ZLinkBackendAutoConnectType.ROUTE_MESH
                 : ZLinkBackendAutoConnectType.CLIENT_SERVER)
             .orElseThrow(() -> new ZLinkConfigurationException(
@@ -1506,7 +1507,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
         @Override
         public CompletionStage<Void> leaveActorAsync(
-            systems.zlink.framework.actors.ZLinkActor actor) {
+            ZLinkActor actor) {
             return CompletableFuture.completedFuture(null);
         }
 
@@ -2248,7 +2249,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Void> leaveActorAsync(systems.zlink.framework.actors.ZLinkActor actor) {
+        public CompletionStage<Void> leaveActorAsync(ZLinkActor actor) {
             if (actor == null) {
                 return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                     "actor is required"));

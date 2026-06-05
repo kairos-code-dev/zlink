@@ -31,6 +31,7 @@ import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkSendCall
+import systems.zlink.stream.connector.ZLinkStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
@@ -199,7 +200,7 @@ final class KotlinConnectorWrapperTest {
 
     private suspend fun sendAndDispatchUntilReceived(
         server: TcpServer,
-        connector: systems.zlink.stream.connector.ZLinkStreamConnector,
+        connector: ZLinkStreamConnector,
         received: CompletableDeferred<*>,
     ) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)

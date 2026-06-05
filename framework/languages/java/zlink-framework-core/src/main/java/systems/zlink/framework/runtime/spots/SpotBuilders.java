@@ -13,6 +13,8 @@ import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotRouteChannelAcceptanceBuilder;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
+import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.spots.ZLinkSpot;
 
 public final class SpotBuilders {
     private SpotBuilders() {
@@ -107,12 +109,12 @@ public final class SpotBuilders {
         }
 
         @Override
-        public void addSpotFactory(Class<? extends systems.zlink.framework.spots.ZLinkSpot> spotType) {
+        public void addSpotFactory(Class<? extends ZLinkSpot> spotType) {
             registration.addSpotFactory(spotType);
         }
 
         @Override
-        public void addEntrySpot(Class<? extends systems.zlink.framework.spots.ZLinkEntrySpot> entrySpotType) {
+        public void addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType) {
             registration.addEntrySpot(entrySpotType);
         }
     }

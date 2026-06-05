@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendContext;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -29,6 +31,11 @@ import systems.zlink.framework.ZLinkNext;
 import systems.zlink.framework.configuration.ZLinkDispatchMode;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotKind;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
@@ -869,18 +876,18 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     public static final class RouteEchoHandler
-        implements systems.zlink.framework.channels.ZLinkRouteRequestHandler<String, String> {
+        implements ZLinkRouteRequestHandler<String, String> {
         @Override
         public CompletionStage<String> handleAsync(
             String request,
-            systems.zlink.framework.channels.ZLinkRouteRequestContext context) {
+            ZLinkRouteRequestContext context) {
             return CompletableFuture.completedFuture(request);
         }
     }
 
-    public static final class TestSpot implements systems.zlink.framework.spots.ZLinkSpot {
+    public static final class TestSpot implements ZLinkSpot {
         @Override
-        public systems.zlink.framework.spots.ZLinkSpotContext context() {
+        public ZLinkSpotContext context() {
             return null;
         }
     }
@@ -895,17 +902,15 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     public static final class TestSpotRemoteAddressResolver
-        implements systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver {
+        implements ZLinkSpotRemoteAddressResolver {
         @Override
-        public CompletionStage<systems.zlink.framework.spots.ZLinkSpotRemoteAddress>
-            resolveSpotRemoteAddressAsync(
-                RoutingId spotRid) {
+        public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(RoutingId spotRid) {
             return CompletableFuture.completedFuture(
-                new systems.zlink.framework.spots.ZLinkSpotRemoteAddress(
+                new ZLinkSpotRemoteAddress(
                     "play",
                     RoutingId.from("node"),
                     spotRid,
-                    systems.zlink.framework.spots.ZLinkSpotKind.USER));
+                    ZLinkSpotKind.USER));
         }
     }
 

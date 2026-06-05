@@ -2,8 +2,11 @@ package systems.zlink.framework.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.time.Duration;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.runtime.monitoring.ZLinkMonitoringRuntime;
@@ -38,39 +41,39 @@ final class RegistryAndMonitoringTest {
             new ZLinkMonitoringRuntime(
                 options,
                 socket -> null,
-                java.util.Map.of(),
-                new systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher()));
+                Map.of(),
+                new ZLinkRuntimeEventDispatcher()));
     }
 
     @Test
     void addZLinkMonitoring_throws_whenRegistrySourceIsUnknownOnStartup() {
         DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
 
-        options.addRegistryEvents("missing-registry", java.time.Duration.ofSeconds(1));
+        options.addRegistryEvents("missing-registry", Duration.ofSeconds(1));
 
         assertThrows(ZLinkConfigurationException.class, () ->
             new ZLinkMonitoringRuntime(
                 options,
                 socket -> null,
-                java.util.Map.of(),
-                java.util.Map.of(),
-                java.util.Map.of(),
-                new systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher()));
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                new ZLinkRuntimeEventDispatcher()));
     }
 
     @Test
     void addZLinkMonitoring_throws_whenSpotSourceIsUnknownOnStartup() {
         DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
 
-        options.addSpotEvents("missing-spot", java.time.Duration.ofSeconds(1));
+        options.addSpotEvents("missing-spot", Duration.ofSeconds(1));
 
         assertThrows(ZLinkConfigurationException.class, () ->
             new ZLinkMonitoringRuntime(
                 options,
                 socket -> null,
-                java.util.Map.of(),
-                java.util.Map.of(),
-                java.util.Map.of(),
-                new systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher()));
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                new ZLinkRuntimeEventDispatcher()));
     }
 }

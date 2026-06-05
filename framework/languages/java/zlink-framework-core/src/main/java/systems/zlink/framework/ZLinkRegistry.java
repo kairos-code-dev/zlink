@@ -1,10 +1,17 @@
 package systems.zlink.framework;
 
 import java.util.function.Consumer;
+import java.util.List;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
+import systems.zlink.framework.registry.ZLinkMemberPeerEntry;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
+import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry;
+import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter;
+import systems.zlink.framework.registry.ZLinkRegistryStatus;
+import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
+import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 
@@ -29,26 +36,24 @@ public final class ZLinkRegistry implements ZLinkRegistryQuery, AutoCloseable {
     }
 
     @Override
-    public java.util.concurrent.CompletionStage<systems.zlink.framework.registry.ZLinkRegistryStatus>
-        statusAsync() {
+    public CompletionStage<ZLinkRegistryStatus> statusAsync() {
         return runtime.statusAsync();
     }
 
     @Override
-    public java.util.concurrent.CompletionStage<java.util.List<systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry>>
-        serviceSummaryAsync(systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter filter) {
+    public CompletionStage<List<ZLinkRegistryServiceSummaryEntry>>
+        serviceSummaryAsync(ZLinkRegistryServiceSummaryFilter filter) {
         return runtime.serviceSummaryAsync(filter);
     }
 
     @Override
-    public java.util.concurrent.CompletionStage<java.util.List<systems.zlink.framework.registry.ZLinkRegistryTopologyEntry>>
-        topologyAsync(systems.zlink.framework.registry.ZLinkRegistryTopologyFilter filter) {
+    public CompletionStage<List<ZLinkRegistryTopologyEntry>>
+        topologyAsync(ZLinkRegistryTopologyFilter filter) {
         return runtime.topologyAsync(filter);
     }
 
     @Override
-    public java.util.concurrent.CompletionStage<java.util.List<systems.zlink.framework.registry.ZLinkMemberPeerEntry>>
-        memberPeersAsync(String channelName) {
+    public CompletionStage<List<ZLinkMemberPeerEntry>> memberPeersAsync(String channelName) {
         return runtime.memberPeersAsync(channelName);
     }
 

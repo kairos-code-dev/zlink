@@ -25,6 +25,8 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
+import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -126,15 +128,15 @@ final class StreamSessionTest {
         }
     }
 
-    public static final class GameEntrySpot implements systems.zlink.framework.spots.ZLinkEntrySpot {
-        private final systems.zlink.framework.spots.ZLinkEntrySpotContext context;
+    public static final class GameEntrySpot implements ZLinkEntrySpot {
+        private final ZLinkEntrySpotContext context;
 
-        public GameEntrySpot(systems.zlink.framework.spots.ZLinkEntrySpotContext context) {
+        public GameEntrySpot(ZLinkEntrySpotContext context) {
             this.context = context;
         }
 
         @Override
-        public systems.zlink.framework.spots.ZLinkEntrySpotContext context() {
+        public ZLinkEntrySpotContext context() {
             return context;
         }
     }

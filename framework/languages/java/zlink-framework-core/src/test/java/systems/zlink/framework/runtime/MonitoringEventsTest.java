@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRegistryEvent;
 import systems.zlink.framework.monitoring.ZLinkRegistryEventKind;
@@ -17,6 +19,7 @@ import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
 import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
+import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.runtime.monitoring.ZLinkMonitoringRuntime;
 
@@ -234,7 +237,7 @@ final class MonitoringEventsTest {
                 1,
                 0,
                 12,
-                systems.zlink.framework.spots.ZLinkSpotKind.INVALID));
+                ZLinkSpotKind.INVALID));
         }
 
         @Override
@@ -337,7 +340,7 @@ final class MonitoringEventsTest {
             ZLinkBackendActorRef actor,
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
-            List<systems.zlink.contracts.messaging.Message> parts,
+            List<Message> parts,
             java.time.Duration timeout) {
             return java.util.concurrent.CompletableFuture.failedFuture(
                 new UnsupportedOperationException("join actor is not used by this test"));
@@ -355,8 +358,8 @@ final class MonitoringEventsTest {
         @Override
         public boolean sendActorBoundSession(
             ZLinkBackendActorRef actor,
-            List<systems.zlink.contracts.messaging.Message> parts,
-            systems.zlink.contracts.sockets.SendFlags flags) {
+            List<Message> parts,
+            SendFlags flags) {
             return false;
         }
 

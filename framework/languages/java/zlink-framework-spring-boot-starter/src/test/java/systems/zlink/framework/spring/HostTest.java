@@ -13,6 +13,7 @@ import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
 import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
@@ -169,7 +170,7 @@ final class HostTest {
             BeanCreationException exception =
                 assertThrows(BeanCreationException.class, context::refresh);
             assertInstanceOf(
-                systems.zlink.framework.errors.ZLinkConfigurationException.class,
+                ZLinkConfigurationException.class,
                 exception.getMostSpecificCause());
         }
     }

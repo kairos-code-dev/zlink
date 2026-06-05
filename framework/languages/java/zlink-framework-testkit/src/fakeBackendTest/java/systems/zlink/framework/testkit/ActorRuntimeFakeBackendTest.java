@@ -16,10 +16,13 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
+import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 
@@ -142,7 +145,7 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
             assertThrows(
-                systems.zlink.framework.errors.ZLinkConfigurationException.class,
+                ZLinkConfigurationException.class,
                 actor.context()::getSpot);
         }
 
@@ -232,15 +235,15 @@ final class ActorRuntimeFakeBackendTest {
         }
     }
 
-    public static final class EntrySpot implements systems.zlink.framework.spots.ZLinkEntrySpot {
-        private final systems.zlink.framework.spots.ZLinkEntrySpotContext context;
+    public static final class EntrySpot implements ZLinkEntrySpot {
+        private final ZLinkEntrySpotContext context;
 
-        public EntrySpot(systems.zlink.framework.spots.ZLinkEntrySpotContext context) {
+        public EntrySpot(ZLinkEntrySpotContext context) {
             this.context = context;
         }
 
         @Override
-        public systems.zlink.framework.spots.ZLinkEntrySpotContext context() {
+        public ZLinkEntrySpotContext context() {
             return context;
         }
     }

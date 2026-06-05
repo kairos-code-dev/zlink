@@ -24,6 +24,7 @@ import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -37,8 +38,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     private final Map<String, ZLinkActor> actors = new HashMap<>();
     private final Map<String, String> actorTypes = new HashMap<>();
     private final Map<ZLinkActor, DefaultActorContext> contextsByActor = new HashMap<>();
-    private final Map<String, systems.zlink.framework.execution.ZLinkAsyncSerialQueue> dispatchQueues =
-        new HashMap<>();
+    private final Map<String, ZLinkAsyncSerialQueue> dispatchQueues = new HashMap<>();
     private Function<ZLinkActor, CompletionStage<Void>> disconnectedNotifier =
         ignored -> CompletableFuture.completedFuture(null);
     private Function<RoutingId, ZLinkSpot> spotResolver = ignored -> null;
@@ -219,9 +219,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     public CompletionStage<Void> submitActorDispatch(
         String actorId,
         Supplier<CompletionStage<Void>> operation) {
-        systems.zlink.framework.execution.ZLinkAsyncSerialQueue queue =
-            dispatchQueues.computeIfAbsent(actorId, ignored ->
-                new systems.zlink.framework.execution.ZLinkAsyncSerialQueue());
+        ZLinkAsyncSerialQueue queue =
+            dispatchQueues.computeIfAbsent(actorId, ignored -> new ZLinkAsyncSerialQueue());
         return queue.enqueue(operation);
     }
 

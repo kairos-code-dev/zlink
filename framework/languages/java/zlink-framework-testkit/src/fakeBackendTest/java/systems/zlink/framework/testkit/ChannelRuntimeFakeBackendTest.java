@@ -4,7 +4,12 @@ import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
@@ -36,7 +41,7 @@ final class ChannelRuntimeFakeBackendTest {
         }
 
         assertEquals(
-            java.util.List.of(
+            List.of(
                 "factory.channel",
                 "create.context",
                 "create.dealer",
@@ -68,7 +73,7 @@ final class ChannelRuntimeFakeBackendTest {
         }
 
         assertEquals(
-            java.util.List.of(
+            List.of(
                 "factory.channel",
                 "create.context",
                 "create.discovery.profile",
@@ -86,12 +91,12 @@ final class ChannelRuntimeFakeBackendTest {
     }
 
     public static final class ChannelMessagingFakeHandler
-        implements systems.zlink.framework.channels.ZLinkRequestHandler<String, String> {
+        implements ZLinkRequestHandler<String, String> {
         @Override
-        public java.util.concurrent.CompletionStage<String> handleAsync(
+        public CompletionStage<String> handleAsync(
             String request,
-            systems.zlink.framework.channels.ZLinkRequestContext context) {
-            return java.util.concurrent.CompletableFuture.completedFuture(request);
+            ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(request);
         }
     }
 }

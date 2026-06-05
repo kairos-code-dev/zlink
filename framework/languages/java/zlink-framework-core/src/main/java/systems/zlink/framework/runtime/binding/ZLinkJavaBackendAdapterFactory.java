@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.binding;
 import java.time.Duration;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
@@ -32,8 +33,12 @@ import systems.zlink.contracts.service.spot.ActorJoinSubmitOperation;
 import systems.zlink.contracts.service.spot.ActorReceived;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ActorUnbindOperation;
+import systems.zlink.contracts.service.spot.ReplyOperation;
+import systems.zlink.contracts.service.spot.RequestOperation;
+import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotActorLifecycleEvent;
+import systems.zlink.contracts.service.spot.SpotKind;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeMode;
 import systems.zlink.contracts.sockets.DealerSocket;
@@ -102,6 +107,7 @@ import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkRegistryBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
+import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 
@@ -225,12 +231,11 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void close() { nativeDiscovery.close(); }
     }
 
-    private static systems.zlink.framework.spots.ZLinkSpotKind toFrameworkSpotKind(
-        systems.zlink.contracts.service.spot.SpotKind kind) {
+    private static ZLinkSpotKind toFrameworkSpotKind(SpotKind kind) {
         return switch (kind) {
-            case ENTRY -> systems.zlink.framework.spots.ZLinkSpotKind.ENTRY;
-            case USER -> systems.zlink.framework.spots.ZLinkSpotKind.USER;
-            case INVALID -> systems.zlink.framework.spots.ZLinkSpotKind.INVALID;
+            case ENTRY -> ZLinkSpotKind.ENTRY;
+            case USER -> ZLinkSpotKind.USER;
+            case INVALID -> ZLinkSpotKind.INVALID;
         };
     }
 
@@ -683,7 +688,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         return mode == ZLinkBackendRecvMode.DONT_WAIT ? RecvFlags.DONT_WAIT : RecvFlags.NONE;
     }
 
-    private static boolean submit(systems.zlink.contracts.service.spot.SendOperation operation, List<Message> parts, SendFlags flags) {
+    private static boolean submit(SendOperation operation, List<Message> parts, SendFlags flags) {
         var submit = operation.message(parts.get(0));
         for (int i = 1; i < parts.size(); i++) {
             submit.message(parts.get(i));
@@ -711,14 +716,14 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     private static List<Message> prepend(Message first, List<Message> rest) {
-        java.util.ArrayList<Message> result = new java.util.ArrayList<>(rest.size() + 1);
+        ArrayList<Message> result = new ArrayList<>(rest.size() + 1);
         result.add(first);
         result.addAll(rest);
         return result;
     }
 
     private static boolean submitFramedStream(
-        systems.zlink.contracts.service.spot.SendOperation operation,
+        SendOperation operation,
         int kind,
         Long requestSeq,
         String packetName,
@@ -768,7 +773,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             .toList();
     }
 
-    private static void submitReply(systems.zlink.contracts.service.spot.ReplyOperation operation, List<Message> parts) {
+    private static void submitReply(ReplyOperation operation, List<Message> parts) {
         var submit = operation.message(parts.get(0));
         for (int i = 1; i < parts.size(); i++) {
             submit.message(parts.get(i));
@@ -777,7 +782,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     private static boolean submitRequest(
-        systems.zlink.contracts.service.spot.RequestOperation operation,
+        RequestOperation operation,
         List<Message> parts,
         ZLinkBackendRequestCallback callback,
         SendFlags flags,

@@ -34,15 +34,15 @@ type multipartRecvFunc func(*C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_f
 
 func prepareMultipart(parts []*Message) (*preparedMultipart, error) {
 	if len(parts) == 0 {
-		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return nil, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	native := make([]C.zlink_msg_t, len(parts))
 	for i, part := range parts {
 		if part == nil {
-			return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+			return nil, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		if part.closed {
-			return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+			return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		if err := configErrorFromResult(C.zlink_msg_init(&native[i])); err != nil {
 			closeNativeMultipart(native, i)
@@ -107,7 +107,7 @@ func markPartsMoved(parts []*Message) {
 
 func submitPreparedMultipart(prepared *preparedMultipart, submit multipartSubmitFunc) error {
 	if prepared == nil || len(prepared.native) == 0 {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	for i := range prepared.native {
 		partFlag := C.zlink_part_flag_t(C.ZLINK_PART_FINAL)
@@ -126,7 +126,7 @@ func submitPreparedMultipart(prepared *preparedMultipart, submit multipartSubmit
 
 func initNativeMessageFromBytes(native *C.zlink_msg_t, data []byte) error {
 	if native == nil {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	if err := configErrorFromResult(C.zlink_msg_init_size(native, C.size_t(len(data)))); err != nil {
 		return err
@@ -163,10 +163,10 @@ func submitMultipartFromClones(parts []*Message, consumeOriginal bool, submit mu
 
 func submitSinglePartFromCopy(part *Message, submit multipartSubmitFunc) error {
 	if part == nil {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	if part.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	var native C.zlink_msg_t
 	if err := configErrorFromResult(C.zlink_msg_init(&native)); err != nil {
@@ -188,10 +188,10 @@ func submitSinglePartFromCopy(part *Message, submit multipartSubmitFunc) error {
 
 func submitSinglePartMoved(part *Message, submit multipartSubmitFunc) error {
 	if part == nil {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	if part.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	var native C.zlink_msg_t
 	if err := configErrorFromResult(C.zlink_msg_init(&native)); err != nil {
@@ -257,7 +257,7 @@ func sendBuilderPartsUseOnlyRetainedMessages(parts []sendBuilderPart) bool {
 
 func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSubmitFunc) error {
 	if len(parts) == 0 {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	if len(parts) == 1 {
 		if parts[0].bytes {
@@ -283,11 +283,11 @@ func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSu
 		}
 		if part.message == nil {
 			closeNativeMultipart(native, i)
-			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		if part.message.closed {
 			closeNativeMultipart(native, i)
-			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		if err := configErrorFromResult(C.zlink_msg_init(&native[i])); err != nil {
 			closeNativeMultipart(native, i)
@@ -364,7 +364,7 @@ func requestBuilderPartsUseOnlyMessages(parts []requestBuilderPart) bool {
 
 func submitMultipartFromRequestParts(parts []requestBuilderPart, submit multipartSubmitFunc) error {
 	if len(parts) == 0 {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	if len(parts) == 1 {
 		if parts[0].bytes {
@@ -387,11 +387,11 @@ func submitMultipartFromRequestParts(parts []requestBuilderPart, submit multipar
 		}
 		if part.message == nil {
 			closeNativeMultipart(native, i)
-			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		if part.message.closed {
 			closeNativeMultipart(native, i)
-			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		if err := configErrorFromResult(C.zlink_msg_init(&native[i])); err != nil {
 			closeNativeMultipart(native, i)
@@ -469,7 +469,7 @@ func takeParts(ptr *C.zlink_msg_t, partCount C.size_t) ([]*Message, error) {
 
 func bytePartsToMessages(parts [][]byte) ([]*Message, error) {
 	if len(parts) == 0 {
-		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return nil, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	messages := make([]*Message, 0, len(parts))
 	for _, part := range parts {
@@ -521,7 +521,7 @@ func withCStringPair(left string, right string, fn func(*C.char, *C.char) error)
 
 func subscriptionAt(handle unsafe.Pointer, index int) (string, bool, error) {
 	if index < 0 {
-		return "", false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return "", false, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	var size C.size_t
 	var isPattern C.int

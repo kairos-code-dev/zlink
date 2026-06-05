@@ -183,7 +183,7 @@ final class PerfPair {
             }
             throw ex;
         } catch (systems.zlink.contracts.errors.ZlinkException ex) {
-            int errno = ex.getInternalErrno();
+            int errno = ex.getNativeErrno();
             if (PerfErrno.isRetryableSend(errno)) {
                 return false;
             }

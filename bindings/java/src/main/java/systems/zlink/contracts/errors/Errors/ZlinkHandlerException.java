@@ -11,8 +11,8 @@ public final class ZlinkHandlerException extends ZlinkException {
         this(result, 0);
     }
 
-    public ZlinkHandlerException(HandlerResult result, int internalErrno) {
-        super(result.value(), internalErrno);
+    public ZlinkHandlerException(HandlerResult result, int nativeErrno) {
+        super(result.value(), nativeErrno);
         this.result = result;
     }
 

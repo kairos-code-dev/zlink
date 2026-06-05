@@ -78,7 +78,7 @@ async function main() {
                 if (!(error instanceof zlink.RecvError)) {
                     throw error;
                 }
-                if (error.result !== zlink.RecvResult.NoData && error.internalErrno !== 2) {
+                if (error.result !== zlink.RecvResult.NoData && error.nativeErrno !== 2) {
                     throw error;
                 }
             }

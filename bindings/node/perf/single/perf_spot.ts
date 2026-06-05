@@ -101,9 +101,9 @@ function trySpotSubscribe(spot: SpotLike, buffer: Buffer): SpotReceivedSample | 
     data.copy(buffer, 0, 0, Math.min(buffer.length, data.length));
     return { size: data.length, topic: received.topic, routingId: received.routingId };
   } catch (error: unknown) {
-    const recvError = error as { result?: unknown; internalErrno?: unknown };
+    const recvError = error as { result?: unknown; nativeErrno?: unknown };
     if (error instanceof zlink.RecvError &&
-        (recvError.result === zlink.RecvResult.NoData || recvError.internalErrno === 2)) {
+        (recvError.result === zlink.RecvResult.NoData || recvError.nativeErrno === 2)) {
       return null;
     }
     throw error;

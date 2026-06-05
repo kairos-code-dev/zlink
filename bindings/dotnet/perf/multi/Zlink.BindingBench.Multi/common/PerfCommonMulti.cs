@@ -125,8 +125,8 @@ internal static partial class PerfRunner
                 return;
             }
             catch (ZlinkException ex) when (PerfShared.IsWouldBlock(
-                       ex.InternalErrno) || PerfShared.IsInterrupted(
-                       ex.InternalErrno))
+                       ex.NativeErrno) || PerfShared.IsInterrupted(
+                       ex.NativeErrno))
             {
                 last = ex;
                 Thread.Sleep(20);
@@ -164,7 +164,7 @@ internal static partial class PerfRunner
                 return node.LastEndpoint;
             }
             catch (ZlinkException ex) when (options.ServerBindPort <= 0
-                                            && IsAddressInUse(ex.InternalErrno)
+                                            && IsAddressInUse(ex.NativeErrno)
                                             && attempt < maxAttempts)
             {
                 Thread.Sleep(10 * attempt);
@@ -237,8 +237,8 @@ internal static partial class PerfRunner
                 if (readyCount >= expectedReady)
                     return true;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
             }
             catch

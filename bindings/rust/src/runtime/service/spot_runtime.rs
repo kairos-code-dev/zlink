@@ -551,7 +551,7 @@ where
 }
 
 pub(super) fn recv_error_from_config(err: ConfigError) -> RecvError {
-    RecvError::new(RecvResult::InvalidHandle, err.internal_errno())
+    RecvError::new(RecvResult::InvalidHandle, err.native_errno())
 }
 
 struct ActorPart {

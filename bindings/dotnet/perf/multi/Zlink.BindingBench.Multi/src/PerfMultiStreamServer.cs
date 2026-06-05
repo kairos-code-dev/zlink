@@ -232,8 +232,8 @@ internal static class PerfMultiStreamServer
                     return SendStatus.Done;
                 }
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
                 return SendStatus.Blocked;
             }

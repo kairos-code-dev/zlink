@@ -7,11 +7,11 @@ from ..sockets.codes import HandlerResult, RecvResult, RequestResult, SubmitResu
 class ZlinkError(RuntimeError):
     """Base class for all errors raised by the zlink bindings."""
 
-    def __init__(self, code: int, internal_errno: int = 0):
+    def __init__(self, code: int, native_errno: int = 0):
         self._code = int(code)
-        self._internal_errno = int(internal_errno)
+        self._native_errno = int(native_errno)
         super().__init__(
-            f"{self.__class__.__name__}(code={self._code}, internal_errno={self._internal_errno})"
+            f"{self.__class__.__name__}(code={self._code}, native_errno={self._native_errno})"
         )
 
     @property
@@ -20,9 +20,9 @@ class ZlinkError(RuntimeError):
         return self._code
 
     @property
-    def internal_errno(self):
+    def native_errno(self):
         """The native errno that produced this failure, or 0 when none."""
-        return self._internal_errno
+        return self._native_errno
 
 
 class _TypedZlinkError(ZlinkError):
@@ -31,11 +31,11 @@ class _TypedZlinkError(ZlinkError):
 
     _result_type = None
 
-    def __init__(self, result, internal_errno: int = 0):
+    def __init__(self, result, native_errno: int = 0):
         if self._result_type is None:
             raise TypeError("typed zlink error missing result type")
         self._result = self._result_type(int(result))
-        super().__init__(int(self._result), internal_errno)
+        super().__init__(int(self._result), native_errno)
 
     @property
     def result(self):

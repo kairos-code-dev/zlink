@@ -109,7 +109,7 @@ public sealed class test_discovery_route
         }
         catch (ZlinkConfigException ex)
         {
-            return ex.InternalErrno == 2;
+            return ex.NativeErrno == 2;
         }
     }
 }

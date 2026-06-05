@@ -90,7 +90,7 @@ func newSpotNode(ctx *Context) (*SpotNode, error) {
 
 func newSpotNodeWithOptions(ctx *Context, options *SpotNodeOptions) (*SpotNode, error) {
 	if ctx == nil || ctx.closed {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	var nativeOptions C.zlink_spot_node_options_t
 	var optionsPtr *C.zlink_spot_node_options_t
@@ -157,7 +157,7 @@ func (n *SpotNode) ConnectRouterChannelPeer(channelName string, endpoint string)
 
 func (n *SpotNode) AttachDiscovery(discovery *Discovery) error {
 	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	handle, err := n.handleOrError()
 	if err != nil {
@@ -168,7 +168,7 @@ func (n *SpotNode) AttachDiscovery(discovery *Discovery) error {
 
 func (n *SpotNode) AttachSpotRouteChannelDiscovery(channelName string, discovery *Discovery) error {
 	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return n.withChannelCString(channelName, func(channel *C.char) error {
 		handle, err := n.handleOrError()
@@ -182,7 +182,7 @@ func (n *SpotNode) AttachSpotRouteChannelDiscovery(channelName string, discovery
 
 func (n *SpotNode) AttachChannelDealer(discovery *Discovery, dealer *DealerSocket) error {
 	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	handle, err := n.handleOrError()
 	if err != nil {
@@ -320,12 +320,12 @@ func (n *SpotNode) SetTLSClient(caCertPath string, hostname string, trustSystem 
 
 func (n *SpotNode) Spot() (*Spot, error) {
 	if n == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.closed || n.closing || n.handle == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	handle := C.zlink_spot_new(n.handle)
 	if handle == nil {
@@ -338,12 +338,12 @@ func (n *SpotNode) Spot() (*Spot, error) {
 
 func (n *SpotNode) EntrySpot() (*Spot, error) {
 	if n == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.closed || n.closing || n.handle == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	var handle unsafe.Pointer
 	if err := configErrorFromResult(C.zlink_spot_node_entry_spot(n.handle, &handle)); err != nil {
@@ -356,13 +356,13 @@ func (n *SpotNode) EntrySpot() (*Spot, error) {
 
 func (n *SpotNode) SpotLookup(spotRID RoutingID) (*Spot, error) {
 	if n == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	rid := spotRID.toC()
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.closed || n.closing || n.handle == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	var handle unsafe.Pointer
 	if err := configErrorFromResult(C.zlink_spot_node_spot_lookup(
@@ -379,13 +379,13 @@ func (n *SpotNode) SpotLookup(spotRID RoutingID) (*Spot, error) {
 
 func (n *SpotNode) GetOrCreateSpot(spotRID RoutingID) (*Spot, bool, error) {
 	if n == nil {
-		return nil, false, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, false, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	rid := spotRID.toC()
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.closed || n.closing || n.handle == nil {
-		return nil, false, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, false, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	var handle unsafe.Pointer
 	var created C.uint32_t
@@ -479,12 +479,12 @@ func (n *SpotNode) withChannelEndpointCStrings(channelName string, endpoint stri
 
 func (n *SpotNode) handleOrError() (unsafe.Pointer, error) {
 	if n == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.closed || n.closing || n.handle == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return n.handle, nil
 }

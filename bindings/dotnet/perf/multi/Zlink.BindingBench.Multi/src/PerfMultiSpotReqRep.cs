@@ -584,8 +584,8 @@ internal static class PerfMultiSpotReqRep
                         .Flags(SendFlags.DontWait).Submit())
                     return true;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
             }
 
@@ -606,8 +606,8 @@ internal static class PerfMultiSpotReqRep
                 if (node.Status().ConnectedPeerCount >= expectedCount)
                     return true;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
             }
             Thread.Sleep(1);
@@ -663,12 +663,12 @@ internal static class PerfMultiSpotReqRep
                         "spot_reqrep_server: reply ok");
                 }
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno)
-                                            || IsTransientSubmitErrno(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno)
+                                            || IsTransientSubmitErrno(ex.NativeErrno))
             {
                 DebugLogLimited(ref s_debugServerReplyLogs,
-                    $"spot_reqrep_server: transient errno={ex.InternalErrno}");
+                    $"spot_reqrep_server: transient errno={ex.NativeErrno}");
                 return;
             }
         }
@@ -696,12 +696,12 @@ internal static class PerfMultiSpotReqRep
                         .Submit();
                 }
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno)
-                                            || IsTransientSubmitErrno(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno)
+                                            || IsTransientSubmitErrno(ex.NativeErrno))
             {
                 DebugLogLimited(ref s_debugServerReplyLogs,
-                    $"spot_reqrep_server: transient errno={ex.InternalErrno}");
+                    $"spot_reqrep_server: transient errno={ex.NativeErrno}");
                 return;
             }
         }
@@ -987,8 +987,8 @@ internal static class PerfMultiSpotReqRep
                 if (progressed)
                     return true;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
             }
         }
@@ -1070,8 +1070,8 @@ internal static class PerfMultiSpotReqRep
                     RecordReply(slot, header, size);
                 }
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
                 return;
             }
@@ -1139,8 +1139,8 @@ internal static class PerfMultiSpotReqRep
             {
                 poller.Wait(events, TimeSpan.FromMilliseconds(50));
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
             }
         }
@@ -1206,7 +1206,7 @@ internal static class PerfMultiSpotReqRep
             configure();
         }
         catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(
-                                            ex.InternalErrno))
+                                            ex.NativeErrno))
         {
         }
     }

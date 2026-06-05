@@ -174,10 +174,10 @@ internal static class PerfMultiDealerDealerClient
                     return true;
             }
             catch (ZlinkException ex)
-                when (IsWouldBlock(ex.InternalErrno)
-                      || IsInterrupted(ex.InternalErrno)
-                      || PerfShared.IsTransientBackpressure(ex.InternalErrno)
-                      || PerfShared.IsTransientNetworkError(ex.InternalErrno))
+                when (IsWouldBlock(ex.NativeErrno)
+                      || IsInterrupted(ex.NativeErrno)
+                      || PerfShared.IsTransientBackpressure(ex.NativeErrno)
+                      || PerfShared.IsTransientNetworkError(ex.NativeErrno))
             {
                 continue;
             }

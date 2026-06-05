@@ -125,13 +125,13 @@ fn message_get_property_validates_input() {
     assert!(empty.is_err());
     let empty_err = empty.unwrap_err();
     assert_eq!(empty_err.code(), ConfigResult::InvalidArgument);
-    assert_eq!(empty_err.internal_errno(), libc::EINVAL);
+    assert_eq!(empty_err.native_errno(), libc::EINVAL);
 
     let nul = msg.get_property("bad\0name");
     assert!(nul.is_err());
     let nul_err = nul.unwrap_err();
     assert_eq!(nul_err.code(), ConfigResult::InvalidArgument);
-    assert_eq!(nul_err.internal_errno(), libc::EINVAL);
+    assert_eq!(nul_err.native_errno(), libc::EINVAL);
 }
 
 #[test]

@@ -113,8 +113,8 @@ internal static class PerfPair
                             continue;
                     }
                     catch (ZlinkException ex)
-                        when (IsInterrupted(ex.InternalErrno)
-                              || IsWouldBlock(ex.InternalErrno))
+                        when (IsInterrupted(ex.NativeErrno)
+                              || IsWouldBlock(ex.NativeErrno))
                     {
                         // RCVTIMEO expiry on an idle socket: C's blocking
                         // recv returns EAGAIN and re-loops; mirror that.
@@ -171,7 +171,7 @@ internal static class PerfPair
                     continue;
             }
             catch (ZlinkException ex)
-                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+                when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
             {
                 continue;
             }

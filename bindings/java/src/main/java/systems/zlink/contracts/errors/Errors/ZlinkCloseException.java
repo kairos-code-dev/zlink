@@ -11,8 +11,8 @@ public final class ZlinkCloseException extends ZlinkException {
         this(result, 0);
     }
 
-    public ZlinkCloseException(CloseResult result, int internalErrno) {
-        super(result.value(), internalErrno);
+    public ZlinkCloseException(CloseResult result, int nativeErrno) {
+        super(result.value(), nativeErrno);
         this.result = result;
     }
 

@@ -11,12 +11,12 @@ public final class ZlinkConfigException extends ZlinkException {
         this(result, 0);
     }
 
-    public ZlinkConfigException(ConfigResult result, int internalErrno) {
-        this(result, internalErrno, result.name());
+    public ZlinkConfigException(ConfigResult result, int nativeErrno) {
+        this(result, nativeErrno, result.name());
     }
 
-    ZlinkConfigException(ConfigResult result, int internalErrno, String message) {
-        super(message, result.value(), internalErrno);
+    ZlinkConfigException(ConfigResult result, int nativeErrno, String message) {
+        super(message, result.value(), nativeErrno);
         this.result = result;
     }
 

@@ -11,37 +11,37 @@ import java.util.Locale;
 /** Base class for all exceptions thrown by the zlink bindings. */
 public abstract class ZlinkException extends RuntimeException {
     private final int code;
-    private final int internalErrno;
+    private final int nativeErrno;
 
     protected ZlinkException(int code) {
         this(code, 0);
     }
 
-    protected ZlinkException(int code, int internalErrno) {
-        this(null, code, internalErrno);
+    protected ZlinkException(int code, int nativeErrno) {
+        this(null, code, nativeErrno);
     }
 
-    protected ZlinkException(String message, int code, int internalErrno) {
+    protected ZlinkException(String message, int code, int nativeErrno) {
         super(message);
         this.code = code;
-        this.internalErrno = internalErrno;
+        this.nativeErrno = nativeErrno;
     }
 
     public int getCode() {
         return code;
     }
 
-    public int getInternalErrno() {
-        return internalErrno;
+    public int getNativeErrno() {
+        return nativeErrno;
     }
 
     int errno() {
-        return internalErrno;
+        return nativeErrno;
     }
 
     ErrorCode errorCode() {
         for (ErrorCode code : ErrorCode.values()) {
-            if (code.getValue() == internalErrno) {
+            if (code.getValue() == nativeErrno) {
                 return code;
             }
         }

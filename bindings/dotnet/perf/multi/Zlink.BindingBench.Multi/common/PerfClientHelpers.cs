@@ -142,8 +142,8 @@ internal static partial class PerfRunner
                 if (IsMonitorReady(evt.Event))
                     readyCount++;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
                 return readyCount;
             }
@@ -169,8 +169,8 @@ internal static partial class PerfRunner
                         SendFlags.None);
                 }
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
             }
             catch (ObjectDisposedException)

@@ -327,7 +327,7 @@ def safe_poll(poller, events, timeout_ms):
     try:
         return poller.wait(events, timeout_ms)
     except zlink_mod.ZlinkError as exc:
-        if exc.internal_errno == 11:
+        if exc.native_errno == 11:
             return 0
         raise
 

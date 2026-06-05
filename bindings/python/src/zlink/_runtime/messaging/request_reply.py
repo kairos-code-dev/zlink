@@ -25,7 +25,7 @@ from ..handles.native_support import (
     _copy_routing_id,
     _report_unhandled_callback_exception,
     _request_result_from_code,
-    _request_result_internal_errno,
+    _request_result_native_errno,
     _raise_result_error,
     _routing_id_bytes,
 )

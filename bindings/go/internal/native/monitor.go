@@ -144,7 +144,7 @@ func resolveMonitorEvents(events []MonitorEventMask) MonitorEventMask {
 
 func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor, error) {
 	if socket == nil {
-		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return nil, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	options := C.zlink_socket_monitor_open_options_t{
 		events: C.zlink_socket_monitor_event_mask_t(resolveMonitorEvents(events)),
@@ -178,7 +178,7 @@ func (m *SocketMonitor) Status() (*MonitorStatus, error) {
 
 func (m *SocketMonitor) OnEvent(handler func(*MonitorEvent)) error {
 	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	state := newMonitorCallbackState(handler)
 	handle := cgo.NewHandle(state)

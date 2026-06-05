@@ -35,7 +35,7 @@ import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.sockets.SendFlag;
+import systems.zlink.internal.sockets.SendFlag;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.sockets.SocketType;
@@ -989,19 +989,19 @@ public class SocketContractTest {
 
             ZlinkException connectError = assertThrows(ZlinkException.class,
                 () -> dealer.connect("tcp://127.0.0.1:39001"));
-            assertEquals(ERRNO_EFSM, connectError.getInternalErrno());
+            assertEquals(ERRNO_EFSM, connectError.getNativeErrno());
 
             ZlinkException disconnectError = assertThrows(ZlinkException.class,
                 () -> dealer.disconnect("tcp://127.0.0.1:39001"));
-            assertEquals(ERRNO_EFSM, disconnectError.getInternalErrno());
+            assertEquals(ERRNO_EFSM, disconnectError.getNativeErrno());
 
             ZlinkException unbindError = assertThrows(ZlinkException.class,
                 () -> dealer.unbind("tcp://127.0.0.1:39001"));
-            assertEquals(ERRNO_EFSM, unbindError.getInternalErrno());
+            assertEquals(ERRNO_EFSM, unbindError.getNativeErrno());
 
             ZlinkException closeError = assertThrows(ZlinkException.class,
                 dealer::close);
-            assertEquals(ERRNO_EFSM, closeError.getInternalErrno());
+            assertEquals(ERRNO_EFSM, closeError.getNativeErrno());
         }
     }
 

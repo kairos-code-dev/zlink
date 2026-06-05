@@ -62,8 +62,8 @@ internal static class PerfMultiPubSubServer
             return server.Publish(Topic).Message(message)
                 .Flags(SendFlags.DontWait).Submit();
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                        || IsInterrupted(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                        || IsInterrupted(ex.NativeErrno))
         {
             return false;
         }
@@ -90,7 +90,7 @@ internal static class PerfMultiPubSubServer
                 }
             }
             catch (ZlinkException ex) when (IsTransientStopPublishErrno(
-                                                ex.InternalErrno))
+                                                ex.NativeErrno))
             {
             }
         }

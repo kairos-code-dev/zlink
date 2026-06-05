@@ -213,8 +213,8 @@ internal static class PerfMultiPubSubClient
         {
             return poller.Wait(events, Timeout.InfiniteTimeSpan);
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                        || IsInterrupted(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                        || IsInterrupted(ex.NativeErrno))
         {
             return 0;
         }
@@ -240,8 +240,8 @@ internal static class PerfMultiPubSubClient
         {
             return socket.Subscribe(result, RecvFlags.DontWait);
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                        || IsInterrupted(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                        || IsInterrupted(ex.NativeErrno))
         {
             return false;
         }

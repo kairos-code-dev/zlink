@@ -60,7 +60,7 @@ func (s *directSocket) submitBuilder(flags SendFlags, parts []sendBuilderPart) (
 
 func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	if out == nil {
-		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
 	var sourceRID *C.zlink_routing_id_t
 	clonedParts, err := recvMultipart(flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
@@ -93,7 +93,7 @@ func (s *directSocket) RecvPart(out *Message, flags RecvFlags) (RecvPartResult, 
 
 func (s *directSocket) onReceive(handler func(*Received)) error {
 	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	state := newRecvCallbackState(recvCallback(handler), nil)
 	handle := cgo.NewHandle(state)

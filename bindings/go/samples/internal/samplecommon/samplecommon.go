@@ -167,5 +167,5 @@ func isTemporaryEmpty(err error) bool {
 	if !errors.As(err, &zerr) {
 		return false
 	}
-	return zerr.InternalErrno() == int(syscall.EAGAIN)
+	return zerr.NativeErrno() == int(syscall.EAGAIN)
 }

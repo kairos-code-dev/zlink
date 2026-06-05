@@ -112,20 +112,20 @@ func (r *Received) IsSinglePart() bool {
 
 func (r *Received) FirstPart() (*Message, error) {
 	if r == nil {
-		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if len(r.parts) == 0 {
-		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.EINVAL)}
+		return nil, &RecvError{Result: RecvNotSupported, nativeErrno: int(C.EINVAL)}
 	}
 	return r.parts[0], nil
 }
 
 func (r *Received) SinglePartOrError() (*Message, error) {
 	if r == nil {
-		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if len(r.parts) != 1 {
-		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.EINVAL)}
+		return nil, &RecvError{Result: RecvNotSupported, nativeErrno: int(C.EINVAL)}
 	}
 	return r.parts[0], nil
 }
@@ -136,10 +136,10 @@ func (r *Received) SinglePartOrError() (*Message, error) {
 func (r *Received) Reply() ReplyOp {
 	return newReplyBuilder(nil, func(parts []*Message, flags SendFlags) error {
 		if r == nil {
-			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &SubmitError{Result: SubmitInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		if !r.hasRequestSeq || r.reply == nil {
-			return &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
+			return &SubmitError{Result: SubmitInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		if err := validateReplyFlags(flags); err != nil {
 			return err
@@ -153,10 +153,10 @@ func (r *Received) Reply() ReplyOp {
 func (r *Received) Send() SendOp {
 	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		if r == nil {
-			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &SubmitError{Result: SubmitInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		if r.send == nil {
-			return &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
+			return &SubmitError{Result: SubmitInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		if r.sendBuilder != nil && sendBuilderPartsNeedBuilder(parts) {
 			sent, err := r.sendBuilder(flags, parts)
@@ -185,7 +185,7 @@ func validateReplyFlags(flags SendFlags) error {
 	if flags == SendFlagsNone {
 		return nil
 	}
-	return &SubmitError{Result: SubmitNotSupported, internalErrno: int(C.ENOTSUP)}
+	return &SubmitError{Result: SubmitNotSupported, nativeErrno: int(C.ENOTSUP)}
 }
 
 func (r *Received) Close() error {

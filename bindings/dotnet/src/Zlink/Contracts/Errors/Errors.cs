@@ -21,11 +21,11 @@ public abstract partial class ZlinkException : Exception
     /// Creates an exception with the given zlink code and the native errno that
     /// produced it.
     /// </summary>
-    protected ZlinkException(int code, int internalErrno)
-        : base(BuildMessage(code, internalErrno))
+    protected ZlinkException(int code, int nativeErrno)
+        : base(BuildMessage(code, nativeErrno))
     {
         Code = code;
-        InternalErrno = internalErrno;
+        NativeErrno = nativeErrno;
     }
 
     /// <summary>
@@ -36,7 +36,7 @@ public abstract partial class ZlinkException : Exception
     /// <summary>
     /// Gets the native errno that produced this failure, or 0 when none.
     /// </summary>
-    public int InternalErrno { get; }
+    public int NativeErrno { get; }
 
     /// <summary>
     /// Gets the formatted error message.

@@ -64,7 +64,7 @@ internal sealed partial class SocketKernel : IDisposable
             return SubscribeInto(result, flags);
         }
         catch (ZlinkException ex) when ((flags & DontWaitFlag) != 0
-            && ZlinkException.MapErrorCode(ex.InternalErrno) is ErrorCode.EAgain
+            && ZlinkException.MapErrorCode(ex.NativeErrno) is ErrorCode.EAgain
                 or ErrorCode.EBusy)
         {
             return false;

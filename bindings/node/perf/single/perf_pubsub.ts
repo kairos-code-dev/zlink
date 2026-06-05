@@ -50,7 +50,7 @@ function trySubscribe(socket, received, buffer, flags) {
     return { size: data.length };
   } catch (error) {
     if (error instanceof zlink.RecvError &&
-        (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
+        (error.result === zlink.RecvResult.NoData || error.nativeErrno === 2)) {
       return null;
     }
     throw error;

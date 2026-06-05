@@ -43,10 +43,10 @@ func (s *requestPartsBuilderState) doSubmitAsync() (<-chan RequestReplyCompletio
 
 func (s *requestPartsBuilderState) doSubmitCallback(callback requestPartsCallback) (bool, error) {
 	if s.submitted {
-		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
+		return false, &ConfigError{Result: ConfigInvalidState, nativeErrno: int(C.EINVAL)}
 	}
 	if callback == nil {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	s.submitted = true
 	if err := s.submit(s.timeout, callback); err != nil {

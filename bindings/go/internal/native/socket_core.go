@@ -27,7 +27,7 @@ type socketCore struct {
 
 func newSocketCore(ctx *Context, socketType C.zlink_socket_type_t) (*socketCore, error) {
 	if ctx == nil || ctx.closed {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	handle := C.zlink_socket(ctx.raw(), socketType)
 	if handle == nil {
@@ -165,7 +165,7 @@ func (s *socketCore) getStringOption(option C.zlink_option_t, capHint int) (stri
 
 func (s *socketCore) setOption(option C.zlink_option_t, ptr unsafe.Pointer, size C.size_t) error {
 	if s == nil {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return setNativeOption(s.handle, s.closed, "socket is closed", option, ptr, size)
 }
@@ -181,7 +181,7 @@ func (s *socketCore) getDurationOption(option C.zlink_option_t) (time.Duration, 
 
 func (s *socketCore) withCString(value string, fn func(*C.char) error) error {
 	if s == nil || s.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if err := validateEndpointString(value); err != nil {
 		return err

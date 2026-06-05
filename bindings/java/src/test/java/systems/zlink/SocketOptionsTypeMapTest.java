@@ -1,7 +1,11 @@
-package systems.zlink.contracts.sockets;
+package systems.zlink.internal.sockets;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
+import systems.zlink.contracts.sockets.CommonSocketOptions;
+import systems.zlink.contracts.sockets.PairSocket;
+import systems.zlink.contracts.sockets.PubSocketOptions;
+import systems.zlink.contracts.sockets.XPubSocket;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;

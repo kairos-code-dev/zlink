@@ -186,13 +186,13 @@ internal static class PerfDealerRouter
                             continue;
                     }
                     catch (ZlinkException ex)
-                        when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+                        when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
                     {
                         continue;
                     }
                 }
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno))
             {
                 sendError = ex;
             }
@@ -261,8 +261,8 @@ internal static class PerfDealerRouter
         {
             return false;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                        || IsWouldBlock(ex.NativeErrno))
         {
             return false;
         }
@@ -274,13 +274,13 @@ internal static class PerfDealerRouter
         {
             return receiver.Recv(result);
         }
-        catch (ZlinkRecvException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
+        catch (ZlinkRecvException ex) when (IsInterrupted(ex.NativeErrno)
+                                            || IsWouldBlock(ex.NativeErrno))
         {
             return false;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                        || IsWouldBlock(ex.NativeErrno))
         {
             return false;
         }

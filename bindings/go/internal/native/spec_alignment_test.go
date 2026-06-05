@@ -280,8 +280,8 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 		reflect.TypeOf(ConfigError{}),
 	}
 	for _, typ := range errorTypes {
-		if _, ok := typ.FieldByName("InternalErrno"); !ok {
-			t.Fatalf("%s should expose InternalErrno field", typ.Name())
+		if _, ok := typ.FieldByName("NativeErrno"); !ok {
+			t.Fatalf("%s should expose NativeErrno field", typ.Name())
 		}
 	}
 }

@@ -202,12 +202,12 @@ internal static class RequestReplySupport
 
     internal static SendResult MapSendNoWaitResult(ZlinkException error)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(error.InternalErrno);
+        ErrorCode code = ZlinkException.MapErrorCode(error.NativeErrno);
         return code switch
         {
             ErrorCode.EAgain => SendResult.Backpressured,
-            _ when error.InternalErrno == ErrnoEAgainWin ||
-                error.InternalErrno == ErrnoEWouldBlockWin =>
+            _ when error.NativeErrno == ErrnoEAgainWin ||
+                error.NativeErrno == ErrnoEWouldBlockWin =>
                 SendResult.Backpressured,
             _ => throw error
         };

@@ -149,11 +149,11 @@ public abstract partial class ZlinkException
     internal static ZlinkConfigException CreateConfigException(int errno)
         => new(MapConfigResult(errno), errno);
 
-    private static string BuildMessage(int code, int internalErrno)
+    private static string BuildMessage(int code, int nativeErrno)
     {
-        return internalErrno == 0
+        return nativeErrno == 0
             ? $"zlink error code {code}"
-            : string.Create(CultureInfo.InvariantCulture, $"zlink error code {code} (errno {internalErrno})");
+            : string.Create(CultureInfo.InvariantCulture, $"zlink error code {code} (errno {nativeErrno})");
     }
 
     private static SubmitResult MapSubmitResult(int errno)

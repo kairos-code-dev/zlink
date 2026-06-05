@@ -33,7 +33,7 @@ import "runtime/cgo"
 
 func (s *connectionSocket) setSendReady(handler func()) error {
 	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	state := newSendReadyCallbackState(sendReadyCallback(handler))
 	handle := cgo.NewHandle(state)

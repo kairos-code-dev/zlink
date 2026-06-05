@@ -41,10 +41,10 @@ type SpotDispatchInfo struct {
 
 func (i *SpotDispatchInfo) RecvActorPart(flags RecvFlags) (*ActorPart, error) {
 	if i.Event != SpotDispatchEventActorReadable || i.SubjectKind != SpotDispatchSubjectActor {
-		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.ENOTSUP)}
+		return nil, &RecvError{Result: RecvNotSupported, nativeErrno: int(C.ENOTSUP)}
 	}
 	if i.Actor == nil {
-		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return recvActorPart(i.nodeHandle, *i.Actor, flags)
 }

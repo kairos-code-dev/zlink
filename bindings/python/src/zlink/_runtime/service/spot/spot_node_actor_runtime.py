@@ -14,7 +14,7 @@ from ...handles.native_support import (
     _copy_routing_id,
     _raise_result_error,
     _request_result_from_code,
-    _request_result_internal_errno,
+    _request_result_native_errno,
     _routing_id_bytes,
 )
 from .actor_ops import ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorLeaveOp, ActorLookupOp
@@ -138,7 +138,7 @@ class SpotNodeActorMixin:
                 join_epoch=0,
                 flags=0,
             )
-            pending.resolve(join_result, [], _request_result_internal_errno(RequestResult.INTERNAL_ERROR))
+            pending.resolve(join_result, [], _request_result_native_errno(RequestResult.INTERNAL_ERROR))
             return
         native = result_ptr.contents
         result = _request_result_from_code(int(native.result))
@@ -153,7 +153,7 @@ class SpotNodeActorMixin:
         messages = []
         if result == RequestResult.OK:
             messages = _make_message_list(parts, part_count)
-        pending.resolve(join_result, messages, _request_result_internal_errno(result))
+        pending.resolve(join_result, messages, _request_result_native_errno(result))
 
     def _on_actor_join_entry_spot_reply(self, result_ptr, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
@@ -168,7 +168,7 @@ class SpotNodeActorMixin:
                 join_epoch=0,
                 flags=0,
             )
-            pending.resolve(join_result, _request_result_internal_errno(RequestResult.INTERNAL_ERROR))
+            pending.resolve(join_result, _request_result_native_errno(RequestResult.INTERNAL_ERROR))
             return
         native = result_ptr.contents
         result = _request_result_from_code(int(native.result))
@@ -179,7 +179,7 @@ class SpotNodeActorMixin:
             join_epoch=int(native.join_epoch),
             flags=int(native.flags),
         )
-        pending.resolve(join_result, _request_result_internal_errno(result))
+        pending.resolve(join_result, _request_result_native_errno(result))
 
     def _on_actor_lookup_reply(self, result_ptr, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
@@ -192,7 +192,7 @@ class SpotNodeActorMixin:
                 actor=ActorRef(node_rid=RoutingId(b""), actor_id="", generation=0),
                 flags=0,
             )
-            pending.resolve(lookup_result, _request_result_internal_errno(RequestResult.INTERNAL_ERROR))
+            pending.resolve(lookup_result, _request_result_native_errno(RequestResult.INTERNAL_ERROR))
             return
         native = result_ptr.contents
         result = _request_result_from_code(int(native.result))
@@ -201,7 +201,7 @@ class SpotNodeActorMixin:
             actor=_actor_ref_from_native(native.actor),
             flags=int(native.flags),
         )
-        pending.resolve(lookup_result, _request_result_internal_errno(result))
+        pending.resolve(lookup_result, _request_result_native_errno(result))
 
     def _on_actor_reply(self, result_code, parts, part_count, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
@@ -212,7 +212,7 @@ class SpotNodeActorMixin:
         received = []
         if result == RequestResult.OK:
             received = _make_message_list(parts, part_count)
-        pending.resolve(result, received, _request_result_internal_errno(result))
+        pending.resolve(result, received, _request_result_native_errno(result))
 
     def _submit_actor_join(self, actor_ref, dest_node_rid, dest_spot_rid, parts, pending, flags=0, timeout=0):
         native_actor = _actor_ref_to_native(actor_ref)

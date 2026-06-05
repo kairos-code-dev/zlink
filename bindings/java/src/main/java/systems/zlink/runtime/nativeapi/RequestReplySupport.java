@@ -117,14 +117,14 @@ public final class RequestReplySupport {
         if (cause instanceof ZlinkRecvException recvException) {
             if (recvException.getResult() == RecvResult.TERMINATED) {
                 return new ZlinkRequestException(RequestResult.TERMINATED,
-                    recvException.getInternalErrno());
+                    recvException.getNativeErrno());
             }
             return new ZlinkRequestException(RequestResult.PROTOCOL_ERROR,
-                recvException.getInternalErrno());
+                recvException.getNativeErrno());
         }
         if (cause instanceof ZlinkException zlinkException) {
             return new ZlinkRequestException(RequestResult.PROTOCOL_ERROR,
-                zlinkException.getInternalErrno());
+                zlinkException.getNativeErrno());
         }
         return new ZlinkRequestException(RequestResult.PROTOCOL_ERROR);
     }

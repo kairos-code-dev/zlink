@@ -80,7 +80,7 @@ func newPubSocket(ctx *Context, socketType C.zlink_socket_type_t) (*PubSocket, e
 
 func (s *PubSocket) AttachDiscovery(discovery *Discovery) error {
 	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
 }
@@ -111,7 +111,7 @@ func newSubSocket(ctx *Context, socketType C.zlink_socket_type_t) (*SubSocket, e
 
 func (s *SubSocket) AttachDiscovery(discovery *Discovery) error {
 	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
 }
@@ -188,7 +188,7 @@ func (s *DealerSocket) SetRequestTimeout(value time.Duration) error {
 
 func (s *DealerSocket) AttachDiscovery(discovery *Discovery) error {
 	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
 }
@@ -204,7 +204,7 @@ func (s *DealerSocket) Send() SendOp {
 func (s *DealerSocket) Request() RequestOp {
 	return newRequestBuilder(nil, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
-			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		messages, cleanup, err := requestBuilderMessagesForClone(parts)
 		if err != nil {
@@ -306,7 +306,7 @@ func (s *RouterSocket) RoutingID() (RoutingID, error) {
 
 func (s *RouterSocket) AttachDiscovery(discovery *Discovery) error {
 	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
 }
@@ -477,10 +477,10 @@ func (s *StreamSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 
 func (s *StreamSocket) OnPacket(handler func(RoutingID, *Message, *Message)) error {
 	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	if s == nil || s.core == nil || s.core.closed {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EFAULT)}
+		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EFAULT)}
 	}
 	state := newStreamPacketCallbackState(handler)
 	handle := cgo.NewHandle(state)

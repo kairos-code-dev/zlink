@@ -341,6 +341,6 @@ final class PerfMultiDealerDealer {
         if (ex instanceof ZlinkSubmitException submit) {
             return submit.getResult() == SubmitResult.BACKPRESSURED;
         }
-        return ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4;
+        return ex.getNativeErrno() == 11 || ex.getNativeErrno() == 4;
     }
 }

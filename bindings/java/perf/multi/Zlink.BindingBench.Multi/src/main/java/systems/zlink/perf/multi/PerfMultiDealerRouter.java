@@ -304,7 +304,7 @@ final class PerfMultiDealerRouter {
                     return true;
                 }
             } catch (systems.zlink.contracts.errors.ZlinkException ex) {
-                if (ex.getInternalErrno() != 11 && ex.getInternalErrno() != 4) {
+                if (ex.getNativeErrno() != 11 && ex.getNativeErrno() != 4) {
                     throw ex;
                 }
             }

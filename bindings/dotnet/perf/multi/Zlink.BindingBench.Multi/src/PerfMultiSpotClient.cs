@@ -195,8 +195,8 @@ internal static class PerfMultiSpotClient
                         .Flags(SendFlags.DontWait).Submit())
                     return true;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
             }
 
@@ -349,10 +349,10 @@ internal static class PerfMultiSpotClient
         {
             node.DisconnectPeer(peerEndpoint);
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno)
+        catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                        || IsWouldBlock(ex.NativeErrno)
                                         || PerfShared.IsTransientNetworkError(
-                                            ex.InternalErrno))
+                                            ex.NativeErrno))
         {
         }
     }
@@ -647,8 +647,8 @@ internal static class PerfMultiSpotClient
                         continue;
                     }
                 }
-                catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                                || IsInterrupted(ex.InternalErrno))
+                catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                                || IsInterrupted(ex.NativeErrno))
                 {
                     return progressed;
                 }
@@ -768,7 +768,7 @@ internal static class PerfMultiSpotClient
             configure();
         }
         catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(
-                                            ex.InternalErrno))
+                                            ex.NativeErrno))
         {
         }
     }
@@ -862,10 +862,10 @@ internal static class PerfMultiSpotClient
             {
                 Subscriber.UnsetSubscription(Topic);
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno)
+            catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                            || IsWouldBlock(ex.NativeErrno)
                                             || PerfShared.IsTransientNetworkError(
-                                                ex.InternalErrno))
+                                                ex.NativeErrno))
             {
             }
             Subscriber.Dispose();

@@ -76,31 +76,31 @@ func (s *spotCore) Close() error {
 
 func (s *spotCore) setOption(option C.zlink_option_t, ptr unsafe.Pointer, size C.size_t) error {
 	if s == nil {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return setNativeOption(s.handle, s.closed, "spot is closed", option, ptr, size)
 }
 
 func (s *spotCore) setIntOption(option C.zlink_option_t, value int32) error {
 	if s == nil {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return setNativeIntOption(s.handle, s.closed, "spot is closed", option, value)
 }
 
 func (s *spotCore) setDurationOption(option C.zlink_option_t, value time.Duration) error {
 	if s == nil {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return setNativeDurationOption(s.handle, s.closed, "spot is closed", option, value)
 }
 
 func (s *spotCore) withCString(value string, fn func(*C.char) error) error {
 	if s == nil || s.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if strings.IndexByte(value, 0) >= 0 {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	cstr := C.CString(value)
 	defer C.free(unsafe.Pointer(cstr))

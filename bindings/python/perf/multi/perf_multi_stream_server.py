@@ -65,7 +65,7 @@ def main(argv=None):
                     try:
                         sent = send_nonblocking(server, frame, routing_id=routing_id)
                     except zlink.SubmitError as exc:
-                        if exc.internal_errno not in {
+                        if exc.native_errno not in {
                             errno.EHOSTUNREACH,
                             errno.ENOTCONN,
                         }:

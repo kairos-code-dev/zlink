@@ -64,7 +64,7 @@ class CallbackSendTests(unittest.TestCase):
 
         self.assertEqual(len(callback_error), 1, f"callback raised: {callback_error}")
         self.assertIsInstance(callback_error[0], zlink.ZlinkError)
-        self.assertEqual(callback_error[0].internal_errno, errno.EDEADLK)
+        self.assertEqual(callback_error[0].native_errno, errno.EDEADLK)
 
         stream.close()
 
@@ -92,7 +92,7 @@ class CallbackSendTests(unittest.TestCase):
                 done.wait(0.05)
             self.assertEqual(len(callback_error), 1, f"callback raised: {callback_error}")
             self.assertIsInstance(callback_error[0], zlink.ZlinkError)
-            self.assertEqual(callback_error[0].internal_errno, errno.EDEADLK)
+            self.assertEqual(callback_error[0].native_errno, errno.EDEADLK)
         finally:
             spot.close()
             node.close()

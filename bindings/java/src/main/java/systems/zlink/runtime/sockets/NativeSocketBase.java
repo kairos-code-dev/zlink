@@ -2,6 +2,12 @@
 
 package systems.zlink.runtime.sockets;
 
+import systems.zlink.internal.sockets.ReceiveFlag;
+
+import systems.zlink.internal.sockets.SendFlag;
+
+import systems.zlink.internal.sockets.SocketOptionKey;
+
 import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.core.Context;

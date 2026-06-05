@@ -88,7 +88,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
             poller.wait(readyEventsBuffer,
                 timeoutMs == -1 ? WAIT_FOREVER : Duration.ofMillis(timeoutMs));
         } catch (ZlinkException ex) {
-            int errno = ex.getInternalErrno();
+            int errno = ex.getNativeErrno();
             if (PerfErrno.isRetryableSend(errno)) {
                 return 0;
             }

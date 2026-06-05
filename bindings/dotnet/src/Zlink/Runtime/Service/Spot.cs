@@ -125,7 +125,7 @@ internal sealed partial class Spot : ISpot
             return SubscribeInto(result, (int)flags);
         }
         catch (ZlinkException ex) when ((flags & RecvFlags.DontWait) != 0
-            && ZlinkException.MapErrorCode(ex.InternalErrno) is ErrorCode.EAgain
+            && ZlinkException.MapErrorCode(ex.NativeErrno) is ErrorCode.EAgain
                 or ErrorCode.EBusy)
         {
             return false;
@@ -155,7 +155,7 @@ internal sealed partial class Spot : ISpot
             return ReceiveRawSubscribedFrameCore(destination, flags,
                 out pendingFrames);
         }
-        catch (ZlinkException ex) when (ZlinkException.MapErrorCode(ex.InternalErrno)
+        catch (ZlinkException ex) when (ZlinkException.MapErrorCode(ex.NativeErrno)
             == ErrorCode.EAgain)
         {
             pendingFrames = Array.Empty<byte[]>();
@@ -308,7 +308,7 @@ internal sealed partial class Spot : ISpot
                 allowNoData: (flags & RecvFlags.DontWait) != 0);
         }
         catch (ZlinkException ex) when ((flags & RecvFlags.DontWait) != 0
-            && ZlinkException.MapErrorCode(ex.InternalErrno) is ErrorCode.EAgain
+            && ZlinkException.MapErrorCode(ex.NativeErrno) is ErrorCode.EAgain
                 or ErrorCode.EBusy)
         {
             return false;

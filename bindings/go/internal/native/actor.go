@@ -219,7 +219,7 @@ func (a *Actor) Ref() ActorRef {
 func (a *Actor) Join(spot *Spot) ActorJoinOp {
 	return newActorJoinOp(func(parts []*Message, flags SendFlags, timeout time.Duration, cb actorJoinCallback) error {
 		if a == nil || a.closed || a.node == nil || spot == nil || spot.core == nil || spot.core.closed {
-			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		nodeHandle, err := a.node.handleOrError()
 		if err != nil {
@@ -250,7 +250,7 @@ func (a *Actor) Join(spot *Spot) ActorJoinOp {
 func (a *Actor) Leave(spot *Spot) ActorLeaveOp {
 	return newActorLeaveOp(func(timeout time.Duration, cb requestPartsCallback) error {
 		if a == nil || a.closed || a.node == nil || spot == nil || spot.core == nil || spot.core.closed {
-			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		nodeHandle, err := a.node.handleOrError()
 		if err != nil {
@@ -273,7 +273,7 @@ func (a *Actor) Leave(spot *Spot) ActorLeaveOp {
 
 func (a *Actor) RecvPart(flags RecvFlags) (*ActorPart, error) {
 	if a == nil || a.closed || a.node == nil {
-		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	node, err := a.node.handleOrError()
 	if err != nil {
@@ -287,7 +287,7 @@ func (a *Actor) RecvPart(flags RecvFlags) (*ActorPart, error) {
 func (a *Actor) SendBoundSession() SendOp {
 	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		if a == nil || a.closed || a.node == nil {
-			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &SubmitError{Result: SubmitInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		nodeHandle, err := a.node.handleOrError()
 		if err != nil {
@@ -307,7 +307,7 @@ func (a *Actor) SendBoundSession() SendOp {
 // CloseBoundSession closes the bound session of this Actor.
 func (a *Actor) CloseBoundSession(timeout time.Duration) error {
 	if a == nil || a.closed || a.node == nil {
-		return &RequestError{Result: RequestTerminated, internalErrno: int(C.EFAULT)}
+		return &RequestError{Result: RequestTerminated, nativeErrno: int(C.EFAULT)}
 	}
 	node, err := a.node.handleOrError()
 	if err != nil {
@@ -353,7 +353,7 @@ func (a *Actor) Close() error {
 // RecvActorJoin receives the next pending actor-join request on this Spot.
 func (s *Spot) RecvActorJoin(flags RecvFlags) (*ActorJoinRequest, error) {
 	if s == nil || s.core == nil || s.core.closed {
-		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	var rawInfo C.zlink_actor_join_info_t
 	var parts *C.zlink_msg_t
@@ -384,7 +384,7 @@ func (s *Spot) RecvActorJoin(flags RecvFlags) (*ActorJoinRequest, error) {
 func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, joinResultCode int32) ActorJoinReplyOp {
 	return newActorJoinReplyOp(func(parts []*Message) error {
 		if s == nil || s.core == nil || s.core.closed || request == nil {
-			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &SubmitError{Result: SubmitInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		code := C.int32_t(joinResultCode)
 		if len(parts) == 0 {
@@ -413,7 +413,7 @@ func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, joinResultCode int32) A
 // Actors lists actors currently joined to this Spot.
 func (s *Spot) Actors() ([]ActorRef, error) {
 	if s == nil || s.core == nil || s.core.closed {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	var count C.size_t
 	if err := configErrorFromResult(C.zlink_spot_actors(s.raw(), nil, &count)); err != nil {
@@ -502,7 +502,7 @@ func (d *Discovery) ResolveActor(actorID string) (ActorRoute, error) {
 // used for ActorGateway session relay.
 func (s *StreamSocket) AttachActorGateway(node *SpotNode) error {
 	if s == nil || s.core == nil || s.core.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	nodeHandle, err := node.handleOrError()
 	if err != nil {
@@ -516,7 +516,7 @@ func (s *StreamSocket) AttachActorGateway(node *SpotNode) error {
 func (s *StreamSocket) BindActor(sessionRID RoutingID, actor ActorRef) ActorBindOp {
 	return newActorBindOp(func(timeout time.Duration, cb requestPartsCallback) error {
 		if s == nil || s.core == nil || s.core.closed {
-			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		session := sessionRID.toC()
 		rawActor, err := actor.toC()
@@ -534,7 +534,7 @@ func (s *StreamSocket) BindActor(sessionRID RoutingID, actor ActorRef) ActorBind
 func (s *StreamSocket) UnbindActor(sessionRID RoutingID, actorID string) ActorUnbindOp {
 	return newActorUnbindOp(func(timeout time.Duration, cb requestPartsCallback) error {
 		if s == nil || s.core == nil || s.core.closed {
-			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		session := sessionRID.toC()
 		return withActorIDCStringErr(actorID, func(actorIDC *C.char) error {
@@ -549,7 +549,7 @@ func (s *StreamSocket) UnbindActor(sessionRID RoutingID, actorID string) ActorUn
 func (s *StreamSocket) SendBoundActor(sessionRID RoutingID, actorID string) SendOp {
 	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		if s == nil || s.core == nil || s.core.closed {
-			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+			return &SubmitError{Result: SubmitInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
 		session := sessionRID.toC()
 		return withActorIDCStringErr(actorID, func(actorIDC *C.char) error {
@@ -564,7 +564,7 @@ func (s *StreamSocket) SendBoundActor(sessionRID RoutingID, actorID string) Send
 // on this stream socket.
 func (s *StreamSocket) BoundActors(sessionRID RoutingID) ([]ActorRef, error) {
 	if s == nil || s.core == nil || s.core.closed {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	session := sessionRID.toC()
 	var count C.size_t

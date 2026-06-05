@@ -24,7 +24,7 @@ import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.SocketMessageHandler;
-import systems.zlink.contracts.sockets.SocketOptionKey;
+import systems.zlink.internal.sockets.SocketOptionKey;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.runtime.core.NativeContext;

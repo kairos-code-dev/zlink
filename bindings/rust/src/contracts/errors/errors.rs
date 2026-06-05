@@ -13,15 +13,15 @@ macro_rules! define_error_type {
             /// The typed result code that classifies this failure.
             pub code: $result,
             /// The underlying native errno, or 0 when none.
-            pub internal_errno: i32,
+            pub native_errno: i32,
         }
 
         impl $name {
             /// Creates an error from a typed result `code` and native errno.
-            pub const fn new(code: $result, internal_errno: i32) -> Self {
+            pub const fn new(code: $result, native_errno: i32) -> Self {
                 Self {
                     code,
-                    internal_errno,
+                    native_errno,
                 }
             }
 
@@ -31,8 +31,8 @@ macro_rules! define_error_type {
             }
 
             /// Returns the underlying native errno, or 0 when none.
-            pub const fn internal_errno(&self) -> i32 {
-                self.internal_errno
+            pub const fn native_errno(&self) -> i32 {
+                self.native_errno
             }
         }
 
@@ -40,10 +40,10 @@ macro_rules! define_error_type {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(
                     f,
-                    "{}(code={:?}, internal_errno={})",
+                    "{}(code={:?}, native_errno={})",
                     stringify!($name),
                     self.code,
-                    self.internal_errno
+                    self.native_errno
                 )
             }
         }
@@ -144,16 +144,16 @@ impl ZlinkError {
     }
 
     /// Returns the underlying native errno, or 0 when none.
-    pub fn internal_errno(&self) -> i32 {
+    pub fn native_errno(&self) -> i32 {
         match self {
-            Self::Submit(err) => err.internal_errno,
-            Self::Request(err) => err.internal_errno,
-            Self::Recv(err) => err.internal_errno,
-            Self::Handler(err) => err.internal_errno,
-            Self::Close(err) => err.internal_errno,
-            Self::Bind(err) => err.internal_errno,
-            Self::Connect(err) => err.internal_errno,
-            Self::Config(err) => err.internal_errno,
+            Self::Submit(err) => err.native_errno,
+            Self::Request(err) => err.native_errno,
+            Self::Recv(err) => err.native_errno,
+            Self::Handler(err) => err.native_errno,
+            Self::Close(err) => err.native_errno,
+            Self::Bind(err) => err.native_errno,
+            Self::Connect(err) => err.native_errno,
+            Self::Config(err) => err.native_errno,
         }
     }
 }

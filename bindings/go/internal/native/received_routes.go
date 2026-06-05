@@ -67,7 +67,7 @@ func receivedSendFromSpot(socket *Spot, routingID RoutingID, spotRID RoutingID) 
 			return false, &SubmitError{Result: SubmitInvalidArgument}
 		}
 		if spotRID.Size() == 0 {
-			return false, &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
+			return false, &SubmitError{Result: SubmitInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		op := socket.SendToSpot(routingID, spotRID).Message(parts[0])
 		for _, part := range parts[1:] {
@@ -88,7 +88,7 @@ func receivedSendFromSpotBuilder(socket *Spot, routingID RoutingID, spotRID Rout
 			return false, &SubmitError{Result: SubmitInvalidArgument}
 		}
 		if spotRID.Size() == 0 {
-			return false, &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
+			return false, &SubmitError{Result: SubmitInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		return submitSendOpBuilderParts(socket.SendToSpot(routingID, spotRID), flags, parts)
 	}

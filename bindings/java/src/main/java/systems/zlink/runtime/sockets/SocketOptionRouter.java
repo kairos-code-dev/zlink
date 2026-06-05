@@ -2,7 +2,7 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.contracts.sockets.SocketOptions;
+import systems.zlink.internal.sockets.SocketOptions;
 import systems.zlink.contracts.sockets.SocketType;
 
 final class SocketOptionRouter {

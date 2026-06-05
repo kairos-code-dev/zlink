@@ -154,8 +154,8 @@ internal static class PerfRouterRouter
                     SendFlags.DontWait);
             }
             catch (ZlinkException ex)
-                when (PerfShared.IsTransientBackpressure(ex.InternalErrno)
-                      || IsTransientNetworkError(ex.InternalErrno))
+                when (PerfShared.IsTransientBackpressure(ex.NativeErrno)
+                      || IsTransientNetworkError(ex.NativeErrno))
             {
             }
 
@@ -187,8 +187,8 @@ internal static class PerfRouterRouter
                 return false;
         }
         catch (ZlinkException ex)
-            when (PerfShared.IsTransientBackpressure(ex.InternalErrno)
-                  || IsTransientNetworkError(ex.InternalErrno))
+            when (PerfShared.IsTransientBackpressure(ex.NativeErrno)
+                  || IsTransientNetworkError(ex.NativeErrno))
         {
             return false;
         }
@@ -286,14 +286,14 @@ internal static class PerfRouterRouter
                     }
                     catch (ZlinkException ex)
                         when (PerfShared.IsTransientBackpressure(
-                                  ex.InternalErrno)
-                              || IsTransientNetworkError(ex.InternalErrno))
+                                  ex.NativeErrno)
+                              || IsTransientNetworkError(ex.NativeErrno))
                     {
                         continue;
                     }
                 }
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno))
             {
                 sendError = ex;
             }
@@ -362,8 +362,8 @@ internal static class PerfRouterRouter
         {
             return false;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                        || IsWouldBlock(ex.NativeErrno))
         {
             return false;
         }
@@ -375,13 +375,13 @@ internal static class PerfRouterRouter
         {
             return receiver.Recv(result);
         }
-        catch (ZlinkRecvException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
+        catch (ZlinkRecvException ex) when (IsInterrupted(ex.NativeErrno)
+                                            || IsWouldBlock(ex.NativeErrno))
         {
             return false;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                        || IsWouldBlock(ex.NativeErrno))
         {
             return false;
         }

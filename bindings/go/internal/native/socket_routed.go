@@ -79,7 +79,7 @@ func (s *routedSocket) submitToSpotBuilder(destNodeRid, destSpotRid RoutingID, f
 
 func (s *routedSocket) requestToSpot(destNodeRid, destSpotRid RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) (bool, error) {
 	if callback == nil {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	state, err := s.startSpotRequest(destNodeRid, destSpotRid, flags, timeout, parts...)
 	ok, err := submitBackpressureResult(err)
@@ -200,10 +200,10 @@ func (s *routedSocket) recvInto(out *Received, flags RecvFlags) error {
 
 func (s *routedSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	if out == nil {
-		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
 	if s.recvHandle != 0 {
-		return false, &RecvError{Result: RecvBusy, internalErrno: int(C.EBUSY)}
+		return false, &RecvError{Result: RecvBusy, nativeErrno: int(C.EBUSY)}
 	}
 	if err := s.recvInto(out, flags); err != nil {
 		var recvErr *RecvError
@@ -276,7 +276,7 @@ func (s *RouterSocket) SendTo(target RoutingID) SendOp {
 func (s *RouterSocket) Request(peerRid RoutingID) RequestOp {
 	return newRequestBuilder(nil, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
-			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		messages, cleanup, err := requestBuilderMessagesForClone(parts)
 		if err != nil {
@@ -312,7 +312,7 @@ func (s *RouterSocket) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp {
 func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
 	return newRequestBuilder(nil, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
-			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		state, err := s.routedSocket.startSpotRequestBuilder(destNodeRid, destSpotRid, flags, timeout, parts)
 		if err != nil {

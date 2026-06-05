@@ -41,8 +41,8 @@ internal static partial class PerfRunner
                         return true;
                 }
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                            || IsWouldBlock(ex.NativeErrno))
             {
             }
 
@@ -145,7 +145,7 @@ internal static partial class PerfRunner
             return PerfSocketIo.Send(socket, buffer, SendFlags.DontWait) > 0;
         }
         catch (ZlinkException ex)
-            when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+            when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
         {
             return false;
         }
@@ -165,8 +165,8 @@ internal static partial class PerfRunner
                 SendFlags.DontWait) > 0;
         }
         catch (ZlinkException ex)
-            when (PerfShared.IsTransientBackpressure(ex.InternalErrno)
-                  || PerfShared.IsTransientNetworkError(ex.InternalErrno))
+            when (PerfShared.IsTransientBackpressure(ex.NativeErrno)
+                  || PerfShared.IsTransientNetworkError(ex.NativeErrno))
         {
             return false;
         }
@@ -186,7 +186,7 @@ internal static partial class PerfRunner
                 SendFlags.DontWait) > 0;
         }
         catch (ZlinkException ex)
-            when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+            when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
         {
             return false;
         }
@@ -205,8 +205,8 @@ internal static partial class PerfRunner
             int written = poller.Wait(events, TimeSpan.FromMilliseconds(timeoutMs));
             return written > 0;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                        || IsWouldBlock(ex.NativeErrno))
         {
             return false;
         }
@@ -225,8 +225,8 @@ internal static partial class PerfRunner
             int written = poller.Wait(events, Timeout.InfiniteTimeSpan);
             return written > 0;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                        || IsWouldBlock(ex.NativeErrno))
         {
             return false;
         }
@@ -247,8 +247,8 @@ internal static partial class PerfRunner
                     return;
             }
             catch (ZlinkException ex)
-                when (PerfShared.IsTransientBackpressure(ex.InternalErrno)
-                      || PerfShared.IsTransientNetworkError(ex.InternalErrno))
+                when (PerfShared.IsTransientBackpressure(ex.NativeErrno)
+                      || PerfShared.IsTransientNetworkError(ex.NativeErrno))
             {
             }
             catch (Exception ex)
@@ -277,7 +277,7 @@ internal static partial class PerfRunner
                     return true;
             }
             catch (ZlinkException ex)
-                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+                when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
             {
             }
             catch (Exception ex)
@@ -307,7 +307,7 @@ internal static partial class PerfRunner
                     return;
             }
             catch (ZlinkException ex)
-                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+                when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
             {
             }
             catch (Exception ex)
@@ -336,7 +336,7 @@ internal static partial class PerfRunner
                     return;
             }
             catch (ZlinkException ex)
-                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+                when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
             {
             }
             catch (Exception ex)

@@ -27,7 +27,7 @@ internal abstract class ConnectableRoutedMessageSocketBase : RoutedMessageSocket
         }
         catch (ZlinkException ex)
         {
-            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+            throw ZlinkException.CreateConnectException(ex.NativeErrno);
         }
     }
 
@@ -39,7 +39,7 @@ internal abstract class ConnectableRoutedMessageSocketBase : RoutedMessageSocket
         }
         catch (ZlinkException ex)
         {
-            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+            throw ZlinkException.CreateConnectException(ex.NativeErrno);
         }
     }
 
@@ -51,7 +51,7 @@ internal abstract class ConnectableRoutedMessageSocketBase : RoutedMessageSocket
         }
         catch (ZlinkException ex)
         {
-            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+            throw ZlinkException.CreateConnectException(ex.NativeErrno);
         }
     }
 }

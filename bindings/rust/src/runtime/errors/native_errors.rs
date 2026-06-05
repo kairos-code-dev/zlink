@@ -117,11 +117,11 @@ pub(crate) fn submit_not_supported_error() -> SubmitError {
 }
 
 pub(crate) fn request_error_from_submit(err: SubmitError) -> RequestError {
-    RequestError::new(RequestResult::ProtocolError, err.internal_errno())
+    RequestError::new(RequestResult::ProtocolError, err.native_errno())
 }
 
 pub(crate) fn request_error_from_result(code: RequestResult) -> RequestError {
-    let internal_errno = match code {
+    let native_errno = match code {
         RequestResult::Ok => 0,
         RequestResult::TimedOut => libc::ETIMEDOUT,
         RequestResult::NotFound => libc::ENOENT,
@@ -136,7 +136,7 @@ pub(crate) fn request_error_from_result(code: RequestResult) -> RequestError {
         RequestResult::InvalidState => libc::EINVAL,
         RequestResult::NotSupported => libc::ENOTSUP,
     };
-    RequestError::new(code, internal_errno)
+    RequestError::new(code, native_errno)
 }
 
 pub(crate) fn config_validation_error() -> ConfigError {

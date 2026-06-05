@@ -226,7 +226,7 @@ pub fn emit_unsupported(pattern: &str, transport: &str, reason: &str) {
 
 pub fn is_transport_unsupported_error(err: &ZlinkError) -> bool {
     matches!(
-        err.internal_errno(),
+        err.native_errno(),
         libc::EPERM | libc::EACCES | libc::ENOTSUP
     )
 }
@@ -240,7 +240,7 @@ where
         emit_unsupported(
             pattern,
             transport,
-            &format!("{stage}_errno_{}", err.internal_errno()),
+            &format!("{stage}_errno_{}", err.native_errno()),
         );
         return true;
     }

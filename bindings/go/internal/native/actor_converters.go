@@ -115,7 +115,7 @@ func spotActorLifecycleInfoFromC(info *C.zlink_spot_actor_lifecycle_info_t) Spot
 
 func recvActorPart(node unsafe.Pointer, actor ActorRef, flags RecvFlags) (*ActorPart, error) {
 	if node == nil {
-		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	rawActor, err := actor.toC()
 	if err != nil {
@@ -147,7 +147,7 @@ func recvActorPart(node unsafe.Pointer, actor ActorRef, flags RecvFlags) (*Actor
 func withActorIDCString[T any](actorID string, fn func(*C.char) (T, error)) (T, error) {
 	var zero T
 	if actorID == "" || len(actorID) >= actorIDMax || strings.IndexByte(actorID, 0) >= 0 {
-		return zero, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return zero, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	cstr := C.CString(actorID)
 	defer C.free(unsafe.Pointer(cstr))
@@ -174,7 +174,7 @@ func (r ActorRef) toC() (C.zlink_actor_ref_t, error) {
 	raw.node_rid = r.NodeRID.toC()
 	raw.generation = C.uint64_t(r.Generation)
 	if r.ActorID == "" || len(r.ActorID) >= actorIDMax || strings.IndexByte(r.ActorID, 0) >= 0 {
-		return raw, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return raw, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	cstr := C.CString(r.ActorID)
 	defer C.free(unsafe.Pointer(cstr))

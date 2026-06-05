@@ -51,7 +51,7 @@ func (r *dealerRequestSupport) Request(timeout time.Duration, parts ...*Message)
 
 func (r *dealerRequestSupport) requestCallback(callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) (bool, error) {
 	if callback == nil {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	state, err := startDealerRequest(r.socket, flags, timeout, parts...)
 	ok, err := submitBackpressureResult(err)
@@ -128,7 +128,7 @@ func (r *routerRequestSupport) Request(routingID RoutingID, timeout time.Duratio
 
 func (r *routerRequestSupport) requestCallback(routingID RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) (bool, error) {
 	if callback == nil {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	state, err := startRouterRequest(r.socket, routingID, flags, timeout, parts...)
 	ok, err := submitBackpressureResult(err)

@@ -31,9 +31,9 @@ public sealed class MonitorReadyPoller : IDisposable
         {
             return ZlinkPoll.Poll(_activeMonitors, timeoutMs);
         }
-        catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.InternalErrno)
-                                        || PerfShared.IsInterrupted(ex.InternalErrno)
-                                        || ex.InternalErrno == 0)
+        catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.NativeErrno)
+                                        || PerfShared.IsInterrupted(ex.NativeErrno)
+                                        || ex.NativeErrno == 0)
         {
             return 0;
         }
@@ -101,9 +101,9 @@ public sealed class SocketReadyPoller : IDisposable
             _readyCount = ready;
             return ready;
         }
-        catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.InternalErrno)
-                                        || PerfShared.IsInterrupted(ex.InternalErrno)
-                                        || ex.InternalErrno == 0)
+        catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.NativeErrno)
+                                        || PerfShared.IsInterrupted(ex.NativeErrno)
+                                        || ex.NativeErrno == 0)
         {
             return 0;
         }

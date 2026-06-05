@@ -37,7 +37,7 @@ internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
         }
         catch (ZlinkException ex)
         {
-            throw ZlinkException.CreateBindException(ex.InternalErrno);
+            throw ZlinkException.CreateBindException(ex.NativeErrno);
         }
     }
 
@@ -49,7 +49,7 @@ internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
         }
         catch (ZlinkException ex)
         {
-            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+            throw ZlinkException.CreateConnectException(ex.NativeErrno);
         }
     }
 
@@ -62,7 +62,7 @@ internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
         }
         catch (ZlinkException ex)
         {
-            throw ZlinkException.CreateConfigException(ex.InternalErrno);
+            throw ZlinkException.CreateConfigException(ex.NativeErrno);
         }
     }
 
@@ -245,7 +245,7 @@ internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
         }
         catch (ZlinkException ex)
         {
-            throw ZlinkException.CreateCloseException(ex.InternalErrno);
+            throw ZlinkException.CreateCloseException(ex.NativeErrno);
         }
         GC.SuppressFinalize(this);
     }

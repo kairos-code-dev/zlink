@@ -19,7 +19,7 @@ type SocketTarget interface {
 
 func Has(capability string) (bool, error) {
 	if strings.IndexByte(capability, 0) >= 0 {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	cstr := C.CString(capability)
 	defer C.free(unsafe.Pointer(cstr))
@@ -70,7 +70,7 @@ func ProxySteerable(frontend SocketTarget, backend SocketTarget, capture SocketT
 
 func socketHandle(socket SocketTarget) (unsafe.Pointer, error) {
 	if socket == nil {
-		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return nil, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	return socket.raw(), nil
 }

@@ -25,7 +25,7 @@ import systems.zlink.contracts.sockets.SpotDispatchEvent;
 import systems.zlink.contracts.sockets.SpotDispatchInfo;
 import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.contracts.sockets.SocketOptionKey;
+import systems.zlink.internal.sockets.SocketOptionKey;
 import systems.zlink.contracts.sockets.SendFlags;
 import java.nio.ByteBuffer;
 import java.util.Objects;

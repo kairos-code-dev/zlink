@@ -95,7 +95,7 @@ internal sealed partial class Spot : ISpot
             return operation();
         }
         catch (ZlinkException ex) when (ZlinkException.MapErrorCode(
-            ex.InternalErrno) is ErrorCode.EAgain or ErrorCode.EBusy)
+            ex.NativeErrno) is ErrorCode.EAgain or ErrorCode.EBusy)
         {
             return null;
         }

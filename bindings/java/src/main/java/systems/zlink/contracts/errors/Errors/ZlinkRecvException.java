@@ -11,8 +11,8 @@ public final class ZlinkRecvException extends ZlinkException {
         this(result, 0);
     }
 
-    public ZlinkRecvException(RecvResult result, int internalErrno) {
-        super(result.value(), internalErrno);
+    public ZlinkRecvException(RecvResult result, int nativeErrno) {
+        super(result.value(), nativeErrno);
         this.result = result;
     }
 

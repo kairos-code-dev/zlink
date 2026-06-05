@@ -117,8 +117,8 @@ internal static class PerfPubSub
                             continue;
                     }
                     catch (ZlinkException ex)
-                        when (IsInterrupted(ex.InternalErrno)
-                              || IsWouldBlock(ex.InternalErrno))
+                        when (IsInterrupted(ex.NativeErrno)
+                              || IsWouldBlock(ex.NativeErrno))
                     {
                         continue;
                     }
@@ -157,8 +157,8 @@ internal static class PerfPubSub
                                 RecvFlags.DontWait);
                         }
                         catch (ZlinkException ex)
-                            when (IsInterrupted(ex.InternalErrno)
-                                  || IsWouldBlock(ex.InternalErrno))
+                            when (IsInterrupted(ex.NativeErrno)
+                                  || IsWouldBlock(ex.NativeErrno))
                         {
                             drain = false;
                         }
@@ -187,7 +187,7 @@ internal static class PerfPubSub
                     continue;
             }
             catch (ZlinkException ex)
-                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+                when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
             {
                 continue;
             }

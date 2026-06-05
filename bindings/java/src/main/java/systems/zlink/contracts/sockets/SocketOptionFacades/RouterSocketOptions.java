@@ -2,6 +2,8 @@
 
 package systems.zlink.contracts.sockets;
 
+import systems.zlink.internal.sockets.SocketOptions;
+
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.internal.ContractAccess;
 import java.time.Duration;

@@ -90,7 +90,7 @@ def _request_result_from_code(code):
         return RequestResult.PROTOCOL_ERROR
 
 
-def _request_result_internal_errno(result):
+def _request_result_native_errno(result):
     typed = _request_result_from_code(result)
     if typed == RequestResult.TIMED_OUT:
         return _errno.ETIMEDOUT
@@ -199,18 +199,18 @@ def _config_result_from_errno(err):
     return ConfigResult.INVALID_ARGUMENT
 
 
-def _raise_zlink_error(error_type, result, internal_errno=None):
-    if internal_errno is None:
-        internal_errno = lib().zlink_errno()
-    raise error_type(result, internal_errno)
+def _raise_zlink_error(error_type, result, native_errno=None):
+    if native_errno is None:
+        native_errno = lib().zlink_errno()
+    raise error_type(result, native_errno)
 
 
-def _raise_result_error(error_type, result_type, rc, internal_errno=None):
+def _raise_result_error(error_type, result_type, rc, native_errno=None):
     try:
         result = result_type(int(rc))
     except ValueError:
         result = result_type(0)
-    _raise_zlink_error(error_type, result, internal_errno)
+    _raise_zlink_error(error_type, result, native_errno)
 
 
 def _raise_last_error():
@@ -218,42 +218,42 @@ def _raise_last_error():
     raise ZlinkError(err, err)
 
 
-def _raise_mapped_error(error_type, mapper, internal_errno=None):
-    if internal_errno is None:
-        internal_errno = lib().zlink_errno()
-    _raise_zlink_error(error_type, mapper(int(internal_errno)), int(internal_errno))
+def _raise_mapped_error(error_type, mapper, native_errno=None):
+    if native_errno is None:
+        native_errno = lib().zlink_errno()
+    _raise_zlink_error(error_type, mapper(int(native_errno)), int(native_errno))
 
 
-def _raise_submit_error_from_errno(internal_errno=None):
-    _raise_mapped_error(SubmitError, _submit_result_from_errno, internal_errno)
+def _raise_submit_error_from_errno(native_errno=None):
+    _raise_mapped_error(SubmitError, _submit_result_from_errno, native_errno)
 
 
-def _raise_request_error_from_errno(internal_errno=None):
-    _raise_mapped_error(RequestError, _request_result_from_errno, internal_errno)
+def _raise_request_error_from_errno(native_errno=None):
+    _raise_mapped_error(RequestError, _request_result_from_errno, native_errno)
 
 
-def _raise_recv_error_from_errno(internal_errno=None):
-    _raise_mapped_error(RecvError, _recv_result_from_errno, internal_errno)
+def _raise_recv_error_from_errno(native_errno=None):
+    _raise_mapped_error(RecvError, _recv_result_from_errno, native_errno)
 
 
-def _raise_handler_error_from_errno(internal_errno=None):
-    _raise_mapped_error(HandlerError, _handler_result_from_errno, internal_errno)
+def _raise_handler_error_from_errno(native_errno=None):
+    _raise_mapped_error(HandlerError, _handler_result_from_errno, native_errno)
 
 
-def _raise_close_error_from_errno(internal_errno=None):
-    _raise_mapped_error(CloseError, _close_result_from_errno, internal_errno)
+def _raise_close_error_from_errno(native_errno=None):
+    _raise_mapped_error(CloseError, _close_result_from_errno, native_errno)
 
 
-def _raise_bind_error_from_errno(internal_errno=None):
-    _raise_mapped_error(BindError, _bind_result_from_errno, internal_errno)
+def _raise_bind_error_from_errno(native_errno=None):
+    _raise_mapped_error(BindError, _bind_result_from_errno, native_errno)
 
 
-def _raise_connect_error_from_errno(internal_errno=None):
-    _raise_mapped_error(ConnectError, _connect_result_from_errno, internal_errno)
+def _raise_connect_error_from_errno(native_errno=None):
+    _raise_mapped_error(ConnectError, _connect_result_from_errno, native_errno)
 
 
-def _raise_config_error_from_errno(internal_errno=None):
-    _raise_mapped_error(ConfigError, _config_result_from_errno, internal_errno)
+def _raise_config_error_from_errno(native_errno=None):
+    _raise_mapped_error(ConfigError, _config_result_from_errno, native_errno)
 
 
 def _as_bytes_view(data):
@@ -485,7 +485,7 @@ def _routing_id_bytes(routing_id):
 
 
 def _is_eagain(exc):
-    return isinstance(exc, ZlinkError) and exc.internal_errno == _errno.EAGAIN
+    return isinstance(exc, ZlinkError) and exc.native_errno == _errno.EAGAIN
 
 
 def _report_unhandled_callback_exception(handler):

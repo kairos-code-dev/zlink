@@ -79,7 +79,7 @@ from ...handles.native_support import (
     _raise_result_error,
     _routing_id_bytes,
     _request_result_from_code,
-    _request_result_internal_errno,
+    _request_result_native_errno,
     _validated_c_string_text,
     _validated_c_string_value,
     _validated_int32,
@@ -250,7 +250,7 @@ def _wait_for_reply_submit(submit, timeout=0):
             for index in range(int(part_count)):
                 lib().zlink_msg_close(ctypes.byref(parts[index]))
         box["result"] = result
-        box["errno"] = _request_result_internal_errno(result)
+        box["errno"] = _request_result_native_errno(result)
         event.set()
 
     callback = _REPLY_HANDLER(_callback)
@@ -946,7 +946,7 @@ class Spot(SpotActorJoinMixin):
         received = []
         if result == RequestResult.OK:
             received = _make_message_list(parts, part_count)
-        pending.resolve(result, received, _request_result_internal_errno(result))
+        pending.resolve(result, received, _request_result_native_errno(result))
 
     def _submit_reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq, parts, flags):
         _ensure_reply_flags_supported(flags)

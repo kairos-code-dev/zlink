@@ -149,8 +149,8 @@ internal static class PerfDealerDealer
                             continue;
                     }
                     catch (ZlinkException ex)
-                        when (IsInterrupted(ex.InternalErrno)
-                              || IsWouldBlock(ex.InternalErrno))
+                        when (IsInterrupted(ex.NativeErrno)
+                              || IsWouldBlock(ex.NativeErrno))
                     {
                         continue;
                     }
@@ -206,7 +206,7 @@ internal static class PerfDealerDealer
                     continue;
             }
             catch (ZlinkException ex)
-                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+                when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
             {
                 continue;
             }

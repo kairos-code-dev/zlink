@@ -673,7 +673,7 @@ func IsTransient(err error) bool {
 	if !errors.As(err, &zerr) {
 		return false
 	}
-	switch zerr.InternalErrno() {
+	switch zerr.NativeErrno() {
 	// EWOULDBLOCK == EAGAIN on Linux; listing EAGAIN covers both.
 	case int(syscall.EAGAIN), int(syscall.EINTR):
 		return true
@@ -695,7 +695,7 @@ func IsReadyProbeTransient(err error) bool {
 	if !errors.As(err, &zerr) {
 		return false
 	}
-	switch zerr.InternalErrno() {
+	switch zerr.NativeErrno() {
 	case int(syscall.ENOTCONN), int(syscall.EHOSTUNREACH), int(syscall.ENETUNREACH):
 		return true
 	default:

@@ -26,7 +26,7 @@ internal abstract class ConnectableSocketBase : SocketBase, IConnectableSocket
         }
         catch (ZlinkException ex)
         {
-            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+            throw ZlinkException.CreateConnectException(ex.NativeErrno);
         }
     }
 
@@ -38,7 +38,7 @@ internal abstract class ConnectableSocketBase : SocketBase, IConnectableSocket
         }
         catch (ZlinkException ex)
         {
-            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+            throw ZlinkException.CreateConnectException(ex.NativeErrno);
         }
     }
 
@@ -50,7 +50,7 @@ internal abstract class ConnectableSocketBase : SocketBase, IConnectableSocket
         }
         catch (ZlinkException ex)
         {
-            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+            throw ZlinkException.CreateConnectException(ex.NativeErrno);
         }
     }
 }

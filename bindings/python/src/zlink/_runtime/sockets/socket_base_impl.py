@@ -24,7 +24,7 @@ from ..handles.native_support import (
     _is_eagain,
     _raise_result_error,
     _request_result_from_code,
-    _request_result_internal_errno,
+    _request_result_native_errno,
     _recv_result_from_errno,
     _submit_result_from_errno,
     _report_unhandled_callback_exception,
@@ -395,7 +395,7 @@ class DealerSocket(
         reply = []
         if result == RequestResult.OK:
             reply = _message_list_from_parts(parts, part_count)
-        pending.resolve(result, reply, _request_result_internal_errno(result))
+        pending.resolve(result, reply, _request_result_native_errno(result))
 
     def _cancel_pending_requests(self, result):
         for handle, pending in list(self._pending_requests.items()):
@@ -710,7 +710,7 @@ class RouterSocket(
         reply = []
         if result == RequestResult.OK:
             reply = _message_list_from_parts(parts, part_count)
-        pending.resolve(result, reply, _request_result_internal_errno(result))
+        pending.resolve(result, reply, _request_result_native_errno(result))
 
     def _on_request_reply(self, result_code, parts, part_count, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
@@ -721,7 +721,7 @@ class RouterSocket(
         reply = []
         if result == RequestResult.OK:
             reply = _message_list_from_parts(parts, part_count)
-        pending.resolve(result, reply, _request_result_internal_errno(result))
+        pending.resolve(result, reply, _request_result_native_errno(result))
 
     def _reply_from_receive_context(
         self, routing_id, spot_rid, request_seq, payload, *, flags=0
@@ -1049,7 +1049,7 @@ class StreamSocket(
         reply = []
         if result == RequestResult.OK:
             reply = _message_list_from_parts(parts, part_count)
-        pending.resolve(result, reply, _request_result_internal_errno(result))
+        pending.resolve(result, reply, _request_result_native_errno(result))
 
     def bound_actors(self, session_rid):
         """Snapshot of Actor refs attached to the given session."""

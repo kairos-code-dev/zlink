@@ -20,7 +20,7 @@ impl ActorPublicRuntime for Actor {
         let raw = actor_ref.to_raw().map_err(|err| {
             RequestError::new(
                 crate::error::RequestResult::InvalidArgument,
-                err.internal_errno(),
+                err.native_errno(),
             )
         })?;
         wait_reply_submit(|handler, userdata| unsafe {
@@ -142,14 +142,14 @@ impl ActorPublicRuntime for Actor {
             .map_err(|err| {
                 RequestError::new(
                     crate::error::RequestResult::InvalidArgument,
-                    err.internal_errno(),
+                    err.native_errno(),
                 )
             })?
             .to_raw()
             .map_err(|err| {
                 RequestError::new(
                     crate::error::RequestResult::InvalidArgument,
-                    err.internal_errno(),
+                    err.native_errno(),
                 )
             })?;
         check_request_result(unsafe {

@@ -326,7 +326,7 @@ final class PerfRouterRouter {
             }
             throw ex;
         } catch (systems.zlink.contracts.errors.ZlinkException ex) {
-            int errno = ex.getInternalErrno();
+            int errno = ex.getNativeErrno();
             if (PerfErrno.isRetryableSend(errno)) {
                 return false;
             }
@@ -348,7 +348,7 @@ final class PerfRouterRouter {
             }
             throw ex;
         } catch (systems.zlink.contracts.errors.ZlinkException ex) {
-            int errno = ex.getInternalErrno();
+            int errno = ex.getNativeErrno();
             if (PerfErrno.isRetryableSend(errno)
                 || errno == PerfErrno.ETIMEDOUT
                 || errno == PerfErrno.EHOSTUNREACH

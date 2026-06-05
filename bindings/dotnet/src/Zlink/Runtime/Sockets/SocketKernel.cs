@@ -63,7 +63,7 @@ internal sealed partial class SocketKernel : IDisposable
             return SubscribeInto(result, (int)flags);
         }
         catch (ZlinkException ex) when ((flags & RecvFlags.DontWait) != 0
-            && ZlinkException.MapErrorCode(ex.InternalErrno) is ErrorCode.EAgain
+            && ZlinkException.MapErrorCode(ex.NativeErrno) is ErrorCode.EAgain
                 or ErrorCode.EBusy)
         {
             return false;
@@ -1098,7 +1098,7 @@ internal sealed partial class SocketKernel : IDisposable
 
     private static bool MapTryReceiveableError(ZlinkException ex)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(ex.InternalErrno);
+        ErrorCode code = ZlinkException.MapErrorCode(ex.NativeErrno);
         return code == ErrorCode.EAgain;
     }
 

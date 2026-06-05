@@ -73,7 +73,7 @@ def main():
                                         except zlink.RecvError as exc:
                                             if (
                                                 exc.result != zlink.RecvResult.NO_DATA
-                                                and exc.internal_errno != 2
+                                                and exc.native_errno != 2
                                             ):
                                                 raise
                                             return False

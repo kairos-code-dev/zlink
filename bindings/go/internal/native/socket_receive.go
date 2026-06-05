@@ -39,10 +39,10 @@ func recvSubscribePartInto(
 	call func(**C.zlink_routing_id_t, *C.char, C.size_t, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
 ) (SubscribePartResult, error) {
 	if out == nil {
-		return SubscribePartResult{}, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+		return SubscribePartResult{}, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
 	if len(topicBuffer) == 0 {
-		return SubscribePartResult{}, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+		return SubscribePartResult{}, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
 	var sourceRID *C.zlink_routing_id_t
 	topicLen := C.size_t(len(topicBuffer))
@@ -92,7 +92,7 @@ func recvDirectPartInto(
 	call func(**C.zlink_routing_id_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
 ) (RecvPartResult, error) {
 	if out == nil {
-		return RecvPartResult{}, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+		return RecvPartResult{}, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
 	var sourceRID *C.zlink_routing_id_t
 	var part C.zlink_msg_t
@@ -119,7 +119,7 @@ func recvRoutedPartInto(
 	call func(**C.zlink_routing_id_t, **C.zlink_routing_id_t, *C.uint64_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
 ) (RecvPartResult, error) {
 	if out == nil {
-		return RecvPartResult{}, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+		return RecvPartResult{}, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
 	var sourceNodeRID *C.zlink_routing_id_t
 	var sourceSpotRID *C.zlink_routing_id_t

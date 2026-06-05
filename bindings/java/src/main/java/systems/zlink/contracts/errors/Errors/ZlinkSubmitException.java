@@ -11,8 +11,8 @@ public final class ZlinkSubmitException extends ZlinkException {
         this(result, 0);
     }
 
-    public ZlinkSubmitException(SubmitResult result, int internalErrno) {
-        super(result.value(), internalErrno);
+    public ZlinkSubmitException(SubmitResult result, int nativeErrno) {
+        super(result.value(), nativeErrno);
         this.result = result;
     }
 

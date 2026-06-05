@@ -17,7 +17,7 @@ function trySpotSubscribe(spot, received) {
     }
     catch (error) {
         if (error instanceof zlink.RecvError &&
-            (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
+            (error.result === zlink.RecvResult.NoData || error.nativeErrno === 2)) {
             return null;
         }
         const text = String(error && error.message ? error.message : error);

@@ -95,7 +95,7 @@ func (c *Context) Shutdown() error {
 // RecalculateAutoHwm forces an automatic HWM recalculation. Returns *ConfigError on failure.
 func (c *Context) RecalculateAutoHwm() error {
 	if c == nil || c.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return configErrorFromResult(C.zlink_ctx_auto_hwm_recalculate(c.handle))
 }
@@ -145,10 +145,10 @@ func (o *ContextOptions) ThreadSchedulingPolicy() (int, error) {
 
 func (o *ContextOptions) SetThreadNamePrefix(value string) error {
 	if o == nil || o.ctx == nil || o.ctx.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if len(value) > 16 {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	var ptr unsafe.Pointer
 	var n C.size_t
@@ -167,7 +167,7 @@ func (o *ContextOptions) SetThreadNamePrefix(value string) error {
 
 func (o *ContextOptions) ThreadNamePrefix() (string, error) {
 	if o == nil || o.ctx == nil || o.ctx.closed {
-		return "", &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return "", &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return o.ctx.threadNamePrefix, nil
 }
@@ -188,7 +188,7 @@ func (o *ContextOptions) AutoHwmEnabled() (bool, error) {
 func (o *ContextOptions) SetAutoHwmRecalcDebounce(value time.Duration) error {
 	ms := value / time.Millisecond
 	if ms > math.MaxInt32 {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	return o.ctx.setIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS, int(ms))
 }
@@ -242,7 +242,7 @@ func (o *ContextOptions) AutoHwmProfile() (AutoHwmProfile, error) {
 
 func (o *ContextOptions) SetAutoHwmMsgUnitBytes(value int) error {
 	if value < 0 {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	return o.ctx.setIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, value)
 }
@@ -253,17 +253,17 @@ func (o *ContextOptions) AutoHwmMsgUnitBytes() (int, error) {
 
 func (c *Context) setIntOption(option C.zlink_ctx_option_t, value int) error {
 	if c == nil || c.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if value < math.MinInt32 || value > math.MaxInt32 {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	return configErrorFromResult(ConfigResult(C.zlink_ctx_set(c.handle, option, C.int(value))))
 }
 
 func (c *Context) getIntOption(option C.zlink_ctx_option_t) (int, error) {
 	if c == nil || c.closed {
-		return 0, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return 0, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	var result C.zlink_config_result_t
 	value := C.zlink_ctx_get(c.handle, option, &result)
@@ -279,7 +279,7 @@ func durationToMillis(value time.Duration) (int32, error) {
 	}
 	ms := value / time.Millisecond
 	if ms > math.MaxInt32 {
-		return 0, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return 0, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	return int32(ms), nil
 }

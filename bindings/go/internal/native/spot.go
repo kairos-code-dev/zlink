@@ -62,7 +62,7 @@ func (s *Spot) isInvalid() bool {
 // checkValid returns a ConfigError if the spot is unusable, otherwise nil.
 func (s *Spot) checkValid() error {
 	if s.isInvalid() {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return nil
 }
@@ -135,7 +135,7 @@ func (s *Spot) RequestTimeout() (time.Duration, error) {
 
 func (s *Spot) SetNoDrop(value bool) error {
 	if s == nil || s.core == nil {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return setNativePubBoolOption(s.raw(), s.core.closed, "spot is closed", C.ZLINK_PUB_OPT_NODROP, value)
 }
@@ -173,7 +173,7 @@ func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp {
 func (s *Spot) RequestToChannel(channelName string) RequestOp {
 	return newRequestBuilder(s, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
-			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		state, err := s.startChannelRequestBuilder(channelName, flags, timeout, parts)
 		if err != nil {
@@ -190,7 +190,7 @@ func (s *Spot) RequestToChannel(channelName string) RequestOp {
 func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
 	return newRequestBuilder(s, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
-			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		if timeout <= 0 {
 			timeout = defaultRequestTimeout
@@ -226,7 +226,7 @@ func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
 func (s *Spot) RequestToRouter(peerRid RoutingID) RequestOp {
 	return newRequestBuilder(s, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
-			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
 		if timeout <= 0 {
 			timeout = defaultRequestTimeout
@@ -296,7 +296,7 @@ func (s *Spot) UnsetSubscription(filter string) error {
 
 func (s *Spot) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error) {
 	if out == nil {
-		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
 	err := recvSpotTopicMessageInto(out, func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_spot_subscribe_part(s.raw(), rid, topic, C.size_t(recvTopicBufferCap), topicLen, part, hasMore, recvFlags))
@@ -313,7 +313,7 @@ func (s *Spot) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error) {
 
 func (s *Spot) SubscribePart(out *Message, topicBuffer []byte, flags RecvFlags) (SubscribePartResult, bool, error) {
 	if s == nil || s.core == nil {
-		return SubscribePartResult{}, false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return SubscribePartResult{}, false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	result, err := recvSubscribePartInto(out, topicBuffer, flags, func(rid **C.zlink_routing_id_t, topic *C.char, topicCap C.size_t, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_spot_subscribe_part(s.raw(), rid, topic, topicCap, topicLen, part, hasMore, recvFlags))
@@ -330,21 +330,21 @@ func (s *Spot) SubscribePart(out *Message, topicBuffer []byte, flags RecvFlags) 
 
 func (s *Spot) ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags) (bool, error) {
 	if out == nil {
-		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
 	if s.isInvalid() {
-		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	_ = flags
-	return false, &RecvError{Result: RecvNotSupported, internalErrno: int(C.ENOTSUP)}
+	return false, &RecvError{Result: RecvNotSupported, nativeErrno: int(C.ENOTSUP)}
 }
 
 func (s *Spot) OnSendReady(handler func()) error {
 	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	if s.isInvalid() {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EFAULT)}
+		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EFAULT)}
 	}
 	state := newSendReadyCallbackState(sendReadyCallback(handler))
 	handle := cgo.NewHandle(state)
@@ -362,7 +362,7 @@ func (s *Spot) OnSendReady(handler func()) error {
 
 func (s *Spot) RecvRoutedPart(out *Message, flags RecvFlags) (RecvPartResult, bool, error) {
 	if s.isInvalid() {
-		return RecvPartResult{}, false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return RecvPartResult{}, false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	result, err := recvRoutedPartInto(out, flags, func(nodeRID **C.zlink_routing_id_t, spotRID **C.zlink_routing_id_t, requestSeq *C.uint64_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_spot_recv_part(s.raw(), nodeRID, spotRID, requestSeq, part, hasMore, recvFlags))
@@ -379,7 +379,7 @@ func (s *Spot) RecvRoutedPart(out *Message, flags RecvFlags) (RecvPartResult, bo
 
 func (s *Spot) RecvRouted(out *Received, flags RecvFlags) (bool, error) {
 	if out == nil {
-		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
 	var sourceRID *C.zlink_routing_id_t
 	var spotRID *C.zlink_routing_id_t
@@ -412,7 +412,7 @@ func (s *Spot) RecvRouted(out *Received, flags RecvFlags) (bool, error) {
 
 func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error {
 	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	state := newSpotDispatchCallbackState(s, handler)
 	handle := cgo.NewHandle(state)
@@ -430,7 +430,7 @@ func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error {
 
 func (s *Spot) RecvActorLifecycle(flags RecvFlags) (SpotActorLifecycleEvent, bool, error) {
 	if s == nil || s.core == nil || s.core.closed {
-		return SpotActorLifecycleEvent{}, false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return SpotActorLifecycleEvent{}, false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	var event C.zlink_spot_actor_lifecycle_event_t
 	if err := recvErrorFromResult(C.zlink_spot_recv_actor_lifecycle(s.raw(), &event, C.zlink_recv_flags_t(flags))); err != nil {

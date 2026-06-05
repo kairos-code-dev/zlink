@@ -116,7 +116,7 @@ fn main() {
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(err)
-                if err.code() == RecvResult::NoData || err.internal_errno() == libc::ENOENT =>
+                if err.code() == RecvResult::NoData || err.native_errno() == libc::ENOENT =>
             {
                 std::thread::sleep(Duration::from_millis(10));
             }
@@ -133,7 +133,7 @@ fn bind_spot_pub_endpoint(node: &SpotNode) -> Result<(), ConfigError> {
         let endpoint = sample_support::tcp_endpoint();
         match node.set_pub_bind(&endpoint) {
             Ok(()) => return Ok(()),
-            Err(err) if err.internal_errno() == libc::EADDRINUSE => {
+            Err(err) if err.native_errno() == libc::EADDRINUSE => {
                 last_error = Some(err);
             }
             Err(err) => return Err(err),

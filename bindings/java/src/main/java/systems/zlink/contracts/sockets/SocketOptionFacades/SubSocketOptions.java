@@ -2,6 +2,8 @@
 
 package systems.zlink.contracts.sockets;
 
+import systems.zlink.internal.sockets.SocketOptions;
+
 import systems.zlink.internal.ContractAccess;
 
 /** The typed facade over SUB/XSUB-specific socket options. */

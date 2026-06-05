@@ -109,7 +109,7 @@ func (s *connectionSocket) SetChannelName(value string) error {
 		return stateError("socket is closed")
 	}
 	if strings.IndexByte(value, 0) >= 0 || value == "" {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	cstr := C.CString(value)
 	defer C.free(unsafe.Pointer(cstr))

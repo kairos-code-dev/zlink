@@ -324,10 +324,10 @@ internal static class PerfSpot
                 .Submit();
             return true;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno)
+        catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                        || IsWouldBlock(ex.NativeErrno)
                                         || PerfShared.IsTransientNetworkError(
-                                            ex.InternalErrno))
+                                            ex.NativeErrno))
         {
             return true;
         }
@@ -355,8 +355,8 @@ internal static class PerfSpot
             if (!subscribed.IsSinglePart || subscribed.Topic != Topic)
                 return 1;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)
+                                        || IsWouldBlock(ex.NativeErrno))
         {
             return 0;
         }

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.contracts.sockets;
+package systems.zlink.internal.sockets;
 
 
 /** Low-level send flags used by the native socket API. */

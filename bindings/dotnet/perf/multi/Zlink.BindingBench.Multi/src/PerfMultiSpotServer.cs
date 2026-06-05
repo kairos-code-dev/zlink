@@ -261,8 +261,8 @@ internal static class PerfMultiSpotServer
             return spotPub.Publish(Topic).Message(message).Flags(flags)
                 .Submit();
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                        || IsInterrupted(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                        || IsInterrupted(ex.NativeErrno))
         {
             return false;
         }
@@ -354,8 +354,8 @@ internal static class PerfMultiSpotServer
                     return true;
                 }
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
             }
 
@@ -411,8 +411,8 @@ internal static class PerfMultiSpotServer
             return spotPub.Publish(Topic).Message(message).Flags(flags)
                 .Submit();
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                        || IsInterrupted(ex.InternalErrno))
+        catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                        || IsInterrupted(ex.NativeErrno))
         {
             return false;
         }
@@ -442,8 +442,8 @@ internal static class PerfMultiSpotServer
                     }
                 }
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.NativeErrno)
+                                            || IsInterrupted(ex.NativeErrno))
             {
             }
         }
@@ -485,7 +485,7 @@ internal static class PerfMultiSpotServer
             configure();
         }
         catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(
-                                            ex.InternalErrno))
+                                            ex.NativeErrno))
         {
         }
     }

@@ -211,7 +211,7 @@ func (m *Message) clone() (*Message, error) {
 
 func (m *Message) Clone() (*Message, error) {
 	if m == nil || m.closed {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	return m.clone()
 }
@@ -302,13 +302,13 @@ func (m *Message) RefCount() int {
 
 func (m *Message) GetProperty(name string) (string, bool, error) {
 	if m == nil || m.closed {
-		return "", false, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return "", false, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if name == "" {
-		return "", false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return "", false, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	if strings.IndexByte(name, 0) >= 0 {
-		return "", false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return "", false, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))

@@ -11,8 +11,8 @@ public final class ZlinkBindException extends ZlinkException {
         this(result, 0);
     }
 
-    public ZlinkBindException(BindResult result, int internalErrno) {
-        super(result.value(), internalErrno);
+    public ZlinkBindException(BindResult result, int nativeErrno) {
+        super(result.value(), nativeErrno);
         this.result = result;
     }
 

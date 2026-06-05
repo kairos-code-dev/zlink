@@ -11,8 +11,8 @@ public final class ZlinkConnectException extends ZlinkException {
         this(result, 0);
     }
 
-    public ZlinkConnectException(ConnectResult result, int internalErrno) {
-        super(result.value(), internalErrno);
+    public ZlinkConnectException(ConnectResult result, int nativeErrno) {
+        super(result.value(), nativeErrno);
         this.result = result;
     }
 

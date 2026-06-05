@@ -48,7 +48,7 @@ def wait_for_socket_event(sock, events, timeout_ms):
         try:
             ready = poller.wait(poll_events, timeout_ms)
         except zlink.ZlinkError as exc:
-            if exc.internal_errno == 11:
+            if exc.native_errno == 11:
                 return False
             raise
     return bool(ready)

@@ -81,20 +81,20 @@ func (t *TopicMessage) IsSinglePart() bool {
 
 func (t *TopicMessage) FirstPart() (*Message, error) {
 	if t == nil {
-		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if len(t.parts) == 0 {
-		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.EINVAL)}
+		return nil, &RecvError{Result: RecvNotSupported, nativeErrno: int(C.EINVAL)}
 	}
 	return t.parts[0], nil
 }
 
 func (t *TopicMessage) SinglePartOrError() (*Message, error) {
 	if t == nil {
-		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if len(t.parts) != 1 {
-		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.EINVAL)}
+		return nil, &RecvError{Result: RecvNotSupported, nativeErrno: int(C.EINVAL)}
 	}
 	return t.parts[0], nil
 }

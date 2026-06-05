@@ -4,7 +4,7 @@ import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 
 public interface SpotPubSubCapabilityBuilder {
-    void setPubBind(String endpoint);
+    void bindPubSub(String endpoint);
 
     void setRoutingId(RoutingId routingId);
 

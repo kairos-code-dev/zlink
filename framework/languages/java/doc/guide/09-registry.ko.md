@@ -11,13 +11,13 @@ framework의 channel discovery는 **Registry 서버**를 중심에 둔다. Regis
 `Discovery`는 이 Registry에 붙어 자기 channel view를 자동 갱신한다.
 
 의존 방향에 주의한다: **channel runtime이 Registry에 의존한다**(반대가 아님).
-`useDiscovery(...)`는 Registry에 **연결하러 가는** 쪽이고, Registry 등록은 그
+`addRegistryEndpoint(...)`는 Registry에 **연결하러 가는** 쪽이고, Registry 등록은 그
 연결을 **받으러 오는** 쪽이다. 그래서 두 등록은 분리되어 있다.
 
 ```mermaid
 flowchart LR
-  SVC["service A<br/>framework + useDiscovery"] -->|"register + heartbeat"| REG["Registry 서버"]
-  SVC2["service B<br/>framework + useDiscovery"] -->|"register + heartbeat"| REG
+  SVC["service A<br/>framework + addRegistryEndpoint"] -->|"register + heartbeat"| REG["Registry 서버"]
+  SVC2["service B<br/>framework + addRegistryEndpoint"] -->|"register + heartbeat"| REG
   REG -->|"topology broadcast"| SVC
   REG -->|"topology broadcast"| SVC2
 ```
@@ -37,7 +37,7 @@ ZLinkRegistryCustomizer registryCustomizer() {
 ```
 
 > 포트 관례: PUB=`5550`, ROUTER=`5551`. peer는 PUB을, query client/discovery는
-> ROUTER를 가리킨다(혼동 주의). embedded라도 `useDiscovery(...)`가 같은 프로세스의
+> ROUTER를 가리킨다(혼동 주의). embedded라도 `addRegistryEndpoint(...)`가 같은 프로세스의
 > Registry를 자동으로 찾아주지 않는다. Discovery endpoint(`5551`)를 명시해야 한다.
 
 ## 3. 두 가지 배포 모델

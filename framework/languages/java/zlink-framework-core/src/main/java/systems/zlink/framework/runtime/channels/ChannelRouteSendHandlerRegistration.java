@@ -6,4 +6,10 @@ record ChannelRouteSendHandlerRegistration<THandler extends ZLinkRouteSendHandle
     Class<THandler> handlerType,
     Class<TMessage> messageType,
     String packetName) {
+    ChannelRouteSendHandlerRegistration<THandler, TMessage> withPacketName(String packetName) {
+        return new ChannelRouteSendHandlerRegistration<>(
+            handlerType,
+            messageType,
+            packetName);
+    }
 }

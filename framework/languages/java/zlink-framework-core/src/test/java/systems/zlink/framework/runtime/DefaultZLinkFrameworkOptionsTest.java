@@ -25,6 +25,7 @@ import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkInvocationContext;
 import systems.zlink.framework.ZLinkNext;
@@ -67,7 +68,7 @@ final class DefaultZLinkFrameworkOptionsTest {
 
         options.codecs().addProtobuf();
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        options.configureMetadata(metadata -> metadata.forward("trace-id"));
+        options.configureMetadata(metadata -> metadata.addForwardedMetadataKey("trace-id"));
         options.useFilter(TestFilter.class);
         options.configureDispatch(dispatch -> {
             dispatch.setSpotDispatchMode(ZLinkDispatchMode.DYNAMIC);
@@ -153,7 +154,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void registrySpotRemoteAddressesRejectsCustomResolverDuplicate() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.useDiscovery(discovery -> discovery.add("inproc://registry"));
+        options.addRegistryEndpoint("inproc://registry");
         options.addRouteMeshChannel("play", channel -> { });
         options.addSpotRemoteAddressResolver(TestSpotRemoteAddressResolver.class);
         options.useRegistrySpotRemoteAddresses("game");
@@ -175,7 +176,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void registrySpotRemoteAddressesRequiresRouterChannelWhenAmbiguous() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.useDiscovery(discovery -> discovery.add("inproc://registry"));
+        options.addRegistryEndpoint("inproc://registry");
         options.addRouteMeshChannel("play-a", channel -> { });
         options.addRouteMeshChannel("play-b", channel -> { });
         options.useRegistrySpotRemoteAddresses("game");
@@ -460,7 +461,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void attachedSpotChannelClientManualConnectionsOverrideGlobalDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:17001"));
+        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node ->
                 node.attachChannelClient("profile", client ->
@@ -474,7 +475,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelClientManualConnectionsOverrideGlobalDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:17001"));
+        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
         options.addClientServerChannel("profile", channel ->
             channel.enableClient(client ->
                 client.useManualConnections(endpoints ->
@@ -523,7 +524,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         options.addClientServerChannel("profile", channel -> {
             channel.enableServer(server -> server.bind("inproc://profile-server"));
             channel.addHandlerGroup("scanned-request");
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "String");
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class);
         });
 
         ZLinkConfigurationException exception =
@@ -539,8 +540,8 @@ final class DefaultZLinkFrameworkOptionsTest {
 
         options.addClientServerChannel("profile", channel -> {
             channel.enableServer(server -> server.bind("inproc://profile-server"));
-            channel.addSendHandler(SendHandler.class, String.class, "Notify");
-            channel.addSendHandler(SendHandler.class, String.class, "Notify");
+            channel.addSendHandler(SendHandler.class, String.class);
+            channel.addSendHandler(SendHandler.class, String.class);
         });
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
@@ -573,7 +574,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions accepted = new DefaultZLinkFrameworkOptions();
         accepted.addClientServerChannel("profile", channel -> {
             channel.enableServer(server -> server.bind("inproc://profile-server"));
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
+            channel.addRequestHandler(AnnotatedEchoHandler.class, AnnotatedPacket.class, String.class);
         });
 
         accepted.validate();
@@ -604,7 +605,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void fanoutChannelSubscriberManualConnectionsOverrideGlobalDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:17001"));
+        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
         options.addFanoutChannel("events", channel -> {
             channel.enableSubscriber(subscriber ->
                 subscriber.useManualConnections(endpoints -> endpoints.connect("inproc://events")));
@@ -637,7 +638,7 @@ final class DefaultZLinkFrameworkOptionsTest {
             channel.enableSubscriber(subscriber ->
                 subscriber.useManualConnections(endpoints -> endpoints.connect("inproc://events")));
             channel.addHandlerGroup("scanned-publish");
-            channel.addPublishHandler(EventHandler.class, String.class, "String");
+            channel.addPublishHandler(EventHandler.class, String.class);
         });
 
         ZLinkConfigurationException exception =
@@ -670,7 +671,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshChannelManualConnectionsOverrideGlobalDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:17001"));
+        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
         options.addRouteMeshChannel("route", channel -> {
             channel.bind("inproc://route");
             channel.useManualConnections(endpoints -> endpoints.connect("inproc://route-peer"));
@@ -702,7 +703,7 @@ final class DefaultZLinkFrameworkOptionsTest {
             channel.bind("inproc://route");
             channel.useManualConnections(endpoints -> endpoints.connect("inproc://route"));
             channel.addHandlerGroup("scanned-route");
-            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "String");
+            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class);
         });
 
         ZLinkConfigurationException exception =
@@ -719,8 +720,8 @@ final class DefaultZLinkFrameworkOptionsTest {
         options.addRouteMeshChannel("route", channel -> {
             channel.bind("inproc://route");
             channel.useManualConnections(endpoints -> endpoints.connect("inproc://route-peer"));
-            channel.addSendHandler(RouteSendHandler.class, String.class, "Notify");
-            channel.addSendHandler(RouteSendHandler.class, String.class, "Notify");
+            channel.addSendHandler(RouteSendHandler.class, String.class);
+            channel.addSendHandler(RouteSendHandler.class, String.class);
         });
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
@@ -889,6 +890,20 @@ final class DefaultZLinkFrameworkOptionsTest {
         @Override
         public CompletionStage<String> handleAsync(String request, ZLinkRequestContext context) {
             return CompletableFuture.completedFuture(request);
+        }
+    }
+
+    @ZLinkPacket("AnnotatedEcho")
+    public record AnnotatedPacket(String value) {
+    }
+
+    public static final class AnnotatedEchoHandler
+        implements ZLinkRequestHandler<AnnotatedPacket, String> {
+        @Override
+        public CompletionStage<String> handleAsync(
+            AnnotatedPacket request,
+            ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(request.value());
         }
     }
 

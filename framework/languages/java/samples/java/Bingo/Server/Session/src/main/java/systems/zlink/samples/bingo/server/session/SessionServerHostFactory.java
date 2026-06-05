@@ -27,7 +27,7 @@ public final class SessionServerHostFactory {
     @Bean
     ZLinkFrameworkOptionsCustomizer sessionOptions() {
         return options -> {
-            options.useDiscovery(discovery -> discovery.add(SampleTopology.RegistryRouterEndpoint));
+            options.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
             options.codecs().addJson();
             options.addClientServerChannel(SampleNames.ApiChannel, channel -> channel.enableClient());
             options.addClientServerChannel(SampleNames.PlayChannel, channel -> channel.enableClient());
@@ -43,11 +43,11 @@ public final class SessionServerHostFactory {
             options.addSpotMesh(SampleNames.RoomSpotDiscovery, mesh ->
                 mesh.addNode(SampleNames.SessionSpotNode, node -> {
                     node.enableRouter(router -> {
-                        router.setRouterBind(SampleTopology.SessionRouterEndpoint);
+                        router.bindRouter(SampleTopology.SessionRouterEndpoint);
                         router.setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid));
                     });
                     node.enablePubSub(pubSub -> {
-                        pubSub.setPubBind(SampleTopology.SessionSpotEndpoint);
+                        pubSub.bindPubSub(SampleTopology.SessionSpotEndpoint);
                         pubSub.setRoutingId(RoutingId.from(SampleTopology.SessionPubRid));
                     });
                     node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel);

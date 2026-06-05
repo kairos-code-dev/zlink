@@ -51,8 +51,8 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
-                node.enableRouter(router -> router.setRouterBind("inproc://spot-router"));
-                node.enablePubSub(pubsub -> pubsub.setPubBind("inproc://spot-pub"));
+                node.enableRouter(router -> router.bindRouter("inproc://spot-router"));
+                node.enablePubSub(pubsub -> pubsub.bindPubSub("inproc://spot-pub"));
                 node.addSpotFactory(GameSpot.class);
             }));
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -120,7 +120,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
-                node.enableRouter(router -> router.setRouterBind("inproc://payload-router"));
+                node.enableRouter(router -> router.bindRouter("inproc://payload-router"));
                 node.addSpotFactory(PayloadSpot.class);
             }));
         RoutingId rid = RoutingId.from("payload-spot");
@@ -331,7 +331,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void registrySpotRemoteAddressResolverReturnsRouteModelFromSpotDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.useDiscovery(discovery -> discovery.add("inproc://registry"));
+        options.addRegistryEndpoint("inproc://registry");
         options.addRouteMeshChannel("play", route -> route.bind("inproc://play"));
         options.useRegistrySpotRemoteAddresses("game");
         options.addSpotMesh("game", mesh ->
@@ -498,7 +498,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void routeMeshSpotEgressUsesRegistryQueryRoutingId() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:17001"));
+        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
         options.addRouteMeshChannel("egress", route -> {
             route.bind("inproc://egress-route");
             route.enableSpotRouteEgress("ingress");
@@ -538,7 +538,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void routeMeshSpotEgressUsesDiscoveryMemberPeerRoutingIdBeforeRegistryQuery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:17001"));
+        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
         options.addRouteMeshChannel("egress-discovery", route -> {
             route.bind("inproc://egress-discovery");
             route.enableSpotRouteEgress("ingress-discovery");
@@ -686,12 +686,12 @@ final class SpotRuntimeFakeBackendTest {
             mesh.addNode("play", node -> {
                 node.enableRouter(router -> {
                     router.setRoutingId(RoutingId.from("spot-node-1"));
-                    router.setRouterBind("inproc://spot-router");
+                    router.bindRouter("inproc://spot-router");
                     router.useManualConnections(endpoints ->
                         endpoints.connect("inproc://spot-router-peer"));
                 });
                 node.enablePubSub(pubsub -> {
-                    pubsub.setPubBind("inproc://spot-pub");
+                    pubsub.bindPubSub("inproc://spot-pub");
                     pubsub.useManualConnections(endpoints ->
                         endpoints.connect("inproc://spot-pub-peer"));
                 });
@@ -759,7 +759,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void attachedSpotChannelClientDiscoveryAttachesDealerToBackendNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:17001"));
+        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> node.attachChannelClient("profile")));
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -806,7 +806,7 @@ final class SpotRuntimeFakeBackendTest {
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
                 node.enableRouter(router ->
-                    router.setRouterBind("inproc://spot-router"));
+                    router.bindRouter("inproc://spot-router"));
                 node.acceptSpotRoutesFromChannel("api", acceptance ->
                     acceptance.useManualConnections(endpoints ->
                         endpoints.connect("inproc://api-router-peer")));
@@ -842,12 +842,12 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void acceptedSpotRouteChannelDiscoveryAttachesRouteDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.useDiscovery(registry -> registry.add("tcp://127.0.0.1:17001"));
+        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
         options.addClientServerChannel("api", channel -> { });
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
                 node.enableRouter(router ->
-                    router.setRouterBind("inproc://spot-router"));
+                    router.bindRouter("inproc://spot-router"));
                 node.acceptSpotRoutesFromChannel("api");
             }));
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -891,7 +891,7 @@ final class SpotRuntimeFakeBackendTest {
                 node.configureEntrySpot(entry ->
                     entry.setRoutingId(RoutingId.from("entry-spot")));
                 node.enableRouter(router ->
-                    router.setRouterBind("inproc://spot-router"));
+                    router.bindRouter("inproc://spot-router"));
             }));
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -929,7 +929,7 @@ final class SpotRuntimeFakeBackendTest {
                 node.configureEntrySpot(entry ->
                     entry.setRoutingId(RoutingId.from("entry-spot")));
                 node.enableRouter(router ->
-                    router.setRouterBind("inproc://spot-router"));
+                    router.bindRouter("inproc://spot-router"));
                 node.addEntrySpot(LifecycleEntrySpot.class);
             }));
         FakeZLinkBackendAdapterFactory backendFactory =

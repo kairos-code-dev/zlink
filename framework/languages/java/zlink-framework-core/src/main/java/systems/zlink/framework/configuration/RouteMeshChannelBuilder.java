@@ -15,8 +15,18 @@ public interface RouteMeshChannelBuilder {
 
     <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage> void addSendHandler(
         Class<THandler> handlerType,
+        Class<TMessage> messageType);
+
+    <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage> void addSendHandler(
+        Class<THandler> handlerType,
         Class<TMessage> messageType,
         String packetName);
+
+    <THandler extends ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply>
+    void addRequestHandler(
+        Class<THandler> handlerType,
+        Class<TRequest> requestType,
+        Class<TReply> replyType);
 
     <THandler extends ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply>
     void addRequestHandler(

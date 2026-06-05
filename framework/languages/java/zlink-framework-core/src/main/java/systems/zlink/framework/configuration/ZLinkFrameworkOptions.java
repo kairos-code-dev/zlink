@@ -17,7 +17,9 @@ public interface ZLinkFrameworkOptions {
 
     void configureMetadata(Consumer<ZLinkMetadataPolicyBuilder> configure);
 
-    void useDiscovery(Consumer<RegistryBuilder> configure);
+    void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure);
+
+    void addRegistryEndpoint(String endpoint);
 
     void addClientServerChannel(
         String channelName,

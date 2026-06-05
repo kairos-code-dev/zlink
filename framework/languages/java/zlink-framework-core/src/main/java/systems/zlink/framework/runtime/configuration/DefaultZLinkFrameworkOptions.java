@@ -10,10 +10,10 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.DealerMeshChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
-import systems.zlink.framework.configuration.RegistryBuilder;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
 import systems.zlink.framework.configuration.ZLinkDispatchOptions;
+import systems.zlink.framework.configuration.ZLinkDiscoveryBuilder;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder;
 import systems.zlink.framework.configuration.ZLinkRegistrySpotRemoteAddressesOptions;
@@ -64,8 +64,13 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public void useDiscovery(Consumer<RegistryBuilder> configure) {
+    public void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure) {
         configure.accept(endpoint -> registration.registryEndpoints().add(requireName(endpoint, "registry endpoint")));
+    }
+
+    @Override
+    public void addRegistryEndpoint(String endpoint) {
+        registration.registryEndpoints().add(requireName(endpoint, "registry endpoint"));
     }
 
     @Override

@@ -25,7 +25,7 @@ public final class ApiServerHostFactory {
     @Bean
     ZLinkFrameworkOptionsCustomizer apiOptions() {
         return options -> {
-            options.useDiscovery(discovery -> discovery.add(SampleTopology.RegistryRouterEndpoint));
+            options.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
             options.codecs().addJson();
             options.addHandlersFromPackageOf(ApiServerHostFactory.class);
             options.addClientServerChannel(SampleNames.ApiChannel, channel -> {

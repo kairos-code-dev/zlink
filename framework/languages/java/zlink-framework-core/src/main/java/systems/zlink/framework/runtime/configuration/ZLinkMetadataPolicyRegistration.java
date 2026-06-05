@@ -10,7 +10,7 @@ public final class ZLinkMetadataPolicyRegistration implements ZLinkMetadataPolic
     private final Set<String> forwardedApplicationKeys = new LinkedHashSet<>();
 
     @Override
-    public void forward(String key) {
+    public void addForwardedMetadataKey(String key) {
         if (key == null || key.isBlank()) {
             throw new ZLinkConfigurationException("metadata key is required");
         }

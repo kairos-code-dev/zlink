@@ -16,8 +16,14 @@ public interface FanoutChannelBuilder {
 
     <THandler extends ZLinkPublishHandler<TMessage>, TMessage> void addPublishHandler(
         Class<THandler> handlerType,
+        Class<TMessage> messageType);
+
+    <THandler extends ZLinkPublishHandler<TMessage>, TMessage> void addPublishHandler(
+        Class<THandler> handlerType,
         Class<TMessage> messageType,
         String packetName);
+
+    void addPublishHandler(Class<?> handlerType);
 
     void addPublishHandler(Class<?> handlerType, String packetName);
 }

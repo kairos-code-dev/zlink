@@ -20,16 +20,14 @@ public class SpotConfig implements ZLinkFrameworkOptionsCustomizer {
     @Override
     public void customize(ZLinkFrameworkOptions options) {
         options.addSpotMesh("game.stage", mesh -> {
-            mesh.useDiscovery(registry -> {
-                registry.add("tcp://registry1:5551");
-            });
+            mesh.addRegistryEndpoint("tcp://registry1:5551");
 
             mesh.addNode("stage-node", spot -> {
                 spot.enableRouter(router -> {
-                    router.setRouterBind("tcp://0.0.0.0:9000");
+                    router.bindRouter("tcp://0.0.0.0:9000");
                 });
                 spot.enablePubSub(pubsub -> {
-                    pubsub.setPubBind("tcp://0.0.0.0:9001");
+                    pubsub.bindPubSub("tcp://0.0.0.0:9001");
                 });
                 spot.attachChannelClient("profile");
                 spot.attachSpotPublisherClient("game.stage");

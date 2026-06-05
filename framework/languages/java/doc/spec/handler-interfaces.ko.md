@@ -346,13 +346,13 @@ public interface SubscriberCapabilityBuilder {
 }
 
 public interface SpotRouterCapabilityBuilder {
-    void setRouterBind(String endpoint);
+    void bindRouter(String endpoint);
     void setRoutingId(RoutingId routingId);
     void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
 }
 
 public interface SpotPubSubCapabilityBuilder {
-    void setPubBind(String endpoint);
+    void bindPubSub(String endpoint);
     void setRoutingId(RoutingId routingId);
     void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
 }
@@ -472,17 +472,13 @@ public interface ZLinkRouteConfigBuilder {
     void setRoutingId(RoutingId routingId);
 }
 
-public interface RegistryBuilder {
-    void add(String endpoint);
-}
-
 public interface ZLinkFrameworkOptions {
     Duration defaultTimeout();
     void setDefaultTimeout(Duration timeout);
     ZLinkCodecRegistryBuilder codecs();
     void addHandlersFromPackageOf(Class<?> markerType);
     void configureMetadata(Consumer<ZLinkMetadataPolicyBuilder> configure);
-    void useDiscovery(Consumer<RegistryBuilder> configure);
+    void addRegistryEndpoint(String endpoint);
     void addClientServerChannel(
         String channelName,
         Consumer<ClientServerChannelBuilder> configure);
@@ -515,7 +511,7 @@ public interface ZLinkFrameworkOptions {
 }
 
 public interface ZLinkSpotMeshBuilder {
-    void useDiscovery(Consumer<RegistryBuilder> configure);
+    void addRegistryEndpoint(String endpoint);
     void addNode(String spotNodeName, Consumer<ZLinkSpotNodeBuilder> configure);
 }
 
@@ -526,7 +522,7 @@ public interface ZLinkCodecRegistryBuilder {
 }
 
 public interface ZLinkMetadataPolicyBuilder {
-    void forward(String key);
+    void addForwardedMetadataKey(String key);
 }
 
 public interface ZLinkRegistrySpotRemoteAddressesOptions {

@@ -271,7 +271,7 @@ final class ChannelMessagingTest {
         registryOptions.setRouterEndpoint(registryRouter);
 
         DefaultZLinkFrameworkOptions serverOptions = new DefaultZLinkFrameworkOptions();
-        serverOptions.useDiscovery(registry -> registry.add(registryRouter));
+        serverOptions.addRegistryEndpoint(registryRouter);
         serverOptions.addClientServerChannel("profile", channel -> {
             channel.enableServer(server -> server.bind(serverEndpoint));
             channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
@@ -279,7 +279,7 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
         clientOptions.setDefaultTimeout(Duration.ofMillis(100));
-        clientOptions.useDiscovery(registry -> registry.add(registryRouter));
+        clientOptions.addRegistryEndpoint(registryRouter);
         clientOptions.addClientServerChannel("profile", channel -> channel.enableClient());
 
         try (ZLinkRegistryRuntime ignoredRegistry = new ZLinkRegistryRuntime(
@@ -305,11 +305,11 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
         clientOptions.setDefaultTimeout(Duration.ofMillis(100));
-        clientOptions.useDiscovery(registry -> registry.add(registryRouter));
+        clientOptions.addRegistryEndpoint(registryRouter);
         clientOptions.addClientServerChannel("profile", channel -> channel.enableClient());
 
         DefaultZLinkFrameworkOptions serverOptions = new DefaultZLinkFrameworkOptions();
-        serverOptions.useDiscovery(registry -> registry.add(registryRouter));
+        serverOptions.addRegistryEndpoint(registryRouter);
         serverOptions.addClientServerChannel("profile", channel -> {
             channel.enableServer(server -> server.bind(serverEndpoint));
             channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");

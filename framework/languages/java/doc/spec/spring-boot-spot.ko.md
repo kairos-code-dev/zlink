@@ -13,7 +13,7 @@
 `SPOT`은 별도 raw runtime으로 노출하기보다, `Spring Boot` bean lifecycle 안에서
 등록하고 관리하는 편을 기본으로 본다.
 
-- `addSpotMesh(...).useDiscovery(...)` 기준의 discovery 등록
+- `addSpotMesh(...).addRegistryEndpoint(...)` 기준의 discovery 등록
 - `SpotNode` bean 생성과 capability별 등록
 - current channel publish/subscribe와 attach된 channel client 경로
 - local spot 인스턴스가 없는 외부 노드용 publisher client 경로
@@ -46,16 +46,14 @@ public class SpotConfig implements ZLinkFrameworkOptionsCustomizer {
     @Override
     public void customize(ZLinkFrameworkOptions options) {
         options.addSpotMesh("game.stage", mesh -> {
-            mesh.useDiscovery(registry -> {
-                registry.add("tcp://registry1:5551");
-            });
+            mesh.addRegistryEndpoint("tcp://registry1:5551");
 
             mesh.addNode("play", node -> {
                 node.enableRouter(router -> {
-                    router.setRouterBind("tcp://0.0.0.0:9000");
+                    router.bindRouter("tcp://0.0.0.0:9000");
                 });
                 node.enablePubSub(pubsub -> {
-                    pubsub.setPubBind("tcp://0.0.0.0:9001");
+                    pubsub.bindPubSub("tcp://0.0.0.0:9001");
                 });
                 node.acceptSpotRoutesFromChannel("play-route");
                 node.configureEntrySpot(entry ->

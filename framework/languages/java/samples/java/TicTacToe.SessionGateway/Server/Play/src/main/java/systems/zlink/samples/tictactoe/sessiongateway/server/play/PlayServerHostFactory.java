@@ -25,8 +25,7 @@ public final class PlayServerHostFactory {
     @Bean
     ZLinkFrameworkOptionsCustomizer playOptions() {
         return options -> {
-            options.useDiscovery(registry ->
-                registry.add(SampleTopology.RegistryRouterEndpoint));
+            options.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
             PlayServer.configure(options);
         };
     }

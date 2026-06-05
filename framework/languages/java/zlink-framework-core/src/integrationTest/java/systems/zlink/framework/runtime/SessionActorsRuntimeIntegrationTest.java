@@ -306,11 +306,11 @@ final class SessionActorsRuntimeIntegrationTest {
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
                 node.enableRouter(router -> {
-                    router.setRouterBind("inproc://play-router-" + suffix);
+                    router.bindRouter("inproc://play-router-" + suffix);
                     router.setRoutingId(RoutingId.from("play-node"));
                 });
                 node.enablePubSub(pubSub ->
-                    pubSub.setPubBind("inproc://play-pub-" + suffix));
+                    pubSub.bindPubSub("inproc://play-pub-" + suffix));
                 node.addSpotFactory(GameSpot.class);
                 node.addEntrySpot(GameEntrySpot.class);
             }));
@@ -372,14 +372,14 @@ final class SessionActorsRuntimeIntegrationTest {
         if (json) {
             options.codecs().addJson();
         }
-        options.useDiscovery(discovery -> discovery.add(registryRouter));
+        options.addRegistryEndpoint(registryRouter);
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
                 node.enableRouter(router -> {
-                    router.setRouterBind(playRouter);
+                    router.bindRouter(playRouter);
                     router.setRoutingId(playNodeRid);
                 });
-                node.enablePubSub(pubSub -> pubSub.setPubBind(playPub));
+                node.enablePubSub(pubSub -> pubSub.bindPubSub(playPub));
                 node.addEntrySpot(GameEntrySpot.class);
             }));
         options.addActorFactory("player", PlayerActorFactory.class);
@@ -407,14 +407,14 @@ final class SessionActorsRuntimeIntegrationTest {
         String streamEndpoint,
         RoutingId sessionNodeRid) {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.useDiscovery(discovery -> discovery.add(registryRouter));
+        options.addRegistryEndpoint(registryRouter);
         options.addSpotMesh("game", mesh ->
             mesh.addNode("session", node -> {
                 node.enableRouter(router -> {
-                    router.setRouterBind(sessionRouter);
+                    router.bindRouter(sessionRouter);
                     router.setRoutingId(sessionNodeRid);
                 });
-                node.enablePubSub(pubSub -> pubSub.setPubBind(sessionPub));
+                node.enablePubSub(pubSub -> pubSub.bindPubSub(sessionPub));
             }));
         options.addStreamNode("gateway", stream -> {
             stream.bind(streamEndpoint);

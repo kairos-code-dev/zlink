@@ -35,7 +35,7 @@ final class SpotManagerTest {
             mesh.addNode("play", node -> {
                 node.enableRouter(router -> {
                     router.setRoutingId(RoutingId.from("spot-manager-node-" + suffix));
-                    router.setRouterBind("inproc://spot-manager-router-" + suffix);
+                    router.bindRouter("inproc://spot-manager-router-" + suffix);
                 });
                 node.addSpotFactory(GameSpot.class);
             }));
@@ -75,7 +75,7 @@ final class SpotManagerTest {
             mesh.addNode("play", node -> {
                 node.enableRouter(router -> {
                     router.setRoutingId(RoutingId.from("spot-once-node-" + suffix));
-                    router.setRouterBind("inproc://spot-once-router-" + suffix);
+                    router.bindRouter("inproc://spot-once-router-" + suffix);
                 });
                 node.addSpotFactory(GameSpot.class);
             }));
@@ -106,11 +106,11 @@ final class SpotManagerTest {
             mesh.addNode("play", node -> {
                 node.enableRouter(router -> {
                     router.setRoutingId(RoutingId.from("spot-timer-router-node-" + suffix));
-                    router.setRouterBind("inproc://spot-timer-router-" + suffix);
+                    router.bindRouter("inproc://spot-timer-router-" + suffix);
                 });
                 node.enablePubSub(pubsub -> {
                     pubsub.setRoutingId(RoutingId.from("spot-pub-node-" + suffix));
-                    pubsub.setPubBind("inproc://spot-pub-" + suffix);
+                    pubsub.bindPubSub("inproc://spot-pub-" + suffix);
                 });
                 node.addSpotFactory(PublishingSpot.class);
             }));

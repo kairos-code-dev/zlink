@@ -21,7 +21,7 @@ object SessionServer {
         options.addSpotMesh(SampleNames.SpotMesh) { mesh ->
             mesh.addNode(SampleNames.SessionRelayNode) { node ->
                 node.enableRouter { router ->
-                    router.setRouterBind(SampleTopology.SessionRouterEndpoint)
+                    router.bindRouter(SampleTopology.SessionRouterEndpoint)
                     router.setRoutingId(RoutingId.from(SampleNames.SessionRid))
                 }
                 node.acceptSpotRoutesFromChannel(SampleNames.PlayRouteChannel)

@@ -200,7 +200,7 @@ handler는 constructor injection을 사용한다. context에 Spring `Application
 | `AddRouteMeshChannel` | `addRouteMeshChannel` |
 | `AddSpotMesh(...).AddNode(...)` | `addSpotMesh(...).addNode(...)` |
 | `AddStreamNode` | `addStreamNode` |
-| `UseDiscovery` | `useDiscovery` |
+| `UseDiscovery` | `addRegistryEndpoint` |
 | `UseFilter` | `useFilter` |
 | `ConfigureDispatch` | `configureDispatch` |
 | `AddActorFactory` | `addActorFactory` |

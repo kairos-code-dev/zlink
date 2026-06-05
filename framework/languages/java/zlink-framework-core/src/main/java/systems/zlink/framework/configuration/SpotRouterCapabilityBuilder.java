@@ -4,7 +4,7 @@ import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 
 public interface SpotRouterCapabilityBuilder {
-    void setRouterBind(String endpoint);
+    void bindRouter(String endpoint);
 
     void setRoutingId(RoutingId routingId);
 

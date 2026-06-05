@@ -34,10 +34,8 @@ public class ZLinkConfig implements ZLinkFrameworkOptionsCustomizer {
             channel.enableClient();
         });
 
-        options.useDiscovery(registry -> {
-            registry.add("tcp://registry1:5551");
-            registry.add("tcp://registry2:5551");
-        });
+        options.addRegistryEndpoint("tcp://registry1:5551");
+        options.addRegistryEndpoint("tcp://registry2:5551");
     }
 }
 ```

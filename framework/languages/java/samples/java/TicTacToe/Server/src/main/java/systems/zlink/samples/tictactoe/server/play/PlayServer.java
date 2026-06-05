@@ -38,7 +38,7 @@ public final class PlayServer {
                 mesh.addNode(SampleNames.PlayNode, node -> {
                     node.enableRouter(router -> {
                         router.setRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId));
-                        router.setRouterBind(settings.spotEndpoint());
+                        router.bindRouter(settings.spotEndpoint());
                     });
                     node.configureEntrySpot(entry ->
                         entry.setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId)));

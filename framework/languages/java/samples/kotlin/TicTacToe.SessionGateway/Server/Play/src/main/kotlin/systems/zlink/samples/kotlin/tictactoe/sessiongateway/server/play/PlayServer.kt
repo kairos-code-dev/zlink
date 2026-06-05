@@ -29,7 +29,7 @@ object PlayServer {
         options.addSpotMesh(SampleNames.SpotMesh) { mesh ->
             mesh.addNode(SampleNames.PlayNode) { node ->
                 node.enableRouter { router ->
-                    router.setRouterBind(SampleTopology.PlaySpotRouterEndpoint)
+                    router.bindRouter(SampleTopology.PlaySpotRouterEndpoint)
                     router.setRoutingId(RoutingId.from(SampleNames.PlayRid))
                 }
                 node.acceptSpotRoutesFromChannel(SampleNames.PlayRouteChannel)

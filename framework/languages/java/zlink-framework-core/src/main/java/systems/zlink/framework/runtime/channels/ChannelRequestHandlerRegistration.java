@@ -16,4 +16,13 @@ record ChannelRequestHandlerRegistration<THandler extends ZLinkRequestHandler<TR
         String packetName) {
         this(handlerType, null, requestType, replyType, packetName);
     }
+
+    ChannelRequestHandlerRegistration<THandler, TRequest, TReply> withPacketName(String packetName) {
+        return new ChannelRequestHandlerRegistration<>(
+            handlerType,
+            handlerMethod,
+            requestType,
+            replyType,
+            packetName);
+    }
 }

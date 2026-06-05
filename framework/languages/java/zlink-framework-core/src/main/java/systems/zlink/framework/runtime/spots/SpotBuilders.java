@@ -3,12 +3,12 @@ package systems.zlink.framework.runtime.spots;
 import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ManualEndpointListBuilder;
-import systems.zlink.framework.configuration.RegistryBuilder;
 import systems.zlink.framework.configuration.SpotChannelClientCapabilityBuilder;
 import systems.zlink.framework.configuration.SpotPubSubCapabilityBuilder;
 import systems.zlink.framework.configuration.SpotPublisherClientCapabilityBuilder;
 import systems.zlink.framework.configuration.SpotRouterCapabilityBuilder;
 import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
+import systems.zlink.framework.configuration.ZLinkDiscoveryBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotRouteChannelAcceptanceBuilder;
@@ -30,9 +30,13 @@ public final class SpotBuilders {
         String meshName,
         ZLinkFrameworkRegistration registration) implements ZLinkSpotMeshBuilder {
         @Override
-        public void useDiscovery(Consumer<RegistryBuilder> configure) {
-            configure.accept(endpoint ->
-                registration.registryEndpoints().add(endpoint));
+        public void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure) {
+            configure.accept(registration.registryEndpoints()::add);
+        }
+
+        @Override
+        public void addRegistryEndpoint(String endpoint) {
+            registration.registryEndpoints().add(endpoint);
         }
 
         @Override
@@ -121,7 +125,7 @@ public final class SpotBuilders {
 
     private record Router(SpotNodeRegistration registration) implements SpotRouterCapabilityBuilder {
         @Override
-        public void setRouterBind(String endpoint) {
+        public void bindRouter(String endpoint) {
             registration.setRouterBind(endpoint);
         }
 
@@ -139,7 +143,7 @@ public final class SpotBuilders {
 
     private record PubSub(SpotNodeRegistration registration) implements SpotPubSubCapabilityBuilder {
         @Override
-        public void setPubBind(String endpoint) {
+        public void bindPubSub(String endpoint) {
             registration.setPubBind(endpoint);
         }
 

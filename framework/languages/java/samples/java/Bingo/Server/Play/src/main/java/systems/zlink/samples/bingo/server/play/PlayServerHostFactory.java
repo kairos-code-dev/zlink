@@ -36,7 +36,7 @@ public final class PlayServerHostFactory {
     @Bean
     ZLinkFrameworkOptionsCustomizer playOptions() {
         return options -> {
-            options.useDiscovery(discovery -> discovery.add(SampleTopology.RegistryRouterEndpoint));
+            options.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
             options.codecs().addJson();
             options.addHandlersFromPackageOf(PlayServerHostFactory.class);
             options.addClientServerChannel(SampleNames.PlayChannel, channel -> {
@@ -57,10 +57,10 @@ public final class PlayServerHostFactory {
             options.addSpotMesh(SampleNames.RoomSpotDiscovery, mesh ->
                 mesh.addNode(SampleNames.RoomSpotNode, node -> {
                     node.enableRouter(router -> {
-                        router.setRouterBind(SampleTopology.PlaySpotRouterEndpoint);
+                        router.bindRouter(SampleTopology.PlaySpotRouterEndpoint);
                         router.setRoutingId(RoutingId.from(SampleTopology.PlayRid));
                     });
-                    node.enablePubSub(pubSub -> pubSub.setPubBind(SampleTopology.PlaySpotEndpoint));
+                    node.enablePubSub(pubSub -> pubSub.bindPubSub(SampleTopology.PlaySpotEndpoint));
                     node.attachChannelClient(SampleNames.ApiChannel);
                     node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel);
                     node.addEntrySpot(BingoEntrySpot.class);

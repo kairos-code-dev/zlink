@@ -35,9 +35,7 @@ public class StreamConfig {
     ZLinkFrameworkOptionsCustomizer streamOptions() {
         return options -> {
             options.addSpotMesh("game.stage", mesh -> {
-                mesh.useDiscovery(registry -> {
-                    registry.add("tcp://registry1:5551");
-                });
+                mesh.addRegistryEndpoint("tcp://registry1:5551");
                 mesh.addNode("play", node -> {
                     node.enableRouter();
                     node.addEntrySpot(GameEntrySpot.class);

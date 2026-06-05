@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
@@ -188,43 +189,38 @@ public final class ChannelRegistration {
     }
 
     void addSendHandler(ChannelSendHandlerRegistration<?, ?> handler) {
-        if (handler.packetName() == null || handler.packetName().isBlank()) {
-            throw new ZLinkConfigurationException(
-                "client/server channel send handler packet name is required: " + name);
-        }
-        sendHandlers.add(handler);
+        requireNonBlankPacketName(handler.packetName(),
+            "client/server channel send handler packet name");
+        sendHandlers.add(handler.withPacketName(
+            resolvePacketName(handler.messageType(), handler.packetName())));
     }
 
     void addRequestHandler(ChannelRequestHandlerRegistration<?, ?, ?> handler) {
-        if (handler.packetName() == null || handler.packetName().isBlank()) {
-            throw new ZLinkConfigurationException(
-                "client/server channel request handler packet name is required: " + name);
-        }
-        requestHandlers.add(handler);
+        requireNonBlankPacketName(handler.packetName(),
+            "client/server channel request handler packet name");
+        requestHandlers.add(handler.withPacketName(
+            resolvePacketName(handler.requestType(), handler.packetName())));
     }
 
     void addPublishHandler(ChannelPublishHandlerRegistration<?, ?> handler) {
-        if (handler.packetName() == null || handler.packetName().isBlank()) {
-            throw new ZLinkConfigurationException(
-                "fanout channel publish handler packet name is required: " + name);
-        }
-        publishHandlers.add(handler);
+        requireNonBlankPacketName(handler.packetName(),
+            "fanout channel publish handler packet name");
+        publishHandlers.add(handler.withPacketName(
+            resolvePacketName(handler.messageType(), handler.packetName())));
     }
 
     void addRouteRequestHandler(ChannelRouteRequestHandlerRegistration<?, ?, ?> handler) {
-        if (handler.packetName() == null || handler.packetName().isBlank()) {
-            throw new ZLinkConfigurationException(
-                "route mesh request handler packet name is required: " + name);
-        }
-        routeRequestHandlers.add(handler);
+        requireNonBlankPacketName(handler.packetName(),
+            "route mesh request handler packet name");
+        routeRequestHandlers.add(handler.withPacketName(
+            resolvePacketName(handler.requestType(), handler.packetName())));
     }
 
     void addRouteSendHandler(ChannelRouteSendHandlerRegistration<?, ?> handler) {
-        if (handler.packetName() == null || handler.packetName().isBlank()) {
-            throw new ZLinkConfigurationException(
-                "route mesh send handler packet name is required: " + name);
-        }
-        routeSendHandlers.add(handler);
+        requireNonBlankPacketName(handler.packetName(),
+            "route mesh send handler packet name");
+        routeSendHandlers.add(handler.withPacketName(
+            resolvePacketName(handler.messageType(), handler.packetName())));
     }
 
     void enableSpotRouteEgress(String targetSpotNodeChannelName) {
@@ -407,6 +403,23 @@ public final class ChannelRegistration {
             throw new ZLinkConfigurationException("endpoint is required");
         }
         return endpoint;
+    }
+
+    private void requireNonBlankPacketName(String packetName, String label) {
+        if (packetName != null && packetName.isBlank()) {
+            throw new ZLinkConfigurationException(label + " is required: " + name);
+        }
+    }
+
+    private static String resolvePacketName(Class<?> messageType, String explicitPacketName) {
+        return explicitPacketName == null
+            ? resolvePacketName(messageType)
+            : explicitPacketName;
+    }
+
+    private static String resolvePacketName(Class<?> messageType) {
+        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
+        return packet == null ? messageType.getSimpleName() : packet.value();
     }
 
     private void validateMappedGroups(

@@ -69,12 +69,28 @@ public final class ChannelBuilders {
         @Override
         public <THandler extends ZLinkSendHandler<TMessage>, TMessage> void addSendHandler(
             Class<THandler> handlerType,
+            Class<TMessage> messageType) {
+            addSendHandler(handlerType, messageType, null);
+        }
+
+        @Override
+        public <THandler extends ZLinkSendHandler<TMessage>, TMessage> void addSendHandler(
+            Class<THandler> handlerType,
             Class<TMessage> messageType,
             String packetName) {
             registration.addSendHandler(new ChannelSendHandlerRegistration<>(
                 handlerType,
                 messageType,
                 packetName));
+        }
+
+        @Override
+        public <THandler extends ZLinkRequestHandler<TRequest, TReply>, TRequest, TReply>
+        void addRequestHandler(
+            Class<THandler> handlerType,
+            Class<TRequest> requestType,
+            Class<TReply> replyType) {
+            addRequestHandler(handlerType, requestType, replyType, null);
         }
 
         @Override
@@ -129,12 +145,25 @@ public final class ChannelBuilders {
         @Override
         public <THandler extends ZLinkPublishHandler<TMessage>, TMessage> void addPublishHandler(
             Class<THandler> handlerType,
+            Class<TMessage> messageType) {
+            addPublishHandler(handlerType, messageType, null);
+        }
+
+        @Override
+        public <THandler extends ZLinkPublishHandler<TMessage>, TMessage> void addPublishHandler(
+            Class<THandler> handlerType,
             Class<TMessage> messageType,
             String packetName) {
             registration.addPublishHandler(new ChannelPublishHandlerRegistration<>(
                 handlerType,
                 messageType,
                 packetName));
+        }
+
+        @Override
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        public void addPublishHandler(Class<?> handlerType) {
+            addPublishHandler(handlerType, null);
         }
 
         @Override
@@ -190,12 +219,28 @@ public final class ChannelBuilders {
         @Override
         public <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage> void addSendHandler(
             Class<THandler> handlerType,
+            Class<TMessage> messageType) {
+            addSendHandler(handlerType, messageType, null);
+        }
+
+        @Override
+        public <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage> void addSendHandler(
+            Class<THandler> handlerType,
             Class<TMessage> messageType,
             String packetName) {
             registration.addRouteSendHandler(new ChannelRouteSendHandlerRegistration<>(
                 handlerType,
                 messageType,
                 packetName));
+        }
+
+        @Override
+        public <THandler extends ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply>
+        void addRequestHandler(
+            Class<THandler> handlerType,
+            Class<TRequest> requestType,
+            Class<TReply> replyType) {
+            addRequestHandler(handlerType, requestType, replyType, null);
         }
 
         @Override

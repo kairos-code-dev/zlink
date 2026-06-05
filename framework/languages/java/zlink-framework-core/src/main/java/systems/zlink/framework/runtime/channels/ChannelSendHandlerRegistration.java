@@ -14,4 +14,12 @@ record ChannelSendHandlerRegistration<THandler extends ZLinkSendHandler<TMessage
         String packetName) {
         this(handlerType, null, messageType, packetName);
     }
+
+    ChannelSendHandlerRegistration<THandler, TMessage> withPacketName(String packetName) {
+        return new ChannelSendHandlerRegistration<>(
+            handlerType,
+            handlerMethod,
+            messageType,
+            packetName);
+    }
 }

@@ -115,7 +115,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.SpotDispatchEvent, "ACTOR_READABLE"))
         self.assertTrue(hasattr(zlink.SpotDispatchEvent, "ACTOR_JOIN_READABLE"))
         self.assertTrue(hasattr(zlink.SpotDispatchSubjectKind, "ACTOR"))
-        self.assertTrue(hasattr(zlink, "SpotServiceAttachmentRole"))
+        self.assertFalse(hasattr(zlink, "SpotServiceAttachmentRole"))
         self.assertTrue(hasattr(zlink, "MonitorEvent"))
         self.assertTrue(hasattr(zlink, "MonitorEventMask"))
         self.assertTrue(hasattr(zlink, "Poller"))

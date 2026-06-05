@@ -54,7 +54,7 @@ public final class TopicMessage implements AutoCloseable {
         this(null, "", null);
     }
 
-    public TopicMessage(RoutingId routingId, String topicId, Message[] parts) {
+    TopicMessage(RoutingId routingId, String topicId, Message[] parts) {
         this.routingId = routingId;
         this.topic = topicId == null ? "" : topicId;
         this.parts = parts == null ? List.of() : List.of(parts);

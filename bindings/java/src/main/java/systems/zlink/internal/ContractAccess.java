@@ -25,6 +25,12 @@ import systems.zlink.contracts.sockets.SpotDispatchEvent;
 import systems.zlink.contracts.sockets.SpotDispatchInfo;
 import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
 import systems.zlink.contracts.sockets.Socket;
+import systems.zlink.contracts.sockets.CommonSocketOptions;
+import systems.zlink.contracts.sockets.DealerSocketOptions;
+import systems.zlink.contracts.sockets.PubSocketOptions;
+import systems.zlink.contracts.sockets.RouterSocketOptions;
+import systems.zlink.contracts.sockets.StreamSocketOptions;
+import systems.zlink.contracts.sockets.SubSocketOptions;
 import systems.zlink.internal.sockets.SocketOptionKey;
 import systems.zlink.contracts.sockets.SendFlags;
 import java.nio.ByteBuffer;
@@ -43,6 +49,7 @@ public final class ContractAccess {
     private static volatile RoutingIdAccess routingIdAccess;
     private static volatile ContextOptionsAccess contextOptionsAccess;
     private static volatile SocketOptionsAccess socketOptionsAccess;
+    private static volatile SocketOptionFacadesAccess socketOptionFacadesAccess;
     private static volatile NativeErrorAccess nativeErrorAccess;
     private static volatile ReceivedAccess receivedAccess;
     private static volatile SubscriptionEventAccess subscriptionEventAccess;
@@ -149,6 +156,20 @@ public final class ContractAccess {
         void setRouterIntOption(Socket socket, int option, int value);
     }
 
+    public interface SocketOptionFacadesAccess {
+        CommonSocketOptions common(Socket socket);
+
+        DealerSocketOptions dealer(Socket socket);
+
+        PubSocketOptions pub(Socket socket);
+
+        RouterSocketOptions router(Socket socket);
+
+        StreamSocketOptions stream(Socket socket);
+
+        SubSocketOptions sub(Socket socket);
+    }
+
     public interface NativeErrorAccess {
         int errno();
 
@@ -220,6 +241,10 @@ public final class ContractAccess {
     }
 
     public interface SubscriptionEventAccess {
+        SubscriptionEvent create(java.util.Optional<RoutingId> routingId,
+                                 String topic,
+                                 boolean subscribed);
+
         void adoptFrom(SubscriptionEvent target, SubscriptionEvent source);
     }
 
@@ -394,6 +419,10 @@ public final class ContractAccess {
 
     public static void register(SocketOptionsAccess access) {
         socketOptionsAccess = Objects.requireNonNull(access, "access");
+    }
+
+    public static void register(SocketOptionFacadesAccess access) {
+        socketOptionFacadesAccess = Objects.requireNonNull(access, "access");
     }
 
     public static void register(NativeErrorAccess access) {
@@ -592,6 +621,30 @@ public final class ContractAccess {
         socketOptionsAccess().setRouterIntOption(socket, option, value);
     }
 
+    public static CommonSocketOptions commonSocketOptions(Socket socket) {
+        return socketOptionFacadesAccess().common(socket);
+    }
+
+    public static DealerSocketOptions dealerSocketOptions(Socket socket) {
+        return socketOptionFacadesAccess().dealer(socket);
+    }
+
+    public static PubSocketOptions pubSocketOptions(Socket socket) {
+        return socketOptionFacadesAccess().pub(socket);
+    }
+
+    public static RouterSocketOptions routerSocketOptions(Socket socket) {
+        return socketOptionFacadesAccess().router(socket);
+    }
+
+    public static StreamSocketOptions streamSocketOptions(Socket socket) {
+        return socketOptionFacadesAccess().stream(socket);
+    }
+
+    public static SubSocketOptions subSocketOptions(Socket socket) {
+        return socketOptionFacadesAccess().sub(socket);
+    }
+
     public static int nativeErrno() {
         return nativeErrorAccess().errno();
     }
@@ -701,6 +754,11 @@ public final class ContractAccess {
     public static void subscriptionEventAdoptFrom(SubscriptionEvent target,
                                                   SubscriptionEvent source) {
         subscriptionEventAccess().adoptFrom(target, source);
+    }
+
+    public static SubscriptionEvent subscriptionEvent(
+      java.util.Optional<RoutingId> routingId, String topic, boolean subscribed) {
+        return subscriptionEventAccess().create(routingId, topic, subscribed);
     }
 
     public static void receivedForceMaterialize(Received received) {
@@ -1055,6 +1113,14 @@ public final class ContractAccess {
             throw new IllegalStateException(
                 "missing contract access for socket options");
         return socketOptionsAccess;
+    }
+
+    private static SocketOptionFacadesAccess socketOptionFacadesAccess() {
+        if (socketOptionFacadesAccess == null) load(CommonSocketOptions.class);
+        if (socketOptionFacadesAccess == null)
+            throw new IllegalStateException(
+                "missing contract access for socket option facades");
+        return socketOptionFacadesAccess;
     }
 
     private static NativeErrorAccess nativeErrorAccess() {

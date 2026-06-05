@@ -25,8 +25,6 @@ type (
 	RegistryTopologyEntry = impl.RegistryTopologyEntry
 	// RegistryTopologyFilter filters a registry topology query; zero fields match anything.
 	RegistryTopologyFilter = impl.RegistryTopologyFilter
-	// RegistryOption is a configurable option of a service registry.
-	RegistryOption = impl.RegistryOption
 )
 
 const (
@@ -49,12 +47,4 @@ const (
 	TopologyStateError = impl.TopologyStateError
 	// TopologyStateStopped means the connection was explicitly stopped.
 	TopologyStateStopped = impl.TopologyStateStopped
-	// RegistryOptionID is the registry's identifier.
-	RegistryOptionID = impl.RegistryOptionID
-	// RegistryOptionHeartbeatIntervalMS is how often the registry sends heartbeats, in milliseconds.
-	RegistryOptionHeartbeatIntervalMS = impl.RegistryOptionHeartbeatIntervalMS
-	// RegistryOptionHeartbeatTimeoutMS is how long without a heartbeat before a member is dropped, in milliseconds.
-	RegistryOptionHeartbeatTimeoutMS = impl.RegistryOptionHeartbeatTimeoutMS
-	// RegistryOptionBroadcastIntervalMS is how often the registry broadcasts its state, in milliseconds.
-	RegistryOptionBroadcastIntervalMS = impl.RegistryOptionBroadcastIntervalMS
 )

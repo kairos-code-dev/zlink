@@ -5,13 +5,14 @@ package systems.zlink.runtime.sockets;
 import systems.zlink.internal.sockets.SendFlag;
 
 import systems.zlink.contracts.sockets.*;
+import systems.zlink.internal.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.runtime.messaging.MessageOperations;
 
 final class NativePubSocket extends NativeSocketBase implements PubSocket {
-    private final PubSocketOptions options = new PubSocketOptions(this);
+    private final PubSocketOptions options = ContractAccess.pubSocketOptions(this);
 
     NativePubSocket(Context ctx) {
         super(ctx, SocketType.PUB);

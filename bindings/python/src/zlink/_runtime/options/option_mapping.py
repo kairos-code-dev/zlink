@@ -3,7 +3,8 @@
 import ctypes
 
 from ...contracts.core.routing_id import RoutingId
-from ...contracts.sockets.codes import RidDuplicatePolicy, RouterOption, SocketOption
+from ...contracts.sockets.codes import RidDuplicatePolicy
+from ..native_codes import RouterOption, SocketOption
 from ...contracts.messaging.message import Message
 from ..._native.ffi import lib
 from ..buffers.payload_buffers import (

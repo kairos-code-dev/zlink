@@ -7,6 +7,7 @@ import systems.zlink.internal.sockets.ReceiveFlag;
 import systems.zlink.internal.sockets.SendFlag;
 
 import systems.zlink.contracts.sockets.*;
+import systems.zlink.internal.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
@@ -25,7 +26,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 final class NativeDealerSocket extends NativeSocketBase implements DealerSocket {
     private static final boolean DEBUG_REQREP =
       Boolean.getBoolean("zlink.reqrep.debug");
-    private final DealerSocketOptions options = new DealerSocketOptions(this);
+    private final DealerSocketOptions options = ContractAccess.dealerSocketOptions(this);
 
     NativeDealerSocket(Context ctx) {
         super(ctx, SocketType.DEALER);

@@ -8,7 +8,6 @@ type (
 	SpotNode                  = impl.SpotNode
 	SpotNodeMode              = impl.SpotNodeMode
 	SpotNodeSocketOwner       = impl.SpotNodeSocketOwner
-	SpotNodeOption            = impl.SpotNodeOption
 	SpotNodeOptions           = impl.SpotNodeOptions
 	SpotNodeSocketFilter      = impl.SpotNodeSocketFilter
 	SpotNodeSocketEntry       = impl.SpotNodeSocketEntry
@@ -54,12 +53,6 @@ const (
 	SpotNodeSocketOwnerAny            = impl.SpotNodeSocketOwnerAny
 	SpotNodeSocketOwnerNode           = impl.SpotNodeSocketOwnerNode
 	SpotNodeSocketOwnerSpot           = impl.SpotNodeSocketOwnerSpot
-	SpotNodeOptionRouterHwmProfile    = impl.SpotNodeOptionRouterHwmProfile
-	SpotNodeOptionRouterHighWaterMark = impl.SpotNodeOptionRouterHighWaterMark
-	SpotNodeOptionPubSubHwmProfile    = impl.SpotNodeOptionPubSubHwmProfile
-	SpotNodeOptionPubSubHighWaterMark = impl.SpotNodeOptionPubSubHighWaterMark
-	SpotNodeOptionDispatchWorkersMin  = impl.SpotNodeOptionDispatchWorkersMin
-	SpotNodeOptionDispatchWorkersMax  = impl.SpotNodeOptionDispatchWorkersMax
 	SpotNodeStateIdle                 = impl.SpotNodeStateIdle
 	SpotNodeStateConnecting           = impl.SpotNodeStateConnecting
 	SpotNodeStatePartialReady         = impl.SpotNodeStatePartialReady

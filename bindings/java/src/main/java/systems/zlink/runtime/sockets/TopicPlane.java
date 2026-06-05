@@ -192,8 +192,8 @@ final class TopicPlane {
                         }
                         parts.add(part);
                         if (!part.more()) {
-                            return new TopicMessage(routingId, topicId,
-                                parts.toArray(Message[]::new));
+                            return ContractAccess.topicMessage(routingId,
+                                topicId, parts.toArray(Message[]::new));
                         }
                         continue;
                     }
@@ -336,7 +336,7 @@ final class TopicPlane {
                     InternalAccess.messageFinishReceive(next, more);
                     parts.add(next);
                     if (!more) {
-                        return new TopicMessage(routingId, topicId,
+                        return ContractAccess.topicMessage(routingId, topicId,
                             parts.toArray(Message[]::new));
                     }
                     continue;
@@ -423,7 +423,7 @@ final class TopicPlane {
             scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
         String filter = cachedTopicString(scratch, scratch.topicOut,
             topicLength);
-        return new SubscriptionEvent(Optional.ofNullable(
+        return ContractAccess.subscriptionEvent(Optional.ofNullable(
             NativeRoutingIds.read(scratch.routingIdOut)),
             filter, scratch.subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0);
     }

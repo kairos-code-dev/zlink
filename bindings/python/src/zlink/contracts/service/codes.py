@@ -20,16 +20,6 @@ class ServiceRole(IntEnum):
     PUB = 5
     SUB = 6
 
-class RegistrySocketRole(IntEnum):
-    """The role a socket plays within a registry."""
-    PUB = 1
-    ROUTER = 2
-    PEER_SUB = 3
-
-class DiscoverySocketRole(IntEnum):
-    """The role a socket plays within a discovery service."""
-    SUB = 1
-
 class SpotNodeSocketRole(IntEnum):
     """The role a socket plays within a spot node."""
     NODE = 0
@@ -48,15 +38,6 @@ class SpotNodeSocketOwner(IntEnum):
     ANY = 0
     NODE = 1
     SPOT = 2
-
-class SpotNodeOption(IntEnum):
-    """Raw native spot-node option codes used by the runtime."""
-    ROUTER_HWM_PROFILE = 0x360E
-    ROUTER_HWM = 0x360F
-    PUBSUB_HWM_PROFILE = 0x3610
-    PUBSUB_HWM = 0x3611
-    DISPATCH_WORKERS_MIN = 0x3612
-    DISPATCH_WORKERS_MAX = 0x3613
 
 class SpotNodeState(IntEnum):
     """The overall readiness state of a spot node."""
@@ -88,17 +69,6 @@ class SpotKind(IntEnum):
     INVALID = 0
     ENTRY = 1
     USER = 2
-
-class SpotSocketRole(IntEnum):
-    """The role a socket plays within a spot."""
-    PUB = 1
-    SUB = 2
-
-class SpotServiceAttachmentRole(IntEnum):
-    """The role a service attachment plays on a spot."""
-    ROUTER = 1
-    PUB = 2
-    SUB = 3
 
 class SpotDispatchEvent(IntEnum):
     """The kind of readable event surfaced by a spot dispatch."""
@@ -165,19 +135,14 @@ class SpotRole(IntEnum):
 __all__ = [
     "AutoConnectType",
     "ServiceRole",
-    "RegistrySocketRole",
-    "DiscoverySocketRole",
     "SpotNodeSocketRole",
     "SpotNodeMode",
     "SpotNodeSocketOwner",
-    "SpotNodeOption",
     "SpotNodeState",
     "SpotPeerSource",
     "SpotPeerKind",
     "SpotPeerState",
     "SpotKind",
-    "SpotSocketRole",
-    "SpotServiceAttachmentRole",
     "SpotDispatchEvent",
     "SpotDispatchSubjectKind",
     "RegistryState",

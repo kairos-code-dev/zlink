@@ -15,7 +15,6 @@ type (
 	RegistryServiceSummaryFilter = impl.RegistryServiceSummaryFilter
 	RegistryTopologyEntry        = impl.RegistryTopologyEntry
 	RegistryTopologyFilter       = impl.RegistryTopologyFilter
-	RegistryOption               = impl.RegistryOption
 )
 
 const (
@@ -32,8 +31,4 @@ const (
 	TopologyStateLost                 = impl.TopologyStateLost
 	TopologyStateError                = impl.TopologyStateError
 	TopologyStateStopped              = impl.TopologyStateStopped
-	RegistryOptionID                  = impl.RegistryOptionID
-	RegistryOptionHeartbeatIntervalMS = impl.RegistryOptionHeartbeatIntervalMS
-	RegistryOptionHeartbeatTimeoutMS  = impl.RegistryOptionHeartbeatTimeoutMS
-	RegistryOptionBroadcastIntervalMS = impl.RegistryOptionBroadcastIntervalMS
 )

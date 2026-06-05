@@ -37,16 +37,16 @@ internal sealed class Registry : IRegistry
     }
 
     public void SetId(uint registryId)
-        => SetOption(RegistryOption.Id, registryId);
+        => SetRegistryOption(RegistryOption.Id, registryId);
 
-    public void SetOption(RegistryOption option, uint value)
+    private void SetRegistryOption(RegistryOption option, uint value)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_set(_handle, (int)option, value);
         ZlinkException.ThrowConfigIfError(rc);
     }
 
-    public uint GetOption(RegistryOption option)
+    private uint GetRegistryOption(RegistryOption option)
     {
         EnsureNotDisposed();
         uint value = NativeMethods.zlink_registry_get(_handle, (int)option,
@@ -67,15 +67,15 @@ internal sealed class Registry : IRegistry
 
     public void SetHeartbeat(TimeSpan interval, TimeSpan timeout)
     {
-        SetOption(RegistryOption.HeartbeatIntervalMs,
+        SetRegistryOption(RegistryOption.HeartbeatIntervalMs,
             EncodeMilliseconds(interval, nameof(interval)));
-        SetOption(RegistryOption.HeartbeatTimeoutMs,
+        SetRegistryOption(RegistryOption.HeartbeatTimeoutMs,
             EncodeMilliseconds(timeout, nameof(timeout)));
     }
 
     public void SetBroadcastInterval(TimeSpan interval)
     {
-        SetOption(RegistryOption.BroadcastIntervalMs,
+        SetRegistryOption(RegistryOption.BroadcastIntervalMs,
             EncodeMilliseconds(interval, nameof(interval)));
     }
 

@@ -13,7 +13,7 @@ public final class DealerSocketOptions extends CommonSocketOptions {
     private static final int OPT_REQUEST_TIMEOUT_MS = 0x3202;
     private static final int OPT_WEIGHT = 0x3203;
 
-    public DealerSocketOptions(Socket socket) {
+    DealerSocketOptions(Socket socket) {
         super(socket);
     }
 

@@ -20,7 +20,6 @@ from ....contracts.service.codes import (
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
     SpotNodeMode,
-    SpotNodeOption,
     SpotNodeSocketOwner,
     SpotNodeState,
     SpotKind,
@@ -30,6 +29,7 @@ from ....contracts.service.codes import (
     SpotRole,
     SubjectKind,
 )
+from ...native_codes import SpotNodeOption
 from ...._native.ffi import (
     ZlinkActorJoinEntrySpotResult,
     ZlinkActorJoinResult,

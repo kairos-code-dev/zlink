@@ -15,6 +15,13 @@ public final class SubscriptionEvent {
     static {
         ContractAccess.register(new ContractAccess.SubscriptionEventAccess() {
             @Override
+            public SubscriptionEvent create(Optional<RoutingId> routingId,
+                                            String topic,
+                                            boolean subscribed) {
+                return new SubscriptionEvent(routingId, topic, subscribed);
+            }
+
+            @Override
             public void adoptFrom(SubscriptionEvent target,
                                   SubscriptionEvent source) {
                 target.adoptFrom(source);
@@ -26,8 +33,8 @@ public final class SubscriptionEvent {
         this(Optional.empty(), "", false);
     }
 
-    public SubscriptionEvent(Optional<RoutingId> routingId, String topic,
-                             boolean subscribed) {
+    SubscriptionEvent(Optional<RoutingId> routingId, String topic,
+                      boolean subscribed) {
         this.routingId = routingId == null ? null : routingId.orElse(null);
         this.topic = topic == null ? "" : topic;
         this.subscribed = subscribed;

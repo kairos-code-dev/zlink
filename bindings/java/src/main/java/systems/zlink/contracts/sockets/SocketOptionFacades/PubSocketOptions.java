@@ -16,7 +16,7 @@ import java.util.Objects;
 public class PubSocketOptions extends CommonSocketOptions {
     private boolean manualEnabled;
 
-    public PubSocketOptions(Socket socket) {
+    PubSocketOptions(Socket socket) {
         super(socket);
     }
 

@@ -11,8 +11,8 @@ from ...._native.ffi import (
 from ....contracts.core.options import AutoHwmProfile
 from ....contracts.service.codes import (
     SpotNodeMode,
-    SpotNodeOption,
 )
+from ...native_codes import SpotNodeOption
 from ...handles.native_support import (
     CloseError,
     CloseResult,

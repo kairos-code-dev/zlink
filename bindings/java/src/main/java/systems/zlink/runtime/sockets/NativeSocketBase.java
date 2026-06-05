@@ -178,14 +178,14 @@ abstract class NativeSocketBase implements Socket {
     protected NativeSocketBase(Context ctx, SocketType type) {
         Objects.requireNonNull(ctx, "ctx");
         Objects.requireNonNull(type, "type");
-        this.options = new CommonSocketOptions(this);
+        this.options = ContractAccess.commonSocketOptions(this);
         this.runtime = new NativeSocketRuntime(ctx, type);
     }
 
     protected NativeSocketBase(MemorySegment handle, boolean own,
                      SocketType socketTypeHint) {
         Objects.requireNonNull(handle, "handle");
-        this.options = new CommonSocketOptions(this);
+        this.options = ContractAccess.commonSocketOptions(this);
         this.runtime = new NativeSocketRuntime(handle, own, socketTypeHint);
     }
 

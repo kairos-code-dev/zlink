@@ -26,7 +26,7 @@ import java.util.concurrent.CompletableFuture;
 final class NativeRouterSocket extends NativeSocketBase implements RouterSocket {
     private static final boolean DEBUG_REQREP =
       Boolean.getBoolean("zlink.reqrep.debug");
-    private final RouterSocketOptions options = new RouterSocketOptions(this);
+    private final RouterSocketOptions options = ContractAccess.routerSocketOptions(this);
     private final Object routedRequests =
       InternalAccess.routerReceiveSupport(this, false);
 

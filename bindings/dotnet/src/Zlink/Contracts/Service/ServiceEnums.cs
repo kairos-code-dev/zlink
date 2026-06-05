@@ -3,30 +3,6 @@
 namespace Systems.Zlink;
 
 /// <summary>
-/// Configurable options of a service registry.
-/// </summary>
-public enum RegistryOption
-{
-    /// <summary>
-    /// The registry's identifier.
-    /// </summary>
-    Id = 0x3801,
-    /// <summary>
-    /// How often the registry sends heartbeats, in milliseconds.
-    /// </summary>
-    HeartbeatIntervalMs = 0x3802,
-    /// <summary>
-    /// How long without a heartbeat before a member is dropped, in
-    /// milliseconds.
-    /// </summary>
-    HeartbeatTimeoutMs = 0x3803,
-    /// <summary>
-    /// How often the registry broadcasts its state, in milliseconds.
-    /// </summary>
-    BroadcastIntervalMs = 0x3804
-}
-
-/// <summary>
 /// The kind of readable event surfaced by a spot dispatch.
 /// </summary>
 public enum SpotDispatchEvent

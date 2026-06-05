@@ -7,13 +7,14 @@ import systems.zlink.internal.sockets.ReceiveFlag;
 import systems.zlink.internal.sockets.SendFlag;
 
 import systems.zlink.contracts.sockets.*;
+import systems.zlink.internal.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
 import systems.zlink.runtime.messaging.MessageOperations;
 final class NativeXPubSocket extends NativeSocketBase implements XPubSocket {
-    private final PubSocketOptions options = new PubSocketOptions(this);
+    private final PubSocketOptions options = ContractAccess.pubSocketOptions(this);
 
     NativeXPubSocket(Context ctx) {
         super(ctx, SocketType.XPUB);

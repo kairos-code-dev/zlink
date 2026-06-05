@@ -302,11 +302,11 @@ public final class Received implements AutoCloseable {
         this(routingIdBytes, null, parts, false, 0L, false, null);
     }
 
-    public Received(RoutingId routingId, Message[] parts, boolean trustedParts) {
+    Received(RoutingId routingId, Message[] parts, boolean trustedParts) {
         this(routingId, null, parts, trustedParts, 0L, false, null);
     }
 
-    public Received(byte[] routingIdBytes, Message[] parts, boolean trustedParts) {
+    Received(byte[] routingIdBytes, Message[] parts, boolean trustedParts) {
         this(routingIdBytes, null, parts, trustedParts, 0L, false, null);
     }
 
@@ -318,7 +318,7 @@ public final class Received implements AutoCloseable {
             hasRequestSequence, replySender, null);
     }
 
-    public Received(RoutingId routingId, RoutingId spotRid, Message[] parts,
+    Received(RoutingId routingId, RoutingId spotRid, Message[] parts,
              boolean trustedParts, long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
@@ -348,7 +348,7 @@ public final class Received implements AutoCloseable {
             hasRequestSequence, replySender, null);
     }
 
-    public Received(byte[] routingIdBytes, byte[] spotRidBytes, Message[] parts,
+    Received(byte[] routingIdBytes, byte[] spotRidBytes, Message[] parts,
              boolean trustedParts, long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
@@ -377,7 +377,7 @@ public final class Received implements AutoCloseable {
             replySender, null);
     }
 
-    public Received(RoutingId routingId, RoutingId spotRid, Message singlePart,
+    Received(RoutingId routingId, RoutingId spotRid, Message singlePart,
              long requestSequence, boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
@@ -402,7 +402,7 @@ public final class Received implements AutoCloseable {
             hasRequestSequence, replySender, null);
     }
 
-    public Received(byte[] routingIdBytes, byte[] spotRidBytes, Message singlePart,
+    Received(byte[] routingIdBytes, byte[] spotRidBytes, Message singlePart,
              long requestSequence, boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {

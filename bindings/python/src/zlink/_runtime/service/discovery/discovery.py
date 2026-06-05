@@ -3,7 +3,7 @@
 import ctypes
 from dataclasses import dataclass
 
-from ....contracts.sockets.codes import SocketOption
+from ...native_codes import SocketOption
 from ....contracts.service.codes import (
     AutoConnectType,
     RegistryState,

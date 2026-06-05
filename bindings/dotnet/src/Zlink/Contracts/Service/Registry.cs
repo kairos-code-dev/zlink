@@ -21,16 +21,6 @@ public interface IRegistry : IDisposable, IAsyncDisposable
     void SetId(uint registryId);
 
     /// <summary>
-    /// Sets a registry option; see <see cref="RegistryOption"/>.
-    /// </summary>
-    void SetOption(RegistryOption option, uint value);
-
-    /// <summary>
-    /// Gets a registry option; see <see cref="RegistryOption"/>.
-    /// </summary>
-    uint GetOption(RegistryOption option);
-
-    /// <summary>
     /// Adds a peer registry to federate with, by its publish endpoint.
     /// </summary>
     void AddPeer(string peerPubEndpoint);

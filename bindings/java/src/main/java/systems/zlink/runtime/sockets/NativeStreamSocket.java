@@ -32,7 +32,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 final class NativeStreamSocket extends NativeSocketBase implements StreamSocket {
-    private final StreamSocketOptions options = new StreamSocketOptions(this);
+    private final StreamSocketOptions options = ContractAccess.streamSocketOptions(this);
 
     NativeStreamSocket(Context ctx) {
         super(ctx, SocketType.STREAM);

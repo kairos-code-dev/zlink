@@ -11,8 +11,6 @@ type (
 	SpotNodeMode = impl.SpotNodeMode
 	// SpotNodeSocketOwner identifies which component owns a spot node socket.
 	SpotNodeSocketOwner = impl.SpotNodeSocketOwner
-	// SpotNodeOption is a configurable option of a spot node.
-	SpotNodeOption = impl.SpotNodeOption
 	// SpotNodeOptions are options for creating a spot node.
 	SpotNodeOptions = impl.SpotNodeOptions
 	// SpotNodeSocketFilter filters a spot node socket query; zero fields match anything.
@@ -100,12 +98,6 @@ const (
 	SpotNodeSocketOwnerNode = impl.SpotNodeSocketOwnerNode
 	// SpotNodeSocketOwnerSpot matches sockets owned by a spot.
 	SpotNodeSocketOwnerSpot           = impl.SpotNodeSocketOwnerSpot
-	SpotNodeOptionRouterHwmProfile    = impl.SpotNodeOptionRouterHwmProfile
-	SpotNodeOptionRouterHighWaterMark = impl.SpotNodeOptionRouterHighWaterMark
-	SpotNodeOptionPubSubHwmProfile    = impl.SpotNodeOptionPubSubHwmProfile
-	SpotNodeOptionPubSubHighWaterMark = impl.SpotNodeOptionPubSubHighWaterMark
-	SpotNodeOptionDispatchWorkersMin  = impl.SpotNodeOptionDispatchWorkersMin
-	SpotNodeOptionDispatchWorkersMax  = impl.SpotNodeOptionDispatchWorkersMax
 	// SpotNodeStateIdle means the node is not yet connecting to any peer.
 	SpotNodeStateIdle       = impl.SpotNodeStateIdle
 	SpotNodeStateConnecting = impl.SpotNodeStateConnecting

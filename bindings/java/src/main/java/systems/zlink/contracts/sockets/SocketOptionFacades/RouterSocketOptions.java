@@ -16,7 +16,7 @@ public final class RouterSocketOptions extends CommonSocketOptions {
     private static final int OPT_REQUEST_TIMEOUT_MS = 0x3105;
     private static final int OPT_WEIGHT = 0x3106;
 
-    public RouterSocketOptions(Socket socket) {
+    RouterSocketOptions(Socket socket) {
         super(socket);
     }
 

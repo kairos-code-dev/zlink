@@ -14,7 +14,41 @@ import java.util.Objects;
 public class CommonSocketOptions {
     final Socket socket;
 
-    public CommonSocketOptions(Socket socket) {
+    static {
+        ContractAccess.register(new ContractAccess.SocketOptionFacadesAccess() {
+            @Override
+            public CommonSocketOptions common(Socket socket) {
+                return new CommonSocketOptions(socket);
+            }
+
+            @Override
+            public DealerSocketOptions dealer(Socket socket) {
+                return new DealerSocketOptions(socket);
+            }
+
+            @Override
+            public PubSocketOptions pub(Socket socket) {
+                return new PubSocketOptions(socket);
+            }
+
+            @Override
+            public RouterSocketOptions router(Socket socket) {
+                return new RouterSocketOptions(socket);
+            }
+
+            @Override
+            public StreamSocketOptions stream(Socket socket) {
+                return new StreamSocketOptions(socket);
+            }
+
+            @Override
+            public SubSocketOptions sub(Socket socket) {
+                return new SubSocketOptions(socket);
+            }
+        });
+    }
+
+    CommonSocketOptions(Socket socket) {
         this.socket = socket;
     }
 

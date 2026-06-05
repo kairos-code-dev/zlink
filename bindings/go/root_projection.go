@@ -10,7 +10,6 @@ type (
 	SpotNodeMode                 = impl.SpotNodeMode
 	SocketType                   = impl.SocketType
 	SpotNodeSocketOwner          = impl.SpotNodeSocketOwner
-	SpotNodeOption               = impl.SpotNodeOption
 	SpotNodeOptions              = impl.SpotNodeOptions
 	SpotNodeSocketFilter         = impl.SpotNodeSocketFilter
 	SpotNodeSocketEntry          = impl.SpotNodeSocketEntry
@@ -88,7 +87,6 @@ type (
 	MemberPeerEntry              = impl.MemberPeerEntry
 	RegistryTopologyEntry        = impl.RegistryTopologyEntry
 	RegistryTopologyFilter       = impl.RegistryTopologyFilter
-	RegistryOption               = impl.RegistryOption
 	RidDuplicatePolicy           = impl.RidDuplicatePolicy
 	SubmitRetryMode              = impl.SubmitRetryMode
 	CommonSocketOptions          = impl.CommonSocketOptions
@@ -154,12 +152,6 @@ const (
 	SpotNodeSocketOwnerAny                  = impl.SpotNodeSocketOwnerAny
 	SpotNodeSocketOwnerNode                 = impl.SpotNodeSocketOwnerNode
 	SpotNodeSocketOwnerSpot                 = impl.SpotNodeSocketOwnerSpot
-	SpotNodeOptionRouterHwmProfile          = impl.SpotNodeOptionRouterHwmProfile
-	SpotNodeOptionRouterHighWaterMark       = impl.SpotNodeOptionRouterHighWaterMark
-	SpotNodeOptionPubSubHwmProfile          = impl.SpotNodeOptionPubSubHwmProfile
-	SpotNodeOptionPubSubHighWaterMark       = impl.SpotNodeOptionPubSubHighWaterMark
-	SpotNodeOptionDispatchWorkersMin        = impl.SpotNodeOptionDispatchWorkersMin
-	SpotNodeOptionDispatchWorkersMax        = impl.SpotNodeOptionDispatchWorkersMax
 	MonitorEventAll                         = impl.MonitorEventAll
 	MonitorEventConnectionReady             = impl.MonitorEventConnectionReady
 	MonitorEventPeerWeightChanged           = impl.MonitorEventPeerWeightChanged
@@ -226,10 +218,6 @@ const (
 	TopologyStateLost                       = impl.TopologyStateLost
 	TopologyStateError                      = impl.TopologyStateError
 	TopologyStateStopped                    = impl.TopologyStateStopped
-	RegistryOptionID                        = impl.RegistryOptionID
-	RegistryOptionHeartbeatIntervalMS       = impl.RegistryOptionHeartbeatIntervalMS
-	RegistryOptionHeartbeatTimeoutMS        = impl.RegistryOptionHeartbeatTimeoutMS
-	RegistryOptionBroadcastIntervalMS       = impl.RegistryOptionBroadcastIntervalMS
 	RidDuplicateReject                      = impl.RidDuplicateReject
 	RidDuplicateHandover                    = impl.RidDuplicateHandover
 	SubmitRetryOff                          = impl.SubmitRetryOff

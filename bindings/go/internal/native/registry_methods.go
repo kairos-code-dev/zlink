@@ -35,26 +35,26 @@ func (r *Registry) SetTLSClient(caCertPath string, hostname string, trustSystem 
 }
 
 func (r *Registry) SetId(registryID uint32) error {
-	return r.SetOption(RegistryOptionID, registryID)
+	return r.setOption(registryOptionID, registryID)
 }
 
-type RegistryOption uint32
+type registryOption uint32
 
 const (
-	RegistryOptionID                  RegistryOption = RegistryOption(C.ZLINK_REGISTRY_OPT_ID)
-	RegistryOptionHeartbeatIntervalMS RegistryOption = RegistryOption(C.ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS)
-	RegistryOptionHeartbeatTimeoutMS  RegistryOption = RegistryOption(C.ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS)
-	RegistryOptionBroadcastIntervalMS RegistryOption = RegistryOption(C.ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS)
+	registryOptionID                  registryOption = registryOption(C.ZLINK_REGISTRY_OPT_ID)
+	registryOptionHeartbeatIntervalMS registryOption = registryOption(C.ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS)
+	registryOptionHeartbeatTimeoutMS  registryOption = registryOption(C.ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS)
+	registryOptionBroadcastIntervalMS registryOption = registryOption(C.ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS)
 )
 
-func (r *Registry) SetOption(option RegistryOption, value uint32) error {
+func (r *Registry) setOption(option registryOption, value uint32) error {
 	if r == nil || r.closed {
 		return stateError("registry is closed")
 	}
 	return checkRC(C.zlink_registry_set(r.raw(), C.zlink_registry_option_t(option), C.uint32_t(value)))
 }
 
-func (r *Registry) GetOption(option RegistryOption) (uint32, error) {
+func (r *Registry) getOption(option registryOption) (uint32, error) {
 	if r == nil || r.closed {
 		return 0, stateError("registry is closed")
 	}
@@ -70,14 +70,14 @@ func (r *Registry) AddPeer(peerPubEndpoint string) error {
 }
 
 func (r *Registry) SetHeartbeat(intervalMS uint32, timeoutMS uint32) error {
-	if err := r.SetOption(RegistryOptionHeartbeatIntervalMS, intervalMS); err != nil {
+	if err := r.setOption(registryOptionHeartbeatIntervalMS, intervalMS); err != nil {
 		return err
 	}
-	return r.SetOption(RegistryOptionHeartbeatTimeoutMS, timeoutMS)
+	return r.setOption(registryOptionHeartbeatTimeoutMS, timeoutMS)
 }
 
 func (r *Registry) SetBroadcastInterval(intervalMS uint32) error {
-	return r.SetOption(RegistryOptionBroadcastIntervalMS, intervalMS)
+	return r.setOption(registryOptionBroadcastIntervalMS, intervalMS)
 }
 
 func (r *Registry) Status() (*RegistryStatus, error) {

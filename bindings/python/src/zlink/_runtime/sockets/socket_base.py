@@ -15,10 +15,10 @@ from ...contracts.eventing.codes import MonitorEventMask
 from ...contracts.sockets.codes import (
     HandlerResult,
     RidDuplicatePolicy,
-    SocketOption,
     SocketType,
     SubmitResult,
 )
+from ..native_codes import SocketOption
 from ..._native import bridge as _native_bridge
 from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
 from ..buffers.payload_buffers import (

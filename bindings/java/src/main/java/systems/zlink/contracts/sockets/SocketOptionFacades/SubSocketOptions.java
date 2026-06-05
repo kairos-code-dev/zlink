@@ -8,7 +8,7 @@ import systems.zlink.internal.ContractAccess;
 
 /** The typed facade over SUB/XSUB-specific socket options. */
 public final class SubSocketOptions extends CommonSocketOptions {
-    public SubSocketOptions(Socket socket) {
+    SubSocketOptions(Socket socket) {
         super(socket);
     }
 

@@ -152,8 +152,8 @@ pub use spot_models::{
     SpotDispatchInfo, SpotKind, SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry,
     SpotNodePeerFilter, SpotNodeSocketEntry, SpotNodeSocketFilter, SpotNodeSocketOwner,
     SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
-    SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SpotServiceAttachmentRole, SubjectKind,
-    TopologySource, TopologyState,
+    SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SubjectKind, TopologySource,
+    TopologyState,
 };
 pub use spot_node_resource::SpotNode;
 pub use spot_operations::{

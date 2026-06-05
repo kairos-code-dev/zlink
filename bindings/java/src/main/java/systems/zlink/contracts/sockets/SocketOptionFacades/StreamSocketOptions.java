@@ -9,7 +9,7 @@ import systems.zlink.internal.ContractAccess;
 
 /** The typed facade over STREAM-specific socket options. */
 public final class StreamSocketOptions extends CommonSocketOptions {
-    public StreamSocketOptions(Socket socket) {
+    StreamSocketOptions(Socket socket) {
         super(socket);
     }
 

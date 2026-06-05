@@ -5,6 +5,7 @@ package systems.zlink.runtime.sockets;
 import systems.zlink.internal.sockets.ReceiveFlag;
 
 import systems.zlink.contracts.sockets.*;
+import systems.zlink.internal.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
@@ -12,7 +13,7 @@ import systems.zlink.contracts.messaging.TopicMessage;
 import java.util.Optional;
 
 final class NativeSubSocket extends NativeSocketBase implements SubSocket {
-    private final SubSocketOptions options = new SubSocketOptions(this);
+    private final SubSocketOptions options = ContractAccess.subSocketOptions(this);
 
     NativeSubSocket(Context ctx) {
         super(ctx, SocketType.SUB);

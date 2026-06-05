@@ -57,8 +57,6 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.AutoConnectType.SPOT_MESH), 5)
 
     def test_spot_role_values(self):
-        self.assertEqual(int(zlink.SpotSocketRole.PUB), 1)
-        self.assertEqual(int(zlink.SpotSocketRole.SUB), 2)
         self.assertEqual(int(zlink.SpotDispatchEvent.CHANNEL_REPLY_READABLE), 4)
         self.assertEqual(int(zlink.SpotDispatchEvent.ACTOR_READABLE), 5)
         self.assertEqual(int(zlink.SpotDispatchEvent.ACTOR_JOIN_READABLE), 6)

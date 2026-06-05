@@ -223,17 +223,6 @@ pub enum SubjectKind {
     Routed = 2,
 }
 
-/// The role a service attachment plays on a spot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SpotServiceAttachmentRole {
-    /// A ROUTER attachment.
-    Router,
-    /// A publisher attachment.
-    Pub,
-    /// A subscriber attachment.
-    Sub,
-}
-
 /// The kind of readable event surfaced by a spot dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpotDispatchEvent {

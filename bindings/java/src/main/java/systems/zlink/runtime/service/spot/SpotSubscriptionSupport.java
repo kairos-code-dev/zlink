@@ -380,7 +380,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                 int topicLength = normalizeTopicLength(scratch.topicOut,
                   TOPIC_CAPACITY, scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
                 String topicId = cachedSpotTopic(scratch, topicLength);
-                return Optional.of(new SubscriptionEvent(
+                return Optional.of(ContractAccess.subscriptionEvent(
                   Optional.ofNullable(NativeRoutingIds.read(
                     scratch.subscriptionRid)),
                   topicId, scratch.subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));

@@ -32,6 +32,10 @@ func StampCooldownPayload(payload []byte) {
 }
 
 func StampPayloadPhase(payload []byte, phase uint8) {
+	StampPayloadPhaseAt(payload, phase, time.Now())
+}
+
+func StampPayloadPhaseAt(payload []byte, phase uint8, now time.Time) {
 	if len(payload) < MetricHeaderSize {
 		Must(&invalidMetricPayloadError{Size: len(payload)})
 	}
@@ -40,7 +44,7 @@ func StampPayloadPhase(payload []byte, phase uint8) {
 	payload[8] = phase
 	binary.LittleEndian.PutUint32(payload[9:13], uint32(len(payload)))
 	binary.LittleEndian.PutUint64(payload[13:21], atomic.AddUint64(&metricSequence, 1))
-	binary.LittleEndian.PutUint64(payload[21:29], uint64(time.Now().UnixNano()))
+	binary.LittleEndian.PutUint64(payload[21:29], uint64(now.UnixNano()))
 }
 
 type MetricHeader struct {

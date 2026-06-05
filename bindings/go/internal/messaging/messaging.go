@@ -11,6 +11,7 @@ type (
 	RequestReplyCompletion = impl.RequestReplyCompletion
 	Received               = impl.Received
 	RecvPartResult         = impl.RecvPartResult
+	RecvBytesResult        = impl.RecvBytesResult
 	SpotForwardResult      = impl.SpotForwardResult
 	TopicMessage           = impl.TopicMessage
 	SubscriptionEvent      = impl.SubscriptionEvent

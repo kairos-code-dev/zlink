@@ -17,6 +17,8 @@ type (
 	Received = impl.Received
 	// RecvPartResult is the outcome of receiving a single message part.
 	RecvPartResult = impl.RecvPartResult
+	// RecvBytesResult is the outcome of receiving one message part into a caller-owned buffer.
+	RecvBytesResult = impl.RecvBytesResult
 	// SpotForwardResult is the outcome of forwarding a message through a spot.
 	SpotForwardResult = impl.SpotForwardResult
 	// TopicMessage is a received publish: its topic and message parts.

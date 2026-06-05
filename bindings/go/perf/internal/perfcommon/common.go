@@ -65,6 +65,13 @@ func (s *Stats) AddCount() uint64 {
 	return atomic.AddUint64(&s.count, 1)
 }
 
+func (s *Stats) AddCountBy(delta uint64) {
+	if delta == 0 {
+		return
+	}
+	atomic.AddUint64(&s.count, delta)
+}
+
 func (s *Stats) AddLatencySampleNs(latencyNs float64) {
 	atomic.AddUint64(&s.latencyCount, 1)
 	s.mu.Lock()

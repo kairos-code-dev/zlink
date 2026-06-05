@@ -22,6 +22,12 @@ type RecvPartResult struct {
 	More          bool
 }
 
+type RecvBytesResult struct {
+	RoutingID RoutingID
+	Size      int
+	More      bool
+}
+
 type SpotForwardResult struct {
 	SourceNodeRID RoutingID
 	SourceSpotRID RoutingID

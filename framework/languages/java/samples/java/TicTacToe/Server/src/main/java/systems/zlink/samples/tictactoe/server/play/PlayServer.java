@@ -16,7 +16,6 @@ public final class PlayServer {
 
     public static ZLinkFrameworkOptionsCustomizer configure(SampleSettings settings) {
         return options -> {
-            SampleSettings.setCurrent(settings);
             SampleLogging.configure(settings, "play");
             options.codecs().addJson();
             options.addHandlersFromPackageOf(PlayServer.class);

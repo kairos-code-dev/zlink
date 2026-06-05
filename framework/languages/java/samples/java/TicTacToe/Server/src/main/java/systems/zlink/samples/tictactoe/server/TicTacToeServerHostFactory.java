@@ -10,7 +10,6 @@ public final class TicTacToeServerHostFactory {
     }
 
     public static AutoCloseable start(SampleSettings settings) {
-        SampleSettings.setCurrent(settings);
         ConfigurableApplicationContext play = null;
         ConfigurableApplicationContext api = null;
         try {

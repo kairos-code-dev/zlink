@@ -9,16 +9,6 @@ public record SampleSettings(
     String playEndpoint,
     String spotEndpoint,
     String logDirectory) {
-    private static SampleSettings current = createDefault();
-
-    public static SampleSettings current() {
-        return current;
-    }
-
-    public static void setCurrent(SampleSettings settings) {
-        current = settings;
-    }
-
     public static SampleSettings createDefault() {
         return new SampleSettings(
             "http://127.0.0.1:18080",

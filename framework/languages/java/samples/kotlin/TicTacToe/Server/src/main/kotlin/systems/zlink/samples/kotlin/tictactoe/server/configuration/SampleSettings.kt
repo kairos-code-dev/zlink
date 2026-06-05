@@ -29,14 +29,6 @@ data class SampleSettings(
     }
 
     companion object {
-        private var currentValue: SampleSettings = createDefault()
-
-        fun current(): SampleSettings = currentValue
-
-        fun setCurrent(settings: SampleSettings) {
-            currentValue = settings
-        }
-
         fun createDefault(): SampleSettings =
             SampleSettings(
                 apiBindUrl = "http://127.0.0.1:18081",

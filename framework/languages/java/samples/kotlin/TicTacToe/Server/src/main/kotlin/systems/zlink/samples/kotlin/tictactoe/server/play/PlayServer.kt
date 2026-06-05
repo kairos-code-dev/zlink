@@ -13,7 +13,6 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.sessions.PlaySession
 object PlayServer {
     fun configure(settings: SampleSettings): ZLinkFrameworkOptionsCustomizer =
         ZLinkFrameworkOptionsCustomizer { options ->
-            SampleSettings.setCurrent(settings)
             SampleLogging.configure(settings, "play")
             options.codecs().addJson()
             options.addHandlersFromPackageOf(PlayServer::class.java)

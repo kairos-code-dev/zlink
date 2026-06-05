@@ -7,7 +7,6 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.PlayServerHostFactory
 
 object TicTacToeServerHostFactory {
     fun start(settings: SampleSettings): AutoCloseable {
-        SampleSettings.setCurrent(settings)
         var play: ConfigurableApplicationContext? = null
         var api: ConfigurableApplicationContext? = null
         try {

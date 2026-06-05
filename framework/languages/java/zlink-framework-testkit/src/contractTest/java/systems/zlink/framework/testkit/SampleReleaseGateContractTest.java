@@ -833,8 +833,11 @@ final class SampleReleaseGateContractTest {
                 && settingsSource.contains("--api-channel-endpoint")
                 && settingsSource.contains("--play-channel-endpoint")
                 && settingsSource.contains("--play-router-endpoint")
-                && settingsSource.contains("--play-endpoint"),
-            "TicTacToe direct sample must expose .NET-style sample settings instead of fixed topology constants");
+                && settingsSource.contains("--play-endpoint")
+                && !settingsSource.contains("static SampleSettings current")
+                && !settingsSource.contains("current()")
+                && !settingsSource.contains("setCurrent"),
+            "TicTacToe direct sample must expose .NET-style sample settings through Spring DI instead of fixed topology constants or global state");
         assertTrue(clientSource.contains("HttpClient")
                 && clientSource.contains("CreateGameHttpReq")
                 && clientSource.contains("CreateGameHttpRes")
@@ -918,11 +921,13 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/server/play/handlers/CreateGameHandler.java");
         assertTrue(playCreateGameHandlerSource.contains("CompletionStage<CreateGameRes>")
                 && playCreateGameHandlerSource.contains("ZLinkSpotManager")
+                && playCreateGameHandlerSource.contains("SampleSettings settings")
                 && playCreateGameHandlerSource.contains("@ZLinkHandlerGroup(SampleNames.PlayChannel)")
                 && playCreateGameHandlerSource.contains("CreateGameReq request")
                 && playCreateGameHandlerSource.contains("spots.createAsync(TicTacToeGame.class)")
-                && playCreateGameHandlerSource.contains("new CreateGameRes("),
-            "TicTacToe Play CreateGame handler must create a Spot and reply with typed contracts");
+                && playCreateGameHandlerSource.contains("new CreateGameRes(")
+                && !playCreateGameHandlerSource.contains("SampleSettings.current()"),
+            "TicTacToe Play CreateGame handler must be created by Spring DI, create a Spot, and reply with typed contracts");
         String gameJoinReqSource = sampleJavaSource(
             "TicTacToe",
             "Shared/src/main/java",
@@ -1199,8 +1204,11 @@ final class SampleReleaseGateContractTest {
                 && settingsSource.contains("--api-channel-endpoint")
                 && settingsSource.contains("--play-channel-endpoint")
                 && settingsSource.contains("--play-router-endpoint")
-                && settingsSource.contains("--play-endpoint"),
-            "Kotlin TicTacToe direct sample must expose .NET-style sample settings instead of fixed topology constants");
+                && settingsSource.contains("--play-endpoint")
+                && !settingsSource.contains("currentValue")
+                && !settingsSource.contains("fun current")
+                && !settingsSource.contains("setCurrent"),
+            "Kotlin TicTacToe direct sample must expose .NET-style sample settings through Spring DI instead of fixed topology constants or global state");
         assertTrue(clientSource.contains("HttpClient")
                 && clientSource.contains("CreateGameHttpReq")
                 && clientSource.contains("CreateGameHttpRes")
@@ -1284,11 +1292,13 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/server/play/handlers/CreateGameHandler.kt");
         assertTrue(playCreateGameHandlerSource.contains("CompletionStage<CreateGameRes>")
                 && playCreateGameHandlerSource.contains("ZLinkSpotManager")
+                && playCreateGameHandlerSource.contains("settings: SampleSettings")
                 && playCreateGameHandlerSource.contains("@ZLinkHandlerGroup(SampleNames.PlayChannel)")
                 && playCreateGameHandlerSource.contains("request: CreateGameReq")
                 && playCreateGameHandlerSource.contains("spots.createAsync(TicTacToeGame::class.java)")
-                && playCreateGameHandlerSource.contains("CreateGameRes("),
-            "Kotlin TicTacToe Play CreateGame handler must create a Spot and reply with typed contracts");
+                && playCreateGameHandlerSource.contains("CreateGameRes(")
+                && !playCreateGameHandlerSource.contains("SampleSettings.current()"),
+            "Kotlin TicTacToe Play CreateGame handler must be created by Spring DI, create a Spot, and reply with typed contracts");
         assertTrue(clientSource.contains("JoinGameReq(game.gameId)")
                 && !clientSource.contains("TicTacToeGameJoinReq"),
             "Kotlin TicTacToe client must use client-facing JoinGame contracts only");

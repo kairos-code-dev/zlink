@@ -13,9 +13,11 @@ import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
 @ZLinkHandlerGroup(SampleNames.PlayChannel)
 public final class CreateGameHandler {
     private final ZLinkSpotManager spots;
+    private final SampleSettings settings;
 
-    public CreateGameHandler(ZLinkSpotManager spots) {
+    public CreateGameHandler(ZLinkSpotManager spots, SampleSettings settings) {
         this.spots = spots;
+        this.settings = settings;
     }
 
     @ZLinkRequest(packetName = "CreateGameReq")
@@ -23,7 +25,7 @@ public final class CreateGameHandler {
         return spots.createAsync(TicTacToeGame.class)
             .thenApply(created -> new CreateGameRes(
                 created.spotRid().toHex(),
-                SampleSettings.current().playEndpoint(),
+                settings.playEndpoint(),
                 request.gameName()));
     }
 }

@@ -13,6 +13,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameRes
 @ZLinkHandlerGroup(SampleNames.PlayChannel)
 class CreateGameHandler(
     private val spots: ZLinkSpotManager,
+    private val settings: SampleSettings,
 ) {
     @ZLinkRequest(packetName = "CreateGameReq")
     fun createAsync(request: CreateGameReq): CompletionStage<CreateGameRes> =
@@ -20,7 +21,7 @@ class CreateGameHandler(
             .thenApply { created ->
                 CreateGameRes(
                     gameId = created.spotRid().toHex(),
-                    playEndpoint = SampleSettings.current().playEndpoint,
+                    playEndpoint = settings.playEndpoint,
                     gameName = request.gameName,
                 )
             }

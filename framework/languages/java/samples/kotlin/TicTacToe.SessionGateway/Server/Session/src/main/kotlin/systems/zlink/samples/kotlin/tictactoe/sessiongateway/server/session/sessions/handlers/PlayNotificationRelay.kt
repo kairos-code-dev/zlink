@@ -5,13 +5,15 @@ import java.util.concurrent.CompletionStage
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.PlayerSessionDirectory
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.contracts.PlayResponseEnvelope
 
-object PlayNotificationRelay {
+class PlayNotificationRelay(
+    private val sessions: PlayerSessionDirectory,
+) {
     fun deliverAsync(encodedResponse: String): CompletionStage<Void> {
         val response = PlayResponseEnvelope.decode(encodedResponse)
         var tail: CompletionStage<Void> = CompletableFuture.completedFuture(null)
         response.notifications.forEach { notification ->
             tail = tail.thenCompose {
-                PlayerSessionDirectory.find(notification.recipientActorId)
+                sessions.find(notification.recipientActorId)
                     ?.client()
                     ?.send(notification.payload)
                     ?.packetName(notification.packetName)

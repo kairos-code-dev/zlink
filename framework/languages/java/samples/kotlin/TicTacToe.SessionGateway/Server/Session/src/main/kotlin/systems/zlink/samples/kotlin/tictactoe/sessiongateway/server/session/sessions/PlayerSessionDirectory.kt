@@ -3,7 +3,7 @@ package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.ses
 import java.util.concurrent.ConcurrentHashMap
 import systems.zlink.framework.streams.ZLinkSessionContext
 
-object PlayerSessionDirectory {
+class PlayerSessionDirectory {
     private val sessions = ConcurrentHashMap<String, ZLinkSessionContext>()
 
     fun bind(actorId: String, context: ZLinkSessionContext) {

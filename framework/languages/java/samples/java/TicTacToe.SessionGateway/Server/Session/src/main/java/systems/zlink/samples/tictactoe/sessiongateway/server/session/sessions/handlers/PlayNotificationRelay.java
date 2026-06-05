@@ -6,14 +6,17 @@ import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.Pl
 import systems.zlink.samples.tictactoe.sessiongateway.shared.contracts.PlayResponseEnvelope;
 
 public final class PlayNotificationRelay {
-    private PlayNotificationRelay() {
+    private final PlayerSessionDirectory sessions;
+
+    public PlayNotificationRelay(PlayerSessionDirectory sessions) {
+        this.sessions = sessions;
     }
 
-    public static CompletionStage<Void> deliverAsync(String encodedResponse) {
+    public CompletionStage<Void> deliverAsync(String encodedResponse) {
         PlayResponseEnvelope.PlayResponse response = PlayResponseEnvelope.decode(encodedResponse);
         CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
         for (PlayResponseEnvelope.Notification notification : response.notifications()) {
-            tail = tail.thenCompose(ignored -> PlayerSessionDirectory
+            tail = tail.thenCompose(ignored -> sessions
                 .find(notification.recipientActorId())
                 .map(context -> context.client()
                     .send(notification.payload())
@@ -24,7 +27,7 @@ public final class PlayNotificationRelay {
         return tail;
     }
 
-    public static String reply(String encodedResponse) {
+    public String reply(String encodedResponse) {
         return PlayResponseEnvelope.decode(encodedResponse).reply();
     }
 }

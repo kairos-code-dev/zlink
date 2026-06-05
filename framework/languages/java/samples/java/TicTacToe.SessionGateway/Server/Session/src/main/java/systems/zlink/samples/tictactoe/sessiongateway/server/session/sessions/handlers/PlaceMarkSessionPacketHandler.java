@@ -12,9 +12,13 @@ import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.Sampl
 public final class PlaceMarkSessionPacketHandler
     implements ZLinkSessionPacketHandler<ZLinkSessionContext> {
     private final ZLinkClient channels;
+    private final PlayNotificationRelay relay;
 
-    public PlaceMarkSessionPacketHandler(ZLinkClient channels) {
+    public PlaceMarkSessionPacketHandler(
+        ZLinkClient channels,
+        PlayNotificationRelay relay) {
         this.channels = channels;
+        this.relay = relay;
     }
 
     @Override
@@ -33,9 +37,9 @@ public final class PlaceMarkSessionPacketHandler
                 payload.toUtf8String() + "|" + actor.actorId())
             .packetName("PlaceMarkReq")
             .submitAsync(String.class)
-            .thenCompose(response -> PlayNotificationRelay.deliverAsync(response)
+            .thenCompose(response -> relay.deliverAsync(response)
                 .thenCompose(ignored -> context.client()
-                    .reply(PlayNotificationRelay.reply(response))
+                    .reply(relay.reply(response))
                     .submitAsync()));
     }
 }

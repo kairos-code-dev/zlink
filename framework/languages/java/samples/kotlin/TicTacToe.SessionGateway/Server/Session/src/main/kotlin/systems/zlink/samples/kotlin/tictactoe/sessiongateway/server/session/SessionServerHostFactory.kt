@@ -5,6 +5,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.PlayerSessionDirectory
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.handlers.PlayNotificationRelay
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleTopology
 
 @SpringBootApplication(
@@ -21,6 +23,14 @@ class SessionServerHostFactory {
             SessionServer.configureRelayNode(options)
             SessionServer.configure(options)
         }
+
+    @Bean
+    fun playerSessionDirectory(): PlayerSessionDirectory =
+        PlayerSessionDirectory()
+
+    @Bean
+    fun playNotificationRelay(sessions: PlayerSessionDirectory): PlayNotificationRelay =
+        PlayNotificationRelay(sessions)
 
     companion object {
         fun start(args: Array<String> = emptyArray()): AutoCloseable {

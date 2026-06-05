@@ -14,6 +14,7 @@ import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuratio
 
 class AuthenticateSessionPacketHandler(
     private val channels: ZLinkClient,
+    private val sessions: PlayerSessionDirectory,
 ) : ZLinkSessionPacketHandler<ZLinkSessionContext> {
     override fun packetName(): String = "AuthenticateReq"
 
@@ -38,7 +39,7 @@ class AuthenticateSessionPacketHandler(
             }
             .thenCompose { snapshot -> context.actors().bindAsync(toActorRef(snapshot)) }
             .thenCompose {
-                PlayerSessionDirectory.bind(actorId, context)
+                sessions.bind(actorId, context)
                 context.client()
                     .reply(actorId)
                     .submitAsync()

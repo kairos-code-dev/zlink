@@ -5,6 +5,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
+import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.PlayerSessionDirectory;
+import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.handlers.PlayNotificationRelay;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleTopology;
 
 @SpringBootApplication(
@@ -29,5 +31,15 @@ public final class SessionServerHostFactory {
             SessionServer.configureRelayNode(options);
             SessionServer.configure(options);
         };
+    }
+
+    @Bean
+    PlayerSessionDirectory playerSessionDirectory() {
+        return new PlayerSessionDirectory();
+    }
+
+    @Bean
+    PlayNotificationRelay playNotificationRelay(PlayerSessionDirectory sessions) {
+        return new PlayNotificationRelay(sessions);
     }
 }

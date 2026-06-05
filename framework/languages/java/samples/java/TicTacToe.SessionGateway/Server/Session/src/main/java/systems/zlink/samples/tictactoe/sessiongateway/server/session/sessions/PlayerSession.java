@@ -13,12 +13,15 @@ import systems.zlink.framework.streams.ZLinkStreamHeader;
 public final class PlayerSession implements ZLinkSession {
     private final ZLinkSessionContext context;
     private final ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers;
+    private final PlayerSessionDirectory sessions;
 
     public PlayerSession(
         ZLinkSessionContext context,
-        ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers) {
+        ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers,
+        PlayerSessionDirectory sessions) {
         this.context = context;
         this.handlers = handlers;
+        this.sessions = sessions;
     }
 
     @Override
@@ -34,7 +37,7 @@ public final class PlayerSession implements ZLinkSession {
     @Override
     public CompletionStage<Void> onDisconnectedAsync() {
         context.actors().bound()
-            .forEach(actor -> PlayerSessionDirectory.unbind(actor.actorId(), context));
+            .forEach(actor -> sessions.unbind(actor.actorId(), context));
         return CompletableFuture.completedFuture(null);
     }
 

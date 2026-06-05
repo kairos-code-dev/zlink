@@ -6,20 +6,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 
 public final class PlayerSessionDirectory {
-    private static final Map<String, ZLinkSessionContext> SESSIONS = new ConcurrentHashMap<>();
+    private final Map<String, ZLinkSessionContext> sessions = new ConcurrentHashMap<>();
 
-    private PlayerSessionDirectory() {
+    public void bind(String actorId, ZLinkSessionContext context) {
+        sessions.put(actorId, context);
     }
 
-    public static void bind(String actorId, ZLinkSessionContext context) {
-        SESSIONS.put(actorId, context);
+    public void unbind(String actorId, ZLinkSessionContext context) {
+        sessions.computeIfPresent(actorId, (ignored, existing) -> existing == context ? null : existing);
     }
 
-    public static void unbind(String actorId, ZLinkSessionContext context) {
-        SESSIONS.computeIfPresent(actorId, (ignored, existing) -> existing == context ? null : existing);
-    }
-
-    public static Optional<ZLinkSessionContext> find(String actorId) {
-        return Optional.ofNullable(SESSIONS.get(actorId));
+    public Optional<ZLinkSessionContext> find(String actorId) {
+        return Optional.ofNullable(sessions.get(actorId));
     }
 }

@@ -12,9 +12,13 @@ import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.Sampl
 public final class JoinMatchSessionPacketHandler
     implements ZLinkSessionPacketHandler<ZLinkSessionContext> {
     private final ZLinkClient channels;
+    private final PlayNotificationRelay relay;
 
-    public JoinMatchSessionPacketHandler(ZLinkClient channels) {
+    public JoinMatchSessionPacketHandler(
+        ZLinkClient channels,
+        PlayNotificationRelay relay) {
         this.channels = channels;
+        this.relay = relay;
     }
 
     @Override
@@ -33,9 +37,9 @@ public final class JoinMatchSessionPacketHandler
                 payload.toUtf8String().trim() + "|" + actor.actorId())
             .packetName("JoinMatchReq")
             .submitAsync(String.class)
-            .thenCompose(response -> PlayNotificationRelay.deliverAsync(response)
+            .thenCompose(response -> relay.deliverAsync(response)
                 .thenCompose(ignored -> context.client()
-                    .reply(PlayNotificationRelay.reply(response))
+                    .reply(relay.reply(response))
                     .submitAsync()));
     }
 }

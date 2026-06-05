@@ -15,9 +15,13 @@ import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.Sampl
 public final class AuthenticateSessionPacketHandler
     implements ZLinkSessionPacketHandler<ZLinkSessionContext> {
     private final ZLinkClient channels;
+    private final PlayerSessionDirectory sessions;
 
-    public AuthenticateSessionPacketHandler(ZLinkClient channels) {
+    public AuthenticateSessionPacketHandler(
+        ZLinkClient channels,
+        PlayerSessionDirectory sessions) {
         this.channels = channels;
+        this.sessions = sessions;
     }
 
     @Override
@@ -44,7 +48,7 @@ public final class AuthenticateSessionPacketHandler
                     .submitAsync(String.class))
             .thenCompose(snapshot -> context.actors().bindAsync(toActorRef(snapshot)))
             .thenCompose(ignored -> {
-                PlayerSessionDirectory.bind(requestedActorId, context);
+                sessions.bind(requestedActorId, context);
                 return context.client()
                     .reply(requestedActorId)
                     .submitAsync();

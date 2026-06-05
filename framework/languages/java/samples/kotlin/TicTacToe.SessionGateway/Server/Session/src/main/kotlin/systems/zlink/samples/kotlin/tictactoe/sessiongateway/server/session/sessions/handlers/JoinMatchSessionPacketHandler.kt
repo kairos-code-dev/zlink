@@ -10,6 +10,7 @@ import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuratio
 
 class JoinMatchSessionPacketHandler(
     private val channels: ZLinkClient,
+    private val relay: PlayNotificationRelay,
 ) : ZLinkSessionPacketHandler<ZLinkSessionContext> {
     override fun packetName(): String = "JoinMatchReq"
 
@@ -26,10 +27,10 @@ class JoinMatchSessionPacketHandler(
             .packetName("JoinMatchReq")
             .submitAsync(String::class.java)
             .thenCompose { response ->
-                PlayNotificationRelay.deliverAsync(response)
+                relay.deliverAsync(response)
                     .thenCompose {
                         context.client()
-                            .reply(PlayNotificationRelay.reply(response))
+                            .reply(relay.reply(response))
                             .submitAsync()
                     }
             }

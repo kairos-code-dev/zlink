@@ -259,6 +259,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Session/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/PlayerSession.java");
+        String playerSessionDirectorySource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Session/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/session/sessions/PlayerSessionDirectory.java");
         String joinSessionHandlerSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
             "Server/Session/src/main/java",
@@ -415,20 +419,39 @@ final class SampleReleaseGateContractTest {
         assertTrue(playerSessionSource.contains("ZLinkSessionContext")
                 && playerSessionSource.contains("context.actors()"),
             "SessionGateway sample session must use framework-owned ZLinkSessionContext");
+        assertTrue(sessionHostSource.contains("@Bean")
+                && sessionHostSource.contains("PlayerSessionDirectory")
+                && sessionHostSource.contains("PlayNotificationRelay"),
+            "SessionGateway Session role session directory and relay must be Spring DI beans");
+        assertTrue(playerSessionDirectorySource.contains("ConcurrentHashMap")
+                && playerSessionDirectorySource.contains("private final Map")
+                && !playerSessionDirectorySource.contains("static")
+                && !playerSessionDirectorySource.contains("private PlayerSessionDirectory()"),
+            "SessionGateway PlayerSessionDirectory must be instance-owned, not static global state");
+        assertTrue(playerSessionSource.contains("PlayerSessionDirectory sessions")
+                && playerSessionSource.contains("sessions.unbind"),
+            "SessionGateway PlayerSession must receive session directory through constructor DI");
         assertTrue(joinSessionHandlerSource.contains("JoinMatchReq")
                 && joinSessionHandlerSource.contains("SampleNames.PlayChannel")
-                && joinSessionHandlerSource.contains("PlayNotificationRelay"),
+                && joinSessionHandlerSource.contains("PlayNotificationRelay")
+                && joinSessionHandlerSource.contains("PlayNotificationRelay relay")
+                && joinSessionHandlerSource.contains("relay.deliverAsync"),
             "SessionGateway join packet handler must relay gameplay through the Play role notification envelope");
         assertTrue(placeSessionHandlerSource.contains("PlaceMarkReq")
                 && placeSessionHandlerSource.contains("SampleNames.PlayChannel")
-                && placeSessionHandlerSource.contains("PlayNotificationRelay"),
+                && placeSessionHandlerSource.contains("PlayNotificationRelay")
+                && placeSessionHandlerSource.contains("PlayNotificationRelay relay")
+                && placeSessionHandlerSource.contains("relay.deliverAsync"),
             "SessionGateway place-mark packet handler must relay gameplay through the Play role notification envelope");
         assertFalse(joinSessionHandlerSource.contains("TurnChangedPacket")
                 || placeSessionHandlerSource.contains("GameEndedPacket"),
             "Session handlers must not own gameplay notification packet construction");
         assertTrue(notificationPublisherSource.contains("TurnChangedPacket")
                 && notificationPublisherSource.contains("GameEndedPacket")
-                && relaySource.contains("PlayerSessionDirectory"),
+                && relaySource.contains("private final PlayerSessionDirectory sessions")
+                && relaySource.contains(".find(notification.recipientActorId())")
+                && !relaySource.contains("static CompletionStage")
+                && !relaySource.contains("static String"),
             "Play role must create gameplay notifications and Session role must relay them to bound sessions");
         assertFalse(playerSessionSource.contains("TicTacToeGameDirectory")
                 || playerSessionSource.contains("ConcurrentHashMap")
@@ -559,6 +582,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/PlayerSession.kt");
+        String playerSessionDirectorySource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Session/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/sessions/PlayerSessionDirectory.kt");
         String joinSessionHandlerSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
             "Server/Session/src/main/kotlin",
@@ -710,20 +737,37 @@ final class SampleReleaseGateContractTest {
         assertTrue(playerSessionSource.contains("ZLinkSessionContext")
                 && playerSessionSource.contains("context.actors()"),
             "Kotlin SessionGateway sample session must use framework-owned ZLinkSessionContext");
+        assertTrue(sessionHostSource.contains("@Bean")
+                && sessionHostSource.contains("PlayerSessionDirectory")
+                && sessionHostSource.contains("PlayNotificationRelay"),
+            "Kotlin SessionGateway Session role session directory and relay must be Spring DI beans");
+        assertTrue(playerSessionDirectorySource.contains("ConcurrentHashMap")
+                && playerSessionDirectorySource.contains("class PlayerSessionDirectory")
+                && !playerSessionDirectorySource.contains("object PlayerSessionDirectory"),
+            "Kotlin SessionGateway PlayerSessionDirectory must be instance-owned, not object global state");
+        assertTrue(playerSessionSource.contains("private val sessions: PlayerSessionDirectory")
+                && playerSessionSource.contains("sessions.unbind"),
+            "Kotlin SessionGateway PlayerSession must receive session directory through constructor DI");
         assertTrue(joinSessionHandlerSource.contains("JoinMatchReq")
                 && joinSessionHandlerSource.contains("SampleNames.PlayChannel")
-                && joinSessionHandlerSource.contains("PlayNotificationRelay"),
+                && joinSessionHandlerSource.contains("PlayNotificationRelay")
+                && joinSessionHandlerSource.contains("private val relay: PlayNotificationRelay")
+                && joinSessionHandlerSource.contains("relay.deliverAsync"),
             "Kotlin SessionGateway join packet handler must relay gameplay through the Play role notification envelope");
         assertTrue(placeSessionHandlerSource.contains("PlaceMarkReq")
                 && placeSessionHandlerSource.contains("SampleNames.PlayChannel")
-                && placeSessionHandlerSource.contains("PlayNotificationRelay"),
+                && placeSessionHandlerSource.contains("PlayNotificationRelay")
+                && placeSessionHandlerSource.contains("private val relay: PlayNotificationRelay")
+                && placeSessionHandlerSource.contains("relay.deliverAsync"),
             "Kotlin SessionGateway place-mark packet handler must relay gameplay through the Play role notification envelope");
         assertFalse(joinSessionHandlerSource.contains("TurnChangedPacket")
                 || placeSessionHandlerSource.contains("GameEndedPacket"),
             "Kotlin Session handlers must not own gameplay notification packet construction");
         assertTrue(notificationPublisherSource.contains("TurnChangedPacket")
                 && notificationPublisherSource.contains("GameEndedPacket")
-                && relaySource.contains("PlayerSessionDirectory"),
+                && relaySource.contains("private val sessions: PlayerSessionDirectory")
+                && relaySource.contains("sessions.find")
+                && !relaySource.contains("object PlayNotificationRelay"),
             "Kotlin Play role must create gameplay notifications and Session role must relay them to bound sessions");
         assertFalse(playerSessionSource.contains("TicTacToeGameDirectory")
                 || playerSessionSource.contains("ConcurrentHashMap")

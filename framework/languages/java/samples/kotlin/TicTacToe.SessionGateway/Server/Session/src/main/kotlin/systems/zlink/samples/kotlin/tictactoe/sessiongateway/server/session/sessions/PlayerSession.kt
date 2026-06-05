@@ -13,6 +13,7 @@ import systems.zlink.framework.streams.ZLinkStreamHeader
 class PlayerSession(
     private val context: ZLinkSessionContext,
     private val handlers: ZLinkSessionPacketDispatcher<ZLinkSessionContext>,
+    private val sessions: PlayerSessionDirectory,
 ) : ZLinkSession {
     override fun context(): ZLinkSessionContext = context
 
@@ -21,7 +22,7 @@ class PlayerSession(
 
     override fun onDisconnectedAsync(): CompletionStage<Void> =
         context.actors().bound().forEach { actor ->
-            PlayerSessionDirectory.unbind(actor.actorId(), context)
+            sessions.unbind(actor.actorId(), context)
         }.let { CompletableFuture.completedFuture(null) }
 
     override fun onErrorAsync(error: ZLinkStreamError): CompletionStage<Void> =

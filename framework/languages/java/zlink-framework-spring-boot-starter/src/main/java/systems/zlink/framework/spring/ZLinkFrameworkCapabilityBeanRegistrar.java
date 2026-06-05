@@ -18,10 +18,13 @@ import org.springframework.context.annotation.ClassPathScanningCandidateComponen
 import org.springframework.core.type.filter.AssignableTypeFilter;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
+import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 
 final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProcessor {
     private static final String SPOT_MANAGER_BEAN_NAME = "zlinkSpotManager";
@@ -41,6 +44,7 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
 
         DefaultZLinkFrameworkOptions options =
             beanFactory.getBean(DefaultZLinkFrameworkOptions.class);
+        discoverSessionPacketHandlers(options);
         options.validate();
         registerApplicationBeans(registry, beanFactory, options);
 
@@ -108,6 +112,79 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
         }
         implementations.remove(applicationType);
         return implementations;
+    }
+
+    private static void discoverSessionPacketHandlers(DefaultZLinkFrameworkOptions options) {
+        for (StreamNodeRegistration streamNode : options.registration().streamNodes()) {
+            Class<?> sessionType = streamNode.sessionType();
+            if (sessionType == null) {
+                continue;
+            }
+            for (Class<?> contextType : findSessionPacketDispatcherContexts(sessionType)) {
+                for (Class<? extends ZLinkSessionPacketHandler<?>> handlerType :
+                     findSessionPacketHandlers(sessionType.getPackageName(), contextType)) {
+                    streamNode.addSessionPacketHandler(handlerType);
+                }
+                for (Class<? extends ZLinkSessionPacketHandler<?>> handlerType :
+                     findSessionPacketHandlers(contextType.getPackageName(), contextType)) {
+                    streamNode.addSessionPacketHandler(handlerType);
+                }
+            }
+        }
+    }
+
+    private static Set<Class<?>> findSessionPacketDispatcherContexts(Class<?> sessionType) {
+        Set<Class<?>> contextTypes = new LinkedHashSet<>();
+        for (var constructor : sessionType.getConstructors()) {
+            for (Type parameter : constructor.getGenericParameterTypes()) {
+                Class<?> contextType = sessionPacketDispatcherContextType(parameter);
+                if (contextType != null) {
+                    contextTypes.add(contextType);
+                }
+            }
+        }
+        return contextTypes;
+    }
+
+    private static Class<?> sessionPacketDispatcherContextType(Type parameter) {
+        if (!(parameter instanceof ParameterizedType parameterized)
+            || parameterized.getRawType() != ZLinkSessionPacketDispatcher.class) {
+            return null;
+        }
+        Type argument = parameterized.getActualTypeArguments()[0];
+        return argument instanceof Class<?> contextType ? contextType : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Set<Class<? extends ZLinkSessionPacketHandler<?>>>
+    findSessionPacketHandlers(String packageName, Class<?> contextType) {
+        Set<Class<? extends ZLinkSessionPacketHandler<?>>> handlers = new LinkedHashSet<>();
+        for (Class<?> type : findAssignableTypes(packageName, ZLinkSessionPacketHandler.class)) {
+            if (sessionPacketHandlerContextType(type) == contextType) {
+                handlers.add((Class<? extends ZLinkSessionPacketHandler<?>>) type);
+            }
+        }
+        return handlers;
+    }
+
+    private static Class<?> sessionPacketHandlerContextType(Class<?> handlerType) {
+        for (Type type : handlerType.getGenericInterfaces()) {
+            Class<?> contextType = sessionPacketHandlerContextType(type);
+            if (contextType != null) {
+                return contextType;
+            }
+        }
+        Class<?> superclass = handlerType.getSuperclass();
+        return superclass == null ? null : sessionPacketHandlerContextType(superclass);
+    }
+
+    private static Class<?> sessionPacketHandlerContextType(Type type) {
+        if (!(type instanceof ParameterizedType parameterized)
+            || parameterized.getRawType() != ZLinkSessionPacketHandler.class) {
+            return null;
+        }
+        Type argument = parameterized.getActualTypeArguments()[0];
+        return argument instanceof Class<?> contextType ? contextType : null;
     }
 
     private static Class<?> collectionElementType(Type parameter) {

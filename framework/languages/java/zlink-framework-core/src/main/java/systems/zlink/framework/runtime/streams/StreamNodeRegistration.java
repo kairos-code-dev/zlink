@@ -73,11 +73,14 @@ public final class StreamNodeRegistration {
         sessionType = type;
     }
 
-    void addSessionPacketHandler(
+    public void addSessionPacketHandler(
         Class<? extends ZLinkSessionPacketHandler<?>> handlerType) {
         if (handlerType == null) {
             throw new ZLinkConfigurationException(
                 "session packet handler type is required: " + name);
+        }
+        if (sessionPacketHandlers.contains(handlerType)) {
+            return;
         }
         sessionPacketHandlers.add(handlerType);
     }

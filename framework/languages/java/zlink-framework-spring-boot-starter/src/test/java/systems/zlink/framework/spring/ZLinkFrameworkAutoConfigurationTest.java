@@ -11,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -41,6 +43,12 @@ import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
+import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
+import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
+import systems.zlink.framework.streams.ZLinkStreamError;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 final class ZLinkFrameworkAutoConfigurationTest {
     @Test
@@ -230,6 +238,27 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
+    void springLifecycleAutoDiscoversSessionPacketHandlersForSessionDispatcher()
+        throws Exception {
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.register(
+                AutoDiscoveredSessionPacketConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            backendFactory.dispatchStreamPacket("auto.session.packet", "payload");
+
+            context.getBean("sessionPacketHandled", CompletableFuture.class)
+                .get(2, TimeUnit.SECONDS);
+            assertEquals(1, context.getBean(AtomicInteger.class).get());
+        }
+    }
+
+    @Test
     void annotatedHandlerGroupHandlesRequestsInsideSpringLifecycle() {
         String endpoint = "inproc://zlink-spring-annotated-" + UUID.randomUUID();
         try (AnnotationConfigApplicationContext context =
@@ -411,6 +440,27 @@ final class ZLinkFrameworkAutoConfigurationTest {
             return options -> options.addSocketEvents(
                 "profile",
                 ZLinkSocketEventKind.CONNECTED);
+        }
+    }
+
+    @Configuration
+    static class AutoDiscoveredSessionPacketConfig {
+        @Bean
+        AtomicInteger sessionPacketCount() {
+            return new AtomicInteger();
+        }
+
+        @Bean
+        CompletableFuture<Void> sessionPacketHandled() {
+            return new CompletableFuture<>();
+        }
+
+        @Bean
+        ZLinkFrameworkOptionsCustomizer autoDiscoveredSessionPacketCustomizer() {
+            return options -> options.addStreamNode("client.stream", stream -> {
+                stream.bind("inproc://auto-discovered-session");
+                stream.registerSession(AutoDiscoveredPacketSession.class);
+            });
         }
     }
 
@@ -652,6 +702,74 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public CompletionStage<Void> handleAsync(ZLinkSocketEvent event) {
             count.incrementAndGet();
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class AutoDiscoveredPacketSession implements ZLinkSession {
+        private final ZLinkSessionContext context;
+        private final ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher;
+
+        public AutoDiscoveredPacketSession(
+            ZLinkSessionContext context,
+            ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher) {
+            this.context = context;
+            this.dispatcher = dispatcher;
+        }
+
+        @Override
+        public ZLinkSessionContext context() {
+            return context;
+        }
+
+        @Override
+        public CompletionStage<Void> onConnectedAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onDisconnectedAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onDispatchAsync(
+            ZLinkStreamHeader header,
+            Message payload) {
+            return dispatcher.tryHandleAsync(context, header, payload)
+                .thenApply(ignored -> null);
+        }
+    }
+
+    public static final class AutoDiscoveredSessionPacketHandler
+        implements ZLinkSessionPacketHandler<ZLinkSessionContext> {
+        private final AtomicInteger count;
+        private final CompletableFuture<Void> handled;
+
+        public AutoDiscoveredSessionPacketHandler(
+            AtomicInteger count,
+            CompletableFuture<Void> handled) {
+            this.count = count;
+            this.handled = handled;
+        }
+
+        @Override
+        public String packetName() {
+            return "auto.session.packet";
+        }
+
+        @Override
+        public CompletionStage<Void> handleAsync(
+            ZLinkSessionContext context,
+            ZLinkStreamHeader header,
+            Message payload) {
+            count.incrementAndGet();
+            handled.complete(null);
             return CompletableFuture.completedFuture(null);
         }
     }

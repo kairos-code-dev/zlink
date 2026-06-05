@@ -66,12 +66,18 @@ final class TcpStreamConnectorTestServer implements Closeable {
     CompletableFuture<Void> sendAsync(
         ZLinkStreamWireProtocol.Header header,
         byte[] payload) {
+        byte[] encodedHeader = ZLinkStreamWireProtocol.encodeHeader(header);
+        return sendRawAsync(encodedHeader, payload);
+    }
+
+    CompletableFuture<Void> sendRawAsync(
+        byte[] header,
+        byte[] payload) {
         return CompletableFuture.runAsync(() -> {
             try {
                 Socket socket = socket();
-                byte[] encodedHeader = ZLinkStreamWireProtocol.encodeHeader(header);
                 byte[] frame = ZLinkStreamWireProtocol.encodeFrame(
-                    encodedHeader,
+                    header,
                     payload,
                     64 * 1024);
                 DataOutputStream output = new DataOutputStream(socket.getOutputStream());

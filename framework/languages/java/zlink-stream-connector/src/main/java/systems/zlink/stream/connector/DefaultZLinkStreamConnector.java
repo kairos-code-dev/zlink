@@ -39,6 +39,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private final ZLinkStreamConnectorOptions options;
     private final Map<String, List<ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>>> handlers =
         new ConcurrentHashMap<>();
+    private final List<ZLinkStreamErrorHandler> errorHandlers = new ArrayList<>();
     private final List<ZLinkStreamDisconnectedHandler> disconnectedHandlers = new ArrayList<>();
     private final List<ZLinkStreamConnectionStateHandler> stateHandlers = new ArrayList<>();
     private final ZLinkStreamDispatchQueue dispatchQueue = new ZLinkStreamDispatchQueue();
@@ -232,6 +233,13 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     @Override
+    public AutoCloseable onErrorReceived(ZLinkStreamErrorHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        errorHandlers.add(handler);
+        return () -> errorHandlers.remove(handler);
+    }
+
+    @Override
     public AutoCloseable onDisconnected(ZLinkStreamDisconnectedHandler handler) {
         Objects.requireNonNull(handler, "handler");
         disconnectedHandlers.add(handler);
@@ -331,6 +339,10 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                     readNextFrame(transport);
                 }
             } catch (RuntimeException dispatchEx) {
+                publishError(new ZLinkStreamError(
+                    ZLinkStreamErrorCode.FRAME_DECODE_FAILED,
+                    "Receive frame dispatch failed.",
+                    dispatchEx));
                 handleReceiveFailure(transport, dispatchEx);
             }
         });
@@ -355,11 +367,16 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                     fromWireCodec(header.codec())));
             return;
         }
-        if (header.kind() == ZLinkStreamWireProtocol.KIND_ERROR
-            && header.requestSeq() != null) {
-            pendingRequests.fail(
-                header.requestSeq(),
-                new IllegalStateException(new String(decodedPayload, StandardCharsets.UTF_8)));
+        if (header.kind() == ZLinkStreamWireProtocol.KIND_ERROR) {
+            ZLinkStreamError error = new ZLinkStreamError(
+                ZLinkStreamErrorCode.REMOTE_ERROR,
+                new String(decodedPayload, StandardCharsets.UTF_8));
+            publishError(error);
+            if (header.requestSeq() != null) {
+                pendingRequests.fail(
+                    header.requestSeq(),
+                    new IllegalStateException(error.message()));
+            }
             return;
         }
         if (header.kind() == ZLinkStreamWireProtocol.KIND_SEND
@@ -390,14 +407,14 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
         Runnable dispatch = () -> {
             for (ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler : registered) {
-                handler.handleAsync(new ZLinkStreamMessage<>(
+                invokeUserCallback(() -> handler.handleAsync(new ZLinkStreamMessage<>(
                     header.name(),
                     new ZLinkStreamEncodedPayload(
                         header.name(),
                         Message.from(payload),
                         header.metadata(),
                         fromWireCodec(header.codec())),
-                    header.metadata())).exceptionally(ex -> null);
+                    header.metadata())));
             }
         };
         if (options.dispatchMode() == ZLinkStreamDispatchMode.AUTO) {
@@ -559,7 +576,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
         state = next;
         for (ZLinkStreamConnectionStateHandler handler : List.copyOf(stateHandlers)) {
-            handler.handleAsync(next).exceptionally(ex -> null);
+            invokeUserCallback(() -> handler.handleAsync(next));
         }
     }
 
@@ -571,8 +588,51 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     private void notifyDisconnected() {
         for (ZLinkStreamDisconnectedHandler handler : List.copyOf(disconnectedHandlers)) {
-            handler.handleAsync().exceptionally(ex -> null);
+            invokeUserCallback(handler::handleAsync);
         }
+    }
+
+    private void publishError(ZLinkStreamError error) {
+        for (ZLinkStreamErrorHandler handler : List.copyOf(errorHandlers)) {
+            Runnable dispatch = () -> invokeErrorCallback(handler, error);
+            if (options.dispatchMode() == ZLinkStreamDispatchMode.AUTO) {
+                dispatch.run();
+            } else {
+                dispatchQueue.add(dispatch);
+            }
+        }
+    }
+
+    private void invokeUserCallback(UserCallback callback) {
+        try {
+            callback.invoke().exceptionally(ex -> {
+                publishUserCallbackFailed(ex);
+                return null;
+            });
+        } catch (Throwable ex) {
+            publishUserCallbackFailed(ex);
+        }
+    }
+
+    private void invokeErrorCallback(
+        ZLinkStreamErrorHandler handler,
+        ZLinkStreamError error) {
+        try {
+            handler.handleAsync(error).exceptionally(ex -> null);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void publishUserCallbackFailed(Throwable ex) {
+        publishError(new ZLinkStreamError(
+            ZLinkStreamErrorCode.USER_CALLBACK_FAILED,
+            "User callback failed.",
+            ex));
+    }
+
+    @FunctionalInterface
+    private interface UserCallback {
+        CompletionStage<Void> invoke();
     }
 
     private void failPending(Throwable ex) {

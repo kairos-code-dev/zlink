@@ -16,6 +16,7 @@ import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamDisconnectedHandler;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
+import systems.zlink.stream.connector.ZLinkStreamErrorHandler;
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler;
 import systems.zlink.stream.connector.ZLinkStreamPacketName;
 import systems.zlink.stream.connector.ZLinkStreamRequestCall;
@@ -141,6 +142,11 @@ final class ZLinkStreamJsonTest {
             String name,
             ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler) {
             handlerName = name;
+            return () -> { };
+        }
+
+        @Override
+        public AutoCloseable onErrorReceived(ZLinkStreamErrorHandler handler) {
             return () -> { };
         }
 

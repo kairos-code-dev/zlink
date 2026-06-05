@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
 
@@ -482,6 +483,92 @@ final class ZLinkStreamConnectorTest {
 
             assertEquals(2, states.size());
             assertEquals(1, disconnected.get());
+        }
+    }
+
+    @Test
+    void errorReceivedObservesInvalidHeaderAfterManualDispatch() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
+            AtomicReference<ZLinkStreamError> received = new AtomicReference<>();
+            connector.onErrorReceived(error -> {
+                received.set(error);
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            });
+
+            connector.connectAsync().toCompletableFuture().join();
+            server.sendRawAsync(
+                "invalid-header".getBytes(StandardCharsets.UTF_8),
+                TcpStreamConnectorTestServer.bytes("payload")).join();
+
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> connector.pendingDispatchCount() == 1);
+            assertEquals(null, received.get());
+
+            connector.dispatchAsync().toCompletableFuture().join();
+
+            assertEquals(ZLinkStreamErrorCode.FRAME_DECODE_FAILED, received.get().code());
+        }
+    }
+
+    @Test
+    void errorReceivedObservesRemoteErrorPacket() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.AUTO))) {
+            AtomicReference<ZLinkStreamError> received = new AtomicReference<>();
+            connector.onErrorReceived(error -> {
+                received.set(error);
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            });
+
+            connector.connectAsync().toCompletableFuture().join();
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_ERROR,
+                    ZLinkStreamWireProtocol.CODEC_JSON,
+                    0,
+                    null,
+                    "RemoteError",
+                    Map.of()),
+                "{\"message\":\"remote failed\"}".getBytes(StandardCharsets.UTF_8)).join();
+
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> received.get() != null);
+
+            assertEquals(ZLinkStreamErrorCode.REMOTE_ERROR, received.get().code());
+            assertEquals("{\"message\":\"remote failed\"}", received.get().message());
+        }
+    }
+
+    @Test
+    void errorReceivedObservesUserCallbackFailure() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.AUTO))) {
+            AtomicReference<ZLinkStreamError> received = new AtomicReference<>();
+            connector.onErrorReceived(error -> {
+                received.set(error);
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            });
+            connector.on("Ping", message -> {
+                throw new IllegalStateException("boom");
+            });
+
+            connector.connectAsync().toCompletableFuture().join();
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_SEND,
+                    ZLinkStreamWireProtocol.CODEC_RAW,
+                    0,
+                    null,
+                    "Ping",
+                    Map.of()),
+                TcpStreamConnectorTestServer.bytes("hello")).join();
+
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> received.get() != null);
+
+            assertEquals(ZLinkStreamErrorCode.USER_CALLBACK_FAILED, received.get().code());
         }
     }
 

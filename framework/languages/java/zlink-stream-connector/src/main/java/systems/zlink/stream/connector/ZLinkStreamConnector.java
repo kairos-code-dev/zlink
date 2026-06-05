@@ -29,6 +29,8 @@ public interface ZLinkStreamConnector extends AutoCloseable {
         String name,
         ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler);
 
+    AutoCloseable onErrorReceived(ZLinkStreamErrorHandler handler);
+
     AutoCloseable onDisconnected(ZLinkStreamDisconnectedHandler handler);
 
     AutoCloseable onConnectionStateChanged(ZLinkStreamConnectionStateHandler handler);

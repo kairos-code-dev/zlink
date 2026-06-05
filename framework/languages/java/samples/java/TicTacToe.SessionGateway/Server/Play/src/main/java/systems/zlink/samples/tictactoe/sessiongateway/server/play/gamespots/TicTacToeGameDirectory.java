@@ -4,20 +4,17 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class TicTacToeGameDirectory {
-    private static final Map<String, TicTacToeGameSpot> ROOMS = new ConcurrentHashMap<>();
+    private final Map<String, TicTacToeGameSpot> rooms = new ConcurrentHashMap<>();
 
-    private TicTacToeGameDirectory() {
-    }
-
-    public static TicTacToeGameSpot create(String ownerActorId) {
+    public TicTacToeGameSpot create(String ownerActorId) {
         String matchId = "match-" + ownerActorId;
         TicTacToeGameSpot room = new TicTacToeGameSpot(matchId, ownerActorId);
-        ROOMS.put(matchId, room);
+        rooms.put(matchId, room);
         return room;
     }
 
-    public static TicTacToeGameSpot get(String matchId) {
-        TicTacToeGameSpot room = ROOMS.get(matchId);
+    public TicTacToeGameSpot get(String matchId) {
+        TicTacToeGameSpot room = rooms.get(matchId);
         if (room == null) {
             throw new IllegalArgumentException("Unknown match: " + matchId);
         }

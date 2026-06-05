@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.gamespots.TicTacToeGameDirectory
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleTopology
 
 @SpringBootApplication(
@@ -20,6 +21,10 @@ class PlayServerHostFactory {
             }
             PlayServer.configure(options)
         }
+
+    @Bean
+    fun ticTacToeGameDirectory(): TicTacToeGameDirectory =
+        TicTacToeGameDirectory()
 
     companion object {
         fun start(args: Array<String> = emptyArray()): AutoCloseable {

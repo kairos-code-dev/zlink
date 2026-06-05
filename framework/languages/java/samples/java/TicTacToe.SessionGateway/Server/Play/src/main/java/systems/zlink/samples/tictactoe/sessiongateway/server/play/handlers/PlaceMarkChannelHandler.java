@@ -1,4 +1,4 @@
-package systems.zlink.samples.tictactoe.sessiongateway.server.play.entryspot.handlers;
+package systems.zlink.samples.tictactoe.sessiongateway.server.play.handlers;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -8,21 +8,22 @@ import systems.zlink.samples.tictactoe.sessiongateway.server.play.gamespots.Game
 import systems.zlink.samples.tictactoe.sessiongateway.server.play.gamespots.TicTacToeGameDirectory;
 
 @ZLinkHandlerGroup("play")
-public final class JoinMatchHandler {
+public final class PlaceMarkChannelHandler {
     private final TicTacToeGameDirectory games;
 
-    public JoinMatchHandler(TicTacToeGameDirectory games) {
+    public PlaceMarkChannelHandler(TicTacToeGameDirectory games) {
         this.games = games;
     }
 
-    @ZLinkRequest(packetName = "JoinMatchReq")
+    @ZLinkRequest(packetName = "PlaceMarkReq")
     public CompletionStage<String> handleAsync(String request) {
         String[] parts = request.split("\\|", -1);
-        if (parts.length < 2) {
+        if (parts.length < 3) {
             return CompletableFuture.failedFuture(
-                new IllegalArgumentException("JoinMatchReq payload must contain matchId and actorId"));
+                new IllegalArgumentException("PlaceMarkReq payload must contain matchId, cell, and actorId"));
         }
         return CompletableFuture.completedFuture(
-            GameNotificationPublisher.encode(games.get(parts[0]).join(parts[1])));
+            GameNotificationPublisher.encode(
+                games.get(parts[0]).placeMark(parts[2], Integer.parseInt(parts[1]))));
     }
 }

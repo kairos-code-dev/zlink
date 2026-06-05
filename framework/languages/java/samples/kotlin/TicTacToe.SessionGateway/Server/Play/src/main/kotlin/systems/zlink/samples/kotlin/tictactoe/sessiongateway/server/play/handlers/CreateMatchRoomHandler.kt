@@ -7,12 +7,14 @@ import systems.zlink.framework.handlers.ZLinkRequest
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.gamespots.TicTacToeGameDirectory
 
 @ZLinkHandlerGroup("play")
-class CreateMatchRoomHandler {
+class CreateMatchRoomHandler(
+    private val games: TicTacToeGameDirectory,
+) {
     @ZLinkRequest(packetName = "CreateMatchRoom")
     fun handleAsync(
         ownerActorId: String,
     ): CompletionStage<String> {
-        val room = TicTacToeGameDirectory.create(ownerActorId)
-        return CompletableFuture.completedFuture("${room.matchId}|${room.ownerActorId}")
+        val room = games.create(ownerActorId)
+        return CompletableFuture.completedFuture("${room.matchId}|$ownerActorId")
     }
 }

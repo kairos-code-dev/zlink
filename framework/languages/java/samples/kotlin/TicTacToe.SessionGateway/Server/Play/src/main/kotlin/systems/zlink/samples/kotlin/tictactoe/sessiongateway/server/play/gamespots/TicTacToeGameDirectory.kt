@@ -2,7 +2,7 @@ package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.gamesp
 
 import java.util.concurrent.ConcurrentHashMap
 
-object TicTacToeGameDirectory {
+class TicTacToeGameDirectory {
     private val rooms = ConcurrentHashMap<String, TicTacToeGameSpot>()
 
     fun create(ownerActorId: String): TicTacToeGameSpot {

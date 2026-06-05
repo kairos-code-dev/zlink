@@ -3,7 +3,6 @@ package systems.zlink.samples.tictactoe.sessiongateway.server.play;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.samples.tictactoe.sessiongateway.server.play.entryspot.TicTacToeEntrySpot;
-import systems.zlink.samples.tictactoe.sessiongateway.server.play.gamespots.TicTacToeGameSpot;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.actors.PlayerActorFactory;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleTopology;
@@ -38,7 +37,6 @@ public final class PlayServer {
                     entry.setRoutingId(RoutingId.from(
                         SampleNames.EntrySpotRoutingId)));
                 node.addEntrySpot(TicTacToeEntrySpot.class);
-                node.addSpotFactory(TicTacToeGameSpot.class);
             });
         });
         options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);

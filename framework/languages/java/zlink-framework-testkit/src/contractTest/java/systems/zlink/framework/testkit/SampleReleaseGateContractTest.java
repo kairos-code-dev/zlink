@@ -198,15 +198,12 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/PlayServer.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/handlers/CreateMatchRoomHandler.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/handlers/EnsurePlayerActorHandler.java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/handlers/PlaceMarkChannelHandler.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameDirectory.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameSpot.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameContractMapper.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameModels.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/GameNotificationPublisher.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/handlers/PlaceMarkHandler.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/handlers/TicTacToeGameSpotActorJoinedHandler.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/handlers/TicTacToeGameSpotActorLeftHandler.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/handlers/TicTacToeGameSpotCreatedHandler.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/JoinMatchHandler.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorJoinedHandler.java",
@@ -238,6 +235,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Session/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/session/SessionServer.java");
+        String sessionRelaySpotSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Session/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/session/SessionRelaySpot.java");
         String playServerSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/java",
@@ -274,14 +275,30 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/GameNotificationPublisher.java");
+        String createMatchRoomHandlerSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/handlers/CreateMatchRoomHandler.java");
         String playDirectorySource = sampleJavaSource(
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameDirectory.java");
+        String joinMatchHandlerSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/JoinMatchHandler.java");
+        String placeMarkChannelHandlerSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/handlers/PlaceMarkChannelHandler.java");
         String playGameSpotSource = sampleJavaSource(
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameSpot.java");
+        String entrySpotSource = sampleJavaSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/java",
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.java");
         String rootBuildSource = sampleFile(
             "java",
             "TicTacToe.SessionGateway",
@@ -323,6 +340,10 @@ final class SampleReleaseGateContractTest {
         assertTrue(sessionServerSource.contains("attachActorGateway(SampleNames.SessionRelayNode)")
                 || sessionServerSource.contains("attachActorGateway(\"session-relay\")"),
             "SessionGateway sample must attach stream node to local ActorGateway SpotNode");
+        assertTrue(sessionRelaySpotSource.contains("SessionRelaySpot(ZLinkSpotContext context)")
+                && sessionRelaySpotSource.contains("return context")
+                && !sessionRelaySpotSource.contains("return null"),
+            "SessionGateway SessionRelaySpot must be framework-created with a real Spot context");
         assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
                 && !rootBuildSource.contains("application")
                 && apiProgramSource.contains("ApiServerHostFactory.start")
@@ -413,12 +434,36 @@ final class SampleReleaseGateContractTest {
                 || playerSessionSource.contains("ConcurrentHashMap")
                 || playerSessionSource.contains("new TicTacToeGameSpot"),
             "SessionGateway PlayerSession must not own game storage; Play role owns match state");
+        assertTrue(playHostSource.contains("@Bean")
+                && playHostSource.contains("TicTacToeGameDirectory"),
+            "SessionGateway Play room directory must be a Spring DI bean");
         assertTrue(playDirectorySource.contains("ConcurrentHashMap")
-                && playDirectorySource.contains("TicTacToeGameSpot"),
-            "SessionGateway Play role must own match directory state");
+                && playDirectorySource.contains("private final Map")
+                && !playDirectorySource.contains("static")
+                && !playDirectorySource.contains("private TicTacToeGameDirectory()"),
+            "SessionGateway Play room directory must be instance-owned, not static global state");
+        assertTrue(createMatchRoomHandlerSource.contains("TicTacToeGameDirectory")
+                && createMatchRoomHandlerSource.contains("games.create")
+                && !createMatchRoomHandlerSource.contains("ZLinkSpotManager"),
+            "SessionGateway create room handler must use Spring DI for game storage");
+        assertTrue(joinMatchHandlerSource.contains("TicTacToeGameDirectory")
+                && joinMatchHandlerSource.contains("games.get")
+                && placeMarkChannelHandlerSource.contains("TicTacToeGameDirectory")
+                && placeMarkChannelHandlerSource.contains("games.get")
+                && !joinMatchHandlerSource.contains("ZLinkSpotOutbound")
+                && !placeMarkChannelHandlerSource.contains("ZLinkSpotOutbound"),
+            "SessionGateway Play channel handlers must use Spring DI state instead of static lookup or invalid outbound injection");
+        assertTrue(entrySpotSource.contains("TicTacToeEntrySpot(ZLinkEntrySpotContext context)")
+                && !entrySpotSource.contains("TicTacToeEntrySpot()")
+                && !entrySpotSource.contains("= null"),
+            "SessionGateway EntrySpot must be framework-created with a real EntrySpot context");
         assertTrue(playGameSpotSource.contains("placeMark")
-                && playGameSpotSource.contains("winner"),
-            "SessionGateway Play role must own gameplay state transitions");
+                && playGameSpotSource.contains("winner")
+                && !playGameSpotSource.contains("implements ZLinkSpot")
+                && !playGameSpotSource.contains("ZLinkSpotContext")
+                && !playGameSpotSource.contains("public ZLinkSpotContext context()")
+                && !playGameSpotSource.contains("TicTacToeGameDirectory"),
+            "SessionGateway Play role must own gameplay state without fake Spot contexts");
         assertFalse(clientSource.contains("systems.zlink.contracts.service.spot.ActorRef"),
             "SessionGateway sample must not import binding ActorRef");
         assertFalse(clientSource.contains("new ActorRef("),
@@ -448,15 +493,12 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/PlayServer.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/handlers/CreateMatchRoomHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/handlers/EnsurePlayerActorHandler.kt",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/handlers/PlaceMarkChannelHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameDirectory.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameSpot.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameContractMapper.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameModels.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/GameNotificationPublisher.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/handlers/PlaceMarkHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/handlers/TicTacToeGameSpotActorJoinedHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/handlers/TicTacToeGameSpotActorLeftHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/handlers/TicTacToeGameSpotCreatedHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/JoinMatchHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorJoinedHandler.kt",
@@ -488,6 +530,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/SessionServer.kt");
+        String sessionRelaySpotSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Session/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/session/SessionRelaySpot.kt");
         String rootBuildSource = sampleFile(
             "kotlin",
             "TicTacToe.SessionGateway",
@@ -529,14 +575,30 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/GameNotificationPublisher.kt");
+        String createMatchRoomHandlerSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/handlers/CreateMatchRoomHandler.kt");
         String playDirectorySource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameDirectory.kt");
+        String joinMatchHandlerSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/JoinMatchHandler.kt");
+        String placeMarkChannelHandlerSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/handlers/PlaceMarkChannelHandler.kt");
         String playGameSpotSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameSpot.kt");
+        String entrySpotSource = sampleKotlinSource(
+            "TicTacToe.SessionGateway",
+            "Server/Play/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.kt");
         String apiProgramSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
             "Server/Api/src/main/kotlin",
@@ -573,6 +635,10 @@ final class SampleReleaseGateContractTest {
         assertTrue(sessionServerSource.contains("attachActorGateway(SampleNames.SessionRelayNode)")
                 || sessionServerSource.contains("attachActorGateway(\"session-relay\")"),
             "Kotlin SessionGateway sample must attach stream node to local ActorGateway SpotNode");
+        assertTrue(sessionRelaySpotSource.contains("private val context: ZLinkSpotContext")
+                && sessionRelaySpotSource.contains("context(): ZLinkSpotContext = context")
+                && !sessionRelaySpotSource.contains("= null"),
+            "Kotlin SessionGateway SessionRelaySpot must be framework-created with a real Spot context");
         assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
                 && !rootBuildSource.contains("application")
                 && apiProgramSource.contains("ApiServerHostFactory.start")
@@ -663,12 +729,34 @@ final class SampleReleaseGateContractTest {
                 || playerSessionSource.contains("ConcurrentHashMap")
                 || playerSessionSource.contains("TicTacToeGameSpot("),
             "Kotlin SessionGateway PlayerSession must not own game storage; Play role owns match state");
+        assertTrue(playHostSource.contains("@Bean")
+                && playHostSource.contains("TicTacToeGameDirectory"),
+            "Kotlin SessionGateway Play room directory must be a Spring DI bean");
         assertTrue(playDirectorySource.contains("ConcurrentHashMap")
-                && playDirectorySource.contains("TicTacToeGameSpot"),
-            "Kotlin SessionGateway Play role must own match directory state");
+                && playDirectorySource.contains("class TicTacToeGameDirectory")
+                && !playDirectorySource.contains("object TicTacToeGameDirectory"),
+            "Kotlin SessionGateway Play room directory must be instance-owned, not object global state");
+        assertTrue(createMatchRoomHandlerSource.contains("TicTacToeGameDirectory")
+                && createMatchRoomHandlerSource.contains("games.create")
+                && !createMatchRoomHandlerSource.contains("ZLinkSpotManager"),
+            "Kotlin SessionGateway create room handler must use Spring DI for game storage");
+        assertTrue(joinMatchHandlerSource.contains("TicTacToeGameDirectory")
+                && joinMatchHandlerSource.contains("games.get")
+                && placeMarkChannelHandlerSource.contains("TicTacToeGameDirectory")
+                && placeMarkChannelHandlerSource.contains("games.get")
+                && !joinMatchHandlerSource.contains("ZLinkSpotOutbound")
+                && !placeMarkChannelHandlerSource.contains("ZLinkSpotOutbound"),
+            "Kotlin SessionGateway Play channel handlers must use Spring DI state instead of object lookup or invalid outbound injection");
+        assertTrue(entrySpotSource.contains("private val context: ZLinkEntrySpotContext")
+                && entrySpotSource.contains("context(): ZLinkEntrySpotContext = context")
+                && !entrySpotSource.contains("= null"),
+            "Kotlin SessionGateway EntrySpot must be framework-created with a real EntrySpot context");
         assertTrue(playGameSpotSource.contains("placeMark")
-                && playGameSpotSource.contains("winner"),
-            "Kotlin SessionGateway Play role must own gameplay state transitions");
+                && playGameSpotSource.contains("winner")
+                && !playGameSpotSource.contains("ZLinkSpot")
+                && !playGameSpotSource.contains("ZLinkSpotContext")
+                && !playGameSpotSource.contains("TicTacToeGameDirectory"),
+            "Kotlin SessionGateway Play role must own gameplay state without fake Spot contexts");
         assertFalse(clientSource.contains("systems.zlink.contracts.service.spot.ActorRef"),
             "Kotlin SessionGateway sample must not import binding ActorRef");
         assertFalse(clientSource.contains("ZLinkSpotRemoteAddressResolver"),

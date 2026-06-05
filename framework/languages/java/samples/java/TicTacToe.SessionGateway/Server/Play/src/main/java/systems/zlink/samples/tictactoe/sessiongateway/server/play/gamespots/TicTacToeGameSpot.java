@@ -2,10 +2,8 @@ package systems.zlink.samples.tictactoe.sessiongateway.server.play.gamespots;
 
 import java.util.ArrayList;
 import java.util.List;
-import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotContext;
 
-public final class TicTacToeGameSpot implements ZLinkSpot {
+public final class TicTacToeGameSpot {
     private final String matchId;
     private final String ownerActorId;
     private final char[] board = ".........".toCharArray();
@@ -17,18 +15,9 @@ public final class TicTacToeGameSpot implements ZLinkSpot {
     private Integer lastMoveCell;
     private boolean draw;
 
-    public TicTacToeGameSpot() {
-        this("match-sample", "sample");
-    }
-
     public TicTacToeGameSpot(String matchId, String ownerActorId) {
         this.matchId = matchId;
         this.ownerActorId = ownerActorId;
-    }
-
-    @Override
-    public ZLinkSpotContext context() {
-        return null;
     }
 
     public String matchId() {

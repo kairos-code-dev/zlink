@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
+import systems.zlink.samples.tictactoe.sessiongateway.server.play.gamespots.TicTacToeGameDirectory;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleTopology;
 
 @SpringBootApplication(
@@ -28,5 +29,10 @@ public final class PlayServerHostFactory {
                 registry.add(SampleTopology.RegistryRouterEndpoint));
             PlayServer.configure(options);
         };
+    }
+
+    @Bean
+    TicTacToeGameDirectory ticTacToeGameDirectory() {
+        return new TicTacToeGameDirectory();
     }
 }

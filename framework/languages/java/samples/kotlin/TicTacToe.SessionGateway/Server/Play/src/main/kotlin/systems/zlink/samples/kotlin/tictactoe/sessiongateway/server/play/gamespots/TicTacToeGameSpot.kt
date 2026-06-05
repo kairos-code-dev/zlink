@@ -1,12 +1,9 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.gamespots
 
-import systems.zlink.framework.spots.ZLinkSpot
-import systems.zlink.framework.spots.ZLinkSpotContext
-
 class TicTacToeGameSpot(
-    val matchId: String = "match-sample",
-    val ownerActorId: String = "sample",
-) : ZLinkSpot {
+    val matchId: String,
+    val ownerActorId: String,
+) {
     private val board = ".........".toCharArray()
     private var xActorId: String? = null
     private var oActorId: String? = null
@@ -15,8 +12,6 @@ class TicTacToeGameSpot(
     private var lastMoveActorId: String? = null
     private var lastMoveCell: Int? = null
     private var draw = false
-
-    override fun context(): ZLinkSpotContext? = null
 
     @Synchronized
     fun join(actorId: String): JoinResult {

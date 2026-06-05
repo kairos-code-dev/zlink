@@ -7,7 +7,6 @@
 #include "Handlers/authenticate_actor_handler.hpp"
 #include "Handlers/create_match_handler.hpp"
 
-#include <fstream>
 #include <memory>
 
 namespace zlink::samples::tictactoe
@@ -20,15 +19,10 @@ class api_server_host_factory_t
     {
         auto app = zlink::framework::app_t::create ();
         app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
-        app.logging ().use_callback_sink ([] (const zlink::framework::log_record_t &record) {
-            std::ofstream log (sample_log_file, std::ios::app);
-            log << record.message << '\n';
-        });
+        app.logging ().use_file (sample_log_file);
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
             options.services ().add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology));
             options.services ().add_singleton<create_match_room_handler_t> ();
-            options.services ().add_singleton<zlink::framework::logger_t<>> (
-              std::make_unique<zlink::framework::logger_t<>> (app.logging ().create_logger ("tictactoe.api")));
 
             options.handlers ().add<authenticate_actor_handler_t> ("api").add<create_match_handler_t> ("api");
 

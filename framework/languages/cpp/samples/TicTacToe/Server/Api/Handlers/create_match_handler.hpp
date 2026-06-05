@@ -16,12 +16,14 @@ class create_match_handler_t
     using request_type = create_match_req_t;
     using reply_type = create_match_res_t;
     using dependency_types =
-      zlink::framework::dependency_list_t<create_match_room_handler_t, sample_topology_t, zlink::framework::logger_t<>>;
+      zlink::framework::dependency_list_t<create_match_room_handler_t,
+                                          sample_topology_t,
+                                          zlink::framework::logger_t<create_match_handler_t>>;
     static constexpr const char *topic_name = "CreateMatch";
 
     explicit create_match_handler_t (create_match_room_handler_t &rooms,
                                      sample_topology_t &topology,
-                                     zlink::framework::logger_t<> &logger) :
+                                     zlink::framework::logger_t<create_match_handler_t> &logger) :
         _rooms (rooms), _topology (topology), _logger (logger)
     {
     }
@@ -40,7 +42,7 @@ class create_match_handler_t
   private:
     create_match_room_handler_t &_rooms;
     sample_topology_t &_topology;
-    zlink::framework::logger_t<> _logger;
+    zlink::framework::logger_t<create_match_handler_t> _logger;
 };
 
 } // namespace zlink::samples::tictactoe

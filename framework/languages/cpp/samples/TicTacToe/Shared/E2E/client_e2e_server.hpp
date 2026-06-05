@@ -20,10 +20,13 @@ class tictactoe_client_e2e_create_game_handler_t
   public:
     using request_type = create_match_req_t;
     using reply_type = create_match_res_t;
-    using dependency_types = zlink::framework::dependency_list_t<sample_topology_t, zlink::framework::logger_t<>>;
+    using dependency_types =
+      zlink::framework::dependency_list_t<sample_topology_t,
+                                          zlink::framework::logger_t<tictactoe_client_e2e_create_game_handler_t>>;
 
     explicit tictactoe_client_e2e_create_game_handler_t (sample_topology_t &topology,
-                                                         zlink::framework::logger_t<> &logger) :
+                                                         zlink::framework::logger_t<
+                                                           tictactoe_client_e2e_create_game_handler_t> &logger) :
         _topology (topology), _logger (logger)
     {
     }
@@ -40,20 +43,15 @@ class tictactoe_client_e2e_create_game_handler_t
 
   private:
     sample_topology_t &_topology;
-    zlink::framework::logger_t<> _logger;
+    zlink::framework::logger_t<tictactoe_client_e2e_create_game_handler_t> _logger;
 };
 
 inline zlink::framework::app_t build_client_e2e_api_server (sample_topology_t topology)
 {
     auto app = zlink::framework::app_t::create ();
-    app.logging ().use_callback_sink ([] (const zlink::framework::log_record_t &record) {
-        std::ofstream log (sample_log_file, std::ios::app);
-        log << record.message << '\n';
-    });
-    app.add_zlink_framework ([&app, topology] (zlink::framework::zlink_framework_options_t &options) {
+    app.logging ().use_file (sample_log_file);
+    app.add_zlink_framework ([topology] (zlink::framework::zlink_framework_options_t &options) {
         options.services ().add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology));
-        options.services ().add_singleton<zlink::framework::logger_t<>> (
-          std::make_unique<zlink::framework::logger_t<>> (app.logging ().create_logger ("tictactoe.e2e.api")));
         options.http ()
           .listen (topology.api_http_endpoint)
           .map_post<tictactoe_client_e2e_create_game_handler_t> ("/games");

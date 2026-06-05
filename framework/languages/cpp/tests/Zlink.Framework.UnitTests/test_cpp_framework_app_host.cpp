@@ -881,6 +881,11 @@ int main ()
     if (provider.get_required<singleton_service_t> ().value != 7) {
         return 8;
     }
+    provider.get_required<zlink::framework::logger_factory_t> ().create ("app-default-logger").info ("resolved");
+    if (app.logging ().captured_records ().size () != 2
+        || app.logging ().captured_records ().back ().category != "app-default-logger") {
+        return 42;
+    }
 
     auto restartable = zlink::framework::app_t::create ();
     restartable.stop ();

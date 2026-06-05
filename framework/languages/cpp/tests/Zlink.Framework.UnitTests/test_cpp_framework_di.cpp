@@ -34,6 +34,15 @@ struct second_dependent_t
     int value;
 };
 
+struct logger_dependent_t
+{
+    explicit logger_dependent_t (zlink::framework::logger_t<logger_dependent_t> &logger) : logger (logger) {}
+
+    void write () { logger.info ("dependency logger resolved"); }
+
+    zlink::framework::logger_t<logger_dependent_t> logger;
+};
+
 } // namespace
 
 int main ()
@@ -139,6 +148,17 @@ int main ()
     }
     if (!duplicate_failed) {
         return 11;
+    }
+
+    zlink::framework::logging_builder_t logging;
+    zlink::framework::service_collection_t logging_services;
+    logging_services.add_singleton<zlink::framework::logger_factory_t> (
+      std::make_unique<zlink::framework::logger_factory_t> (logging.factory ()));
+    logging_services.add_transient<logger_dependent_t, zlink::framework::logger_t<logger_dependent_t>> ();
+    auto logging_provider = logging_services.build_provider ();
+    logging_provider.get_required<logger_dependent_t> ().write ();
+    if (logging.captured_records ().empty ()) {
+        return 13;
     }
 
     return 0;

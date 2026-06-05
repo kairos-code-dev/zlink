@@ -287,6 +287,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-unit -R async
 - typed options binding
 - `logger_t<TCategory>`
 - `logger_factory_t`
+- `app_t::add_zlink_framework(...)`에서 app logging state와 연결된 `logger_factory_t` 기본 등록
+- `dependency_types`의 `logger_t<TCategory>` 자동 DI 등록
 - console/file/rotating file/callback sink
 - async logging option
 
@@ -295,6 +297,9 @@ ctest --test-dir framework/languages/cpp/build -L framework-unit -R async
 - 사용자는 native context 생성/종료 순서를 알 필요가 없다.
 - configuration은 `.NET Core` Generic Host model처럼 JSON, env, CLI source를 merge한다.
 - `run()`은 process exit code를 반환한다.
+- handler는 logger를 쓰기 위해 `options.services().add_singleton<logger_t<...>>()`를 직접
+  작성하지 않는다. 출력 대상은 `app.logging()`에서 설정하고, logger 객체는 framework DI가
+  `.NET`의 `ILogger<T>`처럼 제공한다.
 - `spdlog`와 `{fmt}` 타입은 public header에 노출하지 않는다.
 
 검증:

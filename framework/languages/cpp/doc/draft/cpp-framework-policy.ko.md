@@ -977,6 +977,16 @@ logging public API는 `zlink::framework::logger_t<TCategory>`와
 표면이며, handler와 hosted service는 이 타입을 통해 log를 남긴다. public header에는
 `spdlog` logger나 sink 타입을 노출하지 않는다.
 
+logging 설정과 logger 주입은 분리한다. `app.logging()`은 provider와 sink를 구성하는
+host-level 표면이다. 예를 들어 console, file, rotating file, callback sink, minimum level은
+여기서 설정한다. 반대로 handler와 service는 `dependency_types`에
+`logger_t<handler_type>` 또는 `logger_factory_t`를 선언해서 logger를 받는다. 사용자가
+`options.services().add_singleton<logger_t<...>>()`처럼 logger instance를 직접 등록하지
+않는다. `app_t::add_zlink_framework(...)`는 app logging state와 연결된 `logger_factory_t`를
+기본 서비스로 제공하고, DI는 `logger_t<TCategory>` dependency를 자동으로 생성한다. sink가
+등록되지 않은 경우에도 logger 주입은 성공하며, 로그는 내부 captured record 외에는 외부로
+출력되지 않는 null sink 의미로 동작한다.
+
 지원하는 sink는 아래와 같다.
 
 | sink | API | 용도 |

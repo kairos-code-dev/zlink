@@ -153,7 +153,7 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 
     create_match_room_handler_t rooms;
     sample_topology_t topology;
-    auto logger = zlink::framework::logger_factory_t ().create ("test.tictactoe.api");
+    auto logger = zlink::framework::logger_factory_t ().create<create_match_handler_t> ();
     create_match_handler_t create (rooms, topology, logger);
     const auto created = create.handle ({authenticated.actor_id});
     EXPECT_EQ (created.play_endpoint, topology.stream_endpoint);

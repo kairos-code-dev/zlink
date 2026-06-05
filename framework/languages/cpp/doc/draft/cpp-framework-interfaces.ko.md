@@ -1631,6 +1631,12 @@ handler에 생성자 의존성이 있으면 `using dependency_types =
 zlink::framework::dependency_list_t<dep1_t, dep2_t>;`처럼 의존 타입을 명시한다. framework는
 handler를 등록할 때 `add_singleton<THandler, dep1_t, dep2_t>()`와 같은 DI 생성자 주입 등록을
 사용한다.
+`logger_t<THandler>`는 framework 기본 dependency다. handler가
+`dependency_types`에 `logger_t<THandler>`를 넣으면 사용자가 별도 service registration을
+작성하지 않아도 DI가 `.NET`의 `ILogger<T>`처럼 category logger를 주입한다. 로그 출력 대상은
+handler 등록이 아니라 `app.logging().use_console()`, `app.logging().use_file(...)` 같은
+host logging 설정에서 정한다. custom category가 필요하면 `logger_factory_t`를 dependency로
+받아 handler 내부에서 category logger를 만들 수 있다.
 
 ```cpp
 app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &options) {

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/errors/error.hpp>
+#include <zlink/framework/contracts/configuration/logging.hpp>
 
 #include <functional>
 #include <memory>
@@ -172,10 +173,40 @@ class service_collection_t
     bool contains (std::type_index type) const;
 
   private:
+    template <typename T> struct logger_dependency_t : std::false_type
+    {
+    };
+
+    template <typename TCategory> struct logger_dependency_t<logger_t<TCategory>> : std::true_type
+    {
+        using category_type = TCategory;
+    };
+
+    template <typename T> service_collection_t &add_framework_dependency ()
+    {
+        if constexpr (logger_dependency_t<T>::value) {
+            if (!contains (std::type_index (typeid (T)))) {
+                return add_factory<T> (
+                  [] (service_provider_t &provider) {
+                      auto &factory = provider.get_required<logger_factory_t> ();
+                      using category_t = typename logger_dependency_t<T>::category_type;
+                      if constexpr (std::is_void_v<category_t>) {
+                          return factory.create ("zlink.framework");
+                      } else {
+                          return factory.template create<category_t> ();
+                      }
+                  },
+                  service_lifetime_t::transient);
+            }
+        }
+        return *this;
+    }
+
     template <typename T, typename... TDependencies> service_collection_t &add_injected (service_lifetime_t lifetime)
     {
         static_assert (std::is_constructible_v<T, TDependencies &...>,
                        "injected service constructor must accept dependencies by reference");
+        (add_framework_dependency<TDependencies> (), ...);
         return add_factory<T> (
           [] (service_provider_t &provider) {
               return std::make_unique<T> (provider.get_required<TDependencies> ()...);

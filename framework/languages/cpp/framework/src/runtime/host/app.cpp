@@ -9,6 +9,7 @@
 #include <csignal>
 #include <chrono>
 #include <thread>
+#include <typeindex>
 #include <utility>
 #include <vector>
 
@@ -155,6 +156,10 @@ serializer_registry_t &app_t::_serializers () noexcept
 
 app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t &)> configure)
 {
+    if (!_state->services.contains (std::type_index (typeid (logger_factory_t)))) {
+        _state->services.add_singleton<logger_factory_t> (
+          std::make_unique<logger_factory_t> (_state->logging.factory ()));
+    }
     _state->services.add_singleton<channel_client_t> (
       std::make_unique<channel_client_t> (_state->zlink.message_bus ()));
     zlink_framework_options_t options (_state->services, _state->handlers, _state->serializers, _state->zlink,

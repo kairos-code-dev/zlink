@@ -129,6 +129,10 @@ connector 테스트 이름은 `Systems.Zlink.Stream.Connector.Tests`의 메서�
 | Java/Node stream interop | unit | `JavaNodeStreamInteropTest.nodeConnector_decodesJavaRequestFrame_andJavaDecodesNodeResponse` | Java가 만든 STREAM request frame을 Node connector가 decode하고 Node response frame을 Java가 decode |
 | connector codec helper | contract | `ConnectorCodecContractTest.jsonMsgpackProtobufTypedHelperRoundtrip` | JSON/MessagePack/Protobuf typed helper roundtrip |
 | Kotlin connector wrapper | unit | `KotlinConnectorWrapperTest.suspendWrapperPreservesConnectorSemantics` / `connectorMessagesFlowUsesJavaManualDispatchSemantics` / `connectorErrorsFlowUsesJavaManualDispatchSemantics` / `coroutineRuntimeMapsSuspendStreamErrorHandlerToCompletionStage` | suspend wrapper와 connector `Flow` wrapper가 Java connector lifecycle, manual dispatch, request/reply/error event 의미를 바꾸지 않음 |
+| Kotlin suspend annotation channel handler | integration-single-process | `KotlinSuspendAnnotationHandlerTest.scannerTreatsKotlinSuspendChannelAnnotationsLikeJavaMethodHandlers` / `springCreatedKotlinSuspendHandlerRunsThroughMethodInvoker` / `springLifecycleDiscoversKotlinSuspendAnnotationBeanType` | Spring DI 안의 Kotlin `suspend fun` `@ZLinkRequest`, `@ZLinkSend`, `@ZLinkPublish` handler가 Java method handler와 같은 catalog에 등록되고 framework method invoker로 실행됨. continuation parameter는 handler parameter로 보이지 않음 |
+| Kotlin suspend annotation Spot/actor handler | fake backend / integration-single-process | `KotlinSuspendAnnotationHandlerTest.scannerTreatsKotlinSuspendSpotActorAnnotationsLikeJavaMethodHandlers` / `kotlinSuspendSpotActorMethodRunsThroughMethodInvoker` | Kotlin `suspend fun` `@ZLinkSpotActorRequest`, `@ZLinkSpotActorSend`, `@ZLinkSpotActorJoin`, actor lifecycle handler가 Java Spot/actor handler와 같은 registration과 method invoker 경로로 실행됨. timer는 annotation 표면이 아니라 `ZLinkSpotTimerHandler` interface wrapper 표면으로 검증함 |
+| Kotlin/Java duplicate annotation validation | contract | `KotlinSuspendAnnotationHandlerTest.duplicateValidationRejectsJavaAndKotlinSuspendAnnotationPacketCollision` | Java annotation handler와 Kotlin suspend annotation handler가 같은 channel packet mapping을 등록하면 기존 duplicate registration validation으로 startup 실패 |
+| Kotlin suspend annotation failure/cancellation | unit | `KotlinSuspendAnnotationHandlerTest.kotlinSuspendAnnotationExceptionCompletesJavaStageExceptionally` / `kotlinSuspendAnnotationCancellationCompletesJavaStageExceptionally` | Kotlin suspend annotation handler의 exception/cancellation이 Java runtime이 받는 `CompletionStage` exceptional/cancel completion으로 모임 |
 
 ## 5. Registry/Monitoring regression
 
@@ -179,7 +183,7 @@ transport error callback public API가 추가되어야 한다.
 | `TicTacToe.SessionGateway` | reconnect 후 같은 actor id로 새 session binding |
 | `Bingo` | 4 connector client, matching, timer, bound push 성공 |
 | `StreamingClient` | connector send/request/on/manual dispatch/lifecycle event/reconnect smoke |
-| `Async` | Java `CompletionStage` continuation과 Kotlin `suspend` wrapper smoke |
+| `Async` | Java `CompletionStage` continuation과 Kotlin `suspend` wrapper smoke. Kotlin 쪽은 수동 wrapper만이 아니라 Spring DI 안의 suspend annotation handler smoke도 포함해야 함 |
 
 위 sample은 `samples/java/*`와 `samples/kotlin/*` 양쪽에 있어야 한다. sample source와 runner 구조는
 `SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints`,
@@ -193,6 +197,13 @@ transport error callback public API가 추가되어야 한다.
 파일 존재만 보지 않고 framework facade, ActorGateway attach, registry-backed remote
 address, public session actor binding, connector manual dispatch/reconnect 사용을
 검사한다. 실제 실행 self-check는 아래 release gate command가 담당한다.
+
+Kotlin sample gate는 Kotlin client API가 `await()`를 쓰는지만 확인하지 않는다. 적어도
+하나의 Kotlin sample 또는 `Async` sample은 Spring bean으로 등록된 `suspend fun`
+annotation handler를 사용해야 하며, sample runner는 그 handler가 실제 framework
+dispatch 경로에서 실행됐음을 확인해야 한다. Kotlin handler를 sample main에서 직접
+생성하거나 `ZLinkCoroutineRuntime` 수동 adapter로만 등록한 smoke는 Spring framework
+지원 완료 증거가 아니다.
 
 `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`의 sample release gate는 단일 entry
 file만 확인하지 않는다. Java/Kotlin 양쪽에서 `.NET` sample의 역할 package, handler,

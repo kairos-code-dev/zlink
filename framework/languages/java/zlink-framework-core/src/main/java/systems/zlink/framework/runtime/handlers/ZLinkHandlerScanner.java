@@ -247,7 +247,7 @@ public final class ZLinkHandlerScanner {
     }
 
     private static Class<?> requireActorDisconnectedHandlerShape(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = method.getParameterTypes();
+        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 1) {
             return parameters[0];
         }
@@ -260,7 +260,7 @@ public final class ZLinkHandlerScanner {
     }
 
     private static Class<?> requireActorLifecycleHandlerShape(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = method.getParameterTypes();
+        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2 && parameters[1] == ZLinkSpotActorChangeResult.class) {
             return parameters[0];
         }
@@ -275,7 +275,7 @@ public final class ZLinkHandlerScanner {
     }
 
     private static ActorMessageShape requireActorJoinHandlerShape(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = method.getParameterTypes();
+        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2) {
             return new ActorMessageShape(parameters[0], parameters[1]);
         }
@@ -291,7 +291,7 @@ public final class ZLinkHandlerScanner {
         Class<?> handlerType,
         Method method,
         Class<? extends ZLinkHandlerContext> contextType) {
-        Class<?>[] parameters = method.getParameterTypes();
+        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2) {
             return new ActorMessageShape(parameters[0], parameters[1]);
         }
@@ -426,7 +426,7 @@ public final class ZLinkHandlerScanner {
         Class<?> handlerType,
         Method method,
         Class<? extends ZLinkHandlerContext> contextType) {
-        Class<?>[] parameters = method.getParameterTypes();
+        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 0) {
             throw new ZLinkConfigurationException(
                 "handler method must have a message parameter: "
@@ -442,6 +442,9 @@ public final class ZLinkHandlerScanner {
     }
 
     private static Class<?> resolveReplyType(Class<?> handlerType, Method method) {
+        if (ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(method)) {
+            return ZLinkHandlerMethodInvoker.kotlinSuspendReplyType(handlerType, method);
+        }
         Type returnType = method.getGenericReturnType();
         if (returnType instanceof ParameterizedType parameterized
             && parameterized.getRawType() == java.util.concurrent.CompletionStage.class) {

@@ -1,0 +1,187 @@
+package systems.zlink.framework.runtime.handlers;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Proxy;
+import java.lang.reflect.Type;
+import java.lang.reflect.WildcardType;
+import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
+
+public final class ZLinkHandlerMethodInvoker {
+    private static final String CONTINUATION_CLASS_NAME = "kotlin.coroutines.Continuation";
+
+    private ZLinkHandlerMethodInvoker() {
+    }
+
+    public static boolean isKotlinSuspendMethod(Method method) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        return parameterTypes.length > 0
+            && CONTINUATION_CLASS_NAME.equals(parameterTypes[parameterTypes.length - 1].getName());
+    }
+
+    public static Class<?>[] logicalParameterTypes(Method method) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        return isKotlinSuspendMethod(method)
+            ? Arrays.copyOf(parameterTypes, parameterTypes.length - 1)
+            : parameterTypes;
+    }
+
+    public static Class<?> kotlinSuspendReplyType(Class<?> handlerType, Method method) {
+        if (!isKotlinSuspendMethod(method)) {
+            throw new IllegalArgumentException("method is not a Kotlin suspend method");
+        }
+        Type[] parameterTypes = method.getGenericParameterTypes();
+        Type continuationType = parameterTypes[parameterTypes.length - 1];
+        if (continuationType instanceof ParameterizedType parameterized
+            && parameterized.getRawType() instanceof Class<?> raw
+            && CONTINUATION_CLASS_NAME.equals(raw.getName())) {
+            return requireContinuationResultType(handlerType, parameterized.getActualTypeArguments()[0]);
+        }
+        throw new ZLinkConfigurationException(
+            "Kotlin suspend handler reply type must resolve from Continuation: "
+                + handlerType.getName() + "." + method.getName());
+    }
+
+    public static CompletionStage<Object> invoke(Object handler, Method method, Object[] logicalArguments) {
+        if (!isKotlinSuspendMethod(method)) {
+            try {
+                method.setAccessible(true);
+                Object result = method.invoke(handler, logicalArguments);
+                return result instanceof CompletionStage<?> stage
+                    ? stage.thenApply(value -> value)
+                    : CompletableFuture.completedFuture(result);
+            } catch (IllegalAccessException | InvocationTargetException ex) {
+                return CompletableFuture.failedFuture(unwrapReflectionFailure(ex));
+            }
+        }
+        return invokeKotlinSuspend(handler, method, logicalArguments);
+    }
+
+    private static CompletionStage<Object> invokeKotlinSuspend(
+        Object handler,
+        Method method,
+        Object[] logicalArguments) {
+        CompletableFuture<Object> completion = new CompletableFuture<>();
+        try {
+            Object[] arguments = new Object[logicalArguments.length + 1];
+            System.arraycopy(logicalArguments, 0, arguments, 0, logicalArguments.length);
+            ClassLoader loader = kotlinClassLoader(method);
+            arguments[arguments.length - 1] = newContinuation(loader, completion);
+            method.setAccessible(true);
+            Object result = method.invoke(handler, arguments);
+            if (result != coroutineSuspendedMarker(loader)) {
+                completeFromKotlinResult(loader, completion, result);
+            }
+        } catch (IllegalAccessException | InvocationTargetException ex) {
+            completion.completeExceptionally(unwrapReflectionFailure(ex));
+        } catch (RuntimeException ex) {
+            completion.completeExceptionally(ex);
+        }
+        return completion;
+    }
+
+    private static Object newContinuation(ClassLoader loader, CompletableFuture<Object> completion) {
+        try {
+            Class<?> continuationType = Class.forName(CONTINUATION_CLASS_NAME, false, loader);
+            InvocationHandler handler = (proxy, method, args) -> {
+                if ("getContext".equals(method.getName()) && method.getParameterCount() == 0) {
+                    return emptyCoroutineContext(loader);
+                }
+                if ("resumeWith".equals(method.getName()) && method.getParameterCount() == 1) {
+                    completeFromKotlinResult(loader, completion, args[0]);
+                    return null;
+                }
+                if ("toString".equals(method.getName()) && method.getParameterCount() == 0) {
+                    return "ZLinkHandlerContinuation";
+                }
+                return null;
+            };
+            return Proxy.newProxyInstance(loader, new Class<?>[] {continuationType}, handler);
+        } catch (ClassNotFoundException ex) {
+            throw new ZLinkConfigurationException(
+                "Kotlin suspend handler requires kotlin-stdlib on the runtime classpath",
+                ex);
+        }
+    }
+
+    private static Object emptyCoroutineContext(ClassLoader loader) {
+        try {
+            Class<?> contextType = Class.forName("kotlin.coroutines.EmptyCoroutineContext", false, loader);
+            return contextType.getField("INSTANCE").get(null);
+        } catch (ReflectiveOperationException ex) {
+            throw new ZLinkConfigurationException(
+                "Kotlin suspend handler requires EmptyCoroutineContext on the runtime classpath",
+                ex);
+        }
+    }
+
+    private static Object coroutineSuspendedMarker(ClassLoader loader) {
+        try {
+            Class<?> intrinsics =
+                Class.forName("kotlin.coroutines.intrinsics.IntrinsicsKt", false, loader);
+            Method method = intrinsics.getMethod("getCOROUTINE_SUSPENDED");
+            method.setAccessible(true);
+            return method.invoke(null);
+        } catch (ReflectiveOperationException ex) {
+            throw new ZLinkConfigurationException(
+                "Kotlin suspend handler requires kotlin coroutine intrinsics on the runtime classpath",
+                ex);
+        }
+    }
+
+    private static void completeFromKotlinResult(
+        ClassLoader loader,
+        CompletableFuture<Object> completion,
+        Object result) {
+        try {
+            Class<?> resultKt = Class.forName("kotlin.ResultKt", false, loader);
+            Method throwOnFailure = resultKt.getMethod("throwOnFailure", Object.class);
+            throwOnFailure.setAccessible(true);
+            throwOnFailure.invoke(null, result);
+            completion.complete(isKotlinUnit(result) ? null : result);
+        } catch (InvocationTargetException ex) {
+            completion.completeExceptionally(unwrapReflectionFailure(ex));
+        } catch (ReflectiveOperationException ex) {
+            completion.completeExceptionally(new ZLinkConfigurationException(
+                "Kotlin suspend handler requires kotlin.ResultKt on the runtime classpath",
+                ex));
+        }
+    }
+
+    private static boolean isKotlinUnit(Object value) {
+        return value != null && "kotlin.Unit".equals(value.getClass().getName());
+    }
+
+    private static Throwable unwrapReflectionFailure(Throwable throwable) {
+        Throwable current = throwable;
+        while (current instanceof InvocationTargetException invocation && invocation.getCause() != null) {
+            current = invocation.getCause();
+        }
+        return current;
+    }
+
+    private static ClassLoader kotlinClassLoader(Method method) {
+        ClassLoader loader = method.getDeclaringClass().getClassLoader();
+        return loader == null ? Thread.currentThread().getContextClassLoader() : loader;
+    }
+
+    private static Class<?> requireContinuationResultType(Class<?> handlerType, Type argument) {
+        if (argument instanceof WildcardType wildcard && wildcard.getLowerBounds().length == 1) {
+            return requireContinuationResultType(handlerType, wildcard.getLowerBounds()[0]);
+        }
+        if (argument instanceof Class<?> klass) {
+            return klass;
+        }
+        if (argument instanceof ParameterizedType parameterized
+            && parameterized.getRawType() instanceof Class<?> raw) {
+            return raw;
+        }
+        throw new ZLinkConfigurationException(
+            "Kotlin suspend handler reply type must resolve to a class: " + handlerType.getName());
+    }
+}

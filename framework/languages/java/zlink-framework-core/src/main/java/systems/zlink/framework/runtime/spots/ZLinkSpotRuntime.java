@@ -2,7 +2,6 @@ package systems.zlink.framework.runtime.spots;
 
 import systems.zlink.framework.runtime.backend.*;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -61,6 +60,7 @@ import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
@@ -854,25 +854,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         SpotActorLifecycleHandlerRegistration registration,
         Object spotSurface,
         ZLinkActor actor) {
-        try {
-            Object handler = handlerFactory.create(registration.handlerType());
-            Object invocationResult =
-                registration.handlerMethod().invoke(
-                    handler,
-                    actorDisconnectedArguments(registration.handlerMethod(), spotSurface, actor));
-            if (invocationResult instanceof CompletionStage<?> stage) {
-                return stage.thenApply(ignored -> null);
-            }
-            return CompletableFuture.completedFuture(null);
-        } catch (IllegalAccessException | InvocationTargetException ex) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "failed to invoke Spot actor disconnected handler: "
-                    + registration.handlerType().getName()
-                    + "."
-                    + registration.handlerMethod().getName()));
-        } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
-        }
+        return invokeVoidMethodHandler(
+            registration.handlerType(),
+            registration.handlerMethod(),
+            actorDisconnectedArguments(registration.handlerMethod(), spotSurface, actor),
+            "failed to invoke Spot actor disconnected handler");
     }
 
     private ZLinkSpot spotFor(RoutingId spotRid) {
@@ -934,33 +920,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Object spotSurface,
         ZLinkActor actor,
         Message payload) {
-        try {
-            Object handler = handlerFactory.create(registration.handlerType());
-            Object message = serializer.deserialize(payload, registration.messageType());
-            Object result = registration.handlerMethod().invoke(
-                handler,
-                actorPacketArguments(
-                    registration.handlerMethod(),
-                    spotSurface,
-                    actor,
-                    new DefaultSpotActorSendContext(registration.packetName()),
-                    message));
-            if (result instanceof CompletionStage<?> stage) {
-                return stage.thenApply(ignored -> null);
-            }
-            return CompletableFuture.completedFuture(null);
-        } catch (IllegalAccessException | InvocationTargetException ex) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "failed to invoke local session actor send handler: "
-                    + registration.handlerType().getName()
-                    + "."
-                    + registration.handlerMethod().getName(),
-                ex instanceof InvocationTargetException invocation
-                    ? invocation.getCause()
-                    : ex));
-        } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
-        }
+        Object message = serializer.deserialize(payload, registration.messageType());
+        return invokeVoidMethodHandler(
+            registration.handlerType(),
+            registration.handlerMethod(),
+            actorPacketArguments(
+                registration.handlerMethod(),
+                spotSurface,
+                actor,
+                new DefaultSpotActorSendContext(registration.packetName()),
+                message),
+            "failed to invoke local session actor send handler");
     }
 
     private CompletionStage<Optional<Message>> invokeLocalActorRequestHandler(
@@ -968,33 +938,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Object spotSurface,
         ZLinkActor actor,
         Message payload) {
-        try {
-            Object handler = handlerFactory.create(registration.handlerType());
-            Object message = serializer.deserialize(payload, registration.messageType());
-            Object result = registration.handlerMethod().invoke(
-                handler,
+        Object message = serializer.deserialize(payload, registration.messageType());
+        return invokeReplyMethodHandler(
+                registration.handlerType(),
+                registration.handlerMethod(),
                 actorPacketArguments(
                     registration.handlerMethod(),
                     spotSurface,
                     actor,
                     new DefaultSpotActorRequestContext(registration.packetName()),
-                    message));
-            CompletionStage<?> stage = result instanceof CompletionStage<?> completionStage
-                ? completionStage
-                : CompletableFuture.completedFuture(result);
-            return stage.thenApply(reply -> Optional.of(serializer.serialize(reply)));
-        } catch (IllegalAccessException | InvocationTargetException ex) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "failed to invoke local session actor request handler: "
-                    + registration.handlerType().getName()
-                    + "."
-                    + registration.handlerMethod().getName(),
-                ex instanceof InvocationTargetException invocation
-                    ? invocation.getCause()
-                    : ex));
-        } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
-        }
+                    message),
+                "failed to invoke local session actor request handler")
+            .thenApply(reply -> Optional.of(serializer.serialize(reply)));
     }
 
     private CompletionStage<Void> invokeSpotActorLifecycleHandler(
@@ -1002,25 +957,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Object spotSurface,
         ZLinkActor actor,
         ZLinkSpotActorChangeResult result) {
-        try {
-            Object handler = handlerFactory.create(registration.handlerType());
-            Object invocationResult =
-                registration.handlerMethod().invoke(
-                    handler,
-                    actorLifecycleArguments(registration.handlerMethod(), spotSurface, actor, result));
-            if (invocationResult instanceof CompletionStage<?> stage) {
-                return stage.thenApply(ignored -> null);
-            }
-            return CompletableFuture.completedFuture(null);
-        } catch (IllegalAccessException | InvocationTargetException ex) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "failed to invoke Spot actor lifecycle handler: "
-                    + registration.handlerType().getName()
-                    + "."
-                    + registration.handlerMethod().getName()));
-        } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
-        }
+        return invokeVoidMethodHandler(
+            registration.handlerType(),
+            registration.handlerMethod(),
+            actorLifecycleArguments(registration.handlerMethod(), spotSurface, actor, result),
+            "failed to invoke Spot actor lifecycle handler");
     }
 
     private synchronized ZLinkBackendSpot publisherSpot(String channelName) {
@@ -2027,21 +1968,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                         backendSpot.routingId(),
                         null);
                     try {
-                        Object handler = handlerFactory.create(registration.handlerType());
                         Object requestObject =
                             serializer.deserialize(payload, registration.requestType());
-                        Object result = registration.handlerMethod().invoke(
-                            handler,
+                        return invokeReplyMethodHandler(
+                            registration.handlerType(),
+                            registration.handlerMethod(),
                             actorJoinArguments(
                                 registration.handlerMethod(),
                                 entrySpot,
                                 actor.get(),
-                                requestObject));
-                        CompletionStage<?> stage =
-                            result instanceof CompletionStage<?> completionStage
-                                ? completionStage
-                                : CompletableFuture.completedFuture(result);
-                        return stage
+                                requestObject),
+                            "failed to invoke Spot actor join handler")
                             .thenCompose(reply -> notifyActorJoined(actor.get())
                                 .thenApply(ignored -> reply))
                             .whenComplete((reply, error) -> {
@@ -2050,16 +1987,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                                 }
                             })
                             .thenApply(serializer::serialize);
-                    } catch (IllegalAccessException | InvocationTargetException ex) {
-                        actorRuntime.markLeft(actor.get());
-                        return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                            "failed to invoke Spot actor join handler: "
-                                + registration.handlerType().getName()
-                                + "."
-                                + registration.handlerMethod().getName(),
-                            ex instanceof InvocationTargetException invocation
-                                ? invocation.getCause()
-                                : ex));
                     } catch (RuntimeException ex) {
                         actorRuntime.markLeft(actor.get());
                         return CompletableFuture.failedFuture(ex);
@@ -2093,98 +2020,50 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             Object spotSurface,
             ZLinkActor actor,
             ZLinkSpotActorChangeResult result) {
-            try {
-                Object handler = handlerFactory.create(registration.handlerType());
-                Object invocationResult =
-                    registration.handlerMethod().invoke(
-                        handler,
-                        actorLifecycleArguments(
-                            registration.handlerMethod(),
-                            spotSurface,
-                            actor,
-                            result));
-                if (invocationResult instanceof CompletionStage<?> stage) {
-                    return stage.thenApply(ignored -> null);
-                }
-                return CompletableFuture.completedFuture(null);
-            } catch (IllegalAccessException | InvocationTargetException ex) {
-                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                    "failed to invoke Spot actor joined handler: "
-                        + registration.handlerType().getName()
-                        + "."
-                        + registration.handlerMethod().getName(),
-                    ex instanceof InvocationTargetException invocation
-                        ? invocation.getCause()
-                        : ex));
-            } catch (RuntimeException ex) {
-                return CompletableFuture.failedFuture(ex);
-            }
+            return invokeVoidMethodHandler(
+                registration.handlerType(),
+                registration.handlerMethod(),
+                actorLifecycleArguments(
+                    registration.handlerMethod(),
+                    spotSurface,
+                    actor,
+                    result),
+                "failed to invoke Spot actor joined handler");
         }
 
         private CompletionStage<Void> invokeActorSendHandler(
             SpotActorPacketHandlerRegistration registration,
             ZLinkActor actor,
             Message payload) {
-            try {
-                Object handler = handlerFactory.create(registration.handlerType());
-                Object message = serializer.deserialize(payload, registration.messageType());
-                Object result = registration.handlerMethod().invoke(
-                    handler,
-                    actorPacketArguments(
-                        registration.handlerMethod(),
-                        entrySpot,
-                        actor,
-                        new DefaultSpotActorSendContext(registration.packetName()),
-                        message));
-                if (result instanceof CompletionStage<?> stage) {
-                    return stage.thenApply(ignored -> null);
-                }
-                return CompletableFuture.completedFuture(null);
-            } catch (IllegalAccessException | InvocationTargetException ex) {
-                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                    "failed to invoke Spot actor send handler: "
-                        + registration.handlerType().getName()
-                        + "."
-                        + registration.handlerMethod().getName(),
-                    ex instanceof InvocationTargetException invocation
-                        ? invocation.getCause()
-                        : ex));
-            } catch (RuntimeException ex) {
-                return CompletableFuture.failedFuture(ex);
-            }
+            Object message = serializer.deserialize(payload, registration.messageType());
+            return invokeVoidMethodHandler(
+                registration.handlerType(),
+                registration.handlerMethod(),
+                actorPacketArguments(
+                    registration.handlerMethod(),
+                    entrySpot,
+                    actor,
+                    new DefaultSpotActorSendContext(registration.packetName()),
+                    message),
+                "failed to invoke Spot actor send handler");
         }
 
         private CompletionStage<Optional<Message>> invokeActorRequestHandler(
             SpotActorPacketHandlerRegistration registration,
             ZLinkActor actor,
             Message payload) {
-            try {
-                Object handler = handlerFactory.create(registration.handlerType());
-                Object message = serializer.deserialize(payload, registration.messageType());
-                Object result = registration.handlerMethod().invoke(
-                    handler,
+            Object message = serializer.deserialize(payload, registration.messageType());
+            return invokeReplyMethodHandler(
+                    registration.handlerType(),
+                    registration.handlerMethod(),
                     actorPacketArguments(
                         registration.handlerMethod(),
                         entrySpot,
                         actor,
                         new DefaultSpotActorRequestContext(registration.packetName()),
-                        message));
-                CompletionStage<?> stage = result instanceof CompletionStage<?> completionStage
-                    ? completionStage
-                    : CompletableFuture.completedFuture(result);
-                return stage.thenApply(reply -> Optional.of(serializer.serialize(reply)));
-            } catch (IllegalAccessException | InvocationTargetException ex) {
-                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                    "failed to invoke Spot actor request handler: "
-                        + registration.handlerType().getName()
-                        + "."
-                        + registration.handlerMethod().getName(),
-                    ex instanceof InvocationTargetException invocation
-                        ? invocation.getCause()
-                        : ex));
-            } catch (RuntimeException ex) {
-                return CompletableFuture.failedFuture(ex);
-            }
+                        message),
+                    "failed to invoke Spot actor request handler")
+                .thenApply(reply -> Optional.of(serializer.serialize(reply)));
         }
 
         @Override
@@ -2436,6 +2315,38 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
     }
 
+    private CompletionStage<Void> invokeVoidMethodHandler(
+        Class<?> handlerType,
+        Method method,
+        Object[] arguments,
+        String failureMessage) {
+        try {
+            Object handler = handlerFactory.create(handlerType);
+            return ZLinkHandlerMethodInvoker
+                .invoke(handler, method, arguments)
+                .thenApply(ignored -> null);
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                failureMessage + ": " + handlerType.getName() + "." + method.getName(),
+                ex));
+        }
+    }
+
+    private CompletionStage<Object> invokeReplyMethodHandler(
+        Class<?> handlerType,
+        Method method,
+        Object[] arguments,
+        String failureMessage) {
+        try {
+            Object handler = handlerFactory.create(handlerType);
+            return ZLinkHandlerMethodInvoker.invoke(handler, method, arguments);
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                failureMessage + ": " + handlerType.getName() + "." + method.getName(),
+                ex));
+        }
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
     private CompletionStage<Void> invokeSpotPacketHandler(
         SpotPacketHandlerRegistration registration,
@@ -2445,22 +2356,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         try {
             Object handler = handlerFactory.create(registration.handlerType());
             if (registration.handlerMethod() != null) {
-                Object result = registration.handlerMethod().invoke(handler, spot, message);
-                if (result instanceof CompletionStage<?> stage) {
-                    return stage.thenApply(ignored -> null);
-                }
-                return CompletableFuture.completedFuture(null);
+                return ZLinkHandlerMethodInvoker
+                    .invoke(handler, registration.handlerMethod(), new Object[] {spot, message})
+                    .thenApply(ignored -> null);
             }
             return ((ZLinkSpotPacketHandler) handler)
                 .handleAsync(spot, message)
                 .thenApply(ignored -> null);
-        } catch (IllegalAccessException | InvocationTargetException ex) {
+        } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "failed to invoke SPOT packet handler: "
                     + registration.handlerType().getName(),
                 ex));
-        } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
         }
     }
 
@@ -2472,20 +2379,21 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Object message = serializer.deserialize(payload, registration.messageType());
         try {
             Object handler = handlerFactory.create(registration.handlerType());
-            Object result = registration.handlerMethod() != null
-                ? registration.handlerMethod().invoke(handler, spot, message)
-                : ((ZLinkSpotRequestHandler) handler).handleAsync(spot, message);
+            if (registration.handlerMethod() != null) {
+                return ZLinkHandlerMethodInvoker
+                    .invoke(handler, registration.handlerMethod(), new Object[] {spot, message})
+                    .thenApply(serializer::serialize);
+            }
+            Object result = ((ZLinkSpotRequestHandler) handler).handleAsync(spot, message);
             CompletionStage<?> stage = result instanceof CompletionStage<?> completion
                 ? completion
                 : CompletableFuture.completedFuture(result);
             return stage.thenApply(serializer::serialize);
-        } catch (IllegalAccessException | InvocationTargetException ex) {
+        } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "failed to invoke SPOT request handler: "
                     + registration.handlerType().getName(),
                 ex));
-        } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
         }
     }
 
@@ -2498,22 +2406,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         try {
             Object handler = handlerFactory.create(registration.handlerType());
             if (registration.handlerMethod() != null) {
-                Object result = registration.handlerMethod().invoke(handler, spot, message);
-                if (result instanceof CompletionStage<?> stage) {
-                    return stage.thenApply(ignored -> null);
-                }
-                return CompletableFuture.completedFuture(null);
+                return ZLinkHandlerMethodInvoker
+                    .invoke(handler, registration.handlerMethod(), new Object[] {spot, message})
+                    .thenApply(ignored -> null);
             }
             return ((ZLinkSpotSubscriptionHandler) handler)
                 .handleAsync(spot, message)
                 .thenApply(ignored -> null);
-        } catch (IllegalAccessException | InvocationTargetException ex) {
+        } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "failed to invoke SPOT subscription handler: "
                     + registration.handlerType().getName(),
                 ex));
-        } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
         }
     }
 
@@ -3467,7 +3371,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             if (annotation == null) {
                 continue;
             }
-            Class<?>[] parameters = method.getParameterTypes();
+            Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
             if (parameters.length != 2) {
                 throw new ZLinkConfigurationException(
                     "SPOT request handler method must have spot and request parameters: "
@@ -3504,7 +3408,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             if (annotation == null) {
                 continue;
             }
-            Class<?>[] parameters = method.getParameterTypes();
+            Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
             if (parameters.length != 2) {
                 throw new ZLinkConfigurationException(
                     "SPOT subscription handler method must have spot and event parameters: "
@@ -3534,7 +3438,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private static ActorLifecycleShape actorDisconnectedHandlerShape(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = method.getParameterTypes();
+        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 1) {
             return new ActorLifecycleShape(null, parameters[0]);
         }
@@ -3547,7 +3451,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private static ActorLifecycleShape actorLifecycleHandlerShape(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = method.getParameterTypes();
+        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2 && parameters[1] == ZLinkSpotActorChangeResult.class) {
             return new ActorLifecycleShape(null, parameters[0]);
         }
@@ -3570,7 +3474,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private static ActorMessageShape actorJoinHandlerShape(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = method.getParameterTypes();
+        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2) {
             return new ActorMessageShape(parameters[0], parameters[1]);
         }
@@ -3586,7 +3490,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Class<?> handlerType,
         Method method,
         Class<? extends ZLinkHandlerContext> contextType) {
-        Class<?>[] parameters = method.getParameterTypes();
+        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2) {
             return new ActorMessageShape(parameters[0], parameters[1]);
         }
@@ -3607,7 +3511,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     static Object[] actorJoinArguments(Method method, Object spot, ZLinkActor actor, Object message) {
-        Class<?>[] parameterTypes = method.getParameterTypes();
+        Class<?>[] parameterTypes = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameterTypes.length == 2) {
             return new Object[] {actor, message};
         }
@@ -3620,7 +3524,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         ZLinkActor actor,
         ZLinkHandlerContext context,
         Object message) {
-        Class<?>[] parameterTypes = method.getParameterTypes();
+        Class<?>[] parameterTypes = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameterTypes.length == 2) {
             return new Object[] {actor, message};
         }
@@ -3632,7 +3536,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Object spot,
         ZLinkActor actor,
         ZLinkSpotActorChangeResult result) {
-        Class<?>[] parameterTypes = method.getParameterTypes();
+        Class<?>[] parameterTypes = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameterTypes.length == 2) {
             return new Object[] {actor, result};
         }
@@ -3640,7 +3544,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     static Object[] actorDisconnectedArguments(Method method, Object spot, ZLinkActor actor) {
-        Class<?>[] parameterTypes = method.getParameterTypes();
+        Class<?>[] parameterTypes = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameterTypes.length == 1) {
             return new Object[] {actor};
         }
@@ -3740,6 +3644,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private static Class<?> resolveReplyType(Class<?> handlerType, Method method) {
+        if (ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(method)) {
+            return ZLinkHandlerMethodInvoker.kotlinSuspendReplyType(handlerType, method);
+        }
         Type returnType = method.getGenericReturnType();
         if (returnType instanceof ParameterizedType parameterized
             && parameterized.getRawType() == CompletionStage.class) {
@@ -4265,21 +4172,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                         backendSpot.routingId(),
                         spotFor(backendSpot.routingId()));
                     try {
-                        Object handler = handlerFactory.create(registration.handlerType());
                         Object requestObject =
                             serializer.deserialize(payload, registration.requestType());
-                        Object result = registration.handlerMethod().invoke(
-                            handler,
+                        return invokeReplyMethodHandler(
+                            registration.handlerType(),
+                            registration.handlerMethod(),
                             actorJoinArguments(
                                 registration.handlerMethod(),
                                 spot,
                                 actor.get(),
-                                requestObject));
-                        CompletionStage<?> stage =
-                            result instanceof CompletionStage<?> completionStage
-                                ? completionStage
-                                : CompletableFuture.completedFuture(result);
-                        return stage
+                                requestObject),
+                            "failed to invoke Spot actor join handler")
                             .thenCompose(reply -> notifyActorJoined(actor.get())
                                 .thenApply(ignored -> reply))
                             .whenComplete((reply, error) -> {
@@ -4288,16 +4191,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                                 }
                             })
                             .thenApply(serializer::serialize);
-                    } catch (IllegalAccessException | InvocationTargetException ex) {
-                        actorRuntime.markLeft(actor.get());
-                        return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                            "failed to invoke Spot actor join handler: "
-                                + registration.handlerType().getName()
-                                + "."
-                                + registration.handlerMethod().getName(),
-                            ex instanceof InvocationTargetException invocation
-                                ? invocation.getCause()
-                                : ex));
                     } catch (RuntimeException ex) {
                         actorRuntime.markLeft(actor.get());
                         return CompletableFuture.failedFuture(ex);
@@ -4331,98 +4224,50 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             Object spotSurface,
             ZLinkActor actor,
             ZLinkSpotActorChangeResult result) {
-            try {
-                Object handler = handlerFactory.create(registration.handlerType());
-                Object invocationResult =
-                    registration.handlerMethod().invoke(
-                        handler,
-                        actorLifecycleArguments(
-                            registration.handlerMethod(),
-                            spotSurface,
-                            actor,
-                            result));
-                if (invocationResult instanceof CompletionStage<?> stage) {
-                    return stage.thenApply(ignored -> null);
-                }
-                return CompletableFuture.completedFuture(null);
-            } catch (IllegalAccessException | InvocationTargetException ex) {
-                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                    "failed to invoke Spot actor joined handler: "
-                        + registration.handlerType().getName()
-                        + "."
-                        + registration.handlerMethod().getName(),
-                    ex instanceof InvocationTargetException invocation
-                        ? invocation.getCause()
-                        : ex));
-            } catch (RuntimeException ex) {
-                return CompletableFuture.failedFuture(ex);
-            }
+            return invokeVoidMethodHandler(
+                registration.handlerType(),
+                registration.handlerMethod(),
+                actorLifecycleArguments(
+                    registration.handlerMethod(),
+                    spotSurface,
+                    actor,
+                    result),
+                "failed to invoke Spot actor joined handler");
         }
 
         private CompletionStage<Void> invokeActorSendHandler(
             SpotActorPacketHandlerRegistration registration,
             ZLinkActor actor,
             Message payload) {
-            try {
-                Object handler = handlerFactory.create(registration.handlerType());
-                Object message = serializer.deserialize(payload, registration.messageType());
-                Object result = registration.handlerMethod().invoke(
-                    handler,
-                    actorPacketArguments(
-                        registration.handlerMethod(),
-                        spot,
-                        actor,
-                        new DefaultSpotActorSendContext(registration.packetName()),
-                        message));
-                if (result instanceof CompletionStage<?> stage) {
-                    return stage.thenApply(ignored -> null);
-                }
-                return CompletableFuture.completedFuture(null);
-            } catch (IllegalAccessException | InvocationTargetException ex) {
-                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                    "failed to invoke Spot actor send handler: "
-                        + registration.handlerType().getName()
-                        + "."
-                        + registration.handlerMethod().getName(),
-                    ex instanceof InvocationTargetException invocation
-                        ? invocation.getCause()
-                        : ex));
-            } catch (RuntimeException ex) {
-                return CompletableFuture.failedFuture(ex);
-            }
+            Object message = serializer.deserialize(payload, registration.messageType());
+            return invokeVoidMethodHandler(
+                registration.handlerType(),
+                registration.handlerMethod(),
+                actorPacketArguments(
+                    registration.handlerMethod(),
+                    spot,
+                    actor,
+                    new DefaultSpotActorSendContext(registration.packetName()),
+                    message),
+                "failed to invoke Spot actor send handler");
         }
 
         private CompletionStage<Optional<Message>> invokeActorRequestHandler(
             SpotActorPacketHandlerRegistration registration,
             ZLinkActor actor,
             Message payload) {
-            try {
-                Object handler = handlerFactory.create(registration.handlerType());
-                Object message = serializer.deserialize(payload, registration.messageType());
-                Object result = registration.handlerMethod().invoke(
-                    handler,
+            Object message = serializer.deserialize(payload, registration.messageType());
+            return invokeReplyMethodHandler(
+                    registration.handlerType(),
+                    registration.handlerMethod(),
                     actorPacketArguments(
                         registration.handlerMethod(),
                         spot,
                         actor,
                         new DefaultSpotActorRequestContext(registration.packetName()),
-                        message));
-                CompletionStage<?> stage = result instanceof CompletionStage<?> completionStage
-                    ? completionStage
-                    : CompletableFuture.completedFuture(result);
-                return stage.thenApply(reply -> Optional.of(serializer.serialize(reply)));
-            } catch (IllegalAccessException | InvocationTargetException ex) {
-                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                    "failed to invoke Spot actor request handler: "
-                        + registration.handlerType().getName()
-                        + "."
-                        + registration.handlerMethod().getName(),
-                    ex instanceof InvocationTargetException invocation
-                        ? invocation.getCause()
-                        : ex));
-            } catch (RuntimeException ex) {
-                return CompletableFuture.failedFuture(ex);
-            }
+                        message),
+                    "failed to invoke Spot actor request handler")
+                .thenApply(reply -> Optional.of(serializer.serialize(reply)));
         }
 
         @Override

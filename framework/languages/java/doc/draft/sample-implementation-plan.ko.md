@@ -85,8 +85,10 @@ provenance 주석:
 - **`Async`는 비동기 표면 정책을 확인하는 추가 sample**이다. Java sample은 blocking
   helper 없이 `CompletionStage` continuation으로 요청 흐름을 연결한다. Kotlin sample은
   같은 Java `CompletionStage` 표면을 `suspend` 함수로 감싸고, `suspend` handler를
-  framework-owned coroutine runtime으로 Java handler에 연결한다. 이 sample은 `.NET`
-  동등성 비교의 기준 sample은 아니지만, Java/Kotlin release gate에서는 필수로 실행한다.
+  framework-owned coroutine runtime으로 Java handler에 연결한다. 또한 Spring bean
+  scanner가 Kotlin `suspend fun` annotation handler를 자동 발견하고 실제 dispatch
+  경로에서 실행하는 smoke를 포함한다. 이 sample은 `.NET` 동등성 비교의 기준 sample은
+  아니지만, Java/Kotlin release gate에서는 필수로 실행한다.
 - `.NET`에는 `samples/Bingo(session-gateway)`가 존재한다(WIP). 이 Java 계획에서는
   필수 4개만 우선 구현하고, `Bingo(session-gateway)` 대응 Java sample은 **선택
   항목**으로 둔다(필수 release gate 밖).
@@ -316,6 +318,11 @@ sample gate는 최소한 아래를 자동 확인한다.
 - Session server가 ActorGateway attach를 사용한다.
 - session handler가 actor remote address resolver를 직접 호출하지 않는다.
 - connector client가 `MANUAL` dispatch mode에서도 request/reply와 notification을 처리한다.
+- Kotlin `Async` 또는 다른 Kotlin sample이 Spring DI 안의 `suspend fun` annotation
+  handler를 실제 framework dispatch 경로로 실행한다. 수동 `ZLinkCoroutineRuntime`
+  wrapper만 사용한 smoke는 이 항목을 만족하지 않는다. 현재 gate 증거는
+  `samples/kotlin/Async`의 Spring bean `suspend fun` `@ZLinkSend`/`@ZLinkRequest`
+  handler self-check와 `timeout 900 ./run_samples.sh` 실행 결과다.
 - Bingo deterministic scenario가 같은 sequence winner를 만든다.
 - TicTacToe SessionGateway reconnect scenario가 같은 actor id로 새 session binding을 만든다.
 - [regression-test-matrix](./internals/regression-test-matrix.ko.md) §6의 모든 sample

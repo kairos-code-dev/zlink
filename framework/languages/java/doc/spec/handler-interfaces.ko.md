@@ -22,6 +22,10 @@
 - Java handler와 submit 표면은 `CompletionStage`를 기준으로 한다. Kotlin
   `suspend` 표면은 이 Java handler를 감싸는 adapter이며, 별도 runtime 의미를 만들지
   않는다.
+- Kotlin `suspend fun`에 Java와 같은 ZLink annotation을 붙인 handler도 같은 계약으로
+  본다. Spring bean scanner는 Kotlin suspend method를 별도 수동 등록 없이 발견해야
+  하며, framework-owned coroutine adapter를 통해 Java `CompletionStage` handler로
+  실행해야 한다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다.
 
@@ -155,6 +159,29 @@ Kotlin adapter는 `suspend` handler를 위 Java handler interface로 변환한�
 framework-owned `CoroutineScope`에서 handler를 실행하고 `CompletionStage`를 반환해야
 한다. `runBlocking`으로 현재 dispatch thread를 막거나, Java core의 serial execution
 queue를 우회하는 별도 coroutine queue를 만들지 않는다.
+
+Kotlin annotation handler는 Java annotation handler와 같은 discovery, validation,
+dispatch 의미를 가진다. 예를 들어 Kotlin Spring bean에 `@ZLinkRequest`,
+`@ZLinkSend`, `@ZLinkPublish`, `@ZLinkSpotActorRequest`, `@ZLinkSpotActorSend`,
+`@ZLinkSpotActorJoin`, actor lifecycle annotation, timer annotation을 붙인
+`suspend fun`은 Java method handler처럼 scanner catalog에 등록되어야 한다. Kotlin
+compiler가 suspend method에 추가하는 continuation parameter는 public handler
+parameter로 노출하지 않는다. scanner와 adapter는 application이 작성한 request,
+message, actor, context parameter만 계약으로 보아야 한다.
+
+Kotlin suspend annotation handler는 아래 원칙을 지킨다.
+
+- handler 실행은 framework가 소유한 `CoroutineScope`에서 시작한다.
+- handler completion, exception, cancellation은 Java core가 받는 `CompletionStage`
+  completion, exceptional completion, cancellation로 모인다.
+- channel, Spot, actor, session dispatch ordering은 Java core의 serial execution
+  queue를 따른다. Kotlin adapter가 별도 queue를 만들거나 callback 순서를 새로
+  정의하지 않는다.
+- Java handler와 Kotlin suspend handler가 같은 channel, packet, Spot actor mapping을
+  등록하면 기존 duplicate registration validation으로 거부한다.
+- Spring DI는 Java bean handler와 같은 방식으로 constructor injection을 사용한다.
+  Kotlin handler가 `ApplicationContext`를 service locator로 직접 받도록 요구하지
+  않는다.
 
 stream은 `.NET` 기준과 같이 header session 하나로 설명한다. 이전 설계의
 `packet session`/`raw session` 분리는 현재 포팅 기준이 아니다. callback으로 전달된

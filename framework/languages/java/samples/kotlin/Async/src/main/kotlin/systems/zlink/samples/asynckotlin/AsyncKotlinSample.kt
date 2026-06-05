@@ -4,42 +4,47 @@ import java.time.Duration
 import java.util.Optional
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.springframework.context.annotation.AnnotationConfigApplicationContext
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.ZLinkFramework
+import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.channels.ZLinkSendContext
-import systems.zlink.framework.channels.ZLinkSendHandler
+import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import systems.zlink.framework.handlers.ZLinkRequest
+import systems.zlink.framework.handlers.ZLinkSend
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.kotlin.awaitReply
 import systems.zlink.framework.kotlin.submit
+import systems.zlink.framework.spring.EnableZLinkFramework
+import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
 
 private val warmupUser = CompletableFuture<String>()
 
 fun main() = runBlocking {
     val endpoint = "inproc://zlink-kotlin-async-${UUID.randomUUID()}"
 
-    ZLinkFramework.start { options ->
-        options.addClientServerChannel("profile") { channel ->
-            channel.enableServer { server -> server.bind(endpoint) }
-            channel.enableClient { client ->
-                client.useManualConnections { endpoints -> endpoints.connect(endpoint) }
-            }
-            channel.addSendHandler(WarmupHandler::class.java, String::class.java, "Warmup")
-            channel.addRequestHandler(GetProfileHandler::class.java, String::class.java, String::class.java, "GetProfile")
-        }
-    }.use { framework ->
-        framework.client()
+    AnnotationConfigApplicationContext().use { context ->
+        context.registerBean(
+            "asyncEndpoint",
+            String::class.java,
+            java.util.function.Supplier { endpoint },
+        )
+        context.register(AsyncKotlinSpringConfig::class.java)
+        context.refresh()
+
+        val client = context.getBean(ZLinkClient::class.java)
+        client
             .sendToChannel("profile", "42")
             .packetName("Warmup")
             .metadata("sample", "kotlin")
             .submit()
 
-        val reply = framework.client()
+        val reply = client
             .requestToChannel("profile", "42")
             .packetName("GetProfile")
             .timeout(Duration.ofSeconds(1))
@@ -62,18 +67,37 @@ fun main() = runBlocking {
     println("AsyncKotlin sample self-check passed")
 }
 
-class WarmupHandler : ZLinkSendHandler<String> {
-    override fun handleAsync(message: String, context: ZLinkSendContext): CompletionStage<Void> {
-        require(context.packetName().orElseThrow() == "Warmup") { "send packet mismatch" }
-        warmupUser.complete(message)
-        return CompletableFuture.completedFuture(null)
+@Configuration(proxyBeanMethods = false)
+@EnableZLinkFramework
+open class AsyncKotlinSpringConfig {
+    @Bean
+    open fun asyncHandlers() = AsyncHandlers()
+
+    @Bean
+    open fun zlinkOptionsCustomizer(asyncEndpoint: String) = ZLinkFrameworkOptionsCustomizer { options ->
+        options.addHandlersFromPackageOf(AsyncKotlinSpringConfig::class.java)
+        options.addClientServerChannel("profile") { channel ->
+            channel.enableServer { server -> server.bind(asyncEndpoint) }
+            channel.enableClient { client ->
+                client.useManualConnections { endpoints -> endpoints.connect(asyncEndpoint) }
+            }
+            channel.addHandlerGroup("async-kotlin")
+        }
     }
 }
 
-class GetProfileHandler : ZLinkRequestHandler<String, String> {
-    override fun handleAsync(request: String, context: ZLinkRequestContext): CompletionStage<String> {
+@ZLinkHandlerGroup("async-kotlin")
+class AsyncHandlers {
+    @ZLinkSend(packetName = "Warmup")
+    suspend fun warmup(message: String, context: ZLinkSendContext) {
+        require(context.packetName().orElseThrow() == "Warmup") { "send packet mismatch" }
+        warmupUser.complete(message)
+    }
+
+    @ZLinkRequest(packetName = "GetProfile")
+    suspend fun getProfile(request: String, context: ZLinkRequestContext): String {
         require(context.packetName().orElseThrow() == "GetProfile") { "request packet mismatch" }
-        return CompletableFuture.completedFuture("$request:ready")
+        return "$request:ready"
     }
 }
 

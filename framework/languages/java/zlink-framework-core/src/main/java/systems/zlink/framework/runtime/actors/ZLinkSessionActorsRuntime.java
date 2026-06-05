@@ -319,9 +319,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                         return;
                     }
                     if (System.nanoTime() >= deadline) {
-                        result.completeExceptionally(new TimeoutException(
-                            "ActorGateway route was not ready before timeout: "
-                                + ref.actorId()));
+                        result.complete(null);
                         return;
                     }
                     RELAY_RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);

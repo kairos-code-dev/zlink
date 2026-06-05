@@ -48,15 +48,20 @@ final class ChannelMessagingTest {
     private static final AtomicReference<CountDownLatch> FANOUT_LATCH = new AtomicReference<>();
     private static final AtomicReference<String> FANOUT_MESSAGE = new AtomicReference<>();
     private static final AtomicReference<String> FANOUT_TOPIC = new AtomicReference<>();
+    private static final AtomicReference<String> FANOUT_CHANNEL = new AtomicReference<>();
     private static final AtomicReference<CountDownLatch> SEND_LATCH = new AtomicReference<>();
     private static final AtomicReference<String> SEND_MESSAGE = new AtomicReference<>();
     private static final AtomicReference<String> SEND_PACKET = new AtomicReference<>();
+    private static final AtomicReference<String> SEND_CHANNEL = new AtomicReference<>();
     private static final AtomicReference<CountDownLatch> ROUTE_SEND_LATCH = new AtomicReference<>();
     private static final AtomicReference<String> ROUTE_SEND_MESSAGE = new AtomicReference<>();
     private static final AtomicReference<String> ROUTE_SEND_PACKET = new AtomicReference<>();
+    private static final AtomicReference<String> ROUTE_SEND_CHANNEL = new AtomicReference<>();
     private static final AtomicReference<RoutingId> ROUTE_SEND_SOURCE = new AtomicReference<>();
+    private static final AtomicReference<String> ROUTE_REQUEST_CHANNEL = new AtomicReference<>();
     private static final AtomicReference<String> FILTER_REQUEST = new AtomicReference<>();
     private static final AtomicReference<String> FILTER_PACKET = new AtomicReference<>();
+    private static final AtomicReference<String> FILTER_CHANNEL = new AtomicReference<>();
 
     @Test
     void manualClientServer_requestReplySucceeds() {
@@ -87,6 +92,7 @@ final class ChannelMessagingTest {
         String endpoint = "inproc://zlink-java-filtered-profile-" + UUID.randomUUID();
         FILTER_REQUEST.set(null);
         FILTER_PACKET.set(null);
+        FILTER_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.useFilter(ReplyDecoratingFilter.class);
@@ -109,9 +115,11 @@ final class ChannelMessagingTest {
             assertEquals("filtered:hello", reply);
             assertEquals("hello", FILTER_REQUEST.get());
             assertEquals("Echo", FILTER_PACKET.get());
+            assertEquals("profile", FILTER_CHANNEL.get());
         } finally {
             FILTER_REQUEST.set(null);
             FILTER_PACKET.set(null);
+            FILTER_CHANNEL.set(null);
         }
     }
 
@@ -122,6 +130,7 @@ final class ChannelMessagingTest {
         SEND_LATCH.set(latch);
         SEND_MESSAGE.set(null);
         SEND_PACKET.set(null);
+        SEND_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("profile", channel -> {
@@ -138,10 +147,12 @@ final class ChannelMessagingTest {
             assertTrue(latch.await(1, TimeUnit.SECONDS), "client/server send was not delivered");
             assertEquals("changed", SEND_MESSAGE.get());
             assertEquals("ProfileChanged", SEND_PACKET.get());
+            assertEquals("profile", SEND_CHANNEL.get());
         } finally {
             SEND_LATCH.set(null);
             SEND_MESSAGE.set(null);
             SEND_PACKET.set(null);
+            SEND_CHANNEL.set(null);
         }
     }
 
@@ -220,6 +231,7 @@ final class ChannelMessagingTest {
         FANOUT_LATCH.set(latch);
         FANOUT_MESSAGE.set(null);
         FANOUT_TOPIC.set(null);
+        FANOUT_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions publisherOptions = new DefaultZLinkFrameworkOptions();
         publisherOptions.addFanoutChannel("events", channel ->
@@ -343,10 +355,12 @@ final class ChannelMessagingTest {
             assertTrue(latch.await(1, TimeUnit.SECONDS), "fanout publish was not delivered");
             assertEquals("home:1", FANOUT_MESSAGE.get());
             assertEquals("score", FANOUT_TOPIC.get());
+            assertEquals("events", FANOUT_CHANNEL.get());
         } finally {
             FANOUT_LATCH.set(null);
             FANOUT_MESSAGE.set(null);
             FANOUT_TOPIC.set(null);
+            FANOUT_CHANNEL.set(null);
         }
     }
 
@@ -356,6 +370,7 @@ final class ChannelMessagingTest {
         String targetEndpoint = tcpEndpoint();
         RoutingId sourceRid = RoutingId.from("source-node");
         RoutingId targetRid = RoutingId.from("target-node");
+        ROUTE_REQUEST_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
         sourceOptions.addRouteMeshChannel("route", channel -> {
@@ -377,6 +392,9 @@ final class ChannelMessagingTest {
              ZLinkFrameworkRuntime target =
                  ZLinkFrameworkRuntime.start(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("route:hello", awaitRouteReply(ignoredSource, targetRid));
+            assertEquals("route", ROUTE_REQUEST_CHANNEL.get());
+        } finally {
+            ROUTE_REQUEST_CHANNEL.set(null);
         }
     }
 
@@ -472,6 +490,7 @@ final class ChannelMessagingTest {
         ROUTE_SEND_LATCH.set(latch);
         ROUTE_SEND_MESSAGE.set(null);
         ROUTE_SEND_PACKET.set(null);
+        ROUTE_SEND_CHANNEL.set(null);
         ROUTE_SEND_SOURCE.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
@@ -498,11 +517,13 @@ final class ChannelMessagingTest {
             assertTrue(latch.await(1, TimeUnit.SECONDS), "route mesh send was not delivered");
             assertEquals("ping", ROUTE_SEND_MESSAGE.get());
             assertEquals("Notice", ROUTE_SEND_PACKET.get());
+            assertEquals("route", ROUTE_SEND_CHANNEL.get());
             assertEquals(sourceRid, ROUTE_SEND_SOURCE.get());
         } finally {
             ROUTE_SEND_LATCH.set(null);
             ROUTE_SEND_MESSAGE.set(null);
             ROUTE_SEND_PACKET.set(null);
+            ROUTE_SEND_CHANNEL.set(null);
             ROUTE_SEND_SOURCE.set(null);
         }
     }
@@ -646,6 +667,7 @@ final class ChannelMessagingTest {
             ZLinkNext<T> next) {
             FILTER_REQUEST.set((String) context.request().orElse(""));
             FILTER_PACKET.set(context.packetName().orElse(""));
+            FILTER_CHANNEL.set(context.channelName().orElse(""));
             return next.invokeAsync().thenApply(reply -> {
                 @SuppressWarnings("unchecked")
                 T decorated = (T) ("filtered:" + reply);
@@ -667,6 +689,7 @@ final class ChannelMessagingTest {
         public CompletionStage<Void> handleAsync(String message, ZLinkSendContext context) {
             SEND_MESSAGE.set(message);
             SEND_PACKET.set(context.packetName().orElse(""));
+            SEND_CHANNEL.set(context.channelName().orElse(""));
             SEND_LATCH.get().countDown();
             return CompletableFuture.completedFuture(null);
         }
@@ -692,6 +715,7 @@ final class ChannelMessagingTest {
         public CompletionStage<Void> handleAsync(String message, ZLinkPublishContext context) {
             FANOUT_MESSAGE.set(message);
             FANOUT_TOPIC.set(context.topic());
+            FANOUT_CHANNEL.set(context.channelName().orElse(""));
             FANOUT_LATCH.get().countDown();
             return CompletableFuture.completedFuture(null);
         }
@@ -710,6 +734,7 @@ final class ChannelMessagingTest {
     public static final class RouteEchoHandler implements ZLinkRouteRequestHandler<String, String> {
         @Override
         public CompletionStage<String> handleAsync(String request, ZLinkRouteRequestContext context) {
+            ROUTE_REQUEST_CHANNEL.set(context.channelName().orElse(""));
             return CompletableFuture.completedFuture("route:" + request);
         }
     }
@@ -731,6 +756,7 @@ final class ChannelMessagingTest {
         public CompletionStage<Void> handleAsync(String message, ZLinkRouteSendContext context) {
             ROUTE_SEND_MESSAGE.set(message);
             ROUTE_SEND_PACKET.set(context.packetName().orElse(""));
+            ROUTE_SEND_CHANNEL.set(context.channelName().orElse(""));
             ROUTE_SEND_SOURCE.set(context.routingId());
             ROUTE_SEND_LATCH.get().countDown();
             return CompletableFuture.completedFuture(null);

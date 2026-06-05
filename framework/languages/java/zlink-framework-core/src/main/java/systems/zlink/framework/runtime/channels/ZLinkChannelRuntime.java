@@ -616,7 +616,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             long requestSeq = received.requestSeq().get();
             Message payloadCopy = Message.from(packet.payload());
             requestDispatchQueues.get(channelName).enqueue(() ->
-                invokeRequestHandler(registration, payloadCopy)
+                invokeRequestHandler(channelName, registration, payloadCopy)
                     .thenAccept(reply -> replyAndClose(router, routingId, requestSeq, reply))
                     .whenComplete((ignored, error) -> payloadCopy.close()));
         } finally {
@@ -666,6 +666,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             Message payloadCopy = Message.from(packet.payload());
             routeRequestDispatchQueues.get(channelName).enqueue(() ->
                 invokeRouteRequestHandler(
+                    channelName,
                     registration,
                     routingId,
                     payloadCopy)
@@ -717,7 +718,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             Message payloadCopy = Message.from(packet.payload());
             publishDispatchQueues.get(channelName).enqueue(() ->
-                invokePublishHandler(registration, received.topic(), payloadCopy)
+                invokePublishHandler(channelName, registration, received.topic(), payloadCopy)
                     .whenComplete((ignored, error) -> payloadCopy.close()));
         } finally {
             received.parts().forEach(Message::close);
@@ -732,7 +733,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
         Message payloadCopy = Message.from(packet.payload());
         sendDispatchQueues.get(channelName).enqueue(() ->
-            invokeSendHandler(registration, payloadCopy)
+            invokeSendHandler(channelName, registration, payloadCopy)
                 .whenComplete((ignored, error) -> payloadCopy.close()));
     }
 
@@ -747,7 +748,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
         Message payloadCopy = Message.from(packet.payload());
         routeSendDispatchQueues.get(channelName).enqueue(() ->
-            invokeRouteSendHandler(registration, sourceRoutingId, payloadCopy)
+            invokeRouteSendHandler(channelName, registration, sourceRoutingId, payloadCopy)
                 .whenComplete((ignored, error) -> payloadCopy.close()));
     }
 
@@ -778,11 +779,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private CompletionStage<Void> invokeSendHandler(
+        String channelName,
         ChannelSendHandlerRegistration registration,
         Message payload) {
         try {
             Object message = serializer.deserialize(payload, registration.messageType());
-            ZLinkSendContext context = new DefaultSendContext(registration.packetName());
+            ZLinkSendContext context =
+                new DefaultSendContext(channelName, registration.packetName());
             return invokeWithFilters(context, message, () ->
                 invokeSendHandlerCore(registration, message, context));
         } catch (RuntimeException ex) {
@@ -813,11 +816,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private CompletionStage<Message> invokeRequestHandler(
+        String channelName,
         ChannelRequestHandlerRegistration registration,
         Message payload) {
         try {
             Object request = serializer.deserialize(payload, registration.requestType());
-            ZLinkRequestContext context = new DefaultRequestContext(registration.packetName());
+            ZLinkRequestContext context =
+                new DefaultRequestContext(channelName, registration.packetName());
             return invokeWithFilters(context, request, () ->
                 invokeRequestHandlerCore(registration, request, context))
                 .thenApply(serializer::serialize);
@@ -849,13 +854,14 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private CompletionStage<Void> invokePublishHandler(
+        String channelName,
         ChannelPublishHandlerRegistration registration,
         String topic,
         Message payload) {
         try {
             Object message = serializer.deserialize(payload, registration.messageType());
             ZLinkPublishContext context =
-                new DefaultPublishContext(registration.packetName(), topic);
+                new DefaultPublishContext(channelName, registration.packetName(), topic);
             return invokeWithFilters(context, message, () ->
                 invokePublishHandlerCore(registration, message, context));
         } catch (RuntimeException ex) {
@@ -945,6 +951,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private CompletionStage<Void> invokeRouteSendHandler(
+        String channelName,
         ChannelRouteSendHandlerRegistration registration,
         RoutingId sourceRoutingId,
         Message payload) {
@@ -954,7 +961,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             Object message = serializer.deserialize(payload, registration.messageType());
             return handler.handleAsync(
                 message,
-                new DefaultRouteSendContext(registration.packetName(), sourceRoutingId));
+                new DefaultRouteSendContext(channelName, registration.packetName(), sourceRoutingId));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -962,6 +969,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private CompletionStage<Message> invokeRouteRequestHandler(
+        String channelName,
         ChannelRouteRequestHandlerRegistration registration,
         RoutingId sourceRoutingId,
         Message payload) {
@@ -971,7 +979,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             Object request = serializer.deserialize(payload, registration.requestType());
             return handler.handleAsync(
                     request,
-                    new DefaultRouteRequestContext(registration.packetName(), sourceRoutingId))
+                    new DefaultRouteRequestContext(channelName, registration.packetName(), sourceRoutingId))
                 .thenApply(serializer::serialize);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
@@ -1134,15 +1142,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     private static final class DefaultRequestContext implements ZLinkRequestContext {
         private static final CancellationToken NONE = () -> false;
+        private final String channelName;
         private final String packetName;
 
-        DefaultRequestContext(String packetName) {
+        DefaultRequestContext(String channelName, String packetName) {
+            this.channelName = channelName;
             this.packetName = packetName;
         }
 
         @Override
         public Optional<String> channelName() {
-            return Optional.empty();
+            return Optional.ofNullable(channelName).filter(value -> !value.isBlank());
         }
 
         @Override
@@ -1163,15 +1173,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     private static final class DefaultSendContext implements ZLinkSendContext {
         private static final CancellationToken NONE = () -> false;
+        private final String channelName;
         private final String packetName;
 
-        DefaultSendContext(String packetName) {
+        DefaultSendContext(String channelName, String packetName) {
+            this.channelName = channelName;
             this.packetName = packetName;
         }
 
         @Override
         public Optional<String> channelName() {
-            return Optional.empty();
+            return Optional.ofNullable(channelName).filter(value -> !value.isBlank());
         }
 
         @Override
@@ -1192,10 +1204,12 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     private static final class DefaultPublishContext implements ZLinkPublishContext {
         private static final CancellationToken NONE = () -> false;
+        private final String channelName;
         private final String packetName;
         private final String topic;
 
-        DefaultPublishContext(String packetName, String topic) {
+        DefaultPublishContext(String channelName, String packetName, String topic) {
+            this.channelName = channelName;
             this.packetName = packetName;
             this.topic = topic;
         }
@@ -1212,7 +1226,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
         @Override
         public Optional<String> channelName() {
-            return Optional.empty();
+            return Optional.ofNullable(channelName).filter(value -> !value.isBlank());
         }
 
         @Override
@@ -1233,10 +1247,12 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     private static final class DefaultRouteRequestContext implements ZLinkRouteRequestContext {
         private static final CancellationToken NONE = () -> false;
+        private final String channelName;
         private final String packetName;
         private final RoutingId routingId;
 
-        DefaultRouteRequestContext(String packetName, RoutingId routingId) {
+        DefaultRouteRequestContext(String channelName, String packetName, RoutingId routingId) {
+            this.channelName = channelName;
             this.packetName = packetName;
             this.routingId = routingId;
         }
@@ -1248,7 +1264,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
         @Override
         public Optional<String> channelName() {
-            return Optional.empty();
+            return Optional.ofNullable(channelName).filter(value -> !value.isBlank());
         }
 
         @Override
@@ -1269,10 +1285,12 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     private static final class DefaultRouteSendContext implements ZLinkRouteSendContext {
         private static final CancellationToken NONE = () -> false;
+        private final String channelName;
         private final String packetName;
         private final RoutingId routingId;
 
-        DefaultRouteSendContext(String packetName, RoutingId routingId) {
+        DefaultRouteSendContext(String channelName, String packetName, RoutingId routingId) {
+            this.channelName = channelName;
             this.packetName = packetName;
             this.routingId = routingId;
         }
@@ -1284,7 +1302,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
         @Override
         public Optional<String> channelName() {
-            return Optional.empty();
+            return Optional.ofNullable(channelName).filter(value -> !value.isBlank());
         }
 
         @Override

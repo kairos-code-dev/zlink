@@ -110,6 +110,49 @@ int main ()
         if (busy.kind () != zlink::framework::framework_error_kind_t::request_rejected || !busy.is_retriable ()) {
             return 15;
         }
+        const auto conflict = mapper.completion_exception (
+          zlink::framework::runtime::messaging::request_result_t::conflict, "profile request");
+        const auto rejected = mapper.completion_exception (
+          zlink::framework::runtime::messaging::request_result_t::rejected, "profile request");
+        const auto protocol = mapper.completion_exception (
+          zlink::framework::runtime::messaging::request_result_t::protocol_error, "profile request");
+        const auto invalid_argument = mapper.completion_exception (
+          zlink::framework::runtime::messaging::request_result_t::invalid_argument, "profile request");
+        const auto invalid_state = mapper.completion_exception (
+          zlink::framework::runtime::messaging::request_result_t::invalid_state, "profile request");
+        const auto not_supported = mapper.completion_exception (
+          zlink::framework::runtime::messaging::request_result_t::not_supported, "profile request");
+        const auto terminated = mapper.completion_exception (
+          zlink::framework::runtime::messaging::request_result_t::terminated, "profile request");
+        const auto internal_error = mapper.completion_exception (
+          zlink::framework::runtime::messaging::request_result_t::internal_error, "profile request");
+        if (conflict.kind () != zlink::framework::framework_error_kind_t::request_rejected || !conflict.is_retriable ()
+            || rejected.kind () != zlink::framework::framework_error_kind_t::request_rejected
+            || rejected.is_retriable ()
+            || protocol.kind () != zlink::framework::framework_error_kind_t::request_protocol_error
+            || invalid_argument.kind () != zlink::framework::framework_error_kind_t::request_failed
+            || invalid_state.kind () != zlink::framework::framework_error_kind_t::request_failed
+            || not_supported.kind () != zlink::framework::framework_error_kind_t::request_failed
+            || terminated.kind () != zlink::framework::framework_error_kind_t::request_failed
+            || internal_error.kind () != zlink::framework::framework_error_kind_t::request_failed) {
+            return 22;
+        }
+        const auto timeout_header = mapper.error_header_exception ("timeout", "", "profile request");
+        const auto timeout_with_message =
+          mapper.error_header_exception ("timeout", "explicit timeout", "profile request");
+        const auto route_header = mapper.error_header_exception ("route_not_connected", "", "profile request");
+        const auto not_found_header = mapper.error_header_exception ("request_target_not_found", "", "profile request");
+        const auto unknown_header = mapper.error_header_exception ("unknown", "", "profile request");
+        const auto unknown_with_message = mapper.error_header_exception ("unknown", "explicit", "profile request");
+        if (timeout_header.kind () != zlink::framework::framework_error_kind_t::timeout
+            || std::string (timeout_with_message.what ()) != "explicit timeout"
+            || route_header.kind () != zlink::framework::framework_error_kind_t::route_not_connected
+            || !route_header.is_retriable ()
+            || not_found_header.kind () != zlink::framework::framework_error_kind_t::request_target_not_found
+            || unknown_header.kind () != zlink::framework::framework_error_kind_t::request_failed
+            || std::string (unknown_with_message.what ()) != "explicit") {
+            return 23;
+        }
         const auto rejected_header = mapper.error_header_exception ("request_rejected", "", "profile request");
         if (rejected_header.kind () != zlink::framework::framework_error_kind_t::request_rejected
             || rejected_header.is_retriable ()) {

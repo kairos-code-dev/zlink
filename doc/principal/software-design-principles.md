@@ -623,6 +623,31 @@ Once you identify what is important, make it visible:
 
 ---
 
+## Test Coverage Baseline
+
+Tests are part of the design. They make behavior explicit, keep contracts from
+drifting, and let future changes remove complexity without guessing.
+
+The default target for test coverage is **80% line coverage**. This is a
+baseline, not a substitute for judgment:
+
+- Coverage must prioritize public contracts, protocol compatibility, lifecycle
+  boundaries, error paths, timeout/abort behavior, backpressure, and sample
+  regressions.
+- A high coverage number does not prove quality if important user-visible
+  behavior is untested.
+- Falling below 80% requires an explicit reason, such as generated code,
+  platform-specific glue, or code that is better covered by integration or
+  contract tests.
+- Do not add shallow tests only to raise the percentage. Tests should explain
+  useful behavior and reduce the risk of future changes.
+
+When a module exposes a public API or cross-language contract, prefer focused
+contract tests over broad implementation-detail tests. The goal is to protect
+the module's guarantees while keeping the implementation easy to refactor.
+
+---
+
 ## Red Flags Checklist
 
 Check for these warning signs when generating or reviewing code.  
@@ -665,6 +690,8 @@ Each flag signals design debt that will compound.
 14. Software must be designed to be **read, not written**.
 15. The unit of incremental development is an **abstraction**, not a feature.
 16. **Decide what matters.** Emphasize it. Minimize and hide what doesn't.
+17. Default test coverage target is **80%**, but contract and risk coverage are
+    more important than the raw percentage.
 
 ---
 

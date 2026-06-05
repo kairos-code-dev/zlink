@@ -12,7 +12,7 @@ option(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK "Enable Stream Connector MessageP
 option(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF "Enable Stream Connector Protobuf helpers" OFF)
 option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 "Enable Stream Connector LZ4 compression" ON)
 option(ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE "Enable C++ framework gcov coverage instrumentation" OFF)
-set(ZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD 70 CACHE STRING
+set(ZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD 80 CACHE STRING
   "Minimum C++ framework runtime line coverage percentage")
 
 set(ZLINK_FRAMEWORK_CPP_DIR "${CMAKE_CURRENT_LIST_DIR}")

@@ -3,6 +3,7 @@
 #include <zlink/framework.hpp>
 
 #include "runtime/channels/channel_packet_dispatcher.hpp"
+#include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/channels/channel_message_pump.hpp"
 #include "runtime/channels/channel_receive_loop.hpp"
 #include "runtime/channels/channel_runtime.hpp"
@@ -290,6 +291,37 @@ int main ()
         || packet_error_header.value ().error_code.value_or ("") != "handler_not_found") {
         return 21;
     }
+    zlink::framework::detail::channel_reply_writer_t reply_writer;
+    const zlink::framework::framework_error_kind_t reply_error_kinds[] = {
+      zlink::framework::framework_error_kind_t::route_not_connected,
+      zlink::framework::framework_error_kind_t::route_handler_not_found,
+      zlink::framework::framework_error_kind_t::request_target_not_found,
+      zlink::framework::framework_error_kind_t::request_rejected,
+      zlink::framework::framework_error_kind_t::request_protocol_error,
+      zlink::framework::framework_error_kind_t::timeout,
+      zlink::framework::framework_error_kind_t::shutdown,
+      zlink::framework::framework_error_kind_t::disconnected,
+      zlink::framework::framework_error_kind_t::closed,
+      zlink::framework::framework_error_kind_t::request_failed};
+    const std::string reply_error_codes[] = {"route_not_connected",
+                                             "route_handler_not_found",
+                                             "request_target_not_found",
+                                             "request_rejected",
+                                             "request_protocol_error",
+                                             "timeout",
+                                             "shutdown",
+                                             "disconnected",
+                                             "closed",
+                                             "request_failed"};
+    for (std::size_t index = 0; index < std::size (reply_error_kinds); ++index) {
+        zlink::framework::framework_exception_t reply_error (reply_error_kinds[index], "mapped error");
+        const auto error_header = reply_writer.create_error_header ("local", request_header, reply_error);
+        if (error_header.kind != zlink::framework::runtime::messaging::message_kind_t::error
+            || error_header.error_code.value_or ("") != reply_error_codes[index]
+            || error_header.error_message.value_or ("") != "mapped error") {
+            return 72;
+        }
+    }
 
     zlink::framework::runtime::messaging::message_parts_t missing_body_parts (
       std::vector<zlink::message_t>{envelope_codec.encode_header (request_header)});
@@ -541,6 +573,68 @@ int main ()
     if (!internal_reply_body || internal_reply_body.value ().to_string () != "88") {
         return 52;
     }
+    if (no_internal.can_handle_send ("internal.send") || no_internal.can_handle_request ("internal.request")) {
+        return 65;
+    }
+    const auto no_internal_send = no_internal.dispatch_send (zlink::framework::detail::route_received_packet_t{
+      zlink::routing_id_t::from (std::string ("source-node")), std::nullopt, internal_parts});
+    if (no_internal_send
+        || no_internal_send.error_kind () != zlink::framework::framework_error_kind_t::route_handler_not_found) {
+        return 66;
+    }
+    const auto no_internal_request = no_internal.dispatch_request (
+      zlink::framework::detail::route_received_packet_t{zlink::routing_id_t::from (std::string ("source-node")), 81,
+                                                        internal_parts},
+      internal_header);
+    if (no_internal_request
+        || no_internal_request.error_kind () != zlink::framework::framework_error_kind_t::route_handler_not_found) {
+        return 67;
+    }
+    zlink::framework::runtime::messaging::envelope_header_t internal_send_header;
+    internal_send_header.kind = zlink::framework::runtime::messaging::message_kind_t::command;
+    internal_send_header.channel_name = "game.route";
+    internal_send_header.message_name = "internal.send";
+    auto internal_send_parts =
+      envelope_codec.encode_raw_body_parts (internal_send_header, zlink::message_t::from (std::string ("{}")));
+    if (!composite_internal.can_handle_send ("internal.send")
+        || !composite_internal.dispatch_send (zlink::framework::detail::route_received_packet_t{
+          zlink::routing_id_t::from (std::string ("source-node")), std::nullopt, internal_send_parts})
+        || internal_a.send_count != 1) {
+        return 68;
+    }
+    zlink::framework::runtime::messaging::envelope_header_t unsupported_internal_header;
+    unsupported_internal_header.kind = zlink::framework::runtime::messaging::message_kind_t::command;
+    unsupported_internal_header.channel_name = "game.route";
+    unsupported_internal_header.message_name = "internal.unsupported";
+    auto unsupported_internal_parts =
+      envelope_codec.encode_raw_body_parts (unsupported_internal_header, zlink::message_t::from (std::string ("{}")));
+    const auto unsupported_internal_send =
+      composite_internal.dispatch_send (zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("source-node")), std::nullopt, unsupported_internal_parts});
+    if (unsupported_internal_send
+        || unsupported_internal_send.error_kind ()
+             != zlink::framework::framework_error_kind_t::route_handler_not_found) {
+        return 69;
+    }
+    unsupported_internal_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    const auto unsupported_internal_request = composite_internal.dispatch_request (
+      zlink::framework::detail::route_received_packet_t{zlink::routing_id_t::from (std::string ("source-node")), 82,
+                                                        unsupported_internal_parts},
+      unsupported_internal_header);
+    if (unsupported_internal_request
+        || unsupported_internal_request.error_kind ()
+             != zlink::framework::framework_error_kind_t::route_handler_not_found) {
+        return 70;
+    }
+    const auto invalid_internal_send =
+      composite_internal.dispatch_send (zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("source-node")), std::nullopt,
+        zlink::framework::runtime::messaging::message_parts_t (
+          std::vector<zlink::message_t>{zlink::message_t::from (std::string ("not-json"))})});
+    if (invalid_internal_send
+        || invalid_internal_send.error_kind () != zlink::framework::framework_error_kind_t::request_protocol_error) {
+        return 71;
+    }
 
     zlink::framework::detail::route_channel_registration_t route_registration ("registered.route");
     route_registration.bind ("tcp://registered-bind:7600")
@@ -602,6 +696,17 @@ int main ()
     zlink::context_t native_route_context;
     zlink::router_socket_t native_router (native_route_context);
     zlink::framework::detail::backend::native_route_backend_t native_backend (native_router);
+    const auto native_empty_send = native_backend.submit_send (zlink::routing_id_t::from (std::string ("target-node")),
+                                                               zlink::framework::runtime::messaging::message_parts_t{});
+    const auto native_empty_request = native_backend.submit_request (
+      zlink::routing_id_t::from (std::string ("target-node")), zlink::framework::runtime::messaging::message_parts_t{},
+      std::chrono::milliseconds (1));
+    if (native_empty_send
+        || native_empty_send.error_kind () != zlink::framework::framework_error_kind_t::request_protocol_error
+        || native_empty_request
+        || native_empty_request.error_kind () != zlink::framework::framework_error_kind_t::request_protocol_error) {
+        return 73;
+    }
     public_route.attach_native_backend (native_backend);
     int send_backend_seen = 0;
     public_route.set_send_backend (

@@ -498,7 +498,7 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
     const std::string non_ctest_commands[] = {
       "cmake --build framework/languages/cpp/build",
       "cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage "
-      "-DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70",
+      "-DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80",
       "cmake --build framework/languages/cpp/build-coverage",
       "git diff --check -- framework/languages/cpp bindings/cpp"};
     for (const auto &command : non_ctest_commands) {

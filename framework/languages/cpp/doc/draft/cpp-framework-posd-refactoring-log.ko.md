@@ -5106,19 +5106,19 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
   읽고 runtime source line coverage를 계산하게 했다.
 - `test_cpp_framework_coverage_threshold` CTest를 추가하고 기존 regression test 뒤에 실행되게
   했다.
-- Goal 22 완료 기준과 검증 명령에 runtime line coverage 70% 이상 기준을 추가했다.
+- Goal 22 완료 기준과 검증 명령에 runtime line coverage 80% 이상 기준을 추가했다.
 
 ### 수정 후 점검
 
 - coverage script는 tests, samples, external dependency, build generated source를 coverage
   분모에 넣지 않는다.
-- 현재 coverage build 기준 runtime line coverage는 77.69%다.
-- 기준값 70% 미만이면 CTest가 실패하므로 이후 회귀 테스트 추가/삭제가 숫자로 검증된다.
+- 현재 coverage build 기준 runtime line coverage는 80.21%다.
+- 기준값 80% 미만이면 CTest가 실패하므로 이후 회귀 테스트 추가/삭제가 숫자로 검증된다.
 
 ### 재실행한 검증 명령
 
 ```bash
-cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70
+cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80
 cmake --build framework/languages/cpp/build-coverage
 ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure
 cmake -S framework/languages/cpp -B framework/languages/cpp/build
@@ -5275,7 +5275,7 @@ ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(layout_co
 
 ```bash
 cmake -S framework/languages/cpp -B framework/languages/cpp/build
-cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70
+cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80
 cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host
 cmake --build framework/languages/cpp/build-coverage --target test_cpp_framework_app_host
 ctest --test-dir framework/languages/cpp/build -L framework-http -j2 --output-on-failure
@@ -5326,7 +5326,7 @@ ctest --test-dir framework/languages/cpp/build-coverage -L framework-http -j2 --
 ```bash
 cmake -S framework/languages/cpp -B framework/languages/cpp/build
 ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on-failure
-cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70
+cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80
 ctest --test-dir framework/languages/cpp/build-coverage -L framework-contract --output-on-failure
 ```
 
@@ -5709,7 +5709,7 @@ cmake --build framework/languages/cpp/build
 ctest --test-dir framework/languages/cpp/build --output-on-failure
 cmake --build framework/languages/cpp/build-coverage
 ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure
-cmake -DZLINK_FRAMEWORK_CPP_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_SOURCE_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=70 -P framework/languages/cpp/tests/Zlink.Framework.Coverage/coverage_threshold.cmake
+cmake -DZLINK_FRAMEWORK_CPP_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_SOURCE_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80 -P framework/languages/cpp/tests/Zlink.Framework.Coverage/coverage_threshold.cmake
 git diff --check -- framework/languages/cpp
 ```
 
@@ -6703,7 +6703,7 @@ heading 형식으로 남아 있으면 완료 audit의 기준이 흐려진다.
 
 ### 발견한 위험 신호
 
-- Goal 22는 coverage build의 runtime line coverage 70% 이상을 완료 기준으로 둔다.
+- Goal 22는 coverage build의 runtime line coverage 80% 이상을 완료 기준으로 둔다.
 - `framework-coverage` label은 coverage build에서만 생기므로 normal build의 label contract에
   무조건 넣으면 정상 build가 실패한다.
 - 반대로 label contract가 `framework-coverage`를 전혀 보지 않으면 coverage threshold test가

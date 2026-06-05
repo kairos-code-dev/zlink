@@ -136,6 +136,53 @@ int main ()
     if (!runtime.validate_header (valid_control)) {
         return 6;
     }
+    zlink::framework::stream_header_t missing_request_seq (stream_message_kind_t::request, stream_codec_t::json,
+                                                           stream_header_flags_t::none, std::nullopt, "missing-seq");
+    zlink::framework::stream_header_t zero_request_seq (stream_message_kind_t::request, stream_codec_t::json,
+                                                        stream_header_flags_t::has_request_seq, 0, "zero-seq");
+    zlink::framework::stream_header_t invalid_error (stream_message_kind_t::error, stream_codec_t::raw,
+                                                     stream_header_flags_t::has_request_seq, 1, "error");
+    zlink::framework::stream_header_t invalid_control (stream_message_kind_t::control, stream_codec_t::json,
+                                                       stream_header_flags_t::none, std::nullopt, "__zlink.bad");
+    if (runtime.validate_header (missing_request_seq) || runtime.validate_header (zero_request_seq)
+        || runtime.validate_header (invalid_error) || runtime.validate_header (invalid_control)) {
+        return 20;
+    }
+    zlink::framework::stream_metadata_t large_metadata;
+    large_metadata.with ("trace", std::string (256, 'x'));
+    zlink::framework::stream_header_t too_large_metadata (stream_message_kind_t::send, stream_codec_t::json,
+                                                          stream_header_flags_t::none, std::nullopt, "large",
+                                                          large_metadata);
+    if (runtime.encode_header (too_large_metadata)
+        || runtime.encode_header (too_large_metadata).error_kind () != framework_error_kind_t::request_protocol_error) {
+        return 21;
+    }
+    const std::vector<std::vector<std::uint8_t>> invalid_headers{
+      {},
+      {static_cast<std::uint8_t> (stream_message_kind_t::request), static_cast<std::uint8_t> (stream_codec_t::json),
+       static_cast<std::uint8_t> (stream_header_flags_t::has_request_seq), 1},
+      {static_cast<std::uint8_t> (stream_message_kind_t::send), static_cast<std::uint8_t> (stream_codec_t::json),
+       static_cast<std::uint8_t> (stream_header_flags_t::none), 0},
+      {static_cast<std::uint8_t> (stream_message_kind_t::send), static_cast<std::uint8_t> (stream_codec_t::json),
+       static_cast<std::uint8_t> (stream_header_flags_t::none), 4, 'n'},
+      {static_cast<std::uint8_t> (stream_message_kind_t::send), static_cast<std::uint8_t> (stream_codec_t::json),
+       static_cast<std::uint8_t> (stream_header_flags_t::has_metadata), 4, 'n', 'a', 'm', 'e'},
+      {static_cast<std::uint8_t> (stream_message_kind_t::send), static_cast<std::uint8_t> (stream_codec_t::json),
+       static_cast<std::uint8_t> (stream_header_flags_t::has_metadata), 4, 'n', 'a', 'm', 'e', 1},
+      {static_cast<std::uint8_t> (stream_message_kind_t::send), static_cast<std::uint8_t> (stream_codec_t::json),
+       static_cast<std::uint8_t> (stream_header_flags_t::has_metadata), 4, 'n', 'a', 'm', 'e', 1, 3, 'k'},
+      {static_cast<std::uint8_t> (stream_message_kind_t::send), static_cast<std::uint8_t> (stream_codec_t::json),
+       static_cast<std::uint8_t> (stream_header_flags_t::has_metadata), 4, 'n', 'a', 'm', 'e', 1, 1, 'k'},
+      {static_cast<std::uint8_t> (stream_message_kind_t::send), static_cast<std::uint8_t> (stream_codec_t::json),
+       static_cast<std::uint8_t> (stream_header_flags_t::has_metadata), 4, 'n', 'a', 'm', 'e', 1, 1, 'k', 3, 'v'},
+      {static_cast<std::uint8_t> (stream_message_kind_t::send), static_cast<std::uint8_t> (stream_codec_t::json),
+       static_cast<std::uint8_t> (stream_header_flags_t::none), 4, 'n', 'a', 'm', 'e', 0}};
+    for (const auto &invalid_header : invalid_headers) {
+        if (runtime.decode_header (invalid_header)
+            || runtime.decode_header (invalid_header).error_kind () != framework_error_kind_t::payload_decode_failed) {
+            return 22;
+        }
+    }
 
     auto stream = runtime.open_session ("client-stream");
     sample_session_t session;

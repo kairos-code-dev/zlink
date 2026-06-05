@@ -9,6 +9,8 @@
 #include "runtime/protocol/compression/lz4_compression_codec.hpp"
 #include "runtime/protocol/framing/frame_codec.hpp"
 #include "runtime/protocol/header_codec.hpp"
+#include "runtime/protocol/metadata_codec.hpp"
+#include "runtime/protocol/packet_name_resolver.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/core/buffers_to_string.hpp>
@@ -29,6 +31,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <typeindex>
 #include <vector>
 
 namespace
@@ -150,6 +153,68 @@ zlink::message_t make_server_frame (zlink::stream_connector::message_kind_t kind
 
 int main ()
 {
+    {
+        zlink::stream_connector::detail::packet_name_resolver_t resolver;
+        if (resolver.resolve (std::type_index (typeid (login_request_t)), "explicit.name") != "explicit.name"
+            || resolver.resolve (std::type_index (typeid (login_request_t))).empty ()) {
+            return 69;
+        }
+    }
+
+    {
+        zlink::stream_connector::detail::metadata_codec_t metadata_codec;
+        zlink::stream_connector::metadata_t metadata;
+        metadata.with ("trace", "abc");
+        auto encoded_metadata = metadata_codec.encode (metadata);
+        auto decoded_metadata =
+          encoded_metadata ? metadata_codec.decode (encoded_metadata.value ())
+                           : zlink::stream_connector::result_t<zlink::stream_connector::metadata_t>::failure (
+                               zlink::stream_connector::error_code_t::validation_failed, "metadata encode failed");
+        if (!decoded_metadata || decoded_metadata.value ().values.at ("trace") != "abc"
+            || metadata_codec.decode ({}).error_code () != zlink::stream_connector::error_code_t::frame_decode_failed
+            || metadata_codec.decode ({1}).error_code () != zlink::stream_connector::error_code_t::frame_decode_failed
+            || metadata_codec.decode ({1, 0}).error_code ()
+                 != zlink::stream_connector::error_code_t::frame_decode_failed
+            || metadata_codec.decode ({1, 1, 'k'}).error_code ()
+                 != zlink::stream_connector::error_code_t::frame_decode_failed
+            || metadata_codec.decode ({1, 1, 'k', 0, 0}).error_code ()
+                 != zlink::stream_connector::error_code_t::frame_decode_failed
+            || metadata_codec.decode ({1, 1, 'k', 0, 1, 'v', 1}).error_code ()
+                 != zlink::stream_connector::error_code_t::frame_decode_failed) {
+            return 70;
+        }
+        zlink::stream_connector::metadata_t invalid_metadata;
+        invalid_metadata.with ("", "value");
+        if (metadata_codec.encode (invalid_metadata).error_code ()
+            != zlink::stream_connector::error_code_t::validation_failed) {
+            return 71;
+        }
+        zlink::stream_connector::metadata_t too_large_metadata;
+        too_large_metadata.with ("key", std::string (65536, 'v'));
+        if (metadata_codec.encode (too_large_metadata).error_code ()
+            != zlink::stream_connector::error_code_t::validation_failed) {
+            return 72;
+        }
+    }
+
+    {
+        zlink::stream_connector::connector_options_t frame_options;
+        frame_options.max_metadata_size = 2;
+        frame_options.max_send_payload_size = 2;
+        if (zlink::stream_connector::detail::frame_codec_t::validate_frame_size (3, 1, frame_options)
+            || zlink::stream_connector::detail::frame_codec_t::validate_frame_size (1, 3, frame_options)
+            || zlink::stream_connector::detail::frame_codec_t::encode_prefix (
+                 static_cast<std::size_t> (std::numeric_limits<std::uint16_t>::max ()) + 1, 0)
+                   .error_code ()
+                 != zlink::stream_connector::error_code_t::frame_too_large
+            || zlink::stream_connector::detail::frame_codec_t::encode_prefix (
+                 0, static_cast<std::size_t> (std::numeric_limits<std::uint32_t>::max ()) + 1)
+                   .error_code ()
+                 != zlink::stream_connector::error_code_t::frame_too_large) {
+            return 73;
+        }
+    }
+
     {
         zlink::stream_connector::detail::lz4_compression_codec_t lz4;
         if (!lz4.available ()) {

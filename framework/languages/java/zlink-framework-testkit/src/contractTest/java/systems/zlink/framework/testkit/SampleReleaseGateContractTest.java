@@ -58,8 +58,12 @@ final class SampleReleaseGateContractTest {
         "BingoNotificationLoopbackServer",
         "BingoRoomState room",
         "new BingoRoomState",
+        "CountDownLatch",
         "Thread.sleep",
         "sleep(",
+        "System.in.read",
+        "while (true)",
+        "while(true)",
         "toCompletableFuture()",
         "session relay JSON",
         "in-memory route channel replacement");

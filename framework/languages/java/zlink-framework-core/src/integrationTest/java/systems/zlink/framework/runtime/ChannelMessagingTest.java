@@ -399,6 +399,37 @@ final class ChannelMessagingTest {
     }
 
     @Test
+    void routeMesh_scannedHandlerGroupRequestSucceeds() {
+        String sourceEndpoint = tcpEndpoint();
+        String targetEndpoint = tcpEndpoint();
+        RoutingId sourceRid = RoutingId.from("route-scanned-source");
+        RoutingId targetRid = RoutingId.from("route-scanned-target");
+
+        DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
+        sourceOptions.addRouteMeshChannel("route", channel -> {
+            channel.bind(sourceEndpoint);
+            channel.configureRouting(route -> route.setRoutingId(sourceRid));
+            channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
+        });
+
+        DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
+        targetOptions.addHandlersFromPackageOf(ChannelMessagingTest.class);
+        targetOptions.addRouteMeshChannel("route", channel -> {
+            channel.bind(targetEndpoint);
+            channel.configureRouting(route -> route.setRoutingId(targetRid));
+            channel.useManualConnections(endpoints -> endpoints.connect(sourceEndpoint));
+            channel.addHandlerGroup("route-shared");
+        });
+
+        try (ZLinkFrameworkRuntime source =
+                 ZLinkFrameworkRuntime.start(sourceOptions, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime ignoredTarget =
+                 ZLinkFrameworkRuntime.start(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
+            assertEquals("scanned-route:hello", awaitScannedRouteReply(source, targetRid));
+        }
+    }
+
+    @Test
     void handlerFiltersDoNotWrapRouteMeshRequestDispatch() {
         String sourceEndpoint = tcpEndpoint();
         String targetEndpoint = tcpEndpoint();
@@ -594,6 +625,26 @@ final class ChannelMessagingTest {
         throw new AssertionError("route mesh request did not succeed", lastFailure);
     }
 
+    private static String awaitScannedRouteReply(ZLinkFrameworkRuntime source, RoutingId targetRid) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        RuntimeException lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                return source.route()
+                    .requestTo("route", targetRid, "hello")
+                    .packetName("String")
+                    .timeout(Duration.ofMillis(100))
+                    .submitAsync(String.class)
+                    .toCompletableFuture()
+                    .join();
+            } catch (RuntimeException ex) {
+                lastFailure = ex;
+                Thread.onSpinWait();
+            }
+        }
+        throw new AssertionError("scanned route mesh request did not succeed", lastFailure);
+    }
+
     private static String awaitSharedRouteReply(
         ZLinkFrameworkRuntime source,
         RoutingId targetRid,
@@ -736,6 +787,14 @@ final class ChannelMessagingTest {
         public CompletionStage<String> handleAsync(String request, ZLinkRouteRequestContext context) {
             ROUTE_REQUEST_CHANNEL.set(context.channelName().orElse(""));
             return CompletableFuture.completedFuture("route:" + request);
+        }
+    }
+
+    @ZLinkHandlerGroup("route-shared")
+    public static final class ScannedRouteEchoHandler implements ZLinkRouteRequestHandler<String, String> {
+        @Override
+        public CompletionStage<String> handleAsync(String request, ZLinkRouteRequestContext context) {
+            return CompletableFuture.completedFuture("scanned-route:" + request);
         }
     }
 

@@ -24,7 +24,7 @@ import {
 import { ZlinkStreamRequestBuilder, ZlinkStreamSendBuilder } from './calls';
 import { buildHeader, validateName, ZlinkStreamFrameCodec, ZlinkStreamHeaderCodec } from './protocol';
 import { normalizeOptions } from './options';
-import { connectorError, delay, subscription, throwIfAborted, toStreamError, unwrapStreamError, utf8Decode } from './support';
+import { connectorError, delay, subscription, throwIfAborted, toStreamError, utf8Decode } from './support';
 import { compressPayload, decompressIfNeeded } from './compression';
 
 export const zlinkStreamConnectorFactory = {
@@ -47,7 +47,6 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   private readonly pendingRequests = new Map<bigint, PendingRequest>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private receiveLoopAbort: AbortController | undefined;
-  private receiveLoop: Promise<void> | undefined;
   private lastInboundAt = 0;
 
   readonly options: RequiredZlinkStreamConnectorOptions;
@@ -341,13 +340,12 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     const abort = new AbortController();
     const connection = this.connection;
     this.receiveLoopAbort = abort;
-    this.receiveLoop = this.runReceiveLoop(connection, abort.signal);
+    void this.runReceiveLoop(connection, abort.signal);
   }
 
   private stopReceiveLoop(): void {
     this.receiveLoopAbort?.abort();
     this.receiveLoopAbort = undefined;
-    this.receiveLoop = undefined;
   }
 
   private async runReceiveLoop(connection: ZlinkStreamConnection | undefined, signal: AbortSignal): Promise<void> {

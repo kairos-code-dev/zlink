@@ -174,7 +174,7 @@ export class ZLinkChannelRuntimeManager {
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
     private readonly adapter: ZLinkChannelBackendAdapter,
-    private readonly context: ZLinkBackendContext
+    context: ZLinkBackendContext
   ) {
     this.sockets = new ZLinkChannelSocketRegistry(registration, adapter, context);
   }
@@ -1009,11 +1009,6 @@ interface ZLinkMultipartOperation<TNext> {
 
 interface ZLinkMultipartSubmitOperation extends ZLinkMultipartOperation<ZLinkMultipartSubmitOperation> {
   submit(): unknown;
-}
-
-interface ZLinkMultipartRequestOperation extends ZLinkMultipartOperation<ZLinkMultipartRequestOperation> {
-  timeout(timeoutMs: number): ZLinkMultipartRequestOperation;
-  submitAsync(): Promise<Message[]>;
 }
 
 type ZLinkMultipartReplyOperation = ZLinkMultipartSubmitOperation;

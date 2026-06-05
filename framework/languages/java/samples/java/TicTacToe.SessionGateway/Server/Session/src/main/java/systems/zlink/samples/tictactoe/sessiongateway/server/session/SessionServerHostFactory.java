@@ -9,6 +9,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
 import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.PlayerSessionDirectory;
 import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.handlers.PlayNotificationRelay;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleTopology;
+import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleTopology.SampleSessionNode;
 
 
 
@@ -22,19 +23,32 @@ public final class SessionServerHostFactory {
 
     public static AutoCloseable start(String... args) {
         SpringApplicationBuilder builder = new SpringApplicationBuilder(SessionServerHostFactory.class)
-            .web(WebApplicationType.NONE);
+            .web(WebApplicationType.NONE)
+            .initializers(context ->
+                context.getBeanFactory().registerSingleton(
+                    "sampleSessionNode",
+                    sampleSessionNode(args)));
         builder.application().setKeepAlive(true);
         return builder.run(args)::close;
     }
 
     @Bean
-    ZLinkFrameworkOptionsCustomizer sessionOptions() {
+    ZLinkFrameworkOptionsCustomizer sessionOptions(SampleSessionNode sessionNode) {
         return options -> {
             options.useDiscovery(discovery ->
                 discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint));
-            SessionServer.configureRelayNode(options);
-            SessionServer.configure(options);
+            SessionServer.configureRelayNode(options, sessionNode);
+            SessionServer.configure(options, sessionNode);
         };
+    }
+
+    private static SampleSessionNode sampleSessionNode(String[] args) {
+        for (String arg : args) {
+            if ("--reconnect".equals(arg)) {
+                return SampleTopology.reconnectSession();
+            }
+        }
+        return SampleTopology.primarySession();
     }
 
     @Bean

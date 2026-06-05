@@ -107,7 +107,7 @@ reserved = []
 ports = []
 try:
     chosen = set()
-    while len(reserved) < 9:
+    while len(reserved) < 12:
         port = random.randint(20000, 32767)
         if port in chosen:
             continue
@@ -131,8 +131,8 @@ gradle_run() {
   ../../gradlew --no-daemon "$@" --quiet
 }
 
-read -r registry_pub_port registry_router_port play_route_port play_spot_router_port session_route_port session_router_port api_port play_port session_port < <(reserve_ports)
-export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.tictactoe.sessiongateway.registryPubEndpoint=tcp://127.0.0.1:${registry_pub_port} -Dzlink.samples.tictactoe.sessiongateway.registryRouterEndpoint=tcp://127.0.0.1:${registry_router_port} -Dzlink.samples.tictactoe.sessiongateway.playRouteEndpoint=tcp://127.0.0.1:${play_route_port} -Dzlink.samples.tictactoe.sessiongateway.playSpotRouterEndpoint=tcp://127.0.0.1:${play_spot_router_port} -Dzlink.samples.tictactoe.sessiongateway.sessionRouteEndpoint=tcp://127.0.0.1:${session_route_port} -Dzlink.samples.tictactoe.sessiongateway.sessionRouterEndpoint=tcp://127.0.0.1:${session_router_port} -Dzlink.samples.tictactoe.sessiongateway.apiEndpoint=tcp://127.0.0.1:${api_port} -Dzlink.samples.tictactoe.sessiongateway.playEndpoint=tcp://127.0.0.1:${play_port} -Dzlink.samples.tictactoe.sessiongateway.sessionEndpoint=tcp://127.0.0.1:${session_port}"
+read -r registry_pub_port registry_router_port play_route_port play_spot_router_port session_route_port session_router_port reconnect_session_route_port reconnect_session_router_port api_port play_port session_port reconnect_session_port < <(reserve_ports)
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.tictactoe.sessiongateway.registryPubEndpoint=tcp://127.0.0.1:${registry_pub_port} -Dzlink.samples.tictactoe.sessiongateway.registryRouterEndpoint=tcp://127.0.0.1:${registry_router_port} -Dzlink.samples.tictactoe.sessiongateway.playRouteEndpoint=tcp://127.0.0.1:${play_route_port} -Dzlink.samples.tictactoe.sessiongateway.playSpotRouterEndpoint=tcp://127.0.0.1:${play_spot_router_port} -Dzlink.samples.tictactoe.sessiongateway.sessionRouteEndpoint=tcp://127.0.0.1:${session_route_port} -Dzlink.samples.tictactoe.sessiongateway.sessionRouterEndpoint=tcp://127.0.0.1:${session_router_port} -Dzlink.samples.tictactoe.sessiongateway.reconnectSessionRouteEndpoint=tcp://127.0.0.1:${reconnect_session_route_port} -Dzlink.samples.tictactoe.sessiongateway.reconnectSessionRouterEndpoint=tcp://127.0.0.1:${reconnect_session_router_port} -Dzlink.samples.tictactoe.sessiongateway.apiEndpoint=tcp://127.0.0.1:${api_port} -Dzlink.samples.tictactoe.sessiongateway.playEndpoint=tcp://127.0.0.1:${play_port} -Dzlink.samples.tictactoe.sessiongateway.sessionEndpoint=tcp://127.0.0.1:${session_port} -Dzlink.samples.tictactoe.sessiongateway.reconnectSessionEndpoint=tcp://127.0.0.1:${reconnect_session_port}"
 
 gradle_run :Server:Registry:run >"${log_dir}/registry.log" 2>&1 &
 pids+=("$!")
@@ -151,5 +151,10 @@ pids+=("$!")
 wait_port "${session_port}"
 wait_port "${session_route_port}"
 wait_port "${session_router_port}"
+gradle_run :Server:Session:run --args='--reconnect' >"${log_dir}/session-reconnect.log" 2>&1 &
+pids+=("$!")
+wait_port "${reconnect_session_port}"
+wait_port "${reconnect_session_route_port}"
+wait_port "${reconnect_session_router_port}"
 
 gradle_run :Client:run >"${log_dir}/client.log" 2>&1

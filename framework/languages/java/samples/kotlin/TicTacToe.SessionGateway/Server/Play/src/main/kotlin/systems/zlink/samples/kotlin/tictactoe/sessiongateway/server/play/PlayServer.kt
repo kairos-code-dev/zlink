@@ -21,6 +21,7 @@ object PlayServer {
             }
             route.useManualConnections { endpoints ->
                 endpoints.connect(SampleTopology.SessionRouteEndpoint)
+                endpoints.connect(SampleTopology.ReconnectSessionRouteEndpoint)
             }
         }
         options.useRegistrySpotRemoteAddresses(SampleNames.SpotMesh) { registry ->

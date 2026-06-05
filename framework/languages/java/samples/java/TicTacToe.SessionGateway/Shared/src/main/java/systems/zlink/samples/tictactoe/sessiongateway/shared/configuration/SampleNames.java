@@ -8,6 +8,7 @@ public final class SampleNames {
     public static final String PlayNode = "play";
     public static final String SessionRelayNode = "session-relay";
     public static final String SessionRid = "1101";
+    public static final String ReconnectSessionRid = "1102";
     public static final String PlayRid = "2202";
     public static final String GatewayStream = "gateway";
     public static final String PlayerActorType = "player";

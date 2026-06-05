@@ -5,14 +5,15 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.PlayerSession
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.actors.PlayerActorFactory
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleNames
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleSessionNode
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleTopology
 
 object SessionServer {
-    fun configureRelayNode(options: ZLinkFrameworkOptions) {
+    fun configureRelayNode(options: ZLinkFrameworkOptions, sessionNode: SampleSessionNode) {
         options.addRouteMeshChannel(SampleNames.PlayRouteChannel) { route ->
-            route.bind(SampleTopology.SessionRouteEndpoint)
+            route.bind(sessionNode.routeEndpoint)
             route.configureRouting { routing ->
-                routing.setRoutingId(RoutingId.from(SampleNames.SessionRid))
+                routing.setRoutingId(RoutingId.from(sessionNode.routingId))
             }
             route.useManualConnections { endpoints ->
                 endpoints.connect(SampleTopology.PlayRouteEndpoint)
@@ -21,8 +22,8 @@ object SessionServer {
         options.addSpotMesh(SampleNames.SpotMesh) { mesh ->
             mesh.addNode(SampleNames.SessionRelayNode) { node ->
                 node.enableRouter { router ->
-                    router.bindRouter(SampleTopology.SessionRouterEndpoint)
-                    router.setRoutingId(RoutingId.from(SampleNames.SessionRid))
+                    router.bindRouter(sessionNode.routerEndpoint)
+                    router.setRoutingId(RoutingId.from(sessionNode.routingId))
                 }
                 node.acceptSpotRoutesFromChannel(SampleNames.PlayRouteChannel)
                 node.addSpotFactory(SessionRelaySpot::class.java)
@@ -31,7 +32,7 @@ object SessionServer {
         options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)
     }
 
-    fun configure(options: ZLinkFrameworkOptions) {
+    fun configure(options: ZLinkFrameworkOptions, sessionNode: SampleSessionNode) {
         options.addClientServerChannel(SampleNames.ApiChannel) { channel ->
             channel.enableClient { client ->
                 client.useManualConnections { endpoints ->
@@ -47,7 +48,7 @@ object SessionServer {
             }
         }
         options.addStreamNode(SampleNames.GatewayStream) { stream ->
-            stream.bind(SampleTopology.SessionEndpoint)
+            stream.bind(sessionNode.streamEndpoint)
             stream.attachActorGateway(SampleNames.SessionRelayNode)
             stream.registerSession(PlayerSession::class.java)
         }

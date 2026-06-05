@@ -15,7 +15,7 @@ data class SessionActorDispatchClientOptions(
                 xActorId = SampleNames.XActorId,
                 oActorId = SampleNames.OActorId,
                 primaryStreamEndpoint = SampleTopology.SessionEndpoint,
-                reconnectStreamEndpoint = SampleTopology.SessionEndpoint,
+                reconnectStreamEndpoint = SampleTopology.ReconnectSessionEndpoint,
             )
     }
 }

@@ -8,6 +8,7 @@ object SampleNames {
     const val PlayNode: String = "play"
     const val SessionRelayNode: String = "session-relay"
     const val SessionRid: String = "1101"
+    const val ReconnectSessionRid: String = "1102"
     const val PlayRid: String = "2202"
     const val GatewayStream: String = "gateway"
     const val PlayerActorType: String = "player"

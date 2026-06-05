@@ -13,6 +13,6 @@ public record SessionActorDispatchClientOptions(
             SampleNames.XActorId,
             SampleNames.OActorId,
             SampleTopology.SessionEndpoint,
-            SampleTopology.SessionEndpoint);
+            SampleTopology.ReconnectSessionEndpoint);
     }
 }

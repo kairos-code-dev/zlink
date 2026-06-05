@@ -6,24 +6,27 @@ import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.Pl
 import systems.zlink.samples.tictactoe.sessiongateway.shared.actors.PlayerActorFactory;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleTopology;
+import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleTopology.SampleSessionNode;
 
 public final class SessionServer {
     private SessionServer() {
     }
 
-    public static void configureRelayNode(ZLinkFrameworkOptions options) {
+    public static void configureRelayNode(
+        ZLinkFrameworkOptions options,
+        SampleSessionNode sessionNode) {
         options.addRouteMeshChannel(SampleNames.PlayRouteChannel, route -> {
-            route.bind(SampleTopology.SessionRouteEndpoint);
+            route.bind(sessionNode.routeEndpoint());
             route.configureRouting(routing ->
-                routing.setRoutingId(RoutingId.from(SampleNames.SessionRid)));
+                routing.setRoutingId(RoutingId.from(sessionNode.routingId())));
             route.useManualConnections(endpoints ->
                 endpoints.connect(SampleTopology.PlayRouteEndpoint));
         });
         options.addSpotMesh(SampleNames.SpotMesh, mesh -> {
             mesh.addNode(SampleNames.SessionRelayNode, node -> {
                 node.enableRouter(router -> {
-                    router.bindRouter(SampleTopology.SessionRouterEndpoint);
-                    router.setRoutingId(RoutingId.from(SampleNames.SessionRid));
+                    router.bindRouter(sessionNode.routerEndpoint());
+                    router.setRoutingId(RoutingId.from(sessionNode.routingId()));
                 });
                 node.acceptSpotRoutesFromChannel(SampleNames.PlayRouteChannel);
                 node.addSpotFactory(SessionRelaySpot.class);
@@ -32,7 +35,9 @@ public final class SessionServer {
         options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);
     }
 
-    public static void configure(ZLinkFrameworkOptions options) {
+    public static void configure(
+        ZLinkFrameworkOptions options,
+        SampleSessionNode sessionNode) {
         options.addClientServerChannel(SampleNames.ApiChannel, channel ->
             channel.enableClient(client -> client.useManualConnections(
                 endpoints -> endpoints.connect(SampleTopology.ApiEndpoint))));
@@ -40,7 +45,7 @@ public final class SessionServer {
             channel.enableClient(client -> client.useManualConnections(
                 endpoints -> endpoints.connect(SampleTopology.PlayChannelEndpoint))));
         options.addStreamNode(SampleNames.GatewayStream, stream -> {
-            stream.bind(SampleTopology.SessionEndpoint);
+            stream.bind(sessionNode.streamEndpoint());
             stream.attachActorGateway(SampleNames.SessionRelayNode);
             stream.registerSession(PlayerSession.class);
         });

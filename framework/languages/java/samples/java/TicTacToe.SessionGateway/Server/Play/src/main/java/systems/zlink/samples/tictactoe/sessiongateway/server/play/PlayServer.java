@@ -21,8 +21,10 @@ public final class PlayServer {
             route.bind(SampleTopology.PlayRouteEndpoint);
             route.configureRouting(routing ->
                 routing.setRoutingId(RoutingId.from(SampleNames.PlayRid)));
-            route.useManualConnections(endpoints ->
-                endpoints.connect(SampleTopology.SessionRouteEndpoint));
+            route.useManualConnections(endpoints -> {
+                endpoints.connect(SampleTopology.SessionRouteEndpoint);
+                endpoints.connect(SampleTopology.ReconnectSessionRouteEndpoint);
+            });
         });
         options.useRegistrySpotRemoteAddresses(SampleNames.SpotMesh, registry ->
             registry.setRouterChannelId(SampleNames.PlayRouteChannel));

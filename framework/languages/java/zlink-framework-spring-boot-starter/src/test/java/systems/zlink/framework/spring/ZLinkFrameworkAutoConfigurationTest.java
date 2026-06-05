@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -29,6 +31,8 @@ import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.contracts.core.RoutingId;
@@ -47,6 +51,7 @@ import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
 import systems.zlink.framework.registry.ZLinkRegistryStatus;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
@@ -64,6 +69,9 @@ import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 final class ZLinkFrameworkAutoConfigurationTest {
+    private static final AtomicInteger NEXT_PORT =
+        new AtomicInteger(31_000 + (int) (ProcessHandle.current().pid() % 1_000));
+
     @Test
     void autoConfigurationStartsFrameworkLifecycleAndExposesClientBean() {
         try (AnnotationConfigApplicationContext context =
@@ -359,6 +367,46 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 .join();
 
             assertEquals(new ProfileReply("filter:profile:42"), reply);
+        }
+    }
+
+    @Test
+    void routeMeshExplicitHandlersAreCreatedThroughSpringDependencyInjection() {
+        String sourceEndpoint = tcpEndpoint();
+        String targetEndpoint = tcpEndpoint();
+        RoutingId sourceRid = RoutingId.from("spring-route-source");
+        RoutingId targetRid = RoutingId.from("spring-route-target");
+
+        DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
+        sourceOptions.addRouteMeshChannel("route", channel -> {
+            channel.bind(sourceEndpoint);
+            channel.configureRouting(route -> route.setRoutingId(sourceRid));
+            channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
+        });
+
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(RouteMeshEndpoints.class, () ->
+                new RouteMeshEndpoints(sourceEndpoint, targetEndpoint, targetRid));
+            context.register(
+                RouteMeshHandlerConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            try (ZLinkFrameworkRuntime source =
+                     ZLinkFrameworkRuntime.start(
+                         sourceOptions,
+                         new ZLinkJavaBackendAdapterFactory())) {
+                String reply = source.route()
+                    .requestTo("route", targetRid, "hello")
+                    .packetName("SpringRoute")
+                    .timeout(Duration.ofSeconds(3))
+                    .submitAsync(String.class)
+                    .toCompletableFuture()
+                    .join();
+
+                assertEquals("route:hello", reply);
+            }
         }
     }
 
@@ -765,6 +813,30 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
+    @Configuration
+    static class RouteMeshHandlerConfig {
+        @Bean
+        HandlerDependency routeHandlerDependency() {
+            return new HandlerDependency("route");
+        }
+
+        @Bean
+        ZLinkFrameworkOptionsCustomizer routeMeshHandlerCustomizer(
+            RouteMeshEndpoints endpoints) {
+            return options -> options.addRouteMeshChannel("route", channel -> {
+                channel.bind(endpoints.targetEndpoint());
+                channel.configureRouting(route -> route.setRoutingId(endpoints.targetRid()));
+                channel.useManualConnections(manual ->
+                    manual.connect(endpoints.sourceEndpoint()));
+                channel.addRequestHandler(
+                    InjectedRouteRequestHandler.class,
+                    String.class,
+                    String.class,
+                    "SpringRoute");
+            });
+        }
+    }
+
     public static final class GameSpot implements ZLinkSpot {
         private final ZLinkSpotContext context;
 
@@ -1088,6 +1160,12 @@ final class ZLinkFrameworkAutoConfigurationTest {
     public record ProfileReply(String value) {
     }
 
+    record RouteMeshEndpoints(
+        String sourceEndpoint,
+        String targetEndpoint,
+        RoutingId targetRid) {
+    }
+
     interface ProfileDecorator {
         String decorate(String value);
     }
@@ -1118,6 +1196,45 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 value = decorator.decorate(value);
             }
             return CompletableFuture.completedFuture(new ProfileReply(value));
+        }
+    }
+
+    public static final class InjectedRouteRequestHandler
+        implements ZLinkRouteRequestHandler<String, String> {
+        private final HandlerDependency dependency;
+
+        public InjectedRouteRequestHandler(HandlerDependency dependency) {
+            this.dependency = dependency;
+        }
+
+        @Override
+        public CompletionStage<String> handleAsync(
+            String request,
+            ZLinkRouteRequestContext context) {
+            return CompletableFuture.completedFuture(dependency.format(request));
+        }
+    }
+
+    private static String tcpEndpoint() {
+        return "tcp://127.0.0.1:" + nextPort();
+    }
+
+    private static int nextPort() {
+        for (int attempt = 0; attempt < 200; attempt++) {
+            int port = NEXT_PORT.getAndIncrement();
+            if (isBindable(port)) {
+                return port;
+            }
+        }
+        throw new IllegalStateException("failed to allocate tcp port");
+    }
+
+    private static boolean isBindable(int port) {
+        try (ServerSocket server = new ServerSocket(port)) {
+            server.setReuseAddress(false);
+            return true;
+        } catch (IOException ignored) {
+            return false;
         }
     }
 

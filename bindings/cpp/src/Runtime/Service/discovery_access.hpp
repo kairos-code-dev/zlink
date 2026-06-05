@@ -12,8 +12,7 @@ namespace detail
 struct discovery_access_t
 {
     static void *native_handle (service::discovery_t &discovery_) noexcept;
-    static const void *
-    native_handle (const service::discovery_t &discovery_) noexcept;
+    static const void *native_handle (const service::discovery_t &discovery_) noexcept;
 };
 
 inline void *native_handle (service::discovery_t &discovery_) noexcept
@@ -21,8 +20,7 @@ inline void *native_handle (service::discovery_t &discovery_) noexcept
     return discovery_access_t::native_handle (discovery_);
 }
 
-inline const void *native_handle (
-  const service::discovery_t &discovery_) noexcept
+inline const void *native_handle (const service::discovery_t &discovery_) noexcept
 {
     return discovery_access_t::native_handle (discovery_);
 }

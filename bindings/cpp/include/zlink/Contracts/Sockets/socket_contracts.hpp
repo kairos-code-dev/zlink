@@ -56,22 +56,16 @@ class socket_t
     void disconnect (const std::string &endpoint_);
     void disconnect_rid (const routing_id_t &peer_rid_);
 
-    socket_monitor_t
-    monitor_open (monitor_event events_ = monitor_event::all) const
+    socket_monitor_t monitor_open (monitor_event events_ = monitor_event::all) const
     {
-        return socket_monitor_t::open (
-          *this, events_);
+        return socket_monitor_t::open (*this, events_);
     }
 
     common_socket_options_t options () { return common_socket_options_t (*this); }
 
-    void set_tls_server (const std::string &cert_,
-                         const std::string &key_,
-                         bool require_client_cert_ = false);
+    void set_tls_server (const std::string &cert_, const std::string &key_, bool require_client_cert_ = false);
 
-    void set_tls_client (const std::string &ca_cert_,
-                         const std::string &hostname_,
-                         bool trust_system_ = false);
+    void set_tls_client (const std::string &ca_cert_, const std::string &hostname_, bool trust_system_ = false);
 
   protected:
     [[nodiscard]] int attach_discovery (service::discovery_t &discovery_);
@@ -80,86 +74,58 @@ class socket_t
 
     socket_t (context_t &ctx_, socket_type type_);
 
-    [[nodiscard]] int send (
-      message_t &part_, send_flags_t flags_ = send_flags_t::none);
+    [[nodiscard]] int send (message_t &part_, send_flags_t flags_ = send_flags_t::none);
 
-    [[nodiscard]] int send (std::vector<message_t> &parts_,
-                                  send_flags_t flags_ = send_flags_t::none);
-
-    [[nodiscard]] int send (const routing_id_t &target_rid_,
-                                  message_t &part_,
-                                  send_flags_t flags_ = send_flags_t::none);
+    [[nodiscard]] int send (std::vector<message_t> &parts_, send_flags_t flags_ = send_flags_t::none);
 
     [[nodiscard]] int
-    send (const routing_id_t &target_rid_,
-          std::vector<message_t> &parts_,
-          send_flags_t flags_ = send_flags_t::none);
+    send (const routing_id_t &target_rid_, message_t &part_, send_flags_t flags_ = send_flags_t::none);
+
+    [[nodiscard]] int
+    send (const routing_id_t &target_rid_, std::vector<message_t> &parts_, send_flags_t flags_ = send_flags_t::none);
 
   protected:
-    [[nodiscard]] int send_no_wait_result (send_result_t &result_,
-                                                message_t &part_);
+    [[nodiscard]] int send_no_wait_result (send_result_t &result_, message_t &part_);
+
+    [[nodiscard]] int send_no_wait_result (send_result_t &result_, std::vector<message_t> &parts_);
+
+    [[nodiscard]] int send_no_wait_result (send_result_t &result_, const routing_id_t &target_rid_, message_t &part_);
 
     [[nodiscard]] int
-    send_no_wait_result (send_result_t &result_,
-                         std::vector<message_t> &parts_);
+    send_no_wait_result (send_result_t &result_, const routing_id_t &target_rid_, std::vector<message_t> &parts_);
+
+    [[nodiscard]] int receive (received_t &received_, recv_flags_t flags_ = recv_flags_t::none);
+
+    [[nodiscard]] int receive (received_t &received_, recv_flags_t flags_, bool attach_routed_send_context_);
 
     [[nodiscard]] int
-    send_no_wait_result (send_result_t &result_,
-              const routing_id_t &target_rid_,
-              message_t &part_);
+    publish (const std::string &topic_id_, message_t &part_, send_flags_t flags_ = send_flags_t::none);
 
     [[nodiscard]] int
-    send_no_wait_result (send_result_t &result_,
-              const routing_id_t &target_rid_,
-              std::vector<message_t> &parts_);
+    publish (const std::string &topic_id_, std::vector<message_t> &parts_, send_flags_t flags_ = send_flags_t::none);
+
+    [[nodiscard]] int publish_no_wait_result (send_result_t &result_, const std::string &topic_id_, message_t &part_);
 
     [[nodiscard]] int
-    receive (received_t &received_, recv_flags_t flags_ = recv_flags_t::none);
-
-    [[nodiscard]] int receive (received_t &received_,
-                               recv_flags_t flags_,
-                               bool attach_routed_send_context_);
-
-    [[nodiscard]] int publish (const std::string &topic_id_,
-                                     message_t &part_,
-                                     send_flags_t flags_ = send_flags_t::none);
-
-    [[nodiscard]] int publish (const std::string &topic_id_,
-                                     std::vector<message_t> &parts_,
-                                     send_flags_t flags_ = send_flags_t::none);
-
-    [[nodiscard]] int
-    publish_no_wait_result (send_result_t &result_,
-                 const std::string &topic_id_,
-                 message_t &part_);
-
-    [[nodiscard]] int
-    publish_no_wait_result (send_result_t &result_,
-                 const std::string &topic_id_,
-                 std::vector<message_t> &parts_);
+    publish_no_wait_result (send_result_t &result_, const std::string &topic_id_, std::vector<message_t> &parts_);
 
   public:
     [[nodiscard]] int set_subscription (const std::string &filter_);
     [[nodiscard]] int unset_subscription (const std::string &filter_);
-    [[nodiscard]] int
-    subscription_at (size_t index_, std::string &filter_, bool *is_pattern_ = nullptr);
+    [[nodiscard]] int subscription_at (size_t index_, std::string &filter_, bool *is_pattern_ = nullptr);
 
-    [[nodiscard]] int
-    subscribe (topic_message_t &message_,
-               recv_flags_t flags_ = recv_flags_t::none);
+    [[nodiscard]] int subscribe (topic_message_t &message_, recv_flags_t flags_ = recv_flags_t::none);
 
-    [[nodiscard]] int
-    subscribe_part (std::optional<routing_id_t> &source_rid_out_,
-                    std::string &topic_out_,
-                    message_t &part_out_,
-                    bool &has_more_out_,
-                    recv_flags_t flags_ = recv_flags_t::none);
+    [[nodiscard]] int subscribe_part (std::optional<routing_id_t> &source_rid_out_,
+                                      std::string &topic_out_,
+                                      message_t &part_out_,
+                                      bool &has_more_out_,
+                                      recv_flags_t flags_ = recv_flags_t::none);
 
-    [[nodiscard]] int
-    subscribe (routing_id_t &source_rid_out_,
-               std::string &topic_id_out_,
-               std::vector<message_t> &parts_out_,
-               recv_flags_t flags_ = recv_flags_t::none)
+    [[nodiscard]] int subscribe (routing_id_t &source_rid_out_,
+                                 std::string &topic_id_out_,
+                                 std::vector<message_t> &parts_out_,
+                                 recv_flags_t flags_ = recv_flags_t::none)
     {
         topic_message_t message;
         const int rc = subscribe (message, flags_);
@@ -175,32 +141,26 @@ class socket_t
         return 0;
     }
 
-    [[nodiscard]] int
-    subscription_event (subscription_event_t &event_,
-                        recv_flags_t flags_ = recv_flags_t::none);
+    [[nodiscard]] int subscription_event (subscription_event_t &event_, recv_flags_t flags_ = recv_flags_t::none);
 
-    [[nodiscard]] int
-    subscription_event (routing_id_t &source_rid_out_,
-                        bool &subscribed_out_,
-                        std::string &topic_id_out_,
-                        recv_flags_t flags_ = recv_flags_t::none);
+    [[nodiscard]] int subscription_event (routing_id_t &source_rid_out_,
+                                          bool &subscribed_out_,
+                                          std::string &topic_id_out_,
+                                          recv_flags_t flags_ = recv_flags_t::none);
 
-    void set_send_ready_handler (std::function<void()> handler_);
+    void set_send_ready_handler (std::function<void ()> handler_);
 
   protected:
-    std::function<void()> _send_ready_handler;
+    std::function<void ()> _send_ready_handler;
 
     [[nodiscard]] int set_routing_id_raw (std::span<const std::byte> data_);
 
     [[nodiscard]] int set_routing_id_raw (const std::string &routing_id_)
     {
-        return set_routing_id_raw (
-          std::as_bytes (std::span<const char> (routing_id_.data (),
-                                                routing_id_.size ())));
+        return set_routing_id_raw (std::as_bytes (std::span<const char> (routing_id_.data (), routing_id_.size ())));
     }
 
-    [[nodiscard]] int
-    get_routing_id_raw (routing_id_t &routing_id_) const;
+    [[nodiscard]] int get_routing_id_raw (routing_id_t &routing_id_) const;
 
     [[nodiscard]] int get_routing_id_raw (std::string &routing_id_) const
     {
@@ -224,12 +184,7 @@ namespace zlink
 {
 
 void proxy (socket_t &frontend_, socket_t &backend_);
-void proxy (socket_t &frontend_,
-            socket_t &backend_,
-            socket_t &capture_);
-void proxy_steerable (socket_t &frontend_,
-                      socket_t &backend_,
-                      socket_t &capture_,
-                      socket_t &control_);
+void proxy (socket_t &frontend_, socket_t &backend_, socket_t &capture_);
+void proxy_steerable (socket_t &frontend_, socket_t &backend_, socket_t &capture_, socket_t &control_);
 
 } // namespace zlink

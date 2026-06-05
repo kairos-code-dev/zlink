@@ -27,8 +27,7 @@ enum class monitor_state : uint32_t
 
 inline monitor_state operator| (monitor_state a, monitor_state b)
 {
-    return static_cast<monitor_state> (static_cast<uint32_t> (a)
-                                       | static_cast<uint32_t> (b));
+    return static_cast<monitor_state> (static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
 }
 
 enum class monitor_status_detail : uint32_t
@@ -37,11 +36,9 @@ enum class monitor_status_detail : uint32_t
     rcv_pending_msgs = 4
 };
 
-inline monitor_status_detail operator| (monitor_status_detail a,
-                                          monitor_status_detail b)
+inline monitor_status_detail operator| (monitor_status_detail a, monitor_status_detail b)
 {
-    return static_cast<monitor_status_detail> (
-      static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
+    return static_cast<monitor_status_detail> (static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
 }
 
 /// @brief Reason a connection was disconnected.
@@ -56,27 +53,33 @@ enum class disconnect_reason : int
 /// @brief A snapshot of a monitored socket's state and auto-HWM telemetry.
 struct monitor_status_t
 {
-    monitor_status_t ()
-        : source_kind (monitor_source_kind::socket), state_flags (0),
-          detail_flags (0), snd_pending_msgs (0), rcv_pending_msgs (0),
-          auto_hwm_enabled (false), auto_hwm_profile (0),
-          auto_hwm_role (0), auto_hwm_policy_class (0),
-          auto_hwm_unit_budget_bytes (0), auto_hwm_size_cap (0),
-          auto_hwm_socket_message_slots (0),
-          auto_hwm_effective_message_bytes (0),
-          auto_hwm_applied_sndhwm (0), auto_hwm_applied_rcvhwm (0),
-          auto_hwm_effective_sndbuf (0), auto_hwm_effective_rcvbuf (0),
-          auto_hwm_last_recalc_ms (0),
-          auto_hwm_last_recalc_reason (0),
-          auto_hwm_send_blocked_ratio_ppm (0),
-          auto_hwm_deferred_sndhwm (-1), auto_hwm_deferred_rcvhwm (-1)
+    monitor_status_t () :
+        source_kind (monitor_source_kind::socket),
+        state_flags (0),
+        detail_flags (0),
+        snd_pending_msgs (0),
+        rcv_pending_msgs (0),
+        auto_hwm_enabled (false),
+        auto_hwm_profile (0),
+        auto_hwm_role (0),
+        auto_hwm_policy_class (0),
+        auto_hwm_unit_budget_bytes (0),
+        auto_hwm_size_cap (0),
+        auto_hwm_socket_message_slots (0),
+        auto_hwm_effective_message_bytes (0),
+        auto_hwm_applied_sndhwm (0),
+        auto_hwm_applied_rcvhwm (0),
+        auto_hwm_effective_sndbuf (0),
+        auto_hwm_effective_rcvbuf (0),
+        auto_hwm_last_recalc_ms (0),
+        auto_hwm_last_recalc_reason (0),
+        auto_hwm_send_blocked_ratio_ppm (0),
+        auto_hwm_deferred_sndhwm (-1),
+        auto_hwm_deferred_rcvhwm (-1)
     {
     }
 
-    bool is_ready () const noexcept
-    {
-        return (state_flags & 1) != 0u;
-    }
+    bool is_ready () const noexcept { return (state_flags & 1) != 0u; }
 
     monitor_source_kind source_kind;
     uint32_t state_flags;

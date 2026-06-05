@@ -2,7 +2,8 @@
 
 #include "sample_common.hpp"
 
-namespace {
+namespace
+{
 
 struct callback_result_t
 {
@@ -10,8 +11,7 @@ struct callback_result_t
     std::string payload;
 };
 
-std::string packet_payload (const zlink::message_t &header_,
-                            const zlink::message_t &body_)
+std::string packet_payload (const zlink::message_t &header_, const zlink::message_t &body_)
 {
     assert (header_.size () == 0);
     return body_.to_string ();
@@ -35,7 +35,7 @@ std::vector<unsigned char> encode_packet_frame (const std::string &payload_)
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::stream_socket_t server (ctx);
     zlink::socket_monitor_t server_monitor = server.monitor_open ();
@@ -48,8 +48,7 @@ int main ()
     std::promise<callback_result_t> result_promise;
     std::future<callback_result_t> result_future = result_promise.get_future ();
     server.set_packet_handler (
-      [&result_promise] (const zlink::routing_id_t &source_rid_,
-                         zlink::message_t header_, zlink::message_t body_) {
+      [&result_promise] (const zlink::routing_id_t &source_rid_, zlink::message_t header_, zlink::message_t body_) {
           callback_result_t result;
           result.routing_id = source_rid_;
           result.payload = packet_payload (header_, body_);
@@ -61,8 +60,7 @@ int main ()
 
     const std::string request = detail::k_stream_payload;
     const std::vector<unsigned char> request_frame = encode_packet_frame (request);
-    client.send_all (reinterpret_cast<const char *> (request_frame.data ()),
-                     request_frame.size ());
+    client.send_all (reinterpret_cast<const char *> (request_frame.data ()), request_frame.size ());
 
     const callback_result_t result = detail::wait_future (result_future, 2000);
     assert (result.payload == detail::k_stream_payload);
@@ -75,10 +73,9 @@ int main ()
     const int received = client.recv_exact (response, request.size ());
     assert (received == static_cast<int> (std::strlen (detail::k_stream_payload)));
     assert (std::memcmp (response, detail::k_stream_payload, received) == 0);
-    std::printf ("[stream/packet-callback] send: \"%s\" → recv: \"%.*s\"\n",
-                 request.c_str (), received, response);
+    std::printf ("[stream/packet-callback] send: \"%s\" → recv: \"%.*s\"\n", request.c_str (), received, response);
 
     client.close ();
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

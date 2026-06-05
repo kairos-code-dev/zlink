@@ -15,14 +15,11 @@ namespace detail
 class request_progress_poller_t
 {
   public:
-    explicit request_progress_poller_t (void *handle_) noexcept
-        : poller (zlink_poller_new ()), registered (false)
+    explicit request_progress_poller_t (void *handle_) noexcept : poller (zlink_poller_new ()), registered (false)
     {
         if (!poller || !handle_)
             return;
-        registered =
-          zlink_poller_add (poller, handle_, nullptr, ZLINK_POLLCOMPLETION)
-          == ZLINK_CONFIG_OK;
+        registered = zlink_poller_add (poller, handle_, nullptr, ZLINK_POLLCOMPLETION) == ZLINK_CONFIG_OK;
     }
 
     ~request_progress_poller_t ()
@@ -32,8 +29,7 @@ class request_progress_poller_t
     }
 
     request_progress_poller_t (const request_progress_poller_t &) = delete;
-    request_progress_poller_t &
-    operator= (const request_progress_poller_t &) = delete;
+    request_progress_poller_t &operator= (const request_progress_poller_t &) = delete;
 
     void poll_once () noexcept
     {

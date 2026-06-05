@@ -10,14 +10,14 @@ namespace zlink::framework::detail
 
 class route_connection_set_t
 {
-public:
-  bool connect (std::string endpoint);
-  bool disconnect (const std::string &endpoint);
-  bool contains (const std::string &endpoint) const;
-  std::vector<std::string> list () const;
+  public:
+    bool connect (std::string endpoint);
+    bool disconnect (const std::string &endpoint);
+    bool contains (const std::string &endpoint) const;
+    std::vector<std::string> list () const;
 
-private:
-  std::set<std::string> _manual_connections;
+  private:
+    std::set<std::string> _manual_connections;
 };
 
 } // namespace zlink::framework::detail

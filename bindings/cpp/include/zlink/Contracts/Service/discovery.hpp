@@ -30,15 +30,13 @@ namespace service
 class discovery_t
 {
   public:
-    discovery_t (context_t &ctx_,
-                 auto_connect_type auto_connect_type_,
-                 const std::string &channel_name_);
+    discovery_t (context_t &ctx_, auto_connect_type auto_connect_type_, const std::string &channel_name_);
 
     discovery_t (context_t &ctx_,
                  const std::string &channel_name_,
                  auto_connect_type_t auto_connect_type_,
-                 service_role_t)
-        : discovery_t (ctx_, auto_connect_type_, channel_name_)
+                 service_role_t) :
+        discovery_t (ctx_, auto_connect_type_, channel_name_)
     {
     }
 

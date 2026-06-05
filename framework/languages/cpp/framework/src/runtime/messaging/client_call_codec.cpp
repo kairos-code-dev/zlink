@@ -12,52 +12,46 @@ namespace zlink::framework::runtime::messaging
 namespace
 {
 
-std::string
-next_correlation_id ()
+std::string next_correlation_id ()
 {
-  static std::atomic_uint64_t next { 1 };
-  std::ostringstream output;
-  output << std::hex << next.fetch_add (1);
-  return output.str ();
+    static std::atomic_uint64_t next{1};
+    std::ostringstream output;
+    output << std::hex << next.fetch_add (1);
+    return output.str ();
 }
 
-std::string
-format_utc_deadline (std::chrono::system_clock::time_point deadline)
+std::string format_utc_deadline (std::chrono::system_clock::time_point deadline)
 {
-  const auto seconds =
-    std::chrono::time_point_cast<std::chrono::seconds> (deadline);
-  const std::time_t time = std::chrono::system_clock::to_time_t (seconds);
-  std::tm tm {};
-  gmtime_r (&time, &tm);
-  std::ostringstream output;
-  output << std::put_time (&tm, "%Y-%m-%dT%H:%M:%SZ");
-  return output.str ();
+    const auto seconds = std::chrono::time_point_cast<std::chrono::seconds> (deadline);
+    const std::time_t time = std::chrono::system_clock::to_time_t (seconds);
+    std::tm tm{};
+    gmtime_r (&time, &tm);
+    std::ostringstream output;
+    output << std::put_time (&tm, "%Y-%m-%dT%H:%M:%SZ");
+    return output.str ();
 }
 
 } // namespace
 
-envelope_header_t
-client_call_codec_t::create_envelope (
-  message_kind_t kind,
-  std::string channel_name,
-  std::string message_name,
-  std::chrono::milliseconds timeout,
-  std::optional<std::string> topic,
-  std::optional<std::string> source) const
+envelope_header_t client_call_codec_t::create_envelope (message_kind_t kind,
+                                                        std::string channel_name,
+                                                        std::string message_name,
+                                                        std::chrono::milliseconds timeout,
+                                                        std::optional<std::string> topic,
+                                                        std::optional<std::string> source) const
 {
-  envelope_header_t header;
-  header.kind = kind;
-  header.channel_name = std::move (channel_name);
-  header.message_name = std::move (message_name);
-  header.content_type = envelope_codec_t::default_content_type;
-  header.correlation_id = next_correlation_id ();
-  if (timeout.count () > 0) {
-    header.deadline = format_utc_deadline (
-      std::chrono::system_clock::now () + timeout);
-  }
-  header.topic = std::move (topic);
-  header.source = std::move (source);
-  return header;
+    envelope_header_t header;
+    header.kind = kind;
+    header.channel_name = std::move (channel_name);
+    header.message_name = std::move (message_name);
+    header.content_type = envelope_codec_t::default_content_type;
+    header.correlation_id = next_correlation_id ();
+    if (timeout.count () > 0) {
+        header.deadline = format_utc_deadline (std::chrono::system_clock::now () + timeout);
+    }
+    header.topic = std::move (topic);
+    header.source = std::move (source);
+    return header;
 }
 
 } // namespace zlink::framework::runtime::messaging

@@ -5,16 +5,18 @@
 // any stale includes that have not yet been updated.
 #include "../../common/perf_tls.hpp"
 
-namespace perf {
-namespace multi {
+namespace perf
+{
+namespace multi
+{
 
 typedef ::perf::socket_t perf_socket_t;
 
 using ::perf::perf_tls_file_exists;
 using ::perf::resolve_perf_tls_dir_from;
-using ::perf::try_resolve_tls_paths;
-using ::perf::setup_tls_server;
 using ::perf::setup_tls_client;
+using ::perf::setup_tls_server;
+using ::perf::try_resolve_tls_paths;
 
 } // namespace multi
 } // namespace perf

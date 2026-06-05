@@ -38,15 +38,9 @@ class poller_t
     bool valid () const noexcept;
     int size () const;
 
-    void add (service::spot_t &spot_,
-              poll_event_flag_t events_,
-              std::uintptr_t slot_);
-    void add (socket_monitor_t &monitor_,
-              poll_event_flag_t events_,
-              std::uintptr_t slot_);
-    void add (socket_t &socket_,
-              poll_event_flag_t events_,
-              std::uintptr_t slot_);
+    void add (service::spot_t &spot_, poll_event_flag_t events_, std::uintptr_t slot_);
+    void add (socket_monitor_t &monitor_, poll_event_flag_t events_, std::uintptr_t slot_);
+    void add (socket_t &socket_, poll_event_flag_t events_, std::uintptr_t slot_);
 
     void add_fd (int fd_, poll_event_flag_t events_, std::uintptr_t slot_);
     void add (timer_t &timer_, std::uintptr_t slot_);
@@ -62,9 +56,7 @@ class poller_t
     bool remove (timer_t &timer_);
     bool remove_fd (int fd_);
 
-    size_t wait (poll_event_t *events_,
-                 size_t capacity_,
-                 std::chrono::milliseconds timeout_);
+    size_t wait (poll_event_t *events_, size_t capacity_, std::chrono::milliseconds timeout_);
 
     void close ();
 

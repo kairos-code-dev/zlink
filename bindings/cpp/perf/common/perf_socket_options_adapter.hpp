@@ -51,58 +51,42 @@ enum class stream_option
 
 template <typename T> struct socket_option_key_t
 {
-    explicit constexpr socket_option_key_t (socket_option option_) :
-        option (option_)
-    {
-    }
+    explicit constexpr socket_option_key_t (socket_option option_) : option (option_) {}
 
     socket_option option;
 };
 
 template <typename T> struct router_option_key_t
 {
-    explicit constexpr router_option_key_t (router_option option_) :
-        option (option_)
-    {
-    }
+    explicit constexpr router_option_key_t (router_option option_) : option (option_) {}
 
     router_option option;
 };
 
 template <typename T> struct dealer_option_key_t
 {
-    explicit constexpr dealer_option_key_t (dealer_option option_) :
-        option (option_)
-    {
-    }
+    explicit constexpr dealer_option_key_t (dealer_option option_) : option (option_) {}
 
     dealer_option option;
 };
 
 template <typename T> struct pub_option_key_t
 {
-    explicit constexpr pub_option_key_t (pub_option option_) : option (option_)
-    {
-    }
+    explicit constexpr pub_option_key_t (pub_option option_) : option (option_) {}
 
     pub_option option;
 };
 
 template <typename T> struct sub_option_key_t
 {
-    explicit constexpr sub_option_key_t (sub_option option_) : option (option_)
-    {
-    }
+    explicit constexpr sub_option_key_t (sub_option option_) : option (option_) {}
 
     sub_option option;
 };
 
 template <typename T> struct stream_option_key_t
 {
-    explicit constexpr stream_option_key_t (stream_option option_) :
-        option (option_)
-    {
-    }
+    explicit constexpr stream_option_key_t (stream_option option_) : option (option_) {}
 
     stream_option option;
 };
@@ -114,8 +98,7 @@ static const socket_option_key_t<int> sndhwm (socket_option::sndhwm);
 static const socket_option_key_t<int> rcvhwm (socket_option::rcvhwm);
 static const socket_option_key_t<int> sndtimeo (socket_option::sndtimeo);
 static const socket_option_key_t<int> rcvtimeo (socket_option::rcvtimeo);
-static const socket_option_key_t<std::string>
-  last_endpoint (socket_option::last_endpoint);
+static const socket_option_key_t<std::string> last_endpoint (socket_option::last_endpoint);
 static const socket_option_key_t<int> tcp_nodelay (socket_option::tcp_nodelay);
 } // namespace socket_options
 

@@ -10,14 +10,9 @@ namespace detail
 
 void run_request_round_trip (zlink::dealer_socket_t &dealer_)
 {
-    zlink::message_t request =
-      detail::make_message (detail::k_dealer_router_request);
+    zlink::message_t request = detail::make_message (detail::k_dealer_router_request);
     std::vector<zlink::message_t> reply =
-      dealer_.request ()
-        .message (request)
-        .timeout (std::chrono::milliseconds (2000))
-        .submit_async ()
-        .get ();
+      dealer_.request ().message (request).timeout (std::chrono::milliseconds (2000)).submit_async ().get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == detail::k_dealer_router_reply);
 }
@@ -26,7 +21,7 @@ void run_request_round_trip (zlink::dealer_socket_t &dealer_)
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::router_socket_t router_socket (ctx);
     zlink::dealer_socket_t dealer_socket (ctx);
@@ -34,9 +29,8 @@ int main ()
     zlink::socket_monitor_t dealer_monitor = dealer_socket.monitor_open ();
 
     const std::string routing_id_text = "request-reply-client";
-    const zlink::routing_id_t routing_id = zlink::routing_id_t::from (
-      reinterpret_cast<const uint8_t *> (routing_id_text.data ()),
-      routing_id_text.size ());
+    const zlink::routing_id_t routing_id =
+      zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (routing_id_text.data ()), routing_id_text.size ());
     dealer_socket.set_routing_id (routing_id);
     const std::string endpoint = "tcp://127.0.0.1:0";
     router_socket.bind (endpoint);
@@ -53,40 +47,30 @@ int main ()
     assert (warmup_received.parts ()[0].to_string () == "warmup");
     warmup_received.close ();
 
-    std::future<void> request_done = std::async (
-      std::launch::async, [&router_socket, &routing_id] () {
-          zlink::received_t received;
-          assert (router_socket.recv (received) == 0);
-          assert (received.routing_id ().has_value ());
-          assert (received.routing_id ()->to_string ()
-                  == routing_id.to_string ());
-          assert (received.parts ().size () == 1);
-          assert (received.parts ()[0].to_string ()
-                  == detail::k_dealer_router_request);
-          assert (received.request_seq ().has_value ());
-          assert (*received.request_seq () != 0u);
-          zlink::message_t reply =
-            detail::make_message (detail::k_dealer_router_reply);
-          received.reply ().message (reply).submit ();
-          received.close ();
-      });
+    std::future<void> request_done = std::async (std::launch::async, [&router_socket, &routing_id] () {
+        zlink::received_t received;
+        assert (router_socket.recv (received) == 0);
+        assert (received.routing_id ().has_value ());
+        assert (received.routing_id ()->to_string () == routing_id.to_string ());
+        assert (received.parts ().size () == 1);
+        assert (received.parts ()[0].to_string () == detail::k_dealer_router_request);
+        assert (received.request_seq ().has_value ());
+        assert (*received.request_seq () != 0u);
+        zlink::message_t reply = detail::make_message (detail::k_dealer_router_reply);
+        received.reply ().message (reply).submit ();
+        received.close ();
+    });
 
-    zlink::message_t request =
-      detail::make_message (detail::k_dealer_router_request);
+    zlink::message_t request = detail::make_message (detail::k_dealer_router_request);
     std::vector<zlink::message_t> reply =
-      dealer_socket.request ()
-        .message (request)
-        .timeout (std::chrono::milliseconds (5000))
-        .submit_async ()
-        .get ();
+      dealer_socket.request ().message (request).timeout (std::chrono::milliseconds (5000)).submit_async ().get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == detail::k_dealer_router_reply);
     request_done.get ();
 
-    std::printf (
-      "[dealer-router/request-reply/async] send: \"%s\" -> recv: \"%s\"\n",
-      detail::k_dealer_router_request, detail::k_dealer_router_reply);
+    std::printf ("[dealer-router/request-reply/async] send: \"%s\" -> recv: \"%s\"\n", detail::k_dealer_router_request,
+                 detail::k_dealer_router_reply);
     std::fflush (stdout);
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

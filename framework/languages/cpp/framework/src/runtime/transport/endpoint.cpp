@@ -8,40 +8,36 @@
 namespace zlink::framework
 {
 
-transport_endpoint_t::transport_endpoint_t (transport_scheme_t scheme,
-                                            std::string uri)
-  : _scheme (scheme), _uri (std::move (uri))
+transport_endpoint_t::transport_endpoint_t (transport_scheme_t scheme, std::string uri) :
+    _scheme (scheme), _uri (std::move (uri))
 {
 }
 
-transport_endpoint_t
-transport_endpoint_t::parse (std::string uri)
+transport_endpoint_t transport_endpoint_t::parse (std::string uri)
 {
-  const auto scheme_end = uri.find ("://");
-  if (scheme_end == std::string::npos) {
-    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                 "endpoint URI has no scheme");
-  }
+    const auto scheme_end = uri.find ("://");
+    if (scheme_end == std::string::npos) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error, "endpoint URI has no scheme");
+    }
 
-  const auto scheme = uri.substr (0, scheme_end);
-  if (scheme == "tcp") {
-    return { transport_scheme_t::tcp, std::move (uri) };
-  }
-  if (scheme == "ipc") {
-    return { transport_scheme_t::ipc, std::move (uri) };
-  }
-  if (scheme == "tls") {
-    return { transport_scheme_t::tls, std::move (uri) };
-  }
-  if (scheme == "ws") {
-    return { transport_scheme_t::websocket, std::move (uri) };
-  }
-  if (scheme == "wss") {
-    return { transport_scheme_t::websocket_tls, std::move (uri) };
-  }
+    const auto scheme = uri.substr (0, scheme_end);
+    if (scheme == "tcp") {
+        return {transport_scheme_t::tcp, std::move (uri)};
+    }
+    if (scheme == "ipc") {
+        return {transport_scheme_t::ipc, std::move (uri)};
+    }
+    if (scheme == "tls") {
+        return {transport_scheme_t::tls, std::move (uri)};
+    }
+    if (scheme == "ws") {
+        return {transport_scheme_t::websocket, std::move (uri)};
+    }
+    if (scheme == "wss") {
+        return {transport_scheme_t::websocket_tls, std::move (uri)};
+    }
 
-  throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                               "unsupported endpoint URI scheme");
+    throw framework_exception_t (framework_error_kind_t::request_protocol_error, "unsupported endpoint URI scheme");
 }
 
 } // namespace zlink::framework

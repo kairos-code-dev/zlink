@@ -16,7 +16,8 @@
 #include <thread>
 #include <vector>
 
-namespace {
+namespace
+{
 
 // Termination mirrors the C reference relay server
 // (bindings/c/perf/multi/common/perf_multi_relay_server.hpp): the server has
@@ -58,42 +59,35 @@ inline void wait_for_stop_stdin ()
 
 } // namespace
 
-bool perf_dealer_router_server (const std::string &lib_name,
-                                const std::string &transport,
-                                size_t msg_size)
+bool perf_dealer_router_server (const std::string &lib_name, const std::string &transport, size_t msg_size)
 {
     perf::multi::set_perf_pattern_env ("DEALER_ROUTER");
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << ",MULTI_DEALER_ROUTER,"
-                  << transport
-                  << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << ",MULTI_DEALER_ROUTER," << transport << std::endl;
         return true;
     }
 
-    const perf::multi::multi_bench_settings_t settings =
-      perf::multi::resolve_multi_bench_settings ();
+    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
 
     perf::multi::ctx_guard_t ctx;
     zlink::router_socket_t server (ctx.ctx ());
     if (!server.valid ())
         return false;
 
-    perf::multi::apply_benchmark_socket_options (
-      server, settings, transport);
+    perf::multi::apply_benchmark_socket_options (server, settings, transport);
     if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size))
         return false;
     if (!perf::multi::setup_tls_server (server, transport))
         return false;
 
-    const std::string endpoint = perf::multi::bind_and_resolve_endpoint (
-      server, transport, "cpp_multi_dealer_router", settings.server_bind_port);
+    const std::string endpoint =
+      perf::multi::bind_and_resolve_endpoint (server, transport, "cpp_multi_dealer_router", settings.server_bind_port);
     if (endpoint.empty ())
         return false;
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;
-    perf::multi::emit_auto_hwm_detail (
-      server, "server", "server", transport, msg_size, "router");
+    perf::multi::emit_auto_hwm_detail (server, "server", "server", transport, msg_size, "router");
 
     g_stop_requested.store (false, std::memory_order_release);
     install_signal_handlers ();
@@ -112,8 +106,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
     std::deque<pending_reply_t> pending_replies;
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events (1);
-    zlink::routing_id_t source_rid = zlink::routing_id_t::from (
-      reinterpret_cast<const uint8_t *> ("x"), 1);
+    zlink::routing_id_t source_rid = zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> ("x"), 1);
     zlink::message_t part;
     poller.add (server, zlink::poll_event_flag_t::pollin, 0);
 
@@ -123,7 +116,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
             try {
                 if (server.send (front.rid)
                       .message (front.payload)
-                      .flags (static_cast<int>(zlink::send_flags_t::dontwait))
+                      .flags (static_cast<int> (zlink::send_flags_t::dontwait))
                       .submit ()) {
                     pending_replies.pop_front ();
                     continue;
@@ -132,8 +125,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
             }
             catch (const zlink::submit_error_t &err) {
                 const int err_no = err.internal_errno ();
-                if (err_no == EINTR || err_no == EHOSTUNREACH
-                    || err_no == ENOTCONN)
+                if (err_no == EINTR || err_no == EHOSTUNREACH || err_no == ENOTCONN)
                     return true;
                 return false;
             }
@@ -145,17 +137,15 @@ bool perf_dealer_router_server (const std::string &lib_name,
     // without depending solely on a SIGTERM interrupting an infinite poll
     // (the C reference uses -1 + SIGTERM; this is the equivalent outcome,
     // just more responsive). 200ms keeps idle wakeups negligible.
-    int poll_event_mask =
-      static_cast<int> (zlink::poll_event_flag_t::pollin);
+    int poll_event_mask = static_cast<int> (zlink::poll_event_flag_t::pollin);
     const std::chrono::milliseconds poll_timeout (200);
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         const zlink::poll_event_flag_t mask =
           pending_replies.empty ()
             ? zlink::poll_event_flag_t::pollin
-            : static_cast<zlink::poll_event_flag_t> (
-                static_cast<int> (zlink::poll_event_flag_t::pollin)
-                | static_cast<int> (zlink::poll_event_flag_t::pollout));
+            : static_cast<zlink::poll_event_flag_t> (static_cast<int> (zlink::poll_event_flag_t::pollin)
+                                                     | static_cast<int> (zlink::poll_event_flag_t::pollout));
         const int next_mask = static_cast<int> (mask);
         if (next_mask != poll_event_mask) {
             poller.modify (server, mask);
@@ -163,19 +153,12 @@ bool perf_dealer_router_server (const std::string &lib_name,
         }
 
         try {
-            const size_t ready_count =
-              poller.wait (events.data (), events.size (), poll_timeout);
+            const size_t ready_count = poller.wait (events.data (), events.size (), poll_timeout);
             if (ready_count == 0)
                 continue;
             const auto revents_value = static_cast<int> (events[0].revents);
-            const bool readable =
-              (revents_value
-               & static_cast<int> (zlink::poll_event_flag_t::pollin))
-              != 0;
-            const bool writable =
-              (revents_value
-               & static_cast<int> (zlink::poll_event_flag_t::pollout))
-              != 0;
+            const bool readable = (revents_value & static_cast<int> (zlink::poll_event_flag_t::pollin)) != 0;
+            const bool writable = (revents_value & static_cast<int> (zlink::poll_event_flag_t::pollout)) != 0;
 
             if (writable && !pending_replies.empty ()) {
                 if (!flush_pending ()) {
@@ -198,12 +181,11 @@ bool perf_dealer_router_server (const std::string &lib_name,
         // keeps the perf hot path on the public projected API while avoiding
         // per-message received_t callback state for the single-part echo case.
         while (!g_stop_requested.load (std::memory_order_acquire)) {
-            const int recv_rc = server.recv (
-              source_rid, part, zlink::recv_flags_t::dontwait);
+            const int recv_rc = server.recv (source_rid, part, zlink::recv_flags_t::dontwait);
             if (recv_rc != 0) {
                 const int err = errno;
-                if (recv_rc == static_cast<int> (zlink::recv_result_t::no_data)
-                    || err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
+                if (recv_rc == static_cast<int> (zlink::recv_result_t::no_data) || err == EAGAIN || err == EWOULDBLOCK
+                    || err == EINTR)
                     break;
                 failed = true;
                 break;
@@ -214,25 +196,21 @@ bool perf_dealer_router_server (const std::string &lib_name,
             if (part.size () == 0)
                 continue;
             if (!pending_replies.empty ()) {
-                pending_replies.push_back (pending_reply_t {
-                  source_rid, std::move (part) });
+                pending_replies.push_back (pending_reply_t{source_rid, std::move (part)});
                 continue;
             }
             try {
                 if (!server.send (source_rid)
                        .message (part)
-                       .flags (static_cast<int>(zlink::send_flags_t::dontwait))
+                       .flags (static_cast<int> (zlink::send_flags_t::dontwait))
                        .submit ()) {
-                    pending_replies.push_back (pending_reply_t {
-                      source_rid, std::move (part) });
+                    pending_replies.push_back (pending_reply_t{source_rid, std::move (part)});
                 }
             }
             catch (const zlink::submit_error_t &err) {
                 const int err_no = err.internal_errno ();
-                if (err_no == EINTR || err_no == EHOSTUNREACH
-                    || err_no == ENOTCONN) {
-                    pending_replies.push_back (pending_reply_t {
-                      source_rid, std::move (part) });
+                if (err_no == EINTR || err_no == EHOSTUNREACH || err_no == ENOTCONN) {
+                    pending_replies.push_back (pending_reply_t{source_rid, std::move (part)});
                     continue;
                 }
                 failed = true;

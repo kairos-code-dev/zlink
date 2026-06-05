@@ -16,7 +16,8 @@
 #include <memory>
 #include <vector>
 
-namespace {
+namespace
+{
 
 static const char *k_pattern_env = "PUBSUB";
 static const char *k_pattern_result = "MULTI_PUBSUB";
@@ -32,10 +33,7 @@ struct bench_result_t
     unsigned long long active_count;
     perf::multi::bench_latency_stats_t latency;
 
-    bench_result_t ()
-        : active_count (0), latency ()
-    {
-    }
+    bench_result_t () : active_count (0), latency () {}
 };
 
 enum pubsub_recv_result_t
@@ -46,22 +44,16 @@ enum pubsub_recv_result_t
     pubsub_recv_stop = 2
 };
 
-pubsub_recv_result_t recv_one_pubsub_message (
-  ::perf::socket_t &sock,
-  size_t expected_msg_size,
-  perf_metric::header_t *header_out)
+pubsub_recv_result_t
+recv_one_pubsub_message (::perf::socket_t &sock, size_t expected_msg_size, perf_metric::header_t *header_out)
 {
     std::optional<zlink::routing_id_t> source_rid;
     std::string topic;
     zlink::message_t part;
     bool has_more = false;
 
-    const int rc = sock.subscribe_part (
-      source_rid,
-      topic,
-      part,
-      has_more,
-      static_cast<int> (zlink::recv_flags_t::dontwait));
+    const int rc =
+      sock.subscribe_part (source_rid, topic, part, has_more, static_cast<int> (zlink::recv_flags_t::dontwait));
     if (rc != 0) {
         const int err = errno;
         if (err == EAGAIN || err == EINTR)
@@ -69,9 +61,7 @@ pubsub_recv_result_t recv_one_pubsub_message (
         return pubsub_recv_error;
     }
 
-    if ((source_rid && source_rid->size () > 0)
-        || topic != k_topic
-        || has_more) {
+    if ((source_rid && source_rid->size () > 0) || topic != k_topic || has_more) {
         return pubsub_recv_payload;
     }
 
@@ -82,10 +72,8 @@ pubsub_recv_result_t recv_one_pubsub_message (
     }
 
     perf_metric::header_t header;
-    const bool decoded =
-      perf_metric::decode_payload_header (recv_data, recv_size, &header);
-    if (!decoded || header.magic != perf_metric::k_magic
-        || header.run_id != k_run_id
+    const bool decoded = perf_metric::decode_payload_header (recv_data, recv_size, &header);
+    if (!decoded || header.magic != perf_metric::k_magic || header.run_id != k_run_id
         || header.msg_size != static_cast<uint32_t> (expected_msg_size)) {
         return pubsub_recv_payload;
     }
@@ -102,21 +90,21 @@ class pubsub_client_bench_t
                            const std::string &lib_name,
                            size_t msg_size,
                            const std::string &endpoint,
-                           const perf::multi::multi_bench_settings_t &settings)
-        : _transport (transport),
-          _lib_name (lib_name),
-          _msg_size (msg_size),
-          _endpoint (endpoint),
-          _settings (settings),
-          _ctx (),
-          _holders (),
-          _monitors (),
-          _sockets (),
-          _poller (),
-          _poll_events (),
-          _phase_cfg (),
-          _result (),
-          _failure_stage ("init")
+                           const perf::multi::multi_bench_settings_t &settings) :
+        _transport (transport),
+        _lib_name (lib_name),
+        _msg_size (msg_size),
+        _endpoint (endpoint),
+        _settings (settings),
+        _ctx (),
+        _holders (),
+        _monitors (),
+        _sockets (),
+        _poller (),
+        _poll_events (),
+        _phase_cfg (),
+        _result (),
+        _failure_stage ("init")
     {
         _holders.reserve (_settings.clients);
         _monitors.reserve (_settings.clients);
@@ -137,10 +125,8 @@ class pubsub_client_bench_t
             return false;
         }
 
-        if (!run_active_until_stop_token (
-              std::chrono::seconds (_phase_cfg.active_seconds),
-              &_result.active_count,
-              &_result.latency))
+        if (!run_active_until_stop_token (std::chrono::seconds (_phase_cfg.active_seconds), &_result.active_count,
+                                          &_result.latency))
             return false;
 
         if (_result.active_count == 0) {
@@ -153,15 +139,9 @@ class pubsub_client_bench_t
         return true;
     }
 
-    const char *failure_stage () const
-    {
-        return _failure_stage;
-    }
+    const char *failure_stage () const { return _failure_stage; }
 
-    unsigned long long active_count () const
-    {
-        return _result.active_count;
-    }
+    unsigned long long active_count () const { return _result.active_count; }
 
   private:
     void close_monitors ()
@@ -173,14 +153,12 @@ class pubsub_client_bench_t
     bool setup_sockets ()
     {
         for (size_t i = 0; i < _settings.clients; ++i) {
-            _holders.emplace_back (
-              new perf::multi::socket_guard_t (_ctx, zlink::socket_type::sub));
+            _holders.emplace_back (new perf::multi::socket_guard_t (_ctx, zlink::socket_type::sub));
             ::perf::socket_t &sock = _holders.back ()->sock ();
 
             (void) sock.set_subscription (std::string (k_topic));
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
-            if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (
-                  _ctx, _msg_size))
+            if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (_ctx, _msg_size))
                 return false;
             if (!perf::multi::setup_tls_client (sock, _transport))
                 return false;
@@ -191,32 +169,26 @@ class pubsub_client_bench_t
             }
             try {
                 sock.connect (_endpoint);
-            } catch (const zlink::binding_error_t &) {
+            }
+            catch (const zlink::binding_error_t &) {
                 close_monitors ();
                 return false;
             }
 
             _sockets.push_back (&sock);
-            sock.poller_add (_poller, zlink::poll_event_flag_t::pollin,
-                             _sockets.size () - 1);
+            sock.poller_add (_poller, zlink::poll_event_flag_t::pollin, _sockets.size () - 1);
         }
         if (!perf::multi::recalculate_auto_hwm (_ctx))
             return false;
-        const bool ready = perf::multi::wait_connect_ready_all (
-          _monitors, _settings.connect_ready_timeout_ms);
+        const bool ready = perf::multi::wait_connect_ready_all (_monitors, _settings.connect_ready_timeout_ms);
         close_monitors ();
         if (!ready) {
             _failure_stage = "connect_ready";
             return false;
         }
         if (!_holders.empty () && _holders[0].get () && _holders[0]->valid ()) {
-            perf::multi::emit_auto_hwm_detail (
-              _holders[0]->sock (),
-              "client",
-              "endpoint",
-              _transport,
-              _msg_size,
-              "sub");
+            perf::multi::emit_auto_hwm_detail (_holders[0]->sock (), "client", "endpoint", _transport, _msg_size,
+                                               "sub");
         }
         return !_sockets.empty ();
     }
@@ -225,10 +197,9 @@ class pubsub_client_bench_t
     // wire-level stop token still ends the phase early when delivered, but a
     // lost stop token must not leave the client parked in poll forever after
     // the active deadline has already elapsed.
-    bool run_active_until_stop_token (
-      std::chrono::milliseconds duration,
-      unsigned long long *count_out,
-      perf::multi::bench_latency_stats_t *lat_out)
+    bool run_active_until_stop_token (std::chrono::milliseconds duration,
+                                      unsigned long long *count_out,
+                                      perf::multi::bench_latency_stats_t *lat_out)
     {
         if (duration.count () <= 0) {
             if (count_out)
@@ -251,16 +222,13 @@ class pubsub_client_bench_t
             if (now >= deadline)
                 break;
             std::chrono::milliseconds poll_wait =
-              std::chrono::duration_cast<std::chrono::milliseconds> (
-                deadline - now);
+              std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
             if (poll_wait.count () <= 0)
                 poll_wait = std::chrono::milliseconds (1);
 
             if (_poll_events.size () < _sockets.size ())
                 _poll_events.resize (_sockets.size ());
-            const size_t poll_rc =
-              _poller.wait (_poll_events.data (), _poll_events.size (),
-                            poll_wait);
+            const size_t poll_rc = _poller.wait (_poll_events.data (), _poll_events.size (), poll_wait);
             if (poll_rc == 0) {
                 if (std::chrono::steady_clock::now () >= deadline)
                     break;
@@ -277,8 +245,7 @@ class pubsub_client_bench_t
 
                 for (;;) {
                     perf_metric::header_t header = {};
-                    const pubsub_recv_result_t recv_rc =
-                      recv_one_pubsub_message (*sock, _msg_size, &header);
+                    const pubsub_recv_result_t recv_rc = recv_one_pubsub_message (*sock, _msg_size, &header);
                     if (recv_rc == pubsub_recv_error)
                         return false;
                     if (recv_rc == pubsub_recv_empty)
@@ -288,17 +255,14 @@ class pubsub_client_bench_t
                         continue;
                     }
 
-                    if (header.phase
-                        != static_cast<uint8_t> (perf_metric::phase_active)
+                    if (header.phase != static_cast<uint8_t> (perf_metric::phase_active)
                         || std::chrono::steady_clock::now () >= deadline) {
                         continue;
                     }
 
                     ++count;
                     if (lat_out) {
-                        latency.add (
-                          perf_metric::elapsed_latency_ns (
-                            perf_metric::now_ns (), header.sent_ts_ns));
+                        latency.add (perf_metric::elapsed_latency_ns (perf_metric::now_ns (), header.sent_ts_ns));
                     }
                 }
             }
@@ -313,15 +277,8 @@ class pubsub_client_bench_t
 
     void print_result () const
     {
-        perf::multi::print_client_result_lines (
-          _lib_name,
-          k_pattern_result,
-          _transport,
-          _msg_size,
-          _result.active_count,
-          _phase_cfg.active_seconds,
-          1.0,
-          _result.latency);
+        perf::multi::print_client_result_lines (_lib_name, k_pattern_result, _transport, _msg_size,
+                                                _result.active_count, _phase_cfg.active_seconds, 1.0, _result.latency);
     }
 
   private:
@@ -332,7 +289,7 @@ class pubsub_client_bench_t
     const perf::multi::multi_bench_settings_t _settings;
 
     perf::multi::ctx_guard_t _ctx;
-    std::vector<std::unique_ptr<perf::multi::socket_guard_t> > _holders;
+    std::vector<std::unique_ptr<perf::multi::socket_guard_t>> _holders;
     std::vector<perf::multi::connect_monitor_t> _monitors;
     std::vector<::perf::socket_t *> _sockets;
     zlink::poller_t _poller;
@@ -353,21 +310,16 @@ bool perf_pubsub_client (const std::string &lib_name,
     perf::multi::set_perf_pattern_env (k_pattern_env);
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern_result
-                  << ","
-                  << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern_result << "," << transport << std::endl;
         return true;
     }
 
-    const perf::multi::multi_bench_settings_t settings =
-      perf::multi::resolve_multi_bench_settings ();
+    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
 
-    pubsub_client_bench_t bench (transport, lib_name, msg_size, endpoint,
-                                 settings);
+    pubsub_client_bench_t bench (transport, lib_name, msg_size, endpoint, settings);
     if (!bench.run ()) {
-        std::cerr << "PUBSUB_CLIENT_FAIL,stage=" << bench.failure_stage ()
-                  << ",transport=" << transport << ",size=" << msg_size
-                  << ",active=" << bench.active_count () << std::endl;
+        std::cerr << "PUBSUB_CLIENT_FAIL,stage=" << bench.failure_stage () << ",transport=" << transport
+                  << ",size=" << msg_size << ",active=" << bench.active_count () << std::endl;
         return false;
     }
 
@@ -377,8 +329,7 @@ bool perf_pubsub_client (const std::string &lib_name,
 int main (int argc, char **argv)
 {
     if (argc < 4) {
-        std::cerr << "usage: <lib_name> <transport> <size> --endpoint <endpoint>"
-                  << std::endl;
+        std::cerr << "usage: <lib_name> <transport> <size> --endpoint <endpoint>" << std::endl;
         return 1;
     }
 

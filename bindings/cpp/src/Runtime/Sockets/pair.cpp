@@ -10,8 +10,7 @@
 namespace zlink
 {
 
-pair_socket_t::pair_socket_t (context_t &ctx_)
-    : message_socket_t (ctx_, socket_type::pair)
+pair_socket_t::pair_socket_t (context_t &ctx_) : message_socket_t (ctx_, socket_type::pair)
 {
 }
 
@@ -33,7 +32,7 @@ int pair_socket_t::recv (message_t &part_out_, recv_flags_t flags_)
     return detail::recv_single_part_message (detail::native_handle (*this), nullptr, part_out_, flags_);
 }
 
-void pair_socket_t::set_send_ready_handler (std::function<void()> handler_)
+void pair_socket_t::set_send_ready_handler (std::function<void ()> handler_)
 {
     socket_t::set_send_ready_handler (std::move (handler_));
 }

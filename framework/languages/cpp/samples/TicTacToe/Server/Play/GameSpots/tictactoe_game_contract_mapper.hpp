@@ -8,10 +8,7 @@ namespace zlink::samples::tictactoe
 
 struct tictactoe_game_contract_mapper_t
 {
-  static tictactoe_state_t to_contract (const tictactoe_state_t &state)
-  {
-    return state;
-  }
+    static tictactoe_state_t to_contract (const tictactoe_state_t &state) { return state; }
 };
 
 } // namespace zlink::samples::tictactoe

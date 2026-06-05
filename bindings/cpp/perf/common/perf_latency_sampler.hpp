@@ -5,7 +5,8 @@
 #include <cstddef>
 #include <vector>
 
-namespace perf {
+namespace perf
+{
 
 struct latency_sampler_stats_t
 {
@@ -19,9 +20,7 @@ struct latency_sampler_stats_t
 class latency_sampler_t
 {
   public:
-    explicit latency_sampler_t (size_t reserve_hint = 200000)
-        : _count (0),
-          _sum (0.0)
+    explicit latency_sampler_t (size_t reserve_hint = 200000) : _count (0), _sum (0.0)
     {
         if (reserve_hint > 0)
             _samples.reserve (reserve_hint);
@@ -42,14 +41,10 @@ class latency_sampler_t
 
         _sum += other._sum;
         _count += other._count;
-        _samples.insert (
-          _samples.end (), other._samples.begin (), other._samples.end ());
+        _samples.insert (_samples.end (), other._samples.begin (), other._samples.end ());
     }
 
-    unsigned long long count () const
-    {
-        return _count;
-    }
+    unsigned long long count () const { return _count; }
 
     latency_sampler_stats_t snapshot ()
     {

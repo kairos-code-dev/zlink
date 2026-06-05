@@ -20,42 +20,31 @@ class router_socket_t : public routed_message_socket_t
     // reused without reallocation.
     int recv (received_t &out_, recv_flags_t flags_ = recv_flags_t::none);
 
-    int recv (routing_id_t &source_rid_out_,
-              message_t &part_out_,
-              recv_flags_t flags_ = recv_flags_t::none);
+    int recv (routing_id_t &source_rid_out_, message_t &part_out_, recv_flags_t flags_ = recv_flags_t::none);
 
-    void set_send_ready_handler (std::function<void()> handler_);
+    void set_send_ready_handler (std::function<void ()> handler_);
 
     service::request_operation_t request (const routing_id_t &routing_id_);
-    service::reply_operation_t reply (const routing_id_t &routing_id_,
-                               uint64_t request_seq_);
+    service::reply_operation_t reply (const routing_id_t &routing_id_, uint64_t request_seq_);
 
     void set_routing_id (const routing_id_t &routing_id_);
 
     void get_routing_id (routing_id_t &routing_id_) const;
 
-    service::send_operation_t send_to_spot (const routing_id_t &dest_node_rid_,
-                                     const routing_id_t &dest_spot_rid_);
-    service::request_operation_t request_to_spot (
-      const routing_id_t &dest_node_rid_,
-      const routing_id_t &dest_spot_rid_);
-    service::reply_operation_t reply_to_spot (const routing_id_t &dest_node_rid_,
-                                       const routing_id_t &dest_spot_rid_,
-                                       uint64_t request_seq_);
+    service::send_operation_t send_to_spot (const routing_id_t &dest_node_rid_, const routing_id_t &dest_spot_rid_);
+    service::request_operation_t request_to_spot (const routing_id_t &dest_node_rid_,
+                                                  const routing_id_t &dest_spot_rid_);
+    service::reply_operation_t
+    reply_to_spot (const routing_id_t &dest_node_rid_, const routing_id_t &dest_spot_rid_, uint64_t request_seq_);
 
-    template<typename DiscoveryT>
-    void attach_discovery (DiscoveryT &discovery_)
+    template <typename DiscoveryT> void attach_discovery (DiscoveryT &discovery_)
     {
         if (socket_t::attach_discovery (discovery_) != 0)
-            throw config_error_t (
-              detail::config_result_from_errno (detail::current_errno ()),
-              detail::current_errno ());
+            throw config_error_t (detail::config_result_from_errno (detail::current_errno ()),
+                                  detail::current_errno ());
     }
 
-    router_socket_options_t options ()
-    {
-        return router_socket_options_t (*this);
-    }
+    router_socket_options_t options () { return router_socket_options_t (*this); }
 
   private:
     std::chrono::milliseconds _default_request_timeout;

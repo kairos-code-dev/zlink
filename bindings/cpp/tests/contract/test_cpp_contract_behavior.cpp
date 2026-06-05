@@ -10,70 +10,62 @@
 #include <stdexcept>
 #include <type_traits>
 
-namespace {
+namespace
+{
 
-template<typename SocketT> class has_try_send_t
+template <typename SocketT> class has_try_send_t
 {
   private:
-    template<typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().try_send (
-                      std::declval<zlink::message_t &> ()),
-                    std::true_type ());
+    template <typename T>
+    static auto test (int) -> decltype (std::declval<T &> ().try_send (std::declval<zlink::message_t &> ()),
+                                        std::true_type ());
 
-    template<typename> static std::false_type test (...);
+    template <typename> static std::false_type test (...);
 
   public:
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
-template<typename SocketT> class has_try_subscribe_t
+template <typename SocketT> class has_try_subscribe_t
 {
   private:
-    template<typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().subscribe_no_wait (),
-                    std::true_type ());
+    template <typename T>
+    static auto test (int) -> decltype (std::declval<T &> ().subscribe_no_wait (), std::true_type ());
 
-    template<typename> static std::false_type test (...);
+    template <typename> static std::false_type test (...);
 
   public:
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
-template<typename SocketT> class has_try_receive_subscription_event_t
+template <typename SocketT> class has_try_receive_subscription_event_t
 {
   private:
-    template<typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().try_receive_subscription_event (),
-                    std::true_type ());
+    template <typename T>
+    static auto test (int) -> decltype (std::declval<T &> ().try_receive_subscription_event (), std::true_type ());
 
-    template<typename> static std::false_type test (...);
+    template <typename> static std::false_type test (...);
 
   public:
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
-template<typename SocketT> class has_set_receive_handler_t
+template <typename SocketT> class has_set_receive_handler_t
 {
   private:
-    template<typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().set_receive_handler (
-                      std::function<void(zlink::received_t)> ()),
-                    std::true_type ());
+    template <typename T>
+    static auto
+    test (int) -> decltype (std::declval<T &> ().set_receive_handler (std::function<void (zlink::received_t)> ()),
+                            std::true_type ());
 
-    template<typename> static std::false_type test (...);
+    template <typename> static std::false_type test (...);
 
   public:
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
-static_assert (!has_try_send_t<zlink::pair_socket_t>::value,
-               "pair_socket_t must not expose try_send");
-static_assert (!has_try_subscribe_t<zlink::sub_socket_t>::value,
-               "sub_socket_t must not expose subscribe_no_wait");
+static_assert (!has_try_send_t<zlink::pair_socket_t>::value, "pair_socket_t must not expose try_send");
+static_assert (!has_try_subscribe_t<zlink::sub_socket_t>::value, "sub_socket_t must not expose subscribe_no_wait");
 static_assert (!has_try_receive_subscription_event_t<zlink::xpub_socket_t>::value,
                "xpub_socket_t must not expose try_receive_subscription_event");
 static_assert (!has_set_receive_handler_t<zlink::pair_socket_t>::value,
@@ -85,7 +77,7 @@ static_assert (!has_set_receive_handler_t<zlink::router_socket_t>::value,
 static_assert (!has_set_receive_handler_t<zlink::stream_socket_t>::value,
                "stream_socket_t must not expose raw set_receive_handler");
 
-template<typename Fn> void expect_runtime_error (Fn fn_)
+template <typename Fn> void expect_runtime_error (Fn fn_)
 {
     bool threw = false;
     try {
@@ -103,20 +95,14 @@ struct int_await_task_t
     {
         std::promise<int> result;
 
-        int_await_task_t get_return_object ()
-        {
-            return int_await_task_t {result.get_future ()};
-        }
+        int_await_task_t get_return_object () { return int_await_task_t{result.get_future ()}; }
 
         std::suspend_never initial_suspend () noexcept { return {}; }
         std::suspend_never final_suspend () noexcept { return {}; }
 
         void return_value (int value_) { result.set_value (value_); }
 
-        void unhandled_exception ()
-        {
-            result.set_exception (std::current_exception ());
-        }
+        void unhandled_exception () { result.set_exception (std::current_exception ()); }
     };
 
     std::future<int> result;
@@ -133,7 +119,7 @@ void test_pair_recv_nonblocking_returns_empty_without_data ()
     zlink::pair_socket_t socket (ctx);
     zlink::received_t received;
     const int rc = socket.recv (received, zlink::recv_flags_t::dontwait);
-    assert (rc == static_cast<int>(zlink::recv_result_t::no_data) || rc == -1);
+    assert (rc == static_cast<int> (zlink::recv_result_t::no_data) || rc == -1);
     if (rc == -1)
         assert (errno == EAGAIN || errno == EWOULDBLOCK);
 }
@@ -174,12 +160,10 @@ void test_router_send_throws_for_closed_socket ()
     router.close ();
 
     const std::string rid_text = "UNKNOWN";
-    zlink::routing_id_t routing_id = zlink::routing_id_t::from (
-      reinterpret_cast<const uint8_t *> (rid_text.data ()), rid_text.size ());
+    zlink::routing_id_t routing_id =
+      zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (rid_text.data ()), rid_text.size ());
     zlink::message_t outbound = zlink_cpp_contract::make_message ("no-route");
-    expect_runtime_error ([&] {
-        router.send (routing_id).message (outbound).submit ();
-    });
+    expect_runtime_error ([&] { router.send (routing_id).message (outbound).submit (); });
     assert (outbound.valid ());
 }
 
@@ -190,9 +174,7 @@ void test_send_throws_on_general_error ()
     socket.close ();
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("send-error");
-    expect_runtime_error ([&] {
-        socket.send ().message (outbound).submit ();
-    });
+    expect_runtime_error ([&] { socket.send ().message (outbound).submit (); });
     assert (outbound.valid ());
 }
 
@@ -202,11 +184,8 @@ void test_publish_throws_on_general_error ()
     zlink::pub_socket_t socket (ctx);
     socket.close ();
 
-    zlink::message_t outbound =
-      zlink_cpp_contract::make_message ("publish-error");
-    expect_runtime_error ([&] {
-        socket.publish ("topic:error").message (outbound).submit ();
-    });
+    zlink::message_t outbound = zlink_cpp_contract::make_message ("publish-error");
+    expect_runtime_error ([&] { socket.publish ("topic:error").message (outbound).submit (); });
     assert (outbound.valid ());
 }
 
@@ -215,11 +194,10 @@ void test_stream_receive_returns_busy_in_packet_callback_mode ()
     zlink::context_t ctx;
     zlink::stream_socket_t socket (ctx);
 
-    socket.set_packet_handler ([] (const zlink::routing_id_t &, zlink::message_t,
-                          zlink::message_t) {});
+    socket.set_packet_handler ([] (const zlink::routing_id_t &, zlink::message_t, zlink::message_t) {});
     zlink::received_t received;
     const int rc = socket.recv (received);
-    assert (rc == static_cast<int>(zlink::recv_result_t::busy) || rc == -1);
+    assert (rc == static_cast<int> (zlink::recv_result_t::busy) || rc == -1);
     if (rc == -1)
         assert (errno == EBUSY);
 }
@@ -230,8 +208,7 @@ void test_socket_monitor_receive_returns_empty_without_event ()
     zlink::pair_socket_t socket (ctx);
     zlink::socket_monitor_t monitor = socket.monitor_open ();
 
-    const std::optional<zlink::monitor_event_t> event =
-      monitor.recv (zlink::recv_flags_t::dontwait);
+    const std::optional<zlink::monitor_event_t> event = monitor.recv (zlink::recv_flags_t::dontwait);
     assert (!event);
     monitor.close ();
 }
@@ -240,11 +217,10 @@ void test_routing_id_accepts_maximum_size ()
 {
     const std::string bytes (255, 'r');
 
-    const zlink::routing_id_t routing_id = zlink::routing_id_t::from (
-      reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size ());
+    const zlink::routing_id_t routing_id =
+      zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size ());
     assert (routing_id.size () == bytes.size ());
-    assert (routing_id.to_bytes ()
-            == std::vector<uint8_t> (bytes.begin (), bytes.end ()));
+    assert (routing_id.to_bytes () == std::vector<uint8_t> (bytes.begin (), bytes.end ()));
 }
 
 void test_routing_id_rejects_oversize_input ()
@@ -253,9 +229,9 @@ void test_routing_id_rejects_oversize_input ()
 
     bool threw = false;
     try {
-        (void) zlink::routing_id_t::from (
-          reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size ());
-    } catch (const std::invalid_argument &) {
+        (void) zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size ());
+    }
+    catch (const std::invalid_argument &) {
         threw = true;
     }
     assert (threw);
@@ -266,7 +242,8 @@ void test_routing_id_rejects_null_pointer_for_non_empty_bytes ()
     bool threw = false;
     try {
         (void) zlink::routing_id_t::from (nullptr, 1);
-    } catch (const std::invalid_argument &) {
+    }
+    catch (const std::invalid_argument &) {
         threw = true;
     }
     assert (threw);
@@ -277,17 +254,14 @@ void test_routing_id_copy_assignment_preserves_short_value ()
     const std::string long_bytes (128, 'L');
     const std::string short_bytes ("rid");
 
-    zlink::routing_id_t routing_id = zlink::routing_id_t::from (
-      reinterpret_cast<const uint8_t *> (long_bytes.data ()),
-      long_bytes.size ());
-    const zlink::routing_id_t short_id = zlink::routing_id_t::from (
-      reinterpret_cast<const uint8_t *> (short_bytes.data ()),
-      short_bytes.size ());
+    zlink::routing_id_t routing_id =
+      zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (long_bytes.data ()), long_bytes.size ());
+    const zlink::routing_id_t short_id =
+      zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (short_bytes.data ()), short_bytes.size ());
 
     routing_id = short_id;
     assert (routing_id.size () == short_bytes.size ());
-    assert (routing_id.to_bytes ()
-            == std::vector<uint8_t> (short_bytes.begin (), short_bytes.end ()));
+    assert (routing_id.to_bytes () == std::vector<uint8_t> (short_bytes.begin (), short_bytes.end ()));
     assert (routing_id == short_id);
 }
 
@@ -296,17 +270,14 @@ void test_async_result_await_pumps_progress ()
     std::promise<int> promise;
     std::future<int> future = promise.get_future ();
     int progress_calls = 0;
-    zlink::async_result_t<int> result (
-      std::move (future),
-      [&promise, &progress_calls] () {
-          ++progress_calls;
-          if (progress_calls == 3)
-              promise.set_value (42);
-      });
+    zlink::async_result_t<int> result (std::move (future), [&promise, &progress_calls] () {
+        ++progress_calls;
+        if (progress_calls == 3)
+            promise.set_value (42);
+    });
 
     int_await_task_t task = await_async_result (std::move (result));
-    assert (task.result.wait_for (std::chrono::seconds (1))
-            == std::future_status::ready);
+    assert (task.result.wait_for (std::chrono::seconds (1)) == std::future_status::ready);
     assert (task.result.get () == 42);
     assert (progress_calls >= 3);
 }

@@ -56,8 +56,7 @@ namespace service
 namespace
 {
 
-template <typename SubmitPart>
-void submit_single_reply_message (message_t &message_, SubmitPart submit_part_)
+template <typename SubmitPart> void submit_single_reply_message (message_t &message_, SubmitPart submit_part_)
 {
     if (!message_.valid ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
@@ -69,8 +68,7 @@ void submit_single_reply_message (message_t &message_, SubmitPart submit_part_)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
     }
 
-    const submit_result_t rc =
-      static_cast<submit_result_t> (submit_part_ (&native));
+    const submit_result_t rc = static_cast<submit_result_t> (submit_part_ (&native));
     if (rc != submit_result_t::ok) {
         (void) zlink_msg_close (&native);
         throw submit_error_t (rc, zlink_errno ());
@@ -115,8 +113,7 @@ void spot_t::request_timeout (std::chrono::milliseconds timeout_)
 {
     const int value = zlink::detail::native_option_ms (timeout_);
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_set_spot_option (_impl->handle, ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS,
-                             &value, sizeof (value))));
+      zlink_set_spot_option (_impl->handle, ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS, &value, sizeof (value))));
     _impl->default_request_timeout = timeout_;
 }
 
@@ -124,9 +121,8 @@ std::chrono::milliseconds spot_t::request_timeout () const
 {
     int value = 0;
     size_t size = sizeof (value);
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (zlink_get_spot_option (
-        _impl->handle, ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS, &value, &size)));
+    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_get_spot_option (_impl->handle, ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS, &value, &size)));
     return std::chrono::milliseconds (value);
 }
 
@@ -167,24 +163,22 @@ spot_t::spot_t (spot_node_t &node_) : _impl (std::make_unique<impl> ())
         _impl->last_error = errno != 0 ? errno : EFAULT;
 }
 
-spot_t::spot_t (native_handle_ctor_tag_t) noexcept
-    : _impl (std::make_unique<impl> ())
+spot_t::spot_t (native_handle_ctor_tag_t) noexcept : _impl (std::make_unique<impl> ())
 {
 }
 
 void spot_t::set_routing_id (const routing_id_t &routing_id_)
 {
     detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (zlink_set_routing_id (
-        _impl->handle, routing_id_.data (), routing_id_.size ())));
+      static_cast<config_result_t> (zlink_set_routing_id (_impl->handle, routing_id_.data (), routing_id_.size ())));
 }
 
 void spot_t::get_routing_id (routing_id_t &out_) const
 {
     zlink_routing_id_t native;
     std::memset (&native, 0, sizeof (native));
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_get_routing_id (_impl->handle, &native)));
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_get_routing_id (_impl->handle, &native)));
     out_ = zlink::detail::native_routing_id (native);
 }
 
@@ -202,18 +196,15 @@ void spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
                             send_flags_t flags_)
 {
     zlink::detail::throw_if_reply_flags_unsupported (flags_);
-    submit_single_reply_message (
-      message_, [&] (zlink_msg_t *part_out_) {
-          return zlink_spot_reply_spot_part (
-            _impl->handle, zlink::detail::routing_id_native (dest_node_rid_),
-            zlink::detail::routing_id_native (dest_spot_rid_), request_seq_,
-            part_out_, ZLINK_PART_FINAL);
-      });
+    submit_single_reply_message (message_, [&] (zlink_msg_t *part_out_) {
+        return zlink_spot_reply_spot_part (_impl->handle, zlink::detail::routing_id_native (dest_node_rid_),
+                                           zlink::detail::routing_id_native (dest_spot_rid_), request_seq_, part_out_,
+                                           ZLINK_PART_FINAL);
+    });
 }
 
-reply_operation_t spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
-                                         const routing_id_t &dest_spot_rid_,
-                                         uint64_t request_seq_)
+reply_operation_t
+spot_t::reply_to_spot (const routing_id_t &dest_node_rid_, const routing_id_t &dest_spot_rid_, uint64_t request_seq_)
 {
     auto state_ptr = detail::acquire_state ();
     state_ptr->spot = this;
@@ -230,16 +221,13 @@ void spot_t::reply_to_router (const routing_id_t &peer_rid_,
                               send_flags_t flags_)
 {
     zlink::detail::throw_if_reply_flags_unsupported (flags_);
-    submit_single_reply_message (
-      message_, [&] (zlink_msg_t *part_out_) {
-          return zlink_spot_reply_router_part (
-            _impl->handle, zlink::detail::routing_id_native (peer_rid_),
-            request_seq_, part_out_, ZLINK_PART_FINAL);
-      });
+    submit_single_reply_message (message_, [&] (zlink_msg_t *part_out_) {
+        return zlink_spot_reply_router_part (_impl->handle, zlink::detail::routing_id_native (peer_rid_), request_seq_,
+                                             part_out_, ZLINK_PART_FINAL);
+    });
 }
 
-reply_operation_t spot_t::reply_to_router (const routing_id_t &peer_rid_,
-                                           uint64_t request_seq_)
+reply_operation_t spot_t::reply_to_router (const routing_id_t &peer_rid_, uint64_t request_seq_)
 {
     auto state_ptr = detail::acquire_state ();
     state_ptr->spot = this;
@@ -268,13 +256,10 @@ std::optional<received_t> spot_t::recv_routed_optional (recv_flags_t flags_)
         const zlink_routing_id_t *part_source_spot_rid = nullptr;
         uint64_t part_request_seq = 0;
         zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        const recv_result_t rc =
-          static_cast<recv_result_t> (zlink_spot_recv_part (
-            _impl->handle, &part_source_node_rid, &part_source_spot_rid,
-            &part_request_seq, &native_part, &has_more,
-            static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
-        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait
-            && parts_native.size () == 1u) {
+        const recv_result_t rc = static_cast<recv_result_t> (
+          zlink_spot_recv_part (_impl->handle, &part_source_node_rid, &part_source_spot_rid, &part_request_seq,
+                                &native_part, &has_more, static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
+        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait && parts_native.size () == 1u) {
             (void) zlink_msg_close (&native_part);
             parts_native.pop_back ();
             return std::nullopt;
@@ -299,27 +284,19 @@ std::optional<received_t> spot_t::recv_routed_optional (recv_flags_t flags_)
     if (detail::assign_parts_from_native (parts_native, parts) != 0)
         throw last_error ();
 
-    const bool has_node_rid =
-      source_node_rid && source_node_rid->size > 0;
-    const bool has_spot_rid =
-      source_spot_rid && source_spot_rid->size > 0;
+    const bool has_node_rid = source_node_rid && source_node_rid->size > 0;
+    const bool has_spot_rid = source_spot_rid && source_spot_rid->size > 0;
 
     received_t received = zlink::detail::received_access_t::make (
-      has_node_rid ? std::optional<routing_id_t> (
-                       zlink::detail::native_routing_id (*source_node_rid))
-                   : std::nullopt,
-      has_spot_rid ? std::optional<routing_id_t> (
-                       zlink::detail::native_routing_id (*source_spot_rid))
-                   : std::nullopt,
-      request_seq != 0u ? std::optional<uint64_t> (request_seq) : std::nullopt,
-      std::move (parts));
+      has_node_rid ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*source_node_rid)) : std::nullopt,
+      has_spot_rid ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*source_spot_rid)) : std::nullopt,
+      request_seq != 0u ? std::optional<uint64_t> (request_seq) : std::nullopt, std::move (parts));
 
     // send()/reply() reconstruct the spot-spot native call lazily from the
     // stored routing ids and request sequence, so no per-receive closures are
     // built here. The spot send/reply path requires both routing ids.
     if (has_node_rid && has_spot_rid)
-        zlink::detail::received_access_t::set_spot_spot_send_context (
-          received, _impl->handle);
+        zlink::detail::received_access_t::set_spot_spot_send_context (received, _impl->handle);
 
     return std::optional<received_t> (std::move (received));
 }
@@ -346,47 +323,36 @@ int spot_t::recv_routed (received_t &out_, recv_flags_t flags_)
     }
 }
 
-void spot_t::set_dispatch_handler (
-  std::function<void (spot_t &, const spot_dispatch_info_t &)> handler_)
+void spot_t::set_dispatch_handler (std::function<void (spot_t &, const spot_dispatch_info_t &)> handler_)
 {
     _impl->dispatch_event_handler = std::move (handler_);
-    const handler_result_t rc =
-      static_cast<handler_result_t> (zlink_spot_dispatch_event_handler (
-        _impl->handle,
-        [] (void *spot_, const zlink_spot_dispatch_info_t *info_,
-            void *userdata_) {
-            (void) spot_;
-            spot_t *self = static_cast<spot_t *> (userdata_);
-            if (!self || !self->_impl->dispatch_event_handler || !info_)
-                return;
-            const spot_dispatch_info_t info =
-              zlink::detail::actor_model_access_t::from_native (*info_);
-            self->_impl->dispatch_event_handler (*self, info);
-        },
-        this));
+    const handler_result_t rc = static_cast<handler_result_t> (zlink_spot_dispatch_event_handler (
+      _impl->handle,
+      [] (void *spot_, const zlink_spot_dispatch_info_t *info_, void *userdata_) {
+          (void) spot_;
+          spot_t *self = static_cast<spot_t *> (userdata_);
+          if (!self || !self->_impl->dispatch_event_handler || !info_)
+              return;
+          const spot_dispatch_info_t info = zlink::detail::actor_model_access_t::from_native (*info_);
+          self->_impl->dispatch_event_handler (*self, info);
+      },
+      this));
     if (rc != handler_result_t::ok)
         throw handler_error_t (rc, zlink_errno ());
 }
 
-void spot_t::set_dispatch_handler (
-  std::function<void (const spot_dispatch_info_t &)> handler_)
+void spot_t::set_dispatch_handler (std::function<void (const spot_dispatch_info_t &)> handler_)
 {
     set_dispatch_handler (
-      [handler = std::move (handler_)] (
-        spot_t &, const spot_dispatch_info_t &info_) mutable {
-          handler (info_);
-      });
+      [handler = std::move (handler_)] (spot_t &, const spot_dispatch_info_t &info_) mutable { handler (info_); });
 }
 
-std::optional<spot_actor_lifecycle_event_t>
-spot_t::recv_actor_lifecycle (recv_flags_t flags_)
+std::optional<spot_actor_lifecycle_event_t> spot_t::recv_actor_lifecycle (recv_flags_t flags_)
 {
     zlink_spot_actor_lifecycle_event_t native_event;
     std::memset (&native_event, 0, sizeof (native_event));
-    const recv_result_t rc =
-      static_cast<recv_result_t> (zlink_spot_recv_actor_lifecycle (
-        _impl->handle, &native_event,
-        static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
+    const recv_result_t rc = static_cast<recv_result_t> (zlink_spot_recv_actor_lifecycle (
+      _impl->handle, &native_event, static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
     if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
         return std::nullopt;
     if (rc != recv_result_t::ok)
@@ -395,38 +361,31 @@ spot_t::recv_actor_lifecycle (recv_flags_t flags_)
       zlink::detail::actor_model_access_t::from_native (native_event));
 }
 
-std::optional<actor_join_request_t>
-spot_t::recv_actor_join (recv_flags_t flags_)
+std::optional<actor_join_request_t> spot_t::recv_actor_join (recv_flags_t flags_)
 {
     zlink_actor_join_info_t native_info;
     std::memset (&native_info, 0, sizeof (native_info));
     zlink_msg_t *parts = nullptr;
     size_t part_count = 0;
-    const recv_result_t rc =
-      static_cast<recv_result_t> (zlink_spot_actor_join_recv (
-        _impl->handle, &native_info, &parts, &part_count,
-        static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
+    const recv_result_t rc = static_cast<recv_result_t> (zlink_spot_actor_join_recv (
+      _impl->handle, &native_info, &parts, &part_count, static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
     if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
         return std::nullopt;
     if (rc != recv_result_t::ok)
         throw recv_error_t (rc, zlink_errno ());
     message_t message;
     if (part_count > 0) {
-        if (zlink_msg_move (zlink::detail::native_handle (message), &parts[0])
-            != 0) {
+        if (zlink_msg_move (zlink::detail::native_handle (message), &parts[0]) != 0) {
             zlink_multipart_close (parts, part_count);
             throw last_error ();
         }
     }
     zlink_multipart_close (parts, part_count);
-    return std::optional<actor_join_request_t> (actor_join_request_t (
-      zlink::detail::actor_model_access_t::from_native (native_info),
-      std::move (message)));
+    return std::optional<actor_join_request_t> (
+      actor_join_request_t (zlink::detail::actor_model_access_t::from_native (native_info), std::move (message)));
 }
 
-actor_join_reply_operation_t
-spot_t::reply_actor_join (const actor_join_request_t &request_,
-                          int32_t join_result_code_)
+actor_join_reply_operation_t spot_t::reply_actor_join (const actor_join_request_t &request_, int32_t join_result_code_)
 {
     detail::actor_join_reply_state_t state;
     state.spot = _impl->handle;
@@ -438,19 +397,18 @@ spot_t::reply_actor_join (const actor_join_request_t &request_,
 std::vector<actor_ref_t> spot_t::actors () const
 {
     size_t count = 0;
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_actors (_impl->handle, nullptr, &count)));
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_spot_actors (_impl->handle, nullptr, &count)));
     std::vector<zlink_actor_ref_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-          zlink_spot_actors (_impl->handle, native.data (), &count)));
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (zlink_spot_actors (_impl->handle, native.data (), &count)));
         native.resize (count);
     }
     std::vector<actor_ref_t> entries;
     entries.reserve (native.size ());
     for (size_t i = 0; i < native.size (); ++i)
-        entries.push_back (
-          zlink::detail::actor_model_access_t::from_native (native[i]));
+        entries.push_back (zlink::detail::actor_model_access_t::from_native (native[i]));
     return entries;
 }
 
@@ -460,8 +418,7 @@ void spot_t::close ()
         return;
 
     void *tmp = _impl->handle;
-    detail::throw_if_failed<close_error_t> (
-      static_cast<close_result_t> (zlink_spot_destroy (&tmp)));
+    detail::throw_if_failed<close_error_t> (static_cast<close_result_t> (zlink_spot_destroy (&tmp)));
     _impl->handle = nullptr;
 }
 

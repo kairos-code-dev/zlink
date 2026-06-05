@@ -12,16 +12,14 @@ namespace detail
 {
 
 template <typename SubmitPart>
-async_result_t<std::vector<message_t> >
-submit_request_part_async (message_t &part_,
-                           std::function<void ()> progress_,
-                           SubmitPart submit_part_)
+async_result_t<std::vector<message_t>>
+submit_request_part_async (message_t &part_, std::function<void ()> progress_, SubmitPart submit_part_)
 {
     if (!part_.valid ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     std::unique_ptr<request_state_t> state (make_future_request_state ());
-    std::future<std::vector<message_t> > future = state->promise->get_future ();
+    std::future<std::vector<message_t>> future = state->promise->get_future ();
 
     zlink_msg_t native;
     zlink::detail::move_to_native (part_, &native);
@@ -31,8 +29,7 @@ submit_request_part_async (message_t &part_,
     }
 
     const submit_result_t rc = static_cast<submit_result_t> (
-      submit_part_ (&native, ZLINK_PART_FINAL, &request_callback_trampoline,
-                    state.get ()));
+      submit_part_ (&native, ZLINK_PART_FINAL, &request_callback_trampoline, state.get ()));
     if (rc != submit_result_t::ok) {
         const int err = zlink_errno ();
         (void) zlink_msg_close (&native);
@@ -40,8 +37,7 @@ submit_request_part_async (message_t &part_,
     }
 
     state.release ();
-    return async_result_t<std::vector<message_t> > (std::move (future),
-                                                    std::move (progress_));
+    return async_result_t<std::vector<message_t>> (std::move (future), std::move (progress_));
 }
 
 template <typename SubmitPart>
@@ -53,8 +49,7 @@ bool submit_request_part_callback (message_t &part_,
     if (!part_.valid ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
-    std::unique_ptr<request_state_t> state (
-      make_callback_request_state (std::move (callback_)));
+    std::unique_ptr<request_state_t> state (make_callback_request_state (std::move (callback_)));
 
     zlink_msg_t native;
     zlink::detail::move_to_native (part_, &native);
@@ -64,13 +59,11 @@ bool submit_request_part_callback (message_t &part_,
     }
 
     const submit_result_t rc = static_cast<submit_result_t> (
-      submit_part_ (&native, ZLINK_PART_FINAL, &request_callback_trampoline,
-                    state.get ()));
+      submit_part_ (&native, ZLINK_PART_FINAL, &request_callback_trampoline, state.get ()));
     if (rc != submit_result_t::ok) {
         const int err = zlink_errno ();
         (void) zlink_msg_close (&native);
-        if (flags_ == send_flags_t::dontwait
-            && rc == submit_result_t::backpressured)
+        if (flags_ == send_flags_t::dontwait && rc == submit_result_t::backpressured)
             return false;
         throw submit_error_t (rc, err);
     }
@@ -80,21 +73,15 @@ bool submit_request_part_callback (message_t &part_,
 }
 
 template <typename SubmitPart>
-async_result_t<std::vector<message_t> >
-submit_request_parts_async (std::vector<message_t> &parts_,
-                            std::function<void ()> progress_,
-                            SubmitPart submit_part_)
+async_result_t<std::vector<message_t>>
+submit_request_parts_async (std::vector<message_t> &parts_, std::function<void ()> progress_, SubmitPart submit_part_)
 {
     std::unique_ptr<request_state_t> state (make_future_request_state ());
-    std::future<std::vector<message_t> > future = state->promise->get_future ();
+    std::future<std::vector<message_t>> future = state->promise->get_future ();
 
     const int raw_rc = submit_message_parts_close_on_failure (
-      parts_,
-      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-           bool is_final_) {
-          return submit_part_ (part_out_, part_flag_,
-                               is_final_ ? &request_callback_trampoline
-                                         : nullptr,
+      parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
+          return submit_part_ (part_out_, part_flag_, is_final_ ? &request_callback_trampoline : nullptr,
                                is_final_ ? state.get () : nullptr);
       });
     if (raw_rc == -1)
@@ -104,8 +91,7 @@ submit_request_parts_async (std::vector<message_t> &parts_,
         throw submit_error_t (rc, zlink_errno ());
 
     state.release ();
-    return async_result_t<std::vector<message_t> > (std::move (future),
-                                                    std::move (progress_));
+    return async_result_t<std::vector<message_t>> (std::move (future), std::move (progress_));
 }
 
 template <typename SubmitPart>
@@ -114,24 +100,18 @@ bool submit_request_parts_callback (std::vector<message_t> &parts_,
                                     send_flags_t flags_,
                                     SubmitPart submit_part_)
 {
-    std::unique_ptr<request_state_t> state (
-      make_callback_request_state (std::move (callback_)));
+    std::unique_ptr<request_state_t> state (make_callback_request_state (std::move (callback_)));
 
     const int raw_rc = submit_message_parts_close_on_failure (
-      parts_,
-      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-           bool is_final_) {
-          return submit_part_ (part_out_, part_flag_,
-                               is_final_ ? &request_callback_trampoline
-                                         : nullptr,
+      parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
+          return submit_part_ (part_out_, part_flag_, is_final_ ? &request_callback_trampoline : nullptr,
                                is_final_ ? state.get () : nullptr);
       });
     if (raw_rc == -1)
         throw last_error ();
     const submit_result_t rc = static_cast<submit_result_t> (raw_rc);
     if (rc != submit_result_t::ok) {
-        if (flags_ == send_flags_t::dontwait
-            && rc == submit_result_t::backpressured)
+        if (flags_ == send_flags_t::dontwait && rc == submit_result_t::backpressured)
             return false;
         throw submit_error_t (rc, zlink_errno ());
     }

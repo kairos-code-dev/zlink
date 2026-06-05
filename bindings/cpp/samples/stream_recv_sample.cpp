@@ -4,7 +4,7 @@
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::stream_socket_t server (ctx);
     zlink::socket_monitor_t server_monitor = server.monitor_open ();
@@ -35,10 +35,9 @@ int main ()
     const int received = client.recv_exact (response, request_size);
     assert (received == static_cast<int> (std::strlen (detail::k_stream_payload)));
     assert (std::memcmp (response, detail::k_stream_payload, received) == 0);
-    std::printf ("[stream/recv] send: \"%s\" → recv: \"%.*s\"\n",
-                 request, received, response);
+    std::printf ("[stream/recv] send: \"%s\" → recv: \"%.*s\"\n", request, received, response);
 
     client.close ();
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

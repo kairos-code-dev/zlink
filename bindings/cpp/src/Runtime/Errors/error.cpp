@@ -6,6 +6,9 @@
 namespace zlink::detail
 {
 
-int current_errno () noexcept { return zlink_errno (); }
+int current_errno () noexcept
+{
+    return zlink_errno ();
+}
 
 } // namespace zlink::detail

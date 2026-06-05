@@ -47,7 +47,7 @@ static void wait_peer (zlink::service::spot_node_t &node)
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     // 토픽을 발행하는 노드와 구독하는 노드.
     zlink::service::spot_node_t publisher_node (ctx);
@@ -84,9 +84,9 @@ int main ()
     }
     assert (delivered);
 
-    std::printf ("[spot/pubsub] topic \"%s\" -> recv: \"%s\"\n",
-                 received.topic ().c_str (), received.parts ()[0].to_string ().c_str ());
+    std::printf ("[spot/pubsub] topic \"%s\" -> recv: \"%s\"\n", received.topic ().c_str (),
+                 received.parts ()[0].to_string ().c_str ());
     received.close ();
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

@@ -20,9 +20,14 @@ message_t::message_t (size_t size_) : _storage (), _valid (false)
         _valid = true;
 }
 
-message_t::message_t (no_init_t) noexcept : _storage (), _valid (false) {}
+message_t::message_t (no_init_t) noexcept : _storage (), _valid (false)
+{
+}
 
-message_t::~message_t () { close_noexcept (); }
+message_t::~message_t ()
+{
+    close_noexcept ();
+}
 
 message_t::message_t (const message_t &other_) : _storage (), _valid (false)
 {
@@ -30,9 +35,7 @@ message_t::message_t (const message_t &other_) : _storage (), _valid (false)
         return;
     if (zlink_msg_init (detail::native_handle (*this)) != 0)
         return;
-    if (zlink_msg_copy (
-          detail::native_handle (*this),
-          const_cast<zlink_msg_t *> (detail::native_handle (other_)))
+    if (zlink_msg_copy (detail::native_handle (*this), const_cast<zlink_msg_t *> (detail::native_handle (other_)))
         == 0) {
         _valid = true;
         return;
@@ -49,9 +52,7 @@ message_t &message_t::operator= (const message_t &other_)
         return *this;
     if (zlink_msg_init (detail::native_handle (*this)) != 0)
         return *this;
-    if (zlink_msg_copy (
-          detail::native_handle (*this),
-          const_cast<zlink_msg_t *> (detail::native_handle (other_)))
+    if (zlink_msg_copy (detail::native_handle (*this), const_cast<zlink_msg_t *> (detail::native_handle (other_)))
         == 0) {
         _valid = true;
         return *this;
@@ -60,8 +61,7 @@ message_t &message_t::operator= (const message_t &other_)
     return *this;
 }
 
-message_t::message_t (message_t &&other_) noexcept
-    : _storage (), _valid (false)
+message_t::message_t (message_t &&other_) noexcept : _storage (), _valid (false)
 {
     if (!other_._valid)
         return;
@@ -83,9 +83,15 @@ message_t &message_t::operator= (message_t &&other_) noexcept
     return *this;
 }
 
-bool message_t::valid () const noexcept { return _valid; }
+bool message_t::valid () const noexcept
+{
+    return _valid;
+}
 
-message_t message_t::allocate (size_t size_) { return message_t (size_); }
+message_t message_t::allocate (size_t size_)
+{
+    return message_t (size_);
+}
 
 message_t message_t::from (std::span<const std::byte> bytes_)
 {
@@ -109,8 +115,7 @@ message_t message_t::from (std::span<const uint8_t> bytes_)
 
 message_t message_t::from (const std::string &text_)
 {
-    return from (std::as_bytes (std::span<const char> (text_.data (),
-                                                       text_.size ())));
+    return from (std::as_bytes (std::span<const char> (text_.data (), text_.size ())));
 }
 
 void message_t::init ()
@@ -132,17 +137,14 @@ void message_t::init (size_t size_)
 
 std::byte *message_t::data () noexcept
 {
-    return _valid ? static_cast<std::byte *> (
-                      zlink_msg_data (detail::native_handle (*this)))
-                  : nullptr;
+    return _valid ? static_cast<std::byte *> (zlink_msg_data (detail::native_handle (*this))) : nullptr;
 }
 
 const std::byte *message_t::data () const noexcept
 {
-    return _valid
-             ? static_cast<const std::byte *> (zlink_msg_data (
-                 const_cast<zlink_msg_t *> (detail::native_handle (*this))))
-             : nullptr;
+    return _valid ? static_cast<const std::byte *> (
+                      zlink_msg_data (const_cast<zlink_msg_t *> (detail::native_handle (*this))))
+                  : nullptr;
 }
 
 std::span<std::byte> message_t::bytes () noexcept
@@ -160,21 +162,21 @@ size_t message_t::size () const noexcept
     return _valid ? zlink_msg_size (detail::native_handle (*this)) : 0;
 }
 
-bool message_t::is_empty () const noexcept { return size () == 0; }
+bool message_t::is_empty () const noexcept
+{
+    return size () == 0;
+}
 
 int message_t::ref_count () const noexcept
 {
-    return _valid ? zlink_msg_refcnt (detail::native_handle (*this), nullptr)
-                  : -1;
+    return _valid ? zlink_msg_refcnt (detail::native_handle (*this), nullptr) : -1;
 }
 
-std::optional<std::string>
-message_t::property (const std::string &property_) const
+std::optional<std::string> message_t::property (const std::string &property_) const
 {
     if (!_valid || property_.empty ())
         return std::nullopt;
-    const char *value =
-      zlink_msg_gets (detail::native_handle (*this), property_.c_str ());
+    const char *value = zlink_msg_gets (detail::native_handle (*this), property_.c_str ());
     if (!value)
         return std::nullopt;
     return std::string (value);
@@ -183,8 +185,7 @@ message_t::property (const std::string &property_) const
 std::vector<uint8_t> message_t::to_bytes () const
 {
     const uint8_t *ptr = reinterpret_cast<const uint8_t *> (data ());
-    return ptr ? std::vector<uint8_t> (ptr, ptr + size ())
-               : std::vector<uint8_t> ();
+    return ptr ? std::vector<uint8_t> (ptr, ptr + size ()) : std::vector<uint8_t> ();
 }
 
 size_t message_t::copy_to (std::span<std::byte> destination_) const

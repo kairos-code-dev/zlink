@@ -8,8 +8,8 @@ namespace zlink::stream_connector::detail
 
 class stream_transport_factory_t
 {
-public:
-  static bool is_supported (transport_t transport) noexcept;
+  public:
+    static bool is_supported (transport_t transport) noexcept;
 };
 
 } // namespace zlink::stream_connector::detail

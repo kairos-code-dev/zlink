@@ -11,13 +11,9 @@ namespace zlink::samples::bingo
 
 struct bingo_card_t
 {
-  std::array<int, 25> numbers {};
+    std::array<int, 25> numbers{};
 
-  bool contains (int number) const
-  {
-    return std::find (numbers.begin (), numbers.end (), number) !=
-           numbers.end ();
-  }
+    bool contains (int number) const { return std::find (numbers.begin (), numbers.end (), number) != numbers.end (); }
 };
 
 } // namespace zlink::samples::bingo

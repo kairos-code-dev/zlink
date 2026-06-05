@@ -14,30 +14,29 @@ namespace detail
 inline send_result_t to_send_result (int result_) noexcept
 {
     switch (result_) {
-    case ZLINK_SUBMIT_OK:
-        return send_result_t::sent;
-    case ZLINK_SUBMIT_BACKPRESSURED:
-        return send_result_t::backpressured;
-    case ZLINK_SUBMIT_NOT_CONNECTED:
-        return send_result_t::not_ready;
-    default:
-        return send_result_t::sent;
+        case ZLINK_SUBMIT_OK:
+            return send_result_t::sent;
+        case ZLINK_SUBMIT_BACKPRESSURED:
+            return send_result_t::backpressured;
+        case ZLINK_SUBMIT_NOT_CONNECTED:
+            return send_result_t::not_ready;
+        default:
+            return send_result_t::sent;
     }
 }
 
-inline bool classify_nonblocking_send_errno (int err_,
-                                             send_result_t &result_) noexcept
+inline bool classify_nonblocking_send_errno (int err_, send_result_t &result_) noexcept
 {
     switch (err_) {
-    case EAGAIN:
-        result_ = send_result_t::backpressured;
-        return true;
-    case ENOTCONN:
-    case EHOSTUNREACH:
-        result_ = send_result_t::not_ready;
-        return true;
-    default:
-        return false;
+        case EAGAIN:
+            result_ = send_result_t::backpressured;
+            return true;
+        case ENOTCONN:
+        case EHOSTUNREACH:
+            result_ = send_result_t::not_ready;
+            return true;
+        default:
+            return false;
     }
 }
 

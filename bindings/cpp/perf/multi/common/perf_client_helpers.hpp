@@ -4,8 +4,10 @@
 #include <cstring>
 #include <string>
 
-namespace perf {
-namespace multi {
+namespace perf
+{
+namespace multi
+{
 
 inline std::string parse_endpoint_arg (int argc, char **argv)
 {

@@ -46,7 +46,7 @@ static void wait_connected (zlink::socket_monitor_t &monitor)
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::service::spot_node_t room_node (ctx);
     zlink::service::spot_t room = room_node.create_spot ();
@@ -77,15 +77,11 @@ int main ()
     // 게임룸이 API 채널로 outgame 요청을 보낸다.
     zlink::message_t request = zlink::message_t::from ("get-profile");
     std::vector<zlink::message_t> reply =
-      room.request_channel (channel)
-        .message (request)
-        .timeout (std::chrono::seconds (5))
-        .submit_async ()
-        .get ();
+      room.request_channel (channel).message (request).timeout (std::chrono::seconds (5)).submit_async ().get ();
     server.join ();
 
     std::printf ("[spot/channel] request \"get-profile\" -> reply \"%s\"\n",
                  reply.empty () ? "" : reply[0].to_string ().c_str ());
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

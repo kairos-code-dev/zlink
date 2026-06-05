@@ -28,11 +28,11 @@ class binding_error_t : public std::runtime_error
     const char *what () const noexcept override { return _message.c_str (); }
 
   protected:
-    binding_error_t (int code_, int internal_errno_)
-        : std::runtime_error (build_message (code_, internal_errno_)),
-          _code (code_),
-          _internal_errno (internal_errno_),
-          _message (build_message (code_, internal_errno_))
+    binding_error_t (int code_, int internal_errno_) :
+        std::runtime_error (build_message (code_, internal_errno_)),
+        _code (code_),
+        _internal_errno (internal_errno_),
+        _message (build_message (code_, internal_errno_))
     {
     }
 
@@ -58,29 +58,19 @@ class binding_error_t : public std::runtime_error
 class error_t : public binding_error_t
 {
   public:
-    explicit error_t (int code_)
-        : error_t (code_, code_)
-    {
-    }
+    explicit error_t (int code_) : error_t (code_, code_) {}
 
-    error_t (int code_, int internal_errno_)
-        : binding_error_t (code_, internal_errno_)
-    {
-    }
+    error_t (int code_, int internal_errno_) : binding_error_t (code_, internal_errno_) {}
 };
 
 /// @brief Thrown when submitting a send or publish fails.
 class submit_error_t : public binding_error_t
 {
   public:
-    explicit submit_error_t (submit_result_t result_)
-        : submit_error_t (result_, detail::current_errno ())
-    {
-    }
+    explicit submit_error_t (submit_result_t result_) : submit_error_t (result_, detail::current_errno ()) {}
 
-    submit_error_t (submit_result_t result_, int internal_errno_)
-        : binding_error_t (static_cast<int> (result_), internal_errno_),
-          _result (result_)
+    submit_error_t (submit_result_t result_, int internal_errno_) :
+        binding_error_t (static_cast<int> (result_), internal_errno_), _result (result_)
     {
     }
 
@@ -94,14 +84,10 @@ class submit_error_t : public binding_error_t
 class request_error_t : public binding_error_t
 {
   public:
-    explicit request_error_t (request_result_t result_)
-        : request_error_t (result_, detail::current_errno ())
-    {
-    }
+    explicit request_error_t (request_result_t result_) : request_error_t (result_, detail::current_errno ()) {}
 
-    request_error_t (request_result_t result_, int internal_errno_)
-        : binding_error_t (static_cast<int> (result_), internal_errno_),
-          _result (result_)
+    request_error_t (request_result_t result_, int internal_errno_) :
+        binding_error_t (static_cast<int> (result_), internal_errno_), _result (result_)
     {
     }
 
@@ -115,14 +101,10 @@ class request_error_t : public binding_error_t
 class recv_error_t : public binding_error_t
 {
   public:
-    explicit recv_error_t (recv_result_t result_)
-        : recv_error_t (result_, detail::current_errno ())
-    {
-    }
+    explicit recv_error_t (recv_result_t result_) : recv_error_t (result_, detail::current_errno ()) {}
 
-    recv_error_t (recv_result_t result_, int internal_errno_)
-        : binding_error_t (static_cast<int> (result_), internal_errno_),
-          _result (result_)
+    recv_error_t (recv_result_t result_, int internal_errno_) :
+        binding_error_t (static_cast<int> (result_), internal_errno_), _result (result_)
     {
     }
 
@@ -136,14 +118,10 @@ class recv_error_t : public binding_error_t
 class handler_error_t : public binding_error_t
 {
   public:
-    explicit handler_error_t (handler_result_t result_)
-        : handler_error_t (result_, detail::current_errno ())
-    {
-    }
+    explicit handler_error_t (handler_result_t result_) : handler_error_t (result_, detail::current_errno ()) {}
 
-    handler_error_t (handler_result_t result_, int internal_errno_)
-        : binding_error_t (static_cast<int> (result_), internal_errno_),
-          _result (result_)
+    handler_error_t (handler_result_t result_, int internal_errno_) :
+        binding_error_t (static_cast<int> (result_), internal_errno_), _result (result_)
     {
     }
 
@@ -157,14 +135,10 @@ class handler_error_t : public binding_error_t
 class close_error_t : public binding_error_t
 {
   public:
-    explicit close_error_t (close_result_t result_)
-        : close_error_t (result_, detail::current_errno ())
-    {
-    }
+    explicit close_error_t (close_result_t result_) : close_error_t (result_, detail::current_errno ()) {}
 
-    close_error_t (close_result_t result_, int internal_errno_)
-        : binding_error_t (static_cast<int> (result_), internal_errno_),
-          _result (result_)
+    close_error_t (close_result_t result_, int internal_errno_) :
+        binding_error_t (static_cast<int> (result_), internal_errno_), _result (result_)
     {
     }
 
@@ -178,14 +152,10 @@ class close_error_t : public binding_error_t
 class bind_error_t : public binding_error_t
 {
   public:
-    explicit bind_error_t (bind_result_t result_)
-        : bind_error_t (result_, detail::current_errno ())
-    {
-    }
+    explicit bind_error_t (bind_result_t result_) : bind_error_t (result_, detail::current_errno ()) {}
 
-    bind_error_t (bind_result_t result_, int internal_errno_)
-        : binding_error_t (static_cast<int> (result_), internal_errno_),
-          _result (result_)
+    bind_error_t (bind_result_t result_, int internal_errno_) :
+        binding_error_t (static_cast<int> (result_), internal_errno_), _result (result_)
     {
     }
 
@@ -199,14 +169,10 @@ class bind_error_t : public binding_error_t
 class connect_error_t : public binding_error_t
 {
   public:
-    explicit connect_error_t (connect_result_t result_)
-        : connect_error_t (result_, detail::current_errno ())
-    {
-    }
+    explicit connect_error_t (connect_result_t result_) : connect_error_t (result_, detail::current_errno ()) {}
 
-    connect_error_t (connect_result_t result_, int internal_errno_)
-        : binding_error_t (static_cast<int> (result_), internal_errno_),
-          _result (result_)
+    connect_error_t (connect_result_t result_, int internal_errno_) :
+        binding_error_t (static_cast<int> (result_), internal_errno_), _result (result_)
     {
     }
 
@@ -220,14 +186,10 @@ class connect_error_t : public binding_error_t
 class config_error_t : public binding_error_t
 {
   public:
-    explicit config_error_t (config_result_t result_)
-        : config_error_t (result_, detail::current_errno ())
-    {
-    }
+    explicit config_error_t (config_result_t result_) : config_error_t (result_, detail::current_errno ()) {}
 
-    config_error_t (config_result_t result_, int internal_errno_)
-        : binding_error_t (static_cast<int> (result_), internal_errno_),
-          _result (result_)
+    config_error_t (config_result_t result_, int internal_errno_) :
+        binding_error_t (static_cast<int> (result_), internal_errno_), _result (result_)
     {
     }
 
@@ -242,8 +204,7 @@ namespace detail
 
 inline bool is_invalid_handle_errno (int err_)
 {
-    return err_ == EFAULT || err_ == ENOTSOCK || err_ == EBADF
-           || err_ == ESHUTDOWN;
+    return err_ == EFAULT || err_ == ENOTSOCK || err_ == EBADF || err_ == ESHUTDOWN;
 }
 
 inline bind_result_t bind_result_from_errno (int err_)
@@ -308,25 +269,25 @@ inline handler_result_t handler_result_from_errno (int err_)
 inline submit_result_t submit_result_from_errno (int err_)
 {
     switch (err_) {
-    case EAGAIN:
-        return submit_result_t::backpressured;
-    case ENOTCONN:
-        return submit_result_t::not_connected;
-    case ENOENT:
-        return submit_result_t::not_found;
-    case ENOTSUP:
+        case EAGAIN:
+            return submit_result_t::backpressured;
+        case ENOTCONN:
+            return submit_result_t::not_connected;
+        case ENOENT:
+            return submit_result_t::not_found;
+        case ENOTSUP:
 #if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
-    case EOPNOTSUPP:
+        case EOPNOTSUPP:
 #endif
-        return submit_result_t::not_supported;
-    case EBUSY:
-        return submit_result_t::invalid_state;
-    case EPERM:
-        return submit_result_t::thread_violation;
-    case ENOMEM:
-        return submit_result_t::out_of_memory;
-    default:
-        break;
+            return submit_result_t::not_supported;
+        case EBUSY:
+            return submit_result_t::invalid_state;
+        case EPERM:
+            return submit_result_t::thread_violation;
+        case ENOMEM:
+            return submit_result_t::out_of_memory;
+        default:
+            break;
     }
 
     if (is_invalid_handle_errno (err_))
@@ -334,15 +295,13 @@ inline submit_result_t submit_result_from_errno (int err_)
     return submit_result_t::invalid_argument;
 }
 
-template<typename ErrorT, typename ResultT>
-inline void throw_if_failed (ResultT result_)
+template <typename ErrorT, typename ResultT> inline void throw_if_failed (ResultT result_)
 {
     if (static_cast<int> (result_) != 0)
         throw ErrorT (result_);
 }
 
-template<typename ErrorT, typename ResultT>
-inline void throw_if_failed (ResultT result_, int internal_errno_)
+template <typename ErrorT, typename ResultT> inline void throw_if_failed (ResultT result_, int internal_errno_)
 {
     if (static_cast<int> (result_) != 0)
         throw ErrorT (result_, internal_errno_);

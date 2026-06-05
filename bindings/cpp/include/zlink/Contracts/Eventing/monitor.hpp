@@ -28,8 +28,7 @@ class socket_monitor_t
   public:
     socket_monitor_t ();
 
-    static socket_monitor_t open (
-      const socket_t &socket_, monitor_event events_ = monitor_event::all);
+    static socket_monitor_t open (const socket_t &socket_, monitor_event events_ = monitor_event::all);
 
     ~socket_monitor_t ();
 
@@ -42,12 +41,11 @@ class socket_monitor_t
 
     bool valid () const noexcept;
 
-    void on_event (std::function<void(const monitor_event_t &)> handler_);
+    void on_event (std::function<void (const monitor_event_t &)> handler_);
 
     static void ignore_event (const monitor_event_t &) noexcept {}
 
-    std::optional<monitor_event_t> recv (
-      recv_flags_t flags_ = recv_flags_t::none);
+    std::optional<monitor_event_t> recv (recv_flags_t flags_ = recv_flags_t::none);
 
     monitor_status_t status () const;
 

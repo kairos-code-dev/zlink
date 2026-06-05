@@ -8,8 +8,8 @@ namespace zlink::stream_connector
 
 class connector_factory_t
 {
-public:
-  static connector_t create (connector_options_t options);
+  public:
+    static connector_t create (connector_options_t options);
 };
 
 } // namespace zlink::stream_connector

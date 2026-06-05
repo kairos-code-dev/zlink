@@ -26,79 +26,65 @@ void ensure_raw_request_state (const detail::spot_operation_state_t &state_)
 {
     if (!state_.raw_socket)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    if (state_.kind != detail::spot_operation_kind_t::raw_request
-        && !state_.first_rid)
+    if (state_.kind != detail::spot_operation_kind_t::raw_request && !state_.first_rid)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    if (state_.kind == detail::spot_operation_kind_t::raw_router_request_spot
-        && !state_.second_rid)
+    if (state_.kind == detail::spot_operation_kind_t::raw_router_request_spot && !state_.second_rid)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 }
 
-zlink_submit_result_t
-submit_raw_request_part (detail::spot_operation_state_t &state_,
-                         zlink_msg_t *part_out_,
-                         zlink_part_flag_t part_flag_,
-                         bool is_final_,
-                         zlink_send_flags_t flags_,
-                         detail::request_state_t *request_state_)
+zlink_submit_result_t submit_raw_request_part (detail::spot_operation_state_t &state_,
+                                               zlink_msg_t *part_out_,
+                                               zlink_part_flag_t part_flag_,
+                                               bool is_final_,
+                                               zlink_send_flags_t flags_,
+                                               detail::request_state_t *request_state_)
 {
-    const uint32_t timeout =
-      is_final_ ? zlink::detail::native_timeout_ms (state_.timeout) : 0u;
+    const uint32_t timeout = is_final_ ? zlink::detail::native_timeout_ms (state_.timeout) : 0u;
     auto callback = is_final_ ? &detail::request_callback_trampoline : nullptr;
     void *userdata = is_final_ ? request_state_ : nullptr;
 
     switch (state_.kind) {
         case detail::spot_operation_kind_t::raw_request:
-            return zlink_dealer_request_part (state_.raw_socket, part_out_,
-                                              flags_, part_flag_, timeout,
-                                              callback, userdata);
+            return zlink_dealer_request_part (state_.raw_socket, part_out_, flags_, part_flag_, timeout, callback,
+                                              userdata);
         case detail::spot_operation_kind_t::raw_routed_request:
-            return zlink_router_request_part (
-              state_.raw_socket,
-              zlink::detail::routing_id_native (*state_.first_rid), part_out_,
-              flags_, part_flag_, timeout, callback, userdata);
+            return zlink_router_request_part (state_.raw_socket, zlink::detail::routing_id_native (*state_.first_rid),
+                                              part_out_, flags_, part_flag_, timeout, callback, userdata);
         case detail::spot_operation_kind_t::raw_router_request_spot:
-            return zlink_router_request_spot_part (
-              state_.raw_socket,
-              zlink::detail::routing_id_native (*state_.first_rid),
-              zlink::detail::routing_id_native (*state_.second_rid), part_out_,
-              callback, userdata, flags_, part_flag_, timeout);
+            return zlink_router_request_spot_part (state_.raw_socket,
+                                                   zlink::detail::routing_id_native (*state_.first_rid),
+                                                   zlink::detail::routing_id_native (*state_.second_rid), part_out_,
+                                                   callback, userdata, flags_, part_flag_, timeout);
         default:
             return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
 }
 
-async_result_t<std::vector<message_t> >
-submit_raw_request_async (detail::spot_operation_state_t &state_)
+async_result_t<std::vector<message_t>> submit_raw_request_async (detail::spot_operation_state_t &state_)
 {
     ensure_raw_request_state (state_);
 
     return detail::submit_request_parts_async (
-      state_.parts,
-      zlink::detail::make_socket_request_progress (state_.raw_socket),
-      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-           zlink_reply_handler_fn callback_, void *request_state_) {
+      state_.parts, zlink::detail::make_socket_request_progress (state_.raw_socket),
+      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback_,
+           void *request_state_) {
           const bool is_final_ = callback_ != nullptr;
-          return submit_raw_request_part (
-            state_, part_out_, part_flag_, is_final_, ZLINK_SEND_FLAGS_NONE,
-            static_cast<detail::request_state_t *> (request_state_));
+          return submit_raw_request_part (state_, part_out_, part_flag_, is_final_, ZLINK_SEND_FLAGS_NONE,
+                                          static_cast<detail::request_state_t *> (request_state_));
       });
 }
 
-bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
-                                  request_callback_t callback_)
+bool submit_raw_request_callback (detail::spot_operation_state_t &state_, request_callback_t callback_)
 {
     ensure_raw_request_state (state_);
 
     return detail::submit_request_parts_callback (
       state_.parts, std::move (callback_), state_.flags,
-      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-           zlink_reply_handler_fn callback, void *request_state) {
+      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback, void *request_state) {
           const bool is_final_ = callback != nullptr;
-          return submit_raw_request_part (
-            state_, part_out_, part_flag_, is_final_,
-            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
-            static_cast<detail::request_state_t *> (request_state));
+          return submit_raw_request_part (state_, part_out_, part_flag_, is_final_,
+                                          static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
+                                          static_cast<detail::request_state_t *> (request_state));
       });
 }
 
@@ -108,15 +94,11 @@ request_submit_operation_t::~request_submit_operation_t ()
 {
     detail::release_state (std::move (_state));
 }
-request_submit_operation_t::request_submit_operation_t (
-  request_submit_operation_t &&) noexcept = default;
-request_submit_operation_t &request_submit_operation_t::operator= (
-  request_submit_operation_t &&) noexcept = default;
+request_submit_operation_t::request_submit_operation_t (request_submit_operation_t &&) noexcept = default;
+request_submit_operation_t &request_submit_operation_t::operator= (request_submit_operation_t &&) noexcept = default;
 
-request_submit_operation_t::request_submit_operation_t (
-  detail::spot_operation_state_t &&state_) :
-    _state (
-      std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
+request_submit_operation_t::request_submit_operation_t (detail::spot_operation_state_t &&state_) :
+    _state (std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
 {
 }
 
@@ -131,21 +113,18 @@ detail::spot_operation_state_t &request_submit_operation_t::state () noexcept
     return (*_state);
 }
 
-const detail::spot_operation_state_t &
-request_submit_operation_t::state () const noexcept
+const detail::spot_operation_state_t &request_submit_operation_t::state () const noexcept
 {
     return (*_state);
 }
 
-request_submit_operation_t &&
-request_submit_operation_t::message (message_t &part_) &&
+request_submit_operation_t &&request_submit_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
     return std::move (*this);
 }
 
-request_submit_operation_t &&
-request_submit_operation_t::timeout (std::chrono::milliseconds timeout_) &&
+request_submit_operation_t &&request_submit_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 {
     state ().timeout = timeout_;
     return std::move (*this);
@@ -155,20 +134,15 @@ request_operation_t::~request_operation_t ()
 {
     detail::release_state (std::move (_state));
 }
-request_operation_t::request_operation_t (request_operation_t &&) noexcept =
-  default;
-request_operation_t &
-request_operation_t::operator= (request_operation_t &&) noexcept = default;
+request_operation_t::request_operation_t (request_operation_t &&) noexcept = default;
+request_operation_t &request_operation_t::operator= (request_operation_t &&) noexcept = default;
 
-request_operation_t::request_operation_t (
-  detail::spot_operation_state_t &&state_) :
-    _state (
-      std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
+request_operation_t::request_operation_t (detail::spot_operation_state_t &&state_) :
+    _state (std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
 {
 }
 
-request_operation_t::request_operation_t (
-  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
+request_operation_t::request_operation_t (std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
     _state (std::move (state_ptr_))
 {
 }
@@ -178,8 +152,7 @@ detail::spot_operation_state_t &request_operation_t::state () noexcept
     return (*_state);
 }
 
-const detail::spot_operation_state_t &
-request_operation_t::state () const noexcept
+const detail::spot_operation_state_t &request_operation_t::state () const noexcept
 {
     return (*_state);
 }
@@ -197,13 +170,10 @@ request_callback_submit_operation_t::~request_callback_submit_operation_t ()
 request_callback_submit_operation_t::request_callback_submit_operation_t (
   request_callback_submit_operation_t &&) noexcept = default;
 request_callback_submit_operation_t &
-request_callback_submit_operation_t::operator= (
-  request_callback_submit_operation_t &&) noexcept = default;
+request_callback_submit_operation_t::operator= (request_callback_submit_operation_t &&) noexcept = default;
 
-request_callback_submit_operation_t::request_callback_submit_operation_t (
-  detail::spot_operation_state_t &&state_) :
-    _state (
-      std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
+request_callback_submit_operation_t::request_callback_submit_operation_t (detail::spot_operation_state_t &&state_) :
+    _state (std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
 {
 }
 
@@ -213,49 +183,42 @@ request_callback_submit_operation_t::request_callback_submit_operation_t (
 {
 }
 
-detail::spot_operation_state_t &
-request_callback_submit_operation_t::state () noexcept
+detail::spot_operation_state_t &request_callback_submit_operation_t::state () noexcept
 {
     return (*_state);
 }
 
-const detail::spot_operation_state_t &
-request_callback_submit_operation_t::state () const noexcept
+const detail::spot_operation_state_t &request_callback_submit_operation_t::state () const noexcept
 {
     return (*_state);
 }
 
-request_callback_submit_operation_t &&
-request_callback_submit_operation_t::message (message_t &part_) &&
+request_callback_submit_operation_t &&request_callback_submit_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
     return std::move (*this);
 }
 
 request_callback_submit_operation_t &&
-request_callback_submit_operation_t::timeout (
-  std::chrono::milliseconds timeout_) &&
+request_callback_submit_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 {
     state ().timeout = timeout_;
     return std::move (*this);
 }
 
-request_callback_submit_operation_t &&
-request_callback_submit_operation_t::flags (int flags_) &&
+request_callback_submit_operation_t &&request_callback_submit_operation_t::flags (int flags_) &&
 {
     state ().flags = send_flags_t (flags_);
     return std::move (*this);
 }
 
-request_callback_submit_operation_t
-request_submit_operation_t::flags (int flags_) &&
+request_callback_submit_operation_t request_submit_operation_t::flags (int flags_) &&
 {
     state ().flags = send_flags_t (flags_);
     return request_callback_submit_operation_t (std::move (_state));
 }
 
-async_result_t<std::vector<message_t> >
-request_submit_operation_t::submit_async () &&
+async_result_t<std::vector<message_t>> request_submit_operation_t::submit_async () &&
 {
     auto &state = this->state ();
     if (state.parts.empty ())
@@ -269,20 +232,15 @@ request_submit_operation_t::submit_async () &&
 
     switch (state.kind) {
         case detail::spot_operation_kind_t::request_channel:
-            return state.spot->request_channel (state.channel_name, state.parts,
-                                                state.timeout);
+            return state.spot->request_channel (state.channel_name, state.parts, state.timeout);
         case detail::spot_operation_kind_t::request_to_spot:
             if (!state.first_rid || !state.second_rid)
-                throw submit_error_t (submit_result_t::invalid_argument,
-                                      EINVAL);
-            return state.spot->request_to_spot (
-              *state.first_rid, *state.second_rid, state.parts, state.timeout);
+                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+            return state.spot->request_to_spot (*state.first_rid, *state.second_rid, state.parts, state.timeout);
         case detail::spot_operation_kind_t::request_to_router:
             if (!state.first_rid)
-                throw submit_error_t (submit_result_t::invalid_argument,
-                                      EINVAL);
-            return state.spot->request_to_router (
-              *state.first_rid, state.parts, state.timeout);
+                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+            return state.spot->request_to_router (*state.first_rid, state.parts, state.timeout);
         default:
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
     }
@@ -294,8 +252,7 @@ bool request_submit_operation_t::submit (request_callback_t callback_) &&
     return std::move (ready).submit (std::move (callback_));
 }
 
-bool request_callback_submit_operation_t::submit (
-  request_callback_t callback_) &&
+bool request_callback_submit_operation_t::submit (request_callback_t callback_) &&
 {
     auto &state = this->state ();
     if (state.parts.empty ())
@@ -309,23 +266,18 @@ bool request_callback_submit_operation_t::submit (
 
     switch (state.kind) {
         case detail::spot_operation_kind_t::request_channel:
-            return state.spot->request_channel (state.channel_name, state.parts,
-                                                std::move (callback_),
-                                                state.flags, state.timeout);
+            return state.spot->request_channel (state.channel_name, state.parts, std::move (callback_), state.flags,
+                                                state.timeout);
         case detail::spot_operation_kind_t::request_to_spot:
             if (!state.first_rid || !state.second_rid)
-                throw submit_error_t (submit_result_t::invalid_argument,
-                                      EINVAL);
-            return state.spot->request_to_spot (
-              *state.first_rid, *state.second_rid, state.parts,
-              std::move (callback_), state.flags, state.timeout);
+                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+            return state.spot->request_to_spot (*state.first_rid, *state.second_rid, state.parts, std::move (callback_),
+                                                state.flags, state.timeout);
         case detail::spot_operation_kind_t::request_to_router:
             if (!state.first_rid)
-                throw submit_error_t (submit_result_t::invalid_argument,
-                                      EINVAL);
-            return state.spot->request_to_router (
-              *state.first_rid, state.parts, std::move (callback_),
-              state.flags, state.timeout);
+                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+            return state.spot->request_to_router (*state.first_rid, state.parts, std::move (callback_), state.flags,
+                                                  state.timeout);
         default:
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
     }

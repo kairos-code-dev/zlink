@@ -20,8 +20,7 @@ struct routing_id_access_t
         return out;
     }
 
-    static void assign_native (routing_id_t &routing_id_,
-                               const zlink_routing_id_t &native_) noexcept
+    static void assign_native (routing_id_t &routing_id_, const zlink_routing_id_t &native_) noexcept
     {
         routing_id_.assign_unchecked (native_.data, native_.size);
     }
@@ -42,20 +41,17 @@ inline routing_id_t native_routing_id (const zlink_routing_id_t &native_) noexce
     return routing_id_access_t::from_native (native_);
 }
 
-inline void assign_routing_id_native (
-  routing_id_t &routing_id_, const zlink_routing_id_t &native_) noexcept
+inline void assign_routing_id_native (routing_id_t &routing_id_, const zlink_routing_id_t &native_) noexcept
 {
     routing_id_access_t::assign_native (routing_id_, native_);
 }
 
-inline zlink_routing_id_t routing_id_native_value (
-  const routing_id_t &routing_id_) noexcept
+inline zlink_routing_id_t routing_id_native_value (const routing_id_t &routing_id_) noexcept
 {
     return routing_id_access_t::to_native (routing_id_);
 }
 
-inline const zlink_routing_id_t *routing_id_native (
-  const routing_id_t &routing_id_) noexcept
+inline const zlink_routing_id_t *routing_id_native (const routing_id_t &routing_id_) noexcept
 {
     thread_local zlink_routing_id_t native[8];
     thread_local size_t index = 0;
@@ -66,8 +62,7 @@ inline const zlink_routing_id_t *routing_id_native (
 
 inline zlink_routing_id_t *routing_id_native (routing_id_t &routing_id_) noexcept
 {
-    return const_cast<zlink_routing_id_t *> (
-      routing_id_native (static_cast<const routing_id_t &> (routing_id_)));
+    return const_cast<zlink_routing_id_t *> (routing_id_native (static_cast<const routing_id_t &> (routing_id_)));
 }
 
 routing_id_t routing_id_from_native_pointer (const void *native_) noexcept;

@@ -12,8 +12,7 @@ namespace detail
 struct monitor_access_t
 {
     static void *native_handle (socket_monitor_t &monitor_) noexcept;
-    static const void *
-    native_handle (const socket_monitor_t &monitor_) noexcept;
+    static const void *native_handle (const socket_monitor_t &monitor_) noexcept;
 };
 
 inline void *native_handle (socket_monitor_t &monitor_) noexcept

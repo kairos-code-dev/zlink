@@ -27,29 +27,26 @@ int main ()
     // 스트림 게이트웨이에 actor를 세션으로 바인딩한다. 실제 서버에서 session은
     // 게이트웨이로 접속한 클라이언트의 라우팅 ID다 — 여기선 고정값으로 만든다.
     stream.attach_actor_gateway (node);
-    zlink::routing_id_t session =
-      zlink::routing_id_t::from (std::string ("single-player-session"));
+    zlink::routing_id_t session = zlink::routing_id_t::from (std::string ("single-player-session"));
     (void) stream.bind_actor (session, actor.ref ()).submit_async ().get ();
 
     // dispatch 핸들러: join 요청을 수락하고, actor에게 온 메시지를 모은다.
     std::mutex mutex;
     std::vector<std::string> payloads;
-    spot.set_dispatch_handler (
-      [&] (zlink::service::spot_t &s, const zlink::spot_dispatch_info_t &info) {
-          if (info.event == zlink::spot_dispatch_event_t::actor_join_readable) {
-              auto request = s.recv_actor_join (zlink::recv_flags_t::dontwait);
-              if (!request.has_value ())
-                  return;
-              zlink::message_t reply = zlink::message_t::from ("accepted");
-              s.reply_actor_join (*request, 0).message (reply).submit ();
-          } else if (info.event == zlink::spot_dispatch_event_t::actor_readable) {
-              while (auto part = node.recv_actor_part (
-                       *info.actor, zlink::recv_flags_t::dontwait)) {
-                  std::lock_guard<std::mutex> lock (mutex);
-                  payloads.push_back (part->part.to_string ());
-              }
-          }
-      });
+    spot.set_dispatch_handler ([&] (zlink::service::spot_t &s, const zlink::spot_dispatch_info_t &info) {
+        if (info.event == zlink::spot_dispatch_event_t::actor_join_readable) {
+            auto request = s.recv_actor_join (zlink::recv_flags_t::dontwait);
+            if (!request.has_value ())
+                return;
+            zlink::message_t reply = zlink::message_t::from ("accepted");
+            s.reply_actor_join (*request, 0).message (reply).submit ();
+        } else if (info.event == zlink::spot_dispatch_event_t::actor_readable) {
+            while (auto part = node.recv_actor_part (*info.actor, zlink::recv_flags_t::dontwait)) {
+                std::lock_guard<std::mutex> lock (mutex);
+                payloads.push_back (part->part.to_string ());
+            }
+        }
+    });
 
     auto join = [&] (const char *payload) {
         std::promise<zlink::request_result_t> done;
@@ -58,8 +55,7 @@ int main ()
         actor.join (spot)
           .message (msg)
           .timeout (std::chrono::seconds (1))
-          .submit ([&done] (const zlink::actor_join_result_t &result,
-                            std::vector<zlink::message_t>) {
+          .submit ([&done] (const zlink::actor_join_result_t &result, std::vector<zlink::message_t>) {
               done.set_value (result.result);
           });
         assert (future.get () == zlink::request_result_t::ok);
@@ -86,13 +82,11 @@ int main ()
     }
     {
         std::lock_guard<std::mutex> lock (mutex);
-        assert (payloads.size () == 2 && payloads[0] == "before"
-                && payloads[1] == "between");
+        assert (payloads.size () == 2 && payloads[0] == "before" && payloads[1] == "between");
     }
 
     leave ();
     actor.close ();
-    std::printf (
-      "[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"\n");
+    std::printf ("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"\n");
     return 0;
 }

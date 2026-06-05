@@ -11,9 +11,8 @@
 namespace zlink
 {
 
-dealer_socket_t::dealer_socket_t (context_t &ctx_)
-    : message_socket_t (ctx_, socket_type::dealer),
-      _default_request_timeout (std::chrono::milliseconds ())
+dealer_socket_t::dealer_socket_t (context_t &ctx_) :
+    message_socket_t (ctx_, socket_type::dealer), _default_request_timeout (std::chrono::milliseconds ())
 {
 }
 
@@ -45,26 +44,23 @@ int dealer_socket_t::recv (message_t &part_out_, recv_flags_t flags_)
 
 void dealer_socket_t::set_routing_id (const routing_id_t &routing_id_)
 {
-    if (socket_t::set_routing_id_raw (std::as_bytes (
-          std::span<const uint8_t> (routing_id_.data (), routing_id_.size ())))
+    if (socket_t::set_routing_id_raw (
+          std::as_bytes (std::span<const uint8_t> (routing_id_.data (), routing_id_.size ())))
         != 0)
-        throw config_error_t (
-          detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
+        throw config_error_t (detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
 }
 
 void dealer_socket_t::get_routing_id (routing_id_t &routing_id_) const
 {
     if (socket_t::get_routing_id_raw (routing_id_) != 0)
-        throw config_error_t (
-          detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
+        throw config_error_t (detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
 }
 
 void dealer_socket_t::channel_name (const std::string &value_)
 {
     detail::validate_bounded_c_string (value_, 255u, "channel_name");
     detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_socket_set_channel_name (detail::native_handle (*this), value_.c_str ())));
+      static_cast<config_result_t> (zlink_socket_set_channel_name (detail::native_handle (*this), value_.c_str ())));
 }
 
 std::string dealer_socket_t::channel_name () const
@@ -73,10 +69,8 @@ std::string dealer_socket_t::channel_name () const
     std::string value;
     const int rc = detail::read_growing_string (
       [&] (char *buffer_, size_t capacity_, size_t *size_out_) {
-          result = static_cast<config_result_t> (
-            zlink_socket_get_channel_name (
-              const_cast<void *> (detail::native_handle (*this)), buffer_,
-              capacity_, size_out_));
+          result = static_cast<config_result_t> (zlink_socket_get_channel_name (
+            const_cast<void *> (detail::native_handle (*this)), buffer_, capacity_, size_out_));
           return result == config_result_t::ok ? 0 : -1;
       },
       256u, value);

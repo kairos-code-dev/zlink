@@ -37,8 +37,7 @@ inline std::string unique_tcp (const char *base_)
 {
     boost::asio::io_context io;
     boost::asio::ip::tcp::acceptor acceptor (io);
-    boost::asio::ip::tcp::endpoint endpoint (
-      boost::asio::ip::make_address ("127.0.0.1"), 0);
+    boost::asio::ip::tcp::endpoint endpoint (boost::asio::ip::make_address ("127.0.0.1"), 0);
     acceptor.open (endpoint.protocol ());
     acceptor.set_option (boost::asio::socket_base::reuse_address (true));
     acceptor.bind (endpoint);
@@ -56,19 +55,13 @@ inline zlink::message_t make_message (const std::string &text_)
     return zlink::message_t::from (text_);
 }
 
-inline bool wait_until (std::condition_variable &cv_,
-                        std::unique_lock<std::mutex> &lock_,
-                        bool &ready_,
-                        int timeout_ms_)
+inline bool
+wait_until (std::condition_variable &cv_, std::unique_lock<std::mutex> &lock_, bool &ready_, int timeout_ms_)
 {
-    return cv_.wait_for (
-      lock_, std::chrono::milliseconds (timeout_ms_), [&ready_] {
-          return ready_;
-      });
+    return cv_.wait_for (lock_, std::chrono::milliseconds (timeout_ms_), [&ready_] { return ready_; });
 }
 
-template<typename MonitorLike>
-inline bool wait_for_monitor_readable (MonitorLike &monitor_, int timeout_ms_)
+template <typename MonitorLike> inline bool wait_for_monitor_readable (MonitorLike &monitor_, int timeout_ms_)
 {
     zlink::poller_t poller;
     if (!poller.valid ())
@@ -93,16 +86,13 @@ inline bool wait_for_socket_monitor_event (zlink::socket_monitor_t &monitor_,
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
 
     while (std::chrono::steady_clock::now () < deadline) {
-        const std::chrono::steady_clock::duration remaining =
-          deadline - std::chrono::steady_clock::now ();
-        const int remaining_ms = static_cast<int> (
-          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
-            .count ());
+        const std::chrono::steady_clock::duration remaining = deadline - std::chrono::steady_clock::now ();
+        const int remaining_ms =
+          static_cast<int> (std::chrono::duration_cast<std::chrono::milliseconds> (remaining).count ());
         if (!wait_for_monitor_readable (monitor_, remaining_ms))
             continue;
 
-        const std::optional<zlink::monitor_event_t> event =
-          monitor_.recv (zlink::recv_flags_t::dontwait);
+        const std::optional<zlink::monitor_event_t> event = monitor_.recv (zlink::recv_flags_t::dontwait);
         if (!event)
             continue;
         if (static_cast<uint64_t> (event->event) != event_type_)
@@ -119,49 +109,36 @@ inline bool wait_connected (zlink::socket_monitor_t &server_monitor_,
                             zlink::socket_monitor_t &client_monitor_,
                             int timeout_ms_ = 2000)
 {
-    return wait_for_socket_monitor_event (
-             server_monitor_,
-             static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-             timeout_ms_)
+    return wait_for_socket_monitor_event (server_monitor_,
+                                          static_cast<uint64_t> (zlink::monitor_event::connection_ready), timeout_ms_)
            && wait_for_socket_monitor_event (
-             client_monitor_,
-             static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-             timeout_ms_);
+             client_monitor_, static_cast<uint64_t> (zlink::monitor_event::connection_ready), timeout_ms_);
 }
 
-inline bool wait_stream_connected (zlink::socket_monitor_t &server_monitor_,
-                                   int timeout_ms_ = 2000)
+inline bool wait_stream_connected (zlink::socket_monitor_t &server_monitor_, int timeout_ms_ = 2000)
 {
-    return wait_for_socket_monitor_event (
-      server_monitor_,
-      static_cast<uint64_t> (zlink::monitor_event::accepted), timeout_ms_);
+    return wait_for_socket_monitor_event (server_monitor_, static_cast<uint64_t> (zlink::monitor_event::accepted),
+                                          timeout_ms_);
 }
 
-template<typename T>
-inline T wait_future (std::future<T> &future_, int timeout_ms_)
+template <typename T> inline T wait_future (std::future<T> &future_, int timeout_ms_)
 {
-    assert (future_.wait_for (std::chrono::milliseconds (timeout_ms_))
-            == std::future_status::ready);
+    assert (future_.wait_for (std::chrono::milliseconds (timeout_ms_)) == std::future_status::ready);
     return future_.get ();
 }
 
-template<typename T, typename ProgressFn>
-inline T wait_future_with_progress (std::future<T> &future_,
-                                    int timeout_ms_,
-                                    ProgressFn progress_)
+template <typename T, typename ProgressFn>
+inline T wait_future_with_progress (std::future<T> &future_, int timeout_ms_, ProgressFn progress_)
 {
     const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (timeout_ms_);
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
 
     while (std::chrono::steady_clock::now () < deadline) {
-        if (future_.wait_for (std::chrono::milliseconds (0))
-            == std::future_status::ready)
+        if (future_.wait_for (std::chrono::milliseconds (0)) == std::future_status::ready)
             return future_.get ();
 
         progress_ ();
-        if (future_.wait_for (std::chrono::milliseconds (1))
-            == std::future_status::ready)
+        if (future_.wait_for (std::chrono::milliseconds (1)) == std::future_status::ready)
             return future_.get ();
     }
 
@@ -169,16 +146,12 @@ inline T wait_future_with_progress (std::future<T> &future_,
     return future_.get ();
 }
 
-inline bool parse_tcp_endpoint (const std::string &endpoint_,
-                                std::string &host_,
-                                std::string &port_)
+inline bool parse_tcp_endpoint (const std::string &endpoint_, std::string &host_, std::string &port_)
 {
     char proto[8] = {0};
     char host[64] = {0};
     int port = 0;
-    if (std::sscanf (
-          endpoint_.c_str (), "%7[^:]://%63[^:]:%d", proto, host, &port)
-        != 3)
+    if (std::sscanf (endpoint_.c_str (), "%7[^:]://%63[^:]:%d", proto, host, &port) != 3)
         return false;
 
     if (std::strcmp (proto, "tcp") != 0 || port <= 0 || port > 65535)
@@ -194,8 +167,7 @@ inline bool parse_tcp_endpoint (const std::string &endpoint_,
 class raw_tcp_client_t
 {
   public:
-    explicit raw_tcp_client_t (const std::string &endpoint_)
-        : _socket (_io)
+    explicit raw_tcp_client_t (const std::string &endpoint_) : _socket (_io)
     {
         std::string host;
         std::string port;
@@ -203,8 +175,7 @@ class raw_tcp_client_t
 
         boost::asio::ip::tcp::resolver resolver (_io);
         boost::system::error_code ec;
-        const boost::asio::ip::tcp::resolver::results_type endpoints =
-          resolver.resolve (host, port, ec);
+        const boost::asio::ip::tcp::resolver::results_type endpoints = resolver.resolve (host, port, ec);
         assert (!ec);
         boost::asio::connect (_socket, endpoints, ec);
         assert (!ec);
@@ -219,8 +190,7 @@ class raw_tcp_client_t
     void send_all (const char *data_, size_t size_)
     {
         boost::system::error_code ec;
-        const size_t written = boost::asio::write (
-          _socket, boost::asio::buffer (data_, size_), ec);
+        const size_t written = boost::asio::write (_socket, boost::asio::buffer (data_, size_), ec);
         assert (!ec);
         assert (written == size_);
     }
@@ -228,8 +198,7 @@ class raw_tcp_client_t
     int recv_exact (char *buffer_, size_t size_)
     {
         boost::system::error_code ec;
-        const size_t received = boost::asio::read (
-          _socket, boost::asio::buffer (buffer_, size_), ec);
+        const size_t received = boost::asio::read (_socket, boost::asio::buffer (buffer_, size_), ec);
         assert (!ec);
         assert (received == size_);
         return static_cast<int> (received);

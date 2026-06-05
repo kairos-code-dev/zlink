@@ -4,7 +4,7 @@
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::router_socket_t router (ctx);
     zlink::dealer_socket_t dealer (ctx);
@@ -25,8 +25,7 @@ int main ()
     assert (router.recv (inbound) == 0);
     assert (inbound.routing_id ().has_value ());
     assert (inbound.parts ().size () == 1);
-    assert (inbound.parts ()[0].to_string ()
-            == detail::k_dealer_router_request);
+    assert (inbound.parts ()[0].to_string () == detail::k_dealer_router_request);
 
     const std::string reply_payload = detail::k_dealer_router_reply;
     zlink::message_t reply = detail::make_message (reply_payload);
@@ -39,8 +38,7 @@ int main ()
     const std::string received = echoed.parts ()[0].to_string ();
     assert (received == detail::k_dealer_router_reply);
     echoed.close ();
-    std::printf ("[dealer-router/recv] send: \"%s\" → recv: \"%s\"\n",
-                 sent.c_str (), received.c_str ());
+    std::printf ("[dealer-router/recv] send: \"%s\" → recv: \"%s\"\n", sent.c_str (), received.c_str ());
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

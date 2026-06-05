@@ -30,8 +30,8 @@ enum class tcp_keepalive_mode_t : int
 /// @brief Determines whether a failed submit is retried.
 enum class submit_retry_mode_t : int
 {
-    off = 0,           ///< Never retry; a failed submit fails immediately.
-    local_failure = 1  ///< Retry when the submit fails locally (e.g. back-pressure).
+    off = 0,          ///< Never retry; a failed submit fails immediately.
+    local_failure = 1 ///< Retry when the submit fails locally (e.g. back-pressure).
 };
 
 /// @brief The typed facade over socket options shared by every socket type.

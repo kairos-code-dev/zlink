@@ -14,40 +14,31 @@ namespace multi
 {
 
 template <typename SocketLike, typename T>
-inline auto
-set_common_socket_option_impl (SocketLike &socket,
-                               perf::options::socket_option_key_t<T> key,
-                               const T &value,
-                               int) -> decltype (socket.set_option (key, value),
-                                                 int ())
+inline auto set_common_socket_option_impl (SocketLike &socket,
+                                           perf::options::socket_option_key_t<T> key,
+                                           const T &value,
+                                           int) -> decltype (socket.set_option (key, value), int ())
 {
     return socket.set_option (key, value);
 }
 
 template <typename SocketLike, typename T>
 inline int
-set_common_socket_option_impl (SocketLike &socket,
-                               perf::options::socket_option_key_t<T> key,
-                               const T &value,
-                               long)
+set_common_socket_option_impl (SocketLike &socket, perf::options::socket_option_key_t<T> key, const T &value, long)
 {
     try {
         switch (key.option) {
             case perf::options::socket_option::sndhwm:
-                socket.options ().send_hwm (
-                  zlink::message_count_t::value (value));
+                socket.options ().send_hwm (zlink::message_count_t::value (value));
                 return 0;
             case perf::options::socket_option::rcvhwm:
-                socket.options ().recv_hwm (
-                  zlink::message_count_t::value (value));
+                socket.options ().recv_hwm (zlink::message_count_t::value (value));
                 return 0;
             case perf::options::socket_option::sndtimeo:
-                socket.options ().send_timeout (
-                  std::chrono::milliseconds (value));
+                socket.options ().send_timeout (std::chrono::milliseconds (value));
                 return 0;
             case perf::options::socket_option::rcvtimeo:
-                socket.options ().recv_timeout (
-                  std::chrono::milliseconds (value));
+                socket.options ().recv_timeout (std::chrono::milliseconds (value));
                 return 0;
             case perf::options::socket_option::linger:
                 socket.options ().linger (std::chrono::milliseconds (value));
@@ -64,24 +55,20 @@ set_common_socket_option_impl (SocketLike &socket,
 }
 
 template <typename SocketLike, typename T>
-inline int set_common_socket_option (SocketLike &socket,
-                                     perf::options::socket_option_key_t<T> key,
-                                     const T &value)
+inline int set_common_socket_option (SocketLike &socket, perf::options::socket_option_key_t<T> key, const T &value)
 {
     return set_common_socket_option_impl (socket, key, value, 0);
 }
 
 template <typename SocketLike, typename T>
-inline auto get_common_socket_option_impl (
-  SocketLike &socket, perf::options::socket_option_key_t<T> key, T &value, int)
+inline auto get_common_socket_option_impl (SocketLike &socket, perf::options::socket_option_key_t<T> key, T &value, int)
   -> decltype (socket.get_option (key, &value), int ())
 {
     return socket.get_option (key, &value);
 }
 
 template <typename SocketLike, typename T>
-inline int get_common_socket_option_impl (
-  SocketLike &socket, perf::options::socket_option_key_t<T> key, T &value, long)
+inline int get_common_socket_option_impl (SocketLike &socket, perf::options::socket_option_key_t<T> key, T &value, long)
 {
     (void) socket;
     (void) key;
@@ -91,21 +78,19 @@ inline int get_common_socket_option_impl (
 }
 
 template <typename SocketLike>
-inline auto get_common_socket_option_string_impl (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<std::string> key,
-  std::string &value,
-  int) -> decltype (socket.get_option (key, value), int ())
+inline auto get_common_socket_option_string_impl (SocketLike &socket,
+                                                  perf::options::socket_option_key_t<std::string> key,
+                                                  std::string &value,
+                                                  int) -> decltype (socket.get_option (key, value), int ())
 {
     return socket.get_option (key, value);
 }
 
 template <typename SocketLike>
-inline int get_common_socket_option_string_impl (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<std::string> key,
-  std::string &value,
-  long)
+inline int get_common_socket_option_string_impl (SocketLike &socket,
+                                                 perf::options::socket_option_key_t<std::string> key,
+                                                 std::string &value,
+                                                 long)
 {
     try {
         if (key.option == perf::options::socket_option::last_endpoint) {
@@ -122,18 +107,14 @@ inline int get_common_socket_option_string_impl (
 }
 
 template <typename SocketLike, typename T>
-inline int get_common_socket_option (SocketLike &socket,
-                                     perf::options::socket_option_key_t<T> key,
-                                     T &value)
+inline int get_common_socket_option (SocketLike &socket, perf::options::socket_option_key_t<T> key, T &value)
 {
     return get_common_socket_option_impl (socket, key, value, 0);
 }
 
 template <typename SocketLike>
 inline int
-get_common_socket_option (SocketLike &socket,
-                          perf::options::socket_option_key_t<std::string> key,
-                          std::string &value)
+get_common_socket_option (SocketLike &socket, perf::options::socket_option_key_t<std::string> key, std::string &value)
 {
     return get_common_socket_option_string_impl (socket, key, value, 0);
 }

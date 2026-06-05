@@ -4,13 +4,11 @@
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::service::registry_t registry (ctx);
-    zlink::service::discovery_t provider_discovery (
-      ctx, zlink::auto_connect_type::fanout, detail::k_spot_service);
-    zlink::service::discovery_t client_discovery (
-      ctx, zlink::auto_connect_type::fanout, detail::k_spot_service);
+    zlink::service::discovery_t provider_discovery (ctx, zlink::auto_connect_type::fanout, detail::k_spot_service);
+    zlink::service::discovery_t client_discovery (ctx, zlink::auto_connect_type::fanout, detail::k_spot_service);
     zlink::pub_socket_t provider (ctx);
     assert (registry.valid ());
     assert (provider_discovery.valid ());
@@ -27,15 +25,12 @@ int main ()
     provider.attach_discovery (provider_discovery);
     provider.bind (service_endpoint);
 
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (5000);
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (5000);
     bool discovered = false;
     while (std::chrono::steady_clock::now () < deadline) {
-        const std::vector<zlink::member_peer_entry_t> peers =
-          client_discovery.member_peers ();
+        const std::vector<zlink::member_peer_entry_t> peers = client_discovery.member_peers ();
         for (size_t i = 0; i < peers.size (); ++i) {
-            if (peers[i].channel_name () == detail::k_spot_service
-                && peers[i].endpoint () == service_endpoint) {
+            if (peers[i].channel_name () == detail::k_spot_service && peers[i].endpoint () == service_endpoint) {
                 discovered = true;
                 break;
             }
@@ -46,9 +41,7 @@ int main ()
     }
     assert (discovered);
 
-    std::printf (
-      "[discovery-registry] service: \"%s\" -> discovered\n",
-      detail::k_spot_service);
+    std::printf ("[discovery-registry] service: \"%s\" -> discovered\n", detail::k_spot_service);
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

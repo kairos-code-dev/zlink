@@ -8,9 +8,9 @@ namespace zlink::framework::detail
 
 struct backend_runtime_contract_t
 {
-  std::string backend_name;
-  bool owns_native_context = true;
-  bool projects_dispatch_events = true;
+    std::string backend_name;
+    bool owns_native_context = true;
+    bool projects_dispatch_events = true;
 };
 
 } // namespace zlink::framework::detail

@@ -23,40 +23,25 @@ class topic_message_t
   public:
     topic_message_t () = default;
 
-    topic_message_t (std::optional<routing_id_t> routing_id_,
-                     std::string topic_,
-                     std::vector<message_t> parts_)
-        : _routing_id (std::move (routing_id_)),
-          _topic (std::move (topic_)),
-          _parts (std::move (parts_))
+    topic_message_t (std::optional<routing_id_t> routing_id_, std::string topic_, std::vector<message_t> parts_) :
+        _routing_id (std::move (routing_id_)), _topic (std::move (topic_)), _parts (std::move (parts_))
     {
     }
 
-    const std::optional<routing_id_t> &routing_id () const noexcept
-    {
-        return _routing_id;
-    }
+    const std::optional<routing_id_t> &routing_id () const noexcept { return _routing_id; }
 
     const std::string &topic () const noexcept { return _topic; }
     const std::vector<message_t> &parts () const;
     std::vector<message_t> &parts ();
 
-    bool is_single_part () const noexcept
-    {
-        return _single_part.has_value () || _parts.size () == 1u;
-    }
+    bool is_single_part () const noexcept { return _single_part.has_value () || _parts.size () == 1u; }
     message_t &first_part ();
     message_t single_part_or_throw ();
     void close ();
 
   private:
-    topic_message_t (std::optional<routing_id_t> routing_id_,
-                     std::string topic_,
-                     message_t part_)
-        : _routing_id (std::move (routing_id_)),
-          _topic (std::move (topic_)),
-          _single_part (std::move (part_)),
-          _parts ()
+    topic_message_t (std::optional<routing_id_t> routing_id_, std::string topic_, message_t part_) :
+        _routing_id (std::move (routing_id_)), _topic (std::move (topic_)), _single_part (std::move (part_)), _parts ()
     {
     }
 

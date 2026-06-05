@@ -10,10 +10,7 @@ namespace zlink
 class send_flags_t
 {
   public:
-    constexpr send_flags_t (int value_ = 0) noexcept
-        : _value (value_)
-    {
-    }
+    constexpr send_flags_t (int value_ = 0) noexcept : _value (value_) {}
 
     constexpr operator int () const noexcept { return _value; }
 
@@ -38,10 +35,7 @@ inline constexpr bool operator!= (send_flags_t a_, send_flags_t b_) noexcept
 class recv_flags_t
 {
   public:
-    constexpr recv_flags_t (int value_ = 0) noexcept
-        : _value (value_)
-    {
-    }
+    constexpr recv_flags_t (int value_ = 0) noexcept : _value (value_) {}
 
     constexpr operator int () const noexcept { return _value; }
 
@@ -62,10 +56,10 @@ inline constexpr bool operator!= (recv_flags_t a_, recv_flags_t b_) noexcept
     return !(a_ == b_);
 }
 
-inline const send_flags_t send_flags_t::none {0};
-inline const send_flags_t send_flags_t::dontwait {0x0001u};
-inline const recv_flags_t recv_flags_t::none {0};
-inline const recv_flags_t recv_flags_t::dontwait {0x0001u};
+inline const send_flags_t send_flags_t::none{0};
+inline const send_flags_t send_flags_t::dontwait{0x0001u};
+inline const recv_flags_t recv_flags_t::none{0};
+inline const recv_flags_t recv_flags_t::dontwait{0x0001u};
 
 /// @brief The outcome of a non-blocking send attempt.
 enum class send_result_t : int

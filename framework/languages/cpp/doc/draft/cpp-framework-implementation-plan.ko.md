@@ -228,8 +228,7 @@ git diff --check -- framework/languages/cpp
 검증:
 
 ```bash
-cmake --build bindings/cpp/build
-ctest --test-dir bindings/cpp/build -R codec
+bindings/cpp/tests/run_tests.sh
 git diff --check -- bindings/cpp framework/languages/cpp
 ```
 

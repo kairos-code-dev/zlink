@@ -15,50 +15,47 @@ namespace zlink::framework::runtime
 
 class serial_execution_queue_t
 {
-public:
-  using error_handler_t =
-    std::function<void (const std::string &, const std::exception_ptr &)>;
+  public:
+    using error_handler_t = std::function<void (const std::string &, const std::exception_ptr &)>;
 
-  explicit serial_execution_queue_t (
-    offload_executor_t &executor,
-    std::size_t capacity = 4096,
-    error_handler_t error_handler = {});
-  ~serial_execution_queue_t ();
+    explicit serial_execution_queue_t (offload_executor_t &executor,
+                                       std::size_t capacity = 4096,
+                                       error_handler_t error_handler = {});
+    ~serial_execution_queue_t ();
 
-  serial_execution_queue_t (const serial_execution_queue_t &) = delete;
-  serial_execution_queue_t &operator= (const serial_execution_queue_t &) =
-    delete;
+    serial_execution_queue_t (const serial_execution_queue_t &) = delete;
+    serial_execution_queue_t &operator= (const serial_execution_queue_t &) = delete;
 
-  bool try_post (std::string name, std::function<void ()> work);
-  void post (std::string name, std::function<void ()> work);
-  void run (std::string name, std::function<void ()> work);
-  void drain ();
-  void close ();
+    bool try_post (std::string name, std::function<void ()> work);
+    void post (std::string name, std::function<void ()> work);
+    void run (std::string name, std::function<void ()> work);
+    void drain ();
+    void close ();
 
-  std::size_t pending_count () const;
-  bool closed () const;
+    std::size_t pending_count () const;
+    bool closed () const;
 
-private:
-  struct work_item_t
-  {
-    std::string name;
-    std::function<void ()> work;
-  };
+  private:
+    struct work_item_t
+    {
+        std::string name;
+        std::function<void ()> work;
+    };
 
-  void schedule_drain_locked ();
-  void drain_loop ();
-  void complete_one ();
+    void schedule_drain_locked ();
+    void drain_loop ();
+    void complete_one ();
 
-  offload_executor_t &_executor;
-  const std::size_t _capacity;
-  error_handler_t _error_handler;
-  mutable std::mutex _mutex;
-  std::condition_variable _empty;
-  std::deque<work_item_t> _queue;
-  bool _closed = false;
-  bool _drain_scheduled = false;
-  bool _draining = false;
-  std::size_t _active = 0;
+    offload_executor_t &_executor;
+    const std::size_t _capacity;
+    error_handler_t _error_handler;
+    mutable std::mutex _mutex;
+    std::condition_variable _empty;
+    std::deque<work_item_t> _queue;
+    bool _closed = false;
+    bool _drain_scheduled = false;
+    bool _draining = false;
+    std::size_t _active = 0;
 };
 
 } // namespace zlink::framework::runtime

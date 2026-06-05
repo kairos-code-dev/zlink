@@ -47,10 +47,10 @@ enum class topology_state : int
 {
     discovered = 1, ///< The peer was found but a connection is not yet established.
     connecting = 2,
-    ready = 3,      ///< The peer is connected and usable.
+    ready = 3, ///< The peer is connected and usable.
     lost = 4,
     error = 5,
-    stopped = 6     ///< The connection was explicitly stopped.
+    stopped = 6 ///< The connection was explicitly stopped.
 };
 
 using registry_socket_role_t = registry_socket_role;
@@ -63,18 +63,18 @@ using topology_state_t = topology_state;
 class member_peer_entry_t
 {
   public:
-    member_peer_entry_t ()
-        : auto_connect_type_ (zlink::auto_connect_type::invalid),
-          service_role_ (service_role::invalid), channel_name_ (), endpoint_ (),
-          routing_id_ (std::nullopt), weight_ (0),
-          value_ (0)
+    member_peer_entry_t () :
+        auto_connect_type_ (zlink::auto_connect_type::invalid),
+        service_role_ (service_role::invalid),
+        channel_name_ (),
+        endpoint_ (),
+        routing_id_ (std::nullopt),
+        weight_ (0),
+        value_ (0)
     {
     }
 
-    auto_connect_type_t auto_connect_type () const noexcept
-    {
-        return auto_connect_type_;
-    }
+    auto_connect_type_t auto_connect_type () const noexcept { return auto_connect_type_; }
 
     service_role_t service_role () const noexcept { return service_role_; }
 
@@ -82,10 +82,7 @@ class member_peer_entry_t
 
     const std::string &endpoint () const noexcept { return endpoint_; }
 
-    const std::optional<routing_id_t> &routing_id () const noexcept
-    {
-        return routing_id_;
-    }
+    const std::optional<routing_id_t> &routing_id () const noexcept { return routing_id_; }
 
     peer_weight_t weight () const noexcept { return peer_weight_t::value (weight_); }
 
@@ -105,25 +102,25 @@ class member_peer_entry_t
 class registry_topology_entry_t
 {
   public:
-    registry_topology_entry_t ()
-        : auto_connect_type_ (zlink::auto_connect_type::invalid),
-          routing_id_ (std::nullopt), service_kind_ (service_kind::socket),
-          service_role_ (service_role::invalid), channel_name_ (), endpoint_ (),
-          source_ (topology_source::manual), state_ (topology_state::discovered),
-          desired_count_ (0), ready_count_ (0), error_code_ (0),
-          last_reported_ms_ (0)
+    registry_topology_entry_t () :
+        auto_connect_type_ (zlink::auto_connect_type::invalid),
+        routing_id_ (std::nullopt),
+        service_kind_ (service_kind::socket),
+        service_role_ (service_role::invalid),
+        channel_name_ (),
+        endpoint_ (),
+        source_ (topology_source::manual),
+        state_ (topology_state::discovered),
+        desired_count_ (0),
+        ready_count_ (0),
+        error_code_ (0),
+        last_reported_ms_ (0)
     {
     }
 
-    auto_connect_type_t auto_connect_type () const noexcept
-    {
-        return auto_connect_type_;
-    }
+    auto_connect_type_t auto_connect_type () const noexcept { return auto_connect_type_; }
 
-    const std::optional<routing_id_t> &routing_id () const noexcept
-    {
-        return routing_id_;
-    }
+    const std::optional<routing_id_t> &routing_id () const noexcept { return routing_id_; }
 
     service_kind_t service_kind () const noexcept { return service_kind_; }
 
@@ -145,8 +142,7 @@ class registry_topology_entry_t
 
     std::chrono::milliseconds last_reported () const noexcept
     {
-        return std::chrono::milliseconds (
-          static_cast<int64_t> (last_reported_ms_));
+        return std::chrono::milliseconds (static_cast<int64_t> (last_reported_ms_));
     }
 
   private:
@@ -168,18 +164,20 @@ class registry_topology_entry_t
 class registry_service_summary_entry_t
 {
   public:
-    registry_service_summary_entry_t ()
-        : auto_connect_type_ (zlink::auto_connect_type::invalid),
-          service_role_ (service_role::invalid), channel_name_ (),
-          total_count_ (0), connecting_count_ (0), ready_count_ (0),
-          error_count_ (0), stopped_count_ (0), last_reported_ms_ (0)
+    registry_service_summary_entry_t () :
+        auto_connect_type_ (zlink::auto_connect_type::invalid),
+        service_role_ (service_role::invalid),
+        channel_name_ (),
+        total_count_ (0),
+        connecting_count_ (0),
+        ready_count_ (0),
+        error_count_ (0),
+        stopped_count_ (0),
+        last_reported_ms_ (0)
     {
     }
 
-    auto_connect_type_t auto_connect_type () const noexcept
-    {
-        return auto_connect_type_;
-    }
+    auto_connect_type_t auto_connect_type () const noexcept { return auto_connect_type_; }
 
     service_role_t service_role () const noexcept { return service_role_; }
 
@@ -197,8 +195,7 @@ class registry_service_summary_entry_t
 
     std::chrono::milliseconds last_reported () const noexcept
     {
-        return std::chrono::milliseconds (
-          static_cast<int64_t> (last_reported_ms_));
+        return std::chrono::milliseconds (static_cast<int64_t> (last_reported_ms_));
     }
 
   private:
@@ -219,8 +216,7 @@ class registry_service_summary_filter_t
   public:
     registry_service_summary_filter_t () = default;
 
-    registry_service_summary_filter_t &
-    auto_connect_type (auto_connect_type_t value_)
+    registry_service_summary_filter_t &auto_connect_type (auto_connect_type_t value_)
     {
         auto_connect_type_ = value_;
         return *this;
@@ -238,20 +234,11 @@ class registry_service_summary_filter_t
         return *this;
     }
 
-    const std::optional<auto_connect_type_t> &auto_connect_type () const noexcept
-    {
-        return auto_connect_type_;
-    }
+    const std::optional<auto_connect_type_t> &auto_connect_type () const noexcept { return auto_connect_type_; }
 
-    const std::optional<service_role_t> &service_role () const noexcept
-    {
-        return service_role_;
-    }
+    const std::optional<service_role_t> &service_role () const noexcept { return service_role_; }
 
-    const std::optional<std::string> &channel_name () const noexcept
-    {
-        return channel_name_;
-    }
+    const std::optional<std::string> &channel_name () const noexcept { return channel_name_; }
 
   private:
     std::optional<auto_connect_type_t> auto_connect_type_;
@@ -262,11 +249,16 @@ class registry_service_summary_filter_t
 class registry_status_t
 {
   public:
-    registry_status_t ()
-        : registry_id_ (0), bind_endpoint_ (), state_ (registry_state::idle),
-          topology_entry_count_ (0), peer_registry_count_ (0),
-          connected_peer_registry_count_ (0), list_seq_ (0), last_error_ (0),
-          last_changed_ms_ (0)
+    registry_status_t () :
+        registry_id_ (0),
+        bind_endpoint_ (),
+        state_ (registry_state::idle),
+        topology_entry_count_ (0),
+        peer_registry_count_ (0),
+        connected_peer_registry_count_ (0),
+        list_seq_ (0),
+        last_error_ (0),
+        last_changed_ms_ (0)
     {
     }
 
@@ -276,20 +268,11 @@ class registry_status_t
 
     registry_state_t state () const noexcept { return state_; }
 
-    uint32_t topology_entry_count () const noexcept
-    {
-        return topology_entry_count_;
-    }
+    uint32_t topology_entry_count () const noexcept { return topology_entry_count_; }
 
-    uint32_t peer_registry_count () const noexcept
-    {
-        return peer_registry_count_;
-    }
+    uint32_t peer_registry_count () const noexcept { return peer_registry_count_; }
 
-    uint32_t connected_peer_registry_count () const noexcept
-    {
-        return connected_peer_registry_count_;
-    }
+    uint32_t connected_peer_registry_count () const noexcept { return connected_peer_registry_count_; }
 
     uint64_t list_seq () const noexcept { return list_seq_; }
 
@@ -360,40 +343,19 @@ class registry_topology_filter_t
         return *this;
     }
 
-    const std::optional<auto_connect_type_t> &auto_connect_type () const noexcept
-    {
-        return auto_connect_type_;
-    }
+    const std::optional<auto_connect_type_t> &auto_connect_type () const noexcept { return auto_connect_type_; }
 
-    const std::optional<service_kind_t> &service_kind () const noexcept
-    {
-        return service_kind_;
-    }
+    const std::optional<service_kind_t> &service_kind () const noexcept { return service_kind_; }
 
-    const std::optional<service_role_t> &service_role () const noexcept
-    {
-        return service_role_;
-    }
+    const std::optional<service_role_t> &service_role () const noexcept { return service_role_; }
 
-    const std::optional<std::string> &channel_name () const noexcept
-    {
-        return channel_name_;
-    }
+    const std::optional<std::string> &channel_name () const noexcept { return channel_name_; }
 
-    const std::optional<routing_id_t> &routing_id () const noexcept
-    {
-        return routing_id_;
-    }
+    const std::optional<routing_id_t> &routing_id () const noexcept { return routing_id_; }
 
-    const std::optional<topology_state_t> &state () const noexcept
-    {
-        return state_;
-    }
+    const std::optional<topology_state_t> &state () const noexcept { return state_; }
 
-    const std::optional<topology_source_t> &source () const noexcept
-    {
-        return source_;
-    }
+    const std::optional<topology_source_t> &source () const noexcept { return source_; }
 
   private:
     std::optional<auto_connect_type_t> auto_connect_type_;

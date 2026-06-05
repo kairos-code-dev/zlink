@@ -29,138 +29,120 @@ class stream_runtime_state_t;
 
 class capability_builder_state_t
 {
-public:
-  channel_capability_snapshot_t snapshot;
+  public:
+    channel_capability_snapshot_t snapshot;
 };
 
 class channel_builder_state_t
 {
-public:
-  explicit channel_builder_state_t (std::string name)
-    : snapshot { std::move (name) }
-  {
-  }
+  public:
+    explicit channel_builder_state_t (std::string name) : snapshot{std::move (name)} {}
 
-  channel_snapshot_t snapshot;
+    channel_snapshot_t snapshot;
 };
 
 class route_channel_builder_state_t
 {
-public:
-  explicit route_channel_builder_state_t (std::string router_channel_id)
-    : registration (std::move (router_channel_id))
-  {
-  }
+  public:
+    explicit route_channel_builder_state_t (std::string router_channel_id) :
+        registration (std::move (router_channel_id))
+    {
+    }
 
-  route_channel_registration_t registration;
+    route_channel_registration_t registration;
 };
 
 class route_client_state_t
 {
-public:
-  route_client_state_t (std::shared_ptr<channel_runtime_state_t> runtime,
-                        serializer_registry_t &serializers)
-    : runtime (std::move (runtime)), serializers (&serializers)
-  {
-  }
+  public:
+    route_client_state_t (std::shared_ptr<channel_runtime_state_t> runtime, serializer_registry_t &serializers) :
+        runtime (std::move (runtime)), serializers (&serializers)
+    {
+    }
 
-  std::shared_ptr<channel_runtime_state_t> runtime;
-  serializer_registry_t *serializers;
+    std::shared_ptr<channel_runtime_state_t> runtime;
+    serializer_registry_t *serializers;
 };
 
 class channel_runtime_state_t
 {
-public:
-  struct outbound_call_record_t
-  {
-    std::string kind;
-    std::string channel_name;
-    std::string topic;
-    std::string packet_name;
-    std::chrono::milliseconds timeout { 0 };
-    std::map<std::string, std::string> metadata;
-  };
+  public:
+    struct outbound_call_record_t
+    {
+        std::string kind;
+        std::string channel_name;
+        std::string topic;
+        std::string packet_name;
+        std::chrono::milliseconds timeout{0};
+        std::map<std::string, std::string> metadata;
+    };
 
-  std::map<std::string, channel_snapshot_t> channels;
-  std::size_t max_pending = 1024;
-  std::size_t pending = 0;
-  channel_pending_requests_t pending_requests;
-  std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>>
-    server_bundles;
-  std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>>
-    client_bundles;
-  std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>>
-    publisher_bundles;
-  std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>>
-    subscriber_bundles;
-  std::map<std::string, std::shared_ptr<route_channel_runtime_t>>
-    route_channels;
-  std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
-  std::vector<outbound_call_record_t> outbound_calls;
-  bool shutdown = false;
-  bool closed = false;
-  retry_hook_t retry_hook;
-  dead_letter_hook_t dead_letter_hook;
+    std::map<std::string, channel_snapshot_t> channels;
+    std::size_t max_pending = 1024;
+    std::size_t pending = 0;
+    channel_pending_requests_t pending_requests;
+    std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> server_bundles;
+    std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> client_bundles;
+    std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> publisher_bundles;
+    std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> subscriber_bundles;
+    std::map<std::string, std::shared_ptr<route_channel_runtime_t>> route_channels;
+    std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
+    std::vector<outbound_call_record_t> outbound_calls;
+    bool shutdown = false;
+    bool closed = false;
+    retry_hook_t retry_hook;
+    dead_letter_hook_t dead_letter_hook;
 };
 
 class zlink_builder_state_t
 {
-public:
-  std::string node_name;
-  std::shared_ptr<channel_runtime_state_t> runtime =
-    std::make_shared<channel_runtime_state_t> ();
-  std::map<std::string, std::shared_ptr<spot_node_builder_state_t>> spot_nodes;
-  std::map<std::string, std::shared_ptr<route_channel_builder_state_t>>
-    route_channels;
-  std::shared_ptr<registry_runtime_state_t> registry_runtime =
-    std::make_shared<registry_runtime_state_t> ();
-  std::shared_ptr<stream_runtime_state_t> stream_runtime =
-    std::make_shared<stream_runtime_state_t> ();
+  public:
+    std::string node_name;
+    std::shared_ptr<channel_runtime_state_t> runtime = std::make_shared<channel_runtime_state_t> ();
+    std::map<std::string, std::shared_ptr<spot_node_builder_state_t>> spot_nodes;
+    std::map<std::string, std::shared_ptr<route_channel_builder_state_t>> route_channels;
+    std::shared_ptr<registry_runtime_state_t> registry_runtime = std::make_shared<registry_runtime_state_t> ();
+    std::shared_ptr<stream_runtime_state_t> stream_runtime = std::make_shared<stream_runtime_state_t> ();
 };
 
 class channel_runtime_t
 {
-public:
-  explicit channel_runtime_t (std::shared_ptr<channel_runtime_state_t> state);
+  public:
+    explicit channel_runtime_t (std::shared_ptr<channel_runtime_state_t> state);
 
-  result_t<zlink::message_t> dispatch_request (
-    std::string channel_name,
-    std::string topic,
-    std::string packet_name,
-    service_provider_t &services,
-    serializer_registry_t &serializers,
-    const handler_registry_t &handlers,
-    const zlink::message_t &message) const;
+    result_t<zlink::message_t> dispatch_request (std::string channel_name,
+                                                 std::string topic,
+                                                 std::string packet_name,
+                                                 service_provider_t &services,
+                                                 serializer_registry_t &serializers,
+                                                 const handler_registry_t &handlers,
+                                                 const zlink::message_t &message) const;
 
-  result_t<void> dispatch_send (std::string channel_name,
-                                std::string topic,
-                                std::string packet_name,
-                                service_provider_t &services,
-                                serializer_registry_t &serializers,
-                                const handler_registry_t &handlers,
-                                const zlink::message_t &message) const;
+    result_t<void> dispatch_send (std::string channel_name,
+                                  std::string topic,
+                                  std::string packet_name,
+                                  service_provider_t &services,
+                                  serializer_registry_t &serializers,
+                                  const handler_registry_t &handlers,
+                                  const zlink::message_t &message) const;
 
-  result_t<std::uint64_t> reserve_outbound_request (
-    std::string channel_name);
-  result_t<std::uint64_t> queue_pending_send (
-    std::string channel_name,
-    std::string idempotency_key = {});
-  result_t<void> complete_outbound_reply (std::uint64_t request_seq);
-  result_t<void> mark_send_ready (std::uint64_t operation_id);
-  result_t<void> expire_pending (std::uint64_t operation_id);
-  result_t<void> retry_pending (std::uint64_t operation_id);
-  void close () noexcept;
-  void shutdown () noexcept;
-  std::size_t pending_count () const noexcept;
-  std::size_t pending_limit () const noexcept;
-  std::vector<channel_runtime_state_t::outbound_call_record_t>
-  outbound_calls () const;
-  void drain () noexcept;
+    result_t<std::uint64_t> reserve_outbound_request (std::string channel_name);
+    result_t<std::uint64_t> queue_pending_send (std::string channel_name, std::string idempotency_key = {});
+    result_t<void> complete_outbound_reply (std::uint64_t request_seq);
+    result_t<void> mark_send_ready (std::uint64_t operation_id);
+    result_t<void> expire_pending (std::uint64_t operation_id);
+    result_t<void> retry_pending (std::uint64_t operation_id);
+    void close () noexcept;
+    void shutdown () noexcept;
+    std::size_t pending_count () const noexcept;
+    std::size_t pending_limit () const noexcept;
+    std::vector<channel_runtime_state_t::outbound_call_record_t> outbound_calls () const;
+    void drain () noexcept;
 
-  static channel_runtime_t from (const message_bus_t &bus);
+    static channel_runtime_t from (const message_bus_t &bus);
 
-private:
-  std::shared_ptr<channel_runtime_state_t> _state;
+  private:
+    std::shared_ptr<channel_runtime_state_t> _state;
 };
 
 } // namespace zlink::framework::detail

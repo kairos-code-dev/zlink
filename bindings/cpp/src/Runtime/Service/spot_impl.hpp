@@ -16,8 +16,7 @@ struct spot_t::impl
     std::chrono::milliseconds default_request_timeout;
     std::function<void ()> send_ready_handler;
     std::function<void (received_t)> routed_receive_handler;
-    std::function<void (spot_t &, const spot_dispatch_info_t &)>
-      dispatch_event_handler;
+    std::function<void (spot_t &, const spot_dispatch_info_t &)> dispatch_event_handler;
 };
 
 struct spot_t::native_handle_ctor_tag_t

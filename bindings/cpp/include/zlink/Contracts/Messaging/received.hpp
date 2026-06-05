@@ -28,28 +28,16 @@ class received_t
     received_t (received_t &&) noexcept = default;
     received_t &operator= (received_t &&) noexcept = default;
 
-    const std::optional<routing_id_t> &routing_id () const noexcept
-    {
-        return _routing_id;
-    }
+    const std::optional<routing_id_t> &routing_id () const noexcept { return _routing_id; }
 
-    const std::optional<routing_id_t> &spot_rid () const noexcept
-    {
-        return _spot_rid;
-    }
+    const std::optional<routing_id_t> &spot_rid () const noexcept { return _spot_rid; }
 
-    const std::optional<uint64_t> &request_seq () const noexcept
-    {
-        return _request_seq;
-    }
+    const std::optional<uint64_t> &request_seq () const noexcept { return _request_seq; }
 
     const std::vector<message_t> &parts () const;
     std::vector<message_t> &parts ();
 
-    bool is_single_part () const noexcept
-    {
-        return _single_part.has_value () || _parts.size () == 1u;
-    }
+    bool is_single_part () const noexcept { return _single_part.has_value () || _parts.size () == 1u; }
     message_t &first_part ();
     message_t single_part_or_throw ();
     /// Send context (routing_id / spot_rid) is encapsulated. Returns an

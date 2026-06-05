@@ -15,62 +15,56 @@ namespace zlink::framework::detail
 
 struct monitoring_source_registration_t
 {
-  std::string source_name;
-  std::chrono::milliseconds interval { 0 };
+    std::string source_name;
+    std::chrono::milliseconds interval{0};
 };
 
 struct socket_monitoring_source_registration_t
 {
-  std::string source_name;
-  std::vector<socket_event_kind_t> events;
+    std::string source_name;
+    std::vector<socket_event_kind_t> events;
 };
 
 class monitoring_runtime_state_t
 {
-public:
-  std::vector<socket_monitoring_source_registration_t> socket_sources;
-  std::vector<std::string> discovery_sources;
-  std::vector<monitoring_source_registration_t> registry_sources;
-  std::vector<monitoring_source_registration_t> spot_sources;
-  std::vector<std::string> spot_timer_sources;
-  std::vector<std::string> stream_sources;
-  std::vector<std::string> actor_sources;
-  bool runtime_metrics_enabled = false;
-  std::map<std::type_index, std::vector<std::function<void (const void *)>>>
-    handlers;
-  std::function<void (const runtime_event_base_t &)> tracing_hook;
+  public:
+    std::vector<socket_monitoring_source_registration_t> socket_sources;
+    std::vector<std::string> discovery_sources;
+    std::vector<monitoring_source_registration_t> registry_sources;
+    std::vector<monitoring_source_registration_t> spot_sources;
+    std::vector<std::string> spot_timer_sources;
+    std::vector<std::string> stream_sources;
+    std::vector<std::string> actor_sources;
+    bool runtime_metrics_enabled = false;
+    std::map<std::type_index, std::vector<std::function<void (const void *)>>> handlers;
+    std::function<void (const runtime_event_base_t &)> tracing_hook;
 };
 
 class monitoring_runtime_t
 {
-public:
-  explicit monitoring_runtime_t (
-    std::shared_ptr<monitoring_runtime_state_t> state);
+  public:
+    explicit monitoring_runtime_t (std::shared_ptr<monitoring_runtime_state_t> state);
 
-  static monitoring_runtime_t from (const monitoring_builder_t &builder);
+    static monitoring_runtime_t from (const monitoring_builder_t &builder);
 
-  void publish_socket (socket_event_payload_t event) const;
-  void publish_discovery (discovery_event_payload_t event) const;
-  void publish_registry_snapshot (std::string source_name,
-                                  registry_status_t status,
-                                  std::vector<topology_entry_t> topology,
-                                  std::vector<service_summary_entry_t> summary)
-    const;
-  void publish_spot_snapshot (spot_event_payload_t event) const;
-  void publish_stream (stream_event_payload_t event) const;
-  void publish_actor (actor_event_payload_t event) const;
-  void publish_timer_failure (std::string source_name,
-                              spot_rid_t spot_rid,
-                              timer_failure_event_t failure) const;
+    void publish_socket (socket_event_payload_t event) const;
+    void publish_discovery (discovery_event_payload_t event) const;
+    void publish_registry_snapshot (std::string source_name,
+                                    registry_status_t status,
+                                    std::vector<topology_entry_t> topology,
+                                    std::vector<service_summary_entry_t> summary) const;
+    void publish_spot_snapshot (spot_event_payload_t event) const;
+    void publish_stream (stream_event_payload_t event) const;
+    void publish_actor (actor_event_payload_t event) const;
+    void publish_timer_failure (std::string source_name, spot_rid_t spot_rid, timer_failure_event_t failure) const;
 
-private:
-  template<typename TEvent>
-  void publish (TEvent event) const
-  {
-    runtime_event_publisher_t (_state).publish (std::move (event));
-  }
+  private:
+    template <typename TEvent> void publish (TEvent event) const
+    {
+        runtime_event_publisher_t (_state).publish (std::move (event));
+    }
 
-  std::shared_ptr<monitoring_runtime_state_t> _state;
+    std::shared_ptr<monitoring_runtime_state_t> _state;
 };
 
 } // namespace zlink::framework::detail

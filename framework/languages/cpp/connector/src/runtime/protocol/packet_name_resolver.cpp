@@ -7,19 +7,17 @@
 namespace zlink::stream_connector::detail
 {
 
-std::string
-packet_name_resolver_t::resolve (std::type_index type) const
+std::string packet_name_resolver_t::resolve (std::type_index type) const
 {
-  return resolve (type, {});
+    return resolve (type, {});
 }
 
-std::string
-packet_name_resolver_t::resolve (std::type_index type, std::string name) const
+std::string packet_name_resolver_t::resolve (std::type_index type, std::string name) const
 {
-  if (!name.empty ()) {
-    return name;
-  }
-  return type.name ();
+    if (!name.empty ()) {
+        return name;
+    }
+    return type.name ();
 }
 
 } // namespace zlink::stream_connector::detail

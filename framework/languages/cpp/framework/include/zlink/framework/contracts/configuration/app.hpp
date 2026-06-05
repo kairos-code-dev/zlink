@@ -27,68 +27,66 @@ class app_t;
 
 class app_advanced_t
 {
-public:
-  service_collection_t &services () noexcept;
-  handler_registry_t &handlers () noexcept;
-  app_t &use_zlink (std::function<void (zlink_builder_t &)> configure);
+  public:
+    service_collection_t &services () noexcept;
+    handler_registry_t &handlers () noexcept;
+    app_t &use_zlink (std::function<void (zlink_builder_t &)> configure);
 
-private:
-  friend class app_t;
-  explicit app_advanced_t (app_t &app) noexcept;
+  private:
+    friend class app_t;
+    explicit app_advanced_t (app_t &app) noexcept;
 
-  app_t *_app;
+    app_t *_app;
 };
 
 class app_t
 {
-public:
-  app_t ();
-  ~app_t ();
+  public:
+    app_t ();
+    ~app_t ();
 
-  app_t (app_t &&) noexcept;
-  app_t &operator= (app_t &&) noexcept;
-  app_t (const app_t &) = delete;
-  app_t &operator= (const app_t &) = delete;
+    app_t (app_t &&) noexcept;
+    app_t &operator= (app_t &&) noexcept;
+    app_t (const app_t &) = delete;
+    app_t &operator= (const app_t &) = delete;
 
-  static app_t create ();
+    static app_t create ();
 
-  config_builder_t &config () noexcept;
-  logging_builder_t &logging () noexcept;
-  monitoring_builder_t &monitoring () noexcept;
-  metrics_builder_t &metrics () noexcept;
-  health_builder_t &health () noexcept;
-  app_advanced_t advanced () noexcept;
+    config_builder_t &config () noexcept;
+    logging_builder_t &logging () noexcept;
+    monitoring_builder_t &monitoring () noexcept;
+    metrics_builder_t &metrics () noexcept;
+    health_builder_t &health () noexcept;
+    app_advanced_t advanced () noexcept;
 
-  app_t &add_module (module_t &module);
-  app_t &add_zlink_framework (
-    std::function<void (zlink_framework_options_t &)> configure);
-  template<typename TModule, typename... TArgs>
-    requires framework_module_contract_t<TModule>
-  app_t &add_zlink_framework (TArgs &&...args)
-  {
-    TModule module (std::forward<TArgs> (args)...);
-    module.configure_services (_services ());
-    module.configure_zlink (_zlink_builder ());
-    module.configure_handlers (_handlers ());
-    module.configure_monitoring (monitoring ());
-    return *this;
-  }
-  app_t &add_hosted_service (std::unique_ptr<hosted_service_t> service);
+    app_t &add_module (module_t &module);
+    app_t &add_zlink_framework (std::function<void (zlink_framework_options_t &)> configure);
+    template <typename TModule, typename... TArgs>
+    requires framework_module_contract_t<TModule> app_t &add_zlink_framework (TArgs &&...args)
+    {
+        TModule module (std::forward<TArgs> (args)...);
+        module.configure_services (_services ());
+        module.configure_zlink (_zlink_builder ());
+        module.configure_handlers (_handlers ());
+        module.configure_monitoring (monitoring ());
+        return *this;
+    }
+    app_t &add_hosted_service (std::unique_ptr<hosted_service_t> service);
 
-  int run (int argc, char **argv);
+    int run (int argc, char **argv);
 
-  void stop () noexcept;
-  void request_stop () noexcept;
+    void stop () noexcept;
+    void request_stop () noexcept;
 
-private:
-  friend class app_advanced_t;
+  private:
+    friend class app_advanced_t;
 
-  service_collection_t &_services () noexcept;
-  handler_registry_t &_handlers () noexcept;
-  zlink_builder_t &_zlink_builder () noexcept;
-  serializer_registry_t &_serializers () noexcept;
+    service_collection_t &_services () noexcept;
+    handler_registry_t &_handlers () noexcept;
+    zlink_builder_t &_zlink_builder () noexcept;
+    serializer_registry_t &_serializers () noexcept;
 
-  std::unique_ptr<detail::app_state_t> _state;
+    std::unique_ptr<detail::app_state_t> _state;
 };
 
 } // namespace zlink::framework

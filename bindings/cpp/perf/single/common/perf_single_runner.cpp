@@ -3,8 +3,10 @@
 #include <cstdlib>
 #include <iostream>
 
-namespace perf {
-namespace single {
+namespace perf
+{
+namespace single
+{
 
 int run_standard_bench_main (int argc, char **argv, run_fn_t fn)
 {

@@ -27,182 +27,171 @@ class stream_runtime_t;
 
 enum class stream_message_kind_t : std::uint8_t
 {
-  send = 1,
-  request = 2,
-  response = 3,
-  error = 4,
-  control = 5
+    send = 1,
+    request = 2,
+    response = 3,
+    error = 4,
+    control = 5
 };
 
 enum class stream_codec_t : std::uint8_t
 {
-  raw = 0,
-  json = 1,
-  message_pack = 2,
-  protobuf = 3
+    raw = 0,
+    json = 1,
+    message_pack = 2,
+    protobuf = 3
 };
 
 enum class stream_header_flags_t : std::uint8_t
 {
-  none = 0,
-  has_request_seq = 0x01,
-  has_metadata = 0x02,
-  payload_compressed = 0x04
+    none = 0,
+    has_request_seq = 0x01,
+    has_metadata = 0x02,
+    payload_compressed = 0x04
 };
 
-constexpr stream_header_flags_t operator| (stream_header_flags_t lhs,
-                                           stream_header_flags_t rhs) noexcept
+constexpr stream_header_flags_t operator| (stream_header_flags_t lhs, stream_header_flags_t rhs) noexcept
 {
-  return static_cast<stream_header_flags_t> (
-    static_cast<std::uint8_t> (lhs) | static_cast<std::uint8_t> (rhs));
+    return static_cast<stream_header_flags_t> (static_cast<std::uint8_t> (lhs) | static_cast<std::uint8_t> (rhs));
 }
 
-constexpr stream_header_flags_t operator& (stream_header_flags_t lhs,
-                                           stream_header_flags_t rhs) noexcept
+constexpr stream_header_flags_t operator& (stream_header_flags_t lhs, stream_header_flags_t rhs) noexcept
 {
-  return static_cast<stream_header_flags_t> (
-    static_cast<std::uint8_t> (lhs) & static_cast<std::uint8_t> (rhs));
+    return static_cast<stream_header_flags_t> (static_cast<std::uint8_t> (lhs) & static_cast<std::uint8_t> (rhs));
 }
 
 enum class stream_session_error_t
 {
-  internal,
-  transport_error,
-  handshake_failed
+    internal,
+    transport_error,
+    handshake_failed
 };
 
 class stream_error_t
 {
-public:
-  stream_error_t () = default;
-  stream_error_t (stream_session_error_t error,
-                  int native_code,
-                  std::string message);
+  public:
+    stream_error_t () = default;
+    stream_error_t (stream_session_error_t error, int native_code, std::string message);
 
-  stream_session_error_t error () const noexcept;
-  int native_code () const noexcept;
-  std::string_view message () const noexcept;
+    stream_session_error_t error () const noexcept;
+    int native_code () const noexcept;
+    std::string_view message () const noexcept;
 
-private:
-  stream_session_error_t _error = stream_session_error_t::internal;
-  int _native_code = 0;
-  std::string _message;
+  private:
+    stream_session_error_t _error = stream_session_error_t::internal;
+    int _native_code = 0;
+    std::string _message;
 };
 
 class stream_metadata_t
 {
-public:
-  stream_metadata_t () = default;
-  explicit stream_metadata_t (std::map<std::string, std::string> values);
+  public:
+    stream_metadata_t () = default;
+    explicit stream_metadata_t (std::map<std::string, std::string> values);
 
-  stream_metadata_t &with (std::string key, std::string value);
-  std::optional<std::string_view> find (std::string_view key) const;
-  bool empty () const noexcept;
-  const std::map<std::string, std::string> &values () const noexcept;
+    stream_metadata_t &with (std::string key, std::string value);
+    std::optional<std::string_view> find (std::string_view key) const;
+    bool empty () const noexcept;
+    const std::map<std::string, std::string> &values () const noexcept;
 
-private:
-  std::map<std::string, std::string> _values;
+  private:
+    std::map<std::string, std::string> _values;
 };
 
 class stream_header_t
 {
-public:
-  stream_header_t ();
-  stream_header_t (stream_message_kind_t kind,
-                   stream_codec_t codec,
-                   stream_header_flags_t flags,
-                   std::optional<std::uint64_t> request_seq,
-                   std::string packet_name,
-                   stream_metadata_t metadata = {});
+  public:
+    stream_header_t ();
+    stream_header_t (stream_message_kind_t kind,
+                     stream_codec_t codec,
+                     stream_header_flags_t flags,
+                     std::optional<std::uint64_t> request_seq,
+                     std::string packet_name,
+                     stream_metadata_t metadata = {});
 
-  stream_message_kind_t kind () const noexcept;
-  stream_codec_t codec () const noexcept;
-  stream_header_flags_t flags () const noexcept;
-  std::optional<std::uint64_t> request_seq () const noexcept;
-  std::string_view packet_name () const noexcept;
-  std::optional<std::string_view> metadata (std::string_view key) const;
-  const stream_metadata_t &metadata () const noexcept;
-  std::optional<std::string_view> correlation_id () const;
-  std::optional<std::string_view> content_type () const;
+    stream_message_kind_t kind () const noexcept;
+    stream_codec_t codec () const noexcept;
+    stream_header_flags_t flags () const noexcept;
+    std::optional<std::uint64_t> request_seq () const noexcept;
+    std::string_view packet_name () const noexcept;
+    std::optional<std::string_view> metadata (std::string_view key) const;
+    const stream_metadata_t &metadata () const noexcept;
+    std::optional<std::string_view> correlation_id () const;
+    std::optional<std::string_view> content_type () const;
 
-private:
-  stream_message_kind_t _kind = stream_message_kind_t::send;
-  stream_codec_t _codec = stream_codec_t::raw;
-  stream_header_flags_t _flags = stream_header_flags_t::none;
-  std::optional<std::uint64_t> _request_seq;
-  std::string _packet_name;
-  stream_metadata_t _metadata;
+  private:
+    stream_message_kind_t _kind = stream_message_kind_t::send;
+    stream_codec_t _codec = stream_codec_t::raw;
+    stream_header_flags_t _flags = stream_header_flags_t::none;
+    std::optional<std::uint64_t> _request_seq;
+    std::string _packet_name;
+    stream_metadata_t _metadata;
 };
 
 class stream_t
 {
-public:
-  stream_t ();
-  ~stream_t ();
+  public:
+    stream_t ();
+    ~stream_t ();
 
-  stream_t (stream_t &&) noexcept;
-  stream_t &operator= (stream_t &&) noexcept;
-  stream_t (const stream_t &) = default;
-  stream_t &operator= (const stream_t &) = default;
+    stream_t (stream_t &&) noexcept;
+    stream_t &operator= (stream_t &&) noexcept;
+    stream_t (const stream_t &) = default;
+    stream_t &operator= (const stream_t &) = default;
 
-  std::string session_id () const;
-  task_t<void> close ();
-  stream_write_call_t write_packet (const stream_header_t &header,
-                                    const zlink::message_t &payload);
-  stream_write_call_t reply_packet (const stream_header_t &request_header,
-                                    const zlink::message_t &payload);
+    std::string session_id () const;
+    task_t<void> close ();
+    stream_write_call_t write_packet (const stream_header_t &header, const zlink::message_t &payload);
+    stream_write_call_t reply_packet (const stream_header_t &request_header, const zlink::message_t &payload);
 
-private:
-  friend class detail::stream_runtime_t;
-  explicit stream_t (std::shared_ptr<detail::stream_state_t> state);
+  private:
+    friend class detail::stream_runtime_t;
+    explicit stream_t (std::shared_ptr<detail::stream_state_t> state);
 
-  std::shared_ptr<detail::stream_state_t> _state;
+    std::shared_ptr<detail::stream_state_t> _state;
 };
 
 class packet_stream_session_t
 {
-public:
-  virtual ~packet_stream_session_t () = default;
-  virtual task_t<void> on_connected (stream_t &stream) = 0;
-  virtual task_t<void> on_disconnected (stream_t &stream) = 0;
-  virtual task_t<void> on_error (stream_t &stream,
-                                 const stream_error_t &error) = 0;
-  virtual task_t<void> on_packet (stream_t &stream,
-                                  const stream_header_t &header,
-                                  const zlink::message_t &payload) = 0;
+  public:
+    virtual ~packet_stream_session_t () = default;
+    virtual task_t<void> on_connected (stream_t &stream) = 0;
+    virtual task_t<void> on_disconnected (stream_t &stream) = 0;
+    virtual task_t<void> on_error (stream_t &stream, const stream_error_t &error) = 0;
+    virtual task_t<void>
+    on_packet (stream_t &stream, const stream_header_t &header, const zlink::message_t &payload) = 0;
 };
 
 struct stream_snapshot_t
 {
-  std::string name;
-  std::string bind_endpoint;
-  std::string packet_session_name;
-  std::optional<std::string> actor_gateway_spot_node_name;
+    std::string name;
+    std::string bind_endpoint;
+    std::string packet_session_name;
+    std::optional<std::string> actor_gateway_spot_node_name;
 };
 
 class stream_builder_t
 {
-public:
-  stream_builder_t ();
-  ~stream_builder_t ();
+  public:
+    stream_builder_t ();
+    ~stream_builder_t ();
 
-  stream_builder_t (stream_builder_t &&) noexcept;
-  stream_builder_t &operator= (stream_builder_t &&) noexcept;
-  stream_builder_t (const stream_builder_t &) = default;
-  stream_builder_t &operator= (const stream_builder_t &) = default;
+    stream_builder_t (stream_builder_t &&) noexcept;
+    stream_builder_t &operator= (stream_builder_t &&) noexcept;
+    stream_builder_t (const stream_builder_t &) = default;
+    stream_builder_t &operator= (const stream_builder_t &) = default;
 
-  stream_builder_t &bind (std::string endpoint);
-  stream_builder_t &packet_session (std::string session_name);
-  stream_builder_t &attach_actor_gateway (std::string spot_node_name);
-  stream_snapshot_t snapshot () const;
+    stream_builder_t &bind (std::string endpoint);
+    stream_builder_t &packet_session (std::string session_name);
+    stream_builder_t &attach_actor_gateway (std::string spot_node_name);
+    stream_snapshot_t snapshot () const;
 
-private:
-  friend class zlink_builder_t;
-  friend class detail::stream_runtime_t;
-  explicit stream_builder_t (
-    std::shared_ptr<detail::stream_builder_state_t> state);
+  private:
+    friend class zlink_builder_t;
+    friend class detail::stream_runtime_t;
+    explicit stream_builder_t (std::shared_ptr<detail::stream_builder_state_t> state);
 
-  std::shared_ptr<detail::stream_builder_state_t> _state;
+    std::shared_ptr<detail::stream_builder_state_t> _state;
 };
 
 } // namespace zlink::framework

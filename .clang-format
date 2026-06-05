@@ -26,7 +26,7 @@ AllowShortBlocksOnASingleLine: false
 AllowAllParametersOfDeclarationOnNextLine: true
 AllowShortFunctionsOnASingleLine: InlineOnly
 AlwaysBreakTemplateDeclarations: false
-ColumnLimit: 80
+ColumnLimit: 120
 MaxEmptyLinesToKeep: 2
 KeepEmptyLinesAtTheStartOfBlocks: false
 ContinuationIndentWidth: 2
@@ -38,7 +38,7 @@ SpaceInEmptyParentheses: false
 SpacesInAngles: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
-Standard: Cpp03
+Standard: c++17
 
 SortIncludes: false
 

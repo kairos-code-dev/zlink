@@ -5,7 +5,8 @@
 #include <stdexcept>
 #include <vector>
 
-namespace {
+namespace
+{
 
 void test_string_roundtrip ()
 {
@@ -36,12 +37,12 @@ void test_allocate_exposes_writable_owned_payload ()
     assert (!msg.is_empty ());
 
     std::span<std::byte> bytes = msg.bytes ();
-    bytes[0] = std::byte {0x01};
-    bytes[1] = std::byte {0x02};
-    bytes[2] = std::byte {0x03};
+    bytes[0] = std::byte{0x01};
+    bytes[1] = std::byte{0x02};
+    bytes[2] = std::byte{0x03};
 
     const std::vector<uint8_t> out = msg.to_bytes ();
-    assert ((out == std::vector<uint8_t> {0x01, 0x02, 0x03}));
+    assert ((out == std::vector<uint8_t>{0x01, 0x02, 0x03}));
 }
 
 void test_copy_helpers_copy_payload ()
@@ -54,18 +55,15 @@ void test_copy_helpers_copy_payload ()
     assert (!msg.is_empty ());
 
     std::vector<uint8_t> target (msg.size ());
-    assert (msg.copy_to (std::span<uint8_t> (target.data (), target.size ()))
-            == msg.size ());
-    assert ((target == std::vector<uint8_t> {'c', 'o', 'p', 'y', '-',
-                                             'p', 'a', 'y', 'l', 'o', 'a',
-                                             'd'}));
+    assert (msg.copy_to (std::span<uint8_t> (target.data (), target.size ())) == msg.size ());
+    assert ((target == std::vector<uint8_t>{'c', 'o', 'p', 'y', '-', 'p', 'a', 'y', 'l', 'o', 'a', 'd'}));
 
     bool threw = false;
     try {
         std::vector<uint8_t> too_small (msg.size () - 1);
-        (void) msg.copy_to (
-          std::span<uint8_t> (too_small.data (), too_small.size ()));
-    } catch (const std::invalid_argument &) {
+        (void) msg.copy_to (std::span<uint8_t> (too_small.data (), too_small.size ()));
+    }
+    catch (const std::invalid_argument &) {
         threw = true;
     }
     assert (threw);
@@ -96,10 +94,8 @@ void test_diagnostic_surface_uses_canonical_names ()
 
 void test_routing_id_hex_and_display_policy ()
 {
-    const zlink::routing_id_t rid =
-      zlink::routing_id_t::from (std::vector<uint8_t> {0x00, 0x41, 0x42});
-    const zlink::routing_id_t parsed =
-      zlink::routing_id_t::from_hex ("004142");
+    const zlink::routing_id_t rid = zlink::routing_id_t::from (std::vector<uint8_t>{0x00, 0x41, 0x42});
+    const zlink::routing_id_t parsed = zlink::routing_id_t::from_hex ("004142");
 
     assert (parsed == rid);
     assert (rid.to_hex () == "004142");
@@ -109,7 +105,8 @@ void test_routing_id_hex_and_display_policy ()
     bool threw = false;
     try {
         (void) zlink::routing_id_t::from_hex ("not-hex");
-    } catch (const std::invalid_argument &) {
+    }
+    catch (const std::invalid_argument &) {
         threw = true;
     }
     assert (threw);
@@ -117,15 +114,14 @@ void test_routing_id_hex_and_display_policy ()
     threw = false;
     try {
         (void) zlink::routing_id_t::from_hex (std::string (512, 'a'));
-    } catch (const std::invalid_argument &) {
+    }
+    catch (const std::invalid_argument &) {
         threw = true;
     }
     assert (threw);
 
-    assert (zlink::routing_id_t::from (std::string ("dealer-1")).to_string ()
-            == "dealer-1");
-    assert (zlink::routing_id_t::from (static_cast<uint32_t> (23)).to_string ()
-            == "23");
+    assert (zlink::routing_id_t::from (std::string ("dealer-1")).to_string () == "dealer-1");
+    assert (zlink::routing_id_t::from (static_cast<uint32_t> (23)).to_string () == "23");
 }
 
 } // namespace

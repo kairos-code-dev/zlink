@@ -10,30 +10,27 @@ namespace zlink::framework::runtime::messaging
 
 enum class request_result_t
 {
-  timed_out,
-  not_connected,
-  not_found,
-  rejected,
-  conflict,
-  busy,
-  protocol_error,
-  invalid_argument,
-  invalid_state,
-  not_supported,
-  terminated,
-  internal_error
+    timed_out,
+    not_connected,
+    not_found,
+    rejected,
+    conflict,
+    busy,
+    protocol_error,
+    invalid_argument,
+    invalid_state,
+    not_supported,
+    terminated,
+    internal_error
 };
 
 class request_failure_mapper_t
 {
-public:
-  framework_exception_t completion_exception (
-    request_result_t result,
-    const std::string &operation_name) const;
-  framework_exception_t error_header_exception (
-    const std::string &error_code,
-    const std::string &error_message,
-    const std::string &operation_name) const;
+  public:
+    framework_exception_t completion_exception (request_result_t result, const std::string &operation_name) const;
+    framework_exception_t error_header_exception (const std::string &error_code,
+                                                  const std::string &error_message,
+                                                  const std::string &operation_name) const;
 };
 
 } // namespace zlink::framework::runtime::messaging

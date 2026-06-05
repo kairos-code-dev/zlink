@@ -26,176 +26,161 @@ namespace detail
 class stream_write_call_state_t;
 } // namespace detail
 
-template<typename TReply>
-class request_call_t
+template <typename TReply> class request_call_t
 {
-public:
-  using metadata_map_t = std::map<std::string, std::string>;
-  using submit_fn_t =
-    std::function<result_t<TReply> (const std::string &,
-                                    std::chrono::milliseconds,
-                                    const metadata_map_t &)>;
+  public:
+    using metadata_map_t = std::map<std::string, std::string>;
+    using submit_fn_t =
+      std::function<result_t<TReply> (const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
 
-  explicit request_call_t (result_t<TReply> result)
-    : _immediate (std::move (result))
-  {
-  }
+    explicit request_call_t (result_t<TReply> result) : _immediate (std::move (result)) {}
 
-  request_call_t (std::string packet_name, submit_fn_t submit)
-    : _packet_name (std::move (packet_name)), _submit (std::move (submit))
-  {
-  }
-
-  request_call_t &timeout (std::chrono::milliseconds timeout)
-  {
-    _timeout = timeout;
-    return *this;
-  }
-
-  request_call_t &packet_name (std::string packet_name)
-  {
-    _packet_name = std::move (packet_name);
-    return *this;
-  }
-
-  request_call_t &metadata (std::string key, std::string value)
-  {
-    _metadata[std::move (key)] = std::move (value);
-    return *this;
-  }
-
-  task_t<TReply> submit ()
-  {
-    if (_immediate) {
-      return task_t<TReply> (*_immediate);
+    request_call_t (std::string packet_name, submit_fn_t submit) :
+        _packet_name (std::move (packet_name)), _submit (std::move (submit))
+    {
     }
-    if (!_submit) {
-      return task_t<TReply> (result_t<TReply>::failure (
-        framework_error_kind_t::request_protocol_error,
-        "request call is not bound to a channel client"));
+
+    request_call_t &timeout (std::chrono::milliseconds timeout)
+    {
+        _timeout = timeout;
+        return *this;
     }
-    return task_t<TReply> (_submit (_packet_name, _timeout, _metadata));
-  }
 
-  pending_operation_t submit (
-    std::function<void (result_t<TReply>)> callback)
-  {
-    callback (submit ().result ());
-    return pending_operation_t::make_completed ();
-  }
+    request_call_t &packet_name (std::string packet_name)
+    {
+        _packet_name = std::move (packet_name);
+        return *this;
+    }
 
-private:
-  std::optional<result_t<TReply>> _immediate;
-  std::string _packet_name;
-  std::chrono::milliseconds _timeout { 0 };
-  metadata_map_t _metadata;
-  submit_fn_t _submit;
+    request_call_t &metadata (std::string key, std::string value)
+    {
+        _metadata[std::move (key)] = std::move (value);
+        return *this;
+    }
+
+    task_t<TReply> submit ()
+    {
+        if (_immediate) {
+            return task_t<TReply> (*_immediate);
+        }
+        if (!_submit) {
+            return task_t<TReply> (result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                                              "request call is not bound to a channel client"));
+        }
+        return task_t<TReply> (_submit (_packet_name, _timeout, _metadata));
+    }
+
+    pending_operation_t submit (std::function<void (result_t<TReply>)> callback)
+    {
+        callback (submit ().result ());
+        return pending_operation_t::make_completed ();
+    }
+
+  private:
+    std::optional<result_t<TReply>> _immediate;
+    std::string _packet_name;
+    std::chrono::milliseconds _timeout{0};
+    metadata_map_t _metadata;
+    submit_fn_t _submit;
 };
 
 class send_call_t
 {
-public:
-  using metadata_map_t = std::map<std::string, std::string>;
-  using submit_fn_t =
-    std::function<result_t<void> (const std::string &,
-                                  std::chrono::milliseconds,
-                                  const metadata_map_t &)>;
+  public:
+    using metadata_map_t = std::map<std::string, std::string>;
+    using submit_fn_t =
+      std::function<result_t<void> (const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
 
-  explicit send_call_t (result_t<void> result) : _immediate (std::move (result)) {}
+    explicit send_call_t (result_t<void> result) : _immediate (std::move (result)) {}
 
-  send_call_t (std::string packet_name, submit_fn_t submit)
-    : _packet_name (std::move (packet_name)), _submit (std::move (submit))
-  {
-  }
-
-  send_call_t &timeout (std::chrono::milliseconds timeout)
-  {
-    _timeout = timeout;
-    return *this;
-  }
-
-  send_call_t &packet_name (std::string packet_name)
-  {
-    _packet_name = std::move (packet_name);
-    return *this;
-  }
-
-  send_call_t &metadata (std::string key, std::string value)
-  {
-    _metadata[std::move (key)] = std::move (value);
-    return *this;
-  }
-
-  task_t<void> submit ()
-  {
-    if (_immediate) {
-      return task_t<void> (*_immediate);
+    send_call_t (std::string packet_name, submit_fn_t submit) :
+        _packet_name (std::move (packet_name)), _submit (std::move (submit))
+    {
     }
-    if (!_submit) {
-      return task_t<void> (result_t<void>::failure (
-        framework_error_kind_t::request_protocol_error,
-        "send call is not bound to a channel client"));
+
+    send_call_t &timeout (std::chrono::milliseconds timeout)
+    {
+        _timeout = timeout;
+        return *this;
     }
-    return task_t<void> (_submit (_packet_name, _timeout, _metadata));
-  }
 
-  pending_operation_t submit (std::function<void (result_t<void>)> callback)
-  {
-    callback (submit ().result ());
-    return pending_operation_t::make_completed ();
-  }
+    send_call_t &packet_name (std::string packet_name)
+    {
+        _packet_name = std::move (packet_name);
+        return *this;
+    }
 
-private:
-  std::optional<result_t<void>> _immediate;
-  std::string _packet_name;
-  std::chrono::milliseconds _timeout { 0 };
-  metadata_map_t _metadata;
-  submit_fn_t _submit;
+    send_call_t &metadata (std::string key, std::string value)
+    {
+        _metadata[std::move (key)] = std::move (value);
+        return *this;
+    }
+
+    task_t<void> submit ()
+    {
+        if (_immediate) {
+            return task_t<void> (*_immediate);
+        }
+        if (!_submit) {
+            return task_t<void> (result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                                          "send call is not bound to a channel client"));
+        }
+        return task_t<void> (_submit (_packet_name, _timeout, _metadata));
+    }
+
+    pending_operation_t submit (std::function<void (result_t<void>)> callback)
+    {
+        callback (submit ().result ());
+        return pending_operation_t::make_completed ();
+    }
+
+  private:
+    std::optional<result_t<void>> _immediate;
+    std::string _packet_name;
+    std::chrono::milliseconds _timeout{0};
+    metadata_map_t _metadata;
+    submit_fn_t _submit;
 };
 
 class relay_call_t : private detail::call_facade_t<relay_call_t, void>
 {
-private:
-  using base_t = detail::call_facade_t<relay_call_t, void>;
+  private:
+    using base_t = detail::call_facade_t<relay_call_t, void>;
 
-public:
-  explicit relay_call_t (result_t<void> result) : base_t (std::move (result)) {}
+  public:
+    explicit relay_call_t (result_t<void> result) : base_t (std::move (result)) {}
 
-  using base_t::submit;
-  using base_t::timeout;
+    using base_t::submit;
+    using base_t::timeout;
 };
 
 class stream_write_call_t
 {
-public:
-  using metadata_map_t = std::map<std::string, std::string>;
-  using submit_fn_t =
-    std::function<result_t<void> (const stream_header_t &,
-                                  const zlink::message_t &)>;
+  public:
+    using metadata_map_t = std::map<std::string, std::string>;
+    using submit_fn_t = std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)>;
 
-  explicit stream_write_call_t (result_t<void> result);
-  ~stream_write_call_t ();
+    explicit stream_write_call_t (result_t<void> result);
+    ~stream_write_call_t ();
 
-  stream_write_call_t (stream_write_call_t &&) noexcept;
-  stream_write_call_t &operator= (stream_write_call_t &&) noexcept;
-  stream_write_call_t (const stream_write_call_t &) = delete;
-  stream_write_call_t &operator= (const stream_write_call_t &) = delete;
+    stream_write_call_t (stream_write_call_t &&) noexcept;
+    stream_write_call_t &operator= (stream_write_call_t &&) noexcept;
+    stream_write_call_t (const stream_write_call_t &) = delete;
+    stream_write_call_t &operator= (const stream_write_call_t &) = delete;
 
-  stream_write_call_t &timeout (std::chrono::milliseconds timeout);
-  stream_write_call_t &metadata (std::string key, std::string value);
-  stream_write_call_t &packet_name (std::string packet_name);
-  stream_write_call_t &compress ();
-  task_t<void> submit ();
-  pending_operation_t submit (std::function<void (result_t<void>)> callback);
+    stream_write_call_t &timeout (std::chrono::milliseconds timeout);
+    stream_write_call_t &metadata (std::string key, std::string value);
+    stream_write_call_t &packet_name (std::string packet_name);
+    stream_write_call_t &compress ();
+    task_t<void> submit ();
+    pending_operation_t submit (std::function<void (result_t<void>)> callback);
 
-private:
-  friend class stream_t;
+  private:
+    friend class stream_t;
 
-  stream_write_call_t (stream_header_t header,
-                       zlink::message_t payload,
-                       submit_fn_t submit);
+    stream_write_call_t (stream_header_t header, zlink::message_t payload, submit_fn_t submit);
 
-  std::shared_ptr<detail::stream_write_call_state_t> _state;
+    std::shared_ptr<detail::stream_write_call_state_t> _state;
 };
 
 } // namespace zlink::framework

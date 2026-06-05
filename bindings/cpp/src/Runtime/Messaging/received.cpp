@@ -16,8 +16,7 @@ inline recv_error_t invalid_single_part_error ()
 
 void close_parts (std::vector<message_t> &parts_)
 {
-    for (std::vector<message_t>::iterator it = parts_.begin ();
-         it != parts_.end (); ++it)
+    for (std::vector<message_t>::iterator it = parts_.begin (); it != parts_.end (); ++it)
         it->close ();
     parts_.clear ();
 }

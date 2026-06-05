@@ -44,7 +44,7 @@ enum class spot_node_socket_type_t : int
 /// @brief The overall readiness state of a spot node.
 enum class spot_node_state : int
 {
-    idle = 1,          ///< Not yet connecting to any peer.
+    idle = 1, ///< Not yet connecting to any peer.
     connecting = 2,
     partial_ready = 3, ///< Some but not all peers are connected.
     ready = 4,         ///< All expected peers are connected.
@@ -78,8 +78,8 @@ enum class spot_peer_source : int
 /// @brief The connection style of a spot peer.
 enum class spot_peer_kind : int
 {
-    spot_mesh = 1,      ///< A peer in the spot mesh.
-    router_channel = 2  ///< A peer reached over a router channel.
+    spot_mesh = 1,     ///< A peer in the spot mesh.
+    router_channel = 2 ///< A peer reached over a router channel.
 };
 
 /// @brief The connection state of a spot peer.
@@ -90,14 +90,14 @@ enum class spot_peer_state : int
     connected = 3
 };
 
-template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);
+template <size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);
 
 /// @brief How a subscription subject is matched.
 enum class subject_kind : uint32_t
 {
-    none = 0,    ///< No subject.
-    topic = 1,   ///< An exact topic match.
-    pattern = 2  ///< A pattern match.
+    none = 0,   ///< No subject.
+    topic = 1,  ///< An exact topic match.
+    pattern = 2 ///< A pattern match.
 };
 
 using spot_node_socket_role_t = spot_node_socket_role;
@@ -114,13 +114,20 @@ using subject_kind_t = subject_kind;
 class spot_node_status_t
 {
   public:
-    spot_node_status_t ()
-        : channel_name_ (), local_endpoint_ (), node_routing_id_ (std::nullopt),
-          state_ (spot_node_state::idle), configured_peer_count_ (0),
-          active_peer_count_ (0), connected_peer_count_ (0), subject_count_ (0),
-          ready_subject_count_ (0), disconnected_sub_target_count_ (0),
-          disconnected_routed_target_count_ (0), last_error_ (0),
-          last_changed_ms_ (0)
+    spot_node_status_t () :
+        channel_name_ (),
+        local_endpoint_ (),
+        node_routing_id_ (std::nullopt),
+        state_ (spot_node_state::idle),
+        configured_peer_count_ (0),
+        active_peer_count_ (0),
+        connected_peer_count_ (0),
+        subject_count_ (0),
+        ready_subject_count_ (0),
+        disconnected_sub_target_count_ (0),
+        disconnected_routed_target_count_ (0),
+        last_error_ (0),
+        last_changed_ms_ (0)
     {
     }
 
@@ -128,41 +135,23 @@ class spot_node_status_t
 
     const std::string &local_endpoint () const noexcept { return local_endpoint_; }
 
-    const std::optional<routing_id_t> &node_routing_id () const noexcept
-    {
-        return node_routing_id_;
-    }
+    const std::optional<routing_id_t> &node_routing_id () const noexcept { return node_routing_id_; }
 
     spot_node_state_t state () const noexcept { return state_; }
 
-    uint32_t configured_peer_count () const noexcept
-    {
-        return configured_peer_count_;
-    }
+    uint32_t configured_peer_count () const noexcept { return configured_peer_count_; }
 
     uint32_t active_peer_count () const noexcept { return active_peer_count_; }
 
-    uint32_t connected_peer_count () const noexcept
-    {
-        return connected_peer_count_;
-    }
+    uint32_t connected_peer_count () const noexcept { return connected_peer_count_; }
 
     uint32_t subject_count () const noexcept { return subject_count_; }
 
-    uint32_t ready_subject_count () const noexcept
-    {
-        return ready_subject_count_;
-    }
+    uint32_t ready_subject_count () const noexcept { return ready_subject_count_; }
 
-    uint32_t disconnected_sub_target_count () const noexcept
-    {
-        return disconnected_sub_target_count_;
-    }
+    uint32_t disconnected_sub_target_count () const noexcept { return disconnected_sub_target_count_; }
 
-    uint32_t disconnected_routed_target_count () const noexcept
-    {
-        return disconnected_routed_target_count_;
-    }
+    uint32_t disconnected_routed_target_count () const noexcept { return disconnected_routed_target_count_; }
 
     int32_t last_error () const noexcept { return last_error_; }
 
@@ -192,13 +181,16 @@ class spot_node_status_t
 class spot_node_peer_entry_t
 {
   public:
-    spot_node_peer_entry_t ()
-        : channel_name_ (), local_endpoint_ (), peer_endpoint_ (),
-          source_ (spot_peer_source::manual),
-          kind_ (spot_peer_kind::spot_mesh),
-          state_ (spot_peer_state::configured), weight_ (0),
-          connected_since_ms_ (0),
-          last_changed_ms_ (0)
+    spot_node_peer_entry_t () :
+        channel_name_ (),
+        local_endpoint_ (),
+        peer_endpoint_ (),
+        source_ (spot_peer_source::manual),
+        kind_ (spot_peer_kind::spot_mesh),
+        state_ (spot_peer_state::configured),
+        weight_ (0),
+        connected_since_ms_ (0),
+        last_changed_ms_ (0)
     {
     }
 
@@ -218,8 +210,7 @@ class spot_node_peer_entry_t
 
     std::chrono::milliseconds connected_since () const noexcept
     {
-        return std::chrono::milliseconds (
-          static_cast<int64_t> (connected_since_ms_));
+        return std::chrono::milliseconds (static_cast<int64_t> (connected_since_ms_));
     }
 
     std::chrono::milliseconds last_changed () const noexcept
@@ -264,20 +255,11 @@ class spot_node_peer_filter_t
         return *this;
     }
 
-    const std::optional<std::string> &peer_endpoint () const noexcept
-    {
-        return peer_endpoint_;
-    }
+    const std::optional<std::string> &peer_endpoint () const noexcept { return peer_endpoint_; }
 
-    const std::optional<spot_peer_source_t> &source () const noexcept
-    {
-        return source_;
-    }
+    const std::optional<spot_peer_source_t> &source () const noexcept { return source_; }
 
-    const std::optional<spot_peer_state_t> &state () const noexcept
-    {
-        return state_;
-    }
+    const std::optional<spot_peer_state_t> &state () const noexcept { return state_; }
 
   private:
     std::optional<std::string> peer_endpoint_;
@@ -289,10 +271,13 @@ class spot_node_peer_filter_t
 class spot_node_subject_entry_t
 {
   public:
-    spot_node_subject_entry_t ()
-        : role_ (spot_socket_role::pub), subject_ (),
-          subject_kind_ (zlink::subject_kind::none), ready_peer_count_ (0),
-          active_peer_count_ (0), last_changed_ms_ (0)
+    spot_node_subject_entry_t () :
+        role_ (spot_socket_role::pub),
+        subject_ (),
+        subject_kind_ (zlink::subject_kind::none),
+        ready_peer_count_ (0),
+        active_peer_count_ (0),
+        last_changed_ms_ (0)
     {
     }
 
@@ -347,15 +332,9 @@ class spot_node_subject_filter_t
 
     const std::optional<spot_role_t> &role () const noexcept { return role_; }
 
-    const std::optional<std::string> &subject () const noexcept
-    {
-        return subject_;
-    }
+    const std::optional<std::string> &subject () const noexcept { return subject_; }
 
-    const std::optional<subject_kind_t> &subject_kind () const noexcept
-    {
-        return subject_kind_;
-    }
+    const std::optional<subject_kind_t> &subject_kind () const noexcept { return subject_kind_; }
 
   private:
     std::optional<spot_role_t> role_;
@@ -375,8 +354,7 @@ class spot_node_socket_filter_t
         return *this;
     }
 
-    spot_node_socket_filter_t &socket_type (
-      spot_node_socket_type_t value_)
+    spot_node_socket_filter_t &socket_type (spot_node_socket_type_t value_)
     {
         socket_type_ = value_;
         return *this;
@@ -388,20 +366,11 @@ class spot_node_socket_filter_t
         return *this;
     }
 
-    const std::optional<spot_node_socket_owner_t> &owner () const noexcept
-    {
-        return owner_;
-    }
+    const std::optional<spot_node_socket_owner_t> &owner () const noexcept { return owner_; }
 
-    const std::optional<spot_node_socket_type_t> &socket_type () const noexcept
-    {
-        return socket_type_;
-    }
+    const std::optional<spot_node_socket_type_t> &socket_type () const noexcept { return socket_type_; }
 
-    const std::optional<std::string> &socket_name () const noexcept
-    {
-        return socket_name_;
-    }
+    const std::optional<std::string> &socket_name () const noexcept { return socket_name_; }
 
   private:
     std::optional<spot_node_socket_owner_t> owner_;
@@ -413,10 +382,14 @@ class spot_node_socket_filter_t
 class spot_node_socket_entry_t
 {
   public:
-    spot_node_socket_entry_t ()
-        : owner_ (spot_node_socket_owner::any), owner_id_ (0), owner_name_ (),
-          socket_name_ (), socket_type_ (spot_node_socket_type_t::pair),
-          auto_hwm_visible_ (false), monitor_status_ ()
+    spot_node_socket_entry_t () :
+        owner_ (spot_node_socket_owner::any),
+        owner_id_ (0),
+        owner_name_ (),
+        socket_name_ (),
+        socket_type_ (spot_node_socket_type_t::pair),
+        auto_hwm_visible_ (false),
+        monitor_status_ ()
     {
     }
 
@@ -428,10 +401,7 @@ class spot_node_socket_entry_t
 
     const std::string &socket_name () const noexcept { return socket_name_; }
 
-    spot_node_socket_type_t socket_type () const noexcept
-    {
-        return socket_type_;
-    }
+    spot_node_socket_type_t socket_type () const noexcept { return socket_type_; }
 
     bool auto_hwm_visible () const noexcept { return auto_hwm_visible_; }
 
@@ -452,12 +422,14 @@ class spot_node_socket_entry_t
 class spot_node_spot_entry_t
 {
   public:
-    spot_node_spot_entry_t ()
-        : spot_rid_ (detail::unchecked_empty_routing_id ()),
-          spot_kind_ (spot_kind::invalid),
-          dispatch_handler_attached_ (false),
-          joined_actor_count_ (0), pending_actor_join_count_ (0),
-          route_synced_ (false), last_changed_ms_ (0)
+    spot_node_spot_entry_t () :
+        spot_rid_ (detail::unchecked_empty_routing_id ()),
+        spot_kind_ (spot_kind::invalid),
+        dispatch_handler_attached_ (false),
+        joined_actor_count_ (0),
+        pending_actor_join_count_ (0),
+        route_synced_ (false),
+        last_changed_ms_ (0)
     {
     }
 
@@ -465,20 +437,11 @@ class spot_node_spot_entry_t
 
     spot_kind kind () const noexcept { return spot_kind_; }
 
-    bool dispatch_handler_attached () const noexcept
-    {
-        return dispatch_handler_attached_;
-    }
+    bool dispatch_handler_attached () const noexcept { return dispatch_handler_attached_; }
 
-    uint32_t joined_actor_count () const noexcept
-    {
-        return joined_actor_count_;
-    }
+    uint32_t joined_actor_count () const noexcept { return joined_actor_count_; }
 
-    uint32_t pending_actor_join_count () const noexcept
-    {
-        return pending_actor_join_count_;
-    }
+    uint32_t pending_actor_join_count () const noexcept { return pending_actor_join_count_; }
 
     bool route_synced () const noexcept { return route_synced_; }
 
@@ -502,29 +465,25 @@ class spot_node_spot_entry_t
 class spot_node_actor_entry_t
 {
   public:
-    spot_node_actor_entry_t ()
-        : actor_ (), current_spot_rid_ (std::nullopt),
-          current_spot_kind_ (spot_kind::invalid),
-          route_synced_ (false), pending_message_count_ (0),
-          last_changed_ms_ (0)
+    spot_node_actor_entry_t () :
+        actor_ (),
+        current_spot_rid_ (std::nullopt),
+        current_spot_kind_ (spot_kind::invalid),
+        route_synced_ (false),
+        pending_message_count_ (0),
+        last_changed_ms_ (0)
     {
     }
 
     const actor_ref_t &actor () const noexcept { return actor_; }
 
-    const std::optional<routing_id_t> &current_spot_rid () const noexcept
-    {
-        return current_spot_rid_;
-    }
+    const std::optional<routing_id_t> &current_spot_rid () const noexcept { return current_spot_rid_; }
 
     spot_kind current_spot_kind () const noexcept { return current_spot_kind_; }
 
     bool route_synced () const noexcept { return route_synced_; }
 
-    uint32_t pending_message_count () const noexcept
-    {
-        return pending_message_count_;
-    }
+    uint32_t pending_message_count () const noexcept { return pending_message_count_; }
 
     std::chrono::milliseconds last_changed () const noexcept
     {

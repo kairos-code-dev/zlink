@@ -12,297 +12,215 @@ namespace
 
 class sample_session_t final : public zlink::framework::packet_stream_session_t
 {
-public:
-  zlink::framework::task_t<void> on_connected (
-    zlink::framework::stream_t &stream) override
-  {
-    events.push_back ("connected:" + stream.session_id ());
-    return zlink::framework::task_t<void> (
-      zlink::framework::result_t<void>::success ());
-  }
-
-  zlink::framework::task_t<void> on_disconnected (
-    zlink::framework::stream_t &stream) override
-  {
-    events.push_back ("disconnected:" + stream.session_id ());
-    return zlink::framework::task_t<void> (
-      zlink::framework::result_t<void>::success ());
-  }
-
-  zlink::framework::task_t<void> on_error (
-    zlink::framework::stream_t &,
-    const zlink::framework::stream_error_t &error) override
-  {
-    events.push_back ("error:" + std::string (error.message ()));
-    return zlink::framework::task_t<void> (
-      zlink::framework::result_t<void>::success ());
-  }
-
-  zlink::framework::task_t<void> on_packet (
-    zlink::framework::stream_t &stream,
-    const zlink::framework::stream_header_t &header,
-    const zlink::message_t &payload) override
-  {
-    events.push_back ("packet:" + std::string (header.packet_name ()) + ":" +
-                      payload.to_string ());
-    auto write = stream.reply_packet (header, payload).submit ().result ();
-    if (!write) {
-      return zlink::framework::task_t<void> (write);
+  public:
+    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &stream) override
+    {
+        events.push_back ("connected:" + stream.session_id ());
+        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
     }
-    return zlink::framework::task_t<void> (
-      zlink::framework::result_t<void>::success ());
-  }
 
-  std::vector<std::string> events;
+    zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &stream) override
+    {
+        events.push_back ("disconnected:" + stream.session_id ());
+        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
+    }
+
+    zlink::framework::task_t<void> on_error (zlink::framework::stream_t &,
+                                             const zlink::framework::stream_error_t &error) override
+    {
+        events.push_back ("error:" + std::string (error.message ()));
+        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
+    }
+
+    zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
+                                              const zlink::framework::stream_header_t &header,
+                                              const zlink::message_t &payload) override
+    {
+        events.push_back ("packet:" + std::string (header.packet_name ()) + ":" + payload.to_string ());
+        auto write = stream.reply_packet (header, payload).submit ().result ();
+        if (!write) {
+            return zlink::framework::task_t<void> (write);
+        }
+        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
+    }
+
+    std::vector<std::string> events;
 };
 
-class throwing_packet_session_t final
-  : public zlink::framework::packet_stream_session_t
+class throwing_packet_session_t final : public zlink::framework::packet_stream_session_t
 {
-public:
-  zlink::framework::task_t<void> on_connected (
-    zlink::framework::stream_t &) override
-  {
-    return zlink::framework::task_t<void> (
-      zlink::framework::result_t<void>::success ());
-  }
+  public:
+    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &) override
+    {
+        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
+    }
 
-  zlink::framework::task_t<void> on_disconnected (
-    zlink::framework::stream_t &) override
-  {
-    return zlink::framework::task_t<void> (
-      zlink::framework::result_t<void>::success ());
-  }
+    zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
+    {
+        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
+    }
 
-  zlink::framework::task_t<void> on_error (
-    zlink::framework::stream_t &,
-    const zlink::framework::stream_error_t &) override
-  {
-    on_error_called = true;
-    return zlink::framework::task_t<void> (
-      zlink::framework::result_t<void>::success ());
-  }
+    zlink::framework::task_t<void> on_error (zlink::framework::stream_t &,
+                                             const zlink::framework::stream_error_t &) override
+    {
+        on_error_called = true;
+        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
+    }
 
-  zlink::framework::task_t<void> on_packet (
-    zlink::framework::stream_t &,
-    const zlink::framework::stream_header_t &,
-    const zlink::message_t &) override
-  {
-    return zlink::framework::task_t<void> (
-      zlink::framework::result_t<void>::failure (
-        zlink::framework::framework_error_kind_t::request_failed,
-        "application packet failure"));
-  }
+    zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
+                                              const zlink::framework::stream_header_t &,
+                                              const zlink::message_t &) override
+    {
+        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::failure (
+          zlink::framework::framework_error_kind_t::request_failed, "application packet failure"));
+    }
 
-  bool on_error_called = false;
+    bool on_error_called = false;
 };
 
 } // namespace
 
-int
-main ()
+int main ()
 {
-  using zlink::framework::framework_error_kind_t;
-  using zlink::framework::stream_codec_t;
-  using zlink::framework::stream_header_flags_t;
-  using zlink::framework::stream_message_kind_t;
+    using zlink::framework::framework_error_kind_t;
+    using zlink::framework::stream_codec_t;
+    using zlink::framework::stream_header_flags_t;
+    using zlink::framework::stream_message_kind_t;
 
-  zlink::framework::zlink_builder_t zlink;
-  zlink.stream ("client-stream",
-                [](zlink::framework::stream_builder_t &stream) {
-    stream.bind ("tcp://0.0.0.0:9200")
-      .packet_session ("client")
-      .attach_actor_gateway ("session-actors");
-  });
+    zlink::framework::zlink_builder_t zlink;
+    zlink.stream ("client-stream", [] (zlink::framework::stream_builder_t &stream) {
+        stream.bind ("tcp://0.0.0.0:9200").packet_session ("client").attach_actor_gateway ("session-actors");
+    });
 
-  const auto snapshots = zlink.streams ();
-  if (snapshots.size () != 1 || snapshots[0].name != "client-stream" ||
-      snapshots[0].bind_endpoint != "tcp://0.0.0.0:9200" ||
-      snapshots[0].packet_session_name != "client" ||
-      !snapshots[0].actor_gateway_spot_node_name ||
-      *snapshots[0].actor_gateway_spot_node_name != "session-actors") {
-    return 1;
-  }
+    const auto snapshots = zlink.streams ();
+    if (snapshots.size () != 1 || snapshots[0].name != "client-stream"
+        || snapshots[0].bind_endpoint != "tcp://0.0.0.0:9200" || snapshots[0].packet_session_name != "client"
+        || !snapshots[0].actor_gateway_spot_node_name
+        || *snapshots[0].actor_gateway_spot_node_name != "session-actors") {
+        return 1;
+    }
 
-  auto runtime = zlink::framework::detail::stream_runtime_t::from (zlink);
-  zlink::framework::stream_metadata_t metadata;
-  metadata.with ("correlation_id", "abc")
-    .with ("trace", "42")
-    .with ("content_type", "application/json");
-  zlink::framework::stream_header_t request_header (
-    stream_message_kind_t::request,
-    stream_codec_t::json,
-    stream_header_flags_t::has_request_seq,
-    77,
-    "move",
-    metadata);
+    auto runtime = zlink::framework::detail::stream_runtime_t::from (zlink);
+    zlink::framework::stream_metadata_t metadata;
+    metadata.with ("correlation_id", "abc").with ("trace", "42").with ("content_type", "application/json");
+    zlink::framework::stream_header_t request_header (stream_message_kind_t::request, stream_codec_t::json,
+                                                      stream_header_flags_t::has_request_seq, 77, "move", metadata);
 
-  const auto encoded = runtime.encode_header (request_header);
-  if (!encoded) {
-    return 2;
-  }
-  const auto decoded = runtime.decode_header (encoded.value ());
-  if (!decoded || decoded.value ().kind () != stream_message_kind_t::request ||
-      decoded.value ().codec () != stream_codec_t::json ||
-      decoded.value ().request_seq () != 77 ||
-      decoded.value ().packet_name () != "move" ||
-      decoded.value ().correlation_id () != "abc" ||
-      decoded.value ().content_type () != "application/json" ||
-      decoded.value ().metadata ("trace") != "42") {
-    return 3;
-  }
+    const auto encoded = runtime.encode_header (request_header);
+    if (!encoded) {
+        return 2;
+    }
+    const auto decoded = runtime.decode_header (encoded.value ());
+    if (!decoded || decoded.value ().kind () != stream_message_kind_t::request
+        || decoded.value ().codec () != stream_codec_t::json || decoded.value ().request_seq () != 77
+        || decoded.value ().packet_name () != "move" || decoded.value ().correlation_id () != "abc"
+        || decoded.value ().content_type () != "application/json" || decoded.value ().metadata ("trace") != "42") {
+        return 3;
+    }
 
-  zlink::framework::stream_header_t invalid_send (
-    stream_message_kind_t::send,
-    stream_codec_t::json,
-    stream_header_flags_t::has_request_seq,
-    1,
-    "bad");
-  if (runtime.validate_header (invalid_send) ||
-      runtime.validate_header (invalid_send).error_kind () !=
-        framework_error_kind_t::request_protocol_error) {
-    return 4;
-  }
+    zlink::framework::stream_header_t invalid_send (stream_message_kind_t::send, stream_codec_t::json,
+                                                    stream_header_flags_t::has_request_seq, 1, "bad");
+    if (runtime.validate_header (invalid_send)
+        || runtime.validate_header (invalid_send).error_kind () != framework_error_kind_t::request_protocol_error) {
+        return 4;
+    }
 
-  zlink::framework::stream_header_t reserved (
-    stream_message_kind_t::send,
-    stream_codec_t::raw,
-    stream_header_flags_t::none,
-    std::nullopt,
-    "__zlink.internal");
-  if (runtime.validate_header (reserved)) {
-    return 5;
-  }
+    zlink::framework::stream_header_t reserved (stream_message_kind_t::send, stream_codec_t::raw,
+                                                stream_header_flags_t::none, std::nullopt, "__zlink.internal");
+    if (runtime.validate_header (reserved)) {
+        return 5;
+    }
 
-  zlink::framework::stream_header_t valid_control (
-    stream_message_kind_t::control,
-    stream_codec_t::raw,
-    stream_header_flags_t::none,
-    std::nullopt,
-    "__zlink.ping");
-  if (!runtime.validate_header (valid_control)) {
-    return 6;
-  }
+    zlink::framework::stream_header_t valid_control (stream_message_kind_t::control, stream_codec_t::raw,
+                                                     stream_header_flags_t::none, std::nullopt, "__zlink.ping");
+    if (!runtime.validate_header (valid_control)) {
+        return 6;
+    }
 
-  auto stream = runtime.open_session ("client-stream");
-  sample_session_t session;
-  if (!runtime.dispatch_connected (session, stream)) {
-    return 7;
-  }
-  if (!runtime.dispatch_packet (
-        session,
-        stream,
-        request_header,
-        zlink::message_t::from (std::string ("payload")))) {
-    return 8;
-  }
-  if (!runtime.dispatch_disconnected (session, stream)) {
-    return 9;
-  }
-  const auto log = runtime.serial_log (stream);
-  if (log.size () != 3 || log[0] != "connected" ||
-      log[1] != "packet:move" || log[2] != "disconnected") {
-    return 10;
-  }
-  if (session.events.size () != 3 ||
-      session.events[1] != "packet:move:payload" ||
-      runtime.written_headers (stream).size () != 1) {
-    return 11;
-  }
-  if (runtime.written_headers (stream)[0].kind () !=
-        stream_message_kind_t::response ||
-      runtime.written_headers (stream)[0].request_seq () != 77) {
-    return 15;
-  }
+    auto stream = runtime.open_session ("client-stream");
+    sample_session_t session;
+    if (!runtime.dispatch_connected (session, stream)) {
+        return 7;
+    }
+    if (!runtime.dispatch_packet (session, stream, request_header, zlink::message_t::from (std::string ("payload")))) {
+        return 8;
+    }
+    if (!runtime.dispatch_disconnected (session, stream)) {
+        return 9;
+    }
+    const auto log = runtime.serial_log (stream);
+    if (log.size () != 3 || log[0] != "connected" || log[1] != "packet:move" || log[2] != "disconnected") {
+        return 10;
+    }
+    if (session.events.size () != 3 || session.events[1] != "packet:move:payload"
+        || runtime.written_headers (stream).size () != 1) {
+        return 11;
+    }
+    if (runtime.written_headers (stream)[0].kind () != stream_message_kind_t::response
+        || runtime.written_headers (stream)[0].request_seq () != 77) {
+        return 15;
+    }
 
-  auto fluent_stream = runtime.open_session ("client-stream");
-  zlink::framework::stream_header_t send_header (
-    stream_message_kind_t::send,
-    stream_codec_t::json,
-    stream_header_flags_t::none,
-    std::nullopt,
-    "original");
-  auto send_call = fluent_stream.write_packet (
-    send_header,
-    zlink::message_t::from (std::string ("send-payload")));
-  if (!runtime.written_headers (fluent_stream).empty ()) {
-    return 17;
-  }
-  const auto send_result = send_call.metadata ("trace", "send-trace")
-                             .packet_name ("renamed")
-                             .compress ()
-                             .submit ()
-                             .result ();
-  if (!send_result || runtime.written_headers (fluent_stream).size () != 1 ||
-      runtime.written_headers (fluent_stream)[0].packet_name () != "renamed" ||
-      runtime.written_headers (fluent_stream)[0].metadata ("trace") !=
-        "send-trace" ||
-      (runtime.written_headers (fluent_stream)[0].flags () &
-       stream_header_flags_t::payload_compressed) !=
-        stream_header_flags_t::payload_compressed) {
-    return 18;
-  }
-  const auto close_result = fluent_stream.close ().result ();
-  const auto close_write = fluent_stream.write_packet (
-    send_header,
-    zlink::message_t::from (std::string ("after-close")))
-                             .submit ()
-                             .result ();
-  if (!close_result || close_write ||
-      close_write.error_kind () != framework_error_kind_t::disconnected ||
-      runtime.written_headers (fluent_stream).size () != 1) {
-    return 19;
-  }
-  const auto disconnected_write = stream.write_packet (
-    request_header,
-    zlink::message_t::from (std::string ("after-disconnect")))
-                                    .submit ()
-                                    .result ();
-  if (disconnected_write ||
-      disconnected_write.error_kind () != framework_error_kind_t::disconnected ||
-      runtime.written_headers (stream).size () != 1) {
-    return 16;
-  }
+    auto fluent_stream = runtime.open_session ("client-stream");
+    zlink::framework::stream_header_t send_header (stream_message_kind_t::send, stream_codec_t::json,
+                                                   stream_header_flags_t::none, std::nullopt, "original");
+    auto send_call = fluent_stream.write_packet (send_header, zlink::message_t::from (std::string ("send-payload")));
+    if (!runtime.written_headers (fluent_stream).empty ()) {
+        return 17;
+    }
+    const auto send_result =
+      send_call.metadata ("trace", "send-trace").packet_name ("renamed").compress ().submit ().result ();
+    if (!send_result || runtime.written_headers (fluent_stream).size () != 1
+        || runtime.written_headers (fluent_stream)[0].packet_name () != "renamed"
+        || runtime.written_headers (fluent_stream)[0].metadata ("trace") != "send-trace"
+        || (runtime.written_headers (fluent_stream)[0].flags () & stream_header_flags_t::payload_compressed)
+             != stream_header_flags_t::payload_compressed) {
+        return 18;
+    }
+    const auto close_result = fluent_stream.close ().result ();
+    const auto close_write =
+      fluent_stream.write_packet (send_header, zlink::message_t::from (std::string ("after-close")))
+        .submit ()
+        .result ();
+    if (!close_result || close_write || close_write.error_kind () != framework_error_kind_t::disconnected
+        || runtime.written_headers (fluent_stream).size () != 1) {
+        return 19;
+    }
+    const auto disconnected_write =
+      stream.write_packet (request_header, zlink::message_t::from (std::string ("after-disconnect")))
+        .submit ()
+        .result ();
+    if (disconnected_write || disconnected_write.error_kind () != framework_error_kind_t::disconnected
+        || runtime.written_headers (stream).size () != 1) {
+        return 16;
+    }
 
-  sample_session_t validation_session;
-  auto validation_stream = runtime.open_session ("client-stream");
-  const auto rejected = runtime.dispatch_packet (
-    validation_session,
-    validation_stream,
-    invalid_send,
-    zlink::message_t::from (std::string ("bad")));
-  if (rejected ||
-      rejected.error_kind () != framework_error_kind_t::request_protocol_error ||
-      !validation_session.events.empty ()) {
-    return 12;
-  }
+    sample_session_t validation_session;
+    auto validation_stream = runtime.open_session ("client-stream");
+    const auto rejected = runtime.dispatch_packet (validation_session, validation_stream, invalid_send,
+                                                   zlink::message_t::from (std::string ("bad")));
+    if (rejected || rejected.error_kind () != framework_error_kind_t::request_protocol_error
+        || !validation_session.events.empty ()) {
+        return 12;
+    }
 
-  throwing_packet_session_t throwing_session;
-  auto throwing_stream = runtime.open_session ("client-stream");
-  const auto handler_failure = runtime.dispatch_packet (
-    throwing_session,
-    throwing_stream,
-    request_header,
-    zlink::message_t::from (std::string ("payload")));
-  if (handler_failure ||
-      handler_failure.error_kind () != framework_error_kind_t::request_failed ||
-      throwing_session.on_error_called) {
-    return 13;
-  }
+    throwing_packet_session_t throwing_session;
+    auto throwing_stream = runtime.open_session ("client-stream");
+    const auto handler_failure = runtime.dispatch_packet (throwing_session, throwing_stream, request_header,
+                                                          zlink::message_t::from (std::string ("payload")));
+    if (handler_failure || handler_failure.error_kind () != framework_error_kind_t::request_failed
+        || throwing_session.on_error_called) {
+        return 13;
+    }
 
-  sample_session_t error_session;
-  auto error_stream = runtime.open_session ("client-stream");
-  const auto transport_error = runtime.dispatch_error (
-    error_session,
-    error_stream,
-    zlink::framework::stream_error_t (
-      zlink::framework::stream_session_error_t::transport_error,
-      100,
-      "transport"));
-  if (!transport_error || error_session.events.size () != 1 ||
-      error_session.events[0] != "error:transport") {
-    return 14;
-  }
+    sample_session_t error_session;
+    auto error_stream = runtime.open_session ("client-stream");
+    const auto transport_error = runtime.dispatch_error (
+      error_session, error_stream,
+      zlink::framework::stream_error_t (zlink::framework::stream_session_error_t::transport_error, 100, "transport"));
+    if (!transport_error || error_session.events.size () != 1 || error_session.events[0] != "error:transport") {
+        return 14;
+    }
 
-  return 0;
+    return 0;
 }

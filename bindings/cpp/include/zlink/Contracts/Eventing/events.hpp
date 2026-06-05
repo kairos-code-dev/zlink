@@ -20,30 +20,25 @@ enum class monitor_event : uint32_t
     close_failed = 256,
     disconnected = 512,
     monitor_stopped = 1024,
-    handshake_failed_no_detail =
-      2048,
+    handshake_failed_no_detail = 2048,
     connection_ready = 4096,
-    connection_ready_changed =
-      4096,
+    connection_ready_changed = 4096,
     peer_weight_changed = 32768,
-    handshake_failed_protocol =
-      8192,
+    handshake_failed_protocol = 8192,
     handshake_failed_auth = 16384,
     all = 65535
 };
 
 inline monitor_event operator| (monitor_event a, monitor_event b)
 {
-    return static_cast<monitor_event> (static_cast<uint32_t> (a)
-                                       | static_cast<uint32_t> (b));
+    return static_cast<monitor_event> (static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
 }
 
 /// @brief A single socket connection-lifecycle event reported by a monitor.
 struct monitor_event_t
 {
-    monitor_event_t ()
-        : event (monitor_event::closed), value (0), routing_id (std::nullopt),
-          local_addr (), remote_addr ()
+    monitor_event_t () :
+        event (monitor_event::closed), value (0), routing_id (std::nullopt), local_addr (), remote_addr ()
     {
     }
 

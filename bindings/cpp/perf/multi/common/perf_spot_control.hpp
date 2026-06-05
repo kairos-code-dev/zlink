@@ -24,18 +24,18 @@
 #include <unistd.h>
 #endif
 
-namespace perf {
-namespace multi {
+namespace perf
+{
+namespace multi
+{
 
-inline bool apply_spot_auto_hwm_msg_unit (zlink::context_t &ctx_,
-                                          size_t msg_size_)
+inline bool apply_spot_auto_hwm_msg_unit (zlink::context_t &ctx_, size_t msg_size_)
 {
     if (msg_size_ == 0)
         return true;
     try {
         zlink::context_options_t options = ctx_.options ();
-        options.auto_hwm_msg_unit_bytes (
-          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
+        options.auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
         return true;
     }
     catch (const zlink::config_error_t &err) {
@@ -44,10 +44,8 @@ inline bool apply_spot_auto_hwm_msg_unit (zlink::context_t &ctx_,
     }
 }
 
-template<typename SpotNode>
-inline bool apply_spot_node_admission_hwm (SpotNode &node_,
-                                           int pubsub_hwm_,
-                                           int router_hwm_)
+template <typename SpotNode>
+inline bool apply_spot_node_admission_hwm (SpotNode &node_, int pubsub_hwm_, int router_hwm_)
 {
     if (!manual_socket_overrides_enabled ())
         return true;
@@ -86,8 +84,7 @@ inline void reset_control_connect_gate (control_connect_gate_t *gate_)
     gate_->endpoint.clear ();
 }
 
-inline void signal_control_connect (control_connect_gate_t *gate_,
-                                    const std::string &endpoint_)
+inline void signal_control_connect (control_connect_gate_t *gate_, const std::string &endpoint_)
 {
     if (!gate_ || endpoint_.empty ())
         return;
@@ -113,40 +110,36 @@ inline void stop_control_connect_gate (control_connect_gate_t *gate_)
     gate_->cv.notify_all ();
 }
 
-template<typename SpotHandle>
+template <typename SpotHandle>
 inline zlink::send_result_t
-try_publish_nowait (SpotHandle &spot_,
-                    const std::string &topic_,
-                    zlink::message_t &outbound)
+try_publish_nowait (SpotHandle &spot_, const std::string &topic_, zlink::message_t &outbound)
 {
     try {
         return spot_.publish (topic_)
-            .message (outbound)
-            .flags (static_cast<int>(zlink::send_flags_t::dontwait))
-            .submit ()
-          ? zlink::send_result_t::sent
-          : zlink::send_result_t::backpressured;
+                   .message (outbound)
+                   .flags (static_cast<int> (zlink::send_flags_t::dontwait))
+                   .submit ()
+                 ? zlink::send_result_t::sent
+                 : zlink::send_result_t::backpressured;
     }
     catch (const zlink::submit_error_t &err) {
         switch (err.result ()) {
-        case zlink::submit_result_t::backpressured:
-            return zlink::send_result_t::backpressured;
-        case zlink::submit_result_t::not_connected:
-        case zlink::submit_result_t::not_found:
-            return zlink::send_result_t::not_ready;
-        default:
-            errno = err.internal_errno ();
-            return zlink::send_result_t::not_ready;
+            case zlink::submit_result_t::backpressured:
+                return zlink::send_result_t::backpressured;
+            case zlink::submit_result_t::not_connected:
+            case zlink::submit_result_t::not_found:
+                return zlink::send_result_t::not_ready;
+            default:
+                errno = err.internal_errno ();
+                return zlink::send_result_t::not_ready;
         }
     }
 }
 
-template<typename SpotHandle>
-inline std::optional<zlink::topic_message_t>
-try_subscribe_nowait (SpotHandle &spot_)
+template <typename SpotHandle> inline std::optional<zlink::topic_message_t> try_subscribe_nowait (SpotHandle &spot_)
 {
     zlink::topic_message_t message;
-    const int rc = spot_.subscribe (message, static_cast<int>(zlink::send_flags_t::dontwait));
+    const int rc = spot_.subscribe (message, static_cast<int> (zlink::send_flags_t::dontwait));
     if (rc == static_cast<int> (zlink::recv_result_t::no_data))
         return std::nullopt;
     if (rc != static_cast<int> (zlink::recv_result_t::ok))
@@ -154,25 +147,22 @@ try_subscribe_nowait (SpotHandle &spot_)
     return std::optional<zlink::topic_message_t> (std::move (message));
 }
 
-template<typename Clock, typename Duration>
-inline std::chrono::milliseconds remaining_milliseconds_until (
-  const std::chrono::time_point<Clock, Duration> &deadline_)
+template <typename Clock, typename Duration>
+inline std::chrono::milliseconds
+remaining_milliseconds_until (const std::chrono::time_point<Clock, Duration> &deadline_)
 {
     const auto now = Clock::now ();
     if (now >= deadline_)
         return std::chrono::milliseconds (0);
-    return std::chrono::duration_cast<std::chrono::milliseconds> (
-      deadline_ - now);
+    return std::chrono::duration_cast<std::chrono::milliseconds> (deadline_ - now);
 }
 
-template<typename SpotHandle, typename Clock, typename Duration>
-inline bool wait_for_spot_control_event (
-  SpotHandle &spot_,
-  zlink::poll_event_flag_t event_,
-  const std::chrono::time_point<Clock, Duration> &deadline_)
+template <typename SpotHandle, typename Clock, typename Duration>
+inline bool wait_for_spot_control_event (SpotHandle &spot_,
+                                         zlink::poll_event_flag_t event_,
+                                         const std::chrono::time_point<Clock, Duration> &deadline_)
 {
-    const std::chrono::milliseconds remaining =
-      remaining_milliseconds_until (deadline_);
+    const std::chrono::milliseconds remaining = remaining_milliseconds_until (deadline_);
     if (remaining.count () <= 0) {
         errno = ETIMEDOUT;
         return false;
@@ -204,7 +194,7 @@ inline void start_client_start_watcher (start_signal_state_t *start_gate_)
     if (!start_gate_)
         return;
 
-    std::thread stdin_watcher ([start_gate_]() {
+    std::thread stdin_watcher ([start_gate_] () {
         std::string line;
         while (std::getline (std::cin, line)) {
             size_t start_size = 0;
@@ -221,19 +211,17 @@ inline void start_client_start_watcher (start_signal_state_t *start_gate_)
     stdin_watcher.detach ();
 }
 
-inline void start_server_control_watcher (control_connect_gate_t *gate_,
-                                          start_signal_state_t *start_gate_)
+inline void start_server_control_watcher (control_connect_gate_t *gate_, start_signal_state_t *start_gate_)
 {
     if (!gate_ || !start_gate_)
         return;
 
-    std::thread stdin_watcher ([gate_, start_gate_]() {
+    std::thread stdin_watcher ([gate_, start_gate_] () {
         std::string line;
         while (std::getline (std::cin, line)) {
             std::string control_peer_endpoint;
             size_t start_size = 0;
-            if (parse_endpoint_command_line (
-                  line, "CONNECT_CONTROL,", &control_peer_endpoint)) {
+            if (parse_endpoint_command_line (line, "CONNECT_CONTROL,", &control_peer_endpoint)) {
                 signal_control_connect (gate_, control_peer_endpoint);
                 continue;
             }
@@ -251,8 +239,7 @@ inline void start_server_control_watcher (control_connect_gate_t *gate_,
     stdin_watcher.detach ();
 }
 
-inline std::string make_transport_endpoint (const std::string &transport_,
-                                            int port_)
+inline std::string make_transport_endpoint (const std::string &transport_, int port_)
 {
     const std::string suffix = std::to_string (port_);
     if (transport_ == "ws")
@@ -292,14 +279,11 @@ inline std::string normalize_spot_endpoint_host (const std::string &endpoint_)
     return out;
 }
 
-template<typename SpotNode>
-inline std::string bind_spot_endpoint (SpotNode &node_,
-                                       const std::string &transport_,
-                                       int base_port_)
+template <typename SpotNode>
+inline std::string bind_spot_endpoint (SpotNode &node_, const std::string &transport_, int base_port_)
 {
     for (int i = 0; i < 64; ++i) {
-        const std::string requested_endpoint =
-          make_transport_endpoint (transport_, base_port_ + i);
+        const std::string requested_endpoint = make_transport_endpoint (transport_, base_port_ + i);
         try {
             node_.set_pub_bind (requested_endpoint);
         }
@@ -315,19 +299,14 @@ inline std::string bind_spot_endpoint (SpotNode &node_,
     return std::string ();
 }
 
-template<typename SpotNode>
-inline std::string bind_routed_spot_endpoint (SpotNode &node_,
-                                              const std::string &transport_,
-                                              int base_port_)
+template <typename SpotNode>
+inline std::string bind_routed_spot_endpoint (SpotNode &node_, const std::string &transport_, int base_port_)
 {
     for (int i = 0; i < 64; ++i) {
         const int data_port = base_port_ == 0 ? 0 : base_port_ + i;
-        const int router_port =
-          base_port_ == 0 ? 0 : base_port_ + 10000 + i;
-        const std::string requested_endpoint =
-          make_transport_endpoint (transport_, data_port);
-        const std::string requested_router_endpoint =
-          make_transport_endpoint (transport_, router_port);
+        const int router_port = base_port_ == 0 ? 0 : base_port_ + 10000 + i;
+        const std::string requested_endpoint = make_transport_endpoint (transport_, data_port);
+        const std::string requested_router_endpoint = make_transport_endpoint (transport_, router_port);
         try {
             node_.set_router_bind (requested_router_endpoint);
             node_.set_pub_bind (requested_endpoint);
@@ -344,9 +323,7 @@ inline std::string bind_routed_spot_endpoint (SpotNode &node_,
     return std::string ();
 }
 
-template<typename SpotNode>
-inline bool configure_spot_client_tls (SpotNode &node_,
-                                       const std::string &transport_)
+template <typename SpotNode> inline bool configure_spot_client_tls (SpotNode &node_, const std::string &transport_)
 {
     if (transport_ != "tls" && transport_ != "wss")
         return true;
@@ -366,9 +343,7 @@ inline bool configure_spot_client_tls (SpotNode &node_,
     }
 }
 
-template<typename SpotNode>
-inline bool configure_spot_server_tls (SpotNode &node_,
-                                       const std::string &transport_)
+template <typename SpotNode> inline bool configure_spot_server_tls (SpotNode &node_, const std::string &transport_)
 {
     if (transport_ != "tls" && transport_ != "wss")
         return true;
@@ -388,9 +363,7 @@ inline bool configure_spot_server_tls (SpotNode &node_,
     }
 }
 
-template<typename SpotNode>
-inline bool configure_spot_control_tls (SpotNode &node_,
-                                        const std::string &transport_)
+template <typename SpotNode> inline bool configure_spot_control_tls (SpotNode &node_, const std::string &transport_)
 {
     if (transport_ != "tls" && transport_ != "wss")
         return true;
@@ -411,7 +384,7 @@ inline bool configure_spot_control_tls (SpotNode &node_,
     }
 }
 
-template<typename SpotNode>
+template <typename SpotNode>
 inline bool wait_for_control_connect (control_connect_gate_t *gate_,
                                       SpotNode &control_node_,
                                       int timeout_ms_,
@@ -423,10 +396,8 @@ inline bool wait_for_control_connect (control_connect_gate_t *gate_,
     }
 
     std::unique_lock<std::mutex> lock (gate_->mutex);
-    const bool signaled = gate_->cv.wait_for (
-      lock,
-      std::chrono::milliseconds (std::max (1, timeout_ms_)),
-      [gate_]() { return gate_->stopped || gate_->requested; });
+    const bool signaled = gate_->cv.wait_for (lock, std::chrono::milliseconds (std::max (1, timeout_ms_)),
+                                              [gate_] () { return gate_->stopped || gate_->requested; });
     if (!signaled || gate_->stopped) {
         errno = gate_->stopped ? ECANCELED : ETIMEDOUT;
         return false;
@@ -452,7 +423,7 @@ inline bool wait_for_control_connect (control_connect_gate_t *gate_,
     return true;
 }
 
-template<typename SpotHandle>
+template <typename SpotHandle>
 inline bool publish_control_message (SpotHandle &spot_,
                                      const std::string &channel_name_,
                                      const std::string &topic_,
@@ -460,29 +431,23 @@ inline bool publish_control_message (SpotHandle &spot_,
                                      int timeout_ms_)
 {
     (void) channel_name_;
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (1, timeout_ms_));
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
         zlink::message_t outbound =
-          zlink::message_t::from (std::as_bytes (
-            std::span<const char> (payload_.data (), payload_.size ())));
+          zlink::message_t::from (std::as_bytes (std::span<const char> (payload_.data (), payload_.size ())));
         if (!outbound.valid ()) {
             errno = EINVAL;
             return false;
         }
 
-        const zlink::send_result_t result =
-          try_publish_nowait (spot_, topic_, outbound);
+        const zlink::send_result_t result = try_publish_nowait (spot_, topic_, outbound);
         if (result == zlink::send_result_t::sent)
             return true;
-        if (result != zlink::send_result_t::backpressured
-            && result != zlink::send_result_t::not_ready) {
+        if (result != zlink::send_result_t::backpressured && result != zlink::send_result_t::not_ready) {
             errno = EFAULT;
             return false;
         }
-        if (!wait_for_spot_control_event (
-              spot_, zlink::poll_event_flag_t::pollout, deadline))
+        if (!wait_for_spot_control_event (spot_, zlink::poll_event_flag_t::pollout, deadline))
             return false;
     }
 
@@ -490,32 +455,22 @@ inline bool publish_control_message (SpotHandle &spot_,
     return false;
 }
 
-template<typename SpotHandle>
-inline bool publish_control_payload (SpotHandle &spot_,
-                                     const std::string &topic_,
-                                     const std::string &payload_,
-                                     int timeout_ms_)
+template <typename SpotHandle>
+inline bool
+publish_control_payload (SpotHandle &spot_, const std::string &topic_, const std::string &payload_, int timeout_ms_)
 {
-    return publish_control_message (
-      spot_, std::string (), topic_, payload_, timeout_ms_);
+    return publish_control_message (spot_, std::string (), topic_, payload_, timeout_ms_);
 }
 
-template<typename SpotHandle>
-inline bool wait_for_control_start (SpotHandle &spot_,
-                                    const std::string &topic_,
-                                    size_t msg_size_,
-                                    int timeout_ms_)
+template <typename SpotHandle>
+inline bool wait_for_control_start (SpotHandle &spot_, const std::string &topic_, size_t msg_size_, int timeout_ms_)
 {
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (1, timeout_ms_));
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
         try {
-            const std::optional<zlink::topic_message_t> received =
-              try_subscribe_nowait (spot_);
+            const std::optional<zlink::topic_message_t> received = try_subscribe_nowait (spot_);
             if (!received) {
-                if (!wait_for_spot_control_event (
-                      spot_, zlink::poll_event_flag_t::pollin, deadline))
+                if (!wait_for_spot_control_event (spot_, zlink::poll_event_flag_t::pollin, deadline))
                     return false;
                 continue;
             }
@@ -523,17 +478,14 @@ inline bool wait_for_control_start (SpotHandle &spot_,
                 continue;
 
             const zlink::message_t &part = received->parts ()[0];
-            const std::string payload (
-              reinterpret_cast<const char *> (part.data ()), part.size ());
+            const std::string payload (reinterpret_cast<const char *> (part.data ()), part.size ());
             size_t start_size = 0;
-            if (parse_size_command_line (payload, "START,", &start_size)
-                && start_size == msg_size_)
+            if (parse_size_command_line (payload, "START,", &start_size) && start_size == msg_size_)
                 return true;
         }
         catch (const zlink::recv_error_t &err) {
             const int err_no = err.internal_errno ();
-            if (err_no != EAGAIN && err_no != EWOULDBLOCK
-                && err_no != ETIMEDOUT && err_no != EINTR) {
+            if (err_no != EAGAIN && err_no != EWOULDBLOCK && err_no != ETIMEDOUT && err_no != EINTR) {
                 errno = err_no;
                 return false;
             }
@@ -543,15 +495,13 @@ inline bool wait_for_control_start (SpotHandle &spot_,
     return false;
 }
 
-template<typename SpotNode>
-inline size_t spot_node_observed_peer_count (SpotNode &node_)
+template <typename SpotNode> inline size_t spot_node_observed_peer_count (SpotNode &node_)
 {
     const zlink::spot_node_status_t status = node_.status ();
-    return std::max<size_t> (
-      status.connected_peer_count (), status.active_peer_count ());
+    return std::max<size_t> (status.connected_peer_count (), status.active_peer_count ());
 }
 
-template<typename SpotHandle, typename SpotNode>
+template <typename SpotHandle, typename SpotNode>
 inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
                                                 SpotNode *data_node_,
                                                 const std::string &topic_,
@@ -561,16 +511,12 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
 {
     size_t ready_count = 0;
     bool data_endpoint_seen = false;
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (1, timeout_ms_));
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
         try {
-            const std::optional<zlink::topic_message_t> received =
-              try_subscribe_nowait (control_sub_);
+            const std::optional<zlink::topic_message_t> received = try_subscribe_nowait (control_sub_);
             if (!received) {
-                if (!wait_for_spot_control_event (
-                      control_sub_, zlink::poll_event_flag_t::pollin, deadline))
+                if (!wait_for_spot_control_event (control_sub_, zlink::poll_event_flag_t::pollin, deadline))
                     return false;
                 continue;
             }
@@ -578,15 +524,13 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
                 continue;
 
             const zlink::message_t &part = received->parts ()[0];
-            const std::string payload (
-              reinterpret_cast<const char *> (part.data ()), part.size ());
+            const std::string payload (reinterpret_cast<const char *> (part.data ()), part.size ());
             if (payload == "CONNECTED") {
                 continue;
             }
             std::string endpoint;
             size_t endpoint_size = 0;
-            if (parse_size_endpoint_command_line (
-                  payload, "DATA_ENDPOINT_SIZE,", &endpoint_size, &endpoint)) {
+            if (parse_size_endpoint_command_line (payload, "DATA_ENDPOINT_SIZE,", &endpoint_size, &endpoint)) {
                 if (endpoint_size != msg_size_)
                     continue;
                 if (data_node_ && !endpoint.empty ()) {
@@ -600,8 +544,7 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
                 }
                 continue;
             }
-            if (parse_endpoint_command_line (
-                  payload, "DATA_ENDPOINT,", &endpoint)) {
+            if (parse_endpoint_command_line (payload, "DATA_ENDPOINT,", &endpoint)) {
                 if (data_node_ && !endpoint.empty ()) {
                     try {
                         data_node_->connect_peer (endpoint);
@@ -616,28 +559,22 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
 
             size_t ready_size = 0;
             size_t increment = 0;
-            if (parse_size_count_command_line (
-                  payload, "READY_COUNT,", &ready_size, &increment)
+            if (parse_size_count_command_line (payload, "READY_COUNT,", &ready_size, &increment)
                 && ready_size == msg_size_) {
                 ready_count += increment;
                 const bool data_peer_seen =
-                  data_endpoint_seen
-                  || (data_node_
-                      && spot_node_observed_peer_count (*data_node_) > 0);
+                  data_endpoint_seen || (data_node_ && spot_node_observed_peer_count (*data_node_) > 0);
                 if (data_peer_seen && ready_count >= expected_ready_count_)
                     return true;
             }
             const bool data_peer_seen =
-              data_endpoint_seen
-              || (data_node_
-                  && spot_node_observed_peer_count (*data_node_) > 0);
+              data_endpoint_seen || (data_node_ && spot_node_observed_peer_count (*data_node_) > 0);
             if (data_peer_seen && ready_count >= expected_ready_count_)
                 return true;
         }
         catch (const zlink::recv_error_t &err) {
             const int err_no = err.internal_errno ();
-            if (err_no != EAGAIN && err_no != EWOULDBLOCK
-                && err_no != ETIMEDOUT && err_no != EINTR) {
+            if (err_no != EAGAIN && err_no != EWOULDBLOCK && err_no != ETIMEDOUT && err_no != EINTR) {
                 errno = err_no;
                 return false;
             }
@@ -647,24 +584,18 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
     return false;
 }
 
-template<typename SpotNode>
-inline bool wait_for_spot_node_connected_peer_count (
-  SpotNode &node_,
-  size_t expected_connected_count_,
-  int timeout_ms_)
+template <typename SpotNode>
+inline bool wait_for_spot_node_connected_peer_count (SpotNode &node_, size_t expected_connected_count_, int timeout_ms_)
 {
     if (expected_connected_count_ == 0) {
         errno = EINVAL;
         return false;
     }
 
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (1, timeout_ms_));
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
         try {
-            const zlink::spot_node_status_t status =
-              node_.status ();
+            const zlink::spot_node_status_t status = node_.status ();
             if (status.connected_peer_count () >= expected_connected_count_
                 || status.active_peer_count () >= expected_connected_count_)
                 return true;
@@ -681,7 +612,7 @@ inline bool wait_for_spot_node_connected_peer_count (
     return false;
 }
 
-template<typename SpotHandle, typename ParseFn>
+template <typename SpotHandle, typename ParseFn>
 inline bool wait_for_ready_counts (SpotHandle &spot_,
                                    const std::string &channel_name_,
                                    const std::string &topic_,
@@ -695,15 +626,11 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
         return true;
 
     size_t ready_count = 0;
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (1, timeout_ms_));
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
-        const std::optional<zlink::topic_message_t> maybe_received =
-          try_subscribe_nowait (spot_);
+        const std::optional<zlink::topic_message_t> maybe_received = try_subscribe_nowait (spot_);
         if (!maybe_received) {
-            if (!wait_for_spot_control_event (
-                  spot_, zlink::poll_event_flag_t::pollin, deadline))
+            if (!wait_for_spot_control_event (spot_, zlink::poll_event_flag_t::pollin, deadline))
                 return false;
             continue;
         }
@@ -712,13 +639,11 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
         if (received.topic () != topic_ || received.parts ().size () != 1)
             continue;
 
-        const std::string payload (
-          reinterpret_cast<const char *> (received.parts ()[0].data ()),
-          received.parts ()[0].size ());
+        const std::string payload (reinterpret_cast<const char *> (received.parts ()[0].data ()),
+                                   received.parts ()[0].size ());
         size_t ready_size = 0;
         size_t increment = 0;
-        if (!parse_fn_ (payload, &ready_size, &increment)
-            || ready_size != msg_size_) {
+        if (!parse_fn_ (payload, &ready_size, &increment) || ready_size != msg_size_) {
             continue;
         }
 
@@ -731,23 +656,21 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
     return false;
 }
 
-template<typename SpotNode, typename SpotHandle>
-inline bool initialize_client_control_session (
-  zlink::context_t &ctx_,
-  const std::string &transport_,
-  const std::string &remote_control_endpoint_,
-  const std::string &channel_name_,
-  const std::string &control_topic_,
-  const multi_bench_settings_t &settings_,
-  size_t msg_size_,
-  std::unique_ptr<SpotNode> *control_node_out_,
-  std::unique_ptr<zlink::service::discovery_t> *control_discovery_out_,
-  std::unique_ptr<SpotHandle> *control_spot_out_,
-  std::string *local_control_endpoint_out_)
+template <typename SpotNode, typename SpotHandle>
+inline bool initialize_client_control_session (zlink::context_t &ctx_,
+                                               const std::string &transport_,
+                                               const std::string &remote_control_endpoint_,
+                                               const std::string &channel_name_,
+                                               const std::string &control_topic_,
+                                               const multi_bench_settings_t &settings_,
+                                               size_t msg_size_,
+                                               std::unique_ptr<SpotNode> *control_node_out_,
+                                               std::unique_ptr<zlink::service::discovery_t> *control_discovery_out_,
+                                               std::unique_ptr<SpotHandle> *control_spot_out_,
+                                               std::string *local_control_endpoint_out_)
 {
-    if (!control_node_out_ || !control_discovery_out_ || !control_spot_out_
-        || !local_control_endpoint_out_ || remote_control_endpoint_.empty ()
-        || control_topic_.empty () || channel_name_.empty ()) {
+    if (!control_node_out_ || !control_discovery_out_ || !control_spot_out_ || !local_control_endpoint_out_
+        || remote_control_endpoint_.empty () || control_topic_.empty () || channel_name_.empty ()) {
         errno = EINVAL;
         return false;
     }
@@ -757,8 +680,7 @@ inline bool initialize_client_control_session (
         return false;
 
     std::unique_ptr<zlink::service::discovery_t> control_discovery (
-      new zlink::service::discovery_t (
-        ctx_, zlink::auto_connect_type::spot_mesh, channel_name_));
+      new zlink::service::discovery_t (ctx_, zlink::auto_connect_type::spot_mesh, channel_name_));
     if (!control_discovery->valid ())
         return false;
     control_node->attach_discovery (*control_discovery);
@@ -768,10 +690,8 @@ inline bool initialize_client_control_session (
     if (!apply_spot_auto_hwm_msg_unit (ctx_, msg_size_))
         return false;
 
-    const int base_port =
-      45500 + static_cast<int> (perf_metric::now_ns () % 1000) * 4;
-    const std::string local_control_endpoint =
-      bind_spot_endpoint (*control_node, transport_, base_port);
+    const int base_port = 45500 + static_cast<int> (perf_metric::now_ns () % 1000) * 4;
+    const std::string local_control_endpoint = bind_spot_endpoint (*control_node, transport_, base_port);
     if (local_control_endpoint.empty ())
         return false;
     try {
@@ -781,18 +701,14 @@ inline bool initialize_client_control_session (
         return false;
     }
 
-    if (!apply_spot_node_admission_hwm (
-          *control_node, settings_.sndhwm, settings_.rcvhwm))
+    if (!apply_spot_node_admission_hwm (*control_node, settings_.sndhwm, settings_.rcvhwm))
         return false;
 
-    std::unique_ptr<SpotHandle> control_spot (
-      new SpotHandle (control_node->create_spot ()));
+    std::unique_ptr<SpotHandle> control_spot (new SpotHandle (control_node->create_spot ()));
     if (!control_spot->valid ())
         return false;
-    control_spot->options ().send_timeout (
-      std::chrono::milliseconds (settings_.sndtimeo_ms));
-    control_spot->options ().recv_timeout (
-      std::chrono::milliseconds (settings_.rcvtimeo_ms));
+    control_spot->options ().send_timeout (std::chrono::milliseconds (settings_.sndtimeo_ms));
+    control_spot->options ().recv_timeout (std::chrono::milliseconds (settings_.rcvtimeo_ms));
     control_spot->set_subscription (control_topic_.c_str ());
 
     *local_control_endpoint_out_ = local_control_endpoint;
@@ -802,15 +718,14 @@ inline bool initialize_client_control_session (
     return true;
 }
 
-template<typename SlotT, typename SpotNode, typename SpotHandle>
-inline bool initialize_client_slot (
-  zlink::context_t &ctx_,
-  const std::string &transport_,
-  const std::string &server_endpoint_,
-  const char *topic_,
-  const multi_bench_settings_t &settings_,
-  size_t msg_size_,
-  SlotT *slot_)
+template <typename SlotT, typename SpotNode, typename SpotHandle>
+inline bool initialize_client_slot (zlink::context_t &ctx_,
+                                    const std::string &transport_,
+                                    const std::string &server_endpoint_,
+                                    const char *topic_,
+                                    const multi_bench_settings_t &settings_,
+                                    size_t msg_size_,
+                                    SlotT *slot_)
 {
     if (!slot_ || !topic_ || !*topic_ || server_endpoint_.empty ()) {
         errno = EINVAL;
@@ -821,8 +736,7 @@ inline bool initialize_client_slot (
     if (!slot_->node->valid ())
         return false;
 
-    if (!apply_spot_node_admission_hwm (
-          *slot_->node, settings_.sndhwm, settings_.rcvhwm))
+    if (!apply_spot_node_admission_hwm (*slot_->node, settings_.sndhwm, settings_.rcvhwm))
         return false;
     if (!apply_spot_auto_hwm_msg_unit (ctx_, msg_size_))
         return false;
@@ -839,8 +753,7 @@ inline bool initialize_client_slot (
         return false;
     }
 
-    slot_->spot->request_timeout (
-      std::chrono::milliseconds (settings_.rcvtimeo_ms));
+    slot_->spot->request_timeout (std::chrono::milliseconds (settings_.rcvtimeo_ms));
     slot_->spot->set_subscription (topic_);
 
     return true;

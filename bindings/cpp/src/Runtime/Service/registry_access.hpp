@@ -12,12 +12,9 @@ namespace detail
 struct registry_access_t
 {
     static void *native_handle (service::registry_t &registry_) noexcept;
-    static const void *
-    native_handle (const service::registry_t &registry_) noexcept;
-    static void *
-    native_handle (service::registry_query_client_t &client_) noexcept;
-    static const void *
-    native_handle (const service::registry_query_client_t &client_) noexcept;
+    static const void *native_handle (const service::registry_t &registry_) noexcept;
+    static void *native_handle (service::registry_query_client_t &client_) noexcept;
+    static const void *native_handle (const service::registry_query_client_t &client_) noexcept;
 };
 
 inline void *native_handle (service::registry_t &registry_) noexcept
@@ -35,8 +32,7 @@ inline void *native_handle (service::registry_query_client_t &client_) noexcept
     return registry_access_t::native_handle (client_);
 }
 
-inline const void *
-native_handle (const service::registry_query_client_t &client_) noexcept
+inline const void *native_handle (const service::registry_query_client_t &client_) noexcept
 {
     return registry_access_t::native_handle (client_);
 }

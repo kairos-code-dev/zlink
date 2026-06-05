@@ -17,39 +17,21 @@ struct actor_model_access_t;
 class actor_ref_t
 {
   public:
-    actor_ref_t () noexcept
-        : _node_rid (detail::unchecked_empty_routing_id ()),
-          _actor_id (),
-          _generation (0)
-    {
-    }
+    actor_ref_t () noexcept : _node_rid (detail::unchecked_empty_routing_id ()), _actor_id (), _generation (0) {}
 
-    routing_id_t node_rid () const
-    {
-        return _node_rid;
-    }
+    routing_id_t node_rid () const { return _node_rid; }
 
-    std::string actor_id () const
-    {
-        return _actor_id;
-    }
+    std::string actor_id () const { return _actor_id; }
 
-    std::string actor_id_string () const
-    {
-        return actor_id ();
-    }
+    std::string actor_id_string () const { return actor_id (); }
 
     uint64_t generation () const noexcept { return _generation; }
 
     bool unchecked () const noexcept { return _generation == 0u; }
 
   private:
-    actor_ref_t (routing_id_t node_rid_,
-                 std::string actor_id_,
-                 uint64_t generation_) noexcept
-        : _node_rid (std::move (node_rid_)),
-          _actor_id (std::move (actor_id_)),
-          _generation (generation_)
+    actor_ref_t (routing_id_t node_rid_, std::string actor_id_, uint64_t generation_) noexcept :
+        _node_rid (std::move (node_rid_)), _actor_id (std::move (actor_id_)), _generation (generation_)
     {
     }
 
@@ -63,11 +45,11 @@ class actor_ref_t
 /// @brief Metadata about a message received for an actor.
 struct actor_recv_info_t
 {
-    actor_recv_info_t ()
-        : actor (),
-          source_node_rid (detail::unchecked_empty_routing_id ()),
-          source_session_rid (detail::unchecked_empty_routing_id ()),
-          flags (0)
+    actor_recv_info_t () :
+        actor (),
+        source_node_rid (detail::unchecked_empty_routing_id ()),
+        source_session_rid (detail::unchecked_empty_routing_id ()),
+        flags (0)
     {
     }
 
@@ -83,16 +65,16 @@ struct actor_recv_info_t
 /// @brief Details of an actor-join request: the actors and spots on each side.
 struct actor_join_info_t
 {
-    actor_join_info_t ()
-        : source_actor (),
-          target_actor (),
-          source_node_rid (detail::unchecked_empty_routing_id ()),
-          source_spot_rid (detail::unchecked_empty_routing_id ()),
-          target_node_rid (detail::unchecked_empty_routing_id ()),
-          target_spot_rid (detail::unchecked_empty_routing_id ()),
-          join_epoch (0),
-          flags (0),
-          _request_token (0)
+    actor_join_info_t () :
+        source_actor (),
+        target_actor (),
+        source_node_rid (detail::unchecked_empty_routing_id ()),
+        source_spot_rid (detail::unchecked_empty_routing_id ()),
+        target_node_rid (detail::unchecked_empty_routing_id ()),
+        target_spot_rid (detail::unchecked_empty_routing_id ()),
+        join_epoch (0),
+        flags (0),
+        _request_token (0)
     {
     }
 
@@ -116,8 +98,8 @@ struct actor_join_info_t
 class actor_join_request_t
 {
   public:
-    actor_join_request_t (actor_join_info_t info_, message_t message_)
-        : _info (std::move (info_)), _message (std::move (message_))
+    actor_join_request_t (actor_join_info_t info_, message_t message_) :
+        _info (std::move (info_)), _message (std::move (message_))
     {
     }
 
@@ -133,13 +115,13 @@ class actor_join_request_t
 /// @brief The outcome of an actor join.
 struct actor_join_result_t
 {
-    actor_join_result_t ()
-        : result (request_result_t::ok),
-          join_result_code (0),
-          actor (),
-          joined_spot_rid (detail::unchecked_empty_routing_id ()),
-          join_epoch (0),
-          flags (0)
+    actor_join_result_t () :
+        result (request_result_t::ok),
+        join_result_code (0),
+        actor (),
+        joined_spot_rid (detail::unchecked_empty_routing_id ()),
+        join_epoch (0),
+        flags (0)
     {
     }
 
@@ -157,12 +139,12 @@ struct actor_join_result_t
 /// @brief The outcome of an actor join to an entry spot.
 struct actor_join_entry_spot_result_t
 {
-    actor_join_entry_spot_result_t ()
-        : result (request_result_t::ok),
-          actor (),
-          target_node_rid (detail::unchecked_empty_routing_id ()),
-          join_epoch (0),
-          flags (0)
+    actor_join_entry_spot_result_t () :
+        result (request_result_t::ok),
+        actor (),
+        target_node_rid (detail::unchecked_empty_routing_id ()),
+        join_epoch (0),
+        flags (0)
     {
     }
 
@@ -179,10 +161,7 @@ struct actor_join_entry_spot_result_t
 /// @brief The outcome of an actor lookup.
 struct actor_lookup_result_t
 {
-    actor_lookup_result_t ()
-        : result (request_result_t::ok), actor (), flags (0)
-    {
-    }
+    actor_lookup_result_t () : result (request_result_t::ok), actor (), flags (0) {}
 
     request_result_t result;
     actor_ref_t actor;
@@ -195,13 +174,13 @@ struct actor_lookup_result_t
 /// @brief Details of an actor lifecycle change, before and after.
 struct spot_actor_lifecycle_info_t
 {
-    spot_actor_lifecycle_info_t ()
-        : previous_actor (),
-          current_actor (),
-          previous_spot_rid (std::nullopt),
-          current_spot_rid (std::nullopt),
-          join_epoch (0),
-          flags (0)
+    spot_actor_lifecycle_info_t () :
+        previous_actor (),
+        current_actor (),
+        previous_spot_rid (std::nullopt),
+        current_spot_rid (std::nullopt),
+        join_epoch (0),
+        flags (0)
     {
     }
 
@@ -226,10 +205,7 @@ enum class spot_actor_lifecycle_event_kind_t : int
 /// @brief An actor lifecycle event delivered to a lifecycle subscriber.
 struct spot_actor_lifecycle_event_t
 {
-    spot_actor_lifecycle_event_t ()
-        : kind (spot_actor_lifecycle_event_kind_t::joined), info ()
-    {
-    }
+    spot_actor_lifecycle_event_t () : kind (spot_actor_lifecycle_event_kind_t::joined), info () {}
 
     spot_actor_lifecycle_event_kind_t kind;
     spot_actor_lifecycle_info_t info;
@@ -238,14 +214,11 @@ struct spot_actor_lifecycle_event_t
     friend struct detail::actor_model_access_t;
 };
 
-using actor_join_callback_t =
-  std::function<void(const actor_join_result_t &, std::vector<message_t>)>;
+using actor_join_callback_t = std::function<void (const actor_join_result_t &, std::vector<message_t>)>;
 
-using actor_join_entry_spot_callback_t =
-  std::function<void(const actor_join_entry_spot_result_t &)>;
+using actor_join_entry_spot_callback_t = std::function<void (const actor_join_entry_spot_result_t &)>;
 
-using actor_lookup_callback_t =
-  std::function<void(const actor_lookup_result_t &)>;
+using actor_lookup_callback_t = std::function<void (const actor_lookup_result_t &)>;
 
 enum class spot_kind : int
 {
@@ -256,12 +229,7 @@ enum class spot_kind : int
 
 struct actor_route_t
 {
-    actor_route_t ()
-        : actor (),
-          current_spot_rid (std::nullopt),
-          current_spot_kind (spot_kind::invalid)
-    {
-    }
+    actor_route_t () : actor (), current_spot_rid (std::nullopt), current_spot_kind (spot_kind::invalid) {}
 
     actor_ref_t actor;
     std::optional<routing_id_t> current_spot_rid;
@@ -273,10 +241,10 @@ struct actor_route_t
 
 struct spot_route_t
 {
-    spot_route_t ()
-        : spot_rid (detail::unchecked_empty_routing_id ()),
-          owner_node_rid (detail::unchecked_empty_routing_id ()),
-          spot_kind_value (spot_kind::invalid)
+    spot_route_t () :
+        spot_rid (detail::unchecked_empty_routing_id ()),
+        owner_node_rid (detail::unchecked_empty_routing_id ()),
+        spot_kind_value (spot_kind::invalid)
     {
     }
 
@@ -294,10 +262,8 @@ struct actor_part_t
 {
     actor_part_t () : info (), part (), has_more (false) {}
 
-    actor_part_t (actor_recv_info_t info_, message_t part_, bool has_more_)
-        : info (std::move (info_)),
-          part (std::move (part_)),
-          has_more (has_more_)
+    actor_part_t (actor_recv_info_t info_, message_t part_, bool has_more_) :
+        info (std::move (info_)), part (std::move (part_)), has_more (has_more_)
     {
     }
 
@@ -326,14 +292,14 @@ enum class spot_dispatch_subject_kind_t : int
 
 struct spot_dispatch_info_t
 {
-    spot_dispatch_info_t ()
-        : event (spot_dispatch_event_t::subscribe_readable),
-          subject_kind (spot_dispatch_subject_kind_t::spot),
-          timer (nullptr),
-          channel_dealer (nullptr),
-          channel_name (std::nullopt),
-          actor (std::nullopt),
-          actor_parts ()
+    spot_dispatch_info_t () :
+        event (spot_dispatch_event_t::subscribe_readable),
+        subject_kind (spot_dispatch_subject_kind_t::spot),
+        timer (nullptr),
+        channel_dealer (nullptr),
+        channel_name (std::nullopt),
+        actor (std::nullopt),
+        actor_parts ()
     {
     }
 

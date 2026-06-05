@@ -27,11 +27,9 @@ struct poller_item_t
     bool native_poller_only = false;
 };
 
-inline bool is_socket_poll_item_active (const poller_item_t &item_,
-                                        short events_) noexcept
+inline bool is_socket_poll_item_active (const poller_item_t &item_, short events_) noexcept
 {
-    return events_ != 0 && !item_.native_poller_only
-           && item_.source_kind == poll_source_kind_t::socket;
+    return events_ != 0 && !item_.native_poller_only && item_.source_kind == poll_source_kind_t::socket;
 }
 
 struct socket_poll_cache_t
@@ -52,8 +50,7 @@ struct socket_poll_cache_t
 
     void mark_dirty () noexcept { dirty = true; }
 
-    void rebuild_if_needed (
-      const std::vector<std::unique_ptr<poller_item_t> > &items_)
+    void rebuild_if_needed (const std::vector<std::unique_ptr<poller_item_t>> &items_)
     {
         if (!dirty)
             return;
@@ -66,8 +63,7 @@ struct socket_poll_cache_t
 
         for (size_t i = 0; i < items_.size (); ++i) {
             const poller_item_t &item = *items_[i];
-            if (item.source_kind != poll_source_kind_t::socket
-                || item.native_poller_only)
+            if (item.source_kind != poll_source_kind_t::socket || item.native_poller_only)
                 continue;
             const short events = static_cast<short> (item.events);
             if (events == 0)
@@ -92,9 +88,7 @@ struct socket_poll_cache_t
             poll_items[i].revents = 0;
     }
 
-    void update_if_clean (std::vector<std::unique_ptr<poller_item_t> > &items_,
-                          size_t index_,
-                          poll_event_flag_t events_)
+    void update_if_clean (std::vector<std::unique_ptr<poller_item_t>> &items_, size_t index_, poll_event_flag_t events_)
     {
         poller_item_t &item = *items_[index_];
         if (dirty) {

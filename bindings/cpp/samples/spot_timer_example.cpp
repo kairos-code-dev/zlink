@@ -13,7 +13,7 @@
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::service::spot_node_t node (ctx);
     zlink::service::spot_t room = node.create_spot ();
@@ -31,5 +31,5 @@ int main ()
 
     std::printf ("[spot/timer] room tick fired %d times\n", ticks.load ());
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

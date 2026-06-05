@@ -18,7 +18,8 @@
 #include <thread>
 #include <vector>
 
-namespace {
+namespace
+{
 
 static const char *k_pattern = "MULTI_SPOT_SENDSEND";
 static const char *k_server_node_rid = "SPOT-SENDSEND-SERVER-NODE";
@@ -55,8 +56,7 @@ start_gate_t g_start_gate;
 
 zlink::routing_id_t text_rid (const char *text)
 {
-    return zlink::routing_id_t (
-      reinterpret_cast<const uint8_t *> (text), std::strlen (text));
+    return zlink::routing_id_t (reinterpret_cast<const uint8_t *> (text), std::strlen (text));
 }
 
 void signal_start (size_t msg_size)
@@ -90,10 +90,8 @@ void signal_control_connected ()
 bool wait_for_control_connected (int timeout_ms)
 {
     std::unique_lock<std::mutex> lock (g_start_gate.mutex);
-    const bool ok = g_start_gate.cv.wait_for (
-      lock, std::chrono::milliseconds (std::max (1, timeout_ms)), []() {
-          return g_start_gate.stopped || g_start_gate.control_connected;
-      });
+    const bool ok = g_start_gate.cv.wait_for (lock, std::chrono::milliseconds (std::max (1, timeout_ms)),
+                                              [] () { return g_start_gate.stopped || g_start_gate.control_connected; });
     if (!ok || g_start_gate.stopped) {
         errno = g_start_gate.stopped ? ECANCELED : ETIMEDOUT;
         return false;
@@ -104,10 +102,9 @@ bool wait_for_control_connected (int timeout_ms)
 bool wait_for_start (size_t msg_size, int timeout_ms)
 {
     std::unique_lock<std::mutex> lock (g_start_gate.mutex);
-    const bool ok = g_start_gate.cv.wait_for (
-      lock, std::chrono::milliseconds (std::max (1, timeout_ms)), [&]() {
-          return g_start_gate.stopped || g_start_gate.started_size == msg_size;
-      });
+    const bool ok = g_start_gate.cv.wait_for (lock, std::chrono::milliseconds (std::max (1, timeout_ms)), [&] () {
+        return g_start_gate.stopped || g_start_gate.started_size == msg_size;
+    });
     if (!ok || g_start_gate.stopped) {
         errno = g_start_gate.stopped ? ECANCELED : ETIMEDOUT;
         return false;
@@ -130,13 +127,11 @@ void stdin_watcher ()
     while (std::getline (std::cin, line)) {
         std::string endpoint;
         size_t start_size = 0;
-        if (perf::multi::parse_endpoint_command_line (
-              line, "CONTROL_CONNECTED,", &endpoint)) {
+        if (perf::multi::parse_endpoint_command_line (line, "CONTROL_CONNECTED,", &endpoint)) {
             signal_control_connected ();
             continue;
         }
-        if (perf::multi::parse_size_command_line (
-              line, "START,", &start_size)) {
+        if (perf::multi::parse_size_command_line (line, "START,", &start_size)) {
             signal_start (start_size);
             continue;
         }
@@ -166,14 +161,12 @@ std::string parse_control_endpoint_arg (int argc, char **argv)
 
 int resolve_spot_ready_settle_ms ()
 {
-    return perf::multi::parse_positive_env (
-      "PERF_MULTI_SPOT_READY_SETTLE_MS", 1000);
+    return perf::multi::parse_positive_env ("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000);
 }
 
 int resolve_spot_control_settle_ms ()
 {
-    return perf::multi::parse_positive_env (
-      "PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25);
+    return perf::multi::parse_positive_env ("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25);
 }
 
 void wait_for_settle_ms (int settle_ms)
@@ -189,31 +182,22 @@ bool complete_sendsend_ready_barrier (zlink::service::spot_t &control_pub,
                                       int timeout_ms)
 {
     if (bench_debug_enabled ())
-        std::cerr << "[cpp-spot-sendsend-client] publish DATA_ENDPOINT size="
-                  << msg_size << std::endl;
+        std::cerr << "[cpp-spot-sendsend-client] publish DATA_ENDPOINT size=" << msg_size << std::endl;
     wait_for_settle_ms (resolve_spot_ready_settle_ms ());
-    if (!perf::multi::publish_control_payload (
-          control_pub,
-          k_control_topic,
-          std::string ("DATA_ENDPOINT_SIZE,")
-            + std::to_string (msg_size)
-            + std::string (",")
-            + local_data_endpoint,
-          timeout_ms))
+    if (!perf::multi::publish_control_payload (control_pub, k_control_topic,
+                                               std::string ("DATA_ENDPOINT_SIZE,") + std::to_string (msg_size)
+                                                 + std::string (",") + local_data_endpoint,
+                                               timeout_ms))
         return false;
     wait_for_settle_ms (resolve_spot_control_settle_ms ());
     if (bench_debug_enabled ())
-        std::cerr << "[cpp-spot-sendsend-client] publish CONNECTED/READY size="
-                  << msg_size << " count=" << ready_count << std::endl;
-    if (!perf::multi::publish_control_payload (
-          control_pub, k_control_topic, "CONNECTED", timeout_ms))
+        std::cerr << "[cpp-spot-sendsend-client] publish CONNECTED/READY size=" << msg_size << " count=" << ready_count
+                  << std::endl;
+    if (!perf::multi::publish_control_payload (control_pub, k_control_topic, "CONNECTED", timeout_ms))
         return false;
     wait_for_settle_ms (resolve_spot_control_settle_ms ());
     return perf::multi::publish_control_payload (
-      control_pub,
-      k_control_topic,
-      perf::multi::make_ready_count_command (msg_size, ready_count),
-      timeout_ms);
+      control_pub, k_control_topic, perf::multi::make_ready_count_command (msg_size, ready_count), timeout_ms);
 }
 
 bool submit_request (client_slot_t &slot,
@@ -225,47 +209,31 @@ bool submit_request (client_slot_t &slot,
     if (slot.waiting_reply)
         return true;
 
-    const size_t payload_size =
-      std::max (msg_size, perf_metric::header_size ());
+    const size_t payload_size = std::max (msg_size, perf_metric::header_size ());
     if (slot.payload.size () != payload_size)
         slot.payload.assign (payload_size, 'c');
-    if (!perf_metric::stamp_payload (
-          slot.payload.data (),
-          payload_size,
-          run_id,
-          perf_metric::phase_active,
-          msg_size,
-          slot.next_seq,
-          perf_metric::now_ns ()))
+    if (!perf_metric::stamp_payload (slot.payload.data (), payload_size, run_id, perf_metric::phase_active, msg_size,
+                                     slot.next_seq, perf_metric::now_ns ()))
         return false;
-    slot.message = zlink::message_t::from (std::as_bytes (
-      std::span<const char> (slot.payload.data (), slot.payload.size ())));
+    slot.message =
+      zlink::message_t::from (std::as_bytes (std::span<const char> (slot.payload.data (), slot.payload.size ())));
     if (!slot.message.valid ())
         return false;
 
     try {
-        const bool sent = slot.spot->send_to_spot (
-                                      server_node_rid, server_spot_rid)
+        const bool sent = slot.spot->send_to_spot (server_node_rid, server_spot_rid)
                             .message (slot.message)
-                            .flags (static_cast<int>(zlink::send_flags_t::dontwait))
+                            .flags (static_cast<int> (zlink::send_flags_t::dontwait))
                             .submit ();
         if (!sent) {
-            if (bench_debug_enabled ()
-                && g_client_debug_send_logs.fetch_add (
-                     1, std::memory_order_acq_rel)
-                     < 8) {
-                std::cerr << "[cpp-spot-sendsend-client] send blocked seq="
-                          << slot.next_seq << std::endl;
+            if (bench_debug_enabled () && g_client_debug_send_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
+                std::cerr << "[cpp-spot-sendsend-client] send blocked seq=" << slot.next_seq << std::endl;
             }
             return true;
         }
         slot.waiting_reply = true;
-        if (bench_debug_enabled ()
-            && g_client_debug_send_logs.fetch_add (
-                 1, std::memory_order_acq_rel)
-                 < 8) {
-            std::cerr << "[cpp-spot-sendsend-client] send ok seq="
-                      << slot.next_seq << std::endl;
+        if (bench_debug_enabled () && g_client_debug_send_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
+            std::cerr << "[cpp-spot-sendsend-client] send ok seq=" << slot.next_seq << std::endl;
         }
         ++slot.next_seq;
         return true;
@@ -274,12 +242,8 @@ bool submit_request (client_slot_t &slot,
         if (err.result () == zlink::submit_result_t::backpressured
             || err.result () == zlink::submit_result_t::not_connected
             || err.result () == zlink::submit_result_t::not_found) {
-            if (bench_debug_enabled ()
-                && g_client_debug_send_logs.fetch_add (
-                     1, std::memory_order_acq_rel)
-                     < 8) {
-                std::cerr << "[cpp-spot-sendsend-client] send transient rc="
-                          << static_cast<int> (err.result ())
+            if (bench_debug_enabled () && g_client_debug_send_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
+                std::cerr << "[cpp-spot-sendsend-client] send transient rc=" << static_cast<int> (err.result ())
                           << " err=" << err.internal_errno () << std::endl;
             }
             return true;
@@ -298,8 +262,7 @@ bool drain_reply (client_slot_t &slot,
 {
     try {
         zlink::received_t received;
-        const int rc = slot.spot->recv_routed (
-          received, zlink::recv_flags_t::dontwait);
+        const int rc = slot.spot->recv_routed (received, zlink::recv_flags_t::dontwait);
         if (rc == static_cast<int> (zlink::recv_result_t::no_data))
             return true;
         if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
@@ -312,29 +275,18 @@ bool drain_reply (client_slot_t &slot,
 
         const zlink::message_t &part = received.parts ().front ();
         perf_metric::header_t header;
-        if (!perf_metric::decode_payload_header (
-              part.data (), part.size (), &header)
-            || !perf_metric::is_expected (
-              header,
-              run_id,
-              perf_metric::phase_active,
-              msg_size)) {
+        if (!perf_metric::decode_payload_header (part.data (), part.size (), &header)
+            || !perf_metric::is_expected (header, run_id, perf_metric::phase_active, msg_size)) {
             return true;
         }
 
         const int64_t now_ns = perf_metric::now_ns ();
-        if (now_ns >= 0 && static_cast<uint64_t> (now_ns) < deadline_ns
-            && header.sent_ts_ns > 0 && now_ns >= header.sent_ts_ns) {
-            latency.add (
-              perf_metric::elapsed_latency_ns (now_ns, header.sent_ts_ns)
-              / 2.0);
+        if (now_ns >= 0 && static_cast<uint64_t> (now_ns) < deadline_ns && header.sent_ts_ns > 0
+            && now_ns >= header.sent_ts_ns) {
+            latency.add (perf_metric::elapsed_latency_ns (now_ns, header.sent_ts_ns) / 2.0);
             ++reply_count;
-            if (bench_debug_enabled ()
-                && g_client_debug_recv_logs.fetch_add (
-                     1, std::memory_order_acq_rel)
-                     < 8) {
-                std::cerr << "[cpp-spot-sendsend-client] recv reply seq="
-                          << header.seq << std::endl;
+            if (bench_debug_enabled () && g_client_debug_recv_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
+                std::cerr << "[cpp-spot-sendsend-client] recv reply seq=" << header.seq << std::endl;
             }
         }
         return true;
@@ -358,8 +310,7 @@ bool drain_event_reply (std::vector<client_slot_t> &slots,
     const size_t slot_index = event.slot;
     if (slot_index >= slots.size ())
         return true;
-    return drain_reply (
-      slots[slot_index], run_id, msg_size, deadline_ns, reply_count, latency);
+    return drain_reply (slots[slot_index], run_id, msg_size, deadline_ns, reply_count, latency);
 }
 
 bool run_active_window (std::vector<client_slot_t> &slots,
@@ -384,28 +335,21 @@ bool run_active_window (std::vector<client_slot_t> &slots,
     // poller timer object is used. Wait slices are capped by the remaining
     // deadline so a dropped tail reply cannot block the runner after the
     // window has elapsed.
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::seconds (
-                            std::max (1, settings.duration_seconds));
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (std::max (1, settings.duration_seconds));
     const uint64_t deadline_ns =
-      perf_metric::now_ns ()
-      + static_cast<uint64_t> (std::max (1, settings.duration_seconds))
-          * 1000000000ULL;
+      perf_metric::now_ns () + static_cast<uint64_t> (std::max (1, settings.duration_seconds)) * 1000000000ULL;
 
-    while (!g_stop.load (std::memory_order_acquire)
-           && std::chrono::steady_clock::now () < deadline) {
+    while (!g_stop.load (std::memory_order_acquire) && std::chrono::steady_clock::now () < deadline) {
         bool has_waiting = false;
         bool send_progress = false;
-        const size_t active_slots =
-          active_spot_slot_limit (slots.size (), msg_size);
+        const size_t active_slots = active_spot_slot_limit (slots.size (), msg_size);
         for (size_t i = 0; i < active_slots; ++i) {
             client_slot_t &slot = slots[i];
-            if (!drain_reply (
-                  slot, run_id, msg_size, deadline_ns, reply_count, latency))
+            if (!drain_reply (slot, run_id, msg_size, deadline_ns, reply_count, latency))
                 return false;
             const bool waiting_before_submit = slot.waiting_reply;
-            if (!submit_request (
-                  slot, server_node_rid, server_spot_rid, run_id, msg_size))
+            if (!submit_request (slot, server_node_rid, server_spot_rid, run_id, msg_size))
                 return false;
             if (!waiting_before_submit && slot.waiting_reply)
                 send_progress = true;
@@ -420,26 +364,16 @@ bool run_active_window (std::vector<client_slot_t> &slots,
             if (now >= deadline)
                 break;
             const long remaining_ms =
-              static_cast<long> (
-                std::chrono::duration_cast<std::chrono::milliseconds> (
-                  deadline - now)
-                  .count ());
+              static_cast<long> (std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ());
             if (remaining_ms <= 0)
                 break;
             const long wait_ms = std::min<long> (remaining_ms, 10);
             zlink::poll_event_t event;
-            const size_t ready_count =
-              poller.wait (&event, 1, std::chrono::milliseconds (wait_ms));
+            const size_t ready_count = poller.wait (&event, 1, std::chrono::milliseconds (wait_ms));
             if (ready_count == 0)
                 continue;
-            if (!drain_event_reply (slots,
-                                    event,
-                                    run_id,
-                                    msg_size,
-                                    deadline_ns,
-                                    reply_count,
-                                    latency))
-              return false;
+            if (!drain_event_reply (slots, event, run_id, msg_size, deadline_ns, reply_count, latency))
+                return false;
         }
     }
 
@@ -455,19 +389,15 @@ bool run_client (const std::string &lib_name,
 {
     setenv ("PERF_PATTERN", k_pattern, 1);
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
-                  << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport << std::endl;
         return true;
     }
     if (endpoint.empty () || control_endpoint.empty ())
         return false;
 
-    const perf::multi::multi_bench_settings_t settings =
-      perf::multi::resolve_multi_bench_settings ();
-    const std::vector<size_t> msg_sizes =
-      perf::multi::resolve_case_msg_sizes (fallback_size);
-    const size_t snapshot_msg_size =
-      msg_sizes.empty () ? fallback_size : msg_sizes[0];
+    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+    const std::vector<size_t> msg_sizes = perf::multi::resolve_case_msg_sizes (fallback_size);
+    const size_t snapshot_msg_size = msg_sizes.empty () ? fallback_size : msg_sizes[0];
     perf::multi::ctx_guard_t ctx;
     zlink::service::spot_node_t control_node (ctx.ctx ());
     zlink::service::spot_node_t data_node (ctx.ctx ());
@@ -476,17 +406,13 @@ bool run_client (const std::string &lib_name,
     if (!perf::multi::configure_spot_control_tls (control_node, transport)
         || !perf::multi::configure_spot_server_tls (data_node, transport)
         || !perf::multi::configure_spot_client_tls (data_node, transport)
-        || !perf::multi::apply_spot_node_admission_hwm (
-          control_node, settings.sndhwm, settings.rcvhwm)
-        || !perf::multi::apply_spot_node_admission_hwm (
-          data_node, settings.sndhwm, settings.rcvhwm))
+        || !perf::multi::apply_spot_node_admission_hwm (control_node, settings.sndhwm, settings.rcvhwm)
+        || !perf::multi::apply_spot_node_admission_hwm (data_node, settings.sndhwm, settings.rcvhwm))
         return false;
-    if (!perf::multi::apply_spot_auto_hwm_msg_unit (
-          ctx.ctx (), snapshot_msg_size))
+    if (!perf::multi::apply_spot_auto_hwm_msg_unit (ctx.ctx (), snapshot_msg_size))
         return false;
 
-    const std::string local_control_endpoint =
-      perf::multi::bind_spot_endpoint (control_node, transport, 0);
+    const std::string local_control_endpoint = perf::multi::bind_spot_endpoint (control_node, transport, 0);
     if (local_control_endpoint.empty ())
         return false;
     zlink::service::spot_t control_pub = control_node.create_spot ();
@@ -494,49 +420,40 @@ bool run_client (const std::string &lib_name,
     if (!control_pub.valid () || !control_sub.valid ())
         return false;
     control_sub.set_subscription (k_control_topic);
-    const std::string local_data_endpoint =
-      perf::multi::bind_routed_spot_endpoint (
-        data_node, transport, 0);
+    const std::string local_data_endpoint = perf::multi::bind_routed_spot_endpoint (data_node, transport, 0);
     if (local_data_endpoint.empty ())
         return false;
     control_node.connect_peer (control_endpoint);
     data_node.connect_peer (endpoint);
-    std::cout << "CLIENT_CONTROL_ENDPOINT," << local_control_endpoint
-              << std::endl;
+    std::cout << "CLIENT_CONTROL_ENDPOINT," << local_control_endpoint << std::endl;
 
     std::vector<client_slot_t> slots;
     slots.resize (std::max<size_t> (1, settings.clients));
     zlink::poller_t poller;
     for (size_t i = 0; i < slots.size (); ++i) {
-        slots[i].spot.reset (
-          new zlink::service::spot_t (data_node.create_spot ()));
+        slots[i].spot.reset (new zlink::service::spot_t (data_node.create_spot ()));
         if (!slots[i].spot || !slots[i].spot->valid ())
             return false;
-        const std::string rid = std::string ("SPOT-SENDSEND-")
-                                + std::to_string (i);
-        slots[i].spot->set_routing_id (zlink::routing_id_t (
-          reinterpret_cast<const uint8_t *> (rid.data ()), rid.size ()));
+        const std::string rid = std::string ("SPOT-SENDSEND-") + std::to_string (i);
+        slots[i].spot->set_routing_id (
+          zlink::routing_id_t (reinterpret_cast<const uint8_t *> (rid.data ()), rid.size ()));
         poller.add (*slots[i].spot, zlink::poll_event_flag_t::pollin, i);
     }
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;
-    perf::multi::emit_spot_node_auto_hwm_snapshot (
-      control_node, transport, snapshot_msg_size);
-    perf::multi::emit_spot_node_auto_hwm_snapshot (
-      data_node, transport, snapshot_msg_size);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (control_node, transport, snapshot_msg_size);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (data_node, transport, snapshot_msg_size);
 
     std::thread stdin_thread (stdin_watcher);
     int rc = 0;
     const int start_timeout_ms =
-      std::max (settings.connect_ready_timeout_ms,
-                std::max (1000, settings.connect_ready_timeout_ms * 6));
+      std::max (settings.connect_ready_timeout_ms, std::max (1000, settings.connect_ready_timeout_ms * 6));
     if (!wait_for_control_connected (start_timeout_ms)) {
         stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     if (bench_debug_enabled ())
-        std::cerr << "[cpp-spot-sendsend-client] runner control connected"
-                  << std::endl;
+        std::cerr << "[cpp-spot-sendsend-client] runner control connected" << std::endl;
     for (size_t i = 0; i < msg_sizes.size (); ++i) {
         const size_t msg_size = msg_sizes[i];
         const size_t ready_count = std::max<size_t> (1, settings.clients);
@@ -545,56 +462,36 @@ bool run_client (const std::string &lib_name,
             rc = 1;
             break;
         }
-        if (!complete_sendsend_ready_barrier (
-              control_pub,
-              local_data_endpoint,
-              msg_size,
-              ready_count,
-              start_timeout_ms)) {
+        if (!complete_sendsend_ready_barrier (control_pub, local_data_endpoint, msg_size, ready_count,
+                                              start_timeout_ms)) {
             rc = 1;
             break;
         }
         std::cout << "CLIENT_READY," << msg_size << std::endl;
         if (bench_debug_enabled ())
-            std::cerr << "[cpp-spot-sendsend-client] CLIENT_READY size="
-                      << msg_size << std::endl;
+            std::cerr << "[cpp-spot-sendsend-client] CLIENT_READY size=" << msg_size << std::endl;
         if (!wait_for_start (msg_size, start_timeout_ms)) {
             rc = 1;
             break;
         }
         if (bench_debug_enabled ())
-            std::cerr << "[cpp-spot-sendsend-client] runner START size="
-                      << msg_size << std::endl;
-        if (!perf::multi::wait_for_control_start (
-              control_sub, k_control_topic, msg_size, start_timeout_ms)) {
+            std::cerr << "[cpp-spot-sendsend-client] runner START size=" << msg_size << std::endl;
+        if (!perf::multi::wait_for_control_start (control_sub, k_control_topic, msg_size, start_timeout_ms)) {
             rc = 1;
             break;
         }
         if (bench_debug_enabled ())
-            std::cerr << "[cpp-spot-sendsend-client] direct START size="
-                      << msg_size << std::endl;
+            std::cerr << "[cpp-spot-sendsend-client] direct START size=" << msg_size << std::endl;
 
         unsigned long long reply_count = 0;
         perf::multi::bench_latency_stats_t latency;
-        if (!run_active_window (slots,
-                                poller,
-                                settings,
-                                static_cast<uint32_t> (i + 1),
-                                msg_size,
-                                reply_count,
-                                latency)
+        if (!run_active_window (slots, poller, settings, static_cast<uint32_t> (i + 1), msg_size, reply_count, latency)
             || reply_count == 0 || latency.mean_ns <= 0.0) {
             rc = 1;
             break;
         }
-        perf::multi::print_client_result_lines (lib_name,
-                                                k_pattern,
-                                                transport,
-                                                msg_size,
-                                                reply_count,
-                                                settings.duration_seconds,
-                                                2.0,
-                                                latency);
+        perf::multi::print_client_result_lines (lib_name, k_pattern, transport, msg_size, reply_count,
+                                                settings.duration_seconds, 2.0, latency);
     }
 
     stop_and_release_stdin_thread (stdin_thread);
@@ -609,19 +506,16 @@ int main (int argc, char **argv)
         return 1;
     const std::string lib_name = argv[1];
     const std::string transport = argv[2];
-    const size_t fallback_size =
-      static_cast<size_t> (std::strtoull (argv[3], NULL, 10));
+    const size_t fallback_size = static_cast<size_t> (std::strtoull (argv[3], NULL, 10));
 
     std::string endpoint = perf::multi::parse_endpoint_arg (argc, argv);
     if (endpoint.empty ())
         return 1;
-    const std::string control_endpoint =
-      parse_control_endpoint_arg (argc, argv);
+    const std::string control_endpoint = parse_control_endpoint_arg (argc, argv);
     if (control_endpoint.empty ())
         return 1;
 
-    const bool ok =
-      run_client (lib_name, transport, endpoint, control_endpoint, fallback_size);
+    const bool ok = run_client (lib_name, transport, endpoint, control_endpoint, fallback_size);
     std::cout.flush ();
     std::cerr.flush ();
     std::_Exit (ok ? 0 : 1);

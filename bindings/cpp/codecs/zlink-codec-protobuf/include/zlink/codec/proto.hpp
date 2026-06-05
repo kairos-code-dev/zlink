@@ -13,27 +13,22 @@
 namespace zlink::codec::proto
 {
 
-template<typename T>
-T parse_message (const message_t &msg)
+template <typename T> T parse_message (const message_t &msg)
 {
-    static_assert (
-      std::is_base_of<::google::protobuf::Message, T>::value,
-      "T must derive from google::protobuf::Message");
+    static_assert (std::is_base_of<::google::protobuf::Message, T>::value,
+                   "T must derive from google::protobuf::Message");
 
     T value;
-    if (!value.ParseFromArray (
-          msg.data (), static_cast<int> (msg.size ()))) {
+    if (!value.ParseFromArray (msg.data (), static_cast<int> (msg.size ()))) {
         throw std::runtime_error ("failed to decode protobuf payload");
     }
     return value;
 }
 
-template<typename T>
-message_t make_message (const T &value)
+template <typename T> message_t make_message (const T &value)
 {
-    static_assert (
-      std::is_base_of<::google::protobuf::Message, T>::value,
-      "T must derive from google::protobuf::Message");
+    static_assert (std::is_base_of<::google::protobuf::Message, T>::value,
+                   "T must derive from google::protobuf::Message");
 
     const auto size = value.ByteSizeLong ();
     if (size > static_cast<size_t> (std::numeric_limits<int>::max ())) {
@@ -52,26 +47,22 @@ message_t make_message (const T &value)
     return msg;
 }
 
-template<typename T>
-T decode (const message_t &msg)
+template <typename T> T decode (const message_t &msg)
 {
     return msg.template parse_protobuf<T> ();
 }
 
-template<typename T>
-message_t encode (const T &value)
+template <typename T> message_t encode (const T &value)
 {
     return message_t::from_protobuf (value);
 }
 
-template<typename T>
-T parse (const message_t &msg)
+template <typename T> T parse (const message_t &msg)
 {
     return msg.template parse_protobuf<T> ();
 }
 
-template<typename T>
-message_t to_message (const T &value)
+template <typename T> message_t to_message (const T &value)
 {
     return message_t::from_protobuf (value);
 }
@@ -86,16 +77,12 @@ namespace protobuf = proto;
 namespace zlink
 {
 
-template<typename T>
-message_t
-message_t::from_protobuf (const T &value_)
+template <typename T> message_t message_t::from_protobuf (const T &value_)
 {
     return codec::proto::make_message (value_);
 }
 
-template<typename T>
-T
-message_t::parse_protobuf () const
+template <typename T> T message_t::parse_protobuf () const
 {
     return codec::proto::parse_message<T> (*this);
 }

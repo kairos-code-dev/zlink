@@ -13,11 +13,10 @@ namespace zlink::stream_connector::detail
 
 class metadata_codec_t
 {
-public:
-  static std::size_t encoded_size (const metadata_t &metadata);
-  static result_t<std::vector<std::uint8_t>> encode (
-    const metadata_t &metadata);
-  static result_t<metadata_t> decode (const std::vector<std::uint8_t> &bytes);
+  public:
+    static std::size_t encoded_size (const metadata_t &metadata);
+    static result_t<std::vector<std::uint8_t>> encode (const metadata_t &metadata);
+    static result_t<metadata_t> decode (const std::vector<std::uint8_t> &bytes);
 };
 
 } // namespace zlink::stream_connector::detail

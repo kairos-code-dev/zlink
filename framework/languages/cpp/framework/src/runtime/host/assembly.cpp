@@ -7,11 +7,10 @@
 namespace zlink::framework
 {
 
-assembly_catalog_t &
-assembly_catalog_t::add_module (assembly_module_descriptor_t descriptor)
+assembly_catalog_t &assembly_catalog_t::add_module (assembly_module_descriptor_t descriptor)
 {
-  _modules.push_back (std::move (descriptor));
-  return *this;
+    _modules.push_back (std::move (descriptor));
+    return *this;
 }
 
 } // namespace zlink::framework

@@ -4,7 +4,7 @@
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::pair_socket_t server (ctx);
     zlink::pair_socket_t client (ctx);
@@ -27,8 +27,7 @@ int main ()
     const std::string received = inbound.parts ()[0].to_string ();
     assert (received == detail::k_pair_payload);
     inbound.close ();
-    std::printf ("[pair/recv] send: \"%s\" → recv: \"%s\"\n",
-                 sent.c_str (), received.c_str ());
+    std::printf ("[pair/recv] send: \"%s\" → recv: \"%s\"\n", sent.c_str (), received.c_str ());
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

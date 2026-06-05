@@ -85,24 +85,21 @@ struct spot_operation_state_t
     std::string actor_id;
 };
 
-inline void cache_first_rid_native (spot_operation_state_t &state_,
-                                    const routing_id_t &rid_) noexcept
+inline void cache_first_rid_native (spot_operation_state_t &state_, const routing_id_t &rid_) noexcept
 {
     state_.first_rid_native_cache = *zlink::detail::routing_id_native (rid_);
     state_.has_first_rid_native_cache = true;
     state_.first_rid.reset ();
 }
 
-inline void cache_second_rid_native (spot_operation_state_t &state_,
-                                     const routing_id_t &rid_) noexcept
+inline void cache_second_rid_native (spot_operation_state_t &state_, const routing_id_t &rid_) noexcept
 {
     state_.second_rid_native_cache = *zlink::detail::routing_id_native (rid_);
     state_.has_second_rid_native_cache = true;
     state_.second_rid.reset ();
 }
 
-inline const zlink_routing_id_t *
-state_first_rid_native (const spot_operation_state_t &state_) noexcept
+inline const zlink_routing_id_t *state_first_rid_native (const spot_operation_state_t &state_) noexcept
 {
     if (state_.has_first_rid_native_cache)
         return &state_.first_rid_native_cache;
@@ -111,8 +108,7 @@ state_first_rid_native (const spot_operation_state_t &state_) noexcept
     return nullptr;
 }
 
-inline const zlink_routing_id_t *
-state_second_rid_native (const spot_operation_state_t &state_) noexcept
+inline const zlink_routing_id_t *state_second_rid_native (const spot_operation_state_t &state_) noexcept
 {
     if (state_.has_second_rid_native_cache)
         return &state_.second_rid_native_cache;
@@ -123,15 +119,12 @@ state_second_rid_native (const spot_operation_state_t &state_) noexcept
 
 inline bool has_send_parts (const spot_operation_state_t &state_) noexcept
 {
-    return state_.single_part.has_value () || state_.single_part_source
-           || !state_.parts.empty ();
+    return state_.single_part.has_value () || state_.single_part_source || !state_.parts.empty ();
 }
 
 inline size_t send_part_count (const spot_operation_state_t &state_) noexcept
 {
-    return state_.single_part.has_value () || state_.single_part_source
-             ? 1u
-             : state_.parts.size ();
+    return state_.single_part.has_value () || state_.single_part_source ? 1u : state_.parts.size ();
 }
 
 inline message_t &send_single_part (spot_operation_state_t &state_) noexcept
@@ -170,29 +163,23 @@ inline bool can_borrow_single_send_part (spot_operation_kind_t kind_) noexcept
     }
 }
 
-inline void
-restore_single_send_part_to_source (spot_operation_state_t &state_) noexcept
+inline void restore_single_send_part_to_source (spot_operation_state_t &state_) noexcept
 {
-    if (!state_.single_part_source || !state_.single_part.has_value ()
-        || !state_.single_part->valid ())
+    if (!state_.single_part_source || !state_.single_part.has_value () || !state_.single_part->valid ())
         return;
     *state_.single_part_source = std::move (*state_.single_part);
     state_.single_part_source = nullptr;
 }
 
-inline void
-restore_single_send_part_to_source (spot_operation_state_t &state_,
-                                    std::vector<message_t> &parts_) noexcept
+inline void restore_single_send_part_to_source (spot_operation_state_t &state_, std::vector<message_t> &parts_) noexcept
 {
-    if (!state_.single_part_source || parts_.size () != 1u
-        || !parts_[0].valid ())
+    if (!state_.single_part_source || parts_.size () != 1u || !parts_[0].valid ())
         return;
     *state_.single_part_source = std::move (parts_[0]);
     state_.single_part_source = nullptr;
 }
 
-inline void restore_send_parts_to_state (spot_operation_state_t &state_,
-                                         std::vector<message_t> &parts_) noexcept
+inline void restore_send_parts_to_state (spot_operation_state_t &state_, std::vector<message_t> &parts_) noexcept
 {
     const bool had_single_part_source = state_.single_part_source != nullptr;
     restore_single_send_part_to_source (state_, parts_);
@@ -238,11 +225,9 @@ inline void reset_for_reuse (spot_operation_state_t &state_) noexcept
     state_.actor_id.clear ();
 }
 
-inline std::vector<std::unique_ptr<spot_operation_state_t> > &
-state_pool () noexcept
+inline std::vector<std::unique_ptr<spot_operation_state_t>> &state_pool () noexcept
 {
-    static thread_local std::vector<std::unique_ptr<spot_operation_state_t> >
-      pool;
+    static thread_local std::vector<std::unique_ptr<spot_operation_state_t>> pool;
     return pool;
 }
 
@@ -257,8 +242,7 @@ inline std::unique_ptr<spot_operation_state_t> acquire_state ()
     return std::make_unique<spot_operation_state_t> ();
 }
 
-inline void
-release_state (std::unique_ptr<spot_operation_state_t> state_ptr_) noexcept
+inline void release_state (std::unique_ptr<spot_operation_state_t> state_ptr_) noexcept
 {
     if (!state_ptr_)
         return;

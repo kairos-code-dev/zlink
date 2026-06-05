@@ -12,8 +12,7 @@ namespace detail
 struct spot_node_access_t
 {
     static void *native_handle (service::spot_node_t &node_) noexcept;
-    static const void *
-    native_handle (const service::spot_node_t &node_) noexcept;
+    static const void *native_handle (const service::spot_node_t &node_) noexcept;
 };
 
 struct spot_access_t

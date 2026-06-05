@@ -5,8 +5,10 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
-namespace perf {
-namespace single {
+namespace perf
+{
+namespace single
+{
 
 ctx_guard_t::ctx_guard_t () : _ctx ()
 {
@@ -85,8 +87,7 @@ int resolve_single_recv_timeout_ms ()
 
 int resolve_single_pubsub_recv_timeout_ms ()
 {
-    return parse_positive_env ("PERF_SINGLE_PUBSUB_RCVTIMEO_MS",
-                               resolve_single_recv_timeout_ms ());
+    return parse_positive_env ("PERF_SINGLE_PUBSUB_RCVTIMEO_MS", resolve_single_recv_timeout_ms ());
 }
 
 int resolve_single_pubsub_ready_settle_ms ()
@@ -118,8 +119,7 @@ zlink::auto_hwm_profile resolve_single_ctx_auto_hwm_profile ()
         return zlink::auto_hwm_profile::balanced;
     if (std::strcmp (value, "compact") == 0)
         return zlink::auto_hwm_profile::compact;
-    if (std::strcmp (value, "low_latency") == 0
-        || std::strcmp (value, "low-latency") == 0)
+    if (std::strcmp (value, "low_latency") == 0 || std::strcmp (value, "low-latency") == 0)
         return zlink::auto_hwm_profile::low_latency;
     if (std::strcmp (value, "throughput") == 0)
         return zlink::auto_hwm_profile::throughput;
@@ -149,12 +149,8 @@ void apply_ctx_options (zlink::context_t &ctx_)
     if (max_sockets > 0)
         (void) options.max_sockets (zlink::socket_count_t::value (max_sockets));
 
-    (void) options.blocky (
-      parse_nonnegative_env ("PERF_CTX_BLOCKY", 0) != 0);
-    (void) options.auto_hwm_enabled (
-      parse_nonnegative_env ("PERF_CTX_AUTO_HWM_ENABLE",
-                             1)
-      != 0);
+    (void) options.blocky (parse_nonnegative_env ("PERF_CTX_BLOCKY", 0) != 0);
+    (void) options.auto_hwm_enabled (parse_nonnegative_env ("PERF_CTX_AUTO_HWM_ENABLE", 1) != 0);
     (void) options.auto_hwm_profile (resolve_single_ctx_auto_hwm_profile ());
 }
 
@@ -165,8 +161,8 @@ bool set_sockopt_int (perf_socket_t &socket_,
 {
     const int rc = socket_.set (option_, value_);
     if (rc != 0 && bench_debug_enabled ()) {
-        std::cerr << "setsockopt(" << (name_ ? name_ : "?")
-                  << ") failed: " << zlink::last_error ().what () << std::endl;
+        std::cerr << "setsockopt(" << (name_ ? name_ : "?") << ") failed: " << zlink::last_error ().what ()
+                  << std::endl;
     }
     return rc == 0;
 }
@@ -177,10 +173,8 @@ void apply_single_hwm (perf_socket_t &socket_)
         return;
     const int sndhwm = resolve_single_socket_hwm (true);
     const int rcvhwm = resolve_single_socket_hwm (false);
-    (void) set_sockopt_int (
-      socket_, perf::options::socket_options::sndhwm, sndhwm, "sndhwm");
-    (void) set_sockopt_int (
-      socket_, perf::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
+    (void) set_sockopt_int (socket_, perf::options::socket_options::sndhwm, sndhwm, "sndhwm");
+    (void) set_sockopt_int (socket_, perf::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
 }
 
 bool apply_single_auto_hwm_msg_unit (ctx_guard_t &ctx_, size_t msg_size_)
@@ -189,8 +183,7 @@ bool apply_single_auto_hwm_msg_unit (ctx_guard_t &ctx_, size_t msg_size_)
         return true;
     try {
         zlink::context_options_t options = ctx_.ctx ().options ();
-        options.auto_hwm_msg_unit_bytes (
-          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
+        options.auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
         return true;
     }
     catch (const zlink::config_error_t &err) {
@@ -211,8 +204,7 @@ bool recalculate_single_auto_hwm (ctx_guard_t &ctx_)
     }
 }
 
-void apply_single_benchmark_socket_options (perf_socket_t &socket_,
-                                            const std::string &transport_)
+void apply_single_benchmark_socket_options (perf_socket_t &socket_, const std::string &transport_)
 {
     if (transport_ == "pgm" || transport_ == "epgm")
         return;
@@ -220,16 +212,12 @@ void apply_single_benchmark_socket_options (perf_socket_t &socket_,
     const int linger_ms = 0;
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
-    (void) set_sockopt_int (
-      socket_, perf::options::socket_options::linger, linger_ms, "linger");
-    (void) set_sockopt_int (
-      socket_, perf::options::socket_options::sndtimeo, sndtimeo_ms, "sndtimeo");
-    (void) set_sockopt_int (
-      socket_, perf::options::socket_options::rcvtimeo, rcvtimeo_ms, "rcvtimeo");
+    (void) set_sockopt_int (socket_, perf::options::socket_options::linger, linger_ms, "linger");
+    (void) set_sockopt_int (socket_, perf::options::socket_options::sndtimeo, sndtimeo_ms, "sndtimeo");
+    (void) set_sockopt_int (socket_, perf::options::socket_options::rcvtimeo, rcvtimeo_ms, "rcvtimeo");
 }
 
-std::string make_endpoint (const std::string &transport,
-                           const std::string &id)
+std::string make_endpoint (const std::string &transport, const std::string &id)
 {
     if (transport == "pgm" || transport == "epgm") {
 #if !defined(_WIN32)
@@ -248,11 +236,9 @@ std::string make_endpoint (const std::string &transport,
                     continue;
 
                 char addr[INET_ADDRSTRLEN];
-                const struct sockaddr_in *sa =
-                  reinterpret_cast<const struct sockaddr_in *> (ifa->ifa_addr);
+                const struct sockaddr_in *sa = reinterpret_cast<const struct sockaddr_in *> (ifa->ifa_addr);
                 if (inet_ntop (AF_INET, &sa->sin_addr, addr, sizeof (addr))) {
-                    std::string endpoint =
-                      transport + "://" + addr + ";239.192.1.1:5555";
+                    std::string endpoint = transport + "://" + addr + ";239.192.1.1:5555";
                     freeifaddrs (ifaddr);
                     return endpoint;
                 }
@@ -289,16 +275,15 @@ std::string make_fixed_endpoint (const std::string &transport, int port)
     return "tcp://" + host + ":" + port_str;
 }
 
-std::string bind_and_resolve_endpoint (perf_socket_t &socket_,
-                                       const std::string &transport,
-                                       const std::string &id)
+std::string bind_and_resolve_endpoint (perf_socket_t &socket_, const std::string &transport, const std::string &id)
 {
     std::string endpoint = make_endpoint (transport, id);
     if (endpoint.empty ())
         return std::string ();
     try {
         socket_.bind (endpoint);
-    } catch (const zlink::binding_error_t &) {
+    }
+    catch (const zlink::binding_error_t &) {
         return std::string ();
     }
 
@@ -343,43 +328,35 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
                            const std::string &transport_,
                            const std::string &id_)
 {
-    if (!setup_tls_server (bind_socket_, transport_)
-        || !setup_tls_client (connect_socket_, transport_)) {
+    if (!setup_tls_server (bind_socket_, transport_) || !setup_tls_client (connect_socket_, transport_)) {
         return false;
     }
 
     apply_single_hwm (bind_socket_);
     apply_single_hwm (connect_socket_);
 
-    zlink::socket_monitor_t bind_monitor =
-      bind_socket_.monitor_open (zlink::monitor_event::connection_ready);
-    zlink::socket_monitor_t connect_monitor =
-      connect_socket_.monitor_open (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t bind_monitor = bind_socket_.monitor_open (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t connect_monitor = connect_socket_.monitor_open (zlink::monitor_event::connection_ready);
     if (!bind_monitor.valid () || !connect_monitor.valid ())
         return false;
 
-    const std::string endpoint =
-      bind_and_resolve_endpoint (bind_socket_, transport_, id_);
+    const std::string endpoint = bind_and_resolve_endpoint (bind_socket_, transport_, id_);
     if (endpoint.empty ())
         return false;
     try {
         connect_socket_.connect (endpoint);
-    } catch (const zlink::binding_error_t &) {
+    }
+    catch (const zlink::binding_error_t &) {
         return false;
     }
 
     apply_single_benchmark_socket_options (bind_socket_, transport_);
     apply_single_benchmark_socket_options (connect_socket_, transport_);
-    const int connect_ready_timeout_ms =
-      resolve_single_connect_ready_timeout_ms ();
-    if (!wait_socket_monitor_event (
-          bind_monitor,
-          static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-          connect_ready_timeout_ms)
-        || !wait_socket_monitor_event (
-          connect_monitor,
-          static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-          connect_ready_timeout_ms)) {
+    const int connect_ready_timeout_ms = resolve_single_connect_ready_timeout_ms ();
+    if (!wait_socket_monitor_event (bind_monitor, static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+                                    connect_ready_timeout_ms)
+        || !wait_socket_monitor_event (connect_monitor, static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+                                       connect_ready_timeout_ms)) {
         return false;
     }
     return true;

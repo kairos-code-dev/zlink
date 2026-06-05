@@ -7,29 +7,24 @@
 namespace zlink::framework::detail
 {
 
-bool
-route_connection_set_t::connect (std::string endpoint)
+bool route_connection_set_t::connect (std::string endpoint)
 {
-  return _manual_connections.insert (std::move (endpoint)).second;
+    return _manual_connections.insert (std::move (endpoint)).second;
 }
 
-bool
-route_connection_set_t::disconnect (const std::string &endpoint)
+bool route_connection_set_t::disconnect (const std::string &endpoint)
 {
-  return _manual_connections.erase (endpoint) != 0;
+    return _manual_connections.erase (endpoint) != 0;
 }
 
-bool
-route_connection_set_t::contains (const std::string &endpoint) const
+bool route_connection_set_t::contains (const std::string &endpoint) const
 {
-  return _manual_connections.find (endpoint) != _manual_connections.end ();
+    return _manual_connections.find (endpoint) != _manual_connections.end ();
 }
 
-std::vector<std::string>
-route_connection_set_t::list () const
+std::vector<std::string> route_connection_set_t::list () const
 {
-  return std::vector<std::string> (_manual_connections.begin (),
-                                   _manual_connections.end ());
+    return std::vector<std::string> (_manual_connections.begin (), _manual_connections.end ());
 }
 
 } // namespace zlink::framework::detail

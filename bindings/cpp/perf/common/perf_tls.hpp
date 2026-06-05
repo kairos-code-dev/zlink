@@ -7,17 +7,16 @@
 #include <iostream>
 #include <string>
 
-namespace perf {
+namespace perf
+{
 
 inline bool perf_tls_file_exists (const std::filesystem::path &path)
 {
     std::error_code ec;
-    return std::filesystem::exists (path, ec)
-           && std::filesystem::is_regular_file (path, ec);
+    return std::filesystem::exists (path, ec) && std::filesystem::is_regular_file (path, ec);
 }
 
-inline bool resolve_perf_tls_dir_from (const std::filesystem::path &start,
-                                       std::filesystem::path *out_dir)
+inline bool resolve_perf_tls_dir_from (const std::filesystem::path &start, std::filesystem::path *out_dir)
 {
     if (!out_dir)
         return false;
@@ -34,17 +33,14 @@ inline bool resolve_perf_tls_dir_from (const std::filesystem::path &start,
         if (cur.empty ())
             break;
 
-        const std::filesystem::path repo_candidate =
-          cur / "bindings" / "cpp" / "tests" / "certs" / "gen";
-        if (perf_tls_file_exists (repo_candidate / "server.crt")
-            && perf_tls_file_exists (repo_candidate / "server.key")
+        const std::filesystem::path repo_candidate = cur / "bindings" / "cpp" / "tests" / "certs" / "gen";
+        if (perf_tls_file_exists (repo_candidate / "server.crt") && perf_tls_file_exists (repo_candidate / "server.key")
             && perf_tls_file_exists (repo_candidate / "ca.crt")) {
             *out_dir = repo_candidate;
             return true;
         }
 
-        const std::filesystem::path local_candidate =
-          cur / "tests" / "certs" / "gen";
+        const std::filesystem::path local_candidate = cur / "tests" / "certs" / "gen";
         if (perf_tls_file_exists (local_candidate / "server.crt")
             && perf_tls_file_exists (local_candidate / "server.key")
             && perf_tls_file_exists (local_candidate / "ca.crt")) {
@@ -61,10 +57,8 @@ inline bool resolve_perf_tls_dir_from (const std::filesystem::path &start,
     return false;
 }
 
-inline bool try_resolve_tls_paths (std::string &cert_out,
-                                   std::string &key_out,
-                                   std::string &ca_out,
-                                   bool verbose = false)
+inline bool
+try_resolve_tls_paths (std::string &cert_out, std::string &key_out, std::string &ca_out, bool verbose = false)
 {
     cert_out.clear ();
     key_out.clear ();
@@ -74,8 +68,7 @@ inline bool try_resolve_tls_paths (std::string &cert_out,
     if (!resolve_perf_tls_dir_from (std::filesystem::current_path (), &dir)) {
         const std::filesystem::path exe_probe ("/proc/self/exe");
         std::error_code ec;
-        const std::filesystem::path exe =
-          std::filesystem::read_symlink (exe_probe, ec);
+        const std::filesystem::path exe = std::filesystem::read_symlink (exe_probe, ec);
         if (ec || !resolve_perf_tls_dir_from (exe, &dir)) {
             if (verbose) {
                 std::cerr << "TLS cert path not found: "
@@ -92,9 +85,7 @@ inline bool try_resolve_tls_paths (std::string &cert_out,
     return true;
 }
 
-template<typename SocketLike>
-inline bool setup_tls_server (SocketLike &socket,
-                              const std::string &transport)
+template <typename SocketLike> inline bool setup_tls_server (SocketLike &socket, const std::string &transport)
 {
     if (transport != "tls" && transport != "wss")
         return true;
@@ -114,9 +105,7 @@ inline bool setup_tls_server (SocketLike &socket,
     return true;
 }
 
-template<typename SocketLike>
-inline bool setup_tls_client (SocketLike &socket,
-                              const std::string &transport)
+template <typename SocketLike> inline bool setup_tls_client (SocketLike &socket, const std::string &transport)
 {
     if (transport != "tls" && transport != "wss")
         return true;

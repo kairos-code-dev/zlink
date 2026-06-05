@@ -28,8 +28,7 @@ class actor_bind_operation_t;
 class actor_unbind_operation_t;
 
 actor_bind_operation_t detail_make_actor_bind_operation (detail::actor_bind_state_t &&state_);
-actor_unbind_operation_t detail_make_actor_unbind_operation (
-  detail::actor_bind_state_t &&state_);
+actor_unbind_operation_t detail_make_actor_unbind_operation (detail::actor_bind_state_t &&state_);
 
 /// @brief Builds an actor join: add parts, then submit and await the result.
 class actor_join_operation_t
@@ -83,18 +82,15 @@ class actor_join_callback_submit_operation_t
   public:
     ~actor_join_callback_submit_operation_t ();
     actor_join_callback_submit_operation_t (actor_join_callback_submit_operation_t &&) noexcept;
-    actor_join_callback_submit_operation_t &
-    operator= (actor_join_callback_submit_operation_t &&) noexcept;
+    actor_join_callback_submit_operation_t &operator= (actor_join_callback_submit_operation_t &&) noexcept;
 
     actor_join_callback_submit_operation_t &&message (message_t &part_) &&;
-    actor_join_callback_submit_operation_t &&
-    timeout (std::chrono::milliseconds timeout_) &&;
+    actor_join_callback_submit_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
     actor_join_callback_submit_operation_t &&flags (int flags_) &&;
     bool submit (actor_join_callback_t callback_) &&;
 
   private:
-    explicit actor_join_callback_submit_operation_t (
-      detail::actor_join_state_t &&state_);
+    explicit actor_join_callback_submit_operation_t (detail::actor_join_state_t &&state_);
 
     detail::actor_join_state_t &state () noexcept;
     const detail::actor_join_state_t &state () const noexcept;
@@ -109,17 +105,14 @@ class actor_join_entry_spot_operation_t
   public:
     ~actor_join_entry_spot_operation_t ();
     actor_join_entry_spot_operation_t (actor_join_entry_spot_operation_t &&) noexcept;
-    actor_join_entry_spot_operation_t &
-    operator= (actor_join_entry_spot_operation_t &&) noexcept;
+    actor_join_entry_spot_operation_t &operator= (actor_join_entry_spot_operation_t &&) noexcept;
 
-    actor_join_entry_spot_operation_t &&
-    timeout (std::chrono::milliseconds timeout_) &&;
+    actor_join_entry_spot_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
     async_result_t<actor_join_entry_spot_result_t> submit_async () &&;
     bool submit (actor_join_entry_spot_callback_t callback_) &&;
 
   private:
-    explicit actor_join_entry_spot_operation_t (
-      detail::actor_payloadless_state_t &&state_);
+    explicit actor_join_entry_spot_operation_t (detail::actor_payloadless_state_t &&state_);
 
     detail::actor_payloadless_state_t &state () noexcept;
     const detail::actor_payloadless_state_t &state () const noexcept;
@@ -235,8 +228,7 @@ class actor_bind_operation_t
     const detail::actor_bind_state_t &state () const noexcept;
 
     std::unique_ptr<detail::actor_bind_state_t> _state;
-    friend actor_bind_operation_t
-    detail_make_actor_bind_operation (detail::actor_bind_state_t &&state_);
+    friend actor_bind_operation_t detail_make_actor_bind_operation (detail::actor_bind_state_t &&state_);
 };
 
 /// @brief Builds an actor-from-session unbind operation.
@@ -258,8 +250,7 @@ class actor_unbind_operation_t
     const detail::actor_bind_state_t &state () const noexcept;
 
     std::unique_ptr<detail::actor_bind_state_t> _state;
-    friend actor_unbind_operation_t
-    detail_make_actor_unbind_operation (detail::actor_bind_state_t &&state_);
+    friend actor_unbind_operation_t detail_make_actor_unbind_operation (detail::actor_bind_state_t &&state_);
 };
 
 } // namespace service

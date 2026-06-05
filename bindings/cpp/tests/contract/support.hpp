@@ -45,8 +45,7 @@ inline std::string unique_ipc (const char *base_)
       static_cast<unsigned> (getpid ());
 #endif
     std::ostringstream stream;
-    stream << "ipc:///tmp/" << (base_ ? base_ : "cpp-contract") << "-"
-           << pid << "-" << ++counter << ".ipc";
+    stream << "ipc:///tmp/" << (base_ ? base_ : "cpp-contract") << "-" << pid << "-" << ++counter << ".ipc";
     return stream.str ();
 }
 
@@ -71,19 +70,13 @@ inline zlink::message_t make_message (const std::string &text_)
     return zlink::message_t::from (text_);
 }
 
-inline bool wait_until (std::condition_variable &cv_,
-                        std::unique_lock<std::mutex> &lock_,
-                        bool &ready_,
-                        int timeout_ms_)
+inline bool
+wait_until (std::condition_variable &cv_, std::unique_lock<std::mutex> &lock_, bool &ready_, int timeout_ms_)
 {
-    return cv_.wait_for (
-      lock_, std::chrono::milliseconds (timeout_ms_), [&ready_] {
-          return ready_;
-      });
+    return cv_.wait_for (lock_, std::chrono::milliseconds (timeout_ms_), [&ready_] { return ready_; });
 }
 
-template<typename MonitorLike>
-inline bool wait_for_monitor_readable (MonitorLike &monitor_, int timeout_ms_)
+template <typename MonitorLike> inline bool wait_for_monitor_readable (MonitorLike &monitor_, int timeout_ms_)
 {
     zlink::poller_t poller;
     if (!poller.valid ())
@@ -108,16 +101,13 @@ inline bool wait_for_socket_monitor_event (zlink::socket_monitor_t &monitor_,
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
 
     while (std::chrono::steady_clock::now () < deadline) {
-        const std::chrono::steady_clock::duration remaining =
-          deadline - std::chrono::steady_clock::now ();
-        const int remaining_ms = static_cast<int> (
-          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
-            .count ());
+        const std::chrono::steady_clock::duration remaining = deadline - std::chrono::steady_clock::now ();
+        const int remaining_ms =
+          static_cast<int> (std::chrono::duration_cast<std::chrono::milliseconds> (remaining).count ());
         if (!wait_for_monitor_readable (monitor_, remaining_ms))
             continue;
 
-        const std::optional<zlink::monitor_event_t> event =
-          monitor_.recv (zlink::recv_flags_t::dontwait);
+        const std::optional<zlink::monitor_event_t> event = monitor_.recv (zlink::recv_flags_t::dontwait);
         if (!event)
             continue;
         if (static_cast<uint64_t> (event->event) != event_type_)

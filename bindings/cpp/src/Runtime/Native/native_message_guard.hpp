@@ -17,8 +17,7 @@ class scoped_native_message_t
     scoped_native_message_t () = default;
 
     scoped_native_message_t (const scoped_native_message_t &) = delete;
-    scoped_native_message_t &
-    operator= (const scoped_native_message_t &) = delete;
+    scoped_native_message_t &operator= (const scoped_native_message_t &) = delete;
 
     ~scoped_native_message_t ()
     {
@@ -37,10 +36,7 @@ class scoped_native_message_t
 
     [[nodiscard]] zlink_msg_t *get () noexcept { return &_message; }
 
-    void adopt_into (message_t &message_)
-    {
-        adopt_native_message (message_, &_message);
-    }
+    void adopt_into (message_t &message_) { adopt_native_message (message_, &_message); }
 
   private:
     zlink_msg_t _message;

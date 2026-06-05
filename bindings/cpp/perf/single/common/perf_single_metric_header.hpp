@@ -6,7 +6,8 @@
 #include <cstring>
 #include <stdint.h>
 
-namespace perf_single_metric {
+namespace perf_single_metric
+{
 
 static const uint32_t k_magic = 0x5A4C4E4BU;
 
@@ -34,10 +35,8 @@ inline size_t header_size ()
 
 inline uint32_t load_u32_le (const unsigned char *src)
 {
-    return static_cast<uint32_t> (src[0])
-           | (static_cast<uint32_t> (src[1]) << 8)
-           | (static_cast<uint32_t> (src[2]) << 16)
-           | (static_cast<uint32_t> (src[3]) << 24);
+    return static_cast<uint32_t> (src[0]) | (static_cast<uint32_t> (src[1]) << 8)
+           | (static_cast<uint32_t> (src[2]) << 16) | (static_cast<uint32_t> (src[3]) << 24);
 }
 
 inline uint64_t load_u64_le (const unsigned char *src)
@@ -65,8 +64,7 @@ inline void store_u64_le (unsigned char *dst, uint64_t value)
 inline int64_t now_ns ()
 {
     return static_cast<int64_t> (
-      std::chrono::duration_cast<std::chrono::nanoseconds> (
-        std::chrono::system_clock::now ().time_since_epoch ())
+      std::chrono::duration_cast<std::chrono::nanoseconds> (std::chrono::system_clock::now ().time_since_epoch ())
         .count ());
 }
 
@@ -75,17 +73,11 @@ inline double elapsed_latency_ns (uint64_t now_ns_, int64_t sent_ts_ns_)
     if (sent_ts_ns_ <= 0)
         return 0.0;
     const uint64_t sent_ts_ns = static_cast<uint64_t> (sent_ts_ns_);
-    return now_ns_ >= sent_ts_ns
-             ? static_cast<double> (now_ns_ - sent_ts_ns)
-             : 0.0;
+    return now_ns_ >= sent_ts_ns ? static_cast<double> (now_ns_ - sent_ts_ns) : 0.0;
 }
 
-inline void init_header (header_t *out,
-                         uint32_t run_id,
-                         phase_t phase,
-                         size_t msg_size,
-                         uint64_t seq,
-                         int64_t sent_ts_ns)
+inline void
+init_header (header_t *out, uint32_t run_id, phase_t phase, size_t msg_size, uint64_t seq, int64_t sent_ts_ns)
 {
     if (!out)
         return;
@@ -128,13 +120,8 @@ inline bool decode_header (const void *src, size_t src_size, header_t *out)
     return true;
 }
 
-inline bool stamp_payload (void *payload,
-                           size_t payload_size,
-                           uint32_t run_id,
-                           phase_t phase,
-                           size_t msg_size,
-                           uint64_t seq,
-                           int64_t sent_ts_ns)
+inline bool stamp_payload (
+  void *payload, size_t payload_size, uint32_t run_id, phase_t phase, size_t msg_size, uint64_t seq, int64_t sent_ts_ns)
 {
     if (!payload || payload_size < header_size ())
         return false;
@@ -144,22 +131,16 @@ inline bool stamp_payload (void *payload,
     return encode_header (payload, payload_size, h);
 }
 
-inline bool decode_payload_header (const void *payload,
-                                   size_t payload_size,
-                                   header_t *out)
+inline bool decode_payload_header (const void *payload, size_t payload_size, header_t *out)
 {
     if (!decode_header (payload, payload_size, out))
         return false;
     return out->magic == k_magic;
 }
 
-inline bool is_expected (const header_t &h,
-                         uint32_t run_id,
-                         phase_t phase,
-                         size_t msg_size)
+inline bool is_expected (const header_t &h, uint32_t run_id, phase_t phase, size_t msg_size)
 {
-    return h.magic == k_magic && h.run_id == run_id
-           && h.phase == static_cast<uint8_t> (phase)
+    return h.magic == k_magic && h.run_id == run_id && h.phase == static_cast<uint8_t> (phase)
            && h.msg_size == static_cast<uint32_t> (msg_size);
 }
 

@@ -9,8 +9,7 @@ int main ()
 {
     zlink::context_t ctx;
     zlink::service::registry_t registry (ctx);
-    zlink::service::discovery_t discovery (
-      ctx, zlink::auto_connect_type::spot_mesh, detail::k_spot_service);
+    zlink::service::discovery_t discovery (ctx, zlink::auto_connect_type::spot_mesh, detail::k_spot_service);
     zlink::service::spot_node_t topic_node (ctx);
     zlink::service::spot_t topic_spot = topic_node.create_spot ();
     zlink::timer_t timer = zlink::timer_t::from_spot (topic_spot);
@@ -23,8 +22,7 @@ int main ()
     const std::string topic = detail::k_spot_topic;
     const std::string publish_payload = detail::k_spot_payload;
     const std::string registry_pub = detail::unique_tcp ("spot-recv-reg-pub");
-    const std::string registry_router =
-      detail::unique_tcp ("spot-recv-reg-router");
+    const std::string registry_router = detail::unique_tcp ("spot-recv-reg-router");
     const std::string topic_endpoint = detail::unique_tcp ("spot-recv-topic");
 
     registry.bind (registry_pub, registry_router);
@@ -59,16 +57,11 @@ int main ()
     assert (fire_count && *fire_count == 1);
 
     char timer_tick[32];
-    std::snprintf (
-      timer_tick, sizeof (timer_tick), "tick-%llu",
-      static_cast<unsigned long long> (*fire_count));
+    std::snprintf (timer_tick, sizeof (timer_tick), "tick-%llu", static_cast<unsigned long long> (*fire_count));
 
-    std::printf (
-      "[spot/recv] channel: \"%s\" tick: 1 publish: \"%s/%s\" -> recv: \"%s/%s\"\n",
-      detail::k_spot_service, topic.c_str (), publish_payload.c_str (),
-      topic.c_str (), publish_payload.c_str ());
-    std::printf (
-      "[spot/recv] channel: \"%s\" tick: 1 timer: \"%s\" -> next-round\n",
-      detail::k_spot_service, timer_tick);
+    std::printf ("[spot/recv] channel: \"%s\" tick: 1 publish: \"%s/%s\" -> recv: \"%s/%s\"\n", detail::k_spot_service,
+                 topic.c_str (), publish_payload.c_str (), topic.c_str (), publish_payload.c_str ());
+    std::printf ("[spot/recv] channel: \"%s\" tick: 1 timer: \"%s\" -> next-round\n", detail::k_spot_service,
+                 timer_tick);
     return 0;
 }

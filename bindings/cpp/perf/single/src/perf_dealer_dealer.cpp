@@ -8,13 +8,10 @@
 #include <vector>
 
 
-bool run_pattern_dealer_dealer (const std::string &transport,
-                                size_t msg_size,
-                                const std::string &lib_name)
+bool run_pattern_dealer_dealer (const std::string &transport, size_t msg_size, const std::string &lib_name)
 {
     if (!perf::single::transport_available (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << ",DEALER_DEALER,"
-                  << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << ",DEALER_DEALER," << transport << std::endl;
         return true;
     }
 
@@ -36,35 +33,28 @@ bool run_pattern_dealer_dealer (const std::string &transport,
         return false;
     }
 
-    if (!perf::single::setup_connected_pair (bind_socket.sock (),
-                                             conn_socket.sock (),
-                                             transport,
+    if (!perf::single::setup_connected_pair (bind_socket.sock (), conn_socket.sock (), transport,
                                              lib_name + "_dealer_dealer")) {
         return false;
     }
 
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
-    (void) bind_socket.sock ().set_option (
-      perf::options::socket_options::rcvtimeo, recv_timeout);
-    (void) conn_socket.sock ().set_option (
-      perf::options::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
+    (void) bind_socket.sock ().set_option (perf::options::socket_options::rcvtimeo, recv_timeout);
+    (void) conn_socket.sock ().set_option (perf::options::socket_options::sndtimeo,
+                                           perf::single::resolve_single_send_timeout_ms ());
 
-    const size_t payload_size =
-      std::max<size_t> (msg_size, perf_single_metric::header_size ());
+    const size_t payload_size = std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
 
     const uint32_t run_id = 1U;
-    const int duration_s =
-      std::max (1, perf::single::resolve_single_duration_seconds ());
+    const int duration_s = std::max (1, perf::single::resolve_single_duration_seconds ());
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<unsigned long long> received_count (0);
     std::atomic<bool> sender_ok (true);
-    perf::single::latency_stats_builder_t latency_builder (
-      perf::single::resolve_single_latency_sample_cap ());
-    const auto active_deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
+    perf::single::latency_stats_builder_t latency_builder (perf::single::resolve_single_latency_sample_cap ());
+    const auto active_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
 
-    std::thread sender_thread ([&]() {
+    std::thread sender_thread ([&] () {
         uint64_t seq = 1;
         // C-faithful send model (bindings/c/perf single
         // perf_single_one_way.hpp send_active_samples +
@@ -75,15 +65,14 @@ bool run_pattern_dealer_dealer (const std::string &transport,
         // message carries a stale timestamp -> latency blows up
         // ~700-1000x on tls/ws/wss at unchanged throughput.
         while (std::chrono::steady_clock::now () < active_deadline) {
-            if (!perf_single_metric::stamp_payload (
-                  payload.data (), payload.size (), run_id,
-                  perf_single_metric::phase_active, msg_size, seq,
-                  perf_single_metric::now_ns ())) {
+            if (!perf_single_metric::stamp_payload (payload.data (), payload.size (), run_id,
+                                                    perf_single_metric::phase_active, msg_size, seq,
+                                                    perf_single_metric::now_ns ())) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
-            const int send_rc = perf::single::send_payload_dontwait (
-              conn_socket.sock (), payload.data (), payload.size ());
+            const int send_rc =
+              perf::single::send_payload_dontwait (conn_socket.sock (), payload.data (), payload.size ());
             if (send_rc < 0) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
@@ -109,9 +98,8 @@ bool run_pattern_dealer_dealer (const std::string &transport,
     // TLS/WS CPU pressure and inflated tail latency 30-300x. A single
     // reused message_t (no per-message std::vector<message_t>
     // materialization) matches C's single zlink_msg_t recv buffer.
-    std::thread receiver_thread ([&]() {
-        auto handle_part =
-          [&] (zlink::message_t &part_, bool *stop_out_) -> bool {
+    std::thread receiver_thread ([&] () {
+        auto handle_part = [&] (zlink::message_t &part_, bool *stop_out_) -> bool {
             *stop_out_ = false;
             if (perf::single::is_stop_token_message (part_)) {
                 *stop_out_ = true;
@@ -120,19 +108,14 @@ bool run_pattern_dealer_dealer (const std::string &transport,
             if (part_.size () != payload_size)
                 return true;
             perf_single_metric::header_t header;
-            if (!perf_single_metric::decode_payload_header (
-                  part_.data (), part_.size (), &header))
+            if (!perf_single_metric::decode_payload_header (part_.data (), part_.size (), &header))
                 return true;
-            if (!perf_single_metric::is_expected (
-                  header, run_id, perf_single_metric::phase_active,
-                  msg_size))
+            if (!perf_single_metric::is_expected (header, run_id, perf_single_metric::phase_active, msg_size))
                 return true;
             if (std::chrono::steady_clock::now () < active_deadline) {
                 received_count.fetch_add (1, std::memory_order_release);
                 const uint64_t now = perf_single_metric::now_ns ();
-                latency_builder.add (
-                  perf_single_metric::elapsed_latency_ns (
-                    now, header.sent_ts_ns));
+                latency_builder.add (perf_single_metric::elapsed_latency_ns (now, header.sent_ts_ns));
             }
             return true;
         };
@@ -156,8 +139,7 @@ bool run_pattern_dealer_dealer (const std::string &transport,
 
             for (;;) {
                 zlink::message_t burst;
-                const int burst_rc =
-                  bind_socket.sock ().recv (burst, static_cast<int>(zlink::send_flags_t::dontwait));
+                const int burst_rc = bind_socket.sock ().recv (burst, static_cast<int> (zlink::send_flags_t::dontwait));
                 if (burst_rc != 0) {
                     if (errno == EAGAIN || errno == EINTR)
                         break;
@@ -178,36 +160,24 @@ bool run_pattern_dealer_dealer (const std::string &transport,
     sender_thread.join ();
     receiver_thread.join ();
 
-    const unsigned long long received =
-      received_count.load (std::memory_order_acquire);
-    if (!sender_ok.load (std::memory_order_acquire) || received == 0
-        || latency_builder.count () == 0) {
+    const unsigned long long received = received_count.load (std::memory_order_acquire);
+    if (!sender_ok.load (std::memory_order_acquire) || received == 0 || latency_builder.count () == 0) {
         return false;
     }
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
 
-    perf::single::emit_single_socket_hwm_detail (
-      bind_socket.sock (), "DEALER_DEALER", transport, "receiver", "dealer",
-      msg_size);
-    perf::single::emit_single_socket_hwm_detail (
-      conn_socket.sock (), "DEALER_DEALER", transport, "sender", "dealer",
-      msg_size);
+    perf::single::emit_single_socket_hwm_detail (bind_socket.sock (), "DEALER_DEALER", transport, "receiver", "dealer",
+                                                 msg_size);
+    perf::single::emit_single_socket_hwm_detail (conn_socket.sock (), "DEALER_DEALER", transport, "sender", "dealer",
+                                                 msg_size);
 
-    const double throughput =
-      static_cast<double> (received) / static_cast<double> (duration_s);
-    perf::single::print_result (lib_name,
-                                "DEALER_DEALER",
-                                transport,
-                                msg_size,
-                                throughput,
-                                latency.mean_ns,
-                                latency.p95_ns,
-                                latency.p99_ns);
+    const double throughput = static_cast<double> (received) / static_cast<double> (duration_s);
+    perf::single::print_result (lib_name, "DEALER_DEALER", transport, msg_size, throughput, latency.mean_ns,
+                                latency.p95_ns, latency.p99_ns);
     return true;
 }
 
 int main (int argc, char **argv)
 {
-    return perf::single::run_standard_bench_main (
-      argc, argv, run_pattern_dealer_dealer);
+    return perf::single::run_standard_bench_main (argc, argv, run_pattern_dealer_dealer);
 }

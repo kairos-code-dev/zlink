@@ -13,16 +13,15 @@ namespace zlink::samples::tictactoe
 
 class tictactoe_entry_spot_actor_joined_handler_t
 {
-public:
-  using spot_type = entry_spot_t;
-  using actor_type = player_actor_t;
+  public:
+    using spot_type = entry_spot_t;
+    using actor_type = player_actor_t;
 
-  void handle (entry_spot_t &spot,
-               const player_actor_t &actor,
-               const zlink::framework::spot_actor_change_result_t &) const
-  {
-    spot.actor_ids.push_back (actor.actor_id);
-  }
+    void
+    handle (entry_spot_t &spot, const player_actor_t &actor, const zlink::framework::spot_actor_change_result_t &) const
+    {
+        spot.actor_ids.push_back (actor.actor_id);
+    }
 };
 
 } // namespace zlink::samples::tictactoe

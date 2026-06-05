@@ -5,22 +5,21 @@
 namespace zlink::stream_connector::detail
 {
 
-bool
-stream_transport_factory_t::is_supported (transport_t transport) noexcept
+bool stream_transport_factory_t::is_supported (transport_t transport) noexcept
 {
-  switch (transport) {
-  case transport_t::tcp:
-  case transport_t::websocket:
-    return true;
-  case transport_t::tls:
-  case transport_t::websocket_secure:
+    switch (transport) {
+        case transport_t::tcp:
+        case transport_t::websocket:
+            return true;
+        case transport_t::tls:
+        case transport_t::websocket_secure:
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
-    return true;
+            return true;
 #else
-    return false;
+            return false;
 #endif
-  }
-  return false;
+    }
+    return false;
 }
 
 } // namespace zlink::stream_connector::detail

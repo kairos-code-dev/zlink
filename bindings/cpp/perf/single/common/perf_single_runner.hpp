@@ -4,12 +4,12 @@
 #include <cstddef>
 #include <string>
 
-namespace perf {
-namespace single {
+namespace perf
+{
+namespace single
+{
 
-typedef bool (*run_fn_t) (const std::string &transport,
-                          size_t size,
-                          const std::string &lib_name);
+typedef bool (*run_fn_t) (const std::string &transport, size_t size, const std::string &lib_name);
 
 int run_standard_bench_main (int argc, char **argv, run_fn_t fn);
 

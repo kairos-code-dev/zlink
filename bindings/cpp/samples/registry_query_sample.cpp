@@ -4,11 +4,10 @@
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::service::registry_t registry (ctx);
-    zlink::service::discovery_t discovery (
-      ctx, zlink::auto_connect_type::fanout, detail::k_spot_service);
+    zlink::service::discovery_t discovery (ctx, zlink::auto_connect_type::fanout, detail::k_spot_service);
     zlink::service::registry_query_client_t query (ctx);
     zlink::pub_socket_t provider (ctx);
     assert (registry.valid ());
@@ -25,8 +24,7 @@ int main ()
     provider.bind (service_endpoint);
     query.connect (registry_router);
 
-    const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (5);
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
     bool found = false;
     while (std::chrono::steady_clock::now () < deadline) {
         try {
@@ -46,9 +44,7 @@ int main ()
     }
 
     assert (found);
-    std::printf (
-      "[registry-query] service: \"%s\" -> snapshot: found\n",
-      detail::k_spot_service);
+    std::printf ("[registry-query] service: \"%s\" -> snapshot: found\n", detail::k_spot_service);
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

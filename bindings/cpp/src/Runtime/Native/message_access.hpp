@@ -20,28 +20,17 @@ struct message_access_t
 
     static const zlink_msg_t *native (const message_t &message_) noexcept
     {
-        return reinterpret_cast<const zlink_msg_t *> (
-          message_._storage.data ());
+        return reinterpret_cast<const zlink_msg_t *> (message_._storage.data ());
     }
 
-    static bool &valid (message_t &message_) noexcept
-    {
-        return message_._valid;
-    }
+    static bool &valid (message_t &message_) noexcept { return message_._valid; }
 
-    static const bool &valid (const message_t &message_) noexcept
-    {
-        return message_._valid;
-    }
+    static const bool &valid (const message_t &message_) noexcept { return message_._valid; }
 
-    static void close_noexcept (message_t &message_) noexcept
-    {
-        message_.close_noexcept ();
-    }
+    static void close_noexcept (message_t &message_) noexcept { message_.close_noexcept (); }
 };
 
-static_assert (sizeof (zlink_msg_t) <= 64,
-               "message_t opaque storage is too small for zlink_msg_t");
+static_assert (sizeof (zlink_msg_t) <= 64, "message_t opaque storage is too small for zlink_msg_t");
 static_assert (alignof (zlink_msg_t) <= alignof (message_t),
                "message_t opaque storage is under-aligned for zlink_msg_t");
 

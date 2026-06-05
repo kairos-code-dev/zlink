@@ -50,24 +50,21 @@ inline std::function<void ()> make_spot_request_progress (void *spot_)
 
 struct request_state_t
 {
-    std::unique_ptr<std::promise<std::vector<message_t> > > promise;
+    std::unique_ptr<std::promise<std::vector<message_t>>> promise;
     std::function<void (request_result_t, std::vector<message_t>)> on_complete;
 };
 
 inline request_state_t *make_future_request_state ()
 {
-    std::unique_ptr<request_state_t> state =
-      std::make_unique<request_state_t> ();
-    state->promise =
-      std::make_unique<std::promise<std::vector<message_t> > > ();
+    std::unique_ptr<request_state_t> state = std::make_unique<request_state_t> ();
+    state->promise = std::make_unique<std::promise<std::vector<message_t>>> ();
     return state.release ();
 }
 
-inline request_state_t *make_callback_request_state (
-  std::function<void (request_result_t, std::vector<message_t>)> callback_)
+inline request_state_t *
+make_callback_request_state (std::function<void (request_result_t, std::vector<message_t>)> callback_)
 {
-    std::unique_ptr<request_state_t> state =
-      std::make_unique<request_state_t> ();
+    std::unique_ptr<request_state_t> state = std::make_unique<request_state_t> ();
     state->on_complete = std::move (callback_);
     return state.release ();
 }
@@ -82,16 +79,14 @@ inline void complete_request_state (request_state_t *state_,
     std::unique_ptr<request_state_t> holder (state_);
     if (result_ != ZLINK_REQUEST_OK) {
         if (holder->on_complete)
-            holder->on_complete (static_cast<request_result_t> (result_),
-                                 std::vector<message_t> ());
+            holder->on_complete (static_cast<request_result_t> (result_), std::vector<message_t> ());
         if (holder->promise) {
-            holder->promise->set_exception (std::make_exception_ptr (
-              request_error_t (static_cast<request_result_t> (result_))));
+            holder->promise->set_exception (
+              std::make_exception_ptr (request_error_t (static_cast<request_result_t> (result_))));
         }
         return;
     }
-    std::vector<message_t> parts =
-      detail::take_parts_from_native (parts_, part_count_);
+    std::vector<message_t> parts = detail::take_parts_from_native (parts_, part_count_);
     if (holder->on_complete) {
         holder->on_complete (request_result_t::ok, std::move (parts));
         return;
@@ -100,25 +95,19 @@ inline void complete_request_state (request_state_t *state_,
         holder->promise->set_value (std::move (parts));
 }
 
-inline void request_callback_trampoline (zlink_request_result_t result_,
-                                         zlink_msg_t *parts_,
-                                         size_t part_count_,
-                                         void *userdata_)
+inline void
+request_callback_trampoline (zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, void *userdata_)
 {
-    complete_request_state (static_cast<request_state_t *> (userdata_), result_,
-                            parts_, part_count_);
+    complete_request_state (static_cast<request_state_t *> (userdata_), result_, parts_, part_count_);
 }
 
-inline void
-actor_join_callback_trampoline (const zlink_actor_join_result_t *result_,
-                                zlink_msg_t *parts_,
-                                size_t part_count_,
-                                void *userdata_)
+inline void actor_join_callback_trampoline (const zlink_actor_join_result_t *result_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            void *userdata_)
 {
-    const zlink_request_result_t result =
-      result_ ? result_->result : ZLINK_REQUEST_INTERNAL_ERROR;
-    complete_request_state (static_cast<request_state_t *> (userdata_), result,
-                            parts_, part_count_);
+    const zlink_request_result_t result = result_ ? result_->result : ZLINK_REQUEST_INTERNAL_ERROR;
+    complete_request_state (static_cast<request_state_t *> (userdata_), result, parts_, part_count_);
 }
 
 } // namespace detail

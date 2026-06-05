@@ -2,10 +2,8 @@
 
 #include "registry_host_factory.hpp"
 
-int
-main (int argc, char **argv)
+int main (int argc, char **argv)
 {
-  const zlink::samples::tictactoe::sample_topology_t topology;
-  return zlink::samples::tictactoe::registry_host_factory_t::build (topology)
-    .run (argc, argv);
+    const zlink::samples::tictactoe::sample_topology_t topology;
+    return zlink::samples::tictactoe::registry_host_factory_t::build (topology).run (argc, argv);
 }

@@ -12,10 +12,7 @@ namespace zlink
 /// @brief A subscriber's subscribe or unsubscribe event as observed by an XPUB socket.
 struct subscription_event_t
 {
-    subscription_event_t ()
-        : routing_id (std::nullopt), topic (), subscribed (false)
-    {
-    }
+    subscription_event_t () : routing_id (std::nullopt), topic (), subscribed (false) {}
 
     std::optional<routing_id_t> routing_id;
     std::string topic;

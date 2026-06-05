@@ -13,50 +13,46 @@ namespace zlink::framework
 
 class hosted_service_t
 {
-public:
-  virtual ~hosted_service_t () = default;
+  public:
+    virtual ~hosted_service_t () = default;
 
-  virtual void start (service_provider_t &services) = 0;
-  virtual void stop () noexcept = 0;
+    virtual void start (service_provider_t &services) = 0;
+    virtual void stop () noexcept = 0;
 };
 
 class module_t
 {
-public:
-  virtual ~module_t () = default;
+  public:
+    virtual ~module_t () = default;
 
-  virtual void configure_services (service_collection_t &services)
-  {
-    (void) services;
-  }
+    virtual void configure_services (service_collection_t &services) { (void) services; }
 
-  virtual void configure_zlink (zlink_builder_t &zlink)
-  {
-    (void) zlink;
-  }
+    virtual void configure_zlink (zlink_builder_t &zlink) { (void) zlink; }
 
-  virtual void configure_handlers (handler_registry_t &handlers)
-  {
-    (void) handlers;
-  }
+    virtual void configure_handlers (handler_registry_t &handlers) { (void) handlers; }
 
-  virtual void configure_monitoring (monitoring_builder_t &monitoring)
-  {
-    (void) monitoring;
-  }
+    virtual void configure_monitoring (monitoring_builder_t &monitoring) { (void) monitoring; }
 };
 
-template<typename TModule>
-concept framework_module_contract_t =
-  requires (TModule &module,
-            service_collection_t &services,
-            zlink_builder_t &zlink,
-            handler_registry_t &handlers,
-            monitoring_builder_t &monitoring) {
-    { module.configure_services (services) } -> std::same_as<void>;
-    { module.configure_zlink (zlink) } -> std::same_as<void>;
-    { module.configure_handlers (handlers) } -> std::same_as<void>;
-    { module.configure_monitoring (monitoring) } -> std::same_as<void>;
-  };
+template <typename TModule>
+concept framework_module_contract_t = requires (TModule & module,
+                                                service_collection_t &services,
+                                                zlink_builder_t &zlink,
+                                                handler_registry_t &handlers,
+                                                monitoring_builder_t &monitoring)
+{
+    {
+        module.configure_services (services)
+    } -> std::same_as<void>;
+    {
+        module.configure_zlink (zlink)
+    } -> std::same_as<void>;
+    {
+        module.configure_handlers (handlers)
+    } -> std::same_as<void>;
+    {
+        module.configure_monitoring (monitoring)
+    } -> std::same_as<void>;
+};
 
 } // namespace zlink::framework

@@ -13,12 +13,10 @@ namespace zlink
 namespace detail
 {
 
-template<typename Target, typename Rep, typename Period>
-Target checked_milliseconds_count (
-  const std::chrono::duration<Rep, Period> &duration_)
+template <typename Target, typename Rep, typename Period>
+Target checked_milliseconds_count (const std::chrono::duration<Rep, Period> &duration_)
 {
-    const std::chrono::milliseconds ms =
-      std::chrono::duration_cast<std::chrono::milliseconds> (duration_);
+    const std::chrono::milliseconds ms = std::chrono::duration_cast<std::chrono::milliseconds> (duration_);
     const int64_t value = static_cast<int64_t> (ms.count ());
     if (value < static_cast<int64_t> (std::numeric_limits<Target>::min ())
         || value > static_cast<int64_t> (std::numeric_limits<Target>::max ()))
@@ -26,22 +24,19 @@ Target checked_milliseconds_count (
     return static_cast<Target> (value);
 }
 
-template<typename Rep, typename Period>
-uint32_t native_timeout_ms (
-  const std::chrono::duration<Rep, Period> &duration_)
+template <typename Rep, typename Period>
+uint32_t native_timeout_ms (const std::chrono::duration<Rep, Period> &duration_)
 {
     return checked_milliseconds_count<uint32_t> (duration_);
 }
 
-template<typename Rep, typename Period>
-int native_option_ms (const std::chrono::duration<Rep, Period> &duration_)
+template <typename Rep, typename Period> int native_option_ms (const std::chrono::duration<Rep, Period> &duration_)
 {
     return checked_milliseconds_count<int> (duration_);
 }
 
-template<typename Rep, typename Period>
-long native_poll_timeout_ms (
-  const std::chrono::duration<Rep, Period> &duration_)
+template <typename Rep, typename Period>
+long native_poll_timeout_ms (const std::chrono::duration<Rep, Period> &duration_)
 {
     return checked_milliseconds_count<long> (duration_);
 }

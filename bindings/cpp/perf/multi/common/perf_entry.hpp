@@ -3,8 +3,10 @@
 
 #include <cstdlib>
 
-namespace perf {
-namespace multi {
+namespace perf
+{
+namespace multi
+{
 
 inline void set_perf_pattern_env (const char *pattern)
 {

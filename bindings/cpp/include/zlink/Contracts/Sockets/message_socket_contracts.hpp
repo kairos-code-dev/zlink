@@ -25,10 +25,7 @@ class message_socket_t : public socket_t
 class routed_message_socket_t : public message_socket_t
 {
   protected:
-    routed_message_socket_t (context_t &ctx_, socket_type type_)
-        : message_socket_t (ctx_, type_)
-    {
-    }
+    routed_message_socket_t (context_t &ctx_, socket_type type_) : message_socket_t (ctx_, type_) {}
 };
 
 } // namespace zlink
@@ -50,7 +47,7 @@ class pair_socket_t : public message_socket_t
 
     int recv (message_t &part_out_, recv_flags_t flags_ = recv_flags_t::none);
 
-    void set_send_ready_handler (std::function<void()> handler_);
+    void set_send_ready_handler (std::function<void ()> handler_);
 
   private:
     using message_socket_t::recv;
@@ -75,13 +72,12 @@ class dealer_socket_t : public message_socket_t
 
     int recv (message_t &part_out_, recv_flags_t flags_ = recv_flags_t::none);
 
-    [[nodiscard]] int send_no_wait (send_result_t &result_,
-                                          message_t &part_)
+    [[nodiscard]] int send_no_wait (send_result_t &result_, message_t &part_)
     {
         return socket_t::send_no_wait_result (result_, part_);
     }
 
-    void set_send_ready_handler (std::function<void()> handler_)
+    void set_send_ready_handler (std::function<void ()> handler_)
     {
         socket_t::set_send_ready_handler (std::move (handler_));
     }
@@ -96,18 +92,13 @@ class dealer_socket_t : public message_socket_t
 
     std::string channel_name () const;
 
-    dealer_socket_options_t options ()
-    {
-        return dealer_socket_options_t (*this);
-    }
+    dealer_socket_options_t options () { return dealer_socket_options_t (*this); }
 
-    template<typename DiscoveryT>
-    void attach_discovery (DiscoveryT &discovery_)
+    template <typename DiscoveryT> void attach_discovery (DiscoveryT &discovery_)
     {
         if (socket_t::attach_discovery (discovery_) != 0)
-            throw config_error_t (
-              detail::config_result_from_errno (detail::current_errno ()),
-              detail::current_errno ());
+            throw config_error_t (detail::config_result_from_errno (detail::current_errno ()),
+                                  detail::current_errno ());
     }
 
   private:

@@ -13,251 +13,194 @@ namespace
 
 struct typed_session_push_t
 {
-  std::string body;
+    std::string body;
 };
 
-std::string
-to_stream_payload (const typed_session_push_t &message)
+std::string to_stream_payload (const typed_session_push_t &message)
 {
-  return message.body;
+    return message.body;
 }
 
 struct join_request_t
 {
-  std::string room_id;
+    std::string room_id;
 };
 
 struct join_reply_t
 {
-  std::string room_id;
-  std::string mark;
+    std::string room_id;
+    std::string mark;
 };
 
-void
-to_json (nlohmann::json &json, const join_request_t &value)
+void to_json (nlohmann::json &json, const join_request_t &value)
 {
-  json = { { "roomId", value.room_id } };
+    json = {{"roomId", value.room_id}};
 }
 
-void
-from_json (const nlohmann::json &json, join_request_t &value)
+void from_json (const nlohmann::json &json, join_request_t &value)
 {
-  value.room_id = json.value ("roomId", "");
+    value.room_id = json.value ("roomId", "");
 }
 
-void
-to_json (nlohmann::json &json, const join_reply_t &value)
+void to_json (nlohmann::json &json, const join_reply_t &value)
 {
-  json = { { "roomId", value.room_id }, { "mark", value.mark } };
+    json = {{"roomId", value.room_id}, {"mark", value.mark}};
 }
 
-void
-from_json (const nlohmann::json &json, join_reply_t &value)
+void from_json (const nlohmann::json &json, join_reply_t &value)
 {
-  value.room_id = json.value ("roomId", "");
-  value.mark = json.value ("mark", "");
+    value.room_id = json.value ("roomId", "");
+    value.mark = json.value ("mark", "");
 }
 
 } // namespace
 
-int
-main ()
+int main ()
 {
-  using zlink::framework::framework_error_kind_t;
+    using zlink::framework::framework_error_kind_t;
 
-  zlink::framework::zlink_builder_t zlink;
-  zlink.spot_node ("session-actors",
-                   [](zlink::framework::spot_node_builder_t &spot_node) {
-    spot_node.bind ("tcp://0.0.0.0:7101").enable_actor_gateway ();
-  }).stream ("client-stream",
-             [](zlink::framework::stream_builder_t &stream) {
-    stream.bind ("tcp://0.0.0.0:9200")
-      .packet_session ("client")
-      .attach_actor_gateway ("session-actors");
-  });
+    zlink::framework::zlink_builder_t zlink;
+    zlink
+      .spot_node ("session-actors",
+                  [] (zlink::framework::spot_node_builder_t &spot_node) {
+                      spot_node.bind ("tcp://0.0.0.0:7101").enable_actor_gateway ();
+                  })
+      .stream ("client-stream", [] (zlink::framework::stream_builder_t &stream) {
+          stream.bind ("tcp://0.0.0.0:9200").packet_session ("client").attach_actor_gateway ("session-actors");
+      });
 
-  if (zlink.streams ().size () != 1 ||
-      !zlink.streams ()[0].actor_gateway_spot_node_name ||
-      *zlink.streams ()[0].actor_gateway_spot_node_name != "session-actors") {
-    return 1;
-  }
+    if (zlink.streams ().size () != 1 || !zlink.streams ()[0].actor_gateway_spot_node_name
+        || *zlink.streams ()[0].actor_gateway_spot_node_name != "session-actors") {
+        return 1;
+    }
 
-  zlink::framework::detail::actor_gateway_runtime_t gateway;
-  auto manager = gateway.manager ();
-  auto created = manager.create ("player", "alice");
-  if (!created || created.value ().actor_id () != "alice") {
-    return 2;
-  }
+    zlink::framework::detail::actor_gateway_runtime_t gateway;
+    auto manager = gateway.manager ();
+    auto created = manager.create ("player", "alice");
+    if (!created || created.value ().actor_id () != "alice") {
+        return 2;
+    }
 
-  auto duplicate = manager.create ("player", "alice");
-  if (duplicate ||
-      duplicate.error_kind () != framework_error_kind_t::actor_already_exists) {
-    return 3;
-  }
+    auto duplicate = manager.create ("player", "alice");
+    if (duplicate || duplicate.error_kind () != framework_error_kind_t::actor_already_exists) {
+        return 3;
+    }
 
-  auto found = manager.find ("alice");
-  if (!found || found->ref ().actor_type () != "player") {
-    return 4;
-  }
+    auto found = manager.find ("alice");
+    if (!found || found->ref ().actor_type () != "player") {
+        return 4;
+    }
 
-  auto type_mismatch = manager.get_or_create ("enemy", "alice");
-  if (type_mismatch ||
-      type_mismatch.error_kind () != framework_error_kind_t::actor_type_mismatch) {
-    return 5;
-  }
+    auto type_mismatch = manager.get_or_create ("enemy", "alice");
+    if (type_mismatch || type_mismatch.error_kind () != framework_error_kind_t::actor_type_mismatch) {
+        return 5;
+    }
 
-  zlink::framework::actor_ref_t remote_ref (
-    zlink::framework::node_rid_t::from_string ("remote-node"),
-    "player",
-    "bob",
-    7);
-  auto bound = manager.bind (remote_ref).submit ().result ();
-  if (!bound || !gateway.actor_bound ("bob") ||
-      bound.value ().ref ().generation () != 7) {
-    return 6;
-  }
+    zlink::framework::actor_ref_t remote_ref (zlink::framework::node_rid_t::from_string ("remote-node"), "player",
+                                              "bob", 7);
+    auto bound = manager.bind (remote_ref).submit ().result ();
+    if (!bound || !gateway.actor_bound ("bob") || bound.value ().ref ().generation () != 7) {
+        return 6;
+    }
 
-  zlink::framework::stream_metadata_t metadata;
-  metadata.with ("trace", "t1");
-  zlink::framework::stream_header_t header (
-    zlink::framework::stream_message_kind_t::send,
-    zlink::framework::stream_codec_t::json,
-    zlink::framework::stream_header_flags_t::has_metadata,
-    std::nullopt,
-    "move",
-    metadata);
-  const auto payload = zlink::message_t::from (std::string ("payload"));
-  auto relay = bound.value ().relay (header, payload).submit ().result ();
-  if (!relay || gateway.relayed_frames ().size () != 1 ||
-      gateway.relayed_frames ()[0].payload.to_string () != "payload" ||
-      payload.to_string () != "payload") {
-    return 7;
-  }
+    zlink::framework::stream_metadata_t metadata;
+    metadata.with ("trace", "t1");
+    zlink::framework::stream_header_t header (
+      zlink::framework::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
+      zlink::framework::stream_header_flags_t::has_metadata, std::nullopt, "move", metadata);
+    const auto payload = zlink::message_t::from (std::string ("payload"));
+    auto relay = bound.value ().relay (header, payload).submit ().result ();
+    if (!relay || gateway.relayed_frames ().size () != 1
+        || gateway.relayed_frames ()[0].payload.to_string () != "payload" || payload.to_string () != "payload") {
+        return 7;
+    }
 
-  zlink::framework::session_actor_t unbound;
-  auto missing_relay = unbound.relay (header, payload).submit ().result ();
-  if (missing_relay ||
-      missing_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
-    return 8;
-  }
+    zlink::framework::session_actor_t unbound;
+    auto missing_relay = unbound.relay (header, payload).submit ().result ();
+    if (missing_relay || missing_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
+        return 8;
+    }
 
-  auto push_result =
-    bound.value ().context ().bound_session ().send_raw (payload).submit ().result ();
-  if (!push_result || gateway.bound_session_pushes ().size () != 1 ||
-      gateway.bound_session_pushes ()[0].payload.to_string () != "payload") {
-    return 9;
-  }
+    auto push_result = bound.value ().context ().bound_session ().send_raw (payload).submit ().result ();
+    if (!push_result || gateway.bound_session_pushes ().size () != 1
+        || gateway.bound_session_pushes ()[0].payload.to_string () != "payload") {
+        return 9;
+    }
 
-  auto typed_push = bound.value ()
-                      .context ()
-                      .bound_session ()
-                      .send (typed_session_push_t { "typed-payload" })
-                      .submit ()
-                      .result ();
-  if (!typed_push || gateway.bound_session_pushes ().size () != 2 ||
-      gateway.bound_session_pushes ()[1].payload.to_string () !=
-        "typed-payload") {
-    return 13;
-  }
+    auto typed_push =
+      bound.value ().context ().bound_session ().send (typed_session_push_t{"typed-payload"}).submit ().result ();
+    if (!typed_push || gateway.bound_session_pushes ().size () != 2
+        || gateway.bound_session_pushes ()[1].payload.to_string () != "typed-payload") {
+        return 13;
+    }
 
-  auto disconnect =
-    bound.value ().bound_session ().disconnect ().submit ().result ();
-  if (!disconnect || gateway.actor_bound ("bob") ||
-      !gateway.actor_disconnected ("bob")) {
-    return 10;
-  }
-  auto disconnected_push =
-    bound.value ().bound_session ().send_raw (payload).submit ().result ();
-  if (disconnected_push ||
-      disconnected_push.error_kind () != framework_error_kind_t::disconnected) {
-    return 16;
-  }
-  auto disconnected_relay =
-    bound.value ().relay (header, payload).submit ().result ();
-  if (disconnected_relay ||
-      disconnected_relay.error_kind () != framework_error_kind_t::disconnected ||
-      payload.to_string () != "payload") {
-    return 17;
-  }
+    auto disconnect = bound.value ().bound_session ().disconnect ().submit ().result ();
+    if (!disconnect || gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
+        return 10;
+    }
+    auto disconnected_push = bound.value ().bound_session ().send_raw (payload).submit ().result ();
+    if (disconnected_push || disconnected_push.error_kind () != framework_error_kind_t::disconnected) {
+        return 16;
+    }
+    auto disconnected_relay = bound.value ().relay (header, payload).submit ().result ();
+    if (disconnected_relay || disconnected_relay.error_kind () != framework_error_kind_t::disconnected
+        || payload.to_string () != "payload") {
+        return 17;
+    }
 
-  auto rebound = manager.bind (remote_ref).submit ().result ();
-  if (!rebound || !gateway.actor_bound ("bob")) {
-    return 11;
-  }
+    auto rebound = manager.bind (remote_ref).submit ().result ();
+    if (!rebound || !gateway.actor_bound ("bob")) {
+        return 11;
+    }
 
-  auto actor_disconnect =
-    rebound.value ().notify_disconnected ().submit ().result ();
-  if (!actor_disconnect || gateway.actor_bound ("bob") ||
-      !gateway.actor_disconnected ("bob")) {
-    return 18;
-  }
-  rebound = manager.bind (remote_ref).submit ().result ();
-  if (!rebound || !gateway.actor_bound ("bob")) {
-    return 19;
-  }
+    auto actor_disconnect = rebound.value ().notify_disconnected ().submit ().result ();
+    if (!actor_disconnect || gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
+        return 18;
+    }
+    rebound = manager.bind (remote_ref).submit ().result ();
+    if (!rebound || !gateway.actor_bound ("bob")) {
+        return 19;
+    }
 
-  bool join_spot_seen = false;
-  gateway.on_join_spot (
-    [&](const zlink::framework::actor_ref_t &actor,
-        zlink::framework::spot_rid_t spot_rid,
-        const zlink::message_t &payload) {
-      const auto request = payload.parse_json<join_request_t> ();
-      join_spot_seen = actor.actor_id () == "bob" &&
-                       spot_rid.value () == "match-1" &&
-                       request.room_id == "match-1";
-      return zlink::framework::result_t<
-        zlink::framework::detail::actor_join_reply_t>::success (
-        zlink::framework::detail::actor_join_reply_t {
-          0,
-          zlink::framework::actor_ref_t (
-            zlink::framework::node_rid_t::from_string ("spot-node"),
-            "player",
-            "bob",
-            8),
-          zlink::message_t::from_json (join_reply_t { "match-1", "O" }) });
+    bool join_spot_seen = false;
+    gateway.on_join_spot ([&] (const zlink::framework::actor_ref_t &actor, zlink::framework::spot_rid_t spot_rid,
+                               const zlink::message_t &payload) {
+        const auto request = payload.parse_json<join_request_t> ();
+        join_spot_seen = actor.actor_id () == "bob" && spot_rid.value () == "match-1" && request.room_id == "match-1";
+        return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::success (
+          zlink::framework::detail::actor_join_reply_t{
+            0,
+            zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("spot-node"), "player", "bob", 8),
+            zlink::message_t::from_json (join_reply_t{"match-1", "O"})});
     });
-  auto actor_context = rebound.value ().context ();
-  const auto join_spot = actor_context
-                           .join_spot<join_request_t, join_reply_t> (
-                             zlink::framework::spot_rid_t::from_string (
-                               "match-1"),
-                             join_request_t { "match-1" })
-                           .submit ()
-                           .result ();
-  if (!join_spot || !join_spot_seen ||
-      join_spot.value ().result_code != 0 ||
-      join_spot.value ().actor.generation () != 8 ||
-      join_spot.value ().reply.mark != "O") {
-    return 14;
-  }
+    auto actor_context = rebound.value ().context ();
+    const auto join_spot = actor_context
+                             .join_spot<join_request_t, join_reply_t> (
+                               zlink::framework::spot_rid_t::from_string ("match-1"), join_request_t{"match-1"})
+                             .submit ()
+                             .result ();
+    if (!join_spot || !join_spot_seen || join_spot.value ().result_code != 0
+        || join_spot.value ().actor.generation () != 8 || join_spot.value ().reply.mark != "O") {
+        return 14;
+    }
 
-  bool entry_join_seen = false;
-  gateway.on_join_entry_spot (
-    [&](const zlink::framework::actor_ref_t &actor,
-        zlink::framework::node_rid_t node_rid) {
-      entry_join_seen = actor.actor_id () == "bob" &&
-                        node_rid.value () == "entry-node";
-      return zlink::framework::result_t<zlink::framework::actor_ref_t>::success (
-        zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string ("entry-node"),
-          "player",
-          "bob",
-          9));
+    bool entry_join_seen = false;
+    gateway.on_join_entry_spot ([&] (const zlink::framework::actor_ref_t &actor,
+                                     zlink::framework::node_rid_t node_rid) {
+        entry_join_seen = actor.actor_id () == "bob" && node_rid.value () == "entry-node";
+        return zlink::framework::result_t<zlink::framework::actor_ref_t>::success (
+          zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("entry-node"), "player", "bob", 9));
     });
-  const auto entry_join = actor_context
-                            .join_entry_spot (
-                              zlink::framework::node_rid_t::from_string (
-                                "entry-node"))
-                            .submit ()
-                            .result ();
-  if (!entry_join || !entry_join_seen || entry_join.value ().generation () != 9) {
-    return 15;
-  }
+    const auto entry_join =
+      actor_context.join_entry_spot (zlink::framework::node_rid_t::from_string ("entry-node")).submit ().result ();
+    if (!entry_join || !entry_join_seen || entry_join.value ().generation () != 9) {
+        return 15;
+    }
 
-  manager.unbind_session ("bob");
-  if (gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
-    return 12;
-  }
+    manager.unbind_session ("bob");
+    if (gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
+        return 12;
+    }
 
-  return 0;
+    return 0;
 }

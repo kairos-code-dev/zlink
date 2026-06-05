@@ -17,173 +17,154 @@ namespace zlink::framework::detail
 
 class logging_state_t
 {
-public:
-  bool console_enabled = false;
-  bool async_enabled = false;
-  logging_backend_t backend = logging_backend_t::builtin;
-  log_level_t min_level = log_level_t::info;
-  std::string level_name = "info";
-  logging_async_options_t async_options {};
-  std::vector<std::string> file_paths;
-  std::vector<rotating_file_options_t> rotating_options;
-  std::vector<logging_builder_t::sink_t> callback_sinks;
-  std::vector<log_record_t> captured_records;
-  mutable std::mutex mutex;
+  public:
+    bool console_enabled = false;
+    bool async_enabled = false;
+    logging_backend_t backend = logging_backend_t::builtin;
+    log_level_t min_level = log_level_t::info;
+    std::string level_name = "info";
+    logging_async_options_t async_options{};
+    std::vector<std::string> file_paths;
+    std::vector<rotating_file_options_t> rotating_options;
+    std::vector<logging_builder_t::sink_t> callback_sinks;
+    std::vector<log_record_t> captured_records;
+    mutable std::mutex mutex;
 };
 
-const char *
-log_level_name (log_level_t level) noexcept
+const char *log_level_name (log_level_t level) noexcept
 {
-  switch (level) {
-  case log_level_t::trace:
-    return "trace";
-  case log_level_t::debug:
-    return "debug";
-  case log_level_t::info:
+    switch (level) {
+        case log_level_t::trace:
+            return "trace";
+        case log_level_t::debug:
+            return "debug";
+        case log_level_t::info:
+            return "info";
+        case log_level_t::warn:
+            return "warn";
+        case log_level_t::error:
+            return "error";
+        case log_level_t::critical:
+            return "critical";
+        case log_level_t::off:
+            return "off";
+    }
     return "info";
-  case log_level_t::warn:
-    return "warn";
-  case log_level_t::error:
-    return "error";
-  case log_level_t::critical:
-    return "critical";
-  case log_level_t::off:
-    return "off";
-  }
-  return "info";
 }
 
-log_level_t
-parse_log_level (std::string level)
+log_level_t parse_log_level (std::string level)
 {
-  std::transform (level.begin (), level.end (), level.begin (), [](char ch) {
-    return static_cast<char> (std::tolower (static_cast<unsigned char> (ch)));
-  });
-  if (level == "trace") {
-    return log_level_t::trace;
-  }
-  if (level == "debug") {
-    return log_level_t::debug;
-  }
-  if (level == "info") {
+    std::transform (level.begin (), level.end (), level.begin (),
+                    [] (char ch) { return static_cast<char> (std::tolower (static_cast<unsigned char> (ch))); });
+    if (level == "trace") {
+        return log_level_t::trace;
+    }
+    if (level == "debug") {
+        return log_level_t::debug;
+    }
+    if (level == "info") {
+        return log_level_t::info;
+    }
+    if (level == "warn" || level == "warning") {
+        return log_level_t::warn;
+    }
+    if (level == "error") {
+        return log_level_t::error;
+    }
+    if (level == "critical") {
+        return log_level_t::critical;
+    }
+    if (level == "off") {
+        return log_level_t::off;
+    }
     return log_level_t::info;
-  }
-  if (level == "warn" || level == "warning") {
-    return log_level_t::warn;
-  }
-  if (level == "error") {
-    return log_level_t::error;
-  }
-  if (level == "critical") {
-    return log_level_t::critical;
-  }
-  if (level == "off") {
-    return log_level_t::off;
-  }
-  return log_level_t::info;
 }
 
-std::string
-format_record (const log_record_t &record)
+std::string format_record (const log_record_t &record)
 {
-  const auto time = std::chrono::system_clock::to_time_t (record.timestamp);
-  std::tm tm {};
+    const auto time = std::chrono::system_clock::to_time_t (record.timestamp);
+    std::tm tm{};
 #if defined(_WIN32)
-  localtime_s (&tm, &time);
+    localtime_s (&tm, &time);
 #else
-  localtime_r (&time, &tm);
+    localtime_r (&time, &tm);
 #endif
-  std::ostringstream output;
-  output << std::put_time (&tm, "%Y-%m-%dT%H:%M:%S") << ' '
-         << log_level_name (record.level) << ' ' << record.category << " - "
-         << record.message;
-  for (const auto &field : record.fields) {
-    output << ' ' << field.key << '=' << field.value;
-  }
-  return output.str ();
-}
-
-void
-rotate_if_needed (const std::string &path,
-                  const rotating_file_options_t &options)
-{
-  if (options.max_file_size == 0 || options.max_files == 0 ||
-      !std::filesystem::exists (path) ||
-      std::filesystem::file_size (path) < options.max_file_size) {
-    return;
-  }
-
-  for (std::size_t index = options.max_files; index > 0; --index) {
-    const auto from =
-      index == 1
-        ? std::filesystem::path (path)
-        : std::filesystem::path (path + "." + std::to_string (index - 1));
-    const auto to =
-      std::filesystem::path (path + "." + std::to_string (index));
-    if (std::filesystem::exists (from)) {
-      std::error_code ignored;
-      std::filesystem::rename (from, to, ignored);
+    std::ostringstream output;
+    output << std::put_time (&tm, "%Y-%m-%dT%H:%M:%S") << ' ' << log_level_name (record.level) << ' ' << record.category
+           << " - " << record.message;
+    for (const auto &field : record.fields) {
+        output << ' ' << field.key << '=' << field.value;
     }
-  }
+    return output.str ();
 }
 
-bool
-is_log_enabled (const std::shared_ptr<logging_state_t> &state,
-                int level) noexcept
+void rotate_if_needed (const std::string &path, const rotating_file_options_t &options)
 {
-  if (!state || state->min_level == log_level_t::off) {
-    return false;
-  }
-  return level >= static_cast<int> (state->min_level);
-}
-
-void
-emit_log (const std::shared_ptr<logging_state_t> &state,
-          int level,
-          const std::string &category,
-          const std::string &message,
-          std::vector<log_field_t> fields)
-{
-  if (!is_log_enabled (state, level)) {
-    return;
-  }
-
-  log_record_t record {
-    static_cast<log_level_t> (level),
-    category,
-    message,
-    std::move (fields),
-    std::chrono::system_clock::now (),
-    std::this_thread::get_id ()
-  };
-
-  std::vector<logging_builder_t::sink_t> callbacks;
-  std::vector<std::string> files;
-  std::vector<rotating_file_options_t> rotations;
-  bool console = false;
-  {
-    std::lock_guard lock (state->mutex);
-    state->captured_records.push_back (record);
-    callbacks = state->callback_sinks;
-    files = state->file_paths;
-    rotations = state->rotating_options;
-    console = state->console_enabled;
-  }
-
-  const auto line = format_record (record);
-  if (console) {
-    std::clog << line << '\n';
-  }
-  for (std::size_t i = 0; i < files.size (); ++i) {
-    if (i < rotations.size ()) {
-      rotate_if_needed (files[i], rotations[i]);
+    if (options.max_file_size == 0 || options.max_files == 0 || !std::filesystem::exists (path)
+        || std::filesystem::file_size (path) < options.max_file_size) {
+        return;
     }
-    std::ofstream output (files[i], std::ios::app);
-    output << line << '\n';
-  }
-  for (const auto &callback : callbacks) {
-    callback (record);
-  }
+
+    for (std::size_t index = options.max_files; index > 0; --index) {
+        const auto from =
+          index == 1 ? std::filesystem::path (path) : std::filesystem::path (path + "." + std::to_string (index - 1));
+        const auto to = std::filesystem::path (path + "." + std::to_string (index));
+        if (std::filesystem::exists (from)) {
+            std::error_code ignored;
+            std::filesystem::rename (from, to, ignored);
+        }
+    }
+}
+
+bool is_log_enabled (const std::shared_ptr<logging_state_t> &state, int level) noexcept
+{
+    if (!state || state->min_level == log_level_t::off) {
+        return false;
+    }
+    return level >= static_cast<int> (state->min_level);
+}
+
+void emit_log (const std::shared_ptr<logging_state_t> &state,
+               int level,
+               const std::string &category,
+               const std::string &message,
+               std::vector<log_field_t> fields)
+{
+    if (!is_log_enabled (state, level)) {
+        return;
+    }
+
+    log_record_t record{
+      static_cast<log_level_t> (level), category, message, std::move (fields), std::chrono::system_clock::now (),
+      std::this_thread::get_id ()};
+
+    std::vector<logging_builder_t::sink_t> callbacks;
+    std::vector<std::string> files;
+    std::vector<rotating_file_options_t> rotations;
+    bool console = false;
+    {
+        std::lock_guard lock (state->mutex);
+        state->captured_records.push_back (record);
+        callbacks = state->callback_sinks;
+        files = state->file_paths;
+        rotations = state->rotating_options;
+        console = state->console_enabled;
+    }
+
+    const auto line = format_record (record);
+    if (console) {
+        std::clog << line << '\n';
+    }
+    for (std::size_t i = 0; i < files.size (); ++i) {
+        if (i < rotations.size ()) {
+            rotate_if_needed (files[i], rotations[i]);
+        }
+        std::ofstream output (files[i], std::ios::app);
+        output << line << '\n';
+    }
+    for (const auto &callback : callbacks) {
+        callback (record);
+    }
 }
 
 } // namespace zlink::framework::detail
@@ -191,152 +172,128 @@ emit_log (const std::shared_ptr<logging_state_t> &state,
 namespace zlink::framework
 {
 
-logger_factory_t::logger_factory_t ()
-  : _state (std::make_shared<detail::logging_state_t> ())
+logger_factory_t::logger_factory_t () : _state (std::make_shared<detail::logging_state_t> ())
 {
 }
 
-logger_factory_t::logger_factory_t (
-  std::shared_ptr<detail::logging_state_t> state)
-  : _state (std::move (state))
+logger_factory_t::logger_factory_t (std::shared_ptr<detail::logging_state_t> state) : _state (std::move (state))
 {
 }
 
-logger_t<>
-logger_factory_t::create (std::string category) const
+logger_t<> logger_factory_t::create (std::string category) const
 {
-  return logger_t<> (_state, std::move (category));
+    return logger_t<> (_state, std::move (category));
 }
 
-logging_builder_t::logging_builder_t ()
-  : _state (std::make_shared<detail::logging_state_t> ())
+logging_builder_t::logging_builder_t () : _state (std::make_shared<detail::logging_state_t> ())
 {
 }
 
 logging_builder_t::~logging_builder_t () = default;
 logging_builder_t::logging_builder_t (logging_builder_t &&) noexcept = default;
-logging_builder_t &logging_builder_t::operator= (
-  logging_builder_t &&) noexcept = default;
+logging_builder_t &logging_builder_t::operator= (logging_builder_t &&) noexcept = default;
 
-logging_builder_t &
-logging_builder_t::use_console ()
+logging_builder_t &logging_builder_t::use_console ()
 {
-  std::lock_guard lock (_state->mutex);
-  _state->console_enabled = true;
-  return *this;
+    std::lock_guard lock (_state->mutex);
+    _state->console_enabled = true;
+    return *this;
 }
 
-logging_builder_t &
-logging_builder_t::use_file (std::string path)
+logging_builder_t &logging_builder_t::use_file (std::string path)
 {
-  std::lock_guard lock (_state->mutex);
-  _state->file_paths.push_back (std::move (path));
-  _state->rotating_options.push_back ({});
-  return *this;
+    std::lock_guard lock (_state->mutex);
+    _state->file_paths.push_back (std::move (path));
+    _state->rotating_options.push_back ({});
+    return *this;
 }
 
-logging_builder_t &
-logging_builder_t::use_rotating_file (std::string path,
-                                      rotating_file_options_t options)
+logging_builder_t &logging_builder_t::use_rotating_file (std::string path, rotating_file_options_t options)
 {
-  std::lock_guard lock (_state->mutex);
-  _state->file_paths.push_back (std::move (path));
-  _state->rotating_options.push_back (options);
-  return *this;
+    std::lock_guard lock (_state->mutex);
+    _state->file_paths.push_back (std::move (path));
+    _state->rotating_options.push_back (options);
+    return *this;
 }
 
-logging_builder_t &
-logging_builder_t::use_callback_sink (sink_t sink)
+logging_builder_t &logging_builder_t::use_callback_sink (sink_t sink)
 {
-  std::lock_guard lock (_state->mutex);
-  _state->callback_sinks.push_back (std::move (sink));
-  return *this;
+    std::lock_guard lock (_state->mutex);
+    _state->callback_sinks.push_back (std::move (sink));
+    return *this;
 }
 
-logging_builder_t &
-logging_builder_t::use_async (logging_async_options_t options)
+logging_builder_t &logging_builder_t::use_async (logging_async_options_t options)
 {
-  std::lock_guard lock (_state->mutex);
-  _state->async_enabled = true;
-  _state->async_options = options;
-  return *this;
+    std::lock_guard lock (_state->mutex);
+    _state->async_enabled = true;
+    _state->async_options = options;
+    return *this;
 }
 
-logging_builder_t &
-logging_builder_t::use_backend (logging_backend_t backend)
+logging_builder_t &logging_builder_t::use_backend (logging_backend_t backend)
 {
-  std::lock_guard lock (_state->mutex);
-  _state->backend = backend;
-  return *this;
+    std::lock_guard lock (_state->mutex);
+    _state->backend = backend;
+    return *this;
 }
 
-logging_builder_t &
-logging_builder_t::set_min_level (log_level_t level)
+logging_builder_t &logging_builder_t::set_min_level (log_level_t level)
 {
-  std::lock_guard lock (_state->mutex);
-  _state->min_level = level;
-  _state->level_name = detail::log_level_name (level);
-  return *this;
+    std::lock_guard lock (_state->mutex);
+    _state->min_level = level;
+    _state->level_name = detail::log_level_name (level);
+    return *this;
 }
 
-logging_builder_t &
-logging_builder_t::set_level (std::string level)
+logging_builder_t &logging_builder_t::set_level (std::string level)
 {
-  return set_min_level (detail::parse_log_level (std::move (level)));
+    return set_min_level (detail::parse_log_level (std::move (level)));
 }
 
-bool
-logging_builder_t::console_enabled () const noexcept
+bool logging_builder_t::console_enabled () const noexcept
 {
-  return _state->console_enabled;
+    return _state->console_enabled;
 }
 
-bool
-logging_builder_t::async_enabled () const noexcept
+bool logging_builder_t::async_enabled () const noexcept
 {
-  return _state->async_enabled;
+    return _state->async_enabled;
 }
 
-logging_backend_t
-logging_builder_t::backend () const noexcept
+logging_backend_t logging_builder_t::backend () const noexcept
 {
-  return _state->backend;
+    return _state->backend;
 }
 
-log_level_t
-logging_builder_t::min_level () const noexcept
+log_level_t logging_builder_t::min_level () const noexcept
 {
-  return _state->min_level;
+    return _state->min_level;
 }
 
-const std::string &
-logging_builder_t::level () const noexcept
+const std::string &logging_builder_t::level () const noexcept
 {
-  return _state->level_name;
+    return _state->level_name;
 }
 
-const std::vector<std::string> &
-logging_builder_t::file_paths () const noexcept
+const std::vector<std::string> &logging_builder_t::file_paths () const noexcept
 {
-  return _state->file_paths;
+    return _state->file_paths;
 }
 
-const std::vector<log_record_t> &
-logging_builder_t::captured_records () const noexcept
+const std::vector<log_record_t> &logging_builder_t::captured_records () const noexcept
 {
-  return _state->captured_records;
+    return _state->captured_records;
 }
 
-logger_factory_t
-logging_builder_t::factory () const
+logger_factory_t logging_builder_t::factory () const
 {
-  return logger_factory_t (_state);
+    return logger_factory_t (_state);
 }
 
-logger_t<>
-logging_builder_t::create_logger (std::string category) const
+logger_t<> logging_builder_t::create_logger (std::string category) const
 {
-  return factory ().create (std::move (category));
+    return factory ().create (std::move (category));
 }
 
 } // namespace zlink::framework

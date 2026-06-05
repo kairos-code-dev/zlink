@@ -15,69 +15,54 @@ namespace zlink::samples::bingo
 
 class authenticate_session_handler_t
 {
-public:
-  authenticate_session_handler_t (
-    authenticate_player_handler_t &authenticate,
-    ensure_player_actor_handler_t &ensure_actor,
-    std::string play_node_name)
-    : _authenticate (authenticate),
-      _ensure_actor (ensure_actor),
-      _play_node_name (std::move (play_node_name))
-  {
-  }
-
-  bool can_handle (const zlink::framework::stream_header_t &header) const
-  {
-    return header.packet_name () == authenticate_req_t::packet_name;
-  }
-
-  zlink::framework::task_t<zlink::framework::session_actor_t> handle (
-    zlink::framework::session_actor_manager_t &actors,
-    zlink::framework::stream_t &stream,
-    const zlink::framework::stream_header_t &header,
-    const zlink::message_t &payload)
-  {
-    const auto request = payload.parse_json<authenticate_req_t> ();
-    const auto authenticated =
-      _authenticate.handle ({ request.access_token });
-    if (!authenticated.accepted || authenticated.actor_id.empty () ||
-        authenticated.display_name.empty ()) {
-      co_return zlink::framework::result_t<zlink::framework::session_actor_t>::
-        failure (zlink::framework::framework_error_kind_t::request_failed,
-                 authenticated.reason.empty ()
-                   ? "Player authentication failed."
-                   : authenticated.reason);
+  public:
+    authenticate_session_handler_t (authenticate_player_handler_t &authenticate,
+                                    ensure_player_actor_handler_t &ensure_actor,
+                                    std::string play_node_name) :
+        _authenticate (authenticate), _ensure_actor (ensure_actor), _play_node_name (std::move (play_node_name))
+    {
     }
 
-    const auto ensured = _ensure_actor.handle (
-      { authenticated.actor_id, authenticated.display_name });
-    auto bound = co_await actors.bind (to_actor_ref (ensured)).submit ();
+    bool can_handle (const zlink::framework::stream_header_t &header) const
+    {
+        return header.packet_name () == authenticate_req_t::packet_name;
+    }
 
-    co_await stream
-      .reply_packet (
-        header,
-        zlink::message_t::from_json (
-          authenticate_res_t { ensured.actor_id,
-                               authenticated.display_name }))
-      .submit ();
+    zlink::framework::task_t<zlink::framework::session_actor_t>
+    handle (zlink::framework::session_actor_manager_t &actors,
+            zlink::framework::stream_t &stream,
+            const zlink::framework::stream_header_t &header,
+            const zlink::message_t &payload)
+    {
+        const auto request = payload.parse_json<authenticate_req_t> ();
+        const auto authenticated = _authenticate.handle ({request.access_token});
+        if (!authenticated.accepted || authenticated.actor_id.empty () || authenticated.display_name.empty ()) {
+            co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::request_failed,
+              authenticated.reason.empty () ? "Player authentication failed." : authenticated.reason);
+        }
 
-    co_return bound;
-  }
+        const auto ensured = _ensure_actor.handle ({authenticated.actor_id, authenticated.display_name});
+        auto bound = co_await actors.bind (to_actor_ref (ensured)).submit ();
 
-private:
-  zlink::framework::actor_ref_t to_actor_ref (
-    const ensure_player_actor_res_t &ensured) const
-  {
-    return zlink::framework::actor_ref_t (
-      zlink::framework::node_rid_t::from_string (_play_node_name),
-      ensured.actor_type,
-      ensured.actor.actor_id,
-      ensured.actor.generation);
-  }
+        co_await stream
+          .reply_packet (header,
+                         zlink::message_t::from_json (authenticate_res_t{ensured.actor_id, authenticated.display_name}))
+          .submit ();
 
-  authenticate_player_handler_t &_authenticate;
-  ensure_player_actor_handler_t &_ensure_actor;
-  std::string _play_node_name;
+        co_return bound;
+    }
+
+  private:
+    zlink::framework::actor_ref_t to_actor_ref (const ensure_player_actor_res_t &ensured) const
+    {
+        return zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string (_play_node_name),
+                                              ensured.actor_type, ensured.actor.actor_id, ensured.actor.generation);
+    }
+
+    authenticate_player_handler_t &_authenticate;
+    ensure_player_actor_handler_t &_ensure_actor;
+    std::string _play_node_name;
 };
 
 } // namespace zlink::samples::bingo

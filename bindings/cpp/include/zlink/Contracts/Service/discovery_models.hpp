@@ -15,8 +15,8 @@ struct service_model_access_t;
 /// @brief How a discovery service automatically wires connections between peers.
 enum class auto_connect_type : int
 {
-    invalid = 0,     ///< No auto-connect topology (unset).
-    route_mesh = 1,  ///< A mesh of ROUTER connections between peers.
+    invalid = 0,       ///< No auto-connect topology (unset).
+    route_mesh = 1,    ///< A mesh of ROUTER connections between peers.
     client_server = 2, ///< A client-server star: clients connect to servers.
     dealer_mesh = 3,   ///< A mesh of DEALER connections between peers.
     fanout = 4,        ///< A publish/subscribe fan-out from publishers to subscribers.

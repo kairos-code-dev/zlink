@@ -48,7 +48,7 @@ static void wait_peer (zlink::service::spot_node_t &node)
 
 int main ()
 {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::service::spot_node_t server_node (ctx);
     zlink::service::spot_node_t client_node (ctx);
@@ -70,20 +70,17 @@ int main ()
     client_node.connect_peer (server_endpoint);
 
     // 서버 Spot은 라우티드 요청을 받아 같은 평면으로 응답한다.
-    server.set_dispatch_handler (
-      [&] (zlink::service::spot_t &s, const zlink::spot_dispatch_info_t &info) {
-          if (info.event != zlink::spot_dispatch_event_t::routed_readable)
-              return;
-          zlink::received_t received;
-          while (s.recv_routed (received, zlink::recv_flags_t::dontwait)
-                 == static_cast<int> (zlink::recv_result_t::ok)) {
-              zlink::message_t reply = zlink::message_t::from ("pong");
-              s.reply_to_spot (*received.routing_id (), *received.spot_rid (),
-                               *received.request_seq ())
-                .message (reply)
-                .submit ();
-          }
-      });
+    server.set_dispatch_handler ([&] (zlink::service::spot_t &s, const zlink::spot_dispatch_info_t &info) {
+        if (info.event != zlink::spot_dispatch_event_t::routed_readable)
+            return;
+        zlink::received_t received;
+        while (s.recv_routed (received, zlink::recv_flags_t::dontwait) == static_cast<int> (zlink::recv_result_t::ok)) {
+            zlink::message_t reply = zlink::message_t::from ("pong");
+            s.reply_to_spot (*received.routing_id (), *received.spot_rid (), *received.request_seq ())
+              .message (reply)
+              .submit ();
+        }
+    });
 
     wait_peer (server_node);
     wait_peer (client_node);
@@ -91,18 +88,16 @@ int main ()
     std::this_thread::sleep_for (std::chrono::seconds (1));
 
     // 클라이언트 Spot이 서버 Spot으로 요청한다. 응답은 콜백에서 바로 처리한다.
-    auto done = std::make_shared<std::atomic<bool> > (false);
+    auto done = std::make_shared<std::atomic<bool>> (false);
     zlink::message_t request = zlink::message_t::from ("ping");
     client
       .request_to_spot (zlink::routing_id_t::from (std::string ("rpc-server-node")),
                         zlink::routing_id_t::from (std::string ("rpc-server-spot")))
       .message (request)
       .timeout (std::chrono::seconds (3))
-      .submit ([done] (zlink::request_result_t result,
-                       std::vector<zlink::message_t> parts) {
+      .submit ([done] (zlink::request_result_t result, std::vector<zlink::message_t> parts) {
           if (result == zlink::request_result_t::ok && !parts.empty ())
-              std::printf ("[spot/rpc] request \"ping\" -> reply \"%s\"\n",
-                           parts[0].to_string ().c_str ());
+              std::printf ("[spot/rpc] request \"ping\" -> reply \"%s\"\n", parts[0].to_string ().c_str ());
           done->store (true);
       });
 
@@ -110,5 +105,5 @@ int main ()
     while (!done->load () && std::chrono::steady_clock::now () < deadline)
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     return 0;
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

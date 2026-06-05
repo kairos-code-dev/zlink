@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,10 +32,12 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
+import systems.zlink.framework.monitoring.ZLinkRegistryEvent;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
+import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -372,6 +375,26 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
+    void registryMonitoringUsesConfiguredSourceNameAsEventLabel()
+        throws Exception {
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(
+                ZLinkBackendAdapterFactory.class,
+                FakeZLinkBackendAdapterFactory::new);
+            context.register(RegistryMonitoringConfig.class, ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            CompletableFuture<?> registryEventSource =
+                context.getBean("registryEventSource", CompletableFuture.class);
+            String sourceName = (String) registryEventSource.get(2, TimeUnit.SECONDS);
+
+            assertEquals("ops-registry", sourceName);
+            assertTrue(context.getBean(ZLinkMonitoringLifecycle.class).isRunning());
+        }
+    }
+
+    @Test
     void autoConfigurationAppliesCustomizersBeforeRuntimeStarts() {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -440,6 +463,35 @@ final class ZLinkFrameworkAutoConfigurationTest {
             return options -> options.addSocketEvents(
                 "profile",
                 ZLinkSocketEventKind.CONNECTED);
+        }
+    }
+
+    @Configuration
+    static class RegistryMonitoringConfig {
+        @Bean
+        ZLinkEmbeddedRegistryOptions zlinkEmbeddedRegistryOptions() {
+            ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
+            options.setPubEndpoint("inproc://registry-monitor-pub");
+            options.setRouterEndpoint("inproc://registry-monitor-router");
+            return options;
+        }
+
+        @Bean
+        CompletableFuture<String> registryEventSource() {
+            return new CompletableFuture<>();
+        }
+
+        @Bean
+        RegistryEventSourceRecorder registryEventSourceRecorder(
+            CompletableFuture<String> registryEventSource) {
+            return new RegistryEventSourceRecorder(registryEventSource);
+        }
+
+        @Bean
+        ZLinkMonitoringOptionsCustomizer registryMonitoringCustomizer() {
+            return options -> options.addRegistryEvents(
+                "ops-registry",
+                Duration.ofMillis(100));
         }
     }
 
@@ -702,6 +754,21 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public CompletionStage<Void> handleAsync(ZLinkSocketEvent event) {
             count.incrementAndGet();
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class RegistryEventSourceRecorder
+        implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
+        private final CompletableFuture<String> sourceName;
+
+        RegistryEventSourceRecorder(CompletableFuture<String> sourceName) {
+            this.sourceName = sourceName;
+        }
+
+        @Override
+        public CompletionStage<Void> handleAsync(ZLinkRegistryEvent event) {
+            sourceName.complete(event.sourceName());
             return CompletableFuture.completedFuture(null);
         }
     }

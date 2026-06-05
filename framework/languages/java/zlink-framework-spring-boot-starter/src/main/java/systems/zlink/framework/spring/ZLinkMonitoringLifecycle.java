@@ -71,15 +71,22 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
             }
             ZLinkFrameworkLifecycle framework = frameworkLifecycle.getIfAvailable();
             ZLinkRegistryLifecycle registry = registryLifecycle.getIfAvailable();
-            if (framework != null && !framework.isRunning()) {
+            boolean needsFramework = !options.socketSourceNames().isEmpty()
+                || !options.spotSourceNames().isEmpty();
+            if (needsFramework && framework != null && !framework.isRunning()) {
                 framework.start();
             }
-            if (registry != null && !registry.isRunning()) {
+            if (!options.registrySourceNames().isEmpty()
+                && registry != null
+                && !registry.isRunning()) {
                 registry.start();
             }
             Map<String, ZLinkBackendRegistry> registrySources = new HashMap<>();
             if (registry != null) {
-                registrySources.put("registry", registry.monitoringRegistrySource());
+                ZLinkBackendRegistry registrySource = registry.monitoringRegistrySource();
+                for (String sourceName : options.registrySourceNames()) {
+                    registrySources.put(sourceName, registrySource);
+                }
             }
             ZLinkMonitoringBackendAdapter backend =
                 backendAdapterFactory.createMonitoringAdapter(
@@ -87,11 +94,11 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
             runtime = new ZLinkMonitoringRuntime(
                 options,
                 backend,
-                framework == null
+                !needsFramework || framework == null
                     ? Map.of()
                     : framework.monitoringSocketSources(),
                 registrySources,
-                framework == null
+                !needsFramework || framework == null
                     ? Map.of()
                     : framework.monitoringSpotSources(),
                 dispatcher);

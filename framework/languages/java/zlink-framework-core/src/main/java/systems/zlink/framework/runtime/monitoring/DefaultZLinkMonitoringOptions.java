@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.monitoring;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.monitoring.ZLinkMonitoringOptions;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
@@ -55,6 +56,18 @@ public final class DefaultZLinkMonitoringOptions implements ZLinkMonitoringOptio
                 spotSources.values().stream())
             .min(Duration::compareTo)
             .orElse(Duration.ofSeconds(1));
+    }
+
+    public Set<String> registrySourceNames() {
+        return Set.copyOf(registrySources.keySet());
+    }
+
+    public Set<String> socketSourceNames() {
+        return Set.copyOf(socketSources.keySet());
+    }
+
+    public Set<String> spotSourceNames() {
+        return Set.copyOf(spotSources.keySet());
     }
 
     private static String requireName(String value, String label) {

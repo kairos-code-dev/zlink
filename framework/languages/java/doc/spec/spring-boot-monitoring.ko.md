@@ -51,11 +51,13 @@ customizer가 없으면 monitoring runner를 만들지 않는다.
 | Source | 등록 메서드 | source name 기준 |
 |--------|-------------|------------------|
 | socket | `addSocketEvents(...)` | channel capability logical name |
-| registry | `addRegistryEvents(...)` | embedded registry logical name |
+| registry | `addRegistryEvents(...)` | registry event source label |
 | spot | `addSpotEvents(...)` | SpotNode name |
 
-source 이름은 startup 시점에 실제 runtime source와 대조한다. 이름이 맞지 않으면
-startup validation 오류다. registry와 spot polling interval은 `Duration.ZERO`보다
+socket과 spot source 이름은 startup 시점에 실제 runtime source와 대조한다. 이름이
+맞지 않으면 startup validation 오류다. registry source 이름은 embedded registry에서
+발생한 event의 label로 쓰이며, registry monitoring을 쓰려면 embedded registry가 같은
+application 안에 있어야 한다. registry와 spot polling interval은 `Duration.ZERO`보다
 커야 한다.
 
 ## 3. Handler 예시
@@ -85,7 +87,7 @@ public final class RegistryMonitor
 source 이름은 logical name을 쓰는 편이 자연스럽다.
 
 - socket: `profile.server`, `profile.client`
-- registry: `registry`
+- registry: `registry`, `ops-registry`
 - spot: `stage-node`
 
 Spring adapter는 typed event handler를 우선 호출한다. 필요하면 같은 event를 Spring

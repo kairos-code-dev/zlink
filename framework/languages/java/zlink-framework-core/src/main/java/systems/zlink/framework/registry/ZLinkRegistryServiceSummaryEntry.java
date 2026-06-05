@@ -1,8 +1,11 @@
 package systems.zlink.framework.registry;
 
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.service.registry.ServiceRole;
+
 public record ZLinkRegistryServiceSummaryEntry(
-    String autoConnectType,
-    String serviceRole,
+    AutoConnectType autoConnectType,
+    ServiceRole serviceRole,
     String channelName,
     int totalCount,
     int connectingCount,

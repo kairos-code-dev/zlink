@@ -93,9 +93,6 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodePeerEntry;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeStatus;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeSubjectEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRoute;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamPacketHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamErrorHandler;
@@ -219,8 +216,8 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers() {
             return nativeDiscovery.memberPeers().stream()
                 .map(peer -> new ZLinkBackendRegistryMemberPeerEntry(
-                    peer.autoConnectType().name(),
-                    peer.serviceRole().name(),
+                    peer.autoConnectType(),
+                    peer.serviceRole(),
                     peer.channelName(),
                     peer.endpoint(),
                     peer.routingId(),
@@ -378,7 +375,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             return new ZLinkBackendRegistryStatus(
                 status.registryId(),
                 status.bindEndpoint(),
-                status.state().name(),
+                status.state(),
                 status.topologyEntryCount(),
                 status.peerRegistryCount(),
                 status.connectedPeerRegistryCount(),
@@ -389,8 +386,8 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) {
             return registry.serviceSummary(serviceSummaryFilter(filter)).stream()
                 .map(entry -> new ZLinkBackendRegistryServiceSummaryEntry(
-                    entry.autoConnectType().name(),
-                    entry.serviceRole().name(),
+                    entry.autoConnectType(),
+                    entry.serviceRole(),
                     entry.channelName(),
                     entry.totalCount(),
                     entry.connectingCount(),
@@ -403,14 +400,14 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) {
             return registry.topology(topologyFilter(filter)).stream()
                 .map(entry -> new ZLinkBackendRegistryTopologyEntry(
-                    entry.autoConnectType().name(),
+                    entry.autoConnectType(),
                     entry.routingId(),
-                    entry.serviceKind().name(),
-                    entry.serviceRole().name(),
+                    entry.serviceKind(),
+                    entry.serviceRole(),
                     entry.channelName(),
                     entry.endpoint(),
-                    entry.source().name(),
-                    entry.state().name(),
+                    entry.source(),
+                    entry.state(),
                     entry.desiredCount(),
                     entry.readyCount(),
                     entry.errorCode(),
@@ -421,8 +418,8 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers(String channelName) {
             return registry.memberPeers(channelName).stream()
                 .map(peer -> new ZLinkBackendRegistryMemberPeerEntry(
-                    peer.autoConnectType().name(),
-                    peer.serviceRole().name(),
+                    peer.autoConnectType(),
+                    peer.serviceRole(),
                     peer.channelName(),
                     peer.endpoint(),
                     peer.routingId(),
@@ -440,14 +437,14 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) {
             return client.topology(topologyFilter(filter)).stream()
                 .map(entry -> new ZLinkBackendRegistryTopologyEntry(
-                    entry.autoConnectType().name(),
+                    entry.autoConnectType(),
                     entry.routingId(),
-                    entry.serviceKind().name(),
-                    entry.serviceRole().name(),
+                    entry.serviceKind(),
+                    entry.serviceRole(),
                     entry.channelName(),
                     entry.endpoint(),
-                    entry.source().name(),
-                    entry.state().name(),
+                    entry.source(),
+                    entry.state(),
                     entry.desiredCount(),
                     entry.readyCount(),
                     entry.errorCode(),
@@ -510,9 +507,9 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return submit(spotNode.sendActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch())), parts, flags); }
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { spotNode.closeActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()), timeout); }
-        @Override public ZLinkBackendSpotNodeStatus status() { var status = spotNode.status(); return new ZLinkBackendSpotNodeStatus(status.state().name(), status.activePeerCount(), status.subjectCount()); }
-        @Override public List<ZLinkBackendSpotNodePeerEntry> peers() { return spotNode.peers().stream().map(peer -> new ZLinkBackendSpotNodePeerEntry(null, peer.peerEndpoint(), peer.state().name())).toList(); }
-        @Override public List<ZLinkBackendSpotNodeSubjectEntry> subjects() { return spotNode.subjects().stream().map(subject -> new ZLinkBackendSpotNodeSubjectEntry(subject.subject(), subject.subjectKind().name(), subject.readyPeerCount() > 0)).toList(); }
+        @Override public systems.zlink.contracts.service.spot.SpotNodeStatus status() { return spotNode.status(); }
+        @Override public List<systems.zlink.contracts.service.spot.SpotNodePeerEntry> peers() { return spotNode.peers(); }
+        @Override public List<systems.zlink.contracts.service.spot.SpotNodeSubjectEntry> subjects() { return spotNode.subjects(); }
         @Override public void close() { spotNode.close(); }
 
         private static ZLinkBackendActorJoinResult fromActorJoinCompletion(
@@ -669,25 +666,21 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
     private static RegistryServiceSummaryFilter serviceSummaryFilter(
         ZLinkBackendRegistryQueryFilter filter) {
         return new RegistryServiceSummaryFilter(
-            enumValue(AutoConnectType.class, filter.autoConnectType()),
-            enumValue(ServiceRole.class, filter.serviceRole()),
+            filter.autoConnectType().orElse(null),
+            filter.serviceRole().orElse(null),
             filter.channelName().orElse(null));
     }
 
     private static RegistryTopologyFilter topologyFilter(
         ZLinkBackendRegistryQueryFilter filter) {
         return new RegistryTopologyFilter(
-            enumValue(AutoConnectType.class, filter.autoConnectType()),
-            enumValue(ServiceKind.class, filter.serviceKind()),
-            enumValue(ServiceRole.class, filter.serviceRole()),
+            filter.autoConnectType().orElse(null),
+            filter.serviceKind().orElse(null),
+            filter.serviceRole().orElse(null),
             filter.channelName().orElse(null),
             filter.routingId().orElse(null),
-            enumValue(TopologyState.class, filter.state()),
-            enumValue(TopologySource.class, filter.source()));
-    }
-
-    private static <T extends Enum<T>> T enumValue(Class<T> enumType, Optional<String> value) {
-        return value.map(name -> Enum.valueOf(enumType, name)).orElse(null);
+            filter.state().orElse(null),
+            filter.source().orElse(null));
     }
 
     private static RecvFlags map(ZLinkBackendRecvMode mode) {

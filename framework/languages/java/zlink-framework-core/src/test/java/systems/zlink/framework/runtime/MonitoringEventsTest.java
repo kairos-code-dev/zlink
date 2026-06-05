@@ -11,6 +11,18 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.service.registry.RegistryState;
+import systems.zlink.contracts.service.registry.ServiceKind;
+import systems.zlink.contracts.service.registry.ServiceRole;
+import systems.zlink.contracts.service.registry.SubjectKind;
+import systems.zlink.contracts.service.registry.TopologySource;
+import systems.zlink.contracts.service.registry.TopologyState;
+import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
+import systems.zlink.contracts.service.spot.SpotNodeState;
+import systems.zlink.contracts.service.spot.SpotNodeStatus;
+import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
+import systems.zlink.contracts.service.spot.SpotRole;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRegistryEvent;
@@ -112,10 +124,13 @@ final class MonitoringEventsTest {
                  dispatcher)) {
             runtime.pollSnapshots();
             runtime.pollSnapshots();
-            spotNode.subjects = List.of(new ZLinkBackendSpotNodeSubjectEntry(
+            spotNode.subjects = List.of(new SpotNodeSubjectEntry(
+                SpotRole.PUB,
                 "room-1",
-                "spot",
-                true));
+                SubjectKind.TOPIC,
+                1,
+                1,
+                10));
             runtime.pollSnapshots();
         }
 
@@ -203,15 +218,15 @@ final class MonitoringEventsTest {
 
         @Override
         public ZLinkBackendRegistryStatus status() {
-            return new ZLinkBackendRegistryStatus("BOUND", entryCount);
+            return new ZLinkBackendRegistryStatus(RegistryState.ACTIVE, entryCount);
         }
 
         @Override
         public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(
             ZLinkBackendRegistryQueryFilter filter) {
             return List.of(new ZLinkBackendRegistryServiceSummaryEntry(
-                "CLIENT_SERVER",
-                "DEALER",
+                AutoConnectType.CLIENT_SERVER,
+                ServiceRole.DEALER,
                 "profile",
                 entryCount,
                 0,
@@ -225,14 +240,14 @@ final class MonitoringEventsTest {
         public List<ZLinkBackendRegistryTopologyEntry> topology(
             ZLinkBackendRegistryQueryFilter filter) {
             return List.of(new ZLinkBackendRegistryTopologyEntry(
-                "CLIENT_SERVER",
+                AutoConnectType.CLIENT_SERVER,
                 RoutingId.from("profile-" + entryCount),
-                "SOCKET",
-                "SERVER",
+                ServiceKind.SOCKET,
+                ServiceRole.ROUTER,
                 "profile",
                 "inproc://profile-" + entryCount,
-                "MANUAL",
-                "READY",
+                TopologySource.MANUAL,
+                TopologyState.READY,
                 1,
                 1,
                 0,
@@ -243,8 +258,8 @@ final class MonitoringEventsTest {
         @Override
         public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers(String channelName) {
             return List.of(new ZLinkBackendRegistryMemberPeerEntry(
-                "CLIENT_SERVER",
-                "ROUTER",
+                AutoConnectType.CLIENT_SERVER,
+                ServiceRole.ROUTER,
                 channelName,
                 "inproc://" + channelName,
                 RoutingId.from(channelName + "-peer"),
@@ -263,7 +278,7 @@ final class MonitoringEventsTest {
     }
 
     private static final class FakeSpotNode implements ZLinkBackendSpotNode {
-        List<ZLinkBackendSpotNodeSubjectEntry> subjects = List.of();
+        List<SpotNodeSubjectEntry> subjects = List.of();
 
         @Override
         public RoutingId routingId() {
@@ -370,17 +385,30 @@ final class MonitoringEventsTest {
         }
 
         @Override
-        public ZLinkBackendSpotNodeStatus status() {
-            return new ZLinkBackendSpotNodeStatus("RUNNING", 0, subjects.size());
+        public SpotNodeStatus status() {
+            return new SpotNodeStatus(
+                "play",
+                "inproc://play",
+                RoutingId.from("play"),
+                SpotNodeState.READY,
+                0,
+                0,
+                0,
+                subjects.size(),
+                subjects.size(),
+                0,
+                0,
+                0,
+                10);
         }
 
         @Override
-        public List<ZLinkBackendSpotNodePeerEntry> peers() {
+        public List<SpotNodePeerEntry> peers() {
             return List.of();
         }
 
         @Override
-        public List<ZLinkBackendSpotNodeSubjectEntry> subjects() {
+        public List<SpotNodeSubjectEntry> subjects() {
             return subjects;
         }
 

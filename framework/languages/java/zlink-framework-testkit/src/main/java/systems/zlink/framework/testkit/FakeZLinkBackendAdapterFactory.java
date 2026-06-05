@@ -12,6 +12,16 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.service.registry.RegistryState;
+import systems.zlink.contracts.service.registry.ServiceKind;
+import systems.zlink.contracts.service.registry.ServiceRole;
+import systems.zlink.contracts.service.registry.TopologySource;
+import systems.zlink.contracts.service.registry.TopologyState;
+import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
+import systems.zlink.contracts.service.spot.SpotNodeState;
+import systems.zlink.contracts.service.spot.SpotNodeStatus;
+import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorBindOperation;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
@@ -55,9 +65,6 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodePeerEntry;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeStatus;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeSubjectEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRoute;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamErrorHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamPacketHandler;
@@ -455,8 +462,8 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers() {
             if ("discovery.egress-discovery".equals(name())) {
                 return List.of(new ZLinkBackendRegistryMemberPeerEntry(
-                    "ROUTE_MESH",
-                    "ROUTER",
+                    AutoConnectType.ROUTE_MESH,
+                    ServiceRole.ROUTER,
                     "ingress-discovery",
                     "inproc://ingress-discovery",
                     RoutingId.from("discovery-route-peer"),
@@ -576,12 +583,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setId(int registryId) { record("setId." + registryId); }
         @Override public void bind(String pubEndpoint, String routerEndpoint) { record("bind." + pubEndpoint + "." + routerEndpoint); }
         @Override public void connectPeer(String pubEndpoint, String routerEndpoint) { record("connectPeer." + pubEndpoint); }
-        @Override public ZLinkBackendRegistryStatus status() { record("status"); return new ZLinkBackendRegistryStatus("BOUND", 1); }
+        @Override public ZLinkBackendRegistryStatus status() { record("status"); return new ZLinkBackendRegistryStatus(RegistryState.ACTIVE, 1); }
         @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) {
             record("serviceSummary." + filter.channelName().orElse("*"));
             return List.of(new ZLinkBackendRegistryServiceSummaryEntry(
-                "CLIENT_SERVER",
-                "DEALER",
+                AutoConnectType.CLIENT_SERVER,
+                ServiceRole.DEALER,
                 "profile",
                 2,
                 0,
@@ -593,14 +600,14 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) {
             record("topology." + filter.channelName().orElse("*"));
             return List.of(new ZLinkBackendRegistryTopologyEntry(
-                "CLIENT_SERVER",
+                AutoConnectType.CLIENT_SERVER,
                 RoutingId.from("profile-server"),
-                "SOCKET",
-                "ROUTER",
+                ServiceKind.SOCKET,
+                ServiceRole.ROUTER,
                 "profile",
                 "inproc://profile-server",
-                "MANUAL",
-                "READY",
+                TopologySource.MANUAL,
+                TopologyState.READY,
                 1,
                 1,
                 0,
@@ -610,8 +617,8 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers(String channelName) {
             record("memberPeers." + channelName);
             return List.of(new ZLinkBackendRegistryMemberPeerEntry(
-                "CLIENT_SERVER",
-                "ROUTER",
+                AutoConnectType.CLIENT_SERVER,
+                ServiceRole.ROUTER,
                 channelName,
                 "inproc://" + channelName + "-member",
                 RoutingId.from(channelName + "-member"),
@@ -630,14 +637,14 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) {
             record("topology." + filter.channelName().orElse("*"));
             return List.of(new ZLinkBackendRegistryTopologyEntry(
-                "CLIENT_SERVER",
+                AutoConnectType.CLIENT_SERVER,
                 RoutingId.from("registry-route-peer"),
-                "SOCKET",
-                "ROUTER",
+                ServiceKind.SOCKET,
+                ServiceRole.ROUTER,
                 filter.channelName().orElse("profile"),
                 "tcp://127.0.0.1:7100",
-                "REGISTRY",
-                "READY",
+                TopologySource.REGISTRY,
+                TopologyState.READY,
                 1,
                 1,
                 0,
@@ -719,9 +726,24 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) {
             record("closeActorBoundSession." + actor.actorId());
         }
-        @Override public ZLinkBackendSpotNodeStatus status() { return null; }
-        @Override public List<ZLinkBackendSpotNodePeerEntry> peers() { return List.of(); }
-        @Override public List<ZLinkBackendSpotNodeSubjectEntry> subjects() { return List.of(); }
+        @Override public SpotNodeStatus status() {
+            return new SpotNodeStatus(
+                "fake",
+                "inproc://fake-spot",
+                RoutingId.from("fake-node"),
+                SpotNodeState.READY,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0);
+        }
+        @Override public List<SpotNodePeerEntry> peers() { return List.of(); }
+        @Override public List<SpotNodeSubjectEntry> subjects() { return List.of(); }
     }
 
     private static final class FakeSpot extends FakeBackendObject implements ZLinkBackendSpot {

@@ -105,7 +105,16 @@ final class FrameworkModuleBoundaryTest {
             "import systems.zlink.contracts.errors.ZlinkRequestException;",
             "import systems.zlink.contracts.errors.ZlinkSubmitException;",
             "import systems.zlink.contracts.sockets.RequestResult;",
-            "import systems.zlink.contracts.sockets.SubmitResult;");
+            "import systems.zlink.contracts.sockets.SubmitResult;",
+            "import systems.zlink.contracts.service.registry.AutoConnectType;",
+            "import systems.zlink.contracts.service.registry.RegistryState;",
+            "import systems.zlink.contracts.service.registry.ServiceKind;",
+            "import systems.zlink.contracts.service.registry.ServiceRole;",
+            "import systems.zlink.contracts.service.registry.TopologySource;",
+            "import systems.zlink.contracts.service.registry.TopologyState;",
+            "import systems.zlink.contracts.service.spot.SpotNodePeerEntry;",
+            "import systems.zlink.contracts.service.spot.SpotNodeStatus;",
+            "import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;");
 
         try (Stream<Path> files = Files.walk(runtimeRoot)) {
             List<String> offenders = files

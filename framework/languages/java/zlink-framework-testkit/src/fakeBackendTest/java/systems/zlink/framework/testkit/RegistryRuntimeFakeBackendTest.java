@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.service.registry.RegistryState;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter;
 import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
@@ -26,7 +27,7 @@ final class RegistryRuntimeFakeBackendTest {
                  options,
                  backendFactory,
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
-            assertEquals("BOUND",
+            assertEquals(RegistryState.ACTIVE,
                 runtime.statusAsync().toCompletableFuture().join().state());
             assertEquals("profile",
                 runtime.serviceSummaryAsync(ZLinkRegistryServiceSummaryFilter.all())

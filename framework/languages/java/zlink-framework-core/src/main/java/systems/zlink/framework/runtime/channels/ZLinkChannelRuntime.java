@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
@@ -522,7 +523,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             if (!targetSpotNodeChannelName.equals(peer.channelName())) {
                 continue;
             }
-            if (!"ROUTER".equalsIgnoreCase(peer.serviceRole())) {
+            if (peer.serviceRole() != ServiceRole.ROUTER) {
                 continue;
             }
             if (peer.routingId() == null) {
@@ -561,7 +562,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     client.topology(new ZLinkBackendRegistryQueryFilter(
                         Optional.empty(),
                         Optional.empty(),
-                        Optional.of("ROUTER"),
+                        Optional.of(ServiceRole.ROUTER),
                         Optional.of(targetSpotNodeChannelName),
                         Optional.empty(),
                         Optional.empty(),
@@ -569,7 +570,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     if (!targetSpotNodeChannelName.equals(entry.channelName())) {
                         continue;
                     }
-                    if (!"ROUTER".equalsIgnoreCase(entry.serviceRole())) {
+                    if (entry.serviceRole() != ServiceRole.ROUTER) {
                         continue;
                     }
                     if (entry.routingId() == null) {

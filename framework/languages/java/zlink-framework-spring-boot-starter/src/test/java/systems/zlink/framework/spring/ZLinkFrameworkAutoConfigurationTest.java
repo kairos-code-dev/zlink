@@ -23,6 +23,7 @@ import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import systems.zlink.contracts.service.registry.RegistryState;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
@@ -561,7 +562,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             assertTrue(lifecycle.isRunning());
             assertTrue(lifecycle.getPhase() < frameworkLifecycle.getPhase());
             assertInstanceOf(ZLinkRegistryLifecycle.class, query);
-            assertEquals("BOUND", status.state());
+            assertEquals(RegistryState.ACTIVE, status.state());
             assertTrue(backendFactory.calls().contains(
                 "registry.bind.inproc://registry-pub.inproc://registry-router"));
             assertTrue(backendFactory.calls().contains("registry.status"));

@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
+import systems.zlink.contracts.service.spot.SpotNodeStatus;
+import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.monitoring.ZLinkRegistryEvent;
 import systems.zlink.framework.monitoring.ZLinkRegistryEventKind;
@@ -16,8 +19,14 @@ import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
 import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
+import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry;
+import systems.zlink.framework.registry.ZLinkRegistryStatus;
+import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryQueryFilter;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryServiceSummaryEntry;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryStatus;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryTopologyEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorEvent;
@@ -129,6 +138,7 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
                 sourceName,
                 Instant.now(),
                 ZLinkRegistryEventKind.STATUS_CHANGED,
+                Optional.of(current.status()),
                 current.topology(),
                 current.serviceSummary()));
         }
@@ -137,6 +147,7 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
                 sourceName,
                 Instant.now(),
                 ZLinkRegistryEventKind.TOPOLOGY_CHANGED,
+                Optional.empty(),
                 current.topology(),
                 current.serviceSummary()));
         }
@@ -145,6 +156,7 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
                 sourceName,
                 Instant.now(),
                 ZLinkRegistryEventKind.SERVICE_SUMMARY_CHANGED,
+                Optional.empty(),
                 current.topology(),
                 current.serviceSummary()));
         }
@@ -158,56 +170,104 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
                 sourceName,
                 Instant.now(),
                 ZLinkSpotEventKind.STATUS_CHANGED,
+                Optional.of(current.status()),
                 current.peers(),
                 current.subjects(),
-                ""));
+                Optional.empty()));
         }
         if (previous == null || !previous.peers().equals(current.peers())) {
             dispatcher.publish(new ZLinkSpotEvent(
                 sourceName,
                 Instant.now(),
                 ZLinkSpotEventKind.PEERS_CHANGED,
+                Optional.empty(),
                 current.peers(),
                 current.subjects(),
-                ""));
+                Optional.empty()));
         }
         if (previous == null || !previous.subjects().equals(current.subjects())) {
             dispatcher.publish(new ZLinkSpotEvent(
                 sourceName,
                 Instant.now(),
                 ZLinkSpotEventKind.SUBJECTS_CHANGED,
+                Optional.empty(),
                 current.peers(),
                 current.subjects(),
-                ""));
+                Optional.empty()));
         }
     }
 
     private record RegistrySnapshot(
-        String status,
-        List<String> topology,
-        List<String> serviceSummary) {
+        ZLinkRegistryStatus status,
+        List<ZLinkRegistryTopologyEntry> topology,
+        List<ZLinkRegistryServiceSummaryEntry> serviceSummary) {
         static RegistrySnapshot from(ZLinkBackendRegistry registry) {
             ZLinkBackendRegistryQueryFilter all = ZLinkBackendRegistryQueryFilter.all();
             return new RegistrySnapshot(
-                registry.status().toString(),
+                toStatus(registry.status()),
                 registry.topology(all).stream()
-                    .map(Object::toString)
+                    .map(ZLinkMonitoringRuntime::toTopologyEntry)
                     .toList(),
                 registry.serviceSummary(all).stream()
-                    .map(Object::toString)
+                    .map(ZLinkMonitoringRuntime::toServiceSummaryEntry)
                     .toList());
         }
     }
 
     private record SpotSnapshot(
-        String status,
-        List<String> peers,
-        List<String> subjects) {
+        SpotNodeStatus status,
+        List<SpotNodePeerEntry> peers,
+        List<SpotNodeSubjectEntry> subjects) {
         static SpotSnapshot from(ZLinkBackendSpotNode spotNode) {
             return new SpotSnapshot(
-                String.valueOf(spotNode.status()),
-                spotNode.peers().stream().map(Object::toString).toList(),
-                spotNode.subjects().stream().map(Object::toString).toList());
+                spotNode.status(),
+                List.copyOf(spotNode.peers()),
+                List.copyOf(spotNode.subjects()));
         }
+    }
+
+    private static ZLinkRegistryStatus toStatus(ZLinkBackendRegistryStatus status) {
+        return new ZLinkRegistryStatus(
+            status.registryId(),
+            status.bindEndpoint(),
+            status.state(),
+            status.topologyEntryCount(),
+            status.peerRegistryCount(),
+            status.connectedPeerRegistryCount(),
+            status.listSeq(),
+            status.lastError(),
+            status.lastChangedMs());
+    }
+
+    private static ZLinkRegistryTopologyEntry toTopologyEntry(
+        ZLinkBackendRegistryTopologyEntry entry) {
+        return new ZLinkRegistryTopologyEntry(
+            entry.autoConnectType(),
+            entry.routingId(),
+            entry.serviceKind(),
+            entry.serviceRole(),
+            entry.channelName(),
+            entry.endpoint(),
+            entry.source(),
+            entry.state(),
+            entry.desiredCount(),
+            entry.readyCount(),
+            entry.errorCode(),
+            entry.lastReportedMs(),
+            entry.spotKind());
+    }
+
+    private static ZLinkRegistryServiceSummaryEntry toServiceSummaryEntry(
+        ZLinkBackendRegistryServiceSummaryEntry entry) {
+        return new ZLinkRegistryServiceSummaryEntry(
+            entry.autoConnectType(),
+            entry.serviceRole(),
+            entry.channelName(),
+            entry.totalCount(),
+            entry.connectingCount(),
+            entry.readyCount(),
+            entry.errorCount(),
+            entry.stoppedCount(),
+            entry.lastReportedMs());
     }
 }

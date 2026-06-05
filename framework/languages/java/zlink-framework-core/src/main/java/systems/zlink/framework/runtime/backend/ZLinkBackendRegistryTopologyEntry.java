@@ -1,17 +1,22 @@
 package systems.zlink.framework.runtime.backend;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.service.registry.ServiceKind;
+import systems.zlink.contracts.service.registry.ServiceRole;
+import systems.zlink.contracts.service.registry.TopologySource;
+import systems.zlink.contracts.service.registry.TopologyState;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 public record ZLinkBackendRegistryTopologyEntry(
-    String autoConnectType,
+    AutoConnectType autoConnectType,
     RoutingId routingId,
-    String serviceKind,
-    String serviceRole,
+    ServiceKind serviceKind,
+    ServiceRole serviceRole,
     String channelName,
     String endpoint,
-    String source,
-    String state,
+    TopologySource source,
+    TopologyState state,
     int desiredCount,
     int readyCount,
     int errorCode,

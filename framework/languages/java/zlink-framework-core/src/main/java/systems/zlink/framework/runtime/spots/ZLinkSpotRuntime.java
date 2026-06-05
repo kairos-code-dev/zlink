@@ -33,6 +33,8 @@ import systems.zlink.contracts.errors.ConnectResult;
 import systems.zlink.contracts.errors.ZlinkConnectException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.CancellationToken;
@@ -1117,7 +1119,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             Map<RoutingId, String> routerEndpointsByRid =
                 routerEndpointsByRid(peers, binding.meshName());
             for (ZLinkBackendRegistryMemberPeerEntry peer : peers) {
-                if (!"SPOT_MESH".equalsIgnoreCase(peer.autoConnectType())
+                if (peer.autoConnectType() != AutoConnectType.SPOT_MESH
                     || !binding.meshName().equals(peer.channelName())
                     || peer.endpoint() == null
                     || peer.endpoint().isBlank()
@@ -1125,7 +1127,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     || peer.endpoint().equals(binding.pubBind())) {
                     continue;
                 }
-                if ("ROUTER".equalsIgnoreCase(peer.serviceRole())) {
+                if (peer.serviceRole() == ServiceRole.ROUTER) {
                     if (binding.routerEnabled() && !binding.pubSubEnabled()) {
                         connectDiscoveredRouterPeer(
                             binding,
@@ -1134,7 +1136,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     }
                     continue;
                 }
-                if (!"SPOT".equalsIgnoreCase(peer.serviceRole())) {
+                if (peer.serviceRole() != ServiceRole.SPOT) {
                     continue;
                 }
                 if (binding.pubSubEnabled()) {
@@ -1165,8 +1167,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         String meshName) {
         Map<RoutingId, String> endpoints = new HashMap<>();
         for (ZLinkBackendRegistryMemberPeerEntry peer : peers) {
-            if ("SPOT_MESH".equalsIgnoreCase(peer.autoConnectType())
-                && "ROUTER".equalsIgnoreCase(peer.serviceRole())
+            if (peer.autoConnectType() == AutoConnectType.SPOT_MESH
+                && peer.serviceRole() == ServiceRole.ROUTER
                 && meshName.equals(peer.channelName())
                 && peer.endpoint() != null
                 && !peer.endpoint().isBlank()

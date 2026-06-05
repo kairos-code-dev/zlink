@@ -1,10 +1,12 @@
 package systems.zlink.framework.registry;
 
 import java.util.Optional;
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.service.registry.ServiceRole;
 
 public record ZLinkRegistryServiceSummaryFilter(
-    Optional<String> autoConnectType,
-    Optional<String> serviceRole,
+    Optional<AutoConnectType> autoConnectType,
+    Optional<ServiceRole> serviceRole,
     Optional<String> channelName) {
     public ZLinkRegistryServiceSummaryFilter {
         autoConnectType = autoConnectType == null ? Optional.empty() : autoConnectType;

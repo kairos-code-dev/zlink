@@ -3,10 +3,23 @@ package systems.zlink.framework;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.lang.reflect.Method;
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.service.registry.RegistryState;
+import systems.zlink.contracts.service.registry.ServiceKind;
+import systems.zlink.contracts.service.registry.ServiceRole;
+import systems.zlink.contracts.service.registry.TopologySource;
+import systems.zlink.contracts.service.registry.TopologyState;
+import systems.zlink.contracts.service.spot.SpotNodeState;
+import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.framework.registry.ZLinkMemberPeerEntry;
+import systems.zlink.framework.monitoring.ZLinkRegistryEvent;
+import systems.zlink.framework.monitoring.ZLinkSpotEvent;
+import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
 import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
 import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry;
@@ -57,6 +70,7 @@ final class RegistryContractTest {
             java.util.Arrays.stream(ZLinkRegistryStatus.class.getRecordComponents())
                 .map(java.lang.reflect.RecordComponent::getName)
                 .toList());
+        assertEquals(RegistryState.class, componentType(ZLinkRegistryStatus.class, "state"));
     }
 
     @Test
@@ -75,6 +89,12 @@ final class RegistryContractTest {
             java.util.Arrays.stream(ZLinkRegistryServiceSummaryEntry.class.getRecordComponents())
                 .map(java.lang.reflect.RecordComponent::getName)
                 .toList());
+        assertEquals(
+            AutoConnectType.class,
+            componentType(ZLinkRegistryServiceSummaryEntry.class, "autoConnectType"));
+        assertEquals(
+            ServiceRole.class,
+            componentType(ZLinkRegistryServiceSummaryEntry.class, "serviceRole"));
     }
 
     @Test
@@ -97,6 +117,13 @@ final class RegistryContractTest {
             java.util.Arrays.stream(ZLinkRegistryTopologyEntry.class.getRecordComponents())
                 .map(java.lang.reflect.RecordComponent::getName)
                 .toList());
+        assertEquals(
+            AutoConnectType.class,
+            componentType(ZLinkRegistryTopologyEntry.class, "autoConnectType"));
+        assertEquals(ServiceKind.class, componentType(ZLinkRegistryTopologyEntry.class, "serviceKind"));
+        assertEquals(ServiceRole.class, componentType(ZLinkRegistryTopologyEntry.class, "serviceRole"));
+        assertEquals(TopologySource.class, componentType(ZLinkRegistryTopologyEntry.class, "source"));
+        assertEquals(TopologyState.class, componentType(ZLinkRegistryTopologyEntry.class, "state"));
     }
 
     @Test
@@ -113,6 +140,77 @@ final class RegistryContractTest {
             java.util.Arrays.stream(ZLinkMemberPeerEntry.class.getRecordComponents())
                 .map(java.lang.reflect.RecordComponent::getName)
                 .toList());
+        assertEquals(
+            AutoConnectType.class,
+            componentType(ZLinkMemberPeerEntry.class, "autoConnectType"));
+        assertEquals(ServiceRole.class, componentType(ZLinkMemberPeerEntry.class, "serviceRole"));
+    }
+
+    @Test
+    void registryFiltersExposeTypedEnumCriteria() {
+        assertEquals(
+            Optional.class,
+            componentType(ZLinkRegistryServiceSummaryFilter.class, "autoConnectType"));
+        assertEquals(
+            Optional.class,
+            componentType(ZLinkRegistryTopologyFilter.class, "serviceKind"));
+
+        ZLinkRegistryServiceSummaryFilter summaryFilter =
+            new ZLinkRegistryServiceSummaryFilter(
+                Optional.of(AutoConnectType.CLIENT_SERVER),
+                Optional.of(ServiceRole.DEALER),
+                Optional.of("profile"));
+        ZLinkRegistryTopologyFilter topologyFilter =
+            new ZLinkRegistryTopologyFilter(
+                Optional.of(AutoConnectType.CLIENT_SERVER),
+                Optional.of(ServiceKind.SOCKET),
+                Optional.of(ServiceRole.ROUTER),
+                Optional.of("profile"),
+                Optional.empty(),
+                Optional.of(TopologyState.READY),
+                Optional.of(TopologySource.MANUAL));
+
+        assertEquals(AutoConnectType.CLIENT_SERVER, summaryFilter.autoConnectType().orElseThrow());
+        assertEquals(ServiceKind.SOCKET, topologyFilter.serviceKind().orElseThrow());
+        assertEquals(TopologyState.READY, topologyFilter.state().orElseThrow());
+    }
+
+    @Test
+    void monitoringEventsCarryTypedSnapshots() {
+        assertEquals(
+            Optional.class,
+            componentType(ZLinkRegistryEvent.class, "status"));
+        assertEquals(List.class, componentType(ZLinkRegistryEvent.class, "topology"));
+        assertEquals(
+            Optional.class,
+            componentType(ZLinkSpotEvent.class, "status"));
+
+        ZLinkSpotEvent spotEvent = new ZLinkSpotEvent(
+            "play",
+            Instant.EPOCH,
+            ZLinkSpotEventKind.STATUS_CHANGED,
+            Optional.of(new SpotNodeStatus(
+                "play",
+                "inproc://play",
+                null,
+                SpotNodeState.READY,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0)),
+            null,
+            null,
+            null);
+        assertEquals(
+            SpotNodeState.READY,
+            spotEvent.status().orElseThrow().state());
+        assertEquals(List.of(), spotEvent.peers());
+        assertEquals(Optional.empty(), spotEvent.timerDiagnostic());
     }
 
     @Test
@@ -131,5 +229,13 @@ final class RegistryContractTest {
                 .map(Method::getName)
                 .sorted()
                 .toList());
+    }
+
+    private static Class<?> componentType(Class<? extends Record> type, String name) {
+        return java.util.Arrays.stream(type.getRecordComponents())
+            .filter(component -> component.getName().equals(name))
+            .findFirst()
+            .orElseThrow()
+            .getType();
     }
 }

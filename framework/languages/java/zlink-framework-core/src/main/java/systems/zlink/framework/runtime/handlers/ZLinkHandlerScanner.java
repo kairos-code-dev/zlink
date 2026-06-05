@@ -291,36 +291,6 @@ public final class ZLinkHandlerScanner {
     private record ActorMessageShape(Class<?> actorType, Class<?> messageType) {
     }
 
-    private static Class<?> requireActorParameter(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = method.getParameterTypes();
-        if (parameters.length != 1) {
-            throw new ZLinkConfigurationException(
-                "Spot actor disconnected handler method must have one actor parameter: "
-                    + handlerType.getName() + "." + method.getName());
-        }
-        return parameters[0];
-    }
-
-    private static Class<?> requireActorAndChangeParameters(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = method.getParameterTypes();
-        if (parameters.length != 2 || parameters[1] != ZLinkSpotActorChangeResult.class) {
-            throw new ZLinkConfigurationException(
-                "Spot actor lifecycle handler method must have actor and ZLinkSpotActorChangeResult parameters: "
-                    + handlerType.getName() + "." + method.getName());
-        }
-        return parameters[0];
-    }
-
-    private static Class<?>[] requireActorAndMessageParameters(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = method.getParameterTypes();
-        if (parameters.length != 2) {
-            throw new ZLinkConfigurationException(
-                "Spot actor join handler method must have actor and request parameters: "
-                    + handlerType.getName() + "." + method.getName());
-        }
-        return parameters;
-    }
-
     private static Set<Class<?>> scanPackage(Class<?> markerType) {
         String packageName = markerType.getPackageName();
         String packagePath = packageName.replace('.', '/');

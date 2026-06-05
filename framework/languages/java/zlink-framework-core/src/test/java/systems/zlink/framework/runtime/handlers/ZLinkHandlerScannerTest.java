@@ -14,6 +14,7 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
@@ -81,6 +82,19 @@ final class ZLinkHandlerScannerTest {
     }
 
     @Test
+    void scansRepeatableHandlerGroupsLikeDotnetAllowMultipleAttribute() {
+        ZLinkScannedHandlerCatalog catalog =
+            ZLinkHandlerScanner.scan(Set.of(ZLinkHandlerScannerTest.class));
+
+        ZLinkScannedHandler handler = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == RepeatableGroupHandler.class)
+            .findFirst()
+            .orElseThrow();
+
+        assertEquals(Set.of("primary", "secondary"), handler.groups());
+    }
+
+    @Test
     void scansSpotActorHandlerWithDotnetAttributedShape() {
         ZLinkScannedHandlerCatalog catalog =
             ZLinkHandlerScanner.scan(Set.of(ZLinkHandlerScannerTest.class));
@@ -124,6 +138,15 @@ final class ZLinkHandlerScannerTest {
     public static final class ContextAttributedSendHandler {
         @ZLinkSend(packetName = "ContextSend")
         public CompletionStage<Void> handle(String request, ZLinkHandlerContext context) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    @ZLinkHandlerGroup("primary")
+    @ZLinkHandlerGroup("secondary")
+    public static final class RepeatableGroupHandler {
+        @ZLinkSend(packetName = "RepeatableGroupSend")
+        public CompletionStage<Void> handle(String request) {
             return CompletableFuture.completedFuture(null);
         }
     }

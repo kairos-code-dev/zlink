@@ -1,37 +1,5 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play
 
-import org.springframework.boot.WebApplicationType
-import org.springframework.boot.autoconfigure.SpringBootApplication
-import org.springframework.boot.builder.SpringApplicationBuilder
-import org.springframework.context.annotation.Bean
-import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
-import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleTopology
-
 fun main(args: Array<String>) {
-    PlayServerApplication.start(args)
-}
-
-@SpringBootApplication(
-    proxyBeanMethods = false,
-    scanBasePackageClasses = [PlayServer::class],
-)
-class PlayServerApplication {
-    @Bean
-    fun playOptions(): ZLinkFrameworkOptionsCustomizer =
-        ZLinkFrameworkOptionsCustomizer { options ->
-            options.useDiscovery { registry ->
-                registry.add(SampleTopology.RegistryRouterEndpoint)
-            }
-            PlayServer.configure(options)
-        }
-
-    companion object {
-        fun start(args: Array<String> = emptyArray()): AutoCloseable {
-            val builder = SpringApplicationBuilder(PlayServerApplication::class.java)
-                .web(WebApplicationType.NONE)
-            builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
-            return AutoCloseable { context.close() }
-        }
-    }
+    PlayServerHostFactory.start(args)
 }

@@ -1321,9 +1321,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 .add(ZLinkSpotContext.class, context)
                 .create(spotType);
         } catch (RuntimeException ex) {
-            if (spotType.getConstructors().length == 0) {
-                return null;
-            }
             throw new ZLinkConfigurationException(
                 "failed to create spot: " + spotType.getName(),
                 ex);
@@ -1338,9 +1335,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 .add(ZLinkEntrySpotContext.class, context)
                 .create(entrySpotType);
         } catch (RuntimeException ex) {
-            if (entrySpotType.getConstructors().length == 0) {
-                return null;
-            }
             throw new ZLinkConfigurationException(
                 "failed to create entry spot: " + entrySpotType.getName(),
                 ex);

@@ -45,7 +45,9 @@ import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -197,6 +199,26 @@ final class ZLinkFrameworkAutoConfigurationTest {
             assertEquals("spring:spot", InjectedGameSpot.dependencyValue());
             assertInstanceOf(InjectedPlayerActor.class, actor);
             assertEquals("spring:player-1", ((InjectedPlayerActor) actor).dependencyValue());
+        }
+    }
+
+    @Test
+    void directRuntimeFailsWhenSpotCannotBeConstructed() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> {
+                node.enableRouter();
+                node.addSpotFactory(PrivateConstructorSpot.class);
+            }));
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
+            ZLinkConfigurationException error = assertThrows(ZLinkConfigurationException.class, () ->
+                runtime.spotManager()
+                    .createAsync(PrivateConstructorSpot.class)
+                    .toCompletableFuture());
+
+            assertTrue(error.getMessage().contains("failed to create spot"));
         }
     }
 
@@ -723,6 +745,19 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         static String dependencyValue() {
             return DEPENDENCY_VALUE.get();
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+    }
+
+    public static final class PrivateConstructorSpot implements ZLinkSpot {
+        private final ZLinkSpotContext context;
+
+        private PrivateConstructorSpot(ZLinkSpotContext context) {
+            this.context = context;
         }
 
         @Override

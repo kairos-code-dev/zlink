@@ -69,19 +69,123 @@ bool has_connection (const channel_capability_snapshot_t *capability)
                || !capability->connect_endpoints.empty ());
 }
 
-result_t<void> ensure_pending_admission (const channel_runtime_state_t &state)
+class pending_operation_controller_t
 {
-    if (state.shutdown) {
-        return result_t<void>::failure (framework_error_kind_t::shutdown, "channel runtime is shutting down");
+  public:
+    explicit pending_operation_controller_t (channel_runtime_state_t &state) : _state (state) {}
+
+    result_t<std::uint64_t> reserve_request (std::string channel_name)
+    {
+        if (auto admission = ensure_admission (); !admission) {
+            return result_t<std::uint64_t>::failure (admission.error_kind (), admission.error ()
+                                                                                ? admission.error ()->what ()
+                                                                                : "channel request was rejected");
+        }
+
+        const auto request_seq = _state.pending_requests.next_request_seq ();
+        _state.pending_requests.register_request (request_seq, std::move (channel_name));
+        ++_state.pending;
+        return result_t<std::uint64_t>::success (request_seq);
     }
-    if (state.closed) {
-        return result_t<void>::failure (framework_error_kind_t::closed, "channel runtime is closed");
+
+    result_t<std::uint64_t> queue_send (std::string channel_name, std::string idempotency_key)
+    {
+        if (auto admission = ensure_admission (); !admission) {
+            return result_t<std::uint64_t>::failure (
+              admission.error_kind (), admission.error () ? admission.error ()->what () : "channel send was rejected");
+        }
+
+        const auto operation_id = _state.pending_requests.next_request_seq ();
+        _state.pending_operations.emplace (
+          operation_id, channel_reliability_event_t{std::move (channel_name), std::move (idempotency_key),
+                                                    framework_error_kind_t::timeout, "pending operation timed out"});
+        ++_state.pending;
+        return result_t<std::uint64_t>::success (operation_id);
     }
-    if (state.pending >= state.max_pending) {
-        return result_t<void>::failure (framework_error_kind_t::request_rejected, "channel pending queue is full");
+
+    result_t<void> complete_request (std::uint64_t request_seq)
+    {
+        if (!_state.pending_requests.remove (request_seq)) {
+            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                            "reply does not match a pending outbound request");
+        }
+        decrement_pending ();
+        return result_t<void>::success ();
     }
-    return result_t<void>::success ();
-}
+
+    result_t<void> mark_send_ready (std::uint64_t operation_id)
+    {
+        const auto found = _state.pending_operations.find (operation_id);
+        if (found == _state.pending_operations.end ()) {
+            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                            "send-ready does not match a pending operation");
+        }
+        _state.pending_operations.erase (found);
+        decrement_pending ();
+        return result_t<void>::success ();
+    }
+
+    result_t<void> expire (std::uint64_t operation_id)
+    {
+        const auto found = _state.pending_operations.find (operation_id);
+        if (found == _state.pending_operations.end ()) {
+            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                            "timeout does not match a pending operation");
+        }
+
+        auto event = found->second;
+        _state.pending_operations.erase (found);
+        decrement_pending ();
+        if (_state.dead_letter_hook) {
+            _state.dead_letter_hook (event);
+        }
+        return result_t<void>::failure (framework_error_kind_t::timeout, "pending operation timed out");
+    }
+
+    result_t<void> retry (std::uint64_t operation_id)
+    {
+        const auto found = _state.pending_operations.find (operation_id);
+        if (found == _state.pending_operations.end ()) {
+            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                            "retry does not match a pending operation");
+        }
+        if (_state.retry_hook) {
+            _state.retry_hook (found->second);
+        }
+        return result_t<void>::success ();
+    }
+
+    void drain () noexcept
+    {
+        _state.pending_requests.clear ();
+        _state.pending_operations.clear ();
+        _state.pending = 0;
+    }
+
+  private:
+    result_t<void> ensure_admission () const
+    {
+        if (_state.shutdown) {
+            return result_t<void>::failure (framework_error_kind_t::shutdown, "channel runtime is shutting down");
+        }
+        if (_state.closed) {
+            return result_t<void>::failure (framework_error_kind_t::closed, "channel runtime is closed");
+        }
+        if (_state.pending >= _state.max_pending) {
+            return result_t<void>::failure (framework_error_kind_t::request_rejected, "channel pending queue is full");
+        }
+        return result_t<void>::success ();
+    }
+
+    void decrement_pending () noexcept
+    {
+        if (_state.pending > 0) {
+            --_state.pending;
+        }
+    }
+
+    channel_runtime_state_t &_state;
+};
 
 void ensure_manual_allowed (const channel_capability_snapshot_t &snapshot)
 {
@@ -137,87 +241,37 @@ result_t<void> channel_runtime_t::dispatch_send (std::string channel_name,
 
 result_t<std::uint64_t> channel_runtime_t::reserve_outbound_request (std::string channel_name)
 {
-    auto admission = ensure_pending_admission (*_state);
-    if (!admission) {
-        return result_t<std::uint64_t>::failure (
-          admission.error_kind (), admission.error () ? admission.error ()->what () : "channel request was rejected");
-    }
     const auto *client = client_capability (*_state, channel_name);
     if (!has_connection (client)) {
         return result_t<std::uint64_t>::failure (framework_error_kind_t::disconnected,
                                                  "channel client is not connected");
     }
-
-    const auto request_seq = _state->pending_requests.next_request_seq ();
-    _state->pending_requests.register_request (request_seq, std::move (channel_name));
-    ++_state->pending;
-    return result_t<std::uint64_t>::success (request_seq);
+    return pending_operation_controller_t (*_state).reserve_request (std::move (channel_name));
 }
 
 result_t<std::uint64_t> channel_runtime_t::queue_pending_send (std::string channel_name, std::string idempotency_key)
 {
-    auto admission = ensure_pending_admission (*_state);
-    if (!admission) {
-        return result_t<std::uint64_t>::failure (
-          admission.error_kind (), admission.error () ? admission.error ()->what () : "channel send was rejected");
-    }
-    const auto operation_id = _state->pending_requests.next_request_seq ();
-    _state->pending_operations.emplace (
-      operation_id, channel_reliability_event_t{std::move (channel_name), std::move (idempotency_key),
-                                                framework_error_kind_t::timeout, "pending operation timed out"});
-    ++_state->pending;
-    return result_t<std::uint64_t>::success (operation_id);
+    return pending_operation_controller_t (*_state).queue_send (std::move (channel_name), std::move (idempotency_key));
 }
 
 result_t<void> channel_runtime_t::complete_outbound_reply (std::uint64_t request_seq)
 {
-    if (!_state->pending_requests.remove (request_seq)) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                        "reply does not match a pending outbound request");
-    }
-    --_state->pending;
-    return result_t<void>::success ();
+    return pending_operation_controller_t (*_state).complete_request (request_seq);
 }
 
 result_t<void> channel_runtime_t::mark_send_ready (std::uint64_t operation_id)
 {
-    const auto found = _state->pending_operations.find (operation_id);
-    if (found == _state->pending_operations.end ()) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                        "send-ready does not match a pending operation");
-    }
-    _state->pending_operations.erase (found);
-    --_state->pending;
-    return result_t<void>::success ();
+    return pending_operation_controller_t (*_state).mark_send_ready (operation_id);
 }
 
 result_t<void> channel_runtime_t::expire_pending (std::uint64_t operation_id)
 {
-    const auto found = _state->pending_operations.find (operation_id);
-    if (found == _state->pending_operations.end ()) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                        "timeout does not match a pending operation");
-    }
-    auto event = found->second;
-    _state->pending_operations.erase (found);
-    --_state->pending;
-    if (_state->dead_letter_hook) {
-        _state->dead_letter_hook (event);
-    }
-    return result_t<void>::failure (framework_error_kind_t::timeout, "pending operation timed out");
+    return pending_operation_controller_t (*_state).expire (operation_id);
 }
 
 result_t<void> channel_runtime_t::retry_pending (std::uint64_t operation_id)
 {
-    const auto found = _state->pending_operations.find (operation_id);
-    if (found == _state->pending_operations.end ()) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                        "retry does not match a pending operation");
-    }
-    if (_state->retry_hook) {
-        _state->retry_hook (found->second);
-    }
-    return result_t<void>::success ();
+    return pending_operation_controller_t (*_state).retry (operation_id);
 }
 
 void channel_runtime_t::close () noexcept
@@ -249,9 +303,7 @@ std::vector<channel_runtime_state_t::outbound_call_record_t> channel_runtime_t::
 
 void channel_runtime_t::drain () noexcept
 {
-    _state->pending_requests.clear ();
-    _state->pending_operations.clear ();
-    _state->pending = 0;
+    pending_operation_controller_t (*_state).drain ();
 }
 
 channel_runtime_t channel_runtime_t::from (const message_bus_t &bus)

@@ -10,6 +10,8 @@
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 #include <zlink/framework/contracts/configuration/app.hpp>
 #include <zlink/framework/contracts/configuration/configuration.hpp>
+#include <zlink/framework/contracts/configuration/detail/framework_options_state.hpp>
+#include <zlink/framework/contracts/configuration/detail/framework_options_validation.hpp>
 #include <zlink/framework/contracts/configuration/framework_options.hpp>
 #include <zlink/framework/contracts/configuration/logging.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
@@ -248,13 +250,13 @@ static_assert (
                    std::declval<std::function<void (zlink::framework::dispatch_options_t &)>> ())),
                  zlink::framework::zlink_framework_options_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_context_t &> ().response_header (
-                                "X-Test", "value")),
-                              zlink::framework::http_context_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::http_context_t &> ().response_header ("X-Test", "value")),
+                 zlink::framework::http_context_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_response_t &> ().header (
-                                "X-Test", "value")),
-                              zlink::framework::http_response_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::http_response_t &> ().header ("X-Test", "value")),
+                 zlink::framework::http_response_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_options_builder_t &> ().configure_tls (
                                 std::declval<std::function<void (zlink::framework::http_tls_options_builder_t &)>> ())),
@@ -393,9 +395,9 @@ static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::reg
                                 std::declval<zlink::framework::topology_filter_t> ())),
                               zlink::framework::result_t<std::vector<zlink::framework::topology_entry_t>>>);
 
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::message_metadata_policy_t &> ().add_forwarded_metadata_key ("trace-id")),
-                 zlink::framework::message_metadata_policy_t &>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::message_metadata_policy_t &> ()
+                                          .add_forwarded_metadata_key ("trace-id")),
+                              zlink::framework::message_metadata_policy_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ().find ("trace-id")),
@@ -408,9 +410,9 @@ static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::spo
 static_assert (
   std::is_same_v<decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ().empty ()), bool>);
 
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::metadata_policy_builder_t &> ().add_forwarded_metadata_key ("trace-id")),
-                 zlink::framework::metadata_policy_builder_t &>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::metadata_policy_builder_t &> ()
+                                          .add_forwarded_metadata_key ("trace-id")),
+                              zlink::framework::metadata_policy_builder_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::config_builder_t &> ()
                                           .bind_required<typed_config_t> ("server")),

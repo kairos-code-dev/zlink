@@ -372,17 +372,18 @@ bool implementation_plan_goal6_covers_parity_model (const std::filesystem::path 
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"`.NET Core` / `ASP.NET Core` benchmark mapping",
-                                    "app host, DI, configuration, logging, lifecycle 통합",
-                                    "HTTP hosting, zlink messaging, timer, hosted service 통합",
-                                    "handler, middleware/filter, validation, error mapping 공통 모델",
-                                    "security/auth extension point",
-                                    "scheduling/background work model",
-                                    "developer convenience model",
-                                    "regression label taxonomy",
-                                    "HTTP, zlink, timer, hosted service가 서로 다른 framework처럼 보이지 않는다",
-                                    "모든 handler 계열은 DTO, `dependency_types`, DI scope, `task_t<T>`, logging, error",
-                                    "mapping 규칙을 공유한다"};
+    const std::string required[] = {
+      "`.NET Core` / `ASP.NET Core` benchmark mapping",
+      "app host, DI, configuration, logging, lifecycle 통합",
+      "HTTP hosting, zlink messaging, timer, hosted service 통합",
+      "handler, middleware/filter, validation, error mapping 공통 모델",
+      "security/auth extension point",
+      "scheduling/background work model",
+      "developer convenience model",
+      "regression label taxonomy",
+      "HTTP, zlink, timer, hosted service가 서로 다른 framework처럼 보이지 않는다",
+      "모든 handler 계열은 DTO, `dependency_types`, DI scope, `task_t<T>`, logging, error",
+      "mapping 규칙을 공유한다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 6 parity model lacks required contract: " << needle << '\n';
@@ -548,8 +549,9 @@ bool implementation_plan_goal9_covers_channel_messaging (const std::filesystem::
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-channel",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R channel"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-channel",
+      "ctest --test-dir framework/languages/cpp/build -L framework-regression -R channel"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 9 verification commands lack: " << command << '\n';
@@ -600,8 +602,9 @@ bool implementation_plan_goal10_covers_backpressure_reliability (const std::file
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-unit -R backpressure",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliability"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-unit -R backpressure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliability"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 10 verification commands lack: " << command << '\n';
@@ -687,26 +690,27 @@ bool implementation_plan_goal12_covers_spot_timer (const std::filesystem::path &
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"CAPI timer",
-                                    "`.NET` framework timer",
-                                    "`timer_t`",
-                                    "`timer_options_t`",
-                                    "`timer_overrun_policy_t`",
-                                    "`timer_tick_t`",
-                                    "`spot_context_t::add_timer<THandler>(...)`",
-                                    "CAPI timer lifecycle",
-                                    "CAPI timer dispatch event projection",
-                                    "`fire_count` 기반 skipped tick 계산",
-                                    "`scheduled_index`",
-                                    "`skip_late_ticks`",
-                                    "`catch_up_bounded`",
-                                    "`delay_next_tick`",
-                                    "same timer instance 재진입 금지",
-                                    "timer handler exception monitoring",
-                                    "native timer handle, poller slot, timer recv 순서",
-                                    "user Spot timer는 같은 Spot의 packet/subscription/channel reply 순서 정책을 따른다",
-                                    "Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다",
-                                    "timer failure event는 snapshot interval을 기다리지 않고 발생한다"};
+    const std::string required[] = {
+      "CAPI timer",
+      "`.NET` framework timer",
+      "`timer_t`",
+      "`timer_options_t`",
+      "`timer_overrun_policy_t`",
+      "`timer_tick_t`",
+      "`spot_context_t::add_timer<THandler>(...)`",
+      "CAPI timer lifecycle",
+      "CAPI timer dispatch event projection",
+      "`fire_count` 기반 skipped tick 계산",
+      "`scheduled_index`",
+      "`skip_late_ticks`",
+      "`catch_up_bounded`",
+      "`delay_next_tick`",
+      "same timer instance 재진입 금지",
+      "timer handler exception monitoring",
+      "native timer handle, poller slot, timer recv 순서",
+      "user Spot timer는 같은 Spot의 packet/subscription/channel reply 순서 정책을 따른다",
+      "Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다",
+      "timer failure event는 snapshot interval을 기다리지 않고 발생한다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 12 SPOT timer lacks required contract: " << needle << '\n';
@@ -880,8 +884,9 @@ bool implementation_plan_goal15_covers_registry_topology (const std::filesystem:
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R registry"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry",
+      "ctest --test-dir framework/languages/cpp/build -L framework-regression -R registry"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 15 verification commands lack: " << command << '\n';
@@ -985,8 +990,9 @@ bool implementation_plan_goal17_covers_module_hosting (const std::filesystem::pa
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-unit -R module",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-integration -R hosted"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-unit -R module",
+      "ctest --test-dir framework/languages/cpp/build -L framework-integration -R hosted"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 17 verification commands lack: " << command << '\n';
@@ -1086,45 +1092,46 @@ bool implementation_plan_goal19_covers_http_hosting (const std::filesystem::path
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"`contracts/http/*`",
-                                    "`http_options_builder_t`",
-                                    "`options.http().listen(endpoint)`",
-                                    "`options.http().configure_tls(...)`",
-                                    "`options.http().configure_server(...)`",
-                                    "`map_get<THandler>(path)`",
-                                    "`map_post<THandler>(path)`",
-                                    "`map_put<THandler>(path)`",
-                                    "`map_delete<THandler>(path)`",
-                                    "`http_request_t`",
-                                    "`http_response_t`",
-                                    "`use<TMiddleware>()`",
-                                    "typed DTO HTTP handler shape",
-                                    "raw `http_request_t` to `http_response_t` handler shape",
-                                    "HTTP handler shape resolution algorithm",
-                                    "response precedence rules",
-                                    "JSON body binding",
-                                    "raw HTTP body/header binding",
-                                    "route parameter binding",
-                                    "query string binding",
-                                    "correlation id propagation",
-                                    "HTTP handler e2e test through `zlink::http_client`",
-                                    "HTTP hosted service",
-                                    "`Boost.Beast` runtime private 구현",
-                                    "HTTPS endpoint",
-                                    "TLS certificate/private key option",
-                                    "keep-alive request loop",
-                                    "request header/body timeout",
-                                    "request body/header size limit",
-                                    "max connections와 overload response",
-                                    "graceful shutdown drain",
-                                    "Drogon/Oat++급 C++ backend API framework 성능 gate",
-                                    "public header에 나타나지 않는다",
-                                    "MVC controller, template rendering, Razor page, WebSocket transport는 포함하지 않는다",
-                                    "`zlink::http_client`로 `GET`, `POST`, `PUT`, `DELETE` route를 호출한다",
-                                    "raw request sync",
-                                    "raw content type",
-                                    "content length",
-                                    "metrics/logging"};
+    const std::string required[] = {
+      "`contracts/http/*`",
+      "`http_options_builder_t`",
+      "`options.http().listen(endpoint)`",
+      "`options.http().configure_tls(...)`",
+      "`options.http().configure_server(...)`",
+      "`map_get<THandler>(path)`",
+      "`map_post<THandler>(path)`",
+      "`map_put<THandler>(path)`",
+      "`map_delete<THandler>(path)`",
+      "`http_request_t`",
+      "`http_response_t`",
+      "`use<TMiddleware>()`",
+      "typed DTO HTTP handler shape",
+      "raw `http_request_t` to `http_response_t` handler shape",
+      "HTTP handler shape resolution algorithm",
+      "response precedence rules",
+      "JSON body binding",
+      "raw HTTP body/header binding",
+      "route parameter binding",
+      "query string binding",
+      "correlation id propagation",
+      "HTTP handler e2e test through `zlink::http_client`",
+      "HTTP hosted service",
+      "`Boost.Beast` runtime private 구현",
+      "HTTPS endpoint",
+      "TLS certificate/private key option",
+      "keep-alive request loop",
+      "request header/body timeout",
+      "request body/header size limit",
+      "max connections와 overload response",
+      "graceful shutdown drain",
+      "Drogon/Oat++급 C++ backend API framework 성능 gate",
+      "public header에 나타나지 않는다",
+      "MVC controller, template rendering, Razor page, WebSocket transport는 포함하지 않는다",
+      "`zlink::http_client`로 `GET`, `POST`, `PUT`, `DELETE` route를 호출한다",
+      "raw request sync",
+      "raw content type",
+      "content length",
+      "metrics/logging"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 19 HTTP hosting lacks required contract: " << needle << '\n';
@@ -1285,14 +1292,13 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
         }
     }
 
-    const std::string non_ctest_commands[] = {
-      "cmake --build framework/languages/cpp/build",
-      "cmake -S framework/languages/cpp",
-      "-B framework/languages/cpp/build-coverage",
-      "-DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON",
-      "-DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80",
-      "cmake --build framework/languages/cpp/build-coverage",
-      "git diff --check -- framework/languages/cpp bindings/cpp"};
+    const std::string non_ctest_commands[] = {"cmake --build framework/languages/cpp/build",
+                                              "cmake -S framework/languages/cpp",
+                                              "-B framework/languages/cpp/build-coverage",
+                                              "-DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON",
+                                              "-DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80",
+                                              "cmake --build framework/languages/cpp/build-coverage",
+                                              "git diff --check -- framework/languages/cpp bindings/cpp"};
     for (const auto &command : non_ctest_commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 22 verification commands lack non-CTest gate: " << command << '\n';
@@ -1903,9 +1909,9 @@ int main ()
                          "runtime::handler_coroutine_executor ().submit");
     ok &= file_contains (root / "framework/src/runtime/handlers/handler_registry.cpp",
                          "co_await runtime::await_task_result");
-    ok &=
-      file_contains (root / "framework/src/runtime/http/http_host_service.cpp", "handler_coroutine_executor ().submit");
-    ok &= file_contains (root / "framework/src/runtime/http/http_host_service.cpp", "co_await await_task_result");
+    ok &= file_contains (root / "framework/src/runtime/http/http_request_pipeline.cpp",
+                         "handler_coroutine_executor ().submit");
+    ok &= file_contains (root / "framework/src/runtime/http/http_request_pipeline.cpp", "co_await await_task_result");
     ok &= file_contains (root / "framework/src/runtime/spots/spot_runtime.cpp",
                          "runtime::handler_coroutine_executor ().submit");
     ok &= file_contains (root / "framework/src/runtime/spots/spot_runtime.cpp", "co_await runtime::await_task_result");
@@ -2000,13 +2006,16 @@ int main ()
     ok &= file_does_not_contain (root / "framework/include/zlink/framework/contracts/http/http.hpp",
                                  "http_options_builder_t &tls",
                                  "HTTP hosting public API must use configure_tls, not tls compatibility aliases");
-    ok &= file_does_not_contain (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp",
-                                 ".tls (",
+    ok &= file_does_not_contain (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp", ".tls (",
                                  "HTTP hosting regression tests must use configure_tls final API");
-    ok &= file_contains (root / "framework/src/runtime/http/http_host_service.cpp", "asio::thread_pool _io_workers");
-    ok &= file_does_not_contain (root / "framework/src/runtime/http/http_host_service.cpp",
-                                 "std::thread connection_thread",
+    ok &= file_contains (root / "framework/src/runtime/http/http_listener.cpp", "asio::thread_pool _io_workers");
+    ok &= file_does_not_contain (root / "framework/src/runtime/http/http_listener.cpp", "std::thread connection_thread",
                                  "HTTP hosting must not create one OS thread per connection");
+    ok &= file_contains (root / "framework/src/runtime/http/http_listener.cpp", "_tls_context.emplace");
+    ok &= file_contains (root / "framework/src/runtime/http/http_listener.cpp", "*_tls_context");
+    ok &= file_does_not_contain (root / "framework/src/runtime/http/http_listener.cpp",
+                                 "asio::ssl::context context (asio::ssl::context::tls_server)",
+                                 "HTTP hosting must reuse listener TLS context instead of creating it per connection");
 
     ok &= public_headers_do_not_include_runtime (root / "framework/include");
     ok &= public_headers_do_not_include_runtime (root / "connector/include");

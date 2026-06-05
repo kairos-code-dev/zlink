@@ -27,7 +27,7 @@ foreach(required_text IN ITEMS
     "처리량 하락 10% 이내"
     "처리량 하락 15% 이내"
     "p95 latency"
-    "I/O executor와 framework handler executor 분리"
+    "bounded I/O worker pool"
     "route table"
     "connection buffer")
   string(FIND "${combined_text}" "${required_text}" required_pos)

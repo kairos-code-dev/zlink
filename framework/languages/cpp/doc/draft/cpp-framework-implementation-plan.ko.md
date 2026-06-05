@@ -1036,13 +1036,13 @@ HTTP hosting을 core framework 기능으로 구현하는 것이다.
 - request body/header size limit
 - max connections와 overload response
 - graceful shutdown drain
-- HTTP server logging/metrics/health integration
+- HTTP server logging/health integration
 - Drogon/Oat++ 분석 기반 고성능 runtime 구조
-- I/O executor와 framework handler executor 분리
-- connection별 executor affinity와 lock 최소화
+- bounded I/O worker pool과 framework handler executor 분리
+- connection당 OS thread 생성 방지와 lock 최소화
 - startup route table compile
 - connection buffer와 response serializer 재사용
-- hot path logging/metrics allocation 최소화
+- hot path logging allocation 최소화
 - HTTP handler e2e와 HTTP server perf gate 분리
 - Drogon/Oat++급 C++ backend API framework 성능 gate
 
@@ -1066,13 +1066,12 @@ HTTP hosting을 core framework 기능으로 구현하는 것이다.
 - exception, logging, validation, auth, correlation id 처리는 middleware/filter extension
   point로 둔다.
 - 내장 HTTP server는 keep-alive, timeout, body/header limit, max connections, graceful shutdown
-  drain, connection/request metrics를 제공한다.
-- 내장 HTTP server는 I/O executor, connection lifecycle, route dispatch, handler executor를
-  분리한다. user handler가 I/O event loop를 장시간 점유하는 구조이면 완료로 보지 않는다.
+  drain을 제공한다.
+- 내장 HTTP server는 bounded I/O worker pool, connection lifecycle, route dispatch,
+  handler executor를 분리한다. connection마다 OS thread를 새로 만드는 구조이면 완료로 보지 않는다.
 - route table, TLS context, serializer registry는 startup에서 준비하고 request마다 다시 만들지
   않는다.
-- request hot path의 logging/metrics는 global mutex나 high-cardinality metric label에 의존하지
-  않는다.
+- request hot path의 logging은 global mutex나 high-cardinality label에 의존하지 않는다.
 - plain HTTP route와 JSON route는 같은 조건에서 측정한 `Drogon`, `Oat++` baseline 중 더 빠른
   baseline 대비 처리량 하락 10% 이내여야 한다. HTTPS JSON route는 같은 TLS 조건의 baseline 대비
   처리량 하락 15% 이내여야 한다. 이 성능 gate를 통과하지 못하면 Goal 19는 완료로 보지 않는다.
@@ -1080,7 +1079,8 @@ HTTP hosting을 core framework 기능으로 구현하는 것이다.
   Oat++ server를 호출해 client 구현 비용이 server 수치에 섞이지 않게 한다.
 - `framework-http-perf` label은 정책 문서 검사와 report gate를 모두 포함한다. 최종 완료 판단에서는
   `ZLINK_FRAMEWORK_HTTP_PERF_REPORT`에 perf runner가 생성한 CMake report를 지정하고
-  `ZLINK_FRAMEWORK_HTTP_PERF_REQUIRED=1`로 실행해야 한다.
+  `ZLINK_FRAMEWORK_HTTP_PERF_REQUIRED=1`로 실행해야 한다. report가 없는 기본 regression 실행은
+  perf 기준을 평가하지 않았다는 의미이며, 최종 성능 완료 증거가 아니다.
 - HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아니라
   `zlink::http_client`로 `GET`, `POST`, `PUT`, `DELETE` route를 호출한다.
 - TicTacToe sample은 HTTP `POST /games`로 시작한다.

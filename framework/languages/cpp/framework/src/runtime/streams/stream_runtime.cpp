@@ -72,6 +72,38 @@ class stream_write_call_state_t
     bool _compressed = false;
 };
 
+class stream_session_dispatcher_t
+{
+  public:
+    explicit stream_session_dispatcher_t (stream_state_t &stream) : _stream (stream) {}
+
+    result_t<void> dispatch (std::string operation, std::function<task_t<void> ()> callback) const
+    {
+        record_operation (std::move (operation));
+        return runtime::handler_coroutine_executor ()
+          .submit<void> ([callback = std::move (callback)] () mutable -> boost::asio::awaitable<result_t<void>> {
+              try {
+                  auto callback_task = callback ();
+                  (co_await runtime::await_task_result (std::move (callback_task))).value ();
+                  co_return result_t<void>::success ();
+              }
+              catch (const framework_exception_t &error) {
+                  co_return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+              }
+              catch (...) {
+                  co_return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                                     "stream session callback threw an exception");
+              }
+          })
+          .result ();
+    }
+
+  private:
+    void record_operation (std::string operation) const { _stream.serial_log.push_back (std::move (operation)); }
+
+    stream_state_t &_stream;
+};
+
 } // namespace detail
 
 stream_write_call_t::stream_write_call_t (result_t<void> result) :
@@ -621,23 +653,7 @@ result_t<void> stream_runtime_t::dispatch_serial (stream_t &stream,
                                                   std::string operation,
                                                   std::function<task_t<void> ()> callback) const
 {
-    stream._state->serial_log.push_back (operation);
-    return runtime::handler_coroutine_executor ()
-      .submit<void> ([callback = std::move (callback)] () mutable -> boost::asio::awaitable<result_t<void>> {
-          try {
-              auto callback_task = callback ();
-              (co_await runtime::await_task_result (std::move (callback_task))).value ();
-              co_return result_t<void>::success ();
-          }
-          catch (const framework_exception_t &error) {
-              co_return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
-          }
-          catch (...) {
-              co_return result_t<void>::failure (framework_error_kind_t::request_failed,
-                                                 "stream session callback threw an exception");
-          }
-      })
-      .result ();
+    return stream_session_dispatcher_t (*stream._state).dispatch (std::move (operation), std::move (callback));
 }
 
 result_t<void> stream_runtime_t::dispatch_connected (packet_stream_session_t &session, stream_t &stream) const

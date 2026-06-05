@@ -85,7 +85,8 @@ add_library(zlink_framework STATIC
   framework/src/runtime/handlers/handler_registry.cpp
   framework/src/runtime/dispatch/projection.cpp
   framework/src/runtime/host/app.cpp
-  framework/src/runtime/http/http_host_service.cpp
+  framework/src/runtime/http/http_listener.cpp
+  framework/src/runtime/http/http_request_pipeline.cpp
   framework/src/runtime/host/framework_runtime.cpp
   framework/src/runtime/messaging/client_call_codec.cpp
   framework/src/runtime/messaging/envelope_codec.cpp

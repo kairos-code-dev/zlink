@@ -4,12 +4,16 @@
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/Contracts/Messaging/received.hpp>
 #include <zlink/Contracts/Service/operation_contracts.hpp>
+#include <zlink/Contracts/Sockets/results.hpp>
 #include <zlink/codec/json.hpp>
 #include <zlink/stream_connector.hpp>
 
+#include <chrono>
 #include <cstdint>
+#include <cerrno>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace zlink::samples
@@ -128,13 +132,42 @@ inline zlink::message_t make_stream_push_frame (std::string packet_name, zlink::
                               payload.to_string ());
 }
 
+inline bool is_transient_stream_send_backpressure (const zlink::submit_error_t &error)
+{
+    return error.result () == zlink::submit_result_t::backpressured || error.internal_errno () == EAGAIN
+           || error.internal_errno () == EWOULDBLOCK;
+}
+
+inline void send_stream_bytes (zlink::received_t &inbound, const std::string &bytes)
+{
+    constexpr int max_attempts = 200;
+    for (int attempt = 0; attempt < max_attempts; ++attempt) {
+        try {
+            auto accepted = inbound.send ()
+                              .message (zlink::message_t::from (bytes))
+                              .flags (static_cast<int> (zlink::send_flags_t::dontwait))
+                              .submit ();
+            if (accepted) {
+                return;
+            }
+        }
+        catch (const zlink::submit_error_t &error) {
+            if (!is_transient_stream_send_backpressure (error)) {
+                throw;
+            }
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    throw zlink::submit_error_t (zlink::submit_result_t::backpressured, EAGAIN);
+}
+
 inline void send_stream_frames (zlink::received_t &inbound, std::vector<zlink::message_t> frames)
 {
     std::string bytes;
     for (const auto &frame : frames) {
         bytes += frame.to_string ();
     }
-    inbound.send ().message (zlink::message_t::from (std::move (bytes))).submit ();
+    send_stream_bytes (inbound, bytes);
 }
 
 template <typename TReply>

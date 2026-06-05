@@ -4,6 +4,7 @@
 #include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
+#include <zlink/framework/contracts/configuration/detail/framework_options_validation.hpp>
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
@@ -30,253 +31,6 @@
 
 namespace zlink::framework
 {
-
-namespace detail
-{
-
-inline bool is_blank (const std::string &value)
-{
-    return std::all_of (value.begin (), value.end (), [] (unsigned char ch) { return std::isspace (ch) != 0; });
-}
-
-inline void require_non_blank (const std::string &value, const char *message)
-{
-    if (value.empty () || is_blank (value)) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error, message);
-    }
-}
-
-enum class handler_group_kind_t
-{
-    request,
-    send,
-    publish
-};
-
-template <typename T> concept static_topic_name = requires
-{
-    {
-        T::topic_name
-    } -> std::convertible_to<const char *>;
-};
-
-template <typename T> concept static_session_name = requires
-{
-    {
-        T::session_name
-    } -> std::convertible_to<const char *>;
-};
-
-template <typename THandler, typename TPayload> std::string handler_topic_name ()
-{
-    if constexpr (static_topic_name<THandler>) {
-        return THandler::topic_name;
-    } else {
-        return message_name<TPayload> ();
-    }
-}
-
-template <typename TSession> std::string stream_session_name ()
-{
-    if constexpr (static_session_name<TSession>) {
-        return TSession::session_name;
-    } else {
-        return message_name<TSession> ();
-    }
-}
-
-template <typename TSession, typename TDependencies> struct injected_stream_session_registrar_t;
-
-template <typename TSession, typename... TDependencies>
-struct injected_stream_session_registrar_t<TSession, dependency_list_t<TDependencies...>>
-{
-    static void add (service_collection_t &services)
-    {
-        if (services.contains (std::type_index (typeid (TSession)))) {
-            return;
-        }
-        if constexpr (sizeof...(TDependencies) == 0) {
-            services.add_scoped<TSession> ();
-        } else {
-            services.add_scoped<TSession, TDependencies...> ();
-        }
-    }
-};
-
-struct handler_group_options_state_t
-{
-    using installer_t = std::function<void (const std::string &)>;
-    using serializer_installer_t = std::function<void ()>;
-
-    struct channel_binding_t
-    {
-        std::string channel_name;
-        std::set<handler_group_kind_t> allowed_kinds;
-        std::string surface_name;
-    };
-
-    struct installer_binding_t
-    {
-        handler_group_kind_t kind;
-        installer_t installer;
-    };
-
-    std::map<std::string, std::vector<channel_binding_t>> channels_by_group;
-    std::map<std::string, std::vector<installer_binding_t>> installers_by_group;
-    std::map<std::string, std::set<std::pair<handler_group_kind_t, std::string>>> handler_packets_by_group;
-    std::vector<serializer_installer_t> json_serializer_installers;
-    std::set<std::type_index> json_serializer_types;
-    bool json_enabled = false;
-
-    void add_channel (const std::string &group_name,
-                      const std::string &channel_name,
-                      std::set<handler_group_kind_t> allowed_kinds,
-                      std::string surface_name)
-    {
-        require_non_blank (group_name, "handler group name is required");
-        auto binding = channel_binding_t{channel_name, std::move (allowed_kinds), std::move (surface_name)};
-        auto found = installers_by_group.find (group_name);
-        if (found != installers_by_group.end ()) {
-            for (const auto &installer : found->second) {
-                validate_compatible (group_name, binding, installer.kind);
-            }
-        }
-
-        auto &channels = channels_by_group[group_name];
-        channels.push_back (binding);
-        if (found == installers_by_group.end ()) {
-            return;
-        }
-        for (const auto &installer : found->second) {
-            installer.installer (channel_name);
-        }
-    }
-
-    void add_installer (std::string group_name, handler_group_kind_t kind, installer_t installer)
-    {
-        require_non_blank (group_name, "handler group name is required");
-        auto found = channels_by_group.find (group_name);
-        if (found != channels_by_group.end ()) {
-            for (const auto &channel : found->second) {
-                validate_compatible (group_name, channel, kind);
-            }
-        }
-
-        auto &installers = installers_by_group[group_name];
-        installers.push_back (installer_binding_t{kind, installer});
-        if (found == channels_by_group.end ()) {
-            return;
-        }
-        for (const auto &channel : found->second) {
-            installer (channel.channel_name);
-        }
-    }
-
-    void add_handler_packet (const std::string &group_name, handler_group_kind_t kind, std::string packet_name)
-    {
-        require_non_blank (group_name, "handler group name is required");
-        auto &packets = handler_packets_by_group[group_name];
-        if (!packets.emplace (kind, std::move (packet_name)).second) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "duplicate handler registration");
-        }
-    }
-
-    void add_json_serializer_installer (serializer_installer_t installer)
-    {
-        json_serializer_installers.push_back (std::move (installer));
-        if (!json_enabled) {
-            return;
-        }
-        json_serializer_installers.back () ();
-    }
-
-    bool channel_exposes_any (const std::string &channel_name, const std::set<handler_group_kind_t> &kinds) const
-    {
-        for (const auto &[group_name, channels] : channels_by_group) {
-            const auto channel_found = std::any_of (channels.begin (), channels.end (),
-                                                    [&] (const auto &c) { return c.channel_name == channel_name; });
-            if (!channel_found) {
-                continue;
-            }
-            const auto installers = installers_by_group.find (group_name);
-            if (installers == installers_by_group.end ()) {
-                continue;
-            }
-            for (const auto &installer : installers->second) {
-                if (kinds.contains (installer.kind)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    static void
-    validate_compatible (const std::string &group_name, const channel_binding_t &channel, handler_group_kind_t kind)
-    {
-        if (channel.allowed_kinds.contains (kind)) {
-            return;
-        }
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     channel.surface_name + " '" + channel.channel_name + "' maps handler group '"
-                                       + group_name + "' with an incompatible handler kind");
-    }
-};
-
-struct framework_options_state_t
-{
-    std::set<std::string> spot_nodes;
-    std::map<std::string, std::function<void ()>> spot_node_appliers;
-    std::set<std::string> spot_nodes_with_runtime_capability;
-    std::set<std::string> spot_nodes_with_router;
-    std::set<std::string> spot_nodes_with_pub_sub;
-    std::vector<std::function<void (zlink_builder_t &)>> deferred_zlink_actions;
-    std::map<std::string, std::function<void (zlink_builder_t &)>> keyed_zlink_actions;
-    zlink_builder_t *active_zlink = nullptr;
-    bool registry_spot_remote_addresses_enabled = false;
-    std::optional<std::string> registry_spot_route_channel;
-    std::vector<std::string> registry_discovery_endpoints;
-    std::set<std::string> discovery_backed_capabilities;
-    std::set<std::string> client_server_channels;
-    std::set<std::string> fanout_channels;
-    std::set<std::string> client_server_channels_with_client;
-    std::set<std::string> client_server_channels_with_server;
-    std::map<std::string, std::string> client_server_spot_route_egress_targets;
-    std::set<std::string> fanout_channels_with_publisher;
-    std::set<std::string> fanout_channels_with_subscriber;
-    std::map<std::string, std::set<std::string>> attached_channel_clients_by_node;
-    std::map<std::string, std::set<std::string>> attached_publishers_by_node;
-    std::map<std::string, std::map<std::string, std::vector<std::string>>>
-      attached_channel_client_manual_connections_by_node;
-    std::map<std::string, std::map<std::string, std::vector<std::string>>>
-      attached_publisher_manual_connections_by_node;
-    std::set<std::string> accepted_spot_route_channels;
-    std::map<std::string, std::set<std::string>> accepted_spot_route_channels_by_node;
-    std::map<std::string, std::map<std::string, std::vector<std::string>>>
-      accepted_spot_route_manual_connections_by_node;
-    std::set<std::string> dealer_mesh_channels;
-    std::set<std::string> dealer_mesh_channels_with_peer_path;
-    std::set<std::string> route_mesh_channels;
-    std::set<std::string> route_mesh_channels_with_bind;
-    std::map<std::string, std::string> route_mesh_spot_route_egress_targets;
-    http_options_builder_t http;
-    message_metadata_policy_t metadata_policy;
-    dispatch_options_t dispatch;
-    bool applied = false;
-
-    void add_zlink_action (std::function<void (zlink_builder_t &)> action)
-    {
-        deferred_zlink_actions.push_back (std::move (action));
-    }
-
-    void set_zlink_action (std::string key, std::function<void (zlink_builder_t &)> action)
-    {
-        keyed_zlink_actions[std::move (key)] = std::move (action);
-    }
-};
-
-} // namespace detail
 
 class handler_options_builder_t
 {
@@ -1230,44 +984,23 @@ class spot_node_options_builder_t
                 }
             }
             for (const auto &accepted_route_channel : accepted_route_channels) {
-                const auto node_connections =
-                  options->accepted_spot_route_manual_connections_by_node.find (spot_node_name);
-                std::vector<std::string> manual_connections;
-                if (node_connections != options->accepted_spot_route_manual_connections_by_node.end ()) {
-                    const auto route_connections = node_connections->second.find (accepted_route_channel);
-                    if (route_connections != node_connections->second.end ()) {
-                        manual_connections = route_connections->second;
-                    }
-                }
+                auto manual_connections = detail::manual_connections_for (
+                  options->accepted_spot_route_manual_connections_by_node, spot_node_name, accepted_route_channel);
                 spot_node.accept_routes_from_channel (accepted_route_channel, std::move (manual_connections));
             }
             const auto attached_clients = options->attached_channel_clients_by_node.find (spot_node_name);
             if (attached_clients != options->attached_channel_clients_by_node.end ()) {
                 for (const auto &channel_name : attached_clients->second) {
-                    std::vector<std::string> manual_connections;
-                    const auto node_connections =
-                      options->attached_channel_client_manual_connections_by_node.find (spot_node_name);
-                    if (node_connections != options->attached_channel_client_manual_connections_by_node.end ()) {
-                        const auto channel_connections = node_connections->second.find (channel_name);
-                        if (channel_connections != node_connections->second.end ()) {
-                            manual_connections = channel_connections->second;
-                        }
-                    }
+                    auto manual_connections = detail::manual_connections_for (
+                      options->attached_channel_client_manual_connections_by_node, spot_node_name, channel_name);
                     spot_node.attach_channel_client (channel_name, std::move (manual_connections));
                 }
             }
             const auto attached_publishers = options->attached_publishers_by_node.find (spot_node_name);
             if (attached_publishers != options->attached_publishers_by_node.end ()) {
                 for (const auto &channel_name : attached_publishers->second) {
-                    std::vector<std::string> manual_connections;
-                    const auto node_connections =
-                      options->attached_publisher_manual_connections_by_node.find (spot_node_name);
-                    if (node_connections != options->attached_publisher_manual_connections_by_node.end ()) {
-                        const auto channel_connections = node_connections->second.find (channel_name);
-                        if (channel_connections != node_connections->second.end ()) {
-                            manual_connections = channel_connections->second;
-                        }
-                    }
+                    auto manual_connections = detail::manual_connections_for (
+                      options->attached_publisher_manual_connections_by_node, spot_node_name, channel_name);
                     spot_node.attach_publisher (channel_name, std::move (manual_connections));
                 }
             }
@@ -1452,7 +1185,7 @@ class zlink_framework_options_t
         if (configure) {
             configure (_options->dispatch);
         }
-        validate_dispatch_options (_options->dispatch);
+        detail::validate_dispatch_options (_options->dispatch);
         return *this;
     }
 
@@ -1551,7 +1284,7 @@ class zlink_framework_options_t
             return;
         }
         _options->http.validate ();
-        validate_framework_options (*_options, *_handler_groups);
+        detail::validate_framework_options (*_options, *_handler_groups);
         _options->active_zlink = _zlink;
         try {
             for (const auto &action : _options->deferred_zlink_actions) {
@@ -1573,188 +1306,6 @@ class zlink_framework_options_t
     }
 
   private:
-    static void validate_dispatch_options (const dispatch_options_t &options)
-    {
-        if (options.unhandled.send == unhandled_dispatch_action_t::reply_error) {
-            throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
-              "unhandled send dispatch cannot use reply_error because send has no reply path");
-        }
-        if (options.unhandled.publish == unhandled_dispatch_action_t::reply_error) {
-            throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
-              "unhandled publish dispatch cannot use reply_error because publish has no reply path");
-        }
-        if (std::isnan (options.diagnostics.sample_rate) || options.diagnostics.sample_rate < 0.0
-            || options.diagnostics.sample_rate > 1.0) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "dispatch diagnostics sample rate must be between 0.0 and 1.0");
-        }
-    }
-
-    static void validate_framework_options (const detail::framework_options_state_t &options,
-                                            const detail::handler_group_options_state_t &handler_groups)
-    {
-        if (!options.discovery_backed_capabilities.empty () && options.registry_discovery_endpoints.empty ()) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         *options.discovery_backed_capabilities.begin ()
-                                           + " requires registry discovery or a manual endpoint");
-        }
-        for (const auto &channel_name : options.client_server_channels) {
-            if (!options.client_server_channels_with_server.contains (channel_name)
-                && !options.client_server_channels_with_client.contains (channel_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "client/server channel '" + channel_name
-                                               + "' must enable server or client capability");
-            }
-        }
-        for (const auto &[channel_name, _] : options.client_server_spot_route_egress_targets) {
-            if (!options.client_server_channels.contains (channel_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "client/server channel '" + channel_name
-                                               + "' routed SPOT egress is not registered");
-            }
-            if (!options.client_server_channels_with_client.contains (channel_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "client/server channel '" + channel_name
-                                               + "' routed SPOT egress requires client capability");
-            }
-        }
-        for (const auto &channel_name : options.fanout_channels) {
-            if (!options.fanout_channels_with_publisher.contains (channel_name)
-                && !options.fanout_channels_with_subscriber.contains (channel_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "fanout channel '" + channel_name
-                                               + "' must enable publisher or subscriber capability");
-            }
-        }
-        for (const auto &channel_name : options.dealer_mesh_channels) {
-            if (!options.dealer_mesh_channels_with_peer_path.contains (channel_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "dealer mesh channel '" + channel_name
-                                               + "' requires a bind or connect endpoint");
-            }
-        }
-        for (const auto &channel_name : options.route_mesh_channels) {
-            if (!options.route_mesh_channels_with_bind.contains (channel_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "route mesh channel '" + channel_name + "' requires a bind endpoint");
-            }
-        }
-        for (const auto &spot_node_name : options.spot_nodes) {
-            if (!options.spot_nodes_with_runtime_capability.contains (spot_node_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "SPOT node '" + spot_node_name
-                                               + "' must enable router or pub/sub capability");
-            }
-        }
-        for (const auto &[spot_node_name, channel_names] : options.attached_channel_clients_by_node) {
-            for (const auto &channel_name : channel_names) {
-                if (!options.client_server_channels.contains (channel_name)) {
-                    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                                 "SPOT node '" + spot_node_name + "' attached channel client '"
-                                                   + channel_name + "' is not registered");
-                }
-                auto manual_connections_empty = true;
-                const auto node_connections =
-                  options.attached_channel_client_manual_connections_by_node.find (spot_node_name);
-                if (node_connections != options.attached_channel_client_manual_connections_by_node.end ()) {
-                    const auto channel_connections = node_connections->second.find (channel_name);
-                    manual_connections_empty =
-                      channel_connections == node_connections->second.end () || channel_connections->second.empty ();
-                }
-                if (options.registry_discovery_endpoints.empty () && manual_connections_empty) {
-                    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                                 "SPOT node '" + spot_node_name + "' attached channel client '"
-                                                   + channel_name
-                                                   + "' requires registry discovery or manual connections");
-                }
-            }
-        }
-        std::set<std::string> attached_publisher_channels;
-        for (const auto &[spot_node_name, channel_names] : options.attached_publishers_by_node) {
-            if (!options.spot_nodes_with_pub_sub.contains (spot_node_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "SPOT node '" + spot_node_name
-                                               + "' attaches publisher clients but must enable pub/sub capability");
-            }
-            for (const auto &channel_name : channel_names) {
-                if (!attached_publisher_channels.insert (channel_name).second) {
-                    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                                 "duplicate SPOT publisher client channel '" + channel_name + "'");
-                }
-                if (!options.fanout_channels.contains (channel_name)) {
-                    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                                 "SPOT node '" + spot_node_name + "' publisher client '" + channel_name
-                                                   + "' is not registered");
-                }
-                if (!options.fanout_channels_with_publisher.contains (channel_name)) {
-                    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                                 "SPOT node '" + spot_node_name + "' publisher client '" + channel_name
-                                                   + "' requires publisher capability");
-                }
-            }
-        }
-        for (const auto &[spot_node_name, channel_names] : options.accepted_spot_route_channels_by_node) {
-            if (!options.spot_nodes_with_router.contains (spot_node_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "SPOT node '" + spot_node_name
-                                               + "' accepts routes but must enable router capability");
-            }
-            for (const auto &channel_name : channel_names) {
-                const auto regular_channel = options.client_server_channels.contains (channel_name);
-                const auto route_channel = options.route_mesh_channels.contains (channel_name);
-                if (regular_channel && route_channel) {
-                    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                                 "SPOT route channel '" + channel_name
-                                                   + "' is ambiguous because both a client/server channel and a "
-                                                     "route mesh channel use the same name");
-                }
-                if (options.fanout_channels.contains (channel_name)
-                    || options.dealer_mesh_channels.contains (channel_name)) {
-                    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                                 "SPOT route channel '" + channel_name
-                                                   + "' must be a client/server channel or a route mesh channel");
-                }
-                if (!regular_channel && !route_channel) {
-                    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                                 "SPOT route channel '" + channel_name + "' is not registered");
-                }
-                auto manual_connections_empty = true;
-                const auto node_connections =
-                  options.accepted_spot_route_manual_connections_by_node.find (spot_node_name);
-                if (node_connections != options.accepted_spot_route_manual_connections_by_node.end ()) {
-                    const auto route_connections = node_connections->second.find (channel_name);
-                    manual_connections_empty =
-                      route_connections == node_connections->second.end () || route_connections->second.empty ();
-                }
-                if (options.registry_discovery_endpoints.empty () && manual_connections_empty) {
-                    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                                 "SPOT route channel '" + channel_name + "' on node '" + spot_node_name
-                                                   + "' requires registry discovery or manual connections");
-                }
-            }
-        }
-        for (const auto &channel_name : options.client_server_channels_with_server) {
-            if (options.accepted_spot_route_channels.contains (channel_name)) {
-                continue;
-            }
-            if (!handler_groups.channel_exposes_any (
-                  channel_name, {detail::handler_group_kind_t::request, detail::handler_group_kind_t::send})) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "client/server channel '" + channel_name
-                                               + "' server must map a request or send handler group");
-            }
-        }
-        for (const auto &channel_name : options.fanout_channels_with_subscriber) {
-            if (!handler_groups.channel_exposes_any (channel_name, {detail::handler_group_kind_t::publish})) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "fanout channel '" + channel_name
-                                               + "' subscriber must map a publish handler group");
-            }
-        }
-    }
-
     service_collection_t *_services;
     handler_registry_t *_handlers;
     serializer_registry_t *_serializers;

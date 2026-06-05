@@ -189,6 +189,46 @@ framework_error_kind_t map_registry_client_error (const std::exception &ex)
     return framework_error_kind_t::request_failed;
 }
 
+bool matches_service_summary_filter (const service_summary_entry_t &entry, const service_summary_filter_t &filter)
+{
+    if (filter.name && entry.name != *filter.name) {
+        return false;
+    }
+    if (filter.kind && entry.kind != *filter.kind) {
+        return false;
+    }
+    if (filter.role && entry.role != *filter.role) {
+        return false;
+    }
+    return true;
+}
+
+bool matches_topology_filter (const topology_entry_t &entry, const topology_filter_t &filter)
+{
+    if (filter.node_name && entry.node_name != *filter.node_name) {
+        return false;
+    }
+    if (filter.name && entry.name != *filter.name) {
+        return false;
+    }
+    if (filter.kind && entry.kind != *filter.kind) {
+        return false;
+    }
+    if (filter.role && entry.role != *filter.role) {
+        return false;
+    }
+    if (filter.source && entry.source != *filter.source) {
+        return false;
+    }
+    if (filter.state && entry.state != *filter.state) {
+        return false;
+    }
+    if (filter.routing_id && (!entry.routing_id || *entry.routing_id != *filter.routing_id)) {
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 registry_builder_t::registry_builder_t () : _state (std::make_shared<detail::registry_runtime_state_t> ())
@@ -304,16 +344,9 @@ std::vector<service_summary_entry_t> registry_query_t::service_summary (const se
 {
     std::vector<service_summary_entry_t> result;
     for (const auto &entry : _state->services) {
-        if (filter.name && entry.name != *filter.name) {
-            continue;
+        if (matches_service_summary_filter (entry, filter)) {
+            result.push_back (entry);
         }
-        if (filter.kind && entry.kind != *filter.kind) {
-            continue;
-        }
-        if (filter.role && entry.role != *filter.role) {
-            continue;
-        }
-        result.push_back (entry);
     }
     return result;
 }
@@ -327,30 +360,9 @@ std::vector<topology_entry_t> registry_query_t::topology (const topology_filter_
 {
     std::vector<topology_entry_t> result;
     for (const auto &entry : _state->topology) {
-        if (filter.node_name && entry.node_name != *filter.node_name) {
-            continue;
+        if (matches_topology_filter (entry, filter)) {
+            result.push_back (entry);
         }
-        if (filter.name && entry.name != *filter.name) {
-            continue;
-        }
-        if (filter.kind && entry.kind != *filter.kind) {
-            continue;
-        }
-        if (filter.role && entry.role != *filter.role) {
-            continue;
-        }
-        if (filter.source && entry.source != *filter.source) {
-            continue;
-        }
-        if (filter.state && entry.state != *filter.state) {
-            continue;
-        }
-        if (filter.routing_id) {
-            if (!entry.routing_id || *entry.routing_id != *filter.routing_id) {
-                continue;
-            }
-        }
-        result.push_back (entry);
     }
     return result;
 }

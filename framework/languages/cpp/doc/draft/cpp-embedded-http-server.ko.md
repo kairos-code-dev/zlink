@@ -119,7 +119,7 @@ endpoint가 등록되면 `app_t::add_zlink_framework(...)`가 이 service를 hos
 - header size limit
 - max connections와 overload response
 - graceful shutdown drain
-- connection/request metrics
+- connection/request observability extension point
 - request logging과 correlation id의 표준화
 - malformed request에 대한 `400 Bad Request`
 - server option startup validation
@@ -164,13 +164,13 @@ zlink가 받아들일 설계 원칙:
 
 | 기준 | Drogon/Oat++에서 본 형태 | zlink 반영 |
 |------|--------------------------|------------|
-| I/O model | event loop와 non-blocking request 처리 | Asio 기반 async accept/read/write를 1차 완료 기준으로 둔다 |
-| connection ownership | connection은 특정 worker에 붙는다 | state는 한 executor 안에서 갱신한다 |
+| I/O model | event loop와 non-blocking request 처리 | 1차 구현은 bounded worker pool로 connection I/O를 제한하고, perf 고도화에서 async read/write로 전환한다 |
+| connection ownership | connection은 특정 worker에 붙는다 | connection은 worker pool에서 처리하고 connection당 thread를 만들지 않는다 |
 | handler isolation | handler가 network loop를 오래 막지 않는다 | I/O executor와 handler executor를 분리한다 |
 | route dispatch | route metadata를 runtime 시작 전에 준비한다 | route table은 startup에서 compile한다 |
 | buffer lifecycle | connection/request buffer를 재사용한다 | Beast buffer, parser, response serializer 재사용 정책을 둔다 |
 | overload control | connection 수와 timeout으로 부하를 제한한다 | connection, timeout, size limit를 둔다 |
-| observability | request duration/status/connection 상태를 기록한다 | logging/metrics는 비동기 sink 또는 저비용 counter로 연결한다 |
+| observability | request duration/status/connection 상태를 기록한다 | logging은 app model에 연결하고 metrics는 별도 확장 gate로 둔다 |
 | public surface | framework 타입을 앞세우고 socket 타입은 숨긴다 | Beast/Asio/OpenSSL 타입은 public header에 노출하지 않는다 |
 
 따라서 zlink 내장 server는 아래 구조를 목표로 한다.
@@ -201,11 +201,11 @@ zlink가 받아들일 설계 원칙:
 +---------------------------+
 ```
 
-I/O executor는 socket read/write와 timeout을 처리한다. handler가 오래 걸리거나 zlink channel
-request를 기다리는 경우에도 I/O executor가 막히면 안 된다. handler 실행은 framework executor로
-넘기고, response write만 connection executor로 돌아와 수행한다.
+I/O worker는 socket read/write와 timeout을 처리한다. handler가 오래 걸리거나 zlink channel
+request를 기다리는 경우에도 connection마다 OS thread를 새로 만들면 안 된다. handler 실행은
+framework executor로 넘기고, response write는 connection I/O 흐름에서 수행한다.
 
-connection별 state는 mutex를 많이 쓰는 shared object가 아니라 connection executor 안에서만
+connection별 state는 mutex를 많이 쓰는 shared object가 아니라 connection 처리 흐름 안에서만
 갱신되는 object로 둔다. active connection registry는 shutdown, metrics, max connection 판단에
 필요한 최소 정보만 가진다.
 
@@ -218,11 +218,13 @@ lifecycle이 섞이지 않는다.
 고성능 목표는 benchmark 단계에서 갑자기 맞출 수 없다. runtime 구조가 처음부터 아래 조건을
 만족해야 한다.
 
-### 6.1 Event-loop 우선 구조
+### 6.1 Bounded I/O worker 구조
 
-- accept, read, write, TLS handshake는 async operation을 기준으로 구현한다.
+- 1차 구현은 connection I/O를 bounded worker pool로 제한한다.
+- connection당 OS thread를 만들지 않는다.
+- async accept/read/write 전환은 perf 고도화 단계에서 진행한다.
 - blocking handler, serializer, logging sink가 I/O executor를 막지 않도록 분리한다.
-- connection은 한 executor에 붙이고, connection 내부 request loop는 직렬 실행으로 단순화한다.
+- connection 내부 request loop는 직렬 실행으로 단순화한다.
 - cross-thread wakeup은 request 완료, shutdown, timeout 같은 필요한 지점으로 제한한다.
 - thread 수 기본값은 CPU core 수를 기준으로 잡되, public API에는 executor 세부 타입을 노출하지
   않는다.
@@ -392,12 +394,13 @@ TLS runtime 기준:
 
 ## 10. Accept 와 Connection 모델
 
-최종 1차 릴리스 목표는 async accept와 async connection read/write다. blocking accept와
-connection당 thread 모델은 단순하지만, connection 수가 늘면 운영 서버로 쓰기 어렵다.
+1차 릴리스 목표는 connection당 thread 모델을 피하고, bounded worker pool 안에서 connection
+I/O를 처리하는 것이다. 완전 async accept/read/write state machine은 고성능 perf gate를 안정적으로
+통과하기 위한 후속 고도화 단계다.
 
 목표 모델:
 
-- endpoint별 listener는 Asio executor 위에서 accept를 반복한다.
+- endpoint별 listener는 accept를 반복하고 accepted connection을 bounded worker pool로 넘긴다.
 - accepted connection은 `http_connection_t`로 넘긴다.
 - connection은 request loop를 가진다.
 - keep-alive가 켜진 HTTP/1.1 connection은 여러 request를 처리한다.
@@ -410,8 +413,8 @@ connection당 thread 모델은 단순하지만, connection 수가 늘면 운영 
 1. component를 먼저 분리한다.
 2. TLS context 재사용과 keep-alive loop를 추가한다.
 3. timeout과 limit를 추가한다.
-4. accept/read/write를 async로 전환한다.
-5. metrics와 stress test를 붙인다.
+4. metrics와 stress test를 붙인다.
+5. perf 결과가 baseline gate를 만족하지 못하면 accept/read/write를 async state machine으로 전환한다.
 
 ## 11. Request 처리 흐름
 
@@ -804,15 +807,21 @@ TLS context, executor tuning은 runtime option이나 내부 구현으로 숨긴�
 - TLS context를 listener 단위로 재사용한다.
 - keep-alive timeout과 max request count를 추가한다.
 
-### Phase 4. Async accept/read/write
+### Phase 4. Bounded connection I/O
 
-- blocking accept/read/write를 Asio async model로 전환한다.
+- connection당 thread 생성을 제거하고 bounded worker pool로 connection I/O를 처리한다.
 - executor/thread option을 정리한다.
 - graceful shutdown drain을 구현한다.
 - I/O executor와 handler executor를 분리한다.
-- connection state가 한 executor 안에서 직렬화되는지 검증한다.
+- connection state가 connection 처리 흐름 안에서 직렬화되는지 검증한다.
 - route table compile과 buffer reuse를 적용한다.
 - global mutex 기반 metrics/logging hot path를 제거한다.
+
+### Phase 4b. Async accept/read/write 고도화
+
+- perf gate가 bounded worker pool 구조로 통과하지 못하면 blocking read/write를 Asio async
+  state machine으로 전환한다.
+- async 전환은 public API 변경 없이 runtime 내부에서만 수행한다.
 
 ### Phase 5. Observability와 perf
 
@@ -838,11 +847,11 @@ TLS context, executor tuning은 runtime option이나 내부 구현으로 숨긴�
 - 샘플과 HTTP e2e는 `zlink::http_client`로 검증한다.
 - public header dependency gate에서 Boost.Beast, Boost.Asio, OpenSSL 타입이 노출되지 않는다.
 - framework regression label에 HTTP server 테스트가 포함된다.
-- I/O executor, connection lifecycle, route dispatch, handler executor가 분리되어 있고,
-  user handler가 I/O event loop를 장시간 점유하지 않는다.
+- connection I/O, route dispatch, handler executor가 분리되어 있고, connection마다 OS thread를
+  만들지 않는다.
 - route table, TLS context, serializer registry는 startup에서 준비되며 request마다 다시 만들지
   않는다.
-- hot path logging/metrics가 global mutex나 high-cardinality metric label에 의존하지 않는다.
+- hot path logging이 global mutex나 high-cardinality label에 의존하지 않는다.
 - Drogon/Oat++ baseline과 비교한 `framework-http-perf` gate를 통과한다.
 - POSD 리뷰에서 남은 얕은 모듈, 정보 누출, 순서 의존 설정 문제가 없어야 한다.
 

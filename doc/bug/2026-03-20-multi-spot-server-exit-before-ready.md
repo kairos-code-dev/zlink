@@ -91,7 +91,7 @@ server code상 `READY,<endpoint>` 출력 전에 실패할 수 있는 지점은 �
 
 ## Suspected fix areas
 
-- [`core/perf/multi/src/perf_multi_spot_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp)
+- [`core/perf/multi/src/perf_multi_spot_server.cpp`](../../bindings/c/perf/multi/src/perf_multi_spot_server.cpp)
   의 `apply_spot_server_options()` / `zlink_send_ready_handler()` attach
 - core `spot_node` / `spot_pub` send-ready handler attach contract
 - `SPOT` service public option support matrix

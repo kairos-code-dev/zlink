@@ -1,4 +1,4 @@
-[English](./zmp-protocol.md) | [한국어](./zmp-protocol.ko.md)
+[한국어](./zmp-protocol.ko.md)
 
 [가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md)
 

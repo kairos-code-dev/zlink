@@ -124,7 +124,7 @@ For callback mode:
 
 ## Suspected fix areas
 
-- [`core/src/api/zlink.cpp`](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp)
+- [`core/src/api/zlink.cpp`](../../core/src/api/core/zlink.cpp)
   `recv_socket_subscribe_parts()`
 - `PUB/SUB` multipart framing around `zlink_publish()` + `zlink_subscribe()`
 - multi-process warmup/drain transitions if they expose an ordering bug that

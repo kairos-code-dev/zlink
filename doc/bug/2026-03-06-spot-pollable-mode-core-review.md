@@ -99,7 +99,7 @@
 
 이미 수정한 부분:
 - `process_sub()`는 `_sub_pollable_mode != 0`이면 skip
-  - [spot_node.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp)
+  - [spot_node.cpp](../../core/src/services/spot/spot_node.cpp)
 
 하지만 여전히 control thread 경로에서 `_sub`를 건드립니다.
 
@@ -109,7 +109,7 @@
   - `_sub->connect(...)`
   - `_sub->term_endpoint(...)`
 - control tick 경로에서 `flush_pending()` 호출
-  - [spot_node.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp)
+  - [spot_node.cpp](../../core/src/services/spot/spot_node.cpp)
 
 즉 현재 pollable mode는:
 

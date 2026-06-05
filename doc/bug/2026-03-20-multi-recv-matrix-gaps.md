@@ -61,11 +61,11 @@ Observed success:
 
 ## Suspected fix areas
 
-- [`core/perf/multi/src/perf_multi_dealer_dealer_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_dealer_dealer_server.cpp)
-- [`core/perf/multi/src/perf_multi_dealer_router_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_dealer_router_server.cpp)
-- [`core/perf/multi/src/perf_multi_router_router_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_router_router_server.cpp)
-- [`core/perf/multi/src/perf_multi_pubsub_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_pubsub_server.cpp)
-- [`core/perf/multi/common/perf_common.hpp`](/home/hep7/project/kairos/zlink/core/perf/multi/common/perf_common.hpp)
+- [`core/perf/multi/src/perf_multi_dealer_dealer_server.cpp`](../../bindings/c/perf/multi/src/perf_multi_dealer_dealer_server.cpp)
+- [`core/perf/multi/src/perf_multi_dealer_router_server.cpp`](../../bindings/c/perf/multi/src/perf_multi_dealer_router_server.cpp)
+- [`core/perf/multi/src/perf_multi_router_router_server.cpp`](../../bindings/c/perf/multi/src/perf_multi_router_router_server.cpp)
+- [`core/perf/multi/src/perf_multi_pubsub_server.cpp`](../../bindings/c/perf/multi/src/perf_multi_pubsub_server.cpp)
+- [`core/perf/multi/common/perf_common.hpp`](../../bindings/c/perf/multi/common/perf_common.hpp)
 
 ## Current repo decision
 
@@ -76,7 +76,7 @@ Observed success:
 
 이번 턴에서 `core` bug 하나를 수정했다.
 
-- [`core/src/api/zlink.cpp`](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp)
+- [`core/src/api/zlink.cpp`](../../core/src/api/core/zlink.cpp)
   - `zlink_recv(..., source_rid_out, ...)` 의 ROUTER 경로가 callback payload shape와 달리 routing envelope를 `parts[]`에 그대로 남기고 있었다.
   - 같은 경로에서 DEALER direct recv도 peer routing id를 `source_rid_out`로 흘려 public contract를 깨고 있었다.
 

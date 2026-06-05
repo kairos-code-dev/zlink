@@ -1,4 +1,4 @@
-[English](./design-rationale.md) | [한국어](./design-rationale.ko.md)
+[한국어](./design-rationale.ko.md)
 
 [가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md) · [개요](./01-overview.ko.md)
 

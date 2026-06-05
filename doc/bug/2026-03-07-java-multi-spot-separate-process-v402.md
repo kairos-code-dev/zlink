@@ -41,7 +41,7 @@ latency=3273.6300 ms
 
 Targeted integration tests:
 
-- [TestSpotServicePollerPortedTest.java](/home/hep7/project/kairos/zlink/bindings/java/src/test/java/dev/kairoscode/zlink/integration/TestSpotServicePollerPortedTest.java)
+- [TestSpotServicePollerPortedTest.java](../../bindings/java/src/test/java/dev/kairoscode/zlink/integration/TestSpotServicePollerPortedTest.java)
   - `testSpotSubCanBePolledViaServiceInstance`
   - `testSpotPubCanBePolledViaServiceInstance`
   - `testSpotSubCanBePolledViaServiceInstanceAcrossContexts`

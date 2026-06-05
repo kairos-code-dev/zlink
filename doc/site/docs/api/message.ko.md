@@ -337,6 +337,6 @@ metadata 는 공개 메시지 경로에 포함되어 있지 않습니다.
 
 관련 계약은 다음 문서를 참조합니다.
 
-- socket request-reply 공개 표면: [socket/README.ko.md](socket/README.ko.md)
-- SPOT routed request-reply 공개 표면: [service/spot.ko.md](service/spot.ko.md)
+- socket request-reply 공개 표면: [socket/README.ko.md](socket.ko.md)
+- SPOT routed request-reply 공개 표면: [service/spot.ko.md](spot.ko.md)
 - wire 형식과 control part 구조: `doc/internals/protocol-zmp.ko.md`

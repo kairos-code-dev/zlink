@@ -1,4 +1,4 @@
-[English](./EXAMPLES.md) | [한국어](./EXAMPLES.ko.md)
+[한국어](./EXAMPLES.ko.md)
 
 [가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md) · [스타일 규약](./STYLE.ko.md)
 

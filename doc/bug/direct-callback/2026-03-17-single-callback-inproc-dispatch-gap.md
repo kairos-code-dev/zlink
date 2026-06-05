@@ -38,11 +38,11 @@
 ## Why This Is Not "inproc Is Special"
 
 - network transport는
-  [`session_base_t::push_msg()`](/home/hep7/project/kairos/zlink/core/src/core/session_base.cpp#L136)
+  [`session_base_t::push_msg()`](../../../core/src/runtime/core/session_base.cpp#L136)
   에서 engine/session이 socket callback dispatch를 직접 밀어 넣는다.
 - 반면 `inproc`는 engine/session을 타지 않고
-  [`pipe_t::process_activate_read()`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp#L393)
-  -> [`socket_base_t::read_activated()`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.cpp#L2495)
+  [`pipe_t::process_activate_read()`](../../../core/src/runtime/core/pipe.cpp#L393)
+  -> [`socket_base_t::read_activated()`](../../../core/src/runtime/sockets/common/socket_base.cpp#L2495)
   -> 각 소켓의 `xread_activated()`에 의존한다.
 - 따라서 같은 callback contract라도 현재 구현은
   - network/session path

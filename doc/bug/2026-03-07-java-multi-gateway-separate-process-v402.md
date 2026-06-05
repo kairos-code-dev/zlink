@@ -40,7 +40,7 @@ latency=0.3600 ms
 
 Added integration tests:
 
-- [TestGatewayServicePollerPortedTest.java](/home/hep7/project/kairos/zlink/bindings/java/src/test/java/dev/kairoscode/zlink/integration/TestGatewayServicePollerPortedTest.java)
+- [TestGatewayServicePollerPortedTest.java](../../bindings/java/src/test/java/dev/kairoscode/zlink/integration/TestGatewayServicePollerPortedTest.java)
   - `testGatewayReceiverRoundTripViaServicePoller`
   - `testGatewayReceiverRoundTripViaServicePollerAcrossContexts`
 

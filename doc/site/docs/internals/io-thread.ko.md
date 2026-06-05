@@ -124,7 +124,7 @@ mailbox handle 자체도 poller에 등록되어 있어, 명령이 도착하면 �
 
 I/O 스레드를 CPU 코어 수 이상으로 설정해도 이점이 없고 context-switch
 오버헤드만 늘어난다. 4 이상으로 올리기 전에
-[perf 벤치마크](../../core/perf/)로 프로파일링하라.
+[perf 벤치마크](../../../../bindings/c/perf)로 프로파일링하라.
 
 ## 주요 소스 파일
 

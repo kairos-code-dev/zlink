@@ -23,9 +23,9 @@
 설계 authority는 아래 draft 문서들이다.
 이 문서는 새 설계를 제안하지 않는다.
 
-- [`doc/spec/draft/socket-receive-model-revision.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/draft/socket-receive-model-revision.ko.md)
-- [`doc/spec/draft/stream-packet-handler.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/draft/stream-packet-handler.ko.md)
-- [`doc/spec/draft/pollout-recovery-semantics.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/draft/pollout-recovery-semantics.ko.md)
+- [`doc/spec/draft/socket-receive-model-revision.ko.md`](../../draft/socket-receive-model-revision.ko.md)
+- [`doc/spec/draft/stream-packet-handler.ko.md`](../../draft/stream-packet-handler.ko.md)
+- [`doc/spec/draft/pollout-recovery-semantics.ko.md`](../../draft/pollout-recovery-semantics.ko.md)
 
 성능 authority는 아래 문서들이다.
 
@@ -149,7 +149,7 @@
 
 authority:
 
-- [`socket-receive-model-revision.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/draft/socket-receive-model-revision.ko.md)
+- [`socket-receive-model-revision.ko.md`](../../draft/socket-receive-model-revision.ko.md)
 
 핵심 범위:
 
@@ -181,7 +181,7 @@ authority:
 
 authority:
 
-- [`stream-packet-handler.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/draft/stream-packet-handler.ko.md)
+- [`stream-packet-handler.ko.md`](../../draft/stream-packet-handler.ko.md)
 
 핵심 범위:
 
@@ -216,7 +216,7 @@ authority:
 
 authority:
 
-- [`pollout-recovery-semantics.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/draft/pollout-recovery-semantics.ko.md)
+- [`pollout-recovery-semantics.ko.md`](../../draft/pollout-recovery-semantics.ko.md)
 
 핵심 범위:
 

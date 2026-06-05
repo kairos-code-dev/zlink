@@ -1,4 +1,4 @@
-[English](./reliability.md) | [한국어](./reliability.ko.md)
+[한국어](./reliability.ko.md)
 
 [가이드 목록](./README.ko.md)
 

@@ -1,4 +1,4 @@
-[English](./STYLE.md) | [한국어](./STYLE.ko.md)
+[한국어](./STYLE.ko.md)
 
 [가이드 목록](./README.ko.md)
 

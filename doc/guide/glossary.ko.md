@@ -1,4 +1,4 @@
-[English](./glossary.md) | [한국어](./glossary.ko.md)
+[한국어](./glossary.ko.md)
 
 [가이드 목록](./README.ko.md)
 

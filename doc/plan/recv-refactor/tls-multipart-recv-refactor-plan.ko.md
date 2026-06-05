@@ -3,10 +3,10 @@
 > 범위:
 > [`core/include/zlink.h`](/home/hep7/project/kairos/zlink/core/include/zlink.h),
 > [`core/src/api/`](/home/hep7/project/kairos/zlink/core/src/api),
-> [`core/src/services/spot/`](/home/hep7/project/kairos/zlink/core/src/services/spot),
+> [`core/src/services/spot/`](../../../core/src/services/spot),
 > [`core/tests/`](/home/hep7/project/kairos/zlink/core/tests),
-> [`core/perf/`](/home/hep7/project/kairos/zlink/core/perf),
-> [`core/bench/`](/home/hep7/project/kairos/zlink/core/bench),
+> [`core/perf/`](../../../core/perf),
+> [`core/bench/`](../../../core/bench),
 > [`bindings/cpp/`](/home/hep7/project/kairos/zlink/bindings/cpp)
 
 ## 1. 목적
@@ -189,7 +189,7 @@ reset 규칙:
 
 ### 5.2 recv export 경로
 
-현재 [socket_message_recv_api.cpp](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+현재 [socket_message_recv_api.cpp](../../../core/src/api/socket/socket_message_recv_api.cpp)
 의 `move_single_part_to_output()` / `export_recv_frames()`는 `malloc(parts)`를 사용한다.
 
 이 둘은 아래 방식으로 바꾼다.
@@ -430,7 +430,7 @@ recv 리팩토링과 함께 send도 다음 원칙으로 정렬한다.
 
 ### 9.2 제거 대상
 
-현재 [multipart_send_txn.cpp](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.cpp)
+현재 [multipart_send_txn.cpp](../../../core/src/runtime/core/multipart_send_txn.cpp)
 의 다음 구조는 제거 대상이다.
 
 - 매 attempt마다 `std::vector<msg_t>` clone

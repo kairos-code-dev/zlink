@@ -35,7 +35,7 @@ master plan authority:
 - 수동 실행 기준 문서는 이 guide와 상세 authority 문서들이다.
 - 자동 실행이 필요하면 [`run_gateway_removal_metadata_execution.sh`](./run_gateway_removal_metadata_execution.sh)를 사용한다.
 - 이 스크립트는 내부적으로 공통 supervisor인
-  [`core/tools/run_codex_execution_guide_loop.sh`](../../../core/tools/run_codex_execution_guide_loop.sh)
+  [`core/tools/run_codex_execution_guide_loop.sh`](../../../../core/tools/ralphloop/run_codex_execution_guide_loop.sh)
   를 호출한다.
 
 ## 2.1 고정 작업 순서

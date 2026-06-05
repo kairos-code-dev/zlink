@@ -1020,7 +1020,7 @@ socket 쪽은 현재도 실사용 근거가 충분하다.
 대표 사용처:
 
 - [test_monitor_enhanced.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_enhanced.cpp#L327)
-- [bench_common.hpp](/home/hep7/project/kairos/zlink/core/perf/single/common/bench_common.hpp#L453)
+- [bench_common.hpp](../../../../bindings/c/perf/single/common/bench_common.hpp#L453)
 - [test_monitor_perf_contract.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_perf_contract.cpp#L220)
 
 판단:
@@ -1038,9 +1038,9 @@ discovery는 실제로 의미 있는 것은 대부분 `SERVICE_UP` / `SERVICE_DO
 
 대표 사용처:
 
-- [test_service_introspection.cpp](/home/hep7/project/kairos/zlink/core/tests/e2e/discovery/test_service_introspection.cpp#L588)
-- [test_service_introspection.cpp](/home/hep7/project/kairos/zlink/core/tests/e2e/discovery/test_service_introspection.cpp#L988)
-- [test_monitor_with_handler.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/test_monitor_with_handler.cpp#L726)
+- [test_service_introspection.cpp](../../../../core/tests/e2e/discovery/test_service_introspection.cpp#L588)
+- [test_service_introspection.cpp](../../../../core/tests/e2e/discovery/test_service_introspection.cpp#L988)
+- [test_monitor_with_handler.cpp](../../../../core/tests/integration/test_monitor_with_handler.cpp#L726)
 
 관찰:
 
@@ -1064,10 +1064,10 @@ gateway는 실제 사용 패턴이 비교적 선명하다.
 
 대표 사용처:
 
-- [test_monitor_service_contract.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_service_contract.cpp#L939)
-- [test_gateway_with_handler.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/discovery/test_gateway_with_handler.cpp#L88)
-- [perf_gateway.cpp](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_gateway.cpp#L202)
-- [perf_common.hpp](/home/hep7/project/kairos/zlink/core/perf/multi/common/perf_common.hpp#L731)
+- [test_monitor_service_contract.cpp](../../../../core/tests/integration/monitoring/test_monitor_service_contract.cpp#L939)
+- [test_gateway_with_handler.cpp](../../../../core/tests/integration/discovery/test_gateway_with_handler.cpp#L88)
+- [perf_gateway.cpp](../../../../core/perf/single/src/perf_gateway.cpp#L202)
+- [perf_common.hpp](../../../../bindings/c/perf/multi/common/perf_common.hpp#L731)
 
 관찰:
 
@@ -1095,9 +1095,9 @@ spot은 generic topology event보다 subject-aware readiness event가 훨씬 중
 대표 사용처:
 
 - [test_spot_service_introspection.cpp](/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp#L130)
-- [test_monitor_service_contract.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_service_contract.cpp#L1122)
-- [test_monitor_service_contract.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_service_contract.cpp#L1239)
-- [perf_spot.cpp](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_spot.cpp#L812)
+- [test_monitor_service_contract.cpp](../../../../core/tests/integration/monitoring/test_monitor_service_contract.cpp#L1122)
+- [test_monitor_service_contract.cpp](../../../../core/tests/integration/monitoring/test_monitor_service_contract.cpp#L1239)
+- [perf_spot.cpp](../../../../bindings/c/perf/single/src/perf_spot.cpp#L812)
 
 관찰:
 
@@ -1459,32 +1459,32 @@ ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
 - public header target:
   [zlink.h](/home/hep7/project/kairos/zlink/core/include/zlink.h)
 - 현재 API 구현 진입점:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp)
 
 ### 21.2 current implementation anchors
 
 현재 구현에서 바로 재사용하거나 교체 기준으로 삼아야 하는 anchor는 다음이다.
 
 - socket monitor open:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L2698)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp#L2698)
 - socket monitor raw recv decoder:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L2755)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp#L2755)
 - service monitor raw recv decoder:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L2872)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp#L2872)
 - current service monitor close:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L2898)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp#L2898)
 - current generic snapshot:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L2948)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp#L2948)
 - discovery monitor open:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L3389)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp#L3389)
 - gateway monitor open:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L3603)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp#L3603)
 - spot node monitor open:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L3880)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp#L3880)
 - spot monitor open:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L4329)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp#L4329)
 - monitor handler registry:
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L1420)
+  [zlink.cpp](../../../../core/src/api/core/zlink.cpp#L1420)
 
 ### 21.3 implementation facts confirmed from current code
 
@@ -1521,7 +1521,7 @@ ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
 
 1. [zlink.h](/home/hep7/project/kairos/zlink/core/include/zlink.h)에
    section 20 header draft 기준 선언을 반영한다.
-2. [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp)에서
+2. [zlink.cpp](../../../../core/src/api/core/zlink.cpp)에서
    open-time handler required 제약을 제거한다.
 3. `zlink_socket_monitor_open()` /
    `zlink_service_monitor_open()`이 기본 recv model monitor를 반환하도록 정리한다.
@@ -1554,10 +1554,10 @@ monitor contract 관련 경로부터 확인하는 편이 낫다.
 우선 확인 대상:
 
 - [test_monitor_enhanced.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_enhanced.cpp)
-- [test_monitor_service_contract.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_service_contract.cpp)
-- [test_monitor_with_handler.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/test_monitor_with_handler.cpp)
-- [test_gateway_with_handler.cpp](/home/hep7/project/kairos/zlink/core/tests/integration/discovery/test_gateway_with_handler.cpp)
-- [test_service_introspection.cpp](/home/hep7/project/kairos/zlink/core/tests/e2e/discovery/test_service_introspection.cpp)
+- [test_monitor_service_contract.cpp](../../../../core/tests/integration/monitoring/test_monitor_service_contract.cpp)
+- [test_monitor_with_handler.cpp](../../../../core/tests/integration/test_monitor_with_handler.cpp)
+- [test_gateway_with_handler.cpp](../../../../core/tests/integration/discovery/test_gateway_with_handler.cpp)
+- [test_service_introspection.cpp](../../../../core/tests/e2e/discovery/test_service_introspection.cpp)
 - [test_spot_service_introspection.cpp](/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp)
 
 권장 명령:

@@ -28,7 +28,7 @@ raw `ROUTER`, `DEALER`, `PUB`, `SUB`도
 - [`run_discovery_service_execution.sh`](./run_discovery_service_execution.sh)
   discovery 작업 전용 Codex 실행 래퍼다.
   내부적으로
-  [`run_codex_execution_guide_loop.sh`](../../../core/tools/run_codex_execution_guide_loop.sh)
+  [`run_codex_execution_guide_loop.sh`](../../../core/tools/ralphloop/run_codex_execution_guide_loop.sh)
   를 공통 supervisor로 호출하고, guide / spec / logs 경로를 이 디렉토리 기준으로 고정한다.
 
 권장 사용 순서:

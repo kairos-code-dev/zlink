@@ -277,17 +277,17 @@ public enum에서 제거하고, `zlink_set_subscribe` / `zlink_unset_subscribe`�
 
 ### 8.2 Core API 구현
 
-- [`zlink.cpp`](core/src/api/zlink.cpp) — 함수 정의 이름 변경 4건, 내부 subscribe option 상수 치환
+- [`zlink.cpp`](../../../../core/src/api/core/zlink.cpp) — 함수 정의 이름 변경 4건, 내부 subscribe option 상수 치환
 
 ### 8.3 Core Socket 구현
 
-- [`sub.cpp`](core/src/sockets/sub.cpp) — 내부 `ZLINK_SUBSCRIBE`/`ZLINK_UNSUBSCRIBE` 상수 치환
-- [`xpub.cpp`](core/src/sockets/xpub.cpp) — 내부 `ZLINK_SUBSCRIBE`/`ZLINK_UNSUBSCRIBE` 상수 치환
-- [`xsub.cpp`](core/src/sockets/xsub.cpp) — 주석만 갱신 (코드 상수 참조 없음)
+- [`sub.cpp`](../../../../core/src/runtime/sockets/pubsub/sub.cpp) — 내부 `ZLINK_SUBSCRIBE`/`ZLINK_UNSUBSCRIBE` 상수 치환
+- [`xpub.cpp`](../../../../core/src/runtime/sockets/pubsub/xpub.cpp) — 내부 `ZLINK_SUBSCRIBE`/`ZLINK_UNSUBSCRIBE` 상수 치환
+- [`xsub.cpp`](../../../../core/src/runtime/sockets/pubsub/xsub.cpp) — 주석만 갱신 (코드 상수 참조 없음)
 
 ### 8.4 Core Service 구현
 
-- [`spot_sub.cpp`](core/src/services/spot/spot_sub.cpp) — 내부 `setsockopt(ZLINK_SUBSCRIBE, ...)` 호출부 상수 치환
+- [`spot_sub.cpp`](../../../../core/src/runtime/services/spot/pubsub/spot_sub.cpp) — 내부 `setsockopt(ZLINK_SUBSCRIBE, ...)` 호출부 상수 치환
 
 ### 8.5 Tests
 
@@ -325,17 +325,17 @@ public enum에서 제거하고, `zlink_set_subscribe` / `zlink_unset_subscribe`�
 
 `zlink_setsockopt(ZLINK_SUBSCRIBE, ...)` 호출부:
 
-- [`perf_pubsub.cpp`](core/perf/single/src/perf_pubsub.cpp)
-- [`perf_multi_client_helpers.hpp`](core/perf/multi/common/perf_multi_client_helpers.hpp)
+- [`perf_pubsub.cpp`](../../../../bindings/c/perf/single/src/perf_pubsub.cpp)
+- [`perf_multi_client_helpers.hpp`](../../../../bindings/c/perf/multi/common/perf_multi_client_helpers.hpp)
 - [`bench_common.hpp`](core/bench/with_zmq/single/common/bench_common.hpp) — compat shim
-- [`bench_zlink_pubsub.cpp`](core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp)
+- [`bench_zlink_pubsub.cpp`](../../../../bindings/c/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp)
 - [`bench_multi_client.hpp`](core/bench/with_zmq/multi/common/bench_multi_client.hpp)
 
 `zlink_subscribe_recv()` 호출부:
 
-- [`perf_spot.cpp`](core/perf/single/src/perf_spot.cpp)
-- [`perf_common.hpp`](core/perf/multi/common/perf_common.hpp) — inline wrapper
-- [`perf_multi_spot_client.cpp`](core/perf/multi/src/perf_multi_spot_client.cpp)
+- [`perf_spot.cpp`](../../../../bindings/c/perf/single/src/perf_spot.cpp)
+- [`perf_common.hpp`](../../../../bindings/c/perf/multi/common/perf_common.hpp) — inline wrapper
+- [`perf_multi_spot_client.cpp`](../../../../bindings/c/perf/multi/src/perf_multi_spot_client.cpp)
 
 ### 8.7 Documentation
 

@@ -88,8 +88,8 @@ non-zero warmup에서는 recv/callback 모두 다시 깨진다.
 
 ## Suspected fix areas
 
-- [`core/perf/multi/src/perf_multi_pubsub_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_pubsub_server.cpp)
-- [`core/perf/multi/src/perf_multi_pubsub_client.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_pubsub_client.cpp)
+- [`core/perf/multi/src/perf_multi_pubsub_server.cpp`](../../bindings/c/perf/multi/src/perf_multi_pubsub_server.cpp)
+- [`core/perf/multi/src/perf_multi_pubsub_client.cpp`](../../bindings/c/perf/multi/src/perf_multi_pubsub_client.cpp)
 - callback path phase progression under one-way publish pressure
 - callback attach/dispatch readiness and active-phase start race
 - callback shutdown / message ownership if heap corruption is related
@@ -197,7 +197,7 @@ Current assessment:
 
 Applied change:
 
-- [`perf_multi_pubsub_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_pubsub_server.cpp)
+- [`perf_multi_pubsub_server.cpp`](../../bindings/c/perf/multi/src/perf_multi_pubsub_server.cpp)
   - `ZLINK_PUB_OPT_NODROP` enabled on the server `PUB` socket
 
 Verification:
@@ -226,7 +226,7 @@ Observed:
 
 Applied change:
 
-- [`perf_multi_pubsub_client.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_pubsub_client.cpp)
+- [`perf_multi_pubsub_client.cpp`](../../bindings/c/perf/multi/src/perf_multi_pubsub_client.cpp)
   - local warmup/drain timer와 exact phase match에 의존하지 않고
     first `phase_active` callback을 본 시점부터 measurement를 시작하도록 변경
 

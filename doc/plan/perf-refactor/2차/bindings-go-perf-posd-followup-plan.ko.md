@@ -24,8 +24,8 @@
 ## 2. 현재 구조 요약
 
 - 공통 책임은 [common.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/common.go), [measurement.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/measurement.go), [ready.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/ready.go), [runtime.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/runtime.go) 등으로 나뉘어 있다.
-- 다만 [ready.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/ready.go) 는 monitor/probe ready wait 를 하나의 helper 로 묶고 있고, [multi/spot.go](/home/hep7/project/kairos/zlink/bindings/go/perf/multi/spot.go) 는 ready tracking, active publish, recv drain 을 같은 흐름에서 처리한다.
-- [ready.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/ready.go) 는 99라인, [multi/spot.go](/home/hep7/project/kairos/zlink/bindings/go/perf/multi/spot.go) 는 164라인이다.
+- 다만 [ready.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/ready.go) 는 monitor/probe ready wait 를 하나의 helper 로 묶고 있고, [multi/spot.go](../../../../bindings/go/perf/multi/spot.go) 는 ready tracking, active publish, recv drain 을 같은 흐름에서 처리한다.
+- [ready.go](/home/hep7/project/kairos/zlink/bindings/go/perf/internal/perfcommon/ready.go) 는 99라인, [multi/spot.go](../../../../bindings/go/perf/multi/spot.go) 는 164라인이다.
 - single/multi 패턴은 각 파일에서 시나리오를 직접 보여주므로 hot path 가시성은 이미 확보돼 있다.
 
 ## 3. 남은 POSD 문제

@@ -9,7 +9,7 @@
 사용 기준:
 - [monitoring.ko.md](./monitoring.ko.md): monitor API와 peer inspection API
 - 이 문서: 이벤트 의미, payload 필드, 권장 gate
-- [socket-family-monitor-contract-spec.ko.md](../../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md):
+- [socket-family-monitor-contract-spec.ko.md](https://github.com/kairos-code-dev/zlink/blob/main/doc/plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md):
   패밀리별 제어 가능 범위와 회귀 테스트 기준
 
 ## semantic level

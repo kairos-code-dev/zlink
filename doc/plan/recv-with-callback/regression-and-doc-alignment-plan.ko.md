@@ -49,7 +49,7 @@
 
 - [`core/tests/integration/test_socket_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_socket_with_handler.cpp)
   - raw socket support matrix
-- [`core/tests/integration/discovery/test_gateway_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/discovery/test_gateway_with_handler.cpp)
+- [`core/tests/integration/discovery/test_gateway_with_handler.cpp`](../../../core/tests/integration/discovery/test_gateway_with_handler.cpp)
   - gateway callback receive/send-ready contract
 - [`core/tests/unittest/unittest_service_mode_policy.cpp`](/home/hep7/project/kairos/zlink/core/tests/unittest/unittest_service_mode_policy.cpp)
   - recv-only / callback prerequisite 전제

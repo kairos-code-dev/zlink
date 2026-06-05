@@ -493,7 +493,7 @@ public shape를 기준으로 고정한다.
 - 바인딩은 이 코드를 언어별 에러 타입의 `int code` 에 포함시킨다
   (exception 언어는 예외 객체, return-based 언어는 반환 에러 값).
 - 전체 enum 정의는
-  [errno-map.md](../core/errno-map.md) 를 참조한다.
+  [errno-map.md](errno-map.md) 를 참조한다.
 
 #### Per-Function Error Type Hierarchy
 
@@ -679,7 +679,7 @@ request(parts, callback, flags = 0, timeout = 0)    // blocking success=true,
 #### 공통
 
 - `zlink_request_result_t` 전체 정의는
-  [errno-map.md](../core/errno-map.md) 를 참조한다.
+  [errno-map.md](errno-map.md) 를 참조한다.
 - Go / Rust 는 exception 이 없으므로 callback request 의 submit 실패도
   return-based 로 처리한다 (Go: `*SubmitError` 반환, Rust:
   `Result<_, SubmitError>` 반환).
@@ -1441,9 +1441,9 @@ RegistryQueryClient (원격 토폴로지 조회)
 > 언어별 인터페이스 시그니처와 사용 예는
 > `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
 > 구현 기준 상세는
-> [`doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md`](../../plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md),
-> [`doc/plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md`](../../plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md),
-> [`doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md`](../../plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md)
+> [`doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md`](https://github.com/kairos-code-dev/zlink/blob/main/doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md),
+> [`doc/plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md`](https://github.com/kairos-code-dev/zlink/blob/main/doc/plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md),
+> [`doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md`](https://github.com/kairos-code-dev/zlink/blob/main/doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md)
 > 를 따른다.
 
 #### 설계 원칙
@@ -2369,7 +2369,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 
 1. **Public result enum 코드 (0–703)** — 공개 C API 함수의 반환 enum 값.
    바인딩이 직접 마주하고 언어별 에러 타입으로 노출해야 하는 값이다.
-   전체 정의는 [core/errno-map.md](../core/errno-map.md) 참조.
+   전체 정의는 [core/errno-map.md](errno-map.md) 참조.
 2. **Internal errno** — `zlink_errno()` 로 조회되는 내부 raw errno.
    `INTERNAL_ERROR` 같은 coarse bucket 의 상세 원인 조회용. 바인딩은 이 값을
    `internalErrno` / `internal_errno` 필드로 노출한다 (디버깅 전용).
@@ -2955,7 +2955,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   우회 방지는 Review Checklist에서 검증한다. 자동화 테스트 항목이 아니다.
 
 ## Sample Policy
-- 샘플 제작 규칙은 [`doc/spec/sample/SAMPLE_POLICY.md`](../sample/SAMPLE_POLICY.md)
+- 샘플 제작 규칙은 [`doc/spec/sample/SAMPLE_POLICY.md`](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/sample/SAMPLE_POLICY.md)
   를 단일 기준 문서로 사용한다.
 - 이 문서는 `core/samples/`와 `bindings/*/samples/`를 함께 포괄한다.
 - 바인딩 샘플을 추가, 수정, 리뷰할 때는 위 문서를 기준으로 판단한다.
@@ -2971,11 +2971,11 @@ perf 코드는 데모가 아니라 바인딩 라이브러리의 성능을 측정
 처리, 환경 변수 등 모든 세부 규격은 아래 문서를 따른다. 본 섹션에서 중복
 정의하지 않는다.
 
-- [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md) — 공통 perf 정책
+- [`doc/perf/PERF_POLICY.md`](https://github.com/kairos-code-dev/zlink/blob/main/doc/perf/PERF_POLICY.md) — 공통 perf 정책
   (공통 원칙, 디렉터리 구조, RESULT 형식, 결과 저장, 출력 형식, 실패 처리,
   환경 변수, 리팩토링 원칙, 언어별 적용 범위)
-- [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](../../perf/PERF_SINGLE_TEST_POLICY.md) — single suite 정책
-- [`doc/perf/PERF_MULTI_TEST_POLICY.md`](../../perf/PERF_MULTI_TEST_POLICY.md) — multi suite 정책
+- [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](https://github.com/kairos-code-dev/zlink/blob/main/doc/perf/PERF_SINGLE_TEST_POLICY.md) — single suite 정책
+- [`doc/perf/PERF_MULTI_TEST_POLICY.md`](https://github.com/kairos-code-dev/zlink/blob/main/doc/perf/PERF_MULTI_TEST_POLICY.md) — multi suite 정책
 
 ### 바인딩 perf 원칙
 
@@ -2989,12 +2989,12 @@ perf 코드는 데모가 아니라 바인딩 라이브러리의 성능을 측정
 ### 바인딩 API Spec 문서
 
 각 바인딩의 API surface는 아래 문서를 참조한다.
-perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 언어 공통으로 관리한다.
+perf 정책은 [`doc/perf/PERF_POLICY.md`](https://github.com/kairos-code-dev/zlink/blob/main/doc/perf/PERF_POLICY.md)에서 전 언어 공통으로 관리한다.
 
 | 바인딩 | API Spec |
 |--------|----------|
-| Node.js | [`NODE_API_SPEC.md`](NODE_API_SPEC.md) |
-| Python | [`PYTHON_API_SPEC.md`](PYTHON_API_SPEC.md) |
+| Node.js | [`NODE_API_SPEC.md`](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/bindings/node/README.ko.md) |
+| Python | [`PYTHON_API_SPEC.md`](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/bindings/python/README.ko.md) |
 
 ### Perf Review Checklist
 

@@ -40,12 +40,12 @@
     이 경계가 약하면 초기 snapshot이 stale 상태로 남는다.
 - fix:
   - pool 생성 직후 pending update에 넣고 refresh task를 깨우도록 수정:
-    [gateway.cpp](/home/hep7/project/kairos/zlink/core/src/services/gateway/gateway.cpp#L287)
+    [gateway.cpp](../../core/src/services/gateway/gateway.cpp#L287)
   - not-ready endpoint는 다음 refresh까지 dirty 상태를 유지:
-    [gateway.cpp](/home/hep7/project/kairos/zlink/core/src/services/gateway/gateway.cpp#L432)
+    [gateway.cpp](../../core/src/services/gateway/gateway.cpp#L432)
 - regression coverage:
   - `test_gateway_refreshes_existing_service_on_first_connection_count`
-    [test_gateway.cpp](/home/hep7/project/kairos/zlink/core/tests/discovery/test_gateway.cpp#L2052)
+    [test_gateway.cpp](../../core/tests/discovery/test_gateway.cpp#L2052)
 
 ### 2. Perf bug: multi gateway server overflowed its deferred queue under backpressure
 
@@ -64,12 +64,12 @@
     deferred queue가 터졌다.
 - fix:
   - pending storage를 고정 배열로 두고 hot loop allocation을 제거:
-    [perf_gateway_server.cpp](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_gateway_server.cpp#L539)
+    [perf_gateway_server.cpp](../../core/perf/multi/src/perf_gateway_server.cpp#L539)
   - `pending_backpressure_threshold`를 도입하고 threshold 이상이면
     receiver `POLLIN`을 끔:
-    [perf_gateway_server.cpp](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_gateway_server.cpp#L611)
+    [perf_gateway_server.cpp](../../core/perf/multi/src/perf_gateway_server.cpp#L611)
   - inner drain loop도 threshold 도달 즉시 break:
-    [perf_gateway_server.cpp](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_gateway_server.cpp#L652)
+    [perf_gateway_server.cpp](../../core/perf/multi/src/perf_gateway_server.cpp#L652)
 
 ## Policy Alignment Applied
 
@@ -89,33 +89,33 @@
 
 주요 반영 파일:
 
-- [perf_spot.cpp](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_spot.cpp)
-- [perf_gateway.cpp](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_gateway.cpp)
-- [perf_gateway_client.cpp](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_gateway_client.cpp)
-- [perf_gateway_server.cpp](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_gateway_server.cpp)
-- [perf_spot_client.cpp](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_spot_client.cpp)
-- [perf_common.hpp](/home/hep7/project/kairos/zlink/core/perf/multi/common/perf_common.hpp)
-- [run_comparison.py](/home/hep7/project/kairos/zlink/core/perf/run_comparison.py)
+- [perf_spot.cpp](../../bindings/c/perf/single/src/perf_spot.cpp)
+- [perf_gateway.cpp](../../core/perf/single/src/perf_gateway.cpp)
+- [perf_gateway_client.cpp](../../core/perf/multi/src/perf_gateway_client.cpp)
+- [perf_gateway_server.cpp](../../core/perf/multi/src/perf_gateway_server.cpp)
+- [perf_spot_client.cpp](../../bindings/cpp/perf/multi/src/perf_spot_client.cpp)
+- [perf_common.hpp](../../bindings/c/perf/multi/common/perf_common.hpp)
+- [run_comparison.py](../../bindings/c/perf/run_comparison.py)
 
 ## Validation
 
 ### Representative perf
 
 - single representative passed:
-  - result: [perf_linux_20260307_162613.txt](/home/hep7/project/kairos/zlink/core/perf/results/single/report/perf_linux_20260307_162613.txt)
+  - result: [perf_linux_20260307_162613.txt](../../core/perf/results/single/report/perf_linux_20260307_162613.txt)
 - multi representative passed:
   - `./core/perf/run_benchmarks_multi.sh --pattern DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE --transports tcp --msg-sizes 64 --runs 1 --clients 2 --warmup 0 --duration 1 --reuse-build`
-  - result: [perf_linux_20260307_162613.txt](/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_20260307_162613.txt)
+  - result: [perf_linux_20260307_162613.txt](../../core/perf/results/multi/report/perf_linux_20260307_162613.txt)
 
 ### Full perf
 
 - full single passed:
   - `./core/perf/run_benchmarks.sh --pattern ALL --runs 1 --reuse-build`
-  - result: [perf_linux_20260307_162802.txt](/home/hep7/project/kairos/zlink/core/perf/results/single/report/perf_linux_20260307_162802.txt)
+  - result: [perf_linux_20260307_162802.txt](../../core/perf/results/single/report/perf_linux_20260307_162802.txt)
   - status: `complete`
 - full multi passed:
   - `./core/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --reuse-build`
-  - result: [perf_linux_20260307_174549.txt](/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_20260307_174549.txt)
+  - result: [perf_linux_20260307_174549.txt](../../core/perf/results/multi/report/perf_linux_20260307_174549.txt)
   - success: `192`
   - fail: `0`
   - expected result lines: `960`
@@ -126,10 +126,10 @@
 
 - `GATEWAY` multi single transport/size progression:
   - `./core/perf/run_benchmarks_multi.sh --pattern GATEWAY --transports tcp --msg-sizes 64,256,1024,65536,131072,262144 --runs 1 --clients 100 --warmup 2 --duration 5 --reuse-build`
-  - result: [perf_linux_20260307_172642.txt](/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_20260307_172642.txt)
+  - result: [perf_linux_20260307_172642.txt](../../core/perf/results/multi/report/perf_linux_20260307_172642.txt)
 - `STREAM*` wss tail repro:
   - `./core/perf/run_benchmarks_multi.sh --pattern STREAM --transports wss --msg-sizes 64,256,1024,65536 --runs 1 --reuse-build`
-  - result: [perf_linux_20260307_174242.txt](/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_20260307_174242.txt)
+  - result: [perf_linux_20260307_174242.txt](../../core/perf/results/multi/report/perf_linux_20260307_174242.txt)
 
 ### Core tests
 

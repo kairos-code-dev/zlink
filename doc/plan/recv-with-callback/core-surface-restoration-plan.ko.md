@@ -186,7 +186,7 @@ header 주석은 family별 장황한 열거보다 아래 구조로 정리한다.
 
 ### 5.1 API gate 복원
 
-[`core/src/api/zlink.cpp`](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp)
+[`core/src/api/zlink.cpp`](../../../core/src/api/core/zlink.cpp)
 에서 우선 정리할 항목:
 
 - `zlink_recv_handler()` type gate를 raw `STREAM` 전용에서 multipart callback
@@ -200,19 +200,19 @@ header 주석은 family별 장황한 열거보다 아래 구조로 정리한다.
 
 직접 점검할 핵심 구현은 아래다.
 
-- [`core/src/sockets/socket_base.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.cpp)
+- [`core/src/sockets/socket_base.cpp`](../../../core/src/runtime/sockets/common/socket_base.cpp)
   - generic socket message handler attach/stop 재사용
   - data-plane `POLLIN`/`POLLOUT` 충돌 validation 공통화
-- [`core/src/sockets/pair.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/pair.cpp)
-- [`core/src/sockets/dealer.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dealer.cpp)
-- [`core/src/sockets/router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp)
-- [`core/src/sockets/xsub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.cpp)
+- [`core/src/sockets/pair.cpp`](../../../core/src/sockets/pair.cpp)
+- [`core/src/sockets/dealer.cpp`](../../../core/src/sockets/dealer.cpp)
+- [`core/src/sockets/router.cpp`](../../../core/src/sockets/router.cpp)
+- [`core/src/sockets/xsub.cpp`](../../../core/src/runtime/sockets/pubsub/xsub.cpp)
   - 이미 존재하는 dispatch 경로가 public gate와 맞물리도록 정리
-- [`core/src/services/gateway/gateway.cpp`](/home/hep7/project/kairos/zlink/core/src/services/gateway/gateway.cpp)
+- [`core/src/services/gateway/gateway.cpp`](../../../core/src/services/gateway/gateway.cpp)
   - callback receive/send-ready attach 허용 경로 복원
-- [`core/src/services/spot/spot_node.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp)
-- [`core/src/services/spot/spot_pub.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_pub.cpp)
-- [`core/src/services/spot/spot_sub.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.cpp)
+- [`core/src/services/spot/spot_node.cpp`](../../../core/src/services/spot/spot_node.cpp)
+- [`core/src/services/spot/spot_pub.cpp`](../../../core/src/runtime/services/spot/pubsub/spot_pub.cpp)
+- [`core/src/services/spot/spot_sub.cpp`](../../../core/src/runtime/services/spot/pubsub/spot_sub.cpp)
   - 기존 callback contract 유지, 새 공통 규칙 표현에 맞게만 재정렬
 
 ### 5.3 구현 기본 원칙
@@ -253,7 +253,7 @@ header 주석은 family별 장황한 열거보다 아래 구조로 정리한다.
 
 - [`core/tests/integration/test_socket_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_socket_with_handler.cpp)
   - raw socket support matrix를 failure 중심에서 success 중심으로 뒤집는다.
-- [`core/tests/integration/discovery/test_gateway_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/discovery/test_gateway_with_handler.cpp)
+- [`core/tests/integration/discovery/test_gateway_with_handler.cpp`](../../../core/tests/integration/discovery/test_gateway_with_handler.cpp)
   - gateway callback attach `ENOTSUP` 회귀를 성공 계약 회귀로 교체한다.
 - [`core/tests/unittest/unittest_service_mode_policy.cpp`](/home/hep7/project/kairos/zlink/core/tests/unittest/unittest_service_mode_policy.cpp)
   - `gateway recv-only`, `stream send_ready requires callback mode` 같은 축소 전제

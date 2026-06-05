@@ -43,9 +43,9 @@ Rust perf 코드가 아래 성질을 유지하면서 남아 있는 구조적 냄
 - [`single/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/single/src/common.rs#L187)
 - [`single/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/single/src/common.rs#L256)
 - [`single/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/single/src/common.rs#L266)
-- [`multi/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/multi/src/common.rs#L1)
-- [`multi/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/multi/src/common.rs#L166)
-- [`multi/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/multi/src/common.rs#L194)
+- [`multi/src/common.rs`](../../../../bindings/rust/perf/single/src/common.rs#L1)
+- [`multi/src/common.rs`](../../../../bindings/rust/perf/single/src/common.rs#L166)
+- [`multi/src/common.rs`](../../../../bindings/rust/perf/single/src/common.rs#L194)
 - [`perf_multi_dealer_dealer_client.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/multi/src/perf_multi_dealer_dealer_client.rs#L9)
 - [`perf_multi_router_router_client.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/multi/src/perf_multi_router_router_client.rs#L17)
 - [`perf_multi_stream_server.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/multi/src/perf_multi_stream_server.rs#L31)
@@ -114,9 +114,9 @@ POSD 관점 문제:
 
 - [`single/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/single/src/common.rs#L1)
 - [`single/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/single/src/common.rs#L266)
-- [`multi/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/multi/src/common.rs#L1)
-- [`multi/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/multi/src/common.rs#L166)
-- [`multi/src/common.rs`](/home/hep7/project/kairos/zlink/bindings/rust/perf/multi/src/common.rs#L194)
+- [`multi/src/common.rs`](../../../../bindings/rust/perf/single/src/common.rs#L1)
+- [`multi/src/common.rs`](../../../../bindings/rust/perf/single/src/common.rs#L166)
+- [`multi/src/common.rs`](../../../../bindings/rust/perf/single/src/common.rs#L194)
 
 ## 4. 우선순위
 

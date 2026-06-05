@@ -1,4 +1,4 @@
-[English](./glossary.md) | [한국어](./glossary.ko.md)
+[한국어](./glossary.ko.md)
 
 [가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md)
 

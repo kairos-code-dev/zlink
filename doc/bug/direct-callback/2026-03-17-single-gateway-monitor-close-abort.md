@@ -5,7 +5,7 @@
 - `single/GATEWAY`는 현재 일부 transport/msg-size 조합에서 `FAIL`이 아니라
   프로세스 abort로 종료된다.
 - abort 지점은
-  [`signaler.cpp`](/home/hep7/project/kairos/zlink/core/src/core/signaler.cpp#L279)
+  [`signaler.cpp`](../../../core/src/runtime/core/signaler.cpp#L279)
   의 `signaler_t::recv()` `errno_assert(sz == sizeof(dummy))` 이다.
 - 이건 benchmark가 잘못된 결과를 출력하는 수준이 아니라,
   `core` 라이브러리 lifecycle/monitor close 경로가 process abort를 일으키는

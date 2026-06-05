@@ -247,20 +247,20 @@
 이번 작업에서 바로 수정 대상으로 보는 핵심 파일은 아래와 같다.
 
 - [`core/include/zlink.h`](/home/hep7/project/kairos/zlink/core/include/zlink.h)
-- [`core/src/api/zlink.cpp`](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp)
-- [`core/src/services/gateway/gateway.cpp`](/home/hep7/project/kairos/zlink/core/src/services/gateway/gateway.cpp)
-- [`core/src/services/spot/spot_node.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp)
-- [`core/src/services/spot/spot_pub.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_pub.cpp)
-- [`core/src/sockets/socket_base.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.cpp)
-- [`core/src/sockets/stream.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/stream.cpp)
+- [`core/src/api/zlink.cpp`](../../../core/src/api/core/zlink.cpp)
+- [`core/src/services/gateway/gateway.cpp`](../../../core/src/services/gateway/gateway.cpp)
+- [`core/src/services/spot/spot_node.cpp`](../../../core/src/services/spot/spot_node.cpp)
+- [`core/src/services/spot/spot_pub.cpp`](../../../core/src/runtime/services/spot/pubsub/spot_pub.cpp)
+- [`core/src/sockets/socket_base.cpp`](../../../core/src/runtime/sockets/common/socket_base.cpp)
+- [`core/src/sockets/stream.cpp`](../../../core/src/sockets/stream.cpp)
 
 테스트 고정 대상의 시작점은 아래 파일로 본다.
 
 - [`core/tests/unittest/unittest_service_mode_policy.cpp`](/home/hep7/project/kairos/zlink/core/tests/unittest/unittest_service_mode_policy.cpp)
 - [`core/tests/integration/test_socket_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_socket_with_handler.cpp)
-- [`core/tests/integration/test_monitor_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_monitor_with_handler.cpp)
-- [`core/tests/integration/discovery/test_gateway_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/discovery/test_gateway_with_handler.cpp)
-- [`core/tests/e2e/discovery/test_gateway.cpp`](/home/hep7/project/kairos/zlink/core/tests/e2e/discovery/test_gateway.cpp)
+- [`core/tests/integration/test_monitor_with_handler.cpp`](../../../core/tests/integration/test_monitor_with_handler.cpp)
+- [`core/tests/integration/discovery/test_gateway_with_handler.cpp`](../../../core/tests/integration/discovery/test_gateway_with_handler.cpp)
+- [`core/tests/e2e/discovery/test_gateway.cpp`](../../../core/tests/e2e/discovery/test_gateway.cpp)
 - [`core/tests/testutil_unity.cpp`](/home/hep7/project/kairos/zlink/core/tests/testutil_unity.cpp)
 
 ## 6. 문서 정리 대상

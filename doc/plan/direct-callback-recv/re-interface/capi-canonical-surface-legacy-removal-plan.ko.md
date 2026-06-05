@@ -151,8 +151,8 @@ typedef alias에만 `spot`/`xpub` 구 naming이 남아 있으면
 현재 다음 구현은 frame 하나를 받고 `getsockopt(ZLINK_RCVMORE)`로
 multipart 경계를 판단한다.
 
-- [spot_data_plane.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane.cpp)
-- [proxy.cpp](/home/hep7/project/kairos/zlink/core/src/sockets/proxy.cpp)
+- [spot_data_plane.cpp](../../../../core/src/runtime/services/spot/data_plane/spot_data_plane.cpp)
+- [proxy.cpp](../../../../core/src/sockets/proxy.cpp)
 
 의미:
 
@@ -164,9 +164,9 @@ multipart 경계를 판단한다.
 
 현재 일부 내부 구현은 multipart 경계를 직접 조립하는 구조를 유지한다.
 
-- [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp)
-- [gateway.cpp](/home/hep7/project/kairos/zlink/core/src/services/gateway/gateway.cpp)
-- [spot_pub.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_pub.cpp)
+- [zlink.cpp](../../../../core/src/api/core/zlink.cpp)
+- [gateway.cpp](../../../../core/src/services/gateway/gateway.cpp)
+- [spot_pub.cpp](../../../../core/src/runtime/services/spot/pubsub/spot_pub.cpp)
 
 의미:
 
@@ -192,10 +192,10 @@ multipart 경계를 판단한다.
 
 현재 내부 구현은 아래 구 typedef 이름을 직접 사용한다.
 
-- [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp)
-- [socket_base.hpp](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
-- [socket_base.cpp](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.cpp)
-- [xpub.cpp](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+- [zlink.cpp](../../../../core/src/api/core/zlink.cpp)
+- [socket_base.hpp](../../../../core/src/runtime/sockets/common/socket_base.hpp)
+- [socket_base.cpp](../../../../core/src/runtime/sockets/common/socket_base.cpp)
+- [xpub.cpp](../../../../core/src/runtime/sockets/pubsub/xpub.cpp)
 
 의미:
 
@@ -215,14 +215,14 @@ multipart 경계를 판단한다.
 
 ### 7.2 Internal Core
 
-- [socket_base.cpp](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.cpp)
-- [proxy.cpp](/home/hep7/project/kairos/zlink/core/src/sockets/proxy.cpp)
-- [spot_data_plane.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane.cpp)
-- [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp)
-- [gateway.cpp](/home/hep7/project/kairos/zlink/core/src/services/gateway/gateway.cpp)
-- [spot_pub.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_pub.cpp)
-- [socket_base.hpp](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
-- [xpub.cpp](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+- [socket_base.cpp](../../../../core/src/runtime/sockets/common/socket_base.cpp)
+- [proxy.cpp](../../../../core/src/sockets/proxy.cpp)
+- [spot_data_plane.cpp](../../../../core/src/runtime/services/spot/data_plane/spot_data_plane.cpp)
+- [zlink.cpp](../../../../core/src/api/core/zlink.cpp)
+- [gateway.cpp](../../../../core/src/services/gateway/gateway.cpp)
+- [spot_pub.cpp](../../../../core/src/runtime/services/spot/pubsub/spot_pub.cpp)
+- [socket_base.hpp](../../../../core/src/runtime/sockets/common/socket_base.hpp)
+- [xpub.cpp](../../../../core/src/runtime/sockets/pubsub/xpub.cpp)
 
 ### 7.3 Core Tests
 

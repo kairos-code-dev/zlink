@@ -1,7 +1,7 @@
 # `core/perf` recv-with-callback lane 재정렬 계획
 
 > 범위:
-> [`core/perf/`](/home/hep7/project/kairos/zlink/core/perf),
+> [`core/perf/`](../../../core/perf),
 > [`doc/perf/`](/home/hep7/project/kairos/zlink/doc/perf)
 
 ## 1. 목적
@@ -135,10 +135,10 @@ multi suite는 fan-out, client orchestration, shutdown, monitor handoff를 가�
 
 직접 수정 대상으로 보는 파일:
 
-- [`core/perf/run_benchmarks.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh)
-- [`core/perf/run_benchmarks_multi.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks_multi.sh)
-- [`core/perf/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/run_comparison.py)
-- [`core/perf/single/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/single/run_comparison.py)
+- [`core/perf/run_benchmarks.sh`](../../../bindings/c/perf/run_benchmarks.sh)
+- [`core/perf/run_benchmarks_multi.sh`](../../../bindings/c/perf/run_benchmarks_multi.sh)
+- [`core/perf/run_comparison.py`](../../../bindings/c/perf/run_comparison.py)
+- [`core/perf/single/run_comparison.py`](../../../bindings/c/perf/single/run_comparison.py)
 
 정렬 요구:
 
@@ -155,8 +155,8 @@ multi suite는 fan-out, client orchestration, shutdown, monitor handoff를 가�
 
 직접 수정 대상으로 보는 파일:
 
-- [`core/perf/single/common/bench_common.hpp`](/home/hep7/project/kairos/zlink/core/perf/single/common/bench_common.hpp)
-- [`core/perf/multi/common/perf_common_multi.hpp`](/home/hep7/project/kairos/zlink/core/perf/multi/common/perf_common_multi.hpp)
+- [`core/perf/single/common/bench_common.hpp`](../../../bindings/c/perf/single/common/bench_common.hpp)
+- [`core/perf/multi/common/perf_common_multi.hpp`](../../../bindings/c/perf/multi/common/perf_common_multi.hpp)
 
 정렬 요구:
 
@@ -186,8 +186,8 @@ multi suite는 fan-out, client orchestration, shutdown, monitor handoff를 가�
 
 반드시 바꿔야 하는 항목:
 
-- [`core/perf/README.md`](/home/hep7/project/kairos/zlink/core/perf/README.md)
-- [`core/perf/README_KO.md`](/home/hep7/project/kairos/zlink/core/perf/README_KO.md)
+- [`core/perf/README.md`](../../../bindings/c/perf/README.md)
+- [`core/perf/README_KO.md`](../../../core/perf/README_KO.md)
 
 문서 방향:
 
@@ -212,8 +212,8 @@ multi suite는 fan-out, client orchestration, shutdown, monitor handoff를 가�
 
 직접 수정 대상으로 보는 파일:
 
-- [`core/perf/single/tests/test_run_comparison_policy.py`](/home/hep7/project/kairos/zlink/core/perf/single/tests/test_run_comparison_policy.py)
-- [`core/perf/single/tests/test_multi_run_comparison_policy.py`](/home/hep7/project/kairos/zlink/core/perf/single/tests/test_multi_run_comparison_policy.py)
+- [`core/perf/single/tests/test_run_comparison_policy.py`](../../../bindings/c/perf/single/tests/test_run_comparison_policy.py)
+- [`core/perf/single/tests/test_multi_run_comparison_policy.py`](../../../bindings/c/perf/single/tests/test_multi_run_comparison_policy.py)
 
 회귀 방향:
 

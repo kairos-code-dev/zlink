@@ -90,11 +90,11 @@ Observed failure:
 
 ## Suspected fix areas
 
-- [`core/perf/single/src/perf_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_pubsub.cpp)
-- [`core/perf/single/src/perf_dealer_dealer.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_dealer_dealer.cpp)
-- [`core/perf/single/src/perf_dealer_router.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_dealer_router.cpp)
-- [`core/perf/single/src/perf_router_router.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_router_router.cpp)
-- [`core/perf/single/common/bench_common.hpp`](/home/hep7/project/kairos/zlink/core/perf/single/common/bench_common.hpp)
+- [`core/perf/single/src/perf_pubsub.cpp`](../../bindings/c/perf/single/src/perf_pubsub.cpp)
+- [`core/perf/single/src/perf_dealer_dealer.cpp`](../../bindings/c/perf/single/src/perf_dealer_dealer.cpp)
+- [`core/perf/single/src/perf_dealer_router.cpp`](../../bindings/c/perf/single/src/perf_dealer_router.cpp)
+- [`core/perf/single/src/perf_router_router.cpp`](../../bindings/c/perf/single/src/perf_router_router.cpp)
+- [`core/perf/single/common/bench_common.hpp`](../../bindings/c/perf/single/common/bench_common.hpp)
 
 ## Current repo decision
 

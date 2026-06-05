@@ -11,7 +11,7 @@
 
 > 범위:
 > [`doc/perf/`](/home/hep7/project/kairos/zlink/doc/perf),
-> [`core/perf/`](/home/hep7/project/kairos/zlink/core/perf)
+> [`core/perf/`](../../../core/perf)
 
 ## 1. 목적
 
@@ -108,9 +108,9 @@
 
 반드시 바꿔야 하는 내용:
 
-- [`core/perf/README.md`](/home/hep7/project/kairos/zlink/core/perf/README.md)의
+- [`core/perf/README.md`](../../../bindings/c/perf/README.md)의
   callback 허용 패턴 표를 새 matrix로 고정
-- [`core/perf/README_KO.md`](/home/hep7/project/kairos/zlink/core/perf/README_KO.md)의
+- [`core/perf/README_KO.md`](../../../core/perf/README_KO.md)의
   callback 허용 패턴 표를 새 matrix로 고정
 - single에서 `PAIR`, `GATEWAY` 등의 callback 예시 제거
 - multi에서 `STREAM_CALLBACK` 별도 패턴 예시 제거
@@ -137,14 +137,14 @@
 
 직접 수정 대상으로 보는 파일:
 
-- [`core/perf/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/run_comparison.py)
-- [`core/perf/single/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/single/run_comparison.py)
-- [`core/perf/run_benchmarks.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh)
-- [`core/perf/run_benchmarks_multi.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks_multi.sh)
-- [`core/perf/CMakeLists.txt`](/home/hep7/project/kairos/zlink/core/perf/CMakeLists.txt)
-- [`core/perf/multi/common/perf_common.hpp`](/home/hep7/project/kairos/zlink/core/perf/multi/common/perf_common.hpp)
-- [`core/perf/single/tests/test_run_comparison_policy.py`](/home/hep7/project/kairos/zlink/core/perf/single/tests/test_run_comparison_policy.py)
-- [`core/perf/single/tests/test_multi_run_comparison_policy.py`](/home/hep7/project/kairos/zlink/core/perf/single/tests/test_multi_run_comparison_policy.py)
+- [`core/perf/run_comparison.py`](../../../bindings/c/perf/run_comparison.py)
+- [`core/perf/single/run_comparison.py`](../../../bindings/c/perf/single/run_comparison.py)
+- [`core/perf/run_benchmarks.sh`](../../../bindings/c/perf/run_benchmarks.sh)
+- [`core/perf/run_benchmarks_multi.sh`](../../../bindings/c/perf/run_benchmarks_multi.sh)
+- [`core/perf/CMakeLists.txt`](../../../bindings/c/perf/CMakeLists.txt)
+- [`core/perf/multi/common/perf_common.hpp`](../../../bindings/c/perf/multi/common/perf_common.hpp)
+- [`core/perf/single/tests/test_run_comparison_policy.py`](../../../bindings/c/perf/single/tests/test_run_comparison_policy.py)
+- [`core/perf/single/tests/test_multi_run_comparison_policy.py`](../../../bindings/c/perf/single/tests/test_multi_run_comparison_policy.py)
 
 ### 5.2 core perf 바이너리
 
@@ -154,17 +154,17 @@
 
 직접 수정 대상으로 보는 파일:
 
-- [`core/perf/single/src/perf_spot.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_spot.cpp)
-- [`core/perf/single/src/perf_gateway.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_gateway.cpp)
-- [`core/perf/single/src/perf_pair.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_pair.cpp)
-- [`core/perf/single/src/perf_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_pubsub.cpp)
-- [`core/perf/single/src/perf_router_router.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_router_router.cpp)
-- [`core/perf/multi/src/perf_multi_spot_client.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp)
-- [`core/perf/multi/src/perf_multi_stream_callback_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_stream_callback_server.cpp)
-- [`core/perf/multi/src/perf_multi_gateway_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_gateway_server.cpp)
-- [`core/perf/multi/src/perf_multi_gateway_client.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_gateway_client.cpp)
-- [`core/perf/multi/src/perf_multi_dealer_dealer_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_dealer_dealer_server.cpp)
-- [`core/perf/multi/src/perf_multi_pubsub_client.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_pubsub_client.cpp)
+- [`core/perf/single/src/perf_spot.cpp`](../../../bindings/c/perf/single/src/perf_spot.cpp)
+- [`core/perf/single/src/perf_gateway.cpp`](../../../core/perf/single/src/perf_gateway.cpp)
+- [`core/perf/single/src/perf_pair.cpp`](../../../bindings/c/perf/single/src/perf_pair.cpp)
+- [`core/perf/single/src/perf_pubsub.cpp`](../../../bindings/c/perf/single/src/perf_pubsub.cpp)
+- [`core/perf/single/src/perf_router_router.cpp`](../../../bindings/c/perf/single/src/perf_router_router.cpp)
+- [`core/perf/multi/src/perf_multi_spot_client.cpp`](../../../bindings/c/perf/multi/src/perf_multi_spot_client.cpp)
+- [`core/perf/multi/src/perf_multi_stream_callback_server.cpp`](../../../core/perf/multi/src/perf_multi_stream_callback_server.cpp)
+- [`core/perf/multi/src/perf_multi_gateway_server.cpp`](../../../core/perf/multi/src/perf_multi_gateway_server.cpp)
+- [`core/perf/multi/src/perf_multi_gateway_client.cpp`](../../../core/perf/multi/src/perf_multi_gateway_client.cpp)
+- [`core/perf/multi/src/perf_multi_dealer_dealer_server.cpp`](../../../bindings/c/perf/multi/src/perf_multi_dealer_dealer_server.cpp)
+- [`core/perf/multi/src/perf_multi_pubsub_client.cpp`](../../../bindings/c/perf/multi/src/perf_multi_pubsub_client.cpp)
 
 ## 6. monitor와 perf의 관계
 

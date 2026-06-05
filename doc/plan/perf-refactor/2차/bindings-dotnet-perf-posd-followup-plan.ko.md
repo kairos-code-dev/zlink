@@ -26,8 +26,8 @@
 - 환경 변수 해석은 [PerfEnv.cs](/home/hep7/project/kairos/zlink/bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfEnv.cs) 에 모았다.
 - 옵션과 검증은 [PerfOptions.cs](/home/hep7/project/kairos/zlink/bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfOptions.cs), 공통 결과와 계산은 [PerfShared.cs](/home/hep7/project/kairos/zlink/bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfShared.cs) 에 둔다.
 - [PerfOptions.cs](/home/hep7/project/kairos/zlink/bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfOptions.cs) 는 272라인이고, [PerfCommonMulti.cs](/home/hep7/project/kairos/zlink/bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/common/PerfCommonMulti.cs) 는 341라인이다.
-- 다만 [PerfCommonMulti.cs](/home/hep7/project/kairos/zlink/bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/common/PerfCommonMulti.cs) 에서는 `PerfOptions.FromMultiPattern("PUBSUB")` 와 `PerfOptions.FromMultiPattern("STREAM")` 재조회가 반복되고, [PollManager.cs](/home/hep7/project/kairos/zlink/bindings/dotnet/perf/common/Zlink.BindingBench.Common/PollManager.cs) 는 monitor/socket polling 을 한 클래스로 넓게 감싼다.
-- [PollManager.cs](/home/hep7/project/kairos/zlink/bindings/dotnet/perf/common/Zlink.BindingBench.Common/PollManager.cs) 는 123라인인데도 `PollMonitors`, `PollSockets`, `IsSocketReadReady`, `IsSocketWriteReady` 를 한 ownership 안에 묶는다.
+- 다만 [PerfCommonMulti.cs](/home/hep7/project/kairos/zlink/bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/common/PerfCommonMulti.cs) 에서는 `PerfOptions.FromMultiPattern("PUBSUB")` 와 `PerfOptions.FromMultiPattern("STREAM")` 재조회가 반복되고, [PollManager.cs](../../../../bindings/dotnet/perf/common/Zlink.BindingBench.Common/PollManager.cs) 는 monitor/socket polling 을 한 클래스로 넓게 감싼다.
+- [PollManager.cs](../../../../bindings/dotnet/perf/common/Zlink.BindingBench.Common/PollManager.cs) 는 123라인인데도 `PollMonitors`, `PollSockets`, `IsSocketReadReady`, `IsSocketWriteReady` 를 한 ownership 안에 묶는다.
 
 ## 3. 남은 POSD 문제
 

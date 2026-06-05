@@ -80,8 +80,8 @@ configured timeout instead of promptly resuming when progress becomes possible.
 
 `perf_pubsub.cpp` accepts only one payload part and the exact benchmark topic:
 
-- [perf_pubsub.cpp](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_pubsub.cpp#L113)
-- [perf_pubsub.cpp](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_pubsub.cpp#L121)
+- [perf_pubsub.cpp](../../../bindings/c/perf/single/src/perf_pubsub.cpp#L113)
+- [perf_pubsub.cpp](../../../bindings/c/perf/single/src/perf_pubsub.cpp#L121)
 
 Even after adding a separate blocking `recv` benchmark path, `256B+` still
 collapsed. That means the problem is not the callback worker or queue
@@ -91,9 +91,9 @@ accounting.
 
 `zlink_publish()` sends the topic frame first, then each payload frame:
 
-- [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L6388)
-- [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L6411)
-- [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp#L6427)
+- [zlink.cpp](../../../core/src/api/core/zlink.cpp#L6388)
+- [zlink.cpp](../../../core/src/api/core/zlink.cpp#L6411)
+- [zlink.cpp](../../../core/src/api/core/zlink.cpp#L6427)
 
 So a blocking publish of a one-topic, one-payload message is still two send
 calls internally.
@@ -103,8 +103,8 @@ calls internally.
 `xpub_t::xsend()` only recomputes matching pipes when `_more_send` is false,
 and sets `_more_send = msg_more` after a successful frame send:
 
-- [xpub.cpp](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp#L368)
-- [xpub.cpp](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp#L395)
+- [xpub.cpp](../../../core/src/runtime/sockets/pubsub/xpub.cpp#L368)
+- [xpub.cpp](../../../core/src/runtime/sockets/pubsub/xpub.cpp#L395)
 
 If the topic frame succeeds with `SNDMORE`, `_more_send` becomes true.
 
@@ -112,8 +112,8 @@ If the topic frame succeeds with `SNDMORE`, `_more_send` becomes true.
 
 `socket_base_t::send()` retries the specific frame until timeout:
 
-- [socket_base.cpp](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.cpp#L1448)
-- [socket_base.cpp](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.cpp#L1454)
+- [socket_base.cpp](../../../core/src/runtime/sockets/common/socket_base.cpp#L1448)
+- [socket_base.cpp](../../../core/src/runtime/sockets/common/socket_base.cpp#L1454)
 
 If the payload frame times out and returns `EAGAIN`, the application-level
 benchmark retries the whole publish from the start. But the socket may already

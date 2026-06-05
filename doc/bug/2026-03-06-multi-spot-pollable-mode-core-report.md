@@ -27,9 +27,9 @@ Core/Binding mode split 계약:
 - 같은 node에서 `Spot.publish()/Spot.recv()` facade I/O 혼용 시 EFSM
 
 관련 코드/테스트:
-- core mode split check: [core/src/services/spot/spot_node.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp:237)
-- core test (EFSM): [core/tests/spot/test_spot_mode_split.cpp](/home/hep7/project/kairos/zlink/core/tests/spot/test_spot_mode_split.cpp:31)
-- java integration test (EFSM): [bindings/java/src/test/java/dev/kairoscode/zlink/integration/TestServiceModeSplitPortedTest.java](/home/hep7/project/kairos/zlink/bindings/java/src/test/java/dev/kairoscode/zlink/integration/TestServiceModeSplitPortedTest.java:39)
+- core mode split check: [core/src/services/spot/spot_node.cpp](../../core/src/services/spot/spot_node.cpp:237)
+- core test (EFSM): [core/tests/spot/test_spot_mode_split.cpp](../../core/tests/spot/test_spot_mode_split.cpp:31)
+- java integration test (EFSM): [bindings/java/src/test/java/dev/kairoscode/zlink/integration/TestServiceModeSplitPortedTest.java](../../bindings/java/src/test/java/dev/kairoscode/zlink/integration/TestServiceModeSplitPortedTest.java:39)
 
 ## 3) 재현 환경
 
@@ -113,12 +113,12 @@ Client command:
 아래 구현은 facade I/O(`Spot.publish/recv`)를 사용하지 않고, pollable socket 경로만 사용합니다.
 
 Server:
-- `pubNode.pubSocket()` 사용: [PerfMultiSpotServer.java](/home/hep7/project/kairos/zlink/bindings/java/perf/multi/Zlink.PerfBench/src/main/java/dev/kairoscode/zlink/integration/bench/src/PerfMultiSpotServer.java:90)
-- `DONTWAIT_SNDMORE` + `DONTWAIT` send: [PerfMultiSpotServer.java](/home/hep7/project/kairos/zlink/bindings/java/perf/multi/Zlink.PerfBench/src/main/java/dev/kairoscode/zlink/integration/bench/src/PerfMultiSpotServer.java:189)
+- `pubNode.pubSocket()` 사용: [PerfMultiSpotServer.java](../../bindings/java/perf/multi/Zlink.PerfBench/src/main/java/dev/kairoscode/zlink/integration/bench/src/PerfMultiSpotServer.java:90)
+- `DONTWAIT_SNDMORE` + `DONTWAIT` send: [PerfMultiSpotServer.java](../../bindings/java/perf/multi/Zlink.PerfBench/src/main/java/dev/kairoscode/zlink/integration/bench/src/PerfMultiSpotServer.java:189)
 
 Client:
-- `node.subSocket()` + raw `SUBSCRIBE`: [PerfMultiSpotClient.java](/home/hep7/project/kairos/zlink/bindings/java/perf/multi/Zlink.PerfBench/src/main/java/dev/kairoscode/zlink/integration/bench/src/PerfMultiSpotClient.java:100)
-- `Poller` + `recv(DONTWAIT)` drain: [PerfMultiSpotClient.java](/home/hep7/project/kairos/zlink/bindings/java/perf/multi/Zlink.PerfBench/src/main/java/dev/kairoscode/zlink/integration/bench/src/PerfMultiSpotClient.java:117)
+- `node.subSocket()` + raw `SUBSCRIBE`: [PerfMultiSpotClient.java](../../bindings/java/perf/multi/Zlink.PerfBench/src/main/java/dev/kairoscode/zlink/integration/bench/src/PerfMultiSpotClient.java:100)
+- `Poller` + `recv(DONTWAIT)` drain: [PerfMultiSpotClient.java](../../bindings/java/perf/multi/Zlink.PerfBench/src/main/java/dev/kairoscode/zlink/integration/bench/src/PerfMultiSpotClient.java:117)
 
 즉, "facade/pollable 혼용으로 인한 EFSM"은 해당 재현에서 원인이 아닙니다.
 
@@ -127,10 +127,10 @@ Client:
 확정 원인은 core 분석이 필요하지만, mode split 이후에도 control thread가 `_sub`를 조작하는 경로가 남아 있어 동시성 충돌 가능성이 있습니다.
 
 관련 코드:
-- pollable mode 플래그 set: [core/src/services/spot/spot_node.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp:935)
-- `process_sub()`는 pollable mode에서 skip: [core/src/services/spot/spot_node.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp:1612)
-- 하지만 `flush_pending()`은 `_sub->setsockopt/connect/term_endpoint` 수행: [core/src/services/spot/spot_node.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp:1562)
-- control thread tick에서 `flush_pending()` 호출: [core/src/services/spot/spot_node.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp:1784)
+- pollable mode 플래그 set: [core/src/services/spot/spot_node.cpp](../../core/src/services/spot/spot_node.cpp:935)
+- `process_sub()`는 pollable mode에서 skip: [core/src/services/spot/spot_node.cpp](../../core/src/services/spot/spot_node.cpp:1612)
+- 하지만 `flush_pending()`은 `_sub->setsockopt/connect/term_endpoint` 수행: [core/src/services/spot/spot_node.cpp](../../core/src/services/spot/spot_node.cpp:1562)
+- control thread tick에서 `flush_pending()` 호출: [core/src/services/spot/spot_node.cpp](../../core/src/services/spot/spot_node.cpp:1784)
 
 참고: 위는 코드 기반 가설이며, 실제 corruption root-cause는 native stack/asan/valgrind 확인이 필요합니다.
 

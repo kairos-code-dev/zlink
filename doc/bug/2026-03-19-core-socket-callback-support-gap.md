@@ -46,9 +46,9 @@
 
 참조:
 
-- [`core/perf/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/run_comparison.py#L42)
-- [`core/perf/run_benchmarks_multi.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks_multi.sh#L7)
-- [`core/perf/multi/src/perf_multi_stream_callback_server.cpp`](/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_stream_callback_server.cpp#L399)
+- [`core/perf/run_comparison.py`](../../bindings/c/perf/run_comparison.py#L42)
+- [`core/perf/run_benchmarks_multi.sh`](../../bindings/c/perf/run_benchmarks_multi.sh#L7)
+- [`core/perf/multi/src/perf_multi_stream_callback_server.cpp`](../../core/perf/multi/src/perf_multi_stream_callback_server.cpp#L399)
 
 ## Minimal reproduction
 

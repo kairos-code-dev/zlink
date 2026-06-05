@@ -75,9 +75,9 @@ Observed summary:
 
 ## Suspected fix areas
 
-- [`core/perf/single/common/bench_common.hpp`](/home/hep7/project/kairos/zlink/core/perf/single/common/bench_common.hpp)
+- [`core/perf/single/common/bench_common.hpp`](../../bindings/c/perf/single/common/bench_common.hpp)
   의 `setup_connected_pair()` 이후 phase progression
-- [`core/perf/single/src/perf_pair.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_pair.cpp)
+- [`core/perf/single/src/perf_pair.cpp`](../../bindings/c/perf/single/src/perf_pair.cpp)
   의 recv-mode loop / shutdown path
 - `PAIR` `CONNECTION_READY` 이후 첫 traffic kick / stop signaling contract
 

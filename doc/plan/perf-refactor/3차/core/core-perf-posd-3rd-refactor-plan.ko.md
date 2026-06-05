@@ -107,24 +107,24 @@
 
 ### 2.2 남은 과대 공통 계층
 
-- [core/perf/multi/common/perf_multi_metrics.hpp](../../../../../core/perf/multi/common/perf_multi_metrics.hpp)
+- [core/perf/multi/common/perf_multi_metrics.hpp](../../../../../bindings/c/perf/multi/common/perf_multi_metrics.hpp)
   에 queue probe, queue stats, latency helper, result helper가 함께 섞여 있다.
-- [core/perf/single/common/bench_common.hpp](../../../../../core/perf/single/common/bench_common.hpp)
+- [core/perf/single/common/bench_common.hpp](../../../../../bindings/c/perf/single/common/bench_common.hpp)
   는 metric queue, phase, metric worker, queue probe를 한 번에 끌어온다.
 - 기본 perf surface에서 queue/backpressure를 제거했는데도 queue probe 계층이
   넓은 공용 API로 남아 있다.
 
 ### 2.3 남은 얕은 wrapper 구조
 
-- [core/perf/run_benchmarks_multi.sh](../../../../../core/perf/run_benchmarks_multi.sh)는
-  multi 옵션을 정규화한 뒤 [core/perf/run_benchmarks.sh](../../../../../core/perf/run_benchmarks.sh)를
+- [core/perf/run_benchmarks_multi.sh](../../../../../bindings/c/perf/run_benchmarks_multi.sh)는
+  multi 옵션을 정규화한 뒤 [core/perf/run_benchmarks.sh](../../../../../bindings/c/perf/run_benchmarks.sh)를
   다시 호출하는 2단 shell wrapper 구조다.
 - 현재 구조는 동작은 하지만, 공식 실행 surface가 shell 2개와 Python engine에
   분산되어 변경 증폭이 크다.
 
 ### 2.4 stream/bench/bindings 공용 잔재
 
-- [core/perf/common/streamclient](../../../../../core/perf/common/streamclient)
+- [core/perf/common/streamclient](../../../../../bindings/c/perf/common/streamclient)
   는 아직 `warmup -> measure -> drain` 모델과 `--warmup` 옵션을 유지한다.
 - `core/perf` policy surface를 shared client나 downstream perf/bench stack이 그대로
   끌어다 쓰면, core만 `ready -> active`로 정리해도 bindings/bench에서 다시
@@ -233,10 +233,10 @@ manager/guideloop 해석 규칙:
 
 대상:
 
-- [core/perf/README.md](../../../../../core/perf/README.md)
+- [core/perf/README.md](../../../../../bindings/c/perf/README.md)
 - [core/perf/README_KO.md](../../../../../core/perf/README_KO.md)
-- [core/perf/single/tests/test_multi_run_comparison_policy.py](../../../../../core/perf/single/tests/test_multi_run_comparison_policy.py)
-- [core/perf/single/tests/test_run_comparison_policy.py](../../../../../core/perf/single/tests/test_run_comparison_policy.py)
+- [core/perf/single/tests/test_multi_run_comparison_policy.py](../../../../../bindings/c/perf/single/tests/test_multi_run_comparison_policy.py)
+- [core/perf/single/tests/test_run_comparison_policy.py](../../../../../bindings/c/perf/single/tests/test_run_comparison_policy.py)
 
 할 일:
 
@@ -254,11 +254,11 @@ manager/guideloop 해석 규칙:
 
 대상:
 
-- [core/perf/multi/common/perf_multi_metrics.hpp](../../../../../core/perf/multi/common/perf_multi_metrics.hpp)
+- [core/perf/multi/common/perf_multi_metrics.hpp](../../../../../bindings/c/perf/multi/common/perf_multi_metrics.hpp)
 - [core/perf/single/common/perf_single_queue_probe.hpp](../../../../../core/perf/single/common/perf_single_queue_probe.hpp)
-- [core/perf/single/common/bench_common.hpp](../../../../../core/perf/single/common/bench_common.hpp)
-- [core/perf/multi/src/perf_multi_spot_client.cpp](../../../../../core/perf/multi/src/perf_multi_spot_client.cpp)
-- [core/perf/multi/common/perf_multi_spot_control.hpp](../../../../../core/perf/multi/common/perf_multi_spot_control.hpp)
+- [core/perf/single/common/bench_common.hpp](../../../../../bindings/c/perf/single/common/bench_common.hpp)
+- [core/perf/multi/src/perf_multi_spot_client.cpp](../../../../../bindings/c/perf/multi/src/perf_multi_spot_client.cpp)
+- [core/perf/multi/common/perf_multi_spot_control.hpp](../../../../../bindings/c/perf/multi/common/perf_multi_spot_control.hpp)
 
 할 일:
 
@@ -280,9 +280,9 @@ manager/guideloop 해석 규칙:
 
 - [core/perf/common/streamclient/README.md](../../../../../core/perf/common/streamclient/README.md)
 - [core/perf/common/streamclient/README_KO.md](../../../../../core/perf/common/streamclient/README_KO.md)
-- [core/perf/common/streamclient/perf_stream_bench_client.hpp](../../../../../core/perf/common/streamclient/perf_stream_bench_client.hpp)
-- [core/perf/common/streamclient/perf_stream_client_options.hpp](../../../../../core/perf/common/streamclient/perf_stream_client_options.hpp)
-- [core/perf/common/streamclient/perf_stream_client_session.hpp](../../../../../core/perf/common/streamclient/perf_stream_client_session.hpp)
+- [core/perf/common/streamclient/perf_stream_bench_client.hpp](../../../../../bindings/c/perf/common/streamclient/perf_stream_bench_client.hpp)
+- [core/perf/common/streamclient/perf_stream_client_options.hpp](../../../../../bindings/c/perf/common/streamclient/perf_stream_client_options.hpp)
+- [core/perf/common/streamclient/perf_stream_client_session.hpp](../../../../../bindings/c/perf/common/streamclient/perf_stream_client_session.hpp)
 
 할 일:
 
@@ -300,12 +300,12 @@ manager/guideloop 해석 규칙:
 
 대상:
 
-- [core/perf/run_benchmarks.sh](../../../../../core/perf/run_benchmarks.sh)
-- [core/perf/run_benchmarks_multi.sh](../../../../../core/perf/run_benchmarks_multi.sh)
-- [core/perf/run_benchmarks.ps1](../../../../../core/perf/run_benchmarks.ps1)
-- [core/perf/run_benchmarks_multi.ps1](../../../../../core/perf/run_benchmarks_multi.ps1)
-- [core/perf/run_comparison.py](../../../../../core/perf/run_comparison.py)
-- [core/perf/single/run_comparison.py](../../../../../core/perf/single/run_comparison.py)
+- [core/perf/run_benchmarks.sh](../../../../../bindings/c/perf/run_benchmarks.sh)
+- [core/perf/run_benchmarks_multi.sh](../../../../../bindings/c/perf/run_benchmarks_multi.sh)
+- [core/perf/run_benchmarks.ps1](../../../../../bindings/c/perf/run_benchmarks.ps1)
+- [core/perf/run_benchmarks_multi.ps1](../../../../../bindings/c/perf/run_benchmarks_multi.ps1)
+- [core/perf/run_comparison.py](../../../../../bindings/c/perf/run_comparison.py)
+- [core/perf/single/run_comparison.py](../../../../../bindings/c/perf/single/run_comparison.py)
 
 할 일:
 
@@ -469,7 +469,7 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 
 대상:
 
-- [core/perf/baseline](../../../../../core/perf/baseline)
+- [core/perf/baseline](../../../../../bindings/c/perf/baseline)
 - tracked sample / analysis artifact
 
 할 일:
@@ -477,7 +477,7 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - tracked baseline/result 파일을 어떤 기준으로 남길지 명시한다.
 - 비교 기준이 무의미해진 old baseline은 코드 트리에서 제거하거나 별도 archive로
   이동한다.
-- 공식 runtime output root인 [core/perf/results](../../../../../core/perf/results)는
+- 공식 runtime output root인 [core/perf/results](../../../../../bindings/c/perf/results)는
   유지한다. 정리 대상은 tracked baseline/sample/analysis artifact로 한정한다.
 - 실행 산출물과 문서 증거 파일의 저장 기준을 분리한다.
 
@@ -485,7 +485,7 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 
 - 코드/정책/실행 산출물이 같은 레벨에서 섞여 있지 않다.
 - tracked perf artifact는 “왜 git에 있어야 하는지”가 설명되는 최소 집합만 남는다.
-- [core/perf/results](../../../../../core/perf/results)는 정책상 공식 결과 저장
+- [core/perf/results](../../../../../bindings/c/perf/results)는 정책상 공식 결과 저장
   루트로 유지되고, tracked cleanup 대상과 혼동되지 않는다.
 
 ## 5. 단계별 실행 계획

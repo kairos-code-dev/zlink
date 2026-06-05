@@ -23,9 +23,9 @@
 
 ## 2. 현재 구조 요약
 
-- 공통 모듈 [PerfUtil.java](/home/hep7/project/kairos/zlink/bindings/java/perf/common/src/main/java/dev/kairoscode/zlink/perf/PerfUtil.java) 가 config parsing, payload/header, latency 계산, endpoint 생성, TLS, ready signal, monitor wait, result format, result file name 을 모두 떠안고 있다.
+- 공통 모듈 [PerfUtil.java](../../../../bindings/java/perf/common/src/main/java/systems/zlink/perf/PerfUtil.java) 가 config parsing, payload/header, latency 계산, endpoint 생성, TLS, ready signal, monitor wait, result format, result file name 을 모두 떠안고 있다.
 - single/multi 패턴 파일은 hot path와 send/recv 시나리오를 직접 드러내고 있어 policy상 올바르다.
-- [SingleSendLoops.java](/home/hep7/project/kairos/zlink/bindings/java/perf/single/Zlink.BindingBench/src/main/java/dev/kairoscode/zlink/perf/single/SingleSendLoops.java) 와 [MultiSendLoops.java](/home/hep7/project/kairos/zlink/bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/dev/kairoscode/zlink/perf/multi/MultiSendLoops.java) 는 이미 측정 루프 가시성을 해치지 않는 수준의 보조 책임만 맡는다.
+- [SingleSendLoops.java](../../../../bindings/java/perf/single/Zlink.BindingBench/src/main/java/dev/kairoscode/zlink/perf/single/SingleSendLoops.java) 와 [MultiSendLoops.java](../../../../bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/dev/kairoscode/zlink/perf/multi/MultiSendLoops.java) 는 이미 측정 루프 가시성을 해치지 않는 수준의 보조 책임만 맡는다.
 
 ## 3. 남은 POSD 문제
 

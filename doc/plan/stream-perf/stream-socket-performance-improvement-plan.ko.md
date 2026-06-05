@@ -52,10 +52,10 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 현재 기준 수치는 다음 파일에 기록해 두었다.
 
 - 현재 기준 결과:
-  [`perf_linux_20260317_100613.txt`](/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_20260317_100613.txt)
+  [`perf_linux_20260317_100613.txt`](../../../core/perf/results/multi/report/perf_linux_20260317_100613.txt)
   - `STREAM_CALLBACK/tcp/64B = 357.802 Kops/s`
 - steady-state fast path 반영 직후 확인 결과:
-  [`perf_linux_20260317_095831.txt`](/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_20260317_095831.txt)
+  [`perf_linux_20260317_095831.txt`](../../../core/perf/results/multi/report/perf_linux_20260317_095831.txt)
   - `STREAM_CALLBACK/tcp/64B = 361.234 Kops/s`
 
 이 문서의 1차 목표는 다음과 같다.
@@ -218,9 +218,9 @@ workload에서 route 해석, message handoff, flush/wakeup 고정비가 throughp
 
 ### 7.1 변경 대상
 
-- [`core/src/sockets/stream.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/stream.cpp)
-- 필요 시 [`core/src/sockets/stream.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/stream.hpp)
-- 필요 시 [`core/src/core/session_base.cpp`](/home/hep7/project/kairos/zlink/core/src/core/session_base.cpp)
+- [`core/src/sockets/stream.cpp`](../../../core/src/sockets/stream.cpp)
+- 필요 시 [`core/src/sockets/stream.hpp`](../../../core/src/runtime/sockets/stream/stream.hpp)
+- 필요 시 [`core/src/core/session_base.cpp`](../../../core/src/runtime/core/session_base.cpp)
 
 ### 7.2 변경 제외
 

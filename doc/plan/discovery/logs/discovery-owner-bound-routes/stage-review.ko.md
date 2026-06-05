@@ -1,6 +1,6 @@
 # Discovery Owner-Bound Routes Stage Review
 
-기준 draft: [`discovery-owner-bound-routes.ko.md`](../../../spec/draft/discovery-owner-bound-routes.ko.md)
+기준 draft: [`discovery-owner-bound-routes.ko.md`](../../../../spec/draft/discovery-owner-bound-routes.ko.md)
 
 ## Stage 0. 기준선 수집
 

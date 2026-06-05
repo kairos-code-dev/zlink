@@ -130,7 +130,7 @@ socket with multiple connections may span several I/O threads.
 
 Setting more I/O threads than CPU cores provides no benefit and adds
 context-switch overhead. Profile with the
-[perf benchmarks](../../core/perf/) before increasing beyond 4.
+[perf benchmarks](../../bindings/c/perf) before increasing beyond 4.
 
 ## Key Source Files
 

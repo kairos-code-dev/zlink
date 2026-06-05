@@ -13,7 +13,7 @@
 - `core/perf`와 동일한 측정 의미 유지 전제
 
 읽는 방법:
-1. 먼저 [../1차/PROGRESS.md](/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/1차/PROGRESS.md) 와 1차 계획 문서로 현재 완료 상태를 확인
+1. 먼저 [../1차/PROGRESS.md](../1차/PROGRESS.md) 와 1차 계획 문서로 현재 완료 상태를 확인
 2. 그 다음 이 폴더의 `*-posd-followup-plan.ko.md` 로 후속 리팩토링 후보를 확인
 
 현재 용도:

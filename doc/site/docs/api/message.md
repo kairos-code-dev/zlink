@@ -326,6 +326,6 @@ metadata is not part of the active message path.
 
 See these documents for the adjacent contracts:
 
-- request-reply public API: [socket/README.md](socket/README.md)
-- SPOT direct and request-reply public API: [service/spot.md](service/spot.md)
+- request-reply public API: [socket/README.md](socket.md)
+- SPOT direct and request-reply public API: [service/spot.md](spot.md)
 - wire format and control-part rules: `doc/internals/protocol-zmp.md`

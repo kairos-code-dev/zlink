@@ -17,14 +17,14 @@
 
 - `zlink_poller_add_spot_pub()`는 `spot_pub_t::poller_socket()`을 거쳐
   `spot_node_t::pub_socket_for_poller()`를 사용합니다:
-  [spot_pub.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_pub.cpp:40),
-  [zlink.cpp](/home/hep7/project/kairos/zlink/core/src/api/zlink.cpp:2567)
+  [spot_pub.cpp](../../core/src/runtime/services/spot/pubsub/spot_pub.cpp#L40),
+  [zlink.cpp](../../core/src/api/core/zlink.cpp#L2567)
 - facade publish를 막는 `_pub_pollable_mode`는
   `pub_socket_unsafe()`에서만 켜집니다:
-  [spot_node.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp:905)
+  [spot_node.cpp](../../core/src/services/spot/spot_node.cpp:905)
 - `spot_node_t::publish()`는 `0`과 `ZLINK_DONTWAIT`를 둘 다 허용하고,
   그 외 flag만 `ENOTSUP`입니다:
-  [spot_node.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp:1180)
+  [spot_node.cpp](../../core/src/services/spot/spot_node.cpp:1180)
 
 즉 기존 문서의 "add_spot_pub 이후 dontwait가 구조적으로 unsupported"라는
 설명은 부정확합니다.
@@ -145,7 +145,7 @@ RECV_ERR,156384763
 ```
 
 `156384763`은 `EFSM`입니다:
-[CoreEnumPortedTest.java](/home/hep7/project/kairos/zlink/bindings/java/src/test/java/dev/kairoscode/zlink/CoreEnumPortedTest.java:75)
+[CoreEnumPortedTest.java](../../bindings/java/src/test/java/dev/kairoscode/zlink/CoreEnumPortedTest.java:75)
 
 이 결과는 문제를 Java perf 로직 하나로만 설명하기 어렵다는 뜻입니다.
 

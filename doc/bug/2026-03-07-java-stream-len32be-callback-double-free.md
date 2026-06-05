@@ -98,11 +98,11 @@ SERVER_RC=134
 우선순위 높은 의심 구간:
 
 1. `Socket.onStreamPackets(...)`
-   - [Socket.java](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java:720)
+   - [Socket.java](../../bindings/java/src/main/java/systems/zlink/contracts/sockets/Socket.java#L720)
 2. `Message.fromMsgVector(...)`
-   - [Message.java](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Message.java:258)
+   - [Message.java](../../bindings/java/src/main/java/systems/zlink/contracts/messaging/Message.java#L258)
 3. `streamSend(..., Message, ...)` ownership consumption contract
-   - [Socket.java](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java:506)
+   - [Socket.java](../../bindings/java/src/main/java/systems/zlink/contracts/sockets/Socket.java#L506)
 
 특히 Java는 .NET과 달리 `LEN32BE` callback regression test가 없었고,
 이번 조사 중 `streamSend(..., Message, ...)` ownership 처리도 .NET과 차이가

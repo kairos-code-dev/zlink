@@ -380,8 +380,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 || handler.kind() != kind) {
                 continue;
             }
-            ActorLifecycleShape shape =
-                actorLifecycleHandlerShape(handler.handlerType(), handler.handlerMethod());
+            ActorLifecycleShape shape = kind == ZLinkScannedHandlerKind.ACTOR_DISCONNECTED
+                ? actorDisconnectedHandlerShape(handler.handlerType(), handler.handlerMethod())
+                : actorLifecycleHandlerShape(handler.handlerType(), handler.handlerMethod());
             handlers.add(new SpotActorLifecycleHandlerRegistration(
                 handler.handlerType(),
                 handler.handlerMethod(),

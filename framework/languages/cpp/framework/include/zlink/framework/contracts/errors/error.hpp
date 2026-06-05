@@ -14,6 +14,7 @@ enum class framework_error_kind_t
     actor_create_failed,
     actor_already_exists,
     actor_type_mismatch,
+    actor_stale_generation,
     spot_create_failed,
     spot_route_not_found,
     spot_type_mismatch,

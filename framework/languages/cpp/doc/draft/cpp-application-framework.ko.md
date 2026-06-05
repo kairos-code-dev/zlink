@@ -300,11 +300,11 @@ framework는 cross-cutting concern을 handler 안에 반복하지 않도록 midd
 - auth filter
 - exception filter
 
-HTTP의 초기 core 구현은 `options.http().use<TMiddleware>()`와 `http_context_t` 기반
-before/after hook이다. route별 HTTP filter 타입은 별도 public API로 만들지 않고,
-middleware가 method/path를 보고 필요한 route에만 적용한다. middleware는
-`http_context_t::json_response(...)`로 handler 호출을 건너뛰는 short-circuit response를
-만들 수 있다.
+HTTP core 구현은 typed JSON handler, raw HTTP request handler, `http_response_t` 반환
+handler, `options.http().use<TMiddleware>()`, `http_context_t` 기반 before/after hook을 모두
+포함한다. route별 HTTP filter 타입은 별도 public API로 만들지 않고, middleware가 method/path를
+보고 필요한 route에만 적용한다. middleware는 `http_context_t::json_response(...)`로 handler
+호출을 건너뛰는 short-circuit response를 만들 수 있다.
 
 초기 구현 순서:
 

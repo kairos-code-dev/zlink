@@ -2,6 +2,7 @@
 
 #include <zlink/framework.hpp>
 
+#include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/channel_runtime.hpp"
 
 #include <string>
@@ -97,6 +98,30 @@ int main ()
     if (after_close || after_close.error_kind () != zlink::framework::framework_error_kind_t::closed) {
         return 13;
     }
+
+    zlink::framework::detail::channel_runtime_bundle_t subscriber_bundle;
+    if (!subscriber_bundle.try_add_manual_connection ("tcp://subscriber-a:7400")
+        || !subscriber_bundle.try_add_manual_connection ("tcp://subscriber-b:7400")
+        || !subscriber_bundle.try_add_manual_connection ("tcp://subscriber-c:7400")) {
+        return 14;
+    }
+    if (!subscriber_bundle.try_enter_receive ()) {
+        return 15;
+    }
+    if (subscriber_bundle.try_enter_receive ()) {
+        return 16;
+    }
+    subscriber_bundle.remove_manual_connection ("tcp://subscriber-b:7400");
+    const auto remaining_subscribers = subscriber_bundle.list_manual_connections ();
+    if (remaining_subscribers.size () != 2 || remaining_subscribers[0] != "tcp://subscriber-a:7400"
+        || remaining_subscribers[1] != "tcp://subscriber-c:7400") {
+        return 17;
+    }
+    subscriber_bundle.leave_receive ();
+    if (subscriber_bundle.receive_active () || !subscriber_bundle.try_enter_receive ()) {
+        return 18;
+    }
+    subscriber_bundle.leave_receive ();
 
     return 0;
 }

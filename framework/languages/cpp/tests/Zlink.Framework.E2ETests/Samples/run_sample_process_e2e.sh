@@ -152,9 +152,9 @@ for expected in "${expected_items[@]}"; do
   fi
 done
 
-recv_count=$(grep -c '^recv ' "$sample_log" || true)
-reply_count=$(grep -c '^reply ' "$sample_log" || true)
-push_count=$(grep -c '^push ' "$sample_log" || true)
+recv_count=$(grep -Ec '(^| - )recv ' "$sample_log" || true)
+reply_count=$(grep -Ec '(^| - )reply ' "$sample_log" || true)
+push_count=$(grep -Ec '(^| - )push ' "$sample_log" || true)
 
 if (( recv_count < min_recv )); then
   echo "expected at least $min_recv recv lines, got $recv_count" >&2

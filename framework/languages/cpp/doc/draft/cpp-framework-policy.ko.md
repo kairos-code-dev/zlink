@@ -498,7 +498,7 @@ dependency로만 추가한다. GoogleTest, GoogleMock, benchmark 라이브러리
 | 영역 | 라이브러리 | 제외 이유 |
 |------|------------|----------|
 | async I/O public surface | `Boost.Asio` 타입 직접 노출 | 사용자는 `task_t<T>`와 zlink call object만 보아야 한다. `boost::asio::awaitable`, executor, strand는 runtime 내부 구현으로 숨긴다. |
-| HTTP/Web public surface | `Boost.Beast`, SSL 타입 직접 노출 | HTTP/HTTPS hosting 구현에는 Beast와 SSL backend를 쓰지만, 사용자는 `options.http().listen(...).tls(...).map_get/map_post/map_put/map_delete<THandler>(...)`만 보아야 한다. |
+| HTTP/Web public surface | `Boost.Beast`, SSL 타입 직접 노출 | HTTP/HTTPS hosting 구현에는 Beast와 SSL backend를 쓰지만, 사용자는 `options.http().listen(...).configure_tls(...).map_get/map_post/map_put/map_delete<THandler>(...)`만 보아야 한다. |
 | WebSocket 구현 | `Boost.Beast` WebSocket 표면 | WebSocket transport는 STREAM Connector 또는 zlink transport 경계에서 다룬다. HTTP hosting의 route handler 기능과 섞지 않는다. |
 | event loop | `libuv` | zlink poller와 별도 event loop를 함께 운영하면 shutdown, timer, readiness 의미가 복잡해진다. |
 | DI | `Boost.Ext.DI` | framework 자체 container로 lifetime과 host shutdown 규칙을 직접 닫는다. |

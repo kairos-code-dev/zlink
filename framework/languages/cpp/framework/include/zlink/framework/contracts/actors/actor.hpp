@@ -111,12 +111,15 @@ class bound_session_t
     friend class session_actor_manager_t;
     friend class detail::actor_gateway_runtime_t;
 
-    explicit bound_session_t (std::shared_ptr<detail::actor_gateway_state_t> state, std::string actor_id);
+    explicit bound_session_t (std::shared_ptr<detail::actor_gateway_state_t> state,
+                              std::string actor_id,
+                              std::uint64_t generation);
 
     send_call_t send_erased (const zlink::message_t &payload);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     std::string _actor_id;
+    std::uint64_t _generation = 0;
 };
 
 class actor_context_t

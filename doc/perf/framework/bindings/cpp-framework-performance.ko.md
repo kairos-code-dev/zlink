@@ -50,7 +50,41 @@ dispatch, serializer, monitoring path는 실제 framework 경로를 통과해야
 C++ extension scenario로 둔다. Extension scenario는 공통 비교표에 섞지 않고
 `measurement_layer`를 `framework_micro` 또는 `framework_fake_backend`로 기록한다.
 
-## 4. C++ Micro Benchmark
+## 4. Embedded HTTP Server Gate
+
+C++ framework는 내장 HTTP server를 제공하므로 `http_handler_roundtrip` 외에 HTTP server
+자체 성능 gate를 둔다. 이 gate는 아래 draft의 완료 기준을 따른다.
+
+- [C++ embedded HTTP server draft](../../../../framework/languages/cpp/doc/draft/cpp-embedded-http-server.ko.md)
+
+HTTP handler e2e와 HTTP server perf는 목적이 다르다.
+
+- HTTP handler e2e는 public consumer 검증이므로 `zlink::http_client`로 호출한다.
+- HTTP server perf는 client 구현 비용을 빼야 하므로 같은 load generator로 zlink, Drogon,
+  Oat++ server를 모두 호출한다.
+- load generator는 runner가 하나로 고정하고, report에 도구 이름, version, command line,
+  thread 수, connection 수, duration, warmup을 남긴다.
+
+HTTP server perf scenario:
+
+| Scenario | Payload | 비교 기준 |
+|----------|---------|-----------|
+| `http_server_empty_route` | 0B | Drogon/Oat++ 동등 route 중 더 빠른 baseline |
+| `http_server_json_4kb` | 4KB JSON | Drogon/Oat++ 동등 route 중 더 빠른 baseline |
+| `https_server_json_4kb` | 4KB JSON | 같은 TLS 조건의 Drogon/Oat++ baseline |
+| `http_server_keep_alive` | 1KB JSON | 같은 keep-alive profile의 Drogon/Oat++ baseline |
+
+처리량 기준은 plain HTTP route와 JSON route에서 baseline 대비 10% 이내 하락이다.
+HTTPS JSON route는 같은 TLS 조건에서 baseline 대비 15% 이내 하락이어야 한다.
+p95 latency가 baseline 대비 15%를 초과해 악화되면 실패로 본다.
+
+이 gate의 CTest label은 `framework-http-perf`다. 긴 full matrix는 기본 regression에 넣지 않고,
+짧은 smoke와 baseline 비교 가능 여부를 먼저 확인한다. 최종 완료 판단에는 complete report가
+필요하며, interrupted 또는 partial report는 성공으로 처리하지 않는다.
+같은 report 안에서 zlink, Drogon, Oat++에 서로 다른 load generator를 섞은 결과도 성공으로
+처리하지 않는다.
+
+## 5. C++ Micro Benchmark
 
 micro benchmark는 최종 언어 간 비교표에 섞지 않는다. C++ framework 내부 병목을 찾는
 진단용이다.
@@ -64,11 +98,13 @@ micro benchmark는 최종 언어 간 비교표에 섞지 않는다. C++ framewor
 | `call_object_submit` | fluent call object 구성과 submit 비용 |
 | `monitoring_publish_filter` | typed monitoring event filter와 handler dispatch |
 | `http_route_match_validation` | HTTP method/path matching과 request validation |
+| `http_response_write_empty` | empty response write와 header formatting |
+| `http_json_binding_4kb` | 4KB JSON DTO parse와 serialize |
 
 micro benchmark도 public 또는 contract-level API를 우선 사용한다. runtime detail을 직접
 호출해야 할 때는 C++ 전용 진단으로 표시하고 공통 report와 분리한다.
 
-## 5. Payload Size
+## 6. Payload Size
 
 공통 payload size를 그대로 사용한다.
 
@@ -79,7 +115,7 @@ micro benchmark도 public 또는 contract-level API를 우선 사용한다. runt
 
 초기 구현은 `4KB` smoke만 허용한다. full matrix 전에는 반드시 4개 size를 모두 추가한다.
 
-## 6. Runner 위치
+## 7. Runner 위치
 
 권장 위치:
 
@@ -98,9 +134,10 @@ matrix를 넣지 않고 짧은 smoke만 label로 연결한다.
 framework-perf
 framework-perf-smoke
 framework-perf-cpp
+framework-http-perf
 ```
 
-## 7. Artifact 검증
+## 8. Artifact 검증
 
 runner는 최소한 아래를 확인한다.
 
@@ -109,7 +146,7 @@ runner는 최소한 아래를 확인한다.
 - real transport benchmark는 현재 core runtime과 링크된 framework 산출물을 사용한다.
 - stale artifact가 의심되면 실패하고 재빌드를 요구한다.
 
-## 8. Report Metadata
+## 9. Report Metadata
 
 C++ report는 공통 schema 외에 아래 metadata를 추가할 수 있다.
 
@@ -129,21 +166,37 @@ C++ report는 공통 schema 외에 아래 metadata를 추가할 수 있다.
 `sample_scenario_smoke` 중 하나를 사용한다. `backend` 값은 실행 backend를 나타내며
 `zlink`, `fake`, `in_memory`, `none` 중 하나를 우선 사용한다.
 
-## 9. 금지 사항
+HTTP server perf gate report는 아래 field를 추가한다.
+
+```json
+{
+  "baseline_framework": "drogon",
+  "baseline_version": "unknown",
+  "baseline_commit": "unknown",
+  "load_generator": "unknown",
+  "connection_count": 0,
+  "thread_count": 0,
+  "tls": false
+}
+```
+
+## 10. 금지 사항
 
 - benchmark 전용 public shortcut API를 만들지 않는다.
 - fake backend benchmark에서 framework dispatch path를 우회하지 않는다.
 - C API를 hot path에서 직접 호출해 framework 수치처럼 보고하지 않는다.
 - interrupted result를 C++ framework perf 상태로 기록하지 않는다.
 - sample 성공 여부만으로 framework 성능이 충분하다고 판단하지 않는다.
+- HTTP server perf gate를 `zlink::http_client` 수치만으로 판단하지 않는다.
 
-## 10. 초기 구현 순서
+## 11. 초기 구현 순서
 
 1. `4KB` smoke runner와 JSON report writer를 만든다.
 2. fake backend로 channel request/reply, route request/reply, stream send, spot actor
    dispatch를 먼저 연결한다.
 3. HTTP handler roundtrip은 `zlink::http_client`를 사용한다.
 4. micro benchmark를 추가해 framework 내부 비용을 분리한다.
-5. payload size 4종과 full matrix를 추가한다.
-6. 동시성 프로파일 `serial`, `pipelined`, `concurrent`를 추가한다.
-7. Java, .NET, Node report와 같은 schema로 비교표를 생성한다.
+5. embedded HTTP server perf smoke와 Drogon/Oat++ baseline fixture를 추가한다.
+6. payload size 4종과 full matrix를 추가한다.
+7. 동시성 프로파일 `serial`, `pipelined`, `concurrent`를 추가한다.
+8. Java, .NET, Node report와 같은 schema로 비교표를 생성한다.

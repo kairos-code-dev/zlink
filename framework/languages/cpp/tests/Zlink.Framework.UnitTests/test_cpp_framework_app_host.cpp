@@ -112,6 +112,113 @@ std::string process_unique_endpoint (const std::string &endpoint, std::uint16_t 
     return endpoint_with_port (endpoint, process_unique_port (port_from_endpoint (endpoint), salt));
 }
 
+bool http_keep_alive_round_trip (const std::string &endpoint)
+{
+#ifdef _WIN32
+    (void) endpoint;
+    return true;
+#else
+    const auto port = port_from_endpoint (endpoint);
+    const int descriptor = ::socket (AF_INET, SOCK_STREAM, 0);
+    if (descriptor < 0) {
+        return false;
+    }
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons (port);
+    address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+    if (::connect (descriptor, reinterpret_cast<sockaddr *> (&address), sizeof (address)) != 0) {
+        ::close (descriptor);
+        return false;
+    }
+    auto send_all = [descriptor] (const std::string &request) {
+        const char *data = request.data ();
+        std::size_t remaining = request.size ();
+        while (remaining > 0) {
+            const auto sent = ::send (descriptor, data, remaining, 0);
+            if (sent <= 0) {
+                return false;
+            }
+            data += sent;
+            remaining -= static_cast<std::size_t> (sent);
+        }
+        return true;
+    };
+    auto recv_until = [descriptor] (std::string &response, const std::string &needle) {
+        char buffer[4096];
+        while (response.find (needle) == std::string::npos) {
+            const auto received = ::recv (descriptor, buffer, sizeof (buffer), 0);
+            if (received <= 0) {
+                return false;
+            }
+            response.append (buffer, static_cast<std::size_t> (received));
+        }
+        return true;
+    };
+    std::string response;
+    if (!send_all ("GET /numbers/11?page=1 HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")
+        || !recv_until (response, R"("id":11)")) {
+        ::close (descriptor);
+        return false;
+    }
+    if (!send_all ("GET /numbers/12?page=2 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        || !recv_until (response, R"("id":12)")) {
+        ::close (descriptor);
+        return false;
+    }
+    ::close (descriptor);
+    return response.find ("HTTP/1.1 200 OK") != std::string::npos
+           && response.find (R"("id":11)") != std::string::npos
+           && response.find (R"("id":12)") != std::string::npos;
+#endif
+}
+
+bool http_raw_request_contains (const std::string &endpoint, const std::string &request, const std::string &needle)
+{
+#ifdef _WIN32
+    (void) endpoint;
+    (void) request;
+    (void) needle;
+    return true;
+#else
+    const auto port = port_from_endpoint (endpoint);
+    const int descriptor = ::socket (AF_INET, SOCK_STREAM, 0);
+    if (descriptor < 0) {
+        return false;
+    }
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons (port);
+    address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+    if (::connect (descriptor, reinterpret_cast<sockaddr *> (&address), sizeof (address)) != 0) {
+        ::close (descriptor);
+        return false;
+    }
+    const char *data = request.data ();
+    std::size_t remaining = request.size ();
+    while (remaining > 0) {
+        const auto sent = ::send (descriptor, data, remaining, 0);
+        if (sent <= 0) {
+            ::close (descriptor);
+            return false;
+        }
+        data += sent;
+        remaining -= static_cast<std::size_t> (sent);
+    }
+    std::string response;
+    char buffer[4096];
+    while (response.find (needle) == std::string::npos) {
+        const auto received = ::recv (descriptor, buffer, sizeof (buffer), 0);
+        if (received <= 0) {
+            break;
+        }
+        response.append (buffer, static_cast<std::size_t> (received));
+    }
+    ::close (descriptor);
+    return response.find (needle) != std::string::npos;
+#endif
+}
+
 struct create_game_http_handler_t
 {
     struct request_type
@@ -249,6 +356,91 @@ struct number_http_handler_t
     };
 
     reply_type handle (const request_type &request) { return {.id = request.id, .page = request.page}; }
+};
+
+struct response_game_http_handler_t
+{
+    using request_type = create_game_http_handler_t::request_type;
+    using reply_type = create_game_http_handler_t::reply_type;
+
+    zlink::framework::http_response_t
+    handle (const request_type &request, const zlink::framework::http_request_t &http, zlink::framework::http_context_t &)
+    {
+        zlink::framework::http_response_t response;
+        response.status = 202;
+        response.body = zlink::message_t::from_json (
+                          reply_type{.id = request.id,
+                                     .name = "response:" + request.name,
+                                     .filter = request.filter,
+                                     .correlationId = http.correlation_id})
+                          .to_string ();
+        response.header ("X-Http-Target", http.target);
+        return response;
+    }
+};
+
+struct response_context_http_handler_t
+{
+    using request_type = create_game_http_handler_t::request_type;
+    using reply_type = create_game_http_handler_t::reply_type;
+
+    zlink::framework::http_response_t
+    handle (const request_type &request, zlink::framework::http_context_t &context)
+    {
+        context.json_response (299, R"({"id":"context","name":"context","filter":"","correlationId":"context"})");
+        zlink::framework::http_response_t response;
+        response.status = 207;
+        response.body = zlink::message_t::from_json (
+                          reply_type{.id = request.id,
+                                     .name = "response-context:" + request.name,
+                                     .filter = request.filter,
+                                     .correlationId = context.correlation_id})
+                          .to_string ();
+        response.header ("X-Response-Wins", "true");
+        return response;
+    }
+};
+
+struct request_async_http_handler_t
+{
+    using request_type = create_game_http_handler_t::request_type;
+    using reply_type = create_game_http_handler_t::reply_type;
+
+    zlink::framework::task_t<reply_type>
+    handle (const request_type &request, const zlink::framework::http_request_t &http)
+    {
+        co_return reply_type{.id = http.route_values.at ("id"),
+                             .name = "request-async:" + request.name,
+                             .filter = http.query_values.at ("filter"),
+                             .correlationId = http.correlation_id};
+    }
+};
+
+struct raw_echo_http_handler_t
+{
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &request)
+    {
+        zlink::framework::http_response_t response;
+        response.status = 206;
+        response.content_type = "text/plain";
+        response.body = request.route_values.at ("id") + "|" + request.query_values.at ("mode") + "|"
+                        + request.content_type + "|" + request.body;
+        response.header ("X-Raw-Path", request.path);
+        return response;
+    }
+};
+
+struct raw_async_http_handler_t
+{
+    zlink::framework::task_t<zlink::framework::http_response_t>
+    handle (const zlink::framework::http_request_t &request)
+    {
+        zlink::framework::http_response_t response;
+        response.status = 208;
+        response.content_type = "text/plain";
+        response.body = "raw-async|" + request.route_values.at ("id") + "|" + request.query_values.at ("mode");
+        co_return response;
+    }
 };
 
 int parse_required_int_field (const nlohmann::json &json, const char *field, const char *message)
@@ -550,6 +742,17 @@ int main ()
         options.services ().add_scoped<scoped_http_counter_t> ();
         options.services ().add_scoped<auth_middleware_t, auth_policy_t> ();
         options.http ()
+          .configure_server ([] (zlink::framework::http_server_options_builder_t &server) {
+              server.set_max_connections (64)
+                .set_max_request_body_size (1024 * 1024)
+                .set_max_header_size (64 * 1024)
+                .set_request_headers_timeout (std::chrono::milliseconds (5000))
+                .set_request_body_timeout (std::chrono::milliseconds (5000))
+                .set_write_timeout (std::chrono::milliseconds (5000))
+                .set_keep_alive_timeout (std::chrono::milliseconds (5000))
+                .set_graceful_shutdown_timeout (std::chrono::milliseconds (5000))
+                .set_max_keep_alive_requests (100);
+          })
           .listen (http_endpoint)
           .map_health ("/health")
           .map_readiness ("/ready")
@@ -559,6 +762,11 @@ int main ()
           .map_put<create_game_http_handler_t> ("/games/{id}")
           .map_delete<create_game_http_handler_t> ("/games/{id}")
           .map_get<number_http_handler_t> ("/numbers/{id}")
+          .map_get<response_game_http_handler_t> ("/response-games/{id}")
+          .map_get<response_context_http_handler_t> ("/response-context-games/{id}")
+          .map_get<request_async_http_handler_t> ("/request-async-games/{id}")
+          .map_post<raw_echo_http_handler_t> ("/raw/{id}")
+          .map_post<raw_async_http_handler_t> ("/raw-async/{id}")
           .map_get<create_game_http_handler_t> ("/secure-games/{id}")
           .map_post<async_game_http_handler_t> ("/async-games")
           .map_post<injected_game_http_handler_t> ("/injected-games")
@@ -587,6 +795,25 @@ int main ()
       http_client.get ("/games/1?filter=active").submit<create_game_http_handler_t::reply_type> ().result ();
     const auto number_get_result =
       http_client.get ("/numbers/41?page=2").submit<number_http_handler_t::reply_type> ().result ();
+    const auto response_object_result =
+      http_client.get ("/response-games/9?filter=direct&name=object").submit<create_game_http_handler_t::reply_type> ()
+        .result ();
+    const auto response_context_result = http_client.get ("/response-context-games/10?filter=context&name=object")
+                                           .submit<create_game_http_handler_t::reply_type> ()
+                                           .result ();
+    const auto request_async_result = http_client.get ("/request-async-games/13?filter=request&name=async")
+                                        .submit<create_game_http_handler_t::reply_type> ()
+                                        .result ();
+    const auto raw_result = http_client.post ("/raw/42?mode=echo")
+                              .header ("content-type", "text/plain")
+                              .body (std::string ("raw body"))
+                              .submit_raw ()
+                              .result ();
+    const auto raw_async_result = http_client.post ("/raw-async/43?mode=echo")
+                                    .header ("content-type", "text/plain")
+                                    .body (std::string ("raw body"))
+                                    .submit_raw ()
+                                    .result ();
     const auto secure_get_result = http_client.get ("/secure-games/7")
                                      .header ("authorization", "Bearer test-token")
                                      .submit<create_game_http_handler_t::reply_type> ()
@@ -671,6 +898,7 @@ int main ()
       http_client.get ("/games/blocked").submit<create_game_http_handler_t::reply_type> ().result ();
     const auto health_result = http_client.get ("/health").submit<health_http_reply_t> ().result ();
     const auto liveness_result = http_client.get ("/live").submit<health_http_reply_t> ().result ();
+    const bool keep_alive_ok = http_keep_alive_round_trip (http_endpoint);
     app.stop ();
     app_thread.join ();
 
@@ -689,6 +917,32 @@ int main ()
     }
     if (!number_get_result || number_get_result.value ().body.id != 41 || number_get_result.value ().body.page != 2) {
         return 46;
+    }
+    if (!response_object_result || response_object_result.value ().status != 202
+        || response_object_result.value ().body.id != "9" || response_object_result.value ().body.name != "response:object"
+        || response_object_result.value ().body.filter != "direct"
+        || response_object_result.value ().headers.at ("X-Http-Target") != "/response-games/9?filter=direct&name=object") {
+        return 57;
+    }
+    if (!response_context_result || response_context_result.value ().status != 207
+        || response_context_result.value ().body.id != "10"
+        || response_context_result.value ().body.name != "response-context:object"
+        || response_context_result.value ().headers.at ("X-Response-Wins") != "true") {
+        return 61;
+    }
+    if (!request_async_result || request_async_result.value ().status != 200
+        || request_async_result.value ().body.id != "13"
+        || request_async_result.value ().body.name != "request-async:async"
+        || request_async_result.value ().body.filter != "request") {
+        return 62;
+    }
+    if (!raw_result || raw_result.value ().status != 206 || raw_result.value ().headers.at ("X-Raw-Path") != "/raw/42"
+        || raw_result.value ().body.find ("42|echo|text/plain|") == std::string::npos) {
+        return 58;
+    }
+    if (!raw_async_result || raw_async_result.value ().status != 208
+        || raw_async_result.value ().body.find ("raw-async|43|echo") == std::string::npos) {
+        return 63;
     }
     if (!secure_get_result || secure_get_result.value ().status != 200 || secure_get_result.value ().body.id != "7") {
         return 49;
@@ -786,6 +1040,9 @@ int main ()
     if (!health_result || health_result.value ().body.status != "healthy" || !liveness_result
         || liveness_result.value ().body.liveness != "healthy") {
         return 25;
+    }
+    if (!keep_alive_ok) {
+        return 59;
     }
     if (correlation_middleware_t::before_count < 4 || correlation_middleware_t::after_count < 4) {
         return 17;
@@ -947,6 +1204,37 @@ int main ()
         return 56;
     }
 
+    auto limited_app = zlink::framework::app_t::create ();
+    const auto limited_endpoint = process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT, 5);
+    limited_app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.http ()
+          .configure_server ([] (zlink::framework::http_server_options_builder_t &server) {
+              server.set_max_request_body_size (4).set_max_header_size (256);
+          })
+          .listen (limited_endpoint)
+          .map_readiness ("/ready")
+          .map_post<raw_echo_http_handler_t> ("/raw/{id}");
+    });
+    int limited_exit_code = -1;
+    std::thread limited_thread ([&] { limited_exit_code = limited_app.run (1, argv); });
+    auto limited_client = make_app_host_test_client (limited_endpoint);
+    const bool limited_ready = wait_for_ready (limited_client);
+    const bool limited_rejected = limited_ready && http_raw_request_contains (
+      limited_endpoint,
+      "POST /raw/1?mode=echo HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/plain\r\nContent-Length: "
+      "9\r\nConnection: close\r\n\r\ntoo-large",
+      "413 Payload Too Large");
+    const std::string large_header_request =
+      "POST /raw/1?mode=echo HTTP/1.1\r\nHost: localhost\r\nX-Large: " + std::string (2048, 'x')
+      + "\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+    const bool large_header_rejected = limited_ready && http_raw_request_contains (
+      limited_endpoint, large_header_request, "431 Request Header Fields Too Large");
+    limited_app.stop ();
+    limited_thread.join ();
+    if (!limited_rejected || !large_header_rejected || limited_exit_code != 0) {
+        return 60;
+    }
+
     auto expect_https_tls_validation_rejected = [] (auto configure_http) {
         bool rejected = false;
         try {
@@ -966,23 +1254,23 @@ int main ()
     }
 
     if (!expect_https_tls_validation_rejected ([&] (zlink::framework::http_options_builder_t &http) {
-            http.listen (https_invalid_endpoint).tls ([] (zlink::framework::http_tls_options_builder_t &tls) {
-                tls.private_key_file ("server.key");
-            });
+            http.listen (https_invalid_endpoint)
+              .configure_tls (
+                [] (zlink::framework::http_tls_options_builder_t &tls) { tls.private_key_file ("server.key"); });
         })) {
         return 41;
     }
 
     if (!expect_https_tls_validation_rejected ([&] (zlink::framework::http_options_builder_t &http) {
-            http.listen (https_invalid_endpoint).tls ([] (zlink::framework::http_tls_options_builder_t &tls) {
-                tls.certificate_file ("server.crt");
-            });
+            http.listen (https_invalid_endpoint)
+              .configure_tls (
+                [] (zlink::framework::http_tls_options_builder_t &tls) { tls.certificate_file ("server.crt"); });
         })) {
         return 42;
     }
 
     if (!expect_https_tls_validation_rejected ([&] (zlink::framework::http_options_builder_t &http) {
-            http.listen (https_invalid_endpoint).tls ([] (zlink::framework::http_tls_options_builder_t &) {});
+            http.listen (https_invalid_endpoint).configure_tls ([] (zlink::framework::http_tls_options_builder_t &) {});
         })) {
         return 43;
     }
@@ -991,7 +1279,7 @@ int main ()
     try {
         auto invalid = zlink::framework::app_t::create ();
         invalid.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-            options.http ().listen (http_endpoint).tls ([] (zlink::framework::http_tls_options_builder_t &) {});
+            options.http ().listen (http_endpoint).configure_tls ([] (zlink::framework::http_tls_options_builder_t &) {});
         });
     }
     catch (const zlink::framework::framework_exception_t &) {
@@ -1005,7 +1293,7 @@ int main ()
     secure.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.http ()
           .listen (https_invalid_endpoint)
-          .tls ([] (zlink::framework::http_tls_options_builder_t &tls) {
+          .configure_tls ([] (zlink::framework::http_tls_options_builder_t &tls) {
               tls.certificate_file ("server.crt").private_key_file ("server.key");
           })
           .map_post<create_game_http_handler_t> ("/games");
@@ -1016,7 +1304,7 @@ int main ()
     secure_host.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.http ()
           .listen (https_endpoint)
-          .tls ([] (zlink::framework::http_tls_options_builder_t &tls) {
+          .configure_tls ([] (zlink::framework::http_tls_options_builder_t &tls) {
               tls.certificate_file (ZLINK_FRAMEWORK_HTTP_TEST_CERT).private_key_file (ZLINK_FRAMEWORK_HTTP_TEST_KEY);
           })
           .map_readiness ("/ready")

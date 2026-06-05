@@ -22,6 +22,7 @@ set(required_labels
   timer
   framework-http
   framework-http-e2e
+  framework-http-perf
   framework-package
   framework-tooling
   framework-extension

@@ -6,6 +6,7 @@
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/error.hpp>
 
+#include <chrono>
 #include <functional>
 #include <map>
 #include <memory>
@@ -58,10 +59,52 @@ struct http_context_t
     }
 };
 
+struct http_request_t
+{
+    http_method_t method = http_method_t::get;
+    std::string path;
+    std::string target;
+    std::string query_string;
+    std::string correlation_id;
+    std::map<std::string, std::string> headers;
+    std::map<std::string, std::string> route_values;
+    std::map<std::string, std::string> query_values;
+    std::string body;
+    std::string content_type;
+    std::string remote_endpoint;
+};
+
+struct http_response_t
+{
+    int status = 200;
+    std::string body;
+    std::string content_type = "application/json";
+    std::map<std::string, std::string> headers;
+
+    http_response_t &header (std::string name, std::string value)
+    {
+        headers[std::move (name)] = std::move (value);
+        return *this;
+    }
+};
+
 struct http_tls_options_t
 {
     std::string certificate_file;
     std::string private_key_file;
+};
+
+struct http_server_options_t
+{
+    std::size_t max_connections = 1024;
+    std::size_t max_request_body_size = 1024 * 1024;
+    std::size_t max_header_size = 64 * 1024;
+    std::chrono::milliseconds request_headers_timeout{5000};
+    std::chrono::milliseconds request_body_timeout{5000};
+    std::chrono::milliseconds write_timeout{5000};
+    std::chrono::milliseconds keep_alive_timeout{5000};
+    std::chrono::milliseconds graceful_shutdown_timeout{5000};
+    std::size_t max_keep_alive_requests = 100;
 };
 
 struct http_middleware_t
@@ -78,9 +121,15 @@ class http_route_t
     http_method_t method;
     std::string path;
     std::string handler_name;
+    bool context_response_precedence = false;
+    bool validates_json_content_type = true;
 
   private:
-    std::function<task_t<std::string> (service_provider_t &, http_context_t &, const std::string &)> invoke_json;
+    std::function<task_t<http_response_t> (service_provider_t &,
+                                           http_context_t &,
+                                           const http_request_t &,
+                                           const std::string &)>
+      invoke;
 
     friend class http_options_builder_t;
     friend class runtime::http_route_invoker_access_t;
@@ -97,6 +146,7 @@ struct http_options_snapshot_t
     std::vector<http_endpoint_t> endpoints;
     std::vector<http_route_t> routes;
     std::vector<http_middleware_t> middleware;
+    http_server_options_t server;
     std::optional<std::string> health_path;
     std::optional<std::string> readiness_path;
     std::optional<std::string> liveness_path;
@@ -123,6 +173,69 @@ class http_tls_options_builder_t
     http_tls_options_t *_options;
 };
 
+class http_server_options_builder_t
+{
+  public:
+    explicit http_server_options_builder_t (http_server_options_t &options) noexcept : _options (&options) {}
+
+    http_server_options_builder_t &set_max_connections (std::size_t value)
+    {
+        _options->max_connections = value;
+        return *this;
+    }
+
+    http_server_options_builder_t &set_max_request_body_size (std::size_t bytes)
+    {
+        _options->max_request_body_size = bytes;
+        return *this;
+    }
+
+    http_server_options_builder_t &set_max_header_size (std::size_t bytes)
+    {
+        _options->max_header_size = bytes;
+        return *this;
+    }
+
+    http_server_options_builder_t &set_request_headers_timeout (std::chrono::milliseconds value)
+    {
+        _options->request_headers_timeout = value;
+        return *this;
+    }
+
+    http_server_options_builder_t &set_request_body_timeout (std::chrono::milliseconds value)
+    {
+        _options->request_body_timeout = value;
+        return *this;
+    }
+
+    http_server_options_builder_t &set_write_timeout (std::chrono::milliseconds value)
+    {
+        _options->write_timeout = value;
+        return *this;
+    }
+
+    http_server_options_builder_t &set_keep_alive_timeout (std::chrono::milliseconds value)
+    {
+        _options->keep_alive_timeout = value;
+        return *this;
+    }
+
+    http_server_options_builder_t &set_graceful_shutdown_timeout (std::chrono::milliseconds value)
+    {
+        _options->graceful_shutdown_timeout = value;
+        return *this;
+    }
+
+    http_server_options_builder_t &set_max_keep_alive_requests (std::size_t value)
+    {
+        _options->max_keep_alive_requests = value;
+        return *this;
+    }
+
+  private:
+    http_server_options_t *_options;
+};
+
 class http_options_builder_t
 {
   public:
@@ -136,7 +249,7 @@ class http_options_builder_t
         return *this;
     }
 
-    http_options_builder_t &tls (std::function<void (http_tls_options_builder_t &)> configure)
+    http_options_builder_t &configure_tls (std::function<void (http_tls_options_builder_t &)> configure)
     {
         if (_snapshot.endpoints.empty ()) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -145,6 +258,15 @@ class http_options_builder_t
         auto &endpoint = _snapshot.endpoints.back ();
         endpoint.tls.emplace ();
         http_tls_options_builder_t builder (*endpoint.tls);
+        if (configure) {
+            configure (builder);
+        }
+        return *this;
+    }
+
+    http_options_builder_t &configure_server (std::function<void (http_server_options_builder_t &)> configure)
+    {
+        http_server_options_builder_t builder (_snapshot.server);
         if (configure) {
             configure (builder);
         }
@@ -272,6 +394,15 @@ class http_options_builder_t
 
     template <typename T> static constexpr bool is_task_v = requires { typename task_value_type_t<T>::type; };
 
+    template <typename T> static constexpr bool has_request_type_v = requires { typename T::request_type; };
+
+    template <typename T> static constexpr bool has_reply_type_v = requires { typename T::reply_type; };
+
+    template <typename T>
+    static constexpr bool has_raw_http_shape_v = requires (T handler, const http_request_t &request) {
+        handler.handle (request);
+    };
+
     static bool starts_with (const std::string &value, const char *prefix) { return value.rfind (prefix, 0) == 0; }
 
     static std::string route_key (http_method_t method, const std::string &path)
@@ -349,25 +480,68 @@ class http_options_builder_t
         invoke_middleware_after_instance<TMiddleware> (middleware, services, context);
     }
 
-    template <typename THandler, typename TRequest>
-    static auto invoke_handler (THandler &handler, const TRequest &request, http_context_t &context)
+    template <typename THandler>
+    static auto invoke_raw_handler (THandler &handler, const http_request_t &request)
     {
-        if constexpr (requires { handler.handle (request, context); }) {
-            return handler.handle (request, context);
-        } else {
+        if constexpr (requires { handler.handle (request); }) {
             return handler.handle (request);
+        } else {
+            static_assert (sizeof (THandler) == 0, "HTTP raw handler must handle const http_request_t&");
         }
     }
 
-    template <typename TReply, typename TResult> static task_t<TReply> resolve_handler_reply (TResult &&result)
+    template <typename THandler, typename TRequest>
+    static auto invoke_typed_handler (THandler &handler,
+                                      const TRequest &request,
+                                      const http_request_t &http,
+                                      http_context_t &context)
+    {
+        if constexpr (requires { handler.handle (request, http, context); }) {
+            return handler.handle (request, http, context);
+        } else if constexpr (requires { handler.handle (request, http); }) {
+            return handler.handle (request, http);
+        } else if constexpr (requires { handler.handle (request, context); }) {
+            return handler.handle (request, context);
+        } else if constexpr (requires { handler.handle (request); }) {
+            return handler.handle (request);
+        } else {
+            static_assert (sizeof (THandler) == 0, "HTTP typed handler has no supported handle overload");
+        }
+    }
+
+    template <typename TReply, typename TValue>
+    static http_response_t
+    response_from_value (TValue &&value, serializer_registry_t &serializers, const http_context_t &context)
+    {
+        using value_type = std::remove_cvref_t<TValue>;
+        if constexpr (std::is_same_v<value_type, http_response_t>) {
+            return std::forward<TValue> (value);
+        } else {
+            http_response_t response;
+            response.status = context.response_status;
+            response.headers = context.response_headers;
+            response.body =
+              context.response_body.value_or (serializers.template get<TReply> ().serialize (value).to_string ());
+            return response;
+        }
+    }
+
+    template <typename TReply, typename TResult>
+    static task_t<http_response_t>
+    resolve_handler_response (TResult &&result, serializer_registry_t &serializers, const http_context_t &context)
     {
         using result_type = std::remove_cvref_t<TResult>;
         if constexpr (is_task_v<result_type>) {
             using value_type = typename task_value_type_t<result_type>::type;
-            static_assert (std::is_same_v<value_type, TReply>, "HTTP handler task_t<T> must return reply_type");
-            co_return co_await std::forward<TResult> (result);
+            static_assert (std::is_same_v<value_type, TReply> || std::is_same_v<value_type, http_response_t>,
+                           "HTTP handler task_t<T> must return reply_type or http_response_t");
+            auto value = co_await std::forward<TResult> (result);
+            co_return response_from_value<TReply> (std::move (value), serializers, context);
         } else {
-            co_return TReply (std::forward<TResult> (result));
+            using value_type = std::remove_cvref_t<TResult>;
+            static_assert (std::is_same_v<value_type, TReply> || std::is_same_v<value_type, http_response_t>,
+                           "HTTP handler must return reply_type or http_response_t");
+            co_return response_from_value<TReply> (std::forward<TResult> (result), serializers, context);
         }
     }
 
@@ -382,6 +556,10 @@ class http_options_builder_t
 
     template <typename THandler> http_options_builder_t &add_route (http_method_t method, std::string path)
     {
+        if constexpr (has_request_type_v<THandler>) {
+            static_assert (!has_raw_http_shape_v<THandler>,
+                           "HTTP handler cannot expose both typed request_type and raw http_request_t route shapes");
+        }
         register_handler_service<THandler> ();
         register_route_serializers<THandler> ();
         path = validate_system_path (std::move (path));
@@ -389,28 +567,36 @@ class http_options_builder_t
         route.method = method;
         route.path = std::move (path);
         route.handler_name = typeid (THandler).name ();
+        route.validates_json_content_type = has_request_type_v<THandler>;
         auto *serializers = _serializers;
-        route.invoke_json = [serializers] (service_provider_t &services, http_context_t &context,
-                                           const std::string &body) -> task_t<std::string> {
-            using request_type = typename THandler::request_type;
-            using reply_type = typename THandler::reply_type;
+        route.invoke = [serializers] (service_provider_t &services, http_context_t &context, const http_request_t &http,
+                                      const std::string &body) -> task_t<http_response_t> {
             if (serializers == nullptr) {
                 throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                              "HTTP route serializer registry is not configured");
             }
-            const auto request = serializers->template get<request_type> ().deserialize (zlink::message_t::from (body));
-            validate_request (request, context);
             try {
                 auto &handler = services.get_required<THandler> ();
-                auto handler_result = invoke_handler (handler, request, context);
-                auto reply = co_await resolve_handler_reply<reply_type> (std::move (handler_result));
-                co_return serializers->template get<reply_type> ().serialize (reply).to_string ();
+                if constexpr (has_request_type_v<THandler>) {
+                    using request_type = typename THandler::request_type;
+                    using reply_type = typename THandler::reply_type;
+                    const auto request =
+                      serializers->template get<request_type> ().deserialize (zlink::message_t::from (body));
+                    validate_request (request, context);
+                    auto handler_result = invoke_typed_handler (handler, request, http, context);
+                    co_return co_await resolve_handler_response<reply_type> (std::move (handler_result), *serializers,
+                                                                             context);
+                } else {
+                    auto handler_result = invoke_raw_handler (handler, http);
+                    co_return co_await resolve_handler_response<http_response_t> (std::move (handler_result),
+                                                                                  *serializers, context);
+                }
             }
             catch (const framework_exception_t &ex) {
-                co_return result_t<std::string>::failure (ex.kind (), ex.what (), ex.is_retriable ());
+                co_return result_t<http_response_t>::failure (ex.kind (), ex.what (), ex.is_retriable ());
             }
             catch (const std::exception &ex) {
-                co_return result_t<std::string>::failure (framework_error_kind_t::request_failed, ex.what ());
+                co_return result_t<http_response_t>::failure (framework_error_kind_t::request_failed, ex.what ());
             }
         };
         _snapshot.routes.push_back (std::move (route));
@@ -446,8 +632,10 @@ class http_options_builder_t
 
     template <typename THandler> void register_route_serializers ()
     {
-        register_json_serializer<typename THandler::request_type> ();
-        register_json_serializer<typename THandler::reply_type> ();
+        if constexpr (has_request_type_v<THandler>) {
+            register_json_serializer<typename THandler::request_type> ();
+            register_json_serializer<typename THandler::reply_type> ();
+        }
     }
 
     http_options_snapshot_t _snapshot;

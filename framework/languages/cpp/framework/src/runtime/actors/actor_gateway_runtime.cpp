@@ -44,8 +44,10 @@ bound_session_t::bound_session_t () : _state (std::make_shared<detail::actor_gat
 {
 }
 
-bound_session_t::bound_session_t (std::shared_ptr<detail::actor_gateway_state_t> state, std::string actor_id) :
-    _state (std::move (state)), _actor_id (std::move (actor_id))
+bound_session_t::bound_session_t (std::shared_ptr<detail::actor_gateway_state_t> state,
+                                  std::string actor_id,
+                                  std::uint64_t generation) :
+    _state (std::move (state)), _actor_id (std::move (actor_id)), _generation (generation)
 {
 }
 
@@ -62,6 +64,10 @@ send_call_t bound_session_t::disconnect ()
 {
     const auto found = _state->actors_by_id.find (_actor_id);
     if (found != _state->actors_by_id.end ()) {
+        if (found->second.ref.generation () != _generation) {
+            return send_call_t (
+              result_t<void>::failure (framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
+        }
         found->second.bound = false;
         found->second.disconnected = true;
     }
@@ -78,6 +84,10 @@ send_call_t bound_session_t::send_erased (const zlink::message_t &payload)
     if (found == _state->actors_by_id.end () || !found->second.bound) {
         return send_call_t (
           result_t<void>::failure (framework_error_kind_t::actor_session_not_bound, "actor session is not bound"));
+    }
+    if (found->second.ref.generation () != _generation) {
+        return send_call_t (
+          result_t<void>::failure (framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
     }
     stream_header_t header (stream_message_kind_t::send, stream_codec_t::raw, stream_header_flags_t::none, std::nullopt,
                             std::string ("actor.push"));
@@ -110,7 +120,7 @@ bool actor_context_t::is_joined () const noexcept
 
 bound_session_t actor_context_t::bound_session () const
 {
-    return bound_session_t (_state, std::string (_actor_ref.actor_id ()));
+    return bound_session_t (_state, std::string (_actor_ref.actor_id ()), _actor_ref.generation ());
 }
 
 result_t<detail::actor_join_reply_t> actor_context_t::join_spot_erased (spot_rid_t spot_rid,
@@ -204,7 +214,7 @@ actor_context_t session_actor_t::context () const
 
 bound_session_t session_actor_t::bound_session () const
 {
-    return bound_session_t (_state, std::string (_ref.actor_id ()));
+    return bound_session_t (_state, std::string (_ref.actor_id ()), _ref.generation ());
 }
 
 relay_call_t session_actor_t::relay (const stream_header_t &header, const zlink::message_t &payload)
@@ -222,6 +232,10 @@ relay_call_t session_actor_t::relay (const stream_header_t &header, const zlink:
         return relay_call_t (
           result_t<void>::failure (framework_error_kind_t::actor_session_not_bound, "actor session is not bound"));
     }
+    if (found->second.ref.generation () != _ref.generation ()) {
+        return relay_call_t (
+          result_t<void>::failure (framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
+    }
     _state->relayed_frames.push_back (detail::relayed_frame_t{_ref, header, payload});
     return relay_call_t (result_t<void>::success ());
 }
@@ -230,6 +244,10 @@ relay_call_t session_actor_t::notify_disconnected ()
 {
     const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ()));
     if (found != _state->actors_by_id.end ()) {
+        if (found->second.ref.generation () != _ref.generation ()) {
+            return relay_call_t (
+              result_t<void>::failure (framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
+        }
         found->second.bound = false;
         found->second.disconnected = true;
     }
@@ -300,6 +318,7 @@ request_call_t<session_actor_t> session_actor_manager_t::bind (actor_ref_t actor
             return request_call_t<session_actor_t> (result_t<session_actor_t>::failure (
               framework_error_kind_t::actor_type_mismatch, "actor id is already bound to another type"));
         }
+        found->second.ref = actor_ref;
         found->second.bound = true;
         found->second.disconnected = false;
     }

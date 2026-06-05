@@ -225,6 +225,24 @@ int main ()
         return 8;
     }
 
+    zlink::framework::zlink_builder_t fanout;
+    fanout.channel ("broadcast", [] (zlink::framework::channel_builder_t &channel) {
+        channel.enable_publisher (
+          [] (zlink::framework::capability_builder_t &publisher) { publisher.bind ("tcp://127.0.0.1:7351"); });
+        channel.enable_subscriber ([] (zlink::framework::capability_builder_t &subscriber) {
+            subscriber.connect ("tcp://127.0.0.1:7351").connect ("tcp://127.0.0.1:7352");
+        });
+    });
+    auto fanout_manager = zlink::framework::detail::channel_runtime_manager_t::from (fanout);
+    fanout_manager.initialize_publisher_channels ();
+    fanout_manager.initialize_inbound_channels ();
+    auto &fanout_publisher = fanout_manager.get_or_create_publisher_bundle ("broadcast");
+    if (!fanout_publisher.contains_manual_connection ("tcp://127.0.0.1:7351")
+        || fanout_manager.monitoring_source ("broadcast.publisher") != "broadcast.publisher"
+        || fanout_manager.monitoring_source ("broadcast.subscriber") != "broadcast.subscriber") {
+        return 74;
+    }
+
     zlink::framework::zlink_builder_t local_server;
     local_server.channel ("local", [] (zlink::framework::channel_builder_t &channel) {
         channel.enable_server (

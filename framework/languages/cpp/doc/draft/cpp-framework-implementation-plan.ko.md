@@ -17,6 +17,11 @@
 이 문서는 C++ framework 구현을 22개 goal로 나누어 진행하기 위한 기준이다.
 각 goal은 구현, 검증, POSD 기반 리팩토링, 문서 대조를 끝낸 뒤에만 완료로 본다.
 
+이 문서는 C++ framework 구현의 단일 실행 기준이다. 관련 draft 문서는 배경과 상세 설명으로
+참고할 수 있지만, 작업자는 이 문서 하나만 읽고도 구현 범위, public interface, runtime 경계,
+테스트, 성능 gate를 판단할 수 있어야 한다. 관련 draft나 코드에서 이 문서에 없는 요구를 발견하면
+구현을 시작하기 전에 먼저 이 문서의 해당 goal에 요구사항을 추가한다.
+
 최종 완료 기준은 아래 세 가지다.
 
 - C++ framework는 `.NET` framework와 동일한 구조를 가진다.
@@ -27,6 +32,20 @@
 `.NET Generic Host` 계열을 기준으로 삼고, HTTP routing과 route handler 표면은
 `ASP.NET Core Minimal API`를 기준으로 삼는다. 구현 순서는 다르더라도 최종 기능 범위는
 줄이지 않는다.
+
+### 1.1 단일 문서 실행 원칙
+
+작업자는 이 문서의 goal 순서와 완료 기준을 기준으로 구현한다.
+
+- 관련 draft는 참고 문서다. 완료 여부는 이 문서의 구현 항목, 완료 기준, 검증 명령으로 판단한다.
+- 관련 draft에만 있는 요구사항은 완료 기준으로 쓰지 않는다. 필요한 요구라면 먼저 이 문서에
+  추가한 뒤 구현한다.
+- 이 문서와 관련 draft가 충돌하면 이 문서를 우선한다. 충돌이 구현을 막으면 이 문서를 먼저
+  수정해 단일 기준을 복구한다.
+- 각 goal의 public interface, runtime owner, 테스트 label, 성능 gate는 이 문서 안에 있어야 한다.
+- "범위 밖"으로 남겨 둔 항목은 해당 goal 완료 기준이 아니다. 필요한 기능은 구현 순서만 나눌 수
+  있고, 최종 완료 범위에서는 빠지면 안 된다.
+- Goal 1부터 Goal 22까지 모든 항목이 구현되고, 회귀 테스트와 POSD 재리뷰가 통과해야 전체 완료다.
 
 ## 2. 공통 실행 규칙
 
@@ -95,21 +114,164 @@ Blueprint/Game Thread 표면만 담고, transport와 codec 구현은 `Private`�
 
 각 goal은 아래 순서로 진행한다.
 
-1. 관련 draft 문서를 먼저 읽는다.
+1. 이 문서의 해당 goal 구현 항목, 구현 계약, 완료 기준, 검증 명령을 먼저 읽는다.
 2. 같은 기능의 `.NET` framework 구조와 sample/test를 확인한다.
-3. public contract owner와 runtime implementation owner를 확정한다.
-4. public surface gate를 통과한다.
-5. public header와 target 구조를 구현한다.
-6. internal runtime 구현을 붙인다.
-7. 해당 goal의 contract/unit/integration/e2e 테스트를 추가한다.
-8. 필요한 샘플 코드를 갱신한다.
-9. POSD 기반 리팩토링 게이트를 통과할 때까지 리팩토링을 반복한다.
-10. 리팩토링 뒤 같은 검증을 다시 실행한다.
-11. `git diff --check`와 해당 CTest label을 실행한다.
-12. 남아 있는 POSD 위험 신호와 리팩토링 이슈가 없는지 확인한다.
-13. 완료 기준을 문서 항목별로 대조한다.
+3. 관련 draft는 배경 확인이 필요할 때만 참고한다. 필요한 요구가 관련 draft에만 있으면 이 문서에
+   먼저 추가한 뒤 구현한다.
+4. public contract owner와 runtime implementation owner를 확정한다.
+5. public surface gate를 통과한다.
+6. public header와 target 구조를 구현한다.
+7. internal runtime 구현을 붙인다.
+8. 해당 goal의 contract/unit/integration/e2e 테스트를 추가한다.
+9. 필요한 샘플 코드를 갱신한다.
+10. POSD 기반 리팩토링 게이트를 통과할 때까지 리팩토링을 반복한다.
+11. 리팩토링 뒤 같은 검증을 다시 실행한다.
+12. `git diff --check`와 해당 CTest label을 실행한다.
+13. 남아 있는 POSD 위험 신호와 리팩토링 이슈가 없는지 확인한다.
+14. 완료 기준을 문서 항목별로 대조한다.
 
-### 4.1 Public Surface Gate
+### 4.1 Goal별 구현 계약 기준
+
+각 goal은 아래 네 가지 계약을 이 문서 기준으로 만족해야 한다. 이 기준을 만족하지 못하면
+코드가 빌드되더라도 해당 goal은 완료로 보지 않는다.
+
+- Public contract: 사용자가 include하고 호출하는 namespace, header, type, method 이름이 정해져야 한다.
+- Runtime owner: public contract 뒤의 상태, 스레드, native handle, queue, serializer, socket 소유자가
+  정해져야 한다.
+- Error contract: 실패가 어떤 `framework_error_kind_t`, `http_client_error_kind_t`, 또는 connector
+  error kind로 올라오는지 정해져야 한다.
+- Regression contract: 최소한 contract, unit, integration/e2e, negative path 테스트 축이 정해져야 한다.
+
+### 4.2 Goal별 최소 구현 계약
+
+아래 목록은 Goal 1부터 Goal 22까지의 최소 구현 계약이다. 각 goal 본문에 더 상세한 항목이 있으면
+그 항목이 우선하며, 아래 목록은 빠지면 안 되는 공통 기준이다.
+
+- Goal 1:
+  - Public contract: `zlink::framework`, `zlink::http_client`, `zlink::stream_connector`,
+    Unreal connector include root와 CMake imported target 이름.
+  - Runtime owner: 각 산출물의 `src/runtime`과 public include 경계.
+  - Error contract: configure, build, install, package consumer 실패를 서로 다른 검증 실패로 기록한다.
+  - Regression contract: target 생성, install include layout, package config, CLion/Visual Studio configure.
+- Goal 2:
+  - Public contract: `message_t` codec factory/parse method와 선택 codec target 이름.
+  - Runtime owner: codec dependency는 선택 target이 소유하고 base binding target은 소유하지 않는다.
+  - Error contract: decode 실패는 payload decode 계열 error로 집약한다.
+  - Regression contract: base target dependency 검사와 JSON/MessagePack/Protobuf round-trip.
+- Goal 3:
+  - Public contract: `result_t<T>`, `task_t<T>`, call object, callback submit, coroutine submit.
+  - Runtime owner: completion state, cancellation, timeout timer, executor resumption.
+  - Error contract: timeout, shutdown, disconnected, queue full, decode failure, handler not found.
+  - Regression contract: callback/coroutine parity, first-complete-wins, no `std::future` public exposure.
+- Goal 4:
+  - Public contract: `app_t`, config/logging builders, `logger_t<TCategory>`, `logger_factory_t`.
+  - Runtime owner: app host가 native context, signal, config source merge, sink fan-out, flush를 소유한다.
+  - Error contract: startup validation 실패는 `configuration_invalid` 또는 `startup_failed`로 닫는다.
+  - Regression contract: config precedence, graceful shutdown, logger DI injection, sink failure isolation.
+- Goal 5:
+  - Public contract: `service_collection_t`, `service_provider_t`, `service_scope_t`.
+  - Runtime owner: service provider가 singleton/scoped/transient 생성, 파괴 순서, scope cache를 소유한다.
+  - Error contract: duplicate registration, missing dependency, shutdown resolve 실패를 구분한다.
+  - Regression contract: scope isolation, constructor injection, handler/session/spot/actor scope disposal.
+- Goal 6:
+  - Public contract: framework 진입점과 handler/middleware/filter 공통 규칙.
+  - Runtime owner: host가 HTTP, zlink messaging, timer, hosted service lifecycle을 하나의 실행 모델로 묶는다.
+  - Error contract: 모든 handler 계열은 같은 error mapping과 logging/monitoring 규칙을 따른다.
+  - Regression contract: `.NET` sample parity, API naming parity, cross-feature lifecycle parity.
+- Goal 7:
+  - Public contract: runtime 시작/중지 표면과 executor/offload option.
+  - Runtime owner: CAPI handle, socket recv, poller slot, dispatch callback, offload executor.
+  - Error contract: native error는 framework error kind로 변환하고 native errno를 public precondition으로
+    만들지 않는다.
+  - Regression contract: ordering, drain, shutdown race, CPU-bound offload, transport validation.
+- Goal 8:
+  - Public contract: `handler_registry_t`, serializer registry, handler alias conventions.
+  - Runtime owner: type metadata cache, DI resolve, serializer lookup, exception mapper.
+  - Error contract: decode failure, ambiguous handler, missing serializer, handler exception.
+  - Regression contract: handler alias detection, custom serializer, exception mapping, no duplicate type listing.
+- Goal 9:
+  - Public contract: channel option builder, `request_client_t`, `publisher_t`, typed request/send/publish calls.
+  - Runtime owner: channel runtime이 bind/connect/discovery, reply correlation, pending requests, subscription fan-out을
+    소유한다.
+  - Error contract: timeout, disconnected, handler not found, request rejected, duplicate capability.
+  - Regression contract: server-to-client, dealer mesh, router mesh, pub/sub, route channel, outbound-only host.
+- Goal 10:
+  - Public contract: bounded queue, timeout, retry/dead-letter hook, idempotency hook option.
+  - Runtime owner: send readiness, HWM observation, pending queue, graceful drain.
+  - Error contract: queue full은 `request_rejected`, shutdown 중 미완료 작업은 shutdown/disconnected 계열.
+  - Regression contract: slow subscriber isolation, disconnect during pending send, timeout-before-ready.
+- Goal 11:
+  - Public contract: `spot_node_builder_t`, `spot_context_t`, `spot_handler_registry_t`, actor handler 등록 API.
+  - Runtime owner: app host가 SPOT node lifecycle, Entry Spot, user Spot activation, Registry-backed lookup을
+    소유한다.
+  - Error contract: missing spot, duplicate actor, stale actor, actor handler exception을 구분한다.
+  - Regression contract: spot-to-spot, spot-to-router, router-to-spot, actor join/packet/left/disconnected ordering.
+- Goal 12:
+  - Public contract: `timer_t`, `timer_options_t`, `timer_tick_t`, timer handler 등록 API.
+  - Runtime owner: CAPI timer handle, tick projection, skipped tick 계산, 재진입 방지.
+  - Error contract: handler failure, timer create failure, shutdown tick drop을 구분한다.
+  - Regression contract: overrun policy, same timer serialization, failure event immediacy, shutdown cleanup.
+- Goal 13:
+  - Public contract: `stream_builder_t`, `stream_t`, `packet_stream_session_t`, stream handler callbacks.
+  - Runtime owner: stream bind, session table, header codec, write queue, session ordering.
+  - Error contract: header validation failure, semantic validation failure, disconnected write.
+  - Regression contract: session lifecycle, packet reply, invalid header drop, write backpressure, close cleanup.
+- Goal 14:
+  - Public contract: `actor_ref_t`, `bound_session_t`, actor context/result, ActorGateway attach API.
+  - Runtime owner: session actor manager가 actor binding, generation, remote ref, relay routing, cleanup을 소유한다.
+  - Error contract: type mismatch, duplicate actor, stale generation, session disconnected.
+  - Regression contract: session-to-actor relay, actor push, remote ref round-trip, disconnect cleanup.
+- Goal 15:
+  - Public contract: registry/topology builder, registry query client, Spot resolver hook.
+  - Runtime owner: embedded registry, remote query cache, stale address cleanup, monitoring source.
+  - Error contract: duplicate resolver, ambiguous route channel, discovery missing, stale endpoint.
+  - Regression contract: embedded registry bootstrap, remote lookup, duplicate rejection, topology summary.
+- Goal 16:
+  - Public contract: monitoring builder, runtime event enum, health/readiness/liveness 표면.
+  - Runtime owner: runtime event bus, metric/tracing hook, health state aggregator, correlation id propagation.
+  - Error contract: transport error와 handler exception을 다른 event kind로 올린다.
+  - Regression contract: health aggregation, timer immediate failure, event payload shape, metric label stability.
+- Goal 17:
+  - Public contract: `module_t`, `framework_module_contract_t`, `hosted_service_t`,
+    `app_t::add_zlink_framework(...)`.
+  - Runtime owner: host가 module registration, option builder state, hosted service start/stop 순서를 소유한다.
+  - Error contract: module validation failure, hosted service startup failure, shutdown failure.
+  - Regression contract: module ordering, option builder naming, hosted lifecycle, sample factory readability.
+- Goal 18:
+  - Public contract: `zlink::http_client`, `client_t`, request call builder, typed JSON response.
+  - Runtime owner: HTTP client runtime이 resolver, connection, TLS stream, request serializer, response parser를
+    소유한다.
+  - Error contract: DNS/connect/TLS/status/timeout/decode 실패를 client error kind로 구분한다.
+  - Regression contract: HTTP/HTTPS typed JSON, timeout, status mapping, TLS verify fail, test CA trust success.
+- Goal 19:
+  - Public contract: 이 goal 본문의 `Goal 19 public interface`를 따른다.
+  - Runtime owner: embedded server runtime이 acceptor, connection, TLS context, route table, handler executor를
+    소유한다.
+  - Error contract: startup validation, media type, body/header limit, ambiguous handler, handler exception.
+  - Regression contract: 이 goal 본문의 HTTP regression matrix와 perf gate를 따른다.
+- Goal 20:
+  - Public contract: `zlink::stream_connector` namespace, `connector_t`, connection/request/send call,
+    Unreal Blueprint callable 표면.
+  - Runtime owner: 일반 C++ connector는 Asio runtime이 transport, reconnect, heartbeat, pending correlation을
+    소유하고, Unreal connector는 Unreal `Sockets`/`Networking` runtime이 같은 의미를 소유한다.
+  - Error contract: unsupported scheme, endpoint mismatch, connect timeout, heartbeat timeout, pending request
+    timeout, codec failure.
+  - Regression contract: TCP, TLS, WebSocket, WebSocket over TLS, reconnect, heartbeat, pending request correlation,
+    Unreal Game Thread dispatch.
+- Goal 21:
+  - Public contract: `Bingo`와 `TicTacToe` sample executable, shared DTO/serializer hook, role host factory.
+  - Runtime owner: sample host factory가 app/framework/client/connector 설정을 한곳에서 보여 주고,
+    sample runtime은 실제 process 간 통신을 사용한다.
+  - Error contract: sample smoke 실패는 client exit code와 server log assertion 실패를 구분한다.
+  - Regression contract: process e2e, server file log, monitoring event, HTTP client, connector, ActorGateway.
+- Goal 22:
+  - Public contract: install package, public headers, extension boundary, user-facing docs.
+  - Runtime owner: package config가 framework, connector, HTTP client, Unreal connector dependency boundary를
+    유지한다.
+  - Error contract: missing optional dependency는 configure/install consumer failure로 명확히 드러난다.
+  - Regression contract: full CTest, 80% runtime line coverage, install consumer, package boundary, POSD records.
+
+### 4.3 Public Surface Gate
 
 각 goal은 구현 전에 아래 항목을 통과해야 한다.
 
@@ -124,7 +286,7 @@ Blueprint/Game Thread 표면만 담고, transport와 codec 구현은 `Private`�
 | state hiding | public facade가 상태를 가지면 PIMPL 또는 type-erased state를 사용한다. |
 | validation | contract/layout test가 public header include와 runtime include 금지 규칙을 확인한다. |
 
-### 4.2 POSD 리팩토링 게이트
+### 4.4 POSD 리팩토링 게이트
 
 각 goal의 POSD 리팩토링은 구현 완료 뒤 별도 단계로 처리하지 않는다. 구현이 끝난 직후
 같은 goal 안에서 아래 순서를 반복해서 수행하고, 남아 있는 리팩토링 이슈가 없을 때만
@@ -151,8 +313,8 @@ Blueprint/Game Thread 표면만 담고, transport와 codec 구현은 `Private`�
 - 테스트나 샘플이 public API 대신 runtime 구현 세부에 의존한다.
 
 위험 신호나 리팩토링 이슈가 남으면 같은 goal 안에서 다시 리팩토링한다. 의도된
-tradeoff라고 판단하더라도, public 복잡성이 늘지 않는 이유와 어느 후속 goal에서
-사라지는지를 적어야 한다. 이유와 후속 goal을 명확히 적을 수 없으면 완료로 보지 않는다.
+tradeoff라고 판단하더라도, public 복잡성이 늘지 않는 이유와 같은 goal 안에서 해소하지 않아도
+되는 근거를 적어야 한다. 근거를 명확히 적을 수 없으면 완료로 보지 않는다.
 
 다음 goal로 넘어가기 위한 POSD 완료 조건은 아래 세 가지다.
 
@@ -809,8 +971,9 @@ framework core target의 기본 의존성이 아니다.
   `co_await submit<T>()`으로 실행한다.
 - JSON 변환은 `message_t` 또는 DTO serializer hook을 통해 처리하고, application sample code가
   `nlohmann::json::parse`로 field를 직접 꺼내지 않는다.
-- retry, redirect, cookie, proxy, multipart, streaming download는 초기 core 범위에 넣지
-  않고 후속 extension point로 남긴다.
+- retry, redirect, cookie, proxy, multipart, streaming download는 C++ framework가 필요로 하는
+  HTTP client 제품 범위가 아니다. Goal 18은 framework sample과 HTTP handler e2e에 필요한
+  typed JSON request/response, timeout, status mapping, HTTPS/TLS verification만 완료 범위로 삼는다.
 - TicTacToe client sample은 이 HTTP client로 `POST /games`를 호출한다.
 - HTTP client 회귀 테스트는 HTTP와 HTTPS 모두에서 typed JSON request/response, timeout,
   status mapping, TLS verification 실패, test certificate trust 성공을 고정한다.
@@ -837,13 +1000,25 @@ HTTP hosting을 core framework 기능으로 구현하는 것이다.
 - `zlink/framework/contracts/http/http.hpp`
 - `http_options_builder_t`
 - `options.http().listen(endpoint)`
-- `options.http().tls(...)`
+- `options.http().configure_tls(...)`
+- `options.http().configure_server(...)`
 - `map_get<THandler>(path)`
 - `map_post<THandler>(path)`
 - `map_put<THandler>(path)`
 - `map_delete<THandler>(path)`
+- `http_request_t`
+- `http_response_t`
 - `use<TMiddleware>()`
+- typed DTO HTTP handler shape
+- typed DTO + `http_context_t` handler shape
+- typed DTO + `http_request_t` handler shape
+- `http_response_t` 반환 handler shape
+- raw `http_request_t` to `http_response_t` handler shape
+- HTTP handler shape resolution algorithm
+- typed/raw route invoker generation
+- response precedence rules
 - JSON body binding
+- raw HTTP body/header binding
 - route parameter binding
 - query string binding
 - status/error mapping
@@ -855,11 +1030,33 @@ HTTP hosting을 core framework 기능으로 구현하는 것이다.
 - HTTPS endpoint
 - TLS certificate/private key option
 - OpenSSL/SSL context runtime private 구현
+- embedded HTTP server hardening
+- keep-alive request loop
+- request header/body timeout
+- request body/header size limit
+- max connections와 overload response
+- graceful shutdown drain
+- HTTP server logging/metrics/health integration
+- Drogon/Oat++ 분석 기반 고성능 runtime 구조
+- I/O executor와 framework handler executor 분리
+- connection별 executor affinity와 lock 최소화
+- startup route table compile
+- connection buffer와 response serializer 재사용
+- hot path logging/metrics allocation 최소화
+- HTTP handler e2e와 HTTP server perf gate 분리
+- Drogon/Oat++급 C++ backend API framework 성능 gate
 
 완료 기준:
 
 - HTTP handler는 message handler와 같은 `request_type`, `reply_type`,
   `dependency_types`, `handle(...)` 규칙을 사용한다.
+- HTTP handler는 typed DTO, typed DTO + `http_context_t`, typed DTO + `http_request_t`,
+  `http_response_t` 반환, raw `http_request_t` 입력 shape를 모두 지원한다.
+- 위 HTTP handler shape는 sync 반환과 `task_t<T>` async 반환을 모두 지원한다.
+- handler shape 판별, typed/raw route invoker 생성, response precedence는 아래 구현 알고리즘을
+  따른다.
+- raw HTTP handler도 `Boost.Beast`, `Boost.Asio`, OpenSSL/SSL context, TCP socket 타입을
+  signature에 노출하지 않고 `http_request_t`와 `http_response_t`만 사용한다.
 - `http://`와 `https://` endpoint를 모두 지원한다.
 - HTTPS endpoint는 TLS certificate/private key 설정을 요구하고, 누락되면 startup validation이
   실패한다.
@@ -868,9 +1065,307 @@ HTTP hosting을 core framework 기능으로 구현하는 것이다.
 - MVC controller, template rendering, Razor page, WebSocket transport는 포함하지 않는다.
 - exception, logging, validation, auth, correlation id 처리는 middleware/filter extension
   point로 둔다.
+- 내장 HTTP server는 keep-alive, timeout, body/header limit, max connections, graceful shutdown
+  drain, connection/request metrics를 제공한다.
+- 내장 HTTP server는 I/O executor, connection lifecycle, route dispatch, handler executor를
+  분리한다. user handler가 I/O event loop를 장시간 점유하는 구조이면 완료로 보지 않는다.
+- route table, TLS context, serializer registry는 startup에서 준비하고 request마다 다시 만들지
+  않는다.
+- request hot path의 logging/metrics는 global mutex나 high-cardinality metric label에 의존하지
+  않는다.
+- plain HTTP route와 JSON route는 같은 조건에서 측정한 `Drogon`, `Oat++` baseline 중 더 빠른
+  baseline 대비 처리량 하락 10% 이내여야 한다. HTTPS JSON route는 같은 TLS 조건의 baseline 대비
+  처리량 하락 15% 이내여야 한다. 이 성능 gate를 통과하지 못하면 Goal 19는 완료로 보지 않는다.
+- HTTP server perf gate는 `zlink::http_client`가 아니라 같은 load generator로 zlink, Drogon,
+  Oat++ server를 호출해 client 구현 비용이 server 수치에 섞이지 않게 한다.
+- `framework-http-perf` label은 정책 문서 검사와 report gate를 모두 포함한다. 최종 완료 판단에서는
+  `ZLINK_FRAMEWORK_HTTP_PERF_REPORT`에 perf runner가 생성한 CMake report를 지정하고
+  `ZLINK_FRAMEWORK_HTTP_PERF_REQUIRED=1`로 실행해야 한다.
 - HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아니라
   `zlink::http_client`로 `GET`, `POST`, `PUT`, `DELETE` route를 호출한다.
 - TicTacToe sample은 HTTP `POST /games`로 시작한다.
+
+Goal 19 public interface:
+
+```cpp
+namespace zlink::framework {
+
+enum class http_method_t {
+    get,
+    post,
+    put,
+    delete_
+};
+
+struct http_context_t {
+    http_method_t method;
+    std::string path;
+    std::string correlation_id;
+    std::map<std::string, std::string> request_headers;
+    std::map<std::string, std::string> response_headers;
+    std::optional<std::string> response_body;
+    int response_status = 200;
+
+    http_context_t &response_header(std::string name, std::string value);
+    http_context_t &json_response(int status, std::string body);
+};
+
+struct http_request_t {
+    http_method_t method;
+    std::string path;
+    std::string target;
+    std::string query_string;
+    std::string correlation_id;
+    std::map<std::string, std::string> headers;
+    std::map<std::string, std::string> route_values;
+    std::map<std::string, std::string> query_values;
+    std::string body;
+    std::string content_type;
+    std::string remote_endpoint;
+};
+
+struct http_response_t {
+    int status = 200;
+    std::string body;
+    std::string content_type = "application/json";
+    std::map<std::string, std::string> headers;
+
+    http_response_t &header(std::string name, std::string value);
+};
+
+class http_tls_options_builder_t {
+public:
+    http_tls_options_builder_t &certificate_file(std::string path);
+    http_tls_options_builder_t &private_key_file(std::string path);
+};
+
+class http_server_options_builder_t {
+public:
+    http_server_options_builder_t &set_max_connections(std::size_t value);
+    http_server_options_builder_t &set_max_request_body_size(std::size_t bytes);
+    http_server_options_builder_t &set_max_header_size(std::size_t bytes);
+    http_server_options_builder_t &set_request_headers_timeout(
+      std::chrono::milliseconds value);
+    http_server_options_builder_t &set_request_body_timeout(
+      std::chrono::milliseconds value);
+    http_server_options_builder_t &set_write_timeout(
+      std::chrono::milliseconds value);
+    http_server_options_builder_t &set_keep_alive_timeout(
+      std::chrono::milliseconds value);
+    http_server_options_builder_t &set_graceful_shutdown_timeout(
+      std::chrono::milliseconds value);
+    http_server_options_builder_t &set_max_keep_alive_requests(
+      std::size_t value);
+};
+
+class http_options_builder_t {
+public:
+    http_options_builder_t &listen(std::string endpoint);
+    http_options_builder_t &configure_tls(
+      std::function<void(http_tls_options_builder_t &)> configure);
+    http_options_builder_t &configure_server(
+      std::function<void(http_server_options_builder_t &)> configure);
+
+    template <typename THandler>
+    http_options_builder_t &map_get(std::string path);
+    template <typename THandler>
+    http_options_builder_t &map_post(std::string path);
+    template <typename THandler>
+    http_options_builder_t &map_put(std::string path);
+    template <typename THandler>
+    http_options_builder_t &map_delete(std::string path);
+
+    template <typename TMiddleware>
+    http_options_builder_t &use();
+
+    http_options_builder_t &map_health(std::string path);
+    http_options_builder_t &map_readiness(std::string path);
+    http_options_builder_t &map_liveness(std::string path);
+};
+
+} // namespace zlink::framework
+```
+
+`http_request_t` field contract:
+
+| field | 의미 |
+|-------|------|
+| `method` | route matching에 사용한 HTTP method |
+| `path` | query string을 제거한 path |
+| `target` | 원본 request target. path와 query string을 포함한다 |
+| `query_string` | `?` 뒤 query 문자열. 없으면 빈 문자열 |
+| `correlation_id` | `X-Correlation-Id`, `X-Request-Id`, 또는 runtime 생성 id |
+| `headers` | HTTP header name/value. header name은 runtime canonical form을 사용한다 |
+| `route_values` | `{name}` path segment binding 결과 |
+| `query_values` | query string binding 결과 |
+| `body` | limit 검증이 끝난 request body |
+| `content_type` | `Content-Type` header 값. 없으면 빈 문자열 |
+| `remote_endpoint` | 가능한 경우 client endpoint. 알 수 없으면 빈 문자열 |
+
+`http_response_t` field contract:
+
+| field | 의미 |
+|-------|------|
+| `status` | HTTP status code. 기본값은 `200` |
+| `body` | response body bytes. string은 binary-safe byte buffer로 취급한다 |
+| `content_type` | `Content-Type` response header. 기본값은 `application/json` |
+| `headers` | response header name/value |
+
+`http_request_t`와 `http_response_t`는 request 처리 중 runtime이 소유한 값의 복사본이다.
+handler는 이 객체의 reference를 저장하면 안 된다. request 완료 뒤 lifetime은 보장하지 않는다.
+
+Goal 19 handler shape:
+
+- typed DTO: `reply_type handle(const request_type &request)`
+- typed DTO async: `task_t<reply_type> handle(const request_type &request)`
+- typed DTO + context:
+  `reply_type handle(const request_type &request, http_context_t &context)`
+- typed DTO + context async:
+  `task_t<reply_type> handle(const request_type &request, http_context_t &context)`
+- typed DTO + request:
+  `reply_type handle(const request_type &request, const http_request_t &http)`
+- typed DTO + request async:
+  `task_t<reply_type> handle(const request_type &request, const http_request_t &http)`
+- typed DTO + request + context:
+  `reply_type handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- typed DTO + request + context async:
+  `task_t<reply_type> handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- typed response: `http_response_t handle(const request_type &request)`
+- typed response async: `task_t<http_response_t> handle(const request_type &request)`
+- typed response + context:
+  `http_response_t handle(const request_type &request, http_context_t &context)`
+- typed response + context async:
+  `task_t<http_response_t> handle(const request_type &request, http_context_t &context)`
+- typed response + request:
+  `http_response_t handle(const request_type &request, const http_request_t &http)`
+- typed response + request async:
+  `task_t<http_response_t> handle(const request_type &request, const http_request_t &http)`
+- typed response + request + context:
+  `http_response_t handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- typed response + request + context async:
+  `task_t<http_response_t> handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- raw HTTP request: `http_response_t handle(const http_request_t &request)`
+- raw HTTP request async: `task_t<http_response_t> handle(const http_request_t &request)`
+
+Handler shape resolution algorithm:
+
+1. `request_type` alias가 있으면 typed route 후보로 본다.
+2. `request_type` alias가 없고 `handle(const http_request_t&)`가 있으면 raw route로 본다.
+3. typed route는 `reply_type` 또는 `http_response_t` 반환 shape 중 하나를 가져야 한다.
+4. typed route와 raw route shape가 한 handler에 같이 있으면 실패한다.
+5. typed route 안에서 여러 shape가 있으면 아래 우선순위로 하나만 선택한다.
+
+Typed route invocation priority:
+
+1. `task_t<http_response_t> handle(const request_type&, const http_request_t&, http_context_t&)`
+2. `http_response_t handle(const request_type&, const http_request_t&, http_context_t&)`
+3. `task_t<http_response_t> handle(const request_type&, const http_request_t&)`
+4. `http_response_t handle(const request_type&, const http_request_t&)`
+5. `task_t<http_response_t> handle(const request_type&, http_context_t&)`
+6. `http_response_t handle(const request_type&, http_context_t&)`
+7. `task_t<http_response_t> handle(const request_type&)`
+8. `http_response_t handle(const request_type&)`
+9. `task_t<reply_type> handle(const request_type&, const http_request_t&, http_context_t&)`
+10. `reply_type handle(const request_type&, const http_request_t&, http_context_t&)`
+11. `task_t<reply_type> handle(const request_type&, const http_request_t&)`
+12. `reply_type handle(const request_type&, const http_request_t&)`
+13. `task_t<reply_type> handle(const request_type&, http_context_t&)`
+14. `reply_type handle(const request_type&, http_context_t&)`
+15. `task_t<reply_type> handle(const request_type&)`
+16. `reply_type handle(const request_type&)`
+
+Raw route invocation priority:
+
+1. `task_t<http_response_t> handle(const http_request_t&)`
+2. `http_response_t handle(const http_request_t&)`
+
+Handler shape failure rules:
+
+| 조건 | 실패 이유 |
+|------|-----------|
+| `request_type`이 있으나 호출 가능한 typed `handle(...)`이 없음 | route를 실행할 수 없다 |
+| `request_type`이 있으나 DTO 반환 shape에 `reply_type`이 없음 | DTO serializer를 알 수 없다 |
+| `request_type`이 없고 raw `handle(http_request_t)`도 없음 | route mode를 정할 수 없다 |
+| typed shape와 raw shape를 동시에 제공 | typed/raw route mode가 모호하다 |
+| raw handler가 `reply_type` 또는 임의 DTO를 반환 | raw response serializer를 추론할 수 없다 |
+| handler가 Beast/Asio/OpenSSL 타입을 받음 | public dependency 경계를 위반한다 |
+| 둘 이상의 같은 우선순위 overload가 호출 가능 | overload 선택이 모호하다 |
+
+Invoker generation pseudocode:
+
+```cpp
+template <typename THandler>
+http_route_invoker_t make_invoker()
+{
+    if constexpr (has_request_type<THandler>) {
+        static_assert(!has_raw_http_only_shape<THandler>);
+        register_json_serializer<typename THandler::request_type>();
+        if constexpr (returns_typed_dto<THandler>) {
+            register_json_serializer<typename THandler::reply_type>();
+        }
+        return make_typed_invoker<THandler>();
+    } else {
+        static_assert(has_raw_http_shape<THandler>);
+        return make_raw_invoker<THandler>();
+    }
+}
+```
+
+Typed invoker steps:
+
+1. body, route value, query value를 하나의 binding JSON으로 합친다.
+2. `request_type` serializer로 DTO를 만든다.
+3. `http_request_t`와 `http_context_t`를 만든다.
+4. 우선순위에 따라 handler overload를 호출한다.
+5. 결과가 `reply_type`이면 `http_context_t`의 status/header와 함께 JSON response를 만든다.
+6. 결과가 `http_response_t`이면 response object를 기준으로 HTTP response를 만든다.
+
+Raw invoker steps:
+
+1. content type이 JSON인지 검사하지 않는다.
+2. body/header/route/query limit은 typed route와 동일하게 적용한다.
+3. `http_request_t`를 만든다.
+4. raw handler를 호출한다.
+5. 반환된 `http_response_t`를 기준으로 HTTP response를 만든다.
+
+Response precedence:
+
+| handler result | 우선순위 |
+|----------------|----------|
+| `http_response_t` 반환 | `http_response_t`의 status/header/content type/body가 최우선 |
+| DTO 반환 + `http_context_t::json_response(...)` 설정 | context의 status/body/header를 사용 |
+| DTO 반환 + context header/status만 설정 | context status/header + DTO JSON body 사용 |
+| DTO 반환만 있음 | `200 OK`, `application/json`, DTO JSON body 사용 |
+
+middleware `after(...)`는 handler result가 만들어진 뒤 실행된다. `after(...)`가 response header를
+추가하면 기존 header를 같은 이름으로 덮어쓸 수 있다. 단, `Content-Length`는 runtime이 최종 body
+기준으로 계산하므로 handler나 middleware가 직접 고정하지 않는다.
+
+Goal 19 regression matrix:
+
+| 테스트 | 기대 |
+|--------|------|
+| DTO sync | `reply_type handle(request)`가 `200` JSON을 반환 |
+| DTO async | `task_t<reply_type> handle(request)`가 await 뒤 JSON 반환 |
+| DTO context sync | context header/status가 response에 반영 |
+| DTO context async | async handler와 context 변경이 함께 반영 |
+| DTO request sync | `http_request_t`의 header/query/body를 읽을 수 있음 |
+| DTO request async | async handler가 `http_request_t`를 받고 정상 완료 |
+| DTO request context | request와 context를 모두 받는 overload가 우선 호출 |
+| response sync | `http_response_t` status/header/body가 그대로 반환 |
+| response context | `http_response_t`가 context body보다 우선 |
+| response request | `http_request_t`를 읽고 `http_response_t`로 응답 |
+| raw request sync | serializer 없이 raw body를 받아 응답 |
+| raw request async | raw request async handler가 정상 완료 |
+| raw content type | JSON이 아닌 content type도 raw route에서 허용 |
+| ambiguous route mode | typed shape와 raw shape가 한 handler에 있으면 실패 |
+| invalid return type | raw route가 DTO를 반환하면 실패 |
+| content length | handler가 준 `Content-Length`는 runtime 최종값으로 보정 |
+| unsupported media type | JSON typed route의 잘못된 content type은 `415` |
+| body limit | typed/raw route 모두 body limit 초과는 `413` |
+| keep-alive | 같은 connection에서 두 request 처리 |
+| graceful shutdown | 새 accept 중단, active request drain |
+| metrics/logging | route, status, duration, connection counter 갱신 |
 
 검증:
 
@@ -878,6 +1373,10 @@ HTTP hosting을 core framework 기능으로 구현하는 것이다.
 ctest --test-dir framework/languages/cpp/build -L framework-http
 ctest --test-dir framework/languages/cpp/build -L framework-http-e2e
 ctest --test-dir framework/languages/cpp/build -L framework-integration -R http
+ctest --test-dir framework/languages/cpp/build -L framework-http-perf
+ZLINK_FRAMEWORK_HTTP_PERF_REPORT=/path/to/http-perf-report.cmake \
+ZLINK_FRAMEWORK_HTTP_PERF_REQUIRED=1 \
+  ctest --test-dir framework/languages/cpp/build -L framework-http-perf
 ```
 
 ### Goal 20. Stream Connectors
@@ -983,7 +1482,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe
 
 ### Goal 22. Final Regression, Package, Extension Boundary
 
-목표는 모든 draft 항목이 구현됐는지 최종 확인하고, `.NET` framework와 같은 구조, 기능,
+목표는 이 문서의 모든 goal 항목이 구현됐는지 최종 확인하고, `.NET` framework와 같은 구조, 기능,
 사용성을 회귀 테스트로 고정하는 것이다.
 
 구현 항목:
@@ -1035,6 +1534,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-zlink-actor-gateway 
 ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-http-perf --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-config --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-observability --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L http-client-contract --output-on-failure
@@ -1070,17 +1570,24 @@ ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke --outpu
 ctest --test-dir framework/languages/cpp/build -L framework-package --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-tooling --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-extension --output-on-failure
-cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80
+cmake -S framework/languages/cpp \
+  -B framework/languages/cpp/build-coverage \
+  -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON \
+  -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80
 cmake --build framework/languages/cpp/build-coverage
 ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure
 ctest --test-dir framework/languages/cpp/build-coverage -L framework-coverage --output-on-failure
 git diff --check -- framework/languages/cpp bindings/cpp
 ```
 
-## 6. Draft 추적표
+## 6. 참고 문서 추적표
 
-| Draft 문서 | 구현 goal |
-|------------|-----------|
+아래 문서는 배경 설명과 설계 기록을 제공한다. 구현 완료 여부는 이 문서의 goal별 구현 항목,
+완료 기준, 검증 명령으로 판단한다. 아래 문서에서 새로운 요구사항을 발견하면 먼저 이 문서의
+해당 goal에 반영한 뒤 구현한다.
+
+| 참고 문서 | 관련 goal |
+|-----------|-----------|
 | [cpp-framework-implementation-plan.ko.md](./cpp-framework-implementation-plan.ko.md) | Goal 1-22 실행 계획 |
 | [README.ko.md](./README.ko.md) | Goal 1-22 |
 | [cpp-framework-policy.ko.md](./cpp-framework-policy.ko.md) | Goal 1-22 |
@@ -1100,6 +1607,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | [cpp-monitoring.ko.md](./cpp-monitoring.ko.md) | Goal 12, Goal 16 |
 | [cpp-http-client.ko.md](./cpp-http-client.ko.md) | Goal 18, Goal 19, Goal 21 |
 | [cpp-http-hosting.ko.md](./cpp-http-hosting.ko.md) | Goal 19, Goal 21 |
+| [cpp-embedded-http-server.ko.md](./cpp-embedded-http-server.ko.md) | Goal 19, Goal 21 |
 | [cpp-stream-connector.ko.md](./cpp-stream-connector.ko.md) | Goal 20 |
 | [cpp-framework-posd-refactoring-log.ko.md](./cpp-framework-posd-refactoring-log.ko.md) | Goal 1-22 POSD 기록 |
 
@@ -1125,7 +1633,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | monitoring/health/logging | Goal 4, Goal 16 | `framework-observability` |
 | module/hosted service | Goal 17 | `framework-integration` |
 | ZLink HTTP client | Goal 18 | `http-client-*` |
-| HTTP hosting | Goal 19 | `framework-http`, `framework-http-e2e` |
+| HTTP hosting | Goal 19 | `framework-http`, `framework-http-e2e`, `framework-http-perf` |
 | C++/Unreal connector | Goal 20 | `connector-*`, `unreal-connector-*` |
 | samples | Goal 21 | `framework-sample-*` |
 | package/extensions/final audit | Goal 22 | `framework-package`, `framework-extension` |
@@ -1148,9 +1656,12 @@ goal을 만들 때는 아래 문구를 objective로 사용할 수 있다.
 ```text
 framework/languages/cpp/doc/draft/cpp-framework-implementation-plan.ko.md의 Goal N을
 완료 기준까지 구현하고, POSD 기반 리팩토링을 이슈가 없을 때까지 수행한 뒤 해당
-검증 명령을 실행하고 누락 항목을 보고한다.
+검증 명령을 실행한다. 관련 draft는 참고만 하고, 완료 여부는 이 문서 하나의 구현 항목,
+완료 기준, regression matrix, 검증 명령으로 판단한다. 관련 draft에서 이 문서에 없는
+요구사항을 발견하면 구현 전에 이 문서의 해당 goal에 먼저 반영한다.
 ```
 
 여러 goal을 한 번에 묶어 실행할 때도 중간 goal의 완료 기준을 건너뛰지 않는다.
-draft 문서와 실제 코드가 충돌하면 먼저 충돌 항목을 적고, 문서 또는 구현 중 하나를
-명시적으로 정리한 뒤 진행한다.
+이 문서와 실제 코드가 충돌하면 먼저 충돌 항목을 적고, 이 문서 또는 구현 중 하나를
+명시적으로 정리한 뒤 진행한다. 전체 작업은 Goal 1부터 Goal 22까지 미구현, 오구현,
+미검증 항목이 0개가 될 때까지 반복한다.

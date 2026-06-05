@@ -14,6 +14,10 @@ struct stage_spot_t
 {
 };
 
+struct entry_spot_t
+{
+};
+
 struct tick_handler_t
 {
 };
@@ -33,10 +37,11 @@ int main ()
     zlink::framework::spot_node_builder_t builder;
     zlink::framework::zlink_builder_t host;
     host.add_spot_node ("timer-node", [&builder] (zlink::framework::spot_node_builder_t &spot_node) {
-        spot_node.add_spot<stage_spot_t> ("stage");
+        spot_node.add_entry_spot<entry_spot_t> ().add_spot<stage_spot_t> ("stage");
         builder = spot_node;
     });
 
+    auto entry_context = builder.create_spot ("entry");
     auto context = builder.create_spot ("stage");
     auto timer = context.add_timer<tick_handler_t> ("stage-tick", 16ms,
                                                     {.overrun_policy = timer_overrun_policy_t::skip_late_ticks});
@@ -105,6 +110,19 @@ int main ()
         return 7;
     }
 
+    auto entry_timer = entry_context.add_timer<tick_handler_t> ("entry-tick", 10ms);
+    auto user_timer = context.add_timer<tick_handler_t> ("user-tick", 10ms);
+    auto entry_runtime = zlink::framework::detail::timer_runtime_t::from (entry_context);
+    bool user_timer_ran_during_entry_tick = false;
+    auto entry_result = entry_runtime.dispatch_fire_count (
+      entry_timer, 1, [&runtime, &user_timer, &user_timer_ran_during_entry_tick] (const zlink::framework::timer_tick_t &) {
+          const auto user_tick = runtime.dispatch_fire_count (user_timer, 1);
+          user_timer_ran_during_entry_tick = user_tick && user_tick.value ().name == "user-tick";
+      });
+    if (!entry_result || !user_timer_ran_during_entry_tick) {
+        return 12;
+    }
+
     bool invalid_period_failed = false;
     try {
         context.add_timer<tick_handler_t> ("bad-period", 0ms);
@@ -130,8 +148,12 @@ int main ()
 
     runtime.cancel_all ();
     if (!timer.is_disposed () || !catch_up.is_disposed () || !delay_next.is_disposed ()
-        || !continue_timer.is_disposed () || !running_timer.is_disposed ()) {
+        || !continue_timer.is_disposed () || !running_timer.is_disposed () || !user_timer.is_disposed ()) {
         return 10;
+    }
+    entry_runtime.cancel_all ();
+    if (!entry_timer.is_disposed ()) {
+        return 13;
     }
 
     auto closed_result = runtime.dispatch_fire_count (timer, 1);

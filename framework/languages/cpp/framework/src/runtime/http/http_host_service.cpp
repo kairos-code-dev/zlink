@@ -5,6 +5,8 @@
 #include "runtime/dispatch/coroutine_executor.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/post.hpp>
+#include <boost/asio/thread_pool.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 
@@ -20,6 +22,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 namespace zlink::framework::runtime
@@ -27,24 +30,28 @@ namespace zlink::framework::runtime
 class http_route_invoker_access_t
 {
   public:
-    static task_t<std::string>
-    invoke (const http_route_t &route, service_provider_t &services, http_context_t &context, const std::string &body)
+    static task_t<http_response_t> invoke (const http_route_t &route,
+                                           service_provider_t &services,
+                                           http_context_t &context,
+                                           const http_request_t &request,
+                                           const std::string &body)
     {
         auto owned_body = body;
-        return handler_coroutine_executor ().submit<std::string> (
-          [&route, &services, &context,
-           owned_body = std::move (owned_body)] () -> boost::asio::awaitable<result_t<std::string>> {
+        auto owned_request = request;
+        return handler_coroutine_executor ().submit<http_response_t> (
+          [&route, &services, &context, owned_request = std::move (owned_request),
+           owned_body = std::move (owned_body)] () -> boost::asio::awaitable<result_t<http_response_t>> {
               try {
-                  auto route_task = route.invoke_json (services, context, owned_body);
-                  co_return result_t<std::string>::success (
+                  auto route_task = route.invoke (services, context, owned_request, owned_body);
+                  co_return result_t<http_response_t>::success (
                     (co_await await_task_result (std::move (route_task))).value ());
               }
               catch (const framework_exception_t &error) {
-                  co_return result_t<std::string>::failure (error.kind (), error.what (), error.is_retriable ());
+                  co_return result_t<http_response_t>::failure (error.kind (), error.what (), error.is_retriable ());
               }
               catch (...) {
-                  co_return result_t<std::string>::failure (framework_error_kind_t::request_failed,
-                                                            "HTTP route handler threw an exception");
+                  co_return result_t<http_response_t>::failure (framework_error_kind_t::request_failed,
+                                                                "HTTP route handler threw an exception");
               }
           });
     }
@@ -443,6 +450,28 @@ http_context_t make_context (std::optional<http_method_t> method, const http::re
     return context;
 }
 
+http_request_t make_http_request (const http_context_t &context,
+                                  const http::request<http::string_body> &request,
+                                  std::map<std::string, std::string> route_values,
+                                  std::map<std::string, std::string> query_values)
+{
+    http_request_t http_request;
+    http_request.method = context.method;
+    http_request.path = context.path;
+    http_request.target = std::string (request.target ());
+    const auto query = http_request.target.find ('?');
+    http_request.query_string = query == std::string::npos ? std::string{} : http_request.target.substr (query + 1);
+    http_request.correlation_id = context.correlation_id;
+    http_request.headers = context.request_headers;
+    http_request.route_values = std::move (route_values);
+    http_request.query_values = std::move (query_values);
+    http_request.body = request.body ();
+    if (const auto content_type = find_header (http_request.headers, "content-type")) {
+        http_request.content_type = *content_type;
+    }
+    return http_request;
+}
+
 void apply_context_response (http::response<http::string_body> &response,
                              const http_context_t &context,
                              bool allow_status_override = true)
@@ -453,6 +482,20 @@ void apply_context_response (http::response<http::string_body> &response,
     for (const auto &[name, value] : context.response_headers) {
         response.set (name, value);
     }
+}
+
+void apply_http_response (http::response<http::string_body> &response,
+                          const http_response_t &source,
+                          const http_context_t &context,
+                          bool context_response_precedence)
+{
+    response.result (static_cast<unsigned> (source.status));
+    response.set (http::field::content_type, source.content_type);
+    response.body () = source.body;
+    for (const auto &[name, value] : source.headers) {
+        response.set (name, value);
+    }
+    apply_context_response (response, context, context_response_precedence);
 }
 
 const char *error_kind_name (framework_error_kind_t kind) noexcept
@@ -571,6 +614,7 @@ http::response<http::string_body> handle_request (const http_options_snapshot_t 
         std::vector<middleware_invocation_t> middleware_invocations;
         middleware_invocations.reserve (options.middleware.size ());
         bool after_middleware_ran = false;
+        bool context_short_circuit = false;
         auto run_after_middleware = [&] () {
             if (after_middleware_ran) {
                 return;
@@ -594,20 +638,27 @@ http::response<http::string_body> handle_request (const http_options_snapshot_t 
                 }
             }
             if (context.response_body) {
+                context_short_circuit = true;
                 response.body () = *context.response_body;
             } else {
-                validate_json_content_type (request, context);
-                const auto bound_body =
-                  bind_http_request_body (request.body (), match.route_values, match.query_values);
-                auto route_result =
-                  http_route_invoker_access_t::invoke (*match.route, request_services, context, bound_body).result ();
+                std::string bound_body = request.body ();
+                if (match.route->validates_json_content_type) {
+                    validate_json_content_type (request, context);
+                    bound_body = bind_http_request_body (request.body (), match.route_values, match.query_values);
+                }
+                const auto http_request =
+                  make_http_request (context, request, match.route_values, match.query_values);
+                auto route_result = http_route_invoker_access_t::invoke (*match.route, request_services, context,
+                                                                         http_request, bound_body)
+                                      .result ();
                 if (!route_result) {
                     throw *route_result.error ();
                 }
-                response.body () = route_result.value ();
+                apply_http_response (response, route_result.value (), context, match.route->context_response_precedence);
             }
             run_after_middleware ();
-            apply_context_response (response, context);
+            apply_context_response (response, context,
+                                    context_short_circuit || match.route->context_response_precedence);
         }
         catch (const framework_exception_t &ex) {
             run_after_middleware ();
@@ -627,6 +678,19 @@ http::response<http::string_body> handle_request (const http_options_snapshot_t 
     return response;
 }
 
+http::response<http::string_body> make_status_response (http::status status,
+                                                        unsigned version,
+                                                        std::string body,
+                                                        bool keep_alive)
+{
+    http::response<http::string_body> response{status, version};
+    response.set (http::field::content_type, "application/json");
+    response.keep_alive (keep_alive);
+    response.body () = std::move (body);
+    response.prepare_payload ();
+    return response;
+}
+
 } // namespace
 
 class http_host_service_t::listener_t
@@ -642,9 +706,13 @@ class http_host_service_t::listener_t
         _health (&health),
         _services (&services),
         _stop (&stop),
+        _active_connections (0),
+        _io_workers (std::max<std::size_t> (2, std::thread::hardware_concurrency ())),
         _acceptor (_io)
     {
     }
+
+    ~listener_t () { stop_workers (); }
 
     void run ()
     {
@@ -663,11 +731,26 @@ class http_host_service_t::listener_t
             if (ec) {
                 continue;
             }
-            if (_parsed.scheme == "https") {
-                handle_https (std::move (socket));
-            } else {
-                handle_http (std::move (socket));
+            if (_stop->load (std::memory_order_acquire)) {
+                socket.close (ec);
+                break;
             }
+            if (_active_connections.load (std::memory_order_acquire) >= _options->server.max_connections) {
+                reject_overloaded (std::move (socket));
+                continue;
+            }
+            _active_connections.fetch_add (1, std::memory_order_acq_rel);
+            boost::asio::post (_io_workers, [this, socket = std::move (socket)] () mutable {
+                auto guard = std::unique_ptr<void, void (*) (void *)> (
+                  this, [] (void *listener) {
+                      static_cast<listener_t *> (listener)->_active_connections.fetch_sub (1, std::memory_order_acq_rel);
+                  });
+                if (_parsed.scheme == "https") {
+                    handle_https (std::move (socket));
+                } else {
+                    handle_http (std::move (socket));
+                }
+            });
         }
     }
 
@@ -684,27 +767,119 @@ class http_host_service_t::listener_t
         }
         beast::error_code ignored;
         _acceptor.close (ignored);
+        wait_for_workers ();
     }
 
   private:
-    template <typename TStream> void serve_request (TStream &stream)
+    void stop_workers () noexcept
     {
-        beast::flat_buffer buffer;
-        http::request<http::string_body> request;
-        beast::error_code ec;
-        http::read (stream, buffer, request, ec);
-        if (ec) {
+        if (_workers_stopped.exchange (true, std::memory_order_acq_rel)) {
             return;
         }
-        auto response = handle_request (*_options, *_services, *_health, request);
-        http::write (stream, response, ec);
+        _io_workers.stop ();
+        _io_workers.join ();
+    }
+
+    void wait_for_workers () noexcept
+    {
+        if (_workers_stopped.exchange (true, std::memory_order_acq_rel)) {
+            return;
+        }
+        _io_workers.join ();
+    }
+
+    void reject_overloaded (tcp::socket socket)
+    {
+        if (_parsed.scheme != "http") {
+            beast::error_code ignored;
+            socket.shutdown (tcp::socket::shutdown_both, ignored);
+            return;
+        }
+        beast::error_code ec;
+        auto response = make_status_response (http::status::service_unavailable, 11,
+                                              R"({"error":"server overloaded"})", false);
+        http::write (socket, response, ec);
+        socket.shutdown (tcp::socket::shutdown_send, ec);
+    }
+
+    template <typename TStream> void set_request_timeout (TStream &, std::chrono::milliseconds)
+    {
+    }
+
+    void set_request_timeout (beast::tcp_stream &stream, std::chrono::milliseconds timeout)
+    {
+        stream.expires_after (timeout);
+    }
+
+    template <typename TStream> bool serve_requests (TStream &stream)
+    {
+        beast::flat_buffer buffer;
+        std::size_t served = 0;
+        while (!_stop->load (std::memory_order_acquire) && served < _options->server.max_keep_alive_requests) {
+            http::request_parser<http::string_body> parser;
+            parser.body_limit (_options->server.max_request_body_size);
+            parser.header_limit (_options->server.max_header_size);
+            beast::error_code ec;
+            set_request_timeout (stream, _options->server.request_headers_timeout);
+            http::read_header (stream, buffer, parser, ec);
+            if (ec == http::error::end_of_stream) {
+                return true;
+            }
+            if (ec) {
+                http::status status = http::status::bad_request;
+                std::string message = R"({"error":"bad request"})";
+                if (ec == http::error::body_limit) {
+                    status = http::status::payload_too_large;
+                    message = R"({"error":"request body too large"})";
+                } else if (ec == http::error::header_limit) {
+                    status = http::status::request_header_fields_too_large;
+                    message = R"({"error":"request header too large"})";
+                }
+                auto response = make_status_response (status, 11, std::move (message), false);
+                http::write (stream, response, ec);
+                return false;
+            }
+            if (parser.content_length ()
+                && *parser.content_length () > _options->server.max_request_body_size) {
+                auto response = make_status_response (http::status::payload_too_large, 11,
+                                                      R"({"error":"request body too large"})", false);
+                http::write (stream, response, ec);
+                return false;
+            }
+            set_request_timeout (stream, _options->server.request_body_timeout);
+            http::read (stream, buffer, parser, ec);
+            if (ec) {
+                http::status status = http::status::bad_request;
+                std::string message = R"({"error":"bad request"})";
+                if (ec == http::error::body_limit) {
+                    status = http::status::payload_too_large;
+                    message = R"({"error":"request body too large"})";
+                }
+                auto response = make_status_response (status, 11, std::move (message), false);
+                http::write (stream, response, ec);
+                return false;
+            }
+            auto request = parser.release ();
+            auto response = handle_request (*_options, *_services, *_health, request);
+            response.keep_alive (request.keep_alive ()
+                                 && served + 1 < _options->server.max_keep_alive_requests
+                                 && !_stop->load (std::memory_order_acquire));
+            set_request_timeout (stream, _options->server.write_timeout);
+            http::write (stream, response, ec);
+            if (ec || !response.keep_alive ()) {
+                return false;
+            }
+            ++served;
+        }
+        return true;
     }
 
     void handle_http (tcp::socket socket)
     {
+        beast::tcp_stream stream (std::move (socket));
         beast::error_code ec;
-        serve_request (socket);
-        socket.shutdown (tcp::socket::shutdown_send, ec);
+        serve_requests (stream);
+        stream.socket ().shutdown (tcp::socket::shutdown_send, ec);
     }
 
     void handle_https (tcp::socket socket)
@@ -719,7 +894,7 @@ class http_host_service_t::listener_t
         if (ec) {
             return;
         }
-        serve_request (stream);
+        serve_requests (stream);
         stream.shutdown (ec);
 #else
         (void) socket;
@@ -731,8 +906,11 @@ class http_host_service_t::listener_t
     health_builder_t *_health;
     service_provider_t *_services;
     std::atomic_bool *_stop;
+    std::atomic_size_t _active_connections;
+    std::atomic_bool _workers_stopped{false};
     parsed_endpoint_t _parsed;
     asio::io_context _io;
+    asio::thread_pool _io_workers;
     tcp::acceptor _acceptor;
 };
 

@@ -1789,8 +1789,10 @@ namespace zlink::framework {
 class http_options_builder_t {
 public:
     http_options_builder_t &listen(std::string endpoint);
-    http_options_builder_t &tls(
+    http_options_builder_t &configure_tls(
       std::function<void(http_tls_options_builder_t &)> configure);
+    http_options_builder_t &configure_server(
+      std::function<void(http_server_options_builder_t &)> configure);
 
     template <typename THandler>
     http_options_builder_t &map_get(std::string path);
@@ -1823,6 +1825,29 @@ struct http_context_t {
 
     http_context_t &response_header(std::string name, std::string value);
     http_context_t &json_response(int status, std::string body);
+};
+
+struct http_request_t {
+    http_method_t method;
+    std::string path;
+    std::string target;
+    std::string query_string;
+    std::string correlation_id;
+    std::map<std::string, std::string> headers;
+    std::map<std::string, std::string> route_values;
+    std::map<std::string, std::string> query_values;
+    std::string body;
+    std::string content_type;
+    std::string remote_endpoint;
+};
+
+struct http_response_t {
+    int status = 200;
+    std::string body;
+    std::string content_type = "application/json";
+    std::map<std::string, std::string> headers;
+
+    http_response_t &header(std::string name, std::string value);
 };
 
 class zlink_framework_options_t {
@@ -1876,6 +1901,47 @@ public:
 연결한다. request마다 DI scope를 만들고 handler를 resolve한다. handler가 반환한 DTO는
 JSON response body가 되고, 기본 status는 `200 OK`다.
 
+HTTP handler는 아래 shape를 모두 지원한다.
+
+- typed DTO: `reply_type handle(const request_type &request)`
+- typed DTO async: `task_t<reply_type> handle(const request_type &request)`
+- typed DTO + context:
+  `reply_type handle(const request_type &request, http_context_t &context)`
+- typed DTO + context async:
+  `task_t<reply_type> handle(const request_type &request, http_context_t &context)`
+- typed DTO + request:
+  `reply_type handle(const request_type &request, const http_request_t &http)`
+- typed DTO + request async:
+  `task_t<reply_type> handle(const request_type &request, const http_request_t &http)`
+- typed DTO + request + context:
+  `reply_type handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- typed DTO + request + context async:
+  `task_t<reply_type> handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- typed response: `http_response_t handle(const request_type &request)`
+- typed response + context:
+  `http_response_t handle(const request_type &request, http_context_t &context)`
+- typed response async: `task_t<http_response_t> handle(const request_type &request)`
+- typed response + context async:
+  `task_t<http_response_t> handle(const request_type &request, http_context_t &context)`
+- typed response + request:
+  `http_response_t handle(const request_type &request, const http_request_t &http)`
+- typed response + request async:
+  `task_t<http_response_t> handle(const request_type &request, const http_request_t &http)`
+- typed response + request + context:
+  `http_response_t handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- typed response + request + context async:
+  `task_t<http_response_t> handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- raw HTTP request: `http_response_t handle(const http_request_t &request)`
+- raw HTTP request async: `task_t<http_response_t> handle(const http_request_t &request)`
+
+`http_request_t`와 `http_response_t`는 framework public type이다. Raw HTTP handler도
+`Boost.Beast` request, socket, SSL stream을 받지 않는다. `map_*<THandler>(...)`는 handler
+shape를 compile-time으로 판별한다. typed route에서 여러 overload가 있으면
+`http_response_t` 반환, `http_request_t` 인자, `http_context_t` 인자, DTO-only 순서로 더 많은
+HTTP 제어권을 가진 shape를 우선 호출한다. `http_request_t`와 `http_context_t`를 모두 받는
+shape는 둘 중 하나만 받는 shape보다 우선한다. typed route와 raw route shape를 한 handler에
+동시에 제공하면 static assertion 또는 startup validation으로 실패해야 한다.
+
 route parameter와 query string은 `request_type` DTO에 binding한다. 예를 들어
 `/games/{gameId}/moves?actorId=p1`로 들어온 값은 body DTO와 합쳐 handler request가 된다.
 같은 필드가 body, route, query에 동시에 있으면 route, query, body 순서로 우선한다. 이
@@ -1893,7 +1959,7 @@ middleware가 `before(...)`에서 `json_response(...)`를 설정하면 runtime�
 `map_liveness(...)`는 `app.health()` report를 HTTP endpoint로 노출한다.
 
 `listen(...)`은 `http://`와 `https://` endpoint를 모두 받는다. `https://` endpoint를
-사용하면 `tls(...)`로 server certificate와 private key를 설정해야 한다. TLS 설정 public
+사용하면 `configure_tls(...)`로 server certificate와 private key를 설정해야 한다. TLS 설정 public
 표면은 파일 경로, PEM data, reload policy 같은 framework 값만 사용하고 OpenSSL 또는
 Boost.Asio SSL 타입을 노출하지 않는다.
 

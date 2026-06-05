@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink HTTP Client For C++](./cpp-http-client.ko.md) | [다음: Draft -- ZLink Framework C++ Monitoring](./cpp-monitoring.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink HTTP Client For C++](./cpp-http-client.ko.md) | [다음: Draft -- ZLink Framework C++ Embedded HTTP Server](./cpp-embedded-http-server.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Client](./cpp-http-client.ko.md)
+[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Client](./cpp-http-client.ko.md) | [Embedded HTTP Server](./cpp-embedded-http-server.ko.md)
 
 # Draft -- ZLink Framework C++ HTTP Hosting
 
@@ -90,7 +90,9 @@ app.add_zlink_framework([&](auto &options) {
 
 ## 3. Handler Shape
 
-HTTP handler는 channel handler와 같은 방식으로 DTO와 DI 의존성을 선언한다.
+HTTP handler는 channel handler와 같은 방식으로 DTO와 DI 의존성을 선언한다. 다만 HTTP는
+transport metadata, raw body, 직접 response 제어가 필요하므로 여러 handler shape를 모두
+지원한다. 아래 shape 전체가 HTTP hosting 완료 범위다.
 
 ```cpp
 struct create_match_req_t {
@@ -145,10 +147,107 @@ create_match_handler_t::handle(const create_match_req_t &request)
 `request_type`, `reply_type`, `dependency_types`, `handle(...)` 규칙은 message handler와
 같게 유지한다. HTTP만 별도 생성자 주입 규칙을 만들지 않는다.
 
+지원해야 하는 HTTP handler shape는 아래와 같다.
+
+- typed DTO: `reply_type handle(const request_type &request)`
+- typed DTO async: `task_t<reply_type> handle(const request_type &request)`
+- typed DTO + context:
+  `reply_type handle(const request_type &request, http_context_t &context)`
+- typed DTO + context async:
+  `task_t<reply_type> handle(const request_type &request, http_context_t &context)`
+- typed DTO + request:
+  `reply_type handle(const request_type &request, const http_request_t &http)`
+- typed DTO + request async:
+  `task_t<reply_type> handle(const request_type &request, const http_request_t &http)`
+- typed DTO + request + context:
+  `reply_type handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- typed DTO + request + context async:
+  `task_t<reply_type> handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- typed response: `http_response_t handle(const request_type &request)`
+- typed response + context:
+  `http_response_t handle(const request_type &request, http_context_t &context)`
+- typed response async: `task_t<http_response_t> handle(const request_type &request)`
+- typed response + context async:
+  `task_t<http_response_t> handle(const request_type &request, http_context_t &context)`
+- typed response + request:
+  `http_response_t handle(const request_type &request, const http_request_t &http)`
+- typed response + request async:
+  `task_t<http_response_t> handle(const request_type &request, const http_request_t &http)`
+- typed response + request + context:
+  `http_response_t handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- typed response + request + context async:
+  `task_t<http_response_t> handle(const request_type &request, const http_request_t &http, http_context_t &context)`
+- raw HTTP request: `http_response_t handle(const http_request_t &request)`
+- raw HTTP request async: `task_t<http_response_t> handle(const http_request_t &request)`
+
+`http_request_t`와 `http_response_t`는 zlink framework public 타입이다. `Boost.Beast`,
+`Boost.Asio`, OpenSSL stream, socket 타입을 handler signature에 직접 쓰면 public contract
+위반이다.
+
+`map_*<THandler>(...)`는 위 shape를 compile-time으로 판별한다. `request_type`이 있으면
+typed route로 등록하고, `handle(const http_request_t&)`만 있으면 raw route로 등록한다.
+typed route에서 여러 overload가 있으면 `http_response_t` 반환, `http_request_t` 인자,
+`http_context_t` 인자, DTO-only 순서로 더 많은 HTTP 제어권을 가진 shape를 우선 호출한다.
+`http_request_t`와 `http_context_t`를 모두 받는 shape는 둘 중 하나만 받는 shape보다 우선한다.
+typed route와 raw route shape를 한 handler에 동시에 제공하면 route mode가 모호하므로 static
+assertion 또는 startup validation으로 실패시킨다.
+
+Handler shape 판별은 아래 순서로 구현한다.
+
+1. `request_type` alias가 있으면 typed route 후보로 본다.
+2. `request_type` alias가 없고 `handle(const http_request_t&)`가 있으면 raw route로 본다.
+3. typed route는 `reply_type` 또는 `http_response_t` 반환 shape 중 하나를 가져야 한다.
+4. typed route와 raw route shape가 한 handler에 같이 있으면 실패한다.
+5. typed route 안에서 여러 shape가 있으면 아래 우선순위로 하나만 선택한다.
+
+Typed route 호출 우선순위:
+
+1. `task_t<http_response_t> handle(const request_type&, const http_request_t&, http_context_t&)`
+2. `http_response_t handle(const request_type&, const http_request_t&, http_context_t&)`
+3. `task_t<http_response_t> handle(const request_type&, const http_request_t&)`
+4. `http_response_t handle(const request_type&, const http_request_t&)`
+5. `task_t<http_response_t> handle(const request_type&, http_context_t&)`
+6. `http_response_t handle(const request_type&, http_context_t&)`
+7. `task_t<http_response_t> handle(const request_type&)`
+8. `http_response_t handle(const request_type&)`
+9. `task_t<reply_type> handle(const request_type&, const http_request_t&, http_context_t&)`
+10. `reply_type handle(const request_type&, const http_request_t&, http_context_t&)`
+11. `task_t<reply_type> handle(const request_type&, const http_request_t&)`
+12. `reply_type handle(const request_type&, const http_request_t&)`
+13. `task_t<reply_type> handle(const request_type&, http_context_t&)`
+14. `reply_type handle(const request_type&, http_context_t&)`
+15. `task_t<reply_type> handle(const request_type&)`
+16. `reply_type handle(const request_type&)`
+
+이 우선순위는 “더 많은 HTTP 제어권을 명시한 handler를 우선한다”는 규칙이다.
+`http_response_t` 반환은 status/header/body를 직접 제어하겠다는 뜻이므로 DTO 반환보다 우선한다.
+`http_request_t` 인자는 raw HTTP metadata가 필요하다는 뜻이므로 `http_context_t`보다 우선한다.
+
+Raw route 호출 우선순위:
+
+1. `task_t<http_response_t> handle(const http_request_t&)`
+2. `http_response_t handle(const http_request_t&)`
+
+Raw route는 `request_type`, `reply_type` alias를 요구하지 않는다. raw route handler가
+`reply_type` DTO를 반환하면 실패한다. raw route는 framework가 response serializer를 추론할 수
+없기 때문이다.
+
+실패해야 하는 handler shape:
+
+| 조건 | 실패 이유 |
+|------|-----------|
+| `request_type`이 있으나 호출 가능한 typed `handle(...)`이 없음 | route를 실행할 수 없다 |
+| `request_type`이 있으나 DTO 반환 shape에 `reply_type`이 없음 | DTO serializer를 알 수 없다 |
+| `request_type`이 없고 raw `handle(http_request_t)`도 없음 | route mode를 정할 수 없다 |
+| typed shape와 raw shape를 동시에 제공 | typed/raw route mode가 모호하다 |
+| raw handler가 `reply_type` 또는 임의 DTO를 반환 | raw response serializer를 추론할 수 없다 |
+| handler가 Beast/Asio/OpenSSL 타입을 받음 | public dependency 경계를 위반한다 |
+| 둘 이상의 같은 우선순위 overload가 호출 가능 | overload 선택이 모호하다 |
+
 ## 4. Route Builder
 
-지원 범위는 typed JSON route다. `GET`, `POST`, `PUT`, `DELETE`를 같은 규칙으로
-등록할 수 있어야 한다.
+지원 범위는 typed JSON route와 raw HTTP route다. `GET`, `POST`, `PUT`, `DELETE`를 같은
+규칙으로 등록할 수 있어야 한다.
 
 ```cpp
 namespace zlink::framework {
@@ -156,8 +255,10 @@ namespace zlink::framework {
 class http_options_builder_t {
 public:
     http_options_builder_t &listen(std::string endpoint);
-    http_options_builder_t &tls(
+    http_options_builder_t &configure_tls(
       std::function<void(http_tls_options_builder_t &)> configure);
+    http_options_builder_t &configure_server(
+      std::function<void(http_server_options_builder_t &)> configure);
 
     template <typename THandler>
     http_options_builder_t &map_get(std::string path);
@@ -189,8 +290,59 @@ struct http_context_t {
     http_context_t &json_response(int status, std::string body);
 };
 
+struct http_request_t {
+    http_method_t method;
+    std::string path;
+    std::string target;
+    std::string query_string;
+    std::string correlation_id;
+    std::map<std::string, std::string> headers;
+    std::map<std::string, std::string> route_values;
+    std::map<std::string, std::string> query_values;
+    std::string body;
+    std::string content_type;
+    std::string remote_endpoint;
+};
+
+struct http_response_t {
+    int status = 200;
+    std::string body;
+    std::string content_type = "application/json";
+    std::map<std::string, std::string> headers;
+
+    http_response_t &header(std::string name, std::string value);
+};
+
 } // namespace zlink::framework
 ```
+
+`http_request_t` field 계약:
+
+| field | 의미 |
+|-------|------|
+| `method` | route matching에 사용한 HTTP method |
+| `path` | query string을 제거한 path |
+| `target` | 원본 request target. path와 query string을 포함한다 |
+| `query_string` | `?` 뒤 query 문자열. 없으면 빈 문자열 |
+| `correlation_id` | `X-Correlation-Id`, `X-Request-Id`, 또는 runtime 생성 id |
+| `headers` | HTTP header name/value. header name은 runtime의 canonical form을 사용한다 |
+| `route_values` | `{name}` path segment binding 결과 |
+| `query_values` | query string binding 결과 |
+| `body` | limit 검증이 끝난 request body |
+| `content_type` | `Content-Type` header 값. 없으면 빈 문자열 |
+| `remote_endpoint` | 가능한 경우 client endpoint. 알 수 없으면 빈 문자열 |
+
+`http_response_t` field 계약:
+
+| field | 의미 |
+|-------|------|
+| `status` | HTTP status code. 기본값은 `200` |
+| `body` | response body bytes. string은 UTF-8 text 또는 binary-safe byte buffer로 취급한다 |
+| `content_type` | `Content-Type` response header. 기본값은 `application/json` |
+| `headers` | response header name/value |
+
+`http_request_t`와 `http_response_t`는 request 처리 중 runtime이 소유한 값의 복사본이다.
+handler는 이 객체의 reference를 저장하면 안 된다. request 완료 뒤 lifetime은 보장하지 않는다.
 
 `listen(...)` endpoint는 `http://host:port`와 `https://host:port` 형식을 사용한다.
 
@@ -208,14 +360,14 @@ struct http_context_t {
 ```cpp
 options.http()
   .listen("https://0.0.0.0:8443")
-  .tls([](auto &tls) {
+  .configure_tls([](auto &tls) {
       tls.certificate_file("certs/server.crt")
         .private_key_file("certs/server.key");
   })
   .map_post<create_match_handler_t>("/games");
 ```
 
-`map_post<THandler>(path)`는 아래 작업을 한 번에 수행한다.
+`map_post<THandler>(path)`는 typed route에서 아래 작업을 한 번에 수행한다.
 
 - `THandler`를 service collection에 등록한다.
 - `THandler::request_type`과 `THandler::reply_type`의 JSON serializer를 등록한다.
@@ -225,6 +377,60 @@ options.http()
 - 결과 DTO를 JSON response body로 직렬화한다.
 - handler가 `handle(request, http_context_t&)`를 제공하면 correlation id와 header 같은 HTTP
   문맥을 함께 받을 수 있다. `handle(request)`만 제공하는 기존 handler도 그대로 동작한다.
+
+raw route는 `request_type` serializer를 요구하지 않는다. runtime은 `http_request_t`를 만들어
+handler에 넘기고, handler가 반환한 `http_response_t`를 그대로 HTTP response로 쓴다. raw route도
+middleware, correlation id, timeout, limit, logging, metrics 정책을 똑같이 통과한다.
+
+Invoker 생성 의사 코드는 아래와 같다.
+
+```cpp
+template <typename THandler>
+http_route_invoker_t make_invoker()
+{
+    if constexpr (has_request_type<THandler>) {
+        static_assert(!has_raw_http_only_shape<THandler>);
+        register_json_serializer<typename THandler::request_type>();
+        if constexpr (returns_typed_dto<THandler>) {
+            register_json_serializer<typename THandler::reply_type>();
+        }
+        return make_typed_invoker<THandler>();
+    } else {
+        static_assert(has_raw_http_shape<THandler>);
+        return make_raw_invoker<THandler>();
+    }
+}
+```
+
+Typed invoker 처리 순서:
+
+1. body, route value, query value를 하나의 binding JSON으로 합친다.
+2. `request_type` serializer로 DTO를 만든다.
+3. `http_request_t`와 `http_context_t`를 만든다.
+4. 우선순위에 따라 handler overload를 호출한다.
+5. 결과가 `reply_type`이면 `http_context_t`의 status/header와 함께 JSON response를 만든다.
+6. 결과가 `http_response_t`이면 response object를 기준으로 HTTP response를 만든다.
+
+Raw invoker 처리 순서:
+
+1. content type이 JSON인지 검사하지 않는다.
+2. body/header/route/query limit은 동일하게 적용한다.
+3. `http_request_t`를 만든다.
+4. raw handler를 호출한다.
+5. 반환된 `http_response_t`를 기준으로 HTTP response를 만든다.
+
+Response precedence:
+
+| handler result | 우선순위 |
+|----------------|----------|
+| `http_response_t` 반환 | `http_response_t`의 status/header/content type/body가 최우선 |
+| DTO 반환 + `http_context_t::json_response(...)` 설정 | context의 status/body/header를 사용 |
+| DTO 반환 + context header/status만 설정 | context status/header + DTO JSON body 사용 |
+| DTO 반환만 있음 | `200 OK`, `application/json`, DTO JSON body 사용 |
+
+middleware `after(...)`는 handler result가 만들어진 뒤 실행된다. `after(...)`가 response header를
+추가하면 기존 header를 같은 이름으로 덮어쓸 수 있다. 단, `Content-Length`는 runtime이 최종 body
+기준으로 계산하므로 handler나 middleware가 직접 고정하지 않는다.
 
 route parameter와 query string binding은 ASP.NET Core model binding을 단순화해서 따른다.
 
@@ -268,7 +474,9 @@ health 집계 규칙은 `contracts/eventing/health.hpp`와 runtime diagnostics �
 | success status | `200 OK` |
 | route not found | `404 Not Found` |
 | method mismatch | `405 Method Not Allowed` |
+| unsupported media type | `415 Unsupported Media Type` |
 | invalid JSON | `400 Bad Request` |
+| body limit exceeded | `413 Payload Too Large` |
 | serializer registration | `map_*<THandler>`가 request/reply JSON serializer를 등록한다 |
 | handler failure | error kind 기반 status mapping |
 
@@ -295,6 +503,11 @@ framework error kind는 HTTP status로 매핑한다.
 | `shutdown` | `503 Service Unavailable` | host가 종료 중이다 |
 | `request_failed` | `500 Internal Server Error` | 내부 handler 또는 runtime 실패다 |
 
+HTTP server runtime이 body size limit을 초과한 request를 감지하면 `413 Payload Too Large`로
+닫는다. JSON route에 `application/json`과 호환되지 않는 content type이 들어오면
+`415 Unsupported Media Type`으로 닫는다. 두 status는 handler failure가 아니라 server
+request validation 실패다.
+
 error kind가 명확하지 않은 예외는 `500 Internal Server Error`로 닫고 log/monitoring에
 원인을 남긴다. HTTP client에는 C++ exception type 이름을 그대로 노출하지 않는다.
 
@@ -317,9 +530,8 @@ HTTP request가 들어왔을 때 handler가 주입받은 channel client를 바�
 ## 7.1 Middleware
 
 HTTP middleware는 ASP.NET Core의 cross-cutting pipeline 개념을 C++ 형태로 투영한다.
-초기 core 범위는 `options.http().use<TMiddleware>()`와 `http_context_t` 기반 before/after
-hook이다. route별 filter 타입은 별도 public API로 두지 않고, middleware에서 method/path를
-확인해 처리한다.
+core 범위는 `options.http().use<TMiddleware>()`와 `http_context_t` 기반 before/after hook이다.
+route별 filter 타입은 별도 public API로 두지 않고, middleware에서 method/path를 확인해 처리한다.
 
 필수 축은 아래와 같다.
 
@@ -364,7 +576,7 @@ framework host가 소유한 별도 ingress이고, zlink messaging으로 들어�
 |----------------------------|---------------|
 | `WebApplication.CreateBuilder()` | `app_t::create()` |
 | `builder.WebHost.UseUrls(url)` | `options.http().listen(url)` |
-| Kestrel HTTPS endpoint/certificate option | `options.http().listen("https://...").tls(...)` |
+| Kestrel HTTPS endpoint/certificate option | `options.http().listen("https://...").configure_tls(...)` |
 | `builder.Services.AddZLinkFramework(...)` | `app.add_zlink_framework(...)` |
 | `app.MapPost("/games", Handler.HandleAsync)` | `options.http().map_post<handler_t>("/games")` |
 | `app.MapGet("/games/{id}", ...)` | `options.http().map_get<handler_t>("/games/{id}")` |
@@ -405,7 +617,7 @@ Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP pat
 
 | 항목 | 결정 |
 |------|------|
-| HTTP를 core framework에 둘지 extension에 둘지 | core framework에 둔다. `.NET` sample parity와 “이 framework 하나로 충분해야 한다”는 요구 때문이다 |
+| HTTP를 core framework에 둘지 extension에 둘지 | core framework에 둔다. `.NET` sample parity와 단일 framework 요구 때문이다 |
 | 구현 라이브러리 | `Boost.Beast`를 runtime private dependency로 사용한다 |
 | public API에 Beast/Asio 노출 여부 | 노출하지 않는다 |
 | HTTPS/TLS 지원 | core HTTP hosting에서 지원한다. public API는 certificate/private key 설정만 노출하고 SSL 구현 타입은 숨긴다 |
@@ -413,7 +625,8 @@ Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP pat
 | route matching | exact path와 `{name}` path parameter를 지원한다 |
 | method 지원 | `GET`, `POST`, `PUT`, `DELETE`를 같은 builder 패턴으로 지원한다 |
 | cancellation token | C++ public handler signature에는 별도 cancel token을 넣지 않는다. shutdown/drain과 timeout 정책으로 처리한다 |
-| response customization | typed DTO는 `200 OK` 기본이다. status/header 직접 제어는 `http_response_t` 반환 handler로 확장한다 |
+| response customization | typed DTO는 `200 OK` 기본이다. status/header 직접 제어는 `http_response_t` 반환 handler로 지원한다 |
+| embedded server hardening | [Embedded HTTP Server](./cpp-embedded-http-server.ko.md)의 hardening 기준을 따른다 |
 
 ## 12. 회귀 테스트
 
@@ -438,6 +651,13 @@ Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP pat
   kind로 고정된다
 - HTTP handler e2e: `zlink::http_client`로 `GET`, `POST`, `PUT`, `DELETE` route를 호출해
   DTO binding, DI handler 실행, JSON response, status mapping을 검증한다
+- handler shape matrix: DTO, DTO+context, DTO+request, response 반환, raw request의 sync/async
+  shape를 모두 호출한다
+- raw HTTP request: `http_request_t`에 method, target, header, route/query, body가 들어간다
+- raw HTTP response: `http_response_t`의 status, header, content type, body가 그대로 반환된다
+- ambiguous handler shape: 모호한 `handle(...)` 조합은 static assertion 또는 startup validation 실패
+- response precedence: `http_response_t`, `json_response`, context header/status, DTO 기본 응답
+  우선순위를 고정한다
 - route parameter binding: `/games/{gameId}`가 DTO field로 들어간다
 - query string binding: `?page=1`이 DTO field로 들어간다
 - body/route/query merge 우선순위 고정
@@ -445,5 +665,28 @@ Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP pat
 - DI: HTTP handler가 `request_client_t`를 생성자 주입으로 받는다
 - middleware: before hook 등록 순서, after hook 역순 실행, 요청 단위 상태 보존, short-circuit
 - error mapping: invalid JSON은 `400`, unknown route는 `404`, timeout은 `504`
+- server validation: unsupported content type은 `415`, body limit 초과는 `413`
+- embedded server lifecycle: keep-alive, request timeout, graceful shutdown drain, connection
+  metrics는 [Embedded HTTP Server](./cpp-embedded-http-server.ko.md) 회귀 테스트로 검증한다
 - lifecycle: `app.stop()`이 HTTP accept loop를 닫고 worker thread를 join한다
 - TicTacToe sample e2e: client가 `POST /games` 뒤 stream connector로 게임을 진행한다
+
+Handler shape regression matrix:
+
+| 테스트 | 기대 |
+|--------|------|
+| DTO sync | `reply_type handle(request)`가 `200` JSON을 반환 |
+| DTO async | `task_t<reply_type> handle(request)`가 await 뒤 JSON 반환 |
+| DTO context sync | context header/status가 response에 반영 |
+| DTO context async | async handler와 context 변경이 함께 반영 |
+| DTO request sync | `http_request_t`의 header/query/body를 읽을 수 있음 |
+| DTO request async | async handler가 `http_request_t`를 받고 정상 완료 |
+| response sync | `http_response_t` status/header/body가 그대로 반환 |
+| response context | `http_response_t`가 context body보다 우선 |
+| response request | `http_request_t`를 읽고 `http_response_t`로 응답 |
+| raw request sync | serializer 없이 raw body를 받아 응답 |
+| raw request async | raw request async handler가 정상 완료 |
+| raw content type | JSON이 아닌 content type도 raw route에서 허용 |
+| ambiguous route mode | typed shape와 raw shape가 한 handler에 있으면 실패 |
+| invalid return type | raw route가 DTO를 반환하면 실패 |
+| content length | handler가 준 `Content-Length`는 runtime 최종값으로 보정 |

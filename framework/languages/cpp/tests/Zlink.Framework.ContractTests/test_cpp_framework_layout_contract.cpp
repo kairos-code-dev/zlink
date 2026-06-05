@@ -172,10 +172,10 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
     buffer << input.rdbuf ();
     const auto text = buffer.str ();
 
-    const auto start = text.find ("## 6. Draft 추적표");
+    const auto start = text.find ("## 6. 참고 문서 추적표");
     const auto end = text.find ("## 7. 기능 축 추적표");
     if (start == std::string::npos || end == std::string::npos || start >= end) {
-        std::cerr << "implementation plan lacks a bounded draft tracking table: " << path << '\n';
+        std::cerr << "implementation plan lacks a bounded reference document tracking table: " << path << '\n';
         return false;
     }
     const auto table = text.substr (start, end - start);
@@ -194,16 +194,16 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
         const auto link = std::string ("(./") + filename + ")";
         const auto link_count = count_occurrences (table, link);
         if (link_count != 1) {
-            std::cerr << "draft tracking table must reference exactly once: " << filename << " (got " << link_count
-                      << ")\n";
+            std::cerr << "reference document tracking table must reference exactly once: " << filename << " (got "
+                      << link_count << ")\n";
             ok = false;
         }
     }
 
     const auto tracked_count = count_occurrences (table, ".ko.md)");
     if (tracked_count != file_count) {
-        std::cerr << "draft tracking table count mismatch: tracked " << tracked_count << ", files " << file_count
-                  << '\n';
+        std::cerr << "reference document tracking table count mismatch: tracked " << tracked_count << ", files "
+                  << file_count << '\n';
         ok = false;
     }
     return ok;
@@ -355,6 +355,796 @@ bool implementation_plan_goal20_covers_connector_labels (const std::filesystem::
     return ok;
 }
 
+bool implementation_plan_goal6_covers_parity_model (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 6. Application Framework Parity Model");
+    const auto end = text.find ("### Goal 7. Runtime Integration And Execution");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 6 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"`.NET Core` / `ASP.NET Core` benchmark mapping",
+                                    "app host, DI, configuration, logging, lifecycle 통합",
+                                    "HTTP hosting, zlink messaging, timer, hosted service 통합",
+                                    "handler, middleware/filter, validation, error mapping 공통 모델",
+                                    "security/auth extension point",
+                                    "scheduling/background work model",
+                                    "developer convenience model",
+                                    "regression label taxonomy",
+                                    "HTTP, zlink, timer, hosted service가 서로 다른 framework처럼 보이지 않는다",
+                                    "모든 handler 계열은 DTO, `dependency_types`, DI scope, `task_t<T>`, logging, error",
+                                    "mapping 규칙을 공유한다"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 6 parity model lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-contract",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-host",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R parity"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 6 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal7_covers_runtime_integration (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 7. Runtime Integration And Execution");
+    const auto end = text.find ("### Goal 8. Handler Registry And Serializer");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 7 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"`zlink::context_t` lifecycle owner",
+                                    "channel/stream/discovery/registry/spot lifecycle owner",
+                                    "CAPI dispatch callback 등록과 recv 처리",
+                                    "typed handler projection",
+                                    "CAPI timer event projection",
+                                    "core ordering 보존",
+                                    "framework offload executor",
+                                    "runtime drain",
+                                    "transport abstraction",
+                                    "endpoint URI validation",
+                                    "TCP, IPC, TLS, WebSocket transport support through zlink core",
+                                    "public API가 CAPI handle, socket recv, poller slot을 노출하지 않는다",
+                                    "모든 handler는 coroutine executor를 통과한다",
+                                    "CPU-bound handler는 offload executor에서 실행 가능하다",
+                                    "offload executor는 shutdown에서 drain된다",
+                                    "별도 event loop",
+                                    "public API로"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 7 runtime integration lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-unit -R runtime",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-integration"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 7 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal8_covers_handler_serializer_model (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 8. Handler Registry And Serializer");
+    const auto end = text.find ("### Goal 9. Channel Messaging");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 8 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"`handler_registry_t`",
+                                    "options.handlers().add<THandler>(group)",
+                                    "handler alias: `request_type`, `reply_type`, `spot_type`, `actor_type`",
+                                    "handler `topic_name`",
+                                    "typed deserialize/serialize",
+                                    "handler DI resolve",
+                                    "handler exception mapping",
+                                    "`serializer_registry_t`",
+                                    "JSON serializer 기본값",
+                                    "custom serializer 등록",
+                                    "channel, topic, spot, actor, request, reply type을 반복해서 나열하지 않는다",
+                                    "type 정보는 handler class alias와 `topic_name`에서 읽는다",
+                                    "decode 실패는 `payload_decode_failed`",
+                                    "serializer registry 구현은 public header에 노출하지 않는다"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 8 handler/serializer model lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-unit -R handler",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-unit -R serializer"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 8 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal9_covers_channel_messaging (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 9. Channel Messaging");
+    const auto end = text.find ("### Goal 10. Backpressure And Reliability");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 9 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"request/reply, send/event, pub/sub, route channel, outbound client",
+                                    "`add_client_server_channel(...)`",
+                                    "server/client/publisher/subscriber capability",
+                                    "`bind(...)`",
+                                    "`connect(...)`",
+                                    "`use_discovery(...)`",
+                                    "`request_client_t`",
+                                    "`publisher_t`",
+                                    "request timeout",
+                                    "reply correlation",
+                                    "outbound-only host",
+                                    "route channel",
+                                    "handler not found mapping",
+                                    "disconnected result",
+                                    "channel messaging 기본 호출은 channel name 기준",
+                                    "같은 capability 안에서 discovery와 manual connection을 섞지 않는다",
+                                    "pending queue 한도 초과는 `request_rejected`",
+                                    "route handler가 없으면 request는 handler not found 계열 error로 닫힌다"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 9 channel messaging lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-channel",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R channel"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 9 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal10_covers_backpressure_reliability (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 10. Backpressure And Reliability");
+    const auto end = text.find ("### Goal 11. SPOT Runtime");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 10 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"send readiness, bounded queue, timeout, retry/dead-letter extension point",
+                                    "nonblocking send",
+                                    "send-ready runtime integration",
+                                    "HWM awareness",
+                                    "bounded pending queue",
+                                    "timeout 처리",
+                                    "disconnected 처리",
+                                    "shutdown 처리",
+                                    "explicit retry hook",
+                                    "dead-letter extension point",
+                                    "idempotency key hook",
+                                    "graceful close와 drain",
+                                    "public non-blocking 옵션으로 책임을 사용자에게 넘기지 않는다",
+                                    "timeout 전 send-ready가 오면 pending 작업을 drain한다",
+                                    "shutdown 중 pending 작업은 graceful drain 또는 `shutdown` 실패",
+                                    "slow subscriber나 disconnected subscriber"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 10 backpressure/reliability lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-unit -R backpressure",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliability"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 10 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 11. SPOT Runtime");
+    const auto end = text.find ("### Goal 12. SPOT Timer");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 11 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"SPOT node, Entry Spot, user Spot, actor handler",
+                                    "`spot_node_builder_t`",
+                                    "`spot_context_t`",
+                                    "`spot_context_t::publish(...)`",
+                                    "`spot_context_t::request_to(...)`",
+                                    "`spot_context_t::handlers()`",
+                                    "`spot_handler_registry_t`",
+                                    "`add_handler<THandler>()`",
+                                    "`add_subscribe<THandler>(topic)`",
+                                    "`add_actor_join<THandler>()`",
+                                    "`add_actor_packet<THandler>()`",
+                                    "`add_post_actor_joined<THandler>()`",
+                                    "`add_actor_left<THandler>()`",
+                                    "`add_actor_disconnected<THandler>()`",
+                                    "Entry Spot",
+                                    "user Spot lifecycle",
+                                    "Registry-backed Spot lookup",
+                                    "SPOT node lifecycle은 app host가 관리한다",
+                                    "core SPOT dispatch ordering",
+                                    "handler type만 나열한다",
+                                    "actor join/packet handler는 Spot instance와 actor를 함께 받는다",
+                                    "Play sample smoke는 handler 객체 직접 호출만으로 통과하지 않는다"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 11 SPOT runtime lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-spot",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R spot"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 11 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal12_covers_spot_timer (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 12. SPOT Timer");
+    const auto end = text.find ("### Goal 13. STREAM Framework");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 12 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"CAPI timer",
+                                    "`.NET` framework timer",
+                                    "`timer_t`",
+                                    "`timer_options_t`",
+                                    "`timer_overrun_policy_t`",
+                                    "`timer_tick_t`",
+                                    "`spot_context_t::add_timer<THandler>(...)`",
+                                    "CAPI timer lifecycle",
+                                    "CAPI timer dispatch event projection",
+                                    "`fire_count` 기반 skipped tick 계산",
+                                    "`scheduled_index`",
+                                    "`skip_late_ticks`",
+                                    "`catch_up_bounded`",
+                                    "`delay_next_tick`",
+                                    "same timer instance 재진입 금지",
+                                    "timer handler exception monitoring",
+                                    "native timer handle, poller slot, timer recv 순서",
+                                    "user Spot timer는 같은 Spot의 packet/subscription/channel reply 순서 정책을 따른다",
+                                    "Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다",
+                                    "timer failure event는 snapshot interval을 기다리지 않고 발생한다"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 12 SPOT timer lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-spot -R timer",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R timer"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 12 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal13_covers_stream_framework (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 13. STREAM Framework");
+    const auto end = text.find ("### Goal 14. ActorGateway Session Relay");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 13 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"Header 기반 packet stream",
+                                    "`stream_builder_t`",
+                                    "`stream_t`",
+                                    "`packet_stream_session_t`",
+                                    "`stream_header_t`",
+                                    "`stream_error_t`",
+                                    "STREAM bind",
+                                    "packet session registration",
+                                    "lifecycle callback",
+                                    "packet callback",
+                                    "packet reply",
+                                    "`stream_t::write_packet(...)`",
+                                    "header encode/decode",
+                                    "semantic validation",
+                                    "write backpressure",
+                                    "session ordering",
+                                    "close cleanup",
+                                    "raw byte stream dispatch는 core public 표면에 넣지 않는다",
+                                    "Header validation 실패 packet은 application handler로 넘기지 않는다",
+                                    "같은 stream session lifecycle callback과 packet callback은 직렬",
+                                    "pending write 중 disconnect"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 13 STREAM framework lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-stream",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R stream"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 13 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal14_covers_actor_gateway (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 14. ActorGateway Session Relay");
+    const auto end = text.find ("### Goal 15. Registry And Topology");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 14 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"STREAM session과 actor를 ActorGateway로 bind/relay",
+                                    "`stream.attach_actor_gateway(spot_node_name)`",
+                                    "`actor_ref_t`",
+                                    "`session_actor_manager_t`",
+                                    "`session_actor_t`",
+                                    "`actor_context_t`",
+                                    "`bound_session_t`",
+                                    "`actor_join_result_t<TReply>`",
+                                    "actor factory 등록",
+                                    "local actor handle bind",
+                                    "remote actor ref bind",
+                                    "session actor relay",
+                                    "bound session push",
+                                    "actor disconnect cleanup",
+                                    "actor type mismatch error",
+                                    "duplicate actor error",
+                                    "remote ActorGateway locator codec 숨김",
+                                    "application route mesh channel을 만들지 않는다",
+                                    "node rid, actor id, generation round-trip",
+                                    "actor push는 `bound_session_t`를 통해 내려간다",
+                                    "Registry나 sample-only metadata store에 저장하지 않는다",
+                                    "`relay(...)`와 `send(...)`는 caller payload를 소비하지 않는다"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 14 ActorGateway lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-actor-gateway",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R actor"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 14 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal15_covers_registry_topology (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 15. Registry And Topology");
+    const auto end = text.find ("### Goal 16. Monitoring, Health, Observability");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 15 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"embedded registry, remote query, topology 조회, Spot remote address lookup",
+                                    "embedded registry bootstrap",
+                                    "registry query client",
+                                    "topology query",
+                                    "service summary",
+                                    "Spot remote address lookup 기본값",
+                                    "custom Spot resolver",
+                                    "duplicate resolver rejection",
+                                    "ambiguous route channel validation",
+                                    "stale address cleanup",
+                                    "monitoring snapshot source",
+                                    "Registry는 Spot remote address 조회 기본값",
+                                    "session actor relay hot path의 actor route store로 Registry를 쓰지 않는다",
+                                    "Spot discovery 없이 Registry Spot 기본값을 켜면 validation 오류",
+                                    "route channel이 둘 이상이면 resolver channel 이름을 명시해야 한다"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 15 registry/topology lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R registry"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 15 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal16_covers_observability (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 16. Monitoring, Health, Observability");
+    const auto end = text.find ("### Goal 17. Module System And Hosted Services");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 16 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"monitoring builder",
+                                    "runtime event enum",
+                                    "typed event payload structs",
+                                    "socket/discovery/registry/spot/stream/actor/session event projection",
+                                    "timer immediate failure event",
+                                    "correlation id",
+                                    "health status",
+                                    "readiness/liveness",
+                                    "metrics/tracing hook",
+                                    "logging integration",
+                                    "handler exception과 transport error가 구분된다",
+                                    "timer handler failure는 snapshot diff interval을 기다리지 않는다",
+                                    "zlink channel, registry, STREAM endpoint, hosted service 상태",
+                                    "public callback payload에 exception 객체 자체를 직접 싣지 않는다"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 16 observability lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-observability",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-unit -R monitoring"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 16 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal17_covers_module_hosting (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 17. Module System And Hosted Services");
+    const auto end = text.find ("### Goal 18. ZLink HTTP Client");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 17 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"`module_t`",
+                                    "`framework_module_contract_t`",
+                                    "`hosted_service_t`",
+                                    "`app_t::add_zlink_framework(...)`",
+                                    "`zlink_framework_options_t`",
+                                    "`options.services()`",
+                                    "`options.handlers()`",
+                                    "`options.codecs().add_json()`",
+                                    "discovery/channel/spot/stream fluent options builders",
+                                    "module service registration",
+                                    "module handler registration",
+                                    "stage wrapper module pattern",
+                                    "hosted service start/stop lifecycle",
+                                    "`app_t::add_zlink_framework(options_callback)`",
+                                    "JSON codec 사용만 선언하고 message type을 모두 나열하지",
+                                    "`dependency_list_t<Dep...>`와 DI 생성자 주입",
+                                    "handler용 DI factory, serializer smoke 검증",
+                                    "낮은 수준 zlink builder 람다를 두지 않는다",
+                                    "hosted service는 app startup/shutdown과 함께 시작하고 종료한다"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 17 module/hosted lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-unit -R module",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-integration -R hosted"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 17 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal18_covers_http_client (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 18. ZLink HTTP Client");
+    const auto end = text.find ("### Goal 19. HTTP Hosting");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 18 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"`zlink::http_client` namespace",
+                                    "`zlink/http_client.hpp`",
+                                    "`http-client/include/zlink/http_client/contracts/*`",
+                                    "`http-client/src/runtime/*`",
+                                    "`zlink::http_client` CMake target",
+                                    "`client_t::create()`",
+                                    "`base_url(endpoint)`",
+                                    "`timeout(duration)`",
+                                    "`default_header(name, value)`",
+                                    "`json()`",
+                                    "`get(path)`, `post(path)`, `put(path)`, `delete_(path)`",
+                                    "typed request body: `body(dto)`",
+                                    "callback submit",
+                                    "coroutine submit",
+                                    "typed JSON response: `submit<TReply>()`",
+                                    "HTTP status와 transport error를 client result/error kind로 매핑",
+                                    "HTTP client regression test suite",
+                                    "`Boost.Beast` runtime private 구현",
+                                    "HTTP와 HTTPS endpoint",
+                                    "TLS verification option",
+                                    "certificate authority bundle 또는 test certificate trust option",
+                                    "framework sample 전용 helper나 framework target이 아니다",
+                                    "`Boost.Beast`, `Boost.Asio`, OpenSSL, socket, resolver",
+                                    "`base_url(...)`은 `http://`와 `https://` endpoint를 모두 받는다",
+                                    "TLS handshake, server certificate verification, hostname verification",
+                                    "묵시적으로 TLS verification을 끄지 않는다",
+                                    "`submit(callback)` 또는",
+                                    "`co_await submit<T>()`",
+                                    "`message_t` 또는 DTO serializer hook",
+                                    "`nlohmann::json::parse`로 field를 직접 꺼내지 않는다",
+                                    "retry, redirect, cookie, proxy, multipart, streaming download",
+                                    "TicTacToe client sample은 이 HTTP client로 `POST /games`를 호출한다",
+                                    "TLS verification 실패, test certificate trust 성공"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 18 HTTP client lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L http-client-contract",
+                                    "ctest --test-dir framework/languages/cpp/build -L http-client-unit",
+                                    "ctest --test-dir framework/languages/cpp/build -L http-client-e2e",
+                                    "ctest --test-dir framework/languages/cpp/build -L http-client-https",
+                                    "ctest --test-dir framework/languages/cpp/build -L http-client-regression"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 18 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+bool implementation_plan_goal19_covers_http_hosting (const std::filesystem::path &root)
+{
+    const auto path = root / "doc/draft/cpp-framework-implementation-plan.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    const auto start = text.find ("### Goal 19. HTTP Hosting");
+    const auto end = text.find ("### Goal 20. Stream Connector");
+    if (start == std::string::npos || end == std::string::npos || start >= end) {
+        std::cerr << "implementation plan lacks bounded Goal 19 section: " << path << '\n';
+        return false;
+    }
+    const auto goal = text.substr (start, end - start);
+
+    bool ok = true;
+    const std::string required[] = {"`contracts/http/*`",
+                                    "`http_options_builder_t`",
+                                    "`options.http().listen(endpoint)`",
+                                    "`options.http().configure_tls(...)`",
+                                    "`options.http().configure_server(...)`",
+                                    "`map_get<THandler>(path)`",
+                                    "`map_post<THandler>(path)`",
+                                    "`map_put<THandler>(path)`",
+                                    "`map_delete<THandler>(path)`",
+                                    "`http_request_t`",
+                                    "`http_response_t`",
+                                    "`use<TMiddleware>()`",
+                                    "typed DTO HTTP handler shape",
+                                    "raw `http_request_t` to `http_response_t` handler shape",
+                                    "HTTP handler shape resolution algorithm",
+                                    "response precedence rules",
+                                    "JSON body binding",
+                                    "raw HTTP body/header binding",
+                                    "route parameter binding",
+                                    "query string binding",
+                                    "correlation id propagation",
+                                    "HTTP handler e2e test through `zlink::http_client`",
+                                    "HTTP hosted service",
+                                    "`Boost.Beast` runtime private 구현",
+                                    "HTTPS endpoint",
+                                    "TLS certificate/private key option",
+                                    "keep-alive request loop",
+                                    "request header/body timeout",
+                                    "request body/header size limit",
+                                    "max connections와 overload response",
+                                    "graceful shutdown drain",
+                                    "Drogon/Oat++급 C++ backend API framework 성능 gate",
+                                    "public header에 나타나지 않는다",
+                                    "MVC controller, template rendering, Razor page, WebSocket transport는 포함하지 않는다",
+                                    "`zlink::http_client`로 `GET`, `POST`, `PUT`, `DELETE` route를 호출한다",
+                                    "raw request sync",
+                                    "raw content type",
+                                    "content length",
+                                    "metrics/logging"};
+    for (const auto &needle : required) {
+        if (goal.find (needle) == std::string::npos) {
+            std::cerr << "Goal 19 HTTP hosting lacks required contract: " << needle << '\n';
+            ok = false;
+        }
+    }
+
+    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-http",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-http-e2e",
+                                    "ctest --test-dir framework/languages/cpp/build -L framework-integration -R http"};
+    for (const auto &command : commands) {
+        if (goal.find (command) == std::string::npos) {
+            std::cerr << "Goal 19 verification commands lack: " << command << '\n';
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
 bool registry_draft_matches_monitoring_contract (const std::filesystem::path &root)
 {
     const auto path = root / "doc/draft/cpp-registry.ko.md";
@@ -433,7 +1223,7 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
     const auto text = buffer.str ();
 
     const auto start = text.find ("### Goal 22. Final Regression, Package, Extension Boundary");
-    const auto end = text.find ("## 6. Draft 추적표");
+    const auto end = text.find ("## 6. 참고 문서 추적표");
     if (start == std::string::npos || end == std::string::npos || start >= end) {
         std::cerr << "implementation plan lacks bounded Goal 22 section: " << path << '\n';
         return false;
@@ -497,8 +1287,10 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
 
     const std::string non_ctest_commands[] = {
       "cmake --build framework/languages/cpp/build",
-      "cmake -S framework/languages/cpp -B framework/languages/cpp/build-coverage "
-      "-DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON -DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80",
+      "cmake -S framework/languages/cpp",
+      "-B framework/languages/cpp/build-coverage",
+      "-DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON",
+      "-DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80",
       "cmake --build framework/languages/cpp/build-coverage",
       "git diff --check -- framework/languages/cpp bindings/cpp"};
     for (const auto &command : non_ctest_commands) {
@@ -1205,6 +1997,16 @@ int main ()
     ok &= http_client_public_surface_excludes_deferred_features (root);
     ok &= stream_connector_public_surface_hides_runtime_internals (root);
     ok &= http_hosting_public_surface_excludes_non_goal_features (root);
+    ok &= file_does_not_contain (root / "framework/include/zlink/framework/contracts/http/http.hpp",
+                                 "http_options_builder_t &tls",
+                                 "HTTP hosting public API must use configure_tls, not tls compatibility aliases");
+    ok &= file_does_not_contain (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp",
+                                 ".tls (",
+                                 "HTTP hosting regression tests must use configure_tls final API");
+    ok &= file_contains (root / "framework/src/runtime/http/http_host_service.cpp", "asio::thread_pool _io_workers");
+    ok &= file_does_not_contain (root / "framework/src/runtime/http/http_host_service.cpp",
+                                 "std::thread connection_thread",
+                                 "HTTP hosting must not create one OS thread per connection");
 
     ok &= public_headers_do_not_include_runtime (root / "framework/include");
     ok &= public_headers_do_not_include_runtime (root / "connector/include");
@@ -1227,6 +2029,20 @@ int main ()
     ok &= non_empty_directories_do_not_keep_gitkeep (root);
     ok &= draft_readme_role_tables_cover_files (root);
     ok &= implementation_plan_expands_label_wildcards (root);
+    ok &= implementation_plan_goal6_covers_parity_model (root);
+    ok &= implementation_plan_goal7_covers_runtime_integration (root);
+    ok &= implementation_plan_goal8_covers_handler_serializer_model (root);
+    ok &= implementation_plan_goal9_covers_channel_messaging (root);
+    ok &= implementation_plan_goal10_covers_backpressure_reliability (root);
+    ok &= implementation_plan_goal11_covers_spot_runtime (root);
+    ok &= implementation_plan_goal12_covers_spot_timer (root);
+    ok &= implementation_plan_goal13_covers_stream_framework (root);
+    ok &= implementation_plan_goal14_covers_actor_gateway (root);
+    ok &= implementation_plan_goal15_covers_registry_topology (root);
+    ok &= implementation_plan_goal16_covers_observability (root);
+    ok &= implementation_plan_goal17_covers_module_hosting (root);
+    ok &= implementation_plan_goal18_covers_http_client (root);
+    ok &= implementation_plan_goal19_covers_http_hosting (root);
     ok &= implementation_plan_goal20_covers_connector_labels (root);
     ok &= implementation_plan_goal21_covers_sample_labels (root);
     ok &= implementation_plan_goal22_covers_final_label_axes (root);

@@ -93,16 +93,49 @@ namespace
 struct named_request_t
 {
     static constexpr const char *packet_name = "NamedRequest";
+    int value{};
 };
 
 struct named_context_request_t
 {
     static constexpr const char *packet_name = "NamedContextRequest";
+    int value{};
 };
 
 struct named_reply_t
 {
+    int value{};
 };
+
+void to_json (nlohmann::json &json, const named_request_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+void from_json (const nlohmann::json &json, named_request_t &value)
+{
+    value.value = json.value ("value", 0);
+}
+
+void to_json (nlohmann::json &json, const named_context_request_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+void from_json (const nlohmann::json &json, named_context_request_t &value)
+{
+    value.value = json.value ("value", 0);
+}
+
+void to_json (nlohmann::json &json, const named_reply_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+void from_json (const nlohmann::json &json, named_reply_t &value)
+{
+    value.value = json.value ("value", 0);
+}
 
 struct named_send_handler_t
 {
@@ -214,6 +247,27 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ().configure_dispatch (
                    std::declval<std::function<void (zlink::framework::dispatch_options_t &)>> ())),
                  zlink::framework::zlink_framework_options_t &>);
+
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_context_t &> ().response_header (
+                                "X-Test", "value")),
+                              zlink::framework::http_context_t &>);
+
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_response_t &> ().header (
+                                "X-Test", "value")),
+                              zlink::framework::http_response_t &>);
+
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_options_builder_t &> ().configure_tls (
+                                std::declval<std::function<void (zlink::framework::http_tls_options_builder_t &)>> ())),
+                              zlink::framework::http_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::http_options_builder_t &> ().configure_server (
+                   std::declval<std::function<void (zlink::framework::http_server_options_builder_t &)>> ())),
+                 zlink::framework::http_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::http_server_options_builder_t &> ().set_max_connections (4)),
+                 zlink::framework::http_server_options_builder_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::handler_options_builder_t &> ()
                                           .add_send<named_send_handler_t> ("api")),
@@ -389,6 +443,16 @@ class named_handler_t
     void publish_context (const named_request_t &, const zlink::framework::publish_context_t &) {}
 };
 
+class alias_registered_handler_t
+{
+  public:
+    using request_type = named_request_t;
+    using reply_type = named_reply_t;
+    static constexpr const char *topic_name = "alias-topic";
+
+    reply_type handle (const request_type &) { return {}; }
+};
+
 class named_filter_t
 {
   public:
@@ -450,6 +514,7 @@ int main ()
     zlink::framework::monitoring_builder_t monitoring;
     zlink::framework::zlink_framework_options_t options (services, option_handlers, serializers, zlink, monitoring);
     options.use_filter<named_filter_t> ();
+    options.handlers ().add<alias_registered_handler_t> ("sample");
 
     return 0;
 }

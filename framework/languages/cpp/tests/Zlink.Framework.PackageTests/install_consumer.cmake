@@ -103,7 +103,8 @@ foreach(required_target IN ITEMS
 endforeach()
 foreach(required_target IN ITEMS
     "zlink::stream_connector"
-    "zlink::stream_connector_codecs")
+    "zlink::stream_connector_codecs"
+    "zlink::unreal_stream_connector")
   if(NOT connector_targets_text MATCHES "${required_target}")
     message(FATAL_ERROR "stream connector package export lacks ${required_target}")
   endif()
@@ -132,7 +133,8 @@ target_link_libraries(consumer PRIVATE
   zlink::framework_extension_custom_transport
   zlink::http_client
   zlink::stream_connector
-  zlink::stream_connector_codecs)
+  zlink::stream_connector_codecs
+  zlink::unreal_stream_connector)
 ]=])
 
 file(WRITE "${consumer_source_dir}/main.cpp" [=[
@@ -141,6 +143,7 @@ file(WRITE "${consumer_source_dir}/main.cpp" [=[
 #include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
+#include <ZLinkStreamConnector/ZLinkStreamConnector.h>
 
 #include <nlohmann/json.hpp>
 
@@ -171,6 +174,8 @@ main ()
   }
   auto packet =
     zlink::stream_connector::codecs::encode_packet (login_request_t {});
+  UZLinkStreamConnector unreal_connector;
+  unreal_connector.Tick (0.0F);
   return packet.name == login_request_t::packet_name ? 0 : 1;
 }
 ]=])

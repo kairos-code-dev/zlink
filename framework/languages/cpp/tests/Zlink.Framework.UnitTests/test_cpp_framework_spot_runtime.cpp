@@ -5,6 +5,7 @@
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -57,6 +58,12 @@ class state_update_handler_t
     }
 
     int last_value{};
+};
+
+class throwing_state_update_handler_t
+{
+  public:
+    void handle (stage_spot_t &, const state_update_t &) { throw std::runtime_error ("spot failure"); }
 };
 
 class move_join_handler_t
@@ -384,26 +391,30 @@ int main ()
 
     context.handlers ()
       .add_handler<state_update_handler_t, stage_spot_t, state_update_t> ("state.update")
+      .add_handler<throwing_state_update_handler_t, stage_spot_t, state_update_t> ("state.throw")
       .add_actor_packet<move_packet_handler_t, stage_spot_t, player_actor_factory_t, move_request_t> ("move")
       .add_actor_join<move_join_handler_t, stage_spot_t, player_actor_factory_t, move_request_t, move_reply_t> ("join")
       .add_post_actor_joined<actor_joined_handler_t, stage_spot_t, player_actor_factory_t> ()
       .add_actor_left<actor_left_handler_t, stage_spot_t, player_actor_factory_t> ()
       .add_actor_disconnected<actor_disconnected_handler_t, stage_spot_t, player_actor_factory_t> ();
     const auto handler_descriptors = context.handlers ().descriptors ();
-    if (handler_descriptors.size () != 6 || handler_descriptors[0].kind != zlink::framework::spot_handler_kind_t::packet
+    if (handler_descriptors.size () != 7 || handler_descriptors[0].kind != zlink::framework::spot_handler_kind_t::packet
         || handler_descriptors[0].packet_name != "state.update"
-        || handler_descriptors[1].kind != zlink::framework::spot_handler_kind_t::actor_packet
-        || handler_descriptors[1].packet_name != "move"
-        || handler_descriptors[2].kind != zlink::framework::spot_handler_kind_t::actor_join
-        || handler_descriptors[2].packet_name != "join"
-        || handler_descriptors[3].kind != zlink::framework::spot_handler_kind_t::post_actor_joined
-        || handler_descriptors[4].kind != zlink::framework::spot_handler_kind_t::actor_left
-        || handler_descriptors[5].kind != zlink::framework::spot_handler_kind_t::actor_disconnected) {
+        || handler_descriptors[1].kind != zlink::framework::spot_handler_kind_t::packet
+        || handler_descriptors[1].packet_name != "state.throw"
+        || handler_descriptors[2].kind != zlink::framework::spot_handler_kind_t::actor_packet
+        || handler_descriptors[2].packet_name != "move"
+        || handler_descriptors[3].kind != zlink::framework::spot_handler_kind_t::actor_join
+        || handler_descriptors[3].packet_name != "join"
+        || handler_descriptors[4].kind != zlink::framework::spot_handler_kind_t::post_actor_joined
+        || handler_descriptors[5].kind != zlink::framework::spot_handler_kind_t::actor_left
+        || handler_descriptors[6].kind != zlink::framework::spot_handler_kind_t::actor_disconnected) {
         return 20;
     }
 
     zlink::framework::service_collection_t spot_services;
     spot_services.add_singleton<state_update_handler_t> ();
+    spot_services.add_singleton<throwing_state_update_handler_t> ();
     spot_services.add_singleton<move_join_handler_t> ();
     spot_services.add_singleton<move_packet_handler_t> ();
     spot_services.add_singleton<actor_joined_handler_t> ();
@@ -429,6 +440,12 @@ int main ()
     if (!packet_dispatch || spot_provider.get_required<state_update_handler_t> ().last_value != 30
         || stage_spot.packet_seen != 30) {
         return 22;
+    }
+
+    const auto throwing_packet_dispatch = context.handlers ().invoke_packet (
+      "state.throw", stage_spot, spot_provider, spot_serializers, zlink::message_t::from (std::string ("31")));
+    if (throwing_packet_dispatch || throwing_packet_dispatch.error_kind () != framework_error_kind_t::request_failed) {
+        return 45;
     }
 
     const auto join_dispatch = context.handlers ().invoke_actor_join (

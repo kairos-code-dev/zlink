@@ -305,7 +305,8 @@ set_target_properties(zlink_unreal_stream_connector PROPERTIES
   EXPORT_NAME unreal_stream_connector)
 target_compile_features(zlink_unreal_stream_connector PUBLIC cxx_std_20)
 target_include_directories(zlink_unreal_stream_connector PUBLIC
-  ${ZLINK_FRAMEWORK_CPP_DIR}/unreal-connector/Source/ZLinkStreamConnector/Public)
+  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/unreal-connector/Source/ZLinkStreamConnector/Public>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ZLinkStreamConnector>)
 if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
   if(ZLINK_LZ4_INCLUDE_DIR AND ZLINK_LZ4_LIBRARY)
     target_include_directories(zlink_unreal_stream_connector PRIVATE
@@ -404,6 +405,7 @@ install(TARGETS
 install(TARGETS
   zlink_stream_connector
   zlink_stream_connector_codecs
+  zlink_unreal_stream_connector
   EXPORT zlink_stream_connector_cppTargets)
 install(DIRECTORY framework/include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
@@ -421,6 +423,9 @@ install(DIRECTORY extensions/include/
 install(DIRECTORY connector/include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.hpp")
+install(DIRECTORY unreal-connector/Source/ZLinkStreamConnector/Public/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ZLinkStreamConnector
+  FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 if(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME AND EXISTS "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME}")
   if(WIN32)
     install(FILES "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME}"
@@ -627,6 +632,20 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_http_integration PROPERTIES
     LABELS "framework-integration;framework-http;framework-http-e2e;http"
     TIMEOUT 30)
+  add_test(NAME test_cpp_framework_http_perf_policy
+    COMMAND ${CMAKE_COMMAND}
+      -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.PerfTests/http_perf_policy.cmake)
+  set_tests_properties(test_cpp_framework_http_perf_policy PROPERTIES
+    LABELS "framework-http-perf;framework-regression;http"
+    TIMEOUT 30)
+  add_test(NAME test_cpp_framework_http_perf_gate
+    COMMAND ${CMAKE_COMMAND}
+      -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
+      -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.PerfTests/http_perf_gate.cmake)
+  set_tests_properties(test_cpp_framework_http_perf_gate PROPERTIES
+    LABELS "framework-http-perf;framework-regression;http"
+    TIMEOUT 30)
   set_tests_properties(
     test_cpp_framework_app_host
     test_cpp_framework_http_integration
@@ -640,6 +659,10 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     test_cpp_framework_runtime_integration
     tests/Zlink.Framework.UnitTests/test_cpp_framework_runtime_integration.cpp
     "framework-unit;framework-integration;runtime")
+  add_zlink_framework_test(
+    test_cpp_framework_async_task
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_async_task.cpp
+    "framework-unit;framework-regression;async")
   add_zlink_framework_test(
     test_cpp_framework_serializer_registry
     tests/Zlink.Framework.UnitTests/test_cpp_framework_serializer_registry.cpp

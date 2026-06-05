@@ -183,6 +183,15 @@ int main ()
         || join_spot.value ().actor.generation () != 8 || join_spot.value ().reply.mark != "O") {
         return 14;
     }
+    const auto stale_relay = rebound.value ().relay (header, payload).submit ().result ();
+    if (stale_relay || stale_relay.error_kind () != framework_error_kind_t::actor_stale_generation
+        || payload.to_string () != "payload") {
+        return 20;
+    }
+    const auto stale_push = rebound.value ().bound_session ().send_raw (payload).submit ().result ();
+    if (stale_push || stale_push.error_kind () != framework_error_kind_t::actor_stale_generation) {
+        return 21;
+    }
 
     bool entry_join_seen = false;
     gateway.on_join_entry_spot ([&] (const zlink::framework::actor_ref_t &actor,

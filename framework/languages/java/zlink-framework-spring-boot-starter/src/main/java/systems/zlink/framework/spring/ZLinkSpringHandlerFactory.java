@@ -26,6 +26,7 @@ import systems.zlink.framework.handlers.ZLinkSpotPostActorJoined;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.handlers.ZLinkStreamPacket;
+import systems.zlink.framework.handlers.ZLinkStreamRaw;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -90,6 +91,7 @@ final class ZLinkSpringHandlerFactory implements ZLinkHandlerFactory {
                     || annotation.annotationType() == ZLinkPublish.class
                     || annotation.annotationType() == ZLinkPacket.class
                     || annotation.annotationType() == ZLinkStreamPacket.class
+                    || annotation.annotationType() == ZLinkStreamRaw.class
                     || annotation.annotationType() == ZLinkSpotSubscription.class
                     || annotation.annotationType() == ZLinkSpotRequest.class
                     || annotation.annotationType() == ZLinkSpotActorJoin.class

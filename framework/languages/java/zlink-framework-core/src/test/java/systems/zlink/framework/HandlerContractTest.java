@@ -18,6 +18,7 @@ import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.handlers.ZLinkStreamPacket;
+import systems.zlink.framework.handlers.ZLinkStreamRaw;
 import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
@@ -36,6 +37,7 @@ final class HandlerContractTest {
         assertAnnotationMethods(ZLinkSpotActorSend.class, "packetName");
         assertAnnotationMethods(ZLinkSpotSubscription.class, "spotNodeName", "topic");
         assertAnnotationMethods(ZLinkStreamPacket.class);
+        assertAnnotationMethods(ZLinkStreamRaw.class);
     }
 
     @Test

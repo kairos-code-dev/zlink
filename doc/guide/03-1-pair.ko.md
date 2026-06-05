@@ -107,19 +107,6 @@ if (rc == ZLINK_RECV_OK) {
 > `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 배압(backpressure) 패턴은
 > [성능 가이드](./10-performance.ko.md)를 참고.
 
-??? example "Full Sample Code"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pair_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/pair_recv_sample.c) |
-    | C++ | [pair_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_recv_sample.cpp) |
-    | Java | [PairRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairRecvSample.java) |
-    | Python | [pair_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_recv.py) |
-    | Node | [pair_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_recv_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairRecv/Program.cs) |
-    | Rust | [pair_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_recv_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_recv_sample/main.go) |
-
 ## 3. 메시지 형식
 
 PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 들어간다.
@@ -345,4 +332,3 @@ PAIR 소켓으로 메시지를 주고받는 자립형 예제다(모든 바인딩
     ```rust
     --8<-- "bindings/rust/samples/pair_recv_sample.rs:doc"
     ```
-

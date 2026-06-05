@@ -76,19 +76,6 @@ STREAM만의 고유 동작은 다음과 같다.
 | `0x00` (1 byte) | disconnect 이벤트 |
 | 그 외 | 일반 데이터 |
 
-??? example "Full Sample Code -- Recv"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [stream_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/stream_recv_sample.c) |
-    | C++ | [stream_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/stream_recv_sample.cpp) |
-    | Java | [StreamRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/StreamRecvSample.java) |
-    | Python | [stream_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/stream_recv.py) |
-    | Node | [stream_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/stream_recv_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/StreamRecv/Program.cs) |
-    | Rust | [stream_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/stream_recv_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/stream_recv_sample/main.go) |
-
 ---
 
 ## 4. 콜백 예시
@@ -143,19 +130,6 @@ zlink_recv_handler(stream, on_message, NULL);
 - 수신 콜백이 활성인 동안 direct recv 계열과 data-plane `POLLIN`은
   `EBUSY`다.
 - 콜백 내부에서 close를 호출하는 것은 지원되지 않는다 (`EBUSY` 실패).
-
-??? example "Full Sample Code -- Callback"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [stream_packet_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/stream_packet_callback_sample.c) |
-    | C++ | [stream_packet_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/stream_packet_callback_sample.cpp) |
-    | Java | [StreamPacketCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/StreamPacketCallbackSample.java) |
-    | Python | [stream_packet_callback_sample.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/samples/stream_packet_callback_sample.py) |
-    | Node | [stream_packet_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/samples/stream_packet_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/StreamPacketCallback/Program.cs) |
-    | Rust | [stream_packet_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/stream_packet_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/stream_packet_callback_sample/main.go) |
 
 ---
 
@@ -395,4 +369,3 @@ STREAM 소켓으로 원시 바이트를 주고받는 자립형 예제다(모든 
     ```rust
     --8<-- "bindings/rust/samples/stream_packet_callback_sample.rs:doc"
     ```
-

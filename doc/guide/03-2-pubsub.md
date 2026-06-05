@@ -133,19 +133,6 @@ SUB / XSUB are recv-only types. The intended pattern is to observe
 > want loss-tolerant behavior must set `ZLINK_PUB_OPT_NODROP` to `0`
 > explicitly.
 
-??? example "Full Sample Code -- Recv"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pubsub_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/pubsub_recv_sample.c) |
-    | C++ | [pubsub_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_recv_sample.cpp) |
-    | Java | [PubSubRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubRecvSample.java) |
-    | Python | [pubsub_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_recv.py) |
-    | Node | [pubsub_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pubsub_recv_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PubSubRecv/Program.cs) |
-    | Rust | [pubsub_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_recv_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_recv_sample/main.go) |
-
 > When PUB's send queue is full (HWM), the default
 > (`ZLINK_PUB_OPT_NODROP=1`) makes `zlink_publish()` return
 > `ZLINK_SUBMIT_BACKPRESSURED` instead of silently dropping. For details,
@@ -658,3 +645,60 @@ When multiple SUBs subscribe to the same topic, the XPUB subscription is maintai
 
 ---
 [← PAIR](./03-1-pair.md) | [DEALER →](./03-3-dealer.md)
+
+
+## Full language examples
+
+=== "C++"
+
+    ```cpp
+    --8<-- "bindings/cpp/samples/pubsub_recv_sample.cpp:doc"
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    --8<-- "bindings/dotnet/samples/PubSubRecv/Program.cs:doc"
+    ```
+
+=== "Java"
+
+    ```java
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/PubSubRecvSample.java:doc"
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/PubSubRecvSample.kt:doc"
+    ```
+
+=== "Python"
+
+    ```python
+    --8<-- "bindings/python/samples/pubsub_recv_sample.py:doc"
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    --8<-- "bindings/node/samples/pubsub_recv_sample.ts:doc"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    --8<-- "bindings/javascript/samples/pubsub_recv_sample.js:doc"
+    ```
+
+=== "Go"
+
+    ```go
+    --8<-- "bindings/go/samples/pubsub_recv_sample/main.go:doc"
+    ```
+
+=== "Rust"
+
+    ```rust
+    --8<-- "bindings/rust/samples/pubsub_recv_sample.rs:doc"
+    ```

@@ -54,19 +54,6 @@ typedef struct {
 } zlink_monitor_event_t;
 ```
 
-??? example "Full Sample Code"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [monitor_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/monitor_recv_sample.c) |
-    | C++ | [monitor_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/monitor_recv_sample.cpp) |
-    | Java | [MonitorRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/MonitorRecvSample.java) |
-    | Python | [monitor_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/monitor_recv.py) |
-    | Node | [monitor_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/monitor_recv_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/MonitorRecv/Program.cs) |
-    | Rust | [monitor_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/monitor_recv_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/monitor_recv_sample/main.go) |
-
 ## 4. Socket Monitor Events
 
 Events observed via `zlink_socket_monitor_open()`.
@@ -684,3 +671,60 @@ API for production event loops.
 
 ---
 [← TLS Security](./05-tls-security.md) | [Services Overview →](./07-0-services.md)
+
+
+## Full language examples
+
+=== "C++"
+
+    ```cpp
+    --8<-- "bindings/cpp/samples/monitor_recv_sample.cpp:doc"
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    --8<-- "bindings/dotnet/samples/MonitorRecv/Program.cs:doc"
+    ```
+
+=== "Java"
+
+    ```java
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/MonitorRecvSample.java:doc"
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/MonitorRecvSample.kt:doc"
+    ```
+
+=== "Python"
+
+    ```python
+    --8<-- "bindings/python/samples/monitor_recv_sample.py:doc"
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    --8<-- "bindings/node/samples/monitor_recv_sample.ts:doc"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    --8<-- "bindings/javascript/samples/monitor_recv_sample.js:doc"
+    ```
+
+=== "Go"
+
+    ```go
+    --8<-- "bindings/go/samples/monitor_recv_sample/main.go:doc"
+    ```
+
+=== "Rust"
+
+    ```rust
+    --8<-- "bindings/rust/samples/monitor_recv_sample.rs:doc"
+    ```

@@ -108,19 +108,6 @@ if (rc == ZLINK_RECV_OK) {
 > backpressure patterns,
 > see [Performance Guide](./10-performance.md).
 
-??? example "Full Sample Code"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pair_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/pair_recv_sample.c) |
-    | C++ | [pair_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_recv_sample.cpp) |
-    | Java | [PairRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairRecvSample.java) |
-    | Python | [pair_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_recv.py) |
-    | Node | [pair_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_recv_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairRecv/Program.cs) |
-    | Rust | [pair_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_recv_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_recv_sample/main.go) |
-
 ## 3. Message Format
 
 PAIR socket message frames contain **application data only**.
@@ -288,3 +275,60 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
 ---
 [← Socket Patterns](./03-0-socket-patterns.md) | [PUB/SUB →](./03-2-pubsub.md)
+
+
+## Full language examples
+
+=== "C++"
+
+    ```cpp
+    --8<-- "bindings/cpp/samples/pair_recv_sample.cpp:doc"
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    --8<-- "bindings/dotnet/samples/PairRecv/Program.cs:doc"
+    ```
+
+=== "Java"
+
+    ```java
+    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/PairRecvSample.java:doc"
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/PairRecvSample.kt:doc"
+    ```
+
+=== "Python"
+
+    ```python
+    --8<-- "bindings/python/samples/pair_recv_sample.py:doc"
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    --8<-- "bindings/node/samples/pair_recv_sample.ts:doc"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    --8<-- "bindings/javascript/samples/pair_recv_sample.js:doc"
+    ```
+
+=== "Go"
+
+    ```go
+    --8<-- "bindings/go/samples/pair_recv_sample/main.go:doc"
+    ```
+
+=== "Rust"
+
+    ```rust
+    --8<-- "bindings/rust/samples/pair_recv_sample.rs:doc"
+    ```

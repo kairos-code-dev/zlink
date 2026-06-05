@@ -132,19 +132,6 @@ SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 써서
 > `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 메시지 손실을 허용하는 동작이 필요하면
 > `ZLINK_PUB_OPT_NODROP` 을 명시적으로 `0` 으로 설정한다.
 
-??? example "Full Sample Code -- Recv"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pubsub_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/pubsub_recv_sample.c) |
-    | C++ | [pubsub_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_recv_sample.cpp) |
-    | Java | [PubSubRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubRecvSample.java) |
-    | Python | [pubsub_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_recv.py) |
-    | Node | [pubsub_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pubsub_recv_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PubSubRecv/Program.cs) |
-    | Rust | [pubsub_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_recv_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_recv_sample/main.go) |
-
 > PUB의 송신 큐가 가득 차면(HWM) 기본값(`ZLINK_PUB_OPT_NODROP=1`)에서는
 > 조용히 drop하지 않고 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를
 > 반환한다. 상세는 [성능 가이드](./10-performance.ko.md)를 참고.
@@ -662,4 +649,3 @@ PUB로 토픽을 발행하고 SUB로 구독·수신하는 자립형 예제다(�
     ```rust
     --8<-- "bindings/rust/samples/pubsub_recv_sample.rs:doc"
     ```
-

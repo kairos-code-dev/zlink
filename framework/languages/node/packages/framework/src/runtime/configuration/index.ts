@@ -283,36 +283,36 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return new DefaultSpotMeshBuilder(this);
   }
 
-  clientServerChannel(name: string): ZLinkClientServerChannelBuilder {
+  addClientServerChannel(name: string): ZLinkClientServerChannelBuilder {
     return new DefaultClientServerChannelBuilder(this.channel(name));
   }
 
-  fanoutChannel(name: string): ZLinkFanoutChannelBuilder {
+  addFanoutChannel(name: string): ZLinkFanoutChannelBuilder {
     return new DefaultFanoutChannelBuilder(this.channel(name));
   }
 
-  dealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder {
+  addDealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder {
     return new DefaultDealerMeshChannelBuilder(this.channel(name));
   }
 
-  routeChannel(name: string): ZLinkRouteChannelBuilder {
+  addRouteChannel(name: string): ZLinkRouteChannelBuilder {
     const routeChannel: MutableRouteChannelOptions = { routerChannelId: name };
     this.options.routeChannels.push(routeChannel);
     return new DefaultRouteChannelBuilder(routeChannel);
   }
 
-  routeMeshChannel(name: string): ZLinkRouteMeshChannelBuilder {
+  addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder {
     const channel = this.channel(name);
     channel.routeMesh ??= {};
     return new DefaultRouteMeshChannelBuilder(channel.routeMesh);
   }
 
-  streamNode(name: string): ZLinkStreamNodeBuilder {
+  addStreamNode(name: string): ZLinkStreamNodeBuilder {
     const streamNode = this.streamNodeOptions(name);
     return new DefaultStreamNodeBuilder(streamNode);
   }
 
-  spotNode(name: string): ZLinkSpotNodeBuilder {
+  addSpotNode(name: string): ZLinkSpotNodeBuilder {
     const spotNode = this.spotNodeOptions(name);
     return new DefaultSpotNodeBuilder(spotNode);
   }
@@ -359,12 +359,12 @@ class DefaultDiscoveryBuilder implements ZLinkDiscoveryBuilder {
 class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuilder {
   constructor(private readonly channel: MutableChannelOptions) {}
 
-  server(): ChannelServerCapabilityBuilder {
+  enableServer(): ChannelServerCapabilityBuilder {
     this.channel.server ??= {};
     return new DefaultBindCapabilityBuilder(this.channel.server);
   }
 
-  client(): ChannelClientCapabilityBuilder {
+  enableClient(): ChannelClientCapabilityBuilder {
     this.channel.client ??= { manualConnections: [] };
     return new DefaultConnectionCapabilityBuilder(this.channel.client);
   }
@@ -373,12 +373,12 @@ class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuild
 class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
   constructor(private readonly channel: MutableChannelOptions) {}
 
-  publisher(): ChannelPublisherCapabilityBuilder {
+  enablePublisher(): ChannelPublisherCapabilityBuilder {
     this.channel.publisher ??= {};
     return new DefaultBindCapabilityBuilder(this.channel.publisher);
   }
 
-  subscriber(): ChannelSubscriberCapabilityBuilder {
+  enableSubscriber(): ChannelSubscriberCapabilityBuilder {
     this.channel.subscriber ??= { manualConnections: [] };
     return new DefaultConnectionCapabilityBuilder(this.channel.subscriber);
   }
@@ -387,7 +387,7 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
 class DefaultDealerMeshChannelBuilder implements ZLinkDealerMeshChannelBuilder {
   constructor(private readonly channel: MutableChannelOptions) {}
 
-  client(): DealerMeshChannelClientCapabilityBuilder {
+  enableClient(): DealerMeshChannelClientCapabilityBuilder {
     this.channel.dealerMesh ??= {};
     this.channel.dealerMesh.client ??= { manualConnections: [] };
     return new DefaultConnectionCapabilityBuilder(this.channel.dealerMesh.client);
@@ -397,11 +397,11 @@ class DefaultDealerMeshChannelBuilder implements ZLinkDealerMeshChannelBuilder {
 class DefaultRouteChannelBuilder implements ZLinkRouteChannelBuilder {
   constructor(private readonly routeChannel: MutableRouteChannelOptions) {}
 
-  router(): ChannelServerCapabilityBuilder {
+  enableRouter(): ChannelServerCapabilityBuilder {
     return new DefaultBindCapabilityBuilder(this.routeChannel);
   }
 
-  dealer(): ChannelClientCapabilityBuilder {
+  enableDealer(): ChannelClientCapabilityBuilder {
     return new DefaultConnectionCapabilityBuilder(this.routeChannel);
   }
 }
@@ -409,11 +409,11 @@ class DefaultRouteChannelBuilder implements ZLinkRouteChannelBuilder {
 class DefaultRouteMeshChannelBuilder implements ZLinkRouteMeshChannelBuilder {
   constructor(private readonly routeMesh: MutableRouteMeshChannelOptions) {}
 
-  router(): ChannelServerCapabilityBuilder {
+  enableRouter(): ChannelServerCapabilityBuilder {
     return new DefaultBindCapabilityBuilder(this.routeMesh);
   }
 
-  dealer(): ChannelClientCapabilityBuilder {
+  enableDealer(): ChannelClientCapabilityBuilder {
     return new DefaultConnectionCapabilityBuilder(this.routeMesh);
   }
 }
@@ -447,20 +447,20 @@ class DefaultSpotMeshBuilder implements ZLinkSpotMeshBuilder {
     return this.root.useDiscovery();
   }
 
-  node(name: string): ZLinkSpotMeshNodeBuilder {
-    return this.root.spotNode(name);
+  addNode(name: string): ZLinkSpotMeshNodeBuilder {
+    return this.root.addSpotNode(name);
   }
 }
 
 class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
   constructor(private readonly spotNode: MutableSpotNodeOptions) {}
 
-  router(): SpotRouterCapabilityBuilder {
+  enableRouter(): SpotRouterCapabilityBuilder {
     this.spotNode.router ??= { manualConnections: [] };
     return new DefaultSpotRouterCapabilityBuilder(this.spotNode.router);
   }
 
-  pubSub(): SpotPubSubCapabilityBuilder {
+  enablePubSub(): SpotPubSubCapabilityBuilder {
     this.spotNode.pubSub ??= { manualConnections: [] };
     return new DefaultSpotPubSubCapabilityBuilder(this.spotNode.pubSub);
   }

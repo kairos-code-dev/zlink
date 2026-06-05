@@ -2704,9 +2704,8 @@ git diff --check -- framework/languages/cpp
   C++ TicTacToe sample은 registry endpoint가 topology에 없고, Api host가 Play channel client를
   직접 endpoint로 연결했다. 이 상태에서는 C++ sample이 discovery 기반 channel 구성이라는
   `.NET` 샘플의 핵심 흐름을 보여 주지 못한다.
-- Bingo C++ sample은 `api_server_framework.hpp`로 framework 설정을 host factory 밖에
-  분리했지만, TicTacToe API는 설정이 `api_server_host_factory.hpp` 안에 남아 있었다. 같은
-  sample family 안에서도 파일 분류 수준이 달랐다.
+- `.NET` TicTacToe API sample은 host factory가 framework 설정을 직접 보여 준다. C++도 같은
+  독자 경험을 유지해야 하므로 TicTacToe API 설정을 helper header로 다시 분리하지 않는다.
 
 ### 비교한 대안
 
@@ -2724,8 +2723,7 @@ git diff --check -- framework/languages/cpp
 - TicTacToe `sample_topology_t`에 `registry_pub_endpoint`와 `registry_router_endpoint`를
   추가했다.
 - TicTacToe registry host factory가 hard-coded endpoint 대신 topology 값을 받도록 바꿨다.
-- TicTacToe API 설정을 `api_server_framework.hpp`로 분리해 Bingo와 같은 host factory 깊이를
-  유지했다.
+- TicTacToe API 설정은 `.NET`처럼 `api_server_host_factory.hpp` 안에서 직접 보이게 유지했다.
 - TicTacToe Api/Play/Session host factory가 `options.discovery().add(...)`를 사용하게 했다.
 - TicTacToe Api/Session client channels는 `.NET`처럼 discovery 기반 client 표면으로 보이게
   직접 play endpoint 연결을 제거했다.
@@ -2734,8 +2732,8 @@ git diff --check -- framework/languages/cpp
 
 ### 후속 보정
 
-이후 반복 리뷰에서 `options.route_mesh_channel(...)`,
-`options.use_registry_spot_remote_addresses(...)`, `options.spot_mesh(...)`를 추가해
+이후 반복 리뷰에서 `options.add_route_mesh_channel(...)`,
+`options.use_registry_spot_remote_addresses(...)`, `options.add_spot_mesh(...)`를 추가해
 `.NET`의 route mesh, registry backed Spot remote address, Spot mesh 설정을 C++ framework
 options 표면에서도 표현하도록 보정했다. 그래서 이 단계의 남은 tradeoff였던 route mesh/
 spot mesh builder 부재는 현재 draft 기준으로 해소된 상태다.
@@ -2778,11 +2776,11 @@ git diff --check -- framework/languages/cpp
 
 ### 적용한 리팩토링
 
-- `zlink_framework_options_t::route_mesh_channel(name)`을 추가해 route channel bind와 manual
+- `zlink_framework_options_t::add_route_mesh_channel(name)`을 추가해 route channel bind와 manual
   connection, routing id를 framework options 표면에서 설정하게 했다.
 - `zlink_framework_options_t::use_registry_spot_remote_addresses(...)`를 추가해 Spot remote
   address resolver 기본값을 framework options에서 켤 수 있게 했다.
-- `zlink_framework_options_t::spot_mesh(name).node(nodeName)`을 추가해 Spot node discovery
+- `zlink_framework_options_t::add_spot_mesh(name).node(nodeName)`을 추가해 Spot node discovery
   channel과 node 설정을 한 곳에서 표현하게 했다.
 - `spot_node_options_builder_t`에 `accept_routes_from_channel(...)`과
   `attach_channel_client(...)`를 추가해 `.NET` sample의 `AcceptSpotRoutesFromChannel`과
@@ -2793,7 +2791,7 @@ git diff --check -- framework/languages/cpp
 - `enable_router(endpoint, routing_id)`와 `enable_pub_sub(endpoint, routing_id)` overload를
   추가해 `.NET` sample topology의 `PlayRid`, `SessionRouterRid`, `SessionPubRid` 역할을 C++
   sample에서도 보존하게 했다.
-- `route_mesh_channel(...).routing_id(...)`와 route channel runtime routing id snapshot을
+- `add_route_mesh_channel(...).routing_id(...)`와 route channel runtime routing id snapshot을
   추가해 `.NET`의 `ConfigureRouting(routing => routing.RoutingId = ...)` 정보를 C++ route
   mesh registration에서도 잃지 않게 했다.
 - `zlink_builder_t::route_channel(...)` 재적용 시 registry route channel 이름이 중복되지 않게
@@ -4282,7 +4280,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 
 ### 발견한 위험 신호
 
-- `client_server_channel`, `route_mesh_channel`, `publisher_channel`, `stream_node` builder가
+- `add_client_server_channel`, `add_route_mesh_channel`, `add_fanout_channel`, `add_stream_node` builder가
   체인 호출마다 runtime action을 vector에 추가하면 같은 channel 또는 stream 등록이 여러 번
   실행될 수 있다.
 - 테스트가 마지막 등록 결과만 보게 되면 중복 등록 비용과 호출 순서 의존성이 숨어 남는다.
@@ -4301,13 +4299,13 @@ stream node 설정은 같은 key의 applier를 덮어써서 최종 상태만 한
 ### 적용한 POSD 원칙
 
 - **정보 은닉**: builder 내부의 중간 상태와 호출 순서는 사용자에게 의미가 없어야 한다.
-- **복잡성을 아래로**: 사용자는 `server().client().handler_group(...)` 같은 선언만 하고,
+- **복잡성을 아래로**: 사용자는 `enable_server().enable_client().use_handler_group(...)` 같은 선언만 하고,
   framework가 최종 runtime 등록을 한 번으로 합쳐야 한다.
 
 ### 적용한 리팩토링
 
 - `framework_options_state_t`에 key 기반 runtime action map을 추가했다.
-- `client_server_channel`, `route_mesh_channel`, `publisher_channel`, `stream_node`는 mutation마다
+- `add_client_server_channel`, `add_route_mesh_channel`, `add_fanout_channel`, `add_stream_node`는 mutation마다
   action을 추가하지 않고 같은 key의 applier를 갱신한다.
 - `apply()`는 일반 deferred action을 먼저 실행한 뒤 key 기반 applier를 한 번씩 실행한다.
 - `test_cpp_framework_module_hosted`에서 같은 `api-channel`에 server와 client를 함께 선언해도
@@ -4417,7 +4415,7 @@ reflection이 없다는 차이는 `AddHandlersFromAssemblyOf(...)`를
 - `options.codecs().add_json()`은 codec 사용 선언만 맡기고, request/reply message type은 handler
   registration에서 framework가 읽어 serializer를 자동 등록하는 방향으로 낮췄다.
 - C++에서는 람다 중첩이 `.NET`보다 장황해지므로 channel 설정은
-  `options.client_server_channel(name).server(endpoint).handler_group(group)`처럼 fluent builder로
+  `options.add_client_server_channel(name).enable_server(endpoint).use_handler_group(group)`처럼 fluent builder로
   표현한다고 정리했다.
 - DI 생성자 주입을 추가해 `add_singleton<T, Dep...>()`, `add_scoped<T, Dep...>()`,
   `add_transient<T, Dep...>()`가 `service_provider_t`에서 의존성을 resolve한 뒤 생성자를 호출하게
@@ -4440,7 +4438,7 @@ reflection이 없다는 차이는 `AddHandlersFromAssemblyOf(...)`를
 - `zlink_builder_t`의 낮은 수준 API는 framework 내부 runtime과 단위 테스트용 확장 표면으로 남아
   있다. 일반 사용자 설정 표면인 `zlink_framework_options_t`에서는 람다 기반
   `add_client_server_channel(...)`과 `client_server_channel_options_t`를 제거했다.
-- `stream_node` fluent builder는 `bind`와 `packet_session`이 모두 지정된 뒤에만 내부 stream
+- `add_stream_node` fluent builder는 `bind`와 `packet_session`이 모두 지정된 뒤에만 내부 stream
   builder에 반영한다. 이렇게 해야 체인 중간 상태가 runtime에 등록되어 저수준 검증 오류를 만드는
   문제를 막을 수 있다.
 
@@ -8936,11 +8934,11 @@ handler lookup table은 계속 runtime owner 안에 숨긴다.
 
 - `.NET`의 `AddFanoutChannel(...)`은 publisher, subscriber, publish handler group을 같은 사용자
   설정 흐름에서 표현한다.
-- C++ high-level options에는 `publisher_channel(...).bind(...)`만 있어 publisher-only 채널은
+- C++ high-level options에는 `add_fanout_channel(...).enable_publisher(...)`만 있어 publisher-only 채널은
   쉽게 만들 수 있었지만, subscriber role과 publish handler group 연결은 낮은 수준
   `channel_builder_t`와 handler group 규칙을 함께 알아야 했다.
 - 이 상태는 fanout channel이라는 개념을 사용자에게 충분히 숨기지 못하고, publish handler는
-  `client_server_channel`에 억지로 붙여도 테스트가 통과하는 얕은 표면을 만든다.
+  `add_client_server_channel`에 억지로 붙여도 테스트가 통과하는 얕은 표면을 만든다.
 
 ### 비교한 대안
 
@@ -8948,7 +8946,7 @@ handler lookup table은 계속 runtime owner 안에 숨긴다.
 |------|------|------|
 | 기존 `publisher_channel_builder_t`에 subscriber와 handler group을 추가한다 | API 변경이 작다 | 이름이 publisher-only라 fanout 의도가 흐려진다 |
 | `.NET`처럼 `EnablePublisher`, `EnableSubscriber` 람다 builder를 그대로 옮긴다 | 원본과 이름이 가깝다 | C++ options layer에 capability pass-through 메서드가 늘어난다 |
-| `fanout_channel_builder_t`를 추가하고 `publisher_channel()`은 별칭으로 유지한다 | fanout 의도가 드러나고 기존 publisher-only 호출도 깨지지 않는다 | public 타입이 하나 늘어난다 |
+| `fanout_channel_builder_t`를 추가하고 `add_fanout_channel()`만 남긴다 | fanout 의도가 드러나고 이름이 하나로 모인다 | 기존 publisher-only 호출을 모두 바꿔야 한다 |
 
 선택은 세 번째 방식이다. C++ options layer는 낮은 수준 capability builder를 그대로 노출하지 않고,
 fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 builder에 모은다.
@@ -8956,9 +8954,10 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 ### 적용한 리팩토링
 
 - `fanout_channel_builder_t`를 추가했다.
-- `fanout_channel(...).bind(...)`, `.subscriber()`, `.subscriber(endpoint)`,
-  `.handler_group(...)`을 제공한다.
-- 기존 `publisher_channel(...)`은 `fanout_channel(...)`을 반환하는 호환 별칭으로 유지했다.
+- `add_fanout_channel(...).enable_publisher(...)`, `.enable_subscriber()`, `.enable_subscriber(endpoint)`,
+  `.use_handler_group(...)`을 제공한다.
+- publisher-only 별칭은 두지 않는다. publisher capability 는
+  `add_fanout_channel(...).enable_publisher(...)`로 표현한다.
 - contract header regression이 fanout builder 반환형과 fluent 메서드를 고정한다.
 - module/options regression이 event channel의 publisher bind endpoint, subscriber connect endpoint,
   publish handler group 호출을 함께 검증한다.
@@ -8969,8 +8968,8 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 
 - application code는 publish handler를 fanout 채널에 연결하기 위해 낮은 수준
   `channel_builder_t::enable_subscriber(...)` 호출 순서를 알 필요가 없다.
-- publisher-only 샘플은 기존 `publisher_channel(...).bind(...)`를 계속 사용할 수 있지만, 문서의
-  일반 fanout 예시는 `fanout_channel(...)`을 사용한다.
+- publisher-only 샘플도 `add_fanout_channel(...).enable_publisher(...)`를 사용한다.
+  일반 fanout 예시는 같은 builder에서 subscriber와 handler group을 함께 보여준다.
 - 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
 
 ## 반복 POSD 재리뷰. High-level dealer mesh channel options parity 보강
@@ -8981,7 +8980,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
   dealer mesh channel이라는 사용자 개념 안에서 표현한다.
 - C++ runtime은 client capability의 bind/connect endpoint와 dealer mesh pending owner를 이미
   가지고 있었지만, high-level `zlink_framework_options_t`에는 이 의도를 드러내는
-  `dealer_mesh_channel(...)` 표면이 없었다.
+  `add_dealer_mesh_channel(...)` 표면이 없었다.
 - 사용자가 낮은 수준 `channel_builder_t::enable_client(...)`를 직접 조합해야 하면 dealer mesh와
   일반 client/server channel의 차이가 options layer 밖으로 새어 나간다.
 
@@ -8989,7 +8988,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 
 | 대안 | 장점 | 단점 |
 |------|------|------|
-| `client_server_channel(...).client(endpoint)`를 dealer mesh 용도로 재사용한다 | public 타입이 늘지 않는다 | 이름과 의미가 맞지 않아 client/server와 dealer mesh 의도가 섞인다 |
+| `add_client_server_channel(...).enable_client(endpoint)`를 dealer mesh 용도로 재사용한다 | public 타입이 늘지 않는다 | 이름과 의미가 맞지 않아 client/server와 dealer mesh 의도가 섞인다 |
 | 낮은 수준 `zlink_builder_t::channel(...)` 사용을 문서화한다 | 구현 변경이 없다 | high-level options가 `.NET` configuration parity를 제공하지 못한다 |
 | `dealer_mesh_channel_builder_t`를 추가한다 | dealer mesh 의도가 드러나고 bind/connect/handler group을 한 곳에 모은다 | public builder 타입이 하나 늘어난다 |
 
@@ -8999,7 +8998,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 ### 적용한 리팩토링
 
 - `dealer_mesh_channel_builder_t`를 추가했다.
-- `dealer_mesh_channel(...).bind(...)`, `.connect(...)`, `.handler_group(...)`을 제공한다.
+- `add_dealer_mesh_channel(...).bind(...)`, `.connect(...)`, `.use_handler_group(...)`을 제공한다.
 - builder는 낮은 수준 `channel.enable_client(...)`에 client bind/connect endpoint를 사상한다.
 - contract header regression이 dealer mesh builder 반환형과 fluent 메서드를 고정한다.
 - module/options regression이 dealer mesh client bind/connect snapshot과 handler group 연결 호출을
@@ -9019,7 +9018,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 
 - `.NET` registration validation은 channel client role이 discovery 또는 manual connection 같은
   peer 획득 경로 없이 등록되면 startup 단계에서 실패시킨다.
-- C++ high-level `client_server_channel(...).client()`는 client capability만 enabled로 만들고
+- C++ high-level `add_client_server_channel(...).enable_client()`는 client capability만 enabled로 만들고
   discovery/manual endpoint를 명시하지 않았다. 이 경우 오류가 설정 시점이 아니라 실제 send/request
   호출 시점의 disconnected 결과로 밀린다.
 - fanout `subscriber()`도 endpoint 없이 role만 enabled로 만들 수 있었다. 이는 호출자가 설정 오류와
@@ -9030,8 +9029,8 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | 현재처럼 호출 시 disconnected를 반환한다 | 구현 변경이 작다 | 설정 오류를 늦게 발견하고 `.NET` startup validation 기대와 다르다 |
-| `client()`/`subscriber()`를 금지하고 endpoint 인자만 허용한다 | 모호함이 없다 | registry discovery 기반 샘플 설정이 장황해지고 `.NET EnableClient()` 경험과 멀어진다 |
-| 인자 없는 `client()`/`subscriber()`를 discovery-backed로 정의하고 discovery가 없으면 `apply()`에서 실패시킨다 | 사용자 의도가 분명하고 설정 오류를 startup에서 잡는다 | options state가 discovery-backed capability를 추적해야 한다 |
+| `enable_client()`/`enable_subscriber()`를 금지하고 endpoint 인자만 허용한다 | 모호함이 없다 | registry discovery 기반 샘플 설정이 장황해지고 `.NET EnableClient()` 경험과 멀어진다 |
+| 인자 없는 `enable_client()`/`enable_subscriber()`를 discovery-backed로 정의하고 discovery가 없으면 `apply()`에서 실패시킨다 | 사용자 의도가 분명하고 설정 오류를 startup에서 잡는다 | options state가 discovery-backed capability를 추적해야 한다 |
 
 선택은 세 번째 방식이다. 인자 없는 role 활성화는 registry discovery 기반 연결이라는 의미로 닫고,
 manual 연결은 endpoint 인자를 받는 overload로 분리한다.
@@ -9039,11 +9038,11 @@ manual 연결은 endpoint 인자를 받는 overload로 분리한다.
 ### 적용한 리팩토링
 
 - `discovery_options_builder_t::add(...)`가 registry discovery endpoint를 options state에도 기록한다.
-- `client_server_channel(...).client()`는 client capability에 `use_discovery()`를 적용한다.
-- `fanout_channel(...).subscriber()`는 subscriber capability에 `use_discovery()`를 적용한다.
+- `add_client_server_channel(...).enable_client()`는 client capability에 `use_discovery()`를 적용한다.
+- `add_fanout_channel(...).enable_subscriber()`는 subscriber capability에 `use_discovery()`를 적용한다.
 - discovery-backed capability가 있는데 registry discovery endpoint가 없으면 `zlink_framework_options_t::apply()`가
   `request_protocol_error`로 실패한다.
-- module/options regression이 정상 `.client()` snapshot의 discovery flag와 discovery 없는 `.client()` 실패를
+- module/options regression이 정상 `.enable_client()` snapshot의 discovery flag와 discovery 없는 `.enable_client()` 실패를
   검증한다.
 - `cpp-framework-interfaces.ko.md`와 `cpp-channel-messaging.ko.md`에 discovery-backed role 규칙을 적었다.
 
@@ -9060,7 +9059,7 @@ manual 연결은 endpoint 인자를 받는 overload로 분리한다.
 
 - `.NET` registration validation은 하나의 stream node가 session을 두 번 등록하면 startup 전에
   설정 오류로 실패시킨다.
-- C++ high-level `stream_node(...).packet_session(...)`은 여러 번 호출하면 마지막 값으로 덮어쓸 수
+- C++ high-level `add_stream_node(...).packet_session(...)`은 여러 번 호출하면 마지막 값으로 덮어쓸 수
   있었다. 이 동작은 사용자가 실수로 중복 등록한 경우를 조용히 숨긴다.
 - 설정 실수를 덮어쓰는 방식은 오류를 늦게 발견하게 하고, stream node의 public 의미를 얕게 만든다.
 
@@ -9094,7 +9093,7 @@ manual 연결은 endpoint 인자를 받는 overload로 분리한다.
 
 - `.NET` registration validation은 client role이 실제 peer 획득 경로 없이 등록되면 startup 단계에서
   설정 오류로 실패시킨다.
-- C++ high-level `dealer_mesh_channel(...)`은 생성자에서 channel client role을 등록하지만,
+- C++ high-level `add_dealer_mesh_channel(...)`은 생성자에서 channel client role을 등록하지만,
   `bind(...)`나 `connect(...)` 없이도 options 적용이 가능했다.
 - 이 상태는 사용자가 설정 실수와 실제 연결 실패를 send/request 시점까지 구분해야 하게 만든다.
 
@@ -9103,7 +9102,7 @@ manual 연결은 endpoint 인자를 받는 overload로 분리한다.
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | 현재처럼 runtime 호출 시점의 disconnected 결과에 맡긴다 | 구현 변경이 작다 | 설정 오류가 늦게 드러나고 `.NET` startup validation 기대와 다르다 |
-| 생성자에서 channel 등록을 하지 않고 `bind(...)`/`connect(...)`가 있을 때만 등록한다 | peer path 없는 channel이 만들어지지 않는다 | `dealer_mesh_channel(...)` 호출 자체가 조용히 무시될 수 있다 |
+| 생성자에서 channel 등록을 하지 않고 `bind(...)`/`connect(...)`가 있을 때만 등록한다 | peer path 없는 channel이 만들어지지 않는다 | `add_dealer_mesh_channel(...)` 호출 자체가 조용히 무시될 수 있다 |
 | 선언된 dealer mesh channel과 peer path 보유 channel을 options state에서 추적하고 `apply()`에서 검증한다 | 사용자 의도를 보존하면서 설정 오류를 startup에서 잡는다 | options state가 validation bookkeeping을 조금 더 가진다 |
 
 선택은 세 번째 방식이다. channel 선언 의도는 유지하고, `bind(...)` 또는 `connect(...)`가 없는
@@ -9111,11 +9110,11 @@ manual 연결은 endpoint 인자를 받는 overload로 분리한다.
 
 ### 적용한 리팩토링
 
-- `dealer_mesh_channel(...)` 호출은 dealer mesh 선언을 options state에 기록한다.
+- `add_dealer_mesh_channel(...)` 호출은 dealer mesh 선언을 options state에 기록한다.
 - `bind(...)`와 `connect(...)`는 해당 channel이 peer path를 가진 것으로 기록한다.
 - peer path 없는 dealer mesh channel이 있으면 `zlink_framework_options_t::apply()`가
   `request_protocol_error`로 실패한다.
-- module/options regression이 `dealer_mesh_channel(...)`만 선언한 뒤 `apply()`하는 경우의 실패를
+- module/options regression이 `add_dealer_mesh_channel(...)`만 선언한 뒤 `apply()`하는 경우의 실패를
   검증한다.
 - `cpp-framework-interfaces.ko.md`와 `cpp-channel-messaging.ko.md`에 dealer mesh peer path 규칙을
   적었다.
@@ -9248,7 +9247,7 @@ handler kind 정보로 판단한다.
 
 - `.NET` registration validation은 route mesh channel이 bind endpoint 없이 등록되면 startup 단계에서
   실패시킨다.
-- C++ high-level `route_mesh_channel(...)`은 생성자에서 low-level route channel action을 등록하지만,
+- C++ high-level `add_route_mesh_channel(...)`은 생성자에서 low-level route channel action을 등록하지만,
   `bind(...)` 없이 routing id나 manual connection만 설정해도 options 적용이 가능했다.
 - route mesh channel은 local route endpoint를 열어야 하는 surface인데, bind 누락을 runtime 초기화나
   send/request 시점으로 미루면 사용자가 설정 오류와 연결 오류를 구분해야 한다.
@@ -9258,7 +9257,7 @@ handler kind 정보로 판단한다.
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | runtime route channel 초기화에서 bind 누락을 실패시킨다 | low-level validation만 추가하면 된다 | high-level options 오류가 늦게 드러나고 `.NET` startup validation과 다르다 |
-| `route_mesh_channel(...)` 생성자에서 action을 등록하지 않고 `bind(...)`가 있을 때만 등록한다 | bind 없는 route channel은 만들어지지 않는다 | 사용자 선언이 조용히 무시될 수 있어 설정 실수를 숨긴다 |
+| `add_route_mesh_channel(...)` 생성자에서 action을 등록하지 않고 `bind(...)`가 있을 때만 등록한다 | bind 없는 route channel은 만들어지지 않는다 | 사용자 선언이 조용히 무시될 수 있어 설정 실수를 숨긴다 |
 | 선언된 route mesh channel과 bind 보유 channel을 options state에서 추적하고 `apply()`에서 검증한다 | 사용자 의도를 보존하면서 startup validation으로 닫는다 | options state가 route mesh validation metadata를 가진다 |
 
 선택은 세 번째 방식이다. route mesh 선언은 그대로 유지하고, bind endpoint가 없는 선언은 framework
@@ -9266,7 +9265,7 @@ options 적용 시점에 명확히 실패시킨다.
 
 ### 적용한 리팩토링
 
-- `route_mesh_channel(...)` 호출은 route mesh 선언을 options state에 기록한다.
+- `add_route_mesh_channel(...)` 호출은 route mesh 선언을 options state에 기록한다.
 - `bind(...)` 호출은 해당 route mesh channel이 bind endpoint를 가진 것으로 기록한다.
 - bind 없는 route mesh channel이 있으면 `zlink_framework_options_t::apply()`가
   `request_protocol_error`로 실패한다.
@@ -9286,7 +9285,7 @@ options 적용 시점에 명확히 실패시킨다.
 
 - `.NET` registration validation은 SPOT node가 router 또는 pub/sub capability 없이 등록되면 startup
   단계에서 실패시킨다.
-- C++ high-level `spot_mesh(...).node(...)`는 discovery view를 자동으로 붙이지만, discovery는 실행
+- C++ high-level `add_spot_mesh(...).node(...)`는 discovery view를 자동으로 붙이지만, discovery는 실행
   capability가 아니다. `enable_router(...)`와 `enable_pub_sub(...)`가 모두 빠져도 options 적용이
   가능했다.
 - capability 없는 SPOT node는 실제 메시지 ingress/egress 역할이 불분명해지고, 사용자가 discovery
@@ -9297,7 +9296,7 @@ options 적용 시점에 명확히 실패시킨다.
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | runtime spot initializer에서 capability 없는 node를 실패시킨다 | runtime snapshot 기준으로 판단할 수 있다 | high-level 설정 오류가 늦게 드러난다 |
-| `spot_mesh(...).node(...)`가 기본 router capability를 자동으로 켠다 | 사용자 코드가 짧다 | endpoint를 추측할 수 없어 호출자에게 숨은 default를 만든다 |
+| `add_spot_mesh(...).node(...)`가 기본 router capability를 자동으로 켠다 | 사용자 코드가 짧다 | endpoint를 추측할 수 없어 호출자에게 숨은 default를 만든다 |
 | options state가 SPOT node 선언과 router/pub-sub capability 보유 여부를 추적하고 `apply()`에서 검증한다 | `.NET` startup validation과 맞고 discovery와 capability 의미를 분리한다 | options state가 작은 validation metadata를 가진다 |
 
 선택은 세 번째 방식이다. discovery는 peer discovery 의미로 유지하고, runtime capability는
@@ -9449,7 +9448,7 @@ runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호�
 - `.NET` `ValidateChannelShape`는 client/server channel이 server 또는 client capability를 하나도
   켜지 않았거나, fanout channel이 publisher 또는 subscriber capability를 하나도 켜지 않으면
   startup 단계에서 실패시킨다.
-- C++ high-level `client_server_channel(name)`과 `fanout_channel(name)`은 선언만 해도 action을
+- C++ high-level `add_client_server_channel(name)`과 `add_fanout_channel(name)`은 선언만 해도 action을
   등록할 수 있었다. 아무 역할도 없는 channel은 public API에서 의미가 없고, 이후 runtime snapshot
   해석으로 오류가 미뤄질 수 있다.
 - 역할 없는 channel 선언을 허용하면 사용자가 channel kind와 capability를 별도로 추적해야 하므로
@@ -9460,7 +9459,7 @@ runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호�
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | low-level `zlink_builder_t`가 빈 channel snapshot을 무시한다 | 실행 오류는 줄어든다 | 사용자 설정 실수를 조용히 숨긴다 |
-| builder 생성자에서 즉시 실패시킨다 | 가장 이른 실패다 | fluent builder에서 나중에 `.server(...)`, `.client(...)`를 붙이는 정상 사용을 막는다 |
+| builder 생성자에서 즉시 실패시킨다 | 가장 이른 실패다 | fluent builder에서 나중에 `.enable_server(...)`, `.enable_client(...)`를 붙이는 정상 사용을 막는다 |
 | options state가 channel 선언과 capability 보유 여부를 추적하고 `apply()`에서 검증한다 | fluent chaining을 보존하면서 `.NET` startup validation과 맞춘다 | options state가 validation metadata를 가진다 |
 
 선택은 세 번째 방식이다. channel builder는 단계적으로 구성되므로 생성자에서 실패시키지 않고,
@@ -9657,8 +9656,8 @@ bind하면서 성공 여부를 결정하게 둔다.
 
 - `.NET` channel client와 fanout subscriber manual connection은 `UseManualConnections(...)`
   안에서 `Connect(...)`를 여러 번 호출해 endpoint 목록을 만든다.
-- C++ high-level `client_server_channel(...).client(endpoint)`와
-  `fanout_channel(...).subscriber(endpoint)`는 마지막 endpoint만 low-level snapshot에 남겨
+- C++ high-level `add_client_server_channel(...).enable_client(endpoint)`와
+  `add_fanout_channel(...).enable_subscriber(endpoint)`는 마지막 endpoint만 low-level snapshot에 남겨
   manual connection collection 의미를 잃었다.
 - low-level `capability_builder_t::connect(...)`는 이미 여러 endpoint를 보존하므로, high-level
   builder가 더 얕은 wrapper처럼 동작하고 있었다.
@@ -9678,7 +9677,7 @@ bind하면서 성공 여부를 결정하게 둔다.
 
 - `client_server_channel_builder_t`가 manual client endpoint를 vector로 보존하게 했다.
 - `fanout_channel_builder_t`가 manual subscriber endpoint를 vector로 보존하게 했다.
-- endpoint 인자 없는 `client()`와 `subscriber()`는 discovery mode로 전환하면서 manual endpoint
+- endpoint 인자 없는 `enable_client()`와 `enable_subscriber()`는 discovery mode로 전환하면서 manual endpoint
   목록을 비운다.
 - module/options regression이 client/server client와 fanout subscriber의 복수 manual endpoint
   snapshot을 검증한다.

@@ -300,7 +300,7 @@ class game_module_t final : public zlink::framework::module_t
         });
 
         zlink::framework::spot_node_builder_t spot_builder;
-        zlink.spot_node ("stage-node", [&spot_builder] (zlink::framework::spot_node_builder_t &spot_node) {
+        zlink.add_spot_node ("stage-node", [&spot_builder] (zlink::framework::spot_node_builder_t &spot_node) {
             spot_node.add_spot<stage_spot_t> ("stage");
             spot_builder = spot_node;
         });
@@ -515,19 +515,26 @@ int main ()
         dispatch.diagnostics.include_native_diagnostics = true;
     });
     options.discovery ().add ("tcp://127.0.0.1:9102");
-    options.client_server_channel ("api-channel").server ("tcp://127.0.0.1:9103").client ().handler_group ("api");
-    options.fanout_channel ("event-channel")
-      .bind ("tcp://127.0.0.1:9104")
-      .subscriber ("tcp://127.0.0.1:9105")
-      .subscriber ("tcp://127.0.0.1:9108")
-      .handler_group ("events");
-    options.dealer_mesh_channel ("mesh-channel")
+    options.add_client_server_channel ("api-channel")
+      .enable_server ("tcp://127.0.0.1:9103")
+      .enable_client ()
+      .use_handler_group ("api");
+    options.add_fanout_channel ("event-channel")
+      .enable_publisher ("tcp://127.0.0.1:9104")
+      .enable_subscriber ("tcp://127.0.0.1:9105")
+      .enable_subscriber ("tcp://127.0.0.1:9108")
+      .use_handler_group ("events");
+    options.add_dealer_mesh_channel ("mesh-channel")
       .bind ("tcp://127.0.0.1:9106")
       .connect ("tcp://127.0.0.1:9107")
-      .handler_group ("api");
-    options.client_server_channel ("play-channel").client ();
-    options.client_server_channel ("profile-channel").client ("tcp://127.0.0.1:9109").client ("tcp://127.0.0.1:9110");
-    options.stream_node ("options.stream").bind ("tcp://127.0.0.1:9111").register_session<options_stream_session_t> ();
+      .use_handler_group ("api");
+    options.add_client_server_channel ("play-channel").enable_client ();
+    options.add_client_server_channel ("profile-channel")
+      .enable_client ("tcp://127.0.0.1:9109")
+      .enable_client ("tcp://127.0.0.1:9110");
+    options.add_stream_node ("options.stream")
+      .bind ("tcp://127.0.0.1:9111")
+      .register_session<options_stream_session_t> ();
     options.apply ();
 
     const auto *descriptor = handlers.find ("api-channel", "OptionsRequest", options_request_t::packet_name);
@@ -697,7 +704,7 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
         invalid_options.handlers ().add_send<options_send_handler_t> ("commands");
-        invalid_options.fanout_channel ("bad-events").handler_group ("commands");
+        invalid_options.add_fanout_channel ("bad-events").use_handler_group ("commands");
     }
     catch (const zlink::framework::framework_exception_t &error) {
         incompatible_existing_handler_group_failed =
@@ -717,7 +724,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.client_server_channel ("bad-api").handler_group ("events");
+        invalid_options.add_client_server_channel ("bad-api").use_handler_group ("events");
         invalid_options.handlers ().add_publish<options_publish_handler_t> ("events");
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -738,7 +745,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.client_server_channel ("empty-channel");
+        invalid_options.add_client_server_channel ("empty-channel");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -759,7 +766,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.fanout_channel ("empty-fanout");
+        invalid_options.add_fanout_channel ("empty-fanout");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -780,7 +787,9 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.client_server_channel ("duplicate-api").server ("tcp://127.0.0.1:9340").handler_group ("api");
+        invalid_options.add_client_server_channel ("duplicate-api")
+          .enable_server ("tcp://127.0.0.1:9340")
+          .use_handler_group ("api");
         invalid_options.handlers ().add_send<options_send_handler_t> ("api");
         invalid_options.handlers ().add_send<options_send_handler_t> ("api");
     }
@@ -804,9 +813,9 @@ int main ()
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
         invalid_options.handlers ().add<options_request_handler_t> ("api");
         invalid_options.handlers ().add<options_request_handler_t> ("api");
-        invalid_options.client_server_channel ("late-duplicate-api")
-          .server ("tcp://127.0.0.1:9341")
-          .handler_group ("api");
+        invalid_options.add_client_server_channel ("late-duplicate-api")
+          .enable_server ("tcp://127.0.0.1:9341")
+          .use_handler_group ("api");
     }
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_late_high_level_request_handler_failed =
@@ -828,10 +837,10 @@ int main ()
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
         invalid_options.handlers ().add_send<options_send_handler_t> ("api");
         invalid_options.handlers ().add_send<alias_options_send_handler_t> ("api-alias");
-        invalid_options.client_server_channel ("duplicate-packet-api")
-          .server ("tcp://127.0.0.1:9342")
-          .handler_group ("api")
-          .handler_group ("api-alias");
+        invalid_options.add_client_server_channel ("duplicate-packet-api")
+          .enable_server ("tcp://127.0.0.1:9342")
+          .use_handler_group ("api")
+          .use_handler_group ("api-alias");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -852,7 +861,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.client_server_channel ("empty-server").server ("tcp://127.0.0.1:9300");
+        invalid_options.add_client_server_channel ("empty-server").enable_server ("tcp://127.0.0.1:9300");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -874,8 +883,8 @@ int main ()
         zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
                                                                    valid_zlink, valid_monitoring);
         valid_options.discovery ().add ("tcp://127.0.0.1:9304");
-        valid_options.client_server_channel ("spot-route").server ("tcp://127.0.0.1:9301");
-        valid_options.spot_mesh ("spot-routes")
+        valid_options.add_client_server_channel ("spot-route").enable_server ("tcp://127.0.0.1:9301");
+        valid_options.add_spot_mesh ("spot-routes")
           .node ("route-node")
           .enable_router ("tcp://127.0.0.1:9302")
           .accept_routes_from_channel ("spot-route");
@@ -897,8 +906,8 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
                                                                    valid_zlink, valid_monitoring);
-        valid_options.client_server_channel ("manual-spot-route").server ("tcp://127.0.0.1:9343");
-        valid_options.spot_mesh ("manual-spots")
+        valid_options.add_client_server_channel ("manual-spot-route").enable_server ("tcp://127.0.0.1:9343");
+        valid_options.add_spot_mesh ("manual-spots")
           .node ("route-node")
           .enable_router ("tcp://127.0.0.1:9344")
           .accept_routes_from_channel ("manual-spot-route",
@@ -930,7 +939,7 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
         invalid_options.discovery ().add ("tcp://127.0.0.1:9303");
-        invalid_options.fanout_channel ("empty-events").subscriber ();
+        invalid_options.add_fanout_channel ("empty-events").enable_subscriber ();
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -951,7 +960,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.route_mesh_channel ("missing-route").routing_id (zlink::routing_id_t::from ("missing"));
+        invalid_options.add_route_mesh_channel ("missing-route").routing_id (zlink::routing_id_t::from ("missing"));
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -972,7 +981,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.spot_mesh ("empty-spots").node ("empty-node").add_spot<stage_spot_t> ("stage");
+        invalid_options.add_spot_mesh ("empty-spots").node ("empty-node").add_spot<stage_spot_t> ("stage");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -1026,7 +1035,7 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.client_server_channel (" ");
+              invalid_options.add_client_server_channel (" ");
           },
           "channel name is required")) {
         return 41;
@@ -1034,7 +1043,7 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.client_server_channel ("api").server (" ");
+              invalid_options.add_client_server_channel ("api").enable_server (" ");
           },
           "server endpoint is required")) {
         return 42;
@@ -1049,13 +1058,13 @@ int main ()
     }
 
     if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) { invalid_options.spot_mesh (" "); },
+          [] (zlink::framework::zlink_framework_options_t &invalid_options) { invalid_options.add_spot_mesh (" "); },
           "SPOT mesh channel name is required")) {
         return 44;
     }
 
     if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) { invalid_options.stream_node (" "); },
+          [] (zlink::framework::zlink_framework_options_t &invalid_options) { invalid_options.add_stream_node (" "); },
           "STREAM node name is required")) {
         return 45;
     }
@@ -1084,8 +1093,8 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.client_server_channel ("api")
-                .server ("tcp://127.0.0.1:9320")
+              invalid_options.add_client_server_channel ("api")
+                .enable_server ("tcp://127.0.0.1:9320")
                 .enable_spot_route_egress ("play.route");
           },
           "routed SPOT egress requires client capability")) {
@@ -1102,8 +1111,8 @@ int main ()
         zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
                                                                    valid_zlink, valid_monitoring);
         valid_options.discovery ().add ("tcp://127.0.0.1:9319");
-        valid_options.publisher_channel ("events").bind ("tcp://127.0.0.1:9320");
-        valid_options.spot_mesh ("spots")
+        valid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9320");
+        valid_options.add_spot_mesh ("spots")
           .node ("spot-node")
           .enable_pub_sub ("tcp://127.0.0.1:9321")
           .attach_publisher ("events");
@@ -1129,8 +1138,10 @@ int main ()
         zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
                                                                    valid_zlink, valid_monitoring);
         valid_options.handlers ().add_send<options_send_handler_t> ("api");
-        valid_options.client_server_channel ("manual-api").server ("tcp://127.0.0.1:9345").handler_group ("api");
-        valid_options.spot_mesh ("spots")
+        valid_options.add_client_server_channel ("manual-api")
+          .enable_server ("tcp://127.0.0.1:9345")
+          .use_handler_group ("api");
+        valid_options.add_spot_mesh ("spots")
           .node ("spot-node")
           .enable_router ("tcp://127.0.0.1:9346")
           .attach_channel_client ("manual-api", [] (zlink::framework::attached_channel_client_builder_t &client) {
@@ -1162,8 +1173,8 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
                                                                    valid_zlink, valid_monitoring);
-        valid_options.publisher_channel ("manual-events").bind ("tcp://127.0.0.1:9347");
-        valid_options.spot_mesh ("spots")
+        valid_options.add_fanout_channel ("manual-events").enable_publisher ("tcp://127.0.0.1:9347");
+        valid_options.add_spot_mesh ("spots")
           .node ("spot-node")
           .enable_pub_sub ("tcp://127.0.0.1:9348")
           .attach_publisher ("manual-events", [] (zlink::framework::attached_publisher_builder_t &publisher) {
@@ -1189,7 +1200,7 @@ int main ()
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.discovery ().add ("tcp://127.0.0.1:9322");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_spot_mesh ("spots")
                 .node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9323")
                 .attach_channel_client ("missing");
@@ -1209,8 +1220,10 @@ int main ()
                                                                    valid_zlink, valid_monitoring);
         valid_options.discovery ().add ("tcp://127.0.0.1:9324");
         valid_options.handlers ().add_send<options_send_handler_t> ("api");
-        valid_options.client_server_channel ("api").server ("tcp://127.0.0.1:9325").handler_group ("api");
-        valid_options.spot_mesh ("spots")
+        valid_options.add_client_server_channel ("api")
+          .enable_server ("tcp://127.0.0.1:9325")
+          .use_handler_group ("api");
+        valid_options.add_spot_mesh ("spots")
           .node ("spot-node")
           .enable_router ("tcp://127.0.0.1:9326")
           .attach_channel_client ("api");
@@ -1229,8 +1242,8 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.client_server_channel ("api").server ("tcp://127.0.0.1:9327");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_client_server_channel ("api").enable_server ("tcp://127.0.0.1:9327");
+              invalid_options.add_spot_mesh ("spots")
                 .node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9328")
                 .attach_channel_client ("api");
@@ -1242,8 +1255,8 @@ int main ()
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.discovery ().add ("tcp://127.0.0.1:9328");
-              invalid_options.publisher_channel ("events").bind ("tcp://127.0.0.1:9329");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9329");
+              invalid_options.add_spot_mesh ("spots")
                 .node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9330")
                 .attach_publisher ("events");
@@ -1255,7 +1268,7 @@ int main ()
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.discovery ().add ("tcp://127.0.0.1:9331");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_spot_mesh ("spots")
                 .node ("spot-node")
                 .enable_pub_sub ("tcp://127.0.0.1:9332")
                 .attach_publisher ("missing");
@@ -1267,8 +1280,8 @@ int main ()
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.discovery ().add ("tcp://127.0.0.1:9333");
-              invalid_options.publisher_channel ("events").subscriber ("tcp://127.0.0.1:9334");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_fanout_channel ("events").enable_subscriber ("tcp://127.0.0.1:9334");
+              invalid_options.add_spot_mesh ("spots")
                 .node ("spot-node")
                 .enable_pub_sub ("tcp://127.0.0.1:9335")
                 .attach_publisher ("events");
@@ -1280,12 +1293,14 @@ int main ()
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.discovery ().add ("tcp://127.0.0.1:9336");
-              invalid_options.publisher_channel ("events").bind ("tcp://127.0.0.1:9337");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9337");
+              invalid_options.add_spot_mesh ("spots")
                 .node ("first")
                 .enable_pub_sub ("tcp://127.0.0.1:9338")
                 .attach_publisher ("events");
-              invalid_options.spot_node ("second").enable_pub_sub ("tcp://127.0.0.1:9339").attach_publisher ("events");
+              invalid_options.add_spot_node ("second")
+                .enable_pub_sub ("tcp://127.0.0.1:9339")
+                .attach_publisher ("events");
           },
           "duplicate SPOT publisher client channel")) {
         return 54;
@@ -1294,8 +1309,8 @@ int main ()
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.discovery ().add ("tcp://127.0.0.1:9305");
-              invalid_options.client_server_channel ("api").server ("tcp://127.0.0.1:9306");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_client_server_channel ("api").enable_server ("tcp://127.0.0.1:9306");
+              invalid_options.add_spot_mesh ("spots")
                 .node ("spot-node")
                 .enable_pub_sub ("tcp://127.0.0.1:9307")
                 .accept_routes_from_channel ("api");
@@ -1307,7 +1322,7 @@ int main ()
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.discovery ().add ("tcp://127.0.0.1:9308");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_spot_mesh ("spots")
                 .node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9309")
                 .accept_routes_from_channel ("missing");
@@ -1319,8 +1334,8 @@ int main ()
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.discovery ().add ("tcp://127.0.0.1:9310");
-              invalid_options.fanout_channel ("events").bind ("tcp://127.0.0.1:9311");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9311");
+              invalid_options.add_spot_mesh ("spots")
                 .node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9312")
                 .accept_routes_from_channel ("events");
@@ -1332,9 +1347,9 @@ int main ()
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.discovery ().add ("tcp://127.0.0.1:9313");
-              invalid_options.client_server_channel ("route").server ("tcp://127.0.0.1:9314");
-              invalid_options.route_mesh_channel ("route").bind ("tcp://127.0.0.1:9315");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_client_server_channel ("route").enable_server ("tcp://127.0.0.1:9314");
+              invalid_options.add_route_mesh_channel ("route").bind ("tcp://127.0.0.1:9315");
+              invalid_options.add_spot_mesh ("spots")
                 .node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9316")
                 .accept_routes_from_channel ("route");
@@ -1345,8 +1360,8 @@ int main ()
 
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.client_server_channel ("api").server ("tcp://127.0.0.1:9317");
-              invalid_options.spot_mesh ("spots")
+              invalid_options.add_client_server_channel ("api").enable_server ("tcp://127.0.0.1:9317");
+              invalid_options.add_spot_mesh ("spots")
                 .node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9318")
                 .accept_routes_from_channel ("api");
@@ -1364,7 +1379,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.client_server_channel ("missing-discovery").client ();
+        invalid_options.add_client_server_channel ("missing-discovery").enable_client ();
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -1385,7 +1400,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.stream_node ("client.stream")
+        invalid_options.add_stream_node ("client.stream")
           .bind ("tcp://127.0.0.1:9200")
           .packet_session ("first")
           .packet_session ("second");
@@ -1408,7 +1423,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.stream_node ("typed.stream")
+        invalid_options.add_stream_node ("typed.stream")
           .bind ("tcp://127.0.0.1:9201")
           .register_session<options_stream_session_t> ()
           .packet_session ("second");
@@ -1431,7 +1446,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.dealer_mesh_channel ("missing-mesh");
+        invalid_options.add_dealer_mesh_channel ("missing-mesh");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {

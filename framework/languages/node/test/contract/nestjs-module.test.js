@@ -623,26 +623,26 @@ test('framework options builder maps dotnet-shaped registration flow into option
 
   const options = framework.createFrameworkOptions((builder) => {
     builder.useDiscovery().connectRegistry('tcp://127.0.0.1:9400');
-    builder.clientServerChannel('api').server().bind('tcp://0.0.0.0:9401');
-    builder.clientServerChannel('api').client().connect('tcp://127.0.0.1:9401');
-    builder.fanoutChannel('events').publisher().bind('tcp://0.0.0.0:9402');
-    builder.fanoutChannel('events').subscriber().connect('tcp://127.0.0.1:9402');
-    builder.routeMeshChannel('route').router().bind('tcp://0.0.0.0:9403');
-    builder.routeMeshChannel('route').dealer().connect('tcp://127.0.0.1:9403');
-    builder.streamNode('gateway')
+    builder.addClientServerChannel('api').enableServer().bind('tcp://0.0.0.0:9401');
+    builder.addClientServerChannel('api').enableClient().connect('tcp://127.0.0.1:9401');
+    builder.addFanoutChannel('events').enablePublisher().bind('tcp://0.0.0.0:9402');
+    builder.addFanoutChannel('events').enableSubscriber().connect('tcp://127.0.0.1:9402');
+    builder.addRouteMeshChannel('route').enableRouter().bind('tcp://0.0.0.0:9403');
+    builder.addRouteMeshChannel('route').enableDealer().connect('tcp://127.0.0.1:9403');
+    builder.addStreamNode('gateway')
       .bind('tcp://0.0.0.0:9404')
       .attachActorGateway('stage-node')
       .registerSession(GatewaySession);
-    const spot = builder.addSpotMesh('game.stage').node('stage-node');
+    const spot = builder.addSpotMesh('game.stage').addNode('stage-node');
     spot.addSpotFactory(StageSpot)
       .addSpotFactory(LocalStageSpot)
       .addEntrySpot(StageEntrySpot)
       .configureEntrySpot({ routingId: 'entry-stage' });
-    spot.router()
+    spot.enableRouter()
       .bind('tcp://0.0.0.0:9405')
       .routingId('stage-node')
       .connect('tcp://127.0.0.1:9406');
-    spot.pubSub()
+    spot.enablePubSub()
       .bind('tcp://0.0.0.0:9407')
       .routingId('stage-node')
       .connect('tcp://127.0.0.1:9408');
@@ -692,7 +692,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
   );
   assert.throws(
     () => framework.createFrameworkOptions((builder) => {
-      const node = builder.addSpotMesh('game.stage').node('stage-node');
+      const node = builder.addSpotMesh('game.stage').addNode('stage-node');
       node.addEntrySpot(StageEntrySpot);
       node.addEntrySpot(StageEntrySpot);
     }),
@@ -700,7 +700,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
   );
   assert.throws(
     () => framework.createFrameworkOptions((builder) => {
-      const node = builder.addSpotMesh('game.stage').node('stage-node');
+      const node = builder.addSpotMesh('game.stage').addNode('stage-node');
       node.addSpotFactory(StageSpot);
       node.addSpotFactory(StageSpot);
     }),
@@ -738,7 +738,7 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', (
 
   assert.throws(
     () => framework.createFrameworkOptions((builder) => {
-      builder.streamNode('client.stream')
+      builder.addStreamNode('client.stream')
         .bind('tcp://0.0.0.0:9100')
         .registerSession(ClientHeaderSession)
         .registerSession(ClientHeaderSession);

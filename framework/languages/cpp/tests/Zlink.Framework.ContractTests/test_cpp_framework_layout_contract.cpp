@@ -1070,7 +1070,8 @@ int main ()
     ok &= require_exists (root / "samples/TicTacToe/Server/Api/Handlers/authenticate_actor_handler.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Api/api_server_host_factory.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Api/Handlers/create_match_handler.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Api/api_server_framework.hpp");
+    ok &= require_absent (root / "samples/TicTacToe/Server/Api/api_server_framework.hpp",
+                          "TicTacToe API framework setup belongs in api_server_host_factory.hpp like .NET");
     ok &= require_exists (root / "samples/TicTacToe/Server/Play/EntrySpot/Handlers/join_match_handler.hpp");
     ok &= require_absent (root / "samples/TicTacToe/Server/Play/EntrySpot/join_match_handler.hpp",
                           "sample handler wrappers hide the real .NET-aligned Handlers owner");

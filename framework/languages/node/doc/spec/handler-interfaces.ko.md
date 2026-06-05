@@ -331,7 +331,7 @@ channel 에 열지 않는다(dotnet 정책 동일).
 
 ### 4.2.1 routed channel handler
 
-route channel(`routeMeshChannel(...)`)이 수신하는 메시지를 처리하는 handler 다.
+route channel(`addRouteMeshChannel(...)`)이 수신하는 메시지를 처리하는 handler 다.
 일반 channel handler 와 달리 source `RoutingId` 를 포함한 라우팅 정보를 context 로 함께 노출한다.
 
 ```ts
@@ -1419,7 +1419,7 @@ export interface ZLinkSpotRemoteAddress {
 ```
 
 `routerChannelId` 는 실제 router-capable channel 이름이다. 이 값이 가리키는 channel 은
-`clientServerChannel(...)` 의 server ROUTER 이거나 `routeMeshChannel(...)` 의 route mesh
+`addClientServerChannel(...)` 의 server ROUTER 이거나 `addRouteMeshChannel(...)` 의 route mesh
 ROUTER 여야 한다. target `SpotNode` 는 같은 이름을 `acceptSpotRoutesFromChannel(...)` 로
 수락해야 하며, resolver 는 연결을 만들지 않는다.
 
@@ -1457,13 +1457,13 @@ export interface ZLinkFrameworkOptions {
   useDiscovery(): ZLinkDiscoveryBuilder;
   spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
-  clientServerChannel(name: string): ZLinkClientServerChannelBuilder;
-  fanoutChannel(name: string): ZLinkFanoutChannelBuilder;
-  dealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder;
-  routeChannel(name: string): ZLinkRouteChannelBuilder;
-  routeMeshChannel(name: string): ZLinkRouteMeshChannelBuilder;
-  streamNode(name: string): ZLinkStreamNodeBuilder;
-  spotNode(name: string): ZLinkSpotNodeBuilder;
+  addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
+  addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
+  addDealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder;
+  addRouteChannel(name: string): ZLinkRouteChannelBuilder;
+  addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder;
+  addStreamNode(name: string): ZLinkStreamNodeBuilder;
+  addSpotNode(name: string): ZLinkSpotNodeBuilder;
 }
 
 export interface ZLinkDiscoveryBuilder {
@@ -1481,14 +1481,14 @@ export interface ZLinkMetadataPolicyBuilder {
 
 각 메서드 의미:
 
-- `clientServerChannel(...)`: request/send 용 client-server 채널 등록.
-- `fanoutChannel(...)`: pub/sub fanout 채널 등록.
-- `dealerMeshChannel(...)`: DEALER mesh 채널 등록.
-- `routeChannel(...)` / `routeMeshChannel(...)`: route channel 등록.
+- `addClientServerChannel(...)`: request/send 용 client-server 채널 등록.
+- `addFanoutChannel(...)`: pub/sub fanout 채널 등록.
+- `addDealerMeshChannel(...)`: DEALER mesh 채널 등록.
+- `addRouteChannel(...)` / `addRouteMeshChannel(...)`: route channel 등록.
 - `useDiscovery().connectRegistry(...)`: 일반 channel capability 가 공유할 registry endpoint 집합 등록.
-- `streamNode(...)`: STREAM node 등록(한 node 에 session 하나만).
+- `addStreamNode(...)`: STREAM node 등록(한 node 에 session 하나만).
 - `spotFactory(...)`: `ZLinkSpotManager` 가 사용할 spot factory 타입 등록.
-- `addSpotMesh(channelName).node(...)`: SPOT mesh 아래 SpotNode 등록.
+- `addSpotMesh(channelName).addNode(...)`: SPOT mesh 아래 SpotNode 등록.
 
 #### (A) NestJS module-options 대응
 
@@ -1527,12 +1527,12 @@ export class AppModule {}
 
 | dotnet builder 메서드 | node module options 키 | spec |
 |------|------|------|
-| `clientServerChannel(name)` | `channels[name] = { server, client }` | nestjs-channel-messaging |
-| `fanoutChannel(name)` | `channels[name] = { publisher, subscriber }` | nestjs-channel-messaging |
-| `dealerMeshChannel(name)` | `channels[name] = { dealerMesh: {...} }` | nestjs-channel-messaging |
-| `routeMeshChannel(name)` | `channels[name] = { routeMesh: {...} }` | nestjs-channel-messaging |
-| `addSpotMesh(name).node(...)` | `spotNodes[name] = {...}` | nestjs-spot |
-| `streamNode(name)` | `streamNodes[name] = {...}` | nestjs-stream |
+| `addClientServerChannel(name)` | `channels[name] = { server, client }` | nestjs-channel-messaging |
+| `addFanoutChannel(name)` | `channels[name] = { publisher, subscriber }` | nestjs-channel-messaging |
+| `addDealerMeshChannel(name)` | `channels[name] = { dealerMesh: {...} }` | nestjs-channel-messaging |
+| `addRouteMeshChannel(name)` | `channels[name] = { routeMesh: {...} }` | nestjs-channel-messaging |
+| `addSpotMesh(name).addNode(...)` | `spotNodes[name] = {...}` | nestjs-spot |
+| `addStreamNode(name)` | `streamNodes[name] = {...}` | nestjs-stream |
 | `useDiscovery().connectRegistry(...)` | `discovery: { registries: [...] }` | nestjs-registry |
 | `useFilter(...)` | `filters: [FilterClass]` | handler-interfaces §8 |
 | `configureDispatch(...)` | `dispatch: { spotDispatchMode, streamDispatchMode, unhandled, diagnostics }` | §4.4.3 |
@@ -1568,22 +1568,22 @@ export interface ChannelSubscriberCapabilityBuilder {
 
 ```ts
 export interface ZLinkClientServerChannelBuilder {
-  server(): ChannelServerCapabilityBuilder;
-  client(): ChannelClientCapabilityBuilder;
+  enableServer(): ChannelServerCapabilityBuilder;
+  enableClient(): ChannelClientCapabilityBuilder;
 }
 
 export interface ZLinkFanoutChannelBuilder {
-  publisher(): ChannelPublisherCapabilityBuilder;
-  subscriber(): ChannelSubscriberCapabilityBuilder;
+  enablePublisher(): ChannelPublisherCapabilityBuilder;
+  enableSubscriber(): ChannelSubscriberCapabilityBuilder;
 }
 
 export interface ZLinkDealerMeshChannelBuilder {
-  client(): DealerMeshChannelClientCapabilityBuilder;
+  enableClient(): DealerMeshChannelClientCapabilityBuilder;
 }
 
 export interface ZLinkRouteChannelBuilder {
-  router(): ChannelServerCapabilityBuilder;
-  dealer(): ChannelClientCapabilityBuilder;
+  enableRouter(): ChannelServerCapabilityBuilder;
+  enableDealer(): ChannelClientCapabilityBuilder;
 }
 
 /** route mesh 는 route channel builder 를 그대로 확장한다. */
@@ -1603,7 +1603,7 @@ export interface ZLinkStreamNodeBuilder {
 
 - handler 는 자동으로 모든 channel 에 열리지 않는다. module options 의 handler 매핑 또는 명시
   등록이 노출을 정한다.
-- `server()` / `publisher()` capability 는 다른 프로세스가 접근할 local bind
+- `enableServer()` / `enablePublisher()` capability 는 다른 프로세스가 접근할 local bind
   endpoint 가 필요하므로 builder 안에서 `bind(...)` 를 같이 지정한다.
 - 수동 연결은 `channel + capability` 단위다. 같은 capability 안에서 discovery 와 manual 을
   섞지 않는다. `client` 와 `subscriber` 는 서로 다른 연결 집합으로 본다.
@@ -1678,8 +1678,8 @@ export interface ZLinkSpotManager {
 
 ```ts
 export interface ZLinkSpotNodeBuilder {
-  router(): SpotRouterCapabilityBuilder;
-  pubSub(): SpotPubSubCapabilityBuilder;
+  enableRouter(): SpotRouterCapabilityBuilder;
+  enablePubSub(): SpotPubSubCapabilityBuilder;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
@@ -1727,8 +1727,8 @@ export interface ZLinkSpotRouteChannelAcceptanceBuilder {
 
 builder 함수 의미:
 
-- `router()`: spot-to-spot routed packet 을 처리할 local router capability 활성화.
-- `pubSub()`: 현재 SPOT channel 의 publish/subscribe capability 활성화.
+- `enableRouter()`: spot-to-spot routed packet 을 처리할 local router capability 활성화.
+- `enablePubSub()`: 현재 SPOT channel 의 publish/subscribe capability 활성화.
 - `configureEntrySpot(...)`: native Entry Spot facade 의 routing id 같은 Entry Spot
   옵션을 지정한다.
 - `addEntrySpot(...)`: 이 SpotNode 의 Entry Spot 타입을 등록한다. 같은 node 에 두 번
@@ -1742,7 +1742,7 @@ builder 함수 의미:
   합산된다. 같은 node 안에서 같은 `TSpot` 재등록은 예외다.
 
 ActorGateway 는 별도 node builder 를 두지 않는다. `node(...)` 로 등록한 SpotNode 에
-`router()` 와 router bind 를 설정한 뒤, stream 이 `attachActorGateway(spotNodeName)`
+`enableRouter()` 와 router bind 를 설정한 뒤, stream 이 `attachActorGateway(spotNodeName)`
 으로 그 local ingress node 를 참조한다(§6.1 `ZLinkStreamNodeBuilder`).
 
 `addSpotMesh(channelName)` 는 SPOT channel 이름과 node 묶음을 함께 소유한다. 그래서

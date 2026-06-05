@@ -56,9 +56,9 @@ handler 타입만 등록한다. topic 이름과 payload 타입은 handler type a
 ```cpp
 app.add_zlink_framework([](auto &options) {
     options.codecs().add_json();
-    options.client_server_channel("orders")
-      .server("tcp://0.0.0.0:7001")
-      .handler_group("orders-api");
+    options.add_client_server_channel("orders")
+      .enable_server("tcp://0.0.0.0:7001")
+      .use_handler_group("orders-api");
     options.handlers()
       .add<order_created_handler_t>("orders-api")
       .add<get_order_status_handler_t>("orders-api");
@@ -130,12 +130,12 @@ capability builder를 직접 노출하지 않고, framework options의 channel b
 ```cpp
 app.add_zlink_framework([](auto &options) {
     options.discovery().add("tcp://registry:5551");
-    options.client_server_channel("orders")
-      .server("tcp://0.0.0.0:7001")
-      .client()
-      .handler_group("orders-api");
-    options.publisher_channel("orders.events")
-      .bind("tcp://0.0.0.0:7002");
+    options.add_client_server_channel("orders")
+      .enable_server("tcp://0.0.0.0:7001")
+      .enable_client()
+      .use_handler_group("orders-api");
+    options.add_fanout_channel("orders.events")
+      .enable_publisher("tcp://0.0.0.0:7002");
 });
 ```
 
@@ -154,11 +154,11 @@ framework builder와 `spot_context_t`로 감싸서 제공한다.
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
-    options.publisher_channel("game.stage")
-      .bind("tcp://0.0.0.0:7001");
-    options.client_server_channel("profile")
-      .client();
-    options.spot_mesh("game.stage")
+    options.add_fanout_channel("game.stage")
+      .enable_publisher("tcp://0.0.0.0:7001");
+    options.add_client_server_channel("profile")
+      .enable_client();
+    options.add_spot_mesh("game.stage")
       .node("stage-spot-node")
       .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()

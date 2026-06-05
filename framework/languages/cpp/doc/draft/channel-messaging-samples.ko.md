@@ -42,11 +42,11 @@ auto app = zlink::framework::app_t::create();
 app.add_zlink_framework([](auto &options) {
     options.discovery().add("tcp://registry:5551");
     options.codecs().add_json();
-    options.client_server_channel("api")
-      .server("tcp://0.0.0.0:7100")
-      .handler_group("api");
-    options.client_server_channel("account")
-      .client();
+    options.add_client_server_channel("api")
+      .enable_server("tcp://0.0.0.0:7100")
+      .use_handler_group("api");
+    options.add_client_server_channel("account")
+      .enable_client();
     options.handlers()
       .add<user_handler_t>("api");
 });
@@ -59,8 +59,8 @@ auto app = zlink::framework::app_t::create();
 
 app.add_zlink_framework([](auto &options) {
     options.discovery().add("tcp://registry:5551");
-    options.client_server_channel("profile")
-      .client();
+    options.add_client_server_channel("profile")
+      .enable_client();
 });
 ```
 
@@ -70,9 +70,9 @@ app.add_zlink_framework([](auto &options) {
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
-    options.client_server_channel("profile")
-      .client("tcp://10.0.10.15:7101")
-      .client("tcp://10.0.10.16:7101");
+    options.add_client_server_channel("profile")
+      .enable_client("tcp://10.0.10.15:7101")
+      .enable_client("tcp://10.0.10.16:7101");
 });
 ```
 

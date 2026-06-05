@@ -101,7 +101,7 @@ int main ()
                         client.connect ("tcp://route-peer:7001");
                     });
                 })
-      .spot_node ("play-actors", [&] (zlink::framework::spot_node_builder_t &spot_node) {
+      .add_spot_node ("play-actors", [&] (zlink::framework::spot_node_builder_t &spot_node) {
           spot_node.bind (embedded_spot_endpoint)
             .use_registry_spot_remote_addresses ()
             .add_spot<stage_spot_t> ("stage");
@@ -197,8 +197,8 @@ int main ()
     zlink::framework::zlink_builder_t no_discovery;
     no_discovery.node ("no-discovery")
       .route_channel ("game.route")
-      .spot_node ("actors",
-                  [] (zlink::framework::spot_node_builder_t &spot) { spot.use_registry_spot_remote_addresses (); });
+      .add_spot_node ("actors",
+                      [] (zlink::framework::spot_node_builder_t &spot) { spot.use_registry_spot_remote_addresses (); });
     if (!is_protocol_error (no_discovery.validate_registry ())) {
         return 10;
     }
@@ -207,8 +207,8 @@ int main ()
     no_route.node ("no-route")
       .discovery (
         [] (zlink::framework::discovery_builder_t &discovery) { discovery.connect_registry ("tcp://registry:5551"); })
-      .spot_node ("actors",
-                  [] (zlink::framework::spot_node_builder_t &spot) { spot.use_registry_spot_remote_addresses (); });
+      .add_spot_node ("actors",
+                      [] (zlink::framework::spot_node_builder_t &spot) { spot.use_registry_spot_remote_addresses (); });
     if (!is_protocol_error (no_route.validate_registry ())) {
         return 11;
     }
@@ -219,8 +219,8 @@ int main ()
         [] (zlink::framework::discovery_builder_t &discovery) { discovery.connect_registry ("tcp://registry:5551"); })
       .route_channel ("route-a")
       .route_channel ("route-b")
-      .spot_node ("actors",
-                  [] (zlink::framework::spot_node_builder_t &spot) { spot.use_registry_spot_remote_addresses (); });
+      .add_spot_node ("actors",
+                      [] (zlink::framework::spot_node_builder_t &spot) { spot.use_registry_spot_remote_addresses (); });
     if (!is_protocol_error (ambiguous_route.validate_registry ())) {
         return 12;
     }
@@ -230,7 +230,7 @@ int main ()
       .discovery (
         [] (zlink::framework::discovery_builder_t &discovery) { discovery.connect_registry ("tcp://registry:5551"); })
       .route_channel ("route-a")
-      .spot_node ("actors", [] (zlink::framework::spot_node_builder_t &spot) {
+      .add_spot_node ("actors", [] (zlink::framework::spot_node_builder_t &spot) {
           spot.use_registry_spot_remote_addresses ("route-missing");
       });
     if (!is_protocol_error (unknown_route.validate_registry ())) {
@@ -280,12 +280,12 @@ int main ()
     const auto framework_pub_endpoint = unique_tcp ("framework-pub");
     options.discovery ().add ("tcp://registry:5551");
     options.use_registry_spot_remote_addresses ("game.route");
-    options.route_mesh_channel ("game.route")
+    options.add_route_mesh_channel ("game.route")
       .bind (framework_route_endpoint)
       .routing_id (zlink::routing_id_t::from ("7200"))
       .connect ("tcp://peer:7201")
       .enable_spot_route_egress ("game.route");
-    options.spot_mesh ("game.spots")
+    options.add_spot_mesh ("game.spots")
       .node ("game-node")
       .enable_router (framework_router_endpoint,
                       [] (zlink::framework::spot_router_capability_builder_t &router) {
@@ -336,8 +336,8 @@ int main ()
                                                                       manual_route_zlink, monitoring);
     const auto manual_route_endpoint = unique_tcp ("manual-accepted-route");
     const auto manual_route_router_endpoint = unique_tcp ("manual-accepted-router");
-    manual_route_options.client_server_channel ("manual.api").server (manual_route_endpoint);
-    manual_route_options.spot_node ("manual-node")
+    manual_route_options.add_client_server_channel ("manual.api").enable_server (manual_route_endpoint);
+    manual_route_options.add_spot_node ("manual-node")
       .enable_router (manual_route_router_endpoint)
       .accept_routes_from_channel ("manual.api", [&] (zlink::framework::accepted_spot_route_channel_builder_t &routes) {
           routes.connect (manual_route_endpoint);
@@ -358,10 +358,10 @@ int main ()
     const auto late_router_endpoint = unique_tcp ("late-router");
     const auto late_pub_endpoint = unique_tcp ("late-pub");
     late_options.discovery ().add ("tcp://registry:5551");
-    late_options.route_mesh_channel ("late.route")
+    late_options.add_route_mesh_channel ("late.route")
       .bind (late_route_endpoint)
       .routing_id (zlink::routing_id_t::from ("7400"));
-    late_options.spot_mesh ("late.spots")
+    late_options.add_spot_mesh ("late.spots")
       .node ("late-node")
       .enable_router (late_router_endpoint)
       .enable_pub_sub (late_pub_endpoint)

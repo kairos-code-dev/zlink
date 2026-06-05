@@ -18,7 +18,7 @@ int main ()
     (void) runtime.stream_socket ();
     (void) runtime.registry ();
     (void) runtime.discovery ();
-    (void) runtime.spot_node ();
+    (void) runtime.add_spot_node ();
 
     std::atomic<int> offloaded{0};
     runtime.offload_executor ().submit ([&] { offloaded.store (1); });

@@ -51,7 +51,7 @@ app.add_zlink_framework([](auto &options) {
       .bind("tcp://0.0.0.0:7101")
       .enable_actor_gateway()
       .add_entry_spot<player_entry_spot_t>();
-    options.stream_node("client-stream")
+    options.add_stream_node("client-stream")
       .bind("tcp://0.0.0.0:9200")
       .register_session<client_session_t>()
       .attach_actor_gateway("session-actors");

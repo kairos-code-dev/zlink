@@ -49,11 +49,11 @@ builder의 channel, subscriber, discovery 람다를 직접 조립하지 않는�
 ```cpp
 app.add_zlink_framework([](auto &options) {
     options.discovery().add("tcp://registry:5551");
-    options.client_server_channel("profile")
-      .client();
-    options.publisher_channel("game.stage")
-      .bind("tcp://0.0.0.0:7001");
-    options.spot_mesh("game.stage")
+    options.add_client_server_channel("profile")
+      .enable_client();
+    options.add_fanout_channel("game.stage")
+      .enable_publisher("tcp://0.0.0.0:7001");
+    options.add_spot_mesh("game.stage")
       .node("stage-spot-node")
       .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()

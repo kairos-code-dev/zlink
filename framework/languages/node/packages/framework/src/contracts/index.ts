@@ -476,13 +476,13 @@ export interface ZLinkFrameworkOptions {
   useDiscovery(): ZLinkDiscoveryBuilder;
   spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
-  clientServerChannel(name: string): ZLinkClientServerChannelBuilder;
-  fanoutChannel(name: string): ZLinkFanoutChannelBuilder;
-  dealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder;
-  routeChannel(name: string): ZLinkRouteChannelBuilder;
-  routeMeshChannel(name: string): ZLinkRouteMeshChannelBuilder;
-  streamNode(name: string): ZLinkStreamNodeBuilder;
-  spotNode(name: string): ZLinkSpotNodeBuilder;
+  addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
+  addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
+  addDealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder;
+  addRouteChannel(name: string): ZLinkRouteChannelBuilder;
+  addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder;
+  addStreamNode(name: string): ZLinkStreamNodeBuilder;
+  addSpotNode(name: string): ZLinkSpotNodeBuilder;
 }
 
 export interface ZLinkRegistrySpotRemoteAddressesOptions {
@@ -516,22 +516,22 @@ export interface ChannelSubscriberCapabilityBuilder {
 }
 
 export interface ZLinkClientServerChannelBuilder {
-  server(): ChannelServerCapabilityBuilder;
-  client(): ChannelClientCapabilityBuilder;
+  enableServer(): ChannelServerCapabilityBuilder;
+  enableClient(): ChannelClientCapabilityBuilder;
 }
 
 export interface ZLinkFanoutChannelBuilder {
-  publisher(): ChannelPublisherCapabilityBuilder;
-  subscriber(): ChannelSubscriberCapabilityBuilder;
+  enablePublisher(): ChannelPublisherCapabilityBuilder;
+  enableSubscriber(): ChannelSubscriberCapabilityBuilder;
 }
 
 export interface ZLinkDealerMeshChannelBuilder {
-  client(): DealerMeshChannelClientCapabilityBuilder;
+  enableClient(): DealerMeshChannelClientCapabilityBuilder;
 }
 
 export interface ZLinkRouteChannelBuilder {
-  router(): ChannelServerCapabilityBuilder;
-  dealer(): ChannelClientCapabilityBuilder;
+  enableRouter(): ChannelServerCapabilityBuilder;
+  enableDealer(): ChannelClientCapabilityBuilder;
 }
 
 export interface ZLinkRouteMeshChannelBuilder extends ZLinkRouteChannelBuilder {}
@@ -574,8 +574,8 @@ export interface ZLinkSpotManager {
 }
 
 export interface ZLinkSpotNodeBuilder {
-  router(): SpotRouterCapabilityBuilder;
-  pubSub(): SpotPubSubCapabilityBuilder;
+  enableRouter(): SpotRouterCapabilityBuilder;
+  enablePubSub(): SpotPubSubCapabilityBuilder;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
@@ -588,7 +588,7 @@ export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {}
 
 export interface ZLinkSpotMeshBuilder {
   useDiscovery(): ZLinkDiscoveryBuilder;
-  node(name: string): ZLinkSpotMeshNodeBuilder;
+  addNode(name: string): ZLinkSpotMeshNodeBuilder;
 }
 
 export interface SpotRouterCapabilityBuilder {

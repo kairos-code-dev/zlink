@@ -443,7 +443,7 @@ framework와 같은 사용성으로 제공하는 것이다.
 
 구현 항목:
 
-- `client_server_channel(...)`
+- `add_client_server_channel(...)`
 - server/client/publisher/subscriber capability
 - `bind(...)`
 - `connect(...)`

@@ -479,8 +479,8 @@ std::optional<spot_route_t> spot_node_builder_t::resolve_spot (spot_rid_t spot_r
     return detail::spot_node_runtime_t (_state).resolve_spot (std::move (spot_rid));
 }
 
-zlink_builder_t &zlink_builder_t::spot_node (std::string spot_node_name,
-                                             std::function<void (spot_node_builder_t &)> configure)
+zlink_builder_t &zlink_builder_t::add_spot_node (std::string spot_node_name,
+                                                 std::function<void (spot_node_builder_t &)> configure)
 {
     auto state = std::make_shared<detail::spot_node_builder_state_t> (std::move (spot_node_name));
     spot_node_builder_t builder (state);

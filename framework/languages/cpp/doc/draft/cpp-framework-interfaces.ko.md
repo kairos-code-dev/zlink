@@ -1445,7 +1445,7 @@ public:
 경로와 Entry Spot join 경로에 제한한다. 일반 application handler와 client는 channel
 name과 topic을 먼저 사용한다.
 
-SPOT node는 router 또는 pub/sub capability 중 하나 이상을 켜야 한다. `spot_mesh(...).node(...)`는
+SPOT node는 router 또는 pub/sub capability 중 하나 이상을 켜야 한다. `add_spot_mesh(...).node(...)`는
 discovery view만 연결하므로 실행 capability가 아니다. `enable_router(...)`나
 `enable_pub_sub(...)` 없이 node를 선언하면 options 적용 시점에 설정 오류로 실패한다.
 
@@ -1611,7 +1611,7 @@ type을 codec 설정에 나열하지 않는다. C++ framework는 `options.handle
 handler의 `request_type`, `reply_type`을 읽어 필요한 JSON serializer를 내부에서 등록한다.
 send handler는 `message_type`, publish handler는 `event_type`을 읽어 같은 방식으로 serializer와
 handler registry 항목을 등록한다. 따라서 request/send/publish handler를 같은 group 이름으로
-묶고, channel builder의 `.handler_group(...)`에서 channel에 연결할 수 있다.
+묶고, channel builder의 `.use_handler_group(...)`에서 channel에 연결할 수 있다.
 handler group은 channel 종류와 맞아야 한다. client/server와 dealer mesh channel은 request/send
 handler group을 받을 수 있고, fanout channel은 publish handler group만 받을 수 있다. 맞지 않는
 group을 연결하면 options 작성 시점에 설정 오류로 실패한다.
@@ -1647,12 +1647,12 @@ app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &option
 
     options.discovery().add(topology.registry_router_endpoint);
 
-    options.client_server_channel(sample_names_t::api_channel)
-      .server(topology.api_channel_endpoint)
-      .handler_group("api");
+    options.add_client_server_channel(sample_names_t::api_channel)
+      .enable_server(topology.api_channel_endpoint)
+      .use_handler_group("api");
 
-    options.client_server_channel(sample_names_t::play_channel)
-      .client();
+    options.add_client_server_channel(sample_names_t::play_channel)
+      .enable_client();
 
     options.configure_dispatch([](auto &dispatch) {
       dispatch.spot_dispatch_mode =
@@ -1665,10 +1665,10 @@ app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &option
 });
 ```
 
-`client()`처럼 endpoint 인자 없이 client role을 켜면 registry discovery로 peer를 찾는다는 뜻이다.
+`enable_client()`처럼 endpoint 인자 없이 client role을 켜면 registry discovery로 peer를 찾는다는 뜻이다.
 이 경우 같은 options 안에 `options.discovery().add(...)`가 있어야 한다. 특정 endpoint를 직접
-붙일 때는 `client(endpoint)`를 사용한다. `client(endpoint)`와 fanout
-`subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 같은 capability의 manual endpoint
+붙일 때는 `enable_client(endpoint)`를 사용한다. `enable_client(endpoint)`와 fanout
+`enable_subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 같은 capability의 manual endpoint
 목록에 추가된다. fanout subscriber도 discovery/manual 선택 규칙은 같다. discovery endpoint도
 연결 경계의 일부이므로 빈 문자열이나 공백만 있는 문자열은 `options.discovery().add(...)`에서
 즉시 거부한다.
@@ -1678,9 +1678,8 @@ function pointer, handler용 DI factory lambda, monitoring channel 문자열, se
 message type을 모두 나열하는 codec 등록 같은 세부 구현을 직접 알 필요가 없다. 그런 내용이 보이면
 framework options builder가 충분히 깊지 않은 것으로 본다.
 
-`zlink_framework_options_t`의 사용자 표면은 fluent options builder로 제한한다. 람다 기반
-`add_client_server_channel(...)`, `enable_server(...)`, `enable_client(...)` 같은 우회 API는
-일반 사용자 설정에 두지 않는다. C++ 내부 runtime builder에는 낮은 수준 API가 남아 있을 수 있지만,
+`zlink_framework_options_t`의 사용자 표면은 fluent options builder로 제한한다.
+일반 사용자 설정에는 낮은 수준 channel runtime builder를 직접 노출하지 않는다. C++ 내부 runtime builder에는 낮은 수준 API가 남아 있을 수 있지만,
 샘플과 guide 수준의 설정은 아래처럼 역할이 바로 보이는 형태를 사용한다.
 
 `options.configure_dispatch(...)`는 `.NET`의 `ConfigureDispatch(...)`에 대응한다. C++에서는
@@ -1691,34 +1690,34 @@ diagnostics sample rate는 `0.0`에서 `1.0` 사이여야 하며 NaN은 허용�
 send와 publish는 reply path가 없으므로 unhandled 정책에 `reply_error`를 사용할 수 없다.
 
 ```cpp
-options.client_server_channel(sample_names_t::api_channel)
-  .server(topology.api_endpoint)
-  .handler_group("api");
+options.add_client_server_channel(sample_names_t::api_channel)
+  .enable_server(topology.api_endpoint)
+  .use_handler_group("api");
 
-options.fanout_channel(sample_names_t::notification_channel)
-  .bind(topology.notification_endpoint)
-  .subscriber(topology.notification_subscriber_endpoint)
-  .handler_group("events");
+options.add_fanout_channel(sample_names_t::notification_channel)
+  .enable_publisher(topology.notification_endpoint)
+  .enable_subscriber(topology.notification_subscriber_endpoint)
+  .use_handler_group("events");
 
-options.dealer_mesh_channel(sample_names_t::mesh_channel)
+options.add_dealer_mesh_channel(sample_names_t::mesh_channel)
   .bind(topology.mesh_bind_endpoint)
   .connect(topology.mesh_peer_endpoint)
-  .handler_group("api");
+  .use_handler_group("api");
 
 options.use_registry_spot_remote_addresses(sample_names_t::router_channel);
 
-options.route_mesh_channel(sample_names_t::router_channel)
+options.add_route_mesh_channel(sample_names_t::router_channel)
   .bind(topology.session_spot_endpoint)
   .routing_id(topology.session_router_rid)
   .connect(topology.play_router_endpoint);
 
-options.spot_mesh(sample_names_t::game_spot_discovery)
+options.add_spot_mesh(sample_names_t::game_spot_discovery)
   .node(sample_names_t::session_spot_node)
   .enable_router(topology.session_router_endpoint, topology.session_router_rid)
   .enable_pub_sub(topology.session_spot_endpoint, topology.session_pub_rid)
   .accept_routes_from_channel(sample_names_t::router_channel);
 
-options.stream_node(sample_names_t::stream_name)
+options.add_stream_node(sample_names_t::stream_name)
   .bind(topology.stream_endpoint)
   .register_session<client_session_t>()
   .attach_actor_gateway(sample_names_t::spot_node);
@@ -1733,10 +1732,10 @@ native packet session 이름으로 사용하고, 없으면 타입 이름 기반 
 `packet_session(...)`을 중복 호출하면 마지막 값으로 덮어쓰지 않고 설정 오류로 처리한다.
 
 dealer mesh channel은 최소 하나의 peer 획득 경로를 가져야 한다. `bind(...)` 또는
-`connect(...)` 없이 `dealer_mesh_channel(...)`만 선언하면 options 적용 시점에 설정 오류로
+`connect(...)` 없이 `add_dealer_mesh_channel(...)`만 선언하면 options 적용 시점에 설정 오류로
 실패한다. 이 규칙은 메시지를 보내는 시점까지 설정 실수를 숨기지 않기 위한 것이다.
 route mesh channel은 local route endpoint를 열어야 하므로 `bind(...)`가 필수다.
-`route_mesh_channel(...)`만 선언하거나 routing id/manual connection만 설정하면 options 적용
+`add_route_mesh_channel(...)`만 선언하거나 routing id/manual connection만 설정하면 options 적용
 시점에 설정 오류로 실패한다.
 `.NET`의 `EnableSpotRouteEgress(...)`에 해당하는 C++ fluent 표면은
 `enable_spot_route_egress(target_channel_name)`이다. client/server channel에서 이 설정을 쓰려면
@@ -1835,11 +1834,11 @@ app.add_zlink_framework([&](auto &options) {
     options.discovery().add(topology.registry_router_endpoint);
     options.codecs().add_json();
 
-    options.client_server_channel(sample_names_t::api_channel)
-      .server(topology.api_channel_endpoint)
-      .handler_group("api");
-    options.client_server_channel(sample_names_t::play_channel)
-      .client();
+    options.add_client_server_channel(sample_names_t::api_channel)
+      .enable_server(topology.api_channel_endpoint)
+      .use_handler_group("api");
+    options.add_client_server_channel(sample_names_t::play_channel)
+      .enable_client();
 
     options.http()
       .listen(topology.api_http_endpoint)
@@ -2037,10 +2036,10 @@ int main(int argc, char **argv)
         options.services()
           .add_singleton<order_repository_t>()
           .add_singleton<order_handler_t, order_repository_t>();
-        options.client_server_channel("orders")
-          .server("tcp://0.0.0.0:7001")
-          .handler_group("orders-api");
-        options.spot_mesh("orders")
+        options.add_client_server_channel("orders")
+          .enable_server("tcp://0.0.0.0:7001")
+          .use_handler_group("orders-api");
+        options.add_spot_mesh("orders")
           .node("orders-spot")
           .enable_router("tcp://0.0.0.0:7101");
         options.handlers()

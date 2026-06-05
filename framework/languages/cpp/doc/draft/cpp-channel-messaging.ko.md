@@ -50,13 +50,13 @@ auto app = app_t::create();
 app.add_zlink_framework([](auto &options) {
     options.discovery().add("tcp://registry1:5551");
     options.discovery().add("tcp://registry2:5551");
-    options.client_server_channel("api")
-      .server("tcp://0.0.0.0:7100")
-      .handler_group("api");
-    options.client_server_channel("profile")
-      .client();
-    options.client_server_channel("account")
-      .client();
+    options.add_client_server_channel("api")
+      .enable_server("tcp://0.0.0.0:7100")
+      .use_handler_group("api");
+    options.add_client_server_channel("profile")
+      .enable_client();
+    options.add_client_server_channel("account")
+      .enable_client();
 });
 ```
 
@@ -64,9 +64,9 @@ app.add_zlink_framework([](auto &options) {
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
-    options.client_server_channel("profile")
-      .client("tcp://10.0.10.15:7101")
-      .client("tcp://10.0.10.16:7101");
+    options.add_client_server_channel("profile")
+      .enable_client("tcp://10.0.10.15:7101")
+      .enable_client("tcp://10.0.10.16:7101");
 });
 ```
 
@@ -86,9 +86,9 @@ handler는 `options.handlers()` 아래 typed registry로 등록한다. handler �
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
-    options.client_server_channel("api")
-      .server("tcp://0.0.0.0:7100")
-      .handler_group("api");
+    options.add_client_server_channel("api")
+      .enable_server("tcp://0.0.0.0:7100")
+      .use_handler_group("api");
     options.handlers()
       .add<get_user_handler_t>("api")
       .add<refresh_profile_cache_handler_t>("api");
@@ -139,14 +139,14 @@ request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `s
   `route_channel_initializer_t`가 맡는다. `.NET`은 reflection scanner와 assembly marker로
   descriptor를 수집하지만, C++는 typed handler installer를 registration에 저장한 뒤
   initializer가 `route_handler_registry_t`로 변환한다. 프레임워크 사용자는
-  `options.route_mesh_channel(name)`으로 bind, routing id, manual connection, handler group을
+  `options.add_route_mesh_channel(name)`으로 bind, routing id, manual connection, handler group을
   설정한다. route mesh channel은 local route endpoint를 열기 위해 `bind(...)`가 필요하다.
   SPOT route ingress에서 `accept_routes_from_channel(name)`으로 참조할 수 있는 channel은
   client/server channel 또는 route mesh channel뿐이다. 참조한 node는 router capability와
   registry discovery 또는 accepted route manual endpoint를 가져야 한다.
   `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`는 framework
   내부와 고급 확장용 낮은 수준 표면으로 남긴다.
-- dealer mesh channel은 `options.dealer_mesh_channel(name)`으로 선언하되 `bind(...)`
+- dealer mesh channel은 `options.add_dealer_mesh_channel(name)`으로 선언하되 `bind(...)`
   또는 `connect(...)` 중 하나 이상을 함께 둔다. peer 획득 경로가 없으면 framework
   options 적용 시점에 실패한다.
 - client/server channel은 server 또는 client capability 중 하나 이상이 필요하고, fanout

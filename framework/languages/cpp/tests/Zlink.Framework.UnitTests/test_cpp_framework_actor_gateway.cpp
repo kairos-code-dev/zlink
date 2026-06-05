@@ -61,10 +61,10 @@ int main ()
 
     zlink::framework::zlink_builder_t zlink;
     zlink
-      .spot_node ("session-actors",
-                  [] (zlink::framework::spot_node_builder_t &spot_node) {
-                      spot_node.bind ("tcp://0.0.0.0:7101").enable_actor_gateway ();
-                  })
+      .add_spot_node ("session-actors",
+                      [] (zlink::framework::spot_node_builder_t &spot_node) {
+                          spot_node.bind ("tcp://0.0.0.0:7101").enable_actor_gateway ();
+                      })
       .stream ("client-stream", [] (zlink::framework::stream_builder_t &stream) {
           stream.bind ("tcp://0.0.0.0:9200").packet_session ("client").attach_actor_gateway ("session-actors");
       });

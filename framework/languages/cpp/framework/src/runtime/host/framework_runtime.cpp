@@ -62,7 +62,7 @@ zlink::service::registry_t &framework_runtime_t::registry ()
     return *_registry;
 }
 
-zlink::service::spot_node_t &framework_runtime_t::spot_node ()
+zlink::service::spot_node_t &framework_runtime_t::add_spot_node ()
 {
     if (!_spot_node) {
         _spot_node = std::make_unique<zlink::service::spot_node_t> (*_context);

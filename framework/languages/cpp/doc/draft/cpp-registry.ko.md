@@ -90,11 +90,11 @@ registry, route mesh, spot mesh를 한 번에 표현한다.
 app.add_zlink_framework([](auto &options) {
     options.discovery().add("tcp://registry:5551");
     options.use_registry_spot_remote_addresses("game.route");
-    options.route_mesh_channel("game.route")
+    options.add_route_mesh_channel("game.route")
       .bind("tcp://0.0.0.0:7200")
       .routing_id(zlink::routing_id_t::from("7200"))
       .connect("tcp://peer:7201");
-    options.spot_mesh("game.spots")
+    options.add_spot_mesh("game.spots")
       .node("play-actors")
       .enable_router("tcp://0.0.0.0:7300")
       .accept_routes_from_channel("game.route");
@@ -106,8 +106,8 @@ registry discovery를 쓰지 않고 accepted route peer를 직접 지정할 때�
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
-    options.client_server_channel("api")
-      .server("tcp://0.0.0.0:7001");
+    options.add_client_server_channel("api")
+      .enable_server("tcp://0.0.0.0:7001");
     options.spot_node("play-actors")
       .enable_router("tcp://0.0.0.0:7300", [](auto &router) {
           router.connect("tcp://127.0.0.1:7301");

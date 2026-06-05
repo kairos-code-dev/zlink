@@ -18,11 +18,11 @@ auto app = zlink::framework::app_t::create();
 
 app.add_zlink_framework([](auto &options) {
     options.discovery().add("tcp://registry1:5551");
-    options.publisher_channel("game.stage")
-      .bind("tcp://0.0.0.0:7001");
-    options.client_server_channel("profile")
-      .client();
-    options.spot_mesh("game.stage")
+    options.add_fanout_channel("game.stage")
+      .enable_publisher("tcp://0.0.0.0:7001");
+    options.add_client_server_channel("profile")
+      .enable_client();
+    options.add_spot_mesh("game.stage")
       .node("stage-spot-node")
       .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()

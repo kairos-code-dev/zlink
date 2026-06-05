@@ -20,7 +20,7 @@ app.add_zlink_framework([](auto &options) {
     options.spot_node("session-actors")
       .bind("tcp://0.0.0.0:7101")
       .enable_actor_gateway();
-    options.stream_node("route-stream")
+    options.add_stream_node("route-stream")
       .bind("tcp://0.0.0.0:9200")
       .register_session<route_session_t>()
       .attach_actor_gateway("session-actors");

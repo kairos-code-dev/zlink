@@ -32,7 +32,7 @@ int main ()
 
     zlink::framework::spot_node_builder_t builder;
     zlink::framework::zlink_builder_t host;
-    host.spot_node ("timer-node", [&builder] (zlink::framework::spot_node_builder_t &spot_node) {
+    host.add_spot_node ("timer-node", [&builder] (zlink::framework::spot_node_builder_t &spot_node) {
         spot_node.add_spot<stage_spot_t> ("stage");
         builder = spot_node;
     });

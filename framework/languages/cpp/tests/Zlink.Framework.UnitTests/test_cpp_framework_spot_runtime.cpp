@@ -161,7 +161,7 @@ int main ()
                     channel.enable_subscriber (
                       [] (zlink::framework::capability_builder_t &subscriber) { subscriber.use_discovery (); });
                 })
-      .spot_node ("stage-spot-node", [] (zlink::framework::spot_node_builder_t &spot_node) {
+      .add_spot_node ("stage-spot-node", [] (zlink::framework::spot_node_builder_t &spot_node) {
           spot_node.bind ("tcp://0.0.0.0:9000")
             .enable_router ("tcp://0.0.0.0:9002")
             .connect_router ("tcp://127.0.0.1:9003")
@@ -200,7 +200,7 @@ int main ()
 
     zlink::framework::spot_node_builder_t builder;
     zlink::framework::zlink_builder_t manual_host;
-    manual_host.spot_node ("manual-stage", [&builder] (zlink::framework::spot_node_builder_t &spot_node) {
+    manual_host.add_spot_node ("manual-stage", [&builder] (zlink::framework::spot_node_builder_t &spot_node) {
         spot_node.bind ("tcp://0.0.0.0:9001")
           .use_discovery ("game.stage")
           .attach_publisher ("game.stage")

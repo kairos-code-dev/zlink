@@ -131,9 +131,9 @@ int main(int argc, char **argv)
           .listen("http://0.0.0.0:8080")
           .map_post<create_order_http_handler_t>("/orders");
 
-        options.client_server_channel("orders")
-          .server("tcp://0.0.0.0:7001")
-          .handler_group("orders-api");
+        options.add_client_server_channel("orders")
+          .enable_server("tcp://0.0.0.0:7001")
+          .use_handler_group("orders-api");
 
         options.handlers()
           .add<create_order_handler_t>("orders-api");
@@ -607,10 +607,10 @@ framework의 host factory처럼 필요한 runtime 구성만 선언하게 만들�
 ```cpp
 app.add_zlink_framework([](auto &options) {
     options.discovery().add("tcp://registry:5551");
-    options.client_server_channel("orders")
-      .server("tcp://0.0.0.0:7001")
-      .handler_group("orders-api");
-    options.spot_mesh("orders")
+    options.add_client_server_channel("orders")
+      .enable_server("tcp://0.0.0.0:7001")
+      .use_handler_group("orders-api");
+    options.add_spot_mesh("orders")
       .node("orders-spot")
       .enable_router("tcp://0.0.0.0:7101");
 });

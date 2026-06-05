@@ -452,7 +452,7 @@ class client_server_channel_builder_t
         _options->client_server_channels.insert (_channel_name);
     }
 
-    client_server_channel_builder_t &server (std::string endpoint)
+    client_server_channel_builder_t &enable_server (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "client/server server endpoint is required");
         _server_endpoint = std::move (endpoint);
@@ -460,7 +460,7 @@ class client_server_channel_builder_t
         return *this;
     }
 
-    client_server_channel_builder_t &client ()
+    client_server_channel_builder_t &enable_client ()
     {
         _client_enabled = true;
         _client_uses_discovery = true;
@@ -469,7 +469,7 @@ class client_server_channel_builder_t
         return *this;
     }
 
-    client_server_channel_builder_t &client (std::string endpoint)
+    client_server_channel_builder_t &enable_client (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "client/server client endpoint is required");
         _client_enabled = true;
@@ -479,7 +479,7 @@ class client_server_channel_builder_t
         return *this;
     }
 
-    client_server_channel_builder_t &handler_group (std::string group_name)
+    client_server_channel_builder_t &use_handler_group (std::string group_name)
     {
         detail::require_non_blank (group_name, "handler group name is required");
         _handler_groups->add_channel (std::move (group_name), _channel_name,
@@ -566,7 +566,7 @@ class fanout_channel_builder_t
         _options->fanout_channels.insert (_channel_name);
     }
 
-    fanout_channel_builder_t &bind (std::string endpoint)
+    fanout_channel_builder_t &enable_publisher (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "fanout publisher endpoint is required");
         _publisher_endpoint = std::move (endpoint);
@@ -574,7 +574,7 @@ class fanout_channel_builder_t
         return *this;
     }
 
-    fanout_channel_builder_t &subscriber ()
+    fanout_channel_builder_t &enable_subscriber ()
     {
         _subscriber_enabled = true;
         _subscriber_uses_discovery = true;
@@ -583,7 +583,7 @@ class fanout_channel_builder_t
         return *this;
     }
 
-    fanout_channel_builder_t &subscriber (std::string endpoint)
+    fanout_channel_builder_t &enable_subscriber (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "fanout subscriber endpoint is required");
         _subscriber_enabled = true;
@@ -593,7 +593,7 @@ class fanout_channel_builder_t
         return *this;
     }
 
-    fanout_channel_builder_t &handler_group (std::string group_name)
+    fanout_channel_builder_t &use_handler_group (std::string group_name)
     {
         detail::require_non_blank (group_name, "handler group name is required");
         _handler_groups->add_channel (std::move (group_name), _channel_name, {detail::handler_group_kind_t::publish},
@@ -693,7 +693,7 @@ class dealer_mesh_channel_builder_t
         return *this;
     }
 
-    dealer_mesh_channel_builder_t &handler_group (std::string group_name)
+    dealer_mesh_channel_builder_t &use_handler_group (std::string group_name)
     {
         detail::require_non_blank (group_name, "handler group name is required");
         _handler_groups->add_channel (std::move (group_name), _channel_name,
@@ -770,7 +770,7 @@ class route_mesh_channel_builder_t
         return *this;
     }
 
-    route_mesh_channel_builder_t &handler_group (std::string group_name)
+    route_mesh_channel_builder_t &use_handler_group (std::string group_name)
     {
         detail::require_non_blank (group_name, "handler group name is required");
         _handler_groups->add_channel (group_name, _channel_name,
@@ -1279,7 +1279,7 @@ class spot_node_options_builder_t
             if (options->active_zlink == nullptr) {
                 return;
             }
-            options->active_zlink->spot_node (spot_node_name, configure);
+            options->active_zlink->add_spot_node (spot_node_name, configure);
         };
     }
 
@@ -1475,27 +1475,22 @@ class zlink_framework_options_t
         return *this;
     }
 
-    client_server_channel_builder_t client_server_channel (std::string channel_name)
+    client_server_channel_builder_t add_client_server_channel (std::string channel_name)
     {
         return client_server_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
 
-    fanout_channel_builder_t fanout_channel (std::string channel_name)
+    fanout_channel_builder_t add_fanout_channel (std::string channel_name)
     {
         return fanout_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
 
-    fanout_channel_builder_t publisher_channel (std::string channel_name)
-    {
-        return fanout_channel (std::move (channel_name));
-    }
-
-    dealer_mesh_channel_builder_t dealer_mesh_channel (std::string channel_name)
+    dealer_mesh_channel_builder_t add_dealer_mesh_channel (std::string channel_name)
     {
         return dealer_mesh_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
 
-    route_mesh_channel_builder_t route_mesh_channel (std::string channel_name)
+    route_mesh_channel_builder_t add_route_mesh_channel (std::string channel_name)
     {
         return route_mesh_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
@@ -1515,17 +1510,17 @@ class zlink_framework_options_t
         return *this;
     }
 
-    spot_mesh_builder_t spot_mesh (std::string channel_name)
+    spot_mesh_builder_t add_spot_mesh (std::string channel_name)
     {
         return spot_mesh_builder_t (std::move (channel_name), _options);
     }
 
-    spot_node_options_builder_t spot_node (std::string spot_node_name)
+    spot_node_options_builder_t add_spot_node (std::string spot_node_name)
     {
         return spot_node_options_builder_t (std::move (spot_node_name), _options);
     }
 
-    stream_node_options_builder_t stream_node (std::string stream_name)
+    stream_node_options_builder_t add_stream_node (std::string stream_name)
     {
         return stream_node_options_builder_t (std::move (stream_name), *_services, _options);
     }

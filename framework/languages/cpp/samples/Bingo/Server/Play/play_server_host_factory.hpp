@@ -22,12 +22,13 @@ class play_server_host_factory_t
             options.handlers ().add<allocate_bingo_room_handler_t> ("play").add<ensure_player_actor_handler_t> ("play");
             options.codecs ().add_json ();
             options.discovery ().add (topology.registry_router_endpoint);
-            options.client_server_channel (sample_names_t::play_channel)
-              .server (topology.play_channel_endpoint)
-              .handler_group ("play");
-            options.client_server_channel (sample_names_t::api_channel).client ();
-            options.publisher_channel (sample_names_t::notification_channel).bind ("tcp://127.0.0.1:47120");
-            options.spot_mesh (sample_names_t::room_spot_discovery)
+            options.add_client_server_channel (sample_names_t::play_channel)
+              .enable_server (topology.play_channel_endpoint)
+              .use_handler_group ("play");
+            options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
+            options.add_fanout_channel (sample_names_t::notification_channel)
+              .enable_publisher ("tcp://127.0.0.1:47120");
+            options.add_spot_mesh (sample_names_t::room_spot_discovery)
               .node (sample_names_t::room_spot_node)
               .enable_router (topology.play_spot_router_endpoint, topology.play_rid)
               .enable_pub_sub (topology.play_spot_endpoint)

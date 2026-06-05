@@ -37,7 +37,7 @@ class framework_runtime_t
     zlink::stream_socket_t &stream_socket ();
     zlink::service::discovery_t &discovery ();
     zlink::service::registry_t &registry ();
-    zlink::service::spot_node_t &spot_node ();
+    zlink::service::spot_node_t &add_spot_node ();
     void drain ();
     offload_executor_t &offload_executor () noexcept;
 

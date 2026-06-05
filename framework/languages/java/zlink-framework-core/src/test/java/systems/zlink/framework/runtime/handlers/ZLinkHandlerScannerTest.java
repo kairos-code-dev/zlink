@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.handlers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Set;
@@ -15,11 +16,13 @@ import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
+import systems.zlink.testfixtures.handlerconflict.ConflictingSpotActorPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -143,6 +146,13 @@ final class ZLinkHandlerScannerTest {
         assertEquals(SpotActorRequest.class, handler.messageType());
         assertEquals(SpotActorReply.class, handler.replyType());
         assertEquals("SpotActorRequest", handler.packetName());
+    }
+
+    @Test
+    void rejectsConflictingSpotActorPacketAnnotationsLikeDotnet() {
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> ZLinkHandlerScanner.scan(Set.of(ConflictingSpotActorPacketHandler.class)));
     }
 
     public static final class UngroupedInterfaceHandler

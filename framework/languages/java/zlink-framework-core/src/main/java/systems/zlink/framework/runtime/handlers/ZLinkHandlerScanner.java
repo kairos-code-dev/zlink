@@ -81,6 +81,8 @@ public final class ZLinkHandlerScanner {
         Class<?> candidate,
         Set<String> groups) {
         for (Method method : candidate.getMethods()) {
+            rejectConflictingSpotActorAnnotations(candidate, method);
+
             ZLinkSend send = method.getAnnotation(ZLinkSend.class);
             if (send != null) {
                 Class<?> messageType = requireChannelHandlerShape(
@@ -226,6 +228,21 @@ public final class ZLinkHandlerScanner {
                     "",
                     groups));
             }
+        }
+    }
+
+    private static void rejectConflictingSpotActorAnnotations(Class<?> handlerType, Method method) {
+        if (method.getAnnotation(ZLinkSpotActorSend.class) != null
+            && method.getAnnotation(ZLinkSpotActorRequest.class) != null) {
+            throw new ZLinkConfigurationException(
+                "SPOT actor handler method cannot declare both send and request annotations: "
+                    + handlerType.getName() + "." + method.getName());
+        }
+        if (method.getAnnotation(ZLinkSpotPostActorJoined.class) != null
+            && method.getAnnotation(ZLinkSpotActorLeft.class) != null) {
+            throw new ZLinkConfigurationException(
+                "SPOT actor lifecycle handler method cannot declare both joined and left annotations: "
+                    + handlerType.getName() + "." + method.getName());
         }
     }
 

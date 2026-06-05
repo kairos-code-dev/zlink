@@ -3270,6 +3270,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             matched = true;
         }
         for (Method method : handlerType.getMethods()) {
+            rejectConflictingSpotActorAnnotations(handlerType, method);
+
             if (method.getAnnotation(ZLinkSpotActorJoin.class) != null) {
                 addConfiguredActorJoinHandler(handlerType, method);
                 matched = true;
@@ -3309,6 +3311,21 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             throw new ZLinkConfigurationException(
                 "SPOT handler must declare a SPOT or actor handler contract: "
                     + handlerType.getName());
+        }
+    }
+
+    private static void rejectConflictingSpotActorAnnotations(Class<?> handlerType, Method method) {
+        if (method.getAnnotation(ZLinkSpotActorSend.class) != null
+            && method.getAnnotation(ZLinkSpotActorRequest.class) != null) {
+            throw new ZLinkConfigurationException(
+                "SPOT actor handler method cannot declare both send and request annotations: "
+                    + handlerType.getName() + "." + method.getName());
+        }
+        if (method.getAnnotation(ZLinkSpotPostActorJoined.class) != null
+            && method.getAnnotation(ZLinkSpotActorLeft.class) != null) {
+            throw new ZLinkConfigurationException(
+                "SPOT actor lifecycle handler method cannot declare both joined and left annotations: "
+                    + handlerType.getName() + "." + method.getName());
         }
     }
 

@@ -5,10 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -162,6 +165,71 @@ final class LifecycleTest {
     }
 
     @Test
+    void reconnectUnlimitedAttemptsRestoresLateServer() throws Exception {
+        int port = reservePort();
+        CompletableFuture<Void> accepted = new CompletableFuture<>();
+        CompletableFuture<Void> release = new CompletableFuture<>();
+        CompletableFuture<Void> server = CompletableFuture.runAsync(() -> {
+            try (ServerSocket listener = new ServerSocket()) {
+                listener.setReuseAddress(true);
+                listener.bind(new InetSocketAddress("127.0.0.1", port));
+                listener.setSoTimeout((int) Duration.ofSeconds(5).toMillis());
+                try (var ignored = listener.accept()) {
+                    accepted.complete(null);
+                    release.get(5, TimeUnit.SECONDS);
+                }
+            } catch (Exception ex) {
+                accepted.completeExceptionally(ex);
+                throw new RuntimeException(ex);
+            }
+        }, CompletableFuture.delayedExecutor(120, TimeUnit.MILLISECONDS));
+        ZLinkStreamConnectorOptions options = new ZLinkStreamConnectorOptions(
+            java.net.URI.create("tcp://127.0.0.1:" + port),
+            ZLinkStreamDispatchMode.AUTO,
+            Duration.ofMillis(100),
+            ZLinkStreamConnectorOptions.UNLIMITED_RECONNECT_ATTEMPTS,
+            Duration.ofMillis(20),
+            64 * 1024,
+            false,
+            Duration.ofMillis(25),
+            Duration.ofMillis(100),
+            true,
+            Duration.ofMillis(10),
+            Duration.ofMillis(10),
+            1.0);
+        try (ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(options)) {
+            connector.reconnectAsync().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            accepted.get(5, TimeUnit.SECONDS);
+
+            assertTrue(connector.isConnected());
+        } finally {
+            release.complete(null);
+            server.get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void reconnectEnabledRejectsZeroMaxAttempts() {
+        ZLinkStreamConnectorOptions options = new ZLinkStreamConnectorOptions(
+            java.net.URI.create("tcp://127.0.0.1:1"),
+            ZLinkStreamDispatchMode.AUTO,
+            Duration.ofMillis(100),
+            0,
+            Duration.ofMillis(100),
+            64 * 1024,
+            false,
+            Duration.ofMillis(25),
+            Duration.ofMillis(100),
+            true,
+            Duration.ofMillis(10),
+            Duration.ofMillis(20),
+            2.0);
+
+        assertThrows(IllegalArgumentException.class, () ->
+            ZLinkStreamConnectorFactory.create(options));
+    }
+
+    @Test
     void closeWhileReconnectingKeepsConnectorClosed() {
         ZLinkStreamConnectorOptions options = new ZLinkStreamConnectorOptions(
             java.net.URI.create("tcp://127.0.0.1:1"),
@@ -204,5 +272,11 @@ final class LifecycleTest {
             null,
             name,
             Map.of());
+    }
+
+    private static int reservePort() throws Exception {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        }
     }
 }

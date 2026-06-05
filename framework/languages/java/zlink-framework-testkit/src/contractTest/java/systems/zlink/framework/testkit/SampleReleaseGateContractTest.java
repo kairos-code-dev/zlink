@@ -1015,7 +1015,7 @@ final class SampleReleaseGateContractTest {
                 && serverProgramSource.contains("SampleSettings.fromArgs(args)")
                 && serverProgramSource.contains("TicTacToeServerHostFactory.start(effectiveSettings)")
                 && !serverProgramSource.contains("case \"server\"")
-                && serverBuildSource.contains("implementation(project(\":Client\"))"),
+                && serverBuildSource.contains("implementation(sampleProject(\"Client\"))"),
             "TicTacToe Java Server Program must expose .NET-style all/play/api/client modes");
         assertFalse(serverProgramSource.contains("CountDownLatch")
                 || serverProgramSource.contains("ZLinkFramework.start"),
@@ -1387,7 +1387,7 @@ final class SampleReleaseGateContractTest {
                 && serverProgramSource.contains("SampleSettings.fromArgs(args)")
                 && serverProgramSource.contains("TicTacToeServerHostFactory.start(effectiveSettings)")
                 && !serverProgramSource.contains("\"server\"")
-                && serverBuildSource.contains("implementation(project(\":Client\"))"),
+                && serverBuildSource.contains("implementation(sampleProject(\"Client\"))"),
             "Kotlin TicTacToe Server Program must expose .NET-style all/play/api/client modes");
         assertFalse(serverProgramSource.contains("CountDownLatch")
                 || serverProgramSource.contains("ZLinkFramework.start"),

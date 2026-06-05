@@ -20,6 +20,8 @@ public record ZLinkStreamConnectorOptions(
     boolean skipServerCertificateValidation,
     ZLinkStreamCompression compression,
     ZLinkStreamPacketNameResolver nameResolver) {
+    public static final int UNLIMITED_RECONNECT_ATTEMPTS = -1;
+
     public ZLinkStreamConnectorOptions {
         if (compression == null) {
             compression = ZLinkStreamCompression.NONE;

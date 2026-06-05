@@ -181,7 +181,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (isConnected()) {
             return CompletableFuture.completedFuture(null);
         }
-        if (!options.reconnectEnabled() || options.maxReconnectAttempts() == 0) {
+        if (!options.reconnectEnabled()) {
             return CompletableFuture.failedFuture(
                 new IllegalStateException("reconnect attempts are disabled"));
         }
@@ -415,7 +415,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         stopHeartbeat();
         closeQuietly(failed);
         failPending(ex);
-        transitionTo(options.reconnectEnabled() && options.maxReconnectAttempts() > 0
+        transitionTo(options.reconnectEnabled()
             ? ZLinkStreamConnectionState.RECONNECTING
             : ZLinkStreamConnectionState.DISCONNECTED);
         notifyDisconnected();
@@ -483,7 +483,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                     result.complete(null);
                     return;
                 }
-                if (attempt >= options.maxReconnectAttempts()) {
+                if (reconnectAttemptsExhausted(attempt)) {
                     transitionTo(ZLinkStreamConnectionState.DISCONNECTED);
                     result.completeExceptionally(ex);
                     return;
@@ -600,8 +600,11 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (options.reconnectBackoffFactor() < 1.0) {
             throw new IllegalArgumentException("reconnectBackoffFactor must be at least 1.0");
         }
-        if (options.maxReconnectAttempts() < 0) {
-            throw new IllegalArgumentException("maxReconnectAttempts must be >= 0");
+        if (options.maxReconnectAttempts() < ZLinkStreamConnectorOptions.UNLIMITED_RECONNECT_ATTEMPTS) {
+            throw new IllegalArgumentException("maxReconnectAttempts must be unlimited or positive");
+        }
+        if (options.reconnectEnabled() && options.maxReconnectAttempts() == 0) {
+            throw new IllegalArgumentException("maxReconnectAttempts must be unlimited or positive");
         }
         if (options.maxSendPayloadSize() <= 0) {
             throw new IllegalArgumentException("maxSendPayloadSize must be positive");
@@ -624,6 +627,12 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (value.isZero() || value.isNegative()) {
             throw new IllegalArgumentException(name + " must be positive");
         }
+    }
+
+    private boolean reconnectAttemptsExhausted(int attempt) {
+        int maxAttempts = options.maxReconnectAttempts();
+        return maxAttempts != ZLinkStreamConnectorOptions.UNLIMITED_RECONNECT_ATTEMPTS
+            && attempt >= maxAttempts;
     }
 
     static int resolvePort(java.net.URI endpoint) {

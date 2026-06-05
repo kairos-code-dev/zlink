@@ -245,7 +245,7 @@ final class PerfMultiSpotSendSend {
                         hasWaitingReply = true;
                         continue;
                     }
-                    PerfUtil.resetAndWritePayload(payloads[i], msgSize,
+                    payloads[i] = PerfUtil.resetAndWritePayload(payloads[i], msgSize,
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     waitingReply[i] = true;
                     if (trySendToServer(spots.get(i), payloads[i],

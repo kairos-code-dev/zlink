@@ -7,11 +7,12 @@ use crate::ffi;
 use crate::message::RoutingId;
 use crate::monitor_contracts::{
     MonitorEvent, MonitorEventType, MonitorSourceKind, MonitorStatus, Monitorable, SocketMonitor,
-    SocketMonitorEventMask, SocketMonitorRuntime,
+    SocketMonitorEventMask,
 };
 use crate::native_errors::{
     check_close_rc, check_config_rc, check_handler_rc, check_recv_rc, last_errno,
 };
+use crate::runtime_bridge::SocketMonitorRuntime;
 
 // ---------------------------------------------------------------------------
 // MonitorEvent – typed socket monitor event

@@ -151,15 +151,18 @@ final class PerfRouterRouter {
 
             Thread traffic = new Thread(() -> {
                 try {
-                    try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                    Message active = PerfUtil.payloadTemplate(config.size());
+                    try {
                         while (System.nanoTime() < activeEnd) {
-                            PerfUtil.resetAndWritePayload(active, config.size(),
+                            active = PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                             while (System.nanoTime() < activeEnd
                                 && !trySendBlocking(sender, targetRoute, active)) {
                                 Thread.onSpinWait();
                             }
                         }
+                    } finally {
+                        active.close();
                     }
                     // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with a
                     // wire-level stop token routed via the handshaken target

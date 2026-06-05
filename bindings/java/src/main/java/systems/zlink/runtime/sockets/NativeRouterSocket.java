@@ -56,7 +56,7 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
         }
         Received fresh = InternalAccess.routerRecv(routedRequests, flags);
         if (fresh == null) return false;
-        result.adoptFrom(fresh);
+        ContractAccess.receivedAdoptFrom(result, fresh);
         attachSendRouter(result);
         return true;
     }

@@ -626,7 +626,7 @@ public final class NativeSpot implements Spot {
         Received fresh = routedSupport.recvRouted(flags);
         if (fresh == null)
             return false;
-        result.adoptFrom(fresh);
+        ContractAccess.receivedAdoptFrom(result, fresh);
         return true;
     }
 

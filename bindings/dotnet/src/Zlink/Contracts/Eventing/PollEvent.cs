@@ -5,17 +5,8 @@ namespace Systems.Zlink;
 /// <summary>
 /// One ready source reported by an <see cref="IPoller"/> wait.
 /// </summary>
-public readonly struct PollEvent
+public readonly partial struct PollEvent
 {
-    internal PollEvent(PollSourceKind sourceKind, nuint slot,
-        PollEventFlags revents, int fd)
-    {
-        SourceKind = sourceKind;
-        Slot = slot;
-        Revents = revents;
-        Fd = fd;
-    }
-
     /// <summary>
     /// Gets whether the ready source is a socket, file descriptor, or timer.
     /// </summary>

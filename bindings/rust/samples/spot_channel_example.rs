@@ -16,7 +16,7 @@ fn unique_tcp() -> String {
 }
 
 fn main() {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     let ctx = Context::new().unwrap();
     let room_node = SpotNode::new(&ctx).unwrap();
     let room = room_node.create_spot().unwrap();
@@ -28,7 +28,9 @@ fn main() {
     api_router.bind(&endpoint).unwrap();
     room_dealer.connect(&endpoint).unwrap();
     // "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.
-    room_node.attach_channel_dealer_manual(channel, &room_dealer).unwrap();
+    room_node
+        .attach_channel_dealer_manual(channel, &room_dealer)
+        .unwrap();
 
     // API 서버(ROUTER)는 별도 스레드에서 요청을 받아 응답한다.
     let server = thread::spawn(move || {
@@ -58,5 +60,5 @@ fn main() {
     let reply = rx.recv_timeout(Duration::from_secs(6)).expect("no reply");
     server.join().unwrap();
     println!("[spot/channel] request \"get-profile\" -> reply \"{reply}\"");
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

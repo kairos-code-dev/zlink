@@ -19,6 +19,7 @@ import {
   SubmitResult,
   ZlinkError,
 } from '../../contracts/errors/errors';
+import { withRuntimeErrorMessage } from './error_state';
 
 export type NativeErrorCategory =
   | 'submit'
@@ -139,20 +140,20 @@ export function createError(
   const code = mapNativeErrno(category, errno);
   switch (category) {
     case 'submit':
-      return new SubmitError(code as SubmitResult, errno, message);
+      return withRuntimeErrorMessage(new SubmitError(code as SubmitResult, errno), message);
     case 'request':
-      return new RequestError(code as RequestResult, errno, message);
+      return withRuntimeErrorMessage(new RequestError(code as RequestResult, errno), message);
     case 'recv':
-      return new RecvError(code as RecvResult, errno, message);
+      return withRuntimeErrorMessage(new RecvError(code as RecvResult, errno), message);
     case 'handler':
-      return new HandlerError(code as HandlerResult, errno, message);
+      return withRuntimeErrorMessage(new HandlerError(code as HandlerResult, errno), message);
     case 'close':
-      return new CloseError(code as CloseResult, errno, message);
+      return withRuntimeErrorMessage(new CloseError(code as CloseResult, errno), message);
     case 'bind':
-      return new BindError(code as BindResult, errno, message);
+      return withRuntimeErrorMessage(new BindError(code as BindResult, errno), message);
     case 'connect':
-      return new ConnectError(code as ConnectResult, errno, message);
+      return withRuntimeErrorMessage(new ConnectError(code as ConnectResult, errno), message);
     case 'config':
-      return new ConfigError(code as ConfigResult, errno, message);
+      return withRuntimeErrorMessage(new ConfigError(code as ConfigResult, errno), message);
   }
 }

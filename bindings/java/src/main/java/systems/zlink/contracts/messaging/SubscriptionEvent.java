@@ -3,6 +3,7 @@
 package systems.zlink.contracts.messaging;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.internal.ContractAccess;
 import java.util.Optional;
 
 /** Canonical XPUB subscription event snapshot. */
@@ -10,6 +11,16 @@ public final class SubscriptionEvent {
     private RoutingId routingId;
     private String topic;
     private boolean subscribed;
+
+    static {
+        ContractAccess.register(new ContractAccess.SubscriptionEventAccess() {
+            @Override
+            public void adoptFrom(SubscriptionEvent target,
+                                  SubscriptionEvent source) {
+                target.adoptFrom(source);
+            }
+        });
+    }
 
     public SubscriptionEvent() {
         this(Optional.empty(), "", false);
@@ -22,7 +33,7 @@ public final class SubscriptionEvent {
         this.subscribed = subscribed;
     }
 
-    public void adoptFrom(SubscriptionEvent source) {
+    void adoptFrom(SubscriptionEvent source) {
         this.routingId = source.routingId;
         this.topic = source.topic;
         this.subscribed = source.subscribed;

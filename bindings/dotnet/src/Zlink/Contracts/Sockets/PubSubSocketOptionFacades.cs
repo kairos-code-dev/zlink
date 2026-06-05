@@ -7,13 +7,8 @@ namespace Systems.Zlink;
 /// <summary>
 /// Typed facade over STREAM-specific socket options.
 /// </summary>
-public sealed class StreamSocketOptions : CommonSocketOptions
+public sealed partial class StreamSocketOptions : CommonSocketOptions
 {
-    internal StreamSocketOptions(ISocketOptionEndpoint socket)
-        : base(socket)
-    {
-    }
-
     /// <summary>
     /// Gets or sets whether peer connect and disconnect events are delivered to
     /// the application as messages.
@@ -28,13 +23,8 @@ public sealed class StreamSocketOptions : CommonSocketOptions
 /// <summary>
 /// Typed facade over PUB/XPUB-specific socket options.
 /// </summary>
-public sealed class PubSocketOptions : CommonSocketOptions
+public sealed partial class PubSocketOptions : CommonSocketOptions
 {
-    internal PubSocketOptions(ISocketOptionEndpoint socket)
-        : base(socket)
-    {
-    }
-
     /// <summary>
     /// Gets or sets whether every subscription message is delivered to the
     /// application, including duplicates, rather than only the first per topic.
@@ -126,13 +116,8 @@ public sealed class PubSocketOptions : CommonSocketOptions
 /// <summary>
 /// Typed facade over SUB-specific socket options.
 /// </summary>
-public sealed class SubSocketOptions : CommonSocketOptions
+public sealed partial class SubSocketOptions : CommonSocketOptions
 {
-    internal SubSocketOptions(ISocketOptionEndpoint socket)
-        : base(socket)
-    {
-    }
-
     /// <summary>
     /// Gets the number of active subscriptions on this socket.
     /// </summary>

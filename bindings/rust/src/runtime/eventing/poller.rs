@@ -7,10 +7,10 @@ use crate::error::{ConfigError, HandlerError, RecvError};
 use crate::ffi;
 use crate::native_errors::{check_config_rc, check_handler_rc, check_recv_rc, last_errno};
 use crate::poller_contracts::{
-    POLLCOMPLETION, PollEvent, PollItem, PollSourceKind, Pollable, Poller, PollerRuntime, Timer,
-    TimerFireHandler, TimerRuntime,
+    POLLCOMPLETION, PollEvent, PollItem, PollSourceKind, Pollable, Poller, Timer,
 };
 use crate::request_progress::{acquire_external_progress, release_external_progress};
+use crate::runtime_bridge::{PollerRuntime, TimerFireHandler, TimerRuntime};
 
 struct NativePoller {
     handle: *mut c_void,

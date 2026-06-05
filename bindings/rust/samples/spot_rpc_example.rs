@@ -29,17 +29,25 @@ fn wait_peer(node: &SpotNode) {
 }
 
 fn main() {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     let ctx = Context::new().unwrap();
     let server_node = SpotNode::new(&ctx).unwrap();
     let client_node = SpotNode::new(&ctx).unwrap();
     let server = server_node.create_spot().unwrap();
     let client = client_node.create_spot().unwrap();
 
-    server_node.set_routing_id(&RoutingId::from(b"rpc-server-node")).unwrap();
-    client_node.set_routing_id(&RoutingId::from(b"rpc-client-node")).unwrap();
-    server.set_routing_id(&RoutingId::from(b"rpc-server-spot")).unwrap();
-    client.set_routing_id(&RoutingId::from(b"rpc-client-spot")).unwrap();
+    server_node
+        .set_routing_id(&RoutingId::from(b"rpc-server-node"))
+        .unwrap();
+    client_node
+        .set_routing_id(&RoutingId::from(b"rpc-client-node"))
+        .unwrap();
+    server
+        .set_routing_id(&RoutingId::from(b"rpc-server-spot"))
+        .unwrap();
+    client
+        .set_routing_id(&RoutingId::from(b"rpc-client-spot"))
+        .unwrap();
     // 라우티드 평면은 ROUTER bind가 필요하다 (pub bind보다 먼저).
     server_node.set_router_bind(&unique_tcp()).unwrap();
     client_node.set_router_bind(&unique_tcp()).unwrap();
@@ -56,7 +64,10 @@ fn main() {
     // 클라이언트 Spot이 서버 Spot으로 요청한다.
     let (reply_tx, reply_rx) = mpsc::channel();
     client
-        .request_to_spot(RoutingId::from(b"rpc-server-node"), RoutingId::from(b"rpc-server-spot"))
+        .request_to_spot(
+            RoutingId::from(b"rpc-server-node"),
+            RoutingId::from(b"rpc-server-spot"),
+        )
         .message(Message::try_from(b"ping").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .timeout(Duration::from_secs(3))
@@ -74,7 +85,11 @@ fn main() {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if let Ok(true) = server.recv_routed(&mut received, RecvFlags::DONT_WAIT) {
-            received.reply().message(Message::try_from(b"pong").unwrap()).submit().unwrap();
+            received
+                .reply()
+                .message(Message::try_from(b"pong").unwrap())
+                .submit()
+                .unwrap();
         }
         if let Ok(reply) = reply_rx.try_recv() {
             println!("[spot/rpc] request \"ping\" -> reply \"{reply}\"");
@@ -86,5 +101,5 @@ fn main() {
         sleep(Duration::from_millis(10));
     }
     panic!("spot rpc: no reply");
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

@@ -174,6 +174,11 @@ public final class Received implements AutoCloseable {
                                           Boolean> sendSender) {
                 received.setSendSender(sendSender);
             }
+
+            @Override
+            public void adoptFrom(Received target, Received source) {
+                target.adoptFrom(source);
+            }
         });
     }
 
@@ -252,7 +257,7 @@ public final class Received implements AutoCloseable {
      * this call, {@code source} is left in an empty (already-detached) state
      * and should not be reused.
      */
-    public void adoptFrom(Received source) {
+    void adoptFrom(Received source) {
         Objects.requireNonNull(source, "source");
         if (source == this) return;
 

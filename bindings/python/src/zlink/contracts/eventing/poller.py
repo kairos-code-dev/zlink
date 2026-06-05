@@ -5,16 +5,6 @@ from typing import Protocol, runtime_checkable
 
 from .codes import PollSourceKind
 
-_poller_factory = None
-_poll_events_factory = None
-
-
-def _register_poller_factories(*, poller_factory, poll_events_factory):
-    global _poller_factory
-    global _poll_events_factory
-    _poller_factory = poller_factory
-    _poll_events_factory = poll_events_factory
-
 
 @dataclass(frozen=True)
 class PollEvent:
@@ -31,14 +21,6 @@ class PollEvent:
     slot: int
     revents: int
     fd: int = 0
-
-
-def create_poll_events(capacity):
-    """Create a reusable result buffer holding up to ``capacity`` poll
-    events."""
-    if _poll_events_factory is None:
-        raise RuntimeError("zlink poll events runtime is not registered")
-    return _poll_events_factory(capacity)
 
 
 @runtime_checkable
@@ -78,13 +60,6 @@ class PollEvents(Protocol):
     def event(self, index):
         """Return the result at ``index`` as a :class:`PollEvent`."""
         ...
-
-
-def create_poller():
-    """Create an empty poller. The caller owns it."""
-    if _poller_factory is None:
-        raise RuntimeError("zlink poller runtime is not registered")
-    return _poller_factory()
 
 
 @runtime_checkable

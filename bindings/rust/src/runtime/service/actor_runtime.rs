@@ -1,5 +1,5 @@
 use super::*;
-use crate::actor_resource::ActorPublicRuntime;
+use crate::runtime_bridge::ActorPublicRuntime;
 
 impl ActorPublicRuntime for Actor {
     fn actor_ref(&self) -> Result<ActorRef, ConfigError> {

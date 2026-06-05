@@ -233,7 +233,7 @@ final class PerfMultiRouterRouter {
                 for (int i = 0; i < n; i++) {
                     int idx = (startIndex + i) % n;
                     if (waitingReply[idx] || waitingWritable[idx]) continue;
-                    PerfUtil.resetAndWritePayload(payloads[idx], msgSize,
+                    payloads[idx] = PerfUtil.resetAndWritePayload(payloads[idx], msgSize,
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     if (trySendPayload(clients.get(idx), payloads[idx])) {
                         waitingReply[idx] = true;

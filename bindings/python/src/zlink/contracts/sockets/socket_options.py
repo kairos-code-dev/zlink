@@ -2,42 +2,6 @@
 
 from typing import Protocol, runtime_checkable
 
-_common_socket_options_factory = None
-_dealer_socket_options_factory = None
-_stream_socket_options_factory = None
-_sub_socket_options_factory = None
-_pub_socket_options_factory = None
-_router_socket_options_factory = None
-
-
-def _register_socket_option_factories(
-    *,
-    common_socket_options_factory,
-    dealer_socket_options_factory,
-    stream_socket_options_factory,
-    sub_socket_options_factory,
-    pub_socket_options_factory,
-    router_socket_options_factory,
-):
-    global _common_socket_options_factory
-    global _dealer_socket_options_factory
-    global _stream_socket_options_factory
-    global _sub_socket_options_factory
-    global _pub_socket_options_factory
-    global _router_socket_options_factory
-    _common_socket_options_factory = common_socket_options_factory
-    _dealer_socket_options_factory = dealer_socket_options_factory
-    _stream_socket_options_factory = stream_socket_options_factory
-    _sub_socket_options_factory = sub_socket_options_factory
-    _pub_socket_options_factory = pub_socket_options_factory
-    _router_socket_options_factory = router_socket_options_factory
-
-
-def _require(factory, name):
-    if factory is None:
-        raise RuntimeError(f"zlink {name} runtime is not registered")
-    return factory
-
 
 def _stub_get(self):
     ...
@@ -49,36 +13,6 @@ def _stub_set(self, value):
 
 def _contract_property():
     return property(_stub_get, _stub_set)
-
-
-def create_common_socket_options(socket):
-    """Create the common typed options facade for ``socket``."""
-    return _require(_common_socket_options_factory, "common socket options")(socket)
-
-
-def create_dealer_socket_options(socket):
-    """Create the DEALER-specific typed options facade for ``socket``."""
-    return _require(_dealer_socket_options_factory, "dealer socket options")(socket)
-
-
-def create_stream_socket_options(socket):
-    """Create the STREAM-specific typed options facade for ``socket``."""
-    return _require(_stream_socket_options_factory, "stream socket options")(socket)
-
-
-def create_sub_socket_options(socket):
-    """Create the SUB-specific typed options facade for ``socket``."""
-    return _require(_sub_socket_options_factory, "sub socket options")(socket)
-
-
-def create_pub_socket_options(socket):
-    """Create the PUB-specific typed options facade for ``socket``."""
-    return _require(_pub_socket_options_factory, "pub socket options")(socket)
-
-
-def create_router_socket_options(socket):
-    """Create the ROUTER-specific typed options facade for ``socket``."""
-    return _require(_router_socket_options_factory, "router socket options")(socket)
 
 
 @runtime_checkable

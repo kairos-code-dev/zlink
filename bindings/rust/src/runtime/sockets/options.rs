@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use crate::error::ConfigError;
 use crate::ffi;
-use crate::flags::{
-    CommonSocketOptionRuntime, DealerSocketOptionRuntime, PubSocketOptionRuntime,
-    RidDuplicatePolicy, RouterSocketOptionRuntime, StreamSocketOptionRuntime,
-    SubSocketOptionRuntime, SubmitRetryMode,
-};
+use crate::flags::{RidDuplicatePolicy, SubmitRetryMode};
 use crate::message::{Message, RoutingId};
+use crate::runtime_bridge::{
+    CommonSocketOptionRuntime, DealerSocketOptionRuntime, PubSocketOptionRuntime,
+    RouterSocketOptionRuntime, StreamSocketOptionRuntime, SubSocketOptionRuntime,
+};
 use crate::socket::SocketInner;
 use crate::socket_contracts::DealerSocket;
 

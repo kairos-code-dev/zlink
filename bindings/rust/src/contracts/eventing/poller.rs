@@ -2,6 +2,7 @@ use std::any::Any;
 use std::os::fd::RawFd;
 
 use crate::error::{ConfigError, HandlerError, RecvError};
+use crate::runtime_bridge::{PollerStorage, TimerStorage};
 
 /// Poll event flag: the source is readable (a receive will not block).
 pub const POLLIN: i16 = 1;
@@ -14,34 +15,6 @@ pub const POLLCOMPLETION: i16 = 32;
 pub trait Pollable: Any {
     /// Returns this source as `&dyn Any` for downcasting.
     fn as_any(&self) -> &dyn Any;
-}
-
-pub(crate) type TimerFireHandler = Box<dyn Fn(&Timer, u64) + Send>;
-
-pub(crate) trait PollerRuntime: Send {
-    fn add_socket(
-        &self,
-        socket: &dyn Pollable,
-        events: i16,
-        slot: usize,
-    ) -> Result<(), ConfigError>;
-    fn modify_socket(&self, socket: &dyn Pollable, events: i16) -> Result<(), ConfigError>;
-    fn remove_socket(&self, socket: &dyn Pollable) -> Result<(), ConfigError>;
-    fn add_fd(&self, fd: RawFd, events: i16, slot: usize) -> Result<(), ConfigError>;
-    fn modify_fd(&self, fd: RawFd, events: i16) -> Result<(), ConfigError>;
-    fn remove_fd(&self, fd: RawFd) -> Result<(), ConfigError>;
-    fn add_timer(&self, timer: &Timer, slot: usize) -> Result<(), ConfigError>;
-    fn remove_timer(&self, timer: &Timer) -> Result<(), ConfigError>;
-    fn wait(&self, events: &mut [PollEvent], timeout_ms: i64) -> Result<usize, RecvError>;
-    fn size(&self) -> i32;
-}
-
-pub(crate) trait TimerRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
-    fn start(&self, interval_ns: u64, repeat_count: u64) -> Result<(), ConfigError>;
-    fn stop(&self) -> Result<(), ConfigError>;
-    fn recv(&self) -> Result<Option<u64>, RecvError>;
-    fn on_fire(&mut self, timer_ptr: usize, handler: TimerFireHandler) -> Result<(), HandlerError>;
 }
 
 /// Source kind reported by the poller when an event fires.
@@ -105,7 +78,7 @@ pub struct PollItem {
 
 /// Poller for monitoring socket readiness, file descriptors, and timers.
 pub struct Poller {
-    pub(crate) inner: Box<dyn PollerRuntime>,
+    pub(crate) inner: Box<dyn PollerStorage>,
 }
 
 impl Poller {
@@ -177,7 +150,7 @@ impl Poller {
 
 /// A timer that fires on an interval and can be polled or awaited.
 pub struct Timer {
-    pub(crate) inner: Box<dyn TimerRuntime>,
+    pub(crate) inner: Box<dyn TimerStorage>,
 }
 
 impl Timer {

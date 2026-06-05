@@ -26,11 +26,8 @@ export class ZlinkError extends Error {
   readonly code: number;
   readonly internalErrno: number;
 
-  constructor(code: number, internalErrno?: number);
-  /** @internal */
-  constructor(code: number, internalErrno: number | undefined, message: string | undefined);
-  constructor(code: number, internalErrno = 0, message?: string) {
-    super(message ?? `zlink error ${code}`);
+  constructor(code: number, internalErrno = 0) {
+    super(`zlink error ${code}`);
     this.name = 'ZlinkError';
     this.code = code | 0;
     this.internalErrno = internalErrno | 0;
@@ -41,11 +38,8 @@ export class ZlinkError extends Error {
 export class SubmitError extends ZlinkError {
   readonly result: SubmitResult;
 
-  constructor(result: SubmitResult, internalErrno?: number);
-  /** @internal */
-  constructor(result: SubmitResult, internalErrno: number | undefined, message: string | undefined);
-  constructor(result: SubmitResult, internalErrno = 0, message?: string) {
-    super(result, internalErrno, message);
+  constructor(result: SubmitResult, internalErrno = 0) {
+    super(result, internalErrno);
     this.name = 'SubmitError';
     this.result = result;
   }
@@ -55,11 +49,8 @@ export class SubmitError extends ZlinkError {
 export class RequestError extends ZlinkError {
   readonly result: RequestResult;
 
-  constructor(result: RequestResult, internalErrno?: number);
-  /** @internal */
-  constructor(result: RequestResult, internalErrno: number | undefined, message: string | undefined);
-  constructor(result: RequestResult, internalErrno = 0, message?: string) {
-    super(result, internalErrno, message);
+  constructor(result: RequestResult, internalErrno = 0) {
+    super(result, internalErrno);
     this.name = 'RequestError';
     this.result = result;
   }
@@ -69,11 +60,8 @@ export class RequestError extends ZlinkError {
 export class RecvError extends ZlinkError {
   readonly result: RecvResult;
 
-  constructor(result: RecvResult, internalErrno?: number);
-  /** @internal */
-  constructor(result: RecvResult, internalErrno: number | undefined, message: string | undefined);
-  constructor(result: RecvResult, internalErrno = 0, message?: string) {
-    super(result, internalErrno, message);
+  constructor(result: RecvResult, internalErrno = 0) {
+    super(result, internalErrno);
     this.name = 'RecvError';
     this.result = result;
   }
@@ -83,11 +71,8 @@ export class RecvError extends ZlinkError {
 export class HandlerError extends ZlinkError {
   readonly result: HandlerResult;
 
-  constructor(result: HandlerResult, internalErrno?: number);
-  /** @internal */
-  constructor(result: HandlerResult, internalErrno: number | undefined, message: string | undefined);
-  constructor(result: HandlerResult, internalErrno = 0, message?: string) {
-    super(result, internalErrno, message);
+  constructor(result: HandlerResult, internalErrno = 0) {
+    super(result, internalErrno);
     this.name = 'HandlerError';
     this.result = result;
   }
@@ -97,11 +82,8 @@ export class HandlerError extends ZlinkError {
 export class CloseError extends ZlinkError {
   readonly result: CloseResult;
 
-  constructor(result: CloseResult, internalErrno?: number);
-  /** @internal */
-  constructor(result: CloseResult, internalErrno: number | undefined, message: string | undefined);
-  constructor(result: CloseResult, internalErrno = 0, message?: string) {
-    super(result, internalErrno, message);
+  constructor(result: CloseResult, internalErrno = 0) {
+    super(result, internalErrno);
     this.name = 'CloseError';
     this.result = result;
   }
@@ -111,11 +93,8 @@ export class CloseError extends ZlinkError {
 export class BindError extends ZlinkError {
   readonly result: BindResult;
 
-  constructor(result: BindResult, internalErrno?: number);
-  /** @internal */
-  constructor(result: BindResult, internalErrno: number | undefined, message: string | undefined);
-  constructor(result: BindResult, internalErrno = 0, message?: string) {
-    super(result, internalErrno, message);
+  constructor(result: BindResult, internalErrno = 0) {
+    super(result, internalErrno);
     this.name = 'BindError';
     this.result = result;
   }
@@ -125,11 +104,8 @@ export class BindError extends ZlinkError {
 export class ConnectError extends ZlinkError {
   readonly result: ConnectResult;
 
-  constructor(result: ConnectResult, internalErrno?: number);
-  /** @internal */
-  constructor(result: ConnectResult, internalErrno: number | undefined, message: string | undefined);
-  constructor(result: ConnectResult, internalErrno = 0, message?: string) {
-    super(result, internalErrno, message);
+  constructor(result: ConnectResult, internalErrno = 0) {
+    super(result, internalErrno);
     this.name = 'ConnectError';
     this.result = result;
   }
@@ -139,11 +115,8 @@ export class ConnectError extends ZlinkError {
 export class ConfigError extends ZlinkError {
   readonly result: ConfigResult;
 
-  constructor(result: ConfigResult, internalErrno?: number);
-  /** @internal */
-  constructor(result: ConfigResult, internalErrno: number | undefined, message: string | undefined);
-  constructor(result: ConfigResult, internalErrno = 0, message?: string) {
-    super(result, internalErrno, message);
+  constructor(result: ConfigResult, internalErrno = 0) {
+    super(result, internalErrno);
     this.name = 'ConfigError';
     this.result = result;
   }

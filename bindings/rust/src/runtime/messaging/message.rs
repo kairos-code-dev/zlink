@@ -5,8 +5,9 @@ use std::slice;
 
 use crate::error::ConfigError;
 use crate::ffi;
-use crate::message::{Message, MessageRuntime};
+use crate::message::Message;
 use crate::native_errors::{check_config_rc, config_validation_error};
+use crate::runtime_bridge::MessageRuntime;
 
 struct NativeMessage {
     inner: ffi::zlink_msg_t,

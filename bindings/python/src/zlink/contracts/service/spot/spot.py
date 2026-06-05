@@ -7,33 +7,6 @@ from .actor import Actor
 from .spot_models import ActorRef
 from .spot_node import SpotNode
 
-_spot_node_factory = None
-_spot_factory = None
-
-
-def _register_spot_factories(*, spot_node_factory, spot_factory):
-    global _spot_node_factory
-    global _spot_factory
-    _spot_node_factory = spot_node_factory
-    _spot_factory = spot_factory
-
-
-def _require(factory, name):
-    if factory is None:
-        raise RuntimeError(f"zlink {name} runtime is not registered")
-    return factory
-
-
-def create_spot_node(ctx, mode=None):
-    """Create a spot node on ``ctx`` in ``mode`` (or the default). The caller
-    owns it."""
-    return _require(_spot_node_factory, "spot node")(ctx, mode)
-
-
-def create_spot(node):
-    """Create a spot on ``node``. The caller owns it."""
-    return _require(_spot_factory, "spot")(node)
-
 
 @runtime_checkable
 class _ClosableContract(Protocol):

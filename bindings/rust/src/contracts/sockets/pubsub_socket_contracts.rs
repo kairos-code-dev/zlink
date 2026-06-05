@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::socket_contracts::SocketRuntime;
+use crate::runtime_bridge::SocketStorage;
 use crate::{
     BindError, CommonSocketOptions, ConfigError, ConnectError, Discovery, HandlerError,
     PubSocketOptions, RecvError, RecvFlags, SubSocketOptions, SubscriptionEvent, TopicMessage,
@@ -11,7 +11,7 @@ macro_rules! define_pubsub_socket {
     ($name:ident, $doc:literal) => {
         #[doc = $doc]
         pub struct $name {
-            pub(crate) inner: Box<dyn SocketRuntime>,
+            pub(crate) inner: Box<dyn SocketStorage>,
         }
 
         impl std::panic::UnwindSafe for $name {}

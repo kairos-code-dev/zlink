@@ -7,16 +7,7 @@ export const METADATA_KEY_USER_MIN = 0x0100;
 /** Maximum metadata value size in bytes. */
 export const METADATA_VALUE_MAX = 65535;
 
-interface MessageSnapshot {
-  data: Buffer;
-  refCount?: number;
-  properties?: Readonly<Record<string, string>>;
-  metadata?: Readonly<Map<number, Buffer>>;
-}
-
 const EMPTY_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({});
-const EMPTY_METADATA: Readonly<Map<number, Buffer>> = Object.freeze(new Map<number, Buffer>());
-
 function normalizeMessageProperties(
   properties?: Readonly<Record<string, string>>
 ): Readonly<Record<string, string>> {
@@ -43,7 +34,6 @@ export class Message {
   private _buffer!: Buffer;
   private _refCount!: number;
   private _properties!: Readonly<Record<string, string>>;
-  private _metadata!: Readonly<Map<number, Buffer>>;
 
   private constructor(data: BufferLike) {
     this.initialize(Buffer.from(normalizeBufferLike(data, 'data')));
@@ -53,13 +43,11 @@ export class Message {
   private initialize(
     buffer: Buffer,
     refCount = 1,
-    properties?: Readonly<Record<string, string>>,
-    metadata?: Readonly<Map<number, Buffer>>
+    properties?: Readonly<Record<string, string>>
   ): void {
     this._buffer = buffer;
     this._refCount = refCount | 0;
     this._properties = normalizeMessageProperties(properties);
-    this._metadata = metadata ?? EMPTY_METADATA;
   }
 
   /**
@@ -78,29 +66,7 @@ export class Message {
     if (!Number.isSafeInteger(size) || size < 0) {
       throw new RangeError('size must be a non-negative safe integer');
     }
-    return Message.fromSnapshot({ data: Buffer.allocUnsafe(size) });
-  }
-
-  /** @internal */
-  static fromSnapshot(snapshot: MessageSnapshot): Message {
-    const message = Object.create(Message.prototype) as Message;
-    message.initialize(
-      snapshot.data,
-      snapshot.refCount ?? 1,
-      snapshot.properties,
-      snapshot.metadata
-    );
-    return message;
-  }
-
-  /** @internal */
-  toSnapshot(): MessageSnapshot {
-    return {
-      data: this._buffer,
-      refCount: this._refCount,
-      properties: this._properties,
-      metadata: this._metadata
-    };
+    return new Message(Buffer.allocUnsafe(size));
   }
 
   /** Return the payload as a Buffer backed by this message's storage. */

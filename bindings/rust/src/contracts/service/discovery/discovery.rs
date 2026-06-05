@@ -1,21 +1,15 @@
-use std::any::Any;
-
 use crate::actor_models::{ActorRoute, SpotRoute};
 use crate::core_context::Context;
 use crate::error::{CloseError, ConfigError, ConnectError};
 use crate::message::RoutingId;
 use crate::registry_models::MemberPeerEntry;
+use crate::runtime_bridge::DiscoveryStorage;
 use crate::spot_models::AutoConnectType;
-
-pub(crate) trait DiscoveryRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
 
 /// A discovery service that learns peer routes from a registry and resolves
 /// spots and actors for a fixed channel.
 pub struct Discovery {
-    pub(crate) inner: Box<dyn DiscoveryRuntime>,
+    pub(crate) inner: Box<dyn DiscoveryStorage>,
 }
 
 impl Discovery {

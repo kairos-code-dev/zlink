@@ -45,6 +45,149 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
         _knownSize = 0;
     }
 
+    private int GetSizeCore()
+    {
+        EnsureValid();
+        if (_managedPayload != null)
+            return _managedPayload.Length;
+        if (_knownSize >= 0)
+            return _knownSize;
+        return (int)NativeMethods.zlink_msg_size(ref _msg);
+    }
+
+    private int GetRefCountCore()
+    {
+        EnsureValid();
+        if (_managedPayload != null)
+            return 1;
+        return NativeMethods.zlink_msg_refcnt(ref _msg);
+    }
+
+    private unsafe void CopyPayloadToStorage(ReadOnlySpan<byte> data)
+    {
+        if (data.Length == 0)
+            return;
+        IntPtr dest = NativeMethods.zlink_msg_data(ref _msg);
+        if (dest == IntPtr.Zero)
+            throw new InvalidOperationException("Message data is null.");
+        data.CopyTo(new Span<byte>((void*)dest, data.Length));
+    }
+
+    private static Message AllocateCore(int size)
+    {
+        if (size < 0)
+            throw new ArgumentOutOfRangeException(nameof(size));
+        Message message = RentFromPool();
+        message.InitSize(size);
+        return message;
+    }
+
+    private unsafe Span<byte> AsSpanCore()
+    {
+        EnsureValid();
+        ManagedPayloadState? managed = _managedPayload;
+        if (managed != null)
+            return managed.Bytes.AsSpan(0, managed.Length);
+        int size = _knownSize >= 0
+            ? _knownSize
+            : (int)NativeMethods.zlink_msg_size(ref _msg);
+        if (size == 0)
+            return Span<byte>.Empty;
+        IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
+        if (data == IntPtr.Zero)
+            return Span<byte>.Empty;
+        return new Span<byte>((void*)data, size);
+    }
+
+    private unsafe ReadOnlySpan<byte> AsReadOnlySpanCore()
+    {
+        EnsureValid();
+        ManagedPayloadState? managed = _managedPayload;
+        if (managed != null)
+            return managed.Bytes.AsSpan(0, managed.Length);
+        int size = _knownSize >= 0
+            ? _knownSize
+            : (int)NativeMethods.zlink_msg_size(ref _msg);
+        if (size == 0)
+            return ReadOnlySpan<byte>.Empty;
+        IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
+        if (data == IntPtr.Zero)
+            return ReadOnlySpan<byte>.Empty;
+        return new ReadOnlySpan<byte>((void*)data, size);
+    }
+
+    private ReadOnlyMemory<byte> AsReadOnlyMemoryCore()
+    {
+        ManagedPayloadState? managed = _managedPayload;
+        if (managed != null)
+            return managed.Bytes.AsMemory(0, managed.Length);
+        return ToArray();
+    }
+
+    private unsafe bool TryCopyToCore(Span<byte> destination,
+        out int bytesWritten)
+    {
+        EnsureValid();
+        ManagedPayloadState? managed = _managedPayload;
+        if (managed != null)
+        {
+            if (managed.Length > destination.Length)
+            {
+                bytesWritten = 0;
+                return false;
+            }
+
+            managed.Bytes.AsSpan(0, managed.Length).CopyTo(destination);
+            bytesWritten = managed.Length;
+            return true;
+        }
+        nuint size = _knownSize >= 0
+            ? (nuint)_knownSize
+            : NativeMethods.zlink_msg_size(ref _msg);
+        if (size == 0)
+        {
+            bytesWritten = 0;
+            return true;
+        }
+        if (size > (nuint)destination.Length)
+        {
+            bytesWritten = 0;
+            return false;
+        }
+        IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
+        if (data == IntPtr.Zero)
+        {
+            bytesWritten = 0;
+            return true;
+        }
+        new ReadOnlySpan<byte>((void*)data, (int)size).CopyTo(destination);
+        bytesWritten = (int)size;
+        return true;
+    }
+
+    private string? GetPropertyCore(string property)
+    {
+        EnsureValid();
+        if (_managedPayload != null)
+            return null;
+        IntPtr ptr = NativeMethods.zlink_msg_gets(ref _msg, property);
+        if (ptr == IntPtr.Zero)
+            return null;
+        return Marshal.PtrToStringUTF8(ptr);
+    }
+
+    private void DisposeCore()
+    {
+        if (!_valid && _managedPayload == null)
+        {
+            TryReturnToPool();
+            return;
+        }
+
+        Close();
+        TryReturnToPool();
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void InitSize(int size)
     {

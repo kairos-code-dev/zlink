@@ -1,16 +1,10 @@
-use std::any::Any;
-
 use crate::error::{CloseError, ConfigError, ConnectError};
 use crate::registry_models::{RegistryTopologyEntry, RegistryTopologyFilter};
-
-pub(crate) trait RegistryQueryClientRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
+use crate::runtime_bridge::RegistryQueryClientStorage;
 
 /// Read-only registry query client for remote topology snapshots.
 pub struct RegistryQueryClient {
-    pub(crate) inner: Box<dyn RegistryQueryClientRuntime>,
+    pub(crate) inner: Box<dyn RegistryQueryClientStorage>,
 }
 
 impl RegistryQueryClient {

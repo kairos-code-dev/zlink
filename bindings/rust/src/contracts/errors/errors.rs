@@ -58,14 +58,54 @@ macro_rules! define_error_type {
     };
 }
 
-define_error_type!(SubmitError, SubmitResult, Submit, "Error from submitting a send or publish.");
-define_error_type!(RequestError, RequestResult, Request, "Error from a request, or a reply that reported failure.");
-define_error_type!(RecvError, RecvResult, Recv, "Error from receiving a message.");
-define_error_type!(HandlerError, HandlerResult, Handler, "Error from registering or running a callback handler.");
-define_error_type!(CloseError, CloseResult, Close, "Error from closing a socket or resource.");
-define_error_type!(BindError, BindResult, Bind, "Error from binding to an endpoint.");
-define_error_type!(ConnectError, ConnectResult, Connect, "Error from connecting to an endpoint.");
-define_error_type!(ConfigError, ConfigResult, Config, "Error from reading or applying a configuration option.");
+define_error_type!(
+    SubmitError,
+    SubmitResult,
+    Submit,
+    "Error from submitting a send or publish."
+);
+define_error_type!(
+    RequestError,
+    RequestResult,
+    Request,
+    "Error from a request, or a reply that reported failure."
+);
+define_error_type!(
+    RecvError,
+    RecvResult,
+    Recv,
+    "Error from receiving a message."
+);
+define_error_type!(
+    HandlerError,
+    HandlerResult,
+    Handler,
+    "Error from registering or running a callback handler."
+);
+define_error_type!(
+    CloseError,
+    CloseResult,
+    Close,
+    "Error from closing a socket or resource."
+);
+define_error_type!(
+    BindError,
+    BindResult,
+    Bind,
+    "Error from binding to an endpoint."
+);
+define_error_type!(
+    ConnectError,
+    ConnectResult,
+    Connect,
+    "Error from connecting to an endpoint."
+);
+define_error_type!(
+    ConfigError,
+    ConfigResult,
+    Config,
+    "Error from reading or applying a configuration option."
+);
 
 /// Any error raised by the binding, tagged by the operation that produced it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

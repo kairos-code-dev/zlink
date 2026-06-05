@@ -29,9 +29,9 @@ use crate::actor_models::{
     SpotActorLifecycleInfo, SpotNodeActorEntry, SpotRoute,
 };
 use crate::actor_received::ActorReceived;
-use crate::actor_resource::{Actor, ActorRuntime};
+use crate::actor_resource::Actor;
 use crate::core_context::AutoHwmProfile;
-use crate::discovery_resource::{Discovery, DiscoveryRuntime};
+use crate::discovery_resource::Discovery;
 use crate::domain::Received;
 use crate::error::{
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
@@ -51,8 +51,12 @@ use crate::registry_models::{
     MemberPeerEntry, RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryStatus,
     RegistryTopologyEntry, RegistryTopologyFilter,
 };
-use crate::registry_query_client_resource::{RegistryQueryClient, RegistryQueryClientRuntime};
-use crate::registry_resource::{Registry, RegistryRuntime};
+use crate::registry_query_client_resource::RegistryQueryClient;
+use crate::registry_resource::Registry;
+use crate::runtime_bridge::{
+    ActorRuntime, DiscoveryRuntime, RegistryQueryClientRuntime, RegistryRuntime, ReplyOpRuntime,
+    RequestOpRuntime, SendOpRuntime, SpotNodeRuntime, SpotRuntime,
+};
 use crate::request_progress::RequestProgressGuard;
 use crate::socket::{
     CallbackBox, prepare_send_parts, send_ready_trampoline, submit_part_sequence, take_parts,
@@ -65,13 +69,12 @@ use crate::spot_models::{
     SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SubjectKind, TopologySource,
     TopologyState,
 };
-use crate::spot_node_resource::{SpotNode, SpotNodeRuntime};
+use crate::spot_node_resource::SpotNode;
 use crate::spot_operations::{
     ActorBindOp, ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorJoinReplyOp, ActorLeaveOp,
-    ActorLookupOp, ActorUnbindOp, CallbackReady, Empty, Ready, ReplyOp, ReplyOpRuntime, RequestOp,
-    RequestOpRuntime, SendOp, SendOpRuntime,
+    ActorLookupOp, ActorUnbindOp, CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp,
 };
-use crate::spot_resource::{Spot, SpotRuntime};
+use crate::spot_resource::Spot;
 use crate::topic_message_contract::TopicMessage;
 use spot_receive::{
     borrowed_parts_to_messages, recv_spot_routed_parts, recv_spot_subscribed_parts,

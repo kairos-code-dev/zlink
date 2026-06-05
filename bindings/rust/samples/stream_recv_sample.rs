@@ -45,7 +45,7 @@ pub fn wait_stream_connected(monitor: &zlink::SocketMonitor) {
 }
 
 fn main() {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     let ctx = Context::new().expect("context creation failed");
 
     let stream = ctx.stream_socket().expect("stream socket failed");
@@ -83,5 +83,5 @@ fn main() {
         "[stream/recv] send: \"hello-stream\" → recv: \"{}\"",
         received.parts()[0].as_str().unwrap()
     );
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

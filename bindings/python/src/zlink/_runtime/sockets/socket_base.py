@@ -28,7 +28,7 @@ from ..buffers.payload_buffers import (
     _read_int32,
     _read_int64,
 )
-from ...contracts.sockets.socket_options import (
+from ..options.option_mapping import (
     create_common_socket_options,
     create_dealer_socket_options,
     create_stream_socket_options,

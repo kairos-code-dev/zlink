@@ -7,9 +7,10 @@ import {
   SubmitError,
   SubmitResult,
 } from '../../contracts/errors/errors';
+import { withRuntimeErrorMessage } from '../errors/error_state';
 
 export function submitErrorFromResult(result: SubmitResult, message: string): SubmitError {
-  return new SubmitError(result, 0, message);
+  return withRuntimeErrorMessage(new SubmitError(result, 0), message);
 }
 
 export function normalizeReplyFlags(flags: SendFlags = SendFlags.None): SendFlags {

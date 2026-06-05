@@ -2,6 +2,8 @@
 
 package systems.zlink.runtime.service.spot;
 
+import systems.zlink.internal.ContractAccess;
+
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -96,7 +98,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
         Optional<TopicMessage> fresh = receiveTopicMessage(false);
         if (fresh.isEmpty())
             return false;
-        result.adoptFrom(fresh.get());
+        ContractAccess.topicMessageAdoptFrom(result, fresh.get());
         return true;
     }
 
@@ -109,7 +111,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
           receiveSubscriptionEvent(flags == RecvFlags.DONT_WAIT);
         if (fresh.isEmpty())
             return false;
-        result.adoptFrom(fresh.get());
+        ContractAccess.subscriptionEventAdoptFrom(result, fresh.get());
         return true;
     }
 
@@ -144,7 +146,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                           assembleRemainder(scratch, firstPart);
                         if (fresh.isEmpty())
                             return false;
-                        result.adoptFrom(fresh.get());
+                        ContractAccess.topicMessageAdoptFrom(result, fresh.get());
                         return true;
                     }
                     RoutingId routingId = cachedSpotRoutingId(scratch,

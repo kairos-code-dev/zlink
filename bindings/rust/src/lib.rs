@@ -43,11 +43,11 @@ mod flags;
 #[path = "contracts/messaging/message.rs"]
 mod message;
 #[path = "runtime/messaging/message.rs"]
-mod message_runtime;
+mod message_factory;
 #[path = "contracts/sockets/message_socket_contracts.rs"]
 mod message_socket_contracts;
 #[path = "runtime/messaging/domain.rs"]
-mod messaging_domain_runtime;
+mod received_operations;
 #[path = "contracts/messaging/operation_contracts.rs"]
 mod messaging_operation_contracts;
 #[path = "contracts/messaging/subscription_event.rs"]
@@ -82,6 +82,8 @@ mod routed_socket_contracts;
 mod routing_id;
 #[path = "runtime/core/runtime.rs"]
 mod runtime;
+#[path = "runtime/contract_bridge.rs"]
+mod runtime_bridge;
 #[path = "runtime/service/service.rs"]
 mod service;
 #[path = "runtime/sockets/socket/mod.rs"]

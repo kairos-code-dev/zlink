@@ -292,7 +292,7 @@ final class NativeMessageRuntime {
 
     private static void resetBuilt(Message[] out, int built) {
         for (int i = 0; i < built; i++) {
-            if (out[i] != null && out[i].isReusable()) {
+            if (out[i] != null && ContractAccess.messageIsReusable(out[i])) {
                 try {
                     ContractAccess.messageResetReusable(out[i]);
                 } catch (RuntimeException ignored) {

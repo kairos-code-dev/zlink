@@ -4,7 +4,7 @@ import ctypes
 
 from ...contracts.core.routing_id import RoutingId
 from ...contracts.sockets.codes import RidDuplicatePolicy, RouterOption, SocketOption
-from ...contracts.messaging.message import Message, _message_from
+from ...contracts.messaging.message import Message
 from ..._native.ffi import lib
 from ..buffers.payload_buffers import (
     _bool_bytes,
@@ -13,6 +13,7 @@ from ..buffers.payload_buffers import (
     _read_int32,
     _read_int64,
 )
+from ..messaging.message_materializer import message_from
 
 
 class CommonSocketOptions:
@@ -319,12 +320,12 @@ class PubSocketOptions:
 
     @property
     def welcome_message(self):
-        return _message_from(self._socket._get_pub_option(self._WELCOME_MSG))
+        return message_from(self._socket._get_pub_option(self._WELCOME_MSG))
 
     @welcome_message.setter
     def welcome_message(self, message):
         if not isinstance(message, Message):
-            message = _message_from(message)
+            message = message_from(message)
         self._socket._set_pub_option(self._WELCOME_MSG, message.to_bytes())
 
     @property

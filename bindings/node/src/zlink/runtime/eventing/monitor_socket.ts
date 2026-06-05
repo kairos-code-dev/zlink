@@ -16,6 +16,7 @@ import {
   type MonitorStatusRaw,
 } from '../../contracts/eventing';
 import type { SocketMonitorHandler } from '../../contracts/service';
+import { createMonitorEvent } from './monitor_event_state';
 import { materializeMonitorStatus } from './monitor_status';
 
 export class MonitorSocket extends NativeHandle {
@@ -29,9 +30,9 @@ export class MonitorSocket extends NativeHandle {
     try {
       if ((flags | 0) & (RecvFlags.DontWait | 0)) {
         const raw = requireNative().monitorRecvNoWait(this._native) as MonitorEventValueRaw | null;
-        return raw ? MonitorEvent.create(raw) : null;
+        return raw ? createMonitorEvent(raw) : null;
       }
-      return MonitorEvent.create(requireNative().monitorRecv(this._native) as MonitorEventValueRaw);
+      return createMonitorEvent(requireNative().monitorRecv(this._native) as MonitorEventValueRaw);
     } catch (error) {
       throw recvNativeError(error, flags, 'monitor recv failed');
     }
@@ -40,7 +41,7 @@ export class MonitorSocket extends NativeHandle {
   onEvent(handler: SocketMonitorHandler): void {
     handlerCall('monitor handler registration failed', () => {
       requireNative().monitorHandler(this._native, (event: MonitorEventValueRaw) => {
-        handler(MonitorEvent.create(event));
+        handler(createMonitorEvent(event));
       });
     });
   }

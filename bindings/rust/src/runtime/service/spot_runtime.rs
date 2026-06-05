@@ -1,5 +1,5 @@
 use super::*;
-use crate::spot_resource::SpotPublicRuntime;
+use crate::runtime_bridge::SpotPublicRuntime;
 
 // ---------------------------------------------------------------------------
 // Spot

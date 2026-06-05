@@ -12,19 +12,13 @@ public sealed record SubscriptionEntry(string Filter, bool IsPattern);
 /// <summary>
 /// A subscriber's subscribe or unsubscribe as observed by an XPUB socket.
 /// </summary>
-public sealed class SubscriptionEvent
+public sealed partial class SubscriptionEvent
 {
     /// <summary>
     /// Creates an empty event for reuse across receives.
     /// </summary>
     public SubscriptionEvent()
     {
-    }
-
-    internal SubscriptionEvent(RoutingId? routingId, string topic,
-        bool subscribed)
-    {
-        Populate(routingId, topic, subscribed);
     }
 
     /// <summary>
@@ -42,10 +36,4 @@ public sealed class SubscriptionEvent
     /// </summary>
     public bool Subscribed { get; private set; }
 
-    internal void Populate(RoutingId? routingId, string topic, bool subscribed)
-    {
-        RoutingId = routingId;
-        Topic = topic ?? string.Empty;
-        Subscribed = subscribed;
-    }
 }

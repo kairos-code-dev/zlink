@@ -9,6 +9,10 @@ import { handlerCall, recvNativeError } from '../errors/native_errors';
 import { requireNative } from '../native/native';
 import { SubscriptionEvent } from '../../contracts';
 import { wrapRoutingId } from '../core/routing_id_conversion';
+import {
+  createSubscriptionEvent,
+  replaceSubscriptionEvent
+} from '../messaging/subscription_event_state';
 import { RecvFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
 import type { SocketSendReadyHandler } from '../../contracts/service';
 
@@ -31,12 +35,16 @@ export class XPubSocket extends PublisherSocket {
     if (!raw) {
       return hasResult ? false : null;
     }
-    const event = SubscriptionEvent.create(raw.topic, raw.subscribed, wrapRoutingId(raw.routingId ?? null));
     if (hasResult) {
-      resultOrFlags.adoptFrom(event);
+      replaceSubscriptionEvent(
+        resultOrFlags,
+        raw.topic,
+        raw.subscribed,
+        wrapRoutingId(raw.routingId ?? null)
+      );
       return true;
     }
-    return event;
+    return createSubscriptionEvent(raw.topic, raw.subscribed, wrapRoutingId(raw.routingId ?? null));
   }
   setSendReadyHandler(handler: SocketSendReadyHandler): void {
     handlerCall('send-ready handler registration failed', () => {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::socket_contracts::SocketRuntime;
+use crate::runtime_bridge::SocketStorage;
 use crate::{
     BindError, CommonSocketOptions, ConfigError, ConnectError, Discovery, HandlerError, Received,
     RecvError, RecvFlags, RouterSocketOptions,
@@ -10,7 +10,7 @@ use crate::{Empty, ReplyOp, RequestOp, RoutingId, SendOp};
 /// ROUTER socket: routes messages to peers addressed by routing id, the
 /// server side of asynchronous request/reply.
 pub struct RouterSocket {
-    pub(crate) inner: Box<dyn SocketRuntime>,
+    pub(crate) inner: Box<dyn SocketStorage>,
 }
 
 impl std::panic::UnwindSafe for RouterSocket {}

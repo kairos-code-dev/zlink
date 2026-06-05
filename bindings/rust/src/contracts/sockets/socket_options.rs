@@ -61,58 +61,13 @@ pub enum SubmitRetryMode {
     LocalFailure = 1,
 }
 
-pub(crate) trait CommonSocketOptionRuntime {
-    fn set_linger(&self, d: Duration) -> Result<(), ConfigError>;
-    fn linger(&self) -> Result<Duration, ConfigError>;
-    fn set_send_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;
-    fn send_high_water_mark(&self) -> Result<i32, ConfigError>;
-    fn set_receive_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;
-    fn receive_high_water_mark(&self) -> Result<i32, ConfigError>;
-    fn set_send_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn send_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_receive_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn receive_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_immediate(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn immediate(&self) -> Result<bool, ConfigError>;
-    fn set_rid_duplicate_policy(&self, value: RidDuplicatePolicy) -> Result<(), ConfigError>;
-    fn rid_duplicate_policy(&self) -> Result<RidDuplicatePolicy, ConfigError>;
-    fn set_connect_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn connect_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_ipv6(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn ipv6(&self) -> Result<bool, ConfigError>;
-    fn set_tcp_no_delay(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn tcp_no_delay(&self) -> Result<bool, ConfigError>;
-    fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn tcp_keepalive(&self) -> Result<bool, ConfigError>;
-    fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError>;
-    fn heartbeat_interval(&self) -> Result<Duration, ConfigError>;
-    fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError>;
-    fn heartbeat_ttl(&self) -> Result<Duration, ConfigError>;
-    fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn heartbeat_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_max_message_size(&self, bytes: i64) -> Result<(), ConfigError>;
-    fn max_message_size(&self) -> Result<i64, ConfigError>;
-    fn set_backlog(&self, value: i32) -> Result<(), ConfigError>;
-    fn backlog(&self) -> Result<i32, ConfigError>;
-    fn set_reconnect_interval(&self, d: Duration) -> Result<(), ConfigError>;
-    fn reconnect_interval(&self) -> Result<Duration, ConfigError>;
-    fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ConfigError>;
-    fn reconnect_interval_max(&self) -> Result<Duration, ConfigError>;
-    fn set_submit_retry_mode(&self, value: SubmitRetryMode) -> Result<(), ConfigError>;
-    fn submit_retry_mode(&self) -> Result<SubmitRetryMode, ConfigError>;
-    fn set_submit_retry_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn submit_retry_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_submit_retry_attempts(&self, value: i32) -> Result<(), ConfigError>;
-    fn submit_retry_attempts(&self) -> Result<i32, ConfigError>;
-}
-
 /// Typed facade over the socket options shared by every socket type.
 pub struct CommonSocketOptions<'a> {
-    inner: &'a dyn CommonSocketOptionRuntime,
+    inner: &'a dyn CommonSocketOptionEndpoint,
 }
 
 impl<'a> CommonSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn CommonSocketOptionRuntime) -> Self {
+    pub(crate) fn new(inner: &'a dyn CommonSocketOptionEndpoint) -> Self {
         Self { inner }
     }
 
@@ -297,23 +252,13 @@ impl<'a> CommonSocketOptions<'a> {
     }
 }
 
-pub(crate) trait RouterSocketOptionRuntime {
-    fn set_mandatory(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn set_probe(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn set_connect_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError>;
-    fn weight(&self) -> Result<u32, ConfigError>;
-    fn set_weight(&self, value: u32) -> Result<(), ConfigError>;
-    fn request_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError>;
-}
-
 /// Typed facade over ROUTER-specific socket options.
 pub struct RouterSocketOptions<'a> {
-    inner: &'a dyn RouterSocketOptionRuntime,
+    inner: &'a dyn RouterSocketOptionEndpoint,
 }
 
 impl<'a> RouterSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn RouterSocketOptionRuntime) -> Self {
+    pub(crate) fn new(inner: &'a dyn RouterSocketOptionEndpoint) -> Self {
         Self { inner }
     }
     /// Sets whether sending to an unknown route raises an error instead of
@@ -351,20 +296,13 @@ impl<'a> RouterSocketOptions<'a> {
     }
 }
 
-pub(crate) trait DealerSocketOptionRuntime {
-    fn set_probe(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn weight(&self) -> Result<u32, ConfigError>;
-    fn set_weight(&self, value: u32) -> Result<(), ConfigError>;
-    fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError>;
-}
-
 /// Typed facade over DEALER-specific socket options.
 pub struct DealerSocketOptions<'a> {
-    inner: &'a dyn DealerSocketOptionRuntime,
+    inner: &'a dyn DealerSocketOptionEndpoint,
 }
 
 impl<'a> DealerSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn DealerSocketOptionRuntime) -> Self {
+    pub(crate) fn new(inner: &'a dyn DealerSocketOptionEndpoint) -> Self {
         Self { inner }
     }
     /// Sets whether to send an empty probe message on connect so the peer
@@ -388,18 +326,13 @@ impl<'a> DealerSocketOptions<'a> {
     }
 }
 
-pub(crate) trait StreamSocketOptionRuntime {
-    fn set_notify(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn notify(&self) -> Result<bool, ConfigError>;
-}
-
 /// Typed facade over STREAM-specific socket options.
 pub struct StreamSocketOptions<'a> {
-    inner: &'a dyn StreamSocketOptionRuntime,
+    inner: &'a dyn StreamSocketOptionEndpoint,
 }
 
 impl<'a> StreamSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn StreamSocketOptionRuntime) -> Self {
+    pub(crate) fn new(inner: &'a dyn StreamSocketOptionEndpoint) -> Self {
         Self { inner }
     }
     /// Sets whether peer connect and disconnect events are delivered to the
@@ -413,27 +346,13 @@ impl<'a> StreamSocketOptions<'a> {
     }
 }
 
-pub(crate) trait PubSocketOptionRuntime {
-    fn set_verbose(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn set_verboser(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn set_no_drop(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn set_manual(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn manual_last_value(&self) -> Result<bool, ConfigError>;
-    fn set_manual_last_value(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn welcome_message(&self) -> Result<Message, ConfigError>;
-    fn set_welcome_message(&self, message: &Message) -> Result<(), ConfigError>;
-    fn approve_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError>;
-    fn reject_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError>;
-    fn topics_count(&self) -> Result<i32, ConfigError>;
-}
-
 /// Typed facade over PUB/XPUB-specific socket options.
 pub struct PubSocketOptions<'a> {
-    inner: &'a dyn PubSocketOptionRuntime,
+    inner: &'a dyn PubSocketOptionEndpoint,
 }
 
 impl<'a> PubSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn PubSocketOptionRuntime) -> Self {
+    pub(crate) fn new(inner: &'a dyn PubSocketOptionEndpoint) -> Self {
         Self { inner }
     }
 
@@ -493,17 +412,13 @@ impl<'a> PubSocketOptions<'a> {
     }
 }
 
-pub(crate) trait SubSocketOptionRuntime {
-    fn topics_count(&self) -> Result<i32, ConfigError>;
-}
-
 /// Typed facade over SUB-specific socket options.
 pub struct SubSocketOptions<'a> {
-    inner: &'a dyn SubSocketOptionRuntime,
+    inner: &'a dyn SubSocketOptionEndpoint,
 }
 
 impl<'a> SubSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn SubSocketOptionRuntime) -> Self {
+    pub(crate) fn new(inner: &'a dyn SubSocketOptionEndpoint) -> Self {
         Self { inner }
     }
 
@@ -516,3 +431,8 @@ use std::time::Duration;
 
 use crate::error::ConfigError;
 use crate::message::{Message, RoutingId};
+
+use crate::runtime_bridge::{
+    CommonSocketOptionEndpoint, DealerSocketOptionEndpoint, PubSocketOptionEndpoint,
+    RouterSocketOptionEndpoint, StreamSocketOptionEndpoint, SubSocketOptionEndpoint,
+};

@@ -5,7 +5,7 @@ import asyncio
 import errno
 
 from ...contracts.sockets.codes import RouterOption, SocketType
-from ...contracts.sockets.socket_options import (
+from ..options.option_mapping import (
     create_pub_socket_options,
     create_router_socket_options,
 )

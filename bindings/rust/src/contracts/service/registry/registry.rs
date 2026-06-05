@@ -1,19 +1,13 @@
-use std::any::Any;
-
 use crate::error::{BindError, CloseError, ConfigError, ConnectError};
 use crate::registry_models::{
     MemberPeerEntry, RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryStatus,
     RegistryTopologyEntry, RegistryTopologyFilter,
 };
-
-pub(crate) trait RegistryRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
+use crate::runtime_bridge::RegistryStorage;
 
 /// Service registry that accepts registrations and broadcasts the service list.
 pub struct Registry {
-    pub(crate) inner: Box<dyn RegistryRuntime>,
+    pub(crate) inner: Box<dyn RegistryStorage>,
 }
 
 impl Registry {

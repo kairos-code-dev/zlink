@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Collections.Generic;
-using System.Threading;
 
 namespace Systems.Zlink;
 
@@ -10,32 +8,8 @@ namespace Systems.Zlink;
 /// Describes a single spot dispatch event and the actor messages or channel
 /// reply it carries.
 /// </summary>
-public sealed class SpotDispatchInfo
+public sealed partial class SpotDispatchInfo
 {
-    internal static readonly SpotDispatchInfo SubscribeReadableSpot = new(
-        SpotDispatchEvent.SubscribeReadable,
-        SpotDispatchSubjectKind.Spot,
-        null,
-        IntPtr.Zero,
-        null);
-
-    private readonly IntPtr _channelDealerSubject;
-    private readonly Action<IntPtr>? _drainChannelReply;
-    private int _actorMessageIndex;
-
-    internal SpotDispatchInfo(SpotDispatchEvent @event,
-        SpotDispatchSubjectKind subjectKind, IZlinkTimer? timer,
-        IntPtr channelDealerSubject, Action<IntPtr>? drainChannelReply,
-        IReadOnlyList<ActorReceived>? actorMessages = null)
-    {
-        Event = @event;
-        SubjectKind = subjectKind;
-        Timer = timer;
-        _channelDealerSubject = channelDealerSubject;
-        _drainChannelReply = drainChannelReply;
-        ActorMessages = actorMessages ?? Array.Empty<ActorReceived>();
-    }
-
     /// <summary>
     /// Gets the event.
     /// </summary>
@@ -44,7 +18,6 @@ public sealed class SpotDispatchInfo
     /// Gets the subject kind.
     /// </summary>
     public SpotDispatchSubjectKind SubjectKind { get; }
-    internal IntPtr Subject => _channelDealerSubject;
     /// <summary>
     /// Gets the timer.
     /// </summary>
@@ -60,8 +33,7 @@ public sealed class SpotDispatchInfo
     /// </summary>
     public ActorReceived? RecvActor()
     {
-        int index = Interlocked.Increment(ref _actorMessageIndex) - 1;
-        return index < ActorMessages.Count ? ActorMessages[index] : null;
+        return RecvActorCore();
     }
 
     /// <summary>
@@ -69,12 +41,6 @@ public sealed class SpotDispatchInfo
     /// </summary>
     public void DrainChannelReply()
     {
-        if (_drainChannelReply == null || _channelDealerSubject == IntPtr.Zero)
-        {
-            throw new ZlinkConfigException(ConfigResult.InvalidArgument,
-                (int)ErrorCode.EInval);
-        }
-
-        _drainChannelReply(_channelDealerSubject);
+        DrainChannelReplyCore();
     }
 }

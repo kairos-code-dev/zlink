@@ -156,6 +156,7 @@ public abstract class ZlinkException extends RuntimeException {
             case 22 -> ConnectResult.INVALID_ARGUMENT;
             case 95 -> ConnectResult.NOT_SUPPORTED;
             case 9 -> ConnectResult.INVALID_HANDLE;
+            case 16 -> ConnectResult.BUSY;
             default -> ConnectResult.INVALID_ARGUMENT;
         };
     }

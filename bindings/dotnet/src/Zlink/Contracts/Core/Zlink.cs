@@ -9,7 +9,7 @@ namespace Systems.Zlink;
 /// Library entry point: factories for contexts, timers, pollers, and threads,
 /// plus process-wide utilities (version, capabilities, proxying).
 /// </summary>
-public static class Zlink
+public static partial class Zlink
 {
     /// <summary>
     /// Raised when a user callback throws an exception. Callbacks run on a
@@ -22,17 +22,12 @@ public static class Zlink
         remove => CallbackExceptionHub.UnhandledCallbackException -= value;
     }
 
-    internal static int Errno()
-    {
-        return ZlinkRuntime.Errno();
-    }
-
     /// <summary>
     /// Gets the human-readable message for a native zlink error code.
     /// </summary>
     public static string Strerror(int errnum)
     {
-        return ZlinkRuntime.Strerror(errnum);
+        return StrerrorCore(errnum);
     }
 
     /// <summary>
@@ -40,7 +35,7 @@ public static class Zlink
     /// </summary>
     public static (int Major, int Minor, int Patch) Version()
     {
-        return ZlinkRuntime.Version();
+        return VersionCore();
     }
 
     /// <summary>
@@ -114,7 +109,7 @@ public static class Zlink
     /// </summary>
     public static bool Has(string capability)
     {
-        return ZlinkRuntime.Has(capability);
+        return HasCore(capability);
     }
 
     /// <summary>
@@ -124,7 +119,7 @@ public static class Zlink
     public static void Proxy(IZlinkSocket frontend, IZlinkSocket backend,
         IZlinkSocket? capture = null)
     {
-        ZlinkRuntime.Proxy(frontend, backend, capture);
+        ProxyCore(frontend, backend, capture);
     }
 
     /// <summary>
@@ -135,7 +130,7 @@ public static class Zlink
     public static void ProxySteerable(IZlinkSocket frontend, IZlinkSocket backend,
         IZlinkSocket? capture, IZlinkSocket control)
     {
-        ZlinkRuntime.ProxySteerable(frontend, backend, capture, control);
+        ProxySteerableCore(frontend, backend, capture, control);
     }
 
     /// <summary>
@@ -143,12 +138,7 @@ public static class Zlink
     /// </summary>
     public static void Sleep(TimeSpan duration)
     {
-        ZlinkRuntime.Sleep(duration);
-    }
-
-    internal static void Sleep(int seconds)
-    {
-        ZlinkRuntime.Sleep(seconds);
+        SleepCore(duration);
     }
 
     /// <summary>
@@ -156,6 +146,6 @@ public static class Zlink
     /// </summary>
     public static void MultipartClose(IReadOnlyList<Message> parts)
     {
-        ZlinkRuntime.MultipartClose(parts);
+        MultipartCloseCore(parts);
     }
 }

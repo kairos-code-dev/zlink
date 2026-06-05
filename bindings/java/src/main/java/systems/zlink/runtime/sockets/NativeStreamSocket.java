@@ -2,6 +2,8 @@
 
 package systems.zlink.runtime.sockets;
 
+import systems.zlink.internal.ContractAccess;
+
 import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.service.spot.ActorBindOperation;
@@ -69,7 +71,7 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
         Objects.requireNonNull(flags, "flags");
         Received fresh = super.recv(ReceiveFlag.fromValue(flags.value()));
         if (fresh == null) return false;
-        result.adoptFrom(fresh);
+        ContractAccess.receivedAdoptFrom(result, fresh);
         result.getRoutingId().ifPresent(rid ->
             InternalAccess.receivedSetSendSender(result, (parts, sendFlags) -> super.send(rid, parts,
                 SendFlag.fromValue(sendFlags.value()))));

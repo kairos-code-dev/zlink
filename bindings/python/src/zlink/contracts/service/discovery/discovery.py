@@ -2,49 +2,6 @@
 
 from typing import Protocol, runtime_checkable
 
-_registry_factory = None
-_discovery_factory = None
-_registry_query_client_factory = None
-
-
-def _register_discovery_factories(
-    *,
-    registry_factory,
-    discovery_factory,
-    registry_query_client_factory,
-):
-    global _registry_factory
-    global _discovery_factory
-    global _registry_query_client_factory
-    _registry_factory = registry_factory
-    _discovery_factory = discovery_factory
-    _registry_query_client_factory = registry_query_client_factory
-
-
-def _require(factory, name):
-    if factory is None:
-        raise RuntimeError(f"zlink {name} runtime is not registered")
-    return factory
-
-
-def create_registry(ctx):
-    """Create a service registry on ``ctx``. The caller owns it."""
-    return _require(_registry_factory, "registry")(ctx)
-
-
-def create_discovery(ctx, auto_connect_type, channel_name: str):
-    """Create a discovery service for ``channel_name`` that connects peers
-    according to ``auto_connect_type``. The caller owns it."""
-    return _require(_discovery_factory, "discovery")(
-        ctx, auto_connect_type, channel_name
-    )
-
-
-def create_registry_query_client(ctx):
-    """Create a read-only registry query client on ``ctx``. The caller owns
-    it."""
-    return _require(_registry_query_client_factory, "registry query client")(ctx)
-
 
 @runtime_checkable
 class _ClosableContract(Protocol):

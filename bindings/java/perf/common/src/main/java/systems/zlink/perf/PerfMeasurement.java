@@ -71,10 +71,14 @@ final class PerfMeasurement {
         writePayloadHeader(payload, size, phase, SEQ.getAndIncrement(), sentTsNs);
     }
 
-    static void resetAndWritePayload(Message payload, int size, byte phase,
-                                     long sentNanoTime) {
-        payload.reset(Math.max(size, PerfUtil.HEADER_SIZE));
+    static Message resetAndWritePayload(Message payload, int size, byte phase,
+                                        long sentNanoTime) {
+        if (payload != null) {
+            payload.close();
+        }
+        payload = payloadTemplate(size);
         writePayload(payload, size, phase, sentNanoTime);
+        return payload;
     }
 
     static void writePayloadHeader(Message payload, int size, byte phase,

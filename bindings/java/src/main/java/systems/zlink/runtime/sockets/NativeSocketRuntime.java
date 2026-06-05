@@ -2,6 +2,8 @@
 
 package systems.zlink.runtime.sockets;
 
+import systems.zlink.internal.ContractAccess;
+
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
@@ -493,7 +495,7 @@ final class NativeSocketRuntime implements AutoCloseable {
         }
         if (fresh == null)
             return false;
-        result.adoptFrom(fresh);
+        ContractAccess.subscriptionEventAdoptFrom(result, fresh);
         return true;
     }
 

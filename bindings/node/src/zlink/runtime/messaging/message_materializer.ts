@@ -7,10 +7,23 @@ import {
   RoutingId,
   TopicMessage
 } from '../../contracts';
+import { routingIdFromOwnedBuffer } from '../core/routing_id';
 import {
   messageFromSnapshot,
   type MessageSnapshot
 } from './message_snapshot';
+import {
+  createReceived,
+  replaceReceived
+} from './received_state';
+import {
+  createReceivedReplyOperation,
+  createReceivedSendOperation,
+} from './received_operations';
+import {
+  createTopicMessage,
+  replaceTopicMessage
+} from './topic_message_state';
 
 export interface NativeReceivedRaw {
   parts: MessageSnapshot[];
@@ -29,7 +42,7 @@ function wrapNativeRoutingId(routingId: Buffer | null | undefined): RoutingId | 
   if (!routingId || routingId.length === 0) {
     return null;
   }
-  return RoutingId.fromOwnedBuffer(routingId);
+  return routingIdFromOwnedBuffer(routingId);
 }
 
 function materializeParts(parts: MessageSnapshot[]): Message[] {
@@ -53,22 +66,29 @@ export function materializeReceived(
   send?: (parts: readonly Message[], flags: SendFlags) => boolean
 ): Received {
   const requestSeq = raw.requestSeq ?? null;
-  return Received.create(
+  return createReceived(
     materializeParts(raw.parts),
     wrapNativeRoutingId(raw.routingId ?? null),
     requestSeq,
     wrapNativeRoutingId(raw.spotRid ?? null),
     hasReplyableRequestSeq(requestSeq) && reply
       ? {
-          reply(parts: readonly Message[], flags: SendFlags): void {
-            reply(requestSeq, parts, flags);
+          beginReply() {
+            return createReceivedReplyOperation(
+              (parts: readonly Message[], flags: SendFlags): void => {
+                reply(requestSeq, parts, flags);
+              }
+            );
           }
         }
       : null,
     send
       ? {
-          send(parts: readonly Message[], flags: SendFlags): boolean {
-            return send(parts, flags);
+          beginSend() {
+            return createReceivedSendOperation(
+              (parts: readonly Message[], flags: SendFlags): boolean =>
+                send(parts, flags)
+            );
           }
         }
       : null
@@ -82,31 +102,30 @@ export function materializeReceivedInto(
   send?: (parts: readonly Message[], flags: SendFlags) => boolean
 ): void {
   const requestSeq = raw.requestSeq ?? null;
-  (target as Received & {
-    _replace: (
-      parts: Message[],
-      routingId: RoutingId | null,
-      requestSeq: bigint | null,
-      spotRid: RoutingId | null,
-      replyContext: unknown,
-      sendContext: unknown
-    ) => void;
-  })._replace(
+  replaceReceived(
+    target,
     materializeParts(raw.parts),
     wrapNativeRoutingId(raw.routingId ?? null),
     requestSeq,
     wrapNativeRoutingId(raw.spotRid ?? null),
     hasReplyableRequestSeq(requestSeq) && reply
       ? {
-          reply(parts: readonly Message[], flags: SendFlags): void {
-            reply(requestSeq, parts, flags);
+          beginReply() {
+            return createReceivedReplyOperation(
+              (parts: readonly Message[], flags: SendFlags): void => {
+                reply(requestSeq, parts, flags);
+              }
+            );
           }
         }
       : null,
     send
       ? {
-          send(parts: readonly Message[], flags: SendFlags): boolean {
-            return send(parts, flags);
+          beginSend() {
+            return createReceivedSendOperation(
+              (parts: readonly Message[], flags: SendFlags): boolean =>
+                send(parts, flags)
+            );
           }
         }
       : null
@@ -114,7 +133,7 @@ export function materializeReceivedInto(
 }
 
 export function materializeTopicMessage(raw: NativeTopicMessageRaw): TopicMessage {
-  return TopicMessage.create(
+  return createTopicMessage(
     raw.topic,
     materializeParts(raw.parts),
     wrapNativeRoutingId(raw.routingId ?? null)
@@ -122,13 +141,8 @@ export function materializeTopicMessage(raw: NativeTopicMessageRaw): TopicMessag
 }
 
 export function adoptTopicMessage(result: TopicMessage, raw: NativeTopicMessageRaw): void {
-  (result as TopicMessage & {
-    _replace: (
-      topic: string,
-      parts: Message[],
-      routingId: RoutingId | null
-    ) => void;
-  })._replace(
+  replaceTopicMessage(
+    result,
     raw.topic,
     materializeParts(raw.parts),
     wrapNativeRoutingId(raw.routingId ?? null)

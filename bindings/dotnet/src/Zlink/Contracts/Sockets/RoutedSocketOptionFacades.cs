@@ -7,19 +7,8 @@ namespace Systems.Zlink;
 /// <summary>
 /// Typed facade over DEALER-specific socket options.
 /// </summary>
-public sealed class DealerSocketOptions : CommonSocketOptions
+public sealed partial class DealerSocketOptions : CommonSocketOptions
 {
-    internal DealerSocketOptions(ISocketOptionEndpoint socket)
-        : base(socket)
-    {
-    }
-
-    internal RoutingId RoutingId
-    {
-        get => RoutingId.From(Socket.GetOption(SocketOptions.RoutingId));
-        set => Socket.SetOption(SocketOptions.RoutingId, value.ToBytes());
-    }
-
     /// <summary>
     /// Sets whether to send an empty probe message on connect so the peer
     /// immediately learns this socket's routing id.
@@ -53,19 +42,8 @@ public sealed class DealerSocketOptions : CommonSocketOptions
 /// <summary>
 /// Typed facade over ROUTER-specific socket options.
 /// </summary>
-public sealed class RouterSocketOptions : CommonSocketOptions
+public sealed partial class RouterSocketOptions : CommonSocketOptions
 {
-    internal RouterSocketOptions(ISocketOptionEndpoint socket)
-        : base(socket)
-    {
-    }
-
-    internal RoutingId RoutingId
-    {
-        get => RoutingId.From(Socket.GetOption(SocketOptions.RoutingId));
-        set => Socket.SetOption(SocketOptions.RoutingId, value.ToBytes());
-    }
-
     /// <summary>
     /// Gets or sets whether sending to an unknown route raises an error
     /// instead of silently dropping the message.

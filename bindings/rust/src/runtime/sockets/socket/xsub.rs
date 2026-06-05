@@ -2,7 +2,8 @@ use super::SocketInner;
 use crate::core_context::Context;
 use crate::error::ConfigError;
 use crate::ffi;
-use crate::socket_contracts::{SocketRuntime, XSubSocket};
+use crate::runtime_bridge::SocketRuntime;
+use crate::socket_contracts::XSubSocket;
 
 struct NativeXSubSocket {
     inner: SocketInner,

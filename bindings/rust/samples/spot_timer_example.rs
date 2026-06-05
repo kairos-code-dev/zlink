@@ -2,15 +2,15 @@
 // 게임룸(Spot)이 주기 타이머로 틱을 돌린다(예: 게임 루프 틱/타임아웃).
 //   cargo run --example spot_timer_example
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use zlink::{Context, SpotNode, Timer};
 
 fn main() {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let room = node.create_spot().unwrap();
@@ -34,5 +34,5 @@ fn main() {
     let final_ticks = ticks.load(Ordering::SeqCst);
     assert!(final_ticks >= 3, "timer fired only {final_ticks} times");
     println!("[spot/timer] room tick fired {final_ticks} times");
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

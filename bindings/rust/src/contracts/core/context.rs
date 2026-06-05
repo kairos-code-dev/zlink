@@ -1,7 +1,7 @@
-use std::any::Any;
 use std::time::Duration;
 
 use crate::error::{CloseError, ConfigError};
+use crate::runtime_bridge::ContextStorage;
 use crate::socket_contracts::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
     XSubSocket,
@@ -38,47 +38,12 @@ pub enum AutoHwmRecalcReason {
     DeferredShrink,
 }
 
-pub(crate) trait ContextOptionRuntime {
-    fn io_threads(&self) -> Result<i32, ConfigError>;
-    fn set_io_threads(&self, threads: i32) -> Result<(), ConfigError>;
-    fn max_sockets(&self) -> Result<i32, ConfigError>;
-    fn set_max_sockets(&self, max: i32) -> Result<(), ConfigError>;
-    fn socket_limit(&self) -> Result<i32, ConfigError>;
-    fn thread_priority(&self) -> Result<i32, ConfigError>;
-    fn set_thread_priority(&self, priority: i32) -> Result<(), ConfigError>;
-    fn thread_scheduling_policy(&self) -> Result<i32, ConfigError>;
-    fn set_thread_scheduling_policy(&self, policy: i32) -> Result<(), ConfigError>;
-    fn max_message_size(&self) -> Result<i32, ConfigError>;
-    fn set_max_message_size(&self, size: i32) -> Result<(), ConfigError>;
-    fn msg_t_size(&self) -> Result<i32, ConfigError>;
-    fn blocky(&self) -> Result<bool, ConfigError>;
-    fn set_blocky(&self, blocky: bool) -> Result<(), ConfigError>;
-    fn thread_name_prefix(&self) -> Result<String, ConfigError>;
-    fn set_thread_name_prefix(&self, prefix: &str) -> Result<(), ConfigError>;
-    fn auto_hwm_enabled(&self) -> Result<bool, ConfigError>;
-    fn set_auto_hwm_enabled(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn auto_hwm_recalc_debounce(&self) -> Result<Duration, ConfigError>;
-    fn set_auto_hwm_recalc_debounce(&self, value: Duration) -> Result<(), ConfigError>;
-    fn auto_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError>;
-    fn set_auto_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError>;
-    fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError>;
-    fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError>;
-    fn add_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
-    fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
-}
-
-pub(crate) trait ContextRuntime: Any + ContextOptionRuntime + Send + Sync {
-    fn as_any(&self) -> &dyn Any;
-    fn shutdown(&self) -> Result<(), CloseError>;
-    fn recalculate_auto_hwm(&self) -> Result<(), ConfigError>;
-}
-
 /// The zlink context, the foundation for creating sockets and services.
 ///
 /// The public type owns context lifetime. Native context handles and option
 /// marshalling stay inside the private runtime implementation.
 pub struct Context {
-    pub(crate) inner: Box<dyn ContextRuntime>,
+    pub(crate) inner: Box<dyn ContextStorage>,
 }
 
 impl Context {
@@ -145,11 +110,11 @@ impl Context {
 
 /// Typed facade over context options.
 pub struct ContextOptions<'a> {
-    context: &'a dyn ContextRuntime,
+    context: &'a dyn ContextStorage,
 }
 
 impl<'a> ContextOptions<'a> {
-    pub(crate) fn new(context: &'a dyn ContextRuntime) -> Self {
+    pub(crate) fn new(context: &'a dyn ContextStorage) -> Self {
         Self { context }
     }
 

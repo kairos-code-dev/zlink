@@ -42,6 +42,11 @@ public final class TopicMessage implements AutoCloseable {
             public Message prepareReusableSinglePart(TopicMessage target) {
                 return target.prepareReusableSinglePart();
             }
+
+            @Override
+            public void adoptFrom(TopicMessage target, TopicMessage source) {
+                target.adoptFrom(source);
+            }
         });
     }
 
@@ -76,12 +81,12 @@ public final class TopicMessage implements AutoCloseable {
 
     Message prepareReusableSinglePart() {
         Message part = reusableSinglePart;
-        if (part == null || !part.isReusable()) {
+        if (part == null || !ContractAccess.messageIsReusable(part)) {
             part = new Message();
             reusableSinglePart = part;
             return part;
         }
-        part.resetForReuse();
+        ContractAccess.messageResetReusable(part);
         return part;
     }
 
@@ -97,7 +102,7 @@ public final class TopicMessage implements AutoCloseable {
         }
     }
 
-    public void adoptFrom(TopicMessage source) {
+    void adoptFrom(TopicMessage source) {
         if (source == this)
             return;
         close();

@@ -9,7 +9,7 @@ namespace Systems.Zlink;
 /// Static helpers that wait for events across several sockets or monitors at
 /// once.
 /// </summary>
-public static class ZlinkPoll
+public static partial class ZlinkPoll
 {
     /// <summary>
     /// Waits up to <paramref name="timeoutMs"/> milliseconds for any of
@@ -19,7 +19,7 @@ public static class ZlinkPoll
     /// <returns>The number of ready sockets; 0 on timeout.</returns>
     public static int Poll(IReadOnlyList<IZlinkSocket> sockets, int timeoutMs)
     {
-        return ZlinkPollRuntime.Poll(sockets, timeoutMs);
+        return PollCore(sockets, timeoutMs);
     }
 
     /// <summary>
@@ -32,7 +32,7 @@ public static class ZlinkPoll
         IReadOnlyList<PollEventFlags> events, Span<PollEventFlags> revents,
         int timeoutMs)
     {
-        return ZlinkPollRuntime.Poll(sockets, events, revents, timeoutMs);
+        return PollCore(sockets, events, revents, timeoutMs);
     }
 
     /// <summary>
@@ -44,7 +44,7 @@ public static class ZlinkPoll
     public static int Poll(IReadOnlyList<ISocketMonitor> monitors,
         int timeoutMs)
     {
-        return ZlinkPollRuntime.Poll(monitors, timeoutMs);
+        return PollCore(monitors, timeoutMs);
     }
 
     /// <summary>
@@ -57,6 +57,6 @@ public static class ZlinkPoll
         IReadOnlyList<PollEventFlags> events, Span<PollEventFlags> revents,
         int timeoutMs)
     {
-        return ZlinkPollRuntime.Poll(monitors, events, revents, timeoutMs);
+        return PollCore(monitors, events, revents, timeoutMs);
     }
 }

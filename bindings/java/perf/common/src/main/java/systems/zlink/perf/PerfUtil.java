@@ -154,9 +154,10 @@ public final class PerfUtil {
         return PerfMeasurement.payloadTemplateForReuse(size);
     }
 
-    public static void resetAndWritePayload(Message payload, int size,
-                                            byte phase, long sentNanoTime) {
-        PerfMeasurement.resetAndWritePayload(payload, size, phase, sentNanoTime);
+    public static Message resetAndWritePayload(Message payload, int size,
+                                               byte phase, long sentNanoTime) {
+        return PerfMeasurement.resetAndWritePayload(payload, size, phase,
+            sentNanoTime);
     }
 
     public static void writePayload(Message payload, int size, byte phase,

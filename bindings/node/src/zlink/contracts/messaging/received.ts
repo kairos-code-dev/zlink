@@ -1,168 +1,44 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import type { BufferLike } from '../core/buffer_like';
 import { RecvError, RecvResult, SubmitError, SubmitResult } from '../errors/errors';
-import { SendFlags } from '../sockets/socket_constants';
 import { Message } from './message';
+import type { ReplyOperation, SendOperation } from './operations';
 import { RoutingId } from '../core/routing_id';
 
-const RECEIVED_CREATE_TOKEN = Symbol('received.create');
-
 interface ReplyContext {
-  reply(parts: readonly Message[], flags: SendFlags): void;
+  beginReply(): ReplyOperation;
 }
 
 interface SendContext {
-  send(parts: readonly Message[], flags: SendFlags): boolean;
-}
-
-interface ReceivedSendOperation {
-  message(message: Message | BufferLike): ReceivedSendSubmitOperation;
-}
-interface ReceivedSendSubmitOperation {
-  message(message: Message | BufferLike): ReceivedSendSubmitOperation;
-  flags(flags: SendFlags): ReceivedSendSubmitOperation;
-  submit(): boolean;
-}
-interface ReceivedReplyOperation {
-  message(message: Message | BufferLike): ReceivedReplySubmitOperation;
-}
-interface ReceivedReplySubmitOperation {
-  message(message: Message | BufferLike): ReceivedReplySubmitOperation;
-  flags(flags: SendFlags): ReceivedReplySubmitOperation;
-  submit(): void;
-}
-
-class OperationPayload<TInput, TStored = TInput> {
-  private readonly _normalize: (value: TInput) => TStored;
-  private _single!: TStored;
-  private _hasSingle = false;
-  private _parts: TStored[] | null = null;
-  private _submitted = false;
-
-  constructor(normalize: (value: TInput) => TStored) {
-    this._normalize = normalize;
-  }
-
-  append(message: TInput): void {
-    this.ensureOpen();
-    const normalized = this._normalize(message);
-    if (this._parts) {
-      this._parts.push(normalized);
-    } else if (this._hasSingle) {
-      this._parts = [this._single, normalized];
-      this._hasSingle = false;
-      this._single = undefined as TStored;
-    } else {
-      this._single = normalized;
-      this._hasSingle = true;
-    }
-  }
-
-  ensureOpen(): void {
-    if (this._submitted) {
-      throw new TypeError('operation has already been submitted');
-    }
-  }
-
-  consumeParts(): readonly TStored[] {
-    this.ensureOpen();
-    if (!this._parts && !this._hasSingle) {
-      throw new TypeError('operation requires at least one message');
-    }
-    this._submitted = true;
-    return this._parts ?? [this._single];
-  }
+  beginSend(): SendOperation;
 }
 
 function freezeMessageParts(parts: readonly Message[]): Message[] {
   return Object.freeze(parts.slice()) as Message[];
 }
 
-function freezeOwnedMessageParts(parts: Message[]): Message[] {
-  return Object.freeze(parts) as Message[];
-}
-
 function invalidMultipartError(partsLength: number): RecvError {
-  return new RecvError(
-    RecvResult.NotSupported,
-    0,
-    `expected exactly 1 part but received ${partsLength}`
-  );
+  const error = new RecvError(RecvResult.NotSupported, 0);
+  error.message = `expected exactly 1 part but received ${partsLength}`;
+  return error;
 }
 
 function missingPartError(): RecvError {
-  return new RecvError(RecvResult.NotSupported, 0, 'message has no parts');
-}
-
-class ReceivedSendOperation implements ReceivedSendOperation, ReceivedSendSubmitOperation {
-  private readonly _invoke: (parts: readonly Message[], flags: SendFlags) => boolean;
-  private readonly _payload = new OperationPayload<Message | BufferLike, Message>(
-    (message) => message instanceof Message ? message : Message.from(message)
-  );
-  private _flags: SendFlags = SendFlags.None;
-
-  constructor(invoke: (parts: readonly Message[], flags: SendFlags) => boolean) {
-    this._invoke = invoke;
-  }
-
-  message(message: Message | BufferLike): ReceivedSendSubmitOperation {
-    this._payload.append(message);
-    return this;
-  }
-
-  flags(flags: SendFlags): ReceivedSendSubmitOperation {
-    this._payload.ensureOpen();
-    this._flags = flags;
-    return this;
-  }
-
-  submit(): boolean {
-    return this._invoke(this._payload.consumeParts(), this._flags);
-  }
-}
-
-class ReceivedReplyOperation implements ReceivedReplyOperation, ReceivedReplySubmitOperation {
-  private readonly _invoke: (parts: readonly Message[], flags: SendFlags) => void;
-  private readonly _payload = new OperationPayload<Message | BufferLike, Message>(
-    (message) => message instanceof Message ? message : Message.from(message)
-  );
-  private _flags: SendFlags = SendFlags.None;
-
-  constructor(invoke: (parts: readonly Message[], flags: SendFlags) => void) {
-    this._invoke = invoke;
-  }
-
-  message(message: Message | BufferLike): ReceivedReplySubmitOperation {
-    this._payload.append(message);
-    return this;
-  }
-
-  flags(flags: SendFlags): ReceivedReplySubmitOperation {
-    this._payload.ensureOpen();
-    this._flags = flags;
-    return this;
-  }
-
-  submit(): void {
-    this._invoke(this._payload.consumeParts(), this._flags);
-  }
+  const error = new RecvError(RecvResult.NotSupported, 0);
+  error.message = 'message has no parts';
+  return error;
 }
 
 function invalidReplyContextError(): SubmitError {
-  return new SubmitError(
-    SubmitResult.InvalidState,
-    0,
-    'reply is only valid for request-reply receive contexts'
-  );
+  const error = new SubmitError(SubmitResult.InvalidState, 0);
+  error.message = 'reply is only valid for request-reply receive contexts';
+  return error;
 }
 
 function invalidSendContextError(): SubmitError {
-  return new SubmitError(
-    SubmitResult.InvalidState,
-    0,
-    'send is only valid for received routed message contexts'
-  );
+  const error = new SubmitError(SubmitResult.InvalidState, 0);
+  error.message = 'send is only valid for received routed message contexts';
+  return error;
 }
 
 /**
@@ -185,43 +61,13 @@ export class Received {
   private _sendContext: SendContext | null;
 
   /** Create an empty reusable envelope for use with `recv`. */
-  constructor();
-  constructor(
-    token: symbol,
-    parts: readonly Message[],
-    routingId?: RoutingId | null,
-    requestSeq?: bigint | null,
-    spotRid?: RoutingId | null,
-    replyContext?: ReplyContext | null,
-    sendContext?: SendContext | null
-  );
-  constructor(
-    token?: symbol,
-    parts?: readonly Message[],
-    routingId: RoutingId | null = null,
-    requestSeq: bigint | null = null,
-    spotRid: RoutingId | null = null,
-    replyContext: ReplyContext | null = null,
-    sendContext: SendContext | null = null
-  ) {
-    if (token === undefined && parts === undefined) {
-      this.parts = freezeMessageParts([]);
-      this.routingId = null;
-      this.spotRid = null;
-      this.requestSeq = null;
-      this._replyContext = null;
-      this._sendContext = null;
-      return;
-    }
-    if (token !== RECEIVED_CREATE_TOKEN) {
-      throw new TypeError('Received values are created by recv operations');
-    }
-    this.parts = freezeMessageParts(parts ?? []);
-    this.routingId = routingId;
-    this.spotRid = spotRid;
-    this.requestSeq = requestSeq;
-    this._replyContext = replyContext;
-    this._sendContext = sendContext;
+  constructor() {
+    this.parts = freezeMessageParts([]);
+    this.routingId = null;
+    this.spotRid = null;
+    this.requestSeq = null;
+    this._replyContext = null;
+    this._sendContext = null;
   }
 
   /** Return true when the envelope holds exactly one part. */
@@ -252,46 +98,16 @@ export class Received {
     }
   }
 
-  /** @internal */
-  _replace(
-    parts: Message[],
-    routingId: RoutingId | null = null,
-    requestSeq: bigint | null = null,
-    spotRid: RoutingId | null = null,
-    replyContext: ReplyContext | null = null,
-    sendContext: SendContext | null = null
-  ): void {
-    this.parts = freezeOwnedMessageParts(parts);
-    this.routingId = routingId;
-    this.spotRid = spotRid;
-    this.requestSeq = requestSeq;
-    this._replyContext = replyContext;
-    this._sendContext = sendContext;
-  }
-
-  /** @internal */
-  static create(
-    parts: readonly Message[],
-    routingId: RoutingId | null = null,
-    requestSeq: bigint | null = null,
-    spotRid: RoutingId | null = null,
-    replyContext: ReplyContext | null = null,
-    sendContext: SendContext | null = null
-  ): Received {
-    return new Received(RECEIVED_CREATE_TOKEN, parts, routingId, requestSeq, spotRid, replyContext, sendContext);
-  }
-
   /**
    * Begin a reply to this request: add parts on the returned builder, then
    * submit. Parts are consumed on a successful submit. Throws when the envelope
    * is not replyable (has no request sequence).
    */
-  reply(): ReceivedReplyOperation {
+  reply(): ReplyOperation {
     if (!this.requestSeq || !this._replyContext) {
       throw invalidReplyContextError();
     }
-    const replyContext = this._replyContext;
-    return new ReceivedReplyOperation((parts, flags) => replyContext.reply(parts, flags));
+    return this._replyContext.beginReply();
   }
 
   /**
@@ -299,11 +115,10 @@ export class Received {
    * submit. Parts are consumed on a successful submit. Throws when the envelope
    * carries no send context.
    */
-  send(): ReceivedSendOperation {
+  send(): SendOperation {
     if (!this._sendContext) {
       throw invalidSendContextError();
     }
-    const sendContext = this._sendContext;
-    return new ReceivedSendOperation((parts, flags) => sendContext.send(parts, flags));
+    return this._sendContext.beginSend();
   }
 }

@@ -6,7 +6,7 @@ namespace Systems.Zlink;
 /// <summary>
 /// Thrown when submitting a send or publish fails.
 /// </summary>
-public sealed class ZlinkSubmitException : ZlinkException
+public sealed partial class ZlinkSubmitException : ZlinkException
 {
     /// <summary>
     /// The result codes this operation can fail with.
@@ -88,16 +88,6 @@ public sealed class ZlinkSubmitException : ZlinkException
         Result = result;
     }
 
-    internal ZlinkSubmitException(SubmitResult result)
-        : this((ErrorCode)result, 0)
-    {
-    }
-
-    internal ZlinkSubmitException(SubmitResult result, int internalErrno)
-        : this((ErrorCode)result, internalErrno)
-    {
-    }
-
     /// <summary>
     /// Gets the result code that classifies this failure.
     /// </summary>
@@ -107,7 +97,7 @@ public sealed class ZlinkSubmitException : ZlinkException
 /// <summary>
 /// Thrown when a request fails or its reply reports an error.
 /// </summary>
-public sealed class ZlinkRequestException : ZlinkException
+public sealed partial class ZlinkRequestException : ZlinkException
 {
     /// <summary>
     /// The result codes this operation can fail with.
@@ -185,16 +175,6 @@ public sealed class ZlinkRequestException : ZlinkException
         Result = result;
     }
 
-    internal ZlinkRequestException(RequestResult result)
-        : this((ErrorCode)result, 0)
-    {
-    }
-
-    internal ZlinkRequestException(RequestResult result, int internalErrno)
-        : this((ErrorCode)result, internalErrno)
-    {
-    }
-
     /// <summary>
     /// Gets the result code that classifies this failure.
     /// </summary>
@@ -204,7 +184,7 @@ public sealed class ZlinkRequestException : ZlinkException
 /// <summary>
 /// Thrown when receiving a message fails.
 /// </summary>
-public sealed class ZlinkRecvException : ZlinkException
+public sealed partial class ZlinkRecvException : ZlinkException
 {
     /// <summary>
     /// The result codes this operation can fail with.
@@ -258,16 +238,6 @@ public sealed class ZlinkRecvException : ZlinkException
         Result = result;
     }
 
-    internal ZlinkRecvException(RecvResult result)
-        : this((ErrorCode)result, 0)
-    {
-    }
-
-    internal ZlinkRecvException(RecvResult result, int internalErrno)
-        : this((ErrorCode)result, internalErrno)
-    {
-    }
-
     /// <summary>
     /// Gets the result code that classifies this failure.
     /// </summary>
@@ -277,7 +247,7 @@ public sealed class ZlinkRecvException : ZlinkException
 /// <summary>
 /// Thrown when registering or running a callback handler fails.
 /// </summary>
-public sealed class ZlinkHandlerException : ZlinkException
+public sealed partial class ZlinkHandlerException : ZlinkException
 {
     /// <summary>
     /// The result codes this operation can fail with.
@@ -331,16 +301,6 @@ public sealed class ZlinkHandlerException : ZlinkException
         Result = result;
     }
 
-    internal ZlinkHandlerException(HandlerResult result, int internalErrno)
-        : this((ErrorCode)result, internalErrno)
-    {
-    }
-
-    internal ZlinkHandlerException(HandlerResult result)
-        : this((ErrorCode)result, 0)
-    {
-    }
-
     /// <summary>
     /// Gets the result code that classifies this failure.
     /// </summary>
@@ -350,7 +310,7 @@ public sealed class ZlinkHandlerException : ZlinkException
 /// <summary>
 /// Thrown when closing a socket or resource fails.
 /// </summary>
-public sealed class ZlinkCloseException : ZlinkException
+public sealed partial class ZlinkCloseException : ZlinkException
 {
     /// <summary>
     /// The result codes this operation can fail with.
@@ -396,16 +356,6 @@ public sealed class ZlinkCloseException : ZlinkException
         Result = result;
     }
 
-    internal ZlinkCloseException(CloseResult result, int internalErrno)
-        : this((ErrorCode)result, internalErrno)
-    {
-    }
-
-    internal ZlinkCloseException(CloseResult result)
-        : this((ErrorCode)result, 0)
-    {
-    }
-
     /// <summary>
     /// Gets the result code that classifies this failure.
     /// </summary>
@@ -415,7 +365,7 @@ public sealed class ZlinkCloseException : ZlinkException
 /// <summary>
 /// Thrown when binding a socket to an endpoint fails.
 /// </summary>
-public sealed class ZlinkBindException : ZlinkException
+public sealed partial class ZlinkBindException : ZlinkException
 {
     /// <summary>
     /// The result codes this operation can fail with.
@@ -465,16 +415,6 @@ public sealed class ZlinkBindException : ZlinkException
         Result = result;
     }
 
-    internal ZlinkBindException(BindResult result, int internalErrno)
-        : this((ErrorCode)result, internalErrno)
-    {
-    }
-
-    internal ZlinkBindException(BindResult result)
-        : this((ErrorCode)result, 0)
-    {
-    }
-
     /// <summary>
     /// Gets the result code that classifies this failure.
     /// </summary>
@@ -484,7 +424,7 @@ public sealed class ZlinkBindException : ZlinkException
 /// <summary>
 /// Thrown when connecting a socket to an endpoint fails.
 /// </summary>
-public sealed class ZlinkConnectException : ZlinkException
+public sealed partial class ZlinkConnectException : ZlinkException
 {
     /// <summary>
     /// The result codes this operation can fail with.
@@ -542,16 +482,6 @@ public sealed class ZlinkConnectException : ZlinkException
         Result = result;
     }
 
-    internal ZlinkConnectException(ConnectResult result, int internalErrno)
-        : this((ErrorCode)result, internalErrno)
-    {
-    }
-
-    internal ZlinkConnectException(ConnectResult result)
-        : this((ErrorCode)result, 0)
-    {
-    }
-
     /// <summary>
     /// Gets the result code that classifies this failure.
     /// </summary>
@@ -561,7 +491,7 @@ public sealed class ZlinkConnectException : ZlinkException
 /// <summary>
 /// Thrown when reading or applying a configuration option fails.
 /// </summary>
-public sealed class ZlinkConfigException : ZlinkException
+public sealed partial class ZlinkConfigException : ZlinkException
 {
     /// <summary>
     /// The result codes this operation can fail with.
@@ -613,16 +543,6 @@ public sealed class ZlinkConfigException : ZlinkException
         : base((int)result, internalErrno)
     {
         Result = result;
-    }
-
-    internal ZlinkConfigException(ConfigResult result, int internalErrno)
-        : this((ErrorCode)result, internalErrno)
-    {
-    }
-
-    internal ZlinkConfigException(ConfigResult result)
-        : this((ErrorCode)result, 0)
-    {
     }
 
     /// <summary>

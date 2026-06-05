@@ -2,10 +2,6 @@
 
 from .discovery import (
     Discovery,
-    _register_discovery_factories,
-    create_discovery,
-    create_registry,
-    create_registry_query_client,
 )
 from .discovery_models import SpotRoute
 from ..registry import (
@@ -21,9 +17,6 @@ from ..registry import (
 
 __all__ = [
     "Discovery",
-    "create_discovery",
-    "create_registry",
-    "create_registry_query_client",
     "MemberPeerEntry",
     "Registry",
     "RegistryQueryClient",

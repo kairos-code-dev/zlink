@@ -98,8 +98,6 @@ export interface MonitorEventValueRaw {
   remoteAddr?: string;
 }
 
-const MONITOR_EVENT_CREATE_TOKEN = Symbol('MonitorEvent.create');
-
 /** A single socket connection-lifecycle event reported by a monitor. */
 export class MonitorEvent {
   /** The kind of lifecycle event. */
@@ -113,20 +111,8 @@ export class MonitorEvent {
   /** The remote endpoint address. */
   readonly remoteAddr: string;
 
-  private constructor(token: symbol, raw: MonitorEventValueRaw) {
-    if (token !== MONITOR_EVENT_CREATE_TOKEN) {
-      throw new TypeError('MonitorEvent values are created by monitor recv operations');
-    }
-    this.event = raw.event as MonitorEventType;
-    this.value = raw.value;
-    this.routingId = raw.routingId && raw.routingId.length > 0 ? RoutingId.from(raw.routingId) : null;
-    this.localAddr = raw.localAddr ?? raw.local ?? '';
-    this.remoteAddr = raw.remoteAddr ?? raw.remote ?? '';
-  }
-
-  /** @internal */
-  static create(raw: MonitorEventValueRaw): MonitorEvent {
-    return new MonitorEvent(MONITOR_EVENT_CREATE_TOKEN, raw);
+  private constructor() {
+    throw new TypeError('MonitorEvent values are created by monitor recv operations');
   }
 }
 

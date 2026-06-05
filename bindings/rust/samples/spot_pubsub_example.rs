@@ -29,7 +29,7 @@ fn wait_peer(node: &SpotNode) {
 }
 
 fn main() {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     let ctx = Context::new().unwrap();
     // 토픽을 발행하는 노드와 구독하는 노드.
     let publisher_node = SpotNode::new(&ctx).unwrap();
@@ -73,5 +73,5 @@ fn main() {
         received.topic(),
         received.first_part().unwrap().as_str().unwrap()
     );
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

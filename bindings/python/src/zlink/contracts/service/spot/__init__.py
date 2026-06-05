@@ -3,9 +3,6 @@
 from .actor import Actor
 from .spot import (
     Spot,
-    _register_spot_factories,
-    create_spot,
-    create_spot_node,
     remote_actor_ref,
 )
 from .spot_models import (
@@ -69,8 +66,6 @@ __all__ = [
     "RequestOp",
     "SendOp",
     "Spot",
-    "create_spot",
-    "create_spot_node",
     "SpotActorLifecycleEvent",
     "SpotActorLifecycleInfo",
     "SpotDispatchInfo",

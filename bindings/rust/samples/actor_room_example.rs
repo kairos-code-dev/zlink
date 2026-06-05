@@ -66,8 +66,12 @@ fn leave(room: &Spot, actor: &Actor) {
 
 // 보낸 직후 도착을 기다리므로, 그 메시지는 방금 주소 지정한 플레이어 것이다.
 fn send_and_wait(
-    stream: &StreamSocket, session: &RoutingId, actor_id: &str, text: &[u8],
-    payloads: &Arc<Mutex<Vec<String>>>, want: usize,
+    stream: &StreamSocket,
+    session: &RoutingId,
+    actor_id: &str,
+    text: &[u8],
+    payloads: &Arc<Mutex<Vec<String>>>,
+    want: usize,
 ) {
     stream
         .send_bound_actor(session, actor_id)
@@ -79,11 +83,14 @@ fn send_and_wait(
     while payloads.lock().unwrap().len() < want && Instant::now() < deadline {
         sleep(Duration::from_millis(10));
     }
-    assert!(payloads.lock().unwrap().len() >= want, "message to {actor_id} not delivered");
+    assert!(
+        payloads.lock().unwrap().len() >= want,
+        "message to {actor_id} not delivered"
+    );
 }
 
 fn main() {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let mut room = node.create_spot().unwrap();
@@ -125,5 +132,5 @@ fn main() {
     player1.close().unwrap();
     player2.close().unwrap();
     println!("[actor/room] player-1: \"your-turn\", player-2: \"wait\"");
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

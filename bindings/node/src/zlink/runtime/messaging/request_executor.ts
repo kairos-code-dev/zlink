@@ -4,6 +4,7 @@ import { Message } from '../../contracts';
 import { RequestError, RequestResult, SubmitResult } from '../../contracts/errors/errors';
 import { SendFlags } from '../../contracts/sockets/socket_constants';
 import { submitNativeError } from '../errors/native_errors';
+import { withRuntimeErrorMessage } from '../errors/error_state';
 import { messageFromSnapshot } from './message_snapshot';
 
 export type RequestCallback = (result: RequestResult, replyParts: Message[]) => void;
@@ -47,7 +48,7 @@ export function messagesFromNativeBuffers(buffers: readonly Buffer[] | null | un
 }
 
 export function requestErrorFromResult(result: RequestResult, message: string): RequestError {
-  return new RequestError(result, 0, message);
+  return withRuntimeErrorMessage(new RequestError(result, 0), message);
 }
 
 function executeCallbackRequest(options: NativeRequestOptions, callback: RequestCallback): boolean {

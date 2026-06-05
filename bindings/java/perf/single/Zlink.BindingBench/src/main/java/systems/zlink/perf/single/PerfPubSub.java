@@ -142,17 +142,20 @@ final class PerfPubSub {
                 }
             }, "single-pubsub-recv");
             recvThread.start();
-            try (Message active = PerfUtil.payloadTemplate(config.size())) {
+            Message active = PerfUtil.payloadTemplate(config.size());
+            try {
                 try (PerfSocketPollSet writable = PerfSocketPollSet.fromSockets(
                     List.of(pub), PollEventFlags.POLLOUT)) {
                     while (System.nanoTime() < activeEnd) {
-                        PerfUtil.resetAndWritePayload(active, config.size(),
+                        active = PerfUtil.resetAndWritePayload(active, config.size(),
                             (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                         if (!publishWhenWritable(pub, writable, active, activeEnd)) {
                             break;
                         }
                     }
                 }
+            } finally {
+                active.close();
             }
             // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with stop token
             // published on the same topic so the subscriber's filter delivers it.

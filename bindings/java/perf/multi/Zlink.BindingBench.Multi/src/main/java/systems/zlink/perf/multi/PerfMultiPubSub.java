@@ -53,9 +53,10 @@ final class PerfMultiPubSub {
             PerfUtil.printMultiSocketAutoHwm(config, pub, "server",
                 "server", SocketType.PUB);
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
-            try (Message active = PerfUtil.payloadTemplate(config.size())) {
+            Message active = PerfUtil.payloadTemplate(config.size());
+            try {
                 while (System.nanoTime() < activeEnd) {
-                    PerfUtil.resetAndWritePayload(active, config.size(),
+                    active = PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     // C parity: perf_multi_pubsub_server.cpp publish_once
                     // (~78-110) publishes ZLINK_DONTWAIT and, on EAGAIN
@@ -67,6 +68,8 @@ final class PerfMultiPubSub {
                     // tls/ws/wss buffering hid it.
                     publishDropOnBackpressure(pub, active);
                 }
+            } finally {
+                active.close();
             }
             // C parity (perf_multi_pubsub_server.cpp publish_stop_token): after
             // the active window publish a wire-level stop token on the topic so

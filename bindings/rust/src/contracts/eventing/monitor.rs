@@ -5,19 +5,12 @@ use crate::core_context::AutoHwmRecalcReason;
 use crate::error::{CloseError, ConfigError, HandlerError, RecvError};
 use crate::flags::RecvFlags;
 use crate::routing_id::RoutingId;
+use crate::runtime_bridge::SocketMonitorStorage;
 
 /// A socket that a [`SocketMonitor`] can observe.
 pub trait Monitorable: Any {
     /// Returns this source as `&dyn Any` for downcasting.
     fn as_any(&self) -> &dyn Any;
-}
-
-pub(crate) trait SocketMonitorRuntime: Send {
-    fn recv(&self) -> Result<MonitorEvent, RecvError>;
-    fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<MonitorEvent>, RecvError>;
-    fn status(&self) -> Result<MonitorStatus, ConfigError>;
-    fn on_event(&mut self, handler: Box<dyn Fn(&MonitorEvent) + Send>) -> Result<(), HandlerError>;
-    fn close(&mut self) -> Result<(), CloseError>;
 }
 
 /// Typed bitmask for socket monitor subscriptions.
@@ -182,7 +175,7 @@ fn ignore_monitor_event(_: &MonitorEvent) {}
 /// The monitor is an independent observation plane that does not interfere
 /// with the data plane.
 pub struct SocketMonitor {
-    pub(crate) inner: Box<dyn SocketMonitorRuntime>,
+    pub(crate) inner: Box<dyn SocketMonitorStorage>,
 }
 
 impl SocketMonitor {

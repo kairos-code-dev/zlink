@@ -8,7 +8,8 @@ use crate::error::{ConfigError, RecvError};
 use crate::ffi;
 use crate::message::{Message, RoutingId};
 use crate::native_errors::check_recv_rc;
-use crate::socket_contracts::{RouterSocket, SocketRuntime};
+use crate::runtime_bridge::SocketRuntime;
+use crate::socket_contracts::RouterSocket;
 
 struct NativeRouterSocket {
     inner: SocketInner,

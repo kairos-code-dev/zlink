@@ -1,5 +1,5 @@
 use super::*;
-use crate::spot_operations::{
+use crate::runtime_bridge::{
     ActorJoinEntrySpotOpInnerRuntime, ActorJoinEntrySpotOpRuntime, ActorJoinOpEmptyRuntime,
     ActorJoinOpInnerRuntime, ActorJoinOpReadyRuntime, ActorJoinReplyOpInnerRuntime,
     ActorJoinReplyOpRuntime, ActorLookupOpInnerRuntime, ActorLookupOpRuntime,

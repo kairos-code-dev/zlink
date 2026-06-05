@@ -3,19 +3,15 @@
 import { ConfigError, ConfigResult } from '../errors/errors';
 
 const ROUTING_ID_MAX_LENGTH = 255;
-const ROUTING_ID_CREATE_TOKEN = Symbol('routing-id.create');
-
 function normalizeRoutingIdBytes(bytes: Buffer | Uint8Array, name: string): Buffer {
   if (!Buffer.isBuffer(bytes) && !(bytes instanceof Uint8Array)) {
     throw new TypeError(`${name} must be a Buffer or Uint8Array`);
   }
   const normalized = Buffer.from(bytes);
   if (normalized.length === 0 || normalized.length > ROUTING_ID_MAX_LENGTH) {
-    throw new ConfigError(
-      ConfigResult.InvalidArgument,
-      0,
-      `${name} must be 1..${ROUTING_ID_MAX_LENGTH} bytes`
-    );
+    const error = new ConfigError(ConfigResult.InvalidArgument, 0);
+    error.message = `${name} must be 1..${ROUTING_ID_MAX_LENGTH} bytes`;
+    throw error;
   }
   return normalized;
 }
@@ -25,18 +21,14 @@ function normalizeRoutingIdHex(value: string): Buffer {
     throw new TypeError('value must be a string');
   }
   if (value.length === 0 || value.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(value)) {
-    throw new ConfigError(
-      ConfigResult.InvalidArgument,
-      0,
-      'value must be a non-empty even-length hex string'
-    );
+    const error = new ConfigError(ConfigResult.InvalidArgument, 0);
+    error.message = 'value must be a non-empty even-length hex string';
+    throw error;
   }
   if (value.length > ROUTING_ID_MAX_LENGTH * 2) {
-    throw new ConfigError(
-      ConfigResult.InvalidArgument,
-      0,
-      `value must decode to at most ${ROUTING_ID_MAX_LENGTH} bytes`
-    );
+    const error = new ConfigError(ConfigResult.InvalidArgument, 0);
+    error.message = `value must decode to at most ${ROUTING_ID_MAX_LENGTH} bytes`;
+    throw error;
   }
   return normalizeRoutingIdBytes(Buffer.from(value, 'hex'), 'value');
 }
@@ -73,10 +65,7 @@ function uuidString(bytes: Buffer): string {
 export class RoutingId {
   private readonly _bytes: Buffer;
 
-  private constructor(token: symbol, bytes: Buffer) {
-    if (token !== ROUTING_ID_CREATE_TOKEN) {
-      throw new TypeError('RoutingId values are created with RoutingId.from() or RoutingId.fromHex()');
-    }
+  private constructor(bytes: Buffer) {
     this._bytes = bytes;
     Object.freeze(this);
   }
@@ -87,22 +76,7 @@ export class RoutingId {
    * length is not 1..255.
    */
   static from(value: string | Buffer | Uint8Array | number): RoutingId {
-    return new RoutingId(ROUTING_ID_CREATE_TOKEN, normalizeRoutingIdValue(value));
-  }
-
-  /** @internal */
-  static fromOwnedBuffer(bytes: Buffer): RoutingId {
-    if (!Buffer.isBuffer(bytes)) {
-      throw new TypeError('bytes must be a Buffer');
-    }
-    if (bytes.length === 0 || bytes.length > ROUTING_ID_MAX_LENGTH) {
-      throw new ConfigError(
-        ConfigResult.InvalidArgument,
-        0,
-        `bytes must be 1..${ROUTING_ID_MAX_LENGTH} bytes`
-      );
-    }
-    return new RoutingId(ROUTING_ID_CREATE_TOKEN, bytes);
+    return new RoutingId(normalizeRoutingIdValue(value));
   }
 
   /**
@@ -110,17 +84,12 @@ export class RoutingId {
    * length, up to 510 digits for 255 bytes).
    */
   static fromHex(value: string): RoutingId {
-    return new RoutingId(ROUTING_ID_CREATE_TOKEN, normalizeRoutingIdHex(value));
+    return new RoutingId(normalizeRoutingIdHex(value));
   }
 
   /** Return a copy of the routing id bytes. */
   toBytes(): Buffer {
     return Buffer.from(this._bytes);
-  }
-
-  /** @internal */
-  borrowedBytes(): Buffer {
-    return this._bytes;
   }
 
   /** The length of the routing id in bytes. */

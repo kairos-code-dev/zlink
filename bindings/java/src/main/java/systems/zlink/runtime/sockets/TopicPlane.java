@@ -2,6 +2,8 @@
 
 package systems.zlink.runtime.sockets;
 
+import systems.zlink.internal.ContractAccess;
+
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -97,7 +99,7 @@ final class TopicPlane {
         TopicMessage fresh = subscribe(flags);
         if (fresh == null)
             return false;
-        result.adoptFrom(fresh);
+        ContractAccess.topicMessageAdoptFrom(result, fresh);
         return true;
     }
 
@@ -245,7 +247,7 @@ final class TopicPlane {
                         success = true;
                         TopicMessage fresh = subscribeAssembleRemainder(
                             scratch, part);
-                        result.adoptFrom(fresh);
+                        ContractAccess.topicMessageAdoptFrom(result, fresh);
                         return true;
                     }
                     RoutingId routingId = NativeRoutingIds.readOut(

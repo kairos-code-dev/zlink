@@ -4,13 +4,6 @@ from typing import Protocol, runtime_checkable
 
 from .codes import MonitorEventMask
 
-_socket_monitor_factory = None
-
-
-def _register_socket_monitor_factory(factory):
-    global _socket_monitor_factory
-    _socket_monitor_factory = factory
-
 
 class MonitorStatus:
     """A point-in-time snapshot of a monitored socket's state and auto-high-
@@ -126,10 +119,3 @@ class MonitorSocket(Protocol):
 
     async def __aexit__(self, exc_type, exc, tb): ...
 
-
-def open_socket_monitor(socket, events=MonitorEventMask.ALL):
-    """Open a monitor on ``socket`` for the selected ``events``. The caller owns
-    the returned monitor and must close it."""
-    if _socket_monitor_factory is None:
-        raise RuntimeError("zlink monitor runtime is not registered")
-    return _socket_monitor_factory(socket, events=events)

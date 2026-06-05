@@ -100,7 +100,8 @@ final class PerfPair {
 
             Thread traffic = new Thread(() -> {
                 try {
-                    try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                    Message active = PerfUtil.payloadTemplate(config.size());
+                    try {
                         // C parity: perf_pair.cpp send step uses
                         // send_socket_active_message(sender, &part,
                         // ZLINK_DONTWAIT, true) and perf_single_one_way.hpp
@@ -114,7 +115,7 @@ final class PerfPair {
                         // nonblocking send, retry on transient backpressure
                         // until the duration deadline.
                         while (System.nanoTime() < activeEnd) {
-                            PerfUtil.resetAndWritePayload(active, config.size(),
+                            active = PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                             while (System.nanoTime() < activeEnd
                                 && !trySendActive(sender, active)) {
@@ -123,6 +124,8 @@ final class PerfPair {
                                 // `continue`).
                             }
                         }
+                    } finally {
+                        active.close();
                     }
                     // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with a
                     // wire-level stop token. C parity:

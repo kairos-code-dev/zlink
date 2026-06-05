@@ -408,7 +408,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                     lazyCompletionRunnable);
             }
         }
-        target.adoptFrom(fresh);
+        ContractAccess.receivedAdoptFrom(target, fresh);
         return true;
     }
 

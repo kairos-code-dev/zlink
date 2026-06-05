@@ -10,13 +10,43 @@ export interface MessageSnapshot {
 }
 
 export function messageFromSnapshot(snapshot: MessageSnapshot): Message {
-  return (Message as unknown as {
-    fromSnapshot(snapshot: MessageSnapshot): Message;
-  }).fromSnapshot(snapshot);
+  const message = Object.create(Message.prototype) as Message;
+  const state = message as unknown as {
+    _buffer: Buffer;
+    _refCount: number;
+    _properties: Readonly<Record<string, string>>;
+    _metadata: Readonly<Map<number, Buffer>>;
+  };
+  state._buffer = snapshot.data;
+  state._refCount = snapshot.refCount ?? 1;
+  state._properties = normalizeMessageProperties(snapshot.properties);
+  state._metadata = snapshot.metadata ?? EMPTY_METADATA;
+  return message;
 }
 
 export function messageToSnapshot(message: Message): MessageSnapshot {
-  return (message as unknown as {
-    toSnapshot(): MessageSnapshot;
-  }).toSnapshot();
+  const state = message as unknown as {
+    _buffer: Buffer;
+    _refCount: number;
+    _properties: Readonly<Record<string, string>>;
+    _metadata: Readonly<Map<number, Buffer>>;
+  };
+  return {
+    data: state._buffer,
+    refCount: state._refCount,
+    properties: state._properties,
+    metadata: state._metadata
+  };
+}
+
+const EMPTY_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({});
+const EMPTY_METADATA: Readonly<Map<number, Buffer>> = Object.freeze(new Map<number, Buffer>());
+
+function normalizeMessageProperties(
+  properties?: Readonly<Record<string, string>>
+): Readonly<Record<string, string>> {
+  if (!properties) {
+    return EMPTY_PROPERTIES;
+  }
+  return Object.isFrozen(properties) ? properties : Object.freeze(properties);
 }

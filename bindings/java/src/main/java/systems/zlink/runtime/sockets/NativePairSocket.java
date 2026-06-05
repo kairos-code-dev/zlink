@@ -2,6 +2,8 @@
 
 package systems.zlink.runtime.sockets;
 
+import systems.zlink.internal.ContractAccess;
+
 import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.core.Context;
@@ -28,7 +30,7 @@ final class NativePairSocket extends NativeSocketBase implements PairSocket {
         java.util.Objects.requireNonNull(flags, "flags");
         Received fresh = super.recv(ReceiveFlag.fromValue(flags.value()));
         if (fresh == null) return false;
-        result.adoptFrom(fresh);
+        ContractAccess.receivedAdoptFrom(result, fresh);
         return true;
     }
     public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }

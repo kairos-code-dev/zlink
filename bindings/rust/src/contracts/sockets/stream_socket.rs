@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::socket_contracts::SocketRuntime;
+use crate::runtime_bridge::SocketStorage;
 use crate::spot_operations::{ActorBindOp, ActorUnbindOp};
 use crate::{
     ActorRef, BindError, CommonSocketOptions, ConfigError, ConnectError, Empty, HandlerError,
@@ -10,7 +10,7 @@ use crate::{
 /// STREAM socket: exchanges framed packets with raw TCP peers (addressed by
 /// routing id) and can host actor gateways over those streams.
 pub struct StreamSocket {
-    pub(crate) inner: Box<dyn SocketRuntime>,
+    pub(crate) inner: Box<dyn SocketStorage>,
 }
 
 impl std::panic::UnwindSafe for StreamSocket {}

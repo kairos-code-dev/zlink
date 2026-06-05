@@ -235,7 +235,7 @@ final class PerfMultiSpotReqRep {
                         hasWaitingReply = true;
                         continue;
                     }
-                    PerfUtil.resetAndWritePayload(payloads[i], config.size(),
+                    payloads[i] = PerfUtil.resetAndWritePayload(payloads[i], config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     waitingReply[i].set(true);
                     if (submitRequest(requesters.get(i), payloads[i],

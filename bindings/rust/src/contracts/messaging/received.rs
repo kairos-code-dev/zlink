@@ -1,14 +1,7 @@
 use crate::error::{CloseError, RecvError, RecvResult};
 use crate::message::{Message, RoutingId};
+use crate::runtime_bridge::{ReceivedReplyContext, ReceivedSendContext};
 use crate::spot_operations::{Empty, ReplyOp, SendOp};
-
-pub(crate) trait ReceivedReplyRuntime: Send {
-    fn reply_op(&self) -> ReplyOp<Empty>;
-}
-
-pub(crate) trait ReceivedSendRuntime: Send {
-    fn send_op(&self) -> SendOp<Empty>;
-}
 
 /// A received message envelope: its routing metadata and message parts.
 ///
@@ -24,8 +17,8 @@ pub struct Received {
     pub request_seq: Option<u64>,
     /// The message parts, owned by this envelope.
     pub parts: Vec<Message>,
-    pub(crate) reply_context: Option<Box<dyn ReceivedReplyRuntime>>,
-    pub(crate) send_context: Option<Box<dyn ReceivedSendRuntime>>,
+    pub(crate) reply_context: Option<Box<dyn ReceivedReplyContext>>,
+    pub(crate) send_context: Option<Box<dyn ReceivedSendContext>>,
 }
 
 impl Default for Received {
@@ -132,13 +125,13 @@ impl Received {
     /// submit. Parts are consumed on a successful submit (see [`SendOp`]). Only
     /// valid for replyable envelopes (those with a request sequence).
     pub fn reply(&self) -> ReplyOp<Empty> {
-        crate::messaging_domain_runtime::received_reply(self)
+        crate::received_operations::received_reply(self)
     }
 
     /// Begins a send addressed to this envelope's source route: add parts, then
     /// submit. Parts are consumed on a successful submit (see [`SendOp`]).
     pub fn send(&self) -> SendOp<Empty> {
-        crate::messaging_domain_runtime::received_send(self)
+        crate::received_operations::received_send(self)
     }
 }
 

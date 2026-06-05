@@ -207,9 +207,10 @@ final class PerfSpot {
                                              long activeEnd,
                                              CountDownLatch stopped,
                                              AtomicReference<Throwable> failure) {
-        try (Message active = PerfUtil.payloadTemplate(config.size())) {
+        Message active = PerfUtil.payloadTemplate(config.size());
+        try {
             while (System.nanoTime() < activeEnd) {
-                PerfUtil.resetAndWritePayload(active, config.size(),
+                active = PerfUtil.resetAndWritePayload(active, config.size(),
                     (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                 if (!publishWhenWritableUntil(publisher, topic, active, activeEnd)) {
                     break;
@@ -223,6 +224,8 @@ final class PerfSpot {
             }
         } catch (Throwable ex) {
             failure.compareAndSet(null, ex);
+        } finally {
+            active.close();
             stopped.countDown();
         }
     }

@@ -275,7 +275,7 @@ final class PerfMultiDealerDealer {
     // a non-transient error is fatal.
     private static boolean sendOneActive(DealerSocket socket, Message payload,
                                          int size) {
-        PerfUtil.resetAndWritePayload(payload, size,
+        payload = PerfUtil.resetAndWritePayload(payload, size,
             (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
         try (Message outbound = Message.from(payload)) {
             return socket.send().message(outbound)

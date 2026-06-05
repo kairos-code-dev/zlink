@@ -134,6 +134,11 @@ public final class Message implements AutoCloseable {
                                        long length) {
                 return Message.from(segment, offset, length);
             }
+
+            @Override
+            public boolean isReusable(Message message) {
+                return message.isReusable();
+            }
         });
     }
 
@@ -495,7 +500,7 @@ public final class Message implements AutoCloseable {
         return empty();
     }
 
-    public boolean valid() {
+    boolean valid() {
         return valid && !closed;
     }
 
@@ -592,7 +597,7 @@ public final class Message implements AutoCloseable {
      * <p>Sending a message transfers its native frame to the socket. Call this
      * method before filling and sending the same {@code Message} instance again.
      */
-    public void reset(int size) {
+    void reset(int size) {
         if (scope == null && ownedMsgSlotAddress == 0L)
             throw new IllegalStateException("message is not reusable");
         if (size < 0)
@@ -744,7 +749,7 @@ public final class Message implements AutoCloseable {
         cachePayload((int) ContractAccess.nativeMessageSize(msg));
     }
 
-    public void resetForReuse() {
+    void resetForReuse() {
         if (scope == null && ownedMsgSlotAddress == 0L)
             throw new IllegalStateException("message is not reusable");
         if (closed || (scope != null
@@ -765,7 +770,7 @@ public final class Message implements AutoCloseable {
         clearPayloadCache();
     }
 
-    public boolean isReusable() {
+    boolean isReusable() {
         return !closed && (ownedMsgSlotAddress != 0
             || (scope != null && ContractAccess.nativeMessageScopeAlive(scope)));
     }

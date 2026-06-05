@@ -2,21 +2,6 @@
 
 from typing import Protocol, runtime_checkable
 
-_context_factory = None
-
-
-def _register_context_factory(factory):
-    global _context_factory
-    _context_factory = factory
-
-
-def create_context():
-    """Create a messaging context. The caller owns it; close it or use it as a
-    context manager. Closing it terminates the sockets created from it."""
-    if _context_factory is None:
-        raise RuntimeError("zlink context runtime is not registered")
-    return _context_factory()
-
 
 @runtime_checkable
 class Context(Protocol):

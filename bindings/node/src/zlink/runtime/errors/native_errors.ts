@@ -10,6 +10,7 @@ import {
   ZlinkError
 } from '../../contracts/errors/errors';
 import { createError, type NativeErrorCategory } from './error_mapping';
+import { withRuntimeErrorMessage } from './error_state';
 
 export function readErrno(): number {
   const native = requireNative();
@@ -63,7 +64,7 @@ export function recvNativeError(
 ): RecvError {
   const message = nativeErrorMessage(error, fallbackMessage);
   if ((flags & RecvFlags.DontWait) !== 0 && /Resource temporarily unavailable|temporarily unavailable|would block/i.test(message)) {
-    return new RecvError(RecvResult.NoData, readErrno(), message);
+    return withRuntimeErrorMessage(new RecvError(RecvResult.NoData, readErrno()), message);
   }
   return createError('recv', readErrno(), message) as RecvError;
 }
@@ -75,7 +76,7 @@ export function submitNativeError(
 ): SubmitError {
   const message = nativeErrorMessage(error, fallbackMessage);
   if ((flags & SendFlags.DontWait) !== 0 && /Resource temporarily unavailable|temporarily unavailable|would block/i.test(message)) {
-    return new SubmitError(SubmitResult.Backpressured, readErrno(), message);
+    return withRuntimeErrorMessage(new SubmitError(SubmitResult.Backpressured, readErrno()), message);
   }
   return createError('submit', readErrno(), message) as SubmitError;
 }

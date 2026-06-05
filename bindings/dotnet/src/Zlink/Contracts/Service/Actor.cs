@@ -11,7 +11,7 @@ namespace Systems.Zlink;
 /// A reference to an actor: the node that hosts it, its actor id, and its
 /// generation.
 /// </summary>
-public readonly struct ActorRef : IEquatable<ActorRef>
+public readonly partial struct ActorRef : IEquatable<ActorRef>
 {
     /// <summary>
     /// Creates an actor reference for the given host node, actor id, and
@@ -41,12 +41,6 @@ public readonly struct ActorRef : IEquatable<ActorRef>
     /// Gets whether this reference omits generation checking (generation 0).
     /// </summary>
     public bool IsUnchecked => Generation == 0;
-
-    internal static ActorRef Unchecked(RoutingId nodeRid, string actorId)
-        => new(nodeRid, actorId, 0);
-
-    internal static ActorRef Remote(RoutingId targetNodeRid, string actorId)
-        => Unchecked(targetNodeRid, actorId);
 
     /// <summary>
     /// Returns true when <paramref name="other"/> has the same node, actor id,
@@ -209,27 +203,8 @@ public sealed record ActorReceived(ActorRecvInfo Info,
 /// <summary>
 /// A pending request from an actor to join a spot, awaiting a reply.
 /// </summary>
-public sealed class ActorJoinRequest
+public sealed partial class ActorJoinRequest
 {
-    internal ActorJoinRequest(ActorJoinInfo info, Message message)
-        : this(info, [message], runtimeState: null)
-    {
-    }
-
-    internal ActorJoinRequest(ActorJoinInfo info, IReadOnlyList<Message> parts)
-        : this(info, parts, runtimeState: null)
-    {
-    }
-
-    internal ActorJoinRequest(ActorJoinInfo info, IReadOnlyList<Message> parts,
-        object? runtimeState)
-    {
-        Info = info;
-        Parts = parts;
-        Message = parts.Count > 0 ? parts[0] : new Message();
-        RuntimeState = runtimeState;
-    }
-
     /// <summary>
     /// Gets the info.
     /// </summary>
@@ -242,7 +217,6 @@ public sealed class ActorJoinRequest
     /// Gets the parts.
     /// </summary>
     public IReadOnlyList<Message> Parts { get; }
-    internal object? RuntimeState { get; }
 }
 
 /// <summary>

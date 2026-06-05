@@ -44,7 +44,10 @@ fn main() {
         .timeout(Duration::from_secs(1))
         .submit(move |result| bind_tx.send(result).unwrap())
         .unwrap();
-    bind_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+    bind_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
 
     // dispatch 핸들러: actor에게 온 메시지를 모은다.
     let payloads = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -127,5 +130,7 @@ fn main() {
         .unwrap();
     lr2.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
     actor.close().unwrap();
-    println!("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"");
+    println!(
+        "[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\""
+    );
 }

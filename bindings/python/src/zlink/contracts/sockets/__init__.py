@@ -7,12 +7,6 @@ _OPTION_NAMES = {
     "RouterSocketOptions",
     "StreamSocketOptions",
     "SubSocketOptions",
-    "create_common_socket_options",
-    "create_dealer_socket_options",
-    "create_pub_socket_options",
-    "create_router_socket_options",
-    "create_stream_socket_options",
-    "create_sub_socket_options",
 }
 _SOCKET_NAMES = {
     "DealerSocket",
@@ -23,14 +17,6 @@ _SOCKET_NAMES = {
     "SubSocket",
     "XPubSocket",
     "XSubSocket",
-    "create_dealer_socket",
-    "create_pair_socket",
-    "create_pub_socket",
-    "create_router_socket",
-    "create_stream_socket",
-    "create_sub_socket",
-    "create_xpub_socket",
-    "create_xsub_socket",
 }
 
 
@@ -39,21 +25,6 @@ def __getattr__(name):
         from . import socket_options
 
         value = getattr(socket_options, name)
-        globals()[name] = value
-        return value
-    if name in {
-        "create_dealer_socket",
-        "create_pair_socket",
-        "create_pub_socket",
-        "create_router_socket",
-        "create_stream_socket",
-        "create_sub_socket",
-        "create_xpub_socket",
-        "create_xsub_socket",
-    }:
-        from . import socket
-
-        value = getattr(socket, name)
         globals()[name] = value
         return value
     if name in {"DealerSocket", "PairSocket"}:

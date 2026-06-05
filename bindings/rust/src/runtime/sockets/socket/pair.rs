@@ -3,7 +3,8 @@ use std::ffi::c_void;
 use crate::core_context::Context;
 use crate::error::ConfigError;
 use crate::ffi;
-use crate::socket_contracts::{PairSocket, PairSocketRuntime};
+use crate::runtime_bridge::PairSocketRuntime;
+use crate::socket_contracts::PairSocket;
 
 use super::SocketInner;
 

@@ -13,6 +13,7 @@ import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.messaging.SubscriptionEvent;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.service.spot.ActorJoinInfo;
 import systems.zlink.contracts.service.spot.ActorJoinRequest;
@@ -44,6 +45,7 @@ public final class ContractAccess {
     private static volatile SocketOptionsAccess socketOptionsAccess;
     private static volatile NativeErrorAccess nativeErrorAccess;
     private static volatile ReceivedAccess receivedAccess;
+    private static volatile SubscriptionEventAccess subscriptionEventAccess;
     private static volatile TopicMessageAccess topicMessageAccess;
     private static volatile RuntimeFactoryAccess runtimeFactoryAccess;
     private static volatile MessageAccess messageAccess;
@@ -213,6 +215,12 @@ public final class ContractAccess {
 
         void setSendSender(Received received,
                            BiFunction<List<Message>, SendFlags, Boolean> sendSender);
+
+        void adoptFrom(Received target, Received source);
+    }
+
+    public interface SubscriptionEventAccess {
+        void adoptFrom(SubscriptionEvent target, SubscriptionEvent source);
     }
 
     public interface TopicMessageAccess {
@@ -223,6 +231,8 @@ public final class ContractAccess {
                          String topicId, Message part);
 
         Message prepareReusableSinglePart(TopicMessage target);
+
+        void adoptFrom(TopicMessage target, TopicMessage source);
     }
 
     public interface RuntimeFactoryAccess {
@@ -297,6 +307,8 @@ public final class ContractAccess {
         Message adoptOwnedNative(Object nativeMsg);
 
         Message fromSegment(Object segment, long offset, long length);
+
+        boolean isReusable(Message message);
     }
 
     public interface NativeMessageAccess {
@@ -390,6 +402,10 @@ public final class ContractAccess {
 
     public static void register(ReceivedAccess access) {
         receivedAccess = Objects.requireNonNull(access, "access");
+    }
+
+    public static void register(SubscriptionEventAccess access) {
+        subscriptionEventAccess = Objects.requireNonNull(access, "access");
     }
 
     public static void register(TopicMessageAccess access) {
@@ -672,9 +688,19 @@ public final class ContractAccess {
         topicMessageAccess().adoptSingle(target, routingId, topicId, part);
     }
 
+    public static void topicMessageAdoptFrom(TopicMessage target,
+                                             TopicMessage source) {
+        topicMessageAccess().adoptFrom(target, source);
+    }
+
     public static Message topicMessagePrepareReusableSinglePart(
       TopicMessage target) {
         return topicMessageAccess().prepareReusableSinglePart(target);
+    }
+
+    public static void subscriptionEventAdoptFrom(SubscriptionEvent target,
+                                                  SubscriptionEvent source) {
+        subscriptionEventAccess().adoptFrom(target, source);
     }
 
     public static void receivedForceMaterialize(Received received) {
@@ -689,6 +715,10 @@ public final class ContractAccess {
                                              BiFunction<List<Message>, SendFlags,
                                                  Boolean> sendSender) {
         receivedAccess().setSendSender(received, sendSender);
+    }
+
+    public static void receivedAdoptFrom(Received target, Received source) {
+        receivedAccess().adoptFrom(target, source);
     }
 
     public static void receivedPopulateRoutedSinglePart(
@@ -841,6 +871,10 @@ public final class ContractAccess {
 
     public static void messageResetReusable(Message message) {
         messageAccess().resetReusable(message);
+    }
+
+    public static boolean messageIsReusable(Message message) {
+        return messageAccess().isReusable(message);
     }
 
     public static Message messageAdoptOwnedNative(Object nativeMsg) {
@@ -1038,6 +1072,15 @@ public final class ContractAccess {
             throw new IllegalStateException(
                 "missing contract access for " + Received.class.getName());
         return receivedAccess;
+    }
+
+    private static SubscriptionEventAccess subscriptionEventAccess() {
+        if (subscriptionEventAccess == null) load(SubscriptionEvent.class);
+        if (subscriptionEventAccess == null)
+            throw new IllegalStateException(
+                "missing contract access for "
+                    + SubscriptionEvent.class.getName());
+        return subscriptionEventAccess;
     }
 
     private static TopicMessageAccess topicMessageAccess() {

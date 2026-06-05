@@ -65,8 +65,8 @@ final class PerfMultiSpot {
                 latencyOnlyIntervalMicros()) * 1_000L;
             long nextSendNanos = System.nanoTime();
             PollEvents publishEvents = new PollEvents(2);
-            try (Message active = PerfUtil.payloadTemplate(config.size());
-                 Poller publishPoller = Zlink.createPoller();
+            Message active = PerfUtil.payloadTemplate(config.size());
+            try (Poller publishPoller = Zlink.createPoller();
                  ZlinkTimer activeZlinkTimer = Zlink.createTimer()) {
                 publishPoller.add(publisher, PUBLISHER_SLOT,
                     PollEventFlags.POLLOUT);
@@ -81,7 +81,7 @@ final class PerfMultiSpot {
                             continue;
                         }
                     }
-                    PerfUtil.resetAndWritePayload(active, config.size(),
+                    active = PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     if (!publishWhenWritableUntil(publisher, active,
                             publishPoller, publishEvents, activeZlinkTimer)) {
@@ -92,6 +92,8 @@ final class PerfMultiSpot {
                             + latencyOnlyIntervalNanos;
                     }
                 }
+            } finally {
+                active.close();
             }
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
             // wire-level stop token. Bounded non-blocking retry (never an

@@ -2,12 +2,11 @@ use std::ffi::{CString, c_void};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use crate::core_context::{
-    AutoHwmProfile, AutoHwmRecalcReason, Context, ContextOptionRuntime, ContextRuntime,
-};
+use crate::core_context::{AutoHwmProfile, AutoHwmRecalcReason, Context};
 use crate::error::{CloseError, ConfigError, ConfigResult};
 use crate::ffi;
 use crate::native_errors::{check_close_rc, check_config_rc, config_validation_error, last_errno};
+use crate::runtime_bridge::{ContextOptionRuntime, ContextRuntime};
 use crate::socket_contracts::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
     XSubSocket,

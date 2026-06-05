@@ -31,7 +31,7 @@ fn accept(room: &Spot) {
 }
 
 fn main() {
-// --8<-- [start:doc]
+    // --8<-- [start:doc]
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let mut room = node.create_spot().unwrap();
@@ -48,7 +48,10 @@ fn main() {
         .timeout(Duration::from_secs(1))
         .submit(move |r| bind_tx.send(r).unwrap())
         .unwrap();
-    bind_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+    bind_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
 
     // dispatch 핸들러: STREAM이 relay한 메시지를 모은다.
     let processed = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -103,8 +106,11 @@ fn main() {
         .timeout(Duration::from_secs(1))
         .submit(move |r| leave_tx.send(r).unwrap())
         .unwrap();
-    leave_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+    leave_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
     player.close().unwrap();
     println!("[actor/sequential] processed in order: move -> attack -> loot");
-// --8<-- [end:doc]
+    // --8<-- [end:doc]
 }

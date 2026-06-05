@@ -4,9 +4,7 @@ using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
@@ -20,22 +18,6 @@ namespace Systems.Zlink;
 /// </remarks>
 public sealed partial class Message : IDisposable, IAsyncDisposable
 {
-    private ZlinkMsg _msg;
-    private bool _valid;
-    private int _knownSize = -1;
-    private ManagedPayloadState? _managedPayload;
-    // Marks instances created via the thread-local hot-path pool. Dispose
-    // returns these to the pool instead of letting them be GC'd, which
-    // eliminates the per-message wrapper allocation in routed echo
-    // workloads (100 clients × every message on both server and clients).
-    private bool _pooled;
-
-    [ThreadStatic]
-    private static Message[]? t_pool;
-    [ThreadStatic]
-    private static int t_poolCount;
-    private const int PoolCapacity = 256;
-
     /// <summary>
     /// Create an empty message.
     /// </summary>
@@ -53,13 +35,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     /// </exception>
     public Message(int size)
     {
-        if (size < 0)
-            throw new ArgumentOutOfRangeException(nameof(size));
-        int rc = NativeMethods.zlink_msg_init_size(ref _msg, (nuint)size);
-        if (rc != 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-        _valid = true;
-        _knownSize = size;
+        InitSize(size);
     }
 
     /// <summary>
@@ -69,13 +45,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     {
         if (data.Length == 0)
             return;
-        unsafe
-        {
-            IntPtr dest = NativeMethods.zlink_msg_data(ref _msg);
-            if (dest == IntPtr.Zero)
-                throw new InvalidOperationException("Message data is null.");
-            data.CopyTo(new Span<byte>((void*)dest, data.Length));
-        }
+        CopyPayloadToStorage(data);
     }
 
     /// <summary>
@@ -85,12 +55,6 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     {
     }
 
-    internal Message(bool init)
-    {
-        if (init)
-            Init();
-    }
-
     /// <summary>
     /// Gets the payload size in bytes.
     /// </summary>
@@ -98,12 +62,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     {
         get
         {
-            EnsureValid();
-            if (_managedPayload != null)
-                return _managedPayload.Length;
-            if (_knownSize >= 0)
-                return _knownSize;
-            return (int)NativeMethods.zlink_msg_size(ref _msg);
+            return GetSizeCore();
         }
     }
 
@@ -123,10 +82,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     {
         get
         {
-            EnsureValid();
-            if (_managedPayload != null)
-                return 1;
-            return NativeMethods.zlink_msg_refcnt(ref _msg);
+            return GetRefCountCore();
         }
     }
 
@@ -142,9 +98,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     {
         if (size < 0)
             throw new ArgumentOutOfRangeException(nameof(size));
-        Message message = RentFromPool();
-        message.InitSize(size);
-        return message;
+        return AllocateCore(size);
     }
 
     /// <summary>
@@ -155,22 +109,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     /// not be used after the message is disposed or moved.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public unsafe Span<byte> AsSpan()
+    public Span<byte> AsSpan()
     {
-        EnsureValid();
-        ManagedPayloadState? managed = _managedPayload;
-        if (managed != null)
-            return managed.Bytes.AsSpan(0, managed.Length);
-        bool hasKnownSize = _knownSize >= 0;
-        int size = hasKnownSize
-            ? _knownSize
-            : (int)NativeMethods.zlink_msg_size(ref _msg);
-        if (size == 0)
-            return Span<byte>.Empty;
-        IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
-        if (data == IntPtr.Zero)
-            return Span<byte>.Empty;
-        return new Span<byte>((void*)data, size);
+        return AsSpanCore();
     }
 
     /// <summary>
@@ -189,22 +130,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     /// not be used after the message is disposed or moved.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public unsafe ReadOnlySpan<byte> AsReadOnlySpan()
+    public ReadOnlySpan<byte> AsReadOnlySpan()
     {
-        EnsureValid();
-        ManagedPayloadState? managed = _managedPayload;
-        if (managed != null)
-            return managed.Bytes.AsSpan(0, managed.Length);
-        bool hasKnownSize = _knownSize >= 0;
-        int size = hasKnownSize
-            ? _knownSize
-            : (int)NativeMethods.zlink_msg_size(ref _msg);
-        if (size == 0)
-            return ReadOnlySpan<byte>.Empty;
-        IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
-        if (data == IntPtr.Zero)
-            return ReadOnlySpan<byte>.Empty;
-        return new ReadOnlySpan<byte>((void*)data, size);
+        return AsReadOnlySpanCore();
     }
 
     /// <summary>
@@ -216,10 +144,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     /// </remarks>
     public ReadOnlyMemory<byte> AsReadOnlyMemory()
     {
-        ManagedPayloadState? managed = _managedPayload;
-        if (managed != null)
-            return managed.Bytes.AsMemory(0, managed.Length);
-        return ToArray();
+        return AsReadOnlyMemoryCore();
     }
 
     /// <summary>
@@ -254,45 +179,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     /// Attempts to copy the payload into <paramref name="destination"/>.
     /// </summary>
     /// <returns>true when the destination was large enough; otherwise false.</returns>
-    public unsafe bool TryCopyTo(Span<byte> destination, out int bytesWritten)
+    public bool TryCopyTo(Span<byte> destination, out int bytesWritten)
     {
-        EnsureValid();
-        ManagedPayloadState? managed = _managedPayload;
-        if (managed != null)
-        {
-            if (managed.Length > destination.Length)
-            {
-                bytesWritten = 0;
-                return false;
-            }
-
-            managed.Bytes.AsSpan(0, managed.Length).CopyTo(destination);
-            bytesWritten = managed.Length;
-            return true;
-        }
-        bool hasKnownSize = _knownSize >= 0;
-        nuint size = hasKnownSize
-            ? (nuint)_knownSize
-            : NativeMethods.zlink_msg_size(ref _msg);
-        if (size == 0)
-        {
-            bytesWritten = 0;
-            return true;
-        }
-        if (size > (nuint)destination.Length)
-        {
-            bytesWritten = 0;
-            return false;
-        }
-        IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
-        if (data == IntPtr.Zero)
-        {
-            bytesWritten = 0;
-            return true;
-        }
-        new ReadOnlySpan<byte>((void*)data, (int)size).CopyTo(destination);
-        bytesWritten = (int)size;
-        return true;
+        return TryCopyToCore(destination, out bytesWritten);
     }
 
     /// <summary>
@@ -403,13 +292,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     /// </returns>
     public string? GetProperty(string property)
     {
-        EnsureValid();
-        if (_managedPayload != null)
-            return null;
-        IntPtr ptr = NativeMethods.zlink_msg_gets(ref _msg, property);
-        if (ptr == IntPtr.Zero)
-            return null;
-        return Marshal.PtrToStringUTF8(ptr);
+        return GetPropertyCore(property);
     }
 
     /// <summary>
@@ -418,14 +301,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Dispose()
     {
-        if (!_valid && _managedPayload == null)
-        {
-            TryReturnToPool();
-            return;
-        }
-
-        Close();
-        TryReturnToPool();
+        DisposeCore();
     }
 
     /// <summary>

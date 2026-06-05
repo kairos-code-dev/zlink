@@ -51,7 +51,7 @@ final class ReceivePlane {
 
         Received fresh = InternalAccess.receivedLazy((byte[]) null, null, frame,
             new BasicReceiveCursor(flags.getValue()), 0L, false, null, null);
-        result.adoptFrom(fresh);
+        ContractAccess.receivedAdoptFrom(result, fresh);
         return true;
     }
 
@@ -232,7 +232,7 @@ final class ReceivePlane {
                             new BasicReceiveCursor(
                                 ReceiveFlag.DONTWAIT.getValue()),
                             0L, false, null, null);
-                        result.adoptFrom(fresh);
+                        ContractAccess.receivedAdoptFrom(result, fresh);
                     }
                     return true;
                 }

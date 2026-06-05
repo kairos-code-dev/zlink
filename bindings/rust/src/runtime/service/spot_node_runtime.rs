@@ -1,5 +1,5 @@
 use super::*;
-use crate::spot_node_resource::SpotNodePublicRuntime;
+use crate::runtime_bridge::SpotNodePublicRuntime;
 
 // ---------------------------------------------------------------------------
 // SpotNode

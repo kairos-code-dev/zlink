@@ -331,7 +331,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void registrySpotRemoteAddressResolverReturnsRouteModelFromSpotDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRegistryEndpoint("inproc://registry");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("inproc://registry"));
         options.addRouteMeshChannel("play", route -> route.bind("inproc://play"));
         options.useRegistrySpotRemoteAddresses("game");
         options.addSpotMesh("game", mesh ->
@@ -498,7 +498,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void routeMeshSpotEgressUsesRegistryQueryRoutingId() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"));
         options.addRouteMeshChannel("egress", route -> {
             route.bind("inproc://egress-route");
             route.enableSpotRouteEgress("ingress");
@@ -538,7 +538,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void routeMeshSpotEgressUsesDiscoveryMemberPeerRoutingIdBeforeRegistryQuery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"));
         options.addRouteMeshChannel("egress-discovery", route -> {
             route.bind("inproc://egress-discovery");
             route.enableSpotRouteEgress("ingress-discovery");
@@ -759,7 +759,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void attachedSpotChannelClientDiscoveryAttachesDealerToBackendNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"));
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> node.attachChannelClient("profile")));
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -842,7 +842,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void acceptedSpotRouteChannelDiscoveryAttachesRouteDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"));
         options.addClientServerChannel("api", channel -> { });
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {

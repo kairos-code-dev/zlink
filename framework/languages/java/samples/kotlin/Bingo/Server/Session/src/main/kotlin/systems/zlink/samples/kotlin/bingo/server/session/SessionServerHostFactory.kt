@@ -18,7 +18,9 @@ class SessionServerHostFactory {
     @Bean
     fun sessionOptions(): ZLinkFrameworkOptionsCustomizer =
         ZLinkFrameworkOptionsCustomizer { options ->
-            options.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.useDiscovery { discovery ->
+                discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            }
             options.codecs().addJson()
             options.addClientServerChannel(SampleNames.ApiChannel) { channel -> channel.enableClient() }
             options.addClientServerChannel(SampleNames.PlayChannel) { channel -> channel.enableClient() }

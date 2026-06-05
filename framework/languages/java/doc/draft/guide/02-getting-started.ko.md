@@ -76,7 +76,7 @@ public class PriceServerConfig implements ZLinkFrameworkOptionsCustomizer {
         });
 
         // 위치 해결: 같은 Registry를 가리키게 한다.
-        options.addRegistryEndpoint("tcp://127.0.0.1:5551");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:5551"));
     }
 }
 ```
@@ -93,7 +93,7 @@ public class CallerConfig implements ZLinkFrameworkOptionsCustomizer {
     @Override
     public void customize(ZLinkFrameworkOptions options) {
         options.addClientServerChannel("price", channel -> channel.enableClient());
-        options.addRegistryEndpoint("tcp://127.0.0.1:5551");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:5551"));
     }
 }
 

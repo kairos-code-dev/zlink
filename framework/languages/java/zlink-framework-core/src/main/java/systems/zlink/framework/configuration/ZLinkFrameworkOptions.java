@@ -19,8 +19,6 @@ public interface ZLinkFrameworkOptions {
 
     void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure);
 
-    void addRegistryEndpoint(String endpoint);
-
     void addClientServerChannel(
         String channelName,
         Consumer<ClientServerChannelBuilder> configure);

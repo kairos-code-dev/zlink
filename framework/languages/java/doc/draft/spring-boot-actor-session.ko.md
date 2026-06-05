@@ -39,7 +39,7 @@ public class ActorConfig implements ZLinkFrameworkOptionsCustomizer {
         options.addActorFactory("player", PlayerActorFactory.class);
 
         options.addSpotMesh("game.stage", mesh -> {
-            mesh.addRegistryEndpoint("tcp://registry1:5551");
+            mesh.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
             mesh.addNode("play", node -> {
                 node.enableRouter();
                 node.addEntrySpot(GameEntrySpot.class);

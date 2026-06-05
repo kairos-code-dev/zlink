@@ -28,7 +28,9 @@ class PlayServerHostFactory {
     fun playOptions(): ZLinkFrameworkOptionsCustomizer =
         ZLinkFrameworkOptionsCustomizer { options ->
             options.addHandlersFromPackageOf(PlayServerHostFactory::class.java)
-            options.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.useDiscovery { discovery ->
+                discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            }
             options.codecs().addJson()
             options.addClientServerChannel(SampleNames.PlayChannel) { channel ->
                 channel.enableServer { server -> server.bind(SampleTopology.PlayChannelEndpoint) }

@@ -16,7 +16,9 @@ class PlayServerHostFactory {
     @Bean
     fun playOptions(): ZLinkFrameworkOptionsCustomizer =
         ZLinkFrameworkOptionsCustomizer { options ->
-            options.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.useDiscovery { discovery ->
+                discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            }
             PlayServer.configure(options)
         }
 

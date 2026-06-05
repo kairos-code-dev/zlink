@@ -116,7 +116,7 @@ final class ChannelRuntimeFakeBackendTest {
     @Test
     void discoveryClientServerAttachesDealerAndRouterToRegistryDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRegistryEndpoint("tcp://127.0.0.1:5552");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:5552"));
         options.addClientServerChannel("profile", channel -> {
             channel.enableServer(server -> server.bind("tcp://127.0.0.1:7100"));
             channel.enableClient();

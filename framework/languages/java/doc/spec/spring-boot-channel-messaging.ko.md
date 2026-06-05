@@ -49,8 +49,8 @@ public class ZLinkConfig implements ZLinkFrameworkOptionsCustomizer {
             channel.enableSubscriber();
         });
 
-        options.addRegistryEndpoint("tcp://registry1:5551");
-        options.addRegistryEndpoint("tcp://registry2:5551");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry2:5551"));
     }
 }
 ```
@@ -132,7 +132,7 @@ public class OutboundOnlyConfig implements ZLinkFrameworkOptionsCustomizer {
         options.addClientServerChannel("profile", channel -> {
             channel.enableClient();
         });
-        options.addRegistryEndpoint("tcp://registry1:5551");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
     }
 }
 ```

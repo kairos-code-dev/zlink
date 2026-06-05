@@ -26,7 +26,7 @@ Java 구현에서 이미 고정된 이름이 있으면 현재 JUnit 이름을 �
 ## 2. Channel regression
 
 `ChannelMessagingTest.discoveryClientServer_requestReplySucceeds`는 embedded registry,
-server runtime, client runtime을 나누어 시작한 뒤 `addRegistryEndpoint(...)`로 registry에
+server runtime, client runtime을 나누어 시작한 뒤 `useDiscovery(...addRegistryEndpoint...)`로 registry에
 붙은 DEALER client가 ROUTER server를 찾아 request/reply 하는 경로를 검증한다.
 
 | 항목 | 계층 | JUnit 테스트 | 통과 기준 |

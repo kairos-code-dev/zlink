@@ -15,7 +15,9 @@ class ApiServerHostFactory {
     @Bean
     fun apiOptions(): ZLinkFrameworkOptionsCustomizer =
         ZLinkFrameworkOptionsCustomizer { options ->
-            options.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.useDiscovery { discovery ->
+                discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            }
             ApiServer.configure(options)
         }
 

@@ -26,7 +26,8 @@ public final class SessionServerHostFactory {
     @Bean
     ZLinkFrameworkOptionsCustomizer sessionOptions() {
         return options -> {
-            options.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.useDiscovery(discovery ->
+                discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint));
             SessionServer.configureRelayNode(options);
             SessionServer.configure(options);
         };

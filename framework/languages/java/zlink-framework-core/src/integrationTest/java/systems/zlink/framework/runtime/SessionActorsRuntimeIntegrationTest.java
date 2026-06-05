@@ -372,7 +372,7 @@ final class SessionActorsRuntimeIntegrationTest {
         if (json) {
             options.codecs().addJson();
         }
-        options.addRegistryEndpoint(registryRouter);
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint(registryRouter));
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
                 node.enableRouter(router -> {
@@ -407,7 +407,7 @@ final class SessionActorsRuntimeIntegrationTest {
         String streamEndpoint,
         RoutingId sessionNodeRid) {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRegistryEndpoint(registryRouter);
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint(registryRouter));
         options.addSpotMesh("game", mesh ->
             mesh.addNode("session", node -> {
                 node.enableRouter(router -> {

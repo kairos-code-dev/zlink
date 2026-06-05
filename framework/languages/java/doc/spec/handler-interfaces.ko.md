@@ -478,7 +478,7 @@ public interface ZLinkFrameworkOptions {
     ZLinkCodecRegistryBuilder codecs();
     void addHandlersFromPackageOf(Class<?> markerType);
     void configureMetadata(Consumer<ZLinkMetadataPolicyBuilder> configure);
-    void addRegistryEndpoint(String endpoint);
+    void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure);
     void addClientServerChannel(
         String channelName,
         Consumer<ClientServerChannelBuilder> configure);
@@ -511,8 +511,12 @@ public interface ZLinkFrameworkOptions {
 }
 
 public interface ZLinkSpotMeshBuilder {
-    void addRegistryEndpoint(String endpoint);
+    void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure);
     void addNode(String spotNodeName, Consumer<ZLinkSpotNodeBuilder> configure);
+}
+
+public interface ZLinkDiscoveryBuilder {
+    void addRegistryEndpoint(String endpoint);
 }
 
 public interface ZLinkCodecRegistryBuilder {

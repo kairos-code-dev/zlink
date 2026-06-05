@@ -68,12 +68,6 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
         configure.accept(endpoint -> registration.registryEndpoints().add(requireName(endpoint, "registry endpoint")));
     }
 
-    @Override
-    public void addRegistryEndpoint(String endpoint) {
-        registration.registryEndpoints().add(requireName(endpoint, "registry endpoint"));
-    }
-
-    @Override
     public void addClientServerChannel(
         String channelName,
         Consumer<ClientServerChannelBuilder> configure) {

@@ -17,7 +17,7 @@ public class SpotConfig implements ZLinkFrameworkOptionsCustomizer {
     @Override
     public void customize(ZLinkFrameworkOptions options) {
         options.addSpotMesh("game.stage", mesh -> {
-            mesh.addRegistryEndpoint("tcp://registry1:5551");
+            mesh.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
 
             mesh.addNode("stage-node", spot -> {
                 spot.enableRouter(router -> {

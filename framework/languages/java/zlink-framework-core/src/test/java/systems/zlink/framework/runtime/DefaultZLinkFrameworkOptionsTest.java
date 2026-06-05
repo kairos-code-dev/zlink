@@ -154,7 +154,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void registrySpotRemoteAddressesRejectsCustomResolverDuplicate() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addRegistryEndpoint("inproc://registry");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("inproc://registry"));
         options.addRouteMeshChannel("play", channel -> { });
         options.addSpotRemoteAddressResolver(TestSpotRemoteAddressResolver.class);
         options.useRegistrySpotRemoteAddresses("game");
@@ -176,7 +176,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void registrySpotRemoteAddressesRequiresRouterChannelWhenAmbiguous() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addRegistryEndpoint("inproc://registry");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("inproc://registry"));
         options.addRouteMeshChannel("play-a", channel -> { });
         options.addRouteMeshChannel("play-b", channel -> { });
         options.useRegistrySpotRemoteAddresses("game");
@@ -461,7 +461,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void attachedSpotChannelClientManualConnectionsOverrideGlobalDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"));
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node ->
                 node.attachChannelClient("profile", client ->
@@ -475,7 +475,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelClientManualConnectionsOverrideGlobalDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"));
         options.addClientServerChannel("profile", channel ->
             channel.enableClient(client ->
                 client.useManualConnections(endpoints ->
@@ -605,7 +605,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void fanoutChannelSubscriberManualConnectionsOverrideGlobalDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"));
         options.addFanoutChannel("events", channel -> {
             channel.enableSubscriber(subscriber ->
                 subscriber.useManualConnections(endpoints -> endpoints.connect("inproc://events")));
@@ -671,7 +671,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshChannelManualConnectionsOverrideGlobalDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addRegistryEndpoint("tcp://127.0.0.1:17001");
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"));
         options.addRouteMeshChannel("route", channel -> {
             channel.bind("inproc://route");
             channel.useManualConnections(endpoints -> endpoints.connect("inproc://route-peer"));

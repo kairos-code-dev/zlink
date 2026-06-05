@@ -34,12 +34,6 @@ public final class SpotBuilders {
             configure.accept(registration.registryEndpoints()::add);
         }
 
-        @Override
-        public void addRegistryEndpoint(String endpoint) {
-            registration.registryEndpoints().add(endpoint);
-        }
-
-        @Override
         public void addNode(String spotNodeName, Consumer<ZLinkSpotNodeBuilder> configure) {
             SpotNodeRegistration node = new SpotNodeRegistration(meshName, spotNodeName);
             registration.spotNodes().add(node);

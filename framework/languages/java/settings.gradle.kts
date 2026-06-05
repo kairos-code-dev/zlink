@@ -17,6 +17,12 @@ rootProject.name = "zlink-framework-java"
 includeBuild("samples") {
     name = "zlink-framework-java-samples"
 }
+includeBuild("../../../bindings/java") {
+    name = "zlink-binding-java-build"
+    dependencySubstitution {
+        substitute(module("systems.zlink:zlink")).using(project(":"))
+    }
+}
 
 include(
     "zlink-framework-core",

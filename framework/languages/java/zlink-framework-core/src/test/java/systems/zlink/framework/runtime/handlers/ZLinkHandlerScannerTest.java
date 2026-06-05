@@ -11,10 +11,12 @@ import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
@@ -79,6 +81,23 @@ final class ZLinkHandlerScannerTest {
         assertEquals("ContextRequest", requestHandler.packetName());
         assertEquals(ZLinkScannedHandlerKind.SEND, sendHandler.kind());
         assertEquals("ContextSend", sendHandler.packetName());
+    }
+
+    @Test
+    void scansAttributedPublishHandlerWithContextParameterLikeDotnet() {
+        ZLinkScannedHandlerCatalog catalog =
+            ZLinkHandlerScanner.scan(Set.of(ZLinkHandlerScannerTest.class));
+
+        ZLinkScannedHandler handler = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == ContextAttributedPublishHandler.class)
+            .findFirst()
+            .orElseThrow();
+
+        assertEquals(ZLinkScannedHandlerSurface.CHANNEL, handler.surface());
+        assertEquals(ZLinkScannedHandlerKind.PUBLISH, handler.kind());
+        assertEquals(String.class, handler.messageType());
+        assertEquals(Void.class, handler.replyType());
+        assertEquals("ContextPublish", handler.packetName());
     }
 
     @Test
@@ -153,6 +172,13 @@ final class ZLinkHandlerScannerTest {
     public static final class ContextAttributedSendHandler {
         @ZLinkSend(packetName = "ContextSend")
         public CompletionStage<Void> handle(String request, ZLinkHandlerContext context) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class ContextAttributedPublishHandler {
+        @ZLinkPublish(packetName = "ContextPublish")
+        public CompletionStage<Void> handle(String request, ZLinkPublishContext context) {
             return CompletableFuture.completedFuture(null);
         }
     }

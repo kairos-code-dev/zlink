@@ -13,12 +13,37 @@ cd "$ROOT_DIR"
 
 ./gradlew build
 
+run_sample_with_retry() {
+  local script="$1"
+  local attempt
+  local output
+  output="$(mktemp)"
+  for attempt in 1 2 3; do
+    if "$script" >"$output" 2>&1; then
+      cat "$output"
+      rm -f "$output"
+      return 0
+    fi
+    if ! rg -q "ZlinkBindException|Timed out waiting" "$output"; then
+      cat "$output" >&2
+      rm -f "$output"
+      return 1
+    fi
+    if [[ "$attempt" == "3" ]]; then
+      cat "$output" >&2
+      rm -f "$output"
+      return 1
+    fi
+    echo "sample transient port bind failure; retrying ${script} (${attempt}/3)" >&2
+  done
+}
+
 for sample in TicTacToe TicTacToe.SessionGateway Bingo StreamingClient Async; do
-  "$SAMPLES_DIR/java/$sample/run_sample.sh"
+  run_sample_with_retry "$SAMPLES_DIR/java/$sample/run_sample.sh"
 done
 
 for sample in TicTacToe TicTacToe.SessionGateway Bingo StreamingClient Async; do
-  "$SAMPLES_DIR/kotlin/$sample/run_sample.sh"
+  run_sample_with_retry "$SAMPLES_DIR/kotlin/$sample/run_sample.sh"
 done
 
 forbidden_sample_pattern="systems\\.zlink\\.(runtime|internal)"

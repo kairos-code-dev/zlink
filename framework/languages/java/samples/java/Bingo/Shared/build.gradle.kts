@@ -3,7 +3,7 @@ plugins {
 }
 
 dependencies {
-    api(files("../../../../zlink-framework-core/build/libs/zlink-framework-core-0.1.0-SNAPSHOT.jar"))
+    api("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
 }
 
 java {

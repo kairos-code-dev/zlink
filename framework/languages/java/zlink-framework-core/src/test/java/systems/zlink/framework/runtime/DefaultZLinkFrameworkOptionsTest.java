@@ -26,6 +26,7 @@ import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkPacket;
+import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkInvocationContext;
 import systems.zlink.framework.ZLinkNext;
@@ -649,6 +650,20 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void fanoutChannelAcceptsMappedAttributedPublishHandlerLikeDotnet() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
+        options.addFanoutChannel("events", channel -> {
+            channel.enableSubscriber(subscriber ->
+                subscriber.useManualConnections(endpoints -> endpoints.connect("inproc://events")));
+            channel.addHandlerGroup("scanned-attributed-publish");
+        });
+
+        assertDoesNotThrow(options::validate);
+    }
+
+    @Test
     void routeMeshChannelWithoutBindIsRejected() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
@@ -914,6 +929,16 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class EventHandler implements ZLinkPublishHandler<String> {
         @Override
         public CompletionStage<Void> handleAsync(String message, ZLinkPublishContext context) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    @ZLinkHandlerGroup("scanned-attributed-publish")
+    public static final class AttributedEventHandler {
+        @ZLinkPublish(packetName = "AttributedEvent")
+        public CompletionStage<Void> handleAsync(
+            String message,
+            ZLinkPublishContext context) {
             return CompletableFuture.completedFuture(null);
         }
     }

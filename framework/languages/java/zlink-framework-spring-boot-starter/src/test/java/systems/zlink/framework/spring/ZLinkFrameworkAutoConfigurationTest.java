@@ -336,8 +336,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
             assertEquals(new ProfileReply("profile:42"), reply);
             assertEquals(
-                1,
-                context.getBean(AnnotatedInjectedRequestHandler.class).requestCount());
+                0,
+                context.getBean(AnnotatedInjectedRequestHandler.class).requestCount(),
+                "ZLink-managed handlers are created per dispatch, not reused from the root singleton bean");
             assertTrue(context.getBean(ZLinkFrameworkLifecycle.class).isRunning());
         }
     }

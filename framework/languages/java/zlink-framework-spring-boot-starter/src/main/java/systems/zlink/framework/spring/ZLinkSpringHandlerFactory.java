@@ -1,8 +1,40 @@
 package systems.zlink.framework.spring;
 
-import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
+import systems.zlink.framework.ZLinkHandlerFilter;
+import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
+import systems.zlink.framework.channels.ZLinkRouteSendHandler;
+import systems.zlink.framework.channels.ZLinkSendHandler;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.handlers.ZLinkHandlerGroups;
+import systems.zlink.framework.handlers.ZLinkPacket;
+import systems.zlink.framework.handlers.ZLinkPublish;
+import systems.zlink.framework.handlers.ZLinkRequest;
+import systems.zlink.framework.handlers.ZLinkSend;
+import systems.zlink.framework.handlers.ZLinkSpotActorDisconnected;
+import systems.zlink.framework.handlers.ZLinkSpotActorJoin;
+import systems.zlink.framework.handlers.ZLinkSpotActorLeft;
+import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
+import systems.zlink.framework.handlers.ZLinkSpotActorSend;
+import systems.zlink.framework.handlers.ZLinkSpotPostActorJoined;
+import systems.zlink.framework.handlers.ZLinkSpotRequest;
+import systems.zlink.framework.handlers.ZLinkSpotSubscription;
+import systems.zlink.framework.handlers.ZLinkStreamPacket;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
+import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
+import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
+import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 
 final class ZLinkSpringHandlerFactory implements ZLinkHandlerFactory {
     private final AutowireCapableBeanFactory beanFactory;
@@ -13,10 +45,63 @@ final class ZLinkSpringHandlerFactory implements ZLinkHandlerFactory {
 
     @Override
     public Object create(Class<?> handlerType) {
-        try {
-            return beanFactory.getBean(handlerType);
-        } catch (NoSuchBeanDefinitionException ex) {
-            return beanFactory.createBean(handlerType);
+        if (!isZLinkManagedType(handlerType)) {
+            try {
+                return beanFactory.getBean(handlerType);
+            } catch (BeansException ex) {
+                return beanFactory.createBean(handlerType);
+            }
         }
+        try {
+            return beanFactory.createBean(handlerType);
+        } catch (BeansException ex) {
+            return beanFactory.getBean(handlerType);
+        }
+    }
+
+    private static boolean isZLinkManagedType(Class<?> type) {
+        return ZLinkHandlerFilter.class.isAssignableFrom(type)
+            || ZLinkActorFactory.class.isAssignableFrom(type)
+            || ZLinkSendHandler.class.isAssignableFrom(type)
+            || ZLinkRequestHandler.class.isAssignableFrom(type)
+            || ZLinkPublishHandler.class.isAssignableFrom(type)
+            || ZLinkRouteSendHandler.class.isAssignableFrom(type)
+            || ZLinkRouteRequestHandler.class.isAssignableFrom(type)
+            || ZLinkSpot.class.isAssignableFrom(type)
+            || ZLinkEntrySpot.class.isAssignableFrom(type)
+            || ZLinkSpotPacketHandler.class.isAssignableFrom(type)
+            || ZLinkSpotRequestHandler.class.isAssignableFrom(type)
+            || ZLinkSpotSubscriptionHandler.class.isAssignableFrom(type)
+            || ZLinkSpotTimerHandler.class.isAssignableFrom(type)
+            || ZLinkSession.class.isAssignableFrom(type)
+            || ZLinkSessionPacketHandler.class.isAssignableFrom(type)
+            || hasZLinkHandlerAnnotation(type);
+    }
+
+    private static boolean hasZLinkHandlerAnnotation(Class<?> type) {
+        if (type.isAnnotationPresent(ZLinkHandlerGroup.class)
+            || type.isAnnotationPresent(ZLinkHandlerGroups.class)) {
+            return true;
+        }
+        for (Method method : type.getDeclaredMethods()) {
+            for (Annotation annotation : method.getDeclaredAnnotations()) {
+                if (annotation.annotationType() == ZLinkSend.class
+                    || annotation.annotationType() == ZLinkRequest.class
+                    || annotation.annotationType() == ZLinkPublish.class
+                    || annotation.annotationType() == ZLinkPacket.class
+                    || annotation.annotationType() == ZLinkStreamPacket.class
+                    || annotation.annotationType() == ZLinkSpotSubscription.class
+                    || annotation.annotationType() == ZLinkSpotRequest.class
+                    || annotation.annotationType() == ZLinkSpotActorJoin.class
+                    || annotation.annotationType() == ZLinkSpotActorSend.class
+                    || annotation.annotationType() == ZLinkSpotActorRequest.class
+                    || annotation.annotationType() == ZLinkSpotPostActorJoined.class
+                    || annotation.annotationType() == ZLinkSpotActorLeft.class
+                    || annotation.annotationType() == ZLinkSpotActorDisconnected.class) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

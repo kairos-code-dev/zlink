@@ -1,8 +1,10 @@
 package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots
 
 import java.util.ArrayDeque
+import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
+import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkTimer
@@ -11,9 +13,9 @@ import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomActorJoinedHandler
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomActorLeftHandler
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomJoinHandler
+import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomSpotCreatedHandler
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomTimerHandler
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.StartBingoGameHandler
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
@@ -23,12 +25,14 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.StartBingoGameRes
 class BingoRoomSpot(
     private val context: ZLinkSpotContext,
     private val notifications: BingoNotificationPublisher,
+    private val createdHandler: BingoRoomSpotCreatedHandler,
 ) : ZLinkSpot {
     private val sameSequenceWinnerProbe = listOf("player-2", "player-3")
     private val players = mutableListOf<BingoRoomPlayer>()
     private val drawDeck = ArrayDeque<Int>()
     private val drawnNumbers = mutableListOf<Int>()
     private val winners = mutableListOf<String>()
+    private var settings = BingoRoomSettings.create("four-player", 0)
     private var timer: ZLinkTimer? = null
     private var status: String = WaitingForPlayers
 
@@ -37,6 +41,9 @@ class BingoRoomSpot(
     }
 
     override fun context(): ZLinkSpotContext = context
+
+    override fun onCreateAsync(createParts: MutableList<Message>): CompletionStage<Void> =
+        createdHandler.handleAsync(this, createParts)
 
     override fun configure() {
         context.handlers().addHandler(BingoRoomJoinHandler::class.java)
@@ -48,7 +55,7 @@ class BingoRoomSpot(
     override fun onInitializeAsync(): CompletionStage<Void> =
         context.addTimer(
             "bingo-draw",
-            SampleTimings.DrawPeriod,
+            Duration.ofMillis(settings.drawPeriodMillis),
             BingoRoomTimerHandler::class.java,
             ZLinkTimerOptions(),
         )
@@ -66,7 +73,7 @@ class BingoRoomSpot(
             return CompletableFuture.completedFuture(BingoRoomJoinRes(snapshot()))
         }
 
-        if (status != WaitingForPlayers || players.size >= RequiredPlayers) {
+        if (status != WaitingForPlayers || players.size >= settings.requiredPlayers) {
             return CompletableFuture.failedFuture(
                 IllegalStateException("Room ${request.roomId} cannot accept more players."),
             )
@@ -96,9 +103,9 @@ class BingoRoomSpot(
                 IllegalStateException("Only the host actor can start the bingo room."),
             )
         }
-        if (players.size != RequiredPlayers) {
+        if (players.size != settings.requiredPlayers) {
             return CompletableFuture.failedFuture(
-                IllegalStateException("Bingo room requires exactly $RequiredPlayers players before start."),
+                IllegalStateException("Bingo room requires exactly ${settings.requiredPlayers} players before start."),
             )
         }
         if (status == WaitingForPlayers) {
@@ -148,7 +155,7 @@ class BingoRoomSpot(
             context.spotRid().toHex(),
             status,
             hostActorId,
-            status == WaitingForPlayers && players.size == RequiredPlayers,
+            status == WaitingForPlayers && players.size == settings.requiredPlayers,
             drawnNumbers.size,
             lastDrawn,
             drawnNumbers.toList(),
@@ -210,16 +217,24 @@ class BingoRoomSpot(
 
     private fun resetDrawDeck() {
         drawDeck.clear()
-        for (number in 1..MaxDrawNumber) {
+        for (number in 1..settings.maxDrawNumber) {
             drawDeck.add(number)
         }
+    }
+
+    fun applySettings(settings: BingoRoomSettings) {
+        check(settings.requiredPlayers > 0) { "Bingo room requires at least one player." }
+        check(settings.maxDrawNumber > 0) { "Bingo room requires at least one draw number." }
+        check(settings.drawPeriodMillis > 0) {
+            "Bingo room draw period must be positive."
+        }
+        this.settings = settings
+        resetDrawDeck()
     }
 
     companion object {
         private const val WaitingForPlayers = "WaitingForPlayers"
         private const val Running = "Running"
         private const val Finished = "Finished"
-        private const val RequiredPlayers = 4
-        private const val MaxDrawNumber = 75
     }
 }

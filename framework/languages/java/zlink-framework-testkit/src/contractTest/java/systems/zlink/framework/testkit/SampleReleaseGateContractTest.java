@@ -1257,7 +1257,8 @@ final class SampleReleaseGateContractTest {
             "TicTacToe PlayActor must validate joined game state");
         assertTrue(entrySpotSource.contains("PlayEntrySpot(ZLinkEntrySpotContext context)")
                 && !entrySpotSource.contains("public PlayEntrySpot()")
-                && gameSpotSource.contains("TicTacToeGame(ZLinkSpotContext context)")
+                && gameSpotSource.contains("ZLinkSpotContext context")
+                && gameSpotSource.contains("TicTacToeGameCreatedHandler createdHandler")
                 && !gameSpotSource.contains("public TicTacToeGame()")
                 && !gameSpotSource.contains("SampleSpotContext")
                 && !gameSpotSource.contains("CompletedSpotOutbound")
@@ -1620,6 +1621,7 @@ final class SampleReleaseGateContractTest {
         assertTrue(entrySpotSource.contains("context: ZLinkEntrySpotContext")
                 && !entrySpotSource.contains("ZLinkEntrySpotContext? = null")
                 && gameSpotSource.contains("private val context: ZLinkSpotContext")
+                && gameSpotSource.contains("private val createdHandler: TicTacToeGameCreatedHandler")
                 && !gameSpotSource.contains("constructor()")
                 && !gameSpotSource.contains("SampleSpotContext")
                 && !gameSpotSource.contains("CompletedSpotOutbound")

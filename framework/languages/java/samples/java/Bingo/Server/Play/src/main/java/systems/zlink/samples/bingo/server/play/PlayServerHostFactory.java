@@ -1,5 +1,8 @@
 package systems.zlink.samples.bingo.server.play;
 
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -10,6 +13,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
 import systems.zlink.samples.bingo.server.play.actors.PlayerActorFactory;
 import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoNotificationPublisher;
 import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoRoomSpot;
+import systems.zlink.samples.bingo.server.play.bingoroomspots.handlers.BingoRoomSpotCreatedHandler;
 import systems.zlink.samples.bingo.server.play.entryspot.BingoEntrySpot;
 import systems.zlink.samples.bingo.server.play.handlers.BingoRoomDirectory;
 import systems.zlink.samples.bingo.shared.configuration.SampleNames;
@@ -66,12 +70,28 @@ public final class PlayServerHostFactory {
     }
 
     @Bean
-    BingoRoomDirectory bingoRoomDirectory(ZLinkSpotManager spots) {
-        return new BingoRoomDirectory(spots);
+    BingoRoomDirectory bingoRoomDirectory(
+        ZLinkSpotManager spots,
+        ObjectMapper json) {
+        return new BingoRoomDirectory(spots, json);
     }
 
     @Bean
     BingoNotificationPublisher bingoNotificationPublisher() {
         return new BingoNotificationPublisher();
+    }
+
+    @Bean
+    BingoRoomSpotCreatedHandler bingoRoomSpotCreatedHandler(ObjectMapper json) {
+        return new BingoRoomSpotCreatedHandler(json);
+    }
+
+    @Bean
+    ObjectMapper bingoJsonMapper() {
+        return JsonMapper.builder()
+            .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true)
+            .configure(MapperFeature.USE_STD_BEAN_NAMING, true)
+            .findAndAddModules()
+            .build();
     }
 }

@@ -36,10 +36,14 @@ public final class TicTacToeGame implements ZLinkSpot {
     private Instant turnDeadline;
     private ZLinkTimer gameTick;
     private boolean created;
+    private final TicTacToeGameCreatedHandler createdHandler;
 
-    public TicTacToeGame(ZLinkSpotContext context) {
+    public TicTacToeGame(
+        ZLinkSpotContext context,
+        TicTacToeGameCreatedHandler createdHandler) {
         this.context = context;
         this.gameId = context.spotRid().toHex();
+        this.createdHandler = createdHandler;
     }
 
     public String gameId() {
@@ -53,7 +57,7 @@ public final class TicTacToeGame implements ZLinkSpot {
 
     @Override
     public CompletionStage<Void> onCreateAsync(List<Message> createParts) {
-        return new TicTacToeGameCreatedHandler().handleAsync(this, createParts);
+        return createdHandler.handleAsync(this, createParts);
     }
 
     @Override

@@ -20,6 +20,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoin
 
 class TicTacToeGame(
     private val context: ZLinkSpotContext,
+    private val createdHandler: TicTacToeGameCreatedHandler,
 ) : ZLinkSpot {
     private val gameTickPeriod: Duration = Duration.ofSeconds(1)
     private val turnTimeout: Duration = Duration.ofSeconds(15)
@@ -37,7 +38,7 @@ class TicTacToeGame(
 
     override fun context(): ZLinkSpotContext = context
     override fun onCreateAsync(createParts: MutableList<Message>): CompletionStage<Void> =
-        TicTacToeGameCreatedHandler().handleAsync(this, createParts)
+        createdHandler.handleAsync(this, createParts)
 
     override fun onInitializeAsync(): CompletionStage<Void> =
         context.addTimer(

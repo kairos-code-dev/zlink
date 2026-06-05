@@ -410,6 +410,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     @Override
     public CompletionStage<ZLinkSpotCreateResult> createAsync(
         Class<? extends ZLinkSpot> spotType) {
+        return createAsync(spotType, List.of());
+    }
+
+    @Override
+    public CompletionStage<ZLinkSpotCreateResult> createAsync(
+        Class<? extends ZLinkSpot> spotType,
+        List<Message> createParts) {
         requireRegistered(spotType);
         ZLinkBackendSpot spot = primaryNode.createSpot();
         RoutingId spotRid = spot.routingId();
@@ -417,7 +424,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             spot.close();
             throw new ZLinkConfigurationException("duplicate spot rid: " + spotRid);
         }
-        return activateAsync(spotType, spot)
+        return activateAsync(spotType, spot, createParts)
             .thenApply(activation -> {
                 spots.put(spotRid, activation);
                 return new ZLinkSpotCreateResult(spotRid, true);
@@ -435,7 +442,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
         ZLinkBackendSpot spot = primaryNode.createSpot();
         spot.setRoutingId(spotRid);
-        return activateAsync(spotType, spot)
+        return activateAsync(spotType, spot, List.of())
             .thenApply(activation -> {
                 spots.put(spotRid, activation);
                 return new ZLinkSpotCreateResult(spotRid, true);
@@ -446,13 +453,27 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     public CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid) {
+        return getOrCreateAsync(spotType, spotRid, List.of());
+    }
+
+    @Override
+    public CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+        Class<? extends ZLinkSpot> spotType,
+        RoutingId spotRid,
+        List<Message> createParts) {
         requireRegistered(spotType);
         requireRoutingId(spotRid);
         if (spots.containsKey(spotRid)) {
             return CompletableFuture.completedFuture(
                 new ZLinkSpotCreateResult(spotRid, false));
         }
-        return createAsync(spotType, spotRid);
+        ZLinkBackendSpot spot = primaryNode.createSpot();
+        spot.setRoutingId(spotRid);
+        return activateAsync(spotType, spot, createParts)
+            .thenApply(activation -> {
+                spots.put(spotRid, activation);
+                return new ZLinkSpotCreateResult(spotRid, true);
+            });
     }
 
     @Override
@@ -697,7 +718,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
     private CompletionStage<SpotActivation> activateAsync(
         Class<? extends ZLinkSpot> spotType,
-        ZLinkBackendSpot backendSpot) {
+        ZLinkBackendSpot backendSpot,
+        List<Message> createParts) {
+        List<Message> effectiveCreateParts = createParts == null ? List.of() : List.copyOf(createParts);
         DefaultSpotContext spotContext =
             new DefaultSpotContext(primaryNode.routingId(), backendSpot);
         ZLinkSpot spot = tryCreateSpot(spotType, spotContext);
@@ -708,7 +731,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         spot.configure();
         spotContext.closeRegistration();
         spotContext.bindSubscriptions(backendSpot);
-        return withCurrentOutbound(spotContext.outbound, () -> spot.onCreateAsync(List.of()))
+        return withCurrentOutbound(spotContext.outbound, () -> spot.onCreateAsync(effectiveCreateParts))
             .thenCompose(ignored -> withCurrentOutbound(spotContext.outbound, spot::onInitializeAsync))
             .thenApply(ignored -> {
                 SpotActivation activation = new SpotActivation(spot, backendSpot, spotContext);

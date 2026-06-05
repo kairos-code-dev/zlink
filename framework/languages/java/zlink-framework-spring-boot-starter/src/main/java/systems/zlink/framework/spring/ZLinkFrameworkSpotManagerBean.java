@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotInfo;
@@ -25,6 +26,13 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
     @Override
     public CompletionStage<ZLinkSpotCreateResult> createAsync(
         Class<? extends ZLinkSpot> spotType,
+        List<Message> createParts) {
+        return lifecycle.spotManager().createAsync(spotType, createParts);
+    }
+
+    @Override
+    public CompletionStage<ZLinkSpotCreateResult> createAsync(
+        Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid) {
         return lifecycle.spotManager().createAsync(spotType, spotRid);
     }
@@ -34,6 +42,14 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid) {
         return lifecycle.spotManager().getOrCreateAsync(spotType, spotRid);
+    }
+
+    @Override
+    public CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+        Class<? extends ZLinkSpot> spotType,
+        RoutingId spotRid,
+        List<Message> createParts) {
+        return lifecycle.spotManager().getOrCreateAsync(spotType, spotRid, createParts);
     }
 
     @Override

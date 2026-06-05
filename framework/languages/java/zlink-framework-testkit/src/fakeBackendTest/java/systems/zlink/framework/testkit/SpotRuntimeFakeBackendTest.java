@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -111,6 +112,37 @@ final class SpotRuntimeFakeBackendTest {
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
+    }
+
+    @Test
+    void spotManagerCreatePayloadIsPassedToOnCreate() {
+        PayloadSpot.lastCreatePayload.set(null);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> {
+                node.enableRouter(router -> router.setRouterBind("inproc://payload-router"));
+                node.addSpotFactory(PayloadSpot.class);
+            }));
+        RoutingId rid = RoutingId.from("payload-spot");
+
+        try (Message first = Message.from("first".getBytes(StandardCharsets.UTF_8));
+             Message second = Message.from("second".getBytes(StandardCharsets.UTF_8));
+             ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
+            assertEquals(true, runtime.spotManager()
+                .getOrCreateAsync(PayloadSpot.class, rid, List.of(first))
+                .toCompletableFuture()
+                .join()
+                .created());
+            assertEquals("first", PayloadSpot.lastCreatePayload.get());
+
+            assertEquals(false, runtime.spotManager()
+                .getOrCreateAsync(PayloadSpot.class, rid, List.of(second))
+                .toCompletableFuture()
+                .join()
+                .created());
+            assertEquals("first", PayloadSpot.lastCreatePayload.get());
+        }
     }
 
     @Test
@@ -1176,6 +1208,23 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public CompletionStage<Void> onInitializeAsync() {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class PayloadSpot implements ZLinkSpot {
+        static final AtomicReference<String> lastCreatePayload = new AtomicReference<>();
+
+        @Override
+        public ZLinkSpotContext context() {
+            return null;
+        }
+
+        @Override
+        public CompletionStage<Void> onCreateAsync(List<Message> createParts) {
+            lastCreatePayload.set(createParts.isEmpty()
+                ? ""
+                : new String(createParts.getFirst().toByteArray(), StandardCharsets.UTF_8));
             return CompletableFuture.completedFuture(null);
         }
     }

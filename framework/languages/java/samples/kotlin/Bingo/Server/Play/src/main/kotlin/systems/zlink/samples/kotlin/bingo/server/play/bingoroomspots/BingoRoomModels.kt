@@ -1,6 +1,7 @@
 package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots
 
 import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActor
+import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoPlayerState
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
 
@@ -38,4 +39,28 @@ data class BingoRoomPlayer(
             card.marksSnapshot(),
             card.completedLines(),
         )
+}
+
+data class BingoRoomSettings(
+    val roomName: String,
+    val mode: String,
+    val requiredPlayers: Int,
+    val maxDrawNumber: Int,
+    val drawPeriodMillis: Long,
+) {
+    companion object {
+        fun create(
+            mode: String,
+            roomSeq: Int,
+        ): BingoRoomSettings {
+            check(mode == "four-player") { "Unsupported bingo mode. mode=$mode" }
+            return BingoRoomSettings(
+                roomName = "Bingo Room %03d".format(roomSeq),
+                mode = mode,
+                requiredPlayers = 4,
+                maxDrawNumber = 75,
+                drawPeriodMillis = SampleTimings.DrawPeriod.toMillis(),
+            )
+        }
+    }
 }

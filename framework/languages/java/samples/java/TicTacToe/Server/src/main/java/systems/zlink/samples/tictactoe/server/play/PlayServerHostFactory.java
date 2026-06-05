@@ -7,6 +7,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
+import systems.zlink.samples.tictactoe.server.play.gamespots.handlers.TicTacToeGameCreatedHandler;
 
 @SpringBootApplication(
     proxyBeanMethods = false,
@@ -27,5 +28,10 @@ public final class PlayServerHostFactory {
     @Bean
     ZLinkFrameworkOptionsCustomizer playOptions(SampleSettings settings) {
         return PlayServer.configure(settings);
+    }
+
+    @Bean
+    TicTacToeGameCreatedHandler ticTacToeGameCreatedHandler() {
+        return new TicTacToeGameCreatedHandler();
     }
 }

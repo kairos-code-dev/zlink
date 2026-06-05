@@ -2,42 +2,47 @@ package systems.zlink.samples.bingo.server.play.bingoroomspots;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.time.Duration;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.bingo.server.play.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.bingoroomspots.handlers.BingoRoomTimerHandler;
-import systems.zlink.samples.bingo.shared.configuration.SampleTimings;
+import systems.zlink.samples.bingo.server.play.bingoroomspots.handlers.BingoRoomSpotCreatedHandler;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoRoomSpot implements ZLinkSpot {
     private static final String WaitingForPlayers = "WaitingForPlayers";
     private static final String Running = "Running";
     private static final String Finished = "Finished";
-    private static final int RequiredPlayers = 4;
-    private static final int MaxDrawNumber = 75;
     private static final List<String> SameSequenceWinnerProbe =
         List.of("player-2", "player-3");
 
     private final ZLinkSpotContext context;
     private final BingoNotificationPublisher notifications;
+    private final BingoRoomSpotCreatedHandler createdHandler;
     private final List<BingoRoomModels.RoomPlayer> players = new ArrayList<>();
     private final Queue<Integer> drawDeck = new ArrayDeque<>();
     private final List<Integer> drawnNumbers = new ArrayList<>();
     private final List<String> winners = new ArrayList<>();
+    private BingoRoomModels.BingoRoomSettings settings =
+        BingoRoomModels.BingoRoomSettings.create("four-player", 0);
     private ZLinkTimer timer;
     private String status = WaitingForPlayers;
 
     public BingoRoomSpot(
         ZLinkSpotContext context,
-        BingoNotificationPublisher notifications) {
+        BingoNotificationPublisher notifications,
+        BingoRoomSpotCreatedHandler createdHandler) {
         this.context = context;
         this.notifications = notifications;
+        this.createdHandler = createdHandler;
         resetDrawDeck();
     }
 
@@ -47,10 +52,15 @@ public final class BingoRoomSpot implements ZLinkSpot {
     }
 
     @Override
+    public CompletionStage<Void> onCreateAsync(List<Message> createParts) {
+        return createdHandler.handleAsync(this, createParts);
+    }
+
+    @Override
     public CompletionStage<Void> onInitializeAsync() {
         return context.addTimer(
                 "bingo-draw",
-                SampleTimings.DrawPeriod,
+                Duration.ofMillis(settings.drawPeriodMillis()),
                 BingoRoomTimerHandler.class,
                 new ZLinkTimerOptions())
             .thenAccept(created -> timer = created);
@@ -73,7 +83,7 @@ public final class BingoRoomSpot implements ZLinkSpot {
                 new Messages.BingoRoomJoinRes(snapshot()));
         }
 
-        if (!status.equals(WaitingForPlayers) || players.size() >= RequiredPlayers) {
+        if (!status.equals(WaitingForPlayers) || players.size() >= settings.requiredPlayers()) {
             return CompletableFuture.failedFuture(new IllegalStateException(
                 "Room " + request.roomId() + " cannot accept more players."));
         }
@@ -100,9 +110,9 @@ public final class BingoRoomSpot implements ZLinkSpot {
             return CompletableFuture.failedFuture(new IllegalStateException(
                 "Only the host actor can start the bingo room."));
         }
-        if (players.size() != RequiredPlayers) {
+        if (players.size() != settings.requiredPlayers()) {
             return CompletableFuture.failedFuture(new IllegalStateException(
-                "Bingo room requires exactly " + RequiredPlayers + " players before start."));
+                "Bingo room requires exactly " + settings.requiredPlayers() + " players before start."));
         }
         if (status.equals(WaitingForPlayers)) {
             status = Running;
@@ -149,7 +159,7 @@ public final class BingoRoomSpot implements ZLinkSpot {
             context.spotRid().toHex(),
             status,
             hostActorId,
-            status.equals(WaitingForPlayers) && players.size() == RequiredPlayers,
+            status.equals(WaitingForPlayers) && players.size() == settings.requiredPlayers(),
             drawnNumbers.size(),
             lastDrawn,
             List.copyOf(drawnNumbers),
@@ -207,8 +217,22 @@ public final class BingoRoomSpot implements ZLinkSpot {
 
     private void resetDrawDeck() {
         drawDeck.clear();
-        for (int number = 1; number <= MaxDrawNumber; number++) {
+        for (int number = 1; number <= settings.maxDrawNumber(); number++) {
             drawDeck.add(number);
         }
+    }
+
+    public void applySettings(BingoRoomModels.BingoRoomSettings settings) {
+        if (settings.requiredPlayers() <= 0) {
+            throw new IllegalStateException("Bingo room requires at least one player.");
+        }
+        if (settings.maxDrawNumber() <= 0) {
+            throw new IllegalStateException("Bingo room requires at least one draw number.");
+        }
+        if (settings.drawPeriodMillis() <= 0) {
+            throw new IllegalStateException("Bingo room draw period must be positive.");
+        }
+        this.settings = settings;
+        resetDrawDeck();
     }
 }

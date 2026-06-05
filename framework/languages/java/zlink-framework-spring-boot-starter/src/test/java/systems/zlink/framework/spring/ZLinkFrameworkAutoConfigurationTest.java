@@ -96,6 +96,23 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
+    void enableZLinkFrameworkImportsFrameworkAutoConfiguration() {
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(
+                ZLinkBackendAdapterFactory.class,
+                FakeZLinkBackendAdapterFactory::new);
+            context.register(EnabledTestConfig.class);
+            context.refresh();
+
+            assertTrue(context.getBean(ZLinkFrameworkLifecycle.class).isRunning());
+            assertInstanceOf(
+                ZLinkFrameworkLifecycle.class,
+                context.getBean(ZLinkClient.class));
+        }
+    }
+
+    @Test
     void multiTargetClientsThrowConfigurationExceptionWhenChannelIsMissing() {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
@@ -571,6 +588,18 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     @Configuration
     static class TestConfig {
+        @Bean
+        ZLinkFrameworkOptionsCustomizer profileChannelCustomizer() {
+            return options -> options.addClientServerChannel("profile", channel ->
+                channel.enableClient(client ->
+                    client.useManualConnections(endpoints ->
+                        endpoints.connect("inproc://profile-server"))));
+        }
+    }
+
+    @Configuration
+    @EnableZLinkFramework
+    static class EnabledTestConfig {
         @Bean
         ZLinkFrameworkOptionsCustomizer profileChannelCustomizer() {
             return options -> options.addClientServerChannel("profile", channel ->

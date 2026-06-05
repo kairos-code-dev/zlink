@@ -9,6 +9,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.spots.ZLinkSpotManager
+import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
 import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActorFactory
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoNotificationPublisher
@@ -19,6 +20,9 @@ import systems.zlink.samples.kotlin.bingo.server.play.handlers.BingoRoomDirector
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
 
+
+
+@EnableZLinkFramework
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = [PlayServerHostFactory::class],

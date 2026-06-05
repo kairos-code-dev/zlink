@@ -4,10 +4,14 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
+import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
 import systems.zlink.samples.bingo.shared.configuration.SampleNames;
 import systems.zlink.samples.bingo.shared.configuration.SampleTopology;
 
+
+
+@EnableZLinkFramework
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = ApiServerHostFactory.class)

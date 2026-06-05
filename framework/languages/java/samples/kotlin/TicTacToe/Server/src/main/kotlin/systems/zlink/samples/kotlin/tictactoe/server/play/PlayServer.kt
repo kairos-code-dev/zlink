@@ -53,7 +53,6 @@ object PlayServer {
             }
             options.addStreamNode(SampleNames.PlayStream) { stream ->
                 stream.bind(settings.playEndpoint)
-                stream.attachActorGateway(SampleNames.PlayNode)
                 stream.registerSession(PlaySession::class.java)
             }
         }

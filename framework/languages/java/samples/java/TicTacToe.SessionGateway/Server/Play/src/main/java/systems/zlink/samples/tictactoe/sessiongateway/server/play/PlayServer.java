@@ -1,5 +1,6 @@
 package systems.zlink.samples.tictactoe.sessiongateway.server.play;
 
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.samples.tictactoe.sessiongateway.server.play.entryspot.TicTacToeEntrySpot;
 import systems.zlink.samples.tictactoe.sessiongateway.server.play.gamespots.TicTacToeGameSpot;
@@ -20,7 +21,7 @@ public final class PlayServer {
         options.addRouteMeshChannel(SampleNames.PlayRouteChannel, route -> {
             route.bind(SampleTopology.PlayRouteEndpoint);
             route.configureRouting(routing ->
-                routing.setRoutingId(systems.zlink.contracts.core.RoutingId.from(SampleNames.PlayRid)));
+                routing.setRoutingId(RoutingId.from(SampleNames.PlayRid)));
             route.useManualConnections(endpoints ->
                 endpoints.connect(SampleTopology.SessionRouteEndpoint));
         });
@@ -30,11 +31,11 @@ public final class PlayServer {
             mesh.addNode(SampleNames.PlayNode, node -> {
                 node.enableRouter(router -> {
                     router.setRouterBind(SampleTopology.PlaySpotRouterEndpoint);
-                    router.setRoutingId(systems.zlink.contracts.core.RoutingId.from(SampleNames.PlayRid));
+                    router.setRoutingId(RoutingId.from(SampleNames.PlayRid));
                 });
                 node.acceptSpotRoutesFromChannel(SampleNames.PlayRouteChannel);
                 node.configureEntrySpot(entry ->
-                    entry.setRoutingId(systems.zlink.contracts.core.RoutingId.from(
+                    entry.setRoutingId(RoutingId.from(
                         SampleNames.EntrySpotRoutingId)));
                 node.addEntrySpot(TicTacToeEntrySpot.class);
                 node.addSpotFactory(TicTacToeGameSpot.class);

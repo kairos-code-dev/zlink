@@ -153,7 +153,8 @@ Java framework도 `.NET`과 같이 channel을 네 종류로 나눈다.
 | `addRouteMeshChannel(...)` | target node `RoutingId`를 지정하는 routed channel |
 
 route mesh는 session actor relay를 대체하지 않는다. application이 특정 node로
-route send/request를 보내야 할 때 쓰며, session actor relay는 stream node의
+route send/request를 보내야 할 때 쓴다. 같은 runtime 안의 local managed actor
+binding은 framework 내부 dispatch를 사용하고, remote actor binding은 stream node의
 `attachActorGateway(...)`와 core ActorGateway 경로를 사용한다.
 
 ```java

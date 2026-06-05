@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
 import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActorFactory
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoNotificationPublisher
@@ -55,7 +56,7 @@ class PlayServerHostFactory {
         }
 
     @Bean
-    fun bingoRoomDirectory(spots: systems.zlink.framework.spots.ZLinkSpotManager): BingoRoomDirectory =
+    fun bingoRoomDirectory(spots: ZLinkSpotManager): BingoRoomDirectory =
         BingoRoomDirectory(spots)
 
     @Bean

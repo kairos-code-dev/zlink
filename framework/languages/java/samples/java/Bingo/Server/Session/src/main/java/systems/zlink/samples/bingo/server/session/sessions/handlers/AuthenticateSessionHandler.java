@@ -4,6 +4,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
@@ -68,7 +69,7 @@ public final class AuthenticateSessionHandler
                     .timeout(SampleTimings.RequestTimeout)
                     .submitAsync(Messages.EnsurePlayerActorRes.class)
                     .thenCompose(ensured -> context.actors()
-                        .bindAsync(new systems.zlink.framework.actors.ZLinkActorRef(
+                        .bindAsync(new ZLinkActorRef(
                             RoutingId.from(ensured.actor().nodeRid()),
                             ensured.actor().actorId(),
                             ensured.actor().generation()))

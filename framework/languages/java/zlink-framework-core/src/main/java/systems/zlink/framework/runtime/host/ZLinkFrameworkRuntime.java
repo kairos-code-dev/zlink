@@ -97,7 +97,8 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                 serializer,
                 actors,
                 runtimeHandlers,
-                spots == null ? ignored -> true : spots::isActorGatewayRouteReady);
+                spots == null ? ignored -> true : spots::isActorGatewayRouteReady,
+                spots);
     }
 
     public static ZLinkFrameworkRuntime start(

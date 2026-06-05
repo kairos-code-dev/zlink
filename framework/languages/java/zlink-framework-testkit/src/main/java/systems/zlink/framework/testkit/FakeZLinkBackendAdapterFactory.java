@@ -69,6 +69,7 @@ import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkRegistryBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapterFactory {
@@ -925,7 +926,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) { record("bindActor." + actor.actorId()); return timeout -> CompletableFuture.completedFuture(null); }
         @Override public ZLinkBackendActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId) { record("unbindActor." + actorId); return timeout -> CompletableFuture.completedFuture(null); }
         @Override public boolean sendBoundActor(RoutingId sessionRid, String actorId, List<Message> parts, SendFlags flags) { record("sendBoundActor." + actorId); return true; }
-        @Override public boolean relayBoundActor(RoutingId sessionRid, String actorId, systems.zlink.framework.streams.ZLinkStreamHeader header, List<Message> parts, SendFlags flags) { record("relayBoundActor." + actorId + "." + header.codec() + "." + header.packetName()); return true; }
+        @Override public boolean relayBoundActor(RoutingId sessionRid, String actorId, ZLinkStreamHeader header, List<Message> parts, SendFlags flags) { record("relayBoundActor." + actorId + "." + header.codec() + "." + header.packetName()); return true; }
 
         void dispatchPacket(RoutingId routingId, Message header, Message payload) {
             if (packetHandler == null) {

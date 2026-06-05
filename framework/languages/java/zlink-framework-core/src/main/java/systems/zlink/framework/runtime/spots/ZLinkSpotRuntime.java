@@ -87,6 +87,8 @@ import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.spots.ZLinkTimerTick;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRuntime.SpotRelayIngress, AutoCloseable {
     private static final long ROUTER_ENDPOINT_ROUTE_KIND = 0x5a4c5245L;
@@ -564,9 +566,54 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             throw new systems.zlink.framework.errors.ZLinkFrameworkException(
                 "SPOT route was not found for '" + spotRid + "'.",
                 ex);
+        }
     }
-}
 
+    public CompletionStage<Optional<Message>> dispatchLocalSessionActor(
+        ZLinkBackendActorRef actorRef,
+        ZLinkStreamHeader header,
+        Message payload) {
+        if (actorRuntime == null) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor runtime is required for local session actor dispatch"));
+        }
+        SpotActorPacketHandlerRegistration handler =
+            actorPacketHandlers.get(header.packetName());
+        if (handler == null) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor packet handler is not registered: " + header.packetName()));
+        }
+        boolean isRequest = header.requestSequence().isPresent()
+            || header.kind() == ZLinkStreamMessageKind.REQUEST;
+        if (isRequest != (handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor packet kind does not match handler kind: " + header.packetName()));
+        }
+        Optional<ZLinkActor> localActor = actorRuntime.localActor(actorRef.actorId());
+        if (localActor.isEmpty()) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "local actor is not available: " + actorRef.actorId()));
+        }
+        ZLinkActor actor = localActor.get();
+        if (!handler.actorType().isInstance(actor)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor packet handler target type does not match actor: " + actorRef.actorId()));
+        }
+        Object spotSurface = localActorSpotSurface(actor);
+        CompletableFuture<Optional<Message>> result = new CompletableFuture<>();
+        return actorRuntime.submitActorDispatch(
+            actor.actorId(),
+            () -> dispatchLocalSessionActorPacket(handler, spotSurface, actor, payload)
+                .whenComplete((reply, error) -> {
+                    if (error != null) {
+                        result.completeExceptionally(error);
+                    } else {
+                        result.complete(reply);
+                    }
+                })
+                .thenApply(ignored -> null))
+            .thenCompose(ignored -> result);
+    }
     @Override
     public RoutingId resolveAcceptedSpotRouteNodeRid(String channelName) {
         SpotNodeRegistration nodeRegistration = acceptedRouteNodesByChannel.get(channelName);
@@ -825,6 +872,102 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             return actor.context().getSpot();
         } catch (RuntimeException ignored) {
             return null;
+        }
+    }
+
+    private Object localActorSpotSurface(ZLinkActor actor) {
+        Object current = currentSpotSurface(actor);
+        if (current != null) {
+            return current;
+        }
+        if (actorRuntime != null) {
+            Optional<RoutingId> spotRid = actorRuntime.spotRid(actor);
+            if (spotRid.isPresent()) {
+                Object surface = spotSurfaceFor(spotRid.get());
+                if (surface != null) {
+                    return surface;
+                }
+            }
+        }
+        return entrySpots.isEmpty() ? null : entrySpots.get(0).entrySpot;
+    }
+
+    private CompletionStage<Optional<Message>> dispatchLocalSessionActorPacket(
+        SpotActorPacketHandlerRegistration registration,
+        Object spotSurface,
+        ZLinkActor actor,
+        Message payload) {
+        return registration.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST
+            ? invokeLocalActorRequestHandler(registration, spotSurface, actor, payload)
+            : invokeLocalActorSendHandler(registration, spotSurface, actor, payload)
+                .thenApply(ignored -> Optional.empty());
+    }
+
+    private CompletionStage<Void> invokeLocalActorSendHandler(
+        SpotActorPacketHandlerRegistration registration,
+        Object spotSurface,
+        ZLinkActor actor,
+        Message payload) {
+        try {
+            Object handler = handlerFactory.create(registration.handlerType());
+            Object message = serializer.deserialize(payload, registration.messageType());
+            Object result = registration.handlerMethod().invoke(
+                handler,
+                actorPacketArguments(
+                    registration.handlerMethod(),
+                    spotSurface,
+                    actor,
+                    new DefaultSpotActorSendContext(registration.packetName()),
+                    message));
+            if (result instanceof CompletionStage<?> stage) {
+                return stage.thenApply(ignored -> null);
+            }
+            return CompletableFuture.completedFuture(null);
+        } catch (IllegalAccessException | InvocationTargetException ex) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "failed to invoke local session actor send handler: "
+                    + registration.handlerType().getName()
+                    + "."
+                    + registration.handlerMethod().getName(),
+                ex instanceof InvocationTargetException invocation
+                    ? invocation.getCause()
+                    : ex));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    private CompletionStage<Optional<Message>> invokeLocalActorRequestHandler(
+        SpotActorPacketHandlerRegistration registration,
+        Object spotSurface,
+        ZLinkActor actor,
+        Message payload) {
+        try {
+            Object handler = handlerFactory.create(registration.handlerType());
+            Object message = serializer.deserialize(payload, registration.messageType());
+            Object result = registration.handlerMethod().invoke(
+                handler,
+                actorPacketArguments(
+                    registration.handlerMethod(),
+                    spotSurface,
+                    actor,
+                    new DefaultSpotActorRequestContext(registration.packetName()),
+                    message));
+            CompletionStage<?> stage = result instanceof CompletionStage<?> completionStage
+                ? completionStage
+                : CompletableFuture.completedFuture(result);
+            return stage.thenApply(reply -> Optional.of(serializer.serialize(reply)));
+        } catch (IllegalAccessException | InvocationTargetException ex) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "failed to invoke local session actor request handler: "
+                    + registration.handlerType().getName()
+                    + "."
+                    + registration.handlerMethod().getName(),
+                ex instanceof InvocationTargetException invocation
+                    ? invocation.getCause()
+                    : ex));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
         }
     }
 
@@ -1104,7 +1247,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     binding.meshName(),
                     peerRoutingId,
                     endpoint);
-                connectedRouterPeerRids.add(peerRoutingId);
             } else {
                 binding.node().connectRouterChannelPeer(binding.meshName(), endpoint);
             }

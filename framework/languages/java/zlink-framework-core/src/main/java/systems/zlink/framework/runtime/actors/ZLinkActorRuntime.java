@@ -186,6 +186,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         return Optional.ofNullable(actors.get(actorId));
     }
 
+    public Optional<RoutingId> spotRid(ZLinkActor actor) {
+        DefaultActorContext context = contextsByActor.get(actor);
+        if (context == null) {
+            throw new ZLinkConfigurationException(
+                "actor is not managed by this runtime: " + actor.actorId());
+        }
+        return Optional.ofNullable(context.spotRid);
+    }
+
     public CompletionStage<Optional<ZLinkActor>> getOrCreateLocalActor(
         String actorId,
         Class<?> expectedActorType) {

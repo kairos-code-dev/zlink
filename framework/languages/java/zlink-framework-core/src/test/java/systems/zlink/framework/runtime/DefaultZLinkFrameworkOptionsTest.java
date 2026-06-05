@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendContext;
@@ -230,10 +231,10 @@ final class DefaultZLinkFrameworkOptionsTest {
     @Test
     void spotRouterAndPubSubManualConnectionsMutateRegistrationModel() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        systems.zlink.contracts.core.RoutingId nodeRid =
-            systems.zlink.contracts.core.RoutingId.from("spot-node-1");
-        systems.zlink.contracts.core.RoutingId pubSubRid =
-            systems.zlink.contracts.core.RoutingId.from("spot-pub-1");
+        RoutingId nodeRid =
+            RoutingId.from("spot-node-1");
+        RoutingId pubSubRid =
+            RoutingId.from("spot-pub-1");
 
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
@@ -288,10 +289,10 @@ final class DefaultZLinkFrameworkOptionsTest {
             mesh.addNode("play", node -> {
                 node.enableRouter(router ->
                     router.setRoutingId(
-                        systems.zlink.contracts.core.RoutingId.from("node-a")));
+                        RoutingId.from("node-a")));
                 node.enablePubSub(pubsub ->
                     pubsub.setRoutingId(
-                        systems.zlink.contracts.core.RoutingId.from("node-b")));
+                        RoutingId.from("node-b")));
             }));
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
@@ -300,8 +301,8 @@ final class DefaultZLinkFrameworkOptionsTest {
     @Test
     void entrySpotRoutingIdMutatesRegistrationModel() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        systems.zlink.contracts.core.RoutingId entryRid =
-            systems.zlink.contracts.core.RoutingId.from("entry-spot");
+        RoutingId entryRid =
+            RoutingId.from("entry-spot");
 
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node ->
@@ -898,11 +899,11 @@ final class DefaultZLinkFrameworkOptionsTest {
         @Override
         public CompletionStage<systems.zlink.framework.spots.ZLinkSpotRemoteAddress>
             resolveSpotRemoteAddressAsync(
-                systems.zlink.contracts.core.RoutingId spotRid) {
+                RoutingId spotRid) {
             return CompletableFuture.completedFuture(
                 new systems.zlink.framework.spots.ZLinkSpotRemoteAddress(
                     "play",
-                    systems.zlink.contracts.core.RoutingId.from("node"),
+                    RoutingId.from("node"),
                     spotRid,
                     systems.zlink.framework.spots.ZLinkSpotKind.USER));
         }

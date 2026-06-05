@@ -102,8 +102,10 @@ context.client()
 
 ## 4. ActorGateway attach
 
-session에서 actor로 relay하려면 stream node가 SpotNode의 ActorGateway에 attach되어
-있어야 한다.
+local managed actor instance를 bind해서 같은 runtime 안에서 actor로 relay하는 경우
+stream node는 ActorGateway attach 없이 동작한다. session gateway처럼 remote
+`ZLinkActorRef`를 bind하거나 actor 위치를 core ActorGateway가 해석해야 하는 경우에는
+stream node가 SpotNode의 ActorGateway에 attach되어 있어야 한다.
 
 ```java
 options.addStreamNode("gateway", stream -> {
@@ -114,8 +116,9 @@ options.addStreamNode("gateway", stream -> {
 ```
 
 이 설정은 session relay용 route mesh channel을 만든다는 뜻이 아니다. application
-Spot route egress가 필요하면 별도 route channel을 등록하고, session actor relay는
-ActorGateway 경로로 보낸다.
+Spot route egress가 필요하면 별도 route channel을 등록한다. local managed actor
+binding은 framework 내부 dispatch를 사용하고, remote actor binding은 ActorGateway
+경로로 보낸다.
 
 ## 5. Client Connector
 

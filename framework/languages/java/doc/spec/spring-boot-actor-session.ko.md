@@ -54,9 +54,12 @@ public class ActorConfig implements ZLinkFrameworkOptionsCustomizer {
 }
 ```
 
-`attachActorGateway("play")`는 stream node가 session bind 전에 해당 SpotNode의
-ActorGateway에 연결되어야 한다는 뜻이다. Java framework는 이 의미를 route mesh
-channel packet으로 대신 구현하지 않는다.
+local managed actor instance를 `bindAsync(ZLinkActor)`로 bind하는 경우 stream node는
+`.NET` direct stream과 같이 ActorGateway attach 없이 actor packet을 framework 내부
+dispatch 경로로 전달한다. remote `ZLinkActorRef`를 bind하거나 별도 session gateway
+역할에서 actor 위치를 core가 해석해야 하는 경우에는 `attachActorGateway("play")`로
+stream node가 해당 SpotNode의 ActorGateway에 연결되어야 한다. Java framework는 이
+의미를 route mesh channel packet으로 대신 구현하지 않는다.
 
 ## 3. Actor 계약
 
@@ -110,9 +113,10 @@ public interface ZLinkSessionActor {
 ```
 
 session은 local actor instance 또는 framework actor locator인 `ZLinkActorRef`에
-bind할 수 있다. remote binding은 binding 내부의 `ActorRef`나 actor route snapshot을
-session public 입력으로 받지 않고, core ActorGateway와 logical actor handle을
-사용한다.
+bind할 수 있다. local actor instance binding은 같은 framework runtime 안에서 handler
+annotation catalog를 사용해 dispatch한다. remote binding은 binding 내부의 `ActorRef`나
+actor route snapshot을 session public 입력으로 받지 않고, core ActorGateway와 logical
+actor handle을 사용한다.
 
 ## 5. Bound Session
 

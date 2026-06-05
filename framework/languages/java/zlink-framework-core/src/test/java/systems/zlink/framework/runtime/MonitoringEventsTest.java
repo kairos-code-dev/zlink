@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRegistryEvent;
 import systems.zlink.framework.monitoring.ZLinkRegistryEventKind;
@@ -222,7 +223,7 @@ final class MonitoringEventsTest {
             ZLinkBackendRegistryQueryFilter filter) {
             return List.of(new ZLinkBackendRegistryTopologyEntry(
                 "CLIENT_SERVER",
-                systems.zlink.contracts.core.RoutingId.from("profile-" + entryCount),
+                RoutingId.from("profile-" + entryCount),
                 "SOCKET",
                 "SERVER",
                 "profile",
@@ -243,7 +244,7 @@ final class MonitoringEventsTest {
                 "ROUTER",
                 channelName,
                 "inproc://" + channelName,
-                systems.zlink.contracts.core.RoutingId.from(channelName + "-peer"),
+                RoutingId.from(channelName + "-peer"),
                 1,
                 1));
         }
@@ -262,12 +263,12 @@ final class MonitoringEventsTest {
         List<ZLinkBackendSpotNodeSubjectEntry> subjects = List.of();
 
         @Override
-        public systems.zlink.contracts.core.RoutingId routingId() {
-            return systems.zlink.contracts.core.RoutingId.from("play");
+        public RoutingId routingId() {
+            return RoutingId.from("play");
         }
 
         @Override
-        public void setRoutingId(systems.zlink.contracts.core.RoutingId routingId) {
+        public void setRoutingId(RoutingId routingId) {
         }
 
         @Override
@@ -293,7 +294,7 @@ final class MonitoringEventsTest {
         @Override
         public void connectRouterChannelPeerRid(
             String channelName,
-            systems.zlink.contracts.core.RoutingId peerRid,
+            RoutingId peerRid,
             String endpoint) {
         }
 
@@ -334,8 +335,8 @@ final class MonitoringEventsTest {
         @Override
         public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinResult> joinActor(
             ZLinkBackendActorRef actor,
-            systems.zlink.contracts.core.RoutingId targetNodeRid,
-            systems.zlink.contracts.core.RoutingId targetSpotRid,
+            RoutingId targetNodeRid,
+            RoutingId targetSpotRid,
             List<systems.zlink.contracts.messaging.Message> parts,
             java.time.Duration timeout) {
             return java.util.concurrent.CompletableFuture.failedFuture(
@@ -345,7 +346,7 @@ final class MonitoringEventsTest {
         @Override
         public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(
             ZLinkBackendActorRef actor,
-            systems.zlink.contracts.core.RoutingId targetNodeRid,
+            RoutingId targetNodeRid,
             java.time.Duration timeout) {
             return java.util.concurrent.CompletableFuture.failedFuture(
                 new UnsupportedOperationException("join entry spot is not used by this test"));

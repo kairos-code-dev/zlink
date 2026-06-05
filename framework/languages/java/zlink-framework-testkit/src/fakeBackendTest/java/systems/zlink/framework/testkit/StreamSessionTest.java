@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -21,6 +22,7 @@ import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
+import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 
@@ -31,7 +33,7 @@ final class StreamSessionTest {
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
                 node.enableRouter(router ->
-                    router.setRoutingId(systems.zlink.contracts.core.RoutingId.from("play-node")));
+                    router.setRoutingId(RoutingId.from("play-node")));
                 node.addSpotFactory(GameSpot.class);
             }));
         options.addStreamNode("gateway", stream -> {
@@ -166,10 +168,10 @@ final class StreamSessionTest {
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
                 node.enableRouter(router ->
-                    router.setRoutingId(systems.zlink.contracts.core.RoutingId.from("play-node")));
+                    router.setRoutingId(RoutingId.from("play-node")));
                 node.addSpotFactory(GameSpot.class);
             }));
-        options.addActorFactory("player", systems.zlink.framework.testkit.ActorRuntimeFakeBackendTest.PlayerActorFactory.class);
+        options.addActorFactory("player", ActorRuntimeFakeBackendTest.PlayerActorFactory.class);
         options.addStreamNode("gateway", stream -> {
             stream.bind("inproc://gateway");
             stream.attachActorGateway("play");
@@ -183,11 +185,41 @@ final class StreamSessionTest {
             backendFactory.dispatchStreamRequest("Join", "hello", 42);
 
             assertEquals("gateway:fake-session", ContextSession.sessionId);
-            assertEquals(1, ContextSession.boundCount);
+            awaitCondition(() -> ContextSession.boundCount == 1);
+            assertEquals(1, ContextSession.boundCount, backendFactory.calls().toString());
         }
 
         assertTrue(backendFactory.calls().contains("stream.bindActor.player-1"));
         assertTrue(backendFactory.calls().contains("stream.send.fake-session.Notify"));
+        assertTrue(backendFactory.calls().contains("stream.reply.fake-session.42.Join.reply"));
+    }
+
+    @Test
+    void gatewayAttachedSessionContextExposesActorsWithoutLocalActorRuntime() {
+        ContextSession.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("session", node -> node.enableRouter(router ->
+                router.setRoutingId(RoutingId.from("session-node")))));
+        options.addStreamNode("gateway", stream -> {
+            stream.bind("inproc://gateway");
+            stream.attachActorGateway("session");
+            stream.registerSession(ContextSession.class);
+        });
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+            ContextSession.actorNodeRid = RoutingId.from("session-node");
+            backendFactory.dispatchStreamRequest("Join", "hello", 42);
+
+            assertEquals("gateway:fake-session", ContextSession.sessionId);
+            awaitCondition(() -> ContextSession.boundCount == 1);
+            assertEquals(1, ContextSession.boundCount, backendFactory.calls().toString());
+        }
+
+        assertTrue(backendFactory.calls().contains("stream.bindActor.player-1"));
         assertTrue(backendFactory.calls().contains("stream.reply.fake-session.42.Join.reply"));
     }
 
@@ -236,6 +268,21 @@ final class StreamSessionTest {
         }
     }
 
+    private static void awaitCondition(java.util.function.BooleanSupplier condition) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(2);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("interrupted while waiting for condition", ex);
+            }
+        }
+    }
+
     public static final class GameSpot implements ZLinkSpot {
         @Override
         public ZLinkSpotContext context() {
@@ -281,14 +328,14 @@ final class StreamSessionTest {
         @Override
         public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
             errors.add(error.error()
-                + ":" + error.diagnostic().map(systems.zlink.framework.streams.ZLinkStreamDiagnostic::nativeCode).orElse(0)
-                + ":" + error.diagnostic().map(systems.zlink.framework.streams.ZLinkStreamDiagnostic::message).orElse(""));
+                + ":" + error.diagnostic().map(ZLinkStreamDiagnostic::nativeCode).orElse(0)
+                + ":" + error.diagnostic().map(ZLinkStreamDiagnostic::message).orElse(""));
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
         public CompletionStage<Void> onDispatchAsync(
-            systems.zlink.framework.streams.ZLinkStreamHeader header,
+            ZLinkStreamHeader header,
             Message payload) {
             dispatches.add(header.packetName() + ":" + payload.toUtf8String());
             return CompletableFuture.completedFuture(null);
@@ -298,6 +345,7 @@ final class StreamSessionTest {
     public static final class ContextSession implements ZLinkSession {
         static String sessionId;
         static int boundCount;
+        static RoutingId actorNodeRid = RoutingId.from("play-node");
         private final ZLinkSessionContext context;
 
         public ContextSession(ZLinkSessionContext context) {
@@ -307,6 +355,7 @@ final class StreamSessionTest {
         static void reset() {
             sessionId = null;
             boundCount = 0;
+            actorNodeRid = RoutingId.from("play-node");
         }
 
         @Override
@@ -332,11 +381,11 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatchAsync(
-            systems.zlink.framework.streams.ZLinkStreamHeader header,
+            ZLinkStreamHeader header,
             Message payload) {
             return context.actors()
                 .bindAsync(new ZLinkActorRef(
-                    systems.zlink.contracts.core.RoutingId.from("play-node"),
+                    actorNodeRid,
                     "player-1",
                     1))
                 .thenCompose(actor -> {

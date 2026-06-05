@@ -30,6 +30,7 @@ import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 final class StreamSessionTest {
     @Test
@@ -225,7 +226,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatchAsync(
-            systems.zlink.framework.streams.ZLinkStreamHeader header,
+            ZLinkStreamHeader header,
             Message payload) {
             if (!"Ping".equals(header.packetName())) {
                 return CompletableFuture.failedFuture(
@@ -268,7 +269,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatchAsync(
-            systems.zlink.framework.streams.ZLinkStreamHeader header,
+            ZLinkStreamHeader header,
             Message payload) {
             if ("Bind".equals(header.packetName())) {
                 String actorId = new String(payload.toByteArray(), StandardCharsets.UTF_8);

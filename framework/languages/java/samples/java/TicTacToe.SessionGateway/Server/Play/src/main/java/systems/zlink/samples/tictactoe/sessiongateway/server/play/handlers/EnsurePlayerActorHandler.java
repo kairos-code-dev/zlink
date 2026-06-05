@@ -3,6 +3,7 @@ package systems.zlink.samples.tictactoe.sessiongateway.server.play.handlers;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
@@ -25,7 +26,7 @@ public final class EnsurePlayerActorHandler {
                 .thenApply(joined -> snapshot(actor, joined)));
     }
 
-    private static String snapshot(ZLinkActor actor, systems.zlink.framework.actors.ZLinkActorRef ref) {
+    private static String snapshot(ZLinkActor actor, ZLinkActorRef ref) {
         return ref.nodeRid().toHex() + "|" + actor.actorId() + "|" + ref.epoch();
     }
 }

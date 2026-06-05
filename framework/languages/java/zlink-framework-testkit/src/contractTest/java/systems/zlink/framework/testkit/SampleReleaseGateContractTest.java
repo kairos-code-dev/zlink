@@ -701,16 +701,15 @@ final class SampleReleaseGateContractTest {
 
         assertTrue(serverProgramSource.contains("case \"api\" -> ApiServer.start(settings)")
                 && serverProgramSource.contains("case \"play\" -> PlayServer.start(settings)")
+                && serverProgramSource.contains("case \"all\" -> runAll(settings)")
+                && serverProgramSource.contains("case \"client\" -> runClient(settings)")
                 && serverProgramSource.contains("SampleSettings.fromArgs(args)")
-                && !serverProgramSource.contains("case \"client\"")
                 && !serverProgramSource.contains("case \"server\"")
-                && !serverProgramSource.contains("case \"all\"")
-                && !serverBuildSource.contains("implementation(project(\":Client\"))"),
-            "TicTacToe Java Server role Program must expose only Spring Boot api/play role entry points");
+                && serverBuildSource.contains("implementation(project(\":Client\"))"),
+            "TicTacToe Java Server Program must expose .NET-style all/play/api/client modes");
         assertFalse(serverProgramSource.contains("CountDownLatch")
-                || serverProgramSource.contains("ZLinkFramework.start")
-                || serverProgramSource.contains("new TicTacToeClient().run"),
-            "TicTacToe Java Server role must rely on Spring lifecycle keep-alive instead of direct framework/client execution");
+                || serverProgramSource.contains("ZLinkFramework.start"),
+            "TicTacToe Java Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
         assertTrue(apiSource.contains("ZLinkFrameworkOptionsCustomizer")
                 && apiSource.contains("@SpringBootApplication")
                 && apiSource.contains("SpringApplicationBuilder")
@@ -1033,16 +1032,15 @@ final class SampleReleaseGateContractTest {
 
         assertTrue(serverProgramSource.contains("\"api\" -> ApiServer.start(settings)")
                 && serverProgramSource.contains("\"play\" -> PlayServer.start(settings)")
+                && serverProgramSource.contains("\"all\" -> runAll(settings)")
+                && serverProgramSource.contains("\"client\" -> runClient(settings)")
                 && serverProgramSource.contains("SampleSettings.fromArgs(args)")
-                && !serverProgramSource.contains("\"client\"")
                 && !serverProgramSource.contains("\"server\"")
-                && !serverProgramSource.contains("\"all\"")
-                && !serverBuildSource.contains("implementation(project(\":Client\"))"),
-            "Kotlin TicTacToe Server role Program must expose only Spring Boot api/play role entry points");
+                && serverBuildSource.contains("implementation(project(\":Client\"))"),
+            "Kotlin TicTacToe Server Program must expose .NET-style all/play/api/client modes");
         assertFalse(serverProgramSource.contains("CountDownLatch")
-                || serverProgramSource.contains("ZLinkFramework.start")
-                || serverProgramSource.contains("TicTacToeClient().run"),
-            "Kotlin TicTacToe Server role must rely on Spring lifecycle keep-alive instead of direct framework/client execution");
+                || serverProgramSource.contains("ZLinkFramework.start"),
+            "Kotlin TicTacToe Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
         assertTrue(apiSource.contains("ZLinkFrameworkOptionsCustomizer")
                 && apiSource.contains("@SpringBootApplication")
                 && apiSource.contains("SpringApplicationBuilder")

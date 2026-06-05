@@ -15,10 +15,15 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.jar.JarFile;
+import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
+import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -76,7 +81,10 @@ public final class ZLinkHandlerScanner {
         for (Method method : candidate.getMethods()) {
             ZLinkSend send = method.getAnnotation(ZLinkSend.class);
             if (send != null) {
-                Class<?> messageType = requireSingleMessageParameter(candidate, method);
+                Class<?> messageType = requireChannelHandlerShape(
+                    candidate,
+                    method,
+                    ZLinkSendContext.class);
                 handlers.add(new ZLinkScannedHandler(
                     ZLinkScannedHandlerSurface.CHANNEL,
                     ZLinkScannedHandlerKind.SEND,
@@ -90,7 +98,10 @@ public final class ZLinkHandlerScanner {
 
             ZLinkRequest request = method.getAnnotation(ZLinkRequest.class);
             if (request != null) {
-                Class<?> messageType = requireSingleMessageParameter(candidate, method);
+                Class<?> messageType = requireChannelHandlerShape(
+                    candidate,
+                    method,
+                    ZLinkRequestContext.class);
                 Class<?> replyType = resolveReplyType(candidate, method);
                 handlers.add(new ZLinkScannedHandler(
                     ZLinkScannedHandlerSurface.CHANNEL,
@@ -105,7 +116,10 @@ public final class ZLinkHandlerScanner {
 
             ZLinkPublish publish = method.getAnnotation(ZLinkPublish.class);
             if (publish != null) {
-                Class<?> messageType = requireSingleMessageParameter(candidate, method);
+                Class<?> messageType = requireChannelHandlerShape(
+                    candidate,
+                    method,
+                    ZLinkPublishContext.class);
                 handlers.add(new ZLinkScannedHandler(
                     ZLinkScannedHandlerSurface.CHANNEL,
                     ZLinkScannedHandlerKind.PUBLISH,
@@ -351,11 +365,23 @@ public final class ZLinkHandlerScanner {
             groups));
     }
 
-    private static Class<?> requireSingleMessageParameter(Class<?> handlerType, Method method) {
+    private static Class<?> requireChannelHandlerShape(
+        Class<?> handlerType,
+        Method method,
+        Class<? extends ZLinkHandlerContext> contextType) {
         Class<?>[] parameters = method.getParameterTypes();
-        if (parameters.length != 1) {
+        if (parameters.length == 0) {
             throw new ZLinkConfigurationException(
-                "handler method must have exactly one message parameter: "
+                "handler method must have a message parameter: "
+                    + handlerType.getName() + "." + method.getName());
+        }
+        for (int index = 1; index < parameters.length; index++) {
+            if (parameters[index] == CancellationToken.class
+                || parameters[index].isAssignableFrom(contextType)) {
+                continue;
+            }
+            throw new ZLinkConfigurationException(
+                "handler method parameter must be a matching context or CancellationToken: "
                     + handlerType.getName() + "." + method.getName());
         }
         return parameters[0];

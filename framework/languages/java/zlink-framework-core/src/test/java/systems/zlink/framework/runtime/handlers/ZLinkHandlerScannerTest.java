@@ -7,9 +7,12 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkRequest;
+import systems.zlink.framework.handlers.ZLinkSend;
 
 final class ZLinkHandlerScannerTest {
     @Test
@@ -50,6 +53,26 @@ final class ZLinkHandlerScannerTest {
         assertTrue(handler.groups().isEmpty());
     }
 
+    @Test
+    void scansAttributedHandlersWithContextParameterLikeDotnet() {
+        ZLinkScannedHandlerCatalog catalog =
+            ZLinkHandlerScanner.scan(Set.of(ZLinkHandlerScannerTest.class));
+
+        ZLinkScannedHandler requestHandler = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == ContextAttributedRequestHandler.class)
+            .findFirst()
+            .orElseThrow();
+        ZLinkScannedHandler sendHandler = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == ContextAttributedSendHandler.class)
+            .findFirst()
+            .orElseThrow();
+
+        assertEquals(ZLinkScannedHandlerKind.REQUEST, requestHandler.kind());
+        assertEquals("ContextRequest", requestHandler.packetName());
+        assertEquals(ZLinkScannedHandlerKind.SEND, sendHandler.kind());
+        assertEquals("ContextSend", sendHandler.packetName());
+    }
+
     public static final class UngroupedInterfaceHandler
         implements ZLinkRequestHandler<String, String> {
         @Override
@@ -64,6 +87,20 @@ final class ZLinkHandlerScannerTest {
         @ZLinkRequest(packetName = "Echo")
         public CompletionStage<String> handle(String request) {
             return CompletableFuture.completedFuture(request);
+        }
+    }
+
+    public static final class ContextAttributedRequestHandler {
+        @ZLinkRequest(packetName = "ContextRequest")
+        public CompletionStage<String> handle(String request, ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(context.packetName().orElse(request));
+        }
+    }
+
+    public static final class ContextAttributedSendHandler {
+        @ZLinkSend(packetName = "ContextSend")
+        public CompletionStage<Void> handle(String request, ZLinkHandlerContext context) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

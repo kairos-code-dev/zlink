@@ -24,6 +24,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
@@ -771,7 +772,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 return invokeVoidMethodHandler(
                     registration.handlerType(),
                     registration.handlerMethod(),
-                    message);
+                    message,
+                    new DefaultSendContext(registration.packetName()));
             }
             ZLinkSendHandler handler =
                 (ZLinkSendHandler) handlerFactory.create(registration.handlerType());
@@ -792,7 +794,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 return invokeReplyMethodHandler(
                     registration.handlerType(),
                     registration.handlerMethod(),
-                    request)
+                    request,
+                    new DefaultRequestContext(registration.packetName()))
                     .thenApply(serializer::serialize);
             }
             ZLinkRequestHandler handler =
@@ -816,7 +819,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 return invokeVoidMethodHandler(
                     registration.handlerType(),
                     registration.handlerMethod(),
-                    message);
+                    message,
+                    new DefaultPublishContext(registration.packetName(), topic));
             }
             ZLinkPublishHandler handler =
                 (ZLinkPublishHandler) handlerFactory.create(registration.handlerType());
@@ -830,10 +834,11 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private CompletionStage<Void> invokeVoidMethodHandler(
         Class<?> handlerType,
         Method method,
-        Object message) {
+        Object message,
+        ZLinkHandlerContext context) {
         try {
             Object handler = handlerFactory.create(handlerType);
-            Object result = method.invoke(handler, message);
+            Object result = method.invoke(handler, methodArguments(method, message, context));
             if (result instanceof CompletionStage<?> stage) {
                 return stage.thenApply(ignored -> null);
             }
@@ -849,10 +854,11 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private CompletionStage<Object> invokeReplyMethodHandler(
         Class<?> handlerType,
         Method method,
-        Object message) {
+        Object message,
+        ZLinkHandlerContext context) {
         try {
             Object handler = handlerFactory.create(handlerType);
-            Object result = method.invoke(handler, message);
+            Object result = method.invoke(handler, methodArguments(method, message, context));
             if (result instanceof CompletionStage<?> stage) {
                 return stage.thenApply(value -> value);
             }
@@ -863,6 +869,25 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
+    }
+
+    static Object[] methodArguments(
+        Method method,
+        Object message,
+        ZLinkHandlerContext context) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        Object[] arguments = new Object[parameterTypes.length];
+        arguments[0] = message;
+        for (int index = 1; index < parameterTypes.length; index++) {
+            if (parameterTypes[index] == CancellationToken.class) {
+                arguments[index] = context.cancellationToken();
+            } else if (parameterTypes[index].isInstance(context)) {
+                arguments[index] = context;
+            } else {
+                arguments[index] = null;
+            }
+        }
+        return arguments;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

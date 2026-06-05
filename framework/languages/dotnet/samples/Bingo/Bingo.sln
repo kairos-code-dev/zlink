@@ -41,7 +41,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink", "..\..\..\..\..\bin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.AspNetCore", "..\..\src\Zlink.Framework.AspNetCore\Zlink.Framework.AspNetCore.csproj", "{A231691A-B533-4C8B-BF2B-A47A9013EF8D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Codecs.Json", "..\..\..\..\..\bindings\dotnet\src\Zlink.Codecs.Json\Zlink.Codecs.Json.csproj", "{628E05F4-21C1-4232-A38B-1F59BD7CF96C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Codecs.Json", "..\..\..\..\..\bindings\dotnet\codecs\Zlink.Codecs.Json\Zlink.Codecs.Json.csproj", "{628E05F4-21C1-4232-A38B-1F59BD7CF96C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

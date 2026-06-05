@@ -27,7 +27,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink", "..\..\..\..\..\bin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.AspNetCore", "..\..\src\Zlink.Framework.AspNetCore\Zlink.Framework.AspNetCore.csproj", "{D855BAD0-E743-49F6-81B5-B1FD627804D4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Codecs.Json", "..\..\..\..\..\bindings\dotnet\src\Zlink.Codecs.Json\Zlink.Codecs.Json.csproj", "{EB873776-84B9-4936-873A-909D33AECB3D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Codecs.Json", "..\..\..\..\..\bindings\dotnet\codecs\Zlink.Codecs.Json\Zlink.Codecs.Json.csproj", "{EB873776-84B9-4936-873A-909D33AECB3D}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Play", "Play", "{E19CE5D1-1858-09AE-EA44-9AF5E5F56AD1}"
 EndProject

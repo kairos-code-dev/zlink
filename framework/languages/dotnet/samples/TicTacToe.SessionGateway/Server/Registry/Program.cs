@@ -11,5 +11,11 @@ using Microsoft.Extensions.Hosting;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Server.Registry;
 
-var topology = SampleTopology.Create();
-await RegistryHostFactory.Build(topology).RunAsync();
+internal static class Program
+{
+    private static async Task Main(string[] args)
+    {
+        var topology = SampleTopology.Create();
+        await RegistryHostFactory.Build(topology).RunAsync();
+    }
+}

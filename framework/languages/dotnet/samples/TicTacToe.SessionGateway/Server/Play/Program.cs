@@ -11,7 +11,13 @@ using Microsoft.Extensions.Hosting;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Server.Play;
 
-var topology = SampleTopology.Create();
-using var host = PlayServerHostFactory.Build(topology);
+internal static class Program
+{
+    private static async Task Main(string[] args)
+    {
+        var topology = SampleTopology.Create();
+        using var host = PlayServerHostFactory.Build(topology);
 
-await host.RunAsync();
+        await host.RunAsync();
+    }
+}

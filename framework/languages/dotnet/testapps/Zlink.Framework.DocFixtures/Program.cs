@@ -4,14 +4,21 @@ using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 
-_ = FixtureSamples.CreateChannelBuilder();
-_ = FixtureSamples.CreateSpotBuilder();
-_ = FixtureSamples.CreateStreamBuilder();
-_ = FixtureSamples.CreateRegistryBuilder();
-_ = FixtureSamples.CreateMonitoringBuilder();
-_ = FixtureSamples.CreateActorBuilder();
+internal static class Program
+{
+    private static int Main(string[] args)
+    {
+        _ = FixtureSamples.CreateChannelBuilder();
+        _ = FixtureSamples.CreateSpotBuilder();
+        _ = FixtureSamples.CreateStreamBuilder();
+        _ = FixtureSamples.CreateRegistryBuilder();
+        _ = FixtureSamples.CreateMonitoringBuilder();
+        _ = FixtureSamples.CreateActorBuilder();
 
-return 0;
+        return 0;
+
+    }
+}
 
 internal static class FixtureSamples
 {

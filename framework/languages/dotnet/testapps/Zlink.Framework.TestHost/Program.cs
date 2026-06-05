@@ -4,29 +4,36 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
 
-var options = TestHostOptions.Parse(args);
-var readyFilePath = options.ReadyFilePath;
-
-Console.SetOut(TextWriter.Synchronized(new StreamWriter(
-    Console.OpenStandardOutput(),
-    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
+internal sealed class Program
 {
-    AutoFlush = true,
-}));
+    private static async Task Main(string[] args)
+    {
+        var options = TestHostOptions.Parse(args);
+        var readyFilePath = options.ReadyFilePath;
 
-var builder = Host.CreateApplicationBuilder(args);
-builder.Logging.ClearProviders();
+        Console.SetOut(TextWriter.Synchronized(new StreamWriter(
+            Console.OpenStandardOutput(),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
+        {
+            AutoFlush = true,
+        }));
 
-TestHostScenarioConfigurator.Configure(builder.Services, options);
-builder.Services.AddHostedService(provider =>
-    new ReadySignalHostedService(
-        provider.GetRequiredService<IHostApplicationLifetime>(),
-        readyFilePath,
-        options.StopFilePath,
-        options.Mode));
+        var builder = Host.CreateApplicationBuilder(args);
+        builder.Logging.ClearProviders();
 
-using var host = builder.Build();
-await host.RunAsync();
+        TestHostScenarioConfigurator.Configure(builder.Services, options);
+        builder.Services.AddHostedService(provider =>
+            new ReadySignalHostedService(
+                provider.GetRequiredService<IHostApplicationLifetime>(),
+                readyFilePath,
+                options.StopFilePath,
+                options.Mode));
+
+        using var host = builder.Build();
+        await host.RunAsync();
+
+    }
+}
 
 internal sealed class StartupSpotCreationHostedService(
     IZLinkSpotManager spotManager) : IHostedService

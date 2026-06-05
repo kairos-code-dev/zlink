@@ -11,9 +11,15 @@ using Bingo.Server.Session;
 using Bingo.Shared.Configuration;
 using Microsoft.Extensions.Hosting;
 
-var topology = SampleTopology.Create();
+internal static class Program
+{
+    private static async Task Main(string[] args)
+    {
+        var topology = SampleTopology.Create();
 
-await SessionServerHostFactory.Build(
-        topology,
-        topology.PrimarySession)
-    .RunAsync();
+        await SessionServerHostFactory.Build(
+                topology,
+                topology.PrimarySession)
+            .RunAsync();
+    }
+}

@@ -37,7 +37,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Systems.Zlink.Stream.Connec
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Systems.Zlink.Stream.Connector.Codecs", "src\Systems.Zlink.Stream.Connector.Codecs\Systems.Zlink.Stream.Connector.Codecs.csproj", "{B371C51E-F8C1-4C16-90B2-97F81CA468E7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Codecs.Json", "..\..\..\bindings\dotnet\src\Zlink.Codecs.Json\Zlink.Codecs.Json.csproj", "{902C7AED-DD75-48FE-A814-F904F356E4A5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Codecs.Json", "..\..\..\bindings\dotnet\codecs\Zlink.Codecs.Json\Zlink.Codecs.Json.csproj", "{902C7AED-DD75-48FE-A814-F904F356E4A5}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5D20AA90-6969-D8BD-9DCD-8634F4692FDA}"
 EndProject

@@ -11,12 +11,18 @@ using Microsoft.Extensions.Hosting;
 using TicTacToe.SessionGateway.Session;
 using TicTacToe.SessionGateway.Shared.Configuration;
 
-var topology = SampleTopology.Create();
-var session = args.Contains("--reconnect", StringComparer.Ordinal)
-    ? topology.ReconnectSession
-    : topology.PrimarySession;
+internal static class Program
+{
+    private static async Task Main(string[] args)
+    {
+        var topology = SampleTopology.Create();
+        var session = args.Contains("--reconnect", StringComparer.Ordinal)
+            ? topology.ReconnectSession
+            : topology.PrimarySession;
 
-await SessionServerHostFactory.Build(
-        topology,
-        session)
-    .RunAsync();
+        await SessionServerHostFactory.Build(
+                topology,
+                session)
+            .RunAsync();
+    }
+}

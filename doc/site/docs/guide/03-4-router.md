@@ -438,8 +438,8 @@ as `ZLINK_EVENT_PEER_WEIGHT_CHANGED`; see
 event shape.
 
 > For the full contract, see
-> [Peer weight](../spec/core/socket/router.md#peer-weight) and
-> [Peer outbound from ROUTER](../spec/core/socket/router.md#peer-outbound-from-router)
+> [Peer weight](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/socket/router.md#peer-weight) and
+> [Peer outbound from ROUTER](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/socket/router.md#peer-outbound-from-router)
 > in the ROUTER spec.
 
 ---

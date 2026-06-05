@@ -1,6 +1,6 @@
 [English](./EXAMPLES.md) | [한국어](./EXAMPLES.ko.md)
 
-[가이드 목록](./README.ko.md) · [스타일 규약](./STYLE.ko.md)
+[가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md) · [스타일 규약](./STYLE.ko.md)
 
 # 예제 코드 관리 규약 — 드리프트 방지
 

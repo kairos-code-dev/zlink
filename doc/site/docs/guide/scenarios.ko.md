@@ -1,6 +1,6 @@
 [English](./scenarios.md) | [한국어](./scenarios.ko.md)
 
-[가이드 목록](./README.ko.md)
+[가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md)
 
 # 공유 시나리오 매트릭스
 
@@ -48,4 +48,4 @@
 ---
 
 > 더 보기: [소켓 패턴 선택](./03-0-socket-patterns.ko.md) ·
-> [바인딩 가이드](./bindings/README.ko.md) · [예제 규약](./EXAMPLES.ko.md).
+> [바인딩 가이드](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/bindings/README.ko.md) · [예제 규약](./EXAMPLES.ko.md).

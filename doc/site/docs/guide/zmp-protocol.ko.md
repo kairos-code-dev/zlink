@@ -1,6 +1,6 @@
 [English](./zmp-protocol.md) | [한국어](./zmp-protocol.ko.md)
 
-[가이드 목록](./README.ko.md)
+[가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md)
 
 # ZMP 프로토콜 레퍼런스
 
@@ -88,7 +88,7 @@ VSM(Very Small Message, 33바이트 이하 inline 저장)은 **메모리 최적�
 ## 6. 새 바인딩을 만든다면
 
 새 언어 바인딩은 보통 ZMP를 직접 구현하지 않는다 — **C 코어(C ABI)를 그대로 링크**해
-래핑하는 것이 기준이다([바인딩 가이드](./bindings/README.ko.md)). ZMP 레퍼런스가
+래핑하는 것이 기준이다([바인딩 가이드](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/bindings/README.ko.md)). ZMP 레퍼런스가
 필요한 경우는 다음과 같다.
 
 - C 코어를 쓰지 않고 **순수 그 언어로 ZMP를 재구현**할 때.

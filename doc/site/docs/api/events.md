@@ -1,6 +1,6 @@
 [English](./events.md) | [한국어](./events.ko.md)
 
-[Spec Index](../README.md) · [Core Index](./README.md)
+[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md) · [Core Index](./README.md)
 
 # Event Catalog
 

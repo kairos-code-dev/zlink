@@ -1,4 +1,4 @@
-[Spec Index](../../README.md) · [Core Index](../README.md)
+[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/README.md) · [Core Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md)
 
 # Socket — Common Specification
 

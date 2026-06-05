@@ -6,7 +6,7 @@
 pub/sub)는 **한 파일로 된 실행 가능한 예제**를 **9개 언어 코드 탭**으로 보인다 —
 각 탭은 리포지토리의 자립형 예제 파일(`samples/spot_pubsub_example`)을 그대로
 임베드한 것이고 빌드·실행으로 검증됐다. 정확한 함수 계약은
-[SPOT spec](../spec/core/service/spot.ko.md)를 본다.
+[SPOT spec](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/service/spot.ko.md)를 본다.
 
 ## 1. SPOT이 하는 일
 

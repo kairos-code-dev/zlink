@@ -1,11 +1,11 @@
 [English](./STYLE.md) | [한국어](./STYLE.ko.md)
 
-[가이드 목록](./README.ko.md)
+[가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md)
 
 # 가이드 작성 스타일 규약
 
 이 문서는 `doc/guide/`(코어 가이드 + 언어별 바인딩 가이드)를 작성·수정할 때 따르는
-규약이다. 저장소 전체 규칙은 [AGENTS.md](../../AGENTS.md)가, 이 문서는 가이드에
+규약이다. 저장소 전체 규칙은 [AGENTS.md](https://github.com/kairos-code-dev/zlink/blob/main/AGENTS.md)가, 이 문서는 가이드에
 한정한 구체 규약을 소유한다.
 
 ## 1. 디렉토리 역할 (어디에 무엇을)

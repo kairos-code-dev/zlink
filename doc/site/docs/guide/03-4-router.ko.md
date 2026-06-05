@@ -741,7 +741,7 @@ ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 섹션을 참고.
 
 > 상세 규약은 ROUTER spec
-> [router.ko.md](../spec/core/socket/router.ko.md)의 "피어 가중치"
+> [router.ko.md](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/socket/router.ko.md)의 "피어 가중치"
 > 와 "ROUTER에서 시작하는 직접 송신과 피어 가중치" 섹션을 참고.
 
 ---

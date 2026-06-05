@@ -3,7 +3,7 @@
 # SPOT Guide
 
 This guide explains how application developers use SPOT.
-For exact API contracts, see the [SPOT spec](../spec/core/service/spot.md).
+For exact API contracts, see the [SPOT spec](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/service/spot.md).
 
 ## 1. What SPOT does
 

@@ -263,7 +263,7 @@ zlink의 수신 모델은 두 가지 기본 방식으로 나뉜다.
 zlink 공개 C API 는 **함수별 typed result enum** 을 사용한다. 각 함수는
 `zlink_<category>_result_t` 를 반환하며 `0` 은 항상 `OK` 이고 non-zero 값이
 구체 실패 모드를 식별한다. 전체 enum 정의는
-[core/errno-map.md](../spec/core/errno-map.ko.md) 를 참조한다.
+[core/errno-map.md](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/errno-map.ko.md) 를 참조한다.
 
 8 개 result enum 카테고리:
 
@@ -301,7 +301,7 @@ if (rc != ZLINK_SUBMIT_OK) {
 
 언어 바인딩은 이 8 카테고리 구조를 typed exception/error 하위 타입으로
 노출한다. 자세한 계약은
-[bindings Per-Function Error Type Hierarchy](../spec/bindings/README.ko.md)
+[bindings Per-Function Error Type Hierarchy](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/bindings/README.ko.md)
 참조.
 
 ## 6. Timer API

@@ -1,6 +1,6 @@
 [English](./registry.md) | [한국어](./registry.ko.md)
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [서비스 공통](./README.ko.md)
+[스펙 목차](https://github.com/kairos-code-dev/zlink/blob/main/README.ko.md) · [코어 목차](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.ko.md) · [서비스 공통](./README.ko.md)
 
 # 레지스트리
 

@@ -13,7 +13,7 @@
     이 문서는 [문서화 원칙](../../../principal/documentation/documentation-principles.ko.md)에
     따라 "실제 예제 파일 임베드 + 9언어 탭" 형식을 시험 적용한 첫 문서다. 9×2개
     예제는 모두 빌드·실행으로 검증됐다. 정확한 함수 계약은
-    [SPOT spec](../spec/core/service/spot.ko.md)을 본다.
+    [SPOT spec](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/service/spot.ko.md)을 본다.
 
 ## Actor란 — 무엇이고 언제 쓰나
 
@@ -210,5 +210,5 @@ sequenceDiagram
   `actor_queue_example`을 본다.
 - 외부 raw TCP 클라이언트를 STREAM 게이트웨이로 실제 연결하는 더 큰 패턴:
   `actor_room_server`, `actor_gateway_relay`.
-- 정확한 계약: [SPOT spec](../spec/core/service/spot.ko.md). 개념·언제 쓰나:
+- 정확한 계약: [SPOT spec](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/service/spot.ko.md). 개념·언제 쓰나:
   [서비스 개요 §멘탈 모델](./07-0-services.ko.md).

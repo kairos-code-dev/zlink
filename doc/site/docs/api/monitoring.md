@@ -1,6 +1,6 @@
 [English](./monitoring.md) | [한국어](./monitoring.ko.md)
 
-[Spec Index](../README.md) · [Core Index](./README.md)
+[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md) · [Core Index](./README.md)
 
 # Monitoring API Reference
 

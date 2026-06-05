@@ -273,7 +273,7 @@ public enum에서 제거하고, `zlink_set_subscribe` / `zlink_unset_subscribe`�
 
 ### 8.1 Public Header
 
-- [`zlink.h`](core/include/zlink.h) — 함수 선언 이름 변경 4건, 옵션 상수 제거 2건, alias 제거 4건
+- [`zlink.h`](../../../../core/include/zlink.h) — 함수 선언 이름 변경 4건, 옵션 상수 제거 2건, alias 제거 4건
 
 ### 8.2 Core API 구현
 
@@ -293,33 +293,33 @@ public enum에서 제거하고, `zlink_set_subscribe` / `zlink_unset_subscribe`�
 
 `zlink_subscribe()`/`zlink_unsubscribe()` 호출부 (구독 필터 설정):
 
-- [`test_pubsub.cpp`](core/tests/integration/test_pubsub.cpp)
-- [`test_xpub_verbose.cpp`](core/tests/integration/test_xpub_verbose.cpp)
-- [`test_socket_with_handler.cpp`](core/tests/integration/test_socket_with_handler.cpp)
-- [`test_asio_tcp.cpp`](core/tests/integration/test_asio_tcp.cpp)
-- [`test_proxy.cpp`](core/tests/integration/test_proxy.cpp)
-- [`test_disconnect_inproc.cpp`](core/tests/integration/test_disconnect_inproc.cpp)
+- [`test_pubsub.cpp`](../../../../core/tests/integration/test_pubsub.cpp)
+- [`test_xpub_verbose.cpp`](../../../../core/tests/integration/test_xpub_verbose.cpp)
+- [`test_socket_with_handler.cpp`](../../../../core/tests/integration/test_socket_with_handler.cpp)
+- [`test_asio_tcp.cpp`](../../../../core/tests/integration/test_asio_tcp.cpp)
+- [`test_proxy.cpp`](../../../../core/tests/integration/test_proxy.cpp)
+- [`test_disconnect_inproc.cpp`](../../../../core/tests/integration/test_disconnect_inproc.cpp)
 - `core/tests/e2e/spot/` — 다수 spot 시나리오 파일
 
 `zlink_setsockopt(ZLINK_SUBSCRIBE, ...)` 호출부 (setsockopt 경로):
 
-- [`test_pubsub.cpp`](core/tests/integration/test_pubsub.cpp)
-- [`test_xpub_verbose.cpp`](core/tests/integration/test_xpub_verbose.cpp)
-- [`test_socket_with_handler.cpp`](core/tests/integration/test_socket_with_handler.cpp)
-- [`test_asio_tcp.cpp`](core/tests/integration/test_asio_tcp.cpp)
-- [`test_proxy.cpp`](core/tests/integration/test_proxy.cpp)
+- [`test_pubsub.cpp`](../../../../core/tests/integration/test_pubsub.cpp)
+- [`test_xpub_verbose.cpp`](../../../../core/tests/integration/test_xpub_verbose.cpp)
+- [`test_socket_with_handler.cpp`](../../../../core/tests/integration/test_socket_with_handler.cpp)
+- [`test_asio_tcp.cpp`](../../../../core/tests/integration/test_asio_tcp.cpp)
+- [`test_proxy.cpp`](../../../../core/tests/integration/test_proxy.cpp)
 - 기타 integration/e2e 테스트
 
 `zlink_subscribe_recv()` 호출부:
 
-- [`testutil_unity.hpp`](core/tests/testutil_unity.hpp) — inline wrapper
-- [`test_spot_service_introspection.cpp`](core/tests/e2e/spot/test_spot_service_introspection.cpp)
-- [`unittest_service_mode_policy.cpp`](core/tests/unittest/unittest_service_mode_policy.cpp)
+- [`testutil_unity.hpp`](../../../../core/tests/testutil_unity.hpp) — inline wrapper
+- [`test_spot_service_introspection.cpp`](../../../../core/tests/e2e/spot/test_spot_service_introspection.cpp)
+- [`unittest_service_mode_policy.cpp`](../../../../core/tests/unittest/unittest_service_mode_policy.cpp)
 
 `zlink_subscription_event_recv()` 호출부:
 
-- [`test_disconnect_inproc.cpp`](core/tests/integration/test_disconnect_inproc.cpp)
-- [`test_socket_with_handler.cpp`](core/tests/integration/test_socket_with_handler.cpp)
+- [`test_disconnect_inproc.cpp`](../../../../core/tests/integration/test_disconnect_inproc.cpp)
+- [`test_socket_with_handler.cpp`](../../../../core/tests/integration/test_socket_with_handler.cpp)
 
 ### 8.6 Performance / Benchmark
 
@@ -339,13 +339,13 @@ public enum에서 제거하고, `zlink_set_subscribe` / `zlink_unset_subscribe`�
 
 ### 8.7 Documentation
 
-- [`socket.md`](doc/spec/core/socket/README.md) / [`socket.ko.md`](doc/spec/core/socket/README.ko.md)
-- [`spot.md`](doc/spec/core/service/spot.md) / [`spot.ko.md`](doc/spec/core/service/spot.ko.md)
-- [`README.md`](doc/spec/core/README.md) / [`README.ko.md`](doc/spec/core/README.ko.md)
-- [`03-2-pubsub.md`](doc/guide/03-2-pubsub.md) / [`03-2-pubsub.ko.md`](doc/guide/03-2-pubsub.ko.md)
-- [`02-core-api.md`](doc/guide/02-core-api.md) / [`02-core-api.ko.md`](doc/guide/02-core-api.ko.md)
-- [`07-3-spot.md`](doc/guide/07-3-spot.md) / [`07-3-spot.ko.md`](doc/guide/07-3-spot.ko.md)
-- [`11-thread-safety.md`](doc/guide/11-thread-safety.md) / [`11-thread-safety.ko.md`](doc/guide/11-thread-safety.ko.md)
+- [`socket.md`](../../../spec/core/socket/README.md) / [`socket.ko.md`](../../../spec/core/socket/README.ko.md)
+- [`spot.md`](../../../spec/core/service/spot.md) / [`spot.ko.md`](../../../spec/core/service/spot.ko.md)
+- [`README.md`](../../../spec/core/README.md) / [`README.ko.md`](../../../spec/core/README.ko.md)
+- [`03-2-pubsub.md`](../../../guide/03-2-pubsub.md) / [`03-2-pubsub.ko.md`](../../../guide/03-2-pubsub.ko.md)
+- [`02-core-api.md`](../../../guide/02-core-api.md) / [`02-core-api.ko.md`](../../../guide/02-core-api.ko.md)
+- [`07-3-spot.md`](../../../guide/07-3-spot.md) / [`07-3-spot.ko.md`](../../../guide/07-3-spot.ko.md)
+- [`11-thread-safety.md`](../../../guide/11-thread-safety.md) / [`11-thread-safety.ko.md`](../../../guide/11-thread-safety.ko.md)
 
 ## 9. 실행 단계
 

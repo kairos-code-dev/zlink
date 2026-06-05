@@ -1,6 +1,6 @@
 [English](./polling.md) | [한국어](./polling.ko.md)
 
-[Spec Index](../README.md) · [Core Index](./README.md)
+[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md) · [Core Index](./README.md)
 
 # Polling, Proxy & Capability
 

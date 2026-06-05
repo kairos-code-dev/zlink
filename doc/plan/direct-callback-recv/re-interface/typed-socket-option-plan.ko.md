@@ -1102,7 +1102,7 @@ XPUB manual mode subscription 승인/거부:
 
 ### 7.1 Public Header
 
-- [`zlink.h`](core/include/zlink.h)
+- [`zlink.h`](../../../../core/include/zlink.h)
   - 새 enum 6개 추가 (§3.2)
   - 새 함수 선언 17개 추가 (§3.1)
   - unified `spot` / `spot_node` API와 generic typed option 연동 반영
@@ -1126,12 +1126,12 @@ XPUB manual mode subscription 승인/거부:
 
 ### 7.3 Build
 
-- [`core/CMakeLists.txt`](core/CMakeLists.txt) — `api-sources`에 새 파일 추가
+- [`core/CMakeLists.txt`](../../../../core/CMakeLists.txt) — `api-sources`에 새 파일 추가
 
 ### 7.4 Tests
 
 - `core/tests/unittest/unittest_typed_option.cpp` (**신규**)
-- [`core/tests/CMakeLists.txt`](core/tests/CMakeLists.txt) — 테스트 등록
+- [`core/tests/CMakeLists.txt`](../../../../core/tests/CMakeLists.txt) — 테스트 등록
 
 ## 8. 실행 단계
 

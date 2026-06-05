@@ -368,7 +368,7 @@ retrying; treating `NOT_ADMITTED` as a hard failure would discard
 messages that are expected to succeed once maintenance ends.
 
 > For the full contract, see
-> [Weight-aware outbound selection](../spec/core/socket/dealer.md#weight-aware-outbound-selection)
+> [Weight-aware outbound selection](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/socket/dealer.md#weight-aware-outbound-selection)
 > in the DEALER spec.
 
 ### Set routing_id Before connect

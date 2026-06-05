@@ -1,6 +1,6 @@
 [English](./README.md) | [한국어](./README.ko.md)
 
-[Spec Index](../README.md)
+[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md)
 
 # zlink Core Specification
 

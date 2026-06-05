@@ -1,6 +1,6 @@
 [English](./reliability.md) | [한국어](./reliability.ko.md)
 
-[가이드 목록](./README.ko.md)
+[가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md)
 
 # 신뢰성과 전달 보장
 

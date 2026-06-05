@@ -1,4 +1,4 @@
-[Spec Index](../README.md)
+[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md)
 
 # Bindings API Policy
 

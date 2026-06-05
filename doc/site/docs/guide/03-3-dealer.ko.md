@@ -293,7 +293,7 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 재시도해야 한다.
 
 > 상세 규약은 DEALER spec
-> [dealer.ko.md](../spec/core/socket/dealer.ko.md)의 "가중치 기반 outbound 선택"
+> [dealer.ko.md](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/socket/dealer.ko.md)의 "가중치 기반 outbound 선택"
 > 섹션을 참고.
 
 ### routing_id는 connect 전에 설정

@@ -255,7 +255,7 @@ zlink's public C API uses **function-specific typed result enums**. Each
 function returns a `zlink_<category>_result_t` enum where `0` is the
 `OK` value and non-zero values identify specific failure modes. The
 canonical enum values are defined in
-[core/errno-map.md](../spec/core/errno-map.md).
+[core/errno-map.md](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/errno-map.md).
 
 The 8 result enum categories:
 
@@ -294,7 +294,7 @@ codes are self-descriptive and do not require `zlink_errno()` lookup.
 
 Language bindings surface this 8-category structure as typed
 exception/error subclasses — see
-[bindings Per-Function Error Type Hierarchy](../spec/bindings/README.md).
+[bindings Per-Function Error Type Hierarchy](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/bindings/README.md).
 
 ## 6. Timer API
 

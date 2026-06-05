@@ -99,13 +99,12 @@ public final class PlaySession implements ZLinkSession {
                 header.packetName(),
                 payload,
                 header.metadata(),
-                connectorCodec(header.codec())),
+                connectorCodec(header)),
             type);
     }
 
-    private static ZLinkStreamCodec connectorCodec(
-        systems.zlink.framework.streams.ZLinkStreamCodec codec) {
-        return switch (codec) {
+    private static ZLinkStreamCodec connectorCodec(ZLinkStreamHeader header) {
+        return switch (header.codec()) {
             case RAW -> ZLinkStreamCodec.RAW;
             case JSON -> ZLinkStreamCodec.JSON;
             case MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK;

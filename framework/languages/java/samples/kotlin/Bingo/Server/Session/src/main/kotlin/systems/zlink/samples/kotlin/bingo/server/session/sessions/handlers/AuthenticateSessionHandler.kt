@@ -8,6 +8,7 @@ import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler
+import systems.zlink.framework.streams.ZLinkStreamCodec as FrameworkStreamCodec
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
@@ -17,7 +18,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
-import systems.zlink.stream.connector.ZLinkStreamCodec
+import systems.zlink.stream.connector.ZLinkStreamCodec as ConnectorStreamCodec
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 import systems.zlink.stream.connector.json.ZLinkStreamJson
 
@@ -36,7 +37,7 @@ class AuthenticateSessionHandler(
                 header.packetName(),
                 payload,
                 header.metadata(),
-                connectorCodec(header.codec()),
+                connectorCodec(header),
             ),
             AuthenticateReq::class.java,
         )
@@ -97,11 +98,11 @@ class AuthenticateSessionHandler(
             }
     }
 
-    private fun connectorCodec(codec: systems.zlink.framework.streams.ZLinkStreamCodec): ZLinkStreamCodec =
-        when (codec) {
-            systems.zlink.framework.streams.ZLinkStreamCodec.RAW -> ZLinkStreamCodec.RAW
-            systems.zlink.framework.streams.ZLinkStreamCodec.JSON -> ZLinkStreamCodec.JSON
-            systems.zlink.framework.streams.ZLinkStreamCodec.MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK
-            systems.zlink.framework.streams.ZLinkStreamCodec.PROTOBUF -> ZLinkStreamCodec.PROTOBUF
+    private fun connectorCodec(header: ZLinkStreamHeader): ConnectorStreamCodec =
+        when (header.codec()) {
+            FrameworkStreamCodec.RAW -> ConnectorStreamCodec.RAW
+            FrameworkStreamCodec.JSON -> ConnectorStreamCodec.JSON
+            FrameworkStreamCodec.MESSAGE_PACK -> ConnectorStreamCodec.MESSAGE_PACK
+            FrameworkStreamCodec.PROTOBUF -> ConnectorStreamCodec.PROTOBUF
         }
 }

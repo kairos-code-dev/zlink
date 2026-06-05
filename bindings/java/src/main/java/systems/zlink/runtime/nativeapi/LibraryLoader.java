@@ -30,7 +30,11 @@ final class LibraryLoader {
                 if (!p.isAbsolute())
                     p = p.toAbsolutePath();
                 System.load(p.toString());
-                loadOptionalBridgeFromResources();
+                if (!loadOptionalBridgeFromResources()) {
+                    loadOptionalBridgeFromDirectory(
+                        normalizeOs(System.getProperty("os.name")),
+                        p.getParent());
+                }
                 LOOKUP = SymbolLookup.loaderLookup();
                 return LOOKUP;
             }
@@ -46,7 +50,11 @@ final class LibraryLoader {
                 return LOOKUP;
             } catch (UnsatisfiedLinkError e) {
                 System.loadLibrary("zlink");
-                loadOptionalBridgeFromResources();
+                if (!loadOptionalBridgeFromResources()) {
+                    loadOptionalBridgeFromDirectory(
+                        normalizeOs(System.getProperty("os.name")),
+                        Path.of(System.getProperty("user.dir", ".")).toAbsolutePath());
+                }
                 LOOKUP = SymbolLookup.loaderLookup();
                 return LOOKUP;
             }
@@ -76,19 +84,19 @@ final class LibraryLoader {
         }
     }
 
-    private static void loadOptionalBridgeFromResources() {
+    private static boolean loadOptionalBridgeFromResources() {
         String os = normalizeOs(System.getProperty("os.name"));
         String arch = normalizeArch(System.getProperty("os.arch"));
-        loadOptionalBridgeFromResources(os, arch, null);
+        return loadOptionalBridgeFromResources(os, arch, null);
     }
 
-    private static void loadOptionalBridgeFromResources(String os,
+    private static boolean loadOptionalBridgeFromResources(String os,
                                                         String arch,
                                                         Path targetDir) {
         String resourcePath = resourcePath(os, arch, bridgeFileName(os));
         try (InputStream in = LibraryLoader.class.getResourceAsStream(resourcePath)) {
             if (in == null)
-                return;
+                return false;
             Path dir = targetDir != null
                 ? targetDir
                 : Files.createTempDirectory("zlink-java-bridge-");
@@ -99,6 +107,7 @@ final class LibraryLoader {
                 dir.toFile().deleteOnExit();
                 System.load(tmp.toAbsolutePath().toString());
             }
+            return targetDir == null;
         } catch (IOException e) {
             throw new UnsatisfiedLinkError(
                 "failed to load zlink java bridge resource: " + e.getMessage());

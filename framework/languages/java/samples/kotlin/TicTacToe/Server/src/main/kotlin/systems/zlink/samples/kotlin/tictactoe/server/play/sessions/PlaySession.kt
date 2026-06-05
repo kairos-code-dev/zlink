@@ -10,12 +10,13 @@ import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.framework.streams.ZLinkStreamHeader
+import systems.zlink.framework.streams.ZLinkStreamCodec as FrameworkStreamCodec
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateRes
-import systems.zlink.stream.connector.ZLinkStreamCodec
+import systems.zlink.stream.connector.ZLinkStreamCodec as ConnectorStreamCodec
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 import systems.zlink.stream.connector.json.ZLinkStreamJson
 
@@ -78,16 +79,16 @@ class PlaySession(
                 header.packetName(),
                 payload,
                 header.metadata(),
-                connectorCodec(header.codec()),
+                connectorCodec(header),
             ),
             type,
         )
 
-    private fun connectorCodec(codec: systems.zlink.framework.streams.ZLinkStreamCodec): ZLinkStreamCodec =
-        when (codec) {
-            systems.zlink.framework.streams.ZLinkStreamCodec.RAW -> ZLinkStreamCodec.RAW
-            systems.zlink.framework.streams.ZLinkStreamCodec.JSON -> ZLinkStreamCodec.JSON
-            systems.zlink.framework.streams.ZLinkStreamCodec.MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK
-            systems.zlink.framework.streams.ZLinkStreamCodec.PROTOBUF -> ZLinkStreamCodec.PROTOBUF
+    private fun connectorCodec(header: ZLinkStreamHeader): ConnectorStreamCodec =
+        when (header.codec()) {
+            FrameworkStreamCodec.RAW -> ConnectorStreamCodec.RAW
+            FrameworkStreamCodec.JSON -> ConnectorStreamCodec.JSON
+            FrameworkStreamCodec.MESSAGE_PACK -> ConnectorStreamCodec.MESSAGE_PACK
+            FrameworkStreamCodec.PROTOBUF -> ConnectorStreamCodec.PROTOBUF
         }
 }

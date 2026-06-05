@@ -101,6 +101,18 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
         super.attachStreamPacket(handler);
     }
     void detachStream() { super.detachStream(); }
+    @Override
+    public void close() {
+        if (handle() == null || handle().address() == 0) {
+            super.close();
+            return;
+        }
+        try {
+            detachStream();
+        } finally {
+            super.close();
+        }
+    }
     public void attachActorGateway(SpotNode node) {
         Objects.requireNonNull(node, "node");
         InternalAccess.streamAttachActorGateway(this, node);

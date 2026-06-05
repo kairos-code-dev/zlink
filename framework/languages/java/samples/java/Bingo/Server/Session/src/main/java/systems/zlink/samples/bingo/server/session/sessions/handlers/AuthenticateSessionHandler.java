@@ -39,7 +39,7 @@ public final class AuthenticateSessionHandler
                 header.packetName(),
                 payload,
                 header.metadata(),
-                connectorCodec(header.codec())),
+                connectorCodec(header)),
             Messages.AuthenticateReq.class);
         if (request.accessToken() == null || request.accessToken().isBlank()) {
             return CompletableFuture.failedFuture(
@@ -83,9 +83,8 @@ public final class AuthenticateSessionHandler
             });
     }
 
-    private static ZLinkStreamCodec connectorCodec(
-        systems.zlink.framework.streams.ZLinkStreamCodec codec) {
-        return switch (codec) {
+    private static ZLinkStreamCodec connectorCodec(ZLinkStreamHeader header) {
+        return switch (header.codec()) {
             case RAW -> ZLinkStreamCodec.RAW;
             case JSON -> ZLinkStreamCodec.JSON;
             case MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK;

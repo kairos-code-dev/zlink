@@ -9,7 +9,7 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.core.Zlink
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.contracts.sockets.RecvFlags
-import systems.zlink.contracts.sockets.SpotDispatchEvent
+import systems.zlink.contracts.service.spot.SpotDispatchEvent
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 

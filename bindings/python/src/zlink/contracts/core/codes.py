@@ -32,7 +32,6 @@ from ..eventing.codes import (
 from ..service.codes import (
     AutoConnectType,
     ServiceRole,
-    SpotNodeSocketRole,
     SpotNodeMode,
     SpotNodeSocketOwner,
     SpotNodeState,
@@ -74,7 +73,6 @@ __all__ = [
     "PollSourceKind",
     "AutoConnectType",
     "ServiceRole",
-    "SpotNodeSocketRole",
     "SpotNodeMode",
     "SpotNodeSocketOwner",
     "SpotNodeState",

@@ -7,7 +7,7 @@ import type {
 import type {
   MonitorEventValueRaw,
   MonitorStatusRaw
-} from '../../contracts/eventing';
+} from '../eventing/monitor_raw';
 import type {
   RegistryServiceSummaryFilter,
   RegistryTopologyFilter,

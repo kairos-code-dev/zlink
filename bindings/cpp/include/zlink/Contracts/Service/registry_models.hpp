@@ -13,18 +13,6 @@ namespace detail
 struct service_model_access_t;
 } // namespace detail
 
-enum class registry_socket_role : int
-{
-    pub = 1,
-    router = 2,
-    peer_sub = 3
-};
-
-enum class discovery_socket_role : int
-{
-    sub = 0
-};
-
 /// @brief The operational state of a registry.
 enum class registry_state : int
 {
@@ -53,8 +41,6 @@ enum class topology_state : int
     stopped = 6 ///< The connection was explicitly stopped.
 };
 
-using registry_socket_role_t = registry_socket_role;
-using discovery_socket_role_t = discovery_socket_role;
 using registry_state_t = registry_state;
 using topology_source_t = topology_source;
 using topology_state_t = topology_state;

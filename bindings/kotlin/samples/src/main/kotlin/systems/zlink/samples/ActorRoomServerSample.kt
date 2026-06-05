@@ -11,7 +11,7 @@ import systems.zlink.contracts.service.spot.Spot
 import systems.zlink.contracts.service.spot.SpotNode
 import systems.zlink.contracts.sockets.RecvFlags
 import systems.zlink.contracts.sockets.RequestResult
-import systems.zlink.contracts.sockets.SpotDispatchEvent
+import systems.zlink.contracts.service.spot.SpotDispatchEvent
 import systems.zlink.contracts.sockets.StreamSocket
 import java.time.Duration
 

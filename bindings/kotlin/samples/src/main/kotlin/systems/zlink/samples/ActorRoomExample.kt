@@ -9,7 +9,7 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.contracts.service.spot.Actor
 import systems.zlink.contracts.service.spot.Spot
 import systems.zlink.contracts.sockets.RecvFlags
-import systems.zlink.contracts.sockets.SpotDispatchEvent
+import systems.zlink.contracts.service.spot.SpotDispatchEvent
 import systems.zlink.contracts.sockets.StreamSocket
 import java.time.Duration
 import java.util.concurrent.CountDownLatch

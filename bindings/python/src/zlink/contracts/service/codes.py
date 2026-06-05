@@ -20,13 +20,6 @@ class ServiceRole(IntEnum):
     PUB = 5
     SUB = 6
 
-class SpotNodeSocketRole(IntEnum):
-    """The role a socket plays within a spot node."""
-    NODE = 0
-    PUB = 1
-    SUB = 2
-    DEALER = 3
-
 class SpotNodeMode(IntEnum):
     """Which messaging patterns a spot node enables (pub/sub, routed, or all)."""
     PUBSUB = 1
@@ -135,7 +128,6 @@ class SpotRole(IntEnum):
 __all__ = [
     "AutoConnectType",
     "ServiceRole",
-    "SpotNodeSocketRole",
     "SpotNodeMode",
     "SpotNodeSocketOwner",
     "SpotNodeState",

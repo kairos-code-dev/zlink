@@ -754,8 +754,8 @@ header 전반의 typed-constant 정리 범위에서는 아래 surface도 같은 
 
 | 현재 인터페이스 | 변경안 | 이유 |
 |---|---|---|
-| `#define ZLINK_REGISTRY_SOCKET_PUB`, `..._ROUTER`, `..._PEER_SUB` | `zlink_registry_socket_role_t` | internal registry socket role도 닫힌 값 집합이다. |
-| `int zlink_registry_setsockopt(void *registry, int socket_role, int option, const void *optval, size_t optvallen)` | `int zlink_registry_setsockopt(void *registry, zlink_registry_socket_role_t socket_role, zlink_socket_option_t option, const void *optval, size_t optvallen)` | raw `int` 두 개보다 role/option 소속을 명확히 한다. |
+| `#define ZLINK_REGISTRY_SOCKET_PUB`, `..._ROUTER`, `..._PEER_SUB` | public contract에서 제거 | registry 내부 소켓 역할은 구현 상세이므로 바인딩 공개 계약으로 전달하지 않는다. |
+| `int zlink_registry_setsockopt(void *registry, int socket_role, int option, const void *optval, size_t optvallen)` | public contract에서 제거 | 내부 소켓별 raw option 통로 대신 registry 도메인의 명명된 setter만 공개한다. |
 | `#define ZLINK_IO_THREADS`, `ZLINK_MAX_SOCKETS`, ... | `zlink_ctx_option_t` | context option도 닫힌 값 집합이다. |
 | `int zlink_ctx_set(void *ctx, int option, int optval)` | `int zlink_ctx_set(void *ctx, zlink_ctx_option_t option, int optval)` | context option namespace를 타입으로 고정한다. |
 | `int zlink_ctx_get(void *ctx, int option)` 계열 | `int zlink_ctx_get(void *ctx, zlink_ctx_option_t option)` 계열 | getter도 동일한 enum typing을 사용한다. |
@@ -764,7 +764,8 @@ header 전반의 typed-constant 정리 범위에서는 아래 surface도 같은 
 
 - `registry` / `ctx` option은 callback-only recv 의미와 직접 연결되지는 않지만,
   public header의 loosely typed 상수 집합을 정리한다는 관점에서는 같은 migration 작업에
-  포함해 typed enum과 전역 값 체계 원칙을 동일하게 적용한다.
+  포함한다. 단, registry 내부 소켓 역할처럼 구현 상세에 속하는 값 집합은 typed enum으로
+  승격하지 않고 public contract에서 제거한다.
 - 구현 우선순위는 raw socket / service option / monitor / send-ready notification보다 낮을 수 있지만,
   인터페이스 shape 자체는 이 문서 기준으로 확정한다.
 
@@ -808,7 +809,7 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 | unified `spot` 생성 | `void *zlink_spot_new(void *spot_node, zlink_spot_handler_fn handler)` | 유지 |
 | SPOT pub option | `int zlink_spot_node_set_pub_option(void *node, zlink_spot_pub_option_t pub_option, const void *optval, size_t optvallen)` | 유지 |
 | SPOT sub option | `int zlink_spot_node_set_sub_option(void *node, zlink_spot_sub_option_t sub_option, const void *optval, size_t optvallen)` | 유지 |
-| registry socket role | `int zlink_registry_setsockopt(void *registry, int socket_role, int option, const void *optval, size_t optvallen)` | `int zlink_registry_setsockopt(void *registry, zlink_registry_socket_role_t socket_role, zlink_socket_option_t option, const void *optval, size_t optvallen)` |
+| registry socket role | `int zlink_registry_setsockopt(void *registry, int socket_role, int option, const void *optval, size_t optvallen)` | public contract에서 제거 |
 | context option | `int zlink_ctx_set(void *ctx, int option, int optval)` | `int zlink_ctx_set(void *ctx, zlink_ctx_option_t option, int optval)` |
 | raw socket callback | `int zlink_socket_set_msg_handler(void *s, zlink_socket_msg_handler_fn handler)` 계열 | 삭제 |
 | send-ready callback | 없음 | `int zlink_socket_send_ready_handler(void *s, zlink_send_ready_handler_fn handler)` |

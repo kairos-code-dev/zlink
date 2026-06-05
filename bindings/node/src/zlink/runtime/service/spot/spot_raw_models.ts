@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { RoutingId } from '../../../contracts';
-import type { MonitorStatusRaw } from '../../../contracts/eventing';
+import type { MonitorStatusRaw } from '../../eventing/monitor_raw';
 import type { MessageSnapshot } from '../../messaging/message_snapshot';
 import type {
   SpotNodePeerEntry,

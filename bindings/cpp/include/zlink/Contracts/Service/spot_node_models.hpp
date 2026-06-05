@@ -21,14 +21,6 @@ enum class spot_socket_role : int
     sub = 2
 };
 
-enum class spot_node_socket_role : int
-{
-    node = 0,
-    pub = 1,
-    sub = 2,
-    dealer = 3
-};
-
 enum class spot_node_socket_type_t : int
 {
     pair = 4097,
@@ -100,7 +92,6 @@ enum class subject_kind : uint32_t
     pattern = 2 ///< A pattern match.
 };
 
-using spot_node_socket_role_t = spot_node_socket_role;
 using spot_role_t = spot_socket_role;
 using spot_node_state_t = spot_node_state;
 using spot_node_mode_t = spot_node_mode;
@@ -498,13 +489,6 @@ class spot_node_actor_entry_t
     uint32_t pending_message_count_;
     uint64_t last_changed_ms_;
     friend struct detail::service_model_access_t;
-};
-
-enum class spot_service_attachment_role_t
-{
-    router = 1,
-    pub = 2,
-    sub = 3
 };
 
 struct spot_service_attachment_stats_t

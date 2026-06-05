@@ -9,7 +9,7 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.contracts.messaging.Received
 import systems.zlink.contracts.service.spot.SpotNode
 import systems.zlink.contracts.sockets.RecvFlags
-import systems.zlink.contracts.sockets.SpotDispatchEvent
+import systems.zlink.contracts.service.spot.SpotDispatchEvent
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.time.Duration

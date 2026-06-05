@@ -2,9 +2,9 @@
 
 import {
   type MonitorSourceKindValue,
-  type MonitorStatus,
-  type MonitorStatusRaw
+  type MonitorStatus
 } from '../../contracts/eventing';
+import type { MonitorStatusRaw } from './monitor_raw';
 
 const MONITOR_STATE_READY = 1 << 0;
 

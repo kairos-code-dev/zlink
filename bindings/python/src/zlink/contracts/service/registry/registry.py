@@ -10,22 +10,9 @@ class Registry(_discovery_contract._ClosableContract, Protocol):
     """A service registry that members publish to and peers query for
     topology."""
 
-    REGISTRY_OPT_ID = 0x3801
-    REGISTRY_OPT_HEARTBEAT_INTERVAL_MS = 0x3802
-    REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS = 0x3803
-    REGISTRY_OPT_BROADCAST_INTERVAL_MS = 0x3804
-
     def bind(self, pub_endpoint: str, router_endpoint: str):
         """Bind the registry's publish and router endpoints so members and peers
         can connect."""
-        ...
-
-    def set_option(self, option: int, value: int):
-        """Set a registry option by its ``REGISTRY_OPT_*`` code."""
-        ...
-
-    def get_option(self, option: int) -> int:
-        """Return a registry option by its ``REGISTRY_OPT_*`` code."""
         ...
 
     def set_id(self, registry_id: int):

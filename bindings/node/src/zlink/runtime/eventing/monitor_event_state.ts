@@ -2,10 +2,10 @@
 
 import {
   MonitorEvent,
-  type MonitorEventType,
-  type MonitorEventValueRaw
+  type MonitorEventType
 } from '../../contracts/eventing/monitor';
 import { RoutingId } from '../../contracts/core';
+import type { MonitorEventValueRaw } from './monitor_raw';
 
 interface MonitorEventState {
   event: MonitorEventType;

@@ -255,7 +255,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         byte[] body = encodePayload(payload, compress);
         ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
             ZLinkStreamWireProtocol.KIND_SEND,
-            ZLinkStreamWireProtocol.CODEC_RAW,
+            toWireCodec(payload.codec()),
             (payload.metadata().isEmpty() ? 0 : ZLinkStreamWireProtocol.FLAG_HAS_METADATA)
                 | (compress ? ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED : 0),
             null,
@@ -276,7 +276,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         byte[] body = encodePayload(payload, compress);
         ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
             ZLinkStreamWireProtocol.KIND_REQUEST,
-            ZLinkStreamWireProtocol.CODEC_RAW,
+            toWireCodec(payload.codec()),
             ZLinkStreamWireProtocol.FLAG_HAS_REQUEST_SEQ
                 | (payload.metadata().isEmpty() ? 0 : ZLinkStreamWireProtocol.FLAG_HAS_METADATA)
                 | (compress ? ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED : 0),
@@ -351,7 +351,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                 new ZLinkStreamEncodedPayload(
                     header.name(),
                     Message.from(decodedPayload),
-                    header.metadata()));
+                    header.metadata(),
+                    fromWireCodec(header.codec())));
             return;
         }
         if (header.kind() == ZLinkStreamWireProtocol.KIND_ERROR
@@ -394,7 +395,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                     new ZLinkStreamEncodedPayload(
                         header.name(),
                         Message.from(payload),
-                        header.metadata()),
+                        header.metadata(),
+                        fromWireCodec(header.codec())),
                     header.metadata())).exceptionally(ex -> null);
             }
         };
@@ -678,7 +680,27 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         return new ZLinkStreamEncodedPayload(
             requirePacketName(payload.packetName()),
             Message.from(payload.payload()),
-            Map.copyOf(payload.metadata()));
+            Map.copyOf(payload.metadata()),
+            Objects.requireNonNull(payload.codec(), "codec"));
+    }
+
+    private static int toWireCodec(ZLinkStreamCodec codec) {
+        return switch (Objects.requireNonNull(codec, "codec")) {
+            case RAW -> ZLinkStreamWireProtocol.CODEC_RAW;
+            case JSON -> ZLinkStreamWireProtocol.CODEC_JSON;
+            case MESSAGE_PACK -> ZLinkStreamWireProtocol.CODEC_MESSAGE_PACK;
+            case PROTOBUF -> ZLinkStreamWireProtocol.CODEC_PROTOBUF;
+        };
+    }
+
+    private static ZLinkStreamCodec fromWireCodec(int codec) {
+        return switch (codec) {
+            case ZLinkStreamWireProtocol.CODEC_RAW -> ZLinkStreamCodec.RAW;
+            case ZLinkStreamWireProtocol.CODEC_JSON -> ZLinkStreamCodec.JSON;
+            case ZLinkStreamWireProtocol.CODEC_MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK;
+            case ZLinkStreamWireProtocol.CODEC_PROTOBUF -> ZLinkStreamCodec.PROTOBUF;
+            default -> throw new IllegalArgumentException("unknown stream codec");
+        };
     }
 
     private static String requirePacketName(String packetName) {
@@ -732,7 +754,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             return new SendCall(connector, new ZLinkStreamEncodedPayload(
                 requirePacketName(packetName),
                 payload.payload(),
-                payload.metadata()), compressed);
+                payload.metadata(),
+                payload.codec()), compressed);
         }
 
         @Override
@@ -747,7 +770,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             return new SendCall(connector, new ZLinkStreamEncodedPayload(
                 payload.packetName(),
                 payload.payload(),
-                Map.copyOf(Objects.requireNonNull(metadata, "metadata"))), compressed);
+                Map.copyOf(Objects.requireNonNull(metadata, "metadata")),
+                payload.codec()), compressed);
         }
 
         @Override
@@ -771,7 +795,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             return new RequestCall(connector, new ZLinkStreamEncodedPayload(
                 requirePacketName(packetName),
                 payload.payload(),
-                payload.metadata()), timeout, compressed);
+                payload.metadata(),
+                payload.codec()), timeout, compressed);
         }
 
         @Override
@@ -786,7 +811,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             return new RequestCall(connector, new ZLinkStreamEncodedPayload(
                 payload.packetName(),
                 payload.payload(),
-                Map.copyOf(Objects.requireNonNull(metadata, "metadata"))), timeout, compressed);
+                Map.copyOf(Objects.requireNonNull(metadata, "metadata")),
+                payload.codec()), timeout, compressed);
         }
 
         @Override

@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.Map;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
+import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 import systems.zlink.stream.connector.ZLinkStreamMessage;
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler;
@@ -63,10 +64,15 @@ public final class ZLinkStreamJson {
         return new ZLinkStreamEncodedPayload(
             packetName,
             Message.from(encodeBytes(value)),
-            Map.of("content-type", CONTENT_TYPE));
+            Map.of(),
+            ZLinkStreamCodec.JSON);
     }
 
     public static <T> T decode(ZLinkStreamEncodedPayload payload, Class<T> type) {
+        if (payload.codec() != ZLinkStreamCodec.JSON) {
+            throw new IllegalArgumentException(
+                "stream payload codec is " + payload.codec() + ", not JSON");
+        }
         if (type == byte[].class) {
             return type.cast(payload.payload().toByteArray());
         }

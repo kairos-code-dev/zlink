@@ -17,6 +17,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
+import systems.zlink.stream.connector.ZLinkStreamCodec
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 import systems.zlink.stream.connector.json.ZLinkStreamJson
 
@@ -34,7 +35,8 @@ class AuthenticateSessionHandler(
             ZLinkStreamEncodedPayload(
                 header.packetName(),
                 payload,
-                emptyMap(),
+                header.metadata(),
+                connectorCodec(header.codec()),
             ),
             AuthenticateReq::class.java,
         )
@@ -94,4 +96,12 @@ class AuthenticateSessionHandler(
                 }
             }
     }
+
+    private fun connectorCodec(codec: systems.zlink.framework.streams.ZLinkStreamCodec): ZLinkStreamCodec =
+        when (codec) {
+            systems.zlink.framework.streams.ZLinkStreamCodec.RAW -> ZLinkStreamCodec.RAW
+            systems.zlink.framework.streams.ZLinkStreamCodec.JSON -> ZLinkStreamCodec.JSON
+            systems.zlink.framework.streams.ZLinkStreamCodec.MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK
+            systems.zlink.framework.streams.ZLinkStreamCodec.PROTOBUF -> ZLinkStreamCodec.PROTOBUF
+        }
 }

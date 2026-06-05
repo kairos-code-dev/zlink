@@ -128,6 +128,30 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
+    void encodedPayloadCodecIsWrittenToWireHeaderLikeDotnet() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            var frame = server.readFrameAsync();
+            connector.send(new ZLinkStreamEncodedPayload(
+                    "JsonPayload",
+                    Message.from("{\"ok\":true}"),
+                    Map.of(),
+                    ZLinkStreamCodec.JSON))
+                .submitAsync()
+                .toCompletableFuture()
+                .join();
+
+            TcpStreamConnectorTestServer.ReceivedFrame sent = frame.join();
+            assertEquals(ZLinkStreamWireProtocol.KIND_SEND, sent.header().kind());
+            assertEquals(ZLinkStreamWireProtocol.CODEC_JSON, sent.header().codec());
+            assertEquals("JsonPayload", sent.header().name());
+        }
+    }
+
+    @Test
     void requestBulkMetadataReplacesExistingMetadata() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
              ZLinkStreamConnector connector =

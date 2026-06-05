@@ -12,6 +12,7 @@ import systems.zlink.stream.connector.ZLinkStreamConnectionState;
 import systems.zlink.stream.connector.ZLinkStreamConnectionStateHandler;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
+import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamDisconnectedHandler;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
@@ -28,6 +29,7 @@ final class ZLinkStreamJsonTest {
         ZLinkStreamJson.send(connector, new AnnotatedPayload("hello"));
 
         assertEquals("custom.packet", connector.sent.packetName());
+        assertEquals(ZLinkStreamCodec.JSON, connector.sent.codec());
     }
 
     @Test

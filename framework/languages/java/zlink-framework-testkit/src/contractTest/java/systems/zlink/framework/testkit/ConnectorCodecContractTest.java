@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
+import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamCompression;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
@@ -29,19 +30,19 @@ final class ConnectorCodecContractTest {
     void jsonMsgpackProtobufTypedHelperRoundtrip() {
         assertCodecRoundtrip(
             "JsonPacket",
-            ZLinkStreamJson.CONTENT_TYPE,
+            ZLinkStreamCodec.JSON,
             ZLinkStreamJson.encode("JsonPacket", "json-body"),
             "json-body",
             payload -> ZLinkStreamJson.decode(payload, String.class));
         assertCodecRoundtrip(
             "MsgpackPacket",
-            ZLinkStreamMessagePack.CONTENT_TYPE,
+            ZLinkStreamCodec.MESSAGE_PACK,
             ZLinkStreamMessagePack.encode("MsgpackPacket", "msgpack-body"),
             "msgpack-body",
             payload -> ZLinkStreamMessagePack.decode(payload, String.class));
         assertCodecRoundtrip(
             "ProtobufPacket",
-            ZLinkStreamProtobuf.CONTENT_TYPE,
+            ZLinkStreamCodec.PROTOBUF,
             ZLinkStreamProtobuf.encode("ProtobufPacket", "protobuf-body"),
             "protobuf-body",
             payload -> ZLinkStreamProtobuf.decode(payload, String.class));
@@ -54,7 +55,7 @@ final class ConnectorCodecContractTest {
                  ZLinkStreamConnectorFactory.create(options(server.endpoint()))) {
             List<String> handled = new ArrayList<>();
             ZLinkStreamJson.on(connector, "String", String.class, message -> {
-                handled.add(message.payload() + ":" + message.metadata().get("content-type"));
+                handled.add(message.payload());
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
 
@@ -66,14 +67,15 @@ final class ConnectorCodecContractTest {
                 .join();
             Frame sent = server.readFrame();
             assertEquals(1, sent.kind());
+            assertEquals(1, sent.codec());
             assertEquals("String", sent.name());
 
             server.sendFrame(new Frame(
                 1,
+                1,
                 null,
                 "String",
-                "\"server\"".getBytes(StandardCharsets.UTF_8),
-                true));
+                "\"server\"".getBytes(StandardCharsets.UTF_8)));
             awaitPendingDispatch(connector);
             connector.dispatchAsync().toCompletableFuture().join();
 
@@ -83,13 +85,14 @@ final class ConnectorCodecContractTest {
                 .toCompletableFuture();
             Frame request = server.readFrame();
             assertEquals(2, request.kind());
+            assertEquals(1, request.codec());
             assertEquals("String", request.name());
             server.sendFrame(new Frame(
                 3,
+                1,
                 request.requestSeq(),
                 "String",
-                "\"reply\"".getBytes(StandardCharsets.UTF_8),
-                true));
+                "\"reply\"".getBytes(StandardCharsets.UTF_8)));
 
             ZLinkStreamEncodedPayload reply = replyFuture.join();
             try {
@@ -98,20 +101,20 @@ final class ConnectorCodecContractTest {
                 reply.payload().close();
             }
 
-            assertEquals(List.of(
-                "server:" + ZLinkStreamJson.CONTENT_TYPE), handled);
+            assertEquals(List.of("server"), handled);
         }
     }
 
     private static void assertCodecRoundtrip(
         String packetName,
-        String contentType,
+        ZLinkStreamCodec codec,
         ZLinkStreamEncodedPayload encoded,
         String expected,
         java.util.function.Function<ZLinkStreamEncodedPayload, String> decode) {
         try {
             assertEquals(packetName, encoded.packetName());
-            assertEquals(contentType, encoded.metadata().get("content-type"));
+            assertEquals(codec, encoded.codec());
+            assertEquals(0, encoded.metadata().size());
             assertEquals(expected, decode.apply(encoded));
         } finally {
             encoded.payload().close();
@@ -150,10 +153,10 @@ final class ConnectorCodecContractTest {
 
     private record Frame(
         int kind,
+        int codec,
         Long requestSeq,
         String name,
-        byte[] payload,
-        boolean jsonMetadata) {
+        byte[] payload) {
     }
 
     private static final class TcpServer implements AutoCloseable {
@@ -193,10 +196,10 @@ final class ConnectorCodecContractTest {
             Header decoded = decodeHeader(header);
             return new Frame(
                 decoded.kind(),
+                decoded.codec(),
                 decoded.requestSeq(),
                 decoded.name(),
-                payload,
-                decoded.jsonMetadata());
+                payload);
         }
 
         void sendFrame(Frame frame) throws Exception {
@@ -233,48 +236,30 @@ final class ConnectorCodecContractTest {
 
         private static byte[] encodeHeader(Frame frame) {
             byte[] name = frame.name().getBytes(StandardCharsets.UTF_8);
-            byte[] metadata = frame.jsonMetadata()
-                ? new byte[] {
-                    1,
-                    12,
-                    'c', 'o', 'n', 't', 'e', 'n', 't', '-', 't', 'y', 'p', 'e',
-                    0, 16,
-                    'a', 'p', 'p', 'l', 'i', 'c', 'a', 't', 'i', 'o', 'n', '/',
-                    'j', 's', 'o', 'n'
-                }
-                : new byte[0];
             int flags = 0;
             if (frame.requestSeq() != null) {
                 flags |= 0x01;
-            }
-            if (frame.jsonMetadata()) {
-                flags |= 0x02;
             }
             ByteBuffer buffer = ByteBuffer.allocate(
                 3
                     + (frame.requestSeq() == null ? 0 : 8)
                     + 1
-                    + name.length
-                    + (metadata.length == 0 ? 0 : 2 + metadata.length));
+                    + name.length);
             buffer.put((byte) frame.kind());
-            buffer.put((byte) 0);
+            buffer.put((byte) frame.codec());
             buffer.put((byte) flags);
             if (frame.requestSeq() != null) {
                 buffer.putLong(frame.requestSeq());
             }
             buffer.put((byte) name.length);
             buffer.put(name);
-            if (metadata.length > 0) {
-                buffer.putShort((short) metadata.length);
-                buffer.put(metadata);
-            }
             return buffer.array();
         }
 
         private static Header decodeHeader(byte[] header) {
             ByteBuffer buffer = ByteBuffer.wrap(header);
             int kind = Byte.toUnsignedInt(buffer.get());
-            buffer.get();
+            int codec = Byte.toUnsignedInt(buffer.get());
             int flags = Byte.toUnsignedInt(buffer.get());
             Long requestSeq = (flags & 0x01) == 0 ? null : buffer.getLong();
             int nameLength = Byte.toUnsignedInt(buffer.get());
@@ -282,16 +267,16 @@ final class ConnectorCodecContractTest {
             buffer.get(name);
             return new Header(
                 kind,
+                codec,
                 requestSeq,
-                new String(name, StandardCharsets.UTF_8),
-                (flags & 0x02) != 0);
+                new String(name, StandardCharsets.UTF_8));
         }
 
         private record Header(
             int kind,
+            int codec,
             Long requestSeq,
-            String name,
-            boolean jsonMetadata) {
+            String name) {
         }
     }
 }

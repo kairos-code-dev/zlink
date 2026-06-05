@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
+import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 import systems.zlink.stream.connector.ZLinkStreamMessage;
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler;
@@ -54,10 +55,15 @@ public final class ZLinkStreamMessagePack {
         return new ZLinkStreamEncodedPayload(
             packetName,
             Message.from(encodeBytes(value)),
-            Map.of("content-type", CONTENT_TYPE));
+            Map.of(),
+            ZLinkStreamCodec.MESSAGE_PACK);
     }
 
     public static <T> T decode(ZLinkStreamEncodedPayload payload, Class<T> type) {
+        if (payload.codec() != ZLinkStreamCodec.MESSAGE_PACK) {
+            throw new IllegalArgumentException(
+                "stream payload codec is " + payload.codec() + ", not MESSAGE_PACK");
+        }
         if (type == String.class) {
             return type.cast(payload.payload().toUtf8String());
         }

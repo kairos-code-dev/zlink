@@ -4,7 +4,9 @@ import systems.zlink.framework.runtime.backend.*;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -27,6 +29,8 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionActors;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private static final Duration RELAY_SUBMIT_TIMEOUT = Duration.ofSeconds(30);
@@ -290,12 +294,14 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                         "actor reply requires a stream request sequence: "
                             + header.packetName()));
                 }
-                if (!stream.reply(
-                    sessionRid,
-                    header.requestSequence().get(),
+                ZLinkStreamHeader replyHeader = new ZLinkStreamHeader(
+                    ZLinkStreamMessageKind.RESPONSE,
+                    header.codec(),
+                    EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                    header.requestSequence(),
                     header.packetName(),
-                    List.of(reply),
-                    SendFlags.DONT_WAIT)) {
+                    Map.of());
+                if (!stream.reply(sessionRid, replyHeader, List.of(reply), SendFlags.DONT_WAIT)) {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "local actor session reply failed: " + ref.actorId()));
                 }

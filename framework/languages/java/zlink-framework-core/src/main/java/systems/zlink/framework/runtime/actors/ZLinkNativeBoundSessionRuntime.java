@@ -3,9 +3,11 @@ package systems.zlink.framework.runtime.actors;
 import systems.zlink.framework.runtime.backend.*;
 
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -21,6 +23,11 @@ import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkPacket;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
     private static final ScheduledThreadPoolExecutor RETRY_EXECUTOR =
@@ -69,6 +76,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
             actorRef,
             serializer.serialize(message),
             packetNameFor(message),
+            Map.of(),
             Optional.empty(),
             timeout);
     }
@@ -84,6 +92,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         ZLinkBackendActorRef actorRef,
         Message payload,
         String defaultPacketName,
+        Map<String, String> metadata,
         Optional<String> packetName,
         Duration timeout) implements ZLinkBoundSessionSendCall {
         @Override
@@ -96,24 +105,37 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
                 actorRef,
                 payload,
                 defaultPacketName,
+                metadata,
                 Optional.of(packetName),
                 timeout);
         }
 
         @Override
         public ZLinkBoundSessionSendCall metadata(String key, String value) {
-            return this;
+            Map<String, String> next = new HashMap<>(metadata);
+            next.put(key, value);
+            return new SendCall(
+                spotNode,
+                actorRef,
+                payload,
+                defaultPacketName,
+                Map.copyOf(next),
+                packetName,
+                timeout);
         }
 
         @Override
         public CompletionStage<Void> submitAsync() {
             byte[] frameBytes;
             try {
-                frameBytes = encodeStreamFrame(
-                    1,
-                    0,
+                ZLinkStreamHeader header = new ZLinkStreamHeader(
+                    ZLinkStreamMessageKind.SEND,
+                    ZLinkStreamCodec.JSON,
+                    EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                    Optional.empty(),
                     packetName.orElse(defaultPacketName),
-                    payload.toByteArray());
+                    metadata);
+                frameBytes = encodeStreamFrame(header, payload.toByteArray());
             } finally {
                 payload.close();
             }
@@ -165,19 +187,8 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         return result;
     }
 
-    private static byte[] encodeStreamFrame(
-        int kind,
-        int codec,
-        String packetName,
-        byte[] body) {
-        byte[] name = packetName.getBytes(StandardCharsets.UTF_8);
-        ByteBuffer header = ByteBuffer.allocate(4 + name.length);
-        header.put((byte) kind);
-        header.put((byte) codec);
-        header.put((byte) 0);
-        header.put((byte) name.length);
-        header.put(name);
-        byte[] headerBytes = header.array();
+    private static byte[] encodeStreamFrame(ZLinkStreamHeader header, byte[] body) {
+        byte[] headerBytes = ZLinkStreamHeaderCodec.encode(header);
         ByteBuffer frame = ByteBuffer.allocate(6 + headerBytes.length + body.length);
         frame.putShort((short) headerBytes.length);
         frame.putInt(body.length);

@@ -15,6 +15,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlaye
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateRes
+import systems.zlink.stream.connector.ZLinkStreamCodec
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 import systems.zlink.stream.connector.json.ZLinkStreamJson
 
@@ -73,7 +74,20 @@ class PlaySession(
 
     private fun <T> decode(header: ZLinkStreamHeader, payload: Message, type: Class<T>): T =
         ZLinkStreamJson.decode(
-            ZLinkStreamEncodedPayload(header.packetName(), payload, header.metadata()),
+            ZLinkStreamEncodedPayload(
+                header.packetName(),
+                payload,
+                header.metadata(),
+                connectorCodec(header.codec()),
+            ),
             type,
         )
+
+    private fun connectorCodec(codec: systems.zlink.framework.streams.ZLinkStreamCodec): ZLinkStreamCodec =
+        when (codec) {
+            systems.zlink.framework.streams.ZLinkStreamCodec.RAW -> ZLinkStreamCodec.RAW
+            systems.zlink.framework.streams.ZLinkStreamCodec.JSON -> ZLinkStreamCodec.JSON
+            systems.zlink.framework.streams.ZLinkStreamCodec.MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK
+            systems.zlink.framework.streams.ZLinkStreamCodec.PROTOBUF -> ZLinkStreamCodec.PROTOBUF
+        }
 }

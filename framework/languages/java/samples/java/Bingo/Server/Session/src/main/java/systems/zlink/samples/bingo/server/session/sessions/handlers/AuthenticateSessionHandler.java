@@ -12,6 +12,7 @@ import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.samples.bingo.shared.configuration.SampleNames;
 import systems.zlink.samples.bingo.shared.configuration.SampleTimings;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
+import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 import systems.zlink.stream.connector.json.ZLinkStreamJson;
 
@@ -37,7 +38,8 @@ public final class AuthenticateSessionHandler
             new ZLinkStreamEncodedPayload(
                 header.packetName(),
                 payload,
-                java.util.Map.of()),
+                header.metadata(),
+                connectorCodec(header.codec())),
             Messages.AuthenticateReq.class);
         if (request.accessToken() == null || request.accessToken().isBlank()) {
             return CompletableFuture.failedFuture(
@@ -79,5 +81,15 @@ public final class AuthenticateSessionHandler
                                 authenticated.displayName()))
                             .submitAsync()));
             });
+    }
+
+    private static ZLinkStreamCodec connectorCodec(
+        systems.zlink.framework.streams.ZLinkStreamCodec codec) {
+        return switch (codec) {
+            case RAW -> ZLinkStreamCodec.RAW;
+            case JSON -> ZLinkStreamCodec.JSON;
+            case MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK;
+            case PROTOBUF -> ZLinkStreamCodec.PROTOBUF;
+        };
     }
 }

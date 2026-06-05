@@ -2,7 +2,10 @@ package systems.zlink.framework.runtime.actors;
 
 import systems.zlink.framework.runtime.backend.*;
 
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -15,6 +18,10 @@ import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkPacket;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     private static final java.time.Duration DEFAULT_TIMEOUT = java.time.Duration.ofSeconds(30);
@@ -53,6 +60,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             actorId,
             serializer.serialize(message),
             packetNameFor(message),
+            Map.of(),
             Optional.empty());
     }
 
@@ -69,6 +77,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         String actorId,
         Message payload,
         String defaultPacketName,
+        Map<String, String> metadata,
         Optional<String> packetName) implements ZLinkBoundSessionSendCall {
         @Override
         public ZLinkBoundSessionSendCall packetName(String packetName) {
@@ -81,20 +90,37 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 actorId,
                 payload,
                 defaultPacketName,
+                metadata,
                 Optional.of(packetName));
         }
 
         @Override
         public ZLinkBoundSessionSendCall metadata(String key, String value) {
-            return this;
+            Map<String, String> next = new HashMap<>(metadata);
+            next.put(key, value);
+            return new SendCall(
+                stream,
+                sessionRid,
+                actorId,
+                payload,
+                defaultPacketName,
+                Map.copyOf(next),
+                packetName);
         }
 
         @Override
         public CompletionStage<Void> submitAsync() {
             try {
+                ZLinkStreamHeader header = new ZLinkStreamHeader(
+                    ZLinkStreamMessageKind.SEND,
+                    ZLinkStreamCodec.JSON,
+                    EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                    Optional.empty(),
+                    packetName.orElse(defaultPacketName),
+                    metadata);
                 if (!stream.send(
                     sessionRid,
-                    packetName.orElse(defaultPacketName),
+                    header,
                     List.of(payload),
                     SendFlags.DONT_WAIT)) {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(

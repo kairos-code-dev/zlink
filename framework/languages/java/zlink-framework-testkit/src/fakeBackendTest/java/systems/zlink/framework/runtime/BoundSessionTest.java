@@ -44,7 +44,9 @@ final class BoundSessionTest {
                 .join();
         }
 
-        assertTrue(backend.calls().contains("stream.send.session-1.Push.push"));
+        assertTrue(backend.calls().stream()
+            .anyMatch(call -> call.startsWith("stream.send.session-1.Push.")
+                && call.endsWith(".push")));
     }
 
     @Test

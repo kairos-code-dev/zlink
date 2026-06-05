@@ -15,6 +15,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
+import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 import systems.zlink.stream.connector.json.ZLinkStreamJson;
 
@@ -94,7 +95,21 @@ public final class PlaySession implements ZLinkSession {
 
     private static <T> T decode(ZLinkStreamHeader header, Message payload, Class<T> type) {
         return ZLinkStreamJson.decode(
-            new ZLinkStreamEncodedPayload(header.packetName(), payload, header.metadata()),
+            new ZLinkStreamEncodedPayload(
+                header.packetName(),
+                payload,
+                header.metadata(),
+                connectorCodec(header.codec())),
             type);
+    }
+
+    private static ZLinkStreamCodec connectorCodec(
+        systems.zlink.framework.streams.ZLinkStreamCodec codec) {
+        return switch (codec) {
+            case RAW -> ZLinkStreamCodec.RAW;
+            case JSON -> ZLinkStreamCodec.JSON;
+            case MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK;
+            case PROTOBUF -> ZLinkStreamCodec.PROTOBUF;
+        };
     }
 }

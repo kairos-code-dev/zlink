@@ -949,25 +949,12 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         RoutingId sourceRoutingId,
         Message payload) {
         try {
-            Object message = serializer.deserialize(payload, registration.messageType());
-            ZLinkRouteSendContext context =
-                new DefaultRouteSendContext(registration.packetName(), sourceRoutingId);
-            return invokeWithFilters(context, message, () ->
-                invokeRouteSendHandlerCore(registration, message, context));
-        } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
-        }
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private CompletionStage<Void> invokeRouteSendHandlerCore(
-        ChannelRouteSendHandlerRegistration registration,
-        Object message,
-        ZLinkRouteSendContext context) {
-        try {
             ZLinkRouteSendHandler handler =
                 (ZLinkRouteSendHandler) handlerFactory.create(registration.handlerType());
-            return handler.handleAsync(message, context);
+            Object message = serializer.deserialize(payload, registration.messageType());
+            return handler.handleAsync(
+                message,
+                new DefaultRouteSendContext(registration.packetName(), sourceRoutingId));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -979,26 +966,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         RoutingId sourceRoutingId,
         Message payload) {
         try {
-            Object request = serializer.deserialize(payload, registration.requestType());
-            ZLinkRouteRequestContext context =
-                new DefaultRouteRequestContext(registration.packetName(), sourceRoutingId);
-            return invokeWithFilters(context, request, () ->
-                invokeRouteRequestHandlerCore(registration, request, context))
-                .thenApply(serializer::serialize);
-        } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
-        }
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private CompletionStage<Object> invokeRouteRequestHandlerCore(
-        ChannelRouteRequestHandlerRegistration registration,
-        Object request,
-        ZLinkRouteRequestContext context) {
-        try {
             ZLinkRouteRequestHandler handler =
                 (ZLinkRouteRequestHandler) handlerFactory.create(registration.handlerType());
-            return handler.handleAsync(request, context);
+            Object request = serializer.deserialize(payload, registration.requestType());
+            return handler.handleAsync(
+                    request,
+                    new DefaultRouteRequestContext(registration.packetName(), sourceRoutingId))
+                .thenApply(serializer::serialize);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }

@@ -6,6 +6,7 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -376,6 +377,44 @@ final class ChannelMessagingTest {
              ZLinkFrameworkRuntime target =
                  ZLinkFrameworkRuntime.start(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("route:hello", awaitRouteReply(ignoredSource, targetRid));
+        }
+    }
+
+    @Test
+    void handlerFiltersDoNotWrapRouteMeshRequestDispatch() {
+        String sourceEndpoint = tcpEndpoint();
+        String targetEndpoint = tcpEndpoint();
+        RoutingId sourceRid = RoutingId.from("route-filter-source");
+        RoutingId targetRid = RoutingId.from("route-filter-target");
+        FILTER_REQUEST.set(null);
+        FILTER_PACKET.set(null);
+
+        DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
+        sourceOptions.addRouteMeshChannel("route", channel -> {
+            channel.bind(sourceEndpoint);
+            channel.configureRouting(route -> route.setRoutingId(sourceRid));
+            channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
+        });
+
+        DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
+        targetOptions.useFilter(ReplyDecoratingFilter.class);
+        targetOptions.addRouteMeshChannel("route", channel -> {
+            channel.bind(targetEndpoint);
+            channel.configureRouting(route -> route.setRoutingId(targetRid));
+            channel.useManualConnections(endpoints -> endpoints.connect(sourceEndpoint));
+            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo");
+        });
+
+        try (ZLinkFrameworkRuntime source =
+                 ZLinkFrameworkRuntime.start(sourceOptions, new ZLinkJavaBackendAdapterFactory());
+            ZLinkFrameworkRuntime ignoredTarget =
+                 ZLinkFrameworkRuntime.start(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
+            assertEquals("route:hello", awaitRouteReply(source, targetRid));
+            assertNull(FILTER_REQUEST.get());
+            assertNull(FILTER_PACKET.get());
+        } finally {
+            FILTER_REQUEST.set(null);
+            FILTER_PACKET.set(null);
         }
     }
 

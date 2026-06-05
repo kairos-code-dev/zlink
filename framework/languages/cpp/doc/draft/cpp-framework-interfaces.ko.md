@@ -60,17 +60,13 @@ handler, service lifetime, timeout 같은 framework 개념이다.
 ## 3. Header 와 Namespace
 
 권장 public header layout은 아래와 같다. `contracts/*` 아래 header가 `.NET`
-`Contracts/*`에 대응하는 실제 public contract owner이고, `zlink/framework/*.hpp`
-header는 사용자가 편하게 include할 수 있는 facade다.
+`Contracts/*`에 대응하는 실제 public contract owner이고, `zlink/framework.hpp`는
+사용자가 전체 framework 표면을 한 번에 include할 수 있는 facade다. 한 줄짜리
+`zlink/framework/*.hpp` compatibility wrapper는 유지하지 않는다.
 
 ```text
 zlink/framework.hpp
-zlink/framework/app.hpp
-zlink/framework/channels.hpp
-zlink/framework/handlers.hpp
-zlink/framework/spots.hpp
-zlink/framework/streams.hpp
-zlink/framework/timers.hpp
+zlink/framework/version.hpp
 zlink/framework/contracts/actors/*.hpp
 zlink/framework/contracts/channels/*.hpp
 zlink/framework/contracts/codecs/*.hpp

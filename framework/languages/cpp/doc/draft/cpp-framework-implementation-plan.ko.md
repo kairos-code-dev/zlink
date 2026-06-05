@@ -829,7 +829,8 @@ HTTP hosting을 core framework 기능으로 구현하는 것이다.
 구현 항목:
 
 - `contracts/http/*`
-- `zlink/framework/http.hpp`
+- `zlink/framework.hpp`
+- `zlink/framework/contracts/http/http.hpp`
 - `http_options_builder_t`
 - `options.http().listen(endpoint)`
 - `options.http().tls(...)`

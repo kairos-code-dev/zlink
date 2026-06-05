@@ -14,6 +14,7 @@
         "CMAKE_CXX_STANDARD": "20",
         "CMAKE_CXX_EXTENSIONS": "OFF",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ZLINK_FRAMEWORK_CPP_REPO_ROOT": "${sourceDir}/../../..",
         "ZLINK_FRAMEWORK_CPP_BUILD_TESTS": "ON",
         "ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES": "ON",
         "ZLINK_STREAM_CONNECTOR_WITH_LZ4": "ON",
@@ -25,6 +26,15 @@
       "name": "vcpkg",
       "hidden": true,
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+    },
+    {
+      "name": "default",
+      "displayName": "Default WSL/Linux Debug",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
     },
     {
       "name": "linux-ninja-debug",
@@ -92,6 +102,10 @@
   ],
   "buildPresets": [
     {
+      "name": "default",
+      "configurePreset": "default"
+    },
+    {
       "name": "linux-ninja-debug",
       "configurePreset": "linux-ninja-debug"
     },
@@ -124,6 +138,13 @@
     }
   ],
   "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
     {
       "name": "linux-ninja-debug",
       "configurePreset": "linux-ninja-debug",

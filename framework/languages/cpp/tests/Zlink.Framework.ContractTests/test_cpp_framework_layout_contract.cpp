@@ -998,7 +998,6 @@ http_hosting_public_surface_excludes_non_goal_features (
 {
   bool ok = true;
   const std::filesystem::path include_roots[] = {
-    root / "framework/include/zlink/framework/http.hpp",
     root / "framework/include/zlink/framework/contracts/http"
   };
   const std::string forbidden[] = {
@@ -1080,6 +1079,36 @@ main ()
     root / "framework/include/zlink/framework/contracts/assembly");
   ok &= require_exists (
     root / "framework/include/zlink/framework/contracts/detail/message_name.hpp");
+  const std::string removed_framework_facades[] = {
+    "actors.hpp",
+    "app.hpp",
+    "assembly.hpp",
+    "call.hpp",
+    "channels.hpp",
+    "config.hpp",
+    "error.hpp",
+    "execution.hpp",
+    "handlers.hpp",
+    "health.hpp",
+    "http.hpp",
+    "logging.hpp",
+    "module.hpp",
+    "monitoring.hpp",
+    "registry.hpp",
+    "result.hpp",
+    "serialization.hpp",
+    "services.hpp",
+    "spots.hpp",
+    "streams.hpp",
+    "task.hpp",
+    "timers.hpp",
+    "transport.hpp"
+  };
+  for (const auto &header : removed_framework_facades) {
+    ok &= require_absent (
+      root / "framework/include/zlink/framework" / header,
+      "one-line facade wrappers are dead compatibility surface; use zlink/framework.hpp or contracts/*");
+  }
   ok &= require_exists (root / "framework/src/runtime");
   ok &= require_exists (root / "framework/src/runtime/backend/contracts");
   ok &= require_exists (

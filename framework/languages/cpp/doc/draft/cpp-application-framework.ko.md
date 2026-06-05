@@ -482,7 +482,7 @@ C++ framework는 설정이 불편하면 `.NET Core`/`ASP.NET Core`, Spring Boot,
 
 | 축 | 필수 테스트 |
 |----|-------------|
-| contract header | `zlink/framework.hpp`, `zlink/framework/http.hpp`, 세부 contract header compile |
+| contract header | `zlink/framework.hpp`, 세부 contract header compile |
 | app host | run/stop, signal stop, exit code, startup validation failure |
 | DI | singleton/scoped/transient, constructor injection, optional/required service, duplicate service, shutdown resolve failure |
 | configuration | JSON/env/CLI merge, environment profile, typed binding, required value missing, validation failure |

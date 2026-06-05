@@ -340,7 +340,7 @@ public contract는 아래 위치에 둔다.
 
 ```text
 framework/include/zlink/framework/contracts/http/http.hpp
-framework/include/zlink/framework/http.hpp
+framework/include/zlink/framework.hpp
 ```
 
 runtime 구현은 아래 위치에 둔다.
@@ -419,7 +419,8 @@ Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP pat
 
 최소 테스트는 아래 축으로 둔다.
 
-- contract header compile: `#include <zlink/framework/http.hpp>`
+- contract header compile: `#include <zlink/framework.hpp>`와
+  `#include <zlink/framework/contracts/http/http.hpp>`
 - route registry: 같은 method/path 중복 등록과 system route 충돌은 startup validation 실패
 - method별 route: `GET`, `POST`, `PUT`, `DELETE`
 - scheme별 listen: `http://`, `https://`

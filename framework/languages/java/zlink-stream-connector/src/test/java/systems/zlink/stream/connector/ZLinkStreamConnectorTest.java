@@ -647,6 +647,30 @@ final class ZLinkStreamConnectorTest {
             true).skipServerCertificateValidation());
     }
 
+    @Test
+    void defaultOptionsMatchDotnetConnectorDefaults() {
+        URI endpoint = URI.create("tcp://127.0.0.1:7000");
+        ZLinkStreamConnectorOptions options =
+            ZLinkStreamConnectorOptions.createDefault(endpoint);
+
+        assertEquals(endpoint, options.endpoint());
+        assertEquals(ZLinkStreamDispatchMode.MANUAL, options.dispatchMode());
+        assertEquals(Duration.ofSeconds(30), options.requestTimeout());
+        assertEquals(3, options.maxReconnectAttempts());
+        assertEquals(Duration.ofSeconds(5), options.connectTimeout());
+        assertEquals(64 * 1024, options.maxSendPayloadSize());
+        assertTrue(options.heartbeatEnabled());
+        assertEquals(Duration.ofSeconds(1), options.heartbeatInterval());
+        assertEquals(Duration.ofSeconds(5), options.heartbeatTimeout());
+        assertTrue(options.reconnectEnabled());
+        assertEquals(Duration.ofMillis(250), options.reconnectInitialDelay());
+        assertEquals(Duration.ofSeconds(5), options.reconnectMaxDelay());
+        assertEquals(2.0, options.reconnectBackoffFactor());
+        assertFalse(options.skipServerCertificateValidation());
+        assertEquals(ZLinkStreamCompression.NONE, options.compression());
+        assertEquals("custom.packet", options.nameResolver().resolve(NamedPayload.class));
+    }
+
     private static ZLinkStreamEncodedPayload payload(String packetName, String body) {
         return new ZLinkStreamEncodedPayload(
             packetName,

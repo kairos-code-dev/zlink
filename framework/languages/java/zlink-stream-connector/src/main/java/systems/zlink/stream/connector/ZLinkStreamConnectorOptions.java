@@ -22,6 +22,26 @@ public record ZLinkStreamConnectorOptions(
     ZLinkStreamPacketNameResolver nameResolver) {
     public static final int UNLIMITED_RECONNECT_ATTEMPTS = -1;
 
+    public static ZLinkStreamConnectorOptions createDefault(URI endpoint) {
+        return new ZLinkStreamConnectorOptions(
+            endpoint,
+            ZLinkStreamDispatchMode.MANUAL,
+            Duration.ofSeconds(30),
+            3,
+            Duration.ofSeconds(5),
+            64 * 1024,
+            true,
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(5),
+            true,
+            Duration.ofMillis(250),
+            Duration.ofSeconds(5),
+            2.0,
+            false,
+            ZLinkStreamCompression.NONE,
+            ZLinkStreamPacketNameResolver.defaultResolver());
+    }
+
     public ZLinkStreamConnectorOptions {
         if (compression == null) {
             compression = ZLinkStreamCompression.NONE;

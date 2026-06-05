@@ -49,16 +49,8 @@ public class MessageCopyWrapContractTest {
     }
 
     @Test
-    public void moveTransfersPayloadToNewMessage() {
-        TestSupport.assumeNative();
-
-        try (Message source = Message.from("alpha")) {
-            try (Message moved = source.move()) {
-                assertArrayEquals("alpha".getBytes(StandardCharsets.UTF_8),
-                    moved.toByteArray());
-                assertTrue(source.empty());
-            }
-        }
+    public void moveIsNotPublicContract() {
+        assertFalse(hasPublicMethod(Message.class, "move"));
     }
 
     @Test

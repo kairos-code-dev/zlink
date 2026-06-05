@@ -59,15 +59,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
         _knownSize = size;
     }
 
-    /// <summary>
-    /// Moves native ownership to a new <see cref="Message"/> instance.
-    /// </summary>
-    /// <returns>The destination message that now owns the payload.</returns>
-    /// <remarks>
-    /// After a successful move, this instance becomes invalid and any further
-    /// access throws <see cref="ObjectDisposedException"/>.
-    /// </remarks>
-    public Message Move()
+    internal Message Move()
     {
         ManagedPayloadState? managed = _managedPayload;
         if (managed != null)

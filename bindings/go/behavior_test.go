@@ -84,57 +84,6 @@ func TestPairSendBytesRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPairDirectBytesRoundTrip(t *testing.T) {
-	ctx := newContext(t)
-	defer ctx.Close()
-
-	endpoint := inprocEndpoint("pair-direct-bytes")
-	server, _ := ctx.PairSocket()
-	client, _ := ctx.PairSocket()
-	defer server.Close()
-	defer client.Close()
-
-	if err := server.Bind(endpoint); err != nil {
-		t.Fatalf("Bind() error = %v", err)
-	}
-	if err := client.Connect(endpoint); err != nil {
-		t.Fatalf("Connect() error = %v", err)
-	}
-
-	payload := []byte("hello-direct-bytes")
-	sent, err := client.SendBytes(payload, zlink.SendFlagsNone)
-	if err != nil {
-		t.Fatalf("SendBytes() error = %v", err)
-	}
-	if !sent {
-		t.Fatalf("SendBytes() returned sent=false")
-	}
-	if string(payload) != "hello-direct-bytes" {
-		t.Fatalf("SendBytes() mutated caller payload = %q", string(payload))
-	}
-
-	buffer := make([]byte, 64)
-	result, ok, err := server.RecvBytesInto(buffer, zlink.RecvFlagsNone)
-	if err != nil {
-		t.Fatalf("RecvBytesInto() error = %v", err)
-	}
-	if !ok {
-		t.Fatalf("RecvBytesInto() returned ok=false")
-	}
-	if result.More {
-		t.Fatalf("RecvBytesInto() More = true, want false")
-	}
-	if result.RoutingID.Size() != 0 {
-		t.Fatalf("RecvBytesInto() RoutingID size = %d, want 0", result.RoutingID.Size())
-	}
-	if result.Size != len(payload) {
-		t.Fatalf("RecvBytesInto() Size = %d, want %d", result.Size, len(payload))
-	}
-	if !bytes.Equal(buffer[:result.Size], payload) {
-		t.Fatalf("unexpected payload = %q", string(buffer[:result.Size]))
-	}
-}
-
 func TestPollerWaitWritesCallerOwnedEvents(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

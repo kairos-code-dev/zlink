@@ -64,6 +64,16 @@ export class SocketBase extends NativeHandle {
     });
   }
 
+  setChannelName(channelName: string): void {
+    const normalized = validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER);
+    configCall('channel name set failed', () => {
+      requireNative().socketSetChannelName(
+        this.nativeHandle(),
+        normalized
+      );
+    });
+  }
+
   /** @internal */
   setSockOptRaw(option: number, value: Buffer | number): void {
     const buf = typeof value === 'number' ? Buffer.from([value & 0xff, 0, 0, 0]) : value;

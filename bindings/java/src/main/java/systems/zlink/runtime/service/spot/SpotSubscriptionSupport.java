@@ -137,7 +137,8 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                       scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
                     InternalAccess.messageFinishReceive(part, more);
                     if (more) {
-                        Message firstPart = part.move();
+                        Message firstPart = new Message();
+                        InternalAccess.messageMoveInto(part, firstPart, true);
                         success = true;
                         Optional<TopicMessage> fresh =
                           assembleRemainder(scratch, firstPart);

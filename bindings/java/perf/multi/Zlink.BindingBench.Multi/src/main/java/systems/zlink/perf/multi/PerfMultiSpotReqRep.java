@@ -172,7 +172,7 @@ final class PerfMultiSpotReqRep {
                 }
                 progressed = true;
                 try {
-                    try (Message reply = received.firstPart().move()) {
+                    try (Message reply = Message.from(received.firstPart())) {
                         try {
                             received.reply().message(reply).submit();
                         } catch (ZlinkSubmitException ex) {

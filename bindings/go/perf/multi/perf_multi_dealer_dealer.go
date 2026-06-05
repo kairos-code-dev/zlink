@@ -61,12 +61,6 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 		if event.Revents&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
-		if useMultiDealerDealerRecvBytes(cfg.msgSize) {
-			if drainMultiDealerDealerServerRecvBytes(server, cfg, stats, latencyStride, &stopRequested) {
-				break
-			}
-			continue
-		}
 		if useMultiDealerDealerRecvPart(cfg.transport, cfg.msgSize) {
 			if drainMultiDealerDealerServerRecvPart(server, cfg, window, stats, latencyStride, &stopRequested) {
 				break
@@ -127,10 +121,6 @@ func useMultiDealerDealerRecvPart(transport string, msgSize int) bool {
 	return msgSize == 262144 && transport == "wss"
 }
 
-func useMultiDealerDealerRecvBytes(msgSize int) bool {
-	return msgSize == 64
-}
-
 func resolveMultiDealerDealerLatencySampleStride(transport string, msgSize int) uint64 {
 	if msgSize == 64 {
 		return uint64(positiveMultiDealerDealerIntEnv("PERF_MULTI_DEALER_DEALER_LATENCY_SAMPLE_STRIDE", 32))
@@ -152,55 +142,6 @@ func positiveMultiDealerDealerIntEnv(name string, fallback int) int {
 
 func shouldSampleMultiDealerDealerLatency(index, stride uint64) bool {
 	return stride <= 1 || index == 1 || index%stride == 0
-}
-
-func drainMultiDealerDealerServerRecvBytes(
-	server *zlink.DealerSocket,
-	cfg multiConfig,
-	stats *perfcommon.Stats,
-	latencyStride uint64,
-	stopRequested *bool,
-) bool {
-	payload := make([]byte, cfg.msgSize)
-	var localCount uint64
-	flushCount := func() {
-		stats.AddCountBy(localCount)
-		localCount = 0
-	}
-	for {
-		result, ok, recvErr := server.RecvBytesInto(payload, zlink.RecvFlagsDontWait)
-		if recvErr != nil {
-			if perfcommon.IsTransient(recvErr) {
-				flushCount()
-				return false
-			}
-			flushCount()
-			perfcommon.Must(fmt.Errorf("multi dealer/dealer server recv bytes: %w", recvErr))
-		}
-		if !ok {
-			flushCount()
-			return false
-		}
-		if result.RoutingID.Size() != 0 || result.More {
-			continue
-		}
-		data := payload[:result.Size]
-		if perfcommon.IsStopToken(data) {
-			*stopRequested = true
-			flushCount()
-			return true
-		}
-		if !perfcommon.HasMetricHeaderPhase(data, cfg.msgSize, perfcommon.PhaseActive) {
-			continue
-		}
-		localCount++
-		if shouldSampleMultiDealerDealerLatency(localCount, latencyStride) {
-			now := time.Now()
-			if latencyNs, ok := perfcommon.LatencyNsFromBytesAt(data, cfg.msgSize, perfcommon.PhaseActive, now); ok {
-				stats.AddLatencySampleNs(latencyNs)
-			}
-		}
-	}
 }
 
 func drainMultiDealerDealerServerRecvPart(
@@ -386,34 +327,10 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 	// Mirrors the C++ dealer_dealer client's per-socket try_send_once loop.
 	blast := func(i int) {
 		client := clients[i]
-		useBytes := useMultiDealerDealerBytes(cfg.transport, cfg.msgSize)
-		var payload []byte
-		if useBytes {
-			payload = make([]byte, cfg.msgSize)
-		}
 		for {
 			now := time.Now()
 			if !now.Before(window.StopAt) {
 				break
-			}
-			if useBytes {
-				perfcommon.StampPayloadPhaseAt(payload, perfcommon.PhaseActive, now)
-				sent, sendErr := client.socket.SendBytes(payload, zlink.SendFlagsDontWait)
-				if sendErr == nil && sent {
-					if pending[i] {
-						pending[i] = false
-						perfcommon.Must(poller.ModifySocket(client.socket, 0))
-					}
-					continue
-				}
-				if sendErr != nil && !perfcommon.IsTransient(sendErr) {
-					perfcommon.Must(fmt.Errorf("multi dealer/dealer client send: %w", sendErr))
-				}
-				if !pending[i] {
-					pending[i] = true
-					perfcommon.Must(poller.ModifySocket(client.socket, perfcommon.ZLinkPollOut))
-				}
-				return
 			}
 			sent, sendErr := perfcommon.SubmitWindowPayload(cfg.msgSize, window.ActiveAt, func(message *zlink.Message) (bool, error) {
 				if !useMultiDealerDealerMoveMessage(cfg.transport, cfg.msgSize) {
@@ -477,21 +394,6 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 				blast(idx)
 			}
 		}
-	}
-}
-
-func useMultiDealerDealerBytes(transport string, msgSize int) bool {
-	switch transport {
-	case "tcp":
-		return msgSize <= 1024 || msgSize >= 65536
-	case "ws":
-		return msgSize == 64 || msgSize == 65536 || msgSize == 131072
-	case "wss":
-		return msgSize == 64 || msgSize >= 65536
-	case "tls":
-		return msgSize == 64 || msgSize >= 65536
-	default:
-		return false
 	}
 }
 

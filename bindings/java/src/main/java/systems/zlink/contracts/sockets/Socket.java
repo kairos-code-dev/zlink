@@ -21,6 +21,8 @@ public interface Socket extends AutoCloseable {
 
     void setSendReadyHandler(SendReadyHandler handler);
 
+    void setChannelName(String channelName);
+
     @Override
     void close();
 }

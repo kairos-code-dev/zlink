@@ -113,7 +113,7 @@ final class PerfMultiRouterRouter {
                         RoutingId rid = receivedBuffer.getRoutingId().orElseThrow();
                         // Slow path: take ownership of the part to outlive
                         // the Received scope and enqueue / send.
-                        Message ownedReply = receivedBuffer.firstPart().move();
+                        Message ownedReply = Message.from(receivedBuffer.firstPart());
                         receivedBuffer.close();
                         if (pendingReplies.isEmpty()
                             && server.send(rid)

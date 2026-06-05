@@ -12,7 +12,6 @@ import { configCall } from '../errors/native_errors';
 import { executeNativeRequest } from '../messaging/request_executor';
 import { startRequestProgress } from '../messaging/request_progress';
 import { requireNative } from '../native/native';
-import { validateCString } from '../options/validation';
 import { RoutingId, type Message, type MessageLike } from '../../contracts';
 import { SendFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
 import type { RequestCallback, RequestOperation } from '../../contracts/service';
@@ -20,15 +19,6 @@ import type { RequestCallback, RequestOperation } from '../../contracts/service'
 export class DealerSocket extends MessageSocket {
   readonly options: DealerSocketOptions;
   constructor(ctx: Context) { super(ctx, NativeSocketType.DEALER); this.options = DealerSocketOptions.create(this); }
-  setChannelName(channelName: string): void {
-    const normalized = validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER);
-    configCall('channel name set failed', () => {
-      requireNative().socketSetChannelName(
-        this.nativeHandle(),
-        normalized
-      );
-    });
-  }
   getChannelName(): string {
     return configCall('channel name get failed', () =>
       requireNative().socketGetChannelName(this.nativeHandle()) as string

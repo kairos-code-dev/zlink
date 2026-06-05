@@ -239,7 +239,7 @@ public final class Message implements AutoCloseable {
     }
 
     /** Moves this message into a new owned message instance. */
-    public Message move() {
+    Message move() {
         if (closed || !valid)
             throw new IllegalStateException("message is closed");
         Message target = new Message(true);

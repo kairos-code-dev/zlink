@@ -16,7 +16,6 @@ public interface DealerSocket extends Socket {
     void disconnect(String endpoint);
     void disconnectRid(RoutingId routingId);
     void attachDiscovery(Discovery discovery);
-    void setChannelName(String channelName);
     String getChannelName();
     void setRoutingId(RoutingId rid);
     RoutingId getRoutingId();

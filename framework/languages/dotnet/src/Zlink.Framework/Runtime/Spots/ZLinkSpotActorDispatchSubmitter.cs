@@ -14,7 +14,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var ownedPayload = payload.Move();
+        var ownedPayload = payload.Copy();
 
         try
         {
@@ -47,7 +47,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var ownedPayload = payload.Move();
+        var ownedPayload = payload.Copy();
 
         try
         {

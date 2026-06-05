@@ -48,8 +48,12 @@ from ...contracts.errors.errors import (
 from ...contracts.errors.codes import ConfigResult, ConnectResult
 from ...contracts.sockets.codes import HandlerResult, RecvResult, RequestResult, SubmitResult
 from ...contracts.core.routing_id import RoutingId
-from ..messaging.message_materializer import Message, Received, SubscriptionEvent
-from ...contracts.messaging.message import _message_from
+from ..messaging.message_materializer import (
+    Message,
+    Received,
+    ReceivedMessage,
+    SubscriptionEvent,
+)
 from ..messaging.request_reply import (
     _PendingRequest,
     _RequestProgressPump,
@@ -1094,16 +1098,21 @@ class StreamSocket(
                 routing_id = None
                 if source_rid_ptr:
                     routing_id = RoutingId(_routing_id_bytes(source_rid_ptr.contents))
-                header = _message_from(_msg_to_bytes(header_ptr.contents))
-                body = _message_from(_msg_to_bytes(body_ptr.contents))
+                header_owner = _BytesReceivedPartsOwner._from_trusted_bytes_tuple(
+                    (_msg_to_bytes(header_ptr.contents),)
+                )
+                body_owner = _BytesReceivedPartsOwner._from_trusted_bytes_tuple(
+                    (_msg_to_bytes(body_ptr.contents),)
+                )
+                header = ReceivedMessage._from_owner(header_owner, 0)
+                body = ReceivedMessage._from_owner(body_owner, 0)
             except Exception:
                 _report_unhandled_callback_exception(handler)
                 return
-            dispatcher.submit(
-                lambda routing_id=routing_id, header=header, body=body: _invoke(
-                    routing_id, header, body
-                )
+            task = lambda routing_id=routing_id, header=header, body=body: _invoke(
+                routing_id, header, body
             )
+            dispatcher.submit(task)
 
         callback = _STREAM_PACKET_HANDLER(_callback)
         rc = lib().zlink_stream_packet_handler(self._handle, callback, None)

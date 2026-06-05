@@ -30,7 +30,7 @@ internal sealed class ZLinkSessionRequestTracker
             return false;
         }
 
-        pending.Complete(payload.Move());
+        pending.Complete(payload.Copy());
         return true;
     }
 

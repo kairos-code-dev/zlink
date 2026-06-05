@@ -183,7 +183,7 @@ final class PerfMultiSpotSendSend {
                     }
                     continue;
                 }
-                try (Message reply = received.firstPart().move()) {
+                try (Message reply = Message.from(received.firstPart())) {
                     try {
                         received.send()
                             .message(reply)

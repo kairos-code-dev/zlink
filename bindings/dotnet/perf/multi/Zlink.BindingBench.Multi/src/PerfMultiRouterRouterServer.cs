@@ -98,7 +98,7 @@ internal static class PerfMultiRouterRouterServer
                 RoutingId? maybeRoutingId = receivedBuffer.RoutingId;
                 if (maybeRoutingId == null)
                     return 2;
-                Message reply = bodyMessage.Move();
+                Message reply = bodyMessage.Copy();
                 if (!EnqueueReplyOrSend(server, pendingReplies,
                         maybeRoutingId.Value, reply, tryImmediate: false))
                 {

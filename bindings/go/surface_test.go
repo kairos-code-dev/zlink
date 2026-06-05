@@ -74,11 +74,11 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.PairSocket)(nil), "RecvPart") {
 		t.Fatalf("PairSocket should expose RecvPart")
 	}
-	if !hasMethod((*zlink.PairSocket)(nil), "SendBytes") {
-		t.Fatalf("PairSocket should expose SendBytes")
+	if hasMethod((*zlink.PairSocket)(nil), "SendBytes") {
+		t.Fatalf("PairSocket should not expose SendBytes")
 	}
-	if !hasMethod((*zlink.PairSocket)(nil), "RecvBytesInto") {
-		t.Fatalf("PairSocket should expose RecvBytesInto")
+	if hasMethod((*zlink.PairSocket)(nil), "RecvBytesInto") {
+		t.Fatalf("PairSocket should not expose RecvBytesInto")
 	}
 	if hasMethod((*zlink.PairSocket)(nil), "TrySend") {
 		t.Fatalf("PairSocket should not expose TrySend")
@@ -122,11 +122,11 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.DealerSocket)(nil), "RecvPart") {
 		t.Fatalf("DealerSocket should expose RecvPart")
 	}
-	if !hasMethod((*zlink.DealerSocket)(nil), "SendBytes") {
-		t.Fatalf("DealerSocket should expose SendBytes")
+	if hasMethod((*zlink.DealerSocket)(nil), "SendBytes") {
+		t.Fatalf("DealerSocket should not expose SendBytes")
 	}
-	if !hasMethod((*zlink.DealerSocket)(nil), "RecvBytesInto") {
-		t.Fatalf("DealerSocket should expose RecvBytesInto")
+	if hasMethod((*zlink.DealerSocket)(nil), "RecvBytesInto") {
+		t.Fatalf("DealerSocket should not expose RecvBytesInto")
 	}
 	if !hasMethod((*zlink.RouterSocket)(nil), "RecvPart") {
 		t.Fatalf("RouterSocket should expose RecvPart")

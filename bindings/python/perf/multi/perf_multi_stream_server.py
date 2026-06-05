@@ -22,6 +22,7 @@ def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
     endpoint = benchmark_endpoint(args.transport, "multi-stream")
     stop = threading.Event()
+    pending_ready = threading.Event()
     pending = deque()
     pending_lock = threading.Lock()
 
@@ -50,6 +51,7 @@ def main(argv=None):
                 frame = build_packet_frame(header, body)
                 with pending_lock:
                     pending.append((bytes(routing_id), frame))
+                pending_ready.set()
 
             server.on_packet(packet_handler)
 
@@ -74,6 +76,8 @@ def main(argv=None):
                     with pending_lock:
                         if pending and pending[0] == item:
                             pending.popleft()
+                            if not pending:
+                                pending_ready.clear()
 
             # C run_server_event_loop: POLLOUT-driven backpressure drain of
             # the pending deque with the bounded aux poll wait
@@ -86,12 +90,16 @@ def main(argv=None):
                 while not stop.is_set():
                     with pending_lock:
                         has_pending = bool(pending)
+                        if not has_pending:
+                            pending_ready.clear()
                     if has_pending:
                         drain_pending()
                     with pending_lock:
                         has_pending = bool(pending)
+                        if not has_pending:
+                            pending_ready.clear()
                     if not has_pending:
-                        stop.wait(aux_wait_ms / 1000.0)
+                        pending_ready.wait(aux_wait_ms / 1000.0)
                         continue
                     ready_count = safe_poll(poller, poll_events, aux_wait_ms)
                     if ready_count:
@@ -103,14 +111,24 @@ def main(argv=None):
 
 
 def build_packet_frame(header, body):
-    header_bytes = header.to_bytes()
-    body_bytes = body.to_bytes()
-    return (
-        len(header_bytes).to_bytes(2, "big")
-        + len(body_bytes).to_bytes(4, "big")
-        + header_bytes
-        + body_bytes
-    )
+    header_view = header.data
+    body_view = body.data
+    header_size = len(header_view)
+    body_size = len(body_view)
+    frame = bytearray(6 + header_size + body_size)
+    frame[0] = (header_size >> 8) & 0xFF
+    frame[1] = header_size & 0xFF
+    _store_u32_be(frame, 2, body_size)
+    frame[6 : 6 + header_size] = header_view
+    frame[6 + header_size :] = body_view
+    return frame
+
+
+def _store_u32_be(frame, offset, value):
+    frame[offset] = (value >> 24) & 0xFF
+    frame[offset + 1] = (value >> 16) & 0xFF
+    frame[offset + 2] = (value >> 8) & 0xFF
+    frame[offset + 3] = value & 0xFF
 
 
 if __name__ == "__main__":

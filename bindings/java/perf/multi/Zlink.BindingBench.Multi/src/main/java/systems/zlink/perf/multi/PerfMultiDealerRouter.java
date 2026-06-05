@@ -85,7 +85,7 @@ final class PerfMultiDealerRouter {
                             continue;
                         }
                         RoutingId rid = receivedBuffer.getRoutingId().orElseThrow();
-                        Message reply = receivedBuffer.firstPart().move();
+                        Message reply = Message.from(receivedBuffer.firstPart());
                         receivedBuffer.close();
                         if (pendingReplies.isEmpty()
                             && server.send(rid)

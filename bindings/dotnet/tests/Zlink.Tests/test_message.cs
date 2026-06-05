@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Text;
 using Xunit;
 
@@ -7,67 +8,13 @@ namespace Systems.Zlink.Tests;
 public sealed class test_message
 {
     [Fact]
-    public void message_move_transfers_ownership_and_payload()
+    public void message_move_is_not_public_contract()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var source = Message.From("move-payload"u8);
-        using Message moved = source.Move();
-
-        Assert.True(moved.AsReadOnlySpan().SequenceEqual("move-payload"u8));
-        Assert.Throws<ObjectDisposedException>(() =>
-        {
-            _ = source.Size;
-        });
-    }
-
-    [Fact]
-    public void message_move_transfers_native_message_payload()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var source = new Message("native-move-payload"u8);
-        using Message moved = source.Move();
-
-        Assert.True(moved.AsReadOnlySpan().SequenceEqual(
-            "native-move-payload"u8));
-        Assert.Throws<ObjectDisposedException>(() =>
-        {
-            _ = source.Size;
-        });
-    }
-
-    [Fact]
-    public void message_move_on_disposed_source_throws()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var source = Message.From("x"u8);
-        source.Dispose();
-
-        Assert.Throws<ObjectDisposedException>(() =>
-        {
-            _ = source.Move();
-        });
-    }
-
-    [Fact]
-    public void message_move_cannot_be_called_twice()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var source = Message.From("double-move"u8);
-        using Message moved = source.Move();
-
-        Assert.True(moved.AsReadOnlySpan().SequenceEqual("double-move"u8));
-        Assert.Throws<ObjectDisposedException>(() =>
-        {
-            _ = source.Move();
-        });
+        Assert.Null(typeof(Message).GetMethod("Move",
+            BindingFlags.Public | BindingFlags.Instance,
+            binder: null,
+            Type.EmptyTypes,
+            modifiers: null));
     }
 
     [Fact]

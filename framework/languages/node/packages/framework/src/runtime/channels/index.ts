@@ -864,7 +864,7 @@ export class ZLinkRoutePacketDispatcher {
       if (handler === undefined) {
         return;
       }
-      await handler.handle(envelope.payload, this.createSendContext(packetName, received.routingId));
+      await handler.handle(envelope.payload, this.createRouteContext(packetName, received.routingId));
       return;
     }
 
@@ -886,13 +886,7 @@ export class ZLinkRoutePacketDispatcher {
     }
 
     try {
-      const reply = await handler.handle(
-        envelope.payload,
-        {
-          ...this.createSendContext(packetName, received.routingId),
-          requestSeq: received.requestSeq
-        }
-      );
+      const reply = await handler.handle(envelope.payload, this.createRouteContext(packetName, received.routingId, received.requestSeq));
       appendParts(
         router.reply(received.routingId, received.requestSeq),
         encodeChannelReplyParts(envelope.header, reply)
@@ -905,14 +899,30 @@ export class ZLinkRoutePacketDispatcher {
     }
   }
 
-  private createSendContext(packetName: string, sourceRid: unknown): ZLinkRouteSendContext {
+  private createRouteContext(packetName: string, sourceRid: unknown): ZLinkRouteSendContext;
+  private createRouteContext(packetName: string, sourceRid: unknown, requestSeq: bigint): ZLinkRouteRequestContext;
+  private createRouteContext(
+    packetName: string,
+    sourceRid: unknown,
+    requestSeq?: bigint
+  ): ZLinkRouteSendContext | ZLinkRouteRequestContext {
     const sourceNodeRid = String(sourceRid ?? '');
+    if (requestSeq === undefined) {
+      return {
+        channelName: this.routerChannelId,
+        packetName,
+        contentType: JSON_CONTENT_TYPE,
+        sourceNodeRid,
+        sourcePeerRid: sourceNodeRid
+      };
+    }
     return {
       channelName: this.routerChannelId,
       packetName,
       contentType: JSON_CONTENT_TYPE,
       sourceNodeRid,
-      sourcePeerRid: sourceNodeRid
+      sourcePeerRid: sourceNodeRid,
+      requestSeq
     };
   }
 }

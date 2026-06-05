@@ -873,6 +873,10 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
     return this.localActors.snapshot();
   }
 
+  findBoundActor(actorId: string): DefaultZLinkSessionActor | undefined {
+    return this.localActors.find(actorId);
+  }
+
   bindLocal(actor: DefaultZLinkSessionActor, token: string): void {
     this.localActors.bind(actor, token);
   }
@@ -886,7 +890,15 @@ class ZLinkSessionLocalActorBindings {
   private readonly actors = new Map<string, { actor: DefaultZLinkSessionActor; token: string }>();
 
   snapshot(): readonly DefaultZLinkSessionActor[] {
-    return [...this.actors.values()].map((entry) => entry.actor);
+    const snapshot: DefaultZLinkSessionActor[] = [];
+    for (const entry of this.actors.values()) {
+      snapshot.push(entry.actor);
+    }
+    return snapshot;
+  }
+
+  find(actorId: string): DefaultZLinkSessionActor | undefined {
+    return this.actors.get(actorId)?.actor;
   }
 
   bind(actor: DefaultZLinkSessionActor, token: string): void {
@@ -929,7 +941,7 @@ class DefaultZLinkSessionActors implements ZLinkSessionActors {
   }
 
   find(actorId: string): ZLinkSessionActor | undefined {
-    return this.context.boundActors.find((actor) => actor.actorId === actorId);
+    return this.context.findBoundActor(actorId);
   }
 }
 

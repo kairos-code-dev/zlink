@@ -12,6 +12,7 @@ interface ZLinkPendingSubmitOptions {
 
 export class ZLinkAsyncSubmitter {
   private readonly queue: ZLinkPendingSubmit<unknown>[] = [];
+  private queueOffset = 0;
   private readonly active = new Set<ZLinkPendingSubmit<unknown>>();
   private readonly timeoutMs: number;
   private readonly capacity: number;
@@ -53,6 +54,7 @@ export class ZLinkAsyncSubmitter {
     this.disposed = true;
     const error = new ZLinkConfigurationException('ZLink async submitter is disposed.');
     this.queue.length = 0;
+    this.queueOffset = 0;
     for (const pending of this.active) {
       pending.reject(error);
     }
@@ -89,7 +91,7 @@ export class ZLinkAsyncSubmitter {
       pending.reject(new ZLinkConfigurationException('ZLink async submitter is disposed.'));
       return pending.promise;
     }
-    if (this.queue.length >= this.capacity) {
+    if (this.pendingQueueLength() >= this.capacity) {
       pending.reject(new ZLinkConfigurationException('ZLink async submit queue is full.'));
       return pending.promise;
     }
@@ -112,12 +114,32 @@ export class ZLinkAsyncSubmitter {
     if (this.disposed) {
       return;
     }
-    while (this.queue.length > 0) {
-      const pending = this.queue[0];
+    while (this.queueOffset < this.queue.length) {
+      const pending = this.queue[this.queueOffset];
       if (!pending.trySubmit()) {
         return;
       }
-      this.queue.shift();
+      this.queueOffset += 1;
+    }
+    this.compactQueue();
+  }
+
+  private pendingQueueLength(): number {
+    return this.queue.length - this.queueOffset;
+  }
+
+  private compactQueue(): void {
+    if (this.queueOffset === 0) {
+      return;
+    }
+    if (this.queueOffset === this.queue.length) {
+      this.queue.length = 0;
+      this.queueOffset = 0;
+      return;
+    }
+    if (this.queueOffset >= 64 && this.queueOffset * 2 >= this.queue.length) {
+      this.queue.splice(0, this.queueOffset);
+      this.queueOffset = 0;
     }
   }
 }

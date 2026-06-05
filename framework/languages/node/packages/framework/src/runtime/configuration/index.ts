@@ -398,11 +398,11 @@ class DefaultRouteChannelBuilder implements ZLinkRouteChannelBuilder {
   constructor(private readonly routeChannel: MutableRouteChannelOptions) {}
 
   router(): ChannelServerCapabilityBuilder {
-    return new DefaultRouteBindCapabilityBuilder(this.routeChannel);
+    return new DefaultBindCapabilityBuilder(this.routeChannel);
   }
 
   dealer(): ChannelClientCapabilityBuilder {
-    return new DefaultRouteConnectionCapabilityBuilder(this.routeChannel);
+    return new DefaultConnectionCapabilityBuilder(this.routeChannel);
   }
 }
 
@@ -410,11 +410,11 @@ class DefaultRouteMeshChannelBuilder implements ZLinkRouteMeshChannelBuilder {
   constructor(private readonly routeMesh: MutableRouteMeshChannelOptions) {}
 
   router(): ChannelServerCapabilityBuilder {
-    return new DefaultRouteBindCapabilityBuilder(this.routeMesh);
+    return new DefaultBindCapabilityBuilder(this.routeMesh);
   }
 
   dealer(): ChannelClientCapabilityBuilder {
-    return new DefaultRouteConnectionCapabilityBuilder(this.routeMesh);
+    return new DefaultConnectionCapabilityBuilder(this.routeMesh);
   }
 }
 
@@ -562,25 +562,6 @@ class DefaultConnectionCapabilityBuilder implements
   SpotChannelClientCapabilityBuilder,
   SpotPublisherClientCapabilityBuilder,
   ZLinkSpotRouteChannelAcceptanceBuilder {
-  constructor(private readonly capability: { manualConnections?: string[] }) {}
-
-  connect(endpoint: string): this {
-    this.capability.manualConnections ??= [];
-    this.capability.manualConnections.push(endpoint);
-    return this;
-  }
-}
-
-class DefaultRouteBindCapabilityBuilder implements ChannelServerCapabilityBuilder {
-  constructor(private readonly capability: { bind?: string }) {}
-
-  bind(endpoint: string): this {
-    this.capability.bind = endpoint;
-    return this;
-  }
-}
-
-class DefaultRouteConnectionCapabilityBuilder implements ChannelClientCapabilityBuilder {
   constructor(private readonly capability: { manualConnections?: string[] }) {}
 
   connect(endpoint: string): this {
@@ -862,9 +843,7 @@ function validateChannelCapabilities(
     );
     if (channel.routeMesh !== undefined) {
       requireEndpoint(`channel '${channelName}' route mesh`, channel.routeMesh.bind);
-      if ((channel.routeMesh.manualConnections ?? []).some((endpoint) => endpoint.trim().length === 0)) {
-        throw new ZLinkConfigurationException(`channel '${channelName}' route mesh manual connection endpoint must not be empty.`);
-      }
+      validateManualConnections(`channel '${channelName}' route mesh`, channel.routeMesh.manualConnections);
     }
   }
 }
@@ -976,9 +955,7 @@ function validateSpotNodeCapability(
   if (capability.bind !== undefined) {
     requireEndpoint(capabilityName, capability.bind);
   }
-  if ((capability.manualConnections ?? []).some((endpoint) => endpoint.trim().length === 0)) {
-    throw new ZLinkConfigurationException(`${capabilityName} manual connection endpoint must not be empty.`);
-  }
+  validateManualConnections(capabilityName, capability.manualConnections);
   if (capability.routingId !== undefined && (capability.routingId.trim().length === 0 || capability.routingId.trim() !== capability.routingId)) {
     throw new ZLinkConfigurationException(`${capabilityName} routingId must not be empty or padded.`);
   }
@@ -1059,9 +1036,7 @@ function requirePeerSource(
   manualConnections: readonly string[] | undefined,
   discoveryConfigured: boolean
 ): void {
-  if ((manualConnections ?? []).some((endpoint) => endpoint.trim().length === 0)) {
-    throw new ZLinkConfigurationException(`${capabilityName} manual connection endpoint must not be empty.`);
-  }
+  validateManualConnections(capabilityName, manualConnections);
   if ((manualConnections ?? []).length > 0 || discoveryConfigured) {
     return;
   }

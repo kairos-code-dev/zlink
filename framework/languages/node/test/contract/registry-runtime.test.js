@@ -1,11 +1,14 @@
 const assert = require('node:assert/strict');
-const net = require('node:net');
 const test = require('node:test');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 
 const framework = require('../../packages/framework/dist');
 const nestjs = require('../../packages/nestjs/dist');
+const {
+  providerTokens,
+  reserveTcpEndpoint
+} = require('./helpers/nestjs-test-utils');
 
 test('registry runtime applies dotnet defaults and supports lazy in-process query startup', async () => {
   const calls = [];
@@ -203,23 +206,6 @@ test('codec registry builder tracks dotnet named codecs and custom serializers',
   ]);
   assert.equal(builder.registeredSerializers.get('application/x-test'), serializer);
 });
-
-function providerTokens(module) {
-  return new Set(module.providers.map((provider) => provider.provide));
-}
-
-async function reserveTcpEndpoint() {
-  const server = net.createServer();
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const { port } = server.address();
-  await new Promise((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
-  });
-  return `tcp://127.0.0.1:${port}`;
-}
 
 function fakeRegistryBackend(calls) {
   return {

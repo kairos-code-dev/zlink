@@ -1,4 +1,10 @@
 const { createZLinkNestRuntime, nestjs } = require('./nestjs-provider-runtime');
+const {
+  closeNestRuntime,
+  decodePayload,
+  retry,
+  waitForShutdown
+} = require('./runtime-common');
 
 function createRouteOptions({ endpoint, routingId, peers = [], handlers = [] }) {
   return {
@@ -56,45 +62,4 @@ async function createRouteClient({ endpoint, routingId, peers }) {
   };
 }
 
-async function retry(action) {
-  let lastError;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      return await action();
-    } catch (error) {
-      lastError = error;
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-  }
-  throw lastError;
-}
-
-function waitForShutdown() {
-  return new Promise((resolve) => {
-    process.once('SIGINT', resolve);
-    process.once('SIGTERM', resolve);
-  });
-}
-
 module.exports = { createRouteClient, startRouteServer };
-
-function decodePayload(payload) {
-  if (Buffer.isBuffer(payload) || payload instanceof Uint8Array) {
-    return JSON.parse(Buffer.from(payload).toString());
-  }
-  if (typeof payload === 'string') {
-    return JSON.parse(payload);
-  }
-  return payload;
-}
-
-async function closeNestRuntime(container) {
-  try {
-    await container.close();
-  } catch (error) {
-    if (error?.name === 'CloseError' && (error?.code === 0 || error?.code === 401)) {
-      return;
-    }
-    throw error;
-  }
-}

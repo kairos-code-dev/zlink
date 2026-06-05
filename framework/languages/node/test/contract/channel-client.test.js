@@ -6,6 +6,7 @@ const { once } = require('node:events');
 const zlink = require('../../../../../bindings/node/dist');
 const framework = require('../../packages/framework/dist');
 const nestjs = require('../../packages/nestjs/dist');
+const { resolveModuleProviders } = require('./helpers/nestjs-test-utils');
 
 test('ZLinkChannelClient rejects calls to channels without client capability', async () => {
   const client = new framework.DefaultZLinkChannelClient(framework.createFrameworkRegistration());
@@ -1110,41 +1111,4 @@ function fakeMessagePart(part) {
     },
     close() {}
   };
-}
-
-async function resolveModuleProviders(module, requestedTokens) {
-  const values = new Map();
-  const providers = new Map(module.providers.map((provider) => [provider.provide, provider]));
-
-  for (const token of requestedTokens) {
-    await resolveToken(token);
-  }
-
-  return values;
-
-  async function resolveToken(token) {
-    if (values.has(token)) {
-      return values.get(token);
-    }
-    const provider = providers.get(token);
-    if (provider === undefined) {
-      throw new Error(`Could not find provider: ${String(token)}`);
-    }
-    if ('useValue' in provider && provider.useValue !== undefined) {
-      values.set(provider.provide, provider.useValue);
-      return provider.useValue;
-    }
-
-    if ('useFactory' in provider && provider.useFactory !== undefined) {
-      const dependencies = [];
-      for (const dependency of provider.inject ?? []) {
-        dependencies.push(await resolveToken(dependency));
-      }
-      const value = await provider.useFactory(...dependencies);
-      values.set(provider.provide, value);
-      return value;
-    }
-
-    throw new Error(`Provider ${String(token)} has no supported value or factory.`);
-  }
 }

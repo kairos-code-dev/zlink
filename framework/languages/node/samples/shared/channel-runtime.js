@@ -1,4 +1,10 @@
 const { createZLinkNestRuntime, nestjs } = require('./nestjs-provider-runtime');
+const {
+  closeNestRuntime,
+  decodePayload,
+  retry: retryOperation,
+  waitForShutdown
+} = require('./runtime-common');
 
 function createChannelServerOptions({ endpoint, channelName, handlers = [], handlerGroups }) {
   const exposedHandlers = exposeHandlerGroups(handlers, handlerGroups);
@@ -44,7 +50,7 @@ async function startChannelServer({ endpoint, channelName, handlers, handlerGrou
     providers
   );
   process.stdout.write(`${JSON.stringify({ event: 'ready', endpoint, channelName })}\n`);
-  await waitForShutdown();
+  await waitForShutdown({ keepAlive: true });
   await closeNestRuntime(container);
 }
 
@@ -96,7 +102,7 @@ function retryableRequestCall(createCall) {
       return this;
     },
     async submit(signal) {
-      return await retry(() => {
+      return await retryOperation(() => {
         const call = createCall();
         if (packetNameValue !== undefined) {
           call.packetName(packetNameValue);
@@ -105,35 +111,9 @@ function retryableRequestCall(createCall) {
           call.timeout(timeoutMs);
         }
         return call.submit(signal);
-      });
+      }, { maxAttempts: 20, shouldRetry: isTransientConnectError });
     }
   };
-}
-
-async function retry(action) {
-  let lastError;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    try {
-      return await action();
-    } catch (error) {
-      if (!isTransientConnectError(error)) {
-        throw error;
-      }
-      lastError = error;
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-  }
-  throw lastError;
-}
-
-function decodePayload(payload) {
-  if (Buffer.isBuffer(payload) || payload instanceof Uint8Array) {
-    return JSON.parse(Buffer.from(payload).toString());
-  }
-  if (typeof payload === 'string') {
-    return JSON.parse(payload);
-  }
-  return payload;
 }
 
 function isTransientConnectError(error) {
@@ -141,29 +121,6 @@ function isTransientConnectError(error) {
     (error.code === 2 && /Host unreachable/.test(error.message)) ||
     /ZLink async submit timed out/.test(error.message)
   );
-}
-
-function waitForShutdown() {
-  return new Promise((resolve) => {
-    const keepAlive = setInterval(() => {}, 60000);
-    const stop = () => {
-      clearInterval(keepAlive);
-      resolve();
-    };
-    process.once('SIGINT', stop);
-    process.once('SIGTERM', stop);
-  });
-}
-
-async function closeNestRuntime(container) {
-  try {
-    await container.close();
-  } catch (error) {
-    if (error?.name === 'CloseError' && (error?.code === 0 || error?.code === 401)) {
-      return;
-    }
-    throw error;
-  }
 }
 
 module.exports = { createChannelClient, startChannelServer };

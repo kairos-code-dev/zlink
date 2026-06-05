@@ -29,6 +29,9 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.ZLinkHandlerFilter;
+import systems.zlink.framework.ZLinkInvocationContext;
+import systems.zlink.framework.ZLinkNext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
@@ -307,6 +310,28 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
             assertEquals(new ProfileReply("profile:42:decorated"), reply);
             assertTrue(context.getBean(ZLinkFrameworkLifecycle.class).isRunning());
+        }
+    }
+
+    @Test
+    void handlerFiltersAreCreatedThroughSpringDependencyInjection() {
+        String endpoint = "inproc://zlink-spring-filtered-" + UUID.randomUUID();
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean("filteredEndpoint", String.class, () -> endpoint);
+            context.register(
+                FilteredHandlerConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            ProfileReply reply = context.getBean(ZLinkClient.class)
+                .requestToChannel("profile", new ProfileRequest("42"))
+                .packetName("FilteredProfile")
+                .submitAsync(ProfileReply.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(new ProfileReply("filter:profile:42"), reply);
         }
     }
 
@@ -634,6 +659,42 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
+    @Configuration
+    static class FilteredHandlerConfig {
+        @Bean
+        HandlerDependency handlerDependency() {
+            return new HandlerDependency("profile");
+        }
+
+        @Bean
+        FilterDependency filterDependency() {
+            return new FilterDependency("filter");
+        }
+
+        @Bean
+        SpringInjectedReplyFilter springInjectedReplyFilter(FilterDependency dependency) {
+            return new SpringInjectedReplyFilter(dependency);
+        }
+
+        @Bean
+        ZLinkFrameworkOptionsCustomizer filteredHandlerCustomizer(String filteredEndpoint) {
+            return options -> {
+                options.codecs().addJson();
+                options.useFilter(SpringInjectedReplyFilter.class);
+                options.addClientServerChannel("profile", channel -> {
+                    channel.enableServer(server -> server.bind(filteredEndpoint));
+                    channel.enableClient(client -> client.useManualConnections(
+                        endpoints -> endpoints.connect(filteredEndpoint)));
+                    channel.addRequestHandler(
+                        InjectedProfileRequestHandler.class,
+                        ProfileRequest.class,
+                        ProfileReply.class,
+                        "FilteredProfile");
+                });
+            };
+        }
+    }
+
     public static final class GameSpot implements ZLinkSpot {
         private final ZLinkSpotContext context;
 
@@ -853,6 +914,18 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
+    static final class FilterDependency {
+        private final String prefix;
+
+        FilterDependency(String prefix) {
+            this.prefix = prefix;
+        }
+
+        String decorate(ProfileReply reply) {
+            return prefix + ":" + reply.value();
+        }
+    }
+
     public static final class InjectedRequestHandler
         implements systems.zlink.framework.channels.ZLinkRequestHandler<String, String> {
         private final HandlerDependency dependency;
@@ -866,6 +939,42 @@ final class ZLinkFrameworkAutoConfigurationTest {
             String request,
             systems.zlink.framework.channels.ZLinkRequestContext context) {
             return CompletableFuture.completedFuture(dependency.format(request));
+        }
+    }
+
+    public static final class InjectedProfileRequestHandler
+        implements systems.zlink.framework.channels.ZLinkRequestHandler<ProfileRequest, ProfileReply> {
+        private final HandlerDependency dependency;
+
+        public InjectedProfileRequestHandler(HandlerDependency dependency) {
+            this.dependency = dependency;
+        }
+
+        @Override
+        public CompletionStage<ProfileReply> handleAsync(
+            ProfileRequest request,
+            systems.zlink.framework.channels.ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(
+                new ProfileReply(dependency.format(request.profileId())));
+        }
+    }
+
+    public static final class SpringInjectedReplyFilter implements ZLinkHandlerFilter {
+        private final FilterDependency dependency;
+
+        public SpringInjectedReplyFilter(FilterDependency dependency) {
+            this.dependency = dependency;
+        }
+
+        @Override
+        public <T> CompletionStage<T> invokeAsync(
+            ZLinkInvocationContext context,
+            ZLinkNext<T> next) {
+            return next.invokeAsync().thenApply(reply -> {
+                @SuppressWarnings("unchecked")
+                T decorated = (T) new ProfileReply(dependency.decorate((ProfileReply) reply));
+                return decorated;
+            });
         }
     }
 

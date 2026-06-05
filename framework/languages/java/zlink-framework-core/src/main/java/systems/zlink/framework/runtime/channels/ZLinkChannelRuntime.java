@@ -25,6 +25,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
@@ -45,6 +46,7 @@ import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
+import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
@@ -86,6 +88,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private final Map<String, ZLinkAsyncSerialQueue> routeSendDispatchQueues = new HashMap<>();
     private final ZLinkMessageSerializer serializer;
     private final ZLinkHandlerFactory handlerFactory;
+    private final List<Class<? extends ZLinkHandlerFilter>> filterTypes;
     private final Duration defaultTimeout;
     private final ZLinkBackendAdapterFactory backendFactory;
     private final ZLinkBackendAdapterOptions adapterOptions;
@@ -128,6 +131,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkHandlerFactory handlerFactory) {
         this.serializer = Objects.requireNonNull(serializer, "serializer");
         this.handlerFactory = Objects.requireNonNull(handlerFactory, "handlerFactory");
+        this.filterTypes = List.copyOf(registration.filters());
         this.defaultTimeout = registration.defaultTimeout();
         this.backendFactory = backendFactory;
         this.adapterOptions = adapterOptions;
@@ -777,18 +781,31 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ChannelSendHandlerRegistration registration,
         Message payload) {
         try {
+            Object message = serializer.deserialize(payload, registration.messageType());
+            ZLinkSendContext context = new DefaultSendContext(registration.packetName());
+            return invokeWithFilters(context, message, () ->
+                invokeSendHandlerCore(registration, message, context));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private CompletionStage<Void> invokeSendHandlerCore(
+        ChannelSendHandlerRegistration registration,
+        Object message,
+        ZLinkSendContext context) {
+        try {
             if (registration.handlerMethod() != null) {
-                Object message = serializer.deserialize(payload, registration.messageType());
                 return invokeVoidMethodHandler(
                     registration.handlerType(),
                     registration.handlerMethod(),
                     message,
-                    new DefaultSendContext(registration.packetName()));
+                    context);
             }
             ZLinkSendHandler handler =
                 (ZLinkSendHandler) handlerFactory.create(registration.handlerType());
-            Object message = serializer.deserialize(payload, registration.messageType());
-            return handler.handleAsync(message, new DefaultSendContext(registration.packetName()));
+            return handler.handleAsync(message, context);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -799,20 +816,32 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ChannelRequestHandlerRegistration registration,
         Message payload) {
         try {
+            Object request = serializer.deserialize(payload, registration.requestType());
+            ZLinkRequestContext context = new DefaultRequestContext(registration.packetName());
+            return invokeWithFilters(context, request, () ->
+                invokeRequestHandlerCore(registration, request, context))
+                .thenApply(serializer::serialize);
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private CompletionStage<Object> invokeRequestHandlerCore(
+        ChannelRequestHandlerRegistration registration,
+        Object request,
+        ZLinkRequestContext context) {
+        try {
             if (registration.handlerMethod() != null) {
-                Object request = serializer.deserialize(payload, registration.requestType());
                 return invokeReplyMethodHandler(
                     registration.handlerType(),
                     registration.handlerMethod(),
                     request,
-                    new DefaultRequestContext(registration.packetName()))
-                    .thenApply(serializer::serialize);
+                    context);
             }
             ZLinkRequestHandler handler =
                 (ZLinkRequestHandler) handlerFactory.create(registration.handlerType());
-            Object request = serializer.deserialize(payload, registration.requestType());
-            return handler.handleAsync(request, new DefaultRequestContext(registration.packetName()))
-                .thenApply(serializer::serialize);
+            return handler.handleAsync(request, context);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -824,18 +853,32 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         String topic,
         Message payload) {
         try {
+            Object message = serializer.deserialize(payload, registration.messageType());
+            ZLinkPublishContext context =
+                new DefaultPublishContext(registration.packetName(), topic);
+            return invokeWithFilters(context, message, () ->
+                invokePublishHandlerCore(registration, message, context));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private CompletionStage<Void> invokePublishHandlerCore(
+        ChannelPublishHandlerRegistration registration,
+        Object message,
+        ZLinkPublishContext context) {
+        try {
             if (registration.handlerMethod() != null) {
-                Object message = serializer.deserialize(payload, registration.messageType());
                 return invokeVoidMethodHandler(
                     registration.handlerType(),
                     registration.handlerMethod(),
                     message,
-                    new DefaultPublishContext(registration.packetName(), topic));
+                    context);
             }
             ZLinkPublishHandler handler =
                 (ZLinkPublishHandler) handlerFactory.create(registration.handlerType());
-            Object message = serializer.deserialize(payload, registration.messageType());
-            return handler.handleAsync(message, new DefaultPublishContext(registration.packetName(), topic));
+            return handler.handleAsync(message, context);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -906,12 +949,25 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         RoutingId sourceRoutingId,
         Message payload) {
         try {
+            Object message = serializer.deserialize(payload, registration.messageType());
+            ZLinkRouteSendContext context =
+                new DefaultRouteSendContext(registration.packetName(), sourceRoutingId);
+            return invokeWithFilters(context, message, () ->
+                invokeRouteSendHandlerCore(registration, message, context));
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private CompletionStage<Void> invokeRouteSendHandlerCore(
+        ChannelRouteSendHandlerRegistration registration,
+        Object message,
+        ZLinkRouteSendContext context) {
+        try {
             ZLinkRouteSendHandler handler =
                 (ZLinkRouteSendHandler) handlerFactory.create(registration.handlerType());
-            Object message = serializer.deserialize(payload, registration.messageType());
-            return handler.handleAsync(
-                message,
-                new DefaultRouteSendContext(registration.packetName(), sourceRoutingId));
+            return handler.handleAsync(message, context);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -923,16 +979,44 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         RoutingId sourceRoutingId,
         Message payload) {
         try {
-            ZLinkRouteRequestHandler handler =
-                (ZLinkRouteRequestHandler) handlerFactory.create(registration.handlerType());
             Object request = serializer.deserialize(payload, registration.requestType());
-            return handler.handleAsync(
-                    request,
-                    new DefaultRouteRequestContext(registration.packetName(), sourceRoutingId))
+            ZLinkRouteRequestContext context =
+                new DefaultRouteRequestContext(registration.packetName(), sourceRoutingId);
+            return invokeWithFilters(context, request, () ->
+                invokeRouteRequestHandlerCore(registration, request, context))
                 .thenApply(serializer::serialize);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private CompletionStage<Object> invokeRouteRequestHandlerCore(
+        ChannelRouteRequestHandlerRegistration registration,
+        Object request,
+        ZLinkRouteRequestContext context) {
+        try {
+            ZLinkRouteRequestHandler handler =
+                (ZLinkRouteRequestHandler) handlerFactory.create(registration.handlerType());
+            return handler.handleAsync(request, context);
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    private <T> CompletionStage<T> invokeWithFilters(
+        ZLinkHandlerContext context,
+        Object request,
+        java.util.function.Supplier<CompletionStage<T>> terminal) {
+        if (filterTypes.isEmpty()) {
+            return terminal.get();
+        }
+        return ZLinkFilterPipeline.invokeAsync(
+            filterTypes,
+            handlerFactory,
+            context,
+            request,
+            terminal);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

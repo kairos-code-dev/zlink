@@ -20,6 +20,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.ZLinkHandlerFilter;
+import systems.zlink.framework.ZLinkInvocationContext;
+import systems.zlink.framework.ZLinkNext;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 import systems.zlink.framework.channels.ZLinkPublishContext;
@@ -51,6 +54,8 @@ final class ChannelMessagingTest {
     private static final AtomicReference<String> ROUTE_SEND_MESSAGE = new AtomicReference<>();
     private static final AtomicReference<String> ROUTE_SEND_PACKET = new AtomicReference<>();
     private static final AtomicReference<RoutingId> ROUTE_SEND_SOURCE = new AtomicReference<>();
+    private static final AtomicReference<String> FILTER_REQUEST = new AtomicReference<>();
+    private static final AtomicReference<String> FILTER_PACKET = new AtomicReference<>();
 
     @Test
     void manualClientServer_requestReplySucceeds() {
@@ -73,6 +78,39 @@ final class ChannelMessagingTest {
                 .join();
 
             assertEquals("hello", reply);
+        }
+    }
+
+    @Test
+    void handlerFiltersWrapChannelRequestDispatch() {
+        String endpoint = "inproc://zlink-java-filtered-profile-" + UUID.randomUUID();
+        FILTER_REQUEST.set(null);
+        FILTER_PACKET.set(null);
+
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.useFilter(ReplyDecoratingFilter.class);
+        options.addClientServerChannel("profile", channel -> {
+            channel.enableServer(server -> server.bind(endpoint));
+            channel.enableClient(client ->
+                client.useManualConnections(endpoints -> endpoints.connect(endpoint)));
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
+        });
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+            String reply = runtime.client()
+                .requestToChannel("profile", "hello")
+                .packetName("Echo")
+                .submitAsync(String.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals("filtered:hello", reply);
+            assertEquals("hello", FILTER_REQUEST.get());
+            assertEquals("Echo", FILTER_PACKET.get());
+        } finally {
+            FILTER_REQUEST.set(null);
+            FILTER_PACKET.set(null);
         }
     }
 
@@ -559,6 +597,21 @@ final class ChannelMessagingTest {
         @Override
         public CompletionStage<String> handleAsync(String request, ZLinkRequestContext context) {
             return CompletableFuture.completedFuture(request);
+        }
+    }
+
+    public static final class ReplyDecoratingFilter implements ZLinkHandlerFilter {
+        @Override
+        public <T> CompletionStage<T> invokeAsync(
+            ZLinkInvocationContext context,
+            ZLinkNext<T> next) {
+            FILTER_REQUEST.set((String) context.request().orElse(""));
+            FILTER_PACKET.set(context.packetName().orElse(""));
+            return next.invokeAsync().thenApply(reply -> {
+                @SuppressWarnings("unchecked")
+                T decorated = (T) ("filtered:" + reply);
+                return decorated;
+            });
         }
     }
 

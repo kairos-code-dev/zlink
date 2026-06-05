@@ -1,6 +1,7 @@
 package systems.zlink.framework.spring;
 
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -11,13 +12,15 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.registry.ZLinkRegistryQuery;
 import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
-import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.runtime.registry.ZLinkRemoteRegistryQueryClient;
 
 @AutoConfiguration
@@ -48,6 +51,18 @@ public class ZLinkFrameworkAutoConfiguration {
     @ConditionalOnMissingBean
     public ZLinkRuntimeEventDispatcher zlinkRuntimeEventDispatcher() {
         return new ZLinkRuntimeEventDispatcher();
+    }
+
+    @Bean
+    @ConditionalOnBean(ZLinkMonitoringOptionsCustomizer.class)
+    @ConditionalOnMissingBean
+    public DefaultZLinkMonitoringOptions zlinkMonitoringOptions(
+        List<ZLinkMonitoringOptionsCustomizer> customizers) {
+        DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
+        for (ZLinkMonitoringOptionsCustomizer customizer : customizers) {
+            customizer.customize(options);
+        }
+        return options;
     }
 
     @Bean
@@ -104,6 +119,25 @@ public class ZLinkFrameworkAutoConfiguration {
         return ZLinkRemoteRegistryQueryClient.connect(
             options.endpoint(),
             backendAdapterFactory);
+    }
+
+    @Bean
+    @ConditionalOnBean(DefaultZLinkMonitoringOptions.class)
+    @ConditionalOnMissingBean
+    public ZLinkMonitoringLifecycle zlinkMonitoringLifecycle(
+        DefaultZLinkMonitoringOptions options,
+        ZLinkBackendAdapterFactory backendAdapterFactory,
+        ZLinkRuntimeEventDispatcher dispatcher,
+        ObjectProvider<ZLinkFrameworkLifecycle> frameworkLifecycle,
+        ObjectProvider<ZLinkRegistryLifecycle> registryLifecycle,
+        ObjectProvider<ZLinkRuntimeEventHandler<?>> eventHandlers) {
+        return new ZLinkMonitoringLifecycle(
+            options,
+            backendAdapterFactory,
+            dispatcher,
+            frameworkLifecycle,
+            registryLifecycle,
+            eventHandlers.orderedStream().toList());
     }
 
     @Bean

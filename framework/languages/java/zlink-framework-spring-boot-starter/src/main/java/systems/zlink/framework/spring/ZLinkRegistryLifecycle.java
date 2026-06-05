@@ -1,7 +1,7 @@
 package systems.zlink.framework.spring;
 
-import java.util.Objects;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -14,6 +14,7 @@ import systems.zlink.framework.registry.ZLinkRegistryStatus;
 import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
 import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRegistry;
 import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 
 public final class ZLinkRegistryLifecycle implements SmartLifecycle, ZLinkRegistryQuery {
@@ -99,6 +100,10 @@ public final class ZLinkRegistryLifecycle implements SmartLifecycle, ZLinkRegist
     @Override
     public CompletionStage<List<ZLinkMemberPeerEntry>> memberPeersAsync(String channelName) {
         return requireRuntime().memberPeersAsync(channelName);
+    }
+
+    ZLinkBackendRegistry monitoringRegistrySource() {
+        return requireRuntime().monitoringRegistrySource();
     }
 
     private synchronized ZLinkRegistryRuntime requireRuntime() {

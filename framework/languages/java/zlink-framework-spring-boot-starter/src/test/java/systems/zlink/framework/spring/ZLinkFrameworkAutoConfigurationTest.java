@@ -5,10 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -27,6 +30,9 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
+import systems.zlink.framework.monitoring.ZLinkSocketEvent;
+import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -305,6 +311,38 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
+    void monitoringCustomizerStartsLifecycleAndRegistersRuntimeEventHandlers() {
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.register(MonitoringConfig.class, ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            assertTrue(context.getBean(ZLinkMonitoringLifecycle.class).isRunning());
+            assertTrue(backendFactory.calls().contains("factory.monitoring"));
+            assertTrue(backendFactory.calls().contains("monitoring.open.router"));
+            assertTrue(backendFactory.calls().contains("socketMonitor.onEvent"));
+
+            context.getBean(ZLinkRuntimeEventDispatcher.class).publish(new ZLinkSocketEvent(
+                "profile",
+                Instant.EPOCH,
+                ZLinkSocketEventKind.CONNECTED,
+                Optional.empty(),
+                "local",
+                "remote",
+                Optional.empty()));
+
+            assertEquals(1, context.getBean(AtomicInteger.class).get());
+        }
+
+        List<String> calls = backendFactory.calls();
+        assertTrue(calls.indexOf("close.socketMonitor") < calls.indexOf("close.router"));
+        assertTrue(calls.indexOf("close.socketMonitor") < calls.indexOf("close.context"));
+    }
+
+    @Test
     void autoConfigurationAppliesCustomizersBeforeRuntimeStarts() {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -344,6 +382,35 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 channel.enableClient(client ->
                     client.useManualConnections(endpoints ->
                         endpoints.connect("inproc://profile-server"))));
+        }
+    }
+
+    @Configuration
+    static class MonitoringConfig {
+        @Bean
+        AtomicInteger socketEventCount() {
+            return new AtomicInteger();
+        }
+
+        @Bean
+        SocketEventCounter socketEventCounter(AtomicInteger socketEventCount) {
+            return new SocketEventCounter(socketEventCount);
+        }
+
+        @Bean
+        ZLinkFrameworkOptionsCustomizer monitoredServerChannelCustomizer() {
+            return options -> options.addRouteMeshChannel("profile", channel -> {
+                channel.bind("inproc://profile-monitor");
+                channel.useManualConnections(endpoints ->
+                    endpoints.connect("inproc://profile-monitor"));
+            });
+        }
+
+        @Bean
+        ZLinkMonitoringOptionsCustomizer socketMonitoringCustomizer() {
+            return options -> options.addSocketEvents(
+                "profile",
+                ZLinkSocketEventKind.CONNECTED);
         }
     }
 
@@ -571,6 +638,21 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 actorId,
                 context,
                 dependency.format(actorId)));
+        }
+    }
+
+    public static final class SocketEventCounter
+        implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
+        private final AtomicInteger count;
+
+        SocketEventCounter(AtomicInteger count) {
+            this.count = count;
+        }
+
+        @Override
+        public CompletionStage<Void> handleAsync(ZLinkSocketEvent event) {
+            count.incrementAndGet();
+            return CompletableFuture.completedFuture(null);
         }
     }
 

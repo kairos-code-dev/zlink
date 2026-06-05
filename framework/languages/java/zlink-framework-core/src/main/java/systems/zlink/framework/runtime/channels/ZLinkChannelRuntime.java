@@ -295,6 +295,16 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         this.spotRelayIngress = Objects.requireNonNull(spotRelayIngress, "spotRelayIngress");
     }
 
+    public Map<String, ZLinkBackendSocket> monitoringSocketSources() {
+        Map<String, ZLinkBackendSocket> sources = new HashMap<>();
+        sources.putAll(clients);
+        sources.putAll(servers);
+        sources.putAll(publishers);
+        sources.putAll(subscribers);
+        sources.putAll(routeRouters);
+        return Map.copyOf(sources);
+    }
+
     public void registerRouteInternalRequestHandler(
         String packetName,
         RouteInternalRequestHandler handler) {

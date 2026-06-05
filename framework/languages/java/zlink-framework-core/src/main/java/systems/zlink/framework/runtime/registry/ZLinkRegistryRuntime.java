@@ -131,6 +131,10 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
         }
     }
 
+    public ZLinkBackendRegistry monitoringRegistrySource() {
+        return registry;
+    }
+
     private static ZLinkBackendRegistryQueryFilter toBackendFilter(
         ZLinkRegistryServiceSummaryFilter filter) {
         ZLinkRegistryServiceSummaryFilter resolved =

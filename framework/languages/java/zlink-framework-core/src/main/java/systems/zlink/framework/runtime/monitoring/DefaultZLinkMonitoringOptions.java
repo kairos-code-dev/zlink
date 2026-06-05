@@ -43,6 +43,20 @@ public final class DefaultZLinkMonitoringOptions implements ZLinkMonitoringOptio
         return Map.copyOf(spotSources);
     }
 
+    public boolean hasSources() {
+        return !socketSources.isEmpty()
+            || !registrySources.isEmpty()
+            || !spotSources.isEmpty();
+    }
+
+    public Duration pollInterval() {
+        return java.util.stream.Stream.concat(
+                registrySources.values().stream(),
+                spotSources.values().stream())
+            .min(Duration::compareTo)
+            .orElse(Duration.ofSeconds(1));
+    }
+
     private static String requireName(String value, String label) {
         if (value == null || value.isBlank()) {
             throw new ZLinkConfigurationException(label + " name is required");

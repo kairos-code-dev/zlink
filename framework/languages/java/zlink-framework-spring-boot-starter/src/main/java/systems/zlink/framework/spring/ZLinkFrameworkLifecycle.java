@@ -1,5 +1,6 @@
 package systems.zlink.framework.spring;
 
+import java.util.Map;
 import java.util.Objects;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.framework.actors.ZLinkActorManager;
@@ -13,6 +14,8 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -22,6 +25,8 @@ import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 
 public final class ZLinkFrameworkLifecycle
     implements SmartLifecycle, ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient {
+    public static final int PHASE = 0;
+
     private final DefaultZLinkFrameworkOptions options;
     private final ZLinkBackendAdapterFactory backendAdapterFactory;
     private final ZLinkHandlerFactory handlerFactory;
@@ -82,7 +87,7 @@ public final class ZLinkFrameworkLifecycle
 
     @Override
     public int getPhase() {
-        return 0;
+        return PHASE;
     }
 
     @Override
@@ -143,6 +148,14 @@ public final class ZLinkFrameworkLifecycle
 
     ZLinkActorManager actorManager() {
         return requireRuntime().actorManager();
+    }
+
+    Map<String, ZLinkBackendSocket> monitoringSocketSources() {
+        return requireRuntime().monitoringSocketSources();
+    }
+
+    Map<String, ZLinkBackendSpotNode> monitoringSpotSources() {
+        return requireRuntime().monitoringSpotSources();
     }
 
     private synchronized ZLinkFrameworkRuntime requireRuntime() {

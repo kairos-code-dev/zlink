@@ -171,6 +171,14 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
             spotRid);
     }
 
+    public java.util.Map<String, ZLinkBackendSocket> monitoringSocketSources() {
+        return channels.monitoringSocketSources();
+    }
+
+    public java.util.Map<String, ZLinkBackendSpotNode> monitoringSpotSources() {
+        return spots == null ? java.util.Map.of() : spots.nodesByName();
+    }
+
     public ZLinkActorManager actorManager() {
         if (actors == null) {
             throw new ZLinkConfigurationException("Actor runtime is not configured");

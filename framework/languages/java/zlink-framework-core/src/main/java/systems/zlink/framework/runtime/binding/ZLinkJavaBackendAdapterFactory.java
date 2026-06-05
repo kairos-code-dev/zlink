@@ -824,7 +824,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         } catch (ZlinkSubmitException ex) {
             throw new IllegalStateException(
                 "zlink request submit failed: result=" + ex.getResult()
-                    + ", errno=" + ex.getInternalErrno(), ex);
+                    + ", errno=" + ex.getNativeErrno(), ex);
         }
     }
 

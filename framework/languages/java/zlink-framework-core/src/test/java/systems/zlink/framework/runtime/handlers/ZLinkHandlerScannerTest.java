@@ -82,6 +82,21 @@ final class ZLinkHandlerScannerTest {
     }
 
     @Test
+    void scansAttributedHandlersWithDefaultParameterLikeDotnet() {
+        ZLinkScannedHandlerCatalog catalog =
+            ZLinkHandlerScanner.scan(Set.of(ZLinkHandlerScannerTest.class));
+
+        ZLinkScannedHandler handler = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == DefaultParameterAttributedHandler.class)
+            .findFirst()
+            .orElseThrow();
+
+        assertEquals(ZLinkScannedHandlerKind.REQUEST, handler.kind());
+        assertEquals(String.class, handler.messageType());
+        assertEquals("DefaultParameterRequest", handler.packetName());
+    }
+
+    @Test
     void scansRepeatableHandlerGroupsLikeDotnetAllowMultipleAttribute() {
         ZLinkScannedHandlerCatalog catalog =
             ZLinkHandlerScanner.scan(Set.of(ZLinkHandlerScannerTest.class));
@@ -139,6 +154,17 @@ final class ZLinkHandlerScannerTest {
         @ZLinkSend(packetName = "ContextSend")
         public CompletionStage<Void> handle(String request, ZLinkHandlerContext context) {
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class DefaultParameterAttributedHandler {
+        @ZLinkRequest(packetName = "DefaultParameterRequest")
+        public CompletionStage<String> handle(
+            String request,
+            Object defaultParameter,
+            ZLinkRequestContext context,
+            CancellationToken cancellationToken) {
+            return CompletableFuture.completedFuture(request);
         }
     }
 

@@ -420,9 +420,6 @@ public final class ZLinkHandlerScanner {
                 || parameters[index].isAssignableFrom(contextType)) {
                 continue;
             }
-            throw new ZLinkConfigurationException(
-                "handler method parameter must be a matching context or CancellationToken: "
-                    + handlerType.getName() + "." + method.getName());
         }
         return parameters[0];
     }

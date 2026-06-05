@@ -1292,7 +1292,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private static boolean isIdempotentConnectFailure(ZlinkConnectException ex) {
-        int errno = ex.getInternalErrno();
+        int errno = ex.getNativeErrno();
         return ex.getResult() == ConnectResult.BUSY
             || errno == 16
             || errno == 106

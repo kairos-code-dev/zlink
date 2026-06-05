@@ -441,7 +441,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         return request != null
             && (request.getResult() == RequestResult.CONFLICT
                 || request.getResult() == RequestResult.BUSY
-                || request.getInternalErrno() == 16);
+                || request.getNativeErrno() == 16);
     }
 
     private static boolean isRetriableBindFailure(Throwable error) {

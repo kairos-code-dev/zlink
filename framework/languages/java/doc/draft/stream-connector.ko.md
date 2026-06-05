@@ -323,12 +323,13 @@ suspend fun ZLinkStreamConnector.closeConnector()
 suspend fun ZLinkStreamSendCall.submit()
 suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload
 fun ZLinkStreamConnector.messages(packetName: String): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
+fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError>
 ```
 
 Kotlin wrapper는 Java connector와 다른 상태 전이나 buffering 정책을 만들지 않는다.
-`messages(...)`는 Java connector의 `on(...)` handler를 `callbackFlow`로 감싼다. 따라서
-manual dispatch mode에서는 Java와 마찬가지로 `dispatchAsync()`가 호출되어야 collector가
-메시지를 받는다.
+`messages(...)`와 `errors()`는 Java connector의 `on(...)`, `onErrorReceived(...)`
+handler를 `callbackFlow`로 감싼다. 따라서 manual dispatch mode에서는 Java와 마찬가지로
+`dispatchAsync()`가 호출되어야 collector가 메시지나 error event를 받는다.
 
 ## 13. 검증 기준
 

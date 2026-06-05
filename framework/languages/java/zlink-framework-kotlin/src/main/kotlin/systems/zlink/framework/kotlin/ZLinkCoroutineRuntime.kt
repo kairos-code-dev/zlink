@@ -25,6 +25,8 @@ import systems.zlink.framework.spots.ZLinkTimerTick
 import systems.zlink.stream.connector.ZLinkStreamConnectionState
 import systems.zlink.stream.connector.ZLinkStreamConnectionStateHandler
 import systems.zlink.stream.connector.ZLinkStreamDisconnectedHandler
+import systems.zlink.stream.connector.ZLinkStreamError
+import systems.zlink.stream.connector.ZLinkStreamErrorHandler
 import systems.zlink.stream.connector.ZLinkStreamMessage
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler
 
@@ -112,6 +114,15 @@ class ZLinkCoroutineRuntime @JvmOverloads constructor(
         ZLinkStreamConnectionStateHandler { state ->
             voidStage {
                 block(state)
+            }
+        }
+
+    fun streamErrorHandler(
+        block: suspend (ZLinkStreamError) -> Unit,
+    ): ZLinkStreamErrorHandler =
+        ZLinkStreamErrorHandler { error ->
+            voidStage {
+                block(error)
             }
         }
 

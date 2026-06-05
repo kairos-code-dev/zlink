@@ -11,7 +11,7 @@ fi
 
 cd "$ROOT_DIR"
 
-gradle build
+./gradlew build
 
 for sample in TicTacToe TicTacToe.SessionGateway Bingo StreamingClient Async; do
   "$SAMPLES_DIR/java/$sample/run_sample.sh"

@@ -133,13 +133,13 @@ PY
 }
 
 gradle_run() {
-  gradle --no-daemon "$@" --quiet
+  ../../gradlew --no-daemon "$@" --quiet
 }
 
 build_framework_jars() {
   (
     cd ../../..
-    gradle --no-daemon \
+    ./gradlew --no-daemon \
       :zlink-framework-core:jar \
       :zlink-framework-spring-boot-starter:jar \
       :zlink-stream-connector:jar \

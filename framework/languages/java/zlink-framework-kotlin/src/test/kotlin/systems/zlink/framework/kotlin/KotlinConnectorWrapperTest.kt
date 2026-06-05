@@ -36,6 +36,8 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
+import systems.zlink.stream.connector.ZLinkStreamError
+import systems.zlink.stream.connector.ZLinkStreamErrorCode
 
 final class KotlinConnectorWrapperTest {
     @Test
@@ -111,6 +113,30 @@ final class KotlinConnectorWrapperTest {
     }
 
     @Test
+    fun connectorErrorsFlowUsesJavaManualDispatchSemantics() = runBlocking {
+        TcpServer().use { server ->
+            ZLinkStreamConnectorFactory.create(options(server.endpoint())).use { connector ->
+                connector.connect()
+
+                val received = CompletableDeferred<ZLinkStreamError>()
+                val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+                    connector.errors().collect { error ->
+                        received.complete(error)
+                    }
+                }
+
+                sendErrorAndDispatchUntilReceived(server, connector, received)
+
+                val error = withTimeout(1_000) {
+                    received.await()
+                }
+                assertEquals(ZLinkStreamErrorCode.REMOTE_ERROR, error.code())
+                collector.cancel()
+            }
+        }
+    }
+
+    @Test
     fun frameworkSubmitAndRequestWrappersAwaitCompletionStage() = runBlocking {
         var submitted = false
 
@@ -144,6 +170,24 @@ final class KotlinConnectorWrapperTest {
                 "request/reply",
                 handler.handleAsync("request", requestContext()).toCompletableFuture().get(1, TimeUnit.SECONDS),
             )
+        }
+    }
+
+    @Test
+    fun coroutineRuntimeMapsSuspendStreamErrorHandlerToCompletionStage() {
+        ZLinkCoroutineRuntime().use { runtime ->
+            var observed: ZLinkStreamError? = null
+            val handler = runtime.streamErrorHandler { error ->
+                observed = error
+            }
+            val error = ZLinkStreamError(
+                ZLinkStreamErrorCode.REMOTE_ERROR,
+                "remote failed",
+            )
+
+            handler.handleAsync(error).toCompletableFuture().get(1, TimeUnit.SECONDS)
+
+            assertEquals(error, observed)
         }
     }
 
@@ -223,6 +267,32 @@ final class KotlinConnectorWrapperTest {
         throw AssertionError("flow message was not received within 5s")
     }
 
+    private suspend fun sendErrorAndDispatchUntilReceived(
+        server: TcpServer,
+        connector: ZLinkStreamConnector,
+        received: CompletableDeferred<*>,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            server.sendFrame(
+                Frame(
+                    kind = 4,
+                    codec = 1,
+                    requestSeq = null,
+                    name = "RemoteError",
+                    payload = "remote failed".toByteArray(StandardCharsets.UTF_8),
+                ),
+            )
+            connector.dispatch()
+            yield()
+            if (received.isCompleted) {
+                return
+            }
+            Thread.onSpinWait()
+        }
+        throw AssertionError("flow error was not received within 5s")
+    }
+
     private class TcpServer : AutoCloseable {
         private val server = ServerSocket(0)
         private val sockets = LinkedBlockingQueue<Socket>()
@@ -259,14 +329,18 @@ final class KotlinConnectorWrapperTest {
 
         fun sendFrame(frame: Frame) {
             val header = encodeHeader(frame)
+            sendRawFrame(header, frame.payload)
+        }
+
+        fun sendRawFrame(header: ByteArray, payload: ByteArray) {
             val output = socket().getOutputStream()
             val prefix = ByteBuffer.allocate(6)
                 .putShort(header.size.toShort())
-                .putInt(frame.payload.size)
+                .putInt(payload.size)
                 .array()
             output.write(prefix)
             output.write(header)
-            output.write(frame.payload)
+            output.write(payload)
             output.flush()
         }
 
@@ -297,6 +371,7 @@ final class KotlinConnectorWrapperTest {
             buffer.get(nameBytes)
             return Frame(
                 kind = kind,
+                codec = 0,
                 requestSeq = requestSeq,
                 name = String(nameBytes, StandardCharsets.UTF_8),
                 payload = ByteArray(0),
@@ -308,7 +383,7 @@ final class KotlinConnectorWrapperTest {
             val flags = if (frame.requestSeq == null) 0 else 0x01
             val buffer = ByteBuffer.allocate(3 + (if (frame.requestSeq == null) 0 else 8) + 1 + name.size)
             buffer.put(frame.kind.toByte())
-            buffer.put(0)
+            buffer.put(frame.codec.toByte())
             buffer.put(flags.toByte())
             if (frame.requestSeq != null) {
                 buffer.putLong(frame.requestSeq)
@@ -321,6 +396,7 @@ final class KotlinConnectorWrapperTest {
 
     private data class Frame(
         val kind: Int,
+        val codec: Int = 0,
         val requestSeq: Long?,
         val name: String,
         val payload: ByteArray,

@@ -15,10 +15,10 @@ fun sampleRootPath(): String {
 
 dependencies {
     implementation(sampleProject("Shared"))
-    implementation(files("../../../../zlink-framework-core/build/libs/zlink-framework-core-0.1.0-SNAPSHOT.jar"))
-    implementation(files("../../../../zlink-stream-connector/build/libs/zlink-stream-connector-0.1.0-SNAPSHOT.jar"))
-    implementation(files("../../../../zlink-stream-connector-json/build/libs/zlink-stream-connector-json-0.1.0-SNAPSHOT.jar"))
-    implementation(files("../../../../../../../bindings/java/build/libs/zlink-java-6.0.4.jar"))
+    implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
+    implementation("systems.zlink:zlink-stream-connector:0.1.0-SNAPSHOT")
+    implementation("systems.zlink:zlink-stream-connector-json:0.1.0-SNAPSHOT")
+    implementation("systems.zlink:zlink:6.0.4")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     implementation("io.netty:netty-buffer:4.1.100.Final")
 }

@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import systems.zlink.stream.connector.ZLinkStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
+import systems.zlink.stream.connector.ZLinkStreamError
 import systems.zlink.stream.connector.ZLinkStreamMessage
 import systems.zlink.stream.connector.ZLinkStreamRequestCall
 import systems.zlink.stream.connector.ZLinkStreamSendCall
@@ -42,6 +43,16 @@ fun ZLinkStreamConnector.messages(
 ): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> = callbackFlow {
     val registration = on(packetName) { message ->
         trySend(message).getOrThrow()
+        java.util.concurrent.CompletableFuture.completedFuture(null)
+    }
+    awaitClose {
+        registration.close()
+    }
+}
+
+fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError> = callbackFlow {
+    val registration = onErrorReceived { error ->
+        trySend(error).getOrThrow()
         java.util.concurrent.CompletableFuture.completedFuture(null)
     }
     awaitClose {

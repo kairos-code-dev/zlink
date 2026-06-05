@@ -128,7 +128,7 @@ connector 테스트 이름은 `Systems.Zlink.Stream.Connector.Tests`의 메서�
 | stream wire protocol golden vector | unit | `ZLinkStreamWireProtocolTest.headerProtocol_matchesDotnetAndNodeGoldenVector` / `frameProtocol_matchesDotnetAndNodePrefixLayout` | `.NET`/Node와 같은 STREAM header/frame byte layout |
 | Java/Node stream interop | unit | `JavaNodeStreamInteropTest.nodeConnector_decodesJavaRequestFrame_andJavaDecodesNodeResponse` | Java가 만든 STREAM request frame을 Node connector가 decode하고 Node response frame을 Java가 decode |
 | connector codec helper | contract | `ConnectorCodecContractTest.jsonMsgpackProtobufTypedHelperRoundtrip` | JSON/MessagePack/Protobuf typed helper roundtrip |
-| Kotlin connector wrapper | unit | `KotlinConnectorWrapperTest.suspendWrapperPreservesConnectorSemantics` / `connectorMessagesFlowUsesJavaManualDispatchSemantics` | suspend wrapper와 connector `Flow` wrapper가 Java connector lifecycle, manual dispatch, request/reply 의미를 바꾸지 않음 |
+| Kotlin connector wrapper | unit | `KotlinConnectorWrapperTest.suspendWrapperPreservesConnectorSemantics` / `connectorMessagesFlowUsesJavaManualDispatchSemantics` / `connectorErrorsFlowUsesJavaManualDispatchSemantics` / `coroutineRuntimeMapsSuspendStreamErrorHandlerToCompletionStage` | suspend wrapper와 connector `Flow` wrapper가 Java connector lifecycle, manual dispatch, request/reply/error event 의미를 바꾸지 않음 |
 
 ## 5. Registry/Monitoring regression
 

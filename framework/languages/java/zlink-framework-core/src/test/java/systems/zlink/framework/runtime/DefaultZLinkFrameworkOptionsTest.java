@@ -174,6 +174,16 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void registrySpotRemoteAddressesRequiresRouteMeshChannel() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("inproc://registry"));
+        options.useRegistrySpotRemoteAddresses("game");
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
     void registrySpotRemoteAddressesRequiresRouterChannelWhenAmbiguous() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 

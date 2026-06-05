@@ -25,6 +25,10 @@ public final class StreamingClientLoopbackServer implements AutoCloseable {
         executor.execute(this::acceptLoop);
     }
 
+    public int port() {
+        return server.getLocalPort();
+    }
+
     private void acceptLoop() {
         while (!server.isClosed()) {
             try {

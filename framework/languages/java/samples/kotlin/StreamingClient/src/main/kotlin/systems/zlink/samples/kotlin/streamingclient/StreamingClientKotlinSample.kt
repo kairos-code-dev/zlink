@@ -20,16 +20,16 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 
 fun main() = runBlocking {
-    StreamingClientLoopbackServer(29200).use {
-        runSample()
+    StreamingClientLoopbackServer(0).use { server ->
+        runSample(server.port)
     }
     println("StreamingClient Kotlin sample self-check passed")
 }
 
-private suspend fun runSample() {
+private suspend fun runSample(port: Int) {
     val events = mutableListOf<String>()
     val states = mutableListOf<ZLinkStreamConnectionState>()
-    val connector = createConnector()
+    val connector = createConnector(port)
     connector.onConnectionStateChanged { state ->
         states += state
         CompletableFuture.completedFuture(null)
@@ -72,7 +72,7 @@ private suspend fun runSample() {
     }
     require("Disconnected" in events) { "disconnect handler not invoked" }
 
-    val reconnected = createConnector()
+    val reconnected = createConnector(port)
     val reconnectStates = mutableListOf<ZLinkStreamConnectionState>()
     reconnected.onConnectionStateChanged { state ->
         reconnectStates += state
@@ -104,10 +104,10 @@ private fun awaitPendingDispatch(connector: ZLinkStreamConnector) {
     error("manual dispatch did not queue inbound frame")
 }
 
-private fun createConnector(): ZLinkStreamConnector =
+private fun createConnector(port: Int): ZLinkStreamConnector =
     ZLinkStreamConnectorFactory.create(
         ZLinkStreamConnectorOptions(
-            URI.create("tcp://127.0.0.1:29200"),
+            URI.create("tcp://127.0.0.1:$port"),
             ZLinkStreamDispatchMode.MANUAL,
             Duration.ofSeconds(3),
             2,

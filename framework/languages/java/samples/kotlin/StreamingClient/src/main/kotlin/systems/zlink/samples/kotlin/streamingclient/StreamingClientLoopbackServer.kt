@@ -20,6 +20,9 @@ class StreamingClientLoopbackServer(
         executor.execute(::acceptLoop)
     }
 
+    val port: Int
+        get() = server.localPort
+
     private fun acceptLoop() {
         while (!server.isClosed) {
             try {

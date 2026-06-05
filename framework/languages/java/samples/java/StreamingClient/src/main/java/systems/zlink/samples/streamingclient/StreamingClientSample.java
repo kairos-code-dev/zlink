@@ -17,16 +17,16 @@ import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 
 public final class StreamingClientSample {
     public static void main(String[] args) throws Exception {
-        try (StreamingClientLoopbackServer server = new StreamingClientLoopbackServer(29200)) {
-            run();
+        try (StreamingClientLoopbackServer server = new StreamingClientLoopbackServer(0)) {
+            run(server.port());
         }
         System.out.println("StreamingClient sample self-check passed");
     }
 
-    private static void run() throws Exception {
+    private static void run(int port) throws Exception {
         List<String> events = new ArrayList<>();
         List<ZLinkStreamConnectionState> states = new ArrayList<>();
-        ZLinkStreamConnector connector = createConnector();
+        ZLinkStreamConnector connector = createConnector(port);
         connector.onConnectionStateChanged(state -> {
             states.add(state);
             return java.util.concurrent.CompletableFuture.completedFuture(null);
@@ -72,7 +72,7 @@ public final class StreamingClientSample {
             ZLinkStreamConnectionState.CLOSED)), "state change events mismatch");
         require(events.contains("Disconnected"), "disconnect handler not invoked");
 
-        ZLinkStreamConnector reconnected = createConnector();
+        ZLinkStreamConnector reconnected = createConnector(port);
         List<ZLinkStreamConnectionState> reconnectStates = new ArrayList<>();
         reconnected.onConnectionStateChanged(state -> {
             reconnectStates.add(state);
@@ -91,9 +91,9 @@ public final class StreamingClientSample {
         reconnected.close();
     }
 
-    private static ZLinkStreamConnector createConnector() {
+    private static ZLinkStreamConnector createConnector(int port) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
-            URI.create("tcp://127.0.0.1:29200"),
+            URI.create("tcp://127.0.0.1:" + port),
             ZLinkStreamDispatchMode.MANUAL,
             Duration.ofSeconds(3),
             2));

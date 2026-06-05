@@ -105,6 +105,63 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
+    void sendBulkMetadataReplacesExistingMetadata() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            var frame = server.readFrameAsync();
+            connector.send(payload("Meta", "hello"))
+                .metadata("old", "ignored")
+                .metadata(Map.of("trace", "abc", "tenant", "sample"))
+                .submitAsync()
+                .toCompletableFuture()
+                .join();
+
+            TcpStreamConnectorTestServer.ReceivedFrame sent = frame.join();
+            assertEquals(ZLinkStreamWireProtocol.KIND_SEND, sent.header().kind());
+            assertEquals("Meta", sent.header().name());
+            assertEquals(Map.of("trace", "abc", "tenant", "sample"), sent.header().metadata());
+        }
+    }
+
+    @Test
+    void requestBulkMetadataReplacesExistingMetadata() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            var requestFrame = server.readFrameAsync();
+            var replyFuture = connector.request(payload("MetaRequest", "hello"))
+                .metadata("old", "ignored")
+                .metadata(Map.of("trace", "abc", "tenant", "sample"))
+                .timeout(Duration.ofMillis(500))
+                .submitAsync()
+                .toCompletableFuture();
+
+            TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
+            assertEquals(ZLinkStreamWireProtocol.KIND_REQUEST, request.header().kind());
+            assertEquals("MetaRequest", request.header().name());
+            assertEquals(Map.of("trace", "abc", "tenant", "sample"), request.header().metadata());
+
+            server.sendAsync(TcpStreamConnectorTestServer.responseTo(
+                    request,
+                    "MetaRequest",
+                    Map.of()),
+                TcpStreamConnectorTestServer.bytes("reply")).join();
+
+            ZLinkStreamEncodedPayload reply = replyFuture.join();
+            try {
+                assertEquals("MetaRequest", reply.packetName());
+            } finally {
+                reply.payload().close();
+            }
+        }
+    }
+
+    @Test
     void webSocketRequestUsesBinaryFrameAndCorrelatesResponse() throws Exception {
         try (WebSocketStreamConnectorTestServer server = new WebSocketStreamConnectorTestServer();
              ZLinkStreamConnector connector =

@@ -709,10 +709,15 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         public ZLinkStreamSendCall metadata(String key, String value) {
             Map<String, String> metadata = new HashMap<>(payload.metadata());
             metadata.put(key, value);
+            return metadata(metadata);
+        }
+
+        @Override
+        public ZLinkStreamSendCall metadata(Map<String, String> metadata) {
             return new SendCall(connector, new ZLinkStreamEncodedPayload(
                 payload.packetName(),
                 payload.payload(),
-                Map.copyOf(metadata)));
+                Map.copyOf(Objects.requireNonNull(metadata, "metadata"))));
         }
 
         @Override
@@ -737,10 +742,15 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         public ZLinkStreamRequestCall metadata(String key, String value) {
             Map<String, String> metadata = new HashMap<>(payload.metadata());
             metadata.put(key, value);
+            return metadata(metadata);
+        }
+
+        @Override
+        public ZLinkStreamRequestCall metadata(Map<String, String> metadata) {
             return new RequestCall(connector, new ZLinkStreamEncodedPayload(
                 payload.packetName(),
                 payload.payload(),
-                Map.copyOf(metadata)), timeout);
+                Map.copyOf(Objects.requireNonNull(metadata, "metadata"))), timeout);
         }
 
         @Override

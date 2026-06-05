@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
@@ -164,6 +165,11 @@ final class ZLinkStreamJsonTest {
 
         @Override
         public ZLinkStreamSendCall metadata(String key, String value) {
+            return this;
+        }
+
+        @Override
+        public ZLinkStreamSendCall metadata(Map<String, String> metadata) {
             return this;
         }
 

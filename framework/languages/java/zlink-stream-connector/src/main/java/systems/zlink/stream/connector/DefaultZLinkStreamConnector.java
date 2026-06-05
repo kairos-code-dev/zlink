@@ -213,12 +213,12 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     @Override
     public ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload) {
-        return new SendCall(this, copyPayload(payload));
+        return new SendCall(this, copyPayload(payload), false);
     }
 
     @Override
     public ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload) {
-        return new RequestCall(this, copyPayload(payload), options.requestTimeout());
+        return new RequestCall(this, copyPayload(payload), options.requestTimeout(), false);
     }
 
     @Override
@@ -250,13 +250,14 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         closeAsync();
     }
 
-    private CompletionStage<Void> submit(ZLinkStreamEncodedPayload payload) {
+    private CompletionStage<Void> submit(ZLinkStreamEncodedPayload payload, boolean compress) {
         ensureConnected();
-        byte[] body = drainPayload(payload);
+        byte[] body = encodePayload(payload, compress);
         ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
             ZLinkStreamWireProtocol.KIND_SEND,
             ZLinkStreamWireProtocol.CODEC_RAW,
-            payload.metadata().isEmpty() ? 0 : ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
+            (payload.metadata().isEmpty() ? 0 : ZLinkStreamWireProtocol.FLAG_HAS_METADATA)
+                | (compress ? ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED : 0),
             null,
             payload.packetName(),
             payload.metadata());
@@ -265,18 +266,20 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     private CompletionStage<ZLinkStreamEncodedPayload> submitRequest(
         ZLinkStreamEncodedPayload payload,
-        Duration timeout) {
+        Duration timeout,
+        boolean compress) {
         ensureConnected();
         long requestSeq = nextRequestSeq();
         CompletableFuture<ZLinkStreamEncodedPayload> pending =
             pendingRequests.add(requestSeq, timeout, TIMEOUTS);
 
-        byte[] body = drainPayload(payload);
+        byte[] body = encodePayload(payload, compress);
         ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
             ZLinkStreamWireProtocol.KIND_REQUEST,
             ZLinkStreamWireProtocol.CODEC_RAW,
             ZLinkStreamWireProtocol.FLAG_HAS_REQUEST_SEQ
-                | (payload.metadata().isEmpty() ? 0 : ZLinkStreamWireProtocol.FLAG_HAS_METADATA),
+                | (payload.metadata().isEmpty() ? 0 : ZLinkStreamWireProtocol.FLAG_HAS_METADATA)
+                | (compress ? ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED : 0),
             requestSeq,
             payload.packetName(),
             payload.metadata());
@@ -337,8 +340,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         ZLinkStreamWireProtocol.Header header =
             ZLinkStreamWireProtocol.decodeHeader(encodedHeader);
         lastInboundNanos = System.nanoTime();
+        byte[] decodedPayload = decodePayload(header, payload);
         if (header.kind() == ZLinkStreamWireProtocol.KIND_CONTROL) {
-            dispatchControl(header, payload);
+            dispatchControl(header, decodedPayload);
             return;
         }
         if (header.kind() == ZLinkStreamWireProtocol.KIND_RESPONSE) {
@@ -346,7 +350,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                 header.requestSeq(),
                 new ZLinkStreamEncodedPayload(
                     header.name(),
-                    Message.from(payload),
+                    Message.from(decodedPayload),
                     header.metadata()));
             return;
         }
@@ -354,12 +358,12 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             && header.requestSeq() != null) {
             pendingRequests.fail(
                 header.requestSeq(),
-                new IllegalStateException(new String(payload, StandardCharsets.UTF_8)));
+                new IllegalStateException(new String(decodedPayload, StandardCharsets.UTF_8)));
             return;
         }
         if (header.kind() == ZLinkStreamWireProtocol.KIND_SEND
             || header.kind() == ZLinkStreamWireProtocol.KIND_REQUEST) {
-            dispatchToHandlers(header, payload);
+            dispatchToHandlers(header, decodedPayload);
         }
     }
 
@@ -600,6 +604,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (options.maxSendPayloadSize() <= 0) {
             throw new IllegalArgumentException("maxSendPayloadSize must be positive");
         }
+        Objects.requireNonNull(options.compression(), "compression");
         return options;
     }
 
@@ -641,6 +646,30 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         } finally {
             payload.payload().close();
         }
+    }
+
+    private byte[] encodePayload(ZLinkStreamEncodedPayload payload, boolean compress) {
+        if (compress && options.compression() != ZLinkStreamCompression.LZ4) {
+            throw new IllegalStateException("compression codec is not configured");
+        }
+        byte[] body = drainPayload(payload);
+        if (body.length > options.maxSendPayloadSize()) {
+            throw new IllegalArgumentException("payload exceeds max payload size");
+        }
+        if (!compress) {
+            return body;
+        }
+        return ZLinkStreamLz4Pickler.pickle(body);
+    }
+
+    private byte[] decodePayload(ZLinkStreamWireProtocol.Header header, byte[] payload) {
+        if ((header.flags() & ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED) == 0) {
+            return payload;
+        }
+        if (options.compression() != ZLinkStreamCompression.LZ4) {
+            throw new IllegalStateException("compression codec is not configured");
+        }
+        return ZLinkStreamLz4Pickler.unpickle(payload);
     }
 
     private static ZLinkStreamEncodedPayload copyPayload(
@@ -696,13 +725,14 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     private record SendCall(
         DefaultZLinkStreamConnector connector,
-        ZLinkStreamEncodedPayload payload) implements ZLinkStreamSendCall {
+        ZLinkStreamEncodedPayload payload,
+        boolean compressed) implements ZLinkStreamSendCall {
         @Override
         public ZLinkStreamSendCall packetName(String packetName) {
             return new SendCall(connector, new ZLinkStreamEncodedPayload(
                 requirePacketName(packetName),
                 payload.payload(),
-                payload.metadata()));
+                payload.metadata()), compressed);
         }
 
         @Override
@@ -717,25 +747,31 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             return new SendCall(connector, new ZLinkStreamEncodedPayload(
                 payload.packetName(),
                 payload.payload(),
-                Map.copyOf(Objects.requireNonNull(metadata, "metadata"))));
+                Map.copyOf(Objects.requireNonNull(metadata, "metadata"))), compressed);
+        }
+
+        @Override
+        public ZLinkStreamSendCall compress() {
+            return new SendCall(connector, payload, true);
         }
 
         @Override
         public CompletionStage<Void> submitAsync() {
-            return connector.submit(payload);
+            return connector.submit(payload, compressed);
         }
     }
 
     private record RequestCall(
         DefaultZLinkStreamConnector connector,
         ZLinkStreamEncodedPayload payload,
-        Duration timeout) implements ZLinkStreamRequestCall {
+        Duration timeout,
+        boolean compressed) implements ZLinkStreamRequestCall {
         @Override
         public ZLinkStreamRequestCall packetName(String packetName) {
             return new RequestCall(connector, new ZLinkStreamEncodedPayload(
                 requirePacketName(packetName),
                 payload.payload(),
-                payload.metadata()), timeout);
+                payload.metadata()), timeout, compressed);
         }
 
         @Override
@@ -750,18 +786,23 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             return new RequestCall(connector, new ZLinkStreamEncodedPayload(
                 payload.packetName(),
                 payload.payload(),
-                Map.copyOf(Objects.requireNonNull(metadata, "metadata"))), timeout);
+                Map.copyOf(Objects.requireNonNull(metadata, "metadata"))), timeout, compressed);
+        }
+
+        @Override
+        public ZLinkStreamRequestCall compress() {
+            return new RequestCall(connector, payload, timeout, true);
         }
 
         @Override
         public ZLinkStreamRequestCall timeout(Duration timeout) {
             requirePositive(timeout, "timeout");
-            return new RequestCall(connector, payload, timeout);
+            return new RequestCall(connector, payload, timeout, compressed);
         }
 
         @Override
         public CompletionStage<ZLinkStreamEncodedPayload> submitAsync() {
-            return connector.submitRequest(payload, timeout);
+            return connector.submitRequest(payload, timeout, compressed);
         }
     }
 

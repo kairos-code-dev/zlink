@@ -1,6 +1,7 @@
 package systems.zlink.stream.connector;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -155,6 +156,103 @@ final class ZLinkStreamConnectorTest {
             ZLinkStreamEncodedPayload reply = replyFuture.join();
             try {
                 assertEquals("MetaRequest", reply.packetName());
+            } finally {
+                reply.payload().close();
+            }
+        }
+    }
+
+    @Test
+    void lz4PicklerMatchesDotnetFixtures() {
+        assertArrayEquals(
+            hex("00636F6D70726573736564"),
+            ZLinkStreamLz4Pickler.pickle(TcpStreamConnectorTestServer.bytes("compressed")));
+        assertArrayEquals(
+            TcpStreamConnectorTestServer.bytes("compressed"),
+            ZLinkStreamLz4Pickler.unpickle(hex("00636F6D70726573736564")));
+        assertArrayEquals(
+            "A".repeat(1024).getBytes(StandardCharsets.UTF_8),
+            ZLinkStreamLz4Pickler.unpickle(hex("80F2031F410100FFFFFFEA504141414141")));
+    }
+
+    @Test
+    void sendCompressionIsExplicit() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(
+                     compressedOptions(server.endpoint(), ZLinkStreamDispatchMode.MANUAL))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            var plainFrame = server.readFrameAsync();
+            connector.send(payload("Plain", "A".repeat(1024)))
+                .submitAsync()
+                .toCompletableFuture()
+                .join();
+
+            TcpStreamConnectorTestServer.ReceivedFrame plain = plainFrame.join();
+            assertEquals(0, plain.header().flags() & ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED);
+            assertEquals("A".repeat(1024), new String(plain.payload(), StandardCharsets.UTF_8));
+
+            var compressedFrame = server.readFrameAsync();
+            connector.send(payload("Compressed", "A".repeat(1024)))
+                .compress()
+                .submitAsync()
+                .toCompletableFuture()
+                .join();
+
+            TcpStreamConnectorTestServer.ReceivedFrame compressed = compressedFrame.join();
+            assertTrue((compressed.header().flags() & ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED) != 0);
+            assertEquals(
+                "A".repeat(1024),
+                new String(ZLinkStreamLz4Pickler.unpickle(compressed.payload()), StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
+    void compressedSendUsesOriginalPayloadForMaxSizeValidation() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(
+                     compressedOptions(server.endpoint(), ZLinkStreamDispatchMode.MANUAL, 8))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            assertThrows(IllegalArgumentException.class, () ->
+                connector.send(payload("Compressed", "A".repeat(1024)))
+                    .compress()
+                    .submitAsync());
+        }
+    }
+
+    @Test
+    void compressedResponseIsDecompressedBeforeCompletingRequest() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
+             ZLinkStreamConnector connector =
+                 ZLinkStreamConnectorFactory.create(
+                     compressedOptions(server.endpoint(), ZLinkStreamDispatchMode.MANUAL))) {
+            connector.connectAsync().toCompletableFuture().join();
+
+            var requestFrame = server.readFrameAsync();
+            var replyFuture = connector.request(payload("Echo", "hello"))
+                .timeout(Duration.ofMillis(500))
+                .submitAsync()
+                .toCompletableFuture();
+
+            TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_RESPONSE,
+                    ZLinkStreamWireProtocol.CODEC_RAW,
+                    ZLinkStreamWireProtocol.FLAG_HAS_REQUEST_SEQ
+                        | ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED,
+                    request.header().requestSeq(),
+                    "Echo",
+                    Map.of()),
+                ZLinkStreamLz4Pickler.pickle(TcpStreamConnectorTestServer.bytes("compressed-reply"))).join();
+
+            ZLinkStreamEncodedPayload reply = replyFuture.join();
+            try {
+                assertEquals(
+                    "compressed-reply",
+                    new String(reply.payload().toByteArray(), StandardCharsets.UTF_8));
             } finally {
                 reply.payload().close();
             }
@@ -452,6 +550,42 @@ final class ZLinkStreamConnectorTest {
             dispatchMode,
             Duration.ofSeconds(1),
             1);
+    }
+
+    private static ZLinkStreamConnectorOptions compressedOptions(
+        URI endpoint,
+        ZLinkStreamDispatchMode dispatchMode) {
+        return compressedOptions(endpoint, dispatchMode, 64 * 1024);
+    }
+
+    private static ZLinkStreamConnectorOptions compressedOptions(
+        URI endpoint,
+        ZLinkStreamDispatchMode dispatchMode,
+        int maxSendPayloadSize) {
+        return new ZLinkStreamConnectorOptions(
+            endpoint,
+            dispatchMode,
+            Duration.ofSeconds(1),
+            1,
+            Duration.ofSeconds(1),
+            maxSendPayloadSize,
+            true,
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(5),
+            true,
+            Duration.ofMillis(250),
+            Duration.ofSeconds(5),
+            2.0,
+            false,
+            ZLinkStreamCompression.LZ4);
+    }
+
+    private static byte[] hex(String value) {
+        byte[] result = new byte[value.length() / 2];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = (byte) Integer.parseInt(value.substring(i * 2, i * 2 + 2), 16);
+        }
+        return result;
     }
 
     @ZLinkStreamPacketName("custom.packet")

@@ -11,6 +11,8 @@ public interface ZLinkStreamRequestCall {
 
     ZLinkStreamRequestCall metadata(Map<String, String> metadata);
 
+    ZLinkStreamRequestCall compress();
+
     ZLinkStreamRequestCall timeout(Duration timeout);
 
     CompletionStage<ZLinkStreamEncodedPayload> submitAsync();

@@ -174,6 +174,11 @@ final class ZLinkStreamJsonTest {
         }
 
         @Override
+        public ZLinkStreamSendCall compress() {
+            return this;
+        }
+
+        @Override
         public CompletionStage<Void> submitAsync() {
             return CompletableFuture.completedFuture(null);
         }

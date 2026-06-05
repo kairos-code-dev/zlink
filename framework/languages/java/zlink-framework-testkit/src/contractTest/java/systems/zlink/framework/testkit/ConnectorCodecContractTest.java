@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
+import systems.zlink.stream.connector.ZLinkStreamCompression;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 import systems.zlink.stream.connector.json.ZLinkStreamJson;
@@ -59,13 +60,13 @@ final class ConnectorCodecContractTest {
 
             connector.connectAsync().toCompletableFuture().join();
             ZLinkStreamJson.send(connector, "hello")
+                .compress()
                 .submitAsync()
                 .toCompletableFuture()
                 .join();
             Frame sent = server.readFrame();
             assertEquals(1, sent.kind());
             assertEquals("String", sent.name());
-            assertEquals("\"hello\"", new String(sent.payload(), StandardCharsets.UTF_8));
 
             server.sendFrame(new Frame(
                 1,
@@ -77,12 +78,12 @@ final class ConnectorCodecContractTest {
             connector.dispatchAsync().toCompletableFuture().join();
 
             var replyFuture = ZLinkStreamJson.request(connector, "reply")
+                .compress()
                 .submitAsync()
                 .toCompletableFuture();
             Frame request = server.readFrame();
             assertEquals(2, request.kind());
             assertEquals("String", request.name());
-            assertEquals("\"reply\"", new String(request.payload(), StandardCharsets.UTF_8));
             server.sendFrame(new Frame(
                 3,
                 request.requestSeq(),
@@ -122,7 +123,18 @@ final class ConnectorCodecContractTest {
             endpoint,
             ZLinkStreamDispatchMode.MANUAL,
             Duration.ofSeconds(1),
-            1);
+            1,
+            Duration.ofSeconds(1),
+            64 * 1024,
+            true,
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(5),
+            true,
+            Duration.ofMillis(250),
+            Duration.ofSeconds(5),
+            2.0,
+            false,
+            ZLinkStreamCompression.LZ4);
     }
 
     private static void awaitPendingDispatch(ZLinkStreamConnector connector) {

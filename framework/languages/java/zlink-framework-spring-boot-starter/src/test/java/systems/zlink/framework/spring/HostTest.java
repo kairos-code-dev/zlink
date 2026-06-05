@@ -105,6 +105,37 @@ final class HostTest {
     }
 
     @Test
+    void host_startsEmbeddedRegistryWithoutFrameworkWhenFrameworkIsNotEnabled() {
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.register(EmbeddedRegistryConfig.class, ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            assertTrue(context.getBean(ZLinkRegistryLifecycle.class).isRunning());
+            assertInstanceOf(
+                ZLinkRegistryLifecycle.class,
+                context.getBean(ZLinkRegistryQuery.class));
+            assertThrows(NoSuchBeanDefinitionException.class, () ->
+                context.getBean(ZLinkFrameworkLifecycle.class));
+        }
+
+        assertEquals(
+            List.of(
+                "factory.channel",
+                "factory.registry",
+                "create.context",
+                "create.registry",
+                "registry.bind.inproc://registry-pub.inproc://registry-router",
+                "close.registry",
+                "close.context"),
+            backendFactory.calls());
+    }
+
+    @Test
     void host_doesNotRegisterRegistryQuery_withoutEmbeddedRegistry() {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
@@ -176,6 +207,7 @@ final class HostTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class ProfileChannelConfig {
         @Bean
         ZLinkFrameworkOptionsCustomizer profileChannelCustomizer() {

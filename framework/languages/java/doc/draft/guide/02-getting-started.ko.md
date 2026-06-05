@@ -128,11 +128,11 @@ capability에 둘 다 없으면 startup validation 오류다.
 @Configuration
 public class RegistryConfig {
     @Bean
-    ZLinkRegistryCustomizer registryCustomizer() {
-        return registry -> {
-            registry.setPubEndpoint("tcp://0.0.0.0:5550");
-            registry.setRouterEndpoint("tcp://0.0.0.0:5551");
-        };
+    ZLinkEmbeddedRegistryOptions zlinkEmbeddedRegistryOptions() {
+        ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
+        options.setPubEndpoint("tcp://0.0.0.0:5550");
+        options.setRouterEndpoint("tcp://0.0.0.0:5551");
+        return options;
     }
 }
 ```

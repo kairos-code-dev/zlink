@@ -8,6 +8,6 @@ import org.springframework.context.annotation.Import;
 
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@Import(ZLinkFrameworkAutoConfiguration.class)
+@Import({ZLinkFrameworkEnableConfiguration.class, ZLinkFrameworkAutoConfiguration.class})
 public @interface EnableZLinkFramework {
 }

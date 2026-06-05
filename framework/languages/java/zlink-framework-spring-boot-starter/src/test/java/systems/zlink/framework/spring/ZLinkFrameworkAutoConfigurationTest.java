@@ -587,6 +587,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class TestConfig {
         @Bean
         ZLinkFrameworkOptionsCustomizer profileChannelCustomizer() {
@@ -610,6 +611,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class MonitoringConfig {
         @Bean
         AtomicInteger socketEventCount() {
@@ -668,6 +670,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class AutoDiscoveredSessionPacketConfig {
         @Bean
         AtomicInteger sessionPacketCount() {
@@ -689,6 +692,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class SpotNodeConfig {
         @Bean
         ZLinkFrameworkOptionsCustomizer spotNodeCustomizer() {
@@ -701,6 +705,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class SpotNodeWithActorConfig {
         @Bean
         ZLinkFrameworkOptionsCustomizer spotNodeWithActorCustomizer() {
@@ -716,6 +721,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class InjectedSpotAndActorConfig {
         @Bean
         HandlerDependency handlerDependency() {
@@ -736,6 +742,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class SpotPublisherConfig {
         @Bean
         ZLinkFrameworkOptionsCustomizer spotPublisherCustomizer() {
@@ -748,6 +755,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class HandlerInjectionConfig {
         @Bean
         HandlerDependency handlerDependency() {
@@ -756,6 +764,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class ScannedHandlerConfig {
         @Bean
         HandlerDependency handlerDependency() {
@@ -784,6 +793,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class AutoRegisteredHandlerConfig {
         @Bean
         HandlerDependency autoRegisteredDependency() {
@@ -807,6 +817,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class FilteredHandlerConfig {
         @Bean
         HandlerDependency handlerDependency() {
@@ -843,6 +854,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    @EnableZLinkFramework
     static class RouteMeshHandlerConfig {
         @Bean
         HandlerDependency routeHandlerDependency() {

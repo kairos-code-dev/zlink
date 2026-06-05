@@ -26,11 +26,13 @@ import systems.zlink.framework.runtime.registry.ZLinkRemoteRegistryQueryClient;
 @AutoConfiguration
 public class ZLinkFrameworkAutoConfiguration {
     @Bean
+    @ConditionalOnBean(ZLinkFrameworkEnabled.class)
     public static BeanFactoryPostProcessor zlinkFrameworkCapabilityBeanRegistrar() {
         return new ZLinkFrameworkCapabilityBeanRegistrar();
     }
 
     @Bean
+    @ConditionalOnBean(ZLinkFrameworkEnabled.class)
     @ConditionalOnMissingBean
     public DefaultZLinkFrameworkOptions zlinkFrameworkOptions(
         List<ZLinkFrameworkOptionsCustomizer> customizers) {
@@ -66,12 +68,14 @@ public class ZLinkFrameworkAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnBean(DefaultZLinkFrameworkOptions.class)
     @ConditionalOnMissingBean
     public ZLinkHandlerFactory zlinkHandlerFactory(AutowireCapableBeanFactory beanFactory) {
         return new ZLinkSpringHandlerFactory(beanFactory);
     }
 
     @Bean
+    @ConditionalOnBean(DefaultZLinkFrameworkOptions.class)
     @ConditionalOnMissingBean
     public ZLinkFrameworkLifecycle zlinkFrameworkLifecycle(
         DefaultZLinkFrameworkOptions options,
@@ -141,18 +145,21 @@ public class ZLinkFrameworkAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
     @ConditionalOnMissingBean
     public ZLinkClient zlinkClient(ZLinkFrameworkLifecycle lifecycle) {
         return lifecycle;
     }
 
     @Bean
+    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
     @ConditionalOnMissingBean
     public ZLinkFanoutClient zlinkFanoutClient(ZLinkFrameworkLifecycle lifecycle) {
         return lifecycle;
     }
 
     @Bean
+    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
     @ConditionalOnMissingBean
     public ZLinkRouteClient zlinkRouteClient(ZLinkFrameworkLifecycle lifecycle) {
         return lifecycle;

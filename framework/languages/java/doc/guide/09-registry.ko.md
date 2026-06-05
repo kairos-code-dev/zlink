@@ -28,11 +28,11 @@ embedded registry를 등록하면 `ZLinkRegistryQuery` bean도 함께 등록한�
 
 ```java
 @Bean
-ZLinkRegistryCustomizer registryCustomizer() {
-    return options -> {
-        options.setPubEndpoint("tcp://0.0.0.0:5550");
-        options.setRouterEndpoint("tcp://0.0.0.0:5551");
-    };
+ZLinkEmbeddedRegistryOptions zlinkEmbeddedRegistryOptions() {
+    ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
+    options.setPubEndpoint("tcp://0.0.0.0:5550");
+    options.setRouterEndpoint("tcp://0.0.0.0:5551");
+    return options;
 }
 ```
 
@@ -48,7 +48,7 @@ ZLinkRegistryCustomizer registryCustomizer() {
 | standalone | Registry만 단독 프로세스로 | 운영에서 Registry를 로직과 분리 |
 
 두 모델의 차이는 **배포 구성**일 뿐 API는 같다. standalone은 framework 등록 없이
-`ZLinkRegistryCustomizer`만 둔다.
+`ZLinkEmbeddedRegistryOptions` bean만 둔다.
 
 ## 4. topology 조회
 

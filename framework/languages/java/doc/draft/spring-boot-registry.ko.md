@@ -22,17 +22,19 @@ Registry만 띄우는 host는 `@EnableZLinkFramework` 없이도 만들 수 있�
 @Configuration
 public class RegistryConfig {
     @Bean
-    ZLinkRegistryCustomizer registryCustomizer() {
-        return options -> {
-            options.setPubEndpoint("tcp://0.0.0.0:5551");
-            options.setRouterEndpoint("tcp://0.0.0.0:5552");
-        };
+    ZLinkEmbeddedRegistryOptions zlinkEmbeddedRegistryOptions() {
+        ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
+        options.setPubEndpoint("tcp://0.0.0.0:5551");
+        options.setRouterEndpoint("tcp://0.0.0.0:5552");
+        return options;
     }
 }
 ```
 
-Spring Boot starter는 이 customizer가 있으면 embedded registry lifecycle bean을
-등록한다. customizer가 없으면 registry server를 만들지 않는다.
+Spring Boot starter는 이 option bean이 있으면 embedded registry lifecycle bean을
+등록한다. option bean이 없으면 registry server를 만들지 않는다. 이 등록만으로는
+framework lifecycle이나 channel client bean을 만들지 않는다. Framework runtime은
+별도로 `@EnableZLinkFramework`를 붙인 설정에서 켠다.
 
 필수 option은 아래와 같다.
 
@@ -47,7 +49,8 @@ Spring Boot starter는 이 customizer가 있으면 embedded registry lifecycle b
 | `addPeer(...)` | 연결할 peer registry 의 pub endpoint 추가 |
 
 `pubEndpoint`나 `routerEndpoint`가 비어 있으면 startup validation 오류다. Registry
-host와 framework host가 같은 프로세스에 있더라도 두 등록은 별도 customizer로 표현한다.
+host와 framework host가 같은 프로세스에 있더라도 registry option bean과
+`@EnableZLinkFramework` framework 설정은 별도로 표현한다.
 
 ## 2. Query surface
 

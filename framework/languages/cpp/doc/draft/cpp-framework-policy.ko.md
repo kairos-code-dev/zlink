@@ -702,15 +702,17 @@ session actor handle로 bind하는 흐름을 사용한다.
 
 SPOT timer는 CAPI timer 등록을 framework 표면으로 감싼 server-side timer다.
 application이 native C API timer handle을 직접 받지 않는다. framework는 별도 timer
-scheduler를 기본으로 만들지 않고, CAPI timer dispatch event를 받아 해당 Spot handler로
-투영한다. public 계약은 `spot_context_t::add_timer(...)`와 timer handler 중심으로 닫는다.
+scheduler를 기본으로 만들지 않고, CAPI timer dispatch event를 받은 뒤 timer recv를
+수행해 해당 Spot handler로 투영한다. public 계약은 `spot_context_t::add_timer(...)`와
+timer handler 중심으로 닫는다.
 
 이 구조로 `.NET` framework timer와 같은 기능성을 구현할 수 있다. C core timer는
 고성능 interval wakeup, poller readable event, `fire_count` 누적값, stop/destroy
 lifecycle을 제공한다. C++ framework는 그 위에서 `.NET`과 같은 overrun policy, tick
 metadata, Spot dispatch 사상, handler 예외 monitoring, shutdown drain을 완성한다.
 따라서 C++ framework는 별도 timer thread나 별도 scheduler를 기본 실행 모델로 두지
-않는다.
+않는다. C++ framework는 CAPI timer와 CAPI SPOT dispatch event 후 recv 경계를 사용하므로
+timer callback 실행 직렬화를 위한 별도 queue도 추가하지 않는다.
 
 timer는 cleanup, heartbeat, timeout sweep, room tick, match tick을 같은 표면으로
 다룬다. 별도 `add_tick` 같은 이름은 만들지 않는다. 대신 tick metadata와 overrun
@@ -728,7 +730,7 @@ struct timer_options_t {
 실행 규칙은 다음과 같다.
 
 - user Spot timer callback은 같은 user Spot의 packet, actor packet, subscription,
-  channel reply와 같은 core SPOT dispatch boundary에서 순서 정책을 따른다.
+  channel reply와 같은 CAPI SPOT dispatch event 후 recv 경계에서 순서 정책을 따른다.
 - Entry Spot timer callback은 Entry Spot 전체를 전역 직렬화하지 않는다.
 - 같은 timer instance의 callback은 겹쳐 실행하지 않는다.
 - CAPI `fire_count`와 framework가 보관하는 이전 fire count를 비교해 `skipped_ticks`,

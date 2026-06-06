@@ -643,11 +643,13 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
                                     "`spot_handler_registry_t`",
                                     "`add_handler<&TSpot::method>()`",
                                     "`add_subscribe<&TSpot::method>(topic)`",
-                                    "`add_actor_join<&TSpot::method>()`",
                                     "`add_actor_packet<&TSpot::method>()`",
-                                    "`add_post_actor_joined<&TSpot::method>()`",
-                                    "`add_actor_left<&TSpot::method>()`",
                                     "`add_actor_disconnected<&TSpot::method>()`",
+                                    "`on_actor_join(actor, message_t)`",
+                                    "`on_post_actor_joined(actor)`",
+                                    "`on_actor_left(actor)`",
+                                    "`spot_context_t::close()`",
+                                    "`spot_create_result_t`",
                                     "Entry Spot",
                                     "user Spot lifecycle",
                                     "Registry-backed Spot lookup",
@@ -656,7 +658,10 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
                                     "Spot 등록부에서는 Spot member function만 나열한다",
                                     "일반 Spot은 `spot_t`, Entry Spot은 `entry_spot_t`를 상속한다",
                                     "compile-time으로 검증한다",
-                                    "actor join/packet member는 actor를 함께 받는다",
+                                    "actor join admission은 registry handler가 아니라 user Spot member callback으로 처리하고",
+                                    "request/reply는 DTO generic이 아니라 `message_t`를 사용한다",
+                                    "actor join/post-join/left lifecycle은 Spot member callback 이름이 계약이다",
+                                    "Spot create result는 `existing`, `created`, `rejected` state와 optional reply message를",
                                     "Play sample smoke는 handler 객체 직접 호출만으로 통과하지 않는다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
@@ -704,6 +709,7 @@ bool implementation_plan_goal12_covers_spot_timer (const std::filesystem::path &
       "`spot_context_t::add_timer<THandler>(...)`",
       "CAPI timer lifecycle",
       "CAPI timer dispatch event projection",
+      "CAPI SPOT dispatch event 후 timer recv 경계",
       "`fire_count` 기반 skipped tick 계산",
       "`scheduled_index`",
       "`skip_late_ticks`",
@@ -712,8 +718,9 @@ bool implementation_plan_goal12_covers_spot_timer (const std::filesystem::path &
       "same timer instance 재진입 금지",
       "timer handler exception monitoring",
       "native timer handle, poller slot, timer recv 순서",
-      "user Spot timer는 같은 Spot의 packet/subscription/channel reply 순서 정책을 따른다",
+      "user Spot timer는 같은 Spot의 packet/subscription/channel reply와 같은 CAPI SPOT dispatch",
       "Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다",
+      "별도 실행 직렬화 queue를 추가하지 않는다",
       "timer failure event는 snapshot interval을 기다리지 않고 발생한다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
@@ -815,7 +822,7 @@ bool implementation_plan_goal14_covers_actor_gateway (const std::filesystem::pat
                                     "`session_actor_t`",
                                     "`actor_context_t`",
                                     "`bound_session_t`",
-                                    "`actor_join_result_t<TReply>`",
+                                    "`actor_join_result_t`",
                                     "actor factory 등록",
                                     "local actor handle bind",
                                     "remote actor ref bind",

@@ -18,10 +18,7 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
   public:
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ()
-          .add_actor_packet<&bingo_entry_spot_t::match_bingo> ()
-          .add_post_actor_joined<&bingo_entry_spot_t::on_actor_joined> ()
-          .add_actor_left<&bingo_entry_spot_t::on_actor_left> ();
+        context.handlers ().add_actor_packet<&bingo_entry_spot_t::match_bingo> ();
     }
 
     match_bingo_res_t match_bingo (const player_actor_t &actor,
@@ -35,12 +32,12 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
         return {room_id, room.snapshot ()};
     }
 
-    void on_actor_joined (const player_actor_t &actor, const zlink::framework::spot_actor_change_result_t &)
+    void on_post_actor_joined (const player_actor_t &actor)
     {
         joined_actor_ids.push_back (actor.actor.actor_id);
     }
 
-    void on_actor_left (const player_actor_t &actor, const zlink::framework::spot_actor_change_result_t &)
+    void on_actor_left (const player_actor_t &actor)
     {
         joined_actor_ids.erase (std::remove (joined_actor_ids.begin (), joined_actor_ids.end (), actor.actor.actor_id),
                                 joined_actor_ids.end ());

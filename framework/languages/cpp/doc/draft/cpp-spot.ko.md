@@ -134,10 +134,16 @@ SPOT timer는 server-side timer다. client rendering frame이나 input polling �
 아니다. cleanup, heartbeat, timeout sweep, room tick, match tick을 같은
 `add_timer(...)` 표면으로 처리한다.
 
-구현은 CAPI timer를 래핑한다. CAPI timer는 interval wakeup과 누적 `fire_count`를
-제공하고, framework는 그 값을 이용해 `.NET` framework timer와 같은 tick metadata와
-overrun policy를 만든다. 사용자는 native timer handle, poller slot, timer recv 순서를
-직접 다루지 않는다.
+구현은 CAPI timer를 사용한다. CAPI timer는 interval wakeup, dispatch event, 누적
+`fire_count`, stop/destroy lifecycle을 제공하고, framework는 그 값을 이용해 `.NET`
+framework timer와 같은 tick metadata와 overrun policy를 만든다. 사용자는 native timer
+handle, poller slot, timer recv 순서를 직접 다루지 않는다.
+
+C++ framework timer는 CAPI SPOT dispatch event 뒤에 timer recv를 수행하는 경로를
+실행 직렬화 경계로 사용한다. 따라서 다른 binding처럼 자체 timer를 따로 만들고
+callback 실행 직렬화를 위한 별도 queue를 추가하지 않는다. C++에서는 CAPI timer를
+사용하는 것이 binding 호출 오버헤드를 늘리지 않고, core가 이미 제공하는 SPOT dispatch
+ordering을 그대로 framework handler 표면에 투영한다.
 
 ```cpp
 timer_ = context_.add_timer<stage_tick_handler_t>(
@@ -161,8 +167,8 @@ public:
 
 실행 정책은 아래와 같다.
 
-- user Spot timer는 같은 user Spot의 packet, actor packet, subscription과 같은 core
-  SPOT dispatch boundary에서 순서 정책을 따른다.
+- user Spot timer는 같은 user Spot의 packet, actor packet, subscription과 같은 CAPI
+  SPOT dispatch event 후 recv 경계에서 순서 정책을 따른다.
 - Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다.
 - 같은 timer instance는 callback을 겹쳐 실행하지 않는다.
 - `skip_late_ticks`, `catch_up_bounded`, `delay_next_tick` 정책을 제공한다.
@@ -177,14 +183,38 @@ Actor는 SpotNode에 소속되고, 생성 직후 Entry Spot에 위치한다. STR
 수 있지만, session binding은 actor 위치를 결정하지 않는다. user Spot join은 별도
 lifecycle 작업이다.
 
-Entry Spot과 user Spot의 actor handler 등록 표면은 같아도 실행 위치는 다르다.
+Entry Spot과 user Spot의 actor packet 등록 표면은 같아도 실행 위치는 다르다.
 
 | 입력 경로 | 실행 위치 |
 |-----------|-----------|
 | Entry Spot actor packet | core actor ordering |
-| user Spot actor packet | core SPOT dispatch boundary |
-| user Spot packet / timer / subscription | core SPOT dispatch boundary |
+| user Spot actor packet | CAPI SPOT dispatch event 후 recv 경계 |
+| user Spot packet / timer / subscription | CAPI SPOT dispatch event 후 recv 경계 |
 | Entry Spot timer | Entry Spot 전체 전역 직렬화 경계에 묶지 않음 |
+
+user Spot join admission은 registry handler가 아니라 Spot member callback이다. callback은
+`on_actor_join(actor, message_t)` 형태이며, `spot_actor_join_response_t`로 accepted 여부와
+optional reply `message_t`를 돌려준다. accepted가 `true`일 때만 actor 위치를 user Spot으로
+commit하고 `on_post_actor_joined(actor)`를 호출한다. accepted가 `false`이면 actor 위치를
+바꾸지 않고 post-joined callback도 호출하지 않는다. Entry Spot에는 admission callback이
+없고, commit 이후 `on_post_actor_joined(actor)`와 `on_actor_left(actor)`만 둔다.
+
+Spot create callback은 단일 `message_t` request를 받는다. payload 없이 create하면 빈
+`message_t`를 전달한다. C++에서는 기본 생성 가능한 Spot을 자동 생성하고, 생성자 인자가
+필요한 Spot은 `add_spot<TSpot>(name, factory)` 또는 `add_entry_spot<TEntrySpot>(factory)`로
+factory를 등록한다. 이 factory는 `.NET`의 activation/DI 역할에 해당하며, 생성된 Spot instance는
+`configure(context)`, `on_create(message_t)`, `on_initialize()` 순서로 lifecycle을 탄다.
+create result는 `spot_rid`, `existing`/`created`/`rejected` state, optional reply `message_t`를
+담는다. `get_or_create`는 이미 있으면 `existing`, 새로 만들면 `created`, create callback이
+거부하면 `rejected`를 돌려준다. 같은 SpotRid로 동시에 `get_or_create`가 들어오면 첫 request만
+create callback으로 전달한다.
+
+`spot_context_t::close()`는 현재 Spot을 닫는 표면이다. actor가 남아 있는 user Spot은 닫히면
+안 되므로 실패를 반환하고 find/list에서도 계속 조회 가능해야 한다. actor가 없는 Spot은 close
+성공 후 find/list에서 사라지고 `on_closing` lifecycle이 호출된다. timer handler나 packet
+handler 안에서 close를 요청하면 현재 callback이 끝난 뒤 닫는다. C++ SPOT dispatch는
+CAPI dispatch event 후 recv 경계에서 이미 실행 직렬화되므로 close 처리를 위해 별도
+실행 직렬화 queue를 추가하지 않는다.
 
 current Spot 밖에서 target Spot으로 직접 send/request 하는 public client는 기본 표면에
 두지 않는다. actor 생성 또는 Entry Spot join으로 actor handle을 얻고, session이
@@ -206,13 +236,15 @@ runtime 설정으로 닫고, 한도 초과는 `request_rejected` 같은 실패 r
 - spot-to-spot send/request 외의 일반 흐름은 channel name과 topic을 먼저 사용한다.
 - SPOT node lifecycle은 app host가 관리한다.
 - handler callback은 framework가 packet 수신과 typed payload 변환을 마친 뒤 호출한다.
-- 같은 SPOT node 안의 ordering과 handler concurrency 정책은 core dispatch boundary를
-  기준으로 framework가 typed handler 표면에 투영한다.
+- 같은 SPOT node 안의 ordering과 handler concurrency 정책은 CAPI SPOT dispatch event 후
+  recv 경계를 기준으로 framework가 typed handler 표면에 투영한다.
 - CPU-bound 또는 blocking 가능성이 있는 handler는 framework core의 offload 실행
   정책을 명시해 별도 thread에서 처리한다.
 - SPOT timer는 native timer handle이 아니라 CAPI timer 등록을 감싼 framework timer
   handle로 노출한다. `.NET` timer와 같은 기능성은 CAPI timer 위에서 framework가
   metadata, overrun policy, dispatch 경계를 추가해 맞춘다.
+- C++ framework는 CAPI timer와 CAPI SPOT dispatch event 후 recv 경계를 사용하므로
+  timer callback 실행 직렬화를 위한 별도 queue나 자체 timer scheduler를 만들지 않는다.
 - session actor relay는 ActorGateway 경로를 사용하고 application route mesh channel로
   우회하지 않는다.
 
@@ -226,8 +258,8 @@ SPOT 회귀 테스트는 `.NET` framework의 Spot, actor, timer 기대값을 C++
 
 - Spot node는 app host start/stop lifecycle에 묶여 생성되고 정리된다.
 - user Spot create/destroy, join/leave, actor join/left handler가 순서대로 호출된다.
-- 같은 user Spot 안의 packet, actor packet, subscription, timer callback은 core SPOT
-  dispatch boundary 기준 ordering을 따른다.
+- 같은 user Spot 안의 packet, actor packet, subscription, timer callback은 CAPI SPOT
+  dispatch event 후 recv 경계 기준 ordering을 따른다.
 - Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않고 같은 timer instance의 재진입만
   막는다.
 - `publish(...)`, `request_to(...)`, actor packet handler가 typed DTO와 serializer registry를

@@ -304,7 +304,7 @@ class game_module_t final : public zlink::framework::module_t
             spot_node.add_spot<stage_spot_t> ("stage");
             spot_builder = spot_node;
         });
-        auto context = spot_builder.create_spot ("stage");
+        auto context = spot_builder.create_spot ("stage").context;
         context.register_packet<stage_packet_t> ("stage.packet");
 
         zlink::framework::timer_options_t timer_options;

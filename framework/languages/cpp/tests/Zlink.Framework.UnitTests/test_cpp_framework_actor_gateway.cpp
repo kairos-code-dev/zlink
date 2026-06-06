@@ -174,13 +174,15 @@ int main ()
             zlink::message_t::from_json (join_reply_t{"match-1", "O"})});
     });
     auto actor_context = rebound.value ().context ();
-    const auto join_spot = actor_context
-                             .join_spot<join_request_t, join_reply_t> (
-                               zlink::framework::spot_rid_t::from_string ("match-1"), join_request_t{"match-1"})
-                             .submit ()
-                             .result ();
+    const auto join_spot =
+      actor_context
+        .join_spot (zlink::framework::spot_rid_t::from_string ("match-1"),
+                    zlink::message_t::from_json (join_request_t{"match-1"}))
+        .submit ()
+        .result ();
     if (!join_spot || !join_spot_seen || join_spot.value ().result_code != 0
-        || join_spot.value ().actor.generation () != 8 || join_spot.value ().reply.mark != "O") {
+        || join_spot.value ().actor.generation () != 8
+        || join_spot.value ().reply.parse_json<join_reply_t> ().mark != "O") {
         return 14;
     }
     const auto stale_relay = rebound.value ().relay (header, payload).submit ().result ();

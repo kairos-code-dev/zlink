@@ -913,9 +913,31 @@ class spot_node_options_builder_t
         return *this;
     }
 
+    template <typename TSpot>
+    spot_node_options_builder_t &add_spot (std::string spot_name, std::function<std::shared_ptr<TSpot> ()> factory)
+    {
+        detail::require_non_blank (spot_name, "SPOT name is required");
+        _actions.push_back ([spot_name = std::move (spot_name), factory = std::move (factory)] (
+                              spot_node_builder_t &spot_node) mutable {
+            spot_node.add_spot<TSpot> (std::move (spot_name), std::move (factory));
+        });
+        apply ();
+        return *this;
+    }
+
     template <typename TEntrySpot> spot_node_options_builder_t &add_entry_spot ()
     {
         _actions.push_back ([] (spot_node_builder_t &spot_node) { spot_node.add_entry_spot<TEntrySpot> (); });
+        apply ();
+        return *this;
+    }
+
+    template <typename TEntrySpot>
+    spot_node_options_builder_t &add_entry_spot (std::function<std::shared_ptr<TEntrySpot> ()> factory)
+    {
+        _actions.push_back ([factory = std::move (factory)] (spot_node_builder_t &spot_node) mutable {
+            spot_node.add_entry_spot<TEntrySpot> (std::move (factory));
+        });
         apply ();
         return *this;
     }

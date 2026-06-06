@@ -55,6 +55,20 @@ Spot은 상태와 동작을 함께 감싸는 단위이므로 handler class를 �
 상속한다. framework는 타입 이름에서 Entry Spot 여부를 추론하지 않고
 `add_entry_spot<TEntrySpot>()` 호출과 기반 타입으로 역할을 확인한다.
 
+actor lifecycle은 handler registry 등록 대상이 아니다. user Spot의 join admission은
+`on_actor_join(actor, message_t)` member callback이 처리하고, 반환값은 accepted 여부와
+optional reply `message_t`를 담는다. accepted가 `true`일 때만 actor 위치를 user Spot으로
+commit하고 `on_post_actor_joined(actor)`를 호출한다. accepted가 `false`이면 위치를 바꾸지
+않고 post-joined callback도 호출하지 않는다. Entry Spot에는 admission callback이 없으며,
+commit 이후 `on_post_actor_joined(actor)`와 `on_actor_left(actor)`만 둔다.
+
+create callback도 request를 단일 `message_t`로 받는다. create result는 `existing`,
+`created`, `rejected` state와 optional reply `message_t`를 담는다. `spot_context_t::close()`는
+현재 Spot을 닫는 표면이며, actor가 남아 있는 user Spot은 닫지 않고 실패를 반환한다. callback
+안에서 close를 요청하면 현재 callback이 끝난 뒤 닫는다. C++ SPOT dispatch는 CAPI dispatch
+event 후 recv 경계에서 이미 실행 직렬화되므로 close를 위해 별도 실행 직렬화 queue를 추가하지
+않는다.
+
 ## 3. Handler 등록 기준
 
 일반 사용자는 raw `message_t` handler class를 상속하지 않고, typed payload를 받는
@@ -188,8 +202,9 @@ manual endpoint가 필요한 경우 `attach_channel_client(name, [](auto &client
 client.connect(endpoint); })`처럼 attach 설정 안에서 지정한다.
 
 SPOT timer는 CAPI timer 등록을 감싼 framework timer handle과 `timer_tick_t` metadata로
-설명한다. user Spot timer는 core SPOT dispatch boundary에서 순서 정책을 따르고,
-Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다.
+설명한다. user Spot timer는 CAPI SPOT dispatch event 후 recv 경계에서 순서 정책을 따르고,
+Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다. C++ framework는 CAPI timer를
+사용하므로 timer callback 실행 직렬화를 위한 별도 queue나 자체 timer scheduler를 만들지 않는다.
 
 Session actor relay는 application route mesh channel을 쓰지 않는다. STREAM session은
 `attach_actor_gateway(...)`로 local SpotNode에 붙고, packet relay는

@@ -43,11 +43,11 @@ class actor_ref_t
     std::uint64_t _generation = 0;
 };
 
-template <typename TReply> struct actor_join_result_t
+struct actor_join_result_t
 {
     int result_code = 0;
     actor_ref_t actor;
-    TReply reply;
+    zlink::message_t reply;
 };
 
 namespace detail
@@ -60,15 +60,13 @@ struct actor_join_reply_t
 };
 } // namespace detail
 
-template <typename TReply>
-class actor_join_spot_call_t
-    : private detail::call_facade_t<actor_join_spot_call_t<TReply>, actor_join_result_t<TReply>>
+class actor_join_spot_call_t : private detail::call_facade_t<actor_join_spot_call_t, actor_join_result_t>
 {
   private:
-    using base_t = detail::call_facade_t<actor_join_spot_call_t<TReply>, actor_join_result_t<TReply>>;
+    using base_t = detail::call_facade_t<actor_join_spot_call_t, actor_join_result_t>;
 
   public:
-    explicit actor_join_spot_call_t (result_t<actor_join_result_t<TReply>> result) : base_t (std::move (result)) {}
+    explicit actor_join_spot_call_t (result_t<actor_join_result_t> result) : base_t (std::move (result)) {}
 
     using base_t::submit;
     using base_t::timeout;
@@ -137,26 +135,25 @@ class actor_context_t
     bool is_joined () const noexcept;
     bound_session_t bound_session () const;
 
-    template <typename TRequest, typename TReply>
-    actor_join_spot_call_t<TReply> join_spot (spot_rid_t spot_rid, const TRequest &request)
+    actor_join_spot_call_t join_spot (spot_rid_t spot_rid, const zlink::message_t &request)
     {
         try {
-            const auto erased = join_spot_erased (std::move (spot_rid), zlink::message_t::from_json (request));
+            const auto erased = join_spot_erased (std::move (spot_rid), request);
             if (!erased) {
                 const auto *error = erased.error ();
-                return actor_join_spot_call_t<TReply> (result_t<actor_join_result_t<TReply>>::failure (
+                return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
                   erased.error_kind (), error != nullptr ? error->what () : "actor join spot failed"));
             }
             const auto &reply = erased.value ();
-            return actor_join_spot_call_t<TReply> (result_t<actor_join_result_t<TReply>>::success (
-              actor_join_result_t<TReply>{reply.result_code, reply.actor, reply.reply.template parse_json<TReply> ()}));
+            return actor_join_spot_call_t (
+              result_t<actor_join_result_t>::success (actor_join_result_t{reply.result_code, reply.actor, reply.reply}));
         }
         catch (const framework_exception_t &error) {
-            return actor_join_spot_call_t<TReply> (
-              result_t<actor_join_result_t<TReply>>::failure (error.kind (), error.what (), error.is_retriable ()));
+            return actor_join_spot_call_t (
+              result_t<actor_join_result_t>::failure (error.kind (), error.what (), error.is_retriable ()));
         }
         catch (...) {
-            return actor_join_spot_call_t<TReply> (result_t<actor_join_result_t<TReply>>::failure (
+            return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
               framework_error_kind_t::payload_decode_failed, "actor join spot reply decode failed"));
         }
     }

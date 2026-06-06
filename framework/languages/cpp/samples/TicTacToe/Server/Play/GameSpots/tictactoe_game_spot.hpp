@@ -19,14 +19,15 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
 
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ()
-          .add_actor_join<&tictactoe_game_spot_t::join_actor> ()
-          .add_actor_packet<&tictactoe_game_spot_t::place_mark> ()
-          .add_post_actor_joined<&tictactoe_game_spot_t::on_actor_joined> ()
-          .add_actor_left<&tictactoe_game_spot_t::on_actor_left> ();
+        context.handlers ().add_actor_packet<&tictactoe_game_spot_t::place_mark> ();
     }
 
-    join_match_res_t join_actor (const player_actor_t &, const join_match_req_t &request) { return join (request); }
+    zlink::framework::spot_actor_join_response_t on_actor_join (const player_actor_t &,
+                                                                const zlink::message_t &request_message)
+    {
+        return zlink::framework::spot_actor_join_response_t::accept (
+          zlink::message_t::from_json (join (request_message.parse_json<join_match_req_t> ())));
+    }
 
     place_mark_res_t place_mark (const player_actor_t &,
                                  const zlink::framework::spot_actor_request_context_t &context,
@@ -38,14 +39,14 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
         return {place (request)};
     }
 
-    void on_actor_joined (const player_actor_t &actor, const zlink::framework::spot_actor_change_result_t &)
+    void on_post_actor_joined (const player_actor_t &actor)
     {
         const auto &state = snapshot ();
         publisher.publish_opponent_joined (
           {state.match_id, actor.actor_id, actor.actor_id == state.x_actor_id ? "X" : "O", state});
     }
 
-    void on_actor_left (const player_actor_t &, const zlink::framework::spot_actor_change_result_t &)
+    void on_actor_left (const player_actor_t &)
     {
         const auto &state = snapshot ();
         publisher.publish_game_ended ({state.match_id, state.winner_actor_id, state.draw, state});

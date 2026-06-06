@@ -41,8 +41,8 @@ int main ()
         builder = spot_node;
     });
 
-    auto entry_context = builder.create_spot ("entry");
-    auto context = builder.create_spot ("stage");
+    auto entry_context = builder.create_spot ("entry").context;
+    auto context = builder.create_spot ("stage").context;
     auto timer = context.add_timer<tick_handler_t> ("stage-tick", 16ms,
                                                     {.overrun_policy = timer_overrun_policy_t::skip_late_ticks});
     if (timer.is_disposed ()) {
@@ -122,6 +122,26 @@ int main ()
       });
     if (!entry_result || !user_timer_ran_during_entry_tick) {
         return 12;
+    }
+
+    auto close_created = builder.create_spot ("stage");
+    auto close_context = close_created.context;
+    auto close_timer = close_context.add_timer<tick_handler_t> ("close-after-callback", 10ms);
+    auto close_runtime = zlink::framework::detail::timer_runtime_t::from (close_context);
+    bool close_requested_inside_callback = false;
+    bool spot_visible_during_callback = false;
+    auto close_tick = close_runtime.dispatch_fire_count (
+      close_timer, 1,
+      [&] (const zlink::framework::timer_tick_t &) {
+          const auto close_result = close_context.close ().result ();
+          close_requested_inside_callback = close_result && close_result.value ();
+          spot_visible_during_callback = builder.find_spot (close_created.spot_rid).has_value ();
+      });
+    if (!close_tick || !close_requested_inside_callback || !spot_visible_during_callback) {
+        return 14;
+    }
+    if (builder.find_spot (close_created.spot_rid)) {
+        return 15;
     }
 
     bool invalid_period_failed = false;

@@ -18,10 +18,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
   public:
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ()
-          .add_actor_packet<&entry_spot_t::join_match> ()
-          .add_post_actor_joined<&entry_spot_t::on_actor_joined> ()
-          .add_actor_left<&entry_spot_t::on_actor_left> ();
+        context.handlers ().add_actor_packet<&entry_spot_t::join_match> ();
     }
 
     join_match_res_t join_match (const player_actor_t &actor,
@@ -33,12 +30,12 @@ class entry_spot_t : public zlink::framework::entry_spot_t
         return room.join (joined);
     }
 
-    void on_actor_joined (const player_actor_t &actor, const zlink::framework::spot_actor_change_result_t &)
+    void on_post_actor_joined (const player_actor_t &actor)
     {
         actor_ids.push_back (actor.actor_id);
     }
 
-    void on_actor_left (const player_actor_t &actor, const zlink::framework::spot_actor_change_result_t &)
+    void on_actor_left (const player_actor_t &actor)
     {
         actor_ids.erase (std::remove (actor_ids.begin (), actor_ids.end (), actor.actor_id), actor_ids.end ());
     }

@@ -154,7 +154,11 @@ result_t<timer_tick_t> timer_runtime_t::dispatch_fire_count (timer_t &timer,
     }
 
     timer._state->running = true;
-    auto reset_running = [&timer] { timer._state->running = false; };
+    _context->enter_callback ();
+    auto reset_running = [&timer, this] {
+        timer._state->running = false;
+        _context->leave_callback ();
+    };
 
     try {
         auto tick = make_tick (*timer._state, fire_count);

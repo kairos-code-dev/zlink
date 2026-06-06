@@ -1296,14 +1296,27 @@ public:
       timer_options_t options = {});
 };
 
-enum class spot_actor_change_kind_t {
-    join_spot,
-    join_entry_spot,
-    leave_spot
+struct spot_actor_join_response_t {
+    bool accepted;
+    std::optional<zlink::message_t> reply;
 };
 
-struct spot_actor_change_result_t {
-    spot_actor_change_kind_t kind;
+enum class spot_create_state_t {
+    existing,
+    created,
+    rejected
+};
+
+struct spot_create_response_t {
+    bool accepted;
+    std::optional<zlink::message_t> reply;
+};
+
+struct spot_create_result_t {
+    spot_rid_t spot_rid;
+    spot_create_state_t state;
+    std::optional<zlink::message_t> reply;
+    spot_context_t context;
 };
 
 struct spot_actor_message_metadata_t {
@@ -1349,16 +1362,7 @@ public:
     spot_handler_registry_t &add_subscribe(std::string topic);
 
     template <auto Method>
-    spot_handler_registry_t &add_actor_join(std::string packet_name = {});
-
-    template <auto Method>
     spot_handler_registry_t &add_actor_packet(std::string packet_name = {});
-
-    template <auto Method>
-    spot_handler_registry_t &add_post_actor_joined();
-
-    template <auto Method>
-    spot_handler_registry_t &add_actor_left();
 
     template <auto Method>
     spot_handler_registry_t &add_actor_disconnected();
@@ -1371,14 +1375,6 @@ public:
       const message_t &message) const;
 
     template <typename TSpot, typename TActor>
-    result_t<message_t> invoke_actor_join(std::string_view packet_name,
-      TSpot &spot,
-      TActor &actor,
-      service_provider_t &services,
-      serializer_registry_t &serializers,
-      const message_t &message) const;
-
-    template <typename TSpot, typename TActor>
     result_t<message_t> invoke_actor_packet(std::string_view packet_name,
       TSpot &spot,
       TActor &actor,
@@ -1386,19 +1382,6 @@ public:
       serializer_registry_t &serializers,
       const message_t &message) const;
 
-    template <typename TSpot, typename TActor>
-    result_t<message_t> invoke_post_actor_joined(TSpot &spot,
-      TActor &actor,
-      service_provider_t &services,
-      serializer_registry_t &serializers,
-      spot_actor_change_result_t result = {});
-
-    template <typename TSpot, typename TActor>
-    result_t<message_t> invoke_actor_left(TSpot &spot,
-      TActor &actor,
-      service_provider_t &services,
-      serializer_registry_t &serializers,
-      spot_actor_change_result_t result);
 };
 
 class bound_session_t {
@@ -1415,10 +1398,8 @@ public:
     bool is_joined() const;
     bound_session_t bound_session() const;
 
-    template <typename TRequest, typename TReply>
-    actor_join_spot_call_t<TReply> join_spot(
-      spot_rid_t spot_rid,
-      const TRequest &request);
+    actor_join_spot_call_t join_spot(spot_rid_t spot_rid,
+      const zlink::message_t &request);
 
     actor_join_entry_spot_call_t join_entry_spot(node_rid_t spot_node_rid);
 };
@@ -1435,11 +1416,12 @@ SPOT node는 router 또는 pub/sub capability 중 하나 이상을 켜야 한다
 discovery view만 연결하므로 실행 capability가 아니다. `enable_router(...)`나
 `enable_pub_sub(...)` 없이 node를 선언하면 options 적용 시점에 설정 오류로 실패한다.
 
-`.NET`의 `Context.Handlers.AddHandler`, `AddActorJoin`, `AddActorPacket`과 같은 역할은
-C++에서 `spot_context_t::handlers()`가 맡는다. C++ SPOT 등록은 한 가지 방식만 제공한다.
-등록 대상은 별도 handler class가 아니라 Spot 객체의 member function이다. member function
-signature에서 Spot, actor, message, reply type을 모두 추론하므로 사용자가 같은 타입 정보를
-handler class alias와 등록 template 인자에 반복해서 적지 않는다.
+`.NET`의 일반 packet handler registry와 같은 역할은 C++에서 `spot_context_t::handlers()`가
+맡는다. 다만 actor lifecycle은 registry 등록 표면이 아니다. user Spot은
+`on_actor_join(actor, message_t)`, `on_post_actor_joined(actor)`, `on_actor_left(actor)`
+member callback을 직접 제공한다. Entry Spot은 admission 단계가 없으므로
+`on_actor_join(...)`을 갖지 않고, commit 이후 callback인 `on_post_actor_joined(actor)`와
+`on_actor_left(actor)`만 제공한다.
 일반 Spot 타입은 `zlink::framework::spot_t`를 상속해야 하고, Entry Spot 타입은
 `zlink::framework::entry_spot_t`를 상속해야 한다. 이름이나 파일 위치로 역할을 추론하지 않는다.
 `add_spot<TSpot>()`와 `add_entry_spot<TEntrySpot>()`가 이 계약을 compile-time으로 확인한다.
@@ -1448,26 +1430,22 @@ handler class alias와 등록 template 인자에 반복해서 적지 않는다.
 class bingo_room_spot_t : public zlink::framework::spot_t,
                           public bingo_room_t {
 public:
-    bingo_room_join_res_t join_actor(const player_actor_t &actor,
-      const bingo_room_join_req_t &request);
+    zlink::framework::spot_actor_join_response_t on_actor_join(
+      const player_actor_t &actor,
+      const zlink::message_t &request);
 
     start_bingo_game_res_t start_game(const player_actor_t &actor,
       const zlink::framework::spot_actor_request_context_t &context,
       const start_bingo_game_req_t &request);
 
-    void on_actor_joined(const player_actor_t &actor,
-      const zlink::framework::spot_actor_change_result_t &result);
+    void on_post_actor_joined(const player_actor_t &actor);
 
-    void on_actor_left(const player_actor_t &actor,
-      const zlink::framework::spot_actor_change_result_t &result);
+    void on_actor_left(const player_actor_t &actor);
 
     void configure(zlink::framework::spot_context_t &context)
     {
         context.handlers()
-          .add_actor_join<&bingo_room_spot_t::join_actor>()
-          .add_actor_packet<&bingo_room_spot_t::start_game>()
-          .add_post_actor_joined<&bingo_room_spot_t::on_actor_joined>()
-          .add_actor_left<&bingo_room_spot_t::on_actor_left>();
+          .add_actor_packet<&bingo_room_spot_t::start_game>();
     }
 };
 
@@ -1478,13 +1456,14 @@ public:
 ```
 
 일반 Spot packet member와 subscription member는 payload 하나를 받는다.
-actor join member는 actor와 request를 받는다. actor packet member는 actor,
-`spot_actor_request_context_t` 또는 `spot_actor_send_context_t`, DTO를 받는다.
-actor lifecycle member는 actor와 `spot_actor_change_result_t`를 받는다. 이 타입은 `.NET`의
-`ZLinkSpotActorChangeResult`에 해당하며, `join_spot`, `join_entry_spot`, `leave_spot`
-change kind만 표현한다. 이 셋이 아닌 값은 membership 변화가 아니므로 생성 시
-`request_protocol_error`로 거부한다. actor disconnected handler는 `.NET`처럼 change result 없이
-actor만 받을 수 있다.
+actor join admission member는 actor와 `message_t` request를 받으며,
+`spot_actor_join_response_t`로 accepted 여부와 optional reply `message_t`를 돌려준다.
+accepted가 `true`일 때만 actor 위치를 user Spot으로 commit하고
+`on_post_actor_joined(actor)`를 호출한다. accepted가 `false`이면 actor 위치를 바꾸지 않고
+post-joined callback도 호출하지 않는다. 예전 change-result 값 객체와 change kind는
+commit 이후 callback 이름으로 의미가 분리되어 더 이상 필요하지 않다.
+actor packet member는 actor, `spot_actor_request_context_t` 또는 `spot_actor_send_context_t`,
+DTO를 받는다. actor disconnected handler는 actor만 받을 수 있다.
 등록된 member는 descriptor로만 남지 않는다. dispatch 경로는 `serializer_registry_t`로
 `message_t`를 DTO로 바꾸고, runtime이 현재 Spot instance와 actor를 찾아 typed member
 function을 호출한다. 샘플도 이 경로를 통과해야 framework 동작을 확인했다고
@@ -1517,10 +1496,10 @@ ActorGateway session relay는 `session_actor_manager_t`, `session_actor_t`,
 `actor_context_t`, `bound_session_t`가 담당한다. 이 표면은 route mesh channel을 직접
 보여 주지 않는다. runtime이 ActorGateway 내부 frame, actor ref, bound session metadata를
 소유한다.
-actor context의 `join_spot<TRequest, TReply>(...)` 결과는
-`actor_join_result_t<TReply>`다. 이 타입은 `.NET`의 `ZLinkActorJoinResult<TReply>`처럼
-join result code, join 이후 actor ref, typed reply를 함께 담는다. Entry Spot join은
-`.NET`과 같이 actor ref만 돌려준다.
+actor context의 `join_spot(...)` request와 reply는 DTO generic이 아니라 `message_t`다.
+protobuf, json, messagepack 사용자는 `message_t`와 serializer registry에서 encode/decode를
+선택한다. `actor_join_result_t`는 join result code, join 이후 actor ref, reply `message_t`를
+함께 담는다. Entry Spot join은 `.NET`과 같이 actor ref만 돌려준다.
 
 비동기 표면은 `.NET`의 `SubmitAsync()`와 callback submit 모델을 C++로 투영한다.
 `request(...)`, `send(...)`, `relay(...)`, `join_spot(...)`, `join_entry_spot(...)` 같은

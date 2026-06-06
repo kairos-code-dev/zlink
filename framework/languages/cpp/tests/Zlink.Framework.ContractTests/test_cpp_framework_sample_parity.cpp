@@ -105,24 +105,26 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     EXPECT_EQ (player_actor.actor.actor_id, authenticated.actor_id);
 
     bingo_room_spot_t room_spot (allocated.room_id);
-    const auto joined =
-      room_spot.join_actor (player_actor, {allocated.room_id, authenticated.actor_id, authenticated.display_name});
-    EXPECT_EQ (joined.state.players.size (), 1U);
+    const auto joined = room_spot.on_actor_join (
+      player_actor,
+      zlink::message_t::from_json (bingo_room_join_req_t{allocated.room_id, authenticated.actor_id,
+                                                         authenticated.display_name}));
+    ASSERT_TRUE (joined.accepted);
+    ASSERT_TRUE (joined.reply);
+    EXPECT_EQ (joined.reply->parse_json<bingo_room_join_res_t> ().state.players.size (), 1U);
 
     zlink::framework::spot_context_t room_context;
     room_spot.configure (room_context);
     const auto room_handlers = room_context.handlers ().descriptors ();
-    ASSERT_EQ (room_handlers.size (), 4U);
-    EXPECT_EQ (room_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_join);
-    EXPECT_EQ (room_handlers[0].packet_name, bingo_room_join_req_t::packet_name);
-    EXPECT_EQ (room_handlers[1].kind, zlink::framework::spot_handler_kind_t::actor_packet);
-    EXPECT_EQ (room_handlers[1].packet_name, start_bingo_game_req_t::packet_name);
+    ASSERT_EQ (room_handlers.size (), 1U);
+    EXPECT_EQ (room_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_packet);
+    EXPECT_EQ (room_handlers[0].packet_name, start_bingo_game_req_t::packet_name);
 
     bingo_entry_spot_t entry_spot;
     zlink::framework::spot_context_t entry_context;
     entry_spot.configure (entry_context);
     const auto entry_handlers = entry_context.handlers ().descriptors ();
-    ASSERT_EQ (entry_handlers.size (), 3U);
+    ASSERT_EQ (entry_handlers.size (), 1U);
     EXPECT_EQ (entry_handlers[0].packet_name, match_bingo_req_t::packet_name);
 
     bingo_room_timer_handler_t timer;
@@ -166,7 +168,10 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 
     tictactoe_game_spot_t game_spot (created.match_id);
     game_spot.create ({created.owner_actor_id});
-    game_spot.join ({created.match_id, sample_names_t::o_actor_id});
+    const auto game_join = game_spot.on_actor_join (
+      player_actor_t{sample_names_t::o_actor_id},
+      zlink::message_t::from_json (join_match_req_t{created.match_id, sample_names_t::o_actor_id}));
+    ASSERT_TRUE (game_join.accepted);
     zlink::framework::spot_actor_request_context_t place_context{
       place_mark_req_t::packet_name, "application/json", {}, {}};
     player_actor_t player_actor{sample_names_t::x_actor_id};
@@ -177,16 +182,14 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     zlink::framework::spot_context_t game_context;
     game_spot.configure (game_context);
     const auto game_handlers = game_context.handlers ().descriptors ();
-    ASSERT_EQ (game_handlers.size (), 4U);
-    EXPECT_EQ (game_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_join);
-    EXPECT_EQ (game_handlers[0].packet_name, join_match_req_t::packet_name);
-    EXPECT_EQ (game_handlers[1].kind, zlink::framework::spot_handler_kind_t::actor_packet);
-    EXPECT_EQ (game_handlers[1].packet_name, place_mark_req_t::packet_name);
+    ASSERT_EQ (game_handlers.size (), 1U);
+    EXPECT_EQ (game_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_packet);
+    EXPECT_EQ (game_handlers[0].packet_name, place_mark_req_t::packet_name);
 
     zlink::framework::spot_context_t entry_context;
     entry_spot.configure (entry_context);
     const auto entry_handlers = entry_context.handlers ().descriptors ();
-    ASSERT_EQ (entry_handlers.size (), 3U);
+    ASSERT_EQ (entry_handlers.size (), 1U);
     EXPECT_EQ (entry_handlers[0].packet_name, join_match_req_t::packet_name);
 
     const auto mapped = tictactoe_game_contract_mapper_t::to_contract (moved.state);

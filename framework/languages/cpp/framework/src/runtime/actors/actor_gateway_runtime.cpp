@@ -145,10 +145,12 @@ result_t<detail::actor_join_reply_t> actor_context_t::join_spot_erased (spot_rid
           joined.error_kind (), error != nullptr ? error->what () : "actor join spot failed");
     }
 
-    _actor_ref = joined.value ().actor;
-    auto found = _state->actors_by_id.find (std::string (_actor_ref.actor_id ()));
-    if (found != _state->actors_by_id.end ()) {
-        found->second.ref = _actor_ref;
+    if (joined.value ().result_code == 0) {
+        _actor_ref = joined.value ().actor;
+        auto found = _state->actors_by_id.find (std::string (_actor_ref.actor_id ()));
+        if (found != _state->actors_by_id.end ()) {
+            found->second.ref = _actor_ref;
+        }
     }
     return joined;
 }

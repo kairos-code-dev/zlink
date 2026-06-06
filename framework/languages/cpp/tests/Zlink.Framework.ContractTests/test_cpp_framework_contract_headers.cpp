@@ -109,6 +109,21 @@ struct named_reply_t
     int value{};
 };
 
+struct contract_actor_t
+{
+};
+
+struct contract_spot_t : public zlink::framework::spot_t
+{
+    zlink::framework::spot_actor_join_response_t on_actor_join (contract_actor_t &, const zlink::message_t &)
+    {
+        return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    void on_post_actor_joined (contract_actor_t &) {}
+    void on_actor_left (contract_actor_t &) {}
+};
+
 void to_json (nlohmann::json &json, const named_request_t &value)
 {
     json = nlohmann::json{{"value", value.value}};
@@ -334,6 +349,25 @@ static_assert (std::is_same_v<
 static_assert (std::has_virtual_destructor_v<zlink::framework::spot_t>);
 static_assert (std::has_virtual_destructor_v<zlink::framework::entry_spot_t>);
 static_assert (std::is_base_of_v<zlink::framework::spot_t, zlink::framework::entry_spot_t>);
+static_assert (std::is_same_v<decltype (std::declval<contract_spot_t &> ().on_actor_join (
+                                std::declval<contract_actor_t &> (), std::declval<const zlink::message_t &> ())),
+                              zlink::framework::spot_actor_join_response_t>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().close ()),
+                              zlink::framework::task_t<bool>>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().create_spot (
+                                "stage", std::declval<zlink::message_t> ())),
+                              zlink::framework::spot_create_result_t>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().add_spot<
+                                contract_spot_t> ("stage", std::declval<std::function<std::shared_ptr<contract_spot_t> ()>> ())),
+                              zlink::framework::spot_node_builder_t &>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().get_or_create_spot (
+                                "stage", std::declval<zlink::framework::spot_rid_t> (),
+                                std::declval<zlink::message_t> ())),
+                              zlink::framework::spot_create_result_t>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ().join_spot (
+                                std::declval<zlink::framework::spot_rid_t> (),
+                                std::declval<const zlink::message_t &> ())),
+                              zlink::framework::actor_join_spot_call_t>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ()
                                           .set_routing_id (zlink::routing_id_t::from ("router"))),

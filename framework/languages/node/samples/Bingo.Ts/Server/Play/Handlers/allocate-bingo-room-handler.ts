@@ -1,27 +1,17 @@
-const { ZLinkHandlerGroup, ZLinkRequest } = require('../../../../../../packages/framework/dist');
+const { Inject } = require('@nestjs/common');
+const { BingoRoomDirectory } = require('./bingo-room-directory');
 
 class AllocateBingoRoomHandler {
   [key: string]: any;
   constructor(rooms) {
     this.rooms = rooms;
   }
-
   async handle(request) {
     const allocated = await this.rooms.allocate(request.mode ?? 'four-player');
     return { roomId: allocated.roomId };
   }
 }
 
-ZLinkHandlerGroup('play')(AllocateBingoRoomHandler);
-ZLinkRequest('AllocateBingoRoom')(AllocateBingoRoomHandler.prototype, 'handle', descriptor());
+Inject(BingoRoomDirectory)(AllocateBingoRoomHandler, undefined, 0);
 
 export { AllocateBingoRoomHandler };
-
-function descriptor() {
-  return {
-    configurable: true,
-    enumerable: false,
-    value: AllocateBingoRoomHandler.prototype.handle,
-    writable: true
-  };
-}

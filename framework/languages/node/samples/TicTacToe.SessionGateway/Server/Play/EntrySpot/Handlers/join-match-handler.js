@@ -1,3 +1,7 @@
+const { Inject } = require('@nestjs/common');
+const { TicTacToeMatchDirectory } = require('../../GameSpots/tictactoe-match-directory');
+const { SessionGatewayActorManager } = require('../../session-gateway-actor-manager');
+
 class JoinMatchHandler {
   constructor(actorManager, matches) {
     this.actorManager = actorManager;
@@ -15,5 +19,8 @@ class JoinMatchHandler {
     };
   }
 }
+
+Inject(SessionGatewayActorManager)(JoinMatchHandler, undefined, 0);
+Inject(TicTacToeMatchDirectory)(JoinMatchHandler, undefined, 1);
 
 module.exports = { JoinMatchHandler };

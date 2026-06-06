@@ -1,4 +1,5 @@
-const { ZLinkHandlerGroup, ZLinkRequest } = require('../../../../../packages/framework/dist');
+const { Inject } = require('@nestjs/common');
+const { BingoRoomDirectory } = require('./bingo-room-directory');
 
 class AllocateBingoRoomHandler {
   constructor(rooms) {
@@ -11,16 +12,6 @@ class AllocateBingoRoomHandler {
   }
 }
 
-ZLinkHandlerGroup('play')(AllocateBingoRoomHandler);
-ZLinkRequest('AllocateBingoRoom')(AllocateBingoRoomHandler.prototype, 'handle', descriptor());
+Inject(BingoRoomDirectory)(AllocateBingoRoomHandler, undefined, 0);
 
 module.exports = { AllocateBingoRoomHandler };
-
-function descriptor() {
-  return {
-    configurable: true,
-    enumerable: false,
-    value: AllocateBingoRoomHandler.prototype.handle,
-    writable: true
-  };
-}

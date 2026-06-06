@@ -106,7 +106,7 @@ handler 를 함께 등록하느냐 마느냐에 따라 모델이 갈릴 뿐이�
       routerEndpoint: 'tcp://0.0.0.0:5551',
     }),
     ZLinkModule.forRoot({
-      channels: {
+      clientServerChannels: {
         api: {
           server: { bind: 'tcp://0.0.0.0:7101' },
         },
@@ -504,7 +504,7 @@ wire 호환을 위해 dotnet 과 같은 정수 값을 그대로 사용한다. �
     }),
     // --- 서비스 런타임 ---
     ZLinkModule.forRoot({
-      channels: {
+      clientServerChannels: {
         api: {
           server: { bind: 'tcp://0.0.0.0:7101' },
         },
@@ -630,18 +630,16 @@ ZLinkModule.forRoot({
   discovery: {
     registries: ['tcp://127.0.0.1:5551'],
   },
-  channels: {
+  routerMeshes: {
     play: {
-      routeMesh: { bind: 'tcp://0.0.0.0:7201' },
+      bind: 'tcp://0.0.0.0:7201',
     },
   },
-  spot: {
-    remoteAddresses: { useRegistry: 'game' },
-  },
+  registrySpotRemoteAddresses: { namespace: 'game' },
 });
 ```
 
-`spot.remoteAddresses.useRegistry`(dotnet `UseRegistrySpotRemoteAddresses(...)`)는
+`registrySpotRemoteAddresses`(dotnet `UseRegistrySpotRemoteAddresses(...)`)는
 Spot owner 조회와 Spot RID directory 를 함께 등록한다. actor-session route 는
 session bind 시 actor runtime state 에 저장된다.
 

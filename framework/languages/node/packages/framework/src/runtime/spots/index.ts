@@ -7,6 +7,7 @@ import type {
   ZLinkEntrySpotContext,
   ZLinkFanoutClient,
   ZLinkPublishCall,
+  ZLinkProviderResolver,
   ZLinkRequestCall,
   ZLinkSendCall,
   ZLinkSpot,
@@ -49,12 +50,14 @@ export interface ZLinkSpotManagerOptions {
   readonly fanoutClient?: ZLinkFanoutClient;
   readonly remoteAddressResolver?: ZLinkSpotRemoteAddressResolver;
   readonly routedTransport?: ZLinkSpotRoutedTransport;
+  readonly providerResolver?: ZLinkProviderResolver;
 }
 
 export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly registration: ZLinkFrameworkRegistration;
   readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   readonly context: ZLinkBackendContext;
+  readonly providerResolver?: ZLinkProviderResolver;
 }
 
 export class ZLinkSpotNodeRuntimeManager {
@@ -125,9 +128,11 @@ export class ZLinkSpotNodeRuntimeManager {
       entrySpotType: spotNode.entrySpotType,
       nativeSpot,
       nodeRid: node.routingId,
-      spotNodeName
+      spotNodeName,
+      providerResolver: this.options.providerResolver
     });
     try {
+      await activation.create();
       activation.configure();
       await activation.initialize();
     } catch (error) {
@@ -284,6 +289,7 @@ interface ZLinkEntrySpotActivationOptions {
   readonly nativeSpot: ZLinkBackendSpot;
   readonly nodeRid: RoutingId;
   readonly spotNodeName: string;
+  readonly providerResolver?: ZLinkProviderResolver;
 }
 
 export class ZLinkEntrySpotActivation {
@@ -293,12 +299,17 @@ export class ZLinkEntrySpotActivation {
   private readonly outbound = new DefaultZLinkSpotOutbound(new ZLinkSpotSerialExecutor());
   private initialized = false;
 
-  readonly entrySpot: ZLinkEntrySpot;
+  entrySpot: ZLinkEntrySpot;
   readonly context: ZLinkEntrySpotContext;
 
   constructor(private readonly options: ZLinkEntrySpotActivationOptions) {
     this.context = this.createContext();
-    this.entrySpot = new (options.entrySpotType as new (context: ZLinkEntrySpotContext) => ZLinkEntrySpot)(this.context);
+    this.entrySpot = undefined as unknown as ZLinkEntrySpot;
+  }
+
+  async create(): Promise<void> {
+    const entrySpot = await createProviderInstance(this.options.entrySpotType, this.options.providerResolver, this.context);
+    this.entrySpot = entrySpot;
     Object.defineProperty(this.entrySpot, 'context', {
       configurable: true,
       enumerable: false,
@@ -320,7 +331,9 @@ export class ZLinkEntrySpotActivation {
       await this.serial.execute(() => this.entrySpot.onClosing?.());
     }
     await this.timers.dispose();
-    await this.options.nativeSpot.dispose();
+    if (typeof this.options.nativeSpot.dispose === 'function') {
+      await this.options.nativeSpot.dispose();
+    }
   }
 
   private createContext(): ZLinkEntrySpotContext {
@@ -348,6 +361,7 @@ export class ZLinkEntrySpotActivation {
           handlerType,
           new ZLinkSpotSerialExecutor(),
           activation.entrySpot,
+          activation.options.providerResolver,
           signal
         );
       }
@@ -486,7 +500,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     );
     let spot: ZLinkSpot | undefined;
     const context = this.createSpotContext(spotRid, handlers, outbound, timers, serial, () => spot);
-    spot = new (spotType as new (context: ZLinkSpotContext) => TSpot)(context);
+    spot = await createProviderInstance(spotType, this.options.providerResolver, context);
     Object.defineProperty(spot, 'context', {
       configurable: true,
       enumerable: false,
@@ -536,7 +550,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         if (spot === undefined) {
           throw new ZLinkConfigurationException('Spot timer cannot be registered before spot activation.');
         }
-        return timers.add(name, periodMs, options, handlerType, serial, spot, signal);
+        return timers.add(name, periodMs, options, handlerType, serial, spot, this.options.providerResolver, signal);
       }
     };
   }
@@ -650,11 +664,12 @@ export class ZLinkSpotTimerRegistry {
     handlerType: Type<THandler>,
     serial: ZLinkSpotSerialExecutor,
     spot: ZLinkSpot,
+    providerResolver?: ZLinkProviderResolver,
     signal?: AbortSignal
   ): Promise<ZLinkTimer> {
     validateTimer(name, periodMs, options);
     throwIfAborted(signal);
-    const handler = new (handlerType as new () => THandler)();
+    const handler = await createProviderInstance(handlerType, providerResolver);
     const timer = new ZLinkManagedTimer(
       name,
       periodMs,
@@ -925,6 +940,24 @@ function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCal
       return serial.execute(() => inner.submit<TReply>(signal));
     }
   };
+}
+
+async function createProviderInstance<T>(
+  type: Type<T>,
+  resolver: ZLinkProviderResolver | undefined,
+  fallbackArg?: unknown
+): Promise<T> {
+  const created = await resolver?.create?.(type);
+  if (created !== undefined) {
+    return created;
+  }
+  const existing = resolver?.get?.(type);
+  if (existing !== undefined) {
+    return existing;
+  }
+  return fallbackArg === undefined
+    ? new (type as new () => T)()
+    : new (type as new (arg: unknown) => T)(fallbackArg);
 }
 
 function wrapRoutedSpotSendCall<TMessage>(

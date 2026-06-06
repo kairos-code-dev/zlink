@@ -2,6 +2,11 @@ export type Type<T = unknown> = new (...args: never[]) => T;
 export type RoutingId = string;
 export type ZlinkStreamHeader = unknown;
 
+export interface ZLinkProviderResolver {
+  get?<T>(type: Type<T>): T | undefined;
+  create?<T>(type: Type<T>): T | Promise<T>;
+}
+
 export interface Message {
   data(): Buffer;
   toBytes(): Uint8Array;

@@ -1,3 +1,5 @@
+const { Inject } = require('@nestjs/common');
+const { ZLINK_CHANNEL_CLIENT } = require('../../../../../packages/nestjs/dist');
 const { PacketNames, SampleNames, SampleTimings } = require('../../../Shared/Contracts/messages');
 
 class CreateGameHttpHandler {
@@ -20,5 +22,7 @@ class CreateGameHttpHandler {
     };
   }
 }
+
+Inject(ZLINK_CHANNEL_CLIENT)(CreateGameHttpHandler, undefined, 0);
 
 module.exports = { CreateGameHttpHandler };

@@ -13,11 +13,11 @@ async function main() {
   const apiEndpoint = await reserveTcpEndpoint();
   const apiHttpEndpoint = toHttpEndpoint(await reserveTcpEndpoint());
   assertNestModule({
-    channels: {
+    clientServerChannels: {
       [SampleNames.apiChannel]: { client: { manualConnections: [apiEndpoint] }, server: { bind: apiEndpoint } },
       [SampleNames.playChannel]: { client: { manualConnections: [playEndpoint] }, server: { bind: playEndpoint } }
     },
-    streamNodes: {
+    streams: {
       [SampleNames.clientStreamNode]: { bind: playStreamEndpoint, session: class SmokeSession {} }
     }
   }, nestjs);

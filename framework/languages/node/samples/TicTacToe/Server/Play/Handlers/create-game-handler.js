@@ -1,3 +1,9 @@
+const { Inject } = require('@nestjs/common');
+const { PLAY_STREAM_ENDPOINT } = require('../play-tokens');
+const { TicTacToeGameCreatedHandler } = require('../GameSpots/Handlers/tictactoe-game-created-handler');
+const { TicTacToeGameTimerHandler } = require('../GameSpots/Handlers/tictactoe-game-timer-handler');
+const { TicTacToeGameDirectory } = require('../GameSpots/tictactoe-game');
+
 class CreateGameHandler {
   constructor(games, playEndpoint, createdHandler, timerHandler) {
     this.games = games;
@@ -17,5 +23,10 @@ class CreateGameHandler {
     };
   }
 }
+
+Inject(TicTacToeGameDirectory)(CreateGameHandler, undefined, 0);
+Inject(PLAY_STREAM_ENDPOINT)(CreateGameHandler, undefined, 1);
+Inject(TicTacToeGameCreatedHandler)(CreateGameHandler, undefined, 2);
+Inject(TicTacToeGameTimerHandler)(CreateGameHandler, undefined, 3);
 
 module.exports = { CreateGameHandler };

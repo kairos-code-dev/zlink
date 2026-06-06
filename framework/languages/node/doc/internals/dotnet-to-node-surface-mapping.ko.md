@@ -102,9 +102,9 @@ export class AppModule {}
 builder 람다(`channel => { ... }`) 패턴은 NestJS 의 선언적 options 객체로 옮긴다.
 dotnet builder 메서드 한 개 = node options 의 키 한 개로 1:1 대응시키는 것을
 기본으로 한다(§5 표 참조).
-`AddRequestHandler<T>()` 처럼 attribute/handler type 을 등록하는 흐름은 NestJS 에서
-provider + `@ZLinkHandlerGroup(...)` + `@ZLinkRequest(...)` 로 옮긴다. channel 의
-`handlerGroups` 는 어떤 annotation handler 를 이 channel 에 노출할지 정한다.
+`AddRequestHandler<T>()` 처럼 handler type 을 등록하는 흐름은 NestJS 에서
+`zlinkHandlerGroup('group', [[Handler, 'Packet']])` provider 등록으로 옮긴다.
+channel 의 `handlerGroups` 는 어떤 provider group 을 이 channel 에 노출할지 정한다.
 
 ### 3.2 lifecycle 매핑
 
@@ -145,7 +145,7 @@ provider token 으로 주입 가능하게 등록한다.
 |------|------|------|
 | `ValueTask` / `ValueTask<T>` / `Task<T>` | `Promise<void>` / `Promise<T>` | async submit 기본 |
 | `CancellationToken cancellationToken` | `signal?: AbortSignal` (선택 인자) 또는 생략 | handler 시그니처를 짧게 유지 |
-| attribute `[ZLinkRequest]` | method decorator `@ZLinkRequest()` | §4.1 |
+| attribute `[ZLinkRequest]` | `zlinkHandlerGroup(..., [[Handler, 'Packet']])` provider group | §4.1 |
 | `[ZLinkPacket("name")]` (class) | class decorator `@ZLinkPacket('name')` | packet key 지정 |
 | `record` / `readonly record struct` | `interface` 또는 `type`(불변 객체) | DTO |
 | `enum` | `enum`(문자열 값 권장) 또는 union 리터럴 | wire 값은 코드로 확인 |
@@ -155,10 +155,10 @@ provider token 으로 주입 가능하게 등록한다.
 | `IReadOnlyList<Message> createParts` | `readonly Message[]` | multipart |
 | out 파라미터 / tuple | 반환 객체 | 바인딩 가이드와 일치 |
 
-### 4.1 handler 선언 — 두 방식
+### 4.1 handler 선언과 등록
 
-dotnet 과 동일하게 **interface 방식**과 **decorator(=attribute) 방식**을 모두
-지원한다.
+handler 구현은 interface 형태의 `handle(...)` 메서드를 기본으로 한다. NestJS 에서 channel 에
+노출할 때는 handler class를 provider group 으로 등록한다.
 
 ```csharp
 // dotnet — interface 방식
@@ -181,20 +181,27 @@ export class GetPriceHandler implements ZLinkRequestHandler<PriceRequest, PriceR
 ```
 
 ```ts
-// node — decorator 방식 (한 클래스에 여러 역할)
-@Injectable()
-@ZLinkHandlerGroup()
-export class PriceHandlers {
-  @ZLinkRequest()
-  async getPrice(request: PriceRequest, context: ZLinkRequestContext): Promise<PriceReply> {
-    return { symbol: request.symbol, price: 187.42 };
-  }
-}
+@Module({
+  imports: [
+    ZLinkModule.forRoot({
+      clientServerChannels: {
+        price: {
+          server: { bind: 'tcp://0.0.0.0:7301' },
+          handlerGroups: ['price'],
+        },
+      },
+    }),
+  ],
+  providers: [
+    ...zlinkHandlerGroup('price', [[GetPriceHandler, 'GetPrice']]),
+  ],
+})
+export class PriceModule {}
 ```
 
-- interface 방식: 컴파일 타임에 시그니처를 강하게 확인한다.
-- decorator 방식: 한 클래스에 여러 handler 를 모은다. 시그니처 검증은 startup
-  validation 단계에서 수행한다(dotnet 과 동일).
+이 방식은 NestJS 의 일반 provider 등록과 같은 위치에서 handler group, handler type,
+packet 이름을 한 번에 선언한다. 시그니처 검증과 중복 packet 검증은 startup validation
+단계에서 수행한다(dotnet 과 동일).
 
 ### 4.2 handler 발견(discovery) 매핑
 
@@ -204,12 +211,11 @@ interface 로 handler 를 **찾고**, 실제 노출은 명시적 등록(`AddHand
 
 node 는 다음으로 매핑한다.
 
-- **찾기**: NestJS `DiscoveryService` 로 provider 를 훑고, `@ZLinkHandlerGroup` /
-  handler interface 구현 / method decorator 메타데이터(`reflect-metadata`) 로
-  handler 후보를 모은다.
+- **찾기**: NestJS `DiscoveryService` 로 provider 를 훑고,
+  `zlinkHandlerGroup(...)` 이 provider handler type 에 붙인 metadata 로 handler 후보를
+  모은다.
 - **노출**: dotnet 과 동일하게 **scan ≠ 자동 노출**이다. 실제 channel 노출은
-  module options 의 명시적 등록(`requestHandlers: [...]`,
-  `handlerGroups: [...]`) 또는 `@ZLinkHandlerGroup` 의 명시 바인딩이 정한다.
+  module options 의 `handlerGroups: [...]` 가 정한다.
 
 자동으로 모든 handler 를 모든 channel 에 열지 않는다는 dotnet 정책을 그대로
 유지한다.

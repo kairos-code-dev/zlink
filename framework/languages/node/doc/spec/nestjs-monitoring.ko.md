@@ -88,21 +88,17 @@ framework 등록은 module options 의 `monitoring` 키로 둔다. `.NET` 의
       discovery: {
         registries: ['tcp://registry-1:5551'],
       },
-      channels: {
+      clientServerChannels: {
         profile: {
           server: { bind: 'tcp://0.0.0.0:7101' },
           client: {},
         },
       },
-      spotMeshes: {
-        'game.stage': {
-          discovery: { registries: ['tcp://registry-1:5551'] },
-          nodes: {
-            'stage-node': {
-              pubSub: { bind: 'tcp://0.0.0.0:9000' },
-            },
-          },
+      spotNodes: {
+        'stage-node': {
+          pubSub: { bind: 'tcp://0.0.0.0:9000' },
         },
+      },
       },
       monitoring: {
         socket: [
@@ -134,7 +130,8 @@ export class AppModule {}
 ```
 
 `monitoring` 키는 source 등록만 맡는다. 즉 실제 socket, registry, spot source 는
-같은 애플리케이션의 `channels` / `spotMeshes` / `discovery`(또는 별도 registry
+같은 애플리케이션의 `clientServerChannels` / `fanoutChannels` / `routerMeshes` /
+`spotNodes` / `discovery`(또는 별도 registry
 module) 로 이미 올라와 있어야 한다.
 
 > `.NET` 의 `AddZLinkMonitoring(...)` 은 `AddZLinkFramework(...)` 와 분리된 두 번째
@@ -148,7 +145,7 @@ mesh 는 각자 자신의 discovery source 를 가진다. 즉 registry endpoint 
 공급하는 곳이 둘로 나뉜다.
 
 - 일반 channel: framework 등록 루트의 `discovery: { registries: [...] }` 가 공급한다.
-- SPOT mesh: `spotMeshes[name].discovery` 가 공급한다.
+- SPOT node: framework 등록 루트의 `discovery: { registries: [...] }` 가 공급한다.
 
 source 이름은 다음 규칙으로 잡는 편이 자연스럽다.
 
@@ -362,8 +359,8 @@ snapshot DTO 의 정식 필드는 [nestjs-spot](./nestjs-spot.ko.md) 가 소유�
   `lastChangedMs`.
 
 `ZLinkSpotNodeStatus` 와 `ZLinkSpotNodePeerEntry` 의 첫 필드는 `channelName` 이다.
-spot node 에서 채널 이름은 `spotMeshes` 의 mesh 이름(예: `"game.stage"`) 이 그대로
-들어간다.
+spot node 에서 채널 이름은 `spotNodes` 에 등록한 node 이름(예: `"stage-node"`)을
+기준으로 들어간다.
 
 ## 5. 샘플 코드
 

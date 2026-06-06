@@ -1,6 +1,11 @@
+require('reflect-metadata');
+
 const net = require('node:net');
+const { Module } = require('@nestjs/common');
+const { NestFactory } = require('@nestjs/core');
 const connector = require('../../../../packages/stream-connector/dist');
-const { createZLinkNestRuntime } = require('../../../shared/nestjs-provider-runtime');
+const { ZLinkModule, zlinkHandlerGroup } = require('../../../../packages/nestjs/dist');
+const { closeNestRuntime } = require('../../../shared/runtime-common');
 const { PacketNames, SampleNames } = require('../../Shared/Contracts/messages');
 const { PlayActorFactory } = require('./Actors/play-actor-factory');
 const { PlayEntrySpot } = require('./EntrySpot/play-entry-spot');
@@ -11,43 +16,50 @@ const { TicTacToeGameJoinHandler } = require('./GameSpots/Handlers/tictactoe-gam
 const { TicTacToeGameTimerHandler } = require('./GameSpots/Handlers/tictactoe-game-timer-handler');
 const { TicTacToeGameDirectory } = require('./GameSpots/tictactoe-game');
 const { CreateGameHandler } = require('./Handlers/create-game-handler');
-const { PlaySession } = require('./Sessions/play-session');
+const { PlaySessionFactory } = require('./Sessions/play-session-factory');
+const { PLAY_STREAM_ENDPOINT } = require('./play-tokens');
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 async function main() {
-  const games = new TicTacToeGameDirectory();
-  const actors = new PlayActorFactory();
-  const joinGame = new PlayActorJoinGameHandler(games, new TicTacToeGameJoinHandler());
-  const entrySpot = new PlayEntrySpot(joinGame);
-  const placeMark = new PlayActorPlaceMarkHandler(games);
-  const createGame = new CreateGameHandler(
-    games,
-    process.env.TICTACTOE_PLAY_STREAM_ENDPOINT,
-    new TicTacToeGameCreatedHandler(),
-    new TicTacToeGameTimerHandler()
-  );
-  const channelRuntime = await createZLinkNestRuntime({
-    channels: {
-      [SampleNames.playChannel]: {
-        server: { bind: process.env.TICTACTOE_PLAY_ENDPOINT },
-        handlerGroups: ['play'],
-        requestHandlers: [{
-          packetName: PacketNames.createGame,
-          handler: { handle: (payload) => createGame.handle(decodePayload(payload)) }
-        }]
-      }
-    }
+  class TicTacToePlayModule {}
+
+  Module({
+    imports: [
+      ZLinkModule.forRoot({
+        clientServerChannels: {
+          [SampleNames.playChannel]: {
+            server: { bind: process.env.TICTACTOE_PLAY_ENDPOINT },
+            handlerGroups: ['play']
+          }
+        }
+      })
+    ],
+    providers: [
+      { provide: PLAY_STREAM_ENDPOINT, useValue: process.env.TICTACTOE_PLAY_STREAM_ENDPOINT },
+      TicTacToeGameDirectory,
+      PlayActorFactory,
+      TicTacToeGameJoinHandler,
+      PlayActorJoinGameHandler,
+      PlayEntrySpot,
+      PlayActorPlaceMarkHandler,
+      TicTacToeGameCreatedHandler,
+      TicTacToeGameTimerHandler,
+      PlaySessionFactory,
+      ...zlinkHandlerGroup('play', [[CreateGameHandler, PacketNames.createGame]])
+    ]
+  })(TicTacToePlayModule);
+
+  const channelApp = await NestFactory.createApplicationContext(TicTacToePlayModule, {
+    logger: false,
+    abortOnError: false
   });
+  const sessionFactory = channelApp.get(PlaySessionFactory, { strict: false });
+
   const streamServer = net.createServer((socket) => {
     const transport = new StreamTransport(socket);
-    const session = new PlaySession({
-      apiEndpoint: process.env.TICTACTOE_API_ENDPOINT,
-      actorFactory: actors,
-      entrySpot,
-      placeMarkHandler: placeMark
-    }, transport);
+    const session = sessionFactory.create(transport);
     let buffer = Buffer.alloc(0);
     socket.on('error', () => {});
     socket.on('data', (chunk) => {
@@ -70,7 +82,7 @@ async function main() {
   })}\n`);
   await waitForShutdown();
   await new Promise((resolve, reject) => streamServer.close((error) => error ? reject(error) : resolve()));
-  await channelRuntime.close();
+  await closeNestRuntime(channelApp);
 }
 
 class StreamTransport {
@@ -117,10 +129,6 @@ async function dispatchPacket(session, bytes, transport) {
   } catch (error) {
     transport.send('StreamError', { message: error instanceof Error ? error.message : String(error) });
   }
-}
-
-function decodePayload(payload) {
-  return JSON.parse(Buffer.from(payload).toString());
 }
 
 function listen(server, endpoint) {

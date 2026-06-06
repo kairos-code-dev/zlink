@@ -62,24 +62,28 @@ framework runtime 과 client 는 NestJS DI 컨테이너가 resolve 하며, runti
 ```ts
 // node (NestJS) — 동기 등록
 import { Module } from '@nestjs/common';
-import { ZLinkModule } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkHandlerGroup } from '@zlink-systems/nestjs';
 
 @Module({
   imports: [
     ZLinkModule.forRoot({
       defaultTimeoutMs: 30_000,
-      channels: {
+      clientServerChannels: {
         'pricing.quote': {
           server: { bind: 'tcp://0.0.0.0:7301' },
-          requestHandlers: [GetQuoteHandler],
+          handlerGroups: ['pricing'],
         },
+      },
+      fanoutChannels: {
         'pricing.events': {
           publisher: { bind: 'tcp://0.0.0.0:7302' },
         },
       },
     }),
   ],
-  providers: [GetQuoteHandler],
+  providers: [
+    ...zlinkHandlerGroup('pricing', [[GetQuoteHandler, 'GetQuote']]),
+  ],
 })
 export class PricingModule {}
 ```
@@ -114,16 +118,18 @@ builder.Services.AddZLinkFramework(options =>
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        channels: {
+        clientServerChannels: {
           'pricing.quote': {
             server: { bind: config.getOrThrow<string>('PRICING_BIND') },
-            requestHandlers: [GetQuoteHandler],
+            handlerGroups: ['pricing'],
           },
         },
       }),
     }),
   ],
-  providers: [GetQuoteHandler],
+  providers: [
+    ...zlinkHandlerGroup('pricing', [[GetQuoteHandler, 'GetQuote']]),
+  ],
 })
 export class PricingModule {}
 ```
@@ -196,6 +202,33 @@ framework 가 노출하는 outbound client 와 manager 는 NestJS **provider tok
 token 은 framework 가 export 한다. handler 는 context 의 service locator 가
 아니라 **생성자 주입**으로 의존을 받는다(.NET 과 동일 원칙. context 에 DI
 컨테이너를 넣지 않는다).
+
+NestJS 통합에서 application 이 구현하는 다음 객체는 NestJS DI 컨테이너가
+소유한다. 이 객체들은 `main.ts` 같은 부트스트랩 코드에서 직접 `new` 로 만들지
+않고 module `providers` 에 등록한다.
+
+| 객체 종류 | 등록 위치 | framework 가 resolve 하는 시점 |
+|------|------|------|
+| channel / fanout / route handler | `providers` + `zlinkHandlerGroup(...)` | channel 이 해당 handler group 을 dispatch 할 때 |
+| Entry Spot, user Spot | `providers` + `spotNodes` 의 spot type 설정 | SpotNode 또는 SpotManager 가 spot 을 활성화할 때 |
+| Spot packet / subscribe / actor / timer handler | `providers` + Spot/Entry Spot 의 registry 등록 | 해당 Spot 실행 문맥에서 packet, actor event, timer 를 처리할 때 |
+| actor factory | `providers` + `actorFactories` 설정 | ActorManager 가 actor 를 생성할 때 |
+| stream session 또는 session factory | `providers` + `streams` 설정 | stream 연결을 session 으로 활성화할 때 |
+| custom Spot remote address resolver | `providers` + resolver type 설정 | Spot outbound 가 remote address 를 해석할 때 |
+
+`ZLinkModule.forRoot(...)` 는 transport, node, capability, handler group 선택을
+선언하는 자리다. application 객체 그래프를 조립하는 자리가 아니다. node/channel
+handler 는 `zlinkHandlerGroup(...)` 으로 group 이름을 붙이고 channel 이
+`handlerGroups` 로 선택한다. 반면 Spot, Entry Spot, session 내부 handler 는
+해당 객체의 registry 에 등록한다. 이렇게 나누면 channel 이 어떤 node handler
+묶음을 받을지와, Spot 또는 session 이 자기 내부 메시지를 어떻게 처리할지가 서로
+섞이지 않는다.
+
+예외적으로 actor 인스턴스, per-connection transport adapter, protocol header 같은
+런타임 값 객체는 NestJS provider 가 아니다. 이런 객체는 DI 로 관리되는 factory
+또는 framework runtime 이 만든다. 중요한 기준은 application service, handler,
+factory, Spot, session 처럼 의존성을 받는 확장 지점은 NestJS provider 여야 한다는
+점이다.
 
 핵심 원칙은 **주입 가능성 = 기능 가능성**이다. 어떤 capability 도 등록하지
 않았는데 그 service 를 주입받을 수 있으면 안 된다. 따라서 일부 provider 는

@@ -1,3 +1,6 @@
+const { Inject } = require('@nestjs/common');
+const { TicTacToeMatchDirectory } = require('../tictactoe-match-directory');
+
 class PlaceMarkHandler {
   constructor(matches) {
     this.matches = matches;
@@ -14,5 +17,7 @@ class PlaceMarkHandler {
     };
   }
 }
+
+Inject(TicTacToeMatchDirectory)(PlaceMarkHandler, undefined, 0);
 
 module.exports = { PlaceMarkHandler };

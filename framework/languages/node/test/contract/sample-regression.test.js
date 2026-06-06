@@ -85,7 +85,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Client/self-check.js',
       'Server/Api/Handlers/authenticate-player-handler.js',
       'Server/Api/Handlers/match-bingo-handler.js',
-      'Server/Api/api-server-host-factory.js',
       'Server/Api/main.js',
       'Server/Play/Actors/player-actor.js',
       'Server/Play/Actors/player-actor-factory.js',
@@ -100,16 +99,14 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Play/EntrySpot/bingo-entry-spot.js',
       'Server/Play/Handlers/allocate-bingo-room-handler.js',
       'Server/Play/Handlers/bingo-room-directory.js',
+      'Server/Play/Handlers/bingo-notifications-handler.js',
       'Server/Play/Handlers/ensure-player-actor-handler.js',
       'Server/Play/Handlers/match-bingo-channel-handler.js',
       'Server/Play/Handlers/start-bingo-game-channel-handler.js',
-      'Server/Play/play-server-host-factory.js',
       'Server/Play/main.js',
-      'Server/Registry/registry-host-factory.js',
       'Server/Registry/main.js',
       'Server/Session/Sessions/Handlers/authenticate-session-handler.js',
       'Server/Session/Sessions/bingo-session.js',
-      'Server/Session/session-server-host-factory.js',
       'Server/Session/main.js',
       'Shared/Configuration/sample-names.js',
       'Shared/Contracts/messages.js'
@@ -121,7 +118,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Client/self-check.ts',
       'Server/Api/Handlers/authenticate-player-handler.ts',
       'Server/Api/Handlers/match-bingo-handler.ts',
-      'Server/Api/api-server-host-factory.ts',
       'Server/Api/main.ts',
       'Server/Play/Actors/player-actor.ts',
       'Server/Play/Actors/player-actor-factory.ts',
@@ -136,16 +132,14 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Play/EntrySpot/bingo-entry-spot.ts',
       'Server/Play/Handlers/allocate-bingo-room-handler.ts',
       'Server/Play/Handlers/bingo-room-directory.ts',
+      'Server/Play/Handlers/bingo-notifications-handler.ts',
       'Server/Play/Handlers/ensure-player-actor-handler.ts',
       'Server/Play/Handlers/match-bingo-channel-handler.ts',
       'Server/Play/Handlers/start-bingo-game-channel-handler.ts',
-      'Server/Play/play-server-host-factory.ts',
       'Server/Play/main.ts',
-      'Server/Registry/registry-host-factory.ts',
       'Server/Registry/main.ts',
       'Server/Session/Sessions/Handlers/authenticate-session-handler.ts',
       'Server/Session/Sessions/bingo-session.ts',
-      'Server/Session/session-server-host-factory.ts',
       'Server/Session/main.ts',
       'Shared/Configuration/sample-names.ts',
       'Shared/Contracts/messages.ts'
@@ -205,7 +199,51 @@ test('node framework samples exercise the real NestJS application context', () =
   assert.equal(nestRuntime.includes('NestFactory.createApplicationContext'), true);
   assert.equal(nestRuntime.includes('resolveModuleProviders'), false);
 
+  const hiddenServerRuntime = [];
+  for (const file of sampleSourceFiles(samplesRoot)) {
+    const relative = path.relative(samplesRoot, file);
+    if (relative.startsWith('shared/') || relative.includes('/dist/')) {
+      continue;
+    }
+    const content = fs.readFileSync(file, 'utf8');
+    if (/startChannelServer|startRouteServer|createZLinkNestRuntime|nestjs-provider-runtime/.test(content)) {
+      hiddenServerRuntime.push(relative);
+    }
+  }
+
+  const serverRoles = [
+    ['TicTacToe/Server/Api/main.js', 'TicTacToeApiModule'],
+    ['TicTacToe/Server/Play/main.js', 'TicTacToePlayModule'],
+    ['TicTacToe.SessionGateway/Server/Api/main.js', 'TicTacToeSessionGatewayApiModule'],
+    ['TicTacToe.SessionGateway/Server/Play/main.js', 'TicTacToeSessionGatewayPlayModule'],
+    ['TicTacToe.SessionGateway/Server/Registry/main.js', 'TicTacToeSessionGatewayRegistryModule'],
+    ['TicTacToe.SessionGateway/Server/Session/main.js', 'TicTacToeSessionGatewaySessionModule'],
+    ['Bingo/Server/Api/main.js', 'BingoApiModule'],
+    ['Bingo/Server/Play/main.js', 'BingoPlayModule'],
+    ['Bingo/Server/Registry/main.js', 'BingoRegistryModule'],
+    ['Bingo/Server/Session/main.js', 'BingoSessionModule'],
+    ['Bingo.Ts/Server/Api/main.ts', 'BingoApiModule'],
+    ['Bingo.Ts/Server/Play/main.ts', 'BingoPlayModule'],
+    ['Bingo.Ts/Server/Registry/main.ts', 'BingoRegistryModule'],
+    ['Bingo.Ts/Server/Session/main.ts', 'BingoSessionModule']
+  ];
+  for (const [relative, moduleName] of serverRoles) {
+    const content = fs.readFileSync(path.join(samplesRoot, relative), 'utf8');
+    for (const text of [
+      "require('@nestjs/common')",
+      "require('@nestjs/core')",
+      'ZLinkModule.forRoot',
+      'NestFactory.createApplicationContext',
+      `})(${moduleName});`
+    ]) {
+      if (!content.includes(text)) {
+        missing.push(`${relative}:${text}`);
+      }
+    }
+  }
+
   assert.deepEqual(missing, []);
+  assert.deepEqual(hiddenServerRuntime, []);
 });
 
 test('Bingo TypeScript sample builds and exposes separated TypeScript roles', () => {
@@ -225,9 +263,9 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
     [client, "from './bingo-client-app'"],
     [client, "../Server/Api/main.js"],
     [client, 'PASS Bingo.Ts'],
-    [api, 'buildApiServerHost'],
-    [session, 'buildSessionServerHost'],
-    [play, 'buildPlayServerHost'],
+    [api, 'async function bootstrap'],
+    [session, 'async function bootstrap'],
+    [play, 'async function bootstrap'],
     [readme, 'TypeScript Client/Server/Shared 구조'],
     [runSamples, 'samples/Bingo.Ts'],
     [runSamples, 'npm run build'],
@@ -446,6 +484,7 @@ test('TicTacToe SessionGateway sample covers reconnect two-actor round and bound
   const apiAuth = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Api', 'Handlers', 'authenticate-actor-handler.js'), 'utf8');
   const apiCreate = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Api', 'Handlers', 'create-match-handler.js'), 'utf8');
   const play = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Play', 'main.js'), 'utf8');
+  const actorManager = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Play', 'session-gateway-actor-manager.js'), 'utf8');
   const ensureActor = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Play', 'Handlers', 'ensure-player-actor-handler.js'), 'utf8');
   const createRoom = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Play', 'Handlers', 'create-match-room-handler.js'), 'utf8');
   const joinMatch = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.SessionGateway', 'Server', 'Play', 'EntrySpot', 'Handlers', 'join-match-handler.js'), 'utf8');
@@ -470,11 +509,16 @@ test('TicTacToe SessionGateway sample covers reconnect two-actor round and bound
     [client, 'pushedByPacket.GameEndedNotify'],
     [api, 'AuthenticateActorHandler'],
     [api, 'CreateMatchHandler'],
-    [api, 'TICTACTOE_SG_API_CLIENT_ENDPOINT'],
+    [api, 'ZLinkModule.forRoot'],
+    [api, 'ZLINK_ROUTE_CLIENT'],
+    [api, 'manualConnections: [process.env.TICTACTOE_SG_PLAY_ENDPOINT]'],
     [apiAuth, 'accessToken is required'],
     [apiCreate, 'PacketNames.createMatchReq'],
     [play, 'SampleBoundSessionRuntime'],
-    [play, 'DefaultZLinkActorManager'],
+    [play, 'SessionGatewayActorManager'],
+    [play, 'ZLinkModule.forRoot'],
+    [actorManager, 'DefaultZLinkActorManager'],
+    [actorManager, 'Inject(SampleBoundSessionRuntime)'],
     [play, 'PacketNames.ensurePlayerActorReq'],
     [play, 'PacketNames.createMatchReq'],
     [play, 'PacketNames.joinMatchReq'],
@@ -487,8 +531,10 @@ test('TicTacToe SessionGateway sample covers reconnect two-actor round and bound
     [session, 'AuthenticateSessionPacketHandler'],
     [session, 'CreateMatchSessionPacketHandler'],
     [session, 'PlaceMarkSessionPacketHandler'],
-    [session, 'TICTACTOE_SG_SESSION_API_CLIENT_ENDPOINT'],
-    [session, 'TICTACTOE_SG_SESSION_PLAY_CLIENT_ENDPOINT'],
+    [session, 'ZLinkModule.forRoot'],
+    [session, 'ZLINK_ROUTE_CLIENT'],
+    [session, 'process.env.TICTACTOE_SG_API_ENDPOINT'],
+    [session, 'process.env.TICTACTOE_SG_PLAY_ENDPOINT'],
     [authenticateSession, 'PacketNames.authenticateActorReq'],
     [authenticateSession, 'PacketNames.ensurePlayerActorReq'],
     [createSession, 'PacketNames.createMatchReq'],
@@ -526,16 +572,15 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
   const playerClient = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Client', 'bingo-player-client.js'), 'utf8');
   const inbox = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Client', 'bingo-notification-inbox.js'), 'utf8');
   const apiMain = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'main.js'), 'utf8');
-  const apiFactory = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'api-server-host-factory.js'), 'utf8');
   const authenticate = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'Handlers', 'authenticate-player-handler.js'), 'utf8');
   const match = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Api', 'Handlers', 'match-bingo-handler.js'), 'utf8');
-  const sessionFactory = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Session', 'session-server-host-factory.js'), 'utf8');
+  const sessionMain = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Session', 'main.js'), 'utf8');
   const session = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Session', 'Sessions', 'bingo-session.js'), 'utf8');
   const authenticateSession = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Session', 'Sessions', 'Handlers', 'authenticate-session-handler.js'), 'utf8');
   const roomMain = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'main.js'), 'utf8');
-  const playFactory = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'play-server-host-factory.js'), 'utf8');
   const room = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'Handlers', 'allocate-bingo-room-handler.js'), 'utf8');
   const ensureActor = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'Handlers', 'ensure-player-actor-handler.js'), 'utf8');
+  const notificationHandler = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'Handlers', 'bingo-notifications-handler.js'), 'utf8');
   const actorFactory = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'Actors', 'player-actor-factory.js'), 'utf8');
   const roomSpot = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'BingoRoomSpots', 'bingo-room-spot.js'), 'utf8');
   const notifications = fs.readFileSync(path.join(samplesRoot, 'Bingo', 'Server', 'Play', 'BingoRoomSpots', 'bingo-notification-publisher.js'), 'utf8');
@@ -561,55 +606,69 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
     [inbox, 'BingoGameStartedNotify'],
     [inbox, 'BingoNumberDrawnNotify'],
     [inbox, 'BingoGameEndedNotify'],
-    [apiMain, 'buildApiServerHost'],
-    [apiFactory, 'AuthenticatePlayerHandler'],
-    [apiFactory, 'MatchBingoHandler'],
-    [apiFactory, 'createChannelClient'],
-    [apiFactory, 'startChannelServer'],
-    [apiFactory, "channelName: 'bingo.play'"],
-    [apiFactory, "channelName: 'bingo.api'"],
-    [apiFactory, "handlerGroups: ['api']"],
-    [apiFactory, 'handlers: []'],
+    [apiMain, 'async function bootstrap'],
+    [apiMain, 'AuthenticatePlayerHandler'],
+    [apiMain, 'MatchBingoHandler'],
+    [apiMain, "require('@nestjs/common')"],
+    [apiMain, "require('@nestjs/core')"],
+    [apiMain, 'ZLinkModule.forRoot'],
+    [apiMain, 'clientServerChannels'],
+    [apiMain, 'NestFactory.createApplicationContext'],
+    [apiMain, "client: { manualConnections: [process.env.BINGO_PLAY_ENDPOINT] }"],
+    [apiMain, "'bingo.play'"],
+    [apiMain, "'bingo.api'"],
+    [apiMain, "handlerGroups: ['api']"],
+    [apiMain, 'zlinkHandlerGroup'],
+    [apiMain, "'AuthenticatePlayerReq'"],
+    [apiMain, "'MatchBingoApiReq'"],
+    [apiMain, 'waitForShutdown'],
+    [apiMain, 'closeNestRuntime'],
     [authenticate, 'Access token must be a sample player id.'],
-    [authenticate, "ZLinkHandlerGroup('api')"],
-    [authenticate, "ZLinkRequest('AuthenticatePlayerReq')"],
     [authenticate, 'accepted: true'],
-    [match, "this.playClient"],
-    [match, "ZLinkHandlerGroup('api')"],
-    [match, "ZLinkRequest('MatchBingoApiReq')"],
+    [match, "this.zlinkClient"],
     [match, ".requestToChannel('bingo.play'"],
     [match, "mode: request.mode ?? 'four-player'"],
     [match, ".packetName('AllocateBingoRoom')"],
     [match, '.timeout(10000)'],
     [match, '.submit()'],
-    [sessionFactory, 'AuthenticateSessionHandler'],
-    [sessionFactory, 'sessionContexts'],
-    [sessionFactory, "channelName: 'bingo.api'"],
-    [sessionFactory, "channelName: 'bingo.play'"],
-    [sessionFactory, "packetName: 'MatchBingoReq'"],
-    [sessionFactory, "packetName: 'StartBingoGameReq'"],
-    [sessionFactory, "packetName: 'BingoNotificationsReq'"],
-    [sessionFactory, 'relayToPlay'],
-    [sessionFactory, 'providers: ['],
-    [sessionFactory, 'inject: [API_CLIENT, PLAY_CLIENT]'],
+    [sessionMain, 'AuthenticateSessionHandler'],
+    [sessionMain, 'clientServerChannels'],
+    [sessionMain, 'routerMeshes'],
+    [sessionMain, 'SESSION_CONTEXTS'],
+    [sessionMain, "'bingo.api'"],
+    [sessionMain, "'bingo.play'"],
+    [sessionMain, 'ZLINK_CHANNEL_CLIENT'],
+    [sessionMain, "'MatchBingoReq'"],
+    [sessionMain, "'StartBingoGameReq'"],
+    [sessionMain, "'BingoNotificationsReq'"],
+    [sessionMain, 'relayToPlay'],
+    [sessionMain, 'providers: ['],
+    [authenticateSession, 'Inject(ZLINK_CHANNEL_CLIENT)'],
     [session, 'class BingoSession'],
     [session, 'requireSingleBoundActor'],
     [authenticateSession, ".packetName('AuthenticatePlayerReq')"],
     [authenticateSession, ".packetName('EnsurePlayerActorReq')"],
-    [roomMain, 'buildPlayServerHost'],
-    [playFactory, 'AllocateBingoRoomHandler'],
-    [playFactory, 'EnsurePlayerActorHandler'],
-    [playFactory, 'MatchBingoChannelHandler'],
-    [playFactory, 'StartBingoGameChannelHandler'],
-    [playFactory, 'SampleBoundSessionRuntime'],
-    [playFactory, 'providers: ['],
-    [playFactory, 'inject: [PlayerActorFactory'],
-    [playFactory, "channelName: 'bingo.play'"],
-    [playFactory, "handlerGroups: ['play']"],
-    [playFactory, "packetName: 'BingoNotificationsReq'"],
-    [room, "ZLinkHandlerGroup('play')"],
-    [room, "ZLinkRequest('AllocateBingoRoom')"],
-    [ensureActor, "ZLinkRequest('EnsurePlayerActorReq')"],
+    [roomMain, 'async function bootstrap'],
+    [roomMain, 'clientServerChannels'],
+    [roomMain, 'AllocateBingoRoomHandler'],
+    [roomMain, 'EnsurePlayerActorHandler'],
+    [roomMain, 'MatchBingoChannelHandler'],
+    [roomMain, 'StartBingoGameChannelHandler'],
+    [roomMain, 'SampleBoundSessionRuntime'],
+    [roomMain, 'BingoNotificationsHandler'],
+    [roomMain, 'providers: ['],
+    [roomMain, 'zlinkHandlerGroup'],
+    [roomMain, "'AllocateBingoRoom'"],
+    [roomMain, "'EnsurePlayerActorReq'"],
+    [roomMain, "'MatchBingoReq'"],
+    [roomMain, "'StartBingoGameReq'"],
+    [roomMain, "'BingoNotificationsReq'"],
+    [actorFactory, 'Inject(SampleBoundSessionRuntime)'],
+    [notificationHandler, 'Inject(SampleBoundSessionRuntime)'],
+    [ensureActor, 'Inject(PlayerActorFactory)'],
+    [roomMain, "channelName: 'bingo.play'"],
+    [roomMain, "handlerGroups: ['play']"],
+    [notificationHandler, 'this.boundSessions.deliveredFor'],
     [actorFactory, 'boundSessions.bind'],
     [roomSpot, 'Bingo requires four players before start.'],
     [roomSpot, 'Only the room host can start Bingo.'],
@@ -630,22 +689,25 @@ test('Bingo sample covers four-player host start guards timer draws and bound pu
   assert.equal(clientApp.includes("playClient.request('"), false);
   assert.equal(clientApp.includes('RunBingoRoomTimerReq'), false);
   assert.equal(clientApp.includes('BingoDeliveredNotificationsReq'), false);
-  assert.equal(apiFactory.includes('createRouteClient'), false);
-  assert.equal(apiFactory.includes('beforeReady'), false);
-  assert.equal(apiFactory.includes("playClient.request('Ping'"), false);
-  assert.equal(/const\s+\w+\s*=\s*new\s+\w+Handler/.test(apiFactory), false);
-  assert.equal(/const\s+\w+\s*=\s*new\s+\w+Handler/.test(sessionFactory), false);
+  assert.equal(apiMain.includes('createRouteClient'), false);
+  assert.equal(apiMain.includes('createChannelClient'), false);
+  assert.equal(apiMain.includes('beforeReady'), false);
+  assert.equal(apiMain.includes("playClient.request('Ping'"), false);
+  assert.equal(/const\s+\w+\s*=\s*new\s+\w+Handler/.test(apiMain), false);
+  assert.equal(/const\s+\w+\s*=\s*new\s+\w+Handler/.test(sessionMain), false);
   assert.equal(client.includes('createRouteClient'), false);
   assert.equal(playerClient.includes('apiClient.request('), false);
   assert.equal(playerClient.includes('playClient.request('), false);
   assert.equal(client.includes("'RunBingo'"), false);
-  assert.equal(match.includes('this.playClient.request('), false);
+  assert.equal(match.includes('this.playClient'), false);
   assert.equal(match.includes("'RunBingoRoom'"), false);
   assert.equal(match.includes('players:'), false);
   assert.equal(match.includes('draws:'), false);
-  assert.equal(playFactory.includes('RunBingoRoomTimerReq'), false);
-  assert.equal(playFactory.includes("packetName: 'Ping'"), false);
-  assert.equal(/const\s+\w+\s*=\s*new\s+\w+(Handler|Directory|Publisher|Factory|Spot)/.test(playFactory), false);
+  assert.equal(roomMain.includes('RunBingoRoomTimerReq'), false);
+  assert.equal(roomMain.includes("packetName: 'Ping'"), false);
+  assert.equal(authenticate.includes('function descriptor()'), false);
+  assert.equal(match.includes('function descriptor()'), false);
+  assert.equal(/const\s+\w+\s*=\s*new\s+\w+(Handler|Directory|Publisher|Factory|Spot)/.test(roomMain), false);
   assert.equal(apiMain.includes("packetName: 'RunBingo'"), false);
   assert.equal(roomMain.includes('const requiredPlayers'), false);
 });

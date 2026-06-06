@@ -1,3 +1,7 @@
+const { Inject } = require('@nestjs/common');
+const { BingoRoomJoinHandler } = require('../BingoRoomSpots/Handlers/bingo-room-join-handler');
+const { BingoRoomDirectory } = require('../Handlers/bingo-room-directory');
+
 class BingoEntrySpot {
   [key: string]: any;
   constructor(roomDirectory, roomJoinHandler) {
@@ -18,5 +22,8 @@ class BingoEntrySpot {
     };
   }
 }
+
+Inject(BingoRoomDirectory)(BingoEntrySpot, undefined, 0);
+Inject(BingoRoomJoinHandler)(BingoEntrySpot, undefined, 1);
 
 export { BingoEntrySpot };

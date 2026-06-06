@@ -60,6 +60,13 @@ packet session 방식으로 정리하는 것이다.
 을 함께 올리는 쪽이다. raw chunk[^raw-chunk] 직접 처리와 사용자 정의 Header
 framing 은 MVP[^mvp] 범위에 넣지 않는다.
 
+NestJS 통합에서 stream session type 은 NestJS provider 로 등록한다. framework 는
+새 stream 연결을 session 으로 활성화할 때 provider resolver 를 통해 session 또는
+session factory 를 resolve 한다. session 이 repository, actor manager, outbound
+client 같은 service 를 필요로 하면 생성자 주입으로 받는다. 연결별 transport,
+session id, header 같은 런타임 값은 provider 가 아니며 framework context 나
+DI-managed factory 의 `create(...)` 인자로 전달한다.
+
 > **packet session vs raw session.** 초기 node 드래프트는
 > `ZLinkPacketStreamSession`(`onPacket`)과 `ZLinkRawStreamSession`(`onRaw`)을
 > 두 축으로 그렸고, `ZLinkStream` 에 `write` 와 `writePacket` 을 함께 두었다.
@@ -360,7 +367,7 @@ module options 객체로 옮긴다. dotnet builder 메서드 한 개 = node opti
           router: { bind: 'tcp://0.0.0.0:9110' },
         },
       },
-      streamNodes: {
+      streams: {
         'client.stream': {
           bind: 'tcp://0.0.0.0:9100',
           // dotnet: AttachActorGateway("game.spot") — actor relay 를 보낼
@@ -454,7 +461,7 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
 이 절은 STREAM 표면이 따르는 고정된 결정 사항을 모아둔 것이다.
 
 - stream session 등록은 decorator 기반으로 열지 않는다.
-  `streamNodes[name].session = T`(dotnet `AddStreamNode(...).RegisterSession<T>()`)
+  `streams[name].session = T`(dotnet `AddStreamNode(...).RegisterSession<T>()`)
   같은 명시 등록만 기본 표면으로 둔다.
 - packet decode helper 와 encode helper 는 framework 본체가 아니라 serializer
   확장 패키지가 맡는다. framework core 는 `Message`, zero-copy view,

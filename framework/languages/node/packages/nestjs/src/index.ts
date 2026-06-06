@@ -6,16 +6,27 @@ import type { DynamicModule, InjectionToken, ModuleMetadata, OnModuleDestroy, On
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 import type {
   Type,
+  ZLinkChannelPublishHandlerRegistration,
+  ZLinkChannelRequestHandlerRegistration,
+  ZLinkClientCapabilityOptions,
+  ZLinkDealerMeshChannelOptions,
   ZLinkChannelOptions,
-  ZLinkDecoratorMetadata,
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
+  ZLinkProviderResolver,
+  ZLinkPublisherCapabilityOptions,
   ZLinkPublishContext,
   ZLinkRequestContext,
+  ZLinkRouteChannelOptions,
+  ZLinkRouteChannelRequestHandlerRegistration,
+  ZLinkRouteChannelSendHandlerRegistration,
   ZLinkRouteSendContext,
   ZLinkRegistryOptions,
   ZLinkRegistryQueryClientOptions,
-  ZLinkSpotRemoteAddressResolver
+  ZLinkSpotNodeRegistrationOptions,
+  ZLinkSpotNodeOptions,
+  ZLinkSpotRemoteAddressResolver,
+  ZLinkStreamNodeOptions
 } from '@zlink-systems/framework';
 
 type FrameworkModule = typeof import('@zlink-systems/framework');
@@ -43,15 +54,66 @@ export interface ZLinkRegistryQueryClientModuleAsyncOptions {
   readonly imports?: ModuleMetadata['imports'];
 }
 
-export interface ZLinkNestChannelOptions extends ZLinkChannelOptions {
+interface ZLinkNestHandlerDiscoveryOptions {
   readonly handlerGroups?: readonly string[];
-  readonly handlerTypes?: readonly Type[];
 }
 
-export interface ZLinkModuleOptions extends Omit<ZLinkFrameworkRegistrationOptions, 'channels'> {
-  readonly channels?: Readonly<Record<string, ZLinkNestChannelOptions>>;
+export interface ZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
+  readonly server?: { readonly bind?: string };
+  readonly client?: ZLinkClientCapabilityOptions;
+  readonly requestHandlers?: readonly ZLinkChannelRequestHandlerRegistration[];
 }
 
+export interface ZLinkNestFanoutChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
+  readonly publisher?: ZLinkPublisherCapabilityOptions;
+  readonly subscriber?: ZLinkClientCapabilityOptions;
+  readonly publishHandlers?: readonly ZLinkChannelPublishHandlerRegistration[];
+}
+
+export interface ZLinkNestDealerMeshChannelOptions extends ZLinkDealerMeshChannelOptions {}
+
+export interface ZLinkNestRouterMeshOptions extends ZLinkNestHandlerDiscoveryOptions {
+  readonly bind?: string;
+  readonly manualConnections?: readonly string[];
+  readonly routingId?: string;
+  readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
+  readonly requestHandlers?: readonly ZLinkRouteChannelRequestHandlerRegistration[];
+  readonly handlers?: ZLinkRouteChannelOptions['handlers'];
+}
+
+export type ZLinkNestHandlerKind = 'request' | 'send' | 'publish';
+
+export interface ZLinkNestHandlerGroupOptions {
+  readonly kind?: ZLinkNestHandlerKind;
+  readonly packetName?: string;
+  readonly methodName?: string;
+}
+
+export interface ZLinkNestHandlerGroupProvider extends ZLinkNestHandlerGroupOptions {
+  readonly provider: Provider;
+  readonly handlerType?: Type;
+  readonly handlerToken?: InjectionToken;
+}
+
+export type ZLinkNestHandlerGroupEntry =
+  | Type
+  | readonly [Type, string]
+  | ZLinkNestHandlerGroupProvider;
+
+export interface ZLinkModuleOptions extends Omit<
+  ZLinkFrameworkRegistrationOptions,
+  'channels' | 'routeChannels' | 'streamNodes' | 'spotNodes'
+> {
+  readonly clientServerChannels?: Readonly<Record<string, ZLinkNestClientServerChannelOptions>>;
+  readonly fanoutChannels?: Readonly<Record<string, ZLinkNestFanoutChannelOptions>>;
+  readonly dealerMeshChannels?: Readonly<Record<string, ZLinkNestDealerMeshChannelOptions>>;
+  readonly routerMeshes?: Readonly<Record<string, ZLinkNestRouterMeshOptions>>;
+  readonly spotNodes?: readonly (string | ZLinkSpotNodeRegistrationOptions)[] |
+    Readonly<Record<string, ZLinkSpotNodeOptions>>;
+  readonly streams?: Readonly<Record<string, ZLinkStreamNodeOptions>>;
+}
+
+export const ZLINK_NEST_HANDLER_GROUP = Symbol.for('@zlink-systems/nestjs:handler-group');
 export const ZLINK_FRAMEWORK_REGISTRATION = Symbol.for('@zlink-systems/framework:registration');
 export const ZLINK_FRAMEWORK_RUNTIME = Symbol.for('@zlink-systems/framework:runtime');
 export const ZLINK_CHANNEL_CLIENT = Symbol.for('@zlink-systems/framework:channel-client');
@@ -68,31 +130,153 @@ export const ZLINK_REGISTRY_RUNTIME = Symbol.for('@zlink-systems/framework:regis
 export const ZLINK_REGISTRY_QUERY = Symbol.for('@zlink-systems/framework:registry-query');
 export const ZLINK_REGISTRY_QUERY_CLIENT = Symbol.for('@zlink-systems/framework:registry-query-client');
 
+const nestHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestHandlerMetadata[]>();
+
+export function zlinkHandlerGroup(
+  groupName: string,
+  handlers: readonly ZLinkNestHandlerGroupEntry[],
+  defaults: ZLinkNestHandlerGroupOptions = {}
+): Provider[] {
+  if (groupName.trim() === '') {
+    throw new framework.ZLinkConfigurationException('ZLink handler group name must not be empty.');
+  }
+  return handlers.map((entry) => createHandlerGroupProvider(groupName, entry, defaults));
+}
+
+interface ZLinkNestHandlerMetadata {
+  readonly groupName: string;
+  readonly kind: ZLinkNestHandlerKind;
+  readonly packetName: string;
+  readonly methodName: string;
+}
+
+function createHandlerGroupProvider(
+  groupName: string,
+  entry: ZLinkNestHandlerGroupEntry,
+  defaults: ZLinkNestHandlerGroupOptions
+): Provider {
+  const normalized = normalizeHandlerGroupEntry(entry);
+  const handlerToken = normalized.handlerToken ?? normalized.handlerType ?? resolveHandlerToken(normalized.provider);
+  if (handlerToken === undefined) {
+    throw new framework.ZLinkConfigurationException(
+      `ZLink handler group '${groupName}' provider must expose a handler token.`
+    );
+  }
+  const packetSource = normalized.handlerType ?? (typeof handlerToken === 'function' ? handlerToken as Type : undefined);
+  appendNestHandlerMetadata(handlerToken, {
+    groupName,
+    kind: normalized.kind ?? defaults.kind ?? 'request',
+    methodName: normalized.methodName ?? defaults.methodName ?? 'handle',
+    packetName: normalized.packetName ?? defaults.packetName ?? inferPacketName(packetSource, handlerToken)
+  });
+  return normalized.provider;
+}
+
+function normalizeHandlerGroupEntry(entry: ZLinkNestHandlerGroupEntry): ZLinkNestHandlerGroupProvider {
+  if (typeof entry === 'function') {
+    return { provider: entry, handlerType: entry };
+  }
+  if (Array.isArray(entry)) {
+    const typedEntry = entry as readonly [Type, string];
+    return { provider: typedEntry[0], handlerType: typedEntry[0], packetName: typedEntry[1] };
+  }
+  return entry as ZLinkNestHandlerGroupProvider;
+}
+
+function resolveHandlerToken(provider: Provider): InjectionToken | undefined {
+  if (typeof provider === 'function') {
+    return provider;
+  }
+  if (typeof provider === 'object' && provider !== null) {
+    const typedProvider = provider as {
+      readonly provide?: unknown;
+      readonly useClass?: unknown;
+    };
+    if (typeof typedProvider.useClass === 'function') {
+      return typedProvider.useClass as Type;
+    }
+    if (
+      typeof typedProvider.provide === 'function' ||
+      typeof typedProvider.provide === 'string' ||
+      typeof typedProvider.provide === 'symbol'
+    ) {
+      return typedProvider.provide as InjectionToken;
+    }
+  }
+  return undefined;
+}
+
+function inferPacketName(handlerType: Type | undefined, handlerToken: InjectionToken): string {
+  if (handlerType !== undefined) {
+    return handlerType.name.endsWith('Handler')
+      ? handlerType.name.slice(0, -'Handler'.length)
+      : handlerType.name;
+  }
+  const tokenName = typeof handlerToken === 'symbol'
+    ? handlerToken.description
+    : String(handlerToken);
+  if (tokenName === undefined || tokenName.trim() === '') {
+    throw new framework.ZLinkConfigurationException('ZLink handler packetName is required for anonymous provider tokens.');
+  }
+  return tokenName;
+}
+
+function appendNestHandlerMetadata(handlerToken: InjectionToken, metadata: ZLinkNestHandlerMetadata): void {
+  const current = readNestHandlerMetadata(handlerToken);
+  nestHandlerMetadataByToken.set(handlerToken, [...current, metadata]);
+  if (typeof handlerToken === 'function') {
+    Object.defineProperty(handlerToken, ZLINK_NEST_HANDLER_GROUP, {
+      configurable: true,
+      enumerable: false,
+      value: [...current, metadata],
+      writable: false
+    });
+  }
+}
+
+function readNestHandlerMetadata(handlerToken: InjectionToken | undefined): readonly ZLinkNestHandlerMetadata[] {
+  if (handlerToken === undefined) {
+    return [];
+  }
+  return nestHandlerMetadataByToken.get(handlerToken)
+    ?? (typeof handlerToken === 'function'
+      ? (((handlerToken as unknown) as Record<symbol, unknown>)[ZLINK_NEST_HANDLER_GROUP] as readonly ZLinkNestHandlerMetadata[] | undefined) ?? []
+      : []);
+}
+
 @Module({})
 export class ZLinkModule {
   static forRoot(options: ZLinkModuleOptions = {}): DynamicModule {
+    assertNoLegacyModuleOptions(options);
     if (hasNestHandlerDiscovery(options)) {
       return createDiscoveringZLinkDynamicModule(options);
     }
-    return createZLinkDynamicModule(framework.createFrameworkRegistration(options));
+    return createZLinkDynamicModule(framework.createFrameworkRegistration(createRegistrationOptions(options)));
   }
 
   static forRootAsync(options: ZLinkModuleAsyncOptions): DynamicModule {
     const registrationProvider: Provider<Promise<ZLinkFrameworkRegistration>> = {
       provide: ZLINK_FRAMEWORK_REGISTRATION,
-      inject: options.inject === undefined ? undefined : [...options.inject],
-      useFactory: async (...args: unknown[]) => framework.createFrameworkRegistration(await options.useFactory(...args))
+      inject: [...(options.inject ?? []), DiscoveryService, ModuleRef],
+      useFactory: async (...args: unknown[]) => {
+        const discovery = args[args.length - 2] as DiscoveryService;
+        const moduleRef = args[args.length - 1] as ModuleRef;
+        const factoryArgs = args.slice(0, -2);
+        const resolvedOptions = assertNoLegacyModuleOptions(await options.useFactory(...factoryArgs));
+        return framework.createFrameworkRegistration(createDiscoveredOptions(resolvedOptions, discovery, moduleRef));
+      }
     };
 
     return {
       module: ZLinkModule,
-      imports: options.imports,
+      imports: [...(options.imports ?? []), DiscoveryModule],
       providers: [
         registrationProvider,
         {
           provide: ZLINK_FRAMEWORK_RUNTIME,
-          inject: [ZLINK_FRAMEWORK_REGISTRATION],
-          useFactory: (registration: ZLinkFrameworkRegistration) => createRuntimeHost(registration)
+          inject: [ZLINK_FRAMEWORK_REGISTRATION, ModuleRef, DiscoveryService],
+          useFactory: (registration: ZLinkFrameworkRegistration, moduleRef: ModuleRef, discovery: DiscoveryService) =>
+            createRuntimeHost(registration, moduleRef, discovery)
         },
         ...alwaysAvailableClientProviders(),
         ...conditionalClientProvidersForAsync()
@@ -167,13 +351,18 @@ export class ZLinkRegistryQueryClientModule {
 export function createZLinkDynamicModule(registration: ZLinkFrameworkRegistration): DynamicModule {
   const providers: Provider[] = [
     { provide: ZLINK_FRAMEWORK_REGISTRATION, useValue: registration },
-    { provide: ZLINK_FRAMEWORK_RUNTIME, useFactory: () => createRuntimeHost(registration) },
+    {
+      provide: ZLINK_FRAMEWORK_RUNTIME,
+      inject: [ModuleRef, DiscoveryService],
+      useFactory: (moduleRef: ModuleRef, discovery: DiscoveryService) => createRuntimeHost(registration, moduleRef, discovery)
+    },
     ...alwaysAvailableClientProviders(registration),
     ...conditionalClientProviders(registration)
   ];
 
   return {
     module: ZLinkModule,
+    imports: [DiscoveryModule],
     providers,
     exports: providers.map(providerToken)
   };
@@ -223,8 +412,9 @@ function createDiscoveringZLinkDynamicModule(options: ZLinkModuleOptions): Dynam
       registrationProvider,
       {
         provide: ZLINK_FRAMEWORK_RUNTIME,
-        inject: [ZLINK_FRAMEWORK_REGISTRATION],
-        useFactory: (registration: ZLinkFrameworkRegistration) => createRuntimeHost(registration)
+        inject: [ZLINK_FRAMEWORK_REGISTRATION, ModuleRef, DiscoveryService],
+        useFactory: (registration: ZLinkFrameworkRegistration, moduleRef: ModuleRef, discovery: DiscoveryService) =>
+          createRuntimeHost(registration, moduleRef, discovery)
       },
       ...alwaysAvailableClientProviders(),
       ...conditionalClientProvidersForAsync()
@@ -242,64 +432,172 @@ function createDiscoveredOptions(
   discovery: DiscoveryService,
   moduleRef: ModuleRef
 ): ZLinkFrameworkRegistrationOptions {
-  const channels: Record<string, ZLinkChannelOptions> = {};
-  const providerRefs = discoverProviderRefs(discovery);
+  const registrationOptions = createRegistrationOptions(options);
+  const channels: Record<string, ZLinkChannelOptions> = { ...(registrationOptions.channels ?? {}) };
+  const routerMeshes = new Map<string, ZLinkRouteChannelOptions>();
+  const providerRefs = discoverProviderRefs(discovery, moduleRef);
 
-  for (const [channelName, channel] of Object.entries(options.channels ?? {})) {
-    const { handlerGroups, handlerTypes, ...baseChannel } = channel;
-    const requestHandlers = createDiscoveredRequestHandlers(providerRefs, handlerGroups, handlerTypes, moduleRef);
-    const sendHandlers = createDiscoveredSendHandlers(providerRefs, handlerGroups, handlerTypes, moduleRef);
-    const publishHandlers = createDiscoveredPublishHandlers(providerRefs, handlerGroups, handlerTypes, moduleRef);
-    const routeMesh = baseChannel.routeMesh === undefined
-      ? undefined
-      : {
-          ...baseChannel.routeMesh,
-          requestHandlers: [
-            ...(baseChannel.routeMesh.requestHandlers ?? []),
-            ...requestHandlers
-          ],
-          sendHandlers: [
-            ...(baseChannel.routeMesh.sendHandlers ?? []),
-            ...sendHandlers
-          ]
-        };
-    const channelRequestHandlers = baseChannel.server === undefined
-      ? baseChannel.requestHandlers
-      : [
-          ...(baseChannel.requestHandlers ?? []),
-          ...requestHandlers
-        ];
-
+  for (const [channelName, channel] of Object.entries(options.clientServerChannels ?? {})) {
+    const requestHandlers = createDiscoveredRequestHandlers(
+      providerRefs,
+      channel.handlerGroups,
+      moduleRef
+    );
     channels[channelName] = {
-      ...baseChannel,
-      routeMesh,
-      publishHandlers: [
-        ...(baseChannel.publishHandlers ?? []),
-        ...publishHandlers
-      ],
-      requestHandlers: channelRequestHandlers
+      ...channels[channelName],
+      requestHandlers: channel.server === undefined
+        ? channels[channelName]?.requestHandlers
+        : [
+            ...(channels[channelName]?.requestHandlers ?? []),
+            ...requestHandlers
+          ]
     };
   }
 
+  for (const [channelName, channel] of Object.entries(options.fanoutChannels ?? {})) {
+    const publishHandlers = createDiscoveredPublishHandlers(providerRefs, channel.handlerGroups, moduleRef);
+    channels[channelName] = {
+      ...channels[channelName],
+      publishHandlers: [
+        ...(channels[channelName]?.publishHandlers ?? []),
+        ...publishHandlers
+      ]
+    };
+  }
+
+  for (const routeChannel of registrationOptions.routeChannels ?? []) {
+    const normalized = typeof routeChannel === 'string'
+      ? { routerChannelId: routeChannel }
+      : { ...routeChannel };
+    routerMeshes.set(normalized.routerChannelId, normalized);
+  }
+  for (const [routerMeshName, routerMesh] of Object.entries(options.routerMeshes ?? {})) {
+    const existing = routerMeshes.get(routerMeshName) ?? { routerChannelId: routerMeshName };
+    const requestHandlers = createDiscoveredRequestHandlers(
+      providerRefs,
+      routerMesh.handlerGroups,
+      moduleRef
+    );
+    const sendHandlers = createDiscoveredSendHandlers(
+      providerRefs,
+      routerMesh.handlerGroups,
+      moduleRef
+    );
+    routerMeshes.set(routerMeshName, {
+      ...existing,
+      requestHandlers: [
+        ...(existing.requestHandlers ?? []),
+        ...requestHandlers
+      ],
+      sendHandlers: [
+        ...(existing.sendHandlers ?? []),
+        ...sendHandlers
+      ]
+    });
+  }
+
   return {
-    ...options,
-    channels
+    ...registrationOptions,
+    channels,
+    routeChannels: [...routerMeshes.values()]
   };
 }
 
+function createRegistrationOptions(options: ZLinkModuleOptions): ZLinkFrameworkRegistrationOptions {
+  const channels: Record<string, ZLinkChannelOptions> = {};
+  const routeChannels: ZLinkRouteChannelOptions[] = [];
+
+  for (const [name, channel] of Object.entries(options.clientServerChannels ?? {})) {
+    assertChannelNameAvailable(channels, name, 'ClientServerChannel');
+    channels[name] = {
+      client: channel.client,
+      requestHandlers: channel.requestHandlers,
+      server: channel.server
+    };
+  }
+
+  for (const [name, channel] of Object.entries(options.fanoutChannels ?? {})) {
+    assertChannelNameAvailable(channels, name, 'FanoutChannel');
+    channels[name] = {
+      publishHandlers: channel.publishHandlers,
+      publisher: channel.publisher,
+      subscriber: channel.subscriber
+    };
+  }
+
+  for (const [name, channel] of Object.entries(options.dealerMeshChannels ?? {})) {
+    assertChannelNameAvailable(channels, name, 'DealerMeshChannel');
+    channels[name] = {
+      dealerMesh: { ...channel }
+    };
+  }
+
+  for (const [name, routerMesh] of Object.entries(options.routerMeshes ?? {})) {
+    const { handlerGroups: _handlerGroups, ...routeChannel } = routerMesh;
+    routeChannels.push({
+      routerChannelId: name,
+      ...routeChannel
+    });
+  }
+
+  return {
+    actorFactories: options.actorFactories,
+    channels,
+    discovery: options.discovery,
+    registrySpotRemoteAddresses: options.registrySpotRemoteAddresses,
+    routeChannels,
+    spotFactories: options.spotFactories,
+    spotNodes: options.spotNodes,
+    spotPublisherClients: options.spotPublisherClients,
+    spotRemoteAddressResolver: options.spotRemoteAddressResolver,
+    streamNodes: options.streams
+  };
+}
+
+function assertChannelNameAvailable(
+  channels: Readonly<Record<string, ZLinkChannelOptions>>,
+  name: string,
+  kind: string
+): void {
+  if (channels[name] !== undefined) {
+    throw new framework.ZLinkConfigurationException(`Channel '${name}' is already registered before ${kind}.`);
+  }
+}
+
+function assertNoLegacyModuleOptions(options: ZLinkModuleOptions): ZLinkModuleOptions {
+  const legacy = options as ZLinkModuleOptions & {
+    readonly channels?: unknown;
+    readonly routeChannels?: unknown;
+    readonly streamNodes?: unknown;
+  };
+  if (legacy.channels !== undefined) {
+    throw new framework.ZLinkConfigurationException(
+      'NestJS ZLinkModule uses clientServerChannels, fanoutChannels, dealerMeshChannels, and routerMeshes instead of channels.'
+    );
+  }
+  if (legacy.routeChannels !== undefined) {
+    throw new framework.ZLinkConfigurationException('NestJS ZLinkModule uses routerMeshes instead of routeChannels.');
+  }
+  if (legacy.streamNodes !== undefined) {
+    throw new framework.ZLinkConfigurationException('NestJS ZLinkModule uses streams instead of streamNodes.');
+  }
+  return options;
+}
+
 interface DiscoveredNestProvider {
-  readonly handlerType: Type;
+  readonly handlerKey: InjectionToken;
+  readonly handlerName: string;
   readonly token: InjectionToken;
   readonly instance?: Record<string, unknown>;
+  readonly metadata: ZLinkNestHandlerMetadata;
 }
 
 function createDiscoveredRequestHandlers(
   providerRefs: readonly DiscoveredNestProvider[],
   handlerGroups: readonly string[] | undefined,
-  explicitHandlerTypes: readonly Type[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['requestHandlers']> {
-  return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, explicitHandlerTypes, 'request', (ref, metadata) => ({
+  return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'request', (ref, metadata) => ({
     async handle(payload: Buffer, context: ZLinkRequestContext) {
       return await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
     }
@@ -309,10 +607,9 @@ function createDiscoveredRequestHandlers(
 function createDiscoveredSendHandlers(
   providerRefs: readonly DiscoveredNestProvider[],
   handlerGroups: readonly string[] | undefined,
-  explicitHandlerTypes: readonly Type[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<NonNullable<ZLinkChannelOptions['routeMesh']>['sendHandlers']> {
-  return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, explicitHandlerTypes, 'send', (ref, metadata) => ({
+  return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'send', (ref, metadata) => ({
     async handle(payload: Buffer, context: ZLinkRouteSendContext) {
       await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
     }
@@ -322,10 +619,9 @@ function createDiscoveredSendHandlers(
 function createDiscoveredPublishHandlers(
   providerRefs: readonly DiscoveredNestProvider[],
   handlerGroups: readonly string[] | undefined,
-  explicitHandlerTypes: readonly Type[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['publishHandlers']> {
-  return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, explicitHandlerTypes, 'publish', (ref, metadata) => ({
+  return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'publish', (ref, metadata) => ({
     async handle(payload: Buffer, context: ZLinkPublishContext) {
       await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
     }
@@ -335,14 +631,13 @@ function createDiscoveredPublishHandlers(
 function createDiscoveredHandlerRegistrations<THandler>(
   providerRefs: readonly DiscoveredNestProvider[],
   handlerGroups: readonly string[] | undefined,
-  explicitHandlerTypes: readonly Type[] | undefined,
   kind: string,
-  createHandler: (ref: DiscoveredNestProvider, metadata: ZLinkDecoratorMetadata) => THandler
+  createHandler: (ref: DiscoveredNestProvider, metadata: ZLinkNestHandlerMetadata) => THandler
 ): Array<{ readonly packetName: string; readonly handler: THandler }> {
-  const descriptors = createDiscoveredHandlerDescriptors(providerRefs, handlerGroups, explicitHandlerTypes, kind);
+  const descriptors = createDiscoveredHandlerDescriptors(providerRefs, handlerGroups, kind);
 
   return descriptors.map(({ ref, metadata }) => ({
-    packetName: metadata.packetName ?? ref.handlerType.name,
+    packetName: metadata.packetName,
     handler: createHandler(ref, metadata)
   }));
 }
@@ -350,60 +645,37 @@ function createDiscoveredHandlerRegistrations<THandler>(
 function createDiscoveredHandlerDescriptors(
   providerRefs: readonly DiscoveredNestProvider[],
   handlerGroups: readonly string[] | undefined,
-  explicitHandlerTypes: readonly Type[] | undefined,
   kind: string
-): Array<{ readonly ref: DiscoveredNestProvider; readonly metadata: ZLinkDecoratorMetadata }> {
-  if ((handlerGroups ?? []).length === 0 && (explicitHandlerTypes ?? []).length === 0) {
+): Array<{ readonly ref: DiscoveredNestProvider; readonly metadata: ZLinkNestHandlerMetadata }> {
+  if ((handlerGroups ?? []).length === 0) {
     return [];
   }
 
-  const refs = mergeExplicitProviderRefs(providerRefs, explicitHandlerTypes);
-  const refByType = new Map<Type, DiscoveredNestProvider>();
-  for (const ref of refs) {
-    if (!refByType.has(ref.handlerType)) {
-      refByType.set(ref.handlerType, ref);
-    }
-  }
-
-  const descriptors = framework.exposeZLinkHandlers([...refByType.keys()], {
-    handlerGroups,
-    explicitHandlers: explicitHandlerTypes
-  }).filter((descriptor) => descriptor.metadata.kind === kind);
-
-  const seen = new Set<string>();
-  const selected: Array<{ readonly ref: DiscoveredNestProvider; readonly metadata: ZLinkDecoratorMetadata }> = [];
-  for (const descriptor of descriptors) {
-    const ref = refByType.get(descriptor.handlerType);
-    if (ref === undefined) {
+  const groups = new Set(handlerGroups);
+  const seen = new Map<string, InjectionToken>();
+  const selected: Array<{ readonly ref: DiscoveredNestProvider; readonly metadata: ZLinkNestHandlerMetadata }> = [];
+  for (const ref of providerRefs) {
+    const metadata = ref.metadata;
+    if (metadata.kind !== kind || !groups.has(metadata.groupName)) {
       continue;
     }
-    const packetName = descriptor.metadata.packetName ?? descriptor.handlerType.name;
-    const key = `${descriptor.metadata.kind}:${packetName}`;
-    if (seen.has(key)) {
+    const key = `${metadata.kind}:${metadata.packetName}`;
+    const previousType = seen.get(key);
+    if (previousType === ref.handlerKey) {
+      continue;
+    }
+    if (previousType !== undefined) {
       throw new framework.ZLinkConfigurationException(
-        `Duplicate discovered handler '${descriptor.metadata.kind}:${packetName}'.`
+        `Duplicate handler '${metadata.groupName}:${metadata.kind}:${metadata.packetName}'.`
       );
     }
-    seen.add(key);
-    selected.push({ ref, metadata: descriptor.metadata });
+    seen.set(key, ref.handlerKey);
+    selected.push({ ref, metadata });
   }
   return selected;
 }
 
-function mergeExplicitProviderRefs(
-  providerRefs: readonly DiscoveredNestProvider[],
-  explicitHandlerTypes: readonly Type[] | undefined
-): DiscoveredNestProvider[] {
-  const refs = [...providerRefs];
-  for (const handlerType of explicitHandlerTypes ?? []) {
-    if (!refs.some((ref) => ref.handlerType === handlerType)) {
-      refs.push({ handlerType, token: handlerType });
-    }
-  }
-  return refs;
-}
-
-function discoverProviderRefs(discovery: DiscoveryService): DiscoveredNestProvider[] {
+function discoverProviderRefs(discovery: DiscoveryService, moduleRef: ModuleRef): DiscoveredNestProvider[] {
   const refs: DiscoveredNestProvider[] = [];
   const seen = new Set<string>();
 
@@ -414,20 +686,49 @@ function discoverProviderRefs(discovery: DiscoveryService): DiscoveredNestProvid
     }
 
     const candidates = [wrapper.metatype, wrapper.instance?.constructor, token]
-      .filter((value): value is Type => typeof value === 'function');
-    for (const handlerType of new Set(candidates)) {
-      if (framework.readZLinkDecoratorMetadata(handlerType).length === 0) {
-        continue;
+      .filter((value): value is InjectionToken =>
+        typeof value === 'function' || typeof value === 'string' || typeof value === 'symbol'
+      );
+    for (const handlerKey of new Set(candidates)) {
+      for (const metadata of readNestHandlerMetadata(handlerKey)) {
+        const handlerName = handlerKeyName(handlerKey);
+        const key = `${String(token)}:${handlerName}:${metadata.groupName}:${metadata.kind}:${metadata.packetName}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        refs.push({
+          handlerKey,
+          handlerName,
+          token,
+          instance: wrapper.instance === undefined ? undefined : wrapper.instance as Record<string, unknown>,
+          metadata
+        });
       }
-      const key = `${String(token)}:${handlerType.name}`;
+    }
+  }
+
+  for (const [handlerKey, metadataList] of nestHandlerMetadataByToken) {
+    if (!isInjectionToken(handlerKey)) {
+      continue;
+    }
+    const instance = tryGetProviderInstance(moduleRef, handlerKey);
+    if (instance === undefined) {
+      continue;
+    }
+    const handlerName = handlerKeyName(handlerKey);
+    for (const metadata of metadataList) {
+      const key = `${String(handlerKey)}:${handlerName}:${metadata.groupName}:${metadata.kind}:${metadata.packetName}`;
       if (seen.has(key)) {
         continue;
       }
       seen.add(key);
       refs.push({
-        handlerType,
-        token,
-        instance: wrapper.instance === undefined ? undefined : wrapper.instance as Record<string, unknown>
+        handlerKey,
+        handlerName,
+        token: handlerKey,
+        instance,
+        metadata
       });
     }
   }
@@ -435,22 +736,44 @@ function discoverProviderRefs(discovery: DiscoveryService): DiscoveredNestProvid
   return refs;
 }
 
+function isInjectionToken(value: unknown): value is InjectionToken {
+  return typeof value === 'function' || typeof value === 'string' || typeof value === 'symbol';
+}
+
+function tryGetProviderInstance(moduleRef: ModuleRef, token: InjectionToken): Record<string, unknown> | undefined {
+  try {
+    return moduleRef.get(token, { strict: false }) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
 async function invokeDiscoveredHandler(
   moduleRef: ModuleRef,
   ref: DiscoveredNestProvider,
-  metadata: ZLinkDecoratorMetadata,
+  metadata: ZLinkNestHandlerMetadata,
   payload: Buffer,
   context: ZLinkRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
 ): Promise<unknown> {
-  const instance = ref.instance ?? moduleRef.get(ref.token, { strict: false }) as Record<string, unknown>;
+  const instance = moduleRef.get(ref.token, { strict: false }) as Record<string, unknown>;
   const methodName = metadata.methodName ?? 'handle';
   const method = instance[methodName];
   if (typeof method !== 'function') {
     throw new framework.ZLinkConfigurationException(
-      `Discovered handler ${ref.handlerType.name}.${methodName} is not callable.`
+      `Discovered handler ${ref.handlerName}.${methodName} is not callable.`
     );
   }
   return await method.call(instance, decodePayload(payload), context);
+}
+
+function handlerKeyName(handlerKey: InjectionToken): string {
+  if (typeof handlerKey === 'function') {
+    return handlerKey.name;
+  }
+  if (typeof handlerKey === 'symbol') {
+    return handlerKey.description ?? handlerKey.toString();
+  }
+  return handlerKey;
 }
 
 function decodePayload(payload: Buffer | Uint8Array | string | unknown): unknown {
@@ -464,8 +787,12 @@ function decodePayload(payload: Buffer | Uint8Array | string | unknown): unknown
 }
 
 function hasNestHandlerDiscovery(options: ZLinkModuleOptions): boolean {
-  return Object.values(options.channels ?? {}).some(
-    (channel) => (channel.handlerGroups ?? []).length > 0 || (channel.handlerTypes ?? []).length > 0
+  return [
+    ...Object.values(options.clientServerChannels ?? {}),
+    ...Object.values(options.fanoutChannels ?? {}),
+    ...Object.values(options.routerMeshes ?? {})
+  ].some(
+    (channel) => (channel.handlerGroups ?? []).length > 0
   );
 }
 
@@ -548,7 +875,12 @@ interface ConditionalClientProviderSpec {
   readonly token: InjectionToken;
   readonly requiresRuntime: boolean;
   isEnabled(registration: ZLinkFrameworkRegistration): boolean;
-  create(registration: ZLinkFrameworkRegistration, runtime: FrameworkRuntimeHost | undefined): unknown;
+  create(
+    registration: ZLinkFrameworkRegistration,
+    runtime: FrameworkRuntimeHost | undefined,
+    moduleRef: ModuleRef | undefined,
+    discovery: DiscoveryService | undefined
+  ): unknown | Promise<unknown>;
 }
 
 const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[] = [
@@ -556,13 +888,14 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     token: ZLINK_SPOT_MANAGER,
     requiresRuntime: false,
     isEnabled: (registration) => framework.hasSpotNode(registration),
-    create: (registration) => createSpotManager(registration)
+    create: (registration, _runtime, moduleRef, discovery) => createSpotManager(registration, moduleRef, discovery)
   },
   {
     token: ZLINK_SPOT_OUTBOUND,
     requiresRuntime: true,
     isEnabled: (registration) => framework.hasSpotNode(registration),
-    create: (registration, runtime) => createSpotOutbound(registration, requireRuntime(runtime))
+    create: (registration, runtime, moduleRef, discovery) =>
+      createSpotOutbound(registration, requireRuntime(runtime), moduleRef, discovery)
   },
   {
     token: ZLINK_SPOT_PUBLISHER_CLIENT,
@@ -575,7 +908,10 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     token: ZLINK_ACTOR_MANAGER,
     requiresRuntime: false,
     isEnabled: (registration) => framework.hasActorManager(registration),
-    create: (registration) => new framework.DefaultZLinkActorManager({ actorFactories: registration.actorFactories })
+    create: (registration, _runtime, moduleRef, discovery) => new framework.DefaultZLinkActorManager({
+      actorFactories: registration.actorFactories,
+      providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
+    })
   }
 ];
 
@@ -584,12 +920,12 @@ function conditionalClientProvidersForAsync(): Provider[] {
     ...CONDITIONAL_CLIENT_PROVIDER_SPECS.map(createConditionalClientProviderForAsync),
     {
       provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
-      inject: [ZLINK_FRAMEWORK_REGISTRATION],
-      useFactory: (registration: ZLinkFrameworkRegistration) => {
+      inject: [ZLINK_FRAMEWORK_REGISTRATION, ModuleRef, DiscoveryService],
+      useFactory: async (registration: ZLinkFrameworkRegistration, moduleRef: ModuleRef, discovery: DiscoveryService) => {
         if (!framework.hasSpotRemoteAddressResolver(registration)) {
           return null;
         }
-        return createSpotRemoteAddressResolver(registration);
+        return await createSpotRemoteAddressResolver(registration, moduleRef, discovery);
       }
     }
   ];
@@ -599,13 +935,21 @@ function createConditionalClientProviderForAsync(spec: ConditionalClientProvider
   return {
     provide: spec.token,
     inject: spec.requiresRuntime
-      ? [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME]
-      : [ZLINK_FRAMEWORK_REGISTRATION],
-    useFactory: (registration: ZLinkFrameworkRegistration, runtime?: FrameworkRuntimeHost) => {
+      ? [ZLINK_FRAMEWORK_REGISTRATION, ZLINK_FRAMEWORK_RUNTIME, ModuleRef, DiscoveryService]
+      : [ZLINK_FRAMEWORK_REGISTRATION, ModuleRef, DiscoveryService],
+    useFactory: (
+      registration: ZLinkFrameworkRegistration,
+      runtimeOrModuleRef?: FrameworkRuntimeHost | ModuleRef,
+      moduleRefOrDiscovery?: ModuleRef | DiscoveryService,
+      maybeDiscovery?: DiscoveryService
+    ) => {
       if (!spec.isEnabled(registration)) {
         return null;
       }
-      return spec.create(registration, runtime);
+      const runtime = spec.requiresRuntime ? runtimeOrModuleRef as FrameworkRuntimeHost : undefined;
+      const moduleRef = spec.requiresRuntime ? moduleRefOrDiscovery as ModuleRef : runtimeOrModuleRef as ModuleRef;
+      const discovery = spec.requiresRuntime ? maybeDiscovery : moduleRefOrDiscovery as DiscoveryService;
+      return spec.create(registration, runtime, moduleRef, discovery);
     }
   };
 }
@@ -614,13 +958,19 @@ function createConditionalClientProvider(
   spec: ConditionalClientProviderSpec,
   registration: ZLinkFrameworkRegistration
 ): Provider {
-  if (!spec.requiresRuntime) {
-    return { provide: spec.token, useValue: spec.create(registration, undefined) };
-  }
   return {
     provide: spec.token,
-    inject: [ZLINK_FRAMEWORK_RUNTIME],
-    useFactory: (runtime: FrameworkRuntimeHost) => spec.create(registration, runtime)
+    inject: spec.requiresRuntime ? [ZLINK_FRAMEWORK_RUNTIME, ModuleRef, DiscoveryService] : [ModuleRef, DiscoveryService],
+    useFactory: (
+      runtimeOrModuleRef: FrameworkRuntimeHost | ModuleRef,
+      moduleRefOrDiscovery?: ModuleRef | DiscoveryService,
+      maybeDiscovery?: DiscoveryService
+    ) => {
+      const runtime = spec.requiresRuntime ? runtimeOrModuleRef as FrameworkRuntimeHost : undefined;
+      const moduleRef = spec.requiresRuntime ? moduleRefOrDiscovery as ModuleRef : runtimeOrModuleRef as ModuleRef;
+      const discovery = spec.requiresRuntime ? maybeDiscovery : moduleRefOrDiscovery as DiscoveryService;
+      return spec.create(registration, runtime, moduleRef, discovery);
+    }
   };
 }
 
@@ -641,8 +991,15 @@ function conditionalClientTokens(): InjectionToken[] {
   ];
 }
 
-function createRuntimeHost(registration: ZLinkFrameworkRegistration): RuntimeHostWithNestLifecycle {
-  const runtime = new framework.ZLinkFrameworkRuntimeHost({ registration }) as RuntimeHostWithNestLifecycle;
+function createRuntimeHost(
+  registration: ZLinkFrameworkRegistration,
+  moduleRef: ModuleRef,
+  discovery: DiscoveryService
+): RuntimeHostWithNestLifecycle {
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration,
+    providerResolver: createProviderResolver(moduleRef, discovery)
+  }) as RuntimeHostWithNestLifecycle;
   runtime.onModuleInit = async () => {
     await runtime.start();
   };
@@ -652,20 +1009,69 @@ function createRuntimeHost(registration: ZLinkFrameworkRegistration): RuntimeHos
   return runtime;
 }
 
+function createProviderResolver(moduleRef: ModuleRef, discovery?: DiscoveryService): ZLinkProviderResolver {
+  return {
+    get<T>(type: Type<T>): T | undefined {
+      const discovered = findDiscoveredProviderInstance<T>(discovery, type);
+      if (discovered !== undefined) {
+        return discovered;
+      }
+      try {
+        return moduleRef.get(type, { strict: false });
+      } catch {
+        return undefined;
+      }
+    },
+    async create<T>(type: Type<T>): Promise<T> {
+      const existing = this.get?.(type);
+      if (existing !== undefined) {
+        return existing;
+      }
+      return moduleRef.create(type as unknown as import('@nestjs/common').Type<T>);
+    }
+  };
+}
+
+function findDiscoveredProviderInstance<T>(discovery: DiscoveryService | undefined, type: Type<T>): T | undefined {
+  for (const wrapper of discovery?.getProviders() ?? []) {
+    if (
+      wrapper.instance !== undefined
+      && wrapper.instance !== null
+      && (
+        wrapper.token === type
+        || wrapper.metatype === type
+        || wrapper.instance.constructor === type
+      )
+    ) {
+      return wrapper.instance as T;
+    }
+  }
+  return undefined;
+}
+
 function providerToken(provider: Provider): InjectionToken {
   return typeof provider === 'function' ? provider : provider.provide;
 }
 
-function createSpotManager(registration: ZLinkFrameworkRegistration): InstanceType<FrameworkModule['DefaultZLinkSpotManager']> {
-  return new framework.DefaultZLinkSpotManager({ spotFactories: [...registration.spotFactories] });
+function createSpotManager(
+  registration: ZLinkFrameworkRegistration,
+  moduleRef: ModuleRef | undefined,
+  discovery: DiscoveryService | undefined
+): InstanceType<FrameworkModule['DefaultZLinkSpotManager']> {
+  return new framework.DefaultZLinkSpotManager({
+    spotFactories: [...registration.spotFactories],
+    providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
+  });
 }
 
-function createSpotOutbound(
+async function createSpotOutbound(
   registration: ZLinkFrameworkRegistration,
-  runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>
-): InstanceType<FrameworkModule['DefaultZLinkSpotOutbound']> {
+  runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>,
+  moduleRef: ModuleRef | undefined,
+  discovery: DiscoveryService | undefined
+): Promise<InstanceType<FrameworkModule['DefaultZLinkSpotOutbound']>> {
   const resolver = framework.hasSpotRemoteAddressResolver(registration)
-    ? createSpotRemoteAddressResolver(registration)
+    ? await createSpotRemoteAddressResolver(registration, moduleRef, discovery)
     : undefined;
   return new framework.DefaultZLinkSpotOutbound(
     new framework.ZLinkSpotSerialExecutor(),
@@ -676,11 +1082,19 @@ function createSpotOutbound(
   );
 }
 
-function createSpotRemoteAddressResolver(
-  registration: ZLinkFrameworkRegistration
-): ZLinkSpotRemoteAddressResolver {
+async function createSpotRemoteAddressResolver(
+  registration: ZLinkFrameworkRegistration,
+  moduleRef?: ModuleRef,
+  discovery?: DiscoveryService
+): Promise<ZLinkSpotRemoteAddressResolver> {
   if (registration.spotRemoteAddressResolverType !== undefined) {
-    return new (registration.spotRemoteAddressResolverType as new () => ZLinkSpotRemoteAddressResolver)();
+    const providerResolver = moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery);
+    const resolverType = registration.spotRemoteAddressResolverType as Type<ZLinkSpotRemoteAddressResolver>;
+    const resolver = await providerResolver?.create?.(resolverType);
+    if (resolver === undefined) {
+      throw new framework.ZLinkConfigurationException('Spot remote address resolver provider is not available.');
+    }
+    return resolver;
   }
   if (registration.registrySpotRemoteAddresses !== undefined) {
     return new framework.ZLinkRegistrySpotRemoteAddressResolver({ registration });
@@ -702,7 +1116,9 @@ function spotRemoteAddressResolverProviders(registration: ZLinkFrameworkRegistra
   }
   return [{
     provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
-    useFactory: () => createSpotRemoteAddressResolver(registration)
+    inject: [ModuleRef, DiscoveryService],
+    useFactory: (moduleRef: ModuleRef, discovery: DiscoveryService) =>
+      createSpotRemoteAddressResolver(registration, moduleRef, discovery)
   }];
 }
 

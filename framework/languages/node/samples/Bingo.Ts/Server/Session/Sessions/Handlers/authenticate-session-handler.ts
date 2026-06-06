@@ -1,14 +1,15 @@
+const { Inject } = require('@nestjs/common');
+const { ZLINK_CHANNEL_CLIENT } = require('../../../../../../../packages/nestjs/dist');
 const { SampleNames, SampleTimings } = require('../../../../Shared/Configuration/sample-names');
 
 class AuthenticateSessionHandler {
   [key: string]: any;
-  constructor(apiClient, playClient) {
-    this.apiClient = apiClient;
-    this.playClient = playClient;
+  constructor(zlinkClient) {
+    this.zlinkClient = zlinkClient;
   }
 
   async handle(request, context) {
-    const authenticated = await this.apiClient
+    const authenticated = await this.zlinkClient
       .requestToChannel(SampleNames.apiChannel, { accessToken: request.accessToken })
       .packetName('AuthenticatePlayerReq')
       .timeout(SampleTimings.requestTimeout)
@@ -18,7 +19,7 @@ class AuthenticateSessionHandler {
       throw new Error(authenticated.reason ?? 'Player authentication failed.');
     }
 
-    const ensured = await this.playClient
+    const ensured = await this.zlinkClient
       .requestToChannel(SampleNames.playChannel, {
         actorId: authenticated.actorId,
         displayName: authenticated.displayName
@@ -36,5 +37,7 @@ class AuthenticateSessionHandler {
     };
   }
 }
+
+Inject(ZLINK_CHANNEL_CLIENT)(AuthenticateSessionHandler, undefined, 0);
 
 export { AuthenticateSessionHandler };

@@ -13,7 +13,7 @@ import { ZLinkModule } from '@zlink-systems/nestjs';
 @Module({
   imports: [
     ZLinkModule.forRoot({
-      channels: {
+      clientServerChannels: {
         api: {
           server: { bind: 'tcp://0.0.0.0:7101' },
           client: { manualConnections: ['tcp://127.0.0.1:7101'] },
@@ -51,21 +51,25 @@ export class ProfileClient {
 }
 ```
 
-## 2. handler annotation
+## 2. handler group
 
-handler 는 NestJS provider 로 등록하고, `@ZLinkHandlerGroup(...)` 과
-`@ZLinkRequest(...)` 로 packet handler 를 표시할 수 있다. `handlerGroups` 를 channel
-options 에 지정하면 `ZLinkModule` 이 NestJS provider 목록에서 해당 group 의 handler 를
-찾아 request handler 로 연결한다.
+handler 는 NestJS provider 로 등록한다. ZLink 쪽에서는 `zlinkHandlerGroup(...)` 으로
+provider 를 논리 그룹에 묶고, channel options 의 `handlerGroups` 로 그 group 을
+선택한다. handler class 에 ZLink decorator 를 붙이지 않아도 NestJS DI 로 생성된
+provider 인스턴스의 `handle(...)` 이 호출된다.
+
+`main.ts` 에서 handler 나 service 를 직접 `new` 로 조립하지 않는다. channel 에서
+받을 node handler 만 `zlinkHandlerGroup(...)` 에 넣고, handler class 자체는
+NestJS `providers` 로 등록한다. Spot, Entry Spot, actor factory, stream session,
+Spot 내부 handler 도 같은 원칙을 따른다. 다만 Spot 내부 handler 는 channel group
+이 아니라 해당 Spot 또는 Entry Spot 의 registry 에서 handler type 으로 등록한다.
 
 ```ts
 import { Injectable } from '@nestjs/common';
-import { ZLinkHandlerGroup, ZLinkRequest } from '@zlink-systems/framework';
+import { ZLinkModule, zlinkHandlerGroup } from '@zlink-systems/nestjs';
 
 @Injectable()
-@ZLinkHandlerGroup('api')
 export class GetProfileHandler {
-  @ZLinkRequest('GetProfile')
   handle(request: { id: string }) {
     return { id: request.id };
   }
@@ -74,7 +78,7 @@ export class GetProfileHandler {
 @Module({
   imports: [
     ZLinkModule.forRoot({
-      channels: {
+      clientServerChannels: {
         api: {
           server: { bind: 'tcp://0.0.0.0:7101' },
           handlerGroups: ['api'],
@@ -82,7 +86,11 @@ export class GetProfileHandler {
       },
     }),
   ],
-  providers: [GetProfileHandler],
+  providers: [
+    ...zlinkHandlerGroup('api', [
+      [GetProfileHandler, 'GetProfile'],
+    ]),
+  ],
 })
 export class AppModule {}
 ```

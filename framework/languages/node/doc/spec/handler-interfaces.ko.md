@@ -34,8 +34,10 @@ framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, �
 - `Message` / `ReadOnlyMemory<byte>` → `Message`(payload 구조 타입) / `Buffer`
 - `TimeSpan period` → `periodMs: number`
 - generic 인자는 그대로 유지 (`<TSpot, TActor, TRequest, TReply>`)
-- attribute → decorator: `[ZLinkRequest]` → `@ZLinkRequest()`,
-  `[ZLinkPacket("x")]` → `@ZLinkPacket('x')`
+- attribute → decorator: `[ZLinkPacket("x")]` → `@ZLinkPacket('x')`.
+  서버 간 channel handler 의 NestJS 노출은 `zlinkHandlerGroup(...)` provider 등록이
+  기준이다. `@ZLinkRequest` 같은 decorator 는 core handler metadata를 직접 다루는
+  저수준 표면으로만 남긴다.
 
 사용 예시나 프로그래밍 모델 설명은 여기 넣지 않는다. 실제 사용법은 아래 문서를 참고한다.
 
@@ -295,21 +297,37 @@ export interface ZLinkRequestHandler<TRequest, TResponse> {
 - `TRequest` 는 이미 decode 된 payload 다.
 - `TResponse` 도 framework 가 encode 할 typed 결과다.
 - raw multipart header 는 인자로 넘기지 않는다.
-- 이 interface 를 구현한 class 는 discovery 가 자동으로 endpoint **후보** 로 찾는다.
-  실제 노출은 §4.2 의 명시적 등록(`requestHandlers: [...]`,
-  `@ZLinkHandlerGroup`)이 정한다.
+- 이 interface 를 구현한 class 는 NestJS provider 로 등록할 수 있다.
+  실제 channel 노출은 `zlinkHandlerGroup('group', [[Handler, 'Packet']])` 로
+  handler provider 와 packet 이름을 함께 등록하고, channel options 의
+  `handlerGroups: ['group']` 로 선택한다.
 
-decorator 방식(한 클래스에 여러 handler):
+NestJS provider group 등록 방식:
 
 ```ts
 @Injectable()
-@ZLinkHandlerGroup('api')
-export class ProfileHandlers {
-  @ZLinkRequest()
-  async getProfile(request: GetProfileRequest, context: ZLinkRequestContext): Promise<GetProfileReply> {
-    // ...
+export class GetProfileHandler {
+  async handle(request: GetProfileRequest, context: ZLinkRequestContext): Promise<GetProfileReply> {
+    return { id: request.id };
   }
 }
+
+@Module({
+  imports: [
+    ZLinkModule.forRoot({
+      clientServerChannels: {
+        api: {
+          server: { bind: 'tcp://0.0.0.0:7301' },
+          handlerGroups: ['api'],
+        },
+      },
+    }),
+  ],
+  providers: [
+    ...zlinkHandlerGroup('api', [[GetProfileHandler, 'GetProfile']]),
+  ],
+})
+export class ApiModule {}
 ```
 
 ### 4.2 send handler
@@ -325,9 +343,9 @@ export interface ZLinkSendHandler<TMessage> {
 }
 ```
 
-interface 구현 방식과 `@ZLinkSend()` decorator 방식을 모두 지원한다. discovery 는
-handler 를 **찾고**, 실제 노출은 명시적 등록이 정한다. 자동으로 모든 handler 를 모든
-channel 에 열지 않는다(dotnet 정책 동일).
+interface 구현 방식은 `zlinkHandlerGroup(..., { kind: 'send' })` 로 route mesh
+channel 에 노출한다. discovery 는 provider group 으로 등록된 handler 만 찾고, 자동으로
+모든 handler 를 모든 channel 에 열지 않는다(dotnet 정책 동일).
 
 ### 4.2.1 routed channel handler
 
@@ -1498,15 +1516,16 @@ builder 람다는 NestJS 선언적 options 객체로 옮긴다. 정확한 키와
     ZLinkModule.forRoot({
       defaultTimeoutMs: 30_000,
       codecs: ['protobuf', 'json'],
-      channels: {
+      clientServerChannels: {
         api: {
           server: { bind: 'tcp://0.0.0.0:7101' },
           handlerGroups: ['api'],
         },
         profile: {
           client: {},
-          requestHandlers: [GetProfileHandler],
         },
+      },
+      fanoutChannels: {
         'api.events': {
           subscriber: {},
           handlerGroups: ['api.events'],
@@ -1517,17 +1536,19 @@ builder 람다는 NestJS 선언적 options 객체로 옮긴다. 정확한 키와
       dispatch: { spotDispatchMode: 'compiled', streamDispatchMode: 'compiled' },
     }),
   ],
-  providers: [GetProfileHandler],
+  providers: [
+    ...zlinkHandlerGroup('api', [[GetProfileHandler, 'GetProfile']]),
+  ],
 })
 export class AppModule {}
 ```
 
 | dotnet builder 메서드 | node module options 키 | spec |
 |------|------|------|
-| `addClientServerChannel(name)` | `channels[name] = { server, client }` | nestjs-channel-messaging |
-| `addFanoutChannel(name)` | `channels[name] = { publisher, subscriber }` | nestjs-channel-messaging |
-| `addDealerMeshChannel(name)` | `channels[name] = { dealerMesh: {...} }` | nestjs-channel-messaging |
-| `addRouteMeshChannel(name)` | `channels[name] = { routeMesh: {...} }` | nestjs-channel-messaging |
+| `addClientServerChannel(name)` | `clientServerChannels[name] = { server, client }` | nestjs-channel-messaging |
+| `addFanoutChannel(name)` | `fanoutChannels[name] = { publisher, subscriber }` | nestjs-channel-messaging |
+| `addDealerMeshChannel(name)` | `dealerMeshChannels[name] = { ... }` | nestjs-channel-messaging |
+| `addRouteMeshChannel(name)` | `routerMeshes[name] = { ... }` | nestjs-channel-messaging |
 | `addSpotMesh(name).addNode(...)` | `spotNodes[name] = {...}` | nestjs-spot |
 | `addStreamNode(name)` | `streamNodes[name] = {...}` | nestjs-stream |
 | `useDiscovery().addRegistryEndpoint(...)` | `discovery: { registries: [...] }` | nestjs-registry |
@@ -2190,9 +2211,11 @@ export interface ZLinkSpotNodeSubjectEntry {
 `ZLinkSpotNodeStatus` 와 `ZLinkSpotNodePeerEntry` 의 첫 필드는 `channelName` 이다(예전 이름
 `serviceName` 에서 channel 단위로 통일되며 rename).
 
-## 11. Decorator 정의
+## 11. Metadata decorator 정의
 
-C# attribute 는 node 에서 method/class decorator 로 옮긴다. decorator factory 시그니처를 함께 고정한다.
+C# attribute 에 대응하는 decorator factory 시그니처를 함께 고정한다. 다만 NestJS
+channel handler 노출 표면은 decorator scan 이 아니라 `zlinkHandlerGroup(...)` provider
+등록이다. 아래 decorator 는 core handler metadata 를 직접 다루는 저수준 계약이다.
 
 ### 11.1 서버 간 messaging
 
@@ -2215,20 +2238,21 @@ export function ZLinkPacket(packetName: string): ClassDecorator;
 > `ZLinkPacketAttribute`(packetName ctor)다. publish 는 `ZLinkPublishAttribute` 다(아래 §11.3).
 > 기존 draft 의 `ZLinkEvent` 가 아니라 `ZLinkPublish` 로 고정한다.
 
-`ZLinkHandlerGroup` 의 그룹 이름은 사용자가 정하는 임의 문자열이며 실제 channel 이름과
-분리된다. 같은 그룹을 여러 channel 에, 같은 channel 에 여러 그룹을 매핑할 수 있다.
-`ZLinkRequest` / `ZLinkSend` 는 channel 이름을 받지 않는다. 노출 channel 은 channel
-registration 의 `addHandlerGroup(...)` 매핑이 정한다.
+NestJS module 에서는 같은 의미를 `zlinkHandlerGroup(groupName, handlers, defaults?)` 로
+표현한다. 그룹 이름은 사용자가 정하는 임의 문자열이며 실제 channel 이름과 분리된다.
+같은 그룹을 여러 channel 에, 같은 channel 에 여러 그룹을 매핑할 수 있다.
 
 ```ts
 @Injectable()
-@ZLinkHandlerGroup('api')
-export class ProfileHandlers {
-  @ZLinkRequest()
-  async get(request: GetProfileRequest, context: ZLinkRequestContext): Promise<GetProfileReply> {
-    // ...
+export class GetProfileHandler {
+  async handle(request: GetProfileRequest, context: ZLinkRequestContext): Promise<GetProfileReply> {
+    return { id: request.id };
   }
 }
+
+providers: [
+  ...zlinkHandlerGroup('api', [[GetProfileHandler, 'GetProfile']]),
+]
 ```
 
 같은 그룹을 여러 channel 에 매핑하는 것은 허용한다. 다만 같은 channel 안에서 동일
@@ -2270,10 +2294,10 @@ export function ZLinkPublish(packetName?: string): MethodDecorator;
 맞추기 위해서다. 그래야 `@ZLinkRequest` / `@ZLinkSend` / `@ZLinkPublish` 세 표면이 같은 패턴으로
 읽힌다.
 
-현재 NestJS module 자동 discovery 는 `@ZLinkRequest`, routeMesh `@ZLinkSend`,
-fanout subscriber `@ZLinkPublish` 를 registration 에 연결한다. `@ZLinkPublish` 는
-subscriber capability 가 있는 channel 에서 `publishHandlers` 로 등록되며, 같은 channel
-안에서 packet name 이 중복되면 startup validation 오류다.
+현재 NestJS module 자동 discovery 는 `zlinkHandlerGroup(...)` 로 등록된 provider metadata를
+registration 에 연결한다. publish handler 는 subscriber capability 가 있는 fanout channel 에서
+`zlinkHandlerGroup('events', [[Handler, 'Packet']], { kind: 'publish' })` 로 등록한다.
+같은 channel 안에서 packet name 이 중복되면 startup validation 오류다.
 
 ### 11.4 SPOT
 

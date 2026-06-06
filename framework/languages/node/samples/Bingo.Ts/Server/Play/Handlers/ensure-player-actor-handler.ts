@@ -1,11 +1,11 @@
-const { ZLinkHandlerGroup, ZLinkRequest } = require('../../../../../../packages/framework/dist');
+const { Inject } = require('@nestjs/common');
+const { PlayerActorFactory } = require('../Actors/player-actor-factory');
 
 class EnsurePlayerActorHandler {
   [key: string]: any;
   constructor(actorFactory) {
     this.actorFactory = actorFactory;
   }
-
   async handle(request) {
     const actor = await this.actorFactory.ensure(request.actorId, request.displayName);
     return {
@@ -20,16 +20,6 @@ class EnsurePlayerActorHandler {
   }
 }
 
-ZLinkHandlerGroup('play')(EnsurePlayerActorHandler);
-ZLinkRequest('EnsurePlayerActorReq')(EnsurePlayerActorHandler.prototype, 'handle', descriptor());
+Inject(PlayerActorFactory)(EnsurePlayerActorHandler, undefined, 0);
 
 export { EnsurePlayerActorHandler };
-
-function descriptor() {
-  return {
-    configurable: true,
-    enumerable: false,
-    value: EnsurePlayerActorHandler.prototype.handle,
-    writable: true
-  };
-}

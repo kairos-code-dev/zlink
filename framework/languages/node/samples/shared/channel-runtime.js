@@ -9,7 +9,7 @@ const {
 function createChannelServerOptions({ endpoint, channelName, handlers = [], handlerGroups }) {
   const exposedHandlers = exposeHandlerGroups(handlers, handlerGroups);
   return {
-    channels: {
+    clientServerChannels: {
       [channelName]: {
         server: { bind: endpoint },
         handlerGroups,
@@ -28,7 +28,7 @@ function createChannelServerOptions({ endpoint, channelName, handlers = [], hand
 
 function createChannelClientOptions({ channelName, peers }) {
   return {
-    channels: {
+    clientServerChannels: {
       [channelName]: { client: { manualConnections: peers } }
     }
   };

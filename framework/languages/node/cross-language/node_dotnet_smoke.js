@@ -52,7 +52,7 @@ async function nodeClientToDotnetChannelServer(tempDir) {
     monitor.close();
 
     const registration = framework.createFrameworkRegistration({
-      channels: {
+      clientServerChannels: {
         profiles: { client: { manualConnections: [endpoint] } }
       }
     });
@@ -111,7 +111,7 @@ async function nodePublisherToDotnetFanoutSubscriber(tempDir) {
       monitor.close();
 
       const registration = framework.createFrameworkRegistration({
-        channels: {
+        clientServerChannels: {
           profiles: { publisher: { bind: endpoint } }
         }
       });

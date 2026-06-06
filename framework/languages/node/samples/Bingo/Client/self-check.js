@@ -11,7 +11,7 @@ async function main() {
   const playEndpoint = await reserveTcpEndpoint();
   const apiEndpoint = await reserveTcpEndpoint();
   assertNestModule({
-    channels: {
+    clientServerChannels: {
       'bingo.api': { client: { manualConnections: [apiEndpoint] } },
       'bingo.play': { client: { manualConnections: [playEndpoint] }, server: { bind: playEndpoint } }
     }

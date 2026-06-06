@@ -1,4 +1,6 @@
+const { Inject } = require('@nestjs/common');
 const { PacketNames } = require('../../../../Shared/Contracts/messages');
+const { TicTacToeGameDirectory } = require('../tictactoe-game');
 
 class PlayActorPlaceMarkHandler {
   constructor(games) {
@@ -19,5 +21,7 @@ class PlayActorPlaceMarkHandler {
     };
   }
 }
+
+Inject(TicTacToeGameDirectory)(PlayActorPlaceMarkHandler, undefined, 0);
 
 module.exports = { PlayActorPlaceMarkHandler };

@@ -2,6 +2,7 @@ import type {
   ActorRef,
   Message,
   RoutingId,
+  Type,
   ZlinkStreamHeader,
   ZLinkActor,
   ZLinkBoundSession,
@@ -12,6 +13,7 @@ import type {
   ZLinkSessionClient,
   ZLinkSessionContext,
   ZLinkSession,
+  ZLinkProviderResolver,
   ZLinkSessionReplyCall,
   ZLinkSessionSendCall,
   ZLinkStream
@@ -88,7 +90,7 @@ interface ZLinkActorSessionRoute {
 
 export interface ZLinkStreamSessionRuntimeOptions {
   readonly socket: ZLinkBackendStreamSocket;
-  readonly sessionFactory: (context: DefaultZLinkSessionContext) => ZLinkSession;
+  readonly sessionFactory: (context: DefaultZLinkSessionContext) => ZLinkSession | Promise<ZLinkSession>;
   readonly bindingRuntime?: ZLinkStreamBindingRuntime;
   readonly headerDecoder?: (header: Message) => ZlinkStreamHeader;
   readonly onError?: (error: unknown) => void;
@@ -104,6 +106,7 @@ export interface ZLinkStreamRuntimeManagerOptions {
   readonly context: ZLinkBackendContext;
   readonly bindingRuntime: ZLinkStreamBindingRuntime;
   readonly spotNodes?: ReadonlyMap<string, ZLinkBackendSpotNode>;
+  readonly providerResolver?: ZLinkProviderResolver;
 }
 
 interface ZLinkStartedStreamNode {
@@ -140,8 +143,7 @@ export class ZLinkStreamRuntimeManager {
         bindingRuntime: this.options.bindingRuntime,
         headerDecoder: (header) => decodeStreamHeader(messageToBytes(header)),
         sessionFactory: (context) => {
-          const ctor = sessionType as unknown as new (context: DefaultZLinkSessionContext) => ZLinkSession;
-          return new ctor(context);
+          return createProviderInstance(sessionType as Type<ZLinkSession>, this.options.providerResolver, context);
         }
       });
       runtime.start();
@@ -227,7 +229,7 @@ export class ZLinkManagedStream implements ZLinkStream {
 export class ZLinkStreamSessionRuntime {
   readonly stream: ZLinkManagedStream;
   readonly context: DefaultZLinkSessionContext;
-  readonly session: ZLinkSession;
+  private readonly sessionReady: Promise<ZLinkSession>;
   private readonly serial = new ZLinkStreamSessionSerialExecutor();
   private connected = false;
   private disconnected = false;
@@ -241,13 +243,29 @@ export class ZLinkStreamSessionRuntime {
     const bindingRuntime = options.bindingRuntime ?? new ZLinkStreamBindingRuntime();
     this.stream = new ZLinkManagedStream(options.socket, routingId);
     this.context = bindingRuntime.createSessionContext(this.stream, (signal) => this.close(signal));
-    this.session = options.sessionFactory(this.context);
-    if (this.session.context !== this.context) {
+    const sessionOrPromise = options.sessionFactory(this.context);
+    this.sessionReady = isPromiseLike(sessionOrPromise)
+      ? sessionOrPromise.then((session) => this.requireProvidedContext(session))
+      : Promise.resolve(this.requireProvidedContext(sessionOrPromise));
+  }
+
+  get session(): Promise<ZLinkSession> {
+    return this.sessionReady;
+  }
+
+  private requireProvidedContext(session: ZLinkSession): ZLinkSession {
+    if (session.context !== this.context) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.RouteNotConnected,
         'Session must expose the context provided by the stream runtime.'
       );
     }
+    return session;
+  }
+
+  private async requireSession(): Promise<ZLinkSession> {
+    const session = await this.sessionReady;
+    return session;
   }
 
   enqueueConnected(localAddr?: string, remoteAddr?: string): void {
@@ -290,7 +308,8 @@ export class ZLinkStreamSessionRuntime {
     await this.serial.dispose();
     if (!this.disconnected) {
       this.disconnected = true;
-      await this.session.onDisconnected?.(this.context);
+      const session = await this.requireSession();
+      await session.onDisconnected?.(this.context);
     }
     await this.cleanup();
   }
@@ -301,7 +320,8 @@ export class ZLinkStreamSessionRuntime {
       return;
     }
     this.connected = true;
-    await this.session.onConnected?.(this.context);
+    const session = await this.requireSession();
+    await session.onConnected?.(this.context);
   }
 
   private async dispatchPacket(header: Message, payload: Message): Promise<void> {
@@ -314,7 +334,8 @@ export class ZLinkStreamSessionRuntime {
         return;
       }
       this.context.enterDispatch(decodedHeader);
-      await this.session.onDispatch?.(decodedHeader, dispatchPayload);
+      const session = await this.requireSession();
+      await session.onDispatch?.(decodedHeader, dispatchPayload);
     } catch (error) {
       this.options.onError?.(error);
       await this.replyDispatchError(decodedHeader, error);
@@ -363,7 +384,8 @@ export class ZLinkStreamSessionRuntime {
 
   private async complete(error: unknown, notifyDisconnected: boolean): Promise<void> {
     if (error !== undefined) {
-      await this.session.onError?.(this.context, {
+      const session = await this.requireSession();
+      await session.onError?.(this.context, {
         error: 'transportError' as never,
         diagnostic: {
           message: error instanceof Error ? error.message : String(error)
@@ -371,7 +393,8 @@ export class ZLinkStreamSessionRuntime {
       });
     }
     if (notifyDisconnected) {
-      await this.session.onDisconnected?.(this.context);
+      const session = await this.requireSession();
+      await session.onDisconnected?.(this.context);
     }
     await this.cleanup();
   }
@@ -1293,6 +1316,28 @@ function streamSessionIdFromRoutingId(routingId: unknown): string {
     ZLinkFrameworkErrorKind.RouteNotConnected,
     'Stream session routing id is invalid.'
   );
+}
+
+function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
+  return typeof (value as { then?: unknown }).then === 'function';
+}
+
+async function createProviderInstance<T>(
+  type: Type<T>,
+  resolver: ZLinkProviderResolver | undefined,
+  fallbackArg?: unknown
+): Promise<T> {
+  const created = await resolver?.create?.(type);
+  if (created !== undefined) {
+    return created;
+  }
+  const existing = resolver?.get?.(type);
+  if (existing !== undefined) {
+    return existing;
+  }
+  return fallbackArg === undefined
+    ? new (type as new () => T)()
+    : new (type as new (arg: unknown) => T)(fallbackArg);
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

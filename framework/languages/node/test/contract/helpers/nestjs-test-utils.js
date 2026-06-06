@@ -1,4 +1,5 @@
 const net = require('node:net');
+const { DiscoveryService, ModuleRef } = require('@nestjs/core');
 
 function providerTokens(module) {
   return new Set(module.providers.map((provider) => provider.provide));
@@ -17,6 +18,31 @@ async function resolveModuleProviders(module, requestedTokens) {
   async function resolveToken(token) {
     if (values.has(token)) {
       return values.get(token);
+    }
+    if (token === ModuleRef) {
+      const moduleRef = {
+        async create(type) {
+          return new type();
+        },
+        get(type) {
+          return values.get(type);
+        }
+      };
+      values.set(token, moduleRef);
+      return moduleRef;
+    }
+    if (token === DiscoveryService) {
+      const discovery = {
+        getProviders() {
+          return [...providers.values()].map((provider) => ({
+            token: provider.provide,
+            metatype: typeof provider === 'function' ? provider : provider.useClass,
+            instance: values.get(provider.provide)
+          }));
+        }
+      };
+      values.set(token, discovery);
+      return discovery;
     }
     const provider = providers.get(token);
     if (provider === undefined) {

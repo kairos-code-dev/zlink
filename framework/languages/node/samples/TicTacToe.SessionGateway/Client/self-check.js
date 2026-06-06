@@ -18,12 +18,13 @@ async function main() {
   const p1Endpoint = await reserveTcpEndpoint();
   const p2Endpoint = await reserveTcpEndpoint();
   assertNestModule({
-    routeChannels: [{
-      routerChannelId: SampleNames.routeChannel,
-      bind: p1Endpoint,
-      routingId: 'sample-client',
-      manualConnections: [sessionEndpoint]
-    }]
+    routerMeshes: {
+      [SampleNames.routeChannel]: {
+        bind: p1Endpoint,
+        routingId: 'sample-client',
+        manualConnections: [sessionEndpoint]
+      }
+    }
   }, nestjs);
 
   await withServers([

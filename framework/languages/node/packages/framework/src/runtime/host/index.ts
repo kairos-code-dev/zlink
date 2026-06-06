@@ -1,6 +1,7 @@
 import { ZLinkNodeBackendAdapterFactory } from '../backend';
 import type { ZLinkBackendAdapterFactory, ZLinkBackendContext } from '../backend';
 import type { ZLinkFrameworkRegistration } from '../configuration';
+import type { ZLinkProviderResolver } from '../../contracts';
 import {
   ZLinkChannelRuntimeManager,
   ZLinkRuntimeChannelTransport,
@@ -23,6 +24,7 @@ export interface ZLinkFrameworkRuntime {
 export interface ZLinkFrameworkRuntimeHostOptions {
   readonly registration: ZLinkFrameworkRegistration;
   readonly lifecycleSink?: string[];
+  readonly providerResolver?: ZLinkProviderResolver;
 }
 
 export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
@@ -78,7 +80,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
       spotNodeRuntime = new ZLinkSpotNodeRuntimeManager({
         registration: this.options.registration,
         backendAdapterFactory: this.backendAdapterFactory,
-        context
+        context,
+        providerResolver: this.options.providerResolver
       });
       await spotNodeRuntime.start();
       this.spotNodeRuntime = spotNodeRuntime;
@@ -87,7 +90,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         backendAdapterFactory: this.backendAdapterFactory,
         context,
         bindingRuntime: this.streamBindingRuntime,
-        spotNodes: spotNodeRuntime.nodesByName
+        spotNodes: spotNodeRuntime.nodesByName,
+        providerResolver: this.options.providerResolver
       });
       streamRuntime.start();
       this.streamRuntime = streamRuntime;

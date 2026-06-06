@@ -1,4 +1,8 @@
-const { ZLinkHandlerGroup, ZLinkRequest } = require('../../../../../packages/framework/dist');
+const { Inject } = require('@nestjs/common');
+const { PlayerActorFactory } = require('../Actors/player-actor-factory');
+const { BingoRoomDirectory } = require('./bingo-room-directory');
+const { StartBingoGameHandler } = require('../BingoRoomSpots/Handlers/start-bingo-game-handler');
+const { BingoRoomTimerHandler } = require('../BingoRoomSpots/Handlers/bingo-room-timer-handler');
 
 class StartBingoGameChannelHandler {
   constructor(actorFactory, rooms, startBingoGame, timer) {
@@ -26,16 +30,9 @@ class StartBingoGameChannelHandler {
   }
 }
 
-ZLinkHandlerGroup('play')(StartBingoGameChannelHandler);
-ZLinkRequest('StartBingoGameReq')(StartBingoGameChannelHandler.prototype, 'handle', descriptor());
+Inject(PlayerActorFactory)(StartBingoGameChannelHandler, undefined, 0);
+Inject(BingoRoomDirectory)(StartBingoGameChannelHandler, undefined, 1);
+Inject(StartBingoGameHandler)(StartBingoGameChannelHandler, undefined, 2);
+Inject(BingoRoomTimerHandler)(StartBingoGameChannelHandler, undefined, 3);
 
 module.exports = { StartBingoGameChannelHandler };
-
-function descriptor() {
-  return {
-    configurable: true,
-    enumerable: false,
-    value: StartBingoGameChannelHandler.prototype.handle,
-    writable: true
-  };
-}

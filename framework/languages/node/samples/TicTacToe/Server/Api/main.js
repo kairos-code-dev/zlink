@@ -1,29 +1,43 @@
+require('reflect-metadata');
+
 const http = require('node:http');
-const { createChannelClient } = require('../../../shared/channel-runtime');
-const { createZLinkNestRuntime } = require('../../../shared/nestjs-provider-runtime');
+const { Module } = require('@nestjs/common');
+const { NestFactory } = require('@nestjs/core');
+const { ZLinkModule, zlinkHandlerGroup } = require('../../../../packages/nestjs/dist');
+const { closeNestRuntime } = require('../../../shared/runtime-common');
 const { AuthenticatePlayerHandler } = require('./Handlers/authenticate-player-handler');
 const { CreateGameHttpHandler } = require('./Handlers/create-game-http-handler');
 const { PacketNames, SampleNames } = require('../../Shared/Contracts/messages');
 
 async function main() {
-  const playClient = await createChannelClient({
-    channelName: SampleNames.playChannel,
-    peers: [process.env.TICTACTOE_PLAY_ENDPOINT]
+  class TicTacToeApiModule {}
+
+  Module({
+    imports: [
+      ZLinkModule.forRoot({
+        clientServerChannels: {
+          [SampleNames.apiChannel]: {
+            server: { bind: process.env.TICTACTOE_API_ENDPOINT },
+            handlerGroups: ['api']
+          },
+          [SampleNames.playChannel]: {
+            client: { manualConnections: [process.env.TICTACTOE_PLAY_ENDPOINT] }
+          }
+        }
+      })
+    ],
+    providers: [
+      CreateGameHttpHandler,
+      ...zlinkHandlerGroup('api', [[AuthenticatePlayerHandler, PacketNames.authenticatePlayerReq]])
+    ]
+  })(TicTacToeApiModule);
+
+  const apiApp = await NestFactory.createApplicationContext(TicTacToeApiModule, {
+    logger: false,
+    abortOnError: false
   });
-  const authenticate = new AuthenticatePlayerHandler();
-  const createGame = new CreateGameHttpHandler(playClient);
-  const apiRuntime = await createZLinkNestRuntime({
-    channels: {
-      [SampleNames.apiChannel]: {
-        server: { bind: process.env.TICTACTOE_API_ENDPOINT },
-        handlerGroups: ['api'],
-        requestHandlers: [{
-          packetName: PacketNames.authenticatePlayerReq,
-          handler: { handle: (payload) => authenticate.handle(decodePayload(payload)) }
-        }]
-      }
-    }
-  });
+  const createGame = apiApp.get(CreateGameHttpHandler, { strict: false });
+
   const server = http.createServer(async (request, response) => {
     if (request.method !== 'POST' || request.url !== '/games') {
       response.writeHead(404).end();
@@ -47,12 +61,7 @@ async function main() {
   })}\n`);
   await waitForShutdown();
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  await playClient.stop();
-  await apiRuntime.close();
-}
-
-function decodePayload(payload) {
-  return JSON.parse(Buffer.from(payload).toString());
+  await closeNestRuntime(apiApp);
 }
 
 function readJson(request) {

@@ -1,5 +1,7 @@
+const { Inject } = require('@nestjs/common');
 const { PacketNames } = require('../../../../Shared/Contracts/messages');
 const { SampleNames, SampleTimings } = require('../../../../Shared/Configuration/sample-names');
+const { PLAY_ROUTE_CLIENT } = require('../../session-tokens');
 
 class PlaceMarkSessionPacketHandler {
   constructor(playClient) {
@@ -15,5 +17,7 @@ class PlaceMarkSessionPacketHandler {
     );
   }
 }
+
+Inject(PLAY_ROUTE_CLIENT)(PlaceMarkSessionPacketHandler, undefined, 0);
 
 module.exports = { PlaceMarkSessionPacketHandler };

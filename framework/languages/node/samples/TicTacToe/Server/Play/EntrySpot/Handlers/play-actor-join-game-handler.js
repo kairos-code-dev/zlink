@@ -1,4 +1,7 @@
+const { Inject } = require('@nestjs/common');
 const { PacketNames } = require('../../../../Shared/Contracts/messages');
+const { TicTacToeGameJoinHandler } = require('../../GameSpots/Handlers/tictactoe-game-join-handler');
+const { TicTacToeGameDirectory } = require('../../GameSpots/tictactoe-game');
 
 class PlayActorJoinGameHandler {
   constructor(games, gameJoinHandler) {
@@ -24,5 +27,8 @@ class PlayActorJoinGameHandler {
     };
   }
 }
+
+Inject(TicTacToeGameDirectory)(PlayActorJoinGameHandler, undefined, 0);
+Inject(TicTacToeGameJoinHandler)(PlayActorJoinGameHandler, undefined, 1);
 
 module.exports = { PlayActorJoinGameHandler };

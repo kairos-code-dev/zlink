@@ -1,6 +1,8 @@
+const { Inject } = require('@nestjs/common');
 const { PacketNames } = require('../../../../Shared/Contracts/messages');
 const { SampleNames, SampleTimings } = require('../../../../Shared/Configuration/sample-names');
 const { SessionRelaySession } = require('../session-relay-session');
+const { API_ROUTE_CLIENT, PLAY_ROUTE_CLIENT } = require('../../session-tokens');
 
 class AuthenticateSessionPacketHandler {
   constructor(apiClient, playClient) {
@@ -25,5 +27,8 @@ class AuthenticateSessionPacketHandler {
     return { session, response: authenticated };
   }
 }
+
+Inject(API_ROUTE_CLIENT)(AuthenticateSessionPacketHandler, undefined, 0);
+Inject(PLAY_ROUTE_CLIENT)(AuthenticateSessionPacketHandler, undefined, 1);
 
 module.exports = { AuthenticateSessionPacketHandler };

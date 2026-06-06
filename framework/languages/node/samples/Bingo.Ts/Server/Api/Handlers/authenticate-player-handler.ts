@@ -1,7 +1,6 @@
-const { ZLinkHandlerGroup, ZLinkRequest } = require('../../../../../../packages/framework/dist');
-
 class AuthenticatePlayerHandler {
   [key: string]: any;
+
   handle(request) {
     if (!request.accessToken?.startsWith('player-')) {
       return {
@@ -21,16 +20,4 @@ class AuthenticatePlayerHandler {
   }
 }
 
-ZLinkHandlerGroup('api')(AuthenticatePlayerHandler);
-ZLinkRequest('AuthenticatePlayerReq')(AuthenticatePlayerHandler.prototype, 'handle', descriptor());
-
 export { AuthenticatePlayerHandler };
-
-function descriptor() {
-  return {
-    configurable: true,
-    enumerable: false,
-    value: AuthenticatePlayerHandler.prototype.handle,
-    writable: true
-  };
-}

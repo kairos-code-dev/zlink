@@ -1,70 +1,177 @@
-const { createRouteClient, startRouteServer } = require('../../../shared/route-runtime');
+require('reflect-metadata');
+
+const { Module } = require('@nestjs/common');
+const { NestFactory } = require('@nestjs/core');
+const { ZLinkModule, ZLINK_ROUTE_CLIENT, zlinkHandlerGroup } = require('../../../../packages/nestjs/dist');
+const { closeNestRuntime, retry, waitForShutdown } = require('../../../shared/runtime-common');
 const { SampleNames, SampleTimings } = require('../../Shared/Configuration/sample-names');
 const { PacketNames } = require('../../Shared/Contracts/messages');
 const { AuthenticateSessionPacketHandler } = require('./Sessions/Handlers/authenticate-session-packet-handler');
 const { CreateMatchSessionPacketHandler } = require('./Sessions/Handlers/create-match-session-packet-handler');
 const { PlaceMarkSessionPacketHandler } = require('./Sessions/Handlers/place-mark-session-packet-handler');
+const { API_ROUTE_CLIENT, PLAY_ROUTE_CLIENT } = require('./session-tokens');
 
 async function main() {
-  const apiClient = await createRouteClient({
-    endpoint: process.env.TICTACTOE_SG_SESSION_API_CLIENT_ENDPOINT,
-    routingId: 'session-api-client',
-    peers: [process.env.TICTACTOE_SG_API_ENDPOINT]
-  });
-  const playClient = await createRouteClient({
-    endpoint: process.env.TICTACTOE_SG_SESSION_PLAY_CLIENT_ENDPOINT,
-    routingId: 'session-play-client',
-    peers: [process.env.TICTACTOE_SG_PLAY_ENDPOINT]
-  });
+  let apiRouteClient;
+  let playRouteClient;
+  const apiClient = createRouteClientFacade(() => apiRouteClient);
+  const playClient = createRouteClientFacade(() => playRouteClient);
   const sessions = new Map();
-  const authenticate = new AuthenticateSessionPacketHandler(apiClient, playClient);
-  const createMatch = new CreateMatchSessionPacketHandler(apiClient, playClient);
-  const placeMark = new PlaceMarkSessionPacketHandler(playClient);
+  let app;
+  const providers = {
+    get(token) {
+      if (app === undefined) {
+        throw new Error(`NestJS provider is not ready: ${String(token)}`);
+      }
+      return app.get(token, { strict: false });
+    }
+  };
 
-  await startRouteServer({
-    endpoint: process.env.TICTACTOE_SG_SESSION_ENDPOINT,
-    routingId: SampleNames.sessionNode,
-    handlers: [
-      {
-        packetName: PacketNames.authenticateSessionReq,
-        handle: async (request, routeContext) => {
+  class TicTacToeSessionGatewaySessionApiClientModule {}
+  class TicTacToeSessionGatewaySessionPlayClientModule {}
+  class TicTacToeSessionGatewaySessionModule {}
+
+  Module({
+    imports: [
+      ZLinkModule.forRoot({
+        routerMeshes: {
+          [SampleNames.routeChannel]: {
+            bind: process.env.TICTACTOE_SG_SESSION_API_CLIENT_ENDPOINT,
+            routingId: `${SampleNames.sessionNode}-api-client`,
+            manualConnections: [process.env.TICTACTOE_SG_API_ENDPOINT]
+          }
+        }
+      })
+    ]
+  })(TicTacToeSessionGatewaySessionApiClientModule);
+
+  Module({
+    imports: [
+      ZLinkModule.forRoot({
+        routerMeshes: {
+          [SampleNames.routeChannel]: {
+            bind: process.env.TICTACTOE_SG_SESSION_PLAY_CLIENT_ENDPOINT,
+            routingId: `${SampleNames.sessionNode}-play-client`,
+            manualConnections: [process.env.TICTACTOE_SG_PLAY_ENDPOINT]
+          }
+        }
+      })
+    ]
+  })(TicTacToeSessionGatewaySessionPlayClientModule);
+
+  Module({
+    imports: [
+      ZLinkModule.forRoot({
+        routerMeshes: {
+          [SampleNames.routeChannel]: {
+            bind: process.env.TICTACTOE_SG_SESSION_ENDPOINT,
+            routingId: SampleNames.sessionNode,
+            manualConnections: [],
+            handlerGroups: ['session']
+          }
+        }
+      })
+    ],
+    providers: [
+      { provide: API_ROUTE_CLIENT, useValue: apiClient },
+      { provide: PLAY_ROUTE_CLIENT, useValue: playClient },
+      AuthenticateSessionPacketHandler,
+      CreateMatchSessionPacketHandler,
+      PlaceMarkSessionPacketHandler,
+      ...zlinkHandlerGroup('session', [
+        routeHandlerProvider(PacketNames.authenticateSessionReq, async (request, routeContext) => {
           const sessionId = sessionKey(routeContext);
-          const result = await authenticate.handle({ ...request, sessionId });
+          const result = await providers.get(AuthenticateSessionPacketHandler).handle({ ...request, sessionId });
           sessions.set(sessionId, result.session);
           return result.response;
-        }
-      },
-      {
-        packetName: PacketNames.createMatchSessionReq,
-        handle: (request, routeContext) => createMatch.handle(request, requireSession(sessions, routeContext))
-      },
-      {
-        packetName: PacketNames.joinMatchReq,
-        handle: (request, routeContext) => playClient.request(
-          SampleNames.playNode,
+        }),
+        routeHandlerProvider(
+          PacketNames.createMatchSessionReq,
+          (request, routeContext) =>
+            providers.get(CreateMatchSessionPacketHandler).handle(request, requireSession(sessions, routeContext))
+        ),
+        routeHandlerProvider(
           PacketNames.joinMatchReq,
-          { matchId: request.matchId, actorId: requireSession(sessions, routeContext).actorId },
-          SampleTimings.requestTimeout
-        )
-      },
-      {
-        packetName: PacketNames.placeMarkSessionReq,
-        handle: (request, routeContext) => placeMark.handle(request, requireSession(sessions, routeContext))
-      },
-      {
-        packetName: PacketNames.notificationsReq,
-        handle: (request, routeContext) => playClient.request(
-          SampleNames.playNode,
+          (request, routeContext) => playClient.request(
+            SampleNames.playNode,
+            PacketNames.joinMatchReq,
+            { matchId: request.matchId, actorId: requireSession(sessions, routeContext).actorId },
+            SampleTimings.requestTimeout
+          )
+        ),
+        routeHandlerProvider(
+          PacketNames.placeMarkSessionReq,
+          (request, routeContext) =>
+            providers.get(PlaceMarkSessionPacketHandler).handle(request, requireSession(sessions, routeContext))
+        ),
+        routeHandlerProvider(
           PacketNames.notificationsReq,
-          { actorId: requireSession(sessions, routeContext).actorId, afterSeq: request.afterSeq ?? 0 },
-          SampleTimings.requestTimeout
-        )
-      },
-      { packetName: 'Ping', handle: () => ({ role: SampleNames.sessionNode }) }
+          (request, routeContext) => playClient.request(
+            SampleNames.playNode,
+            PacketNames.notificationsReq,
+            { actorId: requireSession(sessions, routeContext).actorId, afterSeq: request.afterSeq ?? 0 },
+            SampleTimings.requestTimeout
+          )
+        ),
+        routeHandlerProvider('Ping', () => ({ role: SampleNames.sessionNode }))
+      ])
     ]
+  })(TicTacToeSessionGatewaySessionModule);
+
+  const apiClientApp = await NestFactory.createApplicationContext(TicTacToeSessionGatewaySessionApiClientModule, {
+    logger: false,
+    abortOnError: false
   });
-  await apiClient.stop();
-  await playClient.stop();
+  apiRouteClient = apiClientApp.get(ZLINK_ROUTE_CLIENT, { strict: false });
+  const playClientApp = await NestFactory.createApplicationContext(TicTacToeSessionGatewaySessionPlayClientModule, {
+    logger: false,
+    abortOnError: false
+  });
+  playRouteClient = playClientApp.get(ZLINK_ROUTE_CLIENT, { strict: false });
+  app = await NestFactory.createApplicationContext(TicTacToeSessionGatewaySessionModule, {
+    logger: false,
+    abortOnError: false
+  });
+
+  process.stdout.write(`${JSON.stringify({
+    event: 'ready',
+    endpoint: process.env.TICTACTOE_SG_SESSION_ENDPOINT,
+    routingId: SampleNames.sessionNode
+  })}\n`);
+
+  try {
+    await waitForShutdown({ keepAlive: true });
+  } finally {
+    await closeNestRuntime(app);
+    await closeNestRuntime(playClientApp);
+    await closeNestRuntime(apiClientApp);
+  }
+}
+
+function createRouteClientFacade(getClient) {
+  return {
+    async request(targetNodeRid, packetName, payload, timeoutMs = 1000) {
+      return await retry(() => getClient()
+        .request(SampleNames.routeChannel, targetNodeRid, payload)
+        .packetName(packetName)
+        .timeout(timeoutMs)
+        .submit(), { maxAttempts: 100 });
+    }
+  };
+}
+
+function routeHandlerProvider(packetName, handle) {
+  return {
+    provider: {
+      provide: Symbol(`route.${packetName}`),
+      useValue: {
+        async handle(request, context) {
+          return await handle(request, context);
+        }
+      }
+    },
+    packetName,
+  };
 }
 
 function requireSession(sessions, routeContext) {

@@ -1,5 +1,7 @@
+const { Inject } = require('@nestjs/common');
 const { PacketNames } = require('../../../../Shared/Contracts/messages');
 const { SampleNames, SampleTimings } = require('../../../../Shared/Configuration/sample-names');
+const { API_ROUTE_CLIENT, PLAY_ROUTE_CLIENT } = require('../../session-tokens');
 
 class CreateMatchSessionPacketHandler {
   constructor(apiClient, playClient) {
@@ -23,5 +25,8 @@ class CreateMatchSessionPacketHandler {
     return { ...match, join };
   }
 }
+
+Inject(API_ROUTE_CLIENT)(CreateMatchSessionPacketHandler, undefined, 0);
+Inject(PLAY_ROUTE_CLIENT)(CreateMatchSessionPacketHandler, undefined, 1);
 
 module.exports = { CreateMatchSessionPacketHandler };

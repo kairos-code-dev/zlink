@@ -1,4 +1,6 @@
 const { PlayerActor } = require('./player-actor');
+const { Inject } = require('@nestjs/common');
+const { SampleBoundSessionRuntime } = require('../../../../shared/bound-session-runtime');
 
 class PlayerActorFactory {
   constructor(boundSessions) {
@@ -24,5 +26,7 @@ class PlayerActorFactory {
     return this.actors.get(actorId);
   }
 }
+
+Inject(SampleBoundSessionRuntime)(PlayerActorFactory, undefined, 0);
 
 module.exports = { PlayerActorFactory };

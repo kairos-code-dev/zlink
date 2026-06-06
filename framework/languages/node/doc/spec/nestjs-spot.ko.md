@@ -85,8 +85,7 @@ Framework` 가 이 개념을 새로 만들거나 없애려는 것이 아니다. 
 - `Spot` 은 특정 service 에 종속되지 않는다.
 - `Spot` 은 `SpotNode` 에 종속된다.
 - `SpotNode` 는 channel 이름을 직접 소유하지 않는다.
-- module options 의 `spotMeshes['game.stage'].discovery` 등록이 active channel
-  view 를 공급한다.
+- module options 의 `discovery` 등록이 active channel view 를 공급한다.
 - 같은 `SpotNode` 에는 active SPOT channel view 를 하나만 둔다.
 - `SpotNode.router` 와 pub/sub mesh 는 같은 channel 에 속한 다른 `SpotNode` 와만
   연결된다.
@@ -124,29 +123,37 @@ Framework` 가 이 개념을 새로 만들거나 없애려는 것이 아니다. 
 보여 준 다음, 같은 코드를 한 줄씩 풀어서 설명한다.
 
 dotnet 의 `options.AddSpotMesh("game.stage", mesh => ...)` 람다는 NestJS 의
-선언적 options 객체 `spotMeshes['game.stage'] = {...}` 로 옮긴다. dotnet builder
-메서드 한 개가 node options 키 한 개에 1:1 로 대응한다.
+선언적 options 객체 `spotNodes[name] = {...}` 와 전역 `discovery` 로 옮긴다.
+dotnet builder 메서드 한 개가 node options 키 한 개에 1:1 로 대응한다.
+
+Spot 관련 application 객체는 NestJS DI 가 소유한다. `entrySpotType`, Spot factory
+type, packet handler type, actor handler type, timer handler type 은 모두
+`providers` 에 등록되어야 한다. framework 는 SpotNode 가 Entry Spot 을 만들거나
+SpotManager 가 user Spot 을 만들 때 NestJS provider resolver 를 통해 해당 타입을
+resolve 한다. provider 로 등록되지 않은 경우에만 NestJS 밖에서 쓰는 저수준
+framework 경로가 직접 생성 fallback 을 사용할 수 있다.
+
+node/channel handler group 은 `main.ts` 의 module 설정에서 고른다. 그러나 Spot
+packet, subscribe, actor, timer handler 는 `main.ts` 에서 한꺼번에 나열하지 않고
+Entry Spot 또는 user Spot 의 `configure()` 에서 registry 에 등록한다. Spot 이 어떤
+메시지를 처리하는지는 Spot 자체의 책임이기 때문이다.
 
 ```ts
 @Module({
   imports: [
     ZLinkModule.forRoot({
-      spotMeshes: {
-        'game.stage': {
-          discovery: { registries: ['tcp://registry1:5551'] },
-          nodes: {
-            'stage-node': {
-              router: { bind: 'tcp://0.0.0.0:9001' },
-              pubSub: { bind: 'tcp://0.0.0.0:9000' },
-              attachedChannelClients: { orders: {} },
-              attachedSpotPublisherClients: { 'game.stage': {} },
-              entrySpot: StageEntrySpot,
-              spotFactories: [StageSpot],
-            },
-          },
+      discovery: { registries: ['tcp://registry1:5551'] },
+      spotNodes: {
+        'stage-node': {
+          router: { bind: 'tcp://0.0.0.0:9001' },
+          pubSub: { bind: 'tcp://0.0.0.0:9000' },
+          attachedChannelClients: { orders: {} },
+          attachedSpotPublisherClients: { 'game.stage': {} },
+          entrySpotType: StageEntrySpot,
+          spotFactories: [StageSpot],
         },
       },
-      spotRemoteAddresses: { registry: { namespace: 'game' } },
+      registrySpotRemoteAddresses: { namespace: 'game' },
     }),
   ],
   providers: [
@@ -162,34 +169,22 @@ export class AppModule {}
 
 - 논리 `SpotNode` 이름은 `stage-node`
 - 그에 대응하는 backing `SpotNode` 생성
-- `spotMeshes['game.stage'].discovery` 가 active channel view 공급
+- `discovery` 가 active channel view 공급
 - 같은 channel 에 속한 다른 `SpotNode` 와만 mesh 구성
 - `router` 로 local routed router capability 활성화
 - `pubSub` 로 local SPOT pub/sub capability 활성화
 - `channelClients` 로 다른 channel 호출용 client attach
 - 필요하다면 `spotPublishers` 로 외부 노드용 spot publish client attach
-- `entrySpot` 으로 자동 Entry Spot 에 붙일 application registry 등록
+- `entrySpotType` 으로 자동 Entry Spot 에 붙일 application registry 등록
 - `spotFactories` 로 이 노드가 생성·소유할 user Spot 클래스 등록
-- `spotRemoteAddresses` 로 spot rid 기반 호출 또는 actor join 경로에서 사용할
+- `registrySpotRemoteAddresses` 로 spot rid 기반 호출 또는 actor join 경로에서 사용할
   Registry 기반 spot remote address resolver 등록
 - host shutdown 시 lifecycle 정리
 
-`spotMeshes[channelName]` 은 같은 channel 에 속하는 여러 `SpotNode` 를 하나의
-묶음으로 등록한다. 그 묶음 안에서 각 항목이 맡는 역할은 다음과 같다.
-
-- mesh 안에서는 `nodes[name]` 로 노드를 추가한다(dotnet `mesh.AddNode(...)`).
-- mesh 단위의 discovery 설정은 `discovery` 가 담당한다(dotnet
-  `mesh.UseDiscovery(...AddRegistryEndpoint...)`).
-
-즉 같은 채널을 가리키는 `SpotNode` 묶음을 한 mesh 에 모아 두는 모양이다. 덕분에
-한 앱 안에서 서로 다른 channel mesh 를 따로 등록할 수도 있고, 한 mesh 안에 같은
-channel 을 공유하는 여러 노드를 함께 둘 수도 있다.
-
-discovery endpoint 가 없는 로컬 단일 노드도 `spotMeshes[channelName]` 안에서
-표현한다. 이 경우 `discovery: {}`(또는 `discovery: { registries: [] }`) 로 mesh
-소유권만 닫고, 필요한 노드를 `nodes` 로 등록한다. public 등록 표면은 항상
-`spotMeshes[channelName]` 가 SPOT channel 이름과 node 집합을 함께 소유하도록
-유지한다.
+`spotNodes[name]` 은 실행할 `SpotNode` 를 이름으로 등록한다. 여러 `SpotNode` 가
+필요하면 같은 객체 안에 여러 노드 이름을 둔다. Discovery endpoint 가 없는 로컬
+단일 노드도 같은 방식으로 표현한다. 이 경우 `discovery` 를 생략하고 필요한
+`SpotNode` 만 등록한다.
 
 각 capability 키의 역할은 다음과 같다.
 
@@ -230,13 +225,12 @@ discovery endpoint 가 없는 로컬 단일 노드도 `spotMeshes[channelName]` 
 즉 `SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
 설명되지 않는다. 현재 방향에서 그 역할 분담은 다음과 같다.
 
-- `spotMeshes[channelName].discovery` 등록이 노드의 channel 정체성을 닫는다.
+- `spotNodes[name]` 등록과 전역 `discovery` 가 노드의 channel 정체성을 닫는다.
 - 다른 channel 호출은 별도로 attach 된 client 경로를 통해 푼다.
 
 이 모델에서 중요한 점은 다음과 같다.
 
-- mesh 묶음 없이 standalone `SpotNode` 키만으로는 channel 범위가 닫히지 않는다.
-- `spotMeshes['game.stage']` 가 이 노드의 mesh 범위를 정한다.
+- `spotNodes['stage-node']` 가 이 노드의 런타임 범위를 정한다.
 - 같은 `SpotNode` 에 active SPOT channel view 는 하나만 둔다.
 - `router` 와 `pubSub` 는 별개의 capability 다.
 - 다른 channel 에 대한 send / request 는 attach 된 client 가 담당한다.
@@ -255,24 +249,20 @@ join / leave lifecycle handler registry 를 등록한다.
 
 ```ts
 ZLinkModule.forRoot({
-  spotMeshes: {
-    'game.stage': {
-      nodes: {
-        'stage-node': {
-          pubSub: { bind: 'tcp://0.0.0.0:9000' },
-          entrySpotOptions: { routingId: 'entry' },
-          entrySpot: StageEntrySpot,
-          spotFactories: [StageSpot],
-        },
-      },
+  spotNodes: {
+    'stage-node': {
+      pubSub: { bind: 'tcp://0.0.0.0:9000' },
+      entrySpot: { routingId: 'entry' },
+      entrySpotType: StageEntrySpot,
+      spotFactories: [StageSpot],
     },
   },
 });
 ```
 
-`entrySpotOptions`(dotnet `ConfigureEntrySpot(...)`) 는 Entry Spot facade 의
+`entrySpot`(dotnet `ConfigureEntrySpot(...)`) 는 Entry Spot facade 의
 routing id 같은 native 설정을 적용한다. 이 설정은 actor 생성과 route publish
-전에 적용되며, `entrySpot` 키는 Entry Spot 에서 실행할 handler registry 타입만
+전에 적용되며, `entrySpotType` 키는 Entry Spot 에서 실행할 handler registry 타입만
 등록한다.
 
 Entry Spot 클래스는 `ZLinkEntrySpot` 을 구현한다. `configure()` 안에서 Entry
@@ -411,29 +401,25 @@ node 에서 capability 키 안의 `manualConnections: [...]` 배열로 옮긴다
 
 ```ts
 ZLinkModule.forRoot({
-  spotMeshes: {
-    'game.stage': {
-      discovery: { registries: ['tcp://registry1:5551'] },
-      nodes: {
-        'stage-node': {
-          router: { manualConnections: ['tcp://10.0.0.10:9000'] },
-          pubSub: {
-            bind: 'tcp://0.0.0.0:9000',
-            // 다른 SpotNode mesh 의 PUB bind 주소. local SUB 가 여기에 붙는다.
-            manualConnections: ['tcp://10.0.0.20:9100'],
-          },
-          attachedChannelClients: {
-            // orders channel server endpoint
-            orders: { manualConnections: ['tcp://10.0.0.30:9200'] },
-          },
-          attachedSpotPublisherClients: {
-            // 외부 game.stage SPOT publish ingress endpoint
-            'game.stage': { manualConnections: ['tcp://10.0.0.40:9300'] },
-          },
-          entrySpot: StageEntrySpot,
-          spotFactories: [StageSpot],
-        },
+  discovery: { registries: ['tcp://registry1:5551'] },
+  spotNodes: {
+    'stage-node': {
+      router: { manualConnections: ['tcp://10.0.0.10:9000'] },
+      pubSub: {
+        bind: 'tcp://0.0.0.0:9000',
+        // 다른 SpotNode 의 PUB bind 주소. local SUB 가 여기에 붙는다.
+        manualConnections: ['tcp://10.0.0.20:9100'],
       },
+      attachedChannelClients: {
+        // orders channel server endpoint
+        orders: { manualConnections: ['tcp://10.0.0.30:9200'] },
+      },
+      attachedSpotPublisherClients: {
+        // 외부 game.stage SPOT publish ingress endpoint
+        'game.stage': { manualConnections: ['tcp://10.0.0.40:9300'] },
+      },
+      entrySpotType: StageEntrySpot,
+      spotFactories: [StageSpot],
     },
   },
 });
@@ -479,47 +465,43 @@ ZLinkModule.forRoot({
 ```ts
 ZLinkModule.forRoot({
   defaultTimeoutMs: 1000,
-  spotMeshes: {
-    'game.stage': {
-      discovery: { registries: ['tcp://registry1:5551'] },
-      nodes: {
-        'stage-node': {
-          router: {
-            socket: {
-              maxMessageSize: 1024 * 1024,
-              sendTimeoutMs: 200,
-              receiveTimeoutMs: 200,
-              sendHighWaterMark: 10_000,
-              receiveHighWaterMark: 10_000,
-              immediate: true,
-            },
-            routing: { requireKnownPeer: true, allowPeerHandover: true },
+  discovery: { registries: ['tcp://registry1:5551'] },
+  spotNodes: {
+    'stage-node': {
+      router: {
+        socket: {
+          maxMessageSize: 1024 * 1024,
+          sendTimeoutMs: 200,
+          receiveTimeoutMs: 200,
+          sendHighWaterMark: 10_000,
+          receiveHighWaterMark: 10_000,
+          immediate: true,
+        },
+        routing: { requireKnownPeer: true, allowPeerHandover: true },
+      },
+      pubSub: {
+        bind: 'tcp://0.0.0.0:9000',
+        publisher: { sendHighWaterMark: 50_000, sendTimeoutMs: 100, noDrop: true },
+        subscriber: { receiveHighWaterMark: 50_000, receiveTimeoutMs: 50, lingerMs: 0 },
+      },
+      attachedChannelClients: {
+        orders: {
+          socket: {
+            connectTimeoutMs: 3000,
+            handshakeIntervalMs: 3000,
+            sendHighWaterMark: 5_000,
+            receiveHighWaterMark: 5_000,
+            immediate: true,
           },
-          pubSub: {
-            bind: 'tcp://0.0.0.0:9000',
-            publisher: { sendHighWaterMark: 50_000, sendTimeoutMs: 100, noDrop: true },
-            subscriber: { receiveHighWaterMark: 50_000, receiveTimeoutMs: 50, lingerMs: 0 },
-          },
-          attachedChannelClients: {
-            orders: {
-              socket: {
-                connectTimeoutMs: 3000,
-                handshakeIntervalMs: 3000,
-                sendHighWaterMark: 5_000,
-                receiveHighWaterMark: 5_000,
-                immediate: true,
-              },
-              routing: { probeRouterOnConnect: true },
-            },
-          },
-          attachedSpotPublisherClients: {
-            'game.stage': {
-              socket: { sendHighWaterMark: 20_000, sendTimeoutMs: 100, immediate: true },
-            },
-          },
-          spotFactories: [StageSpot],
+          routing: { probeRouterOnConnect: true },
         },
       },
+      attachedSpotPublisherClients: {
+        'game.stage': {
+          socket: { sendHighWaterMark: 20_000, sendTimeoutMs: 100, immediate: true },
+        },
+      },
+      spotFactories: [StageSpot],
     },
   },
 });
@@ -856,9 +838,9 @@ export class StagePublishController {
 
 ## 7. subscribe 모델
 
-이 절은 `SPOT` 안에서 packet handler, subscribe handler, timer 가 어떤 모양으로
-등록되는지를 정리한다. 핵심은 decorator 기반 자동 발견보다 `configure()` 안에서
-직접 등록하는 점이다. 실제 handler 인터페이스는
+이 절은 `SPOT` 안에서 packet handler, actor packet handler, subscribe handler, timer 가
+어떤 모양으로 등록되는지를 정리한다. 핵심은 NestJS channel handler group 이 아니라
+`configure()` 안에서 직접 등록하는 점이다. 실제 handler 인터페이스는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 를 기준으로 본다.
 
 현재 `SPOT` 모델은 spot 객체가 `configure()` 단계에서 직접 handler 를 등록하는
@@ -874,6 +856,7 @@ export class StageSpot implements ZLinkSpot {
   configure(): void {
     this.context.handlers.addPacket(GetStageStateHandler);
     this.context.handlers.addPacket(ReportStageStateHandler);
+    this.context.handlers.addActorPacket(PlaceMarkHandler, PlayerActor, 'PlaceMarkReq');
     this.context.handlers.addSubscribe(StageStateUpdatedHandler, 'stage.state.updated');
   }
 
@@ -998,17 +981,10 @@ channel 의 `ROUTER(server)` 를 `rid` 로 직접 지정해서 호출하는 모�
 이 절은 `SpotNode` 가 어떻게 channel 정체성을 닫는지, 그리고 그 결정이 discovery
 와 어떻게 묶이는지를 짧게 정리한다.
 
-최신 topology 에서는 `SpotNode` 가 channel 이름을 직접 소유하지 않는다. 대신
-`spotMeshes[channelName].discovery` 등록이 active channel view 를 공급한다. 그
-view 가 같은 channel 에 속한 peer mesh 의 범위를 닫는다.
-
-예를 들어 `spotMeshes['game.stage'].discovery` 로 등록했다고 하자. 이 경우 그
-mesh 의 `nodes` 에 포함된 `SpotNode` 는 `game.stage` channel mesh 안에서 동작한다
-고 이해하면 된다.
-
-SPOT discovery 와 top-level node 등록을 분리해서 호출하는 public 경로는 제공하지
-않는다. SPOT network 를 구성하는 모든 node 는 `spotMeshes[...].nodes[...]` 로
-등록한다. STREAM ActorGateway 는 별도 node builder 가 아니라, stream 이 router
+최신 topology 에서는 `spotNodes[name]` 이 실행할 `SpotNode` 를 직접 등록하고,
+전역 `discovery` 가 active channel view 를 공급한다. SPOT network 를 구성하는
+모든 node 는 `spotNodes[...]` 로 등록한다. STREAM ActorGateway 는 별도 node
+builder 가 아니라, stream 이 router
 capability 를 켠 SpotNode 를 `attachActorGateway: spotNodeName` 으로 참조하는
 방식으로 연결한다(자세한 내용은 [nestjs-stream.ko.md](./nestjs-stream.ko.md)).
 
@@ -1094,7 +1070,7 @@ query metadata 또는 같은 process 안의 명시적 route channel 등록으로
 없다.
 
 ```ts
-channels: {
+clientServerChannels: {
   'gateway.client': {
     client: { manualConnections: ['tcp://play-node-1:7201'] },
     spotRouteEgress: 'play.route',

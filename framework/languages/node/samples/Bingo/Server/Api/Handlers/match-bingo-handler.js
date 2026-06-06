@@ -1,12 +1,13 @@
-const { ZLinkHandlerGroup, ZLinkRequest } = require('../../../../../packages/framework/dist');
+const { Inject } = require('@nestjs/common');
+const { ZLINK_CHANNEL_CLIENT } = require('../../../../../packages/nestjs/dist');
 
 class MatchBingoHandler {
-  constructor(playClient) {
-    this.playClient = playClient;
+  constructor(zlinkClient) {
+    this.zlinkClient = zlinkClient;
   }
 
   async handle(request) {
-    const allocated = await this.playClient
+    const allocated = await this.zlinkClient
       .requestToChannel('bingo.play', {
         mode: request.mode ?? 'four-player'
       })
@@ -17,16 +18,6 @@ class MatchBingoHandler {
   }
 }
 
-ZLinkHandlerGroup('api')(MatchBingoHandler);
-ZLinkRequest('MatchBingoApiReq')(MatchBingoHandler.prototype, 'handle', descriptor());
+Inject(ZLINK_CHANNEL_CLIENT)(MatchBingoHandler, undefined, 0);
 
 module.exports = { MatchBingoHandler };
-
-function descriptor() {
-  return {
-    configurable: true,
-    enumerable: false,
-    value: MatchBingoHandler.prototype.handle,
-    writable: true
-  };
-}

@@ -3,6 +3,7 @@ import type {
   Message,
   RoutingId,
   Type,
+  ZLinkProviderResolver,
   ZLinkActor,
   ZLinkActorContext,
   ZLinkActorFactory,
@@ -38,6 +39,7 @@ export interface ZLinkActorManagerOptions {
   readonly actorFactories: ReadonlyMap<string, Type | ZLinkActorFactory>;
   readonly joinCoordinator?: ZLinkActorJoinCoordinator;
   readonly boundSessionFactory?: ZLinkActorBoundSessionFactory;
+  readonly providerResolver?: ZLinkProviderResolver;
 }
 
 export type ZLinkActorBoundSessionFactory = (actorId: string) => ZLinkBoundSession;
@@ -149,7 +151,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     state: ZLinkActorRuntimeState,
     signal?: AbortSignal
   ): Promise<ZLinkActor> {
-    const factory = this.createFactory(actorType);
+    const factory = await this.createFactory(actorType);
     const context = state.ensureContext(
       this.options.joinCoordinator,
       this.options.boundSessionFactory
@@ -159,13 +161,14 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     return actor;
   }
 
-  private createFactory(actorType: string): ZLinkActorFactory {
+  private async createFactory(actorType: string): Promise<ZLinkActorFactory> {
     const factoryOrType = this.options.actorFactories.get(actorType);
     if (factoryOrType === undefined) {
       throw new ZLinkConfigurationException(`Actor factory '${actorType}' is not registered.`);
     }
     if (typeof factoryOrType === 'function') {
-      return new (factoryOrType as new () => ZLinkActorFactory)();
+      const type = factoryOrType as Type<ZLinkActorFactory>;
+      return await createProviderInstance(type, this.options.providerResolver);
     }
     return factoryOrType;
   }
@@ -648,6 +651,7 @@ export interface ZLinkSpotActorDispatcherOptions {
   readonly registry: ZLinkSpotActorHandlerRegistryRuntime;
   readonly spot: ZLinkSpot;
   readonly handlerFactory?: (handlerType: Type) => unknown;
+  readonly providerResolver?: ZLinkProviderResolver;
   readonly serial?: { execute<T>(operation: () => Promise<T> | T): Promise<T> };
 }
 
@@ -774,7 +778,9 @@ export class ZLinkSpotActorDispatcher {
   }
 
   private createHandler<THandler>(descriptor: Pick<ZLinkActorPacketDescriptor, 'handlerType'>): THandler {
-    const handler = this.options.handlerFactory?.(descriptor.handlerType) ?? new descriptor.handlerType();
+    const handler = this.options.handlerFactory?.(descriptor.handlerType)
+      ?? this.options.providerResolver?.get?.(descriptor.handlerType)
+      ?? new descriptor.handlerType();
     return handler as THandler;
   }
 
@@ -907,4 +913,19 @@ function actorDispatchHandlerNotFound(message: string): ZLinkFrameworkException 
     ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
     message
   );
+}
+
+async function createProviderInstance<T>(
+  type: Type<T>,
+  resolver: ZLinkProviderResolver | undefined
+): Promise<T> {
+  const created = await resolver?.create?.(type);
+  if (created !== undefined) {
+    return created;
+  }
+  const existing = resolver?.get?.(type);
+  if (existing !== undefined) {
+    return existing;
+  }
+  return new (type as new () => T)();
 }

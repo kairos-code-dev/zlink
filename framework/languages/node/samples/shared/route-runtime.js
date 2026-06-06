@@ -8,20 +8,21 @@ const {
 
 function createRouteOptions({ endpoint, routingId, peers = [], handlers = [] }) {
   return {
-    routeChannels: [{
-      routerChannelId: 'sample-route',
-      bind: endpoint,
-      routingId,
-      manualConnections: peers,
-      requestHandlers: handlers.map(({ packetName, handle }) => ({
-        packetName,
-        handler: {
-          async handle(payload, context) {
-            return await handle(decodePayload(payload), context);
+    routerMeshes: {
+      'sample-route': {
+        bind: endpoint,
+        routingId,
+        manualConnections: peers,
+        requestHandlers: handlers.map(({ packetName, handle }) => ({
+          packetName,
+          handler: {
+            async handle(payload, context) {
+              return await handle(decodePayload(payload), context);
+            }
           }
-        }
-      }))
-    }]
+        }))
+      }
+    }
   };
 }
 
@@ -54,7 +55,7 @@ async function createRouteClient({ endpoint, routingId, peers }) {
         .request('sample-route', targetNodeRid, payload)
         .packetName(packetName)
         .timeout(timeoutMs)
-        .submit());
+        .submit(), { maxAttempts: 100 });
     },
     async stop() {
       await closeNestRuntime(container);

@@ -1,3 +1,5 @@
+const { Inject } = require('@nestjs/common');
+const { BingoNotificationPublisher } = require('../BingoRoomSpots/bingo-notification-publisher');
 const { createRoomSettings } = require('../BingoRoomSpots/bingo-room-models');
 const { BingoRoomSpot } = require('../BingoRoomSpots/bingo-room-spot');
 
@@ -43,5 +45,7 @@ class BingoRoomDirectory {
     return room;
   }
 }
+
+Inject(BingoNotificationPublisher)(BingoRoomDirectory, undefined, 0);
 
 export { BingoRoomDirectory };

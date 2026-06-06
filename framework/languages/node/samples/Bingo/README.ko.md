@@ -15,16 +15,19 @@ node framework/languages/node/samples/Bingo/Client/self-check.js
   만든다. 각 client 는 Session 서버에 `AuthenticateReq`, `MatchBingoReq`,
   `StartBingoGameReq` 를 보내고, Session 서버가 API/Play channel 로 인증과 actor relay 를
   수행한다.
-- `Server/Api/`: `api-server-host-factory.js` 가 `bingo.api` channel 서버를 구성하고
-  `handlerGroups: ['api']` 로 API handler group 을 노출한다. match handler 는
-  `.NET` sample 과 같이 Play channel 로 `AllocateBingoRoom` request 를 보낸다.
-- `Server/Play/`: `play-server-host-factory.js` 가 `bingo.play` channel 서버를 구성하고,
-  `handlerGroups: ['play']` 로 Play handler group 을 노출한다. actor factory,
-  entry spot, room spot, timer handler, notification publisher 가 같은 mode 의 room 을
-  만들고 player join/start/draw/push 흐름을 실행한다.
-- `Server/Session/`: `session-server-host-factory.js` 가 session 역할 서버를 구성하고
+- `Server/Api/`: `main.js` 가 `BingoApiModule` 을 정의하고 `NestFactory` 로
+  application context 를 시작한다. `bingo.api` channel 은 `handlerGroups: ['api']` 로
+  API handler group 을 선택하고, API handler provider 는 `zlinkHandlerGroup('api', ...)`
+  로 묶는다. match handler 는 `ZLINK_CHANNEL_CLIENT` 를 주입받아 Play channel 로
+  `AllocateBingoRoom` request 를 보낸다.
+- `Server/Play/`: `main.js` 가 `BingoPlayModule` 을 정의하고 `bingo.play` channel 을
+  연다. `handlerGroups: ['play']` 로 Play handler group 을 선택하고,
+  `zlinkHandlerGroup('play', ...)` 로 Play channel handler provider 를 묶는다. actor
+  factory, entry spot, room spot, timer handler, notification publisher 가 같은 mode 의
+  room 을 만들고 player join/start/draw/push 흐름을 실행한다.
+- `Server/Session/`: `main.js` 가 session 역할의 Nest application context 를 시작하고
   `AuthenticateSessionHandler` 와 `BingoSession` relay 구조를 제공한다.
-- `Server/Registry/`: `registry-host-factory.js` 가 registry 역할 서버를 구성한다.
+- `Server/Registry/`: `main.js` 가 registry 역할의 Nest application context 를 시작한다.
 - `Shared/`: sample name, timing, message helper, Bingo card 계약을 공유한다.
 
 ## Success Condition

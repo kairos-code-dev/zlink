@@ -7,5 +7,5 @@ NODE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${NODE_ROOT}"
 npm run build >/dev/null
 
-node samples/StreamingClient/Client/self-check.js
+(cd samples/TicTacToe.Ts && npm run build >/dev/null && npm run start)
 (cd samples/Bingo.Ts && npm run build >/dev/null && npm run start)

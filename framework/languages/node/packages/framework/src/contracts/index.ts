@@ -98,14 +98,6 @@ export interface ZLinkSpotActorRequestHandler<TSpot, TActor extends ZLinkActor, 
   handle(spot: TSpot, actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
 }
 
-export interface ZLinkSpotPostActorJoinedHandler<TSpot, TActor extends ZLinkActor> {
-  handle(spot: TSpot, actor: TActor, result: ZLinkSpotActorChangeResult): Promise<void>;
-}
-
-export interface ZLinkSpotActorLeftHandler<TSpot, TActor extends ZLinkActor> {
-  handle(spot: TSpot, actor: TActor, result: ZLinkSpotActorChangeResult): Promise<void>;
-}
-
 export interface ZLinkSpotActorDisconnectedHandler<TSpot, TActor extends ZLinkActor> {
   handle(spot: TSpot, actor: TActor): Promise<void>;
 }
@@ -119,35 +111,48 @@ export interface ZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor extends ZL
 }
 
 export interface ZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor extends ZLinkActor> {
-  handle(entrySpot: TEntrySpot, actor: TActor, result: ZLinkSpotActorChangeResult): Promise<void>;
+  handle(entrySpot: TEntrySpot, actor: TActor): Promise<void>;
 }
 
-export interface ZLinkSpotActorJoinHandler<TSpot, TActor extends ZLinkActor, TRequest, TReply> {
-  handle(spot: TSpot, actor: TActor, request: TRequest): Promise<TReply>;
+export interface ZLinkSpotActorJoinResponse {
+  readonly accepted: boolean;
+  readonly reply?: Message;
+}
+
+export interface ZLinkSpotCreateResponse {
+  readonly accepted: boolean;
+  readonly reply?: Message;
 }
 
 export interface ZLinkSpot {
   readonly context?: ZLinkSpotContext;
   configure?(): void;
-  onCreate?(createParts: readonly Message[], signal?: AbortSignal): Promise<void>;
+  onCreate?(request: Message, signal?: AbortSignal): Promise<ZLinkSpotCreateResponse>;
   onInitialize?(signal?: AbortSignal): Promise<void>;
   onClosing?(signal?: AbortSignal): Promise<void>;
+  onActorJoin?(actor: ZLinkActor, request: Message, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
+  onPostActorJoined?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onActorLeft?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 
-export interface ZLinkEntrySpot extends ZLinkSpot {}
+export interface ZLinkEntrySpot {
+  readonly context?: ZLinkEntrySpotContext;
+  configure?(): void;
+  onInitialize?(signal?: AbortSignal): Promise<void>;
+  onClosing?(signal?: AbortSignal): Promise<void>;
+  onPostActorJoined?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onActorLeft?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+}
 
 export interface ZLinkActorHandlerRegistry {
   addHandler(handlerType: Type): this;
   addActorPacket(handlerType: Type, actorType: Type<ZLinkActor>, packetName?: string): this;
-  addPostActorJoined(handlerType: Type, actorType: Type<ZLinkActor>): this;
-  addActorLeft(handlerType: Type, actorType: Type<ZLinkActor>): this;
   addActorDisconnected(handlerType: Type, actorType: Type<ZLinkActor>): this;
 }
 
 export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
   addPacket(handlerType: Type, packetName?: string): this;
   addSubscribe(handlerType: Type, topic: string): this;
-  addActorJoin(handlerType: Type, actorType?: Type<ZLinkActor>): this;
   addSpotHandler(handlerType: Type): this;
 }
 
@@ -158,6 +163,7 @@ export interface ZLinkSpotContext {
   readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
   leaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  close(signal?: AbortSignal): Promise<boolean>;
   addTimer<THandler extends ZLinkSpotTimerHandler<ZLinkSpot>>(
     name: string,
     periodMs: number,
@@ -167,17 +173,19 @@ export interface ZLinkSpotContext {
   ): Promise<ZLinkTimer>;
 }
 
-export interface ZLinkEntrySpotContext extends ZLinkSpotContext {}
-
-export enum ZLinkSpotActorChangeKind {
-  Joined = 'joined',
-  Left = 'left',
-  Disconnected = 'disconnected'
-}
-
-export interface ZLinkSpotActorChangeResult {
-  readonly kind: ZLinkSpotActorChangeKind;
-  readonly actor: ActorRef;
+export interface ZLinkEntrySpotContext {
+  readonly spotRid: RoutingId;
+  readonly nodeRid: RoutingId;
+  readonly routingId: RoutingId;
+  readonly handlers: ZLinkSpotHandlerRegistry;
+  readonly outbound: ZLinkSpotOutbound;
+  addTimer<THandler extends ZLinkSpotTimerHandler<ZLinkEntrySpot>>(
+    name: string,
+    periodMs: number,
+    handlerType: Type<THandler>,
+    options?: ZLinkTimerOptions,
+    signal?: AbortSignal
+  ): Promise<ZLinkTimer>;
 }
 
 export interface ZLinkSpotActorReplyOptions {
@@ -279,19 +287,19 @@ export interface ZLinkActorContext {
   readonly boundSession: ZLinkBoundSession;
   getSpot(): ZLinkSpot;
   getSpot<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): TSpot;
-  joinSpot<TRequest = unknown>(spotRid: RoutingId, request: TRequest): ZLinkActorJoinSpotCall;
+  joinSpot(spotRid: RoutingId, request?: Message): ZLinkActorJoinSpotCall;
   joinEntrySpot(nodeRid: RoutingId): ZLinkActorJoinEntrySpotCall;
 }
 
-export interface ZLinkActorJoinResult<TReply> {
+export interface ZLinkActorJoinResult {
   readonly resultCode: number;
   readonly actor: ActorRef;
-  readonly reply?: TReply;
+  readonly reply?: Message;
 }
 
 export interface ZLinkActorJoinSpotCall {
   timeout(timeoutMs: number): this;
-  submit<TReply>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
+  submit(signal?: AbortSignal): Promise<ZLinkActorJoinResult>;
 }
 
 export interface ZLinkActorJoinEntrySpotCall {
@@ -552,9 +560,16 @@ export interface ZLinkEndpointConnections {
   bind(endpoint: string): this;
 }
 
+export enum ZLinkSpotCreateState {
+  Existing = 'existing',
+  Created = 'created',
+  Rejected = 'rejected'
+}
+
 export interface ZLinkSpotCreateResult {
   readonly spotRid: RoutingId;
-  readonly created: boolean;
+  readonly state: ZLinkSpotCreateState;
+  readonly reply?: Message;
 }
 
 export interface ZLinkSpotInfo {
@@ -564,18 +579,18 @@ export interface ZLinkSpotInfo {
 export interface ZLinkSpotManager {
   create<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
-    createParts?: readonly Message[],
+    request?: Message,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   getOrCreate<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
     spotRid: RoutingId,
-    createParts?: readonly Message[],
+    request?: Message,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   find(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotInfo | null>;
   list(signal?: AbortSignal): Promise<readonly ZLinkSpotInfo[]>;
-  remove(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean>;
+  close(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean>;
 }
 
 export interface ZLinkSpotNodeBuilder {
@@ -1004,18 +1019,6 @@ export function ZLinkSpotActorSend(packetName?: string): MethodDecorator {
 
 export function ZLinkSpotActorRequest(packetName?: string): MethodDecorator {
   return methodDecorator({ kind: 'spotActorRequest', packetName });
-}
-
-export function ZLinkSpotActorJoin(): MethodDecorator {
-  return methodDecorator({ kind: 'spotActorJoin' });
-}
-
-export function ZLinkSpotPostActorJoined(): MethodDecorator {
-  return methodDecorator({ kind: 'spotPostActorJoined' });
-}
-
-export function ZLinkSpotActorLeft(): MethodDecorator {
-  return methodDecorator({ kind: 'spotActorLeft' });
 }
 
 export function ZLinkSpotActorDisconnected(): MethodDecorator {

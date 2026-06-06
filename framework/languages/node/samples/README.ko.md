@@ -5,7 +5,7 @@
 NestJS framework sample 은 TypeScript 를 기준으로 제공한다. NestJS 의 decorator,
 metadata, DI 사용 방식은 TypeScript 프로젝트에서 가장 자연스럽게 드러나기 때문에
 JavaScript NestJS sample 을 별도로 유지하지 않는다. client self-check 는 서버 process
-를 시작한 뒤 실제 TCP endpoint 로 channel 또는 route request 를 보내며,
+를 시작한 뒤 실제 TCP endpoint 로 channel, HTTP, stream request 를 보내며,
 stdin/stdout command protocol 로 application message 를 주고받지 않는다.
 
 ## 실행
@@ -18,7 +18,7 @@ stdin/stdout command protocol 로 application message 를 주고받지 않는다
 
 | Sample | 확인하는 흐름 |
 |--------|---------------|
-| `StreamingClient` | connector connect, request/reply, manual dispatch notification |
+| `TicTacToe.Ts` | 기본 NestJS channel, HTTP API, stream connector, actor game 흐름 |
 | `Bingo.Ts` | NestJS DI, channel client/server, Spot, actor, session relay, bound push |
 
 ## 성공 조건

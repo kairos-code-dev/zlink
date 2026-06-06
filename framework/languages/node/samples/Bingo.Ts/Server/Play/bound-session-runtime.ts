@@ -1,7 +1,10 @@
-const connector = require('../../packages/stream-connector/dist');
-const framework = require('../../packages/framework/dist');
+const connector = require('../../../../../packages/stream-connector/dist');
+const framework = require('../../../../../packages/framework/dist');
+const { Message } = require('@zlink-systems/zlink');
 
 class SampleBoundSessionRuntime {
+  [key: string]: any;
+
   constructor() {
     this.delivered = [];
     this.deliveredSeq = 0;
@@ -9,10 +12,10 @@ class SampleBoundSessionRuntime {
     this.runtime = new framework.ZLinkStreamBindingRuntime({
       messageFactory: {
         createTextMessage(payload) {
-          return simpleMessage(Buffer.from(payload));
+          return Message.from(payload);
         },
         createBinaryMessage(payload) {
-          return simpleMessage(payload);
+          return Message.from(payload);
         }
       },
       transport: {
@@ -79,29 +82,4 @@ function decodeJsonFrame(message) {
   };
 }
 
-function simpleMessage(bytes) {
-  const payload = Buffer.from(bytes);
-  return {
-    data() {
-      return payload;
-    },
-    toBytes() {
-      return Buffer.from(payload);
-    },
-    copy() {
-      return simpleMessage(payload);
-    },
-    size() {
-      return payload.length;
-    },
-    isEmpty() {
-      return payload.length === 0;
-    },
-    getString(encoding = 'utf8') {
-      return payload.toString(encoding);
-    },
-    close() {}
-  };
-}
-
-module.exports = { SampleBoundSessionRuntime };
+export { SampleBoundSessionRuntime };

@@ -1,5 +1,9 @@
-const { createRouteClient } = require('../../../shared/route-runtime');
-const { reserveTcpEndpoint } = require('../../../shared/process-host');
+require('reflect-metadata');
+
+const { Module } = require('@nestjs/common');
+const { NestFactory } = require('@nestjs/core');
+const { ZLinkModule, ZLINK_ROUTE_CLIENT } = require('../../../../packages/nestjs/dist');
+const { reserveTcpEndpoint } = require('./sample-process-host');
 const { BingoPlayerClient } = require('./bingo-player-client');
 const { SampleNames, SampleTimings } = require('../Shared/Configuration/sample-names');
 
@@ -106,3 +110,65 @@ function requireCondition(condition, message) {
 }
 
 export { BingoClientApp };
+
+async function createRouteClient({ endpoint, routingId, peers }) {
+  class BingoClientRouteModule {}
+
+  Module({
+    imports: [
+      ZLinkModule.forRoot({
+        routerMeshes: {
+          'sample-route': {
+            bind: endpoint,
+            routingId,
+            manualConnections: peers
+          }
+        }
+      })
+    ]
+  })(BingoClientRouteModule);
+
+  const app = await NestFactory.createApplicationContext(BingoClientRouteModule, {
+    logger: false,
+    abortOnError: false
+  });
+  const routeClient = app.get(ZLINK_ROUTE_CLIENT, { strict: false });
+
+  return {
+    async request(targetNodeRid, packetName, payload, timeoutMs = 1000) {
+      return await retry(() => routeClient
+        .request('sample-route', targetNodeRid, payload)
+        .packetName(packetName)
+        .timeout(timeoutMs)
+        .submit(), { maxAttempts: 100 });
+    },
+    async stop() {
+      await closeNestRuntime(app);
+    }
+  };
+}
+
+async function retry(action, options: any = {}) {
+  const maxAttempts = options.maxAttempts ?? 5;
+  let lastError;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await action();
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+  throw lastError;
+}
+
+async function closeNestRuntime(container) {
+  try {
+    await container.close();
+  } catch (error) {
+    if (error?.name === 'CloseError' && (error?.code === 0 || error?.code === 401)) {
+      return;
+    }
+    throw error;
+  }
+}

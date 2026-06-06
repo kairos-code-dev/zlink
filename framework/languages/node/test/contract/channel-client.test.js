@@ -107,8 +107,11 @@ test('ZLinkDealerChannelClientTransport rejects pre-aborted signal before creati
 
 test('ZLinkModule.forRoot provides concrete channel and fanout clients', () => {
   const module = nestjs.ZLinkModule.forRoot({
-    channels: {
-      api: { client: { manualConnections: ['inproc://api'] }, publisher: { bind: 'inproc://pub' } }
+    clientServerChannels: {
+      api: { client: { manualConnections: ['inproc://api'] } }
+    },
+    fanoutChannels: {
+      events: { publisher: { bind: 'inproc://pub' } }
     }
   });
   const channelProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_CHANNEL_CLIENT);
@@ -213,7 +216,7 @@ test('ZLinkModule channel client uses runtime host channel transport after boots
   const router = zlink.createRouterSocket(ctx);
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const module = nestjs.ZLinkModule.forRoot({
-    channels: { api: { client: { manualConnections: [endpoint] } } }
+    clientServerChannels: { api: { client: { manualConnections: [endpoint] } } }
   });
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
@@ -371,11 +374,12 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
   const remoteRouter = zlink.createRouterSocket(ctx);
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const module = nestjs.ZLinkModule.forRoot({
-    routeChannels: [{
-      routerChannelId: 'mesh',
-      bind: endpoint,
-      routingId: 'node-a'
-    }]
+    routerMeshes: {
+      mesh: {
+        bind: endpoint,
+        routingId: 'node-a'
+      }
+    }
   });
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
@@ -527,11 +531,11 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const events = [];
   const module = nestjs.ZLinkModule.forRoot({
-    routeChannels: [{
-      routerChannelId: 'mesh',
-      bind: endpoint,
-      routingId: 'node-a',
-      sendHandlers: [
+    routerMeshes: {
+      mesh: {
+        bind: endpoint,
+        routingId: 'node-a',
+        sendHandlers: [
         {
           packetName: 'RouteNotice',
           handler: {
@@ -540,8 +544,8 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
             }
           }
         }
-      ],
-      requestHandlers: [
+        ],
+        requestHandlers: [
         {
           packetName: 'RoutePing',
           handler: {
@@ -551,8 +555,9 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
             }
           }
         }
-      ]
-    }]
+        ]
+      }
+    }
   });
   const container = await resolveModuleProviders(module, [nestjs.ZLINK_FRAMEWORK_RUNTIME]);
   const runtime = container.get(nestjs.ZLINK_FRAMEWORK_RUNTIME);
@@ -634,23 +639,21 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const events = [];
   const module = nestjs.ZLinkModule.forRoot({
-    channels: {
+    routerMeshes: {
       mesh: {
-        routeMesh: {
-          bind: endpoint,
-          routingId: 'node-a',
-          requestHandlers: [
-            {
-              packetName: 'RoutePing',
-              handler: {
-                async handle(payload, context) {
-                  events.push(`request:${context.channelName}:${context.packetName}:${context.requestSeq}:${JSON.parse(payload.toString()).value}`);
-                  return { value: 'pong' };
-                }
+        bind: endpoint,
+        routingId: 'node-a',
+        requestHandlers: [
+          {
+            packetName: 'RoutePing',
+            handler: {
+              async handle(payload, context) {
+                events.push(`request:${context.channelName}:${context.packetName}:${context.requestSeq}:${JSON.parse(payload.toString()).value}`);
+                return { value: 'pong' };
               }
             }
-          ]
-        }
+          }
+        ]
       }
     }
   });

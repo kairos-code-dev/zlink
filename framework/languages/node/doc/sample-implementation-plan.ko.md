@@ -57,16 +57,19 @@ Node sample 은 `framework/languages/node/samples/` 아래에 둔다.
 
 | Sample | dotnet 대응 | 검증하는 기능 |
 |--------|-------------|---------------|
-| `StreamingClient` | stream connector sample | connector 단독 connect/send/request/manual dispatch/reconnect |
+| `TicTacToe.Ts` | TicTacToe direct sample | 기본 NestJS channel, HTTP API, stream connector, actor game 흐름 |
 | `Bingo.Ts` | Bingo sample | NestJS DI, channel, Spot, actor, stream session, bound push |
 
 권장 디렉토리:
 
 ```text
 samples/
-|-- StreamingClient/
+|-- TicTacToe.Ts/
 |   |-- Client/
 |   |-- Server/
+|   |   |-- Api/
+|   |   `-- Play/
+|   |-- Shared/
 |   |-- README.ko.md
 |   `-- package.json
 |-- Bingo.Ts/
@@ -100,8 +103,8 @@ TypeScript 로 작성하고, framework public API와 stream connector public API
   connection ready event, framework lifecycle signal 같은 관찰 가능한 상태를 기다린다.
 - NestJS sample 에 application route store, metadata store, actor-session fallback
   resolver 가 없다.
-- StreamingClient 는 manual dispatch mode 에서 request/reply 와 notification 을
-  모두 처리한다.
+- TicTacToe.Ts 는 HTTP API 로 game 을 만들고, 두 player 가 stream connector 로
+  연결해 deterministic 승패와 notification 을 검증한다.
 - Bingo.Ts 는 deterministic scenario 에서 four-player auth, match, start, timer,
   bound push fanout 이 동작한다.
 
@@ -137,7 +140,8 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
 
 1. P0~P8 public API와 regression matrix를 green 으로 닫는다.
 2. `guide/` 장 목차를 만들고, dotnet guide 장과 1:1 매핑표를 작성한다.
-3. `StreamingClient` sample 을 먼저 구현해 connector 단독 사용성을 검증한다.
+3. `TicTacToe.Ts` sample 을 구현해 기본 NestJS channel, HTTP API, stream connector,
+   actor game 흐름을 고정한다.
 4. `Bingo.Ts` sample 을 구현해 NestJS DI, channel, Spot, actor, stream session,
    bound push를 고정한다.
 5. `run_samples.sh` 를 CI release gate 에 연결한다.
@@ -150,7 +154,7 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
 
 - `framework/languages/node/doc/guide/` 의 12개 장이 모두 존재한다.
 - 모든 guide 예제는 실제 sample 또는 test에서 compile 된다.
-- `StreamingClient`, `Bingo.Ts` sample 이 `run_samples.sh`에서 self-check 를 통과한다.
+- `TicTacToe.Ts`, `Bingo.Ts` sample 이 `run_samples.sh`에서 self-check 를 통과한다.
 - `npm run verify:cross-language` 로 cross-language smoke 여섯 가지 필수 경로가
   통과한다.
 - sample README 가 실행 명령, topology, success condition 을 설명한다.
@@ -163,6 +167,6 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
 
 | 테스트 | 확인 기준 |
 |--------|-----------|
-| `sample-regression.test.js › node samples define the required sample directories and README files` | StreamingClient, Bingo.Ts, run_samples.sh 가 존재한다. |
+| `sample-regression.test.js › node samples define the required sample directories and README files` | TicTacToe.Ts, Bingo.Ts, run_samples.sh 가 존재한다. |
 | `sample-regression.test.js › node cross-language smoke covers channel send publish and stream connector paths` | Node↔dotnet channel request/send/publish, Node connector→dotnet stream, dotnet connector→Node stream 경로가 명시되어 있다. |
 | `documentation-regression.test.js › node guide exposes the 12 required guide chapters` | guide 12개 장이 빠지지 않는다. |

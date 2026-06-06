@@ -3,15 +3,20 @@ const test = require('node:test');
 
 const zlink = require('../../../../../bindings/node/dist');
 const framework = require('../../packages/framework/dist');
+const connector = require('../../packages/stream-connector/dist');
+const json = require('../../packages/stream-connector-json/dist');
+const msgpack = require('../../packages/stream-connector-msgpack/dist');
+const protobuf = require('../../packages/stream-connector-protobuf/dist');
 
-test('ZLinkSpotManager creates lists finds and removes spots with lifecycle order', async () => {
+test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order', async () => {
   const events = [];
   class StageSpot {
     configure() {
       events.push('configure');
     }
-    async onCreate(parts) {
-      events.push(`onCreate:${parts[0].data().toString()}`);
+    async onCreate(request) {
+      events.push(`onCreate:${request.data().toString()}`);
+      return { accepted: true };
     }
     async onInitialize() {
       events.push('onInitialize');
@@ -24,14 +29,14 @@ test('ZLinkSpotManager creates lists finds and removes spots with lifecycle orde
   const createPart = zlink.Message.from('open');
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
   try {
-    const created = await manager.create(StageSpot, [createPart]);
-    assert.equal(created.created, true);
+    const created = await manager.create(StageSpot, createPart);
+    assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
     assert.equal(typeof created.spotRid, 'string');
     assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize']);
     assert.deepEqual(await manager.find(created.spotRid), { spotRid: created.spotRid });
     assert.deepEqual(await manager.list(), [{ spotRid: created.spotRid }]);
-    assert.equal(await manager.remove(created.spotRid), true);
-    assert.equal(await manager.remove(created.spotRid), false);
+    assert.equal(await manager.close(created.spotRid), true);
+    assert.equal(await manager.close(created.spotRid), false);
     assert.equal(await manager.find(created.spotRid), null);
     assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize', 'onClosing']);
   } finally {
@@ -57,8 +62,62 @@ test('ZLinkSpotManager passes dotnet-shaped context into spot constructor', asyn
   assert.equal(capturedContext.routingId, 'stage-a');
   assert.equal(capturedContext.nodeRid, 'node-a');
   assert.equal(typeof capturedContext.addTimer, 'function');
+  assert.equal(typeof capturedContext.close, 'function');
   assert.equal(typeof capturedContext.handlers.addPacket, 'function');
-  assert.equal(created.created, true);
+  assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+});
+
+test('ZLinkSpotManager passes empty Message to onCreate without payload', async () => {
+  const requests = [];
+  class StageSpot {
+    async onCreate(request) {
+      requests.push(request);
+      return { accepted: true };
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
+  const created = await manager.create(StageSpot);
+
+  assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].isEmpty(), true);
+});
+
+test('ZLinkSpotManager create request Message can be decoded with framework codec helpers', async () => {
+  const protoType = createLengthPrefixedJsonType();
+  const encoded = [
+    ['json', json.toJson({ kind: 'json', ready: true }), (payload) => json.fromJson(payload)],
+    ['messagepack', msgpack.toMsgPack({ kind: 'messagepack', ready: true }), (payload) => msgpack.fromMsgPack(payload)],
+    ['protobuf', protobuf.toProto({ kind: 'protobuf', ready: true }, protoType), (payload) => protobuf.fromProto(payload, protoType)]
+  ];
+  const decoded = [];
+  class CodecSpot {
+    async onCreate(request) {
+      const [name, original, decode] = encoded[decoded.length];
+      const payload = { codec: original.codec, payload: request.toBytes() };
+      decoded.push([name, decode(payload)]);
+      return { accepted: true };
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [CodecSpot] });
+  for (const [_name, payload] of encoded) {
+    const message = zlink.Message.from(Buffer.from(payload.payload));
+    try {
+      const created = await manager.create(CodecSpot, message);
+      assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+    } finally {
+      message.close();
+    }
+  }
+
+  assert.deepEqual(decoded, [
+    ['json', { kind: 'json', ready: true }],
+    ['messagepack', { kind: 'messagepack', ready: true }],
+    ['protobuf', { kind: 'protobuf', ready: true }]
+  ]);
+  assert.equal(connector.ZlinkStreamCodec.Json, json.toJson({}).codec);
 });
 
 test('spot handler registry records packet and subscribe registrations from configure', async () => {
@@ -87,8 +146,15 @@ test('ZLinkSpotManager getOrCreate is keyed by spot type and spotRid', async () 
   class OtherSpot {}
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot, OtherSpot] });
 
-  assert.deepEqual(await manager.getOrCreate(StageSpot, 'stage-1'), { spotRid: 'stage-1', created: true });
-  assert.deepEqual(await manager.getOrCreate(StageSpot, 'stage-1'), { spotRid: 'stage-1', created: false });
+  assert.deepEqual(await manager.getOrCreate(StageSpot, 'stage-1'), {
+    spotRid: 'stage-1',
+    state: framework.ZLinkSpotCreateState.Created,
+    reply: undefined
+  });
+  assert.deepEqual(await manager.getOrCreate(StageSpot, 'stage-1'), {
+    spotRid: 'stage-1',
+    state: framework.ZLinkSpotCreateState.Existing
+  });
   await assert.rejects(
     () => manager.getOrCreate(OtherSpot, 'stage-1'),
     framework.ZLinkConfigurationException
@@ -115,23 +181,23 @@ test('ZLinkSpotManager concurrent getOrCreate initializes once with the first cr
   const entered = createDeferred();
   const release = createDeferred();
   class StageSpot {
-    async onCreate(parts) {
-      payloads.push(parts.map((part) => part.data().toString()));
+    async onCreate(request) {
+      payloads.push(request.data().toString());
       entered.resolve();
       await release.promise;
+      return { accepted: true };
     }
   }
 
   const firstA = zlink.Message.from('first-a');
-  const firstB = zlink.Message.from('first-b');
   const second = zlink.Message.from('second');
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
 
   try {
-    const first = manager.getOrCreate(StageSpot, 'payload-room', [firstA, firstB]);
+    const first = manager.getOrCreate(StageSpot, 'payload-room', firstA);
     await entered.promise;
     let secondSettled = false;
-    const secondResult = manager.getOrCreate(StageSpot, 'payload-room', [second]).finally(() => {
+    const secondResult = manager.getOrCreate(StageSpot, 'payload-room', second).finally(() => {
       secondSettled = true;
     });
     await Promise.resolve();
@@ -142,15 +208,168 @@ test('ZLinkSpotManager concurrent getOrCreate initializes once with the first cr
 
     const results = await Promise.all([first, secondResult]);
 
-    assert.equal(results.filter((result) => result.created).length, 1);
-    assert.equal(results.filter((result) => !result.created).length, 1);
+    assert.equal(results.filter((result) => result.state === framework.ZLinkSpotCreateState.Created).length, 1);
+    assert.equal(results.filter((result) => result.state === framework.ZLinkSpotCreateState.Existing).length, 1);
     assert.deepEqual(results.map((result) => result.spotRid), ['payload-room', 'payload-room']);
-    assert.deepEqual(payloads, [['first-a', 'first-b']]);
+    assert.deepEqual(payloads, ['first-a']);
   } finally {
     firstA.close();
-    firstB.close();
     second.close();
   }
+});
+
+test('ZLinkSpotManager concurrent getOrCreate returns rejected to waiters with independent replies', async () => {
+  const payloads = [];
+  const entered = createDeferred();
+  const release = createDeferred();
+  class RejectingConcurrentSpot {
+    async onCreate(request) {
+      payloads.push(request.data().toString());
+      entered.resolve();
+      await release.promise;
+      return { accepted: false, reply: zlink.Message.from('reject:first') };
+    }
+  }
+
+  const firstRequest = zlink.Message.from('first');
+  const secondRequest = zlink.Message.from('second');
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [RejectingConcurrentSpot] });
+
+  try {
+    const first = manager.getOrCreate(RejectingConcurrentSpot, 'reject-room', firstRequest);
+    await entered.promise;
+    const second = manager.getOrCreate(RejectingConcurrentSpot, 'reject-room', secondRequest);
+    release.resolve();
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    assert.equal(firstResult.state, framework.ZLinkSpotCreateState.Rejected);
+    assert.equal(secondResult.state, framework.ZLinkSpotCreateState.Rejected);
+    assert.equal(firstResult.reply.data().toString(), 'reject:first');
+    assert.equal(secondResult.reply.data().toString(), 'reject:first');
+    assert.notEqual(firstResult.reply, secondResult.reply);
+    assert.deepEqual(payloads, ['first']);
+    assert.equal(await manager.find('reject-room'), null);
+    firstResult.reply.close();
+    secondResult.reply.close();
+  } finally {
+    firstRequest.close();
+    secondRequest.close();
+  }
+});
+
+test('ZLinkSpotManager create reject returns rejected state reply and does not register spot', async () => {
+  class RejectingSpot {
+    async onCreate(request) {
+      return { accepted: false, reply: zlink.Message.from(`reject:${request.data().toString()}`) };
+    }
+  }
+
+  const request = zlink.Message.from('closed');
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [RejectingSpot] });
+  try {
+    const rejected = await manager.create(RejectingSpot, request);
+
+    assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
+    assert.equal(rejected.reply.data().toString(), 'reject:closed');
+    assert.equal(await manager.find(rejected.spotRid), null);
+    assert.deepEqual(await manager.list(), []);
+    rejected.reply.close();
+  } finally {
+    request.close();
+  }
+});
+
+test('ZLinkSpotManager getOrCreate can retry same spotRid after create rejection', async () => {
+  let accepted = false;
+  const payloads = [];
+  class RetryCreateSpot {
+    async onCreate(request) {
+      payloads.push(request.data().toString());
+      return accepted
+        ? { accepted: true }
+        : { accepted: false, reply: zlink.Message.from('try-again') };
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [RetryCreateSpot] });
+  const rejectedRequest = zlink.Message.from('first');
+  const acceptedRequest = zlink.Message.from('second');
+  try {
+    const rejected = await manager.getOrCreate(RetryCreateSpot, 'retry-room', rejectedRequest);
+    assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
+    assert.equal(rejected.reply.data().toString(), 'try-again');
+    assert.equal(await manager.find('retry-room'), null);
+    assert.deepEqual(await manager.list(), []);
+    rejected.reply.close();
+
+    accepted = true;
+    const created = await manager.getOrCreate(RetryCreateSpot, 'retry-room', acceptedRequest);
+    assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+    assert.deepEqual(await manager.find('retry-room'), { spotRid: 'retry-room' });
+    assert.deepEqual(payloads, ['first', 'second']);
+  } finally {
+    rejectedRequest.close();
+    acceptedRequest.close();
+  }
+});
+
+test('ZLinkSpotManager getOrCreate can retry same spotRid after create lifecycle failure', async () => {
+  let createThrows = true;
+  let initializeThrows = true;
+  const events = [];
+  class FailingCreateSpot {
+    async onCreate() {
+      events.push('create:onCreate');
+      if (createThrows) {
+        createThrows = false;
+        throw new Error('create failed');
+      }
+      return { accepted: true };
+    }
+  }
+  class FailingInitializeSpot {
+    async onCreate() {
+      events.push('initialize:onCreate');
+      return { accepted: true };
+    }
+    async onInitialize() {
+      events.push('initialize:onInitialize');
+      if (initializeThrows) {
+        initializeThrows = false;
+        throw new Error('initialize failed');
+      }
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [FailingCreateSpot, FailingInitializeSpot]
+  });
+
+  await assert.rejects(
+    () => manager.getOrCreate(FailingCreateSpot, 'create-failure-room'),
+    /create failed/
+  );
+  assert.equal(await manager.find('create-failure-room'), null);
+  const createRetry = await manager.getOrCreate(FailingCreateSpot, 'create-failure-room');
+  assert.equal(createRetry.state, framework.ZLinkSpotCreateState.Created);
+
+  await assert.rejects(
+    () => manager.getOrCreate(FailingInitializeSpot, 'initialize-failure-room'),
+    /initialize failed/
+  );
+  assert.equal(await manager.find('initialize-failure-room'), null);
+  const initializeRetry = await manager.getOrCreate(FailingInitializeSpot, 'initialize-failure-room');
+  assert.equal(initializeRetry.state, framework.ZLinkSpotCreateState.Created);
+
+  assert.deepEqual(events, [
+    'create:onCreate',
+    'create:onCreate',
+    'initialize:onCreate',
+    'initialize:onInitialize',
+    'initialize:onCreate',
+    'initialize:onInitialize'
+  ]);
 });
 
 test('ZLinkSpotManager rejects unregistered spot factories', async () => {
@@ -347,7 +566,7 @@ test('spot timer dispatches handler on the spot serial executor with dotnet tick
 
   const tick = await tickReceived;
   await blockingTurn;
-  await manager.remove(created.spotRid);
+  await manager.close(created.spotRid);
 
   assert.equal(tick.name, 'heartbeat');
   assert.equal(tick.deliveryIndex, 1n);
@@ -357,6 +576,60 @@ test('spot timer dispatches handler on the spot serial executor with dotnet tick
   assert.equal(tick.scheduledAt instanceof Date, true);
   assert.equal(tick.startedAt instanceof Date, true);
   assert.deepEqual(events, ['spot:start', 'spot:end', 'tick:1:spot-1', 'closing:false']);
+});
+
+test('ZLinkSpotContext close closes current spot after timer callback returns', async () => {
+  const events = [];
+  const closed = createDeferred();
+  class SelfCloseHandler {
+    async handle(spot) {
+      events.push('tick');
+      assert.equal(await spot.context.close(), true);
+      events.push('after-close-request');
+      closed.resolve();
+    }
+  }
+  class SelfClosingSpot {
+    async onInitialize() {
+      await this.context.addTimer('self-close', 1, SelfCloseHandler);
+    }
+    async onClosing() {
+      events.push('closing');
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [SelfClosingSpot] });
+  const created = await manager.create(SelfClosingSpot);
+  await closed.promise;
+  await waitFor(async () => (await manager.find(created.spotRid)) === null);
+  await waitFor(() => events.includes('closing'));
+
+  assert.deepEqual(events, ['tick', 'after-close-request', 'closing']);
+});
+
+test('ZLinkSpotManager close rejects user spot while joined actors remain', async () => {
+  let actorCount = 1;
+  const events = [];
+  class OccupiedSpot {
+    async onClosing() {
+      events.push('closing');
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [OccupiedSpot],
+    actorCountProvider: () => actorCount
+  });
+  const created = await manager.create(OccupiedSpot);
+
+  assert.equal(await manager.close(created.spotRid), false);
+  assert.deepEqual(await manager.find(created.spotRid), { spotRid: created.spotRid });
+  assert.deepEqual(events, []);
+
+  actorCount = 0;
+  assert.equal(await manager.close(created.spotRid), true);
+  assert.equal(await manager.find(created.spotRid), null);
+  assert.deepEqual(events, ['closing']);
 });
 
 test('spot timer rejects invalid options', async () => {
@@ -570,4 +843,41 @@ function createDeferred() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+function createLengthPrefixedJsonType() {
+  return {
+    encode(value) {
+      const jsonBytes = new TextEncoder().encode(JSON.stringify(value));
+      return {
+        finish() {
+          const bytes = new Uint8Array(4 + jsonBytes.length);
+          bytes[0] = (jsonBytes.length >>> 24) & 0xff;
+          bytes[1] = (jsonBytes.length >>> 16) & 0xff;
+          bytes[2] = (jsonBytes.length >>> 8) & 0xff;
+          bytes[3] = jsonBytes.length & 0xff;
+          bytes.set(jsonBytes, 4);
+          return bytes;
+        }
+      };
+    },
+    decode(bytes) {
+      const length = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+      return JSON.parse(Buffer.from(bytes.slice(4, 4 + length)).toString());
+    },
+    toObject(value) {
+      return value;
+    }
+  };
+}
+
+async function waitFor(predicate, timeoutMs = 1000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.fail('timed out waiting for condition');
 }

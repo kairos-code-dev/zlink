@@ -442,34 +442,16 @@ export interface ZLinkActorHandlerRegistry {
     packetName?: string,
   ): void;
 
-  addPostActorJoined<TActor extends ZLinkActor>(
-    handler: Type,
-    actor: Type<TActor>,
-  ): void;
-
-  addActorLeft<TActor extends ZLinkActor>(
-    handler: Type,
-    actor: Type<TActor>,
-  ): void;
-
   addActorDisconnected<TActor extends ZLinkActor>(
     handler: Type,
     actor: Type<TActor>,
   ): void;
 }
 
-// user Spot registry는 packet/subscribe/actor-join 등록을 더 갖는다.
+// user Spot registry는 packet/subscribe 등록을 더 갖는다.
 export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
   addPacket(handler: Type): void;
   addSubscribe(handler: Type, topic: string): void;
-
-  addActorJoin<TActor extends ZLinkActor>(
-    handler: Type,
-    actor: Type<TActor>,
-    request: Type,
-    reply: Type,
-  ): void;
-  addActorJoin(handler: Type): void;
 }
 ```
 
@@ -596,46 +578,29 @@ export interface ZLinkSpotActorRequestHandler<
 }
 ```
 
-lifecycle callback handler 인터페이스는 다음과 같다. joined / left 는
-`ZLinkSpotActorChangeResult` 를, disconnected 는 추가 인자 없이 받는다.
+lifecycle callback 은 Spot 멤버로 선언한다. disconnected handler 는 추가 인자 없이 받는다.
 
 ```ts
-export interface ZLinkSpotPostActorJoinedHandler<TSpot, TActor extends ZLinkActor> {
-  handle(spot: TSpot, actor: TActor, result: ZLinkSpotActorChangeResult): Promise<void>;
-}
-
-export interface ZLinkSpotActorLeftHandler<TSpot, TActor extends ZLinkActor> {
-  handle(spot: TSpot, actor: TActor, result: ZLinkSpotActorChangeResult): Promise<void>;
+export interface ZLinkSpot {
+  onActorJoin?(actor: ZLinkActor, request: Message): Promise<ZLinkSpotActorJoinResponse>;
+  onPostActorJoined?(actor: ZLinkActor): Promise<void>;
+  onActorLeft?(actor: ZLinkActor): Promise<void>;
 }
 
 export interface ZLinkSpotActorDisconnectedHandler<TSpot, TActor extends ZLinkActor> {
   handle(spot: TSpot, actor: TActor): Promise<void>;
-}
-
-export enum ZLinkSpotActorChangeKind {
-  JoinSpot = 1,
-  JoinEntrySpot = 2,
-  LeaveSpot = 3,
-}
-
-export interface ZLinkSpotActorChangeResult {
-  readonly kind: ZLinkSpotActorChangeKind;
 }
 ```
 
 decorator 방식은 method 에 다음을 붙인다 (인자 순서는 interface 와 동일).
 
 - `@ZLinkSpotActorSend()` / `@ZLinkSpotActorRequest()` -- actor packet
-- `@ZLinkSpotActorJoin()` -- spot join handler (§7.1)
-- `@ZLinkSpotPostActorJoined()` -- join commit 직후 callback
-- `@ZLinkSpotActorLeft()` -- leave commit 직후 callback
 - `@ZLinkSpotActorDisconnected()` -- disconnect notification callback
 
-Entry Spot 과 user Spot 어느 쪽이든 `addHandler(...)` 로 lifecycle callback
-handler 를 등록할 수 있다. actor 타입을 호출 쪽에서 명시해야 하면
-`addPostActorJoined(handler, Actor)` / `addActorLeft(handler, Actor)` /
-`addActorDisconnected(handler, Actor)` 를 사용한다. 이 callback 은 join /
-leave 가 commit 된 직후 같은 실행 문맥에서 호출된다.
+Entry Spot 과 user Spot 어느 쪽이든 actor packet handler 는 `addHandler(...)` 로
+등록할 수 있다. actor disconnected callback 은 actor 타입을 호출 쪽에서 명시해야 하면
+`addActorDisconnected(handler, Actor)` 를 사용한다. join / leave lifecycle 은 Spot 멤버
+`onPostActorJoined(...)` / `onActorLeft(...)` callback 으로 선언한다.
 
 ### 4.3 등록 순서
 
@@ -742,11 +707,11 @@ channel 을 직접 고르지도 않는다.
 SPOT 안의 객체로 actor 를 쓰고 싶을 때 적용하는 패턴이다. room 의 player,
 stage 의 character, zone 의 entity 같은 경우가 여기에 해당한다.
 
-### 7.1 spot 안에서 actor join handler 등록
+### 7.1 spot 안에서 actor join callback 선언
 
 SPOT spec ([nestjs-spot.ko.md](./nestjs-spot.ko.md)) 의
-`ZLinkSpotHandlerRegistry` 에는 `addActorJoin(...)` 표면이 있다. 이 표면을 써서
-다음 두 가지를 매핑한다.
+`ZLinkSpot` 에는 `onActorJoin(...)` callback 이 있다. 이 callback 을 써서
+다음 두 가지를 처리한다.
 
 - spot 에 합류 요청이 들어오면 어느 handler 를 부를지
 - 합류에 성공하면 어떤 actor type 을 생성할지
@@ -756,10 +721,8 @@ SPOT spec ([nestjs-spot.ko.md](./nestjs-spot.ko.md)) 의
 export class TicTacToeGameSpot implements ZLinkSpot {
   constructor(readonly context: ZLinkSpotContext) {}
 
-  // packet/subscribe/timer/actor-join 등록은 configure()에서 한다.
-  configure(): void {
-    this.context.handlers.addActorJoin(TicTacToeGameJoinHandler);
-    // ...
+  async onActorJoin(actor: PlayerActor, request: Message): Promise<ZLinkSpotActorJoinResponse> {
+    return { accepted: true };
   }
 
   // 비동기 초기화가 필요하면 onInitialize를 쓴다.
@@ -767,20 +730,9 @@ export class TicTacToeGameSpot implements ZLinkSpot {
 }
 ```
 
-join handler 의 interface 시그니처는 다음과 같다 (인자 순서: spot, actor,
-request). `@ZLinkSpotActorJoin()` decorator 방식으로도 선언할 수 있고, method
-시그니처 검증은 startup validation[^startup-validation] 단계에서 이루어진다.
-
-```ts
-export interface ZLinkSpotActorJoinHandler<
-  TSpot,
-  TActor extends ZLinkActor,
-  TRequest,
-  TReply,
-> {
-  handle(spot: TSpot, actor: TActor, request: TRequest): Promise<TReply>;
-}
-```
+join callback 의 request/reply 는 generic DTO 가 아니라 framework 공통 `Message` 다.
+JSON, MessagePack, Protobuf 사용자는 기존 codec helper 로 이 `Message` bytes 를
+decode/encode 한다.
 
 자세한 시그니처는 [handler-interfaces.ko.md](./handler-interfaces.ko.md) §5.7
 에서 다룬다.
@@ -794,13 +746,14 @@ export interface ZLinkSpotActorJoinHandler<
 
 ```ts
 const matchSpotRid = routingIdFrom(matchId);
+const request = Message.from(encodeJoinMatchReq(/* ... */));
 const result = await actor.context
-  .joinSpot(matchSpotRid, new JoinMatchReq(/* ... */))
+  .joinSpot(matchSpotRid, request)
   .timeout(2000)
-  .submit<JoinMatchSpotResult>();
+  .submit();
 ```
 
-이 호출은 spot 쪽 join handler 의 결과를 `reply` 로 돌려주고, application join
+이 호출은 spot 쪽 join callback 의 결과를 `reply` `Message` 로 돌려주고, application join
 결정은 `resultCode` 로 표현한다. `resultCode === 0` 은 join 허용, 0 이 아닌 값은
 room full, match closed 같은 application 정의 거절 코드다. transport, timeout,
 protocol failure 는 결과값이 아니라 예외로 처리한다. 성공 시 actor 쪽 상태가
@@ -1216,7 +1169,7 @@ export interface ZLinkModuleOptions {
   [handler-interfaces.ko.md](./handler-interfaces.ko.md) §5 (`ZLinkActor`,
   `ZLinkActorContext`, `ZLinkActorFactory`, actor handler 인터페이스,
   routing record 등)
-- SPOT에 actor가 합류하는 표면(`addActorJoin`):
+- SPOT에 actor가 합류하는 표면(`onActorJoin`):
   [nestjs-spot.ko.md](./nestjs-spot.ko.md)
 - STREAM session lifecycle과 `ZLinkSession` 표면:
   [nestjs-stream.ko.md](./nestjs-stream.ko.md)
@@ -1262,7 +1215,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
 | 테스트 케이스 | 확인 기준 |
 | --- | --- |
 | `actorFactoryNameIsDuplicated` | actor factory 이름(actorType)이 중복되면 startup validation에서 예외로 막는다. |
-| `entrySpotAndUserSpotActorPacketRegistriesDispatch` | Entry Spot과 user Spot에 등록한 actor packet/lifecycle handler가 정상적으로 dispatch된다. |
+| `entrySpotAndUserSpotActorPacketRegistriesDispatch` | Entry Spot과 user Spot에 등록한 actor packet handler와 disconnected handler가 정상적으로 dispatch된다. |
 | `entrySpotActorPacketsSerializedPerActorAndParallelAcrossActors` | Entry Spot에서 같은 actor의 packet은 순서대로 실행되고, 서로 다른 actor의 packet은 병렬로 진행된다. |
 | `entrySpotNativeActorReadableBatchDispatchesActorsInParallel` | native Entry Spot dispatch batch가 actor별 순서를 보존하면서도 다른 actor를 전역으로 막지 않는다. |
 | `spotActorJoinMoveAndSubmitRunThroughSpotExecutionContext` | actor가 spot을 옮긴 뒤 stale spot 문맥으로 dispatch되지 않는다. |

@@ -3,7 +3,7 @@ require('reflect-metadata');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { ZLinkModule, ZLINK_CHANNEL_CLIENT, zlinkHandlerGroup } = require('../../../../../packages/nestjs/dist');
-const { closeNestRuntime, waitForShutdown } = require('../../../../shared/runtime-common');
+const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 const { AuthenticateSessionHandler } = require('./Sessions/Handlers/authenticate-session-handler');
 const { BingoSession } = require('./Sessions/bingo-session');
 const { SampleNames, SampleTimings } = require('../../Shared/Configuration/sample-names');

@@ -36,6 +36,44 @@ test('framework runtime exports decorator factories and enums from the catalog',
   assert.deepEqual(missing.sort(), []);
 });
 
+test('spot actor lifecycle handler registration API is not public', () => {
+  const declarations = fs.readFileSync(declarationsPath, 'utf8');
+  const workspaceText = [
+    declarations,
+    readTree(path.join(workspaceRoot, 'samples')),
+    readTree(path.join(workspaceRoot, 'doc'))
+  ].join('\n');
+  const removedNames = [
+    'addActorJoin',
+    'addPostActorJoined',
+    'addActorLeft',
+    'SpotActorJoinHandler',
+    'PostActorJoinedHandler',
+    'ActorLeftHandler',
+    'ZLinkSpotActorJoinHandler',
+    'ZLinkSpotPostActorJoinedHandler',
+    'ZLinkSpotActorLeftHandler'
+  ];
+
+  const remaining = removedNames.filter((name) => workspaceText.includes(name));
+
+  assert.deepEqual(remaining, []);
+});
+
+test('entry spot public surface exposes no create or admission callbacks', () => {
+  const declarations = fs.readFileSync(declarationsPath, 'utf8');
+  const entrySpot = declarationBody(declarations, 'ZLinkEntrySpot');
+  const entryContext = declarationBody(declarations, 'ZLinkEntrySpotContext');
+
+  assert.equal(entrySpot.includes('extends ZLinkSpot'), false);
+  assert.equal(entrySpot.includes('onCreate'), false);
+  assert.equal(entrySpot.includes('onActorJoin'), false);
+  assert.equal(entrySpot.includes('onPostActorJoined'), true);
+  assert.equal(entrySpot.includes('onActorLeft'), true);
+  assert.equal(entryContext.includes('leaveActor'), false);
+  assert.equal(entryContext.includes('close('), false);
+});
+
 function exportedCatalogNames(spec) {
   return uniqueMatches(spec, /^export\s+(?:interface|type|enum|function)\s+([A-Za-z][A-Za-z0-9_]*)/gm);
 }
@@ -46,4 +84,25 @@ function runtimeCatalogNames(spec) {
 
 function uniqueMatches(text, pattern) {
   return [...new Set([...text.matchAll(pattern)].map((match) => match[1]))].sort();
+}
+
+function declarationBody(text, name) {
+  const match = text.match(new RegExp(`export interface ${name}(?: [^{]+)? \\{([\\s\\S]*?)\\n\\}`));
+  assert.ok(match, `missing declaration for ${name}`);
+  return match[0];
+}
+
+function readTree(root) {
+  let text = '';
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      text += readTree(fullPath);
+      continue;
+    }
+    if (/\.(?:ts|js|md)$/.test(entry.name)) {
+      text += fs.readFileSync(fullPath, 'utf8');
+    }
+  }
+  return text;
 }

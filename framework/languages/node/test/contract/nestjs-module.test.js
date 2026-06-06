@@ -517,7 +517,7 @@ test('ZLinkModule.forRoot with grouped handlers exposes capability providers thr
 
   assert.equal(spotManager instanceof framework.DefaultZLinkSpotManager, true);
   assert.equal(actorManager instanceof framework.DefaultZLinkActorManager, true);
-  assert.equal((await spotManager.create(StageSpot)).created, true);
+  assert.equal((await spotManager.create(StageSpot)).state, framework.ZLinkSpotCreateState.Created);
   assert.equal((await actorManager.getOrCreate('p1', 'player')).actorId, 'p1');
   assert.equal(app.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }) instanceof framework.DefaultZLinkSpotPublisherClient, true);
 
@@ -579,8 +579,8 @@ test('ZLinkModule.forRoot passes registered spot factories to the spot manager',
   const created = await spotManager.create(StageSpot);
   const localCreated = await spotManager.create(LocalStageSpot);
 
-  assert.equal(created.created, true);
-  assert.equal(localCreated.created, true);
+  assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+  assert.equal(localCreated.state, framework.ZLinkSpotCreateState.Created);
 });
 
 test('ZLinkModule.forRoot creates Spot factories through NestJS DI', async () => {
@@ -1170,7 +1170,7 @@ test('ZLinkModule.forRootAsync exposes capability providers through the real Nes
 
   assert.equal(spotManager instanceof framework.DefaultZLinkSpotManager, true);
   assert.equal(actorManager instanceof framework.DefaultZLinkActorManager, true);
-  assert.equal((await spotManager.create(AsyncSpot)).created, true);
+  assert.equal((await spotManager.create(AsyncSpot)).state, framework.ZLinkSpotCreateState.Created);
   assert.equal((await actorManager.getOrCreate('p1', 'player')).actorId, 'p1');
   assert.equal(app.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }) instanceof framework.DefaultZLinkSpotPublisherClient, true);
   await app.close();
@@ -1675,10 +1675,7 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
   class PacketHandler {}
   class SubscribeHandler {}
   class ActorPacketHandler {}
-  class ActorJoinedHandler {}
-  class ActorLeftHandler {}
   class ActorDisconnectedHandler {}
-  class ActorJoinHandler {}
   class SpotHandler {}
   class PlayerActor {}
   class EntrySpot {
@@ -1691,10 +1688,7 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
       this.context.handlers.addPacket(PacketHandler, 'entry.packet');
       this.context.handlers.addSubscribe(SubscribeHandler, 'entry.topic');
       this.context.handlers.addActorPacket(ActorPacketHandler, PlayerActor, 'actor.packet');
-      this.context.handlers.addPostActorJoined(ActorJoinedHandler, PlayerActor);
-      this.context.handlers.addActorLeft(ActorLeftHandler, PlayerActor);
       this.context.handlers.addActorDisconnected(ActorDisconnectedHandler, PlayerActor);
-      this.context.handlers.addActorJoin(ActorJoinHandler, PlayerActor);
       this.context.handlers.addSpotHandler(SpotHandler);
       registry = this.context.handlers;
     }
@@ -1804,10 +1798,7 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
     { kind: 'packet', handlerType: PacketHandler, packetName: 'entry.packet' },
     { kind: 'subscribe', handlerType: SubscribeHandler, topic: 'entry.topic' },
     { kind: 'actorPacket', handlerType: ActorPacketHandler, actorType: PlayerActor, packetName: 'actor.packet' },
-    { kind: 'postActorJoined', handlerType: ActorJoinedHandler, actorType: PlayerActor },
-    { kind: 'actorLeft', handlerType: ActorLeftHandler, actorType: PlayerActor },
     { kind: 'actorDisconnected', handlerType: ActorDisconnectedHandler, actorType: PlayerActor },
-    { kind: 'actorJoin', handlerType: ActorJoinHandler, actorType: PlayerActor },
     { kind: 'spotHandler', handlerType: SpotHandler }
   ]);
   assert.deepEqual(calls, [

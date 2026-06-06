@@ -1,5 +1,5 @@
 const { Inject } = require('@nestjs/common');
-const { SampleBoundSessionRuntime } = require('../../../../../shared/bound-session-runtime');
+const { SampleBoundSessionRuntime } = require('../bound-session-runtime');
 
 class BingoNotificationsHandler {
   private readonly boundSessions;

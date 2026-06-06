@@ -3,7 +3,7 @@ require('reflect-metadata');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { ZLinkModule, zlinkHandlerGroup } = require('../../../../../packages/nestjs/dist');
-const { closeNestRuntime, waitForShutdown } = require('../../../../shared/runtime-common');
+const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 
 class BingoRegistryModule {}
 

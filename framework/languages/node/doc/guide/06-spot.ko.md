@@ -5,7 +5,7 @@ Spot 안의 작업을 하나의 실행 문맥에서 순서대로 처리한다는
 
 ## 1. Spot manager
 
-`ZLinkSpotManager` 는 Spot 생성, 조회, 제거를 맡는다. NestJS 앱에서는 먼저
+`ZLinkSpotManager` 는 Spot 생성, 조회, 정상 종료를 맡는다. NestJS 앱에서는 먼저
 `SpotNode` 와 그 노드가 만들 수 있는 Spot 클래스를 함께 등록한다.
 
 ```ts

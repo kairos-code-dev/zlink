@@ -10,7 +10,7 @@ async function reservePort() {
     server.listen(0, '127.0.0.1', resolve);
   });
   const { port } = server.address();
-  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   return port;
 }
 
@@ -33,7 +33,7 @@ async function startServer(entryFile, env = {}) {
   });
   const output = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
   output.on('line', (line) => stdoutLines.push(line));
-  const exit = new Promise((resolve) => {
+  const exit = new Promise<any>((resolve) => {
     child.once('exit', (code, signal) => resolve({ code, signal }));
   });
   const ready = await readReady(output, child, entryFile, stdoutLines, stderrLines);

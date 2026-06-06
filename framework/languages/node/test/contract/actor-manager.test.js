@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+const zlink = require('../../../../../bindings/node/dist');
 const framework = require('../../packages/framework/dist');
 
 test('ZLinkActorManager create find and getOrCreate follow dotnet actor semantics', async () => {
@@ -274,6 +275,7 @@ test('ZLinkActorDispatchRouter rechecks actor location after queued mailbox turn
 
 test('ZLinkActorContext delegates join calls to coordinator with timeout', async () => {
   const calls = [];
+  const replyMessage = zlink.Message.from('joined');
   class PlayerActor {
     constructor(actorId, context) {
       this.actorId = actorId;
@@ -288,8 +290,8 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   const actorRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
   const joinCoordinator = {
     async joinSpot(actor, state, spotRid, request, timeoutMs) {
-      calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${request}:${timeoutMs}`);
-      return { resultCode: 0, actor: actorRef, reply: 'joined' };
+      calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${request.data().toString()}:${timeoutMs}`);
+      return { resultCode: 0, actor: actorRef, reply: replyMessage };
     },
     async joinEntrySpot(actor, state, nodeRid, timeoutMs) {
       calls.push(`joinEntry:${actor.actorId}:${state.actorId}:${nodeRid}:${timeoutMs}`);
@@ -302,15 +304,20 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   });
   const actor = await manager.create('alice', 'player');
 
-  const joinResult = await actor.context.joinSpot('stage-1', 'hello').timeout(25).submit();
+  const request = zlink.Message.from('hello');
+  const joinResult = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
   const entryResult = await actor.context.joinEntrySpot('node-a').timeout(10).submit();
 
-  assert.deepEqual(joinResult, { resultCode: 0, actor: actorRef, reply: 'joined' });
+  assert.equal(joinResult.resultCode, 0);
+  assert.deepEqual(joinResult.actor, actorRef);
+  assert.equal(joinResult.reply.data().toString(), 'joined');
   assert.equal(entryResult, actorRef);
   assert.deepEqual(calls, [
     'joinSpot:alice:alice:stage-1:hello:25',
     'joinEntry:alice:alice:node-a:10'
   ]);
+  request.close();
+  replyMessage.close();
 });
 
 test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined spot state', async () => {
@@ -338,7 +345,7 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
       return createdRef;
     },
     joinActor(actorRef, targetNodeRid, targetSpotRid, payload, callback, timeoutMs) {
-      events.push(`join:${actorRef.generation}:${targetNodeRid}:${targetSpotRid}:${payload}:${timeoutMs}`);
+      events.push(`join:${actorRef.generation}:${targetNodeRid}:${targetSpotRid}:${payload.data().toString()}:${timeoutMs}`);
       callback({
         result: 0,
         joinResultCode: 7,
@@ -346,21 +353,23 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
         joinedSpotRid: targetSpotRid,
         joinEpoch: 3n,
         flags: 0
-      }, []);
+      }, [zlink.Message.from('native-reply')]);
       return true;
     }
   });
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
-      node,
-      createJoinPayload: (request) => `payload:${request}`
+      node
     })
   });
   const actor = await manager.create('alice', 'player');
-  const result = await actor.context.joinSpot('stage-1', 'hello').timeout(25).submit();
+  const request = zlink.Message.from('payload:hello');
+  const result = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
 
-  assert.deepEqual(result, { resultCode: 7, actor: joinedRef, reply: undefined });
+  assert.equal(result.resultCode, 7);
+  assert.deepEqual(result.actor, joinedRef);
+  assert.equal(result.reply.data().toString(), 'native-reply');
   assert.equal(actor.context.isJoined, true);
   assert.equal(actor.context.spotRid, 'stage-1');
   assert.equal(manager.getState('alice').nativeActorRef, joinedRef);
@@ -369,6 +378,8 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
     'createNative:alice',
     'join:1:node-a:stage-1:payload:hello:25'
   ]);
+  request.close();
+  result.reply.close();
 });
 
 test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot state', async () => {
@@ -482,16 +493,6 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
       return 'ok';
     }
   }
-  class JoinedHandler {
-    async handle(spot, actor, result) {
-      events.push(`joined:${spot.name}:${actor.actorId}:${result.kind}`);
-    }
-  }
-  class LeftHandler {
-    async handle(spot, actor, result) {
-      events.push(`left:${spot.name}:${actor.actorId}:${result.kind}`);
-    }
-  }
   class DisconnectedHandler {
     async handle(spot, actor) {
       events.push(`disconnected:${spot.name}:${actor.actorId}`);
@@ -510,27 +511,33 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
       actorType: PlayerActor,
       handlerType: MoveRequestHandler
     })
-    .addPostActorJoined({ actorType: PlayerActor, handlerType: JoinedHandler })
-    .addActorLeft({ actorType: PlayerActor, handlerType: LeftHandler })
     .addActorDisconnected({ actorType: PlayerActor, handlerType: DisconnectedHandler });
   const actor = new PlayerActor('alice', {});
   const dispatcher = new framework.ZLinkSpotActorDispatcher({
     registry,
-    spot: { name: 'game' }
+    spot: {
+      name: 'game',
+      async onPostActorJoined(joinedActor) {
+        events.push(`joined:game:${joinedActor.actorId}`);
+      },
+      async onActorLeft(leftActor) {
+        events.push(`left:game:${leftActor.actorId}`);
+      }
+    }
   });
 
   await dispatcher.dispatchSend(actor, 'move', 'left');
   const reply = await dispatcher.dispatchRequest(actor, 'move', 'right');
-  await dispatcher.notifyPostActorJoined(actor, { kind: framework.ZLinkSpotActorChangeKind.Joined, actor: {} });
-  await dispatcher.notifyActorLeft(actor, { kind: framework.ZLinkSpotActorChangeKind.Left, actor: {} });
+  await dispatcher.notifyPostActorJoined(actor);
+  await dispatcher.notifyActorLeft(actor);
   await dispatcher.notifyActorDisconnected(actor);
 
   assert.equal(reply, 'ok');
   assert.deepEqual(events, [
     'send:game:alice:move:left',
     'request:game:alice:move:right',
-    'joined:game:alice:joined',
-    'left:game:alice:left',
+    'joined:game:alice',
+    'left:game:alice',
     'disconnected:game:alice'
   ]);
   await assert.rejects(
@@ -539,6 +546,88 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
       error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound
   );
+});
+
+test('ZLinkSpotActorDispatcher commits actor join only when onActorJoin accepts', async () => {
+  const events = [];
+  const acceptReply = zlink.Message.from('accept-reply');
+  const rejectReply = zlink.Message.from('reject-reply');
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  const actor = new PlayerActor('alice', {});
+  let accept = true;
+  const dispatcher = new framework.ZLinkSpotActorDispatcher({
+    registry: new framework.ZLinkSpotActorHandlerRegistryRuntime(),
+    spot: {
+      async onActorJoin(joinedActor, request) {
+        events.push(`join:${joinedActor.actorId}:${request.data().toString()}`);
+        return accept
+          ? { accepted: true, reply: acceptReply }
+          : { accepted: false, reply: rejectReply };
+      },
+      async onPostActorJoined(joinedActor) {
+        events.push(`post:${joinedActor.actorId}`);
+      }
+    }
+  });
+
+  const acceptedRequest = zlink.Message.from('accept');
+  const accepted = await dispatcher.admitActorJoin(actor, acceptedRequest, () => {
+    events.push('commit:accept');
+  });
+  accept = false;
+  const rejectedRequest = zlink.Message.from('reject');
+  const rejected = await dispatcher.admitActorJoin(actor, rejectedRequest, () => {
+    events.push('commit:reject');
+  });
+
+  assert.equal(accepted.accepted, true);
+  assert.equal(accepted.reply.data().toString(), 'accept-reply');
+  assert.equal(rejected.accepted, false);
+  assert.equal(rejected.reply.data().toString(), 'reject-reply');
+  assert.deepEqual(events, [
+    'join:alice:accept',
+    'commit:accept',
+    'post:alice',
+    'join:alice:reject'
+  ]);
+  acceptedRequest.close();
+  rejectedRequest.close();
+  acceptReply.close();
+  rejectReply.close();
+});
+
+test('ZLinkSpotActorDispatcher rejects actor join by default when onActorJoin is absent', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  const actor = new PlayerActor('alice', {});
+  const dispatcher = new framework.ZLinkSpotActorDispatcher({
+    registry: new framework.ZLinkSpotActorHandlerRegistryRuntime(),
+    spot: {
+      async onPostActorJoined(joinedActor) {
+        events.push(`post:${joinedActor.actorId}`);
+      }
+    }
+  });
+
+  const request = zlink.Message.from('join');
+  const result = await dispatcher.admitActorJoin(actor, request, () => {
+    events.push('commit');
+  });
+
+  assert.equal(result.accepted, false);
+  assert.equal(result.reply, undefined);
+  assert.deepEqual(events, []);
+  request.close();
 });
 
 test('ZLinkSpotActorDispatcher does not fallback actor requests to send handlers', async () => {

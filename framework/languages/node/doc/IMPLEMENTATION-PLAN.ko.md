@@ -324,13 +324,13 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 - **산출물:** `runtime/spots/`(activation, serial executor, dispatch router, timer, manager)
 - **작업:**
   - SpotNode 등록(router/pubSub bind, attached channel clients, spot publishers)
-  - **type-keyed** spot factory(§6 함정), `ZLinkSpotManager`(create/getOrCreate/find/list/remove)
+  - **type-keyed** spot factory(§6 함정), `ZLinkSpotManager`(create/getOrCreate/find/list/close)
   - lifecycle: configure → onCreate → onInitialize → onClosing (Entry Spot 은 onCreate 없음)
   - handler 등록(`context.handlers.*`), timer(`context.addTimer`)
   - **단일 spot 실행 컨텍스트**(serial executor — 모든 packet/timer/subscription/channel-reply continuation 직렬화)
   - outbound(`context.outbound.*`: sendToSpot/requestToSpot/publish/sendToChannel/requestToChannel)
 - **DoD:**
-  - [x] spot 생성/조회/제거 + lifecycle 콜백 순서
+  - [x] spot 생성/조회/close + lifecycle 콜백 순서
   - [x] handler·timer 가 동일 직렬 컨텍스트에서 실행(상태 보호)
   - [x] requestToChannel completion 이 같은 spot 컨텍스트에서 실행
 - **검증:** spot e2e 미러(Manager/Timer/Route*/Entry*)
@@ -341,7 +341,8 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 - **산출물:** `runtime/actors/`(manager/context/factory/mailbox/dispatch router)
 - **작업:**
   - actor factory/manager/context, 생명주기(create→join→leave→disconnect)
-  - Entry Spot vs user Spot handler 분리, join/leave/disconnected lifecycle handler
+  - Entry Spot vs user Spot handler 분리, join/leave는 Spot 멤버 callback,
+    disconnected는 handler registry 유지
   - **dispatch 순서 보장**: actor별 mailbox 턴 → location 스냅샷 후 Entry/user Spot 큐 선택
   - actor type mismatch, duplicate create, actor location 재확인 정책
 - **DoD:**
@@ -477,7 +478,7 @@ TS 고유 제약(표면 한계): 런타임 타입 소거 → packet key 는 **�
 | **구조(structure)** | 패키지·모듈 경계가 dotnet 을 미러. backend 어댑터 한 층으로 격리(나머지 backend 독립) | `src/` 디렉토리, `Runtime/*` | §3 패키지 구성 + backend-dependency-policy 회귀 |
 | **기능(functionality)** | 모든 서브시스템(channel/spot/actor/stream/registry/monitoring/codec)의 동작이 dotnet 과 동일 | `Runtime/*`, `tests/` | regression-test-matrix 전 행 green + cross-language(같은 channel/stream/session) 상호호출 |
 | **사용성(usability)** | 같은 멘탈 모델·동사·등록 흐름. dotnet `doc/guide` 대응 NestJS 가이드 제공 | `doc/guide/01~12`, 케이스/샘플 가이드 | node 사용자 가이드 작성·동등 챕터 매핑 |
-| **샘플(samples)** | dotnet 샘플과 동일 시나리오의 실행 가능한 TypeScript NestJS 샘플 + 샘플 문서 | `samples/StreamingClient`, `samples/Bingo.Ts`, `doc/guide/samples/` | 샘플 앱 빌드·실행 + 샘플 문서 동등 |
+| **샘플(samples)** | dotnet 샘플과 동일 시나리오의 실행 가능한 TypeScript NestJS 샘플 + 샘플 문서 | `samples/TicTacToe.Ts`, `samples/Bingo.Ts`, `doc/guide/samples/` | 샘플 앱 빌드·실행 + 샘플 문서 동등 |
 
 운영 규칙:
 

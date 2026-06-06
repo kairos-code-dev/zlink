@@ -177,19 +177,19 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | `registerSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
 | `registerSpotMesh(...)` + 빈 `addRegistryEndpoint` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
 | `registerSpotMesh(...)` + router-capable `addNode(...)` + `attachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
-| `createAsync<TSpot>()` | `integration-single-process` | `spotId`, `created` 값이 일관되게 유지된다 |
-| `createAsync<TSpot>()` empty create payload | `integration-single-process` | payload 없는 생성도 빈 multipart payload로 `ZLinkSpot.onCreate(...)`를 한 번 호출한다 |
-| `createAsync<TSpot>(createParts)` multipart | `integration-single-process` | create payload part 수와 순서가 유지되어 `ZLinkSpot.onCreate(...)`로 한 번 전달된다 |
-| `getOrCreateAsync<TSpot>(spotRid, createParts)` existing | `integration-single-process` | 같은 `spotId`가 이미 ready 상태면 `created === false`이고 새 `createParts`는 `onCreate(...)`로 전달되지 않는다 |
-| `getOrCreateAsync(...)` concurrent create payload | `integration-single-process` | 같은 `spotId` 동시 생성에서는 첫 생성 요청의 multipart payload만 `onCreate(...)`로 전달되고 callback은 한 번만 실행된다 |
-| `getOrCreateAsync<TSpot>(...)` same type | `integration-single-process` | 같은 `spotId`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환하고 새 `onCreate(...)`를 호출하지 않는다 |
+| `create(spotType)` | `integration-single-process` | `spotId`, `Created` 상태가 일관되게 유지된다 |
+| `create(spotType)` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `Message`로 `ZLinkSpot.onCreate(...)`를 한 번 호출한다 |
+| `create(spotType, request)` payload | `integration-single-process` | create request `Message`가 `ZLinkSpot.onCreate(...)`로 한 번 전달된다 |
+| `getOrCreate(spotType, spotRid, request)` existing | `integration-single-process` | 같은 `spotId`가 이미 ready 상태면 `Existing`이고 새 `request`는 `onCreate(...)`로 전달되지 않는다 |
+| `getOrCreate(...)` concurrent create payload | `integration-single-process` | 같은 `spotId` 동시 생성에서는 첫 생성 요청의 `Message`만 `onCreate(...)`로 전달되고 callback은 한 번만 실행된다 |
+| `getOrCreate(spotType, spotRid)` same type | `integration-single-process` | 같은 `spotId`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환하고 새 `onCreate(...)`를 호출하지 않는다 |
 | spot create lifecycle failure | `integration-single-process` | `onCreate(...)` 또는 `onInitialize(...)` 실패는 `SpotCreateFailed`로 전파되고 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
-| `getAsync(...)`, `listAsync(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
-| `configure()` handler registration | `integration-single-process` | `context.addPacket(...)`, `context.addHandler(...)`, `context.addActorPacket(...)`, `context.addPostActorJoined(...)`, `context.addActorLeft(...)`, `context.addActorDisconnected(...)`, `context.addSubscribe(...)`, `context.addActorJoin(...)` 등의 등록이 descriptor에 반영된다 |
-| Entry Spot handler registration | `integration-single-process` | `registerEntrySpot(EntrySpotClass)`로 등록한 `context.addPacket(...)`, `addSubscribe(...)`, `addHandler(...)`, `addActorPacket(...)`, `addPostActorJoined(...)`, `addActorLeft(...)`, `addActorDisconnected(...)`가 Entry Spot registry에 반영된다 |
+| `find(...)`, `list(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
+| `configure()` handler registration | `integration-single-process` | `context.addPacket(...)`, `context.addHandler(...)`, `context.addActorPacket(...)`, `context.addActorDisconnected(...)`, `context.addSubscribe(...)` 등의 등록이 descriptor에 반영된다 |
+| Entry Spot handler registration | `integration-single-process` | `registerEntrySpot(EntrySpotClass)`로 등록한 `context.addPacket(...)`, `addSubscribe(...)`, `addHandler(...)`, `addActorPacket(...)`, `addActorDisconnected(...)`가 Entry Spot registry에 반영된다 |
 | Entry Spot packet callback concurrency | `integration-single-process` | Entry Spot 일반 packet handler는 user Spot과 같은 등록 표면을 쓰지만 Entry Spot 전체 실행 줄에 직렬화되지 않는다 |
 | `onInitialize(...)` handler resolve | `integration-single-process` | spot마다 분리된 DI scope가 정상 동작한다 |
-| `onClosing(...)` 정상 remove callback | `integration-single-process` | `removeAsync(...)` 호출 시 spot 실행 문맥에서 한 번 호출된다 |
+| `onClosing(...)` 정상 close callback | `integration-single-process` | `close(...)` 호출 시 spot 실행 문맥에서 한 번 호출된다 |
 | local spot publish | `integration-single-process` | subscriber가 정상 수신한다 |
 | SPOT timer metadata | `integration-single-process` | timer handler가 callback 번호, 예정/시작 시각, 지연, skip metadata를 받는다 |
 | SPOT timer overrun policy | `integration-single-process` | `SkipLateTicks`, `CatchUpBounded`, `DelayNextTick` 정책이 각각 skip, bounded catch-up, fixed-delay 의미를 지킨다 |
@@ -202,7 +202,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | Spot route channel transport | `integration-single-process` | caller가 명시한 local egress channel이 channel type에 맞는 ROUTER 또는 DEALER socket으로 egress 설정의 target SpotNode ingress channel을 통해 target Spot으로 routed send/request를 보낸다 |
 | route mesh Spot egress target peer 선택 | `integration-single-process` | source process가 target route channel 을 local registration 으로 갖지 않아도, 수동 연결과 registry metadata 의 target SpotNode ingress channel / ROUTER `routingId`로 route mesh egress target peer 를 선택한다 |
 | Spot route egress capability validation | `unit` | routed Spot egress 는 client-server client capability 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |
-| spot 제거 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
+| spot close 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `ZLinkSpotContext.addHandler(...)`로 등록한 actor handler가 join된 `Spot` 실행 문맥에서 실행된다 |
 | Entry Spot actor mailbox dispatch | `integration-single-process` | Entry Spot actor packet이 Entry Spot 전체 실행 큐에 막히지 않고, actor별 mailbox 순서를 따른다 |
 | local actor mailbox dispatch | `integration-single-process` | user Spot에 들어가지 않은 actor packet도 actor별 mailbox 순서를 따른다 |
@@ -226,9 +226,9 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
 | Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다 |
 | Registry route 기본 구현 discovery validation | `unit` | `useDiscovery().addRegistryEndpoint(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
-| Registry Spot RID route | `integration-single-process` | `ZLinkSpotManager.createAsync(spotRid: string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다 |
+| Registry Spot RID route | `integration-single-process` | `ZLinkSpotManager.getOrCreate(spotType, spotRid, request?)` 로 만든 Spot 을 `find(...)` 로 찾고, `close(...)` 성공 후 not found 를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
-| sample-only session metadata store 제거 | `unit` | Bingo.Ts 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |
+| sample-only session metadata store 제거 | `unit` | TicTacToe.Ts 와 Bingo.Ts 샘플이 sample-only actor-session store 없이 framework/session 흐름을 사용한다 |
 | stale bound session send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
 | bound session gateway relay | `integration-single-process` | Play 서버에서 Session 서버로 가는 bound session send가 core ActorGateway binding 을 통해 client STREAM에 단일 stream packet으로 도착한다 |
 | bound session disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `ZLinkBoundSession.disconnectAsync(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
@@ -307,7 +307,7 @@ backend gate 와 별도로 유지한다.
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | `npm run verify:release` | `integration-multi-process` | ABI 선언, P0 회귀, sample smoke, Node runtime matrix, cross-language smoke 를 순서대로 실행한다 |
-| `npm run verify:samples` | `integration-multi-process` | StreamingClient, Bingo.Ts 가 모두 self-check 통과 |
+| `npm run verify:samples` | `integration-multi-process` | TicTacToe.Ts, Bingo.Ts 가 모두 self-check 통과 |
 | `npm run verify:runtime-matrix` | `integration-multi-process` | 현재 runner 가 Node 20 과 Node 22 에서 build, typecheck, 전체 contract test 를 모두 통과시킨다 |
 | `npm run verify:abi-matrix` | `unit` | `framework-node` CI workflow, release 문서, package script 가 `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64` 와 Node 20/22 gate 를 같은 목록으로 유지한다 |
 | `npm run verify:cross-language` | `integration-multi-process` | Node 와 dotnet TestHost 가 channel/stream 필수 경로 여섯 가지를 같은 프로토콜 의미로 통과시킨다 |

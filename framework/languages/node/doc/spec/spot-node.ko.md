@@ -3,7 +3,7 @@
 [Node 묶음](../README.ko.md) | [SPOT](./nestjs-spot.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)
 
 이 문서는 `Node.js` framework 의 `SpotNode` 설정 중 core route 계약과 직접
-맞물리는 부분, 그리고 spot manager 표면(create / get / list / remove)을 정리한다.
+맞물리는 부분, 그리고 spot manager 표면(create / get / list / close)을 정리한다.
 의미·동작은 `framework/languages/dotnet` 의 정식 계약과 동일하며, 표면만 NestJS /
 TypeScript 로 옮긴다. dotnet 표기와 어긋나면 dotnet **코드**가 최종 기준이다.
 Spot handler 작성법과 packet dispatch 규칙은 [nestjs-spot.ko.md](./nestjs-spot.ko.md)
@@ -122,18 +122,18 @@ export class StageService {
 ### 메서드
 
 `ValueTask` → `Promise`, camelCase, `RoutingId` → 문자열로 매핑한다.
-`IReadOnlyList<Message> createParts` → `readonly Message[]` 이고,
+생성 요청 `Message` 는 Node framework 의 공통 `Message` 로 전달하고,
 `CancellationToken` 은 선택 인자 `signal?: AbortSignal` 로 두거나 생략한다.
 
 | dotnet (`IZLinkSpotManager`) | node (`ZLinkSpotManager`) | 반환 |
 |------|------|------|
 | `CreateAsync<TSpot>(ct)` | `create(spot, signal?)` | `Promise<ZLinkSpotCreateResult>` |
-| `CreateAsync<TSpot>(createParts, ct)` | `create(spot, createParts, signal?)` | `Promise<ZLinkSpotCreateResult>` |
+| `CreateAsync<TSpot>(request, ct)` | `create(spot, request, signal?)` | `Promise<ZLinkSpotCreateResult>` |
 | `GetOrCreateAsync<TSpot>(spotRid, ct)` | `getOrCreate(spot, spotRid, signal?)` | `Promise<ZLinkSpotCreateResult>` |
-| `GetOrCreateAsync<TSpot>(spotRid, createParts, ct)` | `getOrCreate(spot, spotRid, createParts, signal?)` | `Promise<ZLinkSpotCreateResult>` |
+| `GetOrCreateAsync<TSpot>(spotRid, request, ct)` | `getOrCreate(spot, spotRid, request, signal?)` | `Promise<ZLinkSpotCreateResult>` |
 | `FindAsync(spotRid, ct)` | `find(spotRid, signal?)` | `Promise<ZLinkSpotInfo \| null>` |
 | `ListAsync(ct)` | `list(signal?)` | `Promise<readonly ZLinkSpotInfo[]>` |
-| `RemoveAsync(spotRid, ct)` | `remove(spotRid, signal?)` | `Promise<boolean>` |
+| `CloseAsync(spotRid, ct)` | `close(spotRid, signal?)` | `Promise<boolean>` |
 
 TypeScript 는 런타임 타입 소거가 있으므로, dotnet 의 generic `TSpot` 은 spot
 클래스 생성자를 첫 인자로 넘기는 형태(`create(StageSpot)`)로 표현한다. factory
@@ -146,7 +146,8 @@ dotnet `readonly record struct` 는 불변 객체(interface / type)로 옮긴다
 ```ts
 interface ZLinkSpotCreateResult {
   readonly spotRid: string;   // RoutingId
-  readonly created: boolean;
+  readonly state: ZLinkSpotCreateState;
+  readonly reply?: Message;
 }
 
 interface ZLinkSpotInfo {
@@ -157,11 +158,11 @@ interface ZLinkSpotInfo {
 ### 동작 의미 (dotnet 과 동일)
 
 - **create**: `spot`(=`TSpot`)으로 factory 를 고르고 runtime 이 새 `spotRid` 를
-  발급한다. caller 가 넘긴 `createParts` 의 part 경계를 보존해서 spot 의
-  `onCreate(createParts, ...)` 에 한 번 전달한다. payload 없는 `create(spot)` 은
-  빈 multipart 를 넘긴 것과 같고, `onCreate` 는 빈 list 를 받아 한 번 실행된다.
+  발급한다. caller 가 넘긴 단일 `Message` 를 spot 의 `onCreate(request, ...)` 에
+  한 번 전달한다. payload 없는 `create(spot)` 은 빈 `Message` 를 넘긴 것과 같고,
+  `onCreate` 는 빈 `Message` 를 받아 한 번 실행된다.
 - **getOrCreate**: 명시적 `spotRid` 가 필요할 때 쓴다. 같은 `spotRid` 의 spot 이
-  이미 ready 면 `created: false` 를 반환하고, 이번 `createParts` 는 `onCreate` 로
+  이미 ready 면 `state: Existing` 을 반환하고, 이번 `request` 는 `onCreate` 로
   전달하지 않는다. initializing 상태면 첫 생성 요청의 `onCreate` 완료를
   기다린다. 기존 entry 의 spot 타입이 요청한 `spot` 과 다르면 같은 logical spot
   을 다른 framework type 으로 해석하려는 시도이므로 `SpotTypeMismatch` 로
@@ -169,11 +170,11 @@ interface ZLinkSpotInfo {
 - **find / list**: 운영 코드가 현재 존재하는 logical spot rid 를 확인하는 조회
   표면이다. 결과(`ZLinkSpotInfo`)에는 `spotRid` 만 포함한다. `find` 는 없으면
   `null` 을 반환한다.
-- **remove**: 등록된 SpotNode 들을 훑어 해당 `spotRid` 를 제거하고, 제거하면
-  `true` 를 반환한다. 어떤 node 에도 없으면 `false` 다.
+- **close**: 등록된 SpotNode 들을 훑어 해당 `spotRid` 를 정상 종료하고, 종료하면
+  `true` 를 반환한다. actor 가 남은 user Spot 은 종료하지 않고 `false` 를 반환한다.
 
-반환값은 장기 보관용 spot instance handle 이 아니다. 생성 결과는 `spotRid` 와
-`created` 면 충분하고, 이후 메시징은 현재 channel publish 또는 attach 된 channel
+반환값은 장기 보관용 spot instance handle 이 아니다. 생성 결과는 `spotRid`, 상태,
+선택적 reply `Message` 를 담고, 이후 메시징은 현재 channel publish 또는 attach 된 channel
 client 를 통한 send / request 로 푼다. factory resolve, activation, `onCreate`,
 `onInitialize` 실패는 `SpotCreateFailed` 계열로 분류한다.
 
@@ -245,7 +246,7 @@ Spot RID route 는 framework 가 관리하는 이름 색인이다. 이 색인은
 |---------------|-----------|
 | `EntryRoutingTests.EntrySpotRoutingId_IsApplied_ToNativeEntrySpot` | `entrySpot.routingId` 로 지정한 routing id 가 native Entry Spot facade 에 적용되고 Entry Spot activation 의 `spotRid` 로 노출된다. |
 | `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Rid_And_Removes_Route` | Spot RID route 는 Spot rid 만 찾는 색인으로 쓰고, resolver 가 core `resolveSpot()` 결과의 owner node rid 와 `SpotKind.User` 를 보존한다. |
-| `ManagerTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | `create`, `find`, `list`, `remove` 와 scope 정리가 일관되게 동작한다(dotnet `CreateAsync` / `GetAsync`·`FindAsync` / `ListAsync` / `RemoveAsync` 동등). |
+| `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | `create`, `find`, `list`, `close` 와 scope 정리가 일관되게 동작한다(dotnet `CreateAsync` / `GetAsync`·`FindAsync` / `ListAsync` / `CloseAsync` 동등). |
 
 이름은 dotnet 회귀 테스트와 1:1 로 대응한다. node 구현은 같은 시나리오를 NestJS
 test 로 재현한다([regression-test-matrix](../internals/regression-test-matrix.ko.md)).

@@ -3,11 +3,10 @@ require('reflect-metadata');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { ZLinkModule, zlinkHandlerGroup } = require('../../../../../packages/nestjs/dist');
-const { closeNestRuntime, waitForShutdown } = require('../../../../shared/runtime-common');
-const { SampleBoundSessionRuntime } = require('../../../../shared/bound-session-runtime');
+const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
+const { SampleBoundSessionRuntime } = require('./bound-session-runtime');
 const { PlayerActorFactory } = require('./Actors/player-actor-factory');
 const { BingoNotificationPublisher } = require('./BingoRoomSpots/bingo-notification-publisher');
-const { BingoRoomJoinHandler } = require('./BingoRoomSpots/Handlers/bingo-room-join-handler');
 const { StartBingoGameHandler } = require('./BingoRoomSpots/Handlers/start-bingo-game-handler');
 const { BingoRoomTimerHandler } = require('./BingoRoomSpots/Handlers/bingo-room-timer-handler');
 const { BingoEntrySpot } = require('./EntrySpot/bingo-entry-spot');
@@ -37,7 +36,6 @@ Module({
     PlayerActorFactory,
     BingoNotificationPublisher,
     BingoRoomDirectory,
-    BingoRoomJoinHandler,
     StartBingoGameHandler,
     BingoRoomTimerHandler,
     BingoEntrySpot,

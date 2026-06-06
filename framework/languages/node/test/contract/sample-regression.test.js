@@ -7,7 +7,7 @@ const test = require('node:test');
 const workspaceRoot = path.resolve(__dirname, '..', '..');
 const samplesRoot = path.join(workspaceRoot, 'samples');
 const requiredSamples = [
-  'StreamingClient',
+  'TicTacToe.Ts',
   'Bingo.Ts'
 ];
 
@@ -24,13 +24,34 @@ test('node samples define the required sample directories and README files', () 
   if (!fs.existsSync(path.join(samplesRoot, 'run_samples.sh'))) {
     missing.push('run_samples.sh');
   }
+  if (fs.existsSync(path.join(samplesRoot, 'shared'))) {
+    missing.push('samples/shared must not hide sample logic');
+  }
 
   assert.deepEqual(missing, []);
 });
 
 test('node topology samples mirror dotnet role layout', () => {
   const expected = {
-    StreamingClient: ['Client/self-check.js', 'Server/main.js'],
+    'TicTacToe.Ts': [
+      'Client/self-check.ts',
+      'Server/Api/Handlers/authenticate-player-handler.ts',
+      'Server/Api/Handlers/create-game-http-handler.ts',
+      'Server/Api/main.ts',
+      'Server/Play/Actors/play-actor.ts',
+      'Server/Play/Actors/play-actor-factory.ts',
+      'Server/Play/EntrySpot/Handlers/play-actor-join-game-handler.ts',
+      'Server/Play/EntrySpot/play-entry-spot.ts',
+      'Server/Play/GameSpots/Handlers/play-actor-place-mark-handler.ts',
+      'Server/Play/GameSpots/Handlers/tictactoe-game-timer-handler.ts',
+      'Server/Play/GameSpots/tictactoe-game-models.ts',
+      'Server/Play/GameSpots/tictactoe-game.ts',
+      'Server/Play/Handlers/create-game-handler.ts',
+      'Server/Play/Sessions/play-session.ts',
+      'Server/Play/Sessions/play-session-factory.ts',
+      'Server/Play/main.ts',
+      'Shared/Contracts/messages.ts'
+    ],
     'Bingo.Ts': [
       'Client/bingo-client-app.ts',
       'Client/bingo-notification-inbox.ts',
@@ -41,7 +62,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Api/main.ts',
       'Server/Play/Actors/player-actor.ts',
       'Server/Play/Actors/player-actor-factory.ts',
-      'Server/Play/BingoRoomSpots/Handlers/bingo-room-join-handler.ts',
       'Server/Play/BingoRoomSpots/Handlers/bingo-room-timer-handler.ts',
       'Server/Play/BingoRoomSpots/Handlers/start-bingo-game-handler.ts',
       'Server/Play/BingoRoomSpots/bingo-card.ts',
@@ -105,19 +125,13 @@ test('node samples use only framework and connector public APIs', () => {
 
 test('node framework samples exercise the real NestJS application context', () => {
   const missing = [];
-  for (const sample of ['Bingo.Ts']) {
+  for (const sample of ['TicTacToe.Ts', 'Bingo.Ts']) {
     const usesNestModule = sampleSourceFiles(path.join(samplesRoot, sample))
       .some((file) => fs.readFileSync(file, 'utf8').includes('packages/nestjs/dist'));
     if (!usesNestModule) {
       missing.push(sample);
     }
   }
-
-  const nestRuntime = fs.readFileSync(path.join(samplesRoot, 'shared', 'nestjs-provider-runtime.js'), 'utf8');
-  assert.equal(nestRuntime.includes("require('@nestjs/common')"), true);
-  assert.equal(nestRuntime.includes("require('@nestjs/core')"), true);
-  assert.equal(nestRuntime.includes('NestFactory.createApplicationContext'), true);
-  assert.equal(nestRuntime.includes('resolveModuleProviders'), false);
 
   const hiddenServerRuntime = [];
   for (const file of sampleSourceFiles(samplesRoot)) {
@@ -132,6 +146,8 @@ test('node framework samples exercise the real NestJS application context', () =
   }
 
   const serverRoles = [
+    ['TicTacToe.Ts/Server/Api/main.ts', 'TicTacToeApiModule'],
+    ['TicTacToe.Ts/Server/Play/main.ts', 'TicTacToePlayModule'],
     ['Bingo.Ts/Server/Api/main.ts', 'BingoApiModule'],
     ['Bingo.Ts/Server/Play/main.ts', 'BingoPlayModule'],
     ['Bingo.Ts/Server/Registry/main.ts', 'BingoRegistryModule'],
@@ -154,6 +170,50 @@ test('node framework samples exercise the real NestJS application context', () =
 
   assert.deepEqual(missing, []);
   assert.deepEqual(hiddenServerRuntime, []);
+});
+
+test('TicTacToe TypeScript sample builds and exposes basic TypeScript roles', () => {
+  const packageJson = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'package.json'), 'utf8');
+  const tsconfig = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'tsconfig.json'), 'utf8');
+  const client = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'self-check.ts'), 'utf8');
+  const api = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
+  const play = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
+  const readme = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'README.ko.md'), 'utf8');
+  const runSamples = fs.readFileSync(path.join(samplesRoot, 'run_samples.sh'), 'utf8');
+  const required = [
+    [packageJson, '@zlink-systems/sample-tictactoe-ts'],
+    [packageJson, 'tsc -p tsconfig.json'],
+    [tsconfig, '"outDir": "dist"'],
+    [tsconfig, '"Server/**/*.ts"'],
+    [client, "../Server/Api/main.js"],
+    [client, "../Server/Play/main.js"],
+    [client, 'PASS TicTacToe.Ts'],
+    [api, 'TicTacToeApiModule'],
+    [play, 'TicTacToePlayModule'],
+    [readme, 'TicTacToe TypeScript Sample'],
+    [runSamples, 'samples/TicTacToe.Ts'],
+    [runSamples, 'npm run build'],
+    [runSamples, 'npm run start']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
+  const violations = [];
+  for (const file of sampleSourceFiles(path.join(samplesRoot, 'TicTacToe.Ts'))) {
+    if (!file.endsWith('.ts')) {
+      continue;
+    }
+    const content = fs.readFileSync(file, 'utf8');
+    if (/require\(['"][^'"]*\/TicTacToe\/|from ['"][^'"]*\/TicTacToe\//.test(content)) {
+      violations.push(`${path.relative(samplesRoot, file)} references the JavaScript TicTacToe sample`);
+    }
+    if (content.includes('@ts-nocheck')) {
+      violations.push(`${path.relative(samplesRoot, file)} disables TypeScript checking`);
+    }
+  }
+
+  assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
 });
 
 test('Bingo TypeScript sample builds and exposes separated TypeScript roles', () => {
@@ -204,7 +264,8 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
 
 test('node topology samples run server roles as separate processes over TCP route endpoints', () => {
   const cases = [
-    ['StreamingClient', 'Server/main.js', 'STREAMING_CLIENT_ENDPOINT'],
+    ['TicTacToe.Ts', 'Server/Api/main.ts', 'TICTACTOE_API_ENDPOINT'],
+    ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_ENDPOINT'],
     ['Bingo.Ts', 'Server/Api/main.ts', 'BINGO_API_ENDPOINT'],
     ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_PLAY_ENDPOINT'],
     ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_ENDPOINT'],
@@ -251,15 +312,21 @@ test('node samples do not hide readiness with sleeps or pre-ready pings', () => 
 });
 
 test('node sample process host fails instead of hanging when a ready role exits', () => {
-  const processHost = fs.readFileSync(path.join(samplesRoot, 'shared', 'process-host.js'), 'utf8');
-  const required = [
-    'exitedUnexpectedly',
-    'Promise.race',
-    'exited while sample was running',
-    "child.kill('SIGKILL')",
-    'const closed = await waitForClose'
-  ];
-  const missing = required.filter((text) => !processHost.includes(text));
+  const missing = [];
+  for (const sample of requiredSamples) {
+    const processHost = fs.readFileSync(path.join(samplesRoot, sample, 'Client', 'sample-process-host.ts'), 'utf8');
+    for (const text of [
+      'exitedUnexpectedly',
+      'Promise.race',
+      'exited while sample was running',
+      "child.kill('SIGKILL')",
+      'const closed = await waitForClose'
+    ]) {
+      if (!processHost.includes(text)) {
+        missing.push(`${sample}:${text}`);
+      }
+    }
+  }
 
   assert.deepEqual(missing, []);
 });
@@ -275,7 +342,7 @@ test('node session samples do not implement sample-only actor session stores', (
   ];
   const violations = [];
 
-  for (const sample of ['Bingo.Ts']) {
+  for (const sample of ['TicTacToe.Ts', 'Bingo.Ts']) {
     for (const file of sampleSourceFiles(path.join(samplesRoot, sample))) {
       const content = fs.readFileSync(file, 'utf8');
       for (const pattern of bannedPatterns) {
@@ -298,23 +365,6 @@ test('node run_samples.sh executes every sample self-check', () => {
   for (const sample of requiredSamples) {
     assert.match(output, new RegExp(`PASS ${escapeRegExp(sample)}`));
   }
-});
-
-test('StreamingClient sample covers reconnect request reply and manual notification dispatch', () => {
-  const sample = fs.readFileSync(path.join(samplesRoot, 'StreamingClient', 'Client', 'self-check.js'), 'utf8');
-  const server = fs.readFileSync(path.join(samplesRoot, 'StreamingClient', 'Server', 'main.js'), 'utf8');
-  const required = [
-    'dispatchMode: connector.ZlinkStreamDispatchMode.Manual',
-    ".request(json.toJson({ playerId: 'p1' }))",
-    "client.on('ServerNotice'",
-    'endpoint'
-  ];
-  const missing = required.filter((text) => !sample.includes(text));
-  if (!server.includes('net.createServer') || !server.includes('ZlinkStreamFrameCodec.decode')) {
-    missing.push('tcp stream server');
-  }
-
-  assert.deepEqual(missing, []);
 });
 
 test('node cross-language smoke covers channel send publish and stream connector paths', () => {

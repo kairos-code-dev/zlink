@@ -22,7 +22,7 @@
 현재 `SPOT` 초안은 다음 기능을 중심으로 잡혀 있다.
 
 - `SpotNode`[^spot-node] 등록
-- `spotRid` 생성과 삭제
+- `spotRid` 생성과 정상 종료
 - current channel publish/subscribe
 - attach된 channel client 기반 send/request
 - topic publish/subscribe
@@ -66,7 +66,7 @@
 기본 `zlink framework` 가 직접 맡는 범위는 보통 다음 정도다.
 
 - `SpotNode` 등록과 lifecycle[^lifecycle]
-- `spotRid` 생성과 삭제
+- `spotRid` 생성과 정상 종료
 - current channel publish/subscribe
 - attach된 channel client 기반 send/request
 - publish/subscribe
@@ -266,8 +266,6 @@ export interface ZLinkSpot {
 }
 
 export interface ZLinkSpotContext {
-  addActorJoin<THandler, TActor extends ZLinkActor, TRequest, TReply>(): void;
-
   addTimer<THandler>(
     name: string,
     periodMs: number,
@@ -332,7 +330,7 @@ timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간
 이 절은 `Stage` 생성 시점에 초기 payload 를 함께 받는 표면이 왜 따로 필요한지를
 정리한다.
 
-현재 `ZLinkSpotManager` 는 `spotRid` 의 생성과 삭제를 설명하기에는 충분하다.
+현재 `ZLinkSpotManager` 는 `spotRid` 의 생성과 정상 종료를 설명하기에는 충분하다.
 하지만 `Stage` 생성처럼 초기 payload 를 함께 받는 모델을 설명하기에는 부족하다.
 
 예를 들면 `playhouse` 의 stage 생성은 보통 다음 정보를 함께 들고 들어간다.
@@ -452,8 +450,8 @@ wrapper 전용 API 가 생기면, 이 표에는 실제로 실행되는 테스트
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | actor join 뒤 spot 실행 문맥 경유 (dotnet `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` 대응) | actor join 뒤 stage 역할의 spot 실행 문맥 안에서 packet이 처리된다. |
-| spot 제거 후 timer 정지 (dotnet `ManagerTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` 대응) | stage tick으로 쓰는 timer가 spot 제거 후 정확히 멈춘다. |
-| spot manager 생성·조회·제거 (dotnet `ManagerTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` 대응) | stage 생성·조회·제거에 필요한 spot manager와 scope 정리가 정상 동작한다. |
+| spot close 후 timer 정지 (dotnet `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` 대응) | stage tick으로 쓰는 timer가 spot close 후 정확히 멈춘다. |
+| spot manager 생성·조회·close (dotnet `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` 대응) | stage 생성·조회·close에 필요한 spot manager와 scope 정리가 정상 동작한다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^stage]: `Stage`는 `playhouse`에서 게임 룸 같은 상위 실행 단위를 표현하는 모델이다. 단일 실행 문맥과 membership, lifecycle 같은 상위 개념을 함께 가진다.

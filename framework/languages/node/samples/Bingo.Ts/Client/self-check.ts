@@ -1,8 +1,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const nestjs = require('../../../../packages/nestjs/dist');
-const { assertNestModule } = require('../../../shared/nestjs-smoke');
-const { reserveTcpEndpoint, withServers } = require('../../../shared/process-host');
+const { reserveTcpEndpoint, withServers } = require('./sample-process-host');
 import { BingoClientApp } from './bingo-client-app';
 
 async function main() {
@@ -49,6 +48,22 @@ async function main() {
   });
 
   console.log('PASS Bingo.Ts');
+}
+
+function assertNestModule(options, zlinkNestjs = nestjs) {
+  const module = zlinkNestjs.ZLinkModule.forRoot(options);
+  const tokens = new Set(module.providers.map((provider) => provider.provide));
+  for (const token of [
+    zlinkNestjs.ZLINK_FRAMEWORK_RUNTIME,
+    zlinkNestjs.ZLINK_CHANNEL_CLIENT,
+    zlinkNestjs.ZLINK_ROUTE_CLIENT,
+    zlinkNestjs.ZLINK_FANOUT_CLIENT
+  ]) {
+    if (!tokens.has(token)) {
+      throw new Error(`NestJS ZLinkModule provider is missing: ${String(token)}`);
+    }
+  }
+  return module;
 }
 
 main().catch((error) => {

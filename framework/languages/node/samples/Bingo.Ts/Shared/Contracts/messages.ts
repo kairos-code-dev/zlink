@@ -1,3 +1,5 @@
+const { Message } = require('@zlink-systems/zlink');
+
 function actorDisplayName(actorId) {
   return actorId.replace('player-', 'Player ');
 }
@@ -18,4 +20,12 @@ function deterministicCard(actorId) {
   return card;
 }
 
-export { actorDisplayName, deterministicCard };
+function createJsonMessage(value) {
+  return Message.from(Buffer.from(JSON.stringify(value)));
+}
+
+function readJsonMessage(message) {
+  return JSON.parse(message.getString());
+}
+
+export { actorDisplayName, createJsonMessage, deterministicCard, readJsonMessage };

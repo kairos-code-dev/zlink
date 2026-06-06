@@ -1,4 +1,4 @@
-const { deterministicCard } = require('../../../Shared/Contracts/messages');
+const { createJsonMessage, deterministicCard, readJsonMessage } = require('../../../Shared/Contracts/messages');
 const { BingoCard } = require('./bingo-card');
 const { BingoRoomStatus } = require('./bingo-room-models');
 
@@ -15,12 +15,17 @@ class BingoRoomSpot {
     this.winners = [];
   }
 
-  async join(actor) {
+  async onActorJoin(actor, request) {
+    const admission = readJsonMessage(request);
+    actor.displayName = admission.displayName ?? actor.displayName;
     if (this.players.some((player) => player.actor.actorId === actor.actorId)) {
-      return { state: this.snapshot() };
+      return { accepted: true, reply: createJsonMessage({ state: this.snapshot() }) };
     }
     if (this.status !== BingoRoomStatus.waitingForPlayers || this.players.length >= this.settings.requiredPlayers) {
-      throw new Error(`Room ${this.roomId} cannot accept more players.`);
+      return {
+        accepted: false,
+        reply: createJsonMessage({ error: `Room ${this.roomId} cannot accept more players.` })
+      };
     }
 
     const seat = this.players.length;
@@ -39,7 +44,7 @@ class BingoRoomSpot {
         state
       })
     ));
-    return { state };
+    return { accepted: true, reply: createJsonMessage({ state }) };
   }
 
   async start(actor) {

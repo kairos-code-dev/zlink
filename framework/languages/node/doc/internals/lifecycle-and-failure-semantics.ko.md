@@ -232,10 +232,11 @@ binding 을 지우지 못하도록 조건부 unbind 에 사용한다.
 - `onInitialize(...)` 는 spot 의 실행 문맥에서 단 한 번만 호출된다.
 - `configure()` 는 `onInitialize(...)` 보다 먼저 한 번 호출된다.
   `context.addPacket<THandler>()`, `context.addSubscribe<THandler>()`,
-  `context.addActorJoin<THandler, TActor, TRequest, TReply>()` 등록은 오직 이
-  단계에서만 허용된다.
-- `onClosing(...)` 는 `ZLinkSpotManager.remove(...)` 로 SPOT 을 정상적으로
-  제거할 때, spot 의 실행 문맥에서 호출된다. host shutdown 이나 process 종료
+  `context.addActorPacket<THandler, TActor>()` 등록은 오직 이 단계에서만 허용된다.
+- `onActorJoin(...)`, `onPostActorJoined(...)`, `onActorLeft(...)` 는 별도 handler
+  등록이 아니라 Spot / Entry Spot 멤버 callback 으로 선언한다.
+- `onClosing(...)` 는 `ZLinkSpotManager.close(...)` 로 SPOT 을 정상적으로
+  종료할 때, spot 의 실행 문맥에서 호출된다. host shutdown 이나 process 종료
   시점에 반드시 호출되는 destructor 같은 의미는 아니다.
 - framework 는 spot 마다 별도의 scope[^per-spot-scope] 를 만들고, 등록해 둔
   handler 타입은 그 scope 안에서 resolve 한다.

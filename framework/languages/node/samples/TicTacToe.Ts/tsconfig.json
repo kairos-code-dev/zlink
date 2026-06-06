@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "strict": false
+  },
+  "include": [
+    "Client/**/*.ts",
+    "Server/**/*.ts",
+    "Shared/**/*.ts"
+  ]
+}

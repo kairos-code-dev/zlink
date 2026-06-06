@@ -135,7 +135,7 @@ cross-language smoke 필수 경로:
 - dotnet stream connector -> Node stream server
 
 sample 필수 경로:
-- StreamingClient
+- TicTacToe.Ts
 - Bingo.Ts
 
 ABI release gate 필수 runtime:

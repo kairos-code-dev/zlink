@@ -13,20 +13,19 @@ import type {
   ZLinkActorManager,
   ZLinkBoundSession,
   ZLinkSpot,
-  ZLinkSpotActorChangeResult,
   ZLinkSpotActorDisconnectedHandler,
-  ZLinkSpotActorLeftHandler,
+  ZLinkSpotActorJoinResponse,
   ZLinkSpotActorRequestContext,
   ZLinkSpotActorRequestHandler,
   ZLinkSpotActorReplyOptions,
   ZLinkSpotActorSendContext,
-  ZLinkSpotActorSendHandler,
-  ZLinkSpotPostActorJoinedHandler
+  ZLinkSpotActorSendHandler
 } from '../../contracts';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
+import { Message as BindingMessage } from '@zlink-systems/zlink';
 import { ZLinkConfigurationException } from '../configuration';
 import type {
   ZLinkBackendActorJoinEntrySpotResult,
@@ -45,14 +44,14 @@ export interface ZLinkActorManagerOptions {
 export type ZLinkActorBoundSessionFactory = (actorId: string) => ZLinkBoundSession;
 
 export interface ZLinkActorJoinCoordinator {
-  joinSpot<TRequest, TReply>(
+  joinSpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
     spotRid: RoutingId,
-    request: TRequest,
+    request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<TReply>>;
+  ): Promise<ZLinkActorJoinResult>;
   joinEntrySpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
@@ -64,8 +63,6 @@ export interface ZLinkActorJoinCoordinator {
 
 export interface ZLinkActorNativeJoinCoordinatorOptions {
   readonly node: ZLinkBackendSpotNode;
-  readonly createJoinPayload?: (request: unknown) => Message | readonly Message[];
-  readonly decodeJoinReply?: <TReply>(parts: readonly Message[]) => TReply | undefined;
 }
 
 export enum ZLinkActorPacketKind {
@@ -323,17 +320,16 @@ export class ZLinkActorRuntimeState {
 export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinator {
   constructor(private readonly options: ZLinkActorNativeJoinCoordinatorOptions) {}
 
-  async joinSpot<TRequest, TReply>(
+  async joinSpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
     spotRid: RoutingId,
-    request: TRequest,
+    request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<TReply>> {
+  ): Promise<ZLinkActorJoinResult> {
     throwIfAborted(signal);
     const actorRef = state.ensureNativeActorRef(this.options.node);
-    const payload = this.createJoinPayload(request);
     const { result, parts } = await new Promise<{
       result: ZLinkBackendActorJoinResult;
       parts: readonly Message[];
@@ -346,7 +342,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         actorRef,
         actorRef.nodeRid,
         toBackendRoutingId(spotRid),
-        payload,
+        request,
         (joinResult: ZLinkBackendActorJoinResult, replyParts: readonly Message[]) => {
           resolve({ result: joinResult, parts: replyParts });
         },
@@ -374,10 +370,10 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       return {
         resultCode: result.joinResultCode,
         actor: toFrameworkActorRef(result.actor),
-        reply: this.options.decodeJoinReply?.<TReply>(parts)
+        reply: parts[0]
       };
     } finally {
-      this.disposeParts(parts);
+      this.disposeParts(parts.slice(1));
     }
   }
 
@@ -419,10 +415,6 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     return toFrameworkActorRef(result.actor);
   }
 
-  private createJoinPayload(request: unknown): Message | readonly Message[] {
-    return this.options.createJoinPayload?.(request) ?? [];
-  }
-
   private disposeParts(parts: readonly Message[]): void {
     for (const part of parts) {
       part.close();
@@ -460,8 +452,15 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
     return spot;
   }
 
-  joinSpot<TRequest = unknown>(spotRid: RoutingId, request: TRequest): ZLinkActorJoinSpotCall {
-    return new DefaultZLinkActorJoinSpotCall(this.state, this.requireActor(), this.requireJoinCoordinator(), spotRid, request);
+  joinSpot(spotRid: RoutingId, request?: Message): ZLinkActorJoinSpotCall {
+    return new DefaultZLinkActorJoinSpotCall(
+      this.state,
+      this.requireActor(),
+      this.requireJoinCoordinator(),
+      spotRid,
+      request ?? BindingMessage.from(Buffer.alloc(0)),
+      request === undefined
+    );
   }
 
   joinEntrySpot(nodeRid: RoutingId): ZLinkActorJoinEntrySpotCall {
@@ -552,8 +551,6 @@ export class ZLinkActorDispatchRouter {
 
 export class ZLinkSpotActorHandlerRegistryRuntime {
   private readonly packets = new Map<string, ZLinkActorPacketDescriptor>();
-  private readonly joined = new Map<Type<ZLinkActor>, ZLinkActorLifecycleDescriptor>();
-  private readonly left = new Map<Type<ZLinkActor>, ZLinkActorLifecycleDescriptor>();
   private readonly disconnected = new Map<Type<ZLinkActor>, ZLinkActorLifecycleDescriptor>();
 
   addPacket(descriptor: ZLinkActorPacketDescriptor): this {
@@ -565,14 +562,6 @@ export class ZLinkSpotActorHandlerRegistryRuntime {
     }
     this.packets.set(key, descriptor);
     return this;
-  }
-
-  addPostActorJoined(descriptor: ZLinkActorLifecycleDescriptor): this {
-    return this.addLifecycle(this.joined, descriptor, 'joined');
-  }
-
-  addActorLeft(descriptor: ZLinkActorLifecycleDescriptor): this {
-    return this.addLifecycle(this.left, descriptor, 'left');
   }
 
   addActorDisconnected(descriptor: ZLinkActorLifecycleDescriptor): this {
@@ -602,14 +591,6 @@ export class ZLinkSpotActorHandlerRegistryRuntime {
     return undefined;
   }
 
-  resolvePostActorJoined(actor: ZLinkActor): ZLinkActorLifecycleDescriptor | undefined {
-    return this.resolveLifecycle(this.joined, actor);
-  }
-
-  resolveActorLeft(actor: ZLinkActor): ZLinkActorLifecycleDescriptor | undefined {
-    return this.resolveLifecycle(this.left, actor);
-  }
-
   resolveActorDisconnected(actor: ZLinkActor): ZLinkActorLifecycleDescriptor | undefined {
     return this.resolveLifecycle(this.disconnected, actor);
   }
@@ -621,7 +602,7 @@ export class ZLinkSpotActorHandlerRegistryRuntime {
   ): this {
     if (target.has(descriptor.actorType)) {
       throw new ZLinkConfigurationException(
-        `Actor ${kind} lifecycle handler for '${descriptor.actorType.name}' is already registered.`
+        `Actor ${kind} handler for '${descriptor.actorType.name}' is already registered.`
       );
     }
     target.set(descriptor.actorType, descriptor);
@@ -711,22 +692,28 @@ export class ZLinkSpotActorDispatcher {
     });
   }
 
-  notifyPostActorJoined(actor: ZLinkActor, result: ZLinkSpotActorChangeResult): Promise<void> {
-    return this.invokeLifecycle(
-      actor,
-      this.options.registry.resolvePostActorJoined(actor),
-      (handler: ZLinkSpotPostActorJoinedHandler<ZLinkSpot, ZLinkActor>) =>
-        handler.handle(this.options.spot, actor, result)
-    );
+  admitActorJoin(
+    actor: ZLinkActor,
+    request: Message,
+    commit: () => Promise<void> | void
+  ): Promise<ZLinkSpotActorJoinResponse> {
+    return this.execute(async () => {
+      const result = await this.options.spot.onActorJoin?.(actor, request) ?? { accepted: false };
+      if (!result.accepted) {
+        return result;
+      }
+      await commit();
+      await this.options.spot.onPostActorJoined?.(actor);
+      return result;
+    });
   }
 
-  notifyActorLeft(actor: ZLinkActor, result: ZLinkSpotActorChangeResult): Promise<void> {
-    return this.invokeLifecycle(
-      actor,
-      this.options.registry.resolveActorLeft(actor),
-      (handler: ZLinkSpotActorLeftHandler<ZLinkSpot, ZLinkActor>) =>
-        handler.handle(this.options.spot, actor, result)
-    );
+  notifyPostActorJoined(actor: ZLinkActor): Promise<void> {
+    return this.execute(() => this.options.spot.onPostActorJoined?.(actor));
+  }
+
+  notifyActorLeft(actor: ZLinkActor): Promise<void> {
+    return this.execute(() => this.options.spot.onActorLeft?.(actor));
   }
 
   notifyActorDisconnected(actor: ZLinkActor): Promise<void> {
@@ -810,7 +797,7 @@ export class ZLinkSpotActorDispatcher {
   }
 }
 
-class DefaultZLinkActorJoinSpotCall<TRequest> implements ZLinkActorJoinSpotCall {
+class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
   private timeoutMs: number | undefined;
 
   constructor(
@@ -818,7 +805,8 @@ class DefaultZLinkActorJoinSpotCall<TRequest> implements ZLinkActorJoinSpotCall 
     private readonly actor: ZLinkActor,
     private readonly coordinator: ZLinkActorJoinCoordinator,
     private readonly spotRid: RoutingId,
-    private readonly request: TRequest
+    private readonly request: Message,
+    private readonly ownsRequest: boolean
   ) {}
 
   timeout(timeoutMs: number): this {
@@ -826,15 +814,21 @@ class DefaultZLinkActorJoinSpotCall<TRequest> implements ZLinkActorJoinSpotCall 
     return this;
   }
 
-  submit<TReply>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
-    return this.coordinator.joinSpot<TRequest, TReply>(
-      this.actor,
-      this.state,
-      this.spotRid,
-      this.request,
-      this.timeoutMs,
-      signal
-    );
+  async submit(signal?: AbortSignal): Promise<ZLinkActorJoinResult> {
+    try {
+      return await this.coordinator.joinSpot(
+        this.actor,
+        this.state,
+        this.spotRid,
+        this.request,
+        this.timeoutMs,
+        signal
+      );
+    } finally {
+      if (this.ownsRequest) {
+        this.request.close();
+      }
+    }
   }
 }
 

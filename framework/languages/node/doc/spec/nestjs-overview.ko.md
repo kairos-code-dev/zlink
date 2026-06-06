@@ -678,10 +678,9 @@ interface ZLinkBackendSpot extends ZLinkBackendObject {
 ```
 
 > `joinActor` / `requestToChannel` / `sendToChannel` / `publish` / `sendToSpot`
-> / `requestToSpot` / `reply` / `replyActorJoin` 은 .NET 에서 단일
-> `Message` overload 와 `IReadOnlyList<Message>`(multipart) overload 두 개로
-> 나뉜다. TypeScript 는 union 인자(`Message | readonly Message[]`)로 합치거나,
-> 표면 매핑 정책에 따라 별도 overload 로 둘 수 있다. 의미는 동일하다.
+> / `requestToSpot` / `reply` / `replyActorJoin` 은 public framework 표면에서
+> 단일 `Message` 요청/응답을 우선 사용한다. transport 내부가 여러 part 를 쓰더라도
+> application callback 계약은 별도 part list 를 직접 받지 않는다.
 
 #### Registry (`IZLinkBackendRegistryContracts`)
 

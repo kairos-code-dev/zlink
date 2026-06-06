@@ -213,7 +213,7 @@ completion 이 어떤 의미인지는 호출 종류에 따라 달라진다.
   기다리면 충분하다.
 - request / reply relay 는 handler 가 reply 를 만들어 내거나 오류를 낼 때까지
   기다린다.
-- lifecycle callback 은 runtime shutdown 이나 remove 흐름에서 completion 을
+- lifecycle callback 은 runtime shutdown 이나 close 흐름에서 completion 을
   기다릴 수 있다.
 - fire-and-forget handler 예외는 completion 을 기다리는 호출자가 없더라도
   runtime error sink 에 반드시 기록해야 한다.
@@ -793,12 +793,16 @@ class ZLinkEntrySpotRuntime {
     return this.lifecycleQueue.run((s) => this.entrySpot.onClosing(s), signal);
   }
 
-  actorJoined(
-    info: ZLinkSpotActorChangeResult,
-    signal?: AbortSignal,
-  ): Promise<void> {
+  actorJoined(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     return this.lifecycleQueue.run(
-      (s) => this.invokeEntrySpotActorJoinedHandler(info, s),
+      (s) => this.entrySpot.onPostActorJoined?.(actor, s),
+      signal,
+    );
+  }
+
+  actorLeft(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+    return this.lifecycleQueue.run(
+      (s) => this.entrySpot.onActorLeft?.(actor, s),
       signal,
     );
   }
@@ -1244,12 +1248,13 @@ export class TicTacToeEntrySpot implements ZLinkEntrySpot {
 export class TicTacToeGame implements ZLinkSpot {
   readonly context!: ZLinkSpotContext;
 
+  async onActorJoin(actor: ZLinkActor, request: Message): Promise<ZLinkSpotActorJoinResponse> {
+    return { accepted: true };
+  }
+
   configure(): void {
-    this.context.addActorJoin(JoinMatchHandler);
     this.context.addHandler(PlaceMarkHandler);
     this.context.addHandler(MoveHandler);
-    this.context.addHandler(TicTacToeGameJoinedHandler);
-    this.context.addHandler(TicTacToeGameLeftHandler);
   }
 }
 ```

@@ -112,15 +112,11 @@ export interface ActorRef {
 | context | `ZLinkEntrySpotContext` | Entry Spot 실행 context | 4.3.1 |
 | handler | `ZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user Spot actor send handler | 4.4.2 |
 | handler | `ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor request handler | 4.4.2 |
-| handler | `ZLinkSpotPostActorJoinedHandler<TSpot, TActor>` | actor join commit 이후 lifecycle handler | 4.3.1 |
-| handler | `ZLinkSpotActorLeftHandler<TSpot, TActor>` | actor leave commit 이후 lifecycle handler | 4.3.1 |
 | handler | `ZLinkSpotActorDisconnectedHandler<TSpot, TActor>` | actor disconnect 알림 handler | 4.3.1 |
 | handler | `ZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor send handler | 4.4.2 |
 | handler | `ZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor request handler | 4.4.2 |
 | handler | `ZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>` | Entry Spot actor disconnect handler | 4.3.1 |
-| handler | `ZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | spot에 actor가 join할 때 호출되는 handler | 4.4.1 |
-| value | `ZLinkSpotActorChangeKind` | actor membership 변화 enum | 4.3.1 |
-| value | `ZLinkSpotActorChangeResult` | actor membership 변화 결과 | 4.3.1 |
+| lifecycle | `ZLinkSpot.onActorJoin(...)` | user Spot actor join admission callback | 4.4.1 |
 | options | `ZLinkSpotActorReplyOptions` | spot actor request reply 옵션 빌더 | 4.4.2 |
 | stream | `ZLinkStream` | stream I/O와 peer 식별 | 4.4 |
 | value | `ZLinkStreamSessionError` | stream session error category enum | 4.4 |
@@ -165,7 +161,7 @@ export interface ActorRef {
 | resolver | `ZLinkSpotRemoteAddressResolver` | spot rid에서 user Spot route 조회 | 5.7 |
 | value | `ZLinkSpotKind` | spot 종류 enum (Entry/User) | 5.7 |
 | value | `ZLinkSpotRemoteAddress` | resolver 가 돌려주는 주소 | 5.7 |
-| manager | `ZLinkSpotManager` | spot 인스턴스 생성/조회/삭제 | 6.3 |
+| manager | `ZLinkSpotManager` | spot 인스턴스 생성/조회/정상 종료 | 6.3 |
 | value | `ZLinkSpotCreateResult` | spot 생성 결과 | 6.3 |
 | value | `ZLinkSpotInfo` | spot 조회 결과 | 6.3 |
 | builder | `ZLinkFrameworkOptions` | framework 등록 루트 builder (= module options) | 6.1 |
@@ -405,9 +401,10 @@ NestJS module 자동 discovery 는 fanout subscriber channel 에서 이 decorato
 publish envelope 의 packet name 에 맞는 handler 를 호출하고, topic 과 source 는
 `ZLinkPublishContext` 로 전달한다.
 
-### 4.3.1 SPOT lifecycle handler
+### 4.3.1 SPOT lifecycle callback
 
-이 절은 SPOT 객체의 lifecycle 표면과, 그 안에서 동작하는 handler 종류를 정의한다.
+이 절은 SPOT 객체의 lifecycle callback 표면과, 그 안에서 동작하는 handler 종류를
+정의한다.
 
 SPOT 은 Actor 와 같은 원칙을 따른다. callback 표면과 실행 context 표면을 분리한다.
 user Spot 은 `ZLinkSpot` 을, Entry Spot 은 `ZLinkEntrySpot` 을 구현한다.
@@ -418,7 +415,7 @@ export interface ZLinkSpot {
 
   configure?(): void;
 
-  onCreate?(createReqs: readonly Message[]): Promise<void>;
+  onCreate?(request: Message, signal?: AbortSignal): Promise<ZLinkSpotCreateResponse>;
 
   onInitialize?(): Promise<void>;
 
@@ -433,6 +430,10 @@ export interface ZLinkEntrySpot {
   onInitialize?(): Promise<void>;
 
   onClosing?(): Promise<void>;
+
+  onPostActorJoined?(actor: ZLinkActor): Promise<void>;
+
+  onActorLeft?(actor: ZLinkActor): Promise<void>;
 }
 ```
 
@@ -457,16 +458,6 @@ export interface ZLinkActorHandlerRegistry {
     packetName: string,
   ): void;
 
-  addPostActorJoined<THandler, TActor extends ZLinkActor>(
-    handlerType: Type<THandler>,
-    actorType: Type<TActor>,
-  ): void;
-
-  addActorLeft<THandler, TActor extends ZLinkActor>(
-    handlerType: Type<THandler>,
-    actorType: Type<TActor>,
-  ): void;
-
   addActorDisconnected<THandler, TActor extends ZLinkActor>(
     handlerType: Type<THandler>,
     actorType: Type<TActor>,
@@ -479,11 +470,6 @@ export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
 
   addSubscribe<THandler>(handlerType: Type<THandler>, topic: string): void;
 
-  addActorJoin<THandler, TActor extends ZLinkActor, TRequest, TReply>(
-    handlerType: Type<THandler>,
-    actorType: Type<TActor>,
-  ): void;
-  addActorJoin<THandler>(handlerType: Type<THandler>): void;
 }
 
 /** user Spot 실행 context. C# IZLinkSpotContext 대응. */
@@ -496,6 +482,8 @@ export interface ZLinkSpotContext {
 
   leaveActor(actor: ZLinkActor): Promise<void>;
 
+  close(): Promise<boolean>;
+
   addTimer<THandler>(
     name: string,
     periodMs: number,
@@ -504,7 +492,7 @@ export interface ZLinkSpotContext {
   ): Promise<ZLinkTimer>;
 }
 
-/** Entry Spot 실행 context. C# IZLinkEntrySpotContext 대응. leaveActor 는 없다. */
+/** Entry Spot 실행 context. C# IZLinkEntrySpotContext 대응. leaveActor/close 는 없다. */
 export interface ZLinkEntrySpotContext {
   readonly spotRid: RoutingId;
   readonly nodeRid: RoutingId;
@@ -545,7 +533,7 @@ export interface ZLinkSpotTimerHandler<TSpot> {
 }
 ```
 
-#### actor packet / lifecycle handler interface
+#### actor packet handler interface
 
 ```ts
 export interface ZLinkSpotActorSendHandler<TSpot, TActor extends ZLinkActor, TMessage> {
@@ -564,14 +552,6 @@ export interface ZLinkSpotActorRequestHandler<TSpot, TActor extends ZLinkActor, 
     context: ZLinkSpotActorRequestContext,
     request: TRequest,
   ): Promise<TReply>;
-}
-
-export interface ZLinkSpotPostActorJoinedHandler<TSpot, TActor extends ZLinkActor> {
-  handle(spot: TSpot, actor: TActor, result: ZLinkSpotActorChangeResult): Promise<void>;
-}
-
-export interface ZLinkSpotActorLeftHandler<TSpot, TActor extends ZLinkActor> {
-  handle(spot: TSpot, actor: TActor, result: ZLinkSpotActorChangeResult): Promise<void>;
 }
 
 export interface ZLinkSpotActorDisconnectedHandler<TSpot, TActor extends ZLinkActor> {
@@ -613,37 +593,21 @@ export interface ZLinkEntrySpotActorDisconnectedHandler<
 }
 ```
 
-> 코드 기준: Entry Spot lifecycle(join/left) handler 는 dotnet 에서 user Spot 과 **같은**
-> `ZLinkSpotPostActorJoinedHandler<TEntrySpot, TActor>` / `ZLinkSpotActorLeftHandler<TEntrySpot, TActor>`
-> 를 재사용한다(`TEntrySpot extends ZLinkEntrySpot`). Entry Spot 전용 별도 interface 를
-> 두지 않는다. disconnected 만 `ZLinkEntrySpotActorDisconnectedHandler` 로 분리되어 있다.
-
-#### actor membership 변화 값
-
-```ts
-export enum ZLinkSpotActorChangeKind {
-  JoinSpot = 'joinSpot',
-  JoinEntrySpot = 'joinEntrySpot',
-  LeaveSpot = 'leaveSpot',
-}
-
-export interface ZLinkSpotActorChangeResult {
-  readonly kind: ZLinkSpotActorChangeKind;
-}
-```
-
-`ZLinkSpotActorChangeResult` 는 정의되지 않은 kind 를 허용하지 않는다. 0 값이나 enum 에
-없는 값은 application callback 으로 올라오지 않는다.
+> 코드 기준: Entry Spot lifecycle(join/left)은 handler interface 가 아니라
+> `ZLinkEntrySpot.onPostActorJoined(...)` / `onActorLeft(...)` 멤버 callback 으로 선언한다.
+> disconnected 만 `ZLinkEntrySpotActorDisconnectedHandler` 로 분리되어 있다.
 
 #### lifecycle callback 의미
 
-- `onCreate(createReqs)` 는 생성 요청이 넘긴 multipart payload 를 spot 상태로 해석하는
-  단계다. framework 가 새 spot 인스턴스를 만든 경우에만 호출된다.
+- `onCreate(request)` 는 생성 요청이 넘긴 단일 `Message` 를 spot 상태로 해석하는
+  단계다. framework 가 새 spot 인스턴스를 만든 경우에만 호출된다. 반환값은
+  `{ accepted, reply? }` 이며, `accepted: false` 는 등록 없이 `Rejected` 결과로
+  caller 에게 돌아간다.
 - `onInitialize()` 는 payload 와 무관한 lifecycle 준비 단계다. timer 등록 같은 작업을 둔다.
-- 새 spot 생성 시 호출 순서: `configure()`, descriptor binding, `onCreate(createReqs)`,
+- 새 spot 생성 시 호출 순서: `configure()`, descriptor binding, `onCreate(request)`,
   `onInitialize()`. 이미 ready 상태인 spot 을 반환하는 `getOrCreate(...)` 는
   `onCreate` / `onInitialize` 를 다시 호출하지 않는다.
-- `onClosing()` 은 `ZLinkSpotManager.remove(...)` 로 정상 제거할 때 실행 문맥 안에서
+- `onClosing()` 은 `ZLinkSpotManager.close(...)` 로 정상 종료할 때 실행 문맥 안에서
   호출된다. destructor 가 아니므로 host shutdown / process 종료 시 반드시 호출되는 것은 아니다.
 
 다음 handler 등록 호출은 `configure()` 단계 안에서만 허용된다. 초기화 후 추가하면
@@ -652,17 +616,13 @@ framework 가 예외를 던진다.
 - `context.handlers.addPacket(...)`
 - `context.handlers.addHandler(...)`
 - `context.handlers.addActorPacket(...)`
-- `context.handlers.addPostActorJoined(...)`
-- `context.handlers.addActorLeft(...)`
 - `context.handlers.addActorDisconnected(...)`
 - `context.handlers.addSubscribe(...)`
-- `context.handlers.addActorJoin(...)`
 
 `addHandler(handlerType)` 는 `handlerType` 이 구현한 actor handler interface 를 보고
-actor 타입 / send·request·lifecycle 종류 / packet 이름 기본값을 추론한다. handler 가
+actor 타입 / send·request / packet 이름 기본값을 추론한다. handler 가
 여러 actor handler interface 를 구현해서 모호하면 명시적
-`addActorPacket(handlerType, actorType)`, `addPostActorJoined(...)`, `addActorLeft(...)`,
-`addActorDisconnected(...)` 를 쓴다.
+`addActorPacket(handlerType, actorType)` 또는 `addActorDisconnected(...)` 를 쓴다.
 
 handler 선언은 두 방식이다.
 
@@ -727,29 +687,27 @@ export class MatchSpot implements ZLinkSpot {
 user Spot handler 는 spot 객체와 actor 객체를 함께 받는다. room/game/stage 같은 실행
 문맥 상태는 spot 에서, player 상태는 actor 에서 읽는다.
 
-##### actor join/leave lifecycle 등록
+##### actor join/leave lifecycle callback
 
 actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후 후속 처리는
-`addPostActorJoined(handlerType, actorType)` 와 `addActorLeft(handlerType, actorType)` 로
-등록한다. `onJoinActor` / `onLeaveActor` 같은 method override 는 공개 계약에 두지 않는다.
+Spot 멤버 `onPostActorJoined(actor)` 와 `onActorLeft(actor)` 로 선언한다.
+user Spot 에 actor 가 들어올지 결정하는 admission 은 `onActorJoin(actor, request)` 가
+맡는다. Entry Spot 은 기본 진입 지점이므로 `onActorJoin` 이 없다.
 
 ```ts
-@Injectable()
-export class PlayerMatchJoinedHandler {
-  @ZLinkSpotPostActorJoined()
-  async handle(
-    spot: MatchSpot,
-    actor: PlayerActor,
-    info: ZLinkSpotActorChangeResult,
-  ): Promise<void> {
-    // ...
+export class MatchSpot implements ZLinkSpot {
+  async onActorJoin(actor: PlayerActor, request: Message): Promise<ZLinkSpotActorJoinResponse> {
+    return { accepted: true };
   }
+
+  async onPostActorJoined(actor: PlayerActor): Promise<void> {}
+
+  async onActorLeft(actor: PlayerActor): Promise<void> {}
 }
 ```
 
-`addPostActorJoined(...)` / `addActorLeft(...)` 로 등록한 handler 는 join/leave commit 이
-끝난 뒤 동일 실행 문맥에서 호출된다. admission 결정 hook 이 아니라 commit 이후 후속
-처리 단계다. disconnected handler 는 join/leave 와 별개이며 actor membership 을 바꾸지
+`onPostActorJoined(...)` / `onActorLeft(...)` 는 join/leave commit 이 끝난 뒤 동일 실행
+문맥에서 호출된다. disconnected handler 는 join/leave 와 별개이며 actor membership 을 바꾸지
 않는다. `notifyDisconnected(...)` 로 대상 actor 를 명시하면 호출된다.
 
 중복 등록은 같은 registry 단위로 검사한다. Entry Spot registry 와 각 user Spot registry 는
@@ -1026,31 +984,27 @@ export interface ZLinkActorManager {
 > 가진다. C# overload 가 TS 에서 generic method overload 로 표현되지 않는 부분은
 > `getSpot()` / `getSpotAs<TSpot>(spotType)` 로 분리했다. 의미는 dotnet 과 동일하다.
 
-##### actor join handler
+##### actor join callback
 
 ```ts
-export interface ZLinkSpotActorJoinHandler<TSpot, TActor extends ZLinkActor, TRequest, TReply> {
-  handle(spot: TSpot, actor: TActor, request: TRequest): Promise<TReply>;
+export interface ZLinkSpot {
+  onActorJoin?(actor: ZLinkActor, request: Message, signal?: AbortSignal):
+    Promise<ZLinkSpotActorJoinResponse>;
+  onPostActorJoined?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onActorLeft?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 ```
 
-decorator 방식:
+Entry Spot 은 admission 대상이 아니므로 `onActorJoin` 을 노출하지 않는다. user Spot 의
+`onActorJoin` 이 `accepted: true` 를 반환할 때만 actor 위치를 commit 하고
+`onPostActorJoined` 를 호출한다. `accepted: false` 이면 위치를 바꾸지 않고 reply
+`Message` 만 caller 에게 돌려준다.
 
-```ts
-@Injectable()
-export class JoinMatchSpotHandler {
-  @ZLinkSpotActorJoin()
-  async handle(spot: MatchSpot, actor: PlayerActor, request: JoinMatchReq): Promise<JoinMatchSpotResult> {
-    // ...
-  }
-}
-```
-
-actor join handler 가 정상 응답을 반환하면 framework 가 join commit 을 수행한다.
-application handler 는 별도 `joinActor(...)` 를 호출하지 않는다. `leaveActor(...)` 는 현재
+actor join callback 이 accept 응답을 반환하면 framework 가 join commit 을 수행한다.
+application callback 은 별도 `joinActor(...)` 를 호출하지 않는다. `leaveActor(...)` 는 현재
 user Spot 에서 actor 를 Entry Spot 으로 되돌리는 편의 API 다. 성공하면 source Spot 의
-`actorLeft` 와 Entry Spot 의 post-joined lifecycle handler 가 호출된다. 실패하면 actor 위치와
-framework state 는 기존을 유지하고 lifecycle handler 는 호출되지 않는다.
+`onActorLeft` 와 Entry Spot 의 `onPostActorJoined` callback 이 호출된다. 실패하면 actor 위치와
+framework state 는 기존을 유지하고 lifecycle callback 은 호출되지 않는다.
 
 - actor context 는 현재 client session 의 식별만 `boundSession` 으로 노출한다. session rid /
   binding token 은 runtime 내부 metadata 이므로 actor context 에 드러내지 않는다.
@@ -1645,13 +1599,20 @@ handle 이 아니다. discovery 모드 capability 는 peer 소유권이 discover
 
 ### 6.3 Spot 관리와 등록
 
-`ZLinkSpotManager` 는 `SpotNode` 안에서 spot 인스턴스를 생성/삭제하는 데 쓴다. spot 을
-만드는 주체는 handler 가 아니라 manager 다.
+`ZLinkSpotManager` 는 `SpotNode` 안에서 user Spot 인스턴스를 생성, 조회, 정상 종료하는 데
+쓴다. spot 을 만드는 주체는 handler 가 아니라 manager 다.
 
 ```ts
+export enum ZLinkSpotCreateState {
+  Existing = 'existing',
+  Created = 'created',
+  Rejected = 'rejected',
+}
+
 export interface ZLinkSpotCreateResult {
   readonly spotRid: RoutingId;
-  readonly created: boolean;
+  readonly state: ZLinkSpotCreateState;
+  readonly reply?: Message;
 }
 
 export interface ZLinkSpotInfo {
@@ -1659,37 +1620,36 @@ export interface ZLinkSpotInfo {
 }
 
 export interface ZLinkSpotManager {
-  create<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): Promise<ZLinkSpotCreateResult>;
   create<TSpot extends ZLinkSpot>(
-    spotType: Type<TSpot>, createParts: readonly Message[]): Promise<ZLinkSpotCreateResult>;
+    spotType: Type<TSpot>, request?: Message): Promise<ZLinkSpotCreateResult>;
 
   getOrCreate<TSpot extends ZLinkSpot>(
-    spotType: Type<TSpot>, spotRid: RoutingId, createParts: readonly Message[]): Promise<ZLinkSpotCreateResult>;
-  getOrCreate<TSpot extends ZLinkSpot>(
-    spotType: Type<TSpot>, spotRid: RoutingId): Promise<ZLinkSpotCreateResult>;
+    spotType: Type<TSpot>, spotRid: RoutingId, request?: Message): Promise<ZLinkSpotCreateResult>;
 
-  find(spotRid: RoutingId): Promise<ZLinkSpotInfo | undefined>;
+  find(spotRid: RoutingId): Promise<ZLinkSpotInfo | null>;
   list(): Promise<readonly ZLinkSpotInfo[]>;
-  remove(spotRid: RoutingId): Promise<boolean>;
+  close(spotRid: RoutingId): Promise<boolean>;
 }
 ```
 
 > 코드 기준(중요): dotnet `IZLinkSpotManager` 는 generic `TSpot` 으로 factory 를 고른다
 > (기존 draft 의 `spotName: string` 이 아님). 조회 메서드는 `FindAsync`(=`find`)이며
 > 결과는 public 식별자 `SpotRid` 만 돌려준다(spot 타입/factory 정보는 노출하지 않음).
-> `ZLinkSpotInfo` 는 `spotRid` 만 가진다. `ZLinkSpotCreateResult` 는 `spotRid` + `created`.
+> `ZLinkSpotInfo` 는 `spotRid` 만 가진다. `ZLinkSpotCreateResult` 는 `spotRid` +
+> `Existing` / `Created` / `Rejected` 상태와 선택적 reply `Message` 를 가진다.
 > C# generic + overload 를 TS 에서 `spotType: Type<TSpot>` 첫 인자로 표현한다.
 
-- `create(spotType)`: generic 타입으로 factory 선택, runtime 이 새 spotRid 발급.
-- `create(spotType, createParts)`: runtime 이 새 spotRid 발급, multipart create payload 를 `onCreate(...)` 에 전달.
-- `getOrCreate(spotType, spotRid, createParts)`: 호출자가 logical spot rid 지정. 이미 같은
-  spotRid 가 있으면 기존 spot 반환, 새 createParts 는 전달하지 않음.
+- `create(spotType, request?)`: generic 타입으로 factory 선택, runtime 이 새 spotRid 발급.
+  payload 가 없으면 빈 `Message` 를 `onCreate(...)` 에 전달한다.
+- `getOrCreate(spotType, spotRid, request?)`: 호출자가 logical spot rid 지정. 이미 같은
+  spotRid 가 있으면 `Existing` 을 반환하고 새 request 는 전달하지 않음.
 - `find(...)` / `list(...)`: 조회 표면. `SpotRid` 만 돌려준다.
-- `remove(...)`: 정상 제거(이때 `onClosing()` 호출).
+- `close(...)`: 정상 종료(이때 `onClosing()` 호출). actor 가 남은 user Spot 은 종료하지 않고
+  `false` 를 반환한다.
 
-`onCreate(createReqs)` 는 caller 가 넘긴 part 수와 순서를 유지해서 전달한다. 여러 part 를
-하나의 envelope 로 합치지 않는다. `createParts` 인자는 `null`/`undefined` 이면 안 된다(빈
-배열 허용). 같은 spotRid 에 대해 다른 `TSpot` 으로 `getOrCreate(...)` 하면 `SpotTypeMismatch`
+`onCreate(request)` 는 caller 가 넘긴 단일 `Message` 를 그대로 전달한다. JSON,
+MessagePack, Protobuf payload 는 Node framework 의 기존 codec helper 로 `Message` bytes 를
+decode 해서 사용한다. 같은 spotRid 에 대해 다른 `TSpot` 으로 `getOrCreate(...)` 하면 `SpotTypeMismatch`
 로 실패한다.
 
 #### SpotNode / mesh builder
@@ -2266,9 +2226,6 @@ Entry Spot 과 user Spot 에서 같은 decorator 이름을 쓴다. 어느 regist
 ```ts
 export function ZLinkSpotActorSend(packetName?: string): MethodDecorator;
 export function ZLinkSpotActorRequest(packetName?: string): MethodDecorator;
-export function ZLinkSpotActorJoin(): MethodDecorator;
-export function ZLinkSpotPostActorJoined(): MethodDecorator;
-export function ZLinkSpotActorLeft(): MethodDecorator;
 export function ZLinkSpotActorDisconnected(): MethodDecorator;
 ```
 
@@ -2276,8 +2233,6 @@ method 시그니처 순서:
 
 - send: `(spotOrEntrySpot, actor, context, message)` 반환 없음
 - request: `(spotOrEntrySpot, actor, context, request)` reply 반환
-- actor join: `(spot, actor, request)` reply 반환
-- joined/left: `(spotOrEntrySpot, actor, result: ZLinkSpotActorChangeResult)` 반환 없음
 - disconnected: `(spotOrEntrySpot, actor)` 반환 없음
 
 `packetName` 미지정 시 message/request 타입의 packet 이름을 쓴다. 한 handler 클래스에 여러 spot

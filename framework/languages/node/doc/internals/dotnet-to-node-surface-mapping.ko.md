@@ -152,7 +152,7 @@ provider token 으로 주입 가능하게 등록한다.
 | `RoutingId(string)` | branded `string`(예: `type RoutingId = string`) | rid 는 문자열 |
 | `Message`, `ReadOnlyMemory<byte>` | `Message`(payload 구조 타입) / `Buffer` | payload |
 | `TimeSpan period` | `periodMs: number` | 시간은 ms number |
-| `IReadOnlyList<Message> createParts` | `readonly Message[]` | multipart |
+| spot create request `Message` | `Message` | 생성 요청은 단일 framework message |
 | out 파라미터 / tuple | 반환 객체 | 바인딩 가이드와 일치 |
 
 ### 4.1 handler 선언과 등록

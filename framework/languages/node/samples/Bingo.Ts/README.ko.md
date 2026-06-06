@@ -1,8 +1,8 @@
 # Bingo TypeScript Sample
 
 TypeScript Client/Server/Shared 구조로 Bingo sample 을 실행하고 같은 TCP route/channel
-메시징 경로를 검증한다. `Bingo/` 는 JavaScript 샘플이고, `Bingo.Ts/` 는 TypeScript
-사용자가 보는 기본 샘플이다.
+메시징 경로를 검증한다. Node framework 의 NestJS sample 은 이 TypeScript sample 을
+기준으로 제공한다.
 
 ## 실행
 
@@ -26,8 +26,7 @@ npm run start
 ## Success Condition
 
 - TypeScript entrypoint 가 TypeScript Registry, Session, Play, API process 를 시작한다.
-- JavaScript Bingo 샘플과 같은 four-player auth, match, start, timer, push fanout 결과를
-  검증한다.
+- four-player auth, match, start, timer, push fanout 결과를 검증한다.
 - TypeScript 컴파일이 통과한 산출물을 Node 로 실행한다.
 
 ## 회귀 테스트

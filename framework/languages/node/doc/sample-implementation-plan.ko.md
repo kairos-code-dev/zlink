@@ -12,7 +12,9 @@
 
 Phase 9는 regression green 만으로 끝나지 않는다. 사용자가 dotnet framework 와 같은
 멘탈 모델로 Node framework 를 사용할 수 있어야 하고, dotnet sample 과 같은 제품
-시나리오가 NestJS sample 로 실행되어야 한다.
+시나리오가 NestJS sample 로 실행되어야 한다. NestJS sample 은 TypeScript 를 기준으로
+제공한다. NestJS 의 decorator, metadata, DI 사용 방식이 TypeScript 에서 가장 분명하게
+드러나기 때문에 JavaScript NestJS sample 은 별도로 유지하지 않는다.
 
 이 문서는 아래 네 가지를 고정한다.
 
@@ -56,9 +58,7 @@ Node sample 은 `framework/languages/node/samples/` 아래에 둔다.
 | Sample | dotnet 대응 | 검증하는 기능 |
 |--------|-------------|---------------|
 | `StreamingClient` | stream connector sample | connector 단독 connect/send/request/manual dispatch/reconnect |
-| `TicTacToe` | TicTacToe direct sample | channel + Spot + actor direct flow |
-| `TicTacToe.SessionGateway` | TicTacToe session gateway | stream session, ActorGateway relay, reconnect, bound session |
-| `Bingo` | Bingo sample | matching, room Spot, timer, publish, bound push |
+| `Bingo.Ts` | Bingo sample | NestJS DI, channel, Spot, actor, stream session, bound push |
 
 권장 디렉토리:
 
@@ -69,25 +69,7 @@ samples/
 |   |-- Server/
 |   |-- README.ko.md
 |   `-- package.json
-|-- TicTacToe/
-|   |-- Client/
-|   |-- Server/
-|   |   |-- Api/
-|   |   `-- Play/
-|   |-- Shared/
-|   |-- README.ko.md
-|   `-- package.json
-|-- TicTacToe.SessionGateway/
-|   |-- Client/
-|   |-- Server/
-|   |   |-- Api/
-|   |   |-- Play/
-|   |   |-- Registry/
-|   |   `-- Session/
-|   |-- Shared/
-|   |-- README.ko.md
-|   `-- package.json
-|-- Bingo/
+|-- Bingo.Ts/
 |   |-- Client/
 |   |-- Server/
 |   |   |-- Api/
@@ -102,9 +84,9 @@ samples/
 
 다이어그램의 이름은 실제 디렉토리 역할만 나타낸다. dotnet sample 과 같은 역할을
 제공하기 위해 샘플 최상위 역할 디렉토리는 dotnet sample 과 같은 `Client`, `Server`,
-`Shared` 형태를 사용한다. 파일명과 함수명은 Node.js 관례를 따른다. 각 sample 은
-NestJS app 과 일반 JavaScript client 를 함께 둘 수 있지만, framework public API와
-stream connector public API만 사용해야 한다.
+`Shared` 형태를 사용한다. 파일명과 함수명은 Node.js 관례를 따른다. NestJS sample 은
+TypeScript 로 작성하고, framework public API와 stream connector public API만 사용해야
+한다.
 
 ## 4. Sample Self-Check 기준
 
@@ -116,16 +98,12 @@ stream connector public API만 사용해야 한다.
 - sample 이 framework/connector public API만 import 한다.
 - readiness 를 숨기기 위해 sleep 만 추가하지 않는다. registry query, connector
   connection ready event, framework lifecycle signal 같은 관찰 가능한 상태를 기다린다.
-- session gateway sample 에 application route store, metadata store, actor-session
-  fallback resolver 가 없다.
+- NestJS sample 에 application route store, metadata store, actor-session fallback
+  resolver 가 없다.
 - StreamingClient 는 manual dispatch mode 에서 request/reply 와 notification 을
   모두 처리한다.
-- TicTacToe direct sample 은 두 player 가 join 하고 같은 game Spot 에서 deterministic
-  승패를 만든다.
-- TicTacToe.SessionGateway 는 reconnect 뒤 같은 actor id가 새 binding token 으로
-  다시 연결되고, 이전 stale binding 이 새 session 을 지우지 않는다.
-- Bingo 는 deterministic scenario 에서 같은 순서의 winner 를 만들고, room timer 와
-  bound push 가 동작한다.
+- Bingo.Ts 는 deterministic scenario 에서 four-player auth, match, start, timer,
+  bound push fanout 이 동작한다.
 
 권장 명령:
 
@@ -149,7 +127,7 @@ cross-language smoke 는 Node framework 가 언어 중립 wire 계약을 지키�
 
 가능하면 추가로 아래 경로를 포함한다.
 
-- Node SessionGateway -> dotnet Play server ActorGateway relay
+- Node TypeScript session sample -> dotnet Play server ActorGateway relay
 - dotnet/C++/Java client -> Node Bingo bound session push 수신
 
 cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자 경험을, 이 smoke
@@ -160,13 +138,11 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
 1. P0~P8 public API와 regression matrix를 green 으로 닫는다.
 2. `guide/` 장 목차를 만들고, dotnet guide 장과 1:1 매핑표를 작성한다.
 3. `StreamingClient` sample 을 먼저 구현해 connector 단독 사용성을 검증한다.
-4. `TicTacToe` direct sample 을 구현해 channel/Spot/actor 기본 흐름을 고정한다.
-5. `TicTacToe.SessionGateway` sample 을 구현해 stream session relay와 reconnect를
-   고정한다.
-6. `Bingo` sample 을 구현해 timer, room Spot, bound push를 고정한다.
-7. `run_samples.sh` 를 CI release gate 에 연결한다.
-8. `npm run verify:cross-language` 를 CI release gate 에 연결한다.
-9. guide/spec/internals/sample README 링크 회귀 테스트를 실행한다.
+4. `Bingo.Ts` sample 을 구현해 NestJS DI, channel, Spot, actor, stream session,
+   bound push를 고정한다.
+5. `run_samples.sh` 를 CI release gate 에 연결한다.
+6. `npm run verify:cross-language` 를 CI release gate 에 연결한다.
+7. guide/spec/internals/sample README 링크 회귀 테스트를 실행한다.
 
 ## 7. 완료 기준
 
@@ -174,8 +150,7 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
 
 - `framework/languages/node/doc/guide/` 의 12개 장이 모두 존재한다.
 - 모든 guide 예제는 실제 sample 또는 test에서 compile 된다.
-- `StreamingClient`, `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo` sample 이
-  `run_samples.sh`에서 self-check 를 통과한다.
+- `StreamingClient`, `Bingo.Ts` sample 이 `run_samples.sh`에서 self-check 를 통과한다.
 - `npm run verify:cross-language` 로 cross-language smoke 여섯 가지 필수 경로가
   통과한다.
 - sample README 가 실행 명령, topology, success condition 을 설명한다.
@@ -188,6 +163,6 @@ cross-language smoke 는 sample smoke 와 별도로 둔다. sample 은 사용자
 
 | 테스트 | 확인 기준 |
 |--------|-----------|
-| `sample-regression.test.js › node samples define the required sample directories and README files` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo, run_samples.sh 가 존재한다. |
+| `sample-regression.test.js › node samples define the required sample directories and README files` | StreamingClient, Bingo.Ts, run_samples.sh 가 존재한다. |
 | `sample-regression.test.js › node cross-language smoke covers channel send publish and stream connector paths` | Node↔dotnet channel request/send/publish, Node connector→dotnet stream, dotnet connector→Node stream 경로가 명시되어 있다. |
 | `documentation-regression.test.js › node guide exposes the 12 required guide chapters` | guide 12개 장이 빠지지 않는다. |

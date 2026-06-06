@@ -1,6 +1,0 @@
-{
-  "name": "@zlink-systems/sample-tictactoe",
-  "version": "0.1.0-SNAPSHOT",
-  "private": true,
-  "main": "Client/self-check.js"
-}

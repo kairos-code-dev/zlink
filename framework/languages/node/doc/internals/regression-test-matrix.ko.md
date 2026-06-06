@@ -228,7 +228,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | Registry route 기본 구현 discovery validation | `unit` | `useDiscovery().addRegistryEndpoint(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
 | Registry Spot RID route | `integration-single-process` | `ZLinkSpotManager.createAsync(spotRid: string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
-| sample-only session metadata store 제거 | `unit` | Bingo 와 TicTacToe session gateway 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |
+| sample-only session metadata store 제거 | `unit` | Bingo.Ts 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |
 | stale bound session send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
 | bound session gateway relay | `integration-single-process` | Play 서버에서 Session 서버로 가는 bound session send가 core ActorGateway binding 을 통해 client STREAM에 단일 stream packet으로 도착한다 |
 | bound session disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `ZLinkBoundSession.disconnectAsync(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
@@ -307,7 +307,7 @@ backend gate 와 별도로 유지한다.
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | `npm run verify:release` | `integration-multi-process` | ABI 선언, P0 회귀, sample smoke, Node runtime matrix, cross-language smoke 를 순서대로 실행한다 |
-| `npm run verify:samples` | `integration-multi-process` | StreamingClient, TicTacToe, TicTacToe.SessionGateway, Bingo 가 모두 self-check 통과 |
+| `npm run verify:samples` | `integration-multi-process` | StreamingClient, Bingo.Ts 가 모두 self-check 통과 |
 | `npm run verify:runtime-matrix` | `integration-multi-process` | 현재 runner 가 Node 20 과 Node 22 에서 build, typecheck, 전체 contract test 를 모두 통과시킨다 |
 | `npm run verify:abi-matrix` | `unit` | `framework-node` CI workflow, release 문서, package script 가 `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64` 와 Node 20/22 gate 를 같은 목록으로 유지한다 |
 | `npm run verify:cross-language` | `integration-multi-process` | Node 와 dotnet TestHost 가 channel/stream 필수 경로 여섯 가지를 같은 프로토콜 의미로 통과시킨다 |

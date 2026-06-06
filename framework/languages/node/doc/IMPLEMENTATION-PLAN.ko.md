@@ -400,8 +400,9 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - contract/unit/e2e/multi-process 미러를 채워 dotnet 동작 동등성 고정. 문서별 `회귀 테스트` 단락이 실제 테스트로 연결되는지 확인.
   - **사용성 계층 동등화**: dotnet `doc/guide` 에 대응하는 node 사용자 가이드(NestJS)를
     `sample-implementation-plan` 의 장 매핑대로 작성한다.
-  - **샘플 동등화**: dotnet `samples/`(TicTacToe, TicTacToe.SessionGateway, Bingo)와
-    stream connector 단독 sample 을 같은 시나리오로 구현한다.
+  - **샘플 동등화**: stream connector 단독 sample 과 TypeScript NestJS sample 을
+    같은 시나리오로 구현한다. NestJS sample 은 TypeScript 를 기준으로 제공하고,
+    JavaScript NestJS sample 은 별도로 유지하지 않는다.
   - sample smoke command 를 만들고 CI release gate 에 연결한다.
   - `npm run verify:cross-language` 를 release gate 에 연결한다(Node↔dotnet,
     Node↔C++/Java 중 최소 지정 경로).
@@ -476,7 +477,7 @@ TS 고유 제약(표면 한계): 런타임 타입 소거 → packet key 는 **�
 | **구조(structure)** | 패키지·모듈 경계가 dotnet 을 미러. backend 어댑터 한 층으로 격리(나머지 backend 독립) | `src/` 디렉토리, `Runtime/*` | §3 패키지 구성 + backend-dependency-policy 회귀 |
 | **기능(functionality)** | 모든 서브시스템(channel/spot/actor/stream/registry/monitoring/codec)의 동작이 dotnet 과 동일 | `Runtime/*`, `tests/` | regression-test-matrix 전 행 green + cross-language(같은 channel/stream/session) 상호호출 |
 | **사용성(usability)** | 같은 멘탈 모델·동사·등록 흐름. dotnet `doc/guide` 대응 NestJS 가이드 제공 | `doc/guide/01~12`, 케이스/샘플 가이드 | node 사용자 가이드 작성·동등 챕터 매핑 |
-| **샘플(samples)** | dotnet 샘플과 동일 시나리오의 실행 가능한 NestJS 샘플 + 샘플 문서 | `samples/`(TicTacToe, Bingo …), `doc/guide/samples/` | 샘플 앱 빌드·실행 + 샘플 문서 동등 |
+| **샘플(samples)** | dotnet 샘플과 동일 시나리오의 실행 가능한 TypeScript NestJS 샘플 + 샘플 문서 | `samples/StreamingClient`, `samples/Bingo.Ts`, `doc/guide/samples/` | 샘플 앱 빌드·실행 + 샘플 문서 동등 |
 
 운영 규칙:
 

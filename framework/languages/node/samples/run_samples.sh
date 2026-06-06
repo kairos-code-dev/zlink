@@ -8,7 +8,4 @@ cd "${NODE_ROOT}"
 npm run build >/dev/null
 
 node samples/StreamingClient/Client/self-check.js
-node samples/TicTacToe/Client/self-check.js
-node samples/TicTacToe.SessionGateway/Client/self-check.js
-node samples/Bingo/Client/self-check.js
 (cd samples/Bingo.Ts && npm run build >/dev/null && npm run start)

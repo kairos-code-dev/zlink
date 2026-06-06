@@ -136,9 +136,7 @@ cross-language smoke 필수 경로:
 
 sample 필수 경로:
 - StreamingClient
-- TicTacToe
-- TicTacToe.SessionGateway
-- Bingo
+- Bingo.Ts
 
 ABI release gate 필수 runtime:
 - node20

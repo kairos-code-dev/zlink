@@ -2,11 +2,11 @@
 
 이 디렉토리는 Node.js/NestJS 버전 framework 의 사용자 흐름을 self-check 로 검증한다.
 각 sample 은 framework public API 또는 stream connector public API만 사용한다.
-`TicTacToe`, `TicTacToe.SessionGateway`, `Bingo` 는 dotnet sample 과 같은 역할
-구조를 사용하되, Node.js 관례에 맞춰 `Client/`, `Server/`, `Shared/` 디렉토리로
-나눈다. client self-check 는 서버 process 를 시작한 뒤 실제 TCP endpoint 로 channel
-또는 route request 를 보내며, stdin/stdout command protocol 로 application message 를
-주고받지 않는다.
+NestJS framework sample 은 TypeScript 를 기준으로 제공한다. NestJS 의 decorator,
+metadata, DI 사용 방식은 TypeScript 프로젝트에서 가장 자연스럽게 드러나기 때문에
+JavaScript NestJS sample 을 별도로 유지하지 않는다. client self-check 는 서버 process
+를 시작한 뒤 실제 TCP endpoint 로 channel 또는 route request 를 보내며,
+stdin/stdout command protocol 로 application message 를 주고받지 않는다.
 
 ## 실행
 
@@ -19,9 +19,7 @@
 | Sample | 확인하는 흐름 |
 |--------|---------------|
 | `StreamingClient` | connector connect, request/reply, manual dispatch notification |
-| `TicTacToe` | channel client, Spot, actor 기반 deterministic game |
-| `TicTacToe.SessionGateway` | actor bound session push, reconnect token 갱신, stale guard 의미 |
-| `Bingo` | room Spot, deterministic winner, timer-style tick, bound push |
+| `Bingo.Ts` | NestJS DI, channel client/server, Spot, actor, session relay, bound push |
 
 ## 성공 조건
 

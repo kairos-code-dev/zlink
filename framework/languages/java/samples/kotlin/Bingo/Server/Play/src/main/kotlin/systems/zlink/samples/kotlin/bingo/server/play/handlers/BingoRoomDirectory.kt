@@ -1,8 +1,9 @@
 package systems.zlink.samples.kotlin.bingo.server.play.handlers
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoRoomSettings
@@ -13,33 +14,29 @@ class BingoRoomDirectory(
     private val spots: ZLinkSpotManager,
     private val json: ObjectMapper,
 ) {
-    private val gate = Any()
-    private val actorRooms = mutableMapOf<String, String>()
+    private val gate = Mutex()
+    private val actorAllocations = mutableMapOf<String, RoomAllocation>()
     private var currentRoomId: String? = null
     private var currentRoomSettings: BingoRoomSettings? = null
     private var reservedSeats: Int = 0
     private var roomSeq: Int = 0
 
-    fun allocateAsync(
+    suspend fun allocate(
         actorId: String,
         mode: String,
-    ): CompletionStage<String> {
+    ): String {
         if (actorId.isBlank()) {
-            return CompletableFuture.failedFuture(
-                IllegalStateException("actorId is required"),
-            )
+            throw IllegalStateException("actorId is required")
         }
         if (mode != "four-player") {
-            return CompletableFuture.failedFuture(
-                IllegalStateException("Unsupported bingo mode. mode=$mode"),
-            )
+            throw IllegalStateException("Unsupported bingo mode. mode=$mode")
         }
 
         var settings: BingoRoomSettings? = null
-        val roomId = synchronized(gate) {
-            actorRooms[actorId]?.also {
-                settings = currentRoomSettings
-            } ?: run {
+        val roomId = gate.withLock {
+            actorAllocations[actorId]?.also { allocation ->
+                settings = allocation.settings
+            }?.roomId ?: run {
                 var nextSettings = BingoRoomSettings.create(mode, roomSeq + 1)
                 if (
                     currentRoomId == null ||
@@ -54,13 +51,24 @@ class BingoRoomDirectory(
                 }
                 settings = nextSettings
                 reservedSeats++
-                currentRoomId!!.also { actorRooms[actorId] = it }
+                currentRoomId!!.also {
+                    actorAllocations[actorId] = RoomAllocation(it, nextSettings)
+                }
             }
         }
 
         val settingsPart = Message.from(json.writeValueAsBytes(settings))
-        return spots.getOrCreateAsync(BingoRoomSpot::class.java, RoutingId.fromHex(roomId), listOf(settingsPart))
-            .thenApply { roomId }
-            .whenComplete { _, _ -> settingsPart.close() }
+        return try {
+            spots.getOrCreateAsync(BingoRoomSpot::class.java, RoutingId.fromHex(roomId), listOf(settingsPart))
+                .await()
+            roomId
+        } finally {
+            settingsPart.close()
+        }
     }
+
+    private data class RoomAllocation(
+        val roomId: String,
+        val settings: BingoRoomSettings,
+    )
 }

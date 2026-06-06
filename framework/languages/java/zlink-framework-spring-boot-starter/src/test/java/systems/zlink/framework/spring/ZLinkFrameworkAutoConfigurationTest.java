@@ -616,7 +616,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     @EnableZLinkFramework
     static class TestConfig {
         @Bean
-        ZLinkFrameworkOptionsCustomizer profileChannelCustomizer() {
+        ZLinkFrameworkConfigurer profileChannelConfigurer() {
             return options -> options.addClientServerChannel("profile", channel ->
                 channel.enableClient(client ->
                     client.useManualConnections(endpoints ->
@@ -628,7 +628,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     @EnableZLinkFramework
     static class EnabledTestConfig {
         @Bean
-        ZLinkFrameworkOptionsCustomizer profileChannelCustomizer() {
+        ZLinkFrameworkConfigurer profileChannelConfigurer() {
             return options -> options.addClientServerChannel("profile", channel ->
                 channel.enableClient(client ->
                     client.useManualConnections(endpoints ->
@@ -650,7 +650,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkOptionsCustomizer monitoredServerChannelCustomizer() {
+        ZLinkFrameworkConfigurer monitoredServerChannelConfigurer() {
             return options -> options.addRouteMeshChannel("profile", channel -> {
                 channel.bind("inproc://profile-monitor");
                 channel.useManualConnections(endpoints ->
@@ -709,7 +709,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkOptionsCustomizer autoDiscoveredSessionPacketCustomizer() {
+        ZLinkFrameworkConfigurer autoDiscoveredSessionPacketConfigurer() {
             return options -> options.addStreamNode("client.stream", stream -> {
                 stream.bind("inproc://auto-discovered-session");
                 stream.registerSession(AutoDiscoveredPacketSession.class);
@@ -721,7 +721,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     @EnableZLinkFramework
     static class SpotNodeConfig {
         @Bean
-        ZLinkFrameworkOptionsCustomizer spotNodeCustomizer() {
+        ZLinkFrameworkConfigurer spotNodeConfigurer() {
             return options -> options.addSpotMesh("game", mesh ->
                 mesh.addNode("play", node -> {
                     node.enableRouter();
@@ -734,7 +734,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     @EnableZLinkFramework
     static class SpotNodeWithActorConfig {
         @Bean
-        ZLinkFrameworkOptionsCustomizer spotNodeWithActorCustomizer() {
+        ZLinkFrameworkConfigurer spotNodeWithActorConfigurer() {
             return options -> {
                 options.addSpotMesh("game", mesh ->
                     mesh.addNode("play", node -> {
@@ -755,7 +755,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkOptionsCustomizer injectedSpotAndActorCustomizer() {
+        ZLinkFrameworkConfigurer injectedSpotAndActorConfigurer() {
             return options -> {
                 options.addSpotMesh("game", mesh ->
                     mesh.addNode("play", node -> {
@@ -771,7 +771,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     @EnableZLinkFramework
     static class SpotPublisherConfig {
         @Bean
-        ZLinkFrameworkOptionsCustomizer spotPublisherCustomizer() {
+        ZLinkFrameworkConfigurer spotPublisherConfigurer() {
             return options -> options.addSpotMesh("game", mesh ->
                 mesh.addNode("publisher", node -> {
                     node.enablePubSub();
@@ -804,7 +804,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkOptionsCustomizer scannedHandlerCustomizer(String springAnnotatedEndpoint) {
+        ZLinkFrameworkConfigurer scannedHandlerConfigurer(String springAnnotatedEndpoint) {
             return options -> {
                 options.codecs().addJson();
                 options.addHandlersFromPackageOf(ScannedHandlerConfig.class);
@@ -827,7 +827,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkOptionsCustomizer autoRegisteredHandlerCustomizer(
+        ZLinkFrameworkConfigurer autoRegisteredHandlerConfigurer(
             String autoRegisteredEndpoint) {
             return options -> {
                 options.codecs().addJson();
@@ -851,7 +851,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkOptionsCustomizer autoRegisteredSetHandlerCustomizer(
+        ZLinkFrameworkConfigurer autoRegisteredSetHandlerConfigurer(
             String autoRegisteredSetEndpoint) {
             return options -> {
                 options.codecs().addJson();
@@ -885,7 +885,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkOptionsCustomizer filteredHandlerCustomizer(String filteredEndpoint) {
+        ZLinkFrameworkConfigurer filteredHandlerConfigurer(String filteredEndpoint) {
             return options -> {
                 options.codecs().addJson();
                 options.useFilter(SpringInjectedReplyFilter.class);
@@ -912,7 +912,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkOptionsCustomizer routeMeshHandlerCustomizer(
+        ZLinkFrameworkConfigurer routeMeshHandlerConfigurer(
             RouteMeshEndpoints endpoints) {
             return options -> options.addRouteMeshChannel("route", channel -> {
                 channel.bind(endpoints.targetEndpoint());

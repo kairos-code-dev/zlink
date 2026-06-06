@@ -47,8 +47,8 @@ public class MonitoringConfig {
 }
 ```
 
-Spring Boot starter는 customizer가 있으면 monitoring hosted lifecycle을 등록한다.
-customizer가 없으면 monitoring runner를 만들지 않는다.
+Spring Boot starter는 configurer가 있으면 monitoring hosted lifecycle을 등록한다.
+configurer가 없으면 monitoring runner를 만들지 않는다.
 
 등록 가능한 source는 아래로 제한한다.
 

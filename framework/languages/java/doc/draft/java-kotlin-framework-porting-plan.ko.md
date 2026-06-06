@@ -87,7 +87,7 @@ runtime 루트에는 개별 구현 파일을 두지 않고, `.NET` `Runtime/*` �
 
 | 기능 | `.NET` 이름 | Java 이름 | Kotlin 보조 표면 |
 |------|-------------|-----------|------------------|
-| framework 등록 | `AddZLinkFramework` | `@EnableZLinkFramework`, `ZLinkFrameworkOptionsCustomizer` | `zlinkFramework { ... }` |
+| framework 등록 | `AddZLinkFramework` | `@EnableZLinkFramework`, `ZLinkFrameworkConfigurer` | `zlinkFramework { ... }` |
 | channel request/send | `IZLinkChannelClient` | `ZLinkClient` | `suspend fun ZLinkClient.request(...)` |
 | fanout publish | `IZLinkFanoutClient` | `ZLinkFanoutClient` | `suspend fun publish(...)` |
 | routed channel | `IZLinkRouteClient` | `ZLinkRouteClient` | `suspend fun requestTo(...)` |
@@ -227,7 +227,7 @@ Spring lifecycle에 연결한다.
 | Spring 요소 | 책임 |
 |-------------|------|
 | `@EnableZLinkFramework` | auto configuration 활성화 |
-| `ZLinkFrameworkOptionsCustomizer` | channel/spot/stream/actor/registry 설정 |
+| `ZLinkFrameworkConfigurer` | channel/spot/stream/actor/registry 설정 |
 | `SmartLifecycle` | runtime start/stop (역순 종료 보장). `ApplicationRunner`는 one-shot readiness 신호 용도로만 |
 | bean scanner | annotation handler와 interface handler 등록 |
 | `ApplicationEventPublisher` | monitoring event 선택적 bridge |

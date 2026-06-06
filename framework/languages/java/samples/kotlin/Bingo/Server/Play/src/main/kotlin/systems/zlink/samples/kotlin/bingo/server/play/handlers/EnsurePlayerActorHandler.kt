@@ -1,11 +1,13 @@
 package systems.zlink.samples.kotlin.bingo.server.play.handlers
 
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRef
+import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.handlers.ZLinkRequest
+import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
@@ -17,26 +19,27 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 @ZLinkHandlerGroup("play")
 class EnsurePlayerActorHandler(
     private val actors: ZLinkActorManager,
-) {
-    @ZLinkRequest(packetName = "EnsurePlayerActor")
-    fun handleAsync(request: EnsurePlayerActorReq): CompletionStage<EnsurePlayerActorRes> =
-        actors.getOrCreateAsync(request.actorId, SampleNames.PlayerActorType)
-            .thenCompose { actor ->
-                if (actor is PlayerActor) {
-                    actor.setDisplayName(request.displayName)
-                }
-                actor.context()
-                    .joinEntrySpot(RoutingId.from(SampleTopology.PlayRid))
-                    .timeout(SampleTimings.RequestTimeout)
-                    .submitAsync()
-            }
-            .thenApply { joined ->
-                EnsurePlayerActorRes(
-                    request.actorId,
-                    SampleNames.PlayerActorType,
-                    toSnapshot(joined),
-                )
-            }
+    private val coroutines: ZLinkCoroutineRuntime,
+) : ZLinkRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes> {
+    override fun handleAsync(
+        request: EnsurePlayerActorReq,
+        context: ZLinkRequestContext,
+    ) = coroutines.completionStage {
+        val actor = actors.getOrCreateAsync(request.actorId, SampleNames.PlayerActorType).await()
+        if (actor is PlayerActor) {
+            actor.setDisplayName(request.displayName)
+        }
+        val joined = actor.context()
+            .joinEntrySpot(RoutingId.from(SampleTopology.PlayRid))
+            .timeout(SampleTimings.RequestTimeout)
+            .submitAsync()
+            .await()
+        EnsurePlayerActorRes(
+            request.actorId,
+            SampleNames.PlayerActorType,
+            toSnapshot(joined),
+        )
+    }
 
     private fun toSnapshot(actor: ZLinkActorRef): ActorRefSnapshot =
         ActorRefSnapshot(

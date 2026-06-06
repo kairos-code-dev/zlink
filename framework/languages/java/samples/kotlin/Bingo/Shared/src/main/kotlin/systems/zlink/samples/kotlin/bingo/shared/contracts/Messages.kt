@@ -1,9 +1,12 @@
 package systems.zlink.samples.kotlin.bingo.shared.contracts
 
+import systems.zlink.framework.handlers.ZLinkPacket
+
 data class AuthenticateReq(val accessToken: String)
 
 data class AuthenticateRes(val actorId: String, val displayName: String)
 
+@ZLinkPacket("AuthenticatePlayer")
 data class AuthenticatePlayerReq(val accessToken: String)
 
 data class AuthenticatePlayerRes(
@@ -13,6 +16,7 @@ data class AuthenticatePlayerRes(
     val reason: String?,
 )
 
+@ZLinkPacket("EnsurePlayerActor")
 data class EnsurePlayerActorReq(val actorId: String, val displayName: String)
 
 data class ActorRefSnapshot(val nodeRid: ByteArray, val actorId: String, val generation: Long)
@@ -23,10 +27,12 @@ data class EnsurePlayerActorRes(
     val actor: ActorRefSnapshot,
 )
 
+@ZLinkPacket("MatchBingoReq")
 data class MatchBingoReq(val mode: String)
 
 data class MatchBingoRes(val roomId: String, val state: BingoRoomState)
 
+@ZLinkPacket("MatchBingoApiReq")
 data class MatchBingoApiReq(
     val actorId: String,
     val displayName: String,
@@ -35,14 +41,17 @@ data class MatchBingoApiReq(
 
 data class MatchBingoApiRes(val roomId: String)
 
+@ZLinkPacket("AllocateBingoRoomReq")
 data class AllocateBingoRoomReq(val actorId: String, val mode: String)
 
 data class AllocateBingoRoomRes(val roomId: String)
 
+@ZLinkPacket("BingoRoomJoinReq")
 data class BingoRoomJoinReq(val roomId: String, val actorId: String, val displayName: String)
 
 data class BingoRoomJoinRes(val state: BingoRoomState)
 
+@ZLinkPacket("StartBingoGameReq")
 data class StartBingoGameReq(val roomId: String)
 
 data class StartBingoGameRes(val state: BingoRoomState)

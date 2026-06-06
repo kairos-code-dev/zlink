@@ -128,7 +128,7 @@ PY
 }
 
 gradle_run() {
-  ../../gradlew --no-daemon "$@" --quiet
+  ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
 }
 
 read -r registry_pub_port registry_router_port play_route_port play_spot_router_port session_route_port session_router_port reconnect_session_route_port reconnect_session_router_port api_port play_port session_port reconnect_session_port < <(reserve_ports)

@@ -12,13 +12,13 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkRes
 @ZLinkHandlerGroup("play-actor")
 class PlayActorPlaceMarkHandler {
     @ZLinkSpotActorRequest
-    fun placeMark(
+    suspend fun placeMark(
         spot: TicTacToeGame,
         actor: PlayActor,
         context: ZLinkSpotActorRequestContext,
         request: PlaceMarkReq,
         cancellationToken: CancellationToken,
-    ): java.util.concurrent.CompletionStage<PlaceMarkRes> {
+    ): PlaceMarkRes {
         actor.requireJoinedGame()
         return spot.placeMark(actor, request.cell)
     }

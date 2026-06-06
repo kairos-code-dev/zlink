@@ -160,6 +160,13 @@ framework-owned `CoroutineScope`에서 handler를 실행하고 `CompletionStage`
 한다. `runBlocking`으로 현재 dispatch thread를 막거나, Java core의 serial execution
 queue를 우회하는 별도 coroutine queue를 만들지 않는다.
 
+annotation method handler dispatch도 같은 규칙을 따른다. Kotlin `suspend fun` handler는
+scanner가 발견한 Java method handler catalog에 그대로 등록되고, invocation 시점에는
+framework-owned coroutine adapter가 suspend function을 실행한다. fallback reflection
+continuation은 Kotlin runtime provider가 없는 환경에서만 사용한다. Kotlin provider가
+classpath에 있으면 handler 안의 `coroutineContext`는 framework가 만든 coroutine
+context를 가진다.
+
 Kotlin annotation handler는 Java annotation handler와 같은 discovery, validation,
 dispatch 의미를 가진다. 예를 들어 Kotlin Spring bean에 `@ZLinkRequest`,
 `@ZLinkSend`, `@ZLinkPublish`, `@ZLinkSpotActorRequest`, `@ZLinkSpotActorSend`,
@@ -182,6 +189,75 @@ Kotlin suspend annotation handler는 아래 원칙을 지킨다.
 - Spring DI는 Java bean handler와 같은 방식으로 constructor injection을 사용한다.
   Kotlin handler가 `ApplicationContext`를 service locator로 직접 받도록 요구하지
   않는다.
+
+SPOT actor handler는 annotation method와 interface 구현체를 모두 지원한다. 두 방식은
+서로 다른 registry를 만들지 않고 같은 packet 이름과 actor mapping으로 정규화된다.
+따라서 annotation handler와 interface handler가 같은 actor packet 또는 join packet을
+등록하면 startup validation에서 중복으로 거부된다. 이 규칙은 Java와 Kotlin sample이
+서로 다른 스타일을 보여 주더라도 runtime 의미가 갈라지지 않도록 하기 위한 것이다.
+
+```java
+public interface ZLinkEntrySpotActorRequestHandler<
+    TEntrySpot extends ZLinkEntrySpot,
+    TActor extends ZLinkActor,
+    TRequest,
+    TReply> {
+    CompletionStage<TReply> handleAsync(
+        TEntrySpot entrySpot,
+        TActor actor,
+        ZLinkSpotActorRequestContext context,
+        TRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface ZLinkSpotActorRequestHandler<
+    TSpot extends ZLinkSpot,
+    TActor extends ZLinkActor,
+    TRequest,
+    TReply> {
+    CompletionStage<TReply> handleAsync(
+        TSpot spot,
+        TActor actor,
+        ZLinkSpotActorRequestContext context,
+        TRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface ZLinkSpotActorJoinHandler<
+    TSpot extends ZLinkSpot,
+    TActor extends ZLinkActor,
+    TRequest,
+    TReply> {
+    CompletionStage<TReply> handleAsync(
+        TSpot spot,
+        TActor actor,
+        TRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface ZLinkSpotPostActorJoinedHandler<TSpot, TActor extends ZLinkActor> {
+    CompletionStage<Void> handleAsync(
+        TSpot spot,
+        TActor actor,
+        ZLinkSpotActorChangeResult result,
+        CancellationToken cancellationToken);
+}
+
+public interface ZLinkSpotActorLeftHandler<TSpot, TActor extends ZLinkActor> {
+    CompletionStage<Void> handleAsync(
+        TSpot spot,
+        TActor actor,
+        ZLinkSpotActorChangeResult result,
+        CancellationToken cancellationToken);
+}
+```
+
+`ZLinkSpotActorSendHandler`, `ZLinkEntrySpotActorSendHandler`,
+`ZLinkSpotActorDisconnectedHandler`, `ZLinkEntrySpotActorDisconnectedHandler`도 같은
+패턴을 따른다. Entry Spot actor request/send/disconnected는 Entry Spot 전용
+interface를 사용하고, user Spot actor join/request/send/lifecycle은 Spot handler
+interface를 사용한다. lifecycle interface의 `TSpot`은 Entry Spot lifecycle도 표현할
+수 있도록 `ZLinkSpot`으로 제한하지 않는다.
 
 stream은 `.NET` 기준과 같이 header session 하나로 설명한다. 이전 설계의
 `packet session`/`raw session` 분리는 현재 포팅 기준이 아니다. callback으로 전달된

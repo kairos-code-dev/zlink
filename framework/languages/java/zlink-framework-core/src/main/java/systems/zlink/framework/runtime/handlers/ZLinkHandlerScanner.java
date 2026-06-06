@@ -40,6 +40,15 @@ import systems.zlink.framework.handlers.ZLinkSpotPostActorJoined;
 import systems.zlink.framework.spots.ZLinkSpotActorChangeResult;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorDisconnectedHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorSendHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorLeftHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorDisconnectedHandler;
+import systems.zlink.framework.spots.ZLinkSpotPostActorJoinedHandler;
 
 public final class ZLinkHandlerScanner {
     private ZLinkHandlerScanner() {
@@ -72,6 +81,7 @@ public final class ZLinkHandlerScanner {
                 ZLinkScannedHandlerSurface.ROUTE, ZLinkScannedHandlerKind.SEND);
             addInterfaceHandler(handlers, candidate, groups, ZLinkRouteRequestHandler.class,
                 ZLinkScannedHandlerSurface.ROUTE, ZLinkScannedHandlerKind.REQUEST);
+            addSpotActorInterfaceHandlers(handlers, candidate, groups);
         }
         return new ZLinkScannedHandlerCatalog(handlers);
     }
@@ -422,6 +432,129 @@ public final class ZLinkHandlerScanner {
             groups));
     }
 
+    private static void addSpotActorInterfaceHandlers(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups) {
+        addSpotActorPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            ZLinkEntrySpotActorSendHandler.class,
+            ZLinkScannedHandlerKind.ACTOR_SEND);
+        addSpotActorPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            ZLinkEntrySpotActorRequestHandler.class,
+            ZLinkScannedHandlerKind.ACTOR_REQUEST);
+        addSpotActorPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            ZLinkSpotActorSendHandler.class,
+            ZLinkScannedHandlerKind.ACTOR_SEND);
+        addSpotActorPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            ZLinkSpotActorRequestHandler.class,
+            ZLinkScannedHandlerKind.ACTOR_REQUEST);
+        addSpotActorJoinInterfaceHandler(handlers, candidate, groups);
+        addSpotActorLifecycleInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            ZLinkSpotPostActorJoinedHandler.class,
+            ZLinkScannedHandlerKind.ACTOR_JOINED);
+        addSpotActorLifecycleInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            ZLinkSpotActorLeftHandler.class,
+            ZLinkScannedHandlerKind.ACTOR_LEFT);
+        addSpotActorLifecycleInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            ZLinkSpotActorDisconnectedHandler.class,
+            ZLinkScannedHandlerKind.ACTOR_DISCONNECTED);
+        addSpotActorLifecycleInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            ZLinkEntrySpotActorDisconnectedHandler.class,
+            ZLinkScannedHandlerKind.ACTOR_DISCONNECTED);
+    }
+
+    private static void addSpotActorPacketInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups,
+        Class<?> handlerInterface,
+        ZLinkScannedHandlerKind kind) {
+        ParameterizedType matched = findInterface(candidate, handlerInterface);
+        if (matched == null) {
+            return;
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> messageType = requireClassArgument(candidate, arguments[2]);
+        Class<?> replyType = kind == ZLinkScannedHandlerKind.ACTOR_REQUEST
+            ? requireClassArgument(candidate, arguments[3])
+            : Void.class;
+        handlers.add(new ZLinkScannedHandler(
+            ZLinkScannedHandlerSurface.SPOT,
+            kind,
+            candidate,
+            messageType,
+            replyType,
+            resolvePacketName(messageType),
+            groups));
+    }
+
+    private static void addSpotActorJoinInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups) {
+        ParameterizedType matched = findInterface(candidate, ZLinkSpotActorJoinHandler.class);
+        if (matched == null) {
+            return;
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> messageType = requireClassArgument(candidate, arguments[2]);
+        Class<?> replyType = requireClassArgument(candidate, arguments[3]);
+        handlers.add(new ZLinkScannedHandler(
+            ZLinkScannedHandlerSurface.SPOT,
+            ZLinkScannedHandlerKind.ACTOR_JOIN,
+            candidate,
+            messageType,
+            replyType,
+            resolvePacketName(messageType),
+            groups));
+    }
+
+    private static void addSpotActorLifecycleInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups,
+        Class<?> handlerInterface,
+        ZLinkScannedHandlerKind kind) {
+        ParameterizedType matched = findInterface(candidate, handlerInterface);
+        if (matched == null) {
+            return;
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> actorType = requireClassArgument(candidate, arguments[1]);
+        handlers.add(new ZLinkScannedHandler(
+            ZLinkScannedHandlerSurface.SPOT,
+            kind,
+            candidate,
+            actorType,
+            Void.class,
+            "",
+            groups));
+    }
+
     private static Class<?> requireChannelHandlerShape(
         Class<?> handlerType,
         Method method,
@@ -459,39 +592,11 @@ public final class ZLinkHandlerScanner {
     }
 
     private static ParameterizedType findInterface(Class<?> type, Class<?> targetRawType) {
-        for (Type interfaceType : type.getGenericInterfaces()) {
-            ParameterizedType matched = matchInterface(interfaceType, targetRawType);
-            if (matched != null) {
-                return matched;
-            }
-        }
-        Class<?> superclass = type.getSuperclass();
-        return superclass == null || superclass == Object.class
-            ? null
-            : findInterface(superclass, targetRawType);
-    }
-
-    private static ParameterizedType matchInterface(Type interfaceType, Class<?> targetRawType) {
-        if (interfaceType instanceof ParameterizedType parameterized
-            && parameterized.getRawType() == targetRawType) {
-            return parameterized;
-        }
-        if (interfaceType instanceof Class<?> raw) {
-            return findInterface(raw, targetRawType);
-        }
-        return null;
+        return ZLinkGenericTypeResolver.findInterface(type, targetRawType);
     }
 
     private static Class<?> requireClassArgument(Class<?> handlerType, Type argument) {
-        if (argument instanceof Class<?> klass) {
-            return klass;
-        }
-        if (argument instanceof ParameterizedType parameterized
-            && parameterized.getRawType() instanceof Class<?> raw) {
-            return raw;
-        }
-        throw new ZLinkConfigurationException(
-            "handler generic argument must resolve to a class: " + handlerType.getName());
+        return ZLinkGenericTypeResolver.requireClassArgument(handlerType, argument);
     }
 
     private static String resolvePacketName(Class<?> messageType) {

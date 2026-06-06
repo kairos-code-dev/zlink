@@ -2,4 +2,4 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
-../../gradlew run --quiet
+../../gradlew --settings-file standalone.settings.gradle.kts run --quiet

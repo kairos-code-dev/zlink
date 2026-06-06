@@ -149,16 +149,16 @@ Java는 Spring Boot의 bean + auto-configuration starter + lifecycle이다.
 
 `.NET`의 `IServiceCollection.AddZLinkFramework(options => ...)`는 Java에서
 `@EnableZLinkFramework` + auto-configuration starter
-(`zlink-framework-spring-boot-starter`)와 `ZLinkFrameworkOptionsCustomizer`로
+(`zlink-framework-spring-boot-starter`)와 `ZLinkFrameworkConfigurer`로
 옮긴다. starter는 framework runtime bean과 lifecycle 구동체를 auto-config로
 등록하고, `@EnableZLinkFramework`는 그 auto-config를 켜는 표식이다.
 
 ```java
 @Configuration
 @EnableZLinkFramework
-public class ZLinkConfig implements ZLinkFrameworkOptionsCustomizer {
+public class ZLinkConfig implements ZLinkFrameworkConfigurer {
     @Override
-    public void customize(ZLinkFrameworkOptions options) {
+    public void configure(ZLinkFrameworkOptions framework) {
         options.addClientServerChannel("price", channel -> {
             channel.enableServer(server -> server.bind("tcp://0.0.0.0:7301"));
             channel.addRequestHandler(GetPriceHandler.class);

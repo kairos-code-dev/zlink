@@ -210,7 +210,7 @@ final class HostTest {
     @EnableZLinkFramework
     static class ProfileChannelConfig {
         @Bean
-        ZLinkFrameworkOptionsCustomizer profileChannelCustomizer() {
+        ZLinkFrameworkConfigurer profileChannelConfigurer() {
             return options -> options.addClientServerChannel("profile", channel ->
                 channel.enableClient(client ->
                     client.useManualConnections(endpoints ->

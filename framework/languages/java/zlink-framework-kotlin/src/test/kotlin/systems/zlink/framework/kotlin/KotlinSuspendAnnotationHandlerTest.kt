@@ -6,6 +6,8 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.Job
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -42,7 +44,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkAutoConfiguration
-import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorChangeKind
 import systems.zlink.framework.spots.ZLinkSpotActorChangeResult
@@ -130,6 +132,25 @@ final class KotlinSuspendAnnotationHandlerTest {
             .get(1, TimeUnit.SECONDS)
 
         assertEquals(PlayerReply("p1:move"), reply)
+    }
+
+    @Test
+    fun kotlinSuspendAnnotationRunsInsideFrameworkCoroutineContext() {
+        val handler = KotlinCoroutineContextHandler()
+        val method = KotlinCoroutineContextHandler::class.java.methods.single {
+            it.name == "request"
+        }
+
+        val reply = ZLinkHandlerMethodInvoker
+            .invoke(
+                handler,
+                method,
+                arrayOf(ProfileRequest("Ada")),
+            )
+            .toCompletableFuture()
+            .get(1, TimeUnit.SECONDS)
+
+        assertEquals(ProfileReply("coroutine:Ada"), reply)
     }
 
     @Test
@@ -248,6 +269,12 @@ final class KotlinSuspendAnnotationHandlerTest {
 
 class KotlinSuspendHandlerMarker
 
+class KotlinCoroutineContextHandler {
+    @ZLinkRequest
+    suspend fun request(request: ProfileRequest): ProfileReply =
+        ProfileReply(if (coroutineContext[Job] != null) "coroutine:${request.name}" else "missing")
+}
+
 @ZLinkHandlerGroup("kotlin-channel")
 class KotlinSpringSuspendChannelHandler(private val dependency: SuspendDependency) {
     @ZLinkRequest
@@ -338,7 +365,7 @@ open class SpringSuspendFrameworkConfig {
     open fun handler(dependency: SuspendDependency) = KotlinSpringSuspendChannelHandler(dependency)
 
     @Bean
-    open fun optionsCustomizer() = ZLinkFrameworkOptionsCustomizer { options ->
+    open fun frameworkConfigurer() = ZLinkFrameworkConfigurer { options ->
         options.setDefaultTimeout(Duration.ofSeconds(1))
         options.addHandlersFromPackageOf(KotlinSuspendHandlerMarker::class.java)
         options.addClientServerChannel("profile") { channel ->

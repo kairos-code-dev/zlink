@@ -11,8 +11,13 @@ Open `framework/languages/java` in IntelliJ IDEA to work on the framework and
 samples together. The framework root includes this directory as the
 `zlink-framework-java-samples` Gradle build, so every Java and Kotlin sample role
 is visible from one IDE import. You can also open this `samples/` directory
-directly when you only want the sample modules. The individual sample
-`settings.gradle.kts` files are kept for command-line standalone sample builds.
+directly when you only want the sample modules.
+
+Individual sample directories do not keep `settings.gradle.kts` files. IntelliJ
+auto-detects every nested `settings.gradle.kts` as another Gradle root, which
+makes the same sample projects appear more than once when `framework/languages/java`
+is opened. Standalone command-line sample runs use each sample's
+`standalone.settings.gradle.kts` through `run_sample.sh` instead.
 
 ```text
 samples/

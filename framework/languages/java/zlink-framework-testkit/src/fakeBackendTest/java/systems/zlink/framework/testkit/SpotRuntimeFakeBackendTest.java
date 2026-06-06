@@ -3,6 +3,7 @@ package systems.zlink.framework.testkit;
 import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,11 +14,14 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -33,16 +37,21 @@ import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.registry.ZLinkRegistrySpotRemoteAddressResolver;
 import systems.zlink.framework.spots.ZLinkSpotActorChangeResult;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
+import systems.zlink.framework.spots.ZLinkSpotPostActorJoinedHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 
 final class SpotRuntimeFakeBackendTest {
@@ -224,6 +233,86 @@ final class SpotRuntimeFakeBackendTest {
             HandlerSpot.dispatches);
         assertEquals(List.of("reply:ping"), backendFactory.spotReplies());
         assertTrue(backendFactory.calls().contains("spot.1.setSubscription.stage.events"));
+    }
+
+    @Test
+    void userSpotDispatchesRouteHandlersOnSingleSpotSerialQueue() throws Exception {
+        SerialSpotHandler.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> node.addSpotFactory(SerialSpot.class)));
+        FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+            runtime.spotManager()
+                .createAsync(SerialSpot.class, RoutingId.from("serial-spot"))
+                .toCompletableFuture()
+                .join();
+
+            backendFactory.dispatchSpotRoute("String", "first");
+            SerialSpotHandler.firstStarted.get(1, TimeUnit.SECONDS);
+            backendFactory.dispatchSpotRoute("String", "second");
+
+            assertFalse(
+                SerialSpotHandler.secondStarted.isDone(),
+                SerialSpotHandler.events.toString());
+
+            SerialSpotHandler.releaseFirst.complete(null);
+            SerialSpotHandler.secondStarted.get(1, TimeUnit.SECONDS);
+        }
+
+        assertEquals(
+            List.of("start:first", "end:first", "start:second", "end:second"),
+            SerialSpotHandler.events);
+    }
+
+    @Test
+    void userSpotActorJoinWaitsOnSingleSpotSerialQueue() throws Exception {
+        SerialSpotHandler.reset();
+        SerialActorJoinHandler.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addActorFactory("player", PlayerActorFactory.class);
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> node.addSpotFactory(SerialSpot.class)));
+        FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
+        ZLinkHandlerFactory reflection = ZLinkHandlerFactory.reflection();
+        ZLinkHandlerFactory handlerFactory = handlerType -> {
+            if (handlerType == SerialActorJoinHandler.class) {
+                return new SerialActorJoinHandler();
+            }
+            return reflection.create(handlerType);
+        };
+
+        try (ZLinkFrameworkRuntime runtime = new ZLinkFrameworkRuntime(
+                 options,
+                 backendFactory,
+                 new SerialJoinSerializer(),
+                 handlerFactory)) {
+            runtime.spotManager()
+                .createAsync(SerialSpot.class, RoutingId.from("serial-spot"))
+                .toCompletableFuture()
+                .join();
+
+            backendFactory.dispatchSpotActorJoinReadable(
+                "player-serial",
+                "SerialJoinRequest",
+                "join");
+            awaitFuture(SerialActorJoinHandler.started, backendFactory.calls());
+            backendFactory.dispatchSpotRoute("String", "second");
+
+            assertFalse(
+                SerialSpotHandler.secondStarted.isDone(),
+                SerialActorJoinHandler.events.toString() + SerialSpotHandler.events);
+
+            SerialActorJoinHandler.release.complete(null);
+            SerialSpotHandler.secondStarted.get(1, TimeUnit.SECONDS);
+        }
+
+        assertEquals(
+            List.of("join:start:player-serial:join", "join:end:player-serial"),
+            SerialActorJoinHandler.events);
+        assertEquals(List.of("start:second", "end:second"), SerialSpotHandler.events);
     }
 
     @Test
@@ -1081,6 +1170,76 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     @Test
+    void entrySpotActorReadableInvokesInterfaceActorRequestHandler() {
+        InterfaceEntryActorRequestHandler.lastRequest.set(null);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> {
+                node.configureEntrySpot(entry ->
+                    entry.setRoutingId(RoutingId.from("entry-spot")));
+                node.addEntrySpot(InterfaceEntrySpot.class);
+            }));
+        options.addActorFactory("player", PlayerActorFactory.class);
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime = new ZLinkFrameworkRuntime(
+                 options,
+                 backendFactory,
+                 new InterfaceActorSerializer(),
+                 ZLinkHandlerFactory.reflection())) {
+            runtime.actorManager()
+                .createAsync("player-1", "player")
+                .toCompletableFuture()
+                .join();
+
+            backendFactory.dispatchEntrySpotActorStreamRequest(
+                "player-1",
+                "InterfaceActorRequest",
+                "7",
+                42);
+            awaitCall(backendFactory, "spotNode.sendActorBoundSession.player-1.");
+        }
+
+        assertEquals("player-1:7", InterfaceEntryActorRequestHandler.lastRequest.get());
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("spotNode.sendActorBoundSession.player-1.")),
+            () -> "calls: " + backendFactory.calls());
+    }
+
+    @Test
+    void userSpotActorJoinReadableInvokesInterfaceJoinAndLifecycleHandlers() {
+        InterfaceActorJoinHandler.lastJoin.set(null);
+        InterfaceActorJoinedHandler.lastJoin.set(null);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addActorFactory("player", PlayerActorFactory.class);
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> node.addSpotFactory(InterfaceUserSpot.class)));
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime = new ZLinkFrameworkRuntime(
+                 options,
+                 backendFactory,
+                 new InterfaceActorSerializer(),
+                 ZLinkHandlerFactory.reflection())) {
+            runtime.spotManager()
+                .createAsync(InterfaceUserSpot.class, RoutingId.from("interface-spot"))
+                .toCompletableFuture()
+                .join();
+
+            backendFactory.dispatchSpotActorJoinReadable(
+                "player-1",
+                "InterfaceActorRequest",
+                "join-request");
+            awaitCall(backendFactory, "spot.1.replyActorJoin.player-1.0");
+        }
+
+        assertEquals("player-1:join-request", InterfaceActorJoinHandler.lastJoin.get());
+        assertEquals("player-1:JOIN_ENTRY_SPOT:true", InterfaceActorJoinedHandler.lastJoin.get());
+    }
+
+    @Test
     void spotContextLeaveActorMarksActorLeftAndInvokesRegisteredHandler() {
         ActorLeftHandler.lastLeave.set(null);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
@@ -1241,6 +1400,14 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
+    private static void awaitFuture(CompletableFuture<Void> future, List<String> calls) {
+        try {
+            future.get(1, TimeUnit.SECONDS);
+        } catch (Exception ex) {
+            throw new AssertionError(calls.toString(), ex);
+        }
+    }
+
     public static final class OutboundSpot implements ZLinkSpot {
         static OutboundSpot instance;
         static ZLinkSpotContext context;
@@ -1303,6 +1470,123 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
+    public static final class SerialSpot implements ZLinkSpot {
+        private final ZLinkSpotContext context;
+
+        public SerialSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addHandler(SerialActorJoinHandler.class);
+            context.handlers().addPacket(SerialSpotHandler.class);
+        }
+    }
+
+    public static final class SerialSpotHandler
+        implements ZLinkSpotPacketHandler<SerialSpot, String> {
+        static final List<String> events = new CopyOnWriteArrayList<>();
+        static CompletableFuture<Void> releaseFirst = new CompletableFuture<>();
+        static CompletableFuture<Void> firstStarted = new CompletableFuture<>();
+        static CompletableFuture<Void> secondStarted = new CompletableFuture<>();
+
+        static void reset() {
+            events.clear();
+            releaseFirst = new CompletableFuture<>();
+            firstStarted = new CompletableFuture<>();
+            secondStarted = new CompletableFuture<>();
+        }
+
+        @Override
+        public CompletionStage<Void> handleAsync(SerialSpot spot, String message) {
+            events.add("start:" + message);
+            if ("first".equals(message)) {
+                firstStarted.complete(null);
+                return releaseFirst.thenRun(() -> events.add("end:first"));
+            }
+            events.add("end:" + message);
+            secondStarted.complete(null);
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    @ZLinkPacket("SerialJoinRequest")
+    public static final class SerialJoinRequest {
+        private final String value;
+
+        public SerialJoinRequest(String value) {
+            this.value = value;
+        }
+
+        public String value() {
+            return value;
+        }
+    }
+
+    public static final class SerialActorJoinHandler {
+        static final List<String> events = new CopyOnWriteArrayList<>();
+        static CompletableFuture<Void> started = new CompletableFuture<>();
+        static CompletableFuture<Void> release = new CompletableFuture<>();
+
+        static void reset() {
+            events.clear();
+            started = new CompletableFuture<>();
+            release = new CompletableFuture<>();
+        }
+
+        public SerialActorJoinHandler() {
+        }
+
+        @ZLinkSpotActorJoin
+        public CompletionStage<String> join(PlayerActor actor, SerialJoinRequest request) {
+            events.add("join:start:" + actor.actorId() + ":" + request.value());
+            started.complete(null);
+            return release.thenApply(ignored -> {
+                events.add("join:end:" + actor.actorId());
+                return "joined:" + request.value();
+            });
+        }
+    }
+
+    public static final class SerialJoinSerializer implements ZLinkMessageSerializer {
+        @Override
+        public <T> Message serialize(T value) {
+            if (value instanceof Message message) {
+                return Message.from(message);
+            }
+            if (value instanceof byte[] bytes) {
+                return Message.from(bytes);
+            }
+            if (value instanceof SerialJoinRequest request) {
+                return Message.from(request.value().getBytes(StandardCharsets.UTF_8));
+            }
+            return Message.from(String.valueOf(value).getBytes(StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public <T> T deserialize(Message message, Class<T> type) {
+            if (type == Message.class) {
+                return type.cast(Message.from(message));
+            }
+            if (type == byte[].class) {
+                return type.cast(message.toByteArray());
+            }
+            if (type == String.class) {
+                return type.cast(message.toUtf8String());
+            }
+            if (type == SerialJoinRequest.class) {
+                return type.cast(new SerialJoinRequest(message.toUtf8String()));
+            }
+            throw new IllegalArgumentException("unsupported message type: " + type.getName());
+        }
+    }
+
     public static final class NoopSendHandler
         implements ZLinkSendHandler<String> {
         @Override
@@ -1359,6 +1643,132 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public CompletionStage<Void> onClosingAsync() {
             closingCount.incrementAndGet();
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class InterfaceEntrySpot implements ZLinkEntrySpot {
+        private final ZLinkEntrySpotContext context;
+
+        public InterfaceEntrySpot(ZLinkEntrySpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkEntrySpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addHandler(InterfaceEntryActorRequestHandler.class);
+        }
+    }
+
+    public static final class InterfaceEntryActorRequestHandler
+        implements ZLinkEntrySpotActorRequestHandler<
+            InterfaceEntrySpot,
+            PlayerActor,
+            InterfaceActorRequest,
+            String> {
+        static final AtomicReference<String> lastRequest = new AtomicReference<>();
+
+        @Override
+        public CompletionStage<String> handleAsync(
+            InterfaceEntrySpot entrySpot,
+            PlayerActor actor,
+            ZLinkSpotActorRequestContext context,
+            InterfaceActorRequest request,
+            systems.zlink.framework.CancellationToken cancellationToken) {
+            lastRequest.set(actor.actorId() + ":" + request.value());
+            return CompletableFuture.completedFuture("reply:" + request.value());
+        }
+    }
+
+    public static final class InterfaceUserSpot implements ZLinkSpot {
+        private final ZLinkSpotContext context;
+
+        public InterfaceUserSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addHandler(InterfaceActorJoinHandler.class);
+            context.handlers().addHandler(InterfaceActorJoinedHandler.class);
+        }
+    }
+
+    public static final class InterfaceActorJoinHandler
+        implements ZLinkSpotActorJoinHandler<
+            InterfaceUserSpot,
+            PlayerActor,
+            InterfaceActorRequest,
+            String> {
+        static final AtomicReference<String> lastJoin = new AtomicReference<>();
+
+        @Override
+        public CompletionStage<String> handleAsync(
+            InterfaceUserSpot spot,
+            PlayerActor actor,
+            InterfaceActorRequest request,
+            systems.zlink.framework.CancellationToken cancellationToken) {
+            lastJoin.set(actor.actorId() + ":" + request.value());
+            return CompletableFuture.completedFuture("joined:" + request.value());
+        }
+    }
+
+    @ZLinkPacket("InterfaceActorRequest")
+    public record InterfaceActorRequest(String value) {
+    }
+
+    public static final class InterfaceActorSerializer implements ZLinkMessageSerializer {
+        @Override
+        public <T> Message serialize(T value) {
+            if (value instanceof Message message) {
+                return Message.from(message);
+            }
+            if (value instanceof InterfaceActorRequest request) {
+                return Message.from(request.value().getBytes(StandardCharsets.UTF_8));
+            }
+            return Message.from(String.valueOf(value).getBytes(StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public <T> T deserialize(Message message, Class<T> type) {
+            if (type == Message.class) {
+                return type.cast(Message.from(message));
+            }
+            if (type == String.class) {
+                return type.cast(message.toUtf8String());
+            }
+            if (type == InterfaceActorRequest.class) {
+                return type.cast(new InterfaceActorRequest(message.toUtf8String()));
+            }
+            throw new IllegalArgumentException("unsupported message type: " + type.getName());
+        }
+    }
+
+    public static final class InterfaceActorJoinedHandler
+        implements ZLinkSpotPostActorJoinedHandler<InterfaceUserSpot, PlayerActor> {
+        static final AtomicReference<String> lastJoin = new AtomicReference<>();
+
+        @Override
+        public CompletionStage<Void> handleAsync(
+            InterfaceUserSpot spot,
+            PlayerActor actor,
+            ZLinkSpotActorChangeResult result,
+            systems.zlink.framework.CancellationToken cancellationToken) {
+            lastJoin.set(actor.actorId()
+                + ":"
+                + result.kind()
+                + ":"
+                + actor.context().isJoined());
             return CompletableFuture.completedFuture(null);
         }
     }

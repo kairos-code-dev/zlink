@@ -92,6 +92,13 @@ provenance 주석:
 - `.NET`에는 `samples/Bingo(session-gateway)`가 존재한다(WIP). 이 Java 계획에서는
   필수 4개만 우선 구현하고, `Bingo(session-gateway)` 대응 Java sample은 **선택
   항목**으로 둔다(필수 release gate 밖).
+- `.NET` sample에서 `Bingo`는 interface 기반 handler 발견과 dispatch를 보여 주고,
+  `TicTacToe`는 attribute 기반 handler 발견과 dispatch를 보여 준다. Java/Kotlin
+  sample도 같은 구분을 유지한다. Java/Kotlin의 `Bingo` handler는 channel, Entry Spot
+  actor request, room Spot actor join/request/lifecycle을 interface 구현체로 등록한다.
+  Kotlin `Bingo`는 이 interface 표면을 유지하면서 handler 내부 실행은
+  `ZLinkCoroutineRuntime` 기반 coroutine wrapper로 처리한다. `TicTacToe`는
+  annotation handler sample로 남겨 두어 두 등록 모델을 각각 확인할 수 있게 한다.
 
 ## 3. 디렉토리 구조
 

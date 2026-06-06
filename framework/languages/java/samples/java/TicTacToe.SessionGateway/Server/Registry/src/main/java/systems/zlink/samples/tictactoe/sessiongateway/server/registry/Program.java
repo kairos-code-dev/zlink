@@ -5,6 +5,6 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        RegistryHostFactory.start(args);
+        RegistryApplication.run(args);
     }
 }

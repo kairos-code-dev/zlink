@@ -1,12 +1,13 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.actors
 
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
-import systems.zlink.framework.actors.ZLinkActorFactory
+import systems.zlink.framework.kotlin.ZLinkCoroutineActorFactory
+import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 
-class PlayerActorFactory : ZLinkActorFactory {
-    override fun createAsync(actorId: String, context: ZLinkActorContext): CompletionStage<ZLinkActor> =
-        CompletableFuture.completedFuture(PlayerActor(actorId, context))
+class PlayerActorFactory(
+    coroutines: ZLinkCoroutineRuntime,
+) : ZLinkCoroutineActorFactory(coroutines) {
+    override suspend fun create(actorId: String, context: ZLinkActorContext): ZLinkActor =
+        PlayerActor(actorId, context)
 }

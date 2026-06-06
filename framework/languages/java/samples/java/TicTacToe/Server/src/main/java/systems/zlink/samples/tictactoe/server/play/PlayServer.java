@@ -1,7 +1,7 @@
 package systems.zlink.samples.tictactoe.server.play;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer;
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
@@ -14,7 +14,7 @@ public final class PlayServer {
     private PlayServer() {
     }
 
-    public static ZLinkFrameworkOptionsCustomizer configure(SampleSettings settings) {
+    public static ZLinkFrameworkConfigurer configure(SampleSettings settings) {
         return options -> {
             SampleLogging.configure(settings, "play");
             options.codecs().addJson();

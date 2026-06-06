@@ -29,6 +29,7 @@ dependencies {
     implementation("io.netty:netty-buffer:4.1.100.Final")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.9.0")
 }
 
 kotlin {

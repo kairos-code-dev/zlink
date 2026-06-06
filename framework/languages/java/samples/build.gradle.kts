@@ -3,6 +3,12 @@ plugins {
     idea
 }
 
+idea {
+    module {
+        name = "zlink-framework-java-samples"
+    }
+}
+
 val sampleProjectPaths = listOf(
     ":java:Async",
     ":java:Bingo:Client",

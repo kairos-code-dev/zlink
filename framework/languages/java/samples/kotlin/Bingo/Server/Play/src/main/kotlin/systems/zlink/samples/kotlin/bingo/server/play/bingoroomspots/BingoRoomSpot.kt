@@ -2,10 +2,10 @@ package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots
 
 import java.util.ArrayDeque
 import java.time.Duration
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
-import systems.zlink.framework.spots.ZLinkSpot
+import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkTimer
 import systems.zlink.framework.spots.ZLinkTimerOptions
@@ -26,7 +26,8 @@ class BingoRoomSpot(
     private val context: ZLinkSpotContext,
     private val notifications: BingoNotificationPublisher,
     private val createdHandler: BingoRoomSpotCreatedHandler,
-) : ZLinkSpot {
+    coroutines: ZLinkCoroutineRuntime,
+) : ZLinkCoroutineSpot(coroutines) {
     private val sameSequenceWinnerProbe = listOf("player-2", "player-3")
     private val players = mutableListOf<BingoRoomPlayer>()
     private val drawDeck = ArrayDeque<Int>()
@@ -42,8 +43,9 @@ class BingoRoomSpot(
 
     override fun context(): ZLinkSpotContext = context
 
-    override fun onCreateAsync(createParts: MutableList<Message>): CompletionStage<Void> =
-        createdHandler.handleAsync(this, createParts)
+    override suspend fun onCreate(createParts: MutableList<Message>) {
+        createdHandler.handle(this, createParts)
+    }
 
     override fun configure() {
         context.handlers().addHandler(BingoRoomJoinHandler::class.java)
@@ -52,31 +54,30 @@ class BingoRoomSpot(
         context.handlers().addHandler(BingoRoomActorLeftHandler::class.java)
     }
 
-    override fun onInitializeAsync(): CompletionStage<Void> =
-        context.addTimer(
+    override suspend fun onInitialize() {
+        timer = context.addTimer(
             "bingo-draw",
             Duration.ofMillis(settings.drawPeriodMillis),
             BingoRoomTimerHandler::class.java,
             ZLinkTimerOptions(),
-        )
-            .thenAccept { timer = it }
+        ).await()
+    }
 
-    override fun onClosingAsync(): CompletionStage<Void> =
-        timer?.cancelAsync() ?: CompletableFuture.completedFuture(null)
+    override suspend fun onClosing() {
+        timer?.cancelAsync()?.await()
+    }
 
-    fun joinAsync(
+    suspend fun join(
         actor: PlayerActor,
         request: BingoRoomJoinReq,
-    ): CompletionStage<BingoRoomJoinRes> {
+    ): BingoRoomJoinRes {
         val existing = players.firstOrNull { it.actor.actorId() == actor.actorId() }
         if (existing != null) {
-            return CompletableFuture.completedFuture(BingoRoomJoinRes(snapshot()))
+            return BingoRoomJoinRes(snapshot())
         }
 
         if (status != WaitingForPlayers || players.size >= settings.requiredPlayers) {
-            return CompletableFuture.failedFuture(
-                IllegalStateException("Room ${request.roomId} cannot accept more players."),
-            )
+            throw IllegalStateException("Room ${request.roomId} cannot accept more players.")
         }
 
         actor.setDisplayName(request.displayName)
@@ -85,41 +86,35 @@ class BingoRoomSpot(
         players += player
 
         val state = snapshot()
-        return notifications.publishAsync(playerJoinedEvents(player, state))
-            .thenApply { BingoRoomJoinRes(state) }
+        notifications.publish(playerJoinedEvents(player, state))
+        return BingoRoomJoinRes(state)
     }
 
-    fun startAsync(
+    suspend fun start(
         actor: PlayerActor,
         request: StartBingoGameReq,
-    ): CompletionStage<StartBingoGameRes> {
+    ): StartBingoGameRes {
         if (request.roomId != context.spotRid().toHex()) {
-            return CompletableFuture.failedFuture(
-                IllegalStateException("Start request room id does not match actor room."),
-            )
+            throw IllegalStateException("Start request room id does not match actor room.")
         }
         if (players.isEmpty() || players.first().actor.actorId() != actor.actorId()) {
-            return CompletableFuture.failedFuture(
-                IllegalStateException("Only the host actor can start the bingo room."),
-            )
+            throw IllegalStateException("Only the host actor can start the bingo room.")
         }
         if (players.size != settings.requiredPlayers) {
-            return CompletableFuture.failedFuture(
-                IllegalStateException("Bingo room requires exactly ${settings.requiredPlayers} players before start."),
-            )
+            throw IllegalStateException("Bingo room requires exactly ${settings.requiredPlayers} players before start.")
         }
         if (status == WaitingForPlayers) {
             status = Running
             val state = snapshot()
-            return notifications.publishAsync(eventsForAll(BingoRoomEventKind.GAME_STARTED, state))
-                .thenApply { StartBingoGameRes(snapshot()) }
+            notifications.publish(eventsForAll(BingoRoomEventKind.GAME_STARTED, state))
+            return StartBingoGameRes(snapshot())
         }
-        return CompletableFuture.completedFuture(StartBingoGameRes(snapshot()))
+        return StartBingoGameRes(snapshot())
     }
 
-    fun tickAsync(): CompletionStage<Void> {
+    suspend fun tick() {
         if (status != Running || drawDeck.isEmpty()) {
-            return CompletableFuture.completedFuture(null)
+            return
         }
 
         val number = drawDeck.remove()
@@ -144,8 +139,8 @@ class BingoRoomSpot(
         } else {
             BingoRoomEventKind.STATE
         }
-        return notifications.publishAsync(numberDrawnEvents(state, number))
-            .thenCompose { notifications.publishAsync(eventsForAll(kind, state)) }
+        notifications.publish(numberDrawnEvents(state, number))
+        notifications.publish(eventsForAll(kind, state))
     }
 
     private fun snapshot(): BingoRoomState {

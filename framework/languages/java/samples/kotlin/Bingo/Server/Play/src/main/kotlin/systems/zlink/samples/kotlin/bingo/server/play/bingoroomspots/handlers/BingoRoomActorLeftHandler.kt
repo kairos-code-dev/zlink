@@ -1,16 +1,20 @@
 package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers
 
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
-import systems.zlink.framework.handlers.ZLinkSpotActorLeft
+import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkCoroutineSpotActorLeftHandler
 import systems.zlink.framework.spots.ZLinkSpotActorChangeResult
 import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActor
+import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoRoomSpot
 
-class BingoRoomActorLeftHandler {
-    @ZLinkSpotActorLeft
-    fun handleAsync(
+class BingoRoomActorLeftHandler(
+    coroutines: ZLinkCoroutineRuntime,
+) : ZLinkCoroutineSpotActorLeftHandler<BingoRoomSpot, PlayerActor>(coroutines) {
+    override suspend fun handle(
+        spot: BingoRoomSpot,
         actor: PlayerActor,
         result: ZLinkSpotActorChangeResult,
-    ): CompletionStage<Void> =
-        CompletableFuture.completedFuture(null)
+        cancellationToken: CancellationToken,
+    ) {
+    }
 }

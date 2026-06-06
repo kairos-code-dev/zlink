@@ -1,6 +1,7 @@
 plugins {
     application
     id("org.jetbrains.kotlin.jvm") version "2.1.0"
+    kotlin("plugin.spring")
 }
 
 fun sampleProject(name: String) = project("${sampleRootPath()}:$name")
@@ -27,6 +28,7 @@ dependencies {
     implementation("io.netty:netty-buffer:4.1.100.Final")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.9.0")
+    implementation(kotlin("stdlib"))
 }
 
 kotlin {

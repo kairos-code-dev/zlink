@@ -28,7 +28,7 @@ recv loop를 application 표면에 직접 노출하지 않는 편을 기본으�
 @Configuration
 public class StreamConfig {
     @Bean
-    ZLinkFrameworkOptionsCustomizer streamOptions() {
+    ZLinkFrameworkConfigurer streamOptions() {
         return options -> {
             options.addSpotMesh("game.stage", mesh -> {
                 mesh.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));

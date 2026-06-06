@@ -211,6 +211,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         spot.dispatchSubscribeReadable();
     }
 
+    public void dispatchSpotActorJoinReadable(String actorId, String packetName, String payload) {
+        FakeSpot spot = firstUserSpot();
+        spot.enqueueActorJoin(actorId, packetName, payload);
+        spot.dispatchActorJoinReadable();
+    }
+
     public List<String> spotReplies() {
         return spots.stream()
             .flatMap(spot -> spot.replies().stream())

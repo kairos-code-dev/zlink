@@ -1,38 +1,36 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.handlers
 
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.kotlin.ZLinkCoroutineSessionPacketHandler
+import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleNames
 
 class PlaceMarkSessionPacketHandler(
     private val channels: ZLinkClient,
     private val relay: PlayNotificationRelay,
-) : ZLinkSessionPacketHandler<ZLinkSessionContext> {
-    override fun packetName(): String = "PlaceMarkReq"
-
-    override fun handleAsync(
+    coroutines: ZLinkCoroutineRuntime,
+) : ZLinkCoroutineSessionPacketHandler<ZLinkSessionContext>(coroutines, "PlaceMarkReq") {
+    override suspend fun handle(
         context: ZLinkSessionContext,
         header: ZLinkStreamHeader,
         payload: Message,
-    ): CompletionStage<Void> {
+    ) {
         val actor = CreateMatchSessionPacketHandler.requireSingleBoundActor(context)
-        return channels.requestToChannel(
+        val response = channels.requestToChannel(
             SampleNames.PlayChannel,
             "${payload.toUtf8String()}|${actor.actorId()}",
         )
             .packetName("PlaceMarkReq")
             .submitAsync(String::class.java)
-            .thenCompose { response ->
-                relay.deliverAsync(response)
-                    .thenCompose {
-                        context.client()
-                            .reply(relay.reply(response))
-                            .submitAsync()
-                    }
-            }
+            .await()
+        relay.deliver(response)
+        context.client()
+            .reply(relay.reply(response))
+            .submitAsync()
+            .await()
     }
 }

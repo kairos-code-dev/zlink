@@ -13,9 +13,9 @@
 ```java
 @Configuration
 @EnableZLinkFramework
-public class ZLinkConfig implements ZLinkFrameworkOptionsCustomizer {
+public class ZLinkConfig implements ZLinkFrameworkConfigurer {
     @Override
-    public void customize(ZLinkFrameworkOptions options) {
+    public void configure(ZLinkFrameworkOptions framework) {
         options.addClientServerChannel("api", channel -> {
             channel.enableServer(server -> {
                 server.bind("tcp://0.0.0.0:7100");

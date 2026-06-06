@@ -35,10 +35,10 @@ public class ZLinkFrameworkAutoConfiguration {
     @ConditionalOnBean(ZLinkFrameworkEnabled.class)
     @ConditionalOnMissingBean
     public DefaultZLinkFrameworkOptions zlinkFrameworkOptions(
-        List<ZLinkFrameworkOptionsCustomizer> customizers) {
+        List<ZLinkFrameworkConfigurer> configurers) {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        for (ZLinkFrameworkOptionsCustomizer customizer : customizers) {
-            customizer.customize(options);
+        for (ZLinkFrameworkConfigurer configurer : configurers) {
+            configurer.configure(options);
         }
         return options;
     }

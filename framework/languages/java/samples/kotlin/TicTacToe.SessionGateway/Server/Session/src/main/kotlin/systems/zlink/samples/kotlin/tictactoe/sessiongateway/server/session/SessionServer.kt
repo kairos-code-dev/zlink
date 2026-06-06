@@ -3,6 +3,10 @@ package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.PlayerSession
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.handlers.AuthenticateSessionPacketHandler
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.handlers.CreateMatchSessionPacketHandler
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.handlers.JoinMatchSessionPacketHandler
+import systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.handlers.PlaceMarkSessionPacketHandler
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.actors.PlayerActorFactory
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleSessionNode
@@ -51,6 +55,10 @@ object SessionServer {
             stream.bind(sessionNode.streamEndpoint)
             stream.attachActorGateway(SampleNames.SessionRelayNode)
             stream.registerSession(PlayerSession::class.java)
+            stream.addSessionPacketHandler(AuthenticateSessionPacketHandler::class.java)
+            stream.addSessionPacketHandler(CreateMatchSessionPacketHandler::class.java)
+            stream.addSessionPacketHandler(JoinMatchSessionPacketHandler::class.java)
+            stream.addSessionPacketHandler(PlaceMarkSessionPacketHandler::class.java)
         }
     }
 }

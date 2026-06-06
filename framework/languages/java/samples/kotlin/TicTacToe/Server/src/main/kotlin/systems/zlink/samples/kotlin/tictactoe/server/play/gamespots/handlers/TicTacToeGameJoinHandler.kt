@@ -11,11 +11,11 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoin
 @ZLinkHandlerGroup("play-actor")
 class TicTacToeGameJoinHandler {
     @ZLinkSpotActorJoin
-    fun join(
+    suspend fun join(
         spot: TicTacToeGame,
         actor: PlayActor,
         request: TicTacToeGameJoinReq,
         cancellationToken: CancellationToken,
-    ): java.util.concurrent.CompletionStage<TicTacToeGameJoinRes> =
+    ): TicTacToeGameJoinRes =
         spot.join(actor, request.gameId)
 }

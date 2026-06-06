@@ -57,7 +57,7 @@ host와 framework host가 같은 프로세스에 있더라도 registry option be
 
 embedded registry를 등록하면 `ZLinkRegistryQuery` bean도 함께 등록한다. Registry가
 다른 프로세스에서 동작하면 `.NET`의 `AddZLinkRegistryQueryClient(...)`에 대응하는
-별도 customizer를 사용한다.
+별도 configurer를 사용한다.
 
 ```java
 @Configuration

@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.entryspot.handlers
 
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
@@ -17,18 +17,18 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoin
 @ZLinkHandlerGroup(SampleNames.PlayActor)
 class PlayActorJoinGameHandler {
     @ZLinkSpotActorRequest
-    fun joinGame(
+    suspend fun joinGame(
         entrySpot: PlayEntrySpot,
         actor: PlayActor,
         context: ZLinkSpotActorRequestContext,
         request: JoinGameReq,
         cancellationToken: CancellationToken,
-    ): CompletionStage<JoinGameRes> =
-        actor.context()
+    ): JoinGameRes {
+        val result = actor.context()
             .joinSpot(RoutingId.fromHex(request.gameId), TicTacToeGameJoinReq(request.gameId, actor.actorId()))
             .submitAsync(TicTacToeGameJoinRes::class.java)
-            .thenApply { result ->
-                actor.joinGame(request.gameId)
-                JoinGameRes(result.reply().state)
-            }
+            .await()
+        actor.joinGame(request.gameId)
+        return JoinGameRes(result.reply().state)
+    }
 }

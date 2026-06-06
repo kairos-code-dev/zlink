@@ -11,7 +11,7 @@ fi
 
 cd "$ROOT_DIR"
 
-./gradlew build
+./gradlew -Pzlink.useLocalBindings=true build
 
 run_sample_with_retry() {
   local script="$1"

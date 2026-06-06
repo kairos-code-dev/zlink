@@ -64,9 +64,9 @@ public final class GetPriceHandler
 
 @Configuration
 @EnableZLinkFramework
-public class PriceServerConfig implements ZLinkFrameworkOptionsCustomizer {
+public class PriceServerConfig implements ZLinkFrameworkConfigurer {
     @Override
-    public void customize(ZLinkFrameworkOptions options) {
+    public void configure(ZLinkFrameworkOptions framework) {
         options.addClientServerChannel("price", channel -> {
             channel.enableServer(server -> server.bind("tcp://0.0.0.0:7301"));
             channel.addRequestHandler(GetPriceHandler.class);
@@ -86,9 +86,9 @@ endpoint가 있어야 한다.
 ```java
 @Configuration
 @EnableZLinkFramework
-public class CallerConfig implements ZLinkFrameworkOptionsCustomizer {
+public class CallerConfig implements ZLinkFrameworkConfigurer {
     @Override
-    public void customize(ZLinkFrameworkOptions options) {
+    public void configure(ZLinkFrameworkOptions framework) {
         options.addClientServerChannel("price", channel -> channel.enableClient());
         options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:5551"));
     }

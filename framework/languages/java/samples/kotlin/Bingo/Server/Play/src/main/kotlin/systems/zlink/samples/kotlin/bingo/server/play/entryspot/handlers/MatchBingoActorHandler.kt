@@ -1,10 +1,13 @@
 package systems.zlink.samples.kotlin.bingo.server.play.entryspot.handlers
 
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.handlers.ZLinkSpotActorRequest
-import systems.zlink.framework.spots.ZLinkSpotOutbound
+import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.kotlin.ZLinkCoroutineEntrySpotActorRequestHandler
+import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActor
+import systems.zlink.samples.kotlin.bingo.server.play.entryspot.BingoEntrySpot
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
@@ -15,14 +18,21 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoRes
 
 class MatchBingoActorHandler(
-    private val outbound: ZLinkSpotOutbound,
-) {
-    @ZLinkSpotActorRequest(packetName = "MatchBingoReq")
-    fun handleAsync(
+    coroutines: ZLinkCoroutineRuntime,
+) : ZLinkCoroutineEntrySpotActorRequestHandler<
+    BingoEntrySpot,
+    PlayerActor,
+    MatchBingoReq,
+    MatchBingoRes,
+    >(coroutines) {
+    override suspend fun handle(
+        entrySpot: BingoEntrySpot,
         actor: PlayerActor,
+        context: ZLinkSpotActorRequestContext,
         request: MatchBingoReq,
-    ): CompletionStage<MatchBingoRes> {
-        return outbound.requestToChannel(
+        cancellationToken: CancellationToken,
+    ): MatchBingoRes {
+        val matched = entrySpot.context().outbound().requestToChannel(
             SampleNames.ApiChannel,
             MatchBingoApiReq(
                 actor.actorId(),
@@ -33,19 +43,25 @@ class MatchBingoActorHandler(
             .packetName("MatchBingoApiReq")
             .timeout(SampleTimings.RequestTimeout)
             .submitAsync(MatchBingoApiRes::class.java)
-            .thenCompose { matched ->
-                actor.context()
-                    .joinSpot(
-                        RoutingId.fromHex(matched.roomId),
-                        BingoRoomJoinReq(
-                            matched.roomId,
-                            actor.actorId(),
-                            actor.displayName,
-                        ),
-                    )
-                    .timeout(SampleTimings.RequestTimeout)
-                    .submitAsync(BingoRoomJoinRes::class.java)
-                    .thenApply { joined -> MatchBingoRes(matched.roomId, joined.reply().state) }
-            }
+            .await()
+        if (cancellationToken.isCancellationRequested) {
+            throw IllegalStateException("MatchBingoReq was cancelled")
+        }
+        val joined = actor.context()
+            .joinSpot(
+                RoutingId.fromHex(matched.roomId),
+                BingoRoomJoinReq(
+                    matched.roomId,
+                    actor.actorId(),
+                    actor.displayName,
+                ),
+            )
+            .timeout(SampleTimings.RequestTimeout)
+            .submitAsync(BingoRoomJoinRes::class.java)
+            .await()
+        if (cancellationToken.isCancellationRequested) {
+            throw IllegalStateException("MatchBingoReq was cancelled")
+        }
+        return MatchBingoRes(matched.roomId, joined.reply().state)
     }
 }

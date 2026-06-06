@@ -17,12 +17,12 @@ Spring host에서 lifecycle의 두 경계는 다음과 같다.
 
 `ApplicationRunner`는 구동 driver로 쓰지 않고 one-shot readiness 신호용으로만
 예약한다. 설정 검증은 시동 hook이 아니라 등록 시점(`@EnableZLinkFramework`
-auto-config / `ZLinkFrameworkOptionsCustomizer` 적용 시점, `.NET`
+auto-config / `ZLinkFrameworkConfigurer` 적용 시점, `.NET`
 `AddZLinkFramework(...)` 등록 호출 안 검증 대응)에 먼저 끝낸다.
 
 ## 1. Startup 순서
 
-1. `ZLinkFrameworkOptionsCustomizer`와 registry/monitoring customizer 수집
+1. `ZLinkFrameworkConfigurer`와 registry/monitoring configurer 수집
 2. builder validation(등록 시점)
 3. **embedded registry runtime 먼저 시동**
 4. Java binding context 생성

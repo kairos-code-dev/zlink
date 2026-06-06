@@ -18,13 +18,21 @@ import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.testfixtures.handlerconflict.ConflictingSpotActorPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.spots.ZLinkEntrySpotContext;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorLeftHandler;
+import systems.zlink.framework.spots.ZLinkSpotPostActorJoinedHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.spots.ZLinkSpotActorChangeResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 
 final class ZLinkHandlerScannerTest {
@@ -149,6 +157,48 @@ final class ZLinkHandlerScannerTest {
     }
 
     @Test
+    void scansSpotActorInterfaceHandlersLikeDotnet() {
+        ZLinkScannedHandlerCatalog catalog =
+            ZLinkHandlerScanner.scan(Set.of(ZLinkHandlerScannerTest.class));
+
+        ZLinkScannedHandler request = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == InterfaceEntrySpotActorRequestHandler.class)
+            .findFirst()
+            .orElseThrow();
+        ZLinkScannedHandler join = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == InterfaceSpotActorJoinHandler.class)
+            .findFirst()
+            .orElseThrow();
+        ZLinkScannedHandler joined = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == InterfaceSpotActorJoinedHandler.class)
+            .findFirst()
+            .orElseThrow();
+        ZLinkScannedHandler left = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == InterfaceSpotActorLeftHandler.class)
+            .findFirst()
+            .orElseThrow();
+        ZLinkScannedHandler inherited = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == InheritedInterfaceSpotActorJoinedHandler.class)
+            .findFirst()
+            .orElseThrow();
+
+        assertEquals(ZLinkScannedHandlerSurface.SPOT, request.surface());
+        assertEquals(ZLinkScannedHandlerKind.ACTOR_REQUEST, request.kind());
+        assertEquals(SpotActorRequest.class, request.messageType());
+        assertEquals(SpotActorReply.class, request.replyType());
+        assertEquals("InterfaceSpotActorRequest", request.packetName());
+        assertEquals(ZLinkScannedHandlerKind.ACTOR_JOIN, join.kind());
+        assertEquals(SpotActorRequest.class, join.messageType());
+        assertEquals(SpotActorReply.class, join.replyType());
+        assertEquals(ZLinkScannedHandlerKind.ACTOR_JOINED, joined.kind());
+        assertEquals(TestActor.class, joined.messageType());
+        assertEquals(ZLinkScannedHandlerKind.ACTOR_LEFT, left.kind());
+        assertEquals(TestActor.class, left.messageType());
+        assertEquals(ZLinkScannedHandlerKind.ACTOR_JOINED, inherited.kind());
+        assertEquals(TestActor.class, inherited.messageType());
+    }
+
+    @Test
     void rejectsConflictingSpotActorPacketAnnotationsLikeDotnet() {
         assertThrows(
             ZLinkConfigurationException.class,
@@ -232,6 +282,86 @@ final class ZLinkHandlerScannerTest {
         }
     }
 
+    public static final class TestEntrySpot implements ZLinkEntrySpot {
+        @Override
+        public ZLinkEntrySpotContext context() {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    public static final class InterfaceEntrySpotActorRequestHandler
+        implements ZLinkEntrySpotActorRequestHandler<
+            TestEntrySpot,
+            TestActor,
+            SpotActorRequest,
+            SpotActorReply> {
+        @Override
+        public CompletionStage<SpotActorReply> handleAsync(
+            TestEntrySpot entrySpot,
+            TestActor actor,
+            ZLinkSpotActorRequestContext context,
+            SpotActorRequest request,
+            CancellationToken cancellationToken) {
+            return CompletableFuture.completedFuture(new SpotActorReply());
+        }
+    }
+
+    public static final class InterfaceSpotActorJoinHandler
+        implements ZLinkSpotActorJoinHandler<
+            TestSpot,
+            TestActor,
+            SpotActorRequest,
+            SpotActorReply> {
+        @Override
+        public CompletionStage<SpotActorReply> handleAsync(
+            TestSpot spot,
+            TestActor actor,
+            SpotActorRequest request,
+            CancellationToken cancellationToken) {
+            return CompletableFuture.completedFuture(new SpotActorReply());
+        }
+    }
+
+    public static final class InterfaceSpotActorJoinedHandler
+        implements ZLinkSpotPostActorJoinedHandler<TestSpot, TestActor> {
+        @Override
+        public CompletionStage<Void> handleAsync(
+            TestSpot spot,
+            TestActor actor,
+            ZLinkSpotActorChangeResult result,
+            CancellationToken cancellationToken) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class InterfaceSpotActorLeftHandler
+        implements ZLinkSpotActorLeftHandler<TestSpot, TestActor> {
+        @Override
+        public CompletionStage<Void> handleAsync(
+            TestSpot spot,
+            TestActor actor,
+            ZLinkSpotActorChangeResult result,
+            CancellationToken cancellationToken) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public abstract static class AbstractSpotActorJoinedHandler<TSpot, TActor extends ZLinkActor>
+        implements ZLinkSpotPostActorJoinedHandler<TSpot, TActor> {
+    }
+
+    public static final class InheritedInterfaceSpotActorJoinedHandler
+        extends AbstractSpotActorJoinedHandler<TestEntrySpot, TestActor> {
+        @Override
+        public CompletionStage<Void> handleAsync(
+            TestEntrySpot spot,
+            TestActor actor,
+            ZLinkSpotActorChangeResult result,
+            CancellationToken cancellationToken) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
     public static final class TestActor implements ZLinkActor {
         @Override
         public String actorId() {
@@ -244,6 +374,7 @@ final class ZLinkHandlerScannerTest {
         }
     }
 
+    @ZLinkPacket("InterfaceSpotActorRequest")
     public record SpotActorRequest() {
     }
 

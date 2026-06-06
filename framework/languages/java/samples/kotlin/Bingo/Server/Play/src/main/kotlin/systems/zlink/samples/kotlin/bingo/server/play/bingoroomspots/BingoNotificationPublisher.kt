@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots
 
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoGameEndedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoGameStartedNotify
@@ -10,15 +9,13 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoStateNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.PlayerJoinedNotify
 
 class BingoNotificationPublisher {
-    fun publishAsync(events: List<BingoRoomEvent>): CompletionStage<Void> {
-        var stage: CompletionStage<Void> = CompletableFuture.completedFuture(null)
+    suspend fun publish(events: List<BingoRoomEvent>) {
         for (event in events) {
-            stage = stage.thenCompose { publishAsync(event) }
+            publish(event)
         }
-        return stage
     }
 
-    private fun publishAsync(event: BingoRoomEvent): CompletionStage<Void> =
+    private suspend fun publish(event: BingoRoomEvent) {
         when (event.kind) {
             BingoRoomEventKind.PLAYER_JOINED ->
                 event.recipient.context().boundSession()
@@ -34,12 +31,14 @@ class BingoNotificationPublisher {
                     )
                     .packetName(SampleNames.PlayerJoinedPacket)
                     .submitAsync()
+                    .await()
 
             BingoRoomEventKind.GAME_STARTED ->
                 event.recipient.context().boundSession()
                     .send(BingoGameStartedNotify(event.state))
                     .packetName(SampleNames.GameStartedPacket)
                     .submitAsync()
+                    .await()
 
             BingoRoomEventKind.NUMBER_DRAWN ->
                 event.recipient.context().boundSession()
@@ -53,17 +52,21 @@ class BingoNotificationPublisher {
                     )
                     .packetName(SampleNames.NumberDrawnPacket)
                     .submitAsync()
+                    .await()
 
             BingoRoomEventKind.STATE ->
                 event.recipient.context().boundSession()
                     .send(BingoStateNotify(event.state))
                     .packetName(SampleNames.StatePacket)
                     .submitAsync()
+                    .await()
 
             BingoRoomEventKind.GAME_ENDED ->
                 event.recipient.context().boundSession()
                     .send(BingoGameEndedNotify(event.state))
                     .packetName(SampleNames.GameEndedPacket)
                     .submitAsync()
+                    .await()
         }
+    }
 }

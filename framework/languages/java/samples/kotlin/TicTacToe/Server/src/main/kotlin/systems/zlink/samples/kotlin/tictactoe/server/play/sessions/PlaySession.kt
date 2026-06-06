@@ -1,14 +1,13 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.sessions
 
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.streams.ZLinkSession
+import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkCoroutineSession
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.framework.streams.ZLinkStreamCodec as FrameworkStreamCodec
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
@@ -24,50 +23,39 @@ class PlaySession(
     private val context: ZLinkSessionContext,
     private val actors: ZLinkActorManager,
     private val channels: ZLinkClient,
-) : ZLinkSession {
+    coroutines: ZLinkCoroutineRuntime,
+) : ZLinkCoroutineSession(coroutines) {
     private var actorId: String? = null
     private var actor: ZLinkSessionActor? = null
 
     override fun context(): ZLinkSessionContext = context
 
-    override fun onConnectedAsync(): CompletionStage<Void> = CompletableFuture.completedFuture(null)
-
-    override fun onDisconnectedAsync(): CompletionStage<Void> {
+    override suspend fun onDisconnected() {
         actorId = null
         actor = null
-        return CompletableFuture.completedFuture(null)
     }
 
-    override fun onErrorAsync(error: ZLinkStreamError): CompletionStage<Void> =
-        CompletableFuture.completedFuture(null)
-
-    override fun onDispatchAsync(header: ZLinkStreamHeader, payload: Message): CompletionStage<Void> =
-        try {
-            if (header.packetName() == "AuthenticateReq") {
-                val request = decode(header, payload, AuthenticateReq::class.java)
-                channels
-                    .requestToChannel(
-                        SampleNames.ApiChannel,
-                        AuthenticatePlayerReq(request.accessToken),
-                    )
-                    .packetName("AuthenticatePlayer")
-                    .submitAsync(AuthenticatePlayerRes::class.java)
-                    .thenCompose { authenticated ->
-                        val authenticatedActorId = authenticated.actorId
-                        actorId = authenticatedActorId
-                        actors.getOrCreateAsync(authenticatedActorId, SampleNames.PlayActor)
-                    }
-                    .thenCompose(context.actors()::bindAsync)
-                    .thenCompose { bound ->
-                        actor = bound
-                        context.client().reply(AuthenticateRes(bound.actorId())).submitAsync()
-                    }
-            } else {
-                requireActor().relayAsync(header, payload)
-            }
-        } catch (ex: RuntimeException) {
-            CompletableFuture.failedFuture(ex)
+    override suspend fun onDispatch(header: ZLinkStreamHeader, payload: Message) {
+        if (header.packetName() == "AuthenticateReq") {
+            val request = decode(header, payload, AuthenticateReq::class.java)
+            val authenticated = channels
+                .requestToChannel(
+                    SampleNames.ApiChannel,
+                    AuthenticatePlayerReq(request.accessToken),
+                )
+                .packetName("AuthenticatePlayer")
+                .submitAsync(AuthenticatePlayerRes::class.java)
+                .await()
+            val authenticatedActorId = authenticated.actorId
+            actorId = authenticatedActorId
+            val playActor = actors.getOrCreateAsync(authenticatedActorId, SampleNames.PlayActor).await()
+            val bound = context.actors().bindAsync(playActor).await()
+            actor = bound
+            context.client().reply(AuthenticateRes(bound.actorId())).submitAsync().await()
+        } else {
+            requireActor().relayAsync(header, payload).await()
         }
+    }
 
     private fun requireActor(): ZLinkSessionActor =
         actor?.takeIf { !actorId.isNullOrBlank() }

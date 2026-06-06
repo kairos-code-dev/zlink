@@ -1,6 +1,7 @@
 package systems.zlink.samples.bingo.shared.contracts;
 
 import java.util.List;
+import systems.zlink.framework.handlers.ZLinkPacket;
 
 public final class Messages {
     private Messages() {
@@ -12,12 +13,14 @@ public final class Messages {
     public record AuthenticateRes(String actorId, String displayName) {
     }
 
+    @ZLinkPacket("AuthenticatePlayer")
     public record AuthenticatePlayerReq(String accessToken) {
     }
 
     public record AuthenticatePlayerRes(boolean accepted, String actorId, String displayName, String reason) {
     }
 
+    @ZLinkPacket("EnsurePlayerActor")
     public record EnsurePlayerActorReq(String actorId, String displayName) {
     }
 
@@ -27,30 +30,35 @@ public final class Messages {
     public record EnsurePlayerActorRes(String actorId, String actorType, ActorRefSnapshot actor) {
     }
 
+    @ZLinkPacket("MatchBingoReq")
     public record MatchBingoReq(String mode) {
     }
 
     public record MatchBingoRes(String roomId, BingoRoomState state) {
     }
 
+    @ZLinkPacket("MatchBingoApiReq")
     public record MatchBingoApiReq(String actorId, String displayName, String mode) {
     }
 
     public record MatchBingoApiRes(String roomId) {
     }
 
+    @ZLinkPacket("AllocateBingoRoomReq")
     public record AllocateBingoRoomReq(String actorId, String mode) {
     }
 
     public record AllocateBingoRoomRes(String roomId) {
     }
 
+    @ZLinkPacket("BingoRoomJoinReq")
     public record BingoRoomJoinReq(String roomId, String actorId, String displayName) {
     }
 
     public record BingoRoomJoinRes(BingoRoomState state) {
     }
 
+    @ZLinkPacket("StartBingoGameReq")
     public record StartBingoGameReq(String roomId) {
     }
 

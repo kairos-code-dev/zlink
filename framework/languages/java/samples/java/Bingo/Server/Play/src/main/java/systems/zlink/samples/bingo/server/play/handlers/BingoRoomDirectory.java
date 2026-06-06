@@ -16,7 +16,7 @@ public final class BingoRoomDirectory {
     private final ZLinkSpotManager spots;
     private final ObjectMapper json;
     private final Object gate = new Object();
-    private final Map<String, String> actorRooms = new HashMap<>();
+    private final Map<String, RoomAllocation> actorAllocations = new HashMap<>();
     private String currentRoomId;
     private BingoRoomModels.BingoRoomSettings currentRoomSettings;
     private int reservedSeats;
@@ -42,10 +42,10 @@ public final class BingoRoomDirectory {
         String roomId;
         BingoRoomModels.BingoRoomSettings settings;
         synchronized (gate) {
-            String existing = actorRooms.get(actorId);
+            RoomAllocation existing = actorAllocations.get(actorId);
             if (existing != null) {
-                roomId = existing;
-                settings = currentRoomSettings;
+                roomId = existing.roomId();
+                settings = existing.settings();
             } else {
                 settings = BingoRoomModels.BingoRoomSettings.create(mode, roomSeq + 1);
                 if (currentRoomId == null
@@ -59,7 +59,7 @@ public final class BingoRoomDirectory {
                 }
                 reservedSeats++;
                 roomId = currentRoomId;
-                actorRooms.put(actorId, roomId);
+                actorAllocations.put(actorId, new RoomAllocation(roomId, settings));
             }
         }
 
@@ -75,5 +75,10 @@ public final class BingoRoomDirectory {
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("Failed to encode bingo room settings.", ex);
         }
+    }
+
+    private record RoomAllocation(
+        String roomId,
+        BingoRoomModels.BingoRoomSettings settings) {
     }
 }

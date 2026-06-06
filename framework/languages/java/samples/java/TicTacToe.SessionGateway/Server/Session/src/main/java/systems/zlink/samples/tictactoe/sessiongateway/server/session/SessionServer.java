@@ -3,6 +3,10 @@ package systems.zlink.samples.tictactoe.sessiongateway.server.session;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.PlayerSession;
+import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.handlers.AuthenticateSessionPacketHandler;
+import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.handlers.CreateMatchSessionPacketHandler;
+import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.handlers.JoinMatchSessionPacketHandler;
+import systems.zlink.samples.tictactoe.sessiongateway.server.session.sessions.handlers.PlaceMarkSessionPacketHandler;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.actors.PlayerActorFactory;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.sessiongateway.shared.configuration.SampleTopology;
@@ -48,6 +52,10 @@ public final class SessionServer {
             stream.bind(sessionNode.streamEndpoint());
             stream.attachActorGateway(SampleNames.SessionRelayNode);
             stream.registerSession(PlayerSession.class);
+            stream.addSessionPacketHandler(AuthenticateSessionPacketHandler.class);
+            stream.addSessionPacketHandler(CreateMatchSessionPacketHandler.class);
+            stream.addSessionPacketHandler(JoinMatchSessionPacketHandler.class);
+            stream.addSessionPacketHandler(PlaceMarkSessionPacketHandler.class);
         });
     }
 }

@@ -131,6 +131,7 @@ connector 테스트 이름은 `Systems.Zlink.Stream.Connector.Tests`의 메서�
 | Kotlin connector wrapper | unit | `KotlinConnectorWrapperTest.suspendWrapperPreservesConnectorSemantics` / `connectorMessagesFlowUsesJavaManualDispatchSemantics` / `connectorErrorsFlowUsesJavaManualDispatchSemantics` / `coroutineRuntimeMapsSuspendStreamErrorHandlerToCompletionStage` | suspend wrapper와 connector `Flow` wrapper가 Java connector lifecycle, manual dispatch, request/reply/error event 의미를 바꾸지 않음 |
 | Kotlin suspend annotation channel handler | integration-single-process | `KotlinSuspendAnnotationHandlerTest.scannerTreatsKotlinSuspendChannelAnnotationsLikeJavaMethodHandlers` / `springCreatedKotlinSuspendHandlerRunsThroughMethodInvoker` / `springLifecycleDiscoversKotlinSuspendAnnotationBeanType` | Spring DI 안의 Kotlin `suspend fun` `@ZLinkRequest`, `@ZLinkSend`, `@ZLinkPublish` handler가 Java method handler와 같은 catalog에 등록되고 framework method invoker로 실행됨. continuation parameter는 handler parameter로 보이지 않음 |
 | Kotlin suspend annotation Spot/actor handler | fake backend / integration-single-process | `KotlinSuspendAnnotationHandlerTest.scannerTreatsKotlinSuspendSpotActorAnnotationsLikeJavaMethodHandlers` / `kotlinSuspendSpotActorMethodRunsThroughMethodInvoker` | Kotlin `suspend fun` `@ZLinkSpotActorRequest`, `@ZLinkSpotActorSend`, `@ZLinkSpotActorJoin`, actor lifecycle handler가 Java Spot/actor handler와 같은 registration과 method invoker 경로로 실행됨. timer는 annotation 표면이 아니라 `ZLinkSpotTimerHandler` interface wrapper 표면으로 검증함 |
+| Spot actor interface handler | contract / fake backend | `HandlerContractTest.spotHandlerRegistryMatchesDotnetRegistrationSurface` / `ZLinkHandlerScannerTest.scansSpotActorInterfaceHandlersLikeDotnet` / `SpotRuntimeFakeBackendTest.entrySpotActorReadableInvokesInterfaceActorRequestHandler` / `SpotRuntimeFakeBackendTest.userSpotActorJoinReadableInvokesInterfaceJoinAndLifecycleHandlers` | Entry Spot actor request, user Spot actor join/request/send/lifecycle public interface가 scanner catalog와 Spot runtime registration에 들어간다. interface handler와 annotation handler는 같은 packet name registry를 공유하므로 중복 mapping을 별도 registry key로 우회하지 않는다 |
 | Kotlin/Java duplicate annotation validation | contract | `KotlinSuspendAnnotationHandlerTest.duplicateValidationRejectsJavaAndKotlinSuspendAnnotationPacketCollision` | Java annotation handler와 Kotlin suspend annotation handler가 같은 channel packet mapping을 등록하면 기존 duplicate registration validation으로 startup 실패 |
 | Kotlin suspend annotation failure/cancellation | unit | `KotlinSuspendAnnotationHandlerTest.kotlinSuspendAnnotationExceptionCompletesJavaStageExceptionally` / `kotlinSuspendAnnotationCancellationCompletesJavaStageExceptionally` | Kotlin suspend annotation handler의 exception/cancellation이 Java runtime이 받는 `CompletionStage` exceptional/cancel completion으로 모임 |
 
@@ -168,7 +169,7 @@ transport error callback public API가 추가되어야 한다.
 |------|------|--------------|-----------|
 | host start/stop | unit | `HostTest.host_startsAndStops_frameworkRuntimeContext` | `SmartLifecycle` 시작·종료에 맞춰 runtime context 생성·정리 |
 | registry before framework + query DI | unit | `HostTest.host_startsEmbeddedRegistry_beforeFrameworkRuntime` / `host_startsEmbeddedRegistryWithoutFrameworkWhenFrameworkIsNotEnabled` / `host_doesNotRegisterRegistryQuery_withoutEmbeddedRegistry` | embedded registry가 framework runtime보다 먼저 시동한다. Registry-only host는 `@EnableZLinkFramework` 없이 registry와 `ZLinkRegistryQuery`만 등록하고, framework lifecycle/client bean은 등록하지 않는다 |
-| remote registry query client DI | unit | `HostTest.host_doesNotRegisterRegistryQueryClient_withoutCustomizer` / `host_registersRegistryQueryClient_whenCustomizerExists` / `host_rejectsRegistryQueryClientCustomizer_withoutEndpoint` | query client customizer가 있을 때만 `ZLinkRegistryQueryClient` bean 등록, endpoint 누락 validation |
+| remote registry query client DI | unit | `HostTest.host_doesNotRegisterRegistryQueryClient_withoutCustomizer` / `host_registersRegistryQueryClient_whenCustomizerExists` / `host_rejectsRegistryQueryClientCustomizer_withoutEndpoint` | query client configurer가 있을 때만 `ZLinkRegistryQueryClient` bean 등록, endpoint 누락 validation |
 | Spring multi-target clients | unit | `ZLinkFrameworkAutoConfigurationTest.autoConfigurationStartsFrameworkLifecycleAndExposesClientBean` / `enableZLinkFrameworkImportsFrameworkAutoConfiguration` / `multiTargetClientsThrowConfigurationExceptionWhenChannelIsMissing` | `@EnableZLinkFramework` import 기반 auto-configuration, channel/fanout/route client bean 노출과 missing channel configuration error |
 | Spring Spot publisher DI 노출 | unit | `ZLinkFrameworkAutoConfigurationTest.spotPublisherClientIsBeanOnlyWhenPublisherCapabilityExists` | attached Spot publisher capability가 있을 때만 `ZLinkSpotPublisherClient` bean 등록 |
 | Spring handler constructor injection | unit | `ZLinkFrameworkAutoConfigurationTest.handlerFactoryCreatesHandlersWithSpringConstructorInjection` | Spring `BeanFactory` 기반 handler 생성으로 constructor dependency 주입 |
@@ -211,6 +212,11 @@ model, player-client 파일이 존재하는지 함께 검사한다. `TicTacToe.S
 sample-local actor/session context stand-in 없이 framework-owned session context와
 public session actor binding API를 사용해야 한다. 이렇게 해야 sample이 smoke check로
 축소되는 회귀를 막을 수 있다.
+
+샘플 handler 스타일도 `.NET` sample의 의도를 따른다. `Bingo`는 interface 기반 handler
+발견과 dispatch를 보여 주는 sample이고, `TicTacToe`는 annotation 기반 handler 발견과
+dispatch를 보여 주는 sample이다. Kotlin `Bingo`는 interface 표면을 사용하되 내부
+비동기 흐름은 framework-owned coroutine wrapper로 실행한다.
 
 release gate command:
 

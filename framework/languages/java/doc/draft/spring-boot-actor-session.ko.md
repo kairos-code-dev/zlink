@@ -33,9 +33,9 @@ Entry Spot/user Spot 위치 축이 결정한다. session close가 actor를 자�
 ```java
 @Configuration
 @EnableZLinkFramework
-public class ActorConfig implements ZLinkFrameworkOptionsCustomizer {
+public class ActorConfig implements ZLinkFrameworkConfigurer {
     @Override
-    public void customize(ZLinkFrameworkOptions options) {
+    public void configure(ZLinkFrameworkOptions framework) {
         options.addActorFactory("player", PlayerActorFactory.class);
 
         options.addSpotMesh("game.stage", mesh -> {

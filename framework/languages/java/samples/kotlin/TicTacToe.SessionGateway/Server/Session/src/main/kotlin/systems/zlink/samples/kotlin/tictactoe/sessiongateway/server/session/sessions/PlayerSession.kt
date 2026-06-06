@@ -1,46 +1,38 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions
 
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
-import systems.zlink.framework.streams.ZLinkSession
+import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkCoroutineSession
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
-import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.framework.streams.ZLinkStreamHeader
 
 class PlayerSession(
     private val context: ZLinkSessionContext,
     private val handlers: ZLinkSessionPacketDispatcher<ZLinkSessionContext>,
     private val sessions: PlayerSessionDirectory,
-) : ZLinkSession {
+    coroutines: ZLinkCoroutineRuntime,
+) : ZLinkCoroutineSession(coroutines) {
     override fun context(): ZLinkSessionContext = context
 
-    override fun onConnectedAsync(): CompletionStage<Void> =
-        CompletableFuture.completedFuture(null)
-
-    override fun onDisconnectedAsync(): CompletionStage<Void> =
+    override suspend fun onDisconnected() {
         context.actors().bound().forEach { actor ->
             sessions.unbind(actor.actorId(), context)
-        }.let { CompletableFuture.completedFuture(null) }
+        }
+    }
 
-    override fun onErrorAsync(error: ZLinkStreamError): CompletionStage<Void> =
-        CompletableFuture.completedFuture(null)
-
-    override fun onDispatchAsync(
+    override suspend fun onDispatch(
         header: ZLinkStreamHeader,
         payload: Message,
-    ): CompletionStage<Void> =
-        handlers.tryHandleAsync(context, header, payload)
-            .thenCompose { handled ->
-                if (handled) {
-                    CompletableFuture.completedFuture(null)
-                } else {
-                    val actor = requireSingleBoundActor(header.packetName())
-                    actor.relayAsync(header, payload)
-                }
-            }
+    ) {
+        if (handlers.tryHandleAsync(context, header, payload).await()) {
+            return
+        }
+        val actor = requireSingleBoundActor(header.packetName())
+        actor.relayAsync(header, payload).await()
+    }
 
     private fun requireSingleBoundActor(packetName: String): ZLinkSessionActor =
         when (context.actors().bound().size) {

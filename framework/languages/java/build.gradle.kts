@@ -1,9 +1,17 @@
 plugins {
+    idea
     id("org.jetbrains.kotlin.jvm") version "2.1.0" apply false
+    kotlin("plugin.spring") version "2.1.0"
 }
 
 group = "systems.zlink"
 version = "0.1.0-SNAPSHOT"
+
+idea {
+    module {
+        name = "zlink-framework-java"
+    }
+}
 
 val junitVersion = "5.10.2"
 val localCoreRuntime = rootProject.file("../../../core/build/lib/libzlink.so")

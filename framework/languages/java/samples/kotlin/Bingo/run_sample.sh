@@ -133,7 +133,7 @@ PY
 }
 
 gradle_run() {
-  ../../gradlew --no-daemon "$@" --quiet
+  ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
 }
 
 build_framework_jars() {

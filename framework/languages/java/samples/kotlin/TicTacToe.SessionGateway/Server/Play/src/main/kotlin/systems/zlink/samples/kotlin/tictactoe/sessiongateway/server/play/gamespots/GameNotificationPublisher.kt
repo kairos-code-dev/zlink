@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.play.gamespots
 
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import systems.zlink.framework.actors.ZLinkBoundSession
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleNames
 
@@ -37,10 +37,12 @@ object GameNotificationPublisher {
             else -> SampleNames.TurnChangedPacket
         }
 
-    fun publishAsync(session: ZLinkBoundSession, state: String): CompletionStage<Void> =
+    suspend fun publish(session: ZLinkBoundSession, state: String) {
         session.send(state)
             .packetName("GameStateChanged")
             .submitAsync()
+            .await()
+    }
 
     data class PlayResponse(
         val reply: String,

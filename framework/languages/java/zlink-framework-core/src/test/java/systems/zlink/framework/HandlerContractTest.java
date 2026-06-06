@@ -8,6 +8,7 @@ import java.lang.annotation.Repeatable;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkHandlerGroups;
 import systems.zlink.framework.handlers.ZLinkPublish;
@@ -20,7 +21,19 @@ import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.handlers.ZLinkStreamPacket;
 import systems.zlink.framework.handlers.ZLinkStreamRaw;
 import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorDisconnectedHandler;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
+import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotActorDisconnectedHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorLeftHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorSendHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorChangeResult;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
+import systems.zlink.framework.spots.ZLinkSpotPostActorJoinedHandler;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 
@@ -71,6 +84,62 @@ final class HandlerContractTest {
         ZLinkSpotPacketHandler.class.getMethod("handleAsync", Object.class, Object.class);
         ZLinkSpotRequestHandler.class.getMethod("handleAsync", Object.class, Object.class);
         ZLinkSpotSubscriptionHandler.class.getMethod("handleAsync", Object.class, Object.class);
+        ZLinkEntrySpotActorSendHandler.class.getMethod(
+            "handleAsync",
+            ZLinkEntrySpot.class,
+            systems.zlink.framework.actors.ZLinkActor.class,
+            systems.zlink.framework.spots.ZLinkSpotActorSendContext.class,
+            Object.class,
+            CancellationToken.class);
+        ZLinkEntrySpotActorRequestHandler.class.getMethod(
+            "handleAsync",
+            ZLinkEntrySpot.class,
+            systems.zlink.framework.actors.ZLinkActor.class,
+            systems.zlink.framework.spots.ZLinkSpotActorRequestContext.class,
+            Object.class,
+            CancellationToken.class);
+        ZLinkSpotActorSendHandler.class.getMethod(
+            "handleAsync",
+            ZLinkSpot.class,
+            systems.zlink.framework.actors.ZLinkActor.class,
+            systems.zlink.framework.spots.ZLinkSpotActorSendContext.class,
+            Object.class,
+            CancellationToken.class);
+        ZLinkSpotActorRequestHandler.class.getMethod(
+            "handleAsync",
+            ZLinkSpot.class,
+            systems.zlink.framework.actors.ZLinkActor.class,
+            systems.zlink.framework.spots.ZLinkSpotActorRequestContext.class,
+            Object.class,
+            CancellationToken.class);
+        ZLinkSpotActorJoinHandler.class.getMethod(
+            "handleAsync",
+            ZLinkSpot.class,
+            systems.zlink.framework.actors.ZLinkActor.class,
+            Object.class,
+            CancellationToken.class);
+        ZLinkSpotPostActorJoinedHandler.class.getMethod(
+            "handleAsync",
+            Object.class,
+            systems.zlink.framework.actors.ZLinkActor.class,
+            ZLinkSpotActorChangeResult.class,
+            CancellationToken.class);
+        ZLinkSpotActorLeftHandler.class.getMethod(
+            "handleAsync",
+            Object.class,
+            systems.zlink.framework.actors.ZLinkActor.class,
+            ZLinkSpotActorChangeResult.class,
+            CancellationToken.class);
+        ZLinkSpotActorDisconnectedHandler.class.getMethod(
+            "handleAsync",
+            Object.class,
+            systems.zlink.framework.actors.ZLinkActor.class,
+            CancellationToken.class);
+        ZLinkEntrySpotActorDisconnectedHandler.class.getMethod(
+            "handleAsync",
+            ZLinkEntrySpot.class,
+            systems.zlink.framework.actors.ZLinkActor.class,
+            CancellationToken.class);
     }
 
     private static void assertAnnotationMethods(Class<?> annotationType, String... expectedNames) {

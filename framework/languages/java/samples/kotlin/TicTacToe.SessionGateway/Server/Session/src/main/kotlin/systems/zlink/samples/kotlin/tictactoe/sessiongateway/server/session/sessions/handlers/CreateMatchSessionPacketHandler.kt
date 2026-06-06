@@ -1,33 +1,33 @@
 package systems.zlink.samples.kotlin.tictactoe.sessiongateway.server.session.sessions.handlers
 
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.kotlin.ZLinkCoroutineSessionPacketHandler
+import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.samples.kotlin.tictactoe.sessiongateway.shared.configuration.SampleNames
 
 class CreateMatchSessionPacketHandler(
     private val channels: ZLinkClient,
-) : ZLinkSessionPacketHandler<ZLinkSessionContext> {
-    override fun packetName(): String = "CreateMatchReq"
-
-    override fun handleAsync(
+    coroutines: ZLinkCoroutineRuntime,
+) : ZLinkCoroutineSessionPacketHandler<ZLinkSessionContext>(coroutines, "CreateMatchReq") {
+    override suspend fun handle(
         context: ZLinkSessionContext,
         header: ZLinkStreamHeader,
         payload: Message,
-    ): CompletionStage<Void> {
+    ) {
         val actor = requireSingleBoundActor(context)
-        return channels.requestToChannel(SampleNames.PlayChannel, actor.actorId())
+        val reply = channels.requestToChannel(SampleNames.PlayChannel, actor.actorId())
             .packetName("CreateMatchRoom")
             .submitAsync(String::class.java)
-            .thenCompose { reply ->
-                context.client()
-                    .reply(reply)
-                    .submitAsync()
-            }
+            .await()
+        context.client()
+            .reply(reply)
+            .submitAsync()
+            .await()
     }
 
     companion object {

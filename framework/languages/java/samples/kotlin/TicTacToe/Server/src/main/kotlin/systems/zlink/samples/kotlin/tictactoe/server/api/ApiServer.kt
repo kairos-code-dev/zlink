@@ -1,13 +1,13 @@
 package systems.zlink.samples.kotlin.tictactoe.server.api
 
-import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLogging
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 
 object ApiServer {
-    fun configure(settings: SampleSettings): ZLinkFrameworkOptionsCustomizer =
-        ZLinkFrameworkOptionsCustomizer { options ->
+    fun configure(settings: SampleSettings): ZLinkFrameworkConfigurer =
+        ZLinkFrameworkConfigurer { options ->
             SampleLogging.configure(settings, "api")
             options.codecs().addJson()
             options.addHandlersFromPackageOf(ApiServer::class.java)

@@ -16,9 +16,9 @@
 ```java
 @Configuration
 @EnableZLinkFramework
-public class SpotConfig implements ZLinkFrameworkOptionsCustomizer {
+public class SpotConfig implements ZLinkFrameworkConfigurer {
     @Override
-    public void customize(ZLinkFrameworkOptions options) {
+    public void configure(ZLinkFrameworkOptions framework) {
         options.addSpotMesh("game.stage", mesh -> {
             mesh.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
 

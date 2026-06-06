@@ -29,8 +29,17 @@ import systems.zlink.framework.handlers.ZLinkStreamPacket;
 import systems.zlink.framework.handlers.ZLinkStreamRaw;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorDisconnectedHandler;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotActorDisconnectedHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorLeftHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
+import systems.zlink.framework.spots.ZLinkSpotPostActorJoinedHandler;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
@@ -74,6 +83,15 @@ final class ZLinkSpringHandlerFactory implements ZLinkHandlerFactory {
             || ZLinkSpotRequestHandler.class.isAssignableFrom(type)
             || ZLinkSpotSubscriptionHandler.class.isAssignableFrom(type)
             || ZLinkSpotTimerHandler.class.isAssignableFrom(type)
+            || ZLinkEntrySpotActorSendHandler.class.isAssignableFrom(type)
+            || ZLinkEntrySpotActorRequestHandler.class.isAssignableFrom(type)
+            || ZLinkEntrySpotActorDisconnectedHandler.class.isAssignableFrom(type)
+            || ZLinkSpotActorSendHandler.class.isAssignableFrom(type)
+            || ZLinkSpotActorRequestHandler.class.isAssignableFrom(type)
+            || ZLinkSpotActorJoinHandler.class.isAssignableFrom(type)
+            || ZLinkSpotPostActorJoinedHandler.class.isAssignableFrom(type)
+            || ZLinkSpotActorLeftHandler.class.isAssignableFrom(type)
+            || ZLinkSpotActorDisconnectedHandler.class.isAssignableFrom(type)
             || ZLinkSession.class.isAssignableFrom(type)
             || ZLinkSessionPacketHandler.class.isAssignableFrom(type)
             || hasZLinkHandlerAnnotation(type);

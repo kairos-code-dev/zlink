@@ -12,7 +12,7 @@
 아래 항목은 첫 Java/Kotlin 포팅의 기본 범위다.
 
 - `@EnableZLinkFramework`
-- `ZLinkFrameworkOptionsCustomizer`
+- `ZLinkFrameworkConfigurer`
 - channel builder 4종: client/server, fanout, dealer mesh, route mesh
 - `ZLinkClient`, `ZLinkFanoutClient`, `ZLinkRouteClient`
 - handler interface와 annotation mapping

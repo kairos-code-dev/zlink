@@ -21,7 +21,7 @@ stream node 하나에 session 하나를 붙인다. 한 stream node에 session을
 
 ```java
 @Override
-public void customize(ZLinkFrameworkOptions options) {
+public void configure(ZLinkFrameworkOptions framework) {
     options.codecs().addProtobuf();
 
     options.addStreamNode("client.stream", stream -> {

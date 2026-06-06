@@ -5,6 +5,6 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        PlayServerHostFactory.start(args);
+        PlayServerApplication.run(args);
     }
 }

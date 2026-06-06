@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.tictactoe.server.api.handlers
 
-import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.future.await
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
@@ -16,12 +16,14 @@ class CreateGameHttpHandler(
     private val client: ZLinkClient,
 ) {
     @PostMapping("/games")
-    fun handleAsync(@RequestBody request: CreateGameHttpReq): CompletionStage<CreateGameHttpRes> =
-        client.requestToChannel(
+    suspend fun handle(@RequestBody request: CreateGameHttpReq): CreateGameHttpRes {
+        val game = client.requestToChannel(
             SampleNames.PlayChannel,
             CreateGameReq(request.gameName?.takeIf { it.isNotBlank() } ?: "tictactoe-game"),
         )
             .timeout(SampleNames.RequestTimeout)
             .submitAsync(CreateGameRes::class.java)
-            .thenApply { game -> CreateGameHttpRes(game.gameId, game.playEndpoint, game.gameName) }
+            .await()
+        return CreateGameHttpRes(game.gameId, game.playEndpoint, game.gameName)
+    }
 }

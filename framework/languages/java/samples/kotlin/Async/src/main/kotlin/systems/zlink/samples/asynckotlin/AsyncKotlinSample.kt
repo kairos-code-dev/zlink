@@ -21,7 +21,7 @@ import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.kotlin.awaitReply
 import systems.zlink.framework.kotlin.submit
 import systems.zlink.framework.spring.EnableZLinkFramework
-import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
 private val warmupUser = CompletableFuture<String>()
 
@@ -74,7 +74,7 @@ open class AsyncKotlinSpringConfig {
     open fun asyncHandlers() = AsyncHandlers()
 
     @Bean
-    open fun zlinkOptionsCustomizer(asyncEndpoint: String) = ZLinkFrameworkOptionsCustomizer { options ->
+    open fun zlinkFramework(asyncEndpoint: String) = ZLinkFrameworkConfigurer { options ->
         options.addHandlersFromPackageOf(AsyncKotlinSpringConfig::class.java)
         options.addClientServerChannel("profile") { channel ->
             channel.enableServer { server -> server.bind(asyncEndpoint) }

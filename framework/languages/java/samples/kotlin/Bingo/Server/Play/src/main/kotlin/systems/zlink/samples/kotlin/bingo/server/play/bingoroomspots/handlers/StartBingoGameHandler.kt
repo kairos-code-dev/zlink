@@ -1,19 +1,28 @@
 package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers
 
-import java.util.concurrent.CompletionStage
-import systems.zlink.framework.handlers.ZLinkSpotActorRequest
+import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkCoroutineSpotActorRequestHandler
+import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoRoomSpot
 import systems.zlink.samples.kotlin.bingo.shared.contracts.StartBingoGameReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.StartBingoGameRes
 
-class StartBingoGameHandler {
-    @ZLinkSpotActorRequest
-    fun handleAsync(
+class StartBingoGameHandler(
+    coroutines: ZLinkCoroutineRuntime,
+) : ZLinkCoroutineSpotActorRequestHandler<
+    BingoRoomSpot,
+    PlayerActor,
+    StartBingoGameReq,
+    StartBingoGameRes,
+    >(coroutines) {
+    override suspend fun handle(
+        spot: BingoRoomSpot,
         actor: PlayerActor,
+        context: ZLinkSpotActorRequestContext,
         request: StartBingoGameReq,
-    ): CompletionStage<StartBingoGameRes> =
-        actor.context()
-            .getSpot(BingoRoomSpot::class.java)
-            .startAsync(actor, request)
+        cancellationToken: CancellationToken,
+    ): StartBingoGameRes =
+        spot.start(actor, request)
 }

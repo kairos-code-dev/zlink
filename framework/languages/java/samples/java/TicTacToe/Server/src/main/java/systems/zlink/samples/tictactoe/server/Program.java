@@ -6,9 +6,9 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.samples.tictactoe.client.TicTacToeClient;
 import systems.zlink.samples.tictactoe.client.TicTacToeClientOptions;
 import systems.zlink.samples.tictactoe.client.TicTacToeClientResult;
-import systems.zlink.samples.tictactoe.server.api.ApiServerHostFactory;
+import systems.zlink.samples.tictactoe.server.api.ApiServerApplication;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
-import systems.zlink.samples.tictactoe.server.play.PlayServerHostFactory;
+import systems.zlink.samples.tictactoe.server.play.PlayServerApplication;
 
 public final class Program {
     private Program() {
@@ -22,8 +22,8 @@ public final class Program {
         SampleSettings settings = SampleSettings.fromArgs(args);
         switch (mode) {
             case "all" -> runAll(settings);
-            case "api" -> ApiServerHostFactory.start(settings);
-            case "play" -> PlayServerHostFactory.start(settings);
+            case "api" -> ApiServerApplication.run(settings);
+            case "play" -> PlayServerApplication.run(settings);
             case "client" -> runClient(settings);
             default -> throw new IllegalArgumentException(usage());
         }
@@ -40,7 +40,7 @@ public final class Program {
 
     private static void runAll(SampleSettings settings) throws Exception {
         SampleSettings effectiveSettings = settings.withEphemeralDefaults();
-        try (AutoCloseable ignored = TicTacToeServerHostFactory.start(effectiveSettings)) {
+        try (AutoCloseable ignored = TicTacToeServerApplicationGroup.run(effectiveSettings)) {
             runClient(effectiveSettings);
         }
     }

@@ -8,12 +8,19 @@ import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.lang.reflect.WildcardType;
 import java.util.Arrays;
+import java.util.List;
+import java.util.ServiceLoader;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 public final class ZLinkHandlerMethodInvoker {
     private static final String CONTINUATION_CLASS_NAME = "kotlin.coroutines.Continuation";
+    private static final List<ZLinkSuspendHandlerInvoker> SUSPEND_INVOKERS = ServiceLoader
+        .load(ZLinkSuspendHandlerInvoker.class)
+        .stream()
+        .map(ServiceLoader.Provider::get)
+        .toList();
 
     private ZLinkHandlerMethodInvoker() {
     }
@@ -57,6 +64,11 @@ public final class ZLinkHandlerMethodInvoker {
                     : CompletableFuture.completedFuture(result);
             } catch (IllegalAccessException | InvocationTargetException ex) {
                 return CompletableFuture.failedFuture(unwrapReflectionFailure(ex));
+            }
+        }
+        for (ZLinkSuspendHandlerInvoker invoker : SUSPEND_INVOKERS) {
+            if (invoker.supports(method)) {
+                return invoker.invoke(handler, method, logicalArguments);
             }
         }
         return invokeKotlinSuspend(handler, method, logicalArguments);

@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play
 
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.spring.ZLinkFrameworkOptionsCustomizer
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLogging
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
@@ -11,8 +11,8 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.TicTacToeGam
 import systems.zlink.samples.kotlin.tictactoe.server.play.sessions.PlaySession
 
 object PlayServer {
-    fun configure(settings: SampleSettings): ZLinkFrameworkOptionsCustomizer =
-        ZLinkFrameworkOptionsCustomizer { options ->
+    fun configure(settings: SampleSettings): ZLinkFrameworkConfigurer =
+        ZLinkFrameworkConfigurer { options ->
             SampleLogging.configure(settings, "play")
             options.codecs().addJson()
             options.addHandlersFromPackageOf(PlayServer::class.java)

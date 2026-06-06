@@ -139,15 +139,15 @@ common_args=(
   "--spot-endpoint" "tcp://127.0.0.1:${spot_port}"
 )
 
-../../gradlew :Server:run --quiet --args="play ${common_args[*]}" >"${log_dir}/play.log" 2>&1 &
+../../gradlew --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="play ${common_args[*]}" >"${log_dir}/play.log" 2>&1 &
 pids+=("$!")
 wait_port "${play_stream_port}"
 wait_port "${play_channel_port}"
 wait_port "${play_router_port}"
 
-../../gradlew :Server:run --quiet --args="api ${common_args[*]}" >"${log_dir}/api.log" 2>&1 &
+../../gradlew --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="api ${common_args[*]}" >"${log_dir}/api.log" 2>&1 &
 pids+=("$!")
 wait_port "${api_port}"
 wait_port "${api_channel_port}"
 
-../../gradlew :Client:run --quiet --args="--api-url http://127.0.0.1:${api_port}" >"${log_dir}/client.log" 2>&1
+../../gradlew --settings-file standalone.settings.gradle.kts :Client:run --quiet --args="--api-url http://127.0.0.1:${api_port}" >"${log_dir}/client.log" 2>&1

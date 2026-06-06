@@ -20,9 +20,9 @@
 | Spot publisher client | attached Spot publisher client capability가 있을 때만 등록 |
 | Actor manager | SpotNode와 actor factory가 모두 있을 때만 등록 |
 | Runtime event dispatcher | core runtime이 항상 등록(`ZLinkRuntimeEventDispatcher`) |
-| Runtime event publisher | monitoring customizer가 있을 때만 등록(monitoring publisher + hosted service) |
+| Runtime event publisher | monitoring configurer가 있을 때만 등록(monitoring publisher + hosted service) |
 | Registry query | embedded registry가 있을 때 등록 |
-| Registry query client | query client customizer가 있을 때 등록 |
+| Registry query client | query client configurer가 있을 때 등록 |
 
 ## 2. 설계 원칙
 
@@ -59,12 +59,12 @@ monitoring runtime은 두 부분으로 나눈다.
 
 - `ZLinkRuntimeEventDispatcher`는 **core runtime이 항상** 등록한다(`.NET`
   `AddCoreRuntime`의 `TryAddSingleton<ZLinkRuntimeEventDispatcher>` 대응).
-- monitoring customizer(`AddZLinkMonitoring` 대응)는 그 위에 **runtime event
+- monitoring configurer(`AddZLinkMonitoring` 대응)는 그 위에 **runtime event
   publisher**(`IZLinkRuntimeEventPublisher` → dispatcher)와 monitoring hosted
   service(polling/attach 구동체)만 추가한다. dispatcher 자체를 새로 만들지 않는다.
 
 따라서 monitoring을 켜지 않아도 dispatcher bean은 존재하지만, 실제 typed runtime
-event를 발행하는 publisher와 polling/attach 구동체는 monitoring customizer가 있을
+event를 발행하는 publisher와 polling/attach 구동체는 monitoring configurer가 있을
 때만 붙는다.
 
 ## 4. Startup validation

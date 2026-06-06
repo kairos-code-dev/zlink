@@ -3,17 +3,17 @@ package systems.zlink.samples.kotlin.tictactoe.server
 import kotlinx.coroutines.runBlocking
 import systems.zlink.samples.kotlin.tictactoe.client.TicTacToeClient
 import systems.zlink.samples.kotlin.tictactoe.client.TicTacToeClientOptions
-import systems.zlink.samples.kotlin.tictactoe.server.api.ApiServerHostFactory
+import systems.zlink.samples.kotlin.tictactoe.server.api.ApiServerApplication
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
-import systems.zlink.samples.kotlin.tictactoe.server.play.PlayServerHostFactory
+import systems.zlink.samples.kotlin.tictactoe.server.play.PlayServerApplication
 
 fun main(args: Array<String>) {
     runBlocking {
         val settings = SampleSettings.fromArgs(args)
         when (args.firstOrNull { !it.startsWith("--") } ?: "all") {
             "all" -> runAll(settings)
-            "api" -> ApiServerHostFactory.start(settings)
-            "play" -> PlayServerHostFactory.start(settings)
+            "api" -> ApiServerApplication.run(settings)
+            "play" -> PlayServerApplication.run(settings)
             "client" -> runClient(settings)
             else -> error(usage())
         }
@@ -30,7 +30,7 @@ private fun usage(): String =
 
 private suspend fun runAll(settings: SampleSettings) {
     val effectiveSettings = settings.withEphemeralDefaults()
-    TicTacToeServerHostFactory.start(effectiveSettings).use {
+    TicTacToeServerApplicationGroup.run(effectiveSettings).use {
         runClient(effectiveSettings)
     }
 }

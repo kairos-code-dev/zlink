@@ -13,17 +13,7 @@
 namespace
 {
 
-struct stage_spot_t
-{
-    int join_seen{};
-    int packet_seen{};
-    int joined_count{};
-    int left_count{};
-    int disconnected_count{};
-    zlink::framework::spot_actor_change_kind_t last_change_kind = zlink::framework::spot_actor_change_kind_t::join_spot;
-};
-
-struct entry_spot_t
+struct entry_spot_t : public zlink::framework::entry_spot_t
 {
 };
 
@@ -48,45 +38,29 @@ struct move_reply_t
     int value{};
 };
 
-class state_update_handler_t
+struct stage_spot_t : public zlink::framework::spot_t
 {
-  public:
-    void handle (stage_spot_t &spot, const state_update_t &message)
+    void on_state_update (const state_update_t &message)
     {
-        spot.packet_seen = message.value;
         last_value = message.value;
+        packet_seen = message.value;
     }
 
-    int last_value{};
-};
+    void on_throwing_state_update (const state_update_t &) { throw std::runtime_error ("spot failure"); }
 
-class throwing_state_update_handler_t
-{
-  public:
-    void handle (stage_spot_t &, const state_update_t &) { throw std::runtime_error ("spot failure"); }
-};
-
-class move_join_handler_t
-{
-  public:
-    move_reply_t handle (stage_spot_t &spot, player_actor_factory_t &actor, const move_request_t &request)
+    move_reply_t on_join (player_actor_factory_t &actor, const move_request_t &request)
     {
-        spot.join_seen = request.value;
+        join_seen = request.value;
         actor.joined_value = request.value;
         return {request.value + 1};
     }
-};
 
-class move_packet_handler_t
-{
-  public:
-    void handle (stage_spot_t &spot,
-                 player_actor_factory_t &actor,
-                 const zlink::framework::spot_actor_send_context_t &context,
-                 const move_request_t &request)
+    void on_move (player_actor_factory_t &actor,
+                  const zlink::framework::spot_actor_send_context_t &context,
+                  const move_request_t &request)
     {
         if (context.packet_name == "move") {
-            spot.packet_seen = request.value;
+            packet_seen = request.value;
         }
         const auto trace = context.metadata.find ("trace-id");
         last_trace_id = trace ? std::string (*trace) : "";
@@ -94,40 +68,31 @@ class move_packet_handler_t
         actor.moved_value = request.value;
     }
 
-    std::string last_trace_id;
-    bool saw_tenant_id = false;
-};
-
-class actor_joined_handler_t
-{
-  public:
-    void handle (stage_spot_t &spot,
-                 player_actor_factory_t &actor,
-                 const zlink::framework::spot_actor_change_result_t &result)
+    void on_actor_joined (player_actor_factory_t &actor, const zlink::framework::spot_actor_change_result_t &result)
     {
-        ++spot.joined_count;
-        spot.last_change_kind = result.kind;
+        ++joined_count;
+        last_change_kind = result.kind;
         actor.joined_value += 100;
     }
-};
 
-class actor_left_handler_t
-{
-  public:
-    void handle (stage_spot_t &spot,
-                 player_actor_factory_t &actor,
-                 const zlink::framework::spot_actor_change_result_t &result)
+    void on_actor_left (player_actor_factory_t &actor, const zlink::framework::spot_actor_change_result_t &result)
     {
-        ++spot.left_count;
-        spot.last_change_kind = result.kind;
+        ++left_count;
+        last_change_kind = result.kind;
         actor.moved_value += 100;
     }
-};
 
-class actor_disconnected_handler_t
-{
-  public:
-    void handle (stage_spot_t &spot, player_actor_factory_t &) { ++spot.disconnected_count; }
+    void on_actor_disconnected (player_actor_factory_t &) { ++disconnected_count; }
+
+    int join_seen{};
+    int packet_seen{};
+    int joined_count{};
+    int left_count{};
+    int disconnected_count{};
+    int last_value{};
+    std::string last_trace_id;
+    bool saw_tenant_id = false;
+    zlink::framework::spot_actor_change_kind_t last_change_kind = zlink::framework::spot_actor_change_kind_t::join_spot;
 };
 
 struct stage_wrapper_t
@@ -390,13 +355,13 @@ int main ()
     }
 
     context.handlers ()
-      .add_handler<state_update_handler_t, stage_spot_t, state_update_t> ("state.update")
-      .add_handler<throwing_state_update_handler_t, stage_spot_t, state_update_t> ("state.throw")
-      .add_actor_packet<move_packet_handler_t, stage_spot_t, player_actor_factory_t, move_request_t> ("move")
-      .add_actor_join<move_join_handler_t, stage_spot_t, player_actor_factory_t, move_request_t, move_reply_t> ("join")
-      .add_post_actor_joined<actor_joined_handler_t, stage_spot_t, player_actor_factory_t> ()
-      .add_actor_left<actor_left_handler_t, stage_spot_t, player_actor_factory_t> ()
-      .add_actor_disconnected<actor_disconnected_handler_t, stage_spot_t, player_actor_factory_t> ();
+      .add_handler<&stage_spot_t::on_state_update> ("state.update")
+      .add_handler<&stage_spot_t::on_throwing_state_update> ("state.throw")
+      .add_actor_packet<&stage_spot_t::on_move> ("move")
+      .add_actor_join<&stage_spot_t::on_join> ("join")
+      .add_post_actor_joined<&stage_spot_t::on_actor_joined> ()
+      .add_actor_left<&stage_spot_t::on_actor_left> ()
+      .add_actor_disconnected<&stage_spot_t::on_actor_disconnected> ();
     const auto handler_descriptors = context.handlers ().descriptors ();
     if (handler_descriptors.size () != 7 || handler_descriptors[0].kind != zlink::framework::spot_handler_kind_t::packet
         || handler_descriptors[0].packet_name != "state.update"
@@ -413,13 +378,6 @@ int main ()
     }
 
     zlink::framework::service_collection_t spot_services;
-    spot_services.add_singleton<state_update_handler_t> ();
-    spot_services.add_singleton<throwing_state_update_handler_t> ();
-    spot_services.add_singleton<move_join_handler_t> ();
-    spot_services.add_singleton<move_packet_handler_t> ();
-    spot_services.add_singleton<actor_joined_handler_t> ();
-    spot_services.add_singleton<actor_left_handler_t> ();
-    spot_services.add_singleton<actor_disconnected_handler_t> ();
     auto spot_provider = spot_services.build_provider ();
 
     zlink::framework::serializer_registry_t spot_serializers;
@@ -437,8 +395,7 @@ int main ()
     player_actor_factory_t actor;
     const auto packet_dispatch = context.handlers ().invoke_packet (
       "state.update", stage_spot, spot_provider, spot_serializers, zlink::message_t::from (std::string ("30")));
-    if (!packet_dispatch || spot_provider.get_required<state_update_handler_t> ().last_value != 30
-        || stage_spot.packet_seen != 30) {
+    if (!packet_dispatch || stage_spot.last_value != 30 || stage_spot.packet_seen != 30) {
         return 22;
     }
 
@@ -460,8 +417,7 @@ int main ()
     if (!move_dispatch || actor.moved_value != 55 || stage_spot.packet_seen != 55) {
         return 24;
     }
-    auto &move_handler = spot_provider.get_required<move_packet_handler_t> ();
-    if (!move_handler.last_trace_id.empty () || move_handler.saw_tenant_id) {
+    if (!stage_spot.last_trace_id.empty () || stage_spot.saw_tenant_id) {
         return 36;
     }
 
@@ -494,8 +450,8 @@ int main ()
     const auto metadata_dispatch =
       context.handlers ().invoke_actor_packet ("move", stage_spot, actor, spot_provider, spot_serializers,
                                                zlink::message_t::from (std::string ("56")), projected);
-    if (!metadata_dispatch || actor.moved_value != 56 || move_handler.last_trace_id != "trace-1"
-        || move_handler.saw_tenant_id) {
+    if (!metadata_dispatch || actor.moved_value != 56 || stage_spot.last_trace_id != "trace-1"
+        || stage_spot.saw_tenant_id) {
         return 40;
     }
 
@@ -546,7 +502,7 @@ int main ()
 
     bool duplicate_handler_failed = false;
     try {
-        context.handlers ().add_handler<state_update_handler_t, stage_spot_t, state_update_t> ("state.update");
+        context.handlers ().add_handler<&stage_spot_t::on_state_update> ("state.update");
     }
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_handler_failed = error.kind () == framework_error_kind_t::request_protocol_error;

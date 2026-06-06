@@ -68,12 +68,7 @@ inline void run_client_e2e_stream_server (zlink::stream_socket_t &server, const 
                 }
                 log << "reply " << frame->name << '\n';
             } else {
-                bingo_room_state_t state;
-                state.room_id = "room-1";
-                state.status = "ended";
-                zlink::samples::send_stream_push (inbound, game_ended_notify_t::packet_name,
-                                                  game_ended_notify_t{state});
-                log << "push " << game_ended_notify_t::packet_name << '\n';
+                log << "send-only " << frame->name << '\n';
             }
             ++handled;
         }

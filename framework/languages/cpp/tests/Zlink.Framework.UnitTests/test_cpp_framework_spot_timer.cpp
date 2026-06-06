@@ -10,11 +10,11 @@
 namespace
 {
 
-struct stage_spot_t
+struct stage_spot_t : public zlink::framework::spot_t
 {
 };
 
-struct entry_spot_t
+struct entry_spot_t : public zlink::framework::entry_spot_t
 {
 };
 
@@ -115,7 +115,8 @@ int main ()
     auto entry_runtime = zlink::framework::detail::timer_runtime_t::from (entry_context);
     bool user_timer_ran_during_entry_tick = false;
     auto entry_result = entry_runtime.dispatch_fire_count (
-      entry_timer, 1, [&runtime, &user_timer, &user_timer_ran_during_entry_tick] (const zlink::framework::timer_tick_t &) {
+      entry_timer, 1,
+      [&runtime, &user_timer, &user_timer_ran_during_entry_tick] (const zlink::framework::timer_tick_t &) {
           const auto user_tick = runtime.dispatch_fire_count (user_timer, 1);
           user_timer_ran_during_entry_tick = user_tick && user_tick.value ().name == "user-tick";
       });

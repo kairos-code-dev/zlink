@@ -34,7 +34,7 @@ surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리�
 | 기존 초안 표현 | 새 framework 기준 |
 |----------------|-------------------|
 | `app_t` builder chain 직접 조립 | `app_t::create()` 후 `add_zlink_framework(...)`의 options builder로 구성 |
-| raw request/send/event handler class | `handler_registry_t`의 typed member function 등록 |
+| raw request/send/event handler class | application handler는 `handler_registry_t`의 typed handler 등록, SPOT handler는 `spot_context_t::handlers()`의 Spot member function 등록 |
 | channel client 직접 주입 | `message_bus_t`, `request_client_t`, `publisher_t` DI 주입 |
 | event publisher 전용 타입 | `publisher_t::publish(channel, topic, event)` |
 | channel 전체 연결 설정 | capability builder의 `bind`, `connect`, `use_discovery` |
@@ -43,9 +43,17 @@ surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리�
 | session actor relay용 route mesh channel | `stream.attach_actor_gateway(...)`와 `session_actor_t::relay(...)` |
 | raw timer callback | `spot_context_t::add_timer(...)`와 `timer_tick_t` metadata |
 
-handler owner는 `options.handlers().add<THandler>(...)`로 등록한 타입이어야 한다.
+application handler owner는 `options.handlers().add<THandler>(...)`로 등록한 타입이어야 한다.
 생성자 주입이 필요하면 handler 타입의 `dependency_types`에 의존 타입을 적는다. 이 규칙은
 handler lifecycle과 shutdown 중 resolve 금지 같은 host 정책을 한곳에서 닫기 위해 필요하다.
+
+SPOT handler는 별도 handler class로 등록하지 않는다. `spot_context_t::handlers()`는
+`add_actor_packet<&room_spot_t::place_mark>()`처럼 Spot 객체의 member function만 받는다.
+Spot은 상태와 동작을 함께 감싸는 단위이므로 handler class를 따로 만들면 상태 owner와
+동작 owner가 분리되어 샘플과 실제 구현이 달라진다.
+일반 Spot은 `zlink::framework::spot_t`, Entry Spot은 `zlink::framework::entry_spot_t`를
+상속한다. framework는 타입 이름에서 Entry Spot 여부를 추론하지 않고
+`add_entry_spot<TEntrySpot>()` 호출과 기반 타입으로 역할을 확인한다.
 
 ## 3. Handler 등록 기준
 

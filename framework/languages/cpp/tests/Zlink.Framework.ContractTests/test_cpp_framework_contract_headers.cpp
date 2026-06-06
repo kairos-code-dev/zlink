@@ -331,6 +331,10 @@ static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().attach_publisher ("events")),
                zlink::framework::spot_node_options_builder_t &>);
 
+static_assert (std::has_virtual_destructor_v<zlink::framework::spot_t>);
+static_assert (std::has_virtual_destructor_v<zlink::framework::entry_spot_t>);
+static_assert (std::is_base_of_v<zlink::framework::spot_t, zlink::framework::entry_spot_t>);
+
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ()
                                           .set_routing_id (zlink::routing_id_t::from ("router"))),
                               zlink::framework::spot_router_capability_builder_t &>);

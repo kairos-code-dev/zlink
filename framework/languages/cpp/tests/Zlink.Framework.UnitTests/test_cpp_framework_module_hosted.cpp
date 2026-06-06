@@ -16,7 +16,7 @@
 namespace
 {
 
-struct stage_spot_t
+struct stage_spot_t : public zlink::framework::spot_t
 {
 };
 
@@ -514,7 +514,7 @@ int main ()
         dispatch.diagnostics.include_message_sizes = true;
         dispatch.diagnostics.include_native_diagnostics = true;
     });
-    options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9102");
+    options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9102");
     options.add_client_server_channel ("api-channel")
       .enable_server ("tcp://127.0.0.1:9103")
       .enable_client ()
@@ -882,7 +882,7 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
                                                                    valid_zlink, valid_monitoring);
-        valid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9304");
+        valid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9304");
         valid_options.add_client_server_channel ("spot-route").enable_server ("tcp://127.0.0.1:9301");
         valid_options.add_spot_mesh ("spot-routes")
           .add_node ("route-node")
@@ -938,7 +938,7 @@ int main ()
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9303");
+        invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9303");
         invalid_options.add_fanout_channel ("empty-events").enable_subscriber ();
         invalid_options.apply ();
     }
@@ -1078,7 +1078,9 @@ int main ()
     }
 
     if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) { invalid_options.use_discovery().add_registry_endpoint (" "); },
+          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
+              invalid_options.use_discovery ().add_registry_endpoint (" ");
+          },
           "discovery endpoint is required")) {
         return 60;
     }
@@ -1110,7 +1112,7 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
                                                                    valid_zlink, valid_monitoring);
-        valid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9319");
+        valid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9319");
         valid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9320");
         valid_options.add_spot_mesh ("spots")
           .add_node ("spot-node")
@@ -1199,7 +1201,7 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9322");
+              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9322");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9323")
@@ -1218,7 +1220,7 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
                                                                    valid_zlink, valid_monitoring);
-        valid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9324");
+        valid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9324");
         valid_options.handlers ().add_send<options_send_handler_t> ("api");
         valid_options.add_client_server_channel ("api")
           .enable_server ("tcp://127.0.0.1:9325")
@@ -1254,7 +1256,7 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9328");
+              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9328");
               invalid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9329");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
@@ -1267,7 +1269,7 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9331");
+              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9331");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
                 .enable_pub_sub ("tcp://127.0.0.1:9332")
@@ -1279,7 +1281,7 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9333");
+              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9333");
               invalid_options.add_fanout_channel ("events").enable_subscriber ("tcp://127.0.0.1:9334");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
@@ -1292,7 +1294,7 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9336");
+              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9336");
               invalid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9337");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("first")
@@ -1308,7 +1310,7 @@ int main ()
 
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9305");
+              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9305");
               invalid_options.add_client_server_channel ("api").enable_server ("tcp://127.0.0.1:9306");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
@@ -1321,7 +1323,7 @@ int main ()
 
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9308");
+              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9308");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9309")
@@ -1333,7 +1335,7 @@ int main ()
 
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9310");
+              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9310");
               invalid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9311");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
@@ -1346,7 +1348,7 @@ int main ()
 
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery().add_registry_endpoint ("tcp://127.0.0.1:9313");
+              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9313");
               invalid_options.add_client_server_channel ("route").enable_server ("tcp://127.0.0.1:9314");
               invalid_options.add_route_mesh_channel ("route").bind ("tcp://127.0.0.1:9315");
               invalid_options.add_spot_mesh ("spots")

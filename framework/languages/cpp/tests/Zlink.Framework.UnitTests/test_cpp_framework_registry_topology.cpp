@@ -26,7 +26,7 @@
 namespace
 {
 
-struct stage_spot_t
+struct stage_spot_t : public zlink::framework::spot_t
 {
 };
 
@@ -278,7 +278,7 @@ int main ()
     const auto framework_route_endpoint = unique_tcp ("framework-route");
     const auto framework_router_endpoint = unique_tcp ("framework-router");
     const auto framework_pub_endpoint = unique_tcp ("framework-pub");
-    options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
+    options.use_discovery ().add_registry_endpoint ("tcp://registry:5551");
     options.use_registry_spot_remote_addresses ("game.route");
     options.add_route_mesh_channel ("game.route")
       .bind (framework_route_endpoint)
@@ -357,7 +357,7 @@ int main ()
     const auto late_route_endpoint = unique_tcp ("late-route");
     const auto late_router_endpoint = unique_tcp ("late-router");
     const auto late_pub_endpoint = unique_tcp ("late-pub");
-    late_options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
+    late_options.use_discovery ().add_registry_endpoint ("tcp://registry:5551");
     late_options.add_route_mesh_channel ("late.route")
       .bind (late_route_endpoint)
       .set_routing_id (zlink::routing_id_t::from ("7400"));

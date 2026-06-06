@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "../../Shared/E2E/client_e2e_server.hpp"
 #include "../../Shared/sample.hpp"
 
 namespace zlink::samples::tictactoe
@@ -9,10 +10,15 @@ namespace zlink::samples::tictactoe
 class session_server_host_factory_t
 {
   public:
-    static zlink::framework::app_t build (const sample_topology_t &topology)
+    static zlink::framework::app_t build (const sample_topology_t &topology, bool auto_stop = true)
     {
         auto app = zlink::framework::app_t::create ();
-        app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
+        if (auto_stop) {
+            app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
+        } else {
+            app.add_hosted_service (std::make_unique<sample_stream_server_service_t> (
+              app, topology.stream_endpoint, sample_names_t::x_actor_id, run_client_e2e_stream_server));
+        }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
             options.codecs ().add_json ();
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);

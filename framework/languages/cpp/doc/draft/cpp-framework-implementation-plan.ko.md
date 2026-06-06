@@ -680,18 +680,20 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 구현 항목:
 
 - `spot_node_builder_t`
+- `spot_t`
+- `entry_spot_t`
 - `spot_context_t`
 - `spot_context_t::publish(...)`
 - `spot_context_t::request_to(...)`
 - `spot_context_t::handlers()`
 - `spot_handler_registry_t`
-- `add_handler<THandler>()`
-- `add_subscribe<THandler>(topic)`
-- `add_actor_join<THandler>()`
-- `add_actor_packet<THandler>()`
-- `add_post_actor_joined<THandler>()`
-- `add_actor_left<THandler>()`
-- `add_actor_disconnected<THandler>()`
+- `add_handler<&TSpot::method>()`
+- `add_subscribe<&TSpot::method>(topic)`
+- `add_actor_join<&TSpot::method>()`
+- `add_actor_packet<&TSpot::method>()`
+- `add_post_actor_joined<&TSpot::method>()`
+- `add_actor_left<&TSpot::method>()`
+- `add_actor_disconnected<&TSpot::method>()`
 - Entry Spot
 - user Spot lifecycle
 - Registry-backed Spot lookup
@@ -700,8 +702,13 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 
 - SPOT node lifecycle은 app host가 관리한다.
 - core SPOT dispatch ordering이 typed handler 표면에 유지된다.
-- Spot 등록부에서는 handler type만 나열한다.
-- actor join/packet handler는 Spot instance와 actor를 함께 받는다.
+- Spot 등록부에서는 Spot member function만 나열한다.
+- 일반 Spot은 `spot_t`, Entry Spot은 `entry_spot_t`를 상속한다. `add_spot<TSpot>()`와
+  `add_entry_spot<TEntrySpot>()`는 이 계약을 compile-time으로 검증한다.
+- actor join/packet member는 actor를 함께 받는다.
+- SPOT packet, subscription, actor join/packet, actor lifecycle 등록은 별도 handler class를
+  지원하지 않는다. 같은 동작을 여러 방식으로 등록하게 두면 샘플과 실제 구현이 갈라지므로
+  Spot 객체 하나가 상태와 동작을 함께 갖는 방식으로 통일한다.
 - Play sample smoke는 handler 객체 직접 호출만으로 통과하지 않는다.
 
 검증:

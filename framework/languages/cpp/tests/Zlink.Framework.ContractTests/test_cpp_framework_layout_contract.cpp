@@ -634,25 +634,29 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
     bool ok = true;
     const std::string required[] = {"SPOT node, Entry Spot, user Spot, actor handler",
                                     "`spot_node_builder_t`",
+                                    "`spot_t`",
+                                    "`entry_spot_t`",
                                     "`spot_context_t`",
                                     "`spot_context_t::publish(...)`",
                                     "`spot_context_t::request_to(...)`",
                                     "`spot_context_t::handlers()`",
                                     "`spot_handler_registry_t`",
-                                    "`add_handler<THandler>()`",
-                                    "`add_subscribe<THandler>(topic)`",
-                                    "`add_actor_join<THandler>()`",
-                                    "`add_actor_packet<THandler>()`",
-                                    "`add_post_actor_joined<THandler>()`",
-                                    "`add_actor_left<THandler>()`",
-                                    "`add_actor_disconnected<THandler>()`",
+                                    "`add_handler<&TSpot::method>()`",
+                                    "`add_subscribe<&TSpot::method>(topic)`",
+                                    "`add_actor_join<&TSpot::method>()`",
+                                    "`add_actor_packet<&TSpot::method>()`",
+                                    "`add_post_actor_joined<&TSpot::method>()`",
+                                    "`add_actor_left<&TSpot::method>()`",
+                                    "`add_actor_disconnected<&TSpot::method>()`",
                                     "Entry Spot",
                                     "user Spot lifecycle",
                                     "Registry-backed Spot lookup",
                                     "SPOT node lifecycle은 app host가 관리한다",
                                     "core SPOT dispatch ordering",
-                                    "handler type만 나열한다",
-                                    "actor join/packet handler는 Spot instance와 actor를 함께 받는다",
+                                    "Spot 등록부에서는 Spot member function만 나열한다",
+                                    "일반 Spot은 `spot_t`, Entry Spot은 `entry_spot_t`를 상속한다",
+                                    "compile-time으로 검증한다",
+                                    "actor join/packet member는 actor를 함께 받는다",
                                     "Play sample smoke는 handler 객체 직접 호출만으로 통과하지 않는다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
@@ -1839,13 +1843,12 @@ int main ()
     ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_notification_publisher.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_models.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_spot.hpp");
-    ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/Handlers/bingo_room_join_handler.hpp");
-    ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/Handlers/start_bingo_game_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/Handlers/bingo_room_timer_handler.hpp");
     ok &= require_absent (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_handlers.hpp",
                           "sample handler aggregate headers hide the real .NET-aligned Handlers owner");
     ok &= require_exists (root / "samples/Bingo/Server/Play/EntrySpot/bingo_entry_spot.hpp");
-    ok &= require_exists (root / "samples/Bingo/Server/Play/EntrySpot/Handlers/match_bingo_actor_handler.hpp");
+    ok &= require_absent (root / "samples/Bingo/Server/Play/EntrySpot/Handlers/match_bingo_actor_handler.hpp",
+                          "SPOT actor packets must be registered as spot member functions");
     ok &= require_absent (root / "samples/Bingo/Server/Play/EntrySpot/match_bingo_actor_handler.hpp",
                           "sample handler wrappers hide the real .NET-aligned Handlers owner");
     ok &= require_exists (root / "samples/Bingo/Server/Play/Handlers/allocate_bingo_room_handler.hpp");
@@ -1870,7 +1873,8 @@ int main ()
     ok &= require_exists (root / "samples/TicTacToe/Server/Api/Handlers/create_match_handler.hpp");
     ok &= require_absent (root / "samples/TicTacToe/Server/Api/api_server_framework.hpp",
                           "TicTacToe API framework setup belongs in api_server_host_factory.hpp like .NET");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Play/EntrySpot/Handlers/join_match_handler.hpp");
+    ok &= require_absent (root / "samples/TicTacToe/Server/Play/EntrySpot/Handlers/join_match_handler.hpp",
+                          "SPOT actor packets must be registered as spot member functions");
     ok &= require_absent (root / "samples/TicTacToe/Server/Play/EntrySpot/join_match_handler.hpp",
                           "sample handler wrappers hide the real .NET-aligned Handlers owner");
     ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_match_room.hpp");
@@ -1878,8 +1882,10 @@ int main ()
     ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_contract_mapper.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_models.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_spot.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/Handlers/tictactoe_game_join_handler.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/Handlers/place_mark_handler.hpp");
+    ok &= require_absent (root / "samples/TicTacToe/Server/Play/GameSpots/Handlers/tictactoe_game_join_handler.hpp",
+                          "SPOT actor joins must be registered as spot member functions");
+    ok &= require_absent (root / "samples/TicTacToe/Server/Play/GameSpots/Handlers/place_mark_handler.hpp",
+                          "SPOT actor packets must be registered as spot member functions");
     ok &= require_absent (root / "samples/TicTacToe/Server/Play/GameSpots/place_mark_handler.hpp",
                           "sample handler wrappers hide the real .NET-aligned Handlers owner");
     ok &= require_exists (root / "samples/TicTacToe/Server/Play/Handlers/create_match_room_handler.hpp");

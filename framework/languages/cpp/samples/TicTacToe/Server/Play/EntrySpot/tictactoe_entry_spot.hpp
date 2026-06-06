@@ -13,8 +13,9 @@
 namespace zlink::samples::tictactoe
 {
 
-struct entry_spot_t : public zlink::framework::entry_spot_t
+class entry_spot_t : public zlink::framework::entry_spot_t
 {
+  public:
     void configure (zlink::framework::spot_context_t &context)
     {
         context.handlers ()

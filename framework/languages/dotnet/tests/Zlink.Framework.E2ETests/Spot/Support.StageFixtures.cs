@@ -52,11 +52,26 @@ public abstract partial class SpotTestSupport
     {
         public IZLinkSpotContext Context { get; } = context;
 
-        public async ValueTask OnCreateAsync(
-            IReadOnlyList<Message> createReqs,
+        public async ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+            Message request,
             CancellationToken cancellationToken)
         {
-            await recorder.RecordAsync(createReqs, cancellationToken);
+            await recorder.RecordAsync(request, cancellationToken);
+            return ZLinkSpotCreateResponse.Accept();
+        }
+    }
+
+    public sealed class RejectingCreateStageSpot(IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+            Message request,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            return ValueTask.FromResult(
+                ZLinkSpotCreateResponse.Reject(Message.From($"reject:{request.GetString()}")));
         }
     }
 }

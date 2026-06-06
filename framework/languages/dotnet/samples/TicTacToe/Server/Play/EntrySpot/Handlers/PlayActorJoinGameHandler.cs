@@ -46,11 +46,12 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
         var spotRid = RoutingId.FromHex(message.GameId);
         var joined = await actor.Context.JoinSpot(
                 spotRid,
-                new TicTacToeGameJoinReq(message.GameId, actor.ActorId))
+                new TicTacToeGameJoinReq(message.GameId, actor.ActorId).Encode())
             .Timeout(SampleTimeouts.Request)
-            .SubmitAsync<TicTacToeGameJoinRes>(cancellationToken);
+            .SubmitAsync(cancellationToken);
 
-        var reply = new JoinGameRes(joined.Reply.State);
+        var joinReply = joined.Reply.Decode<TicTacToeGameJoinRes>();
+        var reply = new JoinGameRes(joinReply.State);
         logger.LogInformation(
             "actor -> client: JoinGameRes returned. actor={ActorId}, gameId={GameId}, mark={Mark}",
             actor.ActorId,

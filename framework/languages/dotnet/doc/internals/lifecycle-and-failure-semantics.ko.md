@@ -138,11 +138,14 @@ binding 을 지우지 못하도록 조건부 unbind 에 사용한다.
 - `OnInitializeAsync(...)` 는 spot 의 실행 문맥에서 단 한 번만 호출된다.
 - `Configure()` 는 `OnInitializeAsync(...)` 보다 먼저 한 번 호출된다.
   `Context.AddPacket<THandler>()`, `Context.AddSubscribe<THandler>()`,
-  `Context.AddActorJoin<THandler, TActor, TRequest, TReply>()` 등록은 오직 이
-  단계에서만 허용된다.
-- `OnClosingAsync(...)` 는 `IZLinkSpotManager.RemoveAsync(...)` 로 SPOT 을
-  정상적으로 제거할 때, spot 의 실행 문맥에서 호출된다. host shutdown 이나
-  process 종료 시점에 반드시 호출되는 destructor 같은 의미는 아니다.
+  `Context.AddHandler<THandler>()` 같은 handler 등록은 오직 이 단계에서만
+  허용된다. actor join 과 actor lifecycle 은 Spot 멤버 callback 으로
+  descriptor에 반영된다.
+- `OnClosingAsync(...)` 는 `IZLinkSpotManager.CloseAsync(...)` 또는
+  `IZLinkSpotContext.CloseAsync(...)` 로 SPOT 을 정상적으로 종료할 때, spot 의 실행
+  문맥에서 호출된다. join된 actor가 남아 있으면 close는 `false`를 반환하고 진행하지
+  않는다. host shutdown 이나 process 종료 시점에 반드시 호출되는 destructor 같은
+  의미는 아니다.
 - framework 는 spot 마다 별도의 scope[^per-spot-scope] 를 만들고, 등록해 둔
   handler 타입은 그 scope 안에서 resolve 한다.
 - `Context.AddPacket<THandler>()`, `Context.AddSubscribe<THandler>()`,

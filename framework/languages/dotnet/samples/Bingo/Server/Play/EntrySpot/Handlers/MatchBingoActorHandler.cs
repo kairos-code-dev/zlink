@@ -35,11 +35,11 @@ internal sealed class MatchBingoActorHandler
         var roomRid = RoutingId.FromHex(matched.RoomId);
         var joined = await actor.Context.JoinSpot(
                 roomRid,
-                new BingoRoomJoinReq(matched.RoomId, actor.ActorId, actor.DisplayName))
+                new BingoRoomJoinReq(matched.RoomId, actor.ActorId, actor.DisplayName).Encode())
             .Timeout(SampleTimings.RequestTimeout)
-            .SubmitAsync<BingoRoomJoinRes>(cancellationToken)
+            .SubmitAsync(cancellationToken)
             ;
 
-        return new MatchBingoRes(matched.RoomId, joined.Reply.State);
+        return new MatchBingoRes(matched.RoomId, joined.Reply.Decode<BingoRoomJoinRes>().State);
     }
 }

@@ -14,7 +14,6 @@ public sealed class ActorSessionStateTests : SpotTestSupport
 
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton<ActorIntegrationRecorder>();
-        builder.Services.AddScoped<ActorJoinHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
 
@@ -41,10 +40,10 @@ public sealed class ActorSessionStateTests : SpotTestSupport
         var created = await manager.CreateAsync<ActorStageSpot>();
         var actor = (TestActor)(await actorRuntime.CreateLocalActorAsync("actor-2", "test")).Actor;
 
-        _ = await actorRuntime.JoinActorAsync<JoinStageRequest, JoinStageReply>(
+        _ = await actorRuntime.JoinActorAsync(
             created.SpotRid,
             actor,
-            new JoinStageRequest("room-disconnect"));
+            EncodeJoin(new JoinStageRequest("room-disconnect")));
 
         var staleStream = new TestStream("session-stale");
         var currentStream = new TestStream("session-current");

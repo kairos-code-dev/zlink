@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using Systems.Zlink.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
 
@@ -85,9 +86,21 @@ public abstract partial class StreamTestSupport
         public IZLinkEntrySpotContext Context { get; } = context;
     }
 
-    public sealed class RegistryOnlySpot(IZLinkSpotContext context) : IZLinkSpot
+    public sealed class RegistryOnlySpot(IZLinkSpotContext context) : IZLinkSpot<RegistryOnlyActor>
     {
         public IZLinkSpotContext Context { get; } = context;
+
+        public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            RegistryOnlyActor actor,
+            Message request,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            cancellationToken.ThrowIfCancellationRequested();
+            var ping = request.FromJson<GatewayPing>(JsonOptions);
+            return ValueTask.FromResult(
+                ZLinkSpotActorJoinResult.Accept(new GatewayPong(ping.Value, 1).ToJson(JsonOptions)));
+        }
     }
 
     public sealed class RegistryOnlyUserSpotActorSendHandler
@@ -127,23 +140,6 @@ public abstract partial class StreamTestSupport
         }
     }
 
-    public sealed class RegistryOnlyAttributedEntrySpotJoinedHandler
-    {
-        [ZLinkSpotPostActorJoined]
-        public ValueTask HandleAsync(
-            RegistryOnlyEntrySpot entrySpot,
-            RegistryOnlyActor actor,
-            ZLinkSpotActorChangeResult info,
-            CancellationToken cancellationToken)
-        {
-            _ = entrySpot;
-            _ = actor;
-            _ = info;
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.CompletedTask;
-        }
-    }
-
     public sealed class RegistryOnlyAttributedUserSpotActorSendHandler
     {
         [ZLinkSpotActorSend(PacketName = "spot.send")]
@@ -163,36 +159,4 @@ public abstract partial class StreamTestSupport
         }
     }
 
-    public sealed class RegistryOnlyAttributedUserSpotLeftHandler
-    {
-        [ZLinkSpotActorLeft]
-        public ValueTask HandleAsync(
-            RegistryOnlySpot spot,
-            RegistryOnlyActor actor,
-            ZLinkSpotActorChangeResult info,
-            CancellationToken cancellationToken)
-        {
-            _ = spot;
-            _ = actor;
-            _ = info;
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    public sealed class RegistryOnlyAttributedSpotActorJoinHandler
-    {
-        [ZLinkSpotActorJoin]
-        public ValueTask<GatewayPong> HandleAsync(
-            RegistryOnlySpot spot,
-            RegistryOnlyActor actor,
-            GatewayPing request,
-            CancellationToken cancellationToken)
-        {
-            _ = spot;
-            _ = actor;
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new GatewayPong(request.Value, 1));
-        }
-    }
 }

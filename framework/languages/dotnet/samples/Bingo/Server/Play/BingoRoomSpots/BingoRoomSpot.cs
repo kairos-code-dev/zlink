@@ -18,11 +18,10 @@ namespace Bingo.Server.Play.BingoRoomSpots;
 internal sealed class BingoRoomSpot(
     IZLinkSpotContext context,
     BingoNotificationPublisher notifications,
-    ILogger<BingoRoomSpotCreatedHandler> createdLogger) : IZLinkSpot
+    ILogger<BingoRoomSpot> logger) : IZLinkSpot<PlayerActor>
 {
     private static readonly BingoRoomSettings DefaultSettings = BingoRoomSettings.Create("four-player", 0);
 
-    private readonly BingoRoomSpotCreatedHandler _createdHandler = new(createdLogger);
     private readonly List<RoomPlayer> _players = [];
     private readonly Queue<int> _drawDeck = new(Enumerable.Range(1, DefaultSettings.MaxDrawNumber));
     private readonly List<int> _drawnNumbers = [];
@@ -42,17 +41,68 @@ internal sealed class BingoRoomSpot(
 
     public void Configure()
     {
-        Context.Handlers.AddActorJoin<BingoRoomJoinHandler, PlayerActor, BingoRoomJoinReq, BingoRoomJoinRes>();
         Context.Handlers.AddActorPacket<StartBingoGameHandler, PlayerActor>();
-        Context.Handlers.AddHandler<BingoRoomActorJoinedHandler>();
-        Context.Handlers.AddHandler<BingoRoomActorLeftHandler>();
     }
 
-    public async ValueTask OnCreateAsync(
-        IReadOnlyList<Message> createReqs,
+    public ValueTask OnPostActorJoinedAsync(
+        PlayerActor actor,
         CancellationToken cancellationToken)
     {
-        await _createdHandler.HandleAsync(this, createReqs, cancellationToken);
+        _ = cancellationToken;
+        logger.LogInformation(
+            "bingo room: actor joined. room={RoomId}, actor={ActorId}",
+            Context.SpotRid.ToHex(),
+            actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnActorLeftAsync(
+        PlayerActor actor,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        logger.LogInformation(
+            "bingo room: actor left. room={RoomId}, actor={ActorId}",
+            Context.SpotRid.ToHex(),
+            actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        PlayerActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        var reply = await JoinAsync(actor, request.Decode<BingoRoomJoinReq>(), cancellationToken);
+        return ZLinkSpotActorJoinResult.Accept(reply.Encode());
+    }
+
+    public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        var settings = DecodeSettings(request);
+        ApplySettings(settings);
+        logger.LogInformation(
+            "bingo room: created. room={RoomId}, roomName={RoomName}, mode={Mode}, requiredPlayers={RequiredPlayers}, maxDrawNumber={MaxDrawNumber}, drawPeriod={DrawPeriod}",
+            Context.SpotRid.ToHex(),
+            settings.RoomName,
+            settings.Mode,
+            settings.RequiredPlayers,
+            settings.MaxDrawNumber,
+            settings.DrawPeriod);
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
+    }
+
+    private static BingoRoomSettings DecodeSettings(Message request)
+    {
+        if (request.Size == 0)
+        {
+            return DefaultSettings;
+        }
+
+        return request.FromJson<BingoRoomSettings>();
     }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)

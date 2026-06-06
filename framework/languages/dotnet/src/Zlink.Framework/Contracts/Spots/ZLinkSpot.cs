@@ -2,26 +2,11 @@ using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.Contracts.Spots;
 
-public enum ZLinkSpotActorChangeKind
+public readonly record struct ZLinkSpotActorJoinResult(bool Accepted, Message? Reply)
 {
-    JoinSpot = 1,
-    JoinEntrySpot = 2,
-    LeaveSpot = 3
-}
+    public static ZLinkSpotActorJoinResult Accept(Message? reply = null) => new(true, reply);
 
-public sealed record ZLinkSpotActorChangeResult
-{
-    public ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind kind)
-    {
-        if (!Enum.IsDefined(kind))
-        {
-            throw new ArgumentOutOfRangeException(nameof(kind), kind, "SPOT actor change kind is not defined.");
-        }
-
-        Kind = kind;
-    }
-
-    public ZLinkSpotActorChangeKind Kind { get; }
+    public static ZLinkSpotActorJoinResult Reject(Message? reply = null) => new(false, reply);
 }
 
 public sealed class ZLinkSpotActorReplyOptions
@@ -97,11 +82,11 @@ public interface IZLinkSpot
     {
     }
 
-    ValueTask OnCreateAsync(
-        IReadOnlyList<Message> createReqs,
+    ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+        Message request,
         CancellationToken cancellationToken)
     {
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
     ValueTask OnInitializeAsync(CancellationToken cancellationToken)
@@ -113,7 +98,32 @@ public interface IZLinkSpot
     {
         return ValueTask.CompletedTask;
     }
+}
 
+public interface IZLinkSpot<TActor> : IZLinkSpot
+    where TActor : IZLinkActor
+{
+    ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        TActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
+    }
+
+    ValueTask OnPostActorJoinedAsync(
+        TActor actor,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    ValueTask OnActorLeftAsync(
+        TActor actor,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
 }
 
 public interface IZLinkActorHandlerRegistry
@@ -132,14 +142,6 @@ public interface IZLinkActorHandlerRegistry
         where THandler : class
         where TActor : IZLinkActor;
 
-    void AddPostActorJoined<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor;
-
-    void AddActorLeft<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor;
-
     void AddActorDisconnected<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor;
@@ -153,12 +155,6 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
     void AddSubscribe<THandler>(string topic)
         where THandler : class;
 
-    void AddActorJoin<THandler, TActor, TRequest, TReply>()
-        where THandler : class
-        where TActor : IZLinkActor;
-
-    void AddActorJoin<THandler>()
-        where THandler : class;
 }
 
 public interface IZLinkSpotOutbound
@@ -198,6 +194,9 @@ public interface IZLinkSpotContext
         IZLinkActor actor,
         CancellationToken cancellationToken = default);
 
+    ValueTask<bool> CloseAsync(
+        CancellationToken cancellationToken = default);
+
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
@@ -223,7 +222,24 @@ public interface IZLinkEntrySpot
     {
         return ValueTask.CompletedTask;
     }
+}
 
+public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
+    where TActor : IZLinkActor
+{
+    ValueTask OnPostActorJoinedAsync(
+        TActor actor,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    ValueTask OnActorLeftAsync(
+        TActor actor,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
 }
 
 public interface IZLinkEntrySpotContext
@@ -265,28 +281,6 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
         TActor actor,
         ZLinkSpotActorRequestContext context,
         TRequest request,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkSpotPostActorJoinedHandler<TSpot, TActor>
-    where TSpot : class
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TSpot spot,
-        TActor actor,
-        ZLinkSpotActorChangeResult result,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
-    where TSpot : class
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TSpot spot,
-        TActor actor,
-        ZLinkSpotActorChangeResult result,
         CancellationToken cancellationToken);
 }
 

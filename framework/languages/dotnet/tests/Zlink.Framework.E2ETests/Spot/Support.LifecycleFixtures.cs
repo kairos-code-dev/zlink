@@ -19,7 +19,7 @@ public abstract partial class SpotTestSupport
         private TaskCompletionSource? _entered;
         private TaskCompletionSource? _release;
 
-        public ConcurrentBag<IReadOnlyList<string>> Payloads { get; } = [];
+        public ConcurrentBag<string> Payloads { get; } = [];
 
         public void BlockCreate()
         {
@@ -47,7 +47,7 @@ public abstract partial class SpotTestSupport
         }
 
         public async ValueTask RecordAsync(
-            IReadOnlyList<Message> createParts,
+            Message request,
             CancellationToken cancellationToken)
         {
             Task? release;
@@ -62,7 +62,7 @@ public abstract partial class SpotTestSupport
                 await release.WaitAsync(cancellationToken);
             }
 
-            Payloads.Add(createParts.Select(static part => part.GetString()).ToArray());
+            Payloads.Add(request.GetString());
         }
     }
 
@@ -116,6 +116,19 @@ public abstract partial class SpotTestSupport
             _ = await Context.AddTimer<SpotHeartbeatTimerHandler>(
                 "heartbeat",
                 TimeSpan.FromMilliseconds(250),
+                cancellationToken: cancellationToken);
+        }
+    }
+
+    public sealed class SelfClosingTimerSpot(IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)
+        {
+            _ = await Context.AddTimer<SelfClosingTimerHandler>(
+                "self-close",
+                TimeSpan.FromMilliseconds(50),
                 cancellationToken: cancellationToken);
         }
     }
@@ -181,6 +194,18 @@ public abstract partial class SpotTestSupport
             recorder.RecordTick();
             await spot.Context.Outbound.Publish("stage.local", new LocalStageEvent(spot.Context.SpotRid.ToString()))
                 .Submit(cancellationToken);
+        }
+    }
+
+    public sealed class SelfClosingTimerHandler : IZLinkSpotTimerHandler<SelfClosingTimerSpot>
+    {
+        public async ValueTask HandleAsync(
+            SelfClosingTimerSpot spot,
+            ZLinkTimerTick tick,
+            CancellationToken cancellationToken)
+        {
+            _ = tick;
+            _ = await spot.Context.CloseAsync(cancellationToken);
         }
     }
 

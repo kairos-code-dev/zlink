@@ -4,6 +4,8 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkSpotDescriptorFactory
 {
+    private const string ActorJoinMethodName = "OnActorJoinAsync";
+
     public static ZLinkSpotDescriptor CreatePacketDescriptor(Type handlerType, Type expectedSpotType)
     {
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
@@ -96,59 +98,19 @@ internal static class ZLinkSpotDescriptorFactory
             $"SPOT timer handler '{handlerType}' must implement IZLinkSpotTimerHandler<>.");
     }
 
-    public static ZLinkSpotActorJoinDescriptor CreateActorJoinDescriptor(
-        Type handlerType,
-        Type expectedSpotType,
-        Type? expectedActorType,
-        Type? expectedRequestType,
-        Type? expectedReplyType)
+    public static IEnumerable<ZLinkSpotActorJoinDescriptor> CreateSpotActorJoinDescriptors(Type spotType)
     {
-        var matches = new List<ZLinkSpotActorJoinDescriptor>();
-        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
+        var contract = GetSpotActorContract(spotType);
+        foreach (var method in EnumerateActorJoinMethods(spotType, contract?.ContractType))
         {
-            if (definition != typeof(IZLinkSpotActorJoinHandler<,,,>))
-            {
-                continue;
-            }
-
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            ValidateActorType(handlerType, expectedActorType, arguments[1]);
-
-            if ((expectedRequestType is not null && arguments[2] != expectedRequestType)
-                || (expectedReplyType is not null && arguments[3] != expectedReplyType))
+            if (contract is null)
             {
                 throw new InvalidOperationException(
-                    $"SPOT actor join handler '{handlerType}' targets '{arguments[2]}/{arguments[3]}', but registration expects '{expectedRequestType}/{expectedReplyType}'.");
+                    $"SPOT actor join hook '{spotType}' must implement IZLinkSpot<TActor>.");
             }
 
-            matches.Add(CreateActorJoinDescriptor(
-                handlerType,
-                arguments[0],
-                arguments[1],
-                arguments[2],
-                arguments[3],
-                CreateInvoker(handlerType)));
+            yield return CreateSpotActorJoinDescriptor(spotType, method, contract.ActorType);
         }
-
-        foreach (var method in EnumerateAttributedMethods<ZLinkSpotActorJoinAttribute>(handlerType))
-        {
-            matches.Add(CreateAttributedActorJoinDescriptor(
-                handlerType,
-                method,
-                expectedSpotType,
-                expectedActorType,
-                expectedRequestType,
-                expectedReplyType));
-        }
-
-        return matches.Count switch
-        {
-            1 => matches[0],
-            0 => throw new InvalidOperationException(
-                $"SPOT actor join handler '{handlerType}' must implement IZLinkSpotActorJoinHandler<,,,> or declare one [ZLinkSpotActorJoin] method."),
-            _ => throw new InvalidOperationException(
-                $"SPOT actor join handler '{handlerType}' declares multiple actor join handlers."),
-        };
     }
 
     private static void ValidateSpotType(Type handlerType, Type expectedSpotType, Type actualSpotType)
@@ -167,7 +129,7 @@ internal static class ZLinkSpotDescriptorFactory
             if (!typeof(IZLinkActor).IsAssignableFrom(actualActorType))
             {
                 throw new InvalidOperationException(
-                    $"SPOT actor join handler '{handlerType}' targets '{actualActorType}', but actor type must implement '{typeof(IZLinkActor)}'.");
+                    $"SPOT actor join callback '{handlerType}' targets '{actualActorType}', but actor type must implement '{typeof(IZLinkActor)}'.");
             }
 
             return;
@@ -177,7 +139,7 @@ internal static class ZLinkSpotDescriptorFactory
             handlerType,
             expectedActorType,
             actualActorType,
-            "SPOT actor join handler");
+            "SPOT actor join callback");
     }
 
     private static ZLinkHandlerMethodInvoker CreateInvoker(Type handlerType)
@@ -185,71 +147,76 @@ internal static class ZLinkSpotDescriptorFactory
         return ZLinkHandlerContractDescriptorSupport.CreateHandleAsyncInvoker(handlerType, "Handler");
     }
 
-    private static ZLinkSpotActorJoinDescriptor CreateAttributedActorJoinDescriptor(
-        Type handlerType,
+    private static ZLinkSpotActorJoinDescriptor CreateSpotActorJoinDescriptor(
+        Type spotType,
         MethodInfo method,
-        Type expectedSpotType,
-        Type? expectedActorType,
-        Type? expectedRequestType,
-        Type? expectedReplyType)
+        Type expectedActorType)
     {
-        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(handlerType, method, 4, "SPOT actor join handler");
-        var spotType = parameters[0].ParameterType;
-        var actorType = parameters[1].ParameterType;
-        var requestType = parameters[2].ParameterType;
-        ZLinkHandlerMethodShape.RequireCancellationToken(
-            handlerType,
+        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(
+            spotType,
             method,
-            parameters[3],
-            "SPOT actor join handler",
-            "fourth");
-
-        ValidateSpotType(handlerType, expectedSpotType, spotType);
-        ValidateActorType(handlerType, expectedActorType, actorType);
-        if ((expectedRequestType is not null && requestType != expectedRequestType)
-            || (expectedReplyType is not null && GetReplyType(method.ReturnType) != expectedReplyType))
+            3,
+            "SPOT actor join hook");
+        var actorType = parameters[0].ParameterType;
+        if (parameters[1].ParameterType != typeof(Message))
         {
             throw new InvalidOperationException(
-                $"SPOT actor join handler '{handlerType}' targets '{requestType}/{GetReplyType(method.ReturnType)}', but registration expects '{expectedRequestType}/{expectedReplyType}'.");
+                $"SPOT actor join hook '{spotType}' method '{method.Name}' must use Message as the second parameter.");
         }
 
-        return CreateActorJoinDescriptor(
-            handlerType,
+        ZLinkHandlerMethodShape.RequireCancellationToken(
             spotType,
-            actorType,
-            requestType,
-            GetReplyType(method.ReturnType),
-            ZLinkHandlerMethodInvokerFactory.Create(method));
-    }
+            method,
+            parameters[2],
+            "SPOT actor join hook",
+            "third");
+        ValidateActorType(spotType, expectedActorType, actorType);
+        if (method.ReturnType != typeof(ValueTask<ZLinkSpotActorJoinResult>))
+        {
+            throw new InvalidOperationException(
+                $"SPOT actor join hook '{spotType}' method '{method.Name}' must return ValueTask<ZLinkSpotActorJoinResult>.");
+        }
 
-    private static ZLinkSpotActorJoinDescriptor CreateActorJoinDescriptor(
-        Type handlerType,
-        Type spotType,
-        Type actorType,
-        Type requestType,
-        Type replyType,
-        ZLinkHandlerMethodInvoker invoker)
-    {
         return new ZLinkSpotActorJoinDescriptor
         {
-            HandlerType = handlerType,
+            HandlerType = spotType,
             SpotType = spotType,
             ActorType = actorType,
-            RequestType = requestType,
-            ReplyType = replyType,
-            Invoker = invoker,
-            MessageName = ZLinkMessageNameResolver.ResolveFromType(requestType),
+            Invoker = ZLinkHandlerMethodInvokerFactory.Create(method),
+            PassSpotArgument = false,
         };
     }
 
-    private static Type GetReplyType(Type returnType)
-        => ZLinkHandlerMethodShape.RequireReplyType(returnType, "SPOT actor join handler");
-
-    private static IEnumerable<MethodInfo> EnumerateAttributedMethods<TAttribute>(Type handlerType)
-        where TAttribute : Attribute
+    private static IEnumerable<MethodInfo> EnumerateActorJoinMethods(Type spotType, Type? contractType)
     {
-        return handlerType
+        var declaredMethods = spotType
             .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Where(static method => method.GetCustomAttribute<TAttribute>() is not null);
+            .Where(method => method.Name == ActorJoinMethodName
+                && method.DeclaringType == spotType)
+            .ToArray();
+        if (declaredMethods.Length > 0)
+        {
+            return declaredMethods;
+        }
+
+        return contractType is null
+            ? []
+            : contractType.GetMethods()
+                .Where(method => method.Name == ActorJoinMethodName);
     }
+
+    private static SpotActorContract? GetSpotActorContract(Type spotType)
+    {
+        foreach (var contract in spotType.GetInterfaces())
+        {
+            if (contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IZLinkSpot<>))
+            {
+                return new SpotActorContract(contract, contract.GetGenericArguments()[0]);
+            }
+        }
+
+        return null;
+    }
+
+    private sealed record SpotActorContract(Type ContractType, Type ActorType);
 }

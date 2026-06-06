@@ -108,6 +108,8 @@ internal sealed partial class ZLinkSpotActivation :
 
     public int SubscriptionIgnoreCount => _subscriptions.IgnoreCount;
 
+    public int JoinedActorCount => _actors.Count;
+
     public string? LastSubscriptionTopic => _subscriptions.LastTopic;
 
     public string? LastSubscriptionMessageName => _subscriptions.LastMessageName;

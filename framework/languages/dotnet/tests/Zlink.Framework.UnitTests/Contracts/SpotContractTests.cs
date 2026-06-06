@@ -7,11 +7,11 @@ public sealed class SpotContractTests
     {
         var spotRid = global::Systems.Zlink.RoutingId.From("0a0b0c");
 
-        var created = new ZLinkSpotCreateResult(spotRid, Created: true);
+        var created = new ZLinkSpotCreateResult(spotRid, ZLinkSpotCreateState.Created, null);
         var info = new ZLinkSpotInfo(spotRid);
 
         Assert.Equal(spotRid, created.SpotRid);
-        Assert.True(created.Created);
+        Assert.Equal(ZLinkSpotCreateState.Created, created.State);
         Assert.Equal(spotRid, info.SpotRid);
     }
 }

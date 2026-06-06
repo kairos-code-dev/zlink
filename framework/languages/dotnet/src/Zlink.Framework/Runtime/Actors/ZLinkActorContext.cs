@@ -39,13 +39,13 @@ internal sealed class ZLinkActorContext(
         return typed;
     }
 
-    public IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+    public IZLinkActorJoinSpotCall JoinSpot(
         RoutingId spotRid,
-        TRequest request)
+        Message request)
     {
         state.EnsureContextValid();
         ArgumentNullException.ThrowIfNull(request);
-        return new ZLinkActorJoinSpotCall<TRequest>(
+        return new ZLinkActorJoinSpotCall(
             runtime,
             CurrentActor,
             spotRid,
@@ -66,11 +66,11 @@ internal sealed class ZLinkActorContext(
             $"Actor '{state.ActorId}' has not been created.");
 }
 
-internal sealed class ZLinkActorJoinSpotCall<TRequest>(
+internal sealed class ZLinkActorJoinSpotCall(
     ZLinkFrameworkRuntime runtime,
     IZLinkActor actor,
     RoutingId spotRid,
-    TRequest request) : IZLinkActorJoinSpotCall
+    Message request) : IZLinkActorJoinSpotCall
 {
     private TimeSpan? _timeout;
 
@@ -80,7 +80,7 @@ internal sealed class ZLinkActorJoinSpotCall<TRequest>(
         return this;
     }
 
-    public async ValueTask<ZLinkActorJoinResult<TReply>> SubmitAsync<TReply>(
+    public async ValueTask<ZLinkActorJoinResult> SubmitAsync(
         CancellationToken cancellationToken = default)
     {
         var timeout = _timeout ?? runtime.Registration.DefaultTimeout;
@@ -89,7 +89,7 @@ internal sealed class ZLinkActorJoinSpotCall<TRequest>(
 
         try
         {
-            return await runtime.JoinActorAsync<TRequest, TReply>(
+            return await runtime.JoinActorAsync(
                 spotRid,
                 actor,
                 request,

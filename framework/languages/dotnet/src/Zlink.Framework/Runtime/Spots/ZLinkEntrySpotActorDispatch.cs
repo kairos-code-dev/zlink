@@ -80,13 +80,11 @@ internal sealed class ZLinkEntrySpotActorDispatch(string spotNodeName)
     public ValueTask InvokeLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         return RequireActivation().InvokeActorLifecycleAsync(
             descriptor,
             actor,
-            context,
             cancellationToken);
     }
 

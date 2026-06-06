@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Systems.Zlink.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Runtime.Backend.Contracts;
@@ -14,6 +15,10 @@ namespace Zlink.Framework.E2ETests;
 public abstract partial class SpotTestSupport
 {
     private protected static readonly TimeSpan PollingInterval = TimeSpan.FromMilliseconds(150);
+
+    private protected static Message EncodeJoin<T>(T request) => request.ToJson();
+
+    private protected static T DecodeJoin<T>(Message reply) => reply.FromJson<T>();
 
     private protected static async Task<IHost> CreateHostAsync(
         string ordersServer,
@@ -71,6 +76,7 @@ public abstract partial class SpotTestSupport
                     router.BindRouter(spotNode);
                 });
                 spot.AddSpotFactory<CreatePayloadStageSpot>();
+                spot.AddSpotFactory<RejectingCreateStageSpot>();
             });
             });
         });

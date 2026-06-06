@@ -57,7 +57,6 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
 
         await runtime.NotifyEntrySpotActorJoinedAsync(
                 actor,
-                new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JoinEntrySpot),
                 nativeRef.NodeRid,
                 cancellationToken)
             .ConfigureAwait(false);

@@ -16,11 +16,9 @@ internal sealed partial class ZLinkSpotActivation
                 cancellationToken);
     }
 
-    public bool TryResolveActorJoinDescriptor(
-        Type requestType,
-        out ZLinkSpotActorJoinDescriptor? descriptor)
+    public bool TryResolveActorJoinDescriptor(out ZLinkSpotActorJoinDescriptor? descriptor)
     {
-        return _actorJoins.TryResolve(requestType, out descriptor);
+        return _actorJoins.TryResolve(out descriptor);
     }
 
     public bool TryResolveActorPacketDescriptor(
@@ -33,38 +31,39 @@ internal sealed partial class ZLinkSpotActivation
             && _actorHandlers.TryResolve(actorType, header, out descriptor);
     }
 
-    public async ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
+    public async ValueTask<ZLinkSpotActorJoinResult> JoinActorAsync(
         IZLinkActor actor,
-        TRequest request,
+        Message request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!_actorJoins.TryResolve(typeof(TRequest), out var descriptor)
+        if (!_actorJoins.TryResolve(out var descriptor)
             || descriptor is null)
         {
             throw new InvalidOperationException(
-                $"SPOT '{Spot.GetType()}' does not register an actor join handler for '{typeof(TRequest)}'.");
+                $"SPOT '{Spot.GetType()}' does not declare an actor join callback.");
         }
 
         var state = new ActorJoinCallState(actor, request, descriptor);
         await ExecuteSerializedAsync(
             async static (activation, state, ct) =>
             {
-                state.Reply = await activation.InvokeActorJoinAsync(
+                state.Result = await activation.InvokeActorJoinAsync(
                     state.Descriptor,
                     state.Actor,
                     state.Request,
                     ct);
-                await activation.CommitActorJoinCoreAsync(state.Actor, ct)
-                    .ConfigureAwait(false);
+                if (state.Result.Accepted)
+                {
+                    await activation.CommitActorJoinCoreAsync(state.Actor, ct)
+                        .ConfigureAwait(false);
+                }
             },
             state,
             cancellationToken);
 
-        return (TReply?)state.Reply
-            ?? throw new InvalidOperationException(
-                $"SPOT actor join reply for '{typeof(TRequest)}' was null.");
+        return state.Result;
     }
 
     public ValueTask NotifyActorDisconnectedAsync(
@@ -80,37 +79,33 @@ internal sealed partial class ZLinkSpotActivation
 
     internal ValueTask NotifyActorLeftAfterNativeJoinEntrySpotAsync(
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(actor);
         return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
-            ? NotifyActorLeftAfterNativeJoinEntrySpotCoreAsync(actor, context, cancellationToken)
+            ? NotifyActorLeftAfterNativeJoinEntrySpotCoreAsync(actor, cancellationToken)
             : ExecuteSerializedAsync(
                 static (activation, state, ct) =>
                     activation.NotifyActorLeftAfterNativeJoinEntrySpotCoreAsync(
-                        state.Actor,
-                        state.Context,
+                        state,
                         ct),
-                new ActorLifecycleNotificationState(actor, context),
+                actor,
                 cancellationToken);
     }
 
     internal ValueTask NotifyActorLeftAfterManagedJoinSpotAsync(
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(actor);
         return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
-            ? NotifyActorLeftAfterJoinCommitCoreAsync(actor, context, cancellationToken)
+            ? NotifyActorLeftAfterJoinCommitCoreAsync(actor, cancellationToken)
             : ExecuteSerializedAsync(
                 static (activation, state, ct) =>
                     activation.NotifyActorLeftAfterJoinCommitCoreAsync(
-                        state.Actor,
-                        state.Context,
+                        state,
                         ct),
-                new ActorLifecycleNotificationState(actor, context),
+                actor,
                 cancellationToken);
     }
 
@@ -131,16 +126,14 @@ internal sealed partial class ZLinkSpotActivation
 
     private async ValueTask NotifyActorLeftAfterNativeJoinEntrySpotCoreAsync(
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
-        await NotifyActorLeftAfterJoinCommitCoreAsync(actor, context, cancellationToken)
+        await NotifyActorLeftAfterJoinCommitCoreAsync(actor, cancellationToken)
             .ConfigureAwait(false);
     }
 
     private async ValueTask NotifyActorLeftAfterJoinCommitCoreAsync(
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         _actors.RemoveIfCurrent(actor);
@@ -154,7 +147,7 @@ internal sealed partial class ZLinkSpotActivation
             && _actorHandlers.TryResolveLeft(actor.GetType(), out var descriptor)
             && descriptor is not null)
         {
-            await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, context, cancellationToken)
+            await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -172,10 +165,10 @@ internal sealed partial class ZLinkSpotActivation
         }
     }
 
-    private async ValueTask<object?> InvokeActorJoinAsync(
+    private async ValueTask<ZLinkSpotActorJoinResult> InvokeActorJoinAsync(
         ZLinkSpotActorJoinDescriptor descriptor,
         IZLinkActor actor,
-        object request,
+        Message request,
         CancellationToken cancellationToken)
     {
         return await HandlerInvoker.InvokeActorJoinAsync(descriptor, actor, request, cancellationToken)
@@ -184,19 +177,15 @@ internal sealed partial class ZLinkSpotActivation
 
     private sealed class ActorJoinCallState(
         IZLinkActor actor,
-        object request,
+        Message request,
         ZLinkSpotActorJoinDescriptor descriptor)
     {
         public IZLinkActor Actor { get; } = actor;
 
-        public object Request { get; } = request;
+        public Message Request { get; } = request;
 
         public ZLinkSpotActorJoinDescriptor Descriptor { get; } = descriptor;
 
-        public object? Reply { get; set; }
+        public ZLinkSpotActorJoinResult Result { get; set; }
     }
-
-    private sealed record ActorLifecycleNotificationState(
-        IZLinkActor Actor,
-        ZLinkSpotActorChangeResult Context);
 }

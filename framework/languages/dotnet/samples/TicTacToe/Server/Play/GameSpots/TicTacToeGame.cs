@@ -1,4 +1,6 @@
 using Systems.Zlink;
+using Systems.Zlink.Codecs.Json;
+using Microsoft.Extensions.Logging;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
@@ -9,12 +11,11 @@ namespace TicTacToe.Server.Play.GameSpots;
 
 sealed class TicTacToeGame(
     IZLinkSpotContext context,
-    ILogger<TicTacToeGameCreatedHandler> createdLogger) : IZLinkSpot
+    ILogger<TicTacToeGame> logger) : IZLinkSpot<PlayActor>
 {
     private static readonly TimeSpan GameTickPeriod = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan TurnTimeout = TimeSpan.FromSeconds(15);
 
-    private readonly TicTacToeGameCreatedHandler _createdHandler = new(createdLogger);
     private readonly Dictionary<string, PlayerSlot> _players = new(StringComparer.Ordinal);
     private readonly char[] _board = Enumerable.Repeat('.', 9).ToArray();
     private string _nextTurn = "X";
@@ -29,17 +30,59 @@ sealed class TicTacToeGame(
 
     public void Configure()
     {
-        Context.Handlers.AddActorJoin<TicTacToeGameJoinHandler>();
         Context.Handlers.AddHandler<PlayActorPlaceMarkHandler>();
-        Context.Handlers.AddHandler<TicTacToeGameActorJoinedHandler>();
-        Context.Handlers.AddHandler<TicTacToeGameActorLeftHandler>();
     }
 
-    public ValueTask OnCreateAsync(
-        IReadOnlyList<Message> createReqs,
+    public ValueTask OnPostActorJoinedAsync(
+        PlayActor actor,
         CancellationToken cancellationToken)
     {
-        return _createdHandler.HandleAsync(this, createReqs, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        logger.LogInformation(
+            "game spot: actor joined. actor={ActorId}, gameId={GameId}",
+            actor.ActorId,
+            Context.SpotRid.ToHex());
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnActorLeftAsync(
+        PlayActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        logger.LogInformation(
+            "game spot: actor left. actor={ActorId}, gameId={GameId}",
+            actor.ActorId,
+            Context.SpotRid.ToHex());
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        PlayActor player,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        var joinRequest = request.Decode<TicTacToeGameJoinReq>();
+        var reply = await JoinPlayerAsync(player, joinRequest.GameId, cancellationToken);
+        logger.LogInformation(
+            "TicTacToeGame: actor join accepted. actor={ActorId}, gameId={GameId}, mark={Mark}",
+            player.ActorId,
+            joinRequest.GameId,
+            reply.State.XActorId == player.ActorId ? "X" : "O");
+
+        return ZLinkSpotActorJoinResult.Accept(reply.Encode());
+    }
+
+    public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        logger.LogInformation(
+            "game spot: created. gameId={GameId}, createPayloadBytes={CreatePayloadBytes}",
+            Context.SpotRid.ToHex(),
+            request.Size);
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)

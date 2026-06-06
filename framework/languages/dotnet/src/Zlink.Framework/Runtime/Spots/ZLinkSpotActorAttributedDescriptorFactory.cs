@@ -4,6 +4,9 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkSpotActorAttributedDescriptorFactory
 {
+    private const string PostActorJoinedMethodName = "OnPostActorJoinedAsync";
+    private const string ActorLeftMethodName = "OnActorLeftAsync";
+
     public static IEnumerable<ZLinkSpotActorPacketDescriptor> CreatePacketDescriptors(
         ZLinkSpotActorHandlerSurface surface,
         Type? expectedSpotType,
@@ -38,20 +41,6 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
             yield return new ZLinkSpotActorInferredHandlerDescriptor { Packet = descriptor };
         }
 
-        foreach (var method in EnumerateLifecycleMethods(handlerType))
-        {
-            var descriptor = TryCreateLifecycle(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                method);
-            if (descriptor is not null)
-            {
-                yield return descriptor;
-            }
-        }
-
         foreach (var method in EnumerateDisconnectedMethods(handlerType))
         {
             var descriptor = TryCreateDisconnected(
@@ -67,29 +56,40 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
         }
     }
 
-    public static ZLinkSpotActorLifecycleDescriptor? TryCreateLifecycle(
+    public static IEnumerable<ZLinkSpotActorInferredHandlerDescriptor> CreateSpotLifecycleDescriptors(
         ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type expectedActorType,
-        bool joined)
+        Type spotType)
     {
-        foreach (var method in EnumerateLifecycleMethods(handlerType))
+        var contract = GetSpotActorContract(surface, spotType);
+        foreach (var method in EnumerateSpotLifecycleMethods(spotType, contract?.ContractType))
         {
-            var descriptor = TryCreateLifecycle(
-                surface,
-                expectedSpotType,
-                handlerType,
-                expectedActorType,
-                method);
-            var candidate = joined ? descriptor?.Joined : descriptor?.Left;
-            if (candidate is not null)
+            if (method.Name == PostActorJoinedMethodName)
             {
-                return candidate;
+                if (contract is null)
+                {
+                    throw new InvalidOperationException(
+                        $"SPOT actor lifecycle hook '{spotType}' must implement IZLinkSpot<TActor> or IZLinkEntrySpot<TActor>.");
+                }
+
+                yield return new ZLinkSpotActorInferredHandlerDescriptor
+                {
+                    Joined = CreateSpotLifecycle(surface, spotType, method, contract.ActorType)
+                };
+            }
+            else if (method.Name == ActorLeftMethodName)
+            {
+                if (contract is null)
+                {
+                    throw new InvalidOperationException(
+                        $"SPOT actor lifecycle hook '{spotType}' must implement IZLinkSpot<TActor> or IZLinkEntrySpot<TActor>.");
+                }
+
+                yield return new ZLinkSpotActorInferredHandlerDescriptor
+                {
+                    Left = CreateSpotLifecycle(surface, spotType, method, contract.ActorType)
+                };
             }
         }
-
-        return null;
     }
 
     public static ZLinkSpotActorLifecycleDescriptor? TryCreateDisconnected(
@@ -172,50 +172,6 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
             ZLinkHandlerMethodInvokerFactory.Create(method));
     }
 
-    private static ZLinkSpotActorInferredHandlerDescriptor? TryCreateLifecycle(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type? expectedActorType,
-        MethodInfo method)
-    {
-        var postJoined = method.GetCustomAttribute<ZLinkSpotPostActorJoinedAttribute>();
-        var left = method.GetCustomAttribute<ZLinkSpotActorLeftAttribute>();
-        if (postJoined is not null && left is not null)
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor handler '{handlerType}' method '{method.Name}' cannot declare both joined and left attributes.");
-        }
-
-        if (postJoined is null && left is null)
-        {
-            return null;
-        }
-
-        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(handlerType, method, 4, "SPOT actor lifecycle handler");
-        var spotType = parameters[0].ParameterType;
-        var actorType = parameters[1].ParameterType;
-        if (parameters[2].ParameterType != typeof(ZLinkSpotActorChangeResult))
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor lifecycle handler '{handlerType}' method '{method.Name}' must use ZLinkSpotActorChangeResult as the third parameter.");
-        }
-
-        ZLinkHandlerMethodShape.RequireCancellationToken(handlerType, method, parameters[3], "SPOT actor lifecycle handler");
-        ZLinkHandlerMethodShape.RequireNoReply(handlerType, method, "SPOT actor lifecycle handler");
-        ZLinkSpotActorDescriptorBuilder.ValidateSpotType(handlerType, expectedSpotType, spotType);
-        ZLinkSpotActorDescriptorBuilder.ValidateActorType(handlerType, expectedActorType, actorType);
-        var descriptor = ZLinkSpotActorDescriptorBuilder.CreateLifecycle(
-            surface,
-            handlerType,
-            spotType,
-            actorType,
-            ZLinkHandlerMethodInvokerFactory.Create(method));
-        return postJoined is not null
-            ? new ZLinkSpotActorInferredHandlerDescriptor { Joined = descriptor }
-            : new ZLinkSpotActorInferredHandlerDescriptor { Left = descriptor };
-    }
-
     private static ZLinkSpotActorLifecycleDescriptor? TryCreateDisconnected(
         ZLinkSpotActorHandlerSurface surface,
         Type? expectedSpotType,
@@ -243,6 +199,97 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
             ZLinkHandlerMethodInvokerFactory.Create(method));
     }
 
+    private static ZLinkSpotActorLifecycleDescriptor CreateSpotLifecycle(
+        ZLinkSpotActorHandlerSurface surface,
+        Type spotType,
+        MethodInfo method,
+        Type expectedActorType)
+    {
+        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(
+            spotType,
+            method,
+            2,
+            "SPOT actor lifecycle hook");
+        var actorType = parameters[0].ParameterType;
+        ZLinkHandlerMethodShape.RequireCancellationToken(
+            spotType,
+            method,
+            parameters[1],
+            "SPOT actor lifecycle hook",
+            "second");
+        ZLinkHandlerMethodShape.RequireNoReply(spotType, method, "SPOT actor lifecycle hook");
+        ZLinkSpotActorDescriptorBuilder.ValidateActorType(spotType, expectedActorType, actorType);
+        return ZLinkSpotActorDescriptorBuilder.CreateLifecycle(
+            surface,
+            spotType,
+            spotType,
+            actorType,
+            ZLinkHandlerMethodInvokerFactory.Create(method),
+            passSpotArgument: false);
+    }
+
+    private static IEnumerable<MethodInfo> EnumerateSpotLifecycleMethods(Type spotType, Type? contractType)
+    {
+        var declaredMethods = spotType
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+            .Where(method => method.DeclaringType == spotType
+                && (method.Name == PostActorJoinedMethodName || method.Name == ActorLeftMethodName))
+            .ToArray();
+
+        foreach (var method in EnumerateLifecycleMethod(
+                     declaredMethods,
+                     contractType,
+                     PostActorJoinedMethodName))
+        {
+            yield return method;
+        }
+
+        foreach (var method in EnumerateLifecycleMethod(
+                     declaredMethods,
+                     contractType,
+                     ActorLeftMethodName))
+        {
+            yield return method;
+        }
+    }
+
+    private static IEnumerable<MethodInfo> EnumerateLifecycleMethod(
+        IReadOnlyList<MethodInfo> declaredMethods,
+        Type? contractType,
+        string methodName)
+    {
+        var declared = declaredMethods
+            .Where(method => method.Name == methodName)
+            .ToArray();
+        if (declared.Length > 0)
+        {
+            return declared;
+        }
+
+        return contractType is null
+            ? []
+            : contractType.GetMethods()
+                .Where(method => method.Name == methodName);
+    }
+
+    private static SpotActorContract? GetSpotActorContract(ZLinkSpotActorHandlerSurface surface, Type spotType)
+    {
+        var expectedDefinition = surface == ZLinkSpotActorHandlerSurface.EntrySpot
+            ? typeof(IZLinkEntrySpot<>)
+            : typeof(IZLinkSpot<>);
+        foreach (var contract in spotType.GetInterfaces())
+        {
+            if (contract.IsGenericType && contract.GetGenericTypeDefinition() == expectedDefinition)
+            {
+                return new SpotActorContract(contract, contract.GetGenericArguments()[0]);
+            }
+        }
+
+        return null;
+    }
+
+    private sealed record SpotActorContract(Type ContractType, Type ActorType);
+
     private static IEnumerable<MethodInfo> EnumeratePacketMethods(Type handlerType)
     {
         return handlerType
@@ -250,15 +297,6 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
             .Where(static method =>
                 method.GetCustomAttribute<ZLinkSpotActorSendAttribute>() is not null
                 || method.GetCustomAttribute<ZLinkSpotActorRequestAttribute>() is not null);
-    }
-
-    private static IEnumerable<MethodInfo> EnumerateLifecycleMethods(Type handlerType)
-    {
-        return handlerType
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Where(static method =>
-                method.GetCustomAttribute<ZLinkSpotPostActorJoinedAttribute>() is not null
-                || method.GetCustomAttribute<ZLinkSpotActorLeftAttribute>() is not null);
     }
 
     private static IEnumerable<MethodInfo> EnumerateDisconnectedMethods(Type handlerType)

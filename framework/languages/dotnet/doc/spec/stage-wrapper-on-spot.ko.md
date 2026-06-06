@@ -260,10 +260,6 @@ public interface IZLinkSpot
 
 public interface IZLinkSpotContext
 {
-    void AddActorJoin<THandler, TActor, TRequest, TReply>()
-        where THandler : class
-        where TActor : IZLinkActor;
-
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
@@ -448,8 +444,8 @@ wrapper 전용 API 가 생기면, 이 표에는 실제로 실행되는 테스트
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 뒤 stage 역할의 spot 실행 문맥 안에서 packet이 처리된다. |
-| `ManagerTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | stage tick으로 쓰는 timer가 spot 제거 후 정확히 멈춘다. |
-| `ManagerTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | stage 생성·조회·제거에 필요한 spot manager와 scope 정리가 정상 동작한다. |
+| `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | stage tick으로 쓰는 timer가 spot 종료 후 정확히 멈춘다. |
+| `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | stage 생성·조회·종료에 필요한 spot manager와 scope 정리가 정상 동작한다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^stage]: `Stage`는 `playhouse`에서 게임 룸 같은 상위 실행 단위를 표현하는 모델이다. 단일 실행 문맥과 membership, lifecycle 같은 상위 개념을 함께 가진다.

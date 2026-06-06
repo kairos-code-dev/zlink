@@ -1,3 +1,4 @@
+using Systems.Zlink.Codecs.Json;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Actors;
@@ -21,8 +22,8 @@ public sealed class ActorContracts
 
         var actor = await manager.GetOrCreateAsync("player-1", "player");
         var joinReply = await actor.Context
-            .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
-            .SubmitAsync<JoinedRoom>();
+            .JoinSpot(RoutingId.From("room-1"), Encode(new JoinRoom("room-1")))
+            .SubmitAsync();
         var entryJoin = await actor.Context
             .JoinEntrySpot(RoutingId.From("play-node"))
             .Timeout(TimeSpan.FromSeconds(1))
@@ -31,8 +32,8 @@ public sealed class ActorContracts
         actor.Configure();
 
         Assert.Equal("player-1", actor.ActorId);
-        Assert.Equal(0, joinReply.ResultCode);
-        Assert.Equal("room-1", joinReply.Reply.RoomId);
+        Assert.True(joinReply.Accepted);
+        Assert.Equal("room-1", Decode<JoinedRoom>(joinReply.Reply).RoomId);
         Assert.Equal("player-1", entryJoin.ActorId);
         Assert.Equal(RoutingId.From("play-node"), entryJoin.NodeRid);
     }
@@ -40,6 +41,10 @@ public sealed class ActorContracts
     private sealed record JoinRoom(string RoomId);
 
     private sealed record JoinedRoom(string RoomId);
+
+    private static Message Encode<T>(T value) => value.ToJson();
+
+    private static T Decode<T>(Message message) => message.FromJson<T>();
 
     private sealed class ActorFactory : IZLinkActorFactory
     {
@@ -91,25 +96,25 @@ public sealed class ActorContracts
             where TSpot : IZLinkSpot =>
             (TSpot)spot;
 
-        public IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+        public IZLinkActorJoinSpotCall JoinSpot(
             RoutingId spotRid,
-            TRequest request) =>
-            new JoinSpotCall(new JoinedRoom("room-1"));
+            Message request) =>
+            new JoinSpotCall(Encode(new JoinedRoom("room-1")));
 
         public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid) =>
             new JoinEntrySpotCall(new ActorRef(spotNodeRid, actorId, 1));
     }
 
-    private sealed class JoinSpotCall(object reply) : IZLinkActorJoinSpotCall
+    private sealed class JoinSpotCall(Message reply) : IZLinkActorJoinSpotCall
     {
         public IZLinkActorJoinSpotCall Timeout(TimeSpan timeout) => this;
 
-        public ValueTask<ZLinkActorJoinResult<TReply>> SubmitAsync<TReply>(
+        public ValueTask<ZLinkActorJoinResult> SubmitAsync(
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new ZLinkActorJoinResult<TReply>(
-                0,
+            ValueTask.FromResult(new ZLinkActorJoinResult(
+                true,
                 new ActorRef(RoutingId.From("room-node"), "player-1", 1),
-                (TReply)reply));
+                reply));
     }
 
     private sealed class JoinEntrySpotCall(ActorRef result) : IZLinkActorJoinEntrySpotCall

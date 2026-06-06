@@ -82,14 +82,12 @@ internal sealed class ZLinkEntrySpotActorRouter
     public async ValueTask NotifyJoinedAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
         await NotifyLifecycleAsync(
             state,
             actor,
-            context,
             targetNodeRid,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.EntrySpotActorDispatch.TryResolveJoined(actorType, out descriptor),
@@ -99,14 +97,12 @@ internal sealed class ZLinkEntrySpotActorRouter
     public async ValueTask NotifyLeftAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
         await NotifyLifecycleAsync(
             state,
             actor,
-            context,
             targetNodeRid,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.EntrySpotActorDispatch.TryResolveLeft(actorType, out descriptor),
@@ -149,7 +145,6 @@ internal sealed class ZLinkEntrySpotActorRouter
     private static async ValueTask NotifyLifecycleAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid,
         TryResolveLifecycle resolve,
         CancellationToken cancellationToken)
@@ -166,11 +161,10 @@ internal sealed class ZLinkEntrySpotActorRouter
                 if (resolve(node, actor.GetType(), out var descriptor)
                     && descriptor is not null)
                 {
-                    await node.EntrySpotActorDispatch.InvokeLifecycleAsync(
-                            descriptor,
-                            actor,
-                            context,
-                            cancellationToken)
+                        await node.EntrySpotActorDispatch.InvokeLifecycleAsync(
+                                descriptor,
+                                actor,
+                                cancellationToken)
                         .ConfigureAwait(false);
                 }
             }

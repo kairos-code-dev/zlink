@@ -276,10 +276,10 @@ sequenceDiagram
     Note over FW: bind는 session relay만 연결
 
     Note over FW: 3. user Spot join (선택, bind와 독립)
-    Act->>FW: Context.JoinSpot(spotRid, request).SubmitAsync<TReply>()
+    Act->>FW: Context.JoinSpot(spotRid, requestMessage).SubmitAsync()
     FW->>Spot: actor join 요청
     Spot-->>FW: accept + reply
-    FW-->>Act: reply 반환
+    FW-->>Act: Accepted + reply Message 반환
 
     Note over FW,Act: 이후 메시지 들어오면 dispatch
     FW->>Act: HandleAsync(actor, message, ct)
@@ -319,7 +319,7 @@ Entry 단계와 user Spot 단계는 같은 actor 객체를 보더라도 의미�
   reply하거나, 실패한 경우 fail 응답을 보내고 disconnect한다.
 - **target Spot 선택** -- 클라이언트의 요청 packet에서 어느 game room이나
   stage로 들어갈지 결정한 뒤 해당 user Spot 의 `RoutingId`를 얻고
-  `Context.JoinSpot(spotRid, request).SubmitAsync<TReply>(...)`을 호출한다.
+  `Context.JoinSpot(spotRid, requestMessage).SubmitAsync(...)`을 호출한다.
   `gameId`, `matchId`, `roomId` 같은 domain 값은 application 이 먼저
   `RoutingId`로 변환하거나 registry 에서 조회한다.
 - **session 초기 상태 설정** -- session metadata, profile lookup 같은 초기
@@ -472,19 +472,20 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
         var matchSpotRid = RoutingId.From(request.MatchId);
         var result = await actor.Context
-            .JoinSpot(matchSpotRid, request)
+            .JoinSpot(matchSpotRid, request.Encode())
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync<JoinMatchSpotResult>(cancellationToken)
+            .SubmitAsync(cancellationToken)
             .ConfigureAwait(false);
+        var reply = result.Reply.Decode<JoinMatchSpotResult>();
 
-        await notifications.PublishAsync(result.Reply.Events, cancellationToken);
+        await notifications.PublishAsync(reply.Events, cancellationToken);
 
-        if (result.ResultCode != 0)
+        if (!result.Accepted)
         {
-            return new JoinMatchRes(result.Reply.MatchId, result.Actor.ActorId, ...);
+            return new JoinMatchRes(reply.MatchId, result.Actor.ActorId, ...);
         }
 
-        return new JoinMatchRes(result.Reply.MatchId, result.Actor.ActorId, ...);
+        return new JoinMatchRes(reply.MatchId, result.Actor.ActorId, ...);
     }
 }
 ```
@@ -522,10 +523,11 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
 }
 ```
 
-Entry Spot 과 user Spot 어느 쪽이든 `AddHandler(...)` 로 lifecycle callback
-handler 를 등록할 수 있다. actor 타입을 호출 쪽에서 명시해야 하면
-`AddPostActorJoined(...)` / `AddActorLeft(...)` 를 사용한다. 이
-callback 은 join / leave 가 commit 된 직후 같은 실행 문맥에서 호출된다.
+Entry Spot 과 user Spot 어느 쪽이든 lifecycle callback 을 Spot 멤버 method 로
+선언할 수 있다. `OnPostActorJoinedAsync(actor, cancellationToken)` 와
+`OnActorLeftAsync(actor, cancellationToken)` 는 join / leave 가 commit 된 직후 같은 실행
+문맥에서 호출된다. callback 이름이 membership 변화의 의미를 이미 나타내므로 별도
+kind/result 인자는 전달하지 않는다.
 
 ### 4.3 등록 순서
 
@@ -567,9 +569,9 @@ public interface IZLinkActorContext
     TSpot GetSpot<TSpot>()
         where TSpot : IZLinkSpot;
 
-    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+    IZLinkActorJoinSpotCall JoinSpot(
         RoutingId spotRid,
-        TRequest request);
+        Message request);
 
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
         RoutingId spotNodeRid);
@@ -583,7 +585,7 @@ public interface IZLinkActorContext
 | `SpotRid` / `IsJoined` | user Spot에 join한 경우 그 spot의 domain 이름, routing id, join 상태. Entry Spot에 있을 때는 `IsJoined`가 false이고 `SpotRid`는 없다 |
 | `BoundSession` | actor 에 bind 된 STREAM session 으로 push 하거나 disconnect |
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
-| `JoinSpot(spotRid, request).SubmitAsync<TReply>(...)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
+| `JoinSpot(spotRid, requestMessage).SubmitAsync(...)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). request와 reply는 `Message`이며 JSON, Protobuf, MessagePack 같은 codec 확장 함수는 application 이 선택한다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
 | `JoinEntrySpot(spotNodeRid).SubmitAsync(...)` | target SpotNode 의 Entry Spot 으로 이동. message payload와 join reply payload는 없다 |
 
 actor request 에 대한 reply 는 actor context 의 별도 `Reply(...)` 호출이 아니라
@@ -616,25 +618,37 @@ application 저장소를 조회하지 않으며, application route mesh channel 
 SPOT 안의 객체로 actor 를 쓰고 싶을 때 적용하는 패턴이다. room 의 player,
 stage 의 character, zone 의 entity 같은 경우가 여기에 해당한다.
 
-### 7.1 spot 안에서 actor join handler 등록
+### 7.1 spot 안에서 actor join admission 선언
 
 SPOT spec ([aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md)) 의
-`IZLinkSpotContext` 에는 `AddActorJoin<...>()` 표면이 있다. 이 표면을 써서
-다음 두 가지를 매핑한다.
+`IZLinkSpot<TActor>` 에는 `OnActorJoinAsync(...)` 기본 callback 이 있다. user Spot 은
+actor 타입을 `IZLinkSpot<TActor>` 에서 지정하고, join 요청과 응답 payload 는 raw
+`Message` 로 주고받는다. 이 계약은 JSON에 묶이지 않으므로 Protobuf, MessagePack 같은
+다른 codec 도 application code 에서 직접 사용할 수 있다. 이 callback 은 다음 두 가지를
+한곳에서 처리한다.
 
-- spot 에 합류 요청이 들어오면 어느 handler 를 부를지
 - 합류에 성공하면 어떤 actor type 을 생성할지
+- target Spot 상태를 보고 합류를 허용할지
 
 ```csharp
-public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
+public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor>
 {
     public IZLinkSpotContext Context { get; } = context;
 
-    // packet/subscribe/timer/actor-join 등록은 Configure()에서 한다.
+    // packet/subscribe/timer 등록은 Configure()에서 한다.
     public void Configure()
     {
-        Context.AddActorJoin<TicTacToeGameJoinHandler>();
         // ...
+    }
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        PlayerActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        var joinRequest = request.Decode<TicTacToeGameJoinReq>();
+        var reply = new TicTacToeGameJoinRes(joinRequest.GameId).Encode();
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(reply));
     }
 
     // 비동기 초기화가 필요하면 OnInitializeAsync를 쓴다.
@@ -644,31 +658,34 @@ public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
 }
 ```
 
-join handler 는 별도의 핸들러 인터페이스를 구현하거나
-`[ZLinkSpotActorJoin]` attribute 가 붙은 public method 로 선언한다. attribute
-방식은 등록 코드를 짧게 만들 수 있지만, method 시그니처 검증은 startup
-validation 단계에서 이루어진다. 자세한 시그니처는
+join admission method 는 Spot 멤버로 직접 선언한다. 반환값의 `Accepted` 가 `true` 일
+때만 framework 가 join 을 commit 하고 `OnPostActorJoinedAsync(...)` 를 호출한다.
+`Accepted=false` 이면 actor 위치는 바뀌지 않고 post-joined callback 도 실행되지 않는다.
+method 시그니처 검증은 startup validation 단계에서 이루어진다. 자세한 시그니처는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) §5.7 에서 다룬다.
 
 ### 7.2 actor가 spot에 합류하기
 
 다른 곳에 사는 actor (예: session-attached actor) 가 어떤 spot 에 합류하려면
-자기 context 의 `JoinSpot(spotRid, request)` 를 호출한다. 여기서 `spotRid`
+자기 context 의 `JoinSpot(spotRid, requestMessage)` 를 호출한다. 여기서 `spotRid`
 은 user Spot routing id(`RoutingId`) 이다. domain id 에서 `RoutingId` 로의
 변환이나 조회는 application registry 가 처리한다.
 
 ```csharp
 var matchSpotRid = RoutingId.From(matchId);
 var result = await actor.Context
-    .JoinSpot(matchSpotRid, new JoinMatchReq(...))
+    .JoinSpot(matchSpotRid, new JoinMatchReq(...).Encode())
     .Timeout(TimeSpan.FromSeconds(2))
-    .SubmitAsync<JoinMatchSpotResult>(cancellationToken);
+    .SubmitAsync(cancellationToken);
+
+var reply = result.Reply.Decode<JoinMatchSpotResult>();
 ```
 
 이 호출은 spot 쪽 join handler 의 결과를 `Reply` 로 돌려주고, application join 결정은
-`ResultCode` 로 표현한다. `ResultCode == 0` 은 join 허용, 0 이 아닌 값은 room full,
-match closed 같은 application 정의 거절 코드다. transport, timeout, protocol failure 는
-결과값이 아니라 예외로 처리한다. 성공 시 actor 쪽 상태가 다음과 같이 갱신된다.
+`Accepted` 로 표현한다. `Accepted == true` 는 join 허용, `false` 는 room full,
+match closed 같은 application 정의 거절이다. 추가 설명이 필요하면 reply `Message`에
+담는다. transport, timeout, protocol failure 는 결과값이 아니라 예외로 처리한다.
+성공 시 actor 쪽 상태가 다음과 같이 갱신된다.
 
 - `Context.IsJoined` 가 `true` 가 된다.
 - `Context.SpotRid` 가 채워진다.
@@ -1039,7 +1056,7 @@ public interface IZLinkFrameworkOptions
   [handler-interfaces.ko.md](./handler-interfaces.ko.md) §5 (`IZLinkActor`,
   `IZLinkActorContext`, `IZLinkActorFactory`, actor handler 인터페이스,
   routing record 등)
-- SPOT에 actor가 합류하는 표면(`AddActorJoin<...>`):
+- SPOT에 actor가 합류하는 표면(`OnActorJoinAsync(...)`):
   [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md)
 - STREAM session lifecycle과 `IZLinkSession` 표면:
   [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md)
@@ -1083,7 +1100,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
 | 테스트 케이스 | 확인 기준 |
 | --- | --- |
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenActorFactoryNameIsDuplicated` | actor factory 이름이 중복되면 startup validation에서 예외로 막는다. |
-| `ActorRegistryExecutionTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot과 user Spot에 등록한 actor packet/lifecycle handler가 정상적으로 dispatch된다. |
+| `ActorRegistryExecutionTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot과 user Spot의 actor packet handler와 lifecycle callback이 정상적으로 dispatch된다. |
 | `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot에서 같은 actor의 packet은 순서대로 실행되고, 서로 다른 actor의 packet은 병렬로 진행된다. |
 | `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native Entry Spot dispatch batch가 actor별 순서를 보존하면서도 다른 actor를 전역으로 막지 않는다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 spot을 옮긴 뒤 stale spot 문맥으로 dispatch되지 않는다. |

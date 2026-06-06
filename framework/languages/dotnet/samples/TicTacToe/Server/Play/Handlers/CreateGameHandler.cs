@@ -24,6 +24,11 @@ sealed class CreateGameHandler(
             request.GameName);
 
         var created = await spots.CreateAsync<TicTacToeGame>(cancellationToken);
+        if (created.State != ZLinkSpotCreateState.Created)
+        {
+            throw new InvalidOperationException("TicTacToe game spot creation was rejected.");
+        }
+
         logger.LogInformation(
             "play: TicTacToeGame spot created. gameId={GameId}, endpoint={Endpoint}",
             created.SpotRid.ToHex(),

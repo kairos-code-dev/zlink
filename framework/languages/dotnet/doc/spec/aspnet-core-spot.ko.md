@@ -22,7 +22,7 @@
 - `SpotNode`[^spotnode] lifecycle 관리
 - `Spot` publish[^publish-subscribe]/subscribe facade[^facade] 주입
 - Entry Spot[^entry-spot] application registry 등록
-- actor[^actor] packet handler[^handler]와 join/leave lifecycle handler 등록
+- actor[^actor] packet handler[^handler] 등록과 join/leave lifecycle callback 선언
 - room, stage, zone 같은 논리 인스턴스 모델 설명
 - 현재 channel publish/subscribe
 - attach[^attach]된 다른 channel client를 통한 send/request
@@ -192,7 +192,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
   - 이 노드의 자동 Entry Spot에 붙일 application registry를 등록한다.
   - Entry Spot 자체의 native 생성과 소멸은 framework가 관리한다.
   - 등록하지 않으면 빈 Entry Spot registry가 사용된다. 이 경우 actor가 Entry Spot에
-    머무는 동안 처리할 application actor packet handler와 lifecycle handler가
+    머무는 동안 처리할 application actor packet handler와 lifecycle callback이
     없다는 뜻이다.
 - `AddSpotFactory<StageSpot>()`
   - 이 노드가 생성하고 소유할 `StageSpot` factory를 `stage` 이름으로 등록한다.
@@ -220,15 +220,16 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 - 따라서 SPOT 등록 시점에도 channel client attach와 spot publisher client attach를
   서로 다른 함수로 드러내는 편이 자연스럽다.
 
-### 4.1 Entry Spot과 actor handler 등록
+### 4.1 Entry Spot과 actor callback 선언
 
-이 소절은 Entry Spot 에서 어떤 handler 를 어디에 등록하는지, 그리고 그 등록을
+이 소절은 Entry Spot 에서 어떤 handler 와 callback 을 어디에 두는지, 그리고 그 표면을
 application 이 직접 손대지 않는 raw 표면과 어떻게 구분하는지 정리한다.
 
 Entry Spot 은 actor 가 생성된 직후 처음 머무르는 기본 실행 문맥이다. 따라서
 application 은 raw Entry Spot handle 을 직접 만들거나 보관하지 않는다. 대신
-`AddEntrySpot<TEntrySpot>()` 로 Entry Spot 에서 실행할 actor packet handler 와
-join / leave lifecycle handler registry 를 등록한다.
+`AddEntrySpot<TEntrySpot>()` 로 Entry Spot 타입을 등록한다. actor packet 은
+`Configure()` 안에서 handler 로 등록하고, join / leave lifecycle 은 Entry Spot
+멤버 callback 으로 선언한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -308,17 +309,13 @@ Entry Spot registry 와 user Spot registry 는 서로 다른 namespace 다. 따�
 handler 로 매핑할 수 있다.
 
 반대로 같은 registry 안에서 같은 `actor type + packet kind + packet name`
-조합을 둘 이상 등록하면 startup validation 오류가 된다. `AddHandler(...)` 로
-등록한 lifecycle handler 역시 같은 registry 안에서 같은 actor 타입에 대해
-하나씩만 허용한다.
+조합을 둘 이상 등록하면 startup validation 오류가 된다. Spot lifecycle callback
+역시 같은 Spot 안에서 같은 actor 타입에 대해 하나씩만 허용한다.
 
-join / leave lifecycle 은 `OnJoinActor` 나 `OnLeaveActor` 같은 Spot 메서드
-override 로 정의하지 않는다. Entry Spot 과 user Spot 모두
-`AddHandler(...)` 또는 명시적 `AddPostActorJoined(...)` / `AddActorLeft(...)`
-registry 등록으로 후속
-처리를 붙인다. 이 callback 은 join / leave commit 이 끝난 뒤 같은 실행 문맥에서
-호출된다. 그래서 admission[^admission] 을 결정하는 hook 이 아니라는 점에
-주의한다.
+join / leave lifecycle 은 Entry Spot 과 user Spot 의 Spot 멤버 method 로
+정의한다. `OnPostActorJoinedAsync(...)` 와 `OnActorLeftAsync(...)` 는 join /
+leave commit 이 끝난 뒤 같은 실행 문맥에서 호출된다. 그래서
+admission[^admission] 을 결정하는 hook 이 아니라는 점에 주의한다.
 
 ### 4.2 SPOT 실행 queue와 actor mailbox
 
@@ -666,21 +663,20 @@ request, publish, subscribe 를 처리할 뿐이다.
 이 표면은 다음 상황을 함께 설명한다.
 
 - `TSpot`으로 factory를 고르고 runtime이 새 `spotRid`를 발급하는 생성
-- 생성 요청이 넘긴 multipart payload를 `OnCreateAsync(...)`로 전달하는 경우
+- 생성 요청이 넘긴 단일 `Message`를 `OnCreateAsync(...)`로 전달하는 경우
 - 이미 존재하는 `spotRid`라면 그대로 얻어 오는 `get-or-create` 성격의 동작
 
 여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle 이
-아니라는 사실이다. 생성 결과는 `spotRid`, `Created`면
-충분하다. 이후 메시징은 현재 channel publish 또는 attach 된 channel client 를
-통한 send / request 로 푸는 쪽이, 지금의 topology 초안과 더 잘 맞는다.
+아니라는 사실이다. 생성 결과는 `spotRid`, `Existing`/`Created`/`Rejected` 상태,
+그리고 create callback이 돌려준 선택적 reply `Message`면 충분하다. 이후 메시징은
+현재 channel publish 또는 attach 된 channel client 를 통한 send / request 로 푸는
+쪽이, 지금의 topology 초안과 더 잘 맞는다.
 
-생성 요청의 payload는 multipart로 받을 수 있어야 한다. framework는 caller가
-넘긴 part 경계를 보존해서 `IZLinkSpot.OnCreateAsync(createParts, ...)`에 한 번
-전달한다. 이 payload는 방 설정, seed, 접근 정책처럼 spot이 처음 만들어질 때만
-해석해야 하는 값에 사용한다.
-`CreateAsync<TSpot>()`처럼 payload가 없는 편의 overload는 빈 multipart payload를
-넘긴 것과 같다. 새 spot이 만들어지면 `OnCreateAsync(...)`는 빈 list를 받아 한 번
-실행된다.
+생성 요청의 payload는 단일 `Message`로 전달한다. framework는 JSON, Protobuf,
+MessagePack 같은 payload 형식을 정하지 않고, application이 자신이 쓰는 codec 확장
+함수로 request와 reply를 해석한다. 이 payload는 방 설정, seed, 접근 정책처럼 spot이
+처음 만들어질 때만 해석해야 하는 값에 사용한다. `CreateAsync<TSpot>()`처럼 payload가
+없는 편의 overload는 빈 `Message`를 넘긴 것과 같다.
 
 생성 요청에는 어떤 spot factory를 사용할지도 함께 들어가야 한다. framework public
 표면에서는 이 값을 generic `TSpot`으로 표현하고, string spot rid은 contract에서
@@ -689,20 +685,26 @@ request, publish, subscribe 를 처리할 뿐이다.
 
 명시적 `spotRid`가 필요한 경우 public surface는
 `CreateAsync<TSpot>(spotRid, ...)`가 아니라
-`GetOrCreateAsync<TSpot>(spotRid, createParts, ...)`로 표현한다. 이미 같은
-`spotRid`의 framework spot이 ready 상태면 `Created = false`를 반환하고, 새
-요청의 `createParts`는 `OnCreateAsync(...)`로 전달하지 않는다. initializing
-상태면 첫 생성 요청의 `OnCreateAsync(...)` 완료를 기다린다. 다만 기존 entry의
+`GetOrCreateAsync<TSpot>(spotRid, request, ...)`로 표현한다. 이미 같은
+`spotRid`의 framework spot이 ready 상태면 `State = Existing`을 반환하고, 새
+요청의 `request`는 `OnCreateAsync(...)`로 전달하지 않는다. initializing
+상태면 첫 생성 요청의 `OnCreateAsync(...)` 완료를 기다린다. 첫 생성 요청이 성공하면
+기다린 caller는 `Existing`을 받고, 첫 생성 요청이 거부되면 `Rejected`를 받는다.
+다만 기존 entry의
 Spot 타입이 요청의 `TSpot`과 다르면 같은 logical spot을 다른 framework type으로
 해석하려는 시도이므로 `SpotTypeMismatch`로 실패해야 한다.
 
 remote framework node에 생성 요청을 relay하는 경우도 같은 구조를 유지한다.
 metadata에는 factory 식별자와 선택적인 `spotRid`를 넣고, metadata 뒤의 message
-part들을 create payload로 보낸다. 이 식별자는 framework 내부 값이며 public
+payload를 create request로 보낸다. 이 식별자는 framework 내부 값이며 public
 `spotRid` API로 노출하지 않는다.
 
 `GetAsync(...)` 와 `ListAsync(...)` 는 운영 코드가 현재 존재하는 logical spot rid를
 확인할 수 있게 하는 조회 표면이다. 조회 결과에는 `SpotRid`만 포함한다.
+`CloseAsync(...)` 는 user Spot 을 정상 종료한다. 이미 join된 actor 가 남아 있으면
+`false` 를 반환하고 종료하지 않는다. Spot 내부 packet handler 나 timer handler 에서는
+`Context.CloseAsync(...)` 로 현재 Spot 의 종료를 요청할 수 있고, 이 경우 현재 callback
+이 끝난 뒤 `OnClosingAsync(...)` 와 native SPOT facade 정리가 이어진다.
 
 등록 단계에서 타입 충돌은 조용히 덮어쓰지 않는다.
 `AddSpotFactory<TSpot>()` 호출이 이미 등록된 타입을 다시 받으면
@@ -733,8 +735,10 @@ var spotInfo = await spotManager.GetAsync(stage.SpotRid, cancellationToken);
 초기 payload 를 함께 넘기는 create 표면은 framework 기본 계약에 포함한다.
 다만 core C API는 payload를 해석하지 않는다. core는 logical spot 확보의 원자성만
 보장하고, payload 전달과 typed 초기화는 framework lifecycle의 책임이다.
-factory resolve, activation, `OnCreateAsync(...)`, `OnInitializeAsync(...)` 실패는
-`SpotCreateFailed` 계열로 분류한다.
+factory resolve, activation, `OnCreateAsync(...)`, `OnInitializeAsync(...)` 예외는
+`SpotCreateFailed` 계열로 분류한다. `OnCreateAsync(...)`가 reject를 반환하는 것은
+예외가 아니라 application admission 결과이며, manager 결과의 `State = Rejected`와
+reply `Message`로 호출자에게 전달한다.
 
 ## 5. SPOT outbound 모델 초안
 
@@ -1179,8 +1183,8 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 |---------------|-----------|
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes` | 같은 Spot factory 타입을 중복 등록하면 startup validation 예외가 난다. |
 | `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery 없이도 local-only SpotNode 구성은 시작할 수 있다. |
-| `ManagerTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | `CreateAsync`, `GetAsync`, `ListAsync`, `RemoveAsync`와 scope 정리가 일관된다. |
-| `ManagerTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | timer와 publish callback이 spot lifecycle 안에서 돌고, 제거 뒤에는 멈춘다. |
+| `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | `CreateAsync`, `GetAsync`, `ListAsync`, `CloseAsync`와 scope 정리가 일관된다. |
+| `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | timer와 publish callback이 spot lifecycle 안에서 돌고, 종료 뒤에는 멈춘다. |
 | `TimerTests.SpotTimer_Provides_Tick_Metadata` | timer handler가 callback 번호, 예정/시작 시각, 지연, skip metadata를 받는다. |
 | `TimerTests.SpotTimer_Skips_Late_Ticks_When_Configured` | `SkipLateTicks` 정책은 늦은 tick을 무제한 전달하지 않고 `SkippedTicks`로 드러낸다. |
 | `TimerTests.SpotTimer_Catches_Up_Within_Configured_Limit` | `CatchUpBounded` 정책은 `MaxCatchUpTicks` 상한 안에서만 연속 실행한다. |

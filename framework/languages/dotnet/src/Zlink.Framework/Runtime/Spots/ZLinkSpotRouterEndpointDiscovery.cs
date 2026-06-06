@@ -35,7 +35,7 @@ internal static class ZLinkSpotRouterEndpointDiscovery
         catch (ZlinkConfigException error)
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"resolve-router-endpoint rid={nodeRoutingId.ToHex()} errno={error.InternalErrno}");
+                $"resolve-router-endpoint rid={nodeRoutingId.ToHex()} errno={error.NativeErrno}");
             return false;
         }
     }

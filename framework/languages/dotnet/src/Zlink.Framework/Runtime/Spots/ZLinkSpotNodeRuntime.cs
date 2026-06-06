@@ -195,22 +195,22 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         Type spotType,
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken)
     {
-        return await _spots.CreateAsync(spotType, createParts, cancellationToken);
+        return await _spots.CreateAsync(spotType, request, cancellationToken);
     }
 
     public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
         Type spotType,
         RoutingId requestedSpotRid,
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken)
     {
         return await _spots.GetOrCreateAsync(
             spotType,
             requestedSpotRid,
-            createParts,
+            request,
             cancellationToken);
     }
 
@@ -226,11 +226,11 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         return _spots.ListAsync(cancellationToken);
     }
 
-    public async ValueTask<bool> RemoveAsync(
+    public async ValueTask<bool> CloseAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        return await _spots.RemoveAsync(spotRid, cancellationToken);
+        return await _spots.CloseAsync(spotRid, cancellationToken);
     }
 
     public ValueTask<bool> ConnectRouterAsync(string endpoint, CancellationToken cancellationToken)

@@ -11,19 +11,19 @@ internal sealed class ZLinkFrameworkSpotFacade(
 
     public ValueTask<ZLinkSpotCreateResult> CreateAsync(
         Type spotType,
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken)
     {
-        return spots.CreateAsync(getState(), spotType, createParts, cancellationToken);
+        return spots.CreateAsync(getState(), spotType, request, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
         Type spotType,
         RoutingId spotRid,
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken)
     {
-        return spots.GetOrCreateAsync(getState(), spotType, spotRid, createParts, cancellationToken);
+        return spots.GetOrCreateAsync(getState(), spotType, spotRid, request, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotInfo?> GetAsync(
@@ -38,11 +38,11 @@ internal sealed class ZLinkFrameworkSpotFacade(
         return spots.ListAsync(getState(), cancellationToken);
     }
 
-    public ValueTask<bool> RemoveAsync(
+    public ValueTask<bool> CloseAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        return spots.RemoveAsync(getState(), spotRid, cancellationToken);
+        return spots.CloseAsync(getState(), spotRid, cancellationToken);
     }
 
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot(string spotNodeName)

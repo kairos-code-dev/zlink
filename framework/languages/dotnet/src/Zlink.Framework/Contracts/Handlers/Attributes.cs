@@ -59,21 +59,6 @@ public sealed class ZLinkSpotActorRequestAttribute : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkSpotActorJoinAttribute : Attribute
-{
-}
-
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkSpotPostActorJoinedAttribute : Attribute
-{
-}
-
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkSpotActorLeftAttribute : Attribute
-{
-}
-
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkSpotActorDisconnectedAttribute : Attribute
 {
 }

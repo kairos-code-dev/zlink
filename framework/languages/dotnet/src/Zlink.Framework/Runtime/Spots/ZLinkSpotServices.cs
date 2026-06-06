@@ -5,28 +5,38 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotManagerService(ZLinkFrameworkRuntime runtime) : IZLinkSpotManager
 {
-    public ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
+    public async ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot
     {
-        return runtime.CreateSpotAsync<TSpot>([], cancellationToken);
+        using var request = Message.From(ReadOnlySpan<byte>.Empty);
+        return await runtime.CreateSpotAsync<TSpot>(request, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot
     {
-        return runtime.CreateSpotAsync<TSpot>(createParts, cancellationToken);
+        return runtime.CreateSpotAsync<TSpot>(request, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot
     {
-        return runtime.GetOrCreateSpotAsync<TSpot>(spotRid, createParts, cancellationToken);
+        return runtime.GetOrCreateSpotAsync<TSpot>(spotRid, request, cancellationToken);
+    }
+
+    public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
+        RoutingId spotRid,
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot
+    {
+        using var request = Message.From(ReadOnlySpan<byte>.Empty);
+        return await runtime.GetOrCreateSpotAsync<TSpot>(spotRid, request, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotInfo?> FindAsync(RoutingId spotRid,
@@ -41,10 +51,10 @@ internal sealed class ZLinkSpotManagerService(ZLinkFrameworkRuntime runtime) : I
         return runtime.ListSpotsAsync(cancellationToken);
     }
 
-    public ValueTask<bool> RemoveAsync(
+    public ValueTask<bool> CloseAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
-        return runtime.RemoveSpotAsync(spotRid, cancellationToken);
+        return runtime.CloseSpotAsync(spotRid, cancellationToken);
     }
 }

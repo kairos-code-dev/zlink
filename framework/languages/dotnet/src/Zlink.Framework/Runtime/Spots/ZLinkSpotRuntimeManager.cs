@@ -46,25 +46,25 @@ internal sealed class ZLinkSpotRuntimeManager(
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         ZLinkFrameworkRuntimeState state,
         Type spotType,
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken)
     {
         var node = GetNodeForSpotFactory(state, spotType);
-        return await node.CreateAsync(spotType, createParts, cancellationToken);
+        return await node.CreateAsync(spotType, request, cancellationToken);
     }
 
     public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
         ZLinkFrameworkRuntimeState state,
         Type spotType,
         RoutingId spotRid,
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken)
     {
         var node = GetNodeForSpotFactory(state, spotType);
         return await node.GetOrCreateAsync(
             spotType,
             spotRid,
-            createParts,
+            request,
             cancellationToken);
     }
 
@@ -100,14 +100,14 @@ internal sealed class ZLinkSpotRuntimeManager(
             .ToArray();
     }
 
-    public async ValueTask<bool> RemoveAsync(
+    public async ValueTask<bool> CloseAsync(
         ZLinkFrameworkRuntimeState state,
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
         foreach (var node in state.SpotNodes.Values)
         {
-            if (await node.RemoveAsync(spotRid, cancellationToken))
+            if (await node.CloseAsync(spotRid, cancellationToken))
             {
                 return true;
             }
@@ -116,17 +116,17 @@ internal sealed class ZLinkSpotRuntimeManager(
         return false;
     }
 
-    public async ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
+    public async ValueTask<ZLinkSpotActorJoinResult> JoinActorAsync(
         ZLinkFrameworkRuntimeState state,
         RoutingId spotRid,
         IZLinkActor actor,
-        TRequest request,
+        Message request,
         CancellationToken cancellationToken)
     {
         var activation = GetActivation(state, spotRid)
             ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
-        return await activation.JoinActorAsync<TRequest, TReply>(actor, request, cancellationToken);
+        return await activation.JoinActorAsync(actor, request, cancellationToken);
     }
 
     public async ValueTask<bool> TrySubmitEntrySpotActorAsync(
@@ -184,22 +184,20 @@ internal sealed class ZLinkSpotRuntimeManager(
     public async ValueTask NotifyEntrySpotActorJoinedAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
-        await _entrySpotActors.NotifyJoinedAsync(state, actor, context, targetNodeRid, cancellationToken)
+        await _entrySpotActors.NotifyJoinedAsync(state, actor, targetNodeRid, cancellationToken)
             .ConfigureAwait(false);
     }
 
     public async ValueTask NotifyEntrySpotActorLeftAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
-        await _entrySpotActors.NotifyLeftAsync(state, actor, context, targetNodeRid, cancellationToken)
+        await _entrySpotActors.NotifyLeftAsync(state, actor, targetNodeRid, cancellationToken)
             .ConfigureAwait(false);
     }
 

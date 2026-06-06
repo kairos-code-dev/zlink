@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../../../../bindings/dotnet/codecs/Zlink.Codecs.Json/Zlink.Codecs.Json.csproj" />
     <ProjectReference Include="../../src/Zlink.Framework/Zlink.Framework.csproj" />
     <ProjectReference Include="../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />
   </ItemGroup>

@@ -21,7 +21,6 @@ public sealed class ActorLifecycleTests : SpotTestSupport
 
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton<ActorIntegrationRecorder>();
-        builder.Services.AddScoped<ActorJoinHandler>();
         builder.Services.AddScoped<ActorDispatchHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
@@ -51,19 +50,19 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         var second = await manager.CreateAsync<ActorStageSpot>();
         var actor = (TestActor)(await actorRuntime.CreateLocalActorAsync("actor-1", "test")).Actor;
 
-        var firstReply = await actorRuntime.JoinActorAsync<JoinStageRequest, JoinStageReply>(
+        var firstReply = await actorRuntime.JoinActorAsync(
             first.SpotRid,
             actor,
-            new JoinStageRequest("room-1"));
-        Assert.Equal("room-1", firstReply.Reply.RoomId);
+            EncodeJoin(new JoinStageRequest("room-1")));
+        Assert.Equal("room-1", DecodeJoin<JoinStageReply>(firstReply.Reply).RoomId);
         Assert.Equal(first.SpotRid, actor.Spot?.Context.SpotRid);
         Assert.Equal(first.SpotRid, actor.Context.SpotRid);
 
-        var secondReply = await actorRuntime.JoinActorAsync<JoinStageRequest, JoinStageReply>(
+        var secondReply = await actorRuntime.JoinActorAsync(
             second.SpotRid,
             actor,
-            new JoinStageRequest("room-2"));
-        Assert.Equal("room-2", secondReply.Reply.RoomId);
+            EncodeJoin(new JoinStageRequest("room-2")));
+        Assert.Equal("room-2", DecodeJoin<JoinStageReply>(secondReply.Reply).RoomId);
         Assert.Equal(second.SpotRid, actor.Spot?.Context.SpotRid);
         Assert.Equal(second.SpotRid, actor.Context.SpotRid);
         await RetryAsync(
@@ -75,10 +74,10 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         await actorRuntime.AttachActorAsync(contextActor, new TestStream("session-context"));
         var contextJoin = await contextActor.Context.JoinSpot(
                 first.SpotRid,
-                new JoinStageRequest("room-context"))
+                EncodeJoin(new JoinStageRequest("room-context")))
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync<JoinStageReply>();
-        contextActor.CurrentRoomId = contextJoin.Reply.RoomId;
+            .SubmitAsync();
+        contextActor.CurrentRoomId = DecodeJoin<JoinStageReply>(contextJoin.Reply).RoomId;
 
         Assert.Equal(first.SpotRid, contextActor.Spot?.Context.SpotRid);
         Assert.Equal("room-context", contextActor.CurrentRoomId);
@@ -100,6 +99,8 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         Assert.Contains("context-payload", recorder.DispatchBodies);
         Assert.Contains("room-context", recorder.DispatchRooms);
         Assert.Contains(first.SpotRid.ToHex(), recorder.DispatchSpotRids);
+        Assert.False(await manager.CloseAsync(first.SpotRid));
+        Assert.NotNull(await manager.FindAsync(first.SpotRid));
 
         var stream = new TestStream("session-1");
         await actorRuntime.AttachActorAsync(actor, stream);
@@ -124,6 +125,8 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         Assert.False(recorder.ConcurrentViolation);
         Assert.Equal("room-2", recorder.DispatchRooms.LastOrDefault());
         Assert.DoesNotContain("room-1", recorder.DispatchRooms);
+        Assert.False(await manager.CloseAsync(second.SpotRid));
+        Assert.NotNull(await manager.FindAsync(second.SpotRid));
 
         await actorRuntime.DisconnectActorAsync(actor, stream);
         await actorRuntime.DisconnectActorAsync(

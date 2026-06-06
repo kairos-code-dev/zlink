@@ -178,8 +178,8 @@ bind 한다. actor-session binding 은 framework / core runtime 내부 상태로
 - session actor dispatch 샘플은 Play 서버에 game room SPOT을 만들고, scenario
   단계에서 생성된 `MatchId`가 실제 SPOT room으로 존재하는지 확인한다.
 - direct 샘플과 session actor dispatch 샘플은 Entry Spot 과 game room Spot 의
-  actor callback handler 를 `Context.AddHandler<THandler>()` 와
-  `Context.AddActorJoin<THandler>()` 로 등록하는 attribute 기반 예시를 함께
+  actor packet handler 는 `Context.AddHandler<THandler>()` 로 등록하고, game
+  room Spot 의 join admission 은 `OnActorJoinAsync(...)` 로 선언하는 예시를
   제공한다.
 - direct 샘플의 수동 연결 설명은 direct 샘플 범위 안으로만 한정한다.
 

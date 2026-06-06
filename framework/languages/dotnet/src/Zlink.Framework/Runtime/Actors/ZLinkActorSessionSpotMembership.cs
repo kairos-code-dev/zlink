@@ -23,7 +23,6 @@ internal sealed partial class ZLinkActorSessionManager
         {
             await previousActivation.NotifyActorLeftAfterManagedJoinSpotAsync(
                     actor,
-                    new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JoinSpot),
                     cancellationToken)
                 .ConfigureAwait(false);
         }

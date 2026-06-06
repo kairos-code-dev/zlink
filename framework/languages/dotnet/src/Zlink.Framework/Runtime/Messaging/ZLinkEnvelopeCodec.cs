@@ -56,6 +56,17 @@ internal static class ZLinkEnvelopeCodec
             return Message.From(ReadOnlySpan<byte>.Empty);
         }
 
+        if (bodyType == typeof(Message))
+        {
+            if (body is not Message message)
+            {
+                throw new InvalidOperationException(
+                    $"Envelope body type is Message, but body instance is '{body.GetType()}'.");
+            }
+
+            return Message.From(message);
+        }
+
         return EncodeJsonPart(body, bodyType);
     }
 
@@ -92,6 +103,11 @@ internal static class ZLinkEnvelopeCodec
 
     public static object? DecodeBody(Message bodyMessage, Type bodyType)
     {
+        if (bodyType == typeof(Message))
+        {
+            return bodyMessage;
+        }
+
         if (bodyType == typeof(ReadOnlyMemory<byte>))
         {
             return bodyMessage.AsReadOnlyMemory();

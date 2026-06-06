@@ -1,24 +1,40 @@
-using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
+using Bingo.Server.Play.Actors;
 using Bingo.Server.Play.EntrySpot.Handlers;
+using Microsoft.Extensions.Logging;
 
 namespace Bingo.Server.Play.EntrySpot;
 
-internal sealed class BingoEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+internal sealed class BingoEntrySpot(
+    IZLinkEntrySpotContext context,
+    ILogger<BingoEntrySpot> logger) : IZLinkEntrySpot<PlayerActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
     public void Configure()
     {
         Context.Handlers.AddHandler<MatchBingoActorHandler>();
-        Context.Handlers.AddHandler<BingoEntrySpotActorJoinedHandler>();
-        Context.Handlers.AddHandler<BingoEntrySpotActorLeftHandler>();
+    }
+
+    public ValueTask OnPostActorJoinedAsync(
+        PlayerActor actor,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        logger.LogInformation(
+            "entry spot: actor joined. actor={ActorId}",
+            actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnActorLeftAsync(
+        PlayerActor actor,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        logger.LogInformation(
+            "entry spot: actor left. actor={ActorId}",
+            actor.ActorId);
+        return ValueTask.CompletedTask;
     }
 }

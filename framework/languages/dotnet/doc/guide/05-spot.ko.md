@@ -347,13 +347,13 @@ public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotPublisherC
 }
 ```
 
-- `CreateAsync<TSpot>()` 는 빈 payload 로 생성하고 `OnInitializeAsync` 가 한 번
-  실행된다.
-- `GetOrCreateAsync<TSpot>(spotRid, ...)` 는 이미 있으면 재사용(`Created =
-  false`), 타입이 다르면 `SpotTypeMismatch` 로 실패한다.
+- `CreateAsync<TSpot>()` 는 빈 `Message` 로 생성하고 `OnCreateAsync`가 허용하면
+  `OnInitializeAsync` 가 한 번 실행된다.
+- `GetOrCreateAsync<TSpot>(spotRid, ...)` 는 이미 있으면 `State = Existing`으로
+  재사용하고, 타입이 다르면 `SpotTypeMismatch` 로 실패한다.
 - 반환된 `ZLinkSpotCreateResult` 는 long-lived handle 이 아니다. `SpotRid`/
-  `Created` 만 들고 다니고, 이후 메시징은 publish 나 attach 된 channel
-  client 로 한다.
+  `State`/`Reply` 만 들고 다니고, 이후 메시징은 publish 나 attach 된 channel client
+  로 한다.
 
 ## 5. SPOT 의 세 가지 outbound 표면
 
@@ -432,7 +432,7 @@ app.MapPost("/stage/publish", async (
 ## 6. Stage wrapper (playhouse Stage 류)
 
 `playhouse` Stage 같은 상위 실행 모델을 SPOT 위에 올릴 수 있다. SPOT 이 transport
-바닥(노드 lifecycle, spotRid 생성/삭제, publish/subscribe, attach client
+바닥(노드 lifecycle, spotRid 생성/종료, publish/subscribe, attach client
 send/request, timer, 같은 Spot 직렬 실행)을 제공하고, wrapper 는 그 위에
 membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회를 얹는다.
 

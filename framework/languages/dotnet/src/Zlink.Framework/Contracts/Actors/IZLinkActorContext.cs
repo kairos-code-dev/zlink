@@ -13,24 +13,24 @@ public interface IZLinkActorContext
     TSpot GetSpot<TSpot>()
         where TSpot : IZLinkSpot;
 
-    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+    IZLinkActorJoinSpotCall JoinSpot(
         RoutingId spotRid,
-        TRequest request);
+        Message request);
 
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
         RoutingId spotNodeRid);
 }
 
-public sealed record ZLinkActorJoinResult<TReply>(
-    int ResultCode,
+public sealed record ZLinkActorJoinResult(
+    bool Accepted,
     ActorRef Actor,
-    TReply Reply);
+    Message Reply);
 
 public interface IZLinkActorJoinSpotCall
 {
     IZLinkActorJoinSpotCall Timeout(TimeSpan timeout);
 
-    ValueTask<ZLinkActorJoinResult<TReply>> SubmitAsync<TReply>(
+    ValueTask<ZLinkActorJoinResult> SubmitAsync(
         CancellationToken cancellationToken = default);
 }
 

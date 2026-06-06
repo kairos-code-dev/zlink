@@ -1,3 +1,4 @@
+using Systems.Zlink.Codecs.Json;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Spots;
@@ -7,7 +8,9 @@ public sealed class SpotContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkSpot),
+        typeof(IZLinkSpot<>),
         typeof(IZLinkEntrySpot),
+        typeof(IZLinkEntrySpot<>),
         typeof(IZLinkActorHandlerRegistry),
         typeof(IZLinkSpotHandlerRegistry),
         typeof(IZLinkSpotOutbound),
@@ -30,10 +33,6 @@ public sealed class SpotContracts
         context.Handlers.AddSubscribe<RoomEventHandler>("room.events");
         context.Handlers.AddActorPacket<PlayerActorPacketHandler, PlayerActor>();
         context.Handlers.AddActorPacket<PlayerActorPacketHandler, PlayerActor>("actor.packet");
-        context.Handlers.AddActorJoin<PlayerJoinHandler, PlayerActor, JoinRoom, JoinedRoom>();
-        context.Handlers.AddActorJoin<AttributePlayerJoinHandler>();
-        context.Handlers.AddPostActorJoined<PlayerJoinedHandler, PlayerActor>();
-        context.Handlers.AddActorLeft<PlayerLeftHandler, PlayerActor>();
         context.Handlers.AddActorDisconnected<PlayerDisconnectedHandler, PlayerActor>();
         await context.LeaveActorAsync(actor);
         await context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
@@ -43,7 +42,8 @@ public sealed class SpotContracts
         await context.Outbound.SendToChannel("api", new RoomEvent("opened")).Submit();
         await context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).SubmitAsync<JoinedRoom>();
 
-        await spot.OnCreateAsync([new Message()], CancellationToken.None);
+        using var createRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        await spot.OnCreateAsync(createRequest, CancellationToken.None);
         await spot.OnInitializeAsync(CancellationToken.None);
         await spot.OnClosingAsync(CancellationToken.None);
         await entrySpot.OnInitializeAsync(CancellationToken.None);
@@ -85,7 +85,7 @@ public sealed class SpotContracts
         var manager = new SpotManager();
         var created = await manager.GetOrCreateAsync<RoomSpot>(
             RoutingId.From("room-1"),
-            [new Message()]);
+            Message.From(ReadOnlySpan<byte>.Empty));
         var routeResolver = new SpotRemoteAddressResolver(created.SpotRid);
         var route = await routeResolver.ResolveSpotRemoteAddressAsync(created.SpotRid, CancellationToken.None);
 
@@ -96,7 +96,7 @@ public sealed class SpotContracts
         IZLinkSpotPublisherClient publisher = new SpotPublisherClient();
         await publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).Submit();
 
-        Assert.True(created.Created);
+        Assert.Equal(ZLinkSpotCreateState.Created, created.State);
         Assert.Equal("play-router", route.RouterChannelId);
         Assert.Equal("room-1", reply.RoomId);
     }
@@ -107,11 +107,8 @@ public sealed class SpotContracts
         typeof(IZLinkSpotRequestHandler<,,>),
         typeof(IZLinkSpotSubscriptionHandler<,>),
         typeof(IZLinkSpotTimerHandler<>),
-        typeof(IZLinkSpotActorJoinHandler<,,,>),
         typeof(IZLinkSpotActorSendHandler<,,>),
         typeof(IZLinkSpotActorRequestHandler<,,,>),
-        typeof(IZLinkSpotPostActorJoinedHandler<,>),
-        typeof(IZLinkSpotActorLeftHandler<,>),
         typeof(IZLinkSpotActorDisconnectedHandler<,>),
         typeof(IZLinkEntrySpotActorSendHandler<,,>),
         typeof(IZLinkEntrySpotActorRequestHandler<,,,>),
@@ -126,41 +123,23 @@ public sealed class SpotContracts
         var roomReply = await new RoomRequestHandler().HandleAsync(room, new JoinRoom("room-1"), CancellationToken.None);
         await new RoomEventHandler().HandleAsync(room, new RoomEvent("opened"), CancellationToken.None);
         await new RoomTimerHandler().HandleAsync(room, TimerTick(), CancellationToken.None);
-        var joinReply = await new PlayerJoinHandler().HandleAsync(room, actor, new JoinRoom("room-1"), CancellationToken.None);
+        var joinReply = await room.OnActorJoinAsync(actor, Encode(new JoinRoom("room-1")), CancellationToken.None);
         await new PlayerActorSendHandler().HandleAsync(room, actor, null!, new RoomEvent("opened"), CancellationToken.None);
         var actorReply = await new PlayerActorRequestHandler().HandleAsync(room, actor, null!, new JoinRoom("room-1"), CancellationToken.None);
-        await new PlayerJoinedHandler().HandleAsync(room, actor, Lifecycle(ZLinkSpotActorChangeKind.JoinSpot), CancellationToken.None);
-        await new PlayerLeftHandler().HandleAsync(room, actor, Lifecycle(ZLinkSpotActorChangeKind.LeaveSpot), CancellationToken.None);
+        await room.OnPostActorJoinedAsync(actor, CancellationToken.None);
+        await room.OnActorLeftAsync(actor, CancellationToken.None);
         await new PlayerDisconnectedHandler().HandleAsync(room, actor, CancellationToken.None);
         await new EntryActorSendHandler().HandleAsync(entry, actor, null!, new RoomEvent("opened"), CancellationToken.None);
         var entryReply = await new EntryActorRequestHandler().HandleAsync(entry, actor, null!, new JoinRoom("room-1"), CancellationToken.None);
-        await new EntryActorJoinedHandler().HandleAsync(entry, actor, Lifecycle(ZLinkSpotActorChangeKind.JoinEntrySpot), CancellationToken.None);
-        await new EntryActorLeftHandler().HandleAsync(entry, actor, Lifecycle(ZLinkSpotActorChangeKind.LeaveSpot), CancellationToken.None);
+        await entry.OnPostActorJoinedAsync(actor, CancellationToken.None);
+        await entry.OnActorLeftAsync(actor, CancellationToken.None);
         await new EntryActorDisconnectedHandler().HandleAsync(entry, actor, CancellationToken.None);
 
         Assert.Equal("room-1", roomReply.RoomId);
-        Assert.Equal("room-1", joinReply.RoomId);
+        Assert.True(joinReply.Accepted);
+        Assert.Equal("room-1", Decode<JoinedRoom>(joinReply.Reply!).RoomId);
         Assert.Equal("actor:room-1", actorReply.RoomId);
         Assert.Equal("entry:room-1", entryReply.RoomId);
-    }
-
-    [Fact]
-    public void Spot_actor_change_kind_contains_only_membership_changes()
-    {
-        var values = Enum.GetValues<ZLinkSpotActorChangeKind>();
-
-        Assert.Equal(
-            [
-                ZLinkSpotActorChangeKind.JoinSpot,
-                ZLinkSpotActorChangeKind.JoinEntrySpot,
-                ZLinkSpotActorChangeKind.LeaveSpot
-            ],
-            values);
-        Assert.DoesNotContain(values, static value => value.ToString() == "Unknown");
-        Assert.DoesNotContain(values, static value => value.ToString() == "Disconnect");
-        Assert.DoesNotContain(values, static value => value.ToString() == "Destroy");
-        Assert.Throws<ArgumentOutOfRangeException>(
-            static () => new ZLinkSpotActorChangeResult((ZLinkSpotActorChangeKind)0));
     }
 
     [Fact]
@@ -203,6 +182,23 @@ public sealed class SpotContracts
         var reply = new ZLinkSpotActorReplyOptions();
         Assert.Same(reply, reply.Metadata("reply-key", "reply-value"));
         Assert.Same(reply, reply.Compress());
+    }
+
+    [Fact]
+    public async Task Spot_actor_join_callback_uses_raw_message_and_explicit_acceptance()
+    {
+        var room = new RoomSpot(new SpotContext(RoutingId.From("room-1")));
+        var actor = new PlayerActor("player-1");
+        using var request = Encode(new JoinRoom("room-1"));
+
+        var accepted = await room.OnActorJoinAsync(actor, request, CancellationToken.None);
+        var rejected = ZLinkSpotActorJoinResult.Reject();
+
+        Assert.True(accepted.Accepted);
+        Assert.NotNull(accepted.Reply);
+        Assert.Equal("room-1", Decode<JoinedRoom>(accepted.Reply!).RoomId);
+        Assert.False(rejected.Accepted);
+        Assert.Null(rejected.Reply);
     }
 
     [Fact]
@@ -252,8 +248,9 @@ public sealed class SpotContracts
         Assert.Equal(expected.Order(StringComparer.Ordinal).ToArray(), actual);
     }
 
-    private static ZLinkSpotActorChangeResult Lifecycle(ZLinkSpotActorChangeKind kind) =>
-        new(kind);
+    private static Message Encode<T>(T value) => value.ToJson();
+
+    private static T Decode<T>(Message message) => message.FromJson<T>();
 
     private static ZLinkTimerTick TimerTick() =>
         new(
@@ -274,14 +271,62 @@ public sealed class SpotContracts
 
     private sealed record RoomEvent(string State);
 
-    private sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot
+    private sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor>
     {
         public IZLinkSpotContext Context { get; } = context;
+
+        public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            PlayerActor actor,
+            Message request,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = cancellationToken;
+            var join = Decode<JoinRoom>(request);
+            return ValueTask.FromResult(
+                ZLinkSpotActorJoinResult.Accept(Encode(new JoinedRoom(join.RoomId))));
+        }
+
+        public ValueTask OnPostActorJoinedAsync(
+            PlayerActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnActorLeftAsync(
+            PlayerActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
     }
 
-    private sealed class EntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+    private sealed class EntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot<PlayerActor>
     {
         public IZLinkEntrySpotContext Context { get; } = context;
+
+        public ValueTask OnPostActorJoinedAsync(
+            PlayerActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnActorLeftAsync(
+            PlayerActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class PlayerActor(string actorId) : IZLinkActor
@@ -324,14 +369,6 @@ public sealed class SpotContracts
             where THandler : class
             where TActor : IZLinkActor { }
 
-        public void AddPostActorJoined<THandler, TActor>()
-            where THandler : class
-            where TActor : IZLinkActor { }
-
-        public void AddActorLeft<THandler, TActor>()
-            where THandler : class
-            where TActor : IZLinkActor { }
-
         public void AddActorDisconnected<THandler, TActor>()
             where THandler : class
             where TActor : IZLinkActor { }
@@ -340,13 +377,6 @@ public sealed class SpotContracts
             where THandler : class { }
 
         public void AddSubscribe<THandler>(string topic)
-            where THandler : class { }
-
-        public void AddActorJoin<THandler, TActor, TRequest, TReply>()
-            where THandler : class
-            where TActor : IZLinkActor { }
-
-        public void AddActorJoin<THandler>()
             where THandler : class { }
 
         public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message) => new SendCall();
@@ -368,6 +398,9 @@ public sealed class SpotContracts
             LeftActors.Add(actor.ActorId);
             return ValueTask.CompletedTask;
         }
+
+        public ValueTask<bool> CloseAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(true);
 
         public ValueTask<IZLinkTimer> AddTimer<THandler>(
             string name,
@@ -408,14 +441,6 @@ public sealed class SpotContracts
             where THandler : class
             where TActor : IZLinkActor { }
 
-        public void AddPostActorJoined<THandler, TActor>()
-            where THandler : class
-            where TActor : IZLinkActor { }
-
-        public void AddActorLeft<THandler, TActor>()
-            where THandler : class
-            where TActor : IZLinkActor { }
-
         public void AddActorDisconnected<THandler, TActor>()
             where THandler : class
             where TActor : IZLinkActor { }
@@ -424,13 +449,6 @@ public sealed class SpotContracts
             where THandler : class { }
 
         public void AddSubscribe<THandler>(string topic)
-            where THandler : class { }
-
-        public void AddActorJoin<THandler, TActor, TRequest, TReply>()
-            where THandler : class
-            where TActor : IZLinkActor { }
-
-        public void AddActorJoin<THandler>()
             where THandler : class { }
 
         public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message) => new SendCall();
@@ -458,30 +476,47 @@ public sealed class SpotContracts
     {
         private readonly Dictionary<RoutingId, ZLinkSpotInfo> _spots = [];
 
-        public ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-            CancellationToken cancellationToken = default)
-            where TSpot : IZLinkSpot =>
-            CreateAsync<TSpot>([], cancellationToken);
-
-        public ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-            IReadOnlyList<Message> createParts,
+        public async ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
             CancellationToken cancellationToken = default)
             where TSpot : IZLinkSpot
         {
+            using var empty = Message.From(ReadOnlySpan<byte>.Empty);
+            return await CreateAsync<TSpot>(empty, cancellationToken);
+        }
+
+        public ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
+            Message request,
+            CancellationToken cancellationToken = default)
+            where TSpot : IZLinkSpot
+        {
+            _ = request;
             var rid = RoutingId.From(typeof(TSpot).Name);
             _spots[rid] = new ZLinkSpotInfo(rid);
-            return ValueTask.FromResult(new ZLinkSpotCreateResult(rid, true));
+            return ValueTask.FromResult(new ZLinkSpotCreateResult(rid, ZLinkSpotCreateState.Created, null));
         }
 
         public ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
             RoutingId spotRid,
-            IReadOnlyList<Message> createParts,
+            Message request,
             CancellationToken cancellationToken = default)
             where TSpot : IZLinkSpot
         {
+            _ = request;
             var created = !_spots.ContainsKey(spotRid);
             _spots[spotRid] = new ZLinkSpotInfo(spotRid);
-            return ValueTask.FromResult(new ZLinkSpotCreateResult(spotRid, created));
+            return ValueTask.FromResult(new ZLinkSpotCreateResult(
+                spotRid,
+                created ? ZLinkSpotCreateState.Created : ZLinkSpotCreateState.Existing,
+                null));
+        }
+
+        public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
+            RoutingId spotRid,
+            CancellationToken cancellationToken = default)
+            where TSpot : IZLinkSpot
+        {
+            using var empty = Message.From(ReadOnlySpan<byte>.Empty);
+            return await GetOrCreateAsync<TSpot>(spotRid, empty, cancellationToken);
         }
 
         public ValueTask<ZLinkSpotInfo?> FindAsync(RoutingId spotRid,
@@ -492,7 +527,7 @@ public sealed class SpotContracts
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<IReadOnlyList<ZLinkSpotInfo>>(_spots.Values.ToArray());
 
-        public ValueTask<bool> RemoveAsync(
+        public ValueTask<bool> CloseAsync(
             RoutingId spotRid,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(_spots.Remove(spotRid));
@@ -599,18 +634,6 @@ public sealed class SpotContracts
             ValueTask.CompletedTask;
     }
 
-    private sealed class PlayerJoinHandler : IZLinkSpotActorJoinHandler<RoomSpot, PlayerActor, JoinRoom, JoinedRoom>
-    {
-        public ValueTask<JoinedRoom> HandleAsync(
-            RoomSpot spot,
-            PlayerActor actor,
-            JoinRoom request,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new JoinedRoom(request.RoomId));
-    }
-
-    private sealed class AttributePlayerJoinHandler;
-
     private sealed class PlayerActorPacketHandler : IZLinkSpotActorSendHandler<RoomSpot, PlayerActor, RoomEvent>
     {
         public ValueTask HandleAsync(
@@ -644,26 +667,6 @@ public sealed class SpotContracts
             ValueTask.FromResult(new JoinedRoom($"actor:{request.RoomId}"));
     }
 
-    private sealed class PlayerJoinedHandler : IZLinkSpotPostActorJoinedHandler<RoomSpot, PlayerActor>
-    {
-        public ValueTask HandleAsync(
-            RoomSpot spot,
-            PlayerActor actor,
-            ZLinkSpotActorChangeResult context,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
-    }
-
-    private sealed class PlayerLeftHandler : IZLinkSpotActorLeftHandler<RoomSpot, PlayerActor>
-    {
-        public ValueTask HandleAsync(
-            RoomSpot spot,
-            PlayerActor actor,
-            ZLinkSpotActorChangeResult context,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
-    }
-
     private sealed class PlayerDisconnectedHandler : IZLinkSpotActorDisconnectedHandler<RoomSpot, PlayerActor>
     {
         public ValueTask HandleAsync(
@@ -693,26 +696,6 @@ public sealed class SpotContracts
             JoinRoom request,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(new JoinedRoom($"entry:{request.RoomId}"));
-    }
-
-    private sealed class EntryActorJoinedHandler : IZLinkSpotPostActorJoinedHandler<EntrySpot, PlayerActor>
-    {
-        public ValueTask HandleAsync(
-            EntrySpot entrySpot,
-            PlayerActor actor,
-            ZLinkSpotActorChangeResult context,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
-    }
-
-    private sealed class EntryActorLeftHandler : IZLinkSpotActorLeftHandler<EntrySpot, PlayerActor>
-    {
-        public ValueTask HandleAsync(
-            EntrySpot entrySpot,
-            PlayerActor actor,
-            ZLinkSpotActorChangeResult context,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
     }
 
     private sealed class EntryActorDisconnectedHandler : IZLinkEntrySpotActorDisconnectedHandler<EntrySpot, PlayerActor>

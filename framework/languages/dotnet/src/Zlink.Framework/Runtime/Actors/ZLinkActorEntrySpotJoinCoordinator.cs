@@ -176,7 +176,6 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         await spots.NotifyEntrySpotActorJoinedAsync(
                 getState(),
                 actor,
-                new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JoinEntrySpot),
                 targetNodeRid,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -194,7 +193,6 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
 
         await previousActivation.NotifyActorLeftAfterNativeJoinEntrySpotAsync(
                 actor,
-                new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JoinEntrySpot),
                 cancellationToken)
             .ConfigureAwait(false);
     }

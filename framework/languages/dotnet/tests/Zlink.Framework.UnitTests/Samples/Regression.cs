@@ -146,7 +146,7 @@ public sealed class RegressionTests
             .Single();
         var text = File.ReadAllText(joinHandler);
 
-        Assert.Contains("JoinSpot(RoutingId.FromHex(request.MatchId), request)", text, StringComparison.Ordinal);
+        Assert.Contains("JoinSpot(RoutingId.FromHex(request.MatchId), request.Encode())", text, StringComparison.Ordinal);
         Assert.DoesNotContain("JoinSpot(request.MatchId, request)", text, StringComparison.Ordinal);
     }
 

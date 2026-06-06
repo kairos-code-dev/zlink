@@ -40,6 +40,8 @@ internal sealed class ZLinkSpotActorLifecycleDescriptor
 
     public required ZLinkSpotActorHandlerSurface Surface { get; init; }
 
+    public bool PassSpotArgument { get; init; } = true;
+
 }
 
 internal sealed class ZLinkSpotActorInferredHandlerDescriptor
@@ -98,24 +100,6 @@ internal sealed class ZLinkSpotActorHandlerRegistry
             return;
         }
 
-        if (packetName is not null)
-        {
-            throw new InvalidOperationException(
-                $"Actor lifecycle handler '{handlerType}' cannot use a packet name override.");
-        }
-
-        if (descriptor.Joined is { } joined)
-        {
-            AddLifecycleDescriptor(_joined, joined);
-            return;
-        }
-
-        if (descriptor.Left is { } left)
-        {
-            AddLifecycleDescriptor(_left, left);
-            return;
-        }
-
         if (descriptor.Disconnected is { } disconnected)
         {
             AddLifecycleDescriptor(_disconnected, disconnected);
@@ -141,16 +125,6 @@ internal sealed class ZLinkSpotActorHandlerRegistry
         _packets.Add(key, descriptor);
     }
 
-    public void AddJoined(Type handlerType, Type actorType)
-    {
-        AddLifecycle(_joined, handlerType, actorType, joined: true);
-    }
-
-    public void AddLeft(Type handlerType, Type actorType)
-    {
-        AddLifecycle(_left, handlerType, actorType, joined: false);
-    }
-
     public void AddDisconnected(Type handlerType, Type actorType)
     {
         EnsureNotBound();
@@ -164,6 +138,24 @@ internal sealed class ZLinkSpotActorHandlerRegistry
 
     public void Bind()
     {
+        if (_expectedSpotType is not null)
+        {
+            foreach (var descriptor in ZLinkSpotActorAttributedDescriptorFactory.CreateSpotLifecycleDescriptors(
+                         _surface,
+                         _expectedSpotType))
+            {
+                if (descriptor.Joined is { } joined)
+                {
+                    AddLifecycleDescriptor(_joined, joined);
+                }
+
+                if (descriptor.Left is { } left)
+                {
+                    AddLifecycleDescriptor(_left, left);
+                }
+            }
+        }
+
         _bound = true;
     }
 
@@ -213,22 +205,6 @@ internal sealed class ZLinkSpotActorHandlerRegistry
         return TryResolveLifecycle(_disconnected, actorType, out descriptor);
     }
 
-    private void AddLifecycle(
-        Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> target,
-        Type handlerType,
-        Type actorType,
-        bool joined)
-    {
-        EnsureNotBound();
-        var descriptor = ZLinkSpotActorHandlerDescriptorFactory.CreateLifecycle(
-            _surface,
-            _expectedSpotType,
-            handlerType,
-            actorType,
-            joined);
-        AddLifecycleDescriptor(target, descriptor);
-    }
-
     private static void AddLifecycleDescriptor(
         Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> target,
         ZLinkSpotActorLifecycleDescriptor descriptor)
@@ -242,7 +218,7 @@ internal sealed class ZLinkSpotActorHandlerRegistry
         if (existing is not null)
         {
             throw new InvalidOperationException(
-                $"Actor lifecycle handler for '{descriptor.ActorType}' is already registered.");
+                $"Actor lifecycle callback for '{descriptor.ActorType}' is already declared.");
         }
 
         target.Add(descriptor.ActorType, descriptor);

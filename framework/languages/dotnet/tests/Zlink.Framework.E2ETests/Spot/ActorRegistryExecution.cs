@@ -18,12 +18,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         builder.Services.AddScoped<RegistryEntrySpot>();
         builder.Services.AddScoped<RegistryStageSpot>();
         builder.Services.AddScoped<RegistryEntryJoinHandler>();
-        builder.Services.AddScoped<RegistryStageJoinHandler>();
         builder.Services.AddScoped<RegistryStageDispatchHandler>();
-        builder.Services.AddScoped<RegistryStageJoinedHandler>();
-        builder.Services.AddScoped<RegistryStageLeftHandler>();
-        builder.Services.AddScoped<RegistryEntryJoinedHandler>();
-        builder.Services.AddScoped<RegistryEntryLeftHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
 
@@ -72,10 +67,8 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         Assert.Contains(
             recorder.Events,
             static entry => entry.StartsWith("entry-spot:registry-actor:", StringComparison.Ordinal));
-        Assert.Contains("entry-left:registry-actor:JoinSpot", recorder.Events);
-        Assert.Contains("entry-left-kind:registry-actor:JoinSpot", recorder.Events);
+        Assert.Contains("entry-left:registry-actor", recorder.Events);
         Assert.Contains($"joined:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
-        Assert.Contains("joined-kind:registry-actor:JoinSpot", recorder.Events);
 
         using (var dispatchBody = Message.From("payload"))
         {
@@ -93,13 +86,12 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
 
         Assert.Contains($"dispatch:registry-actor:entry-room:payload:{first.SpotRid.ToHex()}", recorder.Events);
 
-        _ = await actorRuntime.JoinActorAsync<RegistryJoinRequest, RegistryJoinReply>(
+        _ = await actorRuntime.JoinActorAsync(
             second.SpotRid,
             actor,
-            new RegistryJoinRequest("second-room"));
+            EncodeJoin(new RegistryJoinRequest("second-room")));
 
         Assert.Contains($"left:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
-        Assert.Contains("left-kind:registry-actor:JoinSpot", recorder.Events);
         Assert.Contains($"joined:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
 
         var currentSpot = actor.Spot ?? throw new InvalidOperationException("Actor is not joined.");
@@ -107,9 +99,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
 
         Assert.Null(actor.Spot);
         Assert.Contains($"left:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
-        Assert.Contains("left-kind:registry-actor:JoinEntrySpot", recorder.Events);
-        Assert.Contains("entry-joined:registry-actor:JoinEntrySpot", recorder.Events);
-        Assert.Contains("entry-joined-kind:registry-actor:JoinEntrySpot", recorder.Events);
+        Assert.Contains("entry-joined:registry-actor", recorder.Events);
 
         await actorRuntime.DisconnectActorAsync(
             actor,
@@ -129,12 +119,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         builder.Services.AddScoped<RegistryEntrySpot>();
         builder.Services.AddScoped<RegistryStageSpot>();
         builder.Services.AddScoped<EntrySpotJoinBlockingHandler>();
-        builder.Services.AddScoped<RegistryStageJoinHandler>();
         builder.Services.AddScoped<RegistryStageDispatchHandler>();
-        builder.Services.AddScoped<RegistryStageJoinedHandler>();
-        builder.Services.AddScoped<RegistryStageLeftHandler>();
-        builder.Services.AddScoped<RegistryEntryJoinedHandler>();
-        builder.Services.AddScoped<RegistryEntryLeftHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
 

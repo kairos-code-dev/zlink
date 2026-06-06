@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Systems.Zlink.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Runtime.Backend.Contracts;
@@ -13,7 +14,7 @@ namespace Zlink.Framework.E2ETests;
 
 public abstract partial class SpotTestSupport
 {
-    public sealed class ActorStageSpot : IZLinkSpot
+    public sealed class ActorStageSpot : IZLinkSpot<TestActor>
     {
         private readonly ActorIntegrationRecorder _recorder;
         private int _inFlight;
@@ -28,12 +29,39 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.Handlers.AddActorJoin<ActorJoinHandler, TestActor, JoinStageRequest, JoinStageReply>();
             Context.Handlers.AddActorPacket<ActorDispatchHandler, TestActor>("dispatch");
             Context.Handlers.AddActorPacket<ActorDispatchHandler, TestActor>("dispatch-after-context-join");
-            Context.Handlers.AddPostActorJoined<ActorStageJoinedHandler, TestActor>();
-            Context.Handlers.AddActorLeft<ActorStageLeftHandler, TestActor>();
             Context.Handlers.AddActorDisconnected<ActorStageDisconnectedHandler, TestActor>();
+        }
+
+        public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            TestActor actor,
+            Message request,
+            CancellationToken cancellationToken)
+        {
+            var joinRequest = request.FromJson<JoinStageRequest>();
+            var reply = await JoinActorAsync(actor, joinRequest, cancellationToken);
+            return ZLinkSpotActorJoinResult.Accept(reply.ToJson());
+        }
+
+        public ValueTask OnPostActorJoinedAsync(
+            TestActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            _recorder.SpotActorJoins.Enqueue($"{actor.ActorId}@{Context.SpotRid.ToHex()}");
+            actor.AttachSpot(this);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnActorLeftAsync(
+            TestActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            _recorder.SpotActorLeaves.Enqueue($"{actor.ActorId}@{Context.SpotRid.ToHex()}");
+            actor.DetachSpot(this);
+            return ValueTask.CompletedTask;
         }
 
         internal IDisposable EnterScope(string source)
@@ -79,45 +107,6 @@ public abstract partial class SpotTestSupport
         }
     }
 
-    public sealed class ActorStageJoinedHandler(ActorIntegrationRecorder recorder)
-        : IZLinkSpotPostActorJoinedHandler<ActorStageSpot, TestActor>
-    {
-        public ValueTask HandleAsync(
-            ActorStageSpot spot,
-            TestActor actor,
-            ZLinkSpotActorChangeResult result,
-            CancellationToken cancellationToken)
-        {
-            _ = result;
-            _ = cancellationToken;
-            recorder.SpotActorJoins.Enqueue($"{actor.ActorId}@{spot.Context.SpotRid.ToHex()}");
-            actor.AttachSpot(spot);
-
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    public sealed class ActorStageLeftHandler(ActorIntegrationRecorder recorder)
-        : IZLinkSpotActorLeftHandler<ActorStageSpot, TestActor>
-    {
-        public ValueTask HandleAsync(
-            ActorStageSpot spot,
-            TestActor actor,
-            ZLinkSpotActorChangeResult result,
-            CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            recorder.SpotActorLeaves.Enqueue($"{actor.ActorId}@{spot.Context.SpotRid.ToHex()}");
-            actor.DetachSpot(spot);
-            if (result.Kind == ZLinkSpotActorChangeKind.JoinEntrySpot)
-            {
-                actor.CurrentRoomId = null;
-            }
-
-            return ValueTask.CompletedTask;
-        }
-    }
-
     public sealed class ActorStageDisconnectedHandler(ActorIntegrationRecorder recorder)
         : IZLinkSpotActorDisconnectedHandler<ActorStageSpot, TestActor>
     {
@@ -137,18 +126,6 @@ public abstract partial class SpotTestSupport
     public sealed record JoinStageRequest(string RoomId);
 
     public sealed record JoinStageReply(string RoomId);
-
-    public sealed class ActorJoinHandler : IZLinkSpotActorJoinHandler<ActorStageSpot, TestActor, JoinStageRequest, JoinStageReply>
-    {
-        public ValueTask<JoinStageReply> HandleAsync(
-            ActorStageSpot spot,
-            TestActor actor,
-            JoinStageRequest request,
-            CancellationToken cancellationToken)
-        {
-            return spot.JoinActorAsync(actor, request, cancellationToken);
-        }
-    }
 
     public sealed class TestActor(
         string actorId,

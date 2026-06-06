@@ -6,12 +6,6 @@ internal interface IZLinkSpotHandlerRegistrySink
 
     void AddSubscribe<THandler>(string topic) where THandler : class;
 
-    void AddActorJoin<THandler, TActor, TRequest, TReply>()
-        where THandler : class
-        where TActor : IZLinkActor;
-
-    void AddActorJoin<THandler>() where THandler : class;
-
     void AddHandler<THandler>() where THandler : class;
 
     void AddHandler<THandler>(string packetName) where THandler : class;
@@ -21,14 +15,6 @@ internal interface IZLinkSpotHandlerRegistrySink
         where TActor : IZLinkActor;
 
     void AddActorPacket<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor;
-
-    void AddPostActorJoined<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor;
-
-    void AddActorLeft<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor;
 
@@ -59,14 +45,6 @@ internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistryS
     public void AddSubscribe<THandler>(string topic) where THandler : class
         => activation.AddSubscribe<THandler>(topic);
 
-    public void AddActorJoin<THandler, TActor, TRequest, TReply>()
-        where THandler : class
-        where TActor : IZLinkActor
-        => activation.AddActorJoin<THandler, TActor, TRequest, TReply>();
-
-    public void AddActorJoin<THandler>() where THandler : class
-        => activation.AddActorJoin<THandler>();
-
     public void AddHandler<THandler>() where THandler : class
         => activation.AddHandler<THandler>();
 
@@ -82,16 +60,6 @@ internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistryS
         where THandler : class
         where TActor : IZLinkActor
         => activation.AddActorPacket<THandler, TActor>(packetName);
-
-    public void AddPostActorJoined<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-        => activation.AddPostActorJoined<THandler, TActor>();
-
-    public void AddActorLeft<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-        => activation.AddActorLeft<THandler, TActor>();
 
     public void AddActorDisconnected<THandler, TActor>()
         where THandler : class

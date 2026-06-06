@@ -1,4 +1,5 @@
 using Systems.Zlink;
+using Systems.Zlink.Codecs.Json;
 using TicTacToe.SessionGateway.Server.Play.EntrySpot;
 using TicTacToe.SessionGateway.Server.Play.GameSpots;
 using TicTacToe.SessionGateway.Shared.Actors;
@@ -22,11 +23,11 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
         _ = entrySpot;
         _ = context;
         var result = await actor.Context
-            .JoinSpot(RoutingId.FromHex(request.MatchId), request)
+            .JoinSpot(RoutingId.FromHex(request.MatchId), request.Encode())
             .Timeout(SampleTimings.RequestTimeout)
-            .SubmitAsync<JoinMatchSpotResult>(cancellationToken)
+            .SubmitAsync(cancellationToken)
             ;
-        var joined = result.Reply;
+        var joined = result.Reply.Decode<JoinMatchSpotResult>();
         await notifications.PublishAsync(joined.Events, cancellationToken)
             ;
         var reply = new JoinMatchRes(

@@ -65,7 +65,7 @@
 | value | `ZLinkMessageMetadata` | actor/bound session call에 전달되는 metadata snapshot | 4.4.2 |
 | policy | `IZLinkMessageMetadataPolicy` | metadata forwarding 허용 여부 | 4.4.2 |
 | factory | `IZLinkActorFactory` | actor type별 actor 생성 | 4.4.1 |
-| handler | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | spot에 actor가 join할 때 호출되는 handler | 4.4.1 |
+| lifecycle | `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user Spot에 actor가 join할 때 호출되는 admission callback | 4.4.1 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
 | client | `IZLinkBoundSession` | 현재 actor -> 현재 client session 호출 | 5.6 |
 | resolver | `IZLinkSpotRemoteAddressResolver` | spot rid에서 user Spot route 조회 | 5.7 |
@@ -101,7 +101,7 @@
 | builder | `IZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
 | builder | `IZLinkSpotMeshBuilder` | SPOT mesh 등록 builder | 6.3 |
 | builder | `IZLinkSpotMeshNodeBuilder` | SPOT mesh node 등록 builder | 6.3 |
-| management | `IZLinkSpotManager` | spot 인스턴스 생성/삭제 | 6.3 |
+| management | `IZLinkSpotManager` | spot 인스턴스 생성/종료 | 6.3 |
 | timer | `IZLinkTimer` | timer handle | 7 |
 | filter | `IZLinkHandlerFilter` | handler 전후 공통 처리 | 8 |
 | filter | `ZLinkHandlerInvocation` | filter pipeline 호출 context | 8 |
@@ -283,7 +283,7 @@ topic 이나 pattern 정보가 필요해도 별도의 `Topic` handler 이름을 
 endpoint 로 자동 등록해 준다. 즉 attribute(`[ZLinkPublish]`) 기반과
 interface 기반을 모두 지원한다.
 
-### 4.3.1 SPOT lifecycle handler
+### 4.3.1 SPOT lifecycle callback 과 handler
 
 이 절은 SPOT 객체의 lifecycle 표면과, 그 SPOT 안에서 동작하는 handler
 종류들을 정의한다.
@@ -304,11 +304,11 @@ public interface IZLinkSpot
     {
     }
 
-    ValueTask OnCreateAsync(
-        IReadOnlyList<Message> createParts,
+    ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+        Message request,
         CancellationToken cancellationToken)
     {
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
     ValueTask OnInitializeAsync(
@@ -318,6 +318,32 @@ public interface IZLinkSpot
     }
 
     ValueTask OnClosingAsync(
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+}
+
+public interface IZLinkSpot<TActor> : IZLinkSpot
+    where TActor : IZLinkActor
+{
+    ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        TActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
+    }
+
+    ValueTask OnPostActorJoinedAsync(
+        TActor actor,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    ValueTask OnActorLeftAsync(
+        TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
@@ -340,14 +366,6 @@ public interface IZLinkActorHandlerRegistry
         where THandler : class
         where TActor : IZLinkActor;
 
-    void AddPostActorJoined<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor;
-
-    void AddActorLeft<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor;
-
     void AddActorDisconnected<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor;
@@ -365,13 +383,6 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
 
     void AddSubscribe<THandler>(
         string topic)
-        where THandler : class;
-
-    void AddActorJoin<THandler, TActor, TRequest, TReply>()
-        where THandler : class
-        where TActor : IZLinkActor;
-
-    void AddActorJoin<THandler>()
         where THandler : class;
 }
 
@@ -405,6 +416,9 @@ public interface IZLinkSpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutbou
 
     ValueTask LeaveActorAsync(
         IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<bool> CloseAsync(
         CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkTimer> AddTimer<THandler>(
@@ -513,28 +527,6 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSpotPostActorJoinedHandler<TSpot, TActor>
-    where TSpot : class
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TSpot spot,
-        TActor actor,
-        ZLinkSpotActorChangeResult info,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
-    where TSpot : class
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TSpot spot,
-        TActor actor,
-        ZLinkSpotActorChangeResult info,
-        CancellationToken cancellationToken);
-}
-
 public interface IZLinkSpotActorDisconnectedHandler<TSpot, TActor>
     where TSpot : class
     where TActor : IZLinkActor
@@ -569,28 +561,6 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSpotPostActorJoinedHandler<TEntrySpot, TActor>
-    where TEntrySpot : class, IZLinkEntrySpot
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TEntrySpot entrySpot,
-        TActor actor,
-        ZLinkSpotActorChangeResult info,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkSpotActorLeftHandler<TEntrySpot, TActor>
-    where TEntrySpot : class, IZLinkEntrySpot
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TEntrySpot entrySpot,
-        TActor actor,
-        ZLinkSpotActorChangeResult info,
-        CancellationToken cancellationToken);
-}
-
 public interface IZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>
     where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
@@ -601,35 +571,38 @@ public interface IZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>
         CancellationToken cancellationToken);
 }
 
-public enum ZLinkSpotActorChangeKind
+public readonly record struct ZLinkSpotActorJoinResult(
+    bool Accepted,
+    Message? Reply)
 {
-    JoinSpot = 1,
-    JoinEntrySpot = 2,
-    LeaveSpot = 3
-}
-
-public sealed record ZLinkSpotActorChangeResult
-{
-    public ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind kind);
-
-    public ZLinkSpotActorChangeKind Kind { get; }
+    public static ZLinkSpotActorJoinResult Accept(Message? reply = null);
+    public static ZLinkSpotActorJoinResult Reject(Message? reply = null);
 }
 ```
 
-`ZLinkSpotActorChangeResult` 는 정의되지 않은 kind 를 허용하지 않는다. 따라서
-0 값이나 public enum 에 없는 값은 application callback 으로 올라오지 않는다.
+actor join admission callback 의 request 와 reply 는 모두 `Message` 다. framework
+core 는 JSON, Protobuf, MessagePack 같은 serializer 를 고르지 않는다. application 은
+자신이 쓰는 codec 으로 request `Message` 를 해석하고, 같은 방식으로 reply `Message`
+를 만들어 `ZLinkSpotActorJoinResult` 에 담아 반환한다.
 
-`OnCreateAsync(...)` 는 생성 요청이 넘긴 multipart payload를 spot 상태로
-해석하는 단계다. framework가 새 spot 인스턴스를 만든 경우에만 호출된다.
+`Accepted` 가 `true` 이면 framework 는 actor join 을 commit 하고, commit 이 끝난 뒤
+`OnPostActorJoinedAsync(...)` 를 호출한다. `Accepted` 가 `false` 이면 framework 는
+join 을 거부하고 actor 위치를 바꾸지 않으며 `OnPostActorJoinedAsync(...)` 를 호출하지
+않는다.
+
+`OnCreateAsync(...)` 는 생성 요청이 넘긴 단일 `Message`를 spot 상태로
+해석하고 생성 허용 여부를 돌려주는 단계다. framework가 새 spot 인스턴스를 만든
+경우에만 호출된다.
 `OnInitializeAsync(...)` 는 payload와 무관한 lifecycle 준비 단계다. timer 등록처럼
 생성 메시지와 직접 관련 없는 준비 작업은 이 callback에서 수행한다.
 
 새 spot을 만드는 경우 호출 순서는 `Configure()`, descriptor binding,
-`OnCreateAsync(createParts, ...)`, `OnInitializeAsync(...)` 순서다.
+`OnCreateAsync(request, ...)`, `OnInitializeAsync(...)` 순서다. `OnCreateAsync(...)`가
+reject를 반환하면 `OnInitializeAsync(...)`는 호출하지 않고 spot을 등록하지 않는다.
 `GetOrCreateAsync(...)`가 이미 ready 상태인 spot을 반환하는 경우에는 새
 `OnCreateAsync(...)`나 `OnInitializeAsync(...)`를 호출하지 않는다.
-`CreateAsync<TSpot>()`처럼 create payload가 없는 편의 overload도 빈 multipart
-payload로 `OnCreateAsync(...)`를 한 번 호출한다.
+`CreateAsync<TSpot>()`처럼 create payload가 없는 편의 overload도 빈 `Message`로
+`OnCreateAsync(...)`를 한 번 호출한다.
 
 `Configure()` 는 호출 시점이 정해져 있다. SPOT 이 생성된 직후, descriptor
 를 바인딩하기 전 시점에 단 한 번 호출된다.
@@ -639,11 +612,8 @@ payload로 `OnCreateAsync(...)`를 한 번 호출한다.
 - `Context.AddPacket(...)`
 - `Context.AddHandler(...)`
 - `Context.AddActorPacket(...)`
-- `Context.AddPostActorJoined(...)`
-- `Context.AddActorLeft(...)`
 - `Context.AddActorDisconnected(...)`
 - `Context.AddSubscribe(...)`
-- `Context.AddActorJoin(...)`
 
 초기화가 끝난 뒤에 handler 를 추가하면 어떻게 될까. native subscription 과
 dispatch table 의 의미가 어긋나게 된다. 그래서 framework 는 이 경우 예외를
@@ -652,9 +622,8 @@ dispatch table 의 의미가 어긋나게 된다. 그래서 framework 는 이 �
 `AddHandler<THandler>(...)` 는 `THandler` 가 구현한 actor handler interface 를 보고
 actor 타입, send/request/lifecycle 종류, packet 이름 기본값을 추론한다.
 handler 가 여러 actor handler interface 를 구현해서 모호하면 명시적인
-`AddActorPacket<THandler, TActor>(...)`, `AddPostActorJoined<THandler, TActor>()`,
-`AddActorLeft<THandler, TActor>()`, `AddActorDisconnected<THandler, TActor>()`
-를 사용한다.
+`AddActorPacket<THandler, TActor>(...)`,
+`AddActorDisconnected<THandler, TActor>()` 를 사용한다.
 
 `AddActorPacket<THandler, TActor>(...)` 는 actor 타입을 호출 쪽에서 명시하고,
 `THandler` 가 구현한 handler interface 를 보고 send 와 request 를 구분한다.
@@ -843,68 +812,46 @@ public sealed class PlaceMarkHandler
 }
 ```
 
-#### 4.3.1.3 actor join/leave lifecycle handler 등록
+#### 4.3.1.3 actor join/leave lifecycle callback
 
 actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후의 후속
-처리는 별도 handler 로 등록한다. 사용하는 메서드는
-`AddPostActorJoined<THandler, TActor>()` 와 `AddActorLeft<THandler, TActor>()`
-다.
+처리는 Spot 멤버 callback 으로 선언한다. Entry Spot 과 user Spot 모두
+`OnPostActorJoinedAsync(...)` 와 `OnActorLeftAsync(...)` 를 기본 구현으로 가진다.
+필요한 Spot 만 actor 타입을 구체화한 public instance method 를 직접 선언한다.
+framework 는 Spot descriptor 를 바인딩할 때 이 method 를 찾아 callback 으로
+사용한다.
 
-이 문서는 `OnJoinActor` 나 `OnLeaveActor` 같은 Spot method override 를
-공개 계약으로 두지 않는다. 즉 lifecycle 처리 역시 packet handler 와 같은
-방식을 따른다. registry 에 명시적으로 등록한다.
+user Spot 에 actor 가 들어올 수 있는지를 판단하는 admission 처리는
+`OnActorJoinAsync(...)` 로 선언한다. 이름을 분리해서 join 요청 처리와 join commit
+이후 callback 을 코드에서 구분한다.
 
-Entry Spot lifecycle handler 는 아래 interface 를 구현한다.
+Entry Spot lifecycle callback 은 아래 method 를 Entry Spot class 에 선언한다.
 
 ```csharp
-public interface IZLinkSpotPostActorJoinedHandler<TEntrySpot, TActor>
-    where TEntrySpot : class, IZLinkEntrySpot
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TEntrySpot entrySpot,
-        TActor actor,
-        ZLinkSpotActorChangeResult info,
-        CancellationToken cancellationToken);
-}
+public ValueTask OnPostActorJoinedAsync(
+    PlayerActor actor,
+    CancellationToken cancellationToken);
 
-public interface IZLinkSpotActorLeftHandler<TEntrySpot, TActor>
-    where TEntrySpot : class, IZLinkEntrySpot
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TEntrySpot entrySpot,
-        TActor actor,
-        ZLinkSpotActorChangeResult info,
-        CancellationToken cancellationToken);
-}
+public ValueTask OnActorLeftAsync(
+    PlayerActor actor,
+    CancellationToken cancellationToken);
 ```
 
-user Spot lifecycle handler 는 아래 interface 를 구현한다.
+user Spot lifecycle callback 도 같은 method 이름을 사용한다.
 
 ```csharp
-public interface IZLinkSpotPostActorJoinedHandler<TSpot, TActor>
-    where TSpot : class
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TSpot spot,
-        TActor actor,
-        ZLinkSpotActorChangeResult info,
-        CancellationToken cancellationToken);
-}
+public ValueTask OnPostActorJoinedAsync(
+    PlayerActor actor,
+    CancellationToken cancellationToken);
 
-public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
-    where TSpot : class
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TSpot spot,
-        TActor actor,
-        ZLinkSpotActorChangeResult info,
-        CancellationToken cancellationToken);
-}
+public ValueTask OnActorLeftAsync(
+    PlayerActor actor,
+    CancellationToken cancellationToken);
+```
 
+actor disconnected notification 은 별도 handler interface 로 등록한다.
+
+```csharp
 public interface IZLinkSpotActorDisconnectedHandler<TSpot, TActor>
     where TSpot : class
     where TActor : IZLinkActor
@@ -921,26 +868,8 @@ actor disconnected handler 는 join/leave lifecycle 과 별개다. session 이
 `NotifyDisconnectedAsync(...)` 로 대상 actor 를 명시하면 호출된다. 이
 callback 은 actor membership 을 바꾸지 않는다.
 
-lifecycle 도 attribute 방식으로 선언할 수 있다.
-
-```csharp
-public sealed class PlayerMatchJoinedHandler
-{
-    [ZLinkSpotPostActorJoined]
-    public ValueTask HandleAsync(
-        MatchSpot spot,
-        PlayerActor actor,
-        ZLinkSpotActorChangeResult info,
-        CancellationToken cancellationToken)
-    {
-        // ...
-    }
-}
-```
-
-`AddPostActorJoined(...)` 와 `AddActorLeft(...)` 로 등록한 handler 는 호출
-시점이 정해져 있다. join/leave commit 이 끝난 뒤, 동일한 실행 문맥에서
-호출된다.
+`OnPostActorJoinedAsync(...)` 와 `OnActorLeftAsync(...)` 는 호출 시점이
+정해져 있다. join/leave commit 이 끝난 뒤, 동일한 실행 문맥에서 호출된다.
 
 이 callback 의 역할도 한정된다. admission 을 결정하는 hook 이 아니다.
 commit 이후에 application 상태를 갱신하거나 알림을 발송하는, 후속 처리
@@ -951,8 +880,8 @@ user Spot registry 는 서로 별개의 namespace 로 본다.
 
 같은 registry 안에서 동일한 `actor type + packet kind + packet name` 조합이
 둘 이상 등록되면, framework 는 이를 startup validation 오류로 처리한다.
-`AddPostActorJoined(...)` 와 `AddActorLeft(...)` 도 같은 규칙을 따른다. 즉 같은
-registry 안에서 동일 actor 타입에 대해 하나씩만 허용한다.
+Spot lifecycle callback 도 같은 규칙을 따른다. 즉 같은 Spot 안에서 동일 actor
+타입에 대해 하나씩만 허용한다.
 
 `IZLinkSpotContext` 가 노출하는 호출 표면들은 다음 역할을 한다.
 
@@ -964,10 +893,14 @@ registry 안에서 동일 actor 타입에 대해 하나씩만 허용한다.
   SPOT channel 에 publish 하기 위한 것이다.
 - `Context.Outbound.SendToChannel(...)` 과 `Context.Outbound.RequestToChannel(...)` 은 현재 SPOT
   의 실행 문맥에서 channel client 를 호출한다.
+- `Context.CloseAsync(...)` 는 현재 user Spot 을 정상 종료하도록 요청한다. 이미 join된
+  actor 가 남아 있으면 `false` 를 반환하고 종료하지 않는다. packet handler 나 timer
+  handler 안에서 호출한 경우에는 현재 callback 이 끝난 뒤 `OnClosingAsync(...)` 와
+  native SPOT facade 정리가 이어진다.
 
 `OnClosingAsync(...)` 의 호출 시점은 한정된다.
-`IZLinkSpotManager.RemoveAsync(...)` 로 SPOT 을 정상 제거할 때, 실행 문맥
-안에서 호출된다.
+`IZLinkSpotManager.CloseAsync(...)` 또는 `IZLinkSpotContext.CloseAsync(...)` 로 SPOT 을
+정상 종료할 때, 실행 문맥 안에서 호출된다.
 
 이 콜백은 destructor 가 아니라는 점에 주의한다. 즉 host shutdown 이나
 process 종료 시에 반드시 호출되는 것이 아니다.
@@ -1420,12 +1353,13 @@ actor join, actor factory, stream-attached actor 모델은 현재 draft
 - `IZLinkActorContext.JoinSpot(...)`
 - `IZLinkEntrySpotContext.AddHandler<THandler>()`
 - `IZLinkEntrySpotContext.AddActorPacket<THandler, TActor>()`
-- `IZLinkEntrySpotContext.AddPostActorJoined<THandler, TActor>()`
-- `IZLinkEntrySpotContext.AddActorLeft<THandler, TActor>()`
 - `IZLinkSpotContext.AddHandler<THandler>()`
 - `IZLinkSpotContext.AddActorPacket<THandler, TActor>()`
-- `IZLinkSpotContext.AddActorJoin<THandler, TActor, TRequest, TReply>()`
-- `IZLinkSpotContext.AddActorJoin<THandler>()`
+- `IZLinkSpot<TActor>.OnActorJoinAsync(...)`
+- `IZLinkSpot<TActor>.OnPostActorJoinedAsync(...)`
+- `IZLinkSpot<TActor>.OnActorLeftAsync(...)`
+- `IZLinkEntrySpot<TActor>.OnPostActorJoinedAsync(...)`
+- `IZLinkEntrySpot<TActor>.OnActorLeftAsync(...)`
 - stream session 의 actor dispatch 표면인 `IZLinkSessionContext`
 
 `stage-wrapper-on-spot.ko.md` 는 이 계약 위에서 room/stage wrapper 를
@@ -1468,18 +1402,17 @@ framework 의 `SpotActivation` 은 두 가지 이벤트를 수신한다.
 1. framework 는 join 요청에서 `TargetActor` 를 꺼낸다. 이는 해당 spot 에
    이미 등록되어 있는 로컬 actor 다.
 2. 이 `TargetActor` 를 framework actor registry 에서 조회한다.
-3. 조회에 성공하면 actor join handler 를 호출한다.
+3. 조회에 성공하면 target user Spot 의 `OnActorJoinAsync(...)` 를 호출한다.
 4. `TargetActor` 를 찾지 못하면 join 요청을 거부한다.
 
 framework 는 native `ActorRef` 를 public surface 에 그대로 노출하지
 않는다.
 
-`AddHandler(...)`, `AddPostActorJoined(...)`, `AddActorLeft(...)` 로 등록한
-lifecycle handler 에는
-`ZLinkSpotActorChangeResult` 가 전달된다. 이 값은 post-commit actor membership 변화의
-종류만 담는다. actor id 는 함께 전달되는 actor instance 에서 읽고, 현재 callback 이 실행되는
-Spot 은 handler 의 첫 번째 인자인 spot instance 에서 읽는다. framework 는 이동 전/후 Spot rid,
-commit epoch, native flag 같은 내부 commit metadata 를 public handler contract 로 노출하지 않는다.
+Spot lifecycle callback 에는 actor instance 와 cancellation token 만 전달된다. join
+완료와 leave 는 method 이름으로 이미 구분되므로 별도 kind 값을 전달하지 않는다. actor id
+는 함께 전달되는 actor instance 에서 읽고, 현재 callback 이 실행되는 Spot 은 현재 Spot
+instance 의 `Context` 에서 읽는다. framework 는 이동 전/후 Spot rid, commit epoch,
+native flag 같은 내부 commit metadata 를 public handler contract 로 노출하지 않는다.
 
 lifecycle callback 의 실행 문맥은 spot 종류에 따라 다르다.
 
@@ -1504,11 +1437,11 @@ actor packet 실행 계약은 다음과 같이 둔다.
   type 과 packet type 이라 해도, Entry 단계와 user Spot 단계에서 서로
   다른 message handler 를 각각 등록할 수 있어야 한다.
 - `on_join` / `on_leave` commit 이후 callback 도 마찬가지다. Entry Spot
-  과 user Spot 에 각각 별도로 등록할 수 있어야 한다. `AddActorJoin(...)`
-  은 join admission 요청 처리이고, `AddPostActorJoined(...)` /
-  `AddActorLeft(...)` 는 commit 이후의 lifecycle callback 이라는 점에
+  과 user Spot 에 각각 별도로 선언할 수 있어야 한다. `OnActorJoinAsync(...)`
+  는 join admission 요청 처리이고, `OnPostActorJoinedAsync(...)` /
+  `OnActorLeftAsync(...)` 는 commit 이후의 lifecycle callback 이라는 점에
   주의한다.
-- `JoinSpot(...)` 이나 actor join handler 가 actor 의 현재 `Spot` 을
+- `JoinSpot(...)` 이나 `OnActorJoinAsync(...)` 가 actor 의 현재 `Spot` 을
   바꾸는 경우가 있다. 이때 framework 는 actor session state 갱신과 이후
   dispatch 선택이 서로 경합하지 않도록 보장해야 한다. join 이후에 도착한
   packet 은 새 `Spot` 의 실행 문맥으로 흘러 들어가야 한다.
@@ -1567,9 +1500,9 @@ public interface IZLinkActorContext
     TSpot GetSpot<TSpot>()
         where TSpot : IZLinkSpot;
 
-    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+    IZLinkActorJoinSpotCall JoinSpot(
         RoutingId spotRid,
-        TRequest request);
+        Message request);
 
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
         RoutingId spotNodeRid);
@@ -1579,9 +1512,14 @@ public interface IZLinkActorJoinSpotCall
 {
     IZLinkActorJoinSpotCall Timeout(TimeSpan timeout);
 
-    ValueTask<TReply> SubmitAsync<TReply>(
+    ValueTask<ZLinkActorJoinResult> SubmitAsync(
         CancellationToken cancellationToken = default);
 }
+
+public sealed record ZLinkActorJoinResult(
+    bool Accepted,
+    ActorRef Actor,
+    Message Reply);
 
 public interface IZLinkActorFactory
 {
@@ -1614,20 +1552,6 @@ public sealed class ZLinkSpotActorReplyOptions
 {
     public ZLinkSpotActorReplyOptions Metadata(string key, string value);
     public ZLinkSpotActorReplyOptions Compress(bool enabled = true);
-}
-
-// Spot에 actor를 join할 때 호출되는 handler. spot 등록의 AddActorJoin<...>() 표면이
-// 이 generic 인자를 받고, framework는 join 시점에 target spot, joining actor,
-// request payload를 함께 넘긴다. spot 실행 문맥 안에서 호출된다.
-public interface IZLinkSpotActorJoinHandler<TSpot, TActor, in TRequest, TReply>
-    where TSpot : class
-    where TActor : IZLinkActor
-{
-    ValueTask<TReply> HandleAsync(
-        TSpot spot,
-        TActor actor,
-        TRequest request,
-        CancellationToken cancellationToken);
 }
 
 public interface IZLinkSpotOutbound
@@ -1681,31 +1605,34 @@ public interface IZLinkEntrySpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotO
 }
 ```
 
-actor join handler 는 attribute 방식도 지원한다. 이 경우 `Configure()` 에서는
-`Context.AddActorJoin<THandler>()` 를 호출하고, framework 는 method parameter와
-반환 타입에서 spot, actor, request, reply 타입을 추론한다.
+actor join admission 은 user Spot 멤버 method 로 선언한다. framework 는
+`IZLinkSpot<TActor>` 의 actor 타입만 계약으로 사용한다. request 와 reply 는 codec-neutral
+`Message` 로 고정한다.
 
 ```csharp
-public sealed class JoinMatchSpotHandler
+public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor>
 {
-    [ZLinkSpotActorJoin]
-    public ValueTask<JoinMatchSpotResult> HandleAsync(
-        MatchSpot spot,
+    public IZLinkSpotContext Context { get; } = context;
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayerActor actor,
-        JoinMatchReq request,
+        Message request,
         CancellationToken cancellationToken)
     {
-        // ...
+        var decoded = request.Decode<JoinMatchReq>();
+        var reply = new JoinMatchSpotResult(decoded.MatchId).Encode();
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(reply));
     }
 }
 ```
 
-actor join handler 가 정상 응답을 반환하면 framework 는 join commit 을 수행한다.
-application handler 는 별도의 `JoinActorAsync(...)` 를 호출하지 않는다.
+`OnActorJoinAsync(...)` 가 `Accepted=true` 를 반환하면 framework 는 join commit 을
+수행한다. `Accepted=false` 를 반환하면 join 을 거절하고 post-joined callback 을 호출하지
+않는다. application callback 은 별도의 `JoinActorAsync(...)` 를 호출하지 않는다.
 `LeaveActorAsync(...)` 는 현재 user Spot 에서 actor 를 Entry Spot 으로 되돌리는
 편의 API 다. 이 호출이 성공하면 source Spot 의 `ActorLeft` 와 Entry Spot 의
-post-joined lifecycle handler 가 호출된다. 실패하면 actor 위치와 framework state 는
-기존 상태를 유지하고 lifecycle handler 는 호출되지 않는다.
+post-joined lifecycle callback 이 호출된다. 실패하면 actor 위치와 framework state 는
+기존 상태를 유지하고 lifecycle callback 은 호출되지 않는다.
 
 actor context 는 현재 client session 의 `SessionId` 만 조회값으로 노출한다.
 
@@ -1746,7 +1673,8 @@ target user Spot 으로 이동하고, `JoinEntrySpot(...)` 또는 `LeaveActorAsy
 성공은 Entry Spot 으로 이동한다. 실패한 join/leave 는 source Spot membership 을
 그대로 둔다.
 
-`JoinSpot(spotRid, request)` 는 user Spot routing id(`RoutingId`) 를 받는다.
+`JoinSpot(spotRid, requestMessage)` 는 user Spot routing id(`RoutingId`) 와
+codec 확장 함수로 만든 request `Message` 를 받는다.
 `gameId`, `matchId`, `roomId` 같은 도메인 키를 그대로 넘기지 않는다. application
 registry 가 먼저 domain key 를 user Spot `RoutingId` 로 변환하거나 조회한다.
 
@@ -2786,7 +2714,7 @@ discovery 모드인 capability 는 peer 집합의 소유권이 discovery 에 있
 
 ### 6.3 Spot 관리와 등록 인터페이스
 
-`IZLinkSpotManager` 는 `SpotNode` 안에서 spot 인스턴스를 생성하고 삭제하는
+`IZLinkSpotManager` 는 `SpotNode` 안에서 spot 인스턴스를 생성하고 종료하는
 데 사용하는 interface 다.
 
 역할 분담은 다음과 같다.
@@ -2795,9 +2723,26 @@ discovery 모드인 capability 는 peer 집합의 소유권이 discovery 에 있
 - handler 는 들어오는 메시지를 처리하는 역할만 맡는다.
 
 ```csharp
+public readonly record struct ZLinkSpotCreateResponse(
+    bool Accepted,
+    Message? Reply)
+{
+    public static ZLinkSpotCreateResponse Accept(Message? reply = null);
+
+    public static ZLinkSpotCreateResponse Reject(Message? reply = null);
+}
+
+public enum ZLinkSpotCreateState
+{
+    Existing,
+    Created,
+    Rejected
+}
+
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
-    bool Created);
+    ZLinkSpotCreateState State,
+    Message? Reply);
 
 public readonly record struct ZLinkSpotInfo(
     RoutingId SpotRid);
@@ -2809,13 +2754,13 @@ public interface IZLinkSpotManager
         where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot;
 
@@ -2831,7 +2776,7 @@ public interface IZLinkSpotManager
     ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
         CancellationToken cancellationToken = default);
 
-    ValueTask<bool> RemoveAsync(
+    ValueTask<bool> CloseAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
 }
@@ -2840,28 +2785,33 @@ public interface IZLinkSpotManager
 `CreateAsync` 와 `GetOrCreateAsync` 는 각각 다음 상황에 대응한다.
 
 - `CreateAsync<TSpot>()`
-  - generic 타입으로 factory를 선택하고, runtime이 새 `spotRid`를 발급한다.
-- `CreateAsync<TSpot>(createParts)`
-  - runtime이 새 `spotRid`를 발급하고, multipart create payload를
+  - generic 타입으로 factory를 선택하고, runtime이 새 `spotRid`를 발급한다. create
+    callback에는 빈 `Message`가 전달된다.
+- `CreateAsync<TSpot>(request)`
+  - runtime이 새 `spotRid`를 발급하고, create request `Message`를
     `IZLinkSpot.OnCreateAsync(...)`에 전달한다.
-- `GetOrCreateAsync<TSpot>(RoutingId spotRid, createParts)`
+- `GetOrCreateAsync<TSpot>(RoutingId spotRid, request)`
   - generic 타입으로 factory를 선택하되, 호출자가 특정 logical spot rid를 직접
     지정한다. 이미 같은 `spotRid`가 있으면 기존 spot을 반환하고 새
-    `createParts`는 전달하지 않는다.
+    `request`는 전달하지 않는다.
 
-반환값은 두 가지를 묶어서 돌려준다. `spotRid`, 그리고 새로
-생성된 인스턴스인지 여부다.
+반환값은 세 가지를 묶어서 돌려준다. `spotRid`, 생성 상태, 그리고 create callback이
+돌려준 선택적 reply `Message`다. `State`는 이미 있던 spot을 반환한 경우
+`Existing`, 이번 요청으로 새 spot을 만든 경우 `Created`, create callback이 거부한
+경우 `Rejected`다. `Existing`에서는 create callback을 호출하지 않으므로 새 reply는
+없다.
 
 장기적으로 들고 다닐 instance handle 이 아니라, 생성 결과만 돌려주는
 형태라는 점에 주의한다.
 
-`OnCreateAsync(...)` 는 spot 생성 요청의 multipart payload를 받는 lifecycle
-callback이다. framework는 caller가 넘긴 part 수와 순서를 유지해서 전달해야 하고,
-여러 part를 하나의 serialized envelope로 합치면 안 된다. `CreateAsync<TSpot>()`
-처럼 create payload가 없는 overload는 빈 list를 넘긴 것과 같다. `createParts`
-인자 자체는 `null`이면 안 된다. 같은 `spotRid`에 대해 동시에
-`GetOrCreateAsync(...)`가 들어오면 처음 생성에 사용된 payload만
-`OnCreateAsync(...)`로 전달된다. 나중 caller의 payload는 재전달하지 않는다.
+`OnCreateAsync(...)` 는 spot 생성 요청의 단일 `Message`를 받는 lifecycle
+callback이다. framework는 JSON, Protobuf, MessagePack 같은 payload 형식을 고르지
+않고, application은 자신이 쓰는 `Message` codec 확장 함수로 request와 reply를
+해석한다. `CreateAsync<TSpot>()`처럼 create payload가 없는 overload는 빈 `Message`를
+넘긴 것과 같다. 같은 `spotRid`에 대해 동시에 `GetOrCreateAsync(...)`가 들어오면
+처음 생성에 사용된 request만 `OnCreateAsync(...)`로 전달된다. 나중 caller의
+request는 재전달하지 않고, 생성이 성공하면 `Existing`, 거부되면 `Rejected` 결과를
+받는다.
 
 `TSpot`은 생성 요청의 framework type discriminator다. framework는 이 타입으로
 등록된 factory를 선택한다. string 기반 spot rid은 public contract에 포함하지
@@ -2877,6 +2827,12 @@ required이고, 수신 node가 새 id를 발급하는 create 요청에서는 opt
 `GetAsync(...)` 와 `ListAsync(...)` 는 조회 표면이다. 조회 결과는 public
 식별자인 `SpotRid`만 돌려준다. Spot 타입이나 factory 선택 정보는 framework 내부
 소유이며 application contract로 노출하지 않는다.
+
+`CloseAsync(...)` 는 user Spot lifecycle 을 정상 종료한다. 대상 spot 이 없거나,
+해당 spot 에 actor 가 남아 있으면 `false` 를 반환한다. `true` 를 반환한 경우 framework
+는 `OnClosingAsync(...)` 를 spot 실행 문맥에서 호출하고, 이후 C API 의
+`zlink_spot_destroy()` 로 이어지는 native SPOT facade 정리를 수행한다. Entry Spot 은
+SpotNode lifecycle 이 소유하므로 이 API의 대상이 아니다.
 
 현재 SPOT topology 초안에서는 high-level public surface 에
 `spotRid -> targetRid` 주소를 직접 노출하지 않는다.
@@ -3721,21 +3677,6 @@ public sealed class ZLinkSpotActorRequestAttribute : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkSpotActorJoinAttribute : Attribute
-{
-}
-
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkSpotPostActorJoinedAttribute : Attribute
-{
-}
-
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkSpotActorLeftAttribute : Attribute
-{
-}
-
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkSpotActorDisconnectedAttribute : Attribute
 {
 }
@@ -3745,8 +3686,8 @@ method 시그니처는 아래 순서를 따른다.
 
 - send: `(spotOrEntrySpot, actor, message, CancellationToken)` 반환값 없음
 - request: `(spotOrEntrySpot, actor, request, CancellationToken)` reply 반환
-- actor join: `(spot, actor, request, CancellationToken)` reply 반환
-- joined/left: `(spotOrEntrySpot, actor, ZLinkSpotActorChangeResult, CancellationToken)` 반환값 없음
+- actor join: `(spot, actor, Message request, CancellationToken)` `ZLinkSpotActorJoinResult` 반환
+- joined/left: `(spotOrEntrySpot, actor, CancellationToken)` 반환값 없음
 - disconnected: `(spotOrEntrySpot, actor, CancellationToken)` 반환값 없음
 
 `PacketName` 을 지정하지 않으면 message/request 타입의 packet 이름을 사용한다.

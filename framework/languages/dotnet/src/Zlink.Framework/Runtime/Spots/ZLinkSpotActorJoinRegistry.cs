@@ -2,69 +2,32 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActorJoinRegistry
 {
-    private readonly List<ZLinkSpotActorJoinRegistration> _registrations = [];
-    private readonly Dictionary<Type, ZLinkSpotActorJoinDescriptor> _descriptorsByRequestType = [];
+    private ZLinkSpotActorJoinDescriptor? _descriptor;
 
-    public bool HasHandlers => _descriptorsByRequestType.Count > 0;
-
-    public void Add(
-        Type handlerType,
-        Type actorType,
-        Type requestType,
-        Type replyType)
-    {
-        _registrations.Add(new ZLinkSpotActorJoinRegistration(
-            handlerType,
-            actorType,
-            requestType,
-            replyType));
-    }
-
-    public void Add(Type handlerType)
-    {
-        _registrations.Add(new ZLinkSpotActorJoinRegistration(
-            handlerType,
-            null,
-            null,
-            null));
-    }
+    public bool HasHandlers => _descriptor is not null;
 
     public void Bind(object spot)
     {
-        foreach (var actorJoin in _registrations)
+        foreach (var descriptor in ZLinkSpotDescriptorFactory.CreateSpotActorJoinDescriptors(spot.GetType()))
         {
-            var descriptor = ZLinkSpotDescriptorFactory.CreateActorJoinDescriptor(
-                actorJoin.HandlerType,
-                spot.GetType(),
-                actorJoin.ActorType,
-                actorJoin.RequestType,
-                actorJoin.ReplyType);
-
-            if (!_descriptorsByRequestType.TryAdd(descriptor.RequestType, descriptor))
-            {
-                throw new InvalidOperationException(
-                    $"SPOT actor join request '{descriptor.RequestType}' is already registered on '{spot.GetType()}'.");
-            }
+            AddDescriptor(spot, descriptor);
         }
     }
 
-    public bool TryResolve(Type requestType, out ZLinkSpotActorJoinDescriptor? descriptor)
+    private void AddDescriptor(object spot, ZLinkSpotActorJoinDescriptor descriptor)
     {
-        return _descriptorsByRequestType.TryGetValue(requestType, out descriptor);
-    }
-
-    public bool TryResolveByName(string messageName, out ZLinkSpotActorJoinDescriptor? descriptor)
-    {
-        foreach (var entry in _descriptorsByRequestType.Values)
+        if (_descriptor is not null)
         {
-            if (string.Equals(entry.MessageName, messageName, StringComparison.Ordinal))
-            {
-                descriptor = entry;
-                return true;
-            }
+            throw new InvalidOperationException(
+                $"SPOT actor join callback is already registered on '{spot.GetType()}'.");
         }
 
-        descriptor = null;
-        return false;
+        _descriptor = descriptor;
+    }
+
+    public bool TryResolve(out ZLinkSpotActorJoinDescriptor? descriptor)
+    {
+        descriptor = _descriptor;
+        return descriptor is not null;
     }
 }

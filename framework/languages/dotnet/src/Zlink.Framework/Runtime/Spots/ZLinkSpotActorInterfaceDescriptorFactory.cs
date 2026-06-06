@@ -24,34 +24,6 @@ internal static class ZLinkSpotActorInterfaceDescriptorFactory
                 continue;
             }
 
-            var joined = TryCreateLifecycle(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                definition,
-                arguments,
-                joined: true);
-            if (joined is not null)
-            {
-                yield return new ZLinkSpotActorInferredHandlerDescriptor { Joined = joined };
-                continue;
-            }
-
-            var left = TryCreateLifecycle(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                definition,
-                arguments,
-                joined: false);
-            if (left is not null)
-            {
-                yield return new ZLinkSpotActorInferredHandlerDescriptor { Left = left };
-                continue;
-            }
-
             var disconnected = TryCreateDisconnected(
                 surface,
                 expectedSpotType,
@@ -116,32 +88,6 @@ internal static class ZLinkSpotActorInterfaceDescriptorFactory
         }
 
         return null;
-    }
-
-    public static ZLinkSpotActorLifecycleDescriptor? TryCreateLifecycle(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type? expectedActorType,
-        Type definition,
-        Type[] arguments,
-        bool joined)
-    {
-        var spotDefinition = joined
-            ? typeof(IZLinkSpotPostActorJoinedHandler<,>)
-            : typeof(IZLinkSpotActorLeftHandler<,>);
-        if (definition != spotDefinition)
-        {
-            return null;
-        }
-
-        ZLinkSpotActorDescriptorBuilder.ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-        ZLinkSpotActorDescriptorBuilder.ValidateActorType(handlerType, expectedActorType, arguments[1]);
-        return ZLinkSpotActorDescriptorBuilder.CreateLifecycle(
-            surface,
-            handlerType,
-            arguments[0],
-            arguments[1]);
     }
 
     public static ZLinkSpotActorLifecycleDescriptor? TryCreateDisconnected(

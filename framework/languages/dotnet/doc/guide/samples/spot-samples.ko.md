@@ -134,12 +134,6 @@ public interface IZLinkSpotContext : IZLinkSpotOutbound
     {
     }
 
-    void AddActorJoin<THandler, TActor, TRequest, TReply>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-    }
-
     void AddHandler<THandler>()
         where THandler : class
     {
@@ -216,7 +210,8 @@ public sealed class Timer : IZlinkTimer
 
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
-    bool Created);
+    ZLinkSpotCreateState State,
+    Message? Reply);
 
 public readonly record struct ZLinkSpotInfo(
     RoutingId SpotRid);
@@ -649,7 +644,7 @@ app.MapPost("/stage/create", async (
     return Results.Ok(new
     {
         created.SpotRid,
-        created.Created,
+        created.State,
         LookupRid = spotInfo?.SpotRid
     });
 });
@@ -797,7 +792,7 @@ app.Run();
 있는지를 코드로 보여 준다.
 
 ```csharp
-public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
+public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleActor>
 {
     private IZLinkTimer? _sessionTimeoutSweep;
 
@@ -807,11 +802,20 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         Context.AddPacket<SampleGetStateHandler>();
         Context.AddPacket<SampleReportStateHandler>();
-        Context.AddActorJoin<SampleJoinRoomHandler>();
         Context.AddHandler<SampleMoveActorHandler>();
 
         Context.AddSubscribe<SampleStateUpdatedHandler>(
             "sample.state.updated");
+    }
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        SampleActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        var join = request.Decode<SampleJoinRoomRequest>();
+        var reply = new SampleJoinRoomReply(join.RoomId).Encode();
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(reply));
     }
 
     public int ActorCount { get; private set; } = 10;
@@ -875,7 +879,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
   - `IZLinkSessionContext`
   - `IZLinkActor`
   - `IZLinkActorContext`
-  - `IZLinkSpotActorJoinHandler<...>`
+  - `IZLinkSpot<TActor>.OnActorJoinAsync(...)`
 - 샘플 전용 타입
   - `SampleSpot`
   - `SampleSession`
@@ -894,13 +898,12 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 - 새 stream 이 같은 `accountId` 로 다시 들어오면 같은 actor 에 다시 연결할
   수 있다.
 
-이 모델을 public 계약으로 노출하려면, actor join 은 `IZLinkSpot` 의 override
-가 아니라 다음 표면들의 조합으로 나타나야 한다.
+이 모델을 public 계약으로 노출하려면, actor join 은 다음 표면들의 조합으로
+나타나야 한다.
 
 - session 의 `BindAsync(...)`
 - `IZLinkActorContext.JoinSpot(...)`
-- `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` 또는
-  `[ZLinkSpotActorJoin]` method
+- target user Spot 의 `OnActorJoinAsync(...)`
 
 join 승인과 membership 기록은 반드시 target `Spot` 의 실행 문맥에서 처리되어야
 하기 때문이다.
@@ -1026,11 +1029,20 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         Context.AddPacket<SampleGetStateHandler>();
         Context.AddPacket<SampleReportStateHandler>();
-        Context.AddActorJoin<SampleJoinRoomHandler>();
         Context.AddHandler<SampleMoveActorHandler>();
 
         Context.AddSubscribe<SampleStateUpdatedHandler>(
             "sample.state.updated");
+    }
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        SampleActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        var join = request.Decode<SampleJoinRoomRequest>();
+        var reply = new SampleJoinRoomReply(join.RoomId).Encode();
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(reply));
     }
 
     public async ValueTask OnInitializeAsync(
@@ -1232,15 +1244,15 @@ public sealed class SampleActor : IZLinkActor
         return _context.GetSpot<SampleSpot>();
     }
 
-    public ValueTask<SampleJoinRoomReply> JoinRoomAsync(
+    public async ValueTask<SampleJoinRoomReply> JoinRoomAsync(
         SampleSpot room,
         SampleJoinRoomRequest request,
         CancellationToken cancellationToken)
     {
         var result = await _context
-            .JoinSpot(room.Context.SpotRid, request)
-            .SubmitAsync<SampleJoinRoomReply>(cancellationToken);
-        return result.Reply;
+            .JoinSpot(room.Context.SpotRid, request.Encode())
+            .SubmitAsync(cancellationToken);
+        return result.Reply.Decode<SampleJoinRoomReply>();
     }
 
 }
@@ -1402,19 +1414,20 @@ public sealed class SampleSession
     }
 }
 
-public sealed class SampleJoinRoomHandler
+public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleActor>
 {
-    [ZLinkSpotActorJoin]
-    public ValueTask<SampleJoinRoomReply> HandleAsync(
-        SampleSpot spot,
+    public IZLinkSpotContext Context { get; } = context;
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         SampleActor actor,
-        SampleJoinRoomRequest request,
+        Message request,
         CancellationToken cancellationToken)
     {
-        return spot.JoinActorAsync(
-            actor,
-            request,
-            cancellationToken);
+        _ = actor;
+        _ = cancellationToken;
+        var join = request.Decode<SampleJoinRoomRequest>();
+        return ValueTask.FromResult(
+            ZLinkSpotActorJoinResult.Accept(new SampleJoinRoomReply(join.RoomId).Encode()));
     }
 }
 
@@ -1829,10 +1842,10 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 - 새 spot 인스턴스를 만들고 싶다
   - `IZLinkSpotManager.CreateAsync<StageSpot>(...)`
 - 새 spot 인스턴스를 만들면서 초기 설정을 넘기고 싶다
-  - `IZLinkSpotManager.CreateAsync<StageSpot>(createParts, ...)`를 사용하고,
-    spot의 `OnCreateAsync(...)`에서 multipart create payload를 해석한다.
+  - `IZLinkSpotManager.CreateAsync<StageSpot>(request, ...)`를 사용하고,
+    spot의 `OnCreateAsync(...)`에서 create request `Message`를 해석한다.
 - 명시적 `spotRid`가 있고 없으면 만들고 있으면 가져오고 싶다
-  - `IZLinkSpotManager.GetOrCreateAsync<StageSpot>(spotRid, createParts, ...)`
+  - `IZLinkSpotManager.GetOrCreateAsync<StageSpot>(spotRid, request, ...)`
 - attach된 다른 channel로 send packet을 보내고 싶다
   - `SendToChannel(...).Submit(...)`
 - attach된 다른 channel로 request packet을 보내고 싶다
@@ -1931,9 +1944,9 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ManagerTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | spot 생성과 조회, 제거, callback scope 정리가 동작한다. |
-| `ManagerTests.SpotManager_CreateAsync_Passes_Empty_CreatePayload_To_OnCreate` | payload 없는 생성이 빈 multipart payload로 `OnCreateAsync(...)`를 호출한다. |
-| `ManagerTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 `spotRid` 동시 확보에서 첫 create payload만 `OnCreateAsync(...)`로 전달된다. |
+| `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | spot 생성과 조회, 종료, callback scope 정리가 동작한다. |
+| `ManagerTests.SpotManager_CreateAsync_Passes_Empty_CreatePayload_To_OnCreate` | payload 없는 생성이 빈 `Message`로 `OnCreateAsync(...)`를 호출한다. |
+| `ManagerTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 `spotRid` 동시 확보에서 첫 create request `Message`만 `OnCreateAsync(...)`로 전달된다. |
 | `ManagerTests.SpotManager_GetOrCreateAsync_Returns_Existing_Spot_For_Same_Type` | 같은 `spotRid`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환한다. |
 | `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 노드 publish 샘플이 target SPOT channel에 도달한다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 room 역할의 spot에 join한 뒤, 해당 문맥에서 dispatch된다. |

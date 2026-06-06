@@ -72,7 +72,7 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
             node.ConnectPeer(endpoint);
         }
         catch (ZlinkConnectException error)
-            when (error.InternalErrno == 16)
+            when (error.NativeErrno == 16)
         {
         }
     }
@@ -161,7 +161,7 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
             }
         }
         catch (ZlinkConnectException error)
-            when (error.InternalErrno == 16)
+            when (error.NativeErrno == 16)
         {
             // Discovery may connect the same peer between snapshots.
         }

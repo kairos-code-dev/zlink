@@ -1,8 +1,23 @@
 namespace Zlink.Framework.Contracts.Spots;
 
+public enum ZLinkSpotCreateState
+{
+    Existing,
+    Created,
+    Rejected
+}
+
+public readonly record struct ZLinkSpotCreateResponse(bool Accepted, Message? Reply)
+{
+    public static ZLinkSpotCreateResponse Accept(Message? reply = null) => new(true, reply);
+
+    public static ZLinkSpotCreateResponse Reject(Message? reply = null) => new(false, reply);
+}
+
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
-    bool Created);
+    ZLinkSpotCreateState State,
+    Message? Reply);
 
 public readonly record struct ZLinkSpotInfo(
     RoutingId SpotRid);
@@ -14,23 +29,20 @@ public interface IZLinkSpotManager
         where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot
-    {
-        return GetOrCreateAsync<TSpot>(spotRid, [], cancellationToken);
-    }
+        where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotInfo?> FindAsync(RoutingId spotRid,
         CancellationToken cancellationToken = default);
@@ -38,7 +50,7 @@ public interface IZLinkSpotManager
     ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
         CancellationToken cancellationToken = default);
 
-    ValueTask<bool> RemoveAsync(
+    ValueTask<bool> CloseAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
 }
@@ -84,16 +96,5 @@ public interface IZLinkSpotTimerHandler<TSpot>
     ValueTask HandleAsync(
         TSpot spot,
         ZLinkTimerTick tick,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkSpotActorJoinHandler<TSpot, in TActor, in TRequest, TReply>
-    where TSpot : class
-    where TActor : IZLinkActor
-{
-    ValueTask<TReply> HandleAsync(
-        TSpot spot,
-        TActor actor,
-        TRequest request,
         CancellationToken cancellationToken);
 }

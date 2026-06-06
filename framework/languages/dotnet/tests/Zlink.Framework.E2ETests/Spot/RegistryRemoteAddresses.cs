@@ -80,7 +80,7 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
         Assert.Equal(created.SpotRid, route.SpotRid);
         Assert.Equal(ZLinkSpotKind.User, route.SpotKind);
 
-        Assert.True(await manager.RemoveAsync(created.SpotRid));
+        Assert.True(await manager.CloseAsync(created.SpotRid));
         var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(() =>
             resolver.ResolveSpotRemoteAddressAsync(created.SpotRid, CancellationToken.None)
                 .AsTask());
@@ -153,7 +153,7 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
         Assert.Equal("play", route.RouterChannelId);
         Assert.Equal(created.SpotRid, route.SpotRid);
 
-        Assert.True(await manager.RemoveAsync(created.SpotRid));
+        Assert.True(await manager.CloseAsync(created.SpotRid));
 
         await frameworkHost.StopAsync();
         await registryHost.StopAsync();

@@ -13,7 +13,9 @@ namespace Zlink.Framework.E2ETests;
 
 public abstract partial class SpotTestSupport
 {
-    public sealed class RegistryEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+    public sealed class RegistryEntrySpot(
+        IZLinkEntrySpotContext context,
+        EntrySpotActorRegistryRecorder recorder) : IZLinkEntrySpot<RegistryTestActor>
     {
         public IZLinkEntrySpotContext Context { get; } = context;
 
@@ -25,8 +27,26 @@ public abstract partial class SpotTestSupport
             Context.Handlers.AddActorPacket<EntrySpotRecordingHandler, RegistryTestActor>("entry-record");
             Context.Handlers.AddActorPacket<LocalActorBlockingHandler, RegistryTestActor>("local-block");
             Context.Handlers.AddActorPacket<LocalActorRecordingHandler, RegistryTestActor>("local-record");
-            Context.Handlers.AddPostActorJoined<RegistryEntryJoinedHandler, RegistryTestActor>();
-            Context.Handlers.AddActorLeft<RegistryEntryLeftHandler, RegistryTestActor>();
+        }
+
+        public ValueTask OnPostActorJoinedAsync(
+            RegistryTestActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.Events.Enqueue($"entry-joined:{actor.ActorId}");
+            recorder.Events.Enqueue($"entry-spot:{actor.ActorId}:{Context.SpotRid.ToHex()}");
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnActorLeftAsync(
+            RegistryTestActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.Events.Enqueue($"entry-left:{actor.ActorId}");
+            recorder.Events.Enqueue($"entry-spot:{actor.ActorId}:{Context.SpotRid.ToHex()}");
+            return ValueTask.CompletedTask;
         }
     }
 

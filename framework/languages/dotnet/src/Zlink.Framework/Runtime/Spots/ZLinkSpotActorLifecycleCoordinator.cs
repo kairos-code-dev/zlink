@@ -20,10 +20,9 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
             return;
         }
 
-        var result = ToPublicChangeResult(ZLinkSpotActorChangeKind.JoinSpot);
         if (previousActivation is null)
         {
-            await runtime.NotifyEntrySpotActorLeftAsync(actor, result, activation.NodeRid, cancellationToken)
+            await runtime.NotifyEntrySpotActorLeftAsync(actor, activation.NodeRid, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -31,7 +30,7 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
             && handlers.TryResolveJoined(actor.GetType(), out var descriptor)
             && descriptor is not null)
         {
-            await handlerInvoker().InvokeActorLifecycleAsync(descriptor, actor, result, cancellationToken)
+            await handlerInvoker().InvokeActorLifecycleAsync(descriptor, actor, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -46,8 +45,4 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
         await runtime.JoinActorEntrySpotAsync(activation.NodeRid, actor, cancellationToken)
             .ConfigureAwait(false);
     }
-
-    private static ZLinkSpotActorChangeResult ToPublicChangeResult(
-        ZLinkSpotActorChangeKind kind) =>
-        new(kind);
 }

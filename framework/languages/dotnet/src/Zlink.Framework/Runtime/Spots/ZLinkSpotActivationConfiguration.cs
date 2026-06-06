@@ -66,25 +66,6 @@ internal sealed partial class ZLinkSpotActivation
         RequireActorHandlers().AddHandler(typeof(THandler), packetName);
     }
 
-    public void AddActorJoin<THandler, TActor, TRequest, TReply>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        EnsureConfigurationOpen();
-        _actorJoins.Add(
-            typeof(THandler),
-            typeof(TActor),
-            typeof(TRequest),
-            typeof(TReply));
-    }
-
-    public void AddActorJoin<THandler>()
-        where THandler : class
-    {
-        EnsureConfigurationOpen();
-        _actorJoins.Add(typeof(THandler));
-    }
-
     public void AddActorPacket<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor
@@ -102,22 +83,6 @@ internal sealed partial class ZLinkSpotActivation
         }
 
         AddActorPacketCore<THandler, TActor>(packetName);
-    }
-
-    public void AddPostActorJoined<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        EnsureConfigurationOpen();
-        RequireActorHandlers().AddJoined(typeof(THandler), typeof(TActor));
-    }
-
-    public void AddActorLeft<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        EnsureConfigurationOpen();
-        RequireActorHandlers().AddLeft(typeof(THandler), typeof(TActor));
     }
 
     public void AddActorDisconnected<THandler, TActor>()

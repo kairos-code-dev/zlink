@@ -18,10 +18,10 @@ internal sealed class ZLinkFrameworkActorFacade(
         getState,
         getActorSpotNode);
 
-    public async ValueTask<ZLinkActorJoinResult<TReply>> JoinActorAsync<TRequest, TReply>(
+    public async ValueTask<ZLinkActorJoinResult> JoinActorAsync(
         RoutingId spotRid,
         IZLinkActor actor,
-        TRequest request,
+        Message request,
         CancellationToken cancellationToken = default)
     {
         var state = getState();
@@ -33,7 +33,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             && node is not null
             && actorState.NativeActorRef is { } actorRef)
         {
-            return await NativeJoinActorAsync<TRequest, TReply>(
+            return await NativeJoinActorAsync(
                 state,
                 spotRid,
                 actor,
@@ -43,16 +43,16 @@ internal sealed class ZLinkFrameworkActorFacade(
                 cancellationToken).ConfigureAwait(false);
         }
 
-        var reply = await spots.JoinActorAsync<TRequest, TReply>(
+        var joinResult = await spots.JoinActorAsync(
             state,
             spotRid,
             actor,
             request,
             cancellationToken).ConfigureAwait(false);
-        return new ZLinkActorJoinResult<TReply>(
-            ResultCode: 0,
+        return new ZLinkActorJoinResult(
+            Accepted: joinResult.Accepted,
             ToActorRef(actorState),
-            reply);
+            joinResult.Reply ?? Message.From(ReadOnlySpan<byte>.Empty));
     }
 
     public async ValueTask<ActorRef> JoinActorEntrySpotAsync(
@@ -185,31 +185,31 @@ internal sealed class ZLinkFrameworkActorFacade(
         return actorSessionManager.GetOrCreateState(actorId);
     }
 
-    private async ValueTask<ZLinkActorJoinResult<TReply>> NativeJoinActorAsync<TRequest, TReply>(
+    private async ValueTask<ZLinkActorJoinResult> NativeJoinActorAsync(
         ZLinkFrameworkRuntimeState state,
         RoutingId spotRid,
         IZLinkActor actor,
         ZLinkBackendActorRef actorRef,
         IZLinkBackendSpotNode node,
-        TRequest request,
+        Message request,
         CancellationToken cancellationToken)
     {
         var activation = spots.GetActivationBySpotRid(state, spotRid)
             ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
-        if (!activation.TryResolveActorJoinDescriptor(typeof(TRequest), out var descriptor) || descriptor is null)
+        if (!activation.TryResolveActorJoinDescriptor(out var descriptor) || descriptor is null)
         {
             throw new InvalidOperationException(
-                $"SPOT '{activation.SpotRid}' does not register an actor join handler for '{typeof(TRequest)}'.");
+                $"SPOT '{activation.SpotRid}' does not declare an actor join callback.");
         }
 
         var joinHeader = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Request,
             activation.ChannelName,
-            descriptor.MessageName,
+            typeof(Message).Name,
             ZLinkEnvelopeCodec.DefaultContentType,
             null, null, null, null, null);
-        var joinParts = ZLinkEnvelopeCodec.EncodeParts(joinHeader, request, typeof(TRequest));
+        var joinParts = ZLinkEnvelopeCodec.EncodeParts(joinHeader, request, typeof(Message));
 
         var tcs = new TaskCompletionSource<(ZLinkBackendActorJoinResult Result, IReadOnlyList<Message> Reply)>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -235,21 +235,26 @@ internal sealed class ZLinkFrameworkActorFacade(
         }
 
         var (joinResult, replyParts) = await tcs.Task.ConfigureAwait(false);
-        var reply = DecodeNativeJoinReply<TRequest, TReply>(
+        var reply = DecodeNativeJoinReply(
             joinResult.Result,
             replyParts,
             actor.ActorId,
             activation.SpotRid);
+        var accepted = joinResult.JoinResultCode == 0;
         var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
-        actorState.NativeActorRef = joinResult.Actor;
-        if (joinResult.Actor.NodeRid != actorRef.NodeRid)
+        var resultActor = accepted ? joinResult.Actor : actorRef;
+        if (accepted)
         {
-            actorState.InvalidateContext();
+            actorState.NativeActorRef = joinResult.Actor;
+            if (joinResult.Actor.NodeRid != actorRef.NodeRid)
+            {
+                actorState.InvalidateContext();
+            }
         }
 
-        return new ZLinkActorJoinResult<TReply>(
-            ResultCode: joinResult.JoinResultCode,
-            ToActorRef(joinResult.Actor),
+        return new ZLinkActorJoinResult(
+            Accepted: accepted,
+            ToActorRef(resultActor),
             reply);
     }
 
@@ -265,7 +270,7 @@ internal sealed class ZLinkFrameworkActorFacade(
     private static ActorRef ToActorRef(ZLinkBackendActorRef actorRef)
         => new(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
 
-    private static TReply DecodeNativeJoinReply<TRequest, TReply>(
+    private static Message DecodeNativeJoinReply(
         RequestResult result,
         IReadOnlyList<Message> replyParts,
         string actorId,
@@ -283,12 +288,11 @@ internal sealed class ZLinkFrameworkActorFacade(
             if (replyParts.Count == 0)
             {
                 throw new InvalidOperationException(
-                    $"Actor join reply for '{typeof(TRequest)}' was empty.");
+                    "Actor join reply was empty.");
             }
 
-            var replyObj = ZLinkEnvelopeCodec.DecodeBody(replyParts, typeof(TReply));
-            return (TReply?)replyObj
-                ?? throw new InvalidOperationException($"Actor join reply for '{typeof(TRequest)}' was null.");
+            var reply = (Message)ZLinkEnvelopeCodec.DecodeBody(replyParts, typeof(Message))!;
+            return Message.From(reply);
         }
         finally
         {

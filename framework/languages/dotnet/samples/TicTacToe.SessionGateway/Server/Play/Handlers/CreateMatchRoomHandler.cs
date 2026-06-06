@@ -17,8 +17,12 @@ internal sealed class CreateMatchRoomHandler(IZLinkSpotManager spots)
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
-        var room = await spots.CreateAsync<TicTacToeGameSpot>(cancellationToken)
-            ;
+        var room = await spots.CreateAsync<TicTacToeGameSpot>(cancellationToken);
+        if (room.State != ZLinkSpotCreateState.Created)
+        {
+            throw new InvalidOperationException("TicTacToe match room creation was rejected.");
+        }
+
         return new CreateMatchRoomRes(room.SpotRid.ToHex());
     }
 }

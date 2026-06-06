@@ -7,8 +7,8 @@ internal sealed partial class ZLinkSpotActivation
 {
     public CancellationToken StopToken => _stopSource.Token;
 
-    public async ValueTask InitializeAsync(
-        IReadOnlyList<Message> createParts,
+    public async ValueTask<ZLinkSpotCreateResponse> InitializeAsync(
+        Message request,
         CancellationToken cancellationToken)
     {
         RegisterWithoutSynchronizationContext(() =>
@@ -47,14 +47,28 @@ internal sealed partial class ZLinkSpotActivation
             ct => ExecuteSerializedAsync(
                 static (activation, innerCt) => activation.DispatchSubscriptionsAsync(innerCt),
                 ct));
+        var create = new SpotCreateCallState(request);
         await ExecuteSerializedAsync(
             static async (activation, state, ct) =>
             {
-                await activation.Spot.OnCreateAsync(state, ct);
+                state.Response = await activation.Spot.OnCreateAsync(state.Request, ct);
+                if (!state.Response.Accepted)
+                {
+                    return;
+                }
+
                 await activation.Spot.OnInitializeAsync(ct);
             },
-            createParts,
+            create,
             cancellationToken);
+        return create.Response;
+    }
+
+    private sealed class SpotCreateCallState(Message request)
+    {
+        public Message Request { get; } = request;
+
+        public ZLinkSpotCreateResponse Response { get; set; }
     }
 
     public ValueTask<IZLinkTimer> AddTimer<THandler>(
@@ -115,6 +129,11 @@ internal sealed partial class ZLinkSpotActivation
         return ExecuteSerializedAsync(
             static (activation, ct) => activation.Spot.OnClosingAsync(ct),
             cancellationToken);
+    }
+
+    ValueTask<bool> IZLinkSpotContext.CloseAsync(CancellationToken cancellationToken)
+    {
+        return _runtime.CloseSpotAsync(SpotRid, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()

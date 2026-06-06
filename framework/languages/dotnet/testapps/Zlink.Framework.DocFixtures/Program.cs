@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Systems.Zlink.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
@@ -175,7 +176,6 @@ internal static class FixtureSamples
     public static IHostApplicationBuilder CreateActorBuilder()
     {
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddScoped<FixtureActorJoinHandler>();
         builder.Services.AddScoped<FixtureActorPacketSession>();
         builder.Services.AddZLinkFramework(options =>
         {
@@ -308,28 +308,23 @@ internal sealed class FixtureRawStreamSession(IZLinkSessionContext context) : IZ
     }
 }
 
-internal sealed class FixtureActorSpot(IZLinkSpotContext context) : IZLinkSpot
+internal sealed class FixtureActorSpot(IZLinkSpotContext context) : IZLinkSpot<FixtureActor>
 {
     public IZLinkSpotContext Context { get; } = context;
 
     public void Configure()
     {
-        Context.Handlers.AddActorJoin<FixtureActorJoinHandler, FixtureActor, FixtureActorJoinRequest, FixtureActorJoinReply>();
     }
-}
 
-internal sealed class FixtureActorJoinHandler
-    : IZLinkSpotActorJoinHandler<FixtureActorSpot, FixtureActor, FixtureActorJoinRequest, FixtureActorJoinReply>
-{
-    public async ValueTask<FixtureActorJoinReply> HandleAsync(
-        FixtureActorSpot spot,
+    public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         FixtureActor actor,
-        FixtureActorJoinRequest request,
+        global::Systems.Zlink.Message request,
         CancellationToken cancellationToken)
     {
-        actor.AttachSpot(spot);
+        var decoded = request.FromJson<FixtureActorJoinRequest>();
+        actor.AttachSpot(this);
         await actor.OnAttachedAsync(cancellationToken);
-        return new FixtureActorJoinReply(request.RoomId);
+        return ZLinkSpotActorJoinResult.Accept(new FixtureActorJoinReply(decoded.RoomId).ToJson());
     }
 }
 

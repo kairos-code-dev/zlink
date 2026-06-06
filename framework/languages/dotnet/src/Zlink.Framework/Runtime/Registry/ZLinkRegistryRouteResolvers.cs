@@ -26,7 +26,7 @@ internal sealed class ZLinkRegistrySpotRemoteAddressResolver(
                 spotRoute.SpotRid,
                 spotRoute.SpotKind.ToFramework());
         }
-        catch (ZlinkConfigException error) when (error.InternalErrno == 2)
+        catch (ZlinkConfigException error) when (error.NativeErrno == 2)
         {
             throw NotFound(spotRid.ToHex(), error);
         }

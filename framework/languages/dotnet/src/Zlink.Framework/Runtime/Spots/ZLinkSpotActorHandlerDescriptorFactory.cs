@@ -63,50 +63,8 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             0 => throw new InvalidOperationException(
                 $"Actor handler '{handlerType}' must implement exactly one supported Entry Spot or user Spot actor handler interface or declare exactly one SPOT actor handler attribute."),
             _ => throw new InvalidOperationException(
-                $"Actor handler '{handlerType}' implements multiple supported actor handler interfaces. Use the explicit actor registration method."),
+                $"Actor handler '{handlerType}' implements multiple supported actor handler interfaces. Use AddActorPacket or AddActorDisconnected to select the actor surface explicitly."),
         };
-    }
-
-    public static ZLinkSpotActorLifecycleDescriptor CreateLifecycle(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type expectedActorType,
-        bool joined)
-    {
-        var expectedDefinition = joined
-            ? typeof(IZLinkSpotPostActorJoinedHandler<,>).ToString()
-            : typeof(IZLinkSpotActorLeftHandler<,>).ToString();
-
-        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
-        {
-            var descriptor = ZLinkSpotActorInterfaceDescriptorFactory.TryCreateLifecycle(
-                surface,
-                expectedSpotType,
-                handlerType,
-                expectedActorType,
-                definition,
-                arguments,
-                joined);
-            if (descriptor is not null)
-            {
-                return descriptor;
-            }
-        }
-
-        var attributed = ZLinkSpotActorAttributedDescriptorFactory.TryCreateLifecycle(
-            surface,
-            expectedSpotType,
-            handlerType,
-            expectedActorType,
-            joined);
-        if (attributed is not null)
-        {
-            return attributed;
-        }
-
-        throw new InvalidOperationException(
-            $"Actor lifecycle handler '{handlerType}' must implement '{expectedDefinition}' or declare a matching SPOT actor lifecycle attribute.");
     }
 
     public static ZLinkSpotActorLifecycleDescriptor CreateDisconnected(

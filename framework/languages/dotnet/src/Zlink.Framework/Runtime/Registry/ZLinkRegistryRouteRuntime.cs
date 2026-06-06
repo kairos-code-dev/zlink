@@ -82,12 +82,12 @@ internal static class ZLinkRegistryRouteRuntime
                 return;
             }
             catch (ZlinkConfigException error)
-                when (ignoreNotFound && error.InternalErrno == RouteNotFoundErrno)
+                when (ignoreNotFound && error.NativeErrno == RouteNotFoundErrno)
             {
                 return;
             }
             catch (ZlinkConfigException error)
-                when (error.InternalErrno is RouteNotFoundErrno or RouteRetryErrno)
+                when (error.NativeErrno is RouteNotFoundErrno or RouteRetryErrno)
             {
                 if (timeoutSource.IsCancellationRequested)
                 {

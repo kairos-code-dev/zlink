@@ -221,13 +221,11 @@ internal sealed partial class ZLinkEntrySpotActivation :
     public ValueTask InvokeActorLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         return InvokeActorLifecycleWithoutGateAsync(
             descriptor,
             actor,
-            context,
             cancellationToken);
     }
 
@@ -262,13 +260,11 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     private sealed record ActorLifecycleState(
         ZLinkSpotActorLifecycleDescriptor Descriptor,
-        IZLinkActor Actor,
-        ZLinkSpotActorChangeResult Context);
+        IZLinkActor Actor);
 
     private async ValueTask InvokeActorLifecycleWithoutGateAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         var previous = Current.Value;
@@ -279,7 +275,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
             await _invoker.InvokeActorLifecycleAsync(
                     descriptor,
                     actor,
-                    context,
                     cancellationToken)
                 .ConfigureAwait(false);
         }

@@ -7,6 +7,7 @@ public sealed class BuilderContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkFrameworkOptions),
+        typeof(IZLinkDiscoveryBuilder),
         typeof(IZLinkMetadataPolicyBuilder),
         typeof(IZLinkRegistrySpotRemoteAddressesOptions))]
     public void Framework_options_register_the_top_level_runtime_surface()

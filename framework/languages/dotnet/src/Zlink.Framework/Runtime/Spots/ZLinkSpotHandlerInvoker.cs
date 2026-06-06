@@ -41,20 +41,28 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<object?> InvokeActorJoinAsync(
+    public async ValueTask<ZLinkSpotActorJoinResult> InvokeActorJoinAsync(
         ZLinkSpotActorJoinDescriptor descriptor,
         IZLinkActor actor,
-        object request,
+        Message request,
         CancellationToken cancellationToken)
     {
         EnsureActorType(
             descriptor.HandlerType,
             descriptor.ActorType,
             actor,
-            "SPOT actor join handler");
+            "SPOT actor join callback");
 
-        return await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, request, cancellationToken)
+        if (descriptor.PassSpotArgument)
+        {
+            var result = await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, request, cancellationToken)
+                .ConfigureAwait(false);
+            return (ZLinkSpotActorJoinResult)result!;
+        }
+
+        var hookResult = await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, request, cancellationToken)
             .ConfigureAwait(false);
+        return (ZLinkSpotActorJoinResult)hookResult!;
     }
 
     public async ValueTask InvokeActorPacketAsync(
@@ -170,7 +178,6 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
     public async ValueTask InvokeActorLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         EnsureActorType(
@@ -179,7 +186,14 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             actor,
             "SPOT actor lifecycle handler");
 
-        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, context, cancellationToken)
+        if (descriptor.PassSpotArgument)
+        {
+            await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -219,9 +233,9 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         object? arg0,
         object? arg1)
     {
+        var handler = ResolveHandler(handlerType);
         return ZLinkHandlerInvocationEngine.InvokeAsync(
-            services,
-            handlerType,
+            handler,
             invoker,
             2,
             arguments =>
@@ -238,9 +252,9 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         object? arg1,
         object? arg2)
     {
+        var handler = ResolveHandler(handlerType);
         return ZLinkHandlerInvocationEngine.InvokeAsync(
-            services,
-            handlerType,
+            handler,
             invoker,
             3,
             arguments =>
@@ -259,9 +273,9 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         object? arg2,
         object? arg3)
     {
+        var handler = ResolveHandler(handlerType);
         return ZLinkHandlerInvocationEngine.InvokeAsync(
-            services,
-            handlerType,
+            handler,
             invoker,
             4,
             arguments =>
@@ -282,9 +296,9 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         object? arg3,
         object? arg4)
     {
+        var handler = ResolveHandler(handlerType);
         return ZLinkHandlerInvocationEngine.InvokeAsync(
-            services,
-            handlerType,
+            handler,
             invoker,
             5,
             arguments =>
@@ -297,4 +311,10 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             });
     }
 
+    private object ResolveHandler(Type handlerType)
+    {
+        return handlerType.IsInstanceOfType(spot)
+            ? spot
+            : ActivatorUtilities.GetServiceOrCreateInstance(services, handlerType);
+    }
 }

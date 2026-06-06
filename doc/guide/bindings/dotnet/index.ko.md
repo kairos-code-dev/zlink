@@ -103,6 +103,15 @@ byte[] copy             = fromText.ToArray();         // 복사해서 꺼내기
 `AsReadOnlySpan()`이 주는 span은 메시지가 살아있는 동안만 유효합니다. 메시지 모델
 개념은 [메시지 API](../../09-message-api.ko.md)를 참고하세요.
 
+JSON, Protobuf, MessagePack 같은 객체 codec 은 별도 확장 패키지에서 `Message` 위에
+얹어 쓴다. 예를 들어 JSON을 쓰면 `Systems.Zlink.Codecs.Json` 네임스페이스의
+`ToJson()` / `FromJson<T>()` 또는 `Encode()` / `Decode<T>()` 확장 함수를 사용한다.
+Protobuf는 `Systems.Zlink.Codecs.Protobuf` 의 `ToProto()` / `FromProto<T>()`,
+MessagePack은 `Systems.Zlink.Codecs.MessagePack` 의 `ToMsgPack()` /
+`FromMsgPack<T>()` 를 사용한다. framework 의 actor join callback 처럼 raw
+`Message`를 주고받는 표면에서는 application 이 이 확장 함수 중 하나를 선택해
+request와 reply를 변환한다.
+
 ### 3. 수신 (Received)
 
 수신 결과를 담는 **재사용 가능한 봉투**입니다. 핫 패스에서 한 번 만들어

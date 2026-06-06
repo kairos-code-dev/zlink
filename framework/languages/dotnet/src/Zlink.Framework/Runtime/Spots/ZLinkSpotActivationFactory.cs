@@ -13,10 +13,10 @@ internal sealed class ZLinkSpotActivationFactory(
     Func<string, ZLinkAsyncSubmitter?> channelSubmitter,
     Action connectDiscoveredPubSubPeers)
 {
-    public async ValueTask<ZLinkSpotActivation> CreateAsync(
+    public async ValueTask<ZLinkSpotActivationCreateResult> CreateAsync(
         Type spotType,
         IZLinkBackendSpot nativeSpot,
-        IReadOnlyList<Message> createParts,
+        Message request,
         CancellationToken cancellationToken)
     {
         connectDiscoveredPubSubPeers();
@@ -44,8 +44,8 @@ internal sealed class ZLinkSpotActivationFactory(
             activation.AttachSpot(spot);
             spot.Configure();
             activation.BindDescriptors();
-            await activation.InitializeAsync(createParts, cancellationToken).ConfigureAwait(false);
-            return activation;
+            var response = await activation.InitializeAsync(request, cancellationToken).ConfigureAwait(false);
+            return new ZLinkSpotActivationCreateResult(activation, response);
         }
         catch
         {
@@ -62,3 +62,7 @@ internal sealed class ZLinkSpotActivationFactory(
         }
     }
 }
+
+internal readonly record struct ZLinkSpotActivationCreateResult(
+    ZLinkSpotActivation Activation,
+    ZLinkSpotCreateResponse Response);

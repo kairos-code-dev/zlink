@@ -841,11 +841,11 @@ internal sealed class ZLinkEntrySpotRuntime
     }
 
     public ValueTask ActorJoinedAsync(
-        ZLinkSpotActorChangeResult info,
+        IZLinkActor actor,
         CancellationToken cancellationToken)
     {
         return _lifecycleQueue.RunAsync(
-            ct => InvokeEntrySpotActorJoinedHandlerAsync(info, ct),
+            ct => InvokeEntrySpotActorJoinedHandlerAsync(actor, ct),
             cancellationToken);
     }
 }
@@ -1304,11 +1304,20 @@ public sealed class TicTacToeGame : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddActorJoin<JoinMatchHandler>();
         Context.AddHandler<PlaceMarkHandler>();
         Context.AddHandler<MoveHandler>();
         Context.AddHandler<TicTacToeGameJoinedHandler>();
         Context.AddHandler<TicTacToeGameLeftHandler>();
+    }
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        PlayActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        var join = request.Decode<JoinMatchReq>();
+        return ValueTask.FromResult(
+            ZLinkSpotActorJoinResult.Accept(new JoinMatchRes(join.MatchId).Encode()));
     }
 }
 ```
@@ -1391,9 +1400,9 @@ public sealed class JoinMatchHandler
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
         var matchSpotRid = RoutingId.From(request.MatchId);
         var joined = await actor.Context
-            .JoinSpot(matchSpotRid, request)
-            .SubmitAsync<JoinMatchSpotResult>(cancellationToken);
-        return joined.Reply.ToReply();
+            .JoinSpot(matchSpotRid, request.Encode())
+            .SubmitAsync(cancellationToken);
+        return joined.Reply.Decode<JoinMatchSpotResult>().ToReply();
     }
 }
 

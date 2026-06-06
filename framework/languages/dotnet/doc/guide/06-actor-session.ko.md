@@ -78,7 +78,7 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 |---------------------------|------|
 | `SpotRid?`, `IsJoined` | 현재 Spot join 상태 조회 |
 | `BoundSession` | 자기 client 로 push (§4) |
-| `JoinSpot<TRequest>(spotRid, request)` | user Spot 으로 join. `.SubmitAsync<TReply>(ct)` 로 종결 |
+| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. `.SubmitAsync(ct)` 로 종결하며 `Accepted`와 reply `Message`를 받는다 |
 | `JoinEntrySpot(spotNodeRid)` | target SpotNode 의 Entry Spot 으로 이동. `.SubmitAsync(ct)` 로 종결 |
 
 `spotRid`는 user Spot 의 `RoutingId`이고, `spotNodeRid`는 Entry Spot 을 가진
@@ -105,16 +105,23 @@ public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntr
     }
 }
 
-public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot
+public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor>
 {
     public IZLinkSpotContext Context { get; } = context;
 
     public void Configure()
     {
-        Context.AddActorJoin<JoinMatchSpotHandler>();
         Context.AddHandler<PlaceMarkHandler>();
-        Context.AddHandler<MatchJoinedHandler>();
-        Context.AddHandler<MatchLeftHandler>();
+    }
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        PlayerActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        var join = request.Decode<JoinMatchReq>();
+        var reply = new JoinMatchSpotResult(join.MatchId).Encode();
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(reply));
     }
 }
 ```
@@ -134,14 +141,14 @@ public sealed class JoinMatchHandler
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
         var matchSpotRid = RoutingId.From(request.MatchId);
         var joined = await actor.Context
-            .JoinSpot(matchSpotRid, request)
+            .JoinSpot(matchSpotRid, request.Encode())
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync<JoinMatchSpotResult>(ct);
-        if (joined.ResultCode != 0)
+            .SubmitAsync(ct);
+        if (!joined.Accepted)
         {
-            return joined.Reply.ToReply();
+            return joined.Reply.Decode<JoinMatchSpotResult>().ToReply();
         }
-        return joined.Reply.ToReply();
+        return joined.Reply.Decode<JoinMatchSpotResult>().ToReply();
     }
 }
 

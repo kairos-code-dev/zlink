@@ -73,24 +73,19 @@ public sealed class ProtocolTests : StreamTestSupport
         var sendHeader = CreateStreamHeader(ZlinkStreamMessageKind.Send, "spot.send");
 
         entryRegistry.AddHandler(typeof(RegistryOnlyAttributedEntrySpotActorRequestHandler), null);
-        entryRegistry.AddHandler(typeof(RegistryOnlyAttributedEntrySpotJoinedHandler), null);
         userRegistry.AddHandler(typeof(RegistryOnlyAttributedUserSpotActorSendHandler), null);
-        userRegistry.AddHandler(typeof(RegistryOnlyAttributedUserSpotLeftHandler), null);
-        joins.Add(typeof(RegistryOnlyAttributedSpotActorJoinHandler));
         joins.Bind(new RegistryOnlySpot(null!));
 
         Assert.True(entryRegistry.TryResolve(typeof(RegistryOnlyActor), requestHeader, out var entryRequest));
         Assert.NotNull(entryRequest);
         Assert.Equal(typeof(GatewayPong), entryRequest.ReplyType);
-        Assert.True(entryRegistry.TryResolveJoined(typeof(RegistryOnlyActor), out var entryJoined));
-        Assert.NotNull(entryJoined);
+        Assert.False(entryRegistry.TryResolveJoined(typeof(RegistryOnlyActor), out _));
         Assert.True(userRegistry.TryResolve(typeof(RegistryOnlyActor), sendHeader, out var userSend));
         Assert.NotNull(userSend);
-        Assert.True(userRegistry.TryResolveLeft(typeof(RegistryOnlyActor), out var userLeft));
-        Assert.NotNull(userLeft);
-        Assert.True(joins.TryResolve(typeof(GatewayPing), out var joinDescriptor));
+        Assert.False(userRegistry.TryResolveLeft(typeof(RegistryOnlyActor), out _));
+        Assert.True(joins.TryResolve(out var joinDescriptor));
         Assert.NotNull(joinDescriptor);
-        Assert.Equal(typeof(GatewayPong), joinDescriptor.ReplyType);
+        Assert.Equal(typeof(RegistryOnlyActor), joinDescriptor.ActorType);
     }
 
 }

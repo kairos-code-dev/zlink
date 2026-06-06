@@ -1,5 +1,8 @@
 package systems.zlink.samples.tictactoe.server.play;
 
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -37,5 +40,14 @@ public final class PlayServerApplication {
     @Bean
     TicTacToeGameCreatedHandler ticTacToeGameCreatedHandler() {
         return new TicTacToeGameCreatedHandler();
+    }
+
+    @Bean
+    ObjectMapper ticTacToeJsonMapper() {
+        return JsonMapper.builder()
+            .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true)
+            .configure(MapperFeature.USE_STD_BEAN_NAMING, true)
+            .findAndAddModules()
+            .build();
     }
 }

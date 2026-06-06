@@ -12,7 +12,7 @@ public interface ZLinkSpotManager {
 
     CompletionStage<ZLinkSpotCreateResult> createAsync(
         Class<? extends ZLinkSpot> spotType,
-        List<Message> createParts);
+        Message request);
 
     CompletionStage<ZLinkSpotCreateResult> createAsync(
         Class<? extends ZLinkSpot> spotType,
@@ -25,11 +25,11 @@ public interface ZLinkSpotManager {
     CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid,
-        List<Message> createParts);
+        Message request);
 
     CompletionStage<Optional<ZLinkSpotInfo>> findAsync(RoutingId spotRid);
 
     CompletionStage<List<ZLinkSpotInfo>> listAsync();
 
-    CompletionStage<Boolean> removeAsync(RoutingId spotRid);
+    CompletionStage<Boolean> closeAsync(RoutingId spotRid);
 }

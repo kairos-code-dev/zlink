@@ -7,9 +7,15 @@ import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.bingo.server.play.actors.PlayerActor;
@@ -27,6 +33,7 @@ public final class BingoRoomSpot implements ZLinkSpot {
     private final ZLinkSpotContext context;
     private final BingoNotificationPublisher notifications;
     private final BingoRoomSpotCreatedHandler createdHandler;
+    private final ObjectMapper json;
     private final List<BingoRoomModels.RoomPlayer> players = new ArrayList<>();
     private final Queue<Integer> drawDeck = new ArrayDeque<>();
     private final List<Integer> drawnNumbers = new ArrayList<>();
@@ -39,10 +46,12 @@ public final class BingoRoomSpot implements ZLinkSpot {
     public BingoRoomSpot(
         ZLinkSpotContext context,
         BingoNotificationPublisher notifications,
-        BingoRoomSpotCreatedHandler createdHandler) {
+        BingoRoomSpotCreatedHandler createdHandler,
+        ObjectMapper json) {
         this.context = context;
         this.notifications = notifications;
         this.createdHandler = createdHandler;
+        this.json = json;
         resetDrawDeck();
     }
 
@@ -52,8 +61,36 @@ public final class BingoRoomSpot implements ZLinkSpot {
     }
 
     @Override
-    public CompletionStage<Void> onCreateAsync(List<Message> createParts) {
-        return createdHandler.handleAsync(this, createParts);
+    public CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
+        return createdHandler.handleAsync(this, request);
+    }
+
+    @Override
+    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+        ZLinkActor actor,
+        Message request,
+        CancellationToken cancellationToken) {
+        if (!(actor instanceof PlayerActor player)) {
+            return CompletableFuture.failedFuture(
+                new IllegalArgumentException("Bingo room only accepts PlayerActor."));
+        }
+        Messages.BingoRoomJoinReq joinRequest = decode(request, Messages.BingoRoomJoinReq.class);
+        return joinAsync(player, joinRequest)
+            .thenApply(reply -> ZLinkSpotActorJoinResponse.accept(encode(reply)));
+    }
+
+    @Override
+    public CompletionStage<Void> onPostActorJoinedAsync(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletionStage<Void> onActorLeftAsync(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
@@ -219,6 +256,22 @@ public final class BingoRoomSpot implements ZLinkSpot {
         drawDeck.clear();
         for (int number = 1; number <= settings.maxDrawNumber(); number++) {
             drawDeck.add(number);
+        }
+    }
+
+    private <T> T decode(Message request, Class<T> type) {
+        try {
+            return json.readValue(request.toByteArray(), type);
+        } catch (java.io.IOException ex) {
+            throw new IllegalArgumentException("Failed to decode " + type.getSimpleName() + ".", ex);
+        }
+    }
+
+    private Message encode(Object reply) {
+        try {
+            return Message.from(json.writeValueAsBytes(reply));
+        } catch (JsonProcessingException ex) {
+            throw new IllegalArgumentException("Failed to encode bingo room join reply.", ex);
         }
     }
 

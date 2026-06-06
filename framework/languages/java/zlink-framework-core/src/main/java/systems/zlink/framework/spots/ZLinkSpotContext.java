@@ -19,6 +19,8 @@ public interface ZLinkSpotContext {
 
     CompletionStage<Void> leaveActorAsync(ZLinkActor actor);
 
+    CompletionStage<Boolean> closeAsync();
+
     CompletionStage<ZLinkTimer> addTimer(
         String name,
         Duration period,

@@ -29,11 +29,8 @@ import systems.zlink.framework.handlers.ZLinkPublish
 import systems.zlink.framework.handlers.ZLinkRequest
 import systems.zlink.framework.handlers.ZLinkSend
 import systems.zlink.framework.handlers.ZLinkSpotActorDisconnected
-import systems.zlink.framework.handlers.ZLinkSpotActorJoin
-import systems.zlink.framework.handlers.ZLinkSpotActorLeft
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
 import systems.zlink.framework.handlers.ZLinkSpotActorSend
-import systems.zlink.framework.handlers.ZLinkSpotPostActorJoined
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory
@@ -46,8 +43,6 @@ import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkAutoConfiguration
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.spots.ZLinkSpot
-import systems.zlink.framework.spots.ZLinkSpotActorChangeKind
-import systems.zlink.framework.spots.ZLinkSpotActorChangeResult
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext
 import systems.zlink.framework.spots.ZLinkSpotContext
@@ -85,11 +80,6 @@ final class KotlinSuspendAnnotationHandlerTest {
     fun scannerTreatsKotlinSuspendSpotActorAnnotationsLikeJavaMethodHandlers() {
         val catalog = ZLinkHandlerScanner.scan(setOf(KotlinSuspendHandlerMarker::class.java))
 
-        val join = catalog.matching(
-            setOf("kotlin-spot"),
-            ZLinkScannedHandlerSurface.SPOT,
-            ZLinkScannedHandlerKind.ACTOR_JOIN,
-        ).single()
         val request = catalog.matching(
             setOf("kotlin-spot"),
             ZLinkScannedHandlerSurface.SPOT,
@@ -100,18 +90,15 @@ final class KotlinSuspendAnnotationHandlerTest {
             ZLinkScannedHandlerSurface.SPOT,
             ZLinkScannedHandlerKind.ACTOR_SEND,
         ).single()
-        val joined = catalog.matching(
-            setOf("kotlin-spot"),
-            ZLinkScannedHandlerSurface.SPOT,
-            ZLinkScannedHandlerKind.ACTOR_JOINED,
-        ).single()
 
-        assertEquals(JoinRequest::class.java, join.messageType())
-        assertEquals(JoinReply::class.java, join.replyType())
         assertEquals(PlayerCommand::class.java, request.messageType())
         assertEquals(PlayerReply::class.java, request.replyType())
         assertEquals(PlayerEvent::class.java, send.messageType())
-        assertEquals(PlayerActor::class.java, joined.messageType())
+        assertTrue(catalog.handlers().none {
+            it.kind() == ZLinkScannedHandlerKind.ACTOR_JOIN ||
+                it.kind() == ZLinkScannedHandlerKind.ACTOR_JOINED ||
+                it.kind() == ZLinkScannedHandlerKind.ACTOR_LEFT
+        })
         assertTrue(ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(request.handlerMethod()))
     }
 
@@ -297,10 +284,6 @@ class KotlinSpringSuspendPublishHandler {
 
 @ZLinkHandlerGroup("kotlin-spot")
 class KotlinSpringSuspendSpotActorHandler {
-    @ZLinkSpotActorJoin
-    suspend fun join(actor: PlayerActor, request: JoinRequest): JoinReply =
-        JoinReply("${actor.actorId()}:${request.value}")
-
     @ZLinkSpotActorRequest
     suspend fun request(actor: PlayerActor, request: PlayerCommand): PlayerReply =
         PlayerReply("${actor.actorId()}:${request.value}")
@@ -308,16 +291,6 @@ class KotlinSpringSuspendSpotActorHandler {
     @ZLinkSpotActorSend
     suspend fun send(actor: PlayerActor, message: PlayerEvent) {
         ObservedValues.lastActorSend.set("${actor.actorId()}:${message.value}")
-    }
-
-    @ZLinkSpotPostActorJoined
-    suspend fun joined(actor: PlayerActor, result: ZLinkSpotActorChangeResult) {
-        ObservedValues.lastActorJoined.set("${actor.actorId()}:${result.kind()}")
-    }
-
-    @ZLinkSpotActorLeft
-    suspend fun left(actor: PlayerActor, result: ZLinkSpotActorChangeResult) {
-        ObservedValues.lastActorLeft.set("${actor.actorId()}:${result.kind()}")
     }
 
     @ZLinkSpotActorDisconnected

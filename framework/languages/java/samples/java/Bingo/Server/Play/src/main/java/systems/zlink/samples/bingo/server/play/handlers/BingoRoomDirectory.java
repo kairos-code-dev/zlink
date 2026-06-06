@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.concurrent.CompletionStage;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
@@ -64,7 +63,7 @@ public final class BingoRoomDirectory {
         }
 
         Message settingsPart = serialize(settings);
-        return spots.getOrCreateAsync(BingoRoomSpot.class, RoutingId.fromHex(roomId), List.of(settingsPart))
+        return spots.getOrCreateAsync(BingoRoomSpot.class, RoutingId.fromHex(roomId), settingsPart)
             .thenApply(ignored -> roomId)
             .whenComplete((ignored, error) -> settingsPart.close());
     }

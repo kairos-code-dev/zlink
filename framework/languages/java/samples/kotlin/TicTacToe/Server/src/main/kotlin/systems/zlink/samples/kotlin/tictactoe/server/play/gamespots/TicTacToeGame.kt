@@ -1,12 +1,17 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.gamespots
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
+import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
+import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimer
 import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.samples.kotlin.tictactoe.server.play.actors.PlayActor
@@ -16,11 +21,13 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.GameState
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.GameStateNotify
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerJoinedNotify
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinRes
 
 class TicTacToeGame(
     private val context: ZLinkSpotContext,
     private val createdHandler: TicTacToeGameCreatedHandler,
+    private val json: ObjectMapper,
     coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkCoroutineSpot(coroutines) {
     private val gameTickPeriod: Duration = Duration.ofSeconds(1)
@@ -39,8 +46,32 @@ class TicTacToeGame(
 
     override fun context(): ZLinkSpotContext = context
 
-    override suspend fun onCreate(createParts: MutableList<Message>) {
-        createdHandler.handle(this, createParts)
+    override suspend fun onCreate(request: Message): ZLinkSpotCreateResponse {
+        createdHandler.handle(this, request)
+        return ZLinkSpotCreateResponse.accept()
+    }
+
+    override suspend fun onActorJoin(
+        actor: ZLinkActor,
+        request: Message,
+        cancellationToken: CancellationToken,
+    ): ZLinkSpotActorJoinResponse {
+        require(actor is PlayActor) { "tic-tac-toe game only accepts PlayActor." }
+        val joinRequest = json.readValue(request.toByteArray(), TicTacToeGameJoinReq::class.java)
+        val reply = join(actor, joinRequest.gameId)
+        return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
+    }
+
+    override suspend fun onPostActorJoined(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ) {
+    }
+
+    override suspend fun onActorLeft(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ) {
     }
 
     override suspend fun onInitialize() {
@@ -56,8 +87,8 @@ class TicTacToeGame(
         gameTick?.cancelAsync()?.await()
     }
 
-    fun markCreated(createParts: List<Message>) {
-        require(createParts.isEmpty()) { "tic-tac-toe game creation does not accept payload parts" }
+    fun markCreated(request: Message) {
+        require(request.isEmpty()) { "tic-tac-toe game creation does not accept payload parts" }
         created = true
     }
 

@@ -25,7 +25,6 @@ import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.spots.ZLinkSpot;
 
@@ -193,6 +192,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 "actor is not managed by this runtime: " + actor.actorId());
         }
         return Optional.ofNullable(context.spotRid);
+    }
+
+    public boolean hasActorsInSpot(RoutingId spotRid) {
+        for (DefaultActorContext context : contextsByActor.values()) {
+            if (spotRid.equals(context.spotRid)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public CompletionStage<Optional<ZLinkActor>> getOrCreateLocalActor(
@@ -458,14 +466,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             if (replyType == null) {
                 throw new ZLinkConfigurationException("replyType is required");
             }
-            Message requestPart = serializer.serialize(request);
-            Message packetNamePart = Message.from(packetNameFor(request.getClass()));
+            Message requestPart = request instanceof Message message
+                ? Message.from(message.toByteArray())
+                : serializer.serialize(request);
             try {
                 return spotNode.joinActor(
                         context.actorRef,
                         context.actorRef.nodeRid(),
                         spotRid,
-                        List.of(packetNamePart, requestPart),
+                        List.of(requestPart),
                         timeout)
                     .thenApply(result -> {
                         if (result.result() != ZLinkBackendRequestResult.OK) {
@@ -474,10 +483,12 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                         }
                         Message emptyReply = null;
                         try {
-                            context.actorRef = result.actor();
-                            context.spotRid = result.joinedSpotRid();
-                            context.spot = spotResolver.apply(result.joinedSpotRid());
-                            context.joined = true;
+                            if (result.joinResultCode() == 0) {
+                                context.actorRef = result.actor();
+                                context.spotRid = result.joinedSpotRid();
+                                context.spot = spotResolver.apply(result.joinedSpotRid());
+                                context.joined = true;
+                            }
                             Message firstReply = result.replyParts().isEmpty()
                                 ? (emptyReply = Message.from(new byte[0]))
                                 : result.replyParts().get(0);
@@ -497,14 +508,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                         }
                     });
             } finally {
-                packetNamePart.close();
                 requestPart.close();
             }
         }
-    }
-
-    private static String packetNameFor(Class<?> messageType) {
-        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
-        return packet == null ? messageType.getSimpleName() : packet.value();
     }
 }

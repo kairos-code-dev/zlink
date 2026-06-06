@@ -1,8 +1,9 @@
 package systems.zlink.framework.spots;
 
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.contracts.messaging.Message;
 
 public interface ZLinkSpot {
@@ -11,8 +12,8 @@ public interface ZLinkSpot {
     default void configure() {
     }
 
-    default CompletionStage<Void> onCreateAsync(List<Message> createParts) {
-        return CompletableFuture.completedFuture(null);
+    default CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
+        return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
     }
 
     default CompletionStage<Void> onInitializeAsync() {
@@ -20,6 +21,25 @@ public interface ZLinkSpot {
     }
 
     default CompletionStage<Void> onClosingAsync() {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    default CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+        ZLinkActor actor,
+        Message request,
+        CancellationToken cancellationToken) {
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
+    }
+
+    default CompletionStage<Void> onPostActorJoinedAsync(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    default CompletionStage<Void> onActorLeftAsync(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
         return CompletableFuture.completedFuture(null);
     }
 }

@@ -6,8 +6,8 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.TicTacToeGam
 class TicTacToeGameCreatedHandler {
     fun handle(
         game: TicTacToeGame,
-        createParts: List<Message>,
+        request: Message,
     ) {
-        game.markCreated(createParts)
+        game.markCreated(request)
     }
 }

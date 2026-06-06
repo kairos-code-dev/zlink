@@ -22,16 +22,14 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkMessageSerializer;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.handlers.ZLinkSpotActorLeft;
-import systems.zlink.framework.handlers.ZLinkSpotActorJoin;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
-import systems.zlink.framework.handlers.ZLinkSpotPostActorJoined;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.channels.ZLinkSendContext;
@@ -40,23 +38,23 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.registry.ZLinkRegistrySpotRemoteAddressResolver;
-import systems.zlink.framework.spots.ZLinkSpotActorChangeResult;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinHandler;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.framework.spots.ZLinkSpotCreateState;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
-import systems.zlink.framework.spots.ZLinkSpotPostActorJoinedHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 
 final class SpotRuntimeFakeBackendTest {
     @Test
-    void spotManagerCreateListFindAndRemoveUseBackendSpotNode() {
+    void spotManagerCreateListFindAndCloseUseBackendSpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
             mesh.addNode("play", node -> {
@@ -70,16 +68,16 @@ final class SpotRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
-            assertEquals(true, runtime.spotManager()
+            assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
                 .createAsync(GameSpot.class, rid)
                 .toCompletableFuture()
                 .join()
-                .created());
-            assertEquals(false, runtime.spotManager()
+                .state());
+            assertEquals(ZLinkSpotCreateState.EXISTING, runtime.spotManager()
                 .getOrCreateAsync(GameSpot.class, rid)
                 .toCompletableFuture()
                 .join()
-                .created());
+                .state());
             assertEquals(Optional.of(rid), runtime.spotManager()
                 .findAsync(rid)
                 .toCompletableFuture()
@@ -93,11 +91,11 @@ final class SpotRuntimeFakeBackendTest {
                 .map(info -> info.spotRid())
                 .toList());
             assertEquals(true, runtime.spotManager()
-                .removeAsync(rid)
+                .closeAsync(rid)
                 .toCompletableFuture()
                 .join());
             assertEquals(false, runtime.spotManager()
-                .removeAsync(rid)
+                .closeAsync(rid)
                 .toCompletableFuture()
                 .join());
         }
@@ -138,18 +136,18 @@ final class SpotRuntimeFakeBackendTest {
              Message second = Message.from("second".getBytes(StandardCharsets.UTF_8));
              ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
-            assertEquals(true, runtime.spotManager()
-                .getOrCreateAsync(PayloadSpot.class, rid, List.of(first))
+            assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
+                .getOrCreateAsync(PayloadSpot.class, rid, first)
                 .toCompletableFuture()
                 .join()
-                .created());
+                .state());
             assertEquals("first", PayloadSpot.lastCreatePayload.get());
 
-            assertEquals(false, runtime.spotManager()
-                .getOrCreateAsync(PayloadSpot.class, rid, List.of(second))
+            assertEquals(ZLinkSpotCreateState.EXISTING, runtime.spotManager()
+                .getOrCreateAsync(PayloadSpot.class, rid, second)
                 .toCompletableFuture()
                 .join()
-                .created());
+                .state());
             assertEquals("first", PayloadSpot.lastCreatePayload.get());
         }
     }
@@ -296,7 +294,7 @@ final class SpotRuntimeFakeBackendTest {
 
             backendFactory.dispatchSpotActorJoinReadable(
                 "player-serial",
-                "SerialJoinRequest",
+                null,
                 "join");
             awaitFuture(SerialActorJoinHandler.started, backendFactory.calls());
             backendFactory.dispatchSpotRoute("String", "second");
@@ -1073,9 +1071,8 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     @Test
-    void entrySpotActorJoinReadableInvokesRegisteredHandlerAndRepliesOk() {
-        ActorJoinHandler.lastJoin.set(null);
-        ActorJoinedHandler.lastJoin.set(null);
+    void entrySpotActorJoinReadableCommitsAndInvokesMemberCallback() {
+        LifecycleEntrySpot.lastJoin.set(null);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         options.addSpotMesh("game", mesh ->
@@ -1098,8 +1095,7 @@ final class SpotRuntimeFakeBackendTest {
 
         assertTrue(backendFactory.calls().contains("entrySpot.recvActorJoin.DONT_WAIT"));
         assertTrue(backendFactory.calls().contains("entrySpot.replyActorJoin.player-1.0"));
-        assertEquals("player-1:join-request", ActorJoinHandler.lastJoin.get());
-        assertEquals("player-1:JOIN_ENTRY_SPOT:true", ActorJoinedHandler.lastJoin.get());
+        assertEquals("player-1:true", LifecycleEntrySpot.lastJoin.get());
     }
 
     @Test
@@ -1208,9 +1204,9 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     @Test
-    void userSpotActorJoinReadableInvokesInterfaceJoinAndLifecycleHandlers() {
-        InterfaceActorJoinHandler.lastJoin.set(null);
-        InterfaceActorJoinedHandler.lastJoin.set(null);
+    void userSpotActorJoinReadableInvokesMemberJoinAndLifecycleCallbacks() {
+        InterfaceUserSpot.lastJoin.set(null);
+        InterfaceUserSpot.lastPostJoin.set(null);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addActorFactory("player", PlayerActorFactory.class);
         options.addSpotMesh("game", mesh ->
@@ -1230,18 +1226,18 @@ final class SpotRuntimeFakeBackendTest {
 
             backendFactory.dispatchSpotActorJoinReadable(
                 "player-1",
-                "InterfaceActorRequest",
+                null,
                 "join-request");
             awaitCall(backendFactory, "spot.1.replyActorJoin.player-1.0");
         }
 
-        assertEquals("player-1:join-request", InterfaceActorJoinHandler.lastJoin.get());
-        assertEquals("player-1:JOIN_ENTRY_SPOT:true", InterfaceActorJoinedHandler.lastJoin.get());
+        assertEquals("player-1:join-request", InterfaceUserSpot.lastJoin.get());
+        assertEquals("player-1:true", InterfaceUserSpot.lastPostJoin.get());
     }
 
     @Test
-    void spotContextLeaveActorMarksActorLeftAndInvokesRegisteredHandler() {
-        ActorLeftHandler.lastLeave.set(null);
+    void spotContextLeaveActorMarksActorLeftAndInvokesMemberCallback() {
+        OutboundSpot.lastLeave.set(null);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         options.addSpotMesh("game", mesh ->
@@ -1274,12 +1270,12 @@ final class SpotRuntimeFakeBackendTest {
             OutboundSpot.context.leaveActorAsync(actor).toCompletableFuture().join();
         }
 
-        assertEquals("player-1:LEAVE_SPOT:false", ActorLeftHandler.lastLeave.get());
+        assertEquals("player-1:false", OutboundSpot.lastLeave.get());
     }
 
     @Test
-    void entrySpotActorLifecycleReadableDrainsLeftEventAndInvokesRegisteredHandler() {
-        ActorLeftHandler.lastLeave.set(null);
+    void entrySpotActorLifecycleReadableDrainsLeftEventAndInvokesMemberCallback() {
+        LifecycleEntrySpot.lastLeave.set(null);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         options.addSpotMesh("game", mesh ->
@@ -1302,7 +1298,7 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         assertTrue(backendFactory.calls().contains("entrySpot.recvActorLifecycle.DONT_WAIT"));
-        assertEquals("player-1:LEAVE_SPOT:false", ActorLeftHandler.lastLeave.get());
+        assertEquals("player-1:false", LifecycleEntrySpot.lastLeave.get());
     }
 
     @Test
@@ -1380,11 +1376,9 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public CompletionStage<Void> onCreateAsync(List<Message> createParts) {
-            lastCreatePayload.set(createParts.isEmpty()
-                ? ""
-                : new String(createParts.getFirst().toByteArray(), StandardCharsets.UTF_8));
-            return CompletableFuture.completedFuture(null);
+        public CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
+            lastCreatePayload.set(request.toUtf8String());
+            return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
         }
     }
 
@@ -1411,6 +1405,7 @@ final class SpotRuntimeFakeBackendTest {
     public static final class OutboundSpot implements ZLinkSpot {
         static OutboundSpot instance;
         static ZLinkSpotContext context;
+        static final AtomicReference<String> lastLeave = new AtomicReference<>();
 
         public OutboundSpot(ZLinkSpotContext context) {
             OutboundSpot.instance = this;
@@ -1420,6 +1415,14 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public ZLinkSpotContext context() {
             return context;
+        }
+
+        @Override
+        public CompletionStage<Void> onActorLeftAsync(
+            ZLinkActor actor,
+            CancellationToken cancellationToken) {
+            lastLeave.set(actor.actorId() + ":" + actor.context().isJoined());
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1484,8 +1487,23 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public void configure() {
-            context.handlers().addHandler(SerialActorJoinHandler.class);
             context.handlers().addPacket(SerialSpotHandler.class);
+        }
+
+        @Override
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+            ZLinkActor actor,
+            Message request,
+            CancellationToken cancellationToken) {
+            SerialJoinRequest decoded = new SerialJoinRequest(request.toUtf8String());
+            SerialActorJoinHandler.events.add(
+                "join:start:" + actor.actorId() + ":" + decoded.value());
+            SerialActorJoinHandler.started.complete(null);
+            return SerialActorJoinHandler.release.thenApply(ignored -> {
+                SerialActorJoinHandler.events.add("join:end:" + actor.actorId());
+                return ZLinkSpotActorJoinResponse.accept(
+                    Message.from(("joined:" + decoded.value()).getBytes(StandardCharsets.UTF_8)));
+            });
         }
     }
 
@@ -1542,16 +1560,6 @@ final class SpotRuntimeFakeBackendTest {
 
         public SerialActorJoinHandler() {
         }
-
-        @ZLinkSpotActorJoin
-        public CompletionStage<String> join(PlayerActor actor, SerialJoinRequest request) {
-            events.add("join:start:" + actor.actorId() + ":" + request.value());
-            started.complete(null);
-            return release.thenApply(ignored -> {
-                events.add("join:end:" + actor.actorId());
-                return "joined:" + request.value();
-            });
-        }
     }
 
     public static final class SerialJoinSerializer implements ZLinkMessageSerializer {
@@ -1606,11 +1614,12 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public CompletionStage<Void> onCreateAsync(List<Message> createParts) {
+        public CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
             return outbound
                 .sendToChannel("play-events", "hello")
                 .packetName("Greeting")
-                .submitAsync();
+                .submitAsync()
+                .thenApply(ignored -> ZLinkSpotCreateResponse.accept());
         }
     }
 
@@ -1618,6 +1627,8 @@ final class SpotRuntimeFakeBackendTest {
         static final AtomicInteger configureCount = new AtomicInteger();
         static final AtomicInteger initializeCount = new AtomicInteger();
         static final AtomicInteger closingCount = new AtomicInteger();
+        static final AtomicReference<String> lastJoin = new AtomicReference<>();
+        static final AtomicReference<String> lastLeave = new AtomicReference<>();
         private final ZLinkEntrySpotContext context;
 
         public LifecycleEntrySpot(ZLinkEntrySpotContext context) {
@@ -1643,6 +1654,22 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public CompletionStage<Void> onClosingAsync() {
             closingCount.incrementAndGet();
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onPostActorJoinedAsync(
+            ZLinkActor actor,
+            CancellationToken cancellationToken) {
+            lastJoin.set(actor.actorId() + ":" + actor.context().isJoined());
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onActorLeftAsync(
+            ZLinkActor actor,
+            CancellationToken cancellationToken) {
+            lastLeave.set(actor.actorId() + ":" + actor.context().isJoined());
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -1686,6 +1713,8 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     public static final class InterfaceUserSpot implements ZLinkSpot {
+        static final AtomicReference<String> lastJoin = new AtomicReference<>();
+        static final AtomicReference<String> lastPostJoin = new AtomicReference<>();
         private final ZLinkSpotContext context;
 
         public InterfaceUserSpot(ZLinkSpotContext context) {
@@ -1699,27 +1728,24 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public void configure() {
-            context.handlers().addHandler(InterfaceActorJoinHandler.class);
-            context.handlers().addHandler(InterfaceActorJoinedHandler.class);
         }
-    }
-
-    public static final class InterfaceActorJoinHandler
-        implements ZLinkSpotActorJoinHandler<
-            InterfaceUserSpot,
-            PlayerActor,
-            InterfaceActorRequest,
-            String> {
-        static final AtomicReference<String> lastJoin = new AtomicReference<>();
 
         @Override
-        public CompletionStage<String> handleAsync(
-            InterfaceUserSpot spot,
-            PlayerActor actor,
-            InterfaceActorRequest request,
-            systems.zlink.framework.CancellationToken cancellationToken) {
-            lastJoin.set(actor.actorId() + ":" + request.value());
-            return CompletableFuture.completedFuture("joined:" + request.value());
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+            ZLinkActor actor,
+            Message request,
+            CancellationToken cancellationToken) {
+            lastJoin.set(actor.actorId() + ":" + request.toUtf8String());
+            return CompletableFuture.completedFuture(
+                ZLinkSpotActorJoinResponse.accept(Message.from("joined:" + request.toUtf8String())));
+        }
+
+        @Override
+        public CompletionStage<Void> onPostActorJoinedAsync(
+            ZLinkActor actor,
+            CancellationToken cancellationToken) {
+            lastPostJoin.set(actor.actorId() + ":" + actor.context().isJoined());
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1754,36 +1780,6 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class InterfaceActorJoinedHandler
-        implements ZLinkSpotPostActorJoinedHandler<InterfaceUserSpot, PlayerActor> {
-        static final AtomicReference<String> lastJoin = new AtomicReference<>();
-
-        @Override
-        public CompletionStage<Void> handleAsync(
-            InterfaceUserSpot spot,
-            PlayerActor actor,
-            ZLinkSpotActorChangeResult result,
-            systems.zlink.framework.CancellationToken cancellationToken) {
-            lastJoin.set(actor.actorId()
-                + ":"
-                + result.kind()
-                + ":"
-                + actor.context().isJoined());
-            return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    @ZLinkHandlerGroup("entry")
-    public static final class ActorJoinHandler {
-        static final AtomicReference<String> lastJoin = new AtomicReference<>();
-
-        @ZLinkSpotActorJoin
-        public CompletionStage<String> join(PlayerActor actor, String request) {
-            lastJoin.set(actor.actorId() + ":" + request);
-            return CompletableFuture.completedFuture("joined:" + request);
-        }
-    }
-
     @ZLinkHandlerGroup("entry")
     public static final class ActorSendHandler {
         static final AtomicReference<String> lastMessage = new AtomicReference<>();
@@ -1791,40 +1787,6 @@ final class SpotRuntimeFakeBackendTest {
         @ZLinkSpotActorSend
         public CompletionStage<Void> send(PlayerActor actor, String message) {
             lastMessage.set(actor.actorId() + ":" + message);
-            return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    @ZLinkHandlerGroup("entry")
-    public static final class ActorJoinedHandler {
-        static final AtomicReference<String> lastJoin = new AtomicReference<>();
-
-        @ZLinkSpotPostActorJoined
-        public CompletionStage<Void> joined(
-            PlayerActor actor,
-            ZLinkSpotActorChangeResult result) {
-            lastJoin.set(actor.actorId()
-                + ":"
-                + result.kind()
-                + ":"
-                + actor.context().isJoined());
-            return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    @ZLinkHandlerGroup("entry")
-    public static final class ActorLeftHandler {
-        static final AtomicReference<String> lastLeave = new AtomicReference<>();
-
-        @ZLinkSpotActorLeft
-        public CompletionStage<Void> left(
-            PlayerActor actor,
-            ZLinkSpotActorChangeResult result) {
-            lastLeave.set(actor.actorId()
-                + ":"
-                + result.kind()
-                + ":"
-                + actor.context().isJoined());
             return CompletableFuture.completedFuture(null);
         }
     }

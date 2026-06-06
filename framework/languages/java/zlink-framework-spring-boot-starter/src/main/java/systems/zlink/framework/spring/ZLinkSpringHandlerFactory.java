@@ -18,11 +18,8 @@ import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorDisconnected;
-import systems.zlink.framework.handlers.ZLinkSpotActorJoin;
-import systems.zlink.framework.handlers.ZLinkSpotActorLeft;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
-import systems.zlink.framework.handlers.ZLinkSpotPostActorJoined;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.handlers.ZLinkStreamPacket;
@@ -34,12 +31,9 @@ import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorDisconnectedHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorLeftHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
-import systems.zlink.framework.spots.ZLinkSpotPostActorJoinedHandler;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
@@ -88,9 +82,6 @@ final class ZLinkSpringHandlerFactory implements ZLinkHandlerFactory {
             || ZLinkEntrySpotActorDisconnectedHandler.class.isAssignableFrom(type)
             || ZLinkSpotActorSendHandler.class.isAssignableFrom(type)
             || ZLinkSpotActorRequestHandler.class.isAssignableFrom(type)
-            || ZLinkSpotActorJoinHandler.class.isAssignableFrom(type)
-            || ZLinkSpotPostActorJoinedHandler.class.isAssignableFrom(type)
-            || ZLinkSpotActorLeftHandler.class.isAssignableFrom(type)
             || ZLinkSpotActorDisconnectedHandler.class.isAssignableFrom(type)
             || ZLinkSession.class.isAssignableFrom(type)
             || ZLinkSessionPacketHandler.class.isAssignableFrom(type)
@@ -112,11 +103,8 @@ final class ZLinkSpringHandlerFactory implements ZLinkHandlerFactory {
                     || annotation.annotationType() == ZLinkStreamRaw.class
                     || annotation.annotationType() == ZLinkSpotSubscription.class
                     || annotation.annotationType() == ZLinkSpotRequest.class
-                    || annotation.annotationType() == ZLinkSpotActorJoin.class
                     || annotation.annotationType() == ZLinkSpotActorSend.class
                     || annotation.annotationType() == ZLinkSpotActorRequest.class
-                    || annotation.annotationType() == ZLinkSpotPostActorJoined.class
-                    || annotation.annotationType() == ZLinkSpotActorLeft.class
                     || annotation.annotationType() == ZLinkSpotActorDisconnected.class) {
                     return true;
                 }

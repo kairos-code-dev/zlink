@@ -113,7 +113,8 @@ framework managed timer callback은 같은 Spot 안에서 동시에 실행되지
 반환한 `CompletionStage`가 Spot serial queue의 완료 기준이 된다.
 
 Entry Spot은 user Spot과 다르게 Entry Spot 전체 전역 queue를 만들지 않는다. Entry
-Spot의 actor packet과 actor lifecycle handler는 actor id별 serial execution을 따른다.
+Spot의 actor packet handler와 actor lifecycle member callback은 actor id별 serial
+execution을 따른다.
 Entry Spot timer도 Entry Spot 전체 dispatch를 막는 전역 queue에 묶지 않는다. 이 구분은
 Entry Spot이 actor 입구 역할을 하고, user Spot이 room, stage, zone 같은 도메인 상태를
 보관한다는 실행 모델을 유지하기 위한 것이다.

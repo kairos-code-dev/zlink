@@ -29,16 +29,14 @@ import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotActorDisconnectedHandler
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler
-import systems.zlink.framework.spots.ZLinkSpotActorChangeResult
 import systems.zlink.framework.spots.ZLinkSpotActorDisconnectedHandler
-import systems.zlink.framework.spots.ZLinkSpotActorJoinHandler
-import systems.zlink.framework.spots.ZLinkSpotActorLeftHandler
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext
 import systems.zlink.framework.spots.ZLinkSpotActorSendHandler
 import systems.zlink.framework.spots.ZLinkSpotContext
-import systems.zlink.framework.spots.ZLinkSpotPostActorJoinedHandler
+import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler
 import systems.zlink.framework.spots.ZLinkTimerTick
 import systems.zlink.framework.streams.ZLinkSession
@@ -292,31 +290,6 @@ abstract class ZLinkCoroutineEntrySpotActorRequestHandler<
     ): TReply
 }
 
-abstract class ZLinkCoroutineSpotActorJoinHandler<
-    TSpot : ZLinkSpot,
-    TActor : ZLinkActor,
-    TRequest,
-    TReply>(
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply> {
-    final override fun handleAsync(
-        spot: TSpot,
-        actor: TActor,
-        request: TRequest,
-        cancellationToken: CancellationToken,
-    ): CompletionStage<TReply> =
-        coroutines.completionStage {
-            handle(spot, actor, request, cancellationToken)
-        }
-
-    protected abstract suspend fun handle(
-        spot: TSpot,
-        actor: TActor,
-        request: TRequest,
-        cancellationToken: CancellationToken,
-    ): TReply
-}
-
 abstract class ZLinkCoroutineSpotActorRequestHandler<
     TSpot : ZLinkSpot,
     TActor : ZLinkActor,
@@ -366,52 +339,6 @@ abstract class ZLinkCoroutineSpotActorSendHandler<
         actor: TActor,
         context: ZLinkSpotActorSendContext,
         message: TMessage,
-        cancellationToken: CancellationToken,
-    )
-}
-
-abstract class ZLinkCoroutineSpotPostActorJoinedHandler<
-    TSpot,
-    TActor : ZLinkActor>(
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkSpotPostActorJoinedHandler<TSpot, TActor> {
-    final override fun handleAsync(
-        spot: TSpot,
-        actor: TActor,
-        result: ZLinkSpotActorChangeResult,
-        cancellationToken: CancellationToken,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            handle(spot, actor, result, cancellationToken)
-        }
-
-    protected abstract suspend fun handle(
-        spot: TSpot,
-        actor: TActor,
-        result: ZLinkSpotActorChangeResult,
-        cancellationToken: CancellationToken,
-    )
-}
-
-abstract class ZLinkCoroutineSpotActorLeftHandler<
-    TSpot,
-    TActor : ZLinkActor>(
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkSpotActorLeftHandler<TSpot, TActor> {
-    final override fun handleAsync(
-        spot: TSpot,
-        actor: TActor,
-        result: ZLinkSpotActorChangeResult,
-        cancellationToken: CancellationToken,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            handle(spot, actor, result, cancellationToken)
-        }
-
-    protected abstract suspend fun handle(
-        spot: TSpot,
-        actor: TActor,
-        result: ZLinkSpotActorChangeResult,
         cancellationToken: CancellationToken,
     )
 }
@@ -485,9 +412,9 @@ abstract class ZLinkCoroutineSpot(
 ) : ZLinkSpot {
     abstract override fun context(): ZLinkSpotContext
 
-    final override fun onCreateAsync(createParts: MutableList<Message>): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            onCreate(createParts)
+    final override fun onCreateAsync(request: Message): CompletionStage<ZLinkSpotCreateResponse> =
+        coroutines.completionStage {
+            onCreate(request)
         }
 
     final override fun onInitializeAsync(): CompletionStage<Void> =
@@ -500,13 +427,59 @@ abstract class ZLinkCoroutineSpot(
             onClosing()
         }
 
-    protected open suspend fun onCreate(createParts: MutableList<Message>) {
+    final override fun onActorJoinAsync(
+        actor: ZLinkActor,
+        request: Message,
+        cancellationToken: CancellationToken,
+    ): CompletionStage<ZLinkSpotActorJoinResponse> =
+        coroutines.completionStage {
+            onActorJoin(actor, request, cancellationToken)
+        }
+
+    final override fun onPostActorJoinedAsync(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ): CompletionStage<Void> =
+        coroutines.voidCompletionStage {
+            onPostActorJoined(actor, cancellationToken)
+        }
+
+    final override fun onActorLeftAsync(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ): CompletionStage<Void> =
+        coroutines.voidCompletionStage {
+            onActorLeft(actor, cancellationToken)
+        }
+
+    protected open suspend fun onCreate(request: Message): ZLinkSpotCreateResponse {
+        return ZLinkSpotCreateResponse.accept()
     }
 
     protected open suspend fun onInitialize() {
     }
 
     protected open suspend fun onClosing() {
+    }
+
+    protected open suspend fun onActorJoin(
+        actor: ZLinkActor,
+        request: Message,
+        cancellationToken: CancellationToken,
+    ): ZLinkSpotActorJoinResponse {
+        return ZLinkSpotActorJoinResponse.reject()
+    }
+
+    protected open suspend fun onPostActorJoined(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ) {
+    }
+
+    protected open suspend fun onActorLeft(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ) {
     }
 }
 

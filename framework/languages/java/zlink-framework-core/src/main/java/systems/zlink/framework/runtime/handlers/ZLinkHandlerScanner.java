@@ -31,13 +31,9 @@ import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
-import systems.zlink.framework.handlers.ZLinkSpotActorJoin;
 import systems.zlink.framework.handlers.ZLinkSpotActorDisconnected;
-import systems.zlink.framework.handlers.ZLinkSpotActorLeft;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
-import systems.zlink.framework.handlers.ZLinkSpotPostActorJoined;
-import systems.zlink.framework.spots.ZLinkSpotActorChangeResult;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
@@ -45,10 +41,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorDisconnectedHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorSendHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorLeftHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorDisconnectedHandler;
-import systems.zlink.framework.spots.ZLinkSpotPostActorJoinedHandler;
 
 public final class ZLinkHandlerScanner {
     private ZLinkHandlerScanner() {
@@ -145,21 +138,6 @@ public final class ZLinkHandlerScanner {
                     groups));
             }
 
-            ZLinkSpotActorJoin actorJoin = method.getAnnotation(ZLinkSpotActorJoin.class);
-            if (actorJoin != null) {
-                ActorMessageShape shape = requireActorJoinHandlerShape(candidate, method);
-                Class<?> replyType = resolveReplyType(candidate, method);
-                handlers.add(new ZLinkScannedHandler(
-                    ZLinkScannedHandlerSurface.SPOT,
-                    ZLinkScannedHandlerKind.ACTOR_JOIN,
-                    candidate,
-                    method,
-                    shape.messageType(),
-                    replyType,
-                    resolvePacketName(shape.messageType()),
-                    groups));
-            }
-
             ZLinkSpotActorSend actorSend = method.getAnnotation(ZLinkSpotActorSend.class);
             if (actorSend != null) {
                 ActorMessageShape shape = requireActorPacketHandlerShape(
@@ -195,35 +173,6 @@ public final class ZLinkHandlerScanner {
                     groups));
             }
 
-            ZLinkSpotPostActorJoined postActorJoined =
-                method.getAnnotation(ZLinkSpotPostActorJoined.class);
-            if (postActorJoined != null) {
-                Class<?> actorType = requireActorLifecycleHandlerShape(candidate, method);
-                handlers.add(new ZLinkScannedHandler(
-                    ZLinkScannedHandlerSurface.SPOT,
-                    ZLinkScannedHandlerKind.ACTOR_JOINED,
-                    candidate,
-                    method,
-                    actorType,
-                    Void.class,
-                    "",
-                    groups));
-            }
-
-            ZLinkSpotActorLeft actorLeft = method.getAnnotation(ZLinkSpotActorLeft.class);
-            if (actorLeft != null) {
-                Class<?> actorType = requireActorLifecycleHandlerShape(candidate, method);
-                handlers.add(new ZLinkScannedHandler(
-                    ZLinkScannedHandlerSurface.SPOT,
-                    ZLinkScannedHandlerKind.ACTOR_LEFT,
-                    candidate,
-                    method,
-                    actorType,
-                    Void.class,
-                    "",
-                    groups));
-            }
-
             ZLinkSpotActorDisconnected actorDisconnected =
                 method.getAnnotation(ZLinkSpotActorDisconnected.class);
             if (actorDisconnected != null) {
@@ -248,12 +197,6 @@ public final class ZLinkHandlerScanner {
                 "SPOT actor handler method cannot declare both send and request annotations: "
                     + handlerType.getName() + "." + method.getName());
         }
-        if (method.getAnnotation(ZLinkSpotPostActorJoined.class) != null
-            && method.getAnnotation(ZLinkSpotActorLeft.class) != null) {
-            throw new ZLinkConfigurationException(
-                "SPOT actor lifecycle handler method cannot declare both joined and left annotations: "
-                    + handlerType.getName() + "." + method.getName());
-        }
     }
 
     private static Class<?> requireActorDisconnectedHandlerShape(Class<?> handlerType, Method method) {
@@ -266,34 +209,6 @@ public final class ZLinkHandlerScanner {
         }
         throw new ZLinkConfigurationException(
             "Spot actor disconnected handler method must have actor parameter or spot, actor, CancellationToken parameters: "
-                + handlerType.getName() + "." + method.getName());
-    }
-
-    private static Class<?> requireActorLifecycleHandlerShape(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
-        if (parameters.length == 2 && parameters[1] == ZLinkSpotActorChangeResult.class) {
-            return parameters[0];
-        }
-        if (parameters.length == 4
-            && parameters[2] == ZLinkSpotActorChangeResult.class
-            && parameters[3] == CancellationToken.class) {
-            return parameters[1];
-        }
-        throw new ZLinkConfigurationException(
-            "Spot actor lifecycle handler method must have actor/change or spot, actor, change, CancellationToken parameters: "
-                + handlerType.getName() + "." + method.getName());
-    }
-
-    private static ActorMessageShape requireActorJoinHandlerShape(Class<?> handlerType, Method method) {
-        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
-        if (parameters.length == 2) {
-            return new ActorMessageShape(parameters[0], parameters[1]);
-        }
-        if (parameters.length == 4 && parameters[3] == CancellationToken.class) {
-            return new ActorMessageShape(parameters[1], parameters[2]);
-        }
-        throw new ZLinkConfigurationException(
-            "Spot actor join handler method must have actor/request or spot, actor, request, CancellationToken parameters: "
                 + handlerType.getName() + "." + method.getName());
     }
 
@@ -460,19 +375,6 @@ public final class ZLinkHandlerScanner {
             groups,
             ZLinkSpotActorRequestHandler.class,
             ZLinkScannedHandlerKind.ACTOR_REQUEST);
-        addSpotActorJoinInterfaceHandler(handlers, candidate, groups);
-        addSpotActorLifecycleInterfaceHandler(
-            handlers,
-            candidate,
-            groups,
-            ZLinkSpotPostActorJoinedHandler.class,
-            ZLinkScannedHandlerKind.ACTOR_JOINED);
-        addSpotActorLifecycleInterfaceHandler(
-            handlers,
-            candidate,
-            groups,
-            ZLinkSpotActorLeftHandler.class,
-            ZLinkScannedHandlerKind.ACTOR_LEFT);
         addSpotActorLifecycleInterfaceHandler(
             handlers,
             candidate,
@@ -505,27 +407,6 @@ public final class ZLinkHandlerScanner {
         handlers.add(new ZLinkScannedHandler(
             ZLinkScannedHandlerSurface.SPOT,
             kind,
-            candidate,
-            messageType,
-            replyType,
-            resolvePacketName(messageType),
-            groups));
-    }
-
-    private static void addSpotActorJoinInterfaceHandler(
-        List<ZLinkScannedHandler> handlers,
-        Class<?> candidate,
-        Set<String> groups) {
-        ParameterizedType matched = findInterface(candidate, ZLinkSpotActorJoinHandler.class);
-        if (matched == null) {
-            return;
-        }
-        Type[] arguments = matched.getActualTypeArguments();
-        Class<?> messageType = requireClassArgument(candidate, arguments[2]);
-        Class<?> replyType = requireClassArgument(candidate, arguments[3]);
-        handlers.add(new ZLinkScannedHandler(
-            ZLinkScannedHandlerSurface.SPOT,
-            ZLinkScannedHandlerKind.ACTOR_JOIN,
             candidate,
             messageType,
             replyType,

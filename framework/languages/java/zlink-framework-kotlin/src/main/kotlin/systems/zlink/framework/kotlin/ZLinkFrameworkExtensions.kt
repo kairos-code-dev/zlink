@@ -122,8 +122,8 @@ suspend fun ZLinkSpotManager.find(spotRid: RoutingId): Optional<ZLinkSpotInfo> =
 suspend fun ZLinkSpotManager.list(): List<ZLinkSpotInfo> =
     listAsync().await()
 
-suspend fun ZLinkSpotManager.remove(spotRid: RoutingId): Boolean =
-    removeAsync(spotRid).await()
+suspend fun ZLinkSpotManager.close(spotRid: RoutingId): Boolean =
+    closeAsync(spotRid).await()
 
 suspend fun ZLinkRegistryQuery.status(): ZLinkRegistryStatus =
     statusAsync().await()

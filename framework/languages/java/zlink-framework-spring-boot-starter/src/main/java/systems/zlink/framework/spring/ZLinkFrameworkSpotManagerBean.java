@@ -26,8 +26,8 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
     @Override
     public CompletionStage<ZLinkSpotCreateResult> createAsync(
         Class<? extends ZLinkSpot> spotType,
-        List<Message> createParts) {
-        return lifecycle.spotManager().createAsync(spotType, createParts);
+        Message request) {
+        return lifecycle.spotManager().createAsync(spotType, request);
     }
 
     @Override
@@ -48,8 +48,8 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
     public CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid,
-        List<Message> createParts) {
-        return lifecycle.spotManager().getOrCreateAsync(spotType, spotRid, createParts);
+        Message request) {
+        return lifecycle.spotManager().getOrCreateAsync(spotType, spotRid, request);
     }
 
     @Override
@@ -63,7 +63,7 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
     }
 
     @Override
-    public CompletionStage<Boolean> removeAsync(RoutingId spotRid) {
-        return lifecycle.spotManager().removeAsync(spotRid);
+    public CompletionStage<Boolean> closeAsync(RoutingId spotRid) {
+        return lifecycle.spotManager().closeAsync(spotRid);
     }
 }

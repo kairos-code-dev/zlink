@@ -10,18 +10,15 @@ class BingoRoomSpotCreatedHandler(
 ) {
     fun handle(
         spot: BingoRoomSpot,
-        createParts: List<Message>,
+        request: Message,
     ) {
-        spot.applySettings(decodeSettings(createParts))
+        spot.applySettings(decodeSettings(request))
     }
 
-    private fun decodeSettings(createParts: List<Message>): BingoRoomSettings {
-        if (createParts.isEmpty()) {
+    private fun decodeSettings(request: Message): BingoRoomSettings {
+        if (request.isEmpty()) {
             return BingoRoomSettings.create("four-player", 0)
         }
-        check(createParts.size == 1) {
-            "Bingo room expects exactly one create payload part, but received ${createParts.size}."
-        }
-        return json.readValue(createParts.first().toByteArray(), BingoRoomSettings::class.java)
+        return json.readValue(request.toByteArray(), BingoRoomSettings::class.java)
     }
 }

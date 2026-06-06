@@ -536,7 +536,7 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 ### Gate
 
 - duplicate Spot factory/Entry Spot validation 통과
-- local Spot create/get/list/remove smoke 통과
+- local Spot create/get/list/close smoke 통과
 - timer policy test 통과
 - spot snapshot typed event smoke 통과
 - timer exception monitoring test 통과

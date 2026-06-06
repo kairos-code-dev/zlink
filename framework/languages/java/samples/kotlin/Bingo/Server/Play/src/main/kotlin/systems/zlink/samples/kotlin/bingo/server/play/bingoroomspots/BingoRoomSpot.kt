@@ -2,17 +2,19 @@ package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots
 
 import java.util.ArrayDeque
 import java.time.Duration
+import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
+import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
+import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimer
 import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActor
-import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomActorJoinedHandler
-import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomActorLeftHandler
-import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomJoinHandler
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomSpotCreatedHandler
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomTimerHandler
 import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.StartBingoGameHandler
@@ -26,6 +28,7 @@ class BingoRoomSpot(
     private val context: ZLinkSpotContext,
     private val notifications: BingoNotificationPublisher,
     private val createdHandler: BingoRoomSpotCreatedHandler,
+    private val json: ObjectMapper,
     coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkCoroutineSpot(coroutines) {
     private val sameSequenceWinnerProbe = listOf("player-2", "player-3")
@@ -43,15 +46,36 @@ class BingoRoomSpot(
 
     override fun context(): ZLinkSpotContext = context
 
-    override suspend fun onCreate(createParts: MutableList<Message>) {
-        createdHandler.handle(this, createParts)
+    override suspend fun onCreate(request: Message): ZLinkSpotCreateResponse {
+        createdHandler.handle(this, request)
+        return ZLinkSpotCreateResponse.accept()
     }
 
     override fun configure() {
-        context.handlers().addHandler(BingoRoomJoinHandler::class.java)
         context.handlers().addHandler(StartBingoGameHandler::class.java)
-        context.handlers().addHandler(BingoRoomActorJoinedHandler::class.java)
-        context.handlers().addHandler(BingoRoomActorLeftHandler::class.java)
+    }
+
+    override suspend fun onActorJoin(
+        actor: ZLinkActor,
+        request: Message,
+        cancellationToken: CancellationToken,
+    ): ZLinkSpotActorJoinResponse {
+        require(actor is PlayerActor) { "Bingo room only accepts PlayerActor." }
+        val joinRequest = json.readValue(request.toByteArray(), BingoRoomJoinReq::class.java)
+        val reply = join(actor, joinRequest)
+        return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
+    }
+
+    override suspend fun onPostActorJoined(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ) {
+    }
+
+    override suspend fun onActorLeft(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ) {
     }
 
     override suspend fun onInitialize() {

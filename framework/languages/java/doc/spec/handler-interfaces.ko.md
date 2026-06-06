@@ -170,8 +170,9 @@ context를 가진다.
 Kotlin annotation handler는 Java annotation handler와 같은 discovery, validation,
 dispatch 의미를 가진다. 예를 들어 Kotlin Spring bean에 `@ZLinkRequest`,
 `@ZLinkSend`, `@ZLinkPublish`, `@ZLinkSpotActorRequest`, `@ZLinkSpotActorSend`,
-`@ZLinkSpotActorJoin`, actor lifecycle annotation, timer annotation을 붙인
-`suspend fun`은 Java method handler처럼 scanner catalog에 등록되어야 한다. Kotlin
+timer annotation을 붙인 `suspend fun`은 Java method handler처럼 scanner catalog에
+등록되어야 한다. SPOT actor lifecycle callback은 annotation handler가 아니라
+Spot/Entry Spot member callback으로 작성한다. Kotlin
 compiler가 suspend method에 추가하는 continuation parameter는 public handler
 parameter로 노출하지 않는다. scanner와 adapter는 application이 작성한 request,
 message, actor, context parameter만 계약으로 보아야 한다.
@@ -190,11 +191,13 @@ Kotlin suspend annotation handler는 아래 원칙을 지킨다.
   Kotlin handler가 `ApplicationContext`를 service locator로 직접 받도록 요구하지
   않는다.
 
-SPOT actor handler는 annotation method와 interface 구현체를 모두 지원한다. 두 방식은
-서로 다른 registry를 만들지 않고 같은 packet 이름과 actor mapping으로 정규화된다.
-따라서 annotation handler와 interface handler가 같은 actor packet 또는 join packet을
-등록하면 startup validation에서 중복으로 거부된다. 이 규칙은 Java와 Kotlin sample이
-서로 다른 스타일을 보여 주더라도 runtime 의미가 갈라지지 않도록 하기 위한 것이다.
+SPOT actor packet handler는 annotation method와 interface 구현체를 모두 지원한다.
+두 방식은 서로 다른 registry를 만들지 않고 같은 packet 이름과 actor mapping으로
+정규화된다. 따라서 annotation handler와 interface handler가 같은 actor packet을
+등록하면 startup validation에서 중복으로 거부된다. actor join admission,
+post-join, left lifecycle은 handler registry에 등록하지 않고 Spot member callback으로
+처리한다. 이 규칙은 Java와 Kotlin sample이 서로 다른 스타일을 보여 주더라도 runtime
+의미가 갈라지지 않도록 하기 위한 것이다.
 
 ```java
 public interface ZLinkEntrySpotActorRequestHandler<
@@ -223,31 +226,28 @@ public interface ZLinkSpotActorRequestHandler<
         CancellationToken cancellationToken);
 }
 
-public interface ZLinkSpotActorJoinHandler<
-    TSpot extends ZLinkSpot,
-    TActor extends ZLinkActor,
-    TRequest,
-    TReply> {
-    CompletionStage<TReply> handleAsync(
-        TSpot spot,
-        TActor actor,
-        TRequest request,
+public interface ZLinkSpot {
+    CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+        ZLinkActor actor,
+        Message request,
+        CancellationToken cancellationToken);
+
+    CompletionStage<Void> onPostActorJoinedAsync(
+        ZLinkActor actor,
+        CancellationToken cancellationToken);
+
+    CompletionStage<Void> onActorLeftAsync(
+        ZLinkActor actor,
         CancellationToken cancellationToken);
 }
 
-public interface ZLinkSpotPostActorJoinedHandler<TSpot, TActor extends ZLinkActor> {
-    CompletionStage<Void> handleAsync(
-        TSpot spot,
-        TActor actor,
-        ZLinkSpotActorChangeResult result,
+public interface ZLinkEntrySpot {
+    CompletionStage<Void> onPostActorJoinedAsync(
+        ZLinkActor actor,
         CancellationToken cancellationToken);
-}
 
-public interface ZLinkSpotActorLeftHandler<TSpot, TActor extends ZLinkActor> {
-    CompletionStage<Void> handleAsync(
-        TSpot spot,
-        TActor actor,
-        ZLinkSpotActorChangeResult result,
+    CompletionStage<Void> onActorLeftAsync(
+        ZLinkActor actor,
         CancellationToken cancellationToken);
 }
 ```
@@ -255,9 +255,9 @@ public interface ZLinkSpotActorLeftHandler<TSpot, TActor extends ZLinkActor> {
 `ZLinkSpotActorSendHandler`, `ZLinkEntrySpotActorSendHandler`,
 `ZLinkSpotActorDisconnectedHandler`, `ZLinkEntrySpotActorDisconnectedHandler`도 같은
 패턴을 따른다. Entry Spot actor request/send/disconnected는 Entry Spot 전용
-interface를 사용하고, user Spot actor join/request/send/lifecycle은 Spot handler
-interface를 사용한다. lifecycle interface의 `TSpot`은 Entry Spot lifecycle도 표현할
-수 있도록 `ZLinkSpot`으로 제한하지 않는다.
+interface를 사용하고, user Spot actor request/send/disconnected는 Spot handler
+interface를 사용한다. actor join admission과 join/left lifecycle은 위 member callback
+표면만 사용한다.
 
 stream은 `.NET` 기준과 같이 header session 하나로 설명한다. 이전 설계의
 `packet session`/`raw session` 분리는 현재 포팅 기준이 아니다. callback으로 전달된
@@ -752,16 +752,14 @@ public interface ZLinkActorHandlerRegistry {
         Class<?> handlerType,
         Class<? extends ZLinkActor> actorType,
         String packetName);
-    void addPostActorJoined(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
-    void addActorLeft(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
+    void addActorDisconnected(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
+    void addActorDisconnected(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
     void addActorDisconnected(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
 }
 
 public interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
     void addPacket(Class<?> handlerType);
     void addSubscribe(Class<?> handlerType, String topic);
-    void addActorJoin(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
-    void addActorJoin(Class<?> handlerType);
 }
 
 public interface ZLinkSpotContext {
@@ -820,7 +818,14 @@ public interface ZLinkPublishCall {
 
 public record ZLinkSpotCreateResult(
     RoutingId spotRid,
-    boolean created) {
+    ZLinkSpotCreateState state,
+    Message reply) {
+}
+
+public enum ZLinkSpotCreateState {
+    EXISTING,
+    CREATED,
+    REJECTED
 }
 
 public record ZLinkSpotInfo(
@@ -841,7 +846,7 @@ public interface ZLinkSpotManager {
 
     CompletionStage<Optional<ZLinkSpotInfo>> findAsync(RoutingId spotRid);
     CompletionStage<List<ZLinkSpotInfo>> listAsync();
-    CompletionStage<Boolean> removeAsync(RoutingId spotRid);
+    CompletionStage<Boolean> closeAsync(RoutingId spotRid);
 }
 
 public interface ZLinkSpot {
@@ -850,8 +855,8 @@ public interface ZLinkSpot {
     default void configure() {
     }
 
-    default CompletionStage<Void> onCreateAsync(List<Message> createParts) {
-        return CompletableFuture.completedFuture(null);
+    default CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
+        return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
     }
 
     default CompletionStage<Void> onInitializeAsync() {
@@ -859,6 +864,25 @@ public interface ZLinkSpot {
     }
 
     default CompletionStage<Void> onClosingAsync() {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    default CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+        ZLinkActor actor,
+        Message request,
+        CancellationToken cancellationToken) {
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
+    }
+
+    default CompletionStage<Void> onPostActorJoinedAsync(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    default CompletionStage<Void> onActorLeftAsync(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
         return CompletableFuture.completedFuture(null);
     }
 }
@@ -874,6 +898,18 @@ public interface ZLinkEntrySpot {
     }
 
     default CompletionStage<Void> onClosingAsync() {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    default CompletionStage<Void> onPostActorJoinedAsync(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    default CompletionStage<Void> onActorLeftAsync(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
         return CompletableFuture.completedFuture(null);
     }
 }
@@ -1151,21 +1187,6 @@ public @interface ZLinkSpotActorSend {
 
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface ZLinkSpotActorJoin {
-}
-
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
-public @interface ZLinkSpotPostActorJoined {
-}
-
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
-public @interface ZLinkSpotActorLeft {
-}
-
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
 public @interface ZLinkSpotActorDisconnected {
 }
 
@@ -1175,22 +1196,14 @@ public @interface ZLinkStreamPacket {
 }
 ```
 
-SPOT actor lifecycle handler는 actor와 change result를 받는다. change result는
-actor가 어떤 흐름으로 들어오거나 나갔는지 나타낸다.
+SPOT actor lifecycle callback은 actor만 받는다. join admission callback은
+framework 공통 `Message` request를 받고 `ZLinkSpotActorJoinResponse`를 반환한다.
+accepted가 `true`일 때만 actor 위치가 user Spot으로 commit되고
+`onPostActorJoinedAsync`가 호출된다. accepted가 `false`이면 actor 위치는 바뀌지 않고
+post-join callback도 실행되지 않는다. Entry Spot은 admission callback을 갖지 않는다.
 `ZLinkSpotActorDisconnected` handler는 actor만 받는다. session actor의 현재 binding이
 끊어졌거나 application이 actor disconnected 알림을 명시적으로 보낼 때 실행되며,
 actor가 들어오거나 나간 Spot 변경 결과를 만들지 않기 때문이다.
-
-```java
-public enum ZLinkSpotActorChangeKind {
-    JOIN_SPOT,
-    JOIN_ENTRY_SPOT,
-    LEAVE_SPOT
-}
-
-public record ZLinkSpotActorChangeResult(
-    ZLinkSpotActorChangeKind kind) {
-}
 
 public final class PlayerActorDisconnectedHandler {
     @ZLinkSpotActorDisconnected

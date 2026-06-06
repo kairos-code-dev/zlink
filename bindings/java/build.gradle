@@ -50,7 +50,7 @@ tasks.register('buildZlinkJavaBridge', Exec) {
     def source = new File(projectDir, 'native/src/zlink_java_reqrep_bridge.c')
     def outputDir = bridgeOutputDir.get().asFile
     def output = new File(outputDir, 'libzlink_java_bridge.so')
-    def linkDir = new File(projectDir, 'src/main/resources/native/linux-x86_64')
+    def linkDir = new File(coreBuildDir, 'lib')
     def javaHome = System.getProperty('java.home')
     def jniIncludeDir = new File(javaHome, 'include')
     def jniOsIncludeDir = new File(jniIncludeDir, 'linux')
@@ -70,6 +70,7 @@ tasks.register('buildZlinkJavaBridge', Exec) {
     inputs.dir(jniIncludeDir)
     inputs.dir(jniOsIncludeDir)
     outputs.file(output)
+    outputs.upToDateWhen { false }
     doFirst {
         outputDir.mkdirs()
     }

@@ -249,9 +249,7 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameModels.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/gamespots/GameNotificationPublisher.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/JoinMatchHandler.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorJoinedHandler.java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorLeftHandler.java"));
+            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/JoinMatchHandler.java"));
         assertSampleFilesExist("java", "TicTacToe.SessionGateway", "Server/Registry/src/main/java", List.of(
             "systems/zlink/samples/tictactoe/sessiongateway/server/registry/Program.java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/registry/RegistryApplication.java"));
@@ -347,14 +345,6 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/java",
             "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.java");
-        String entryActorJoinedHandlerSource = sampleJavaSource(
-            "TicTacToe.SessionGateway",
-            "Server/Play/src/main/java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorJoinedHandler.java");
-        String entryActorLeftHandlerSource = sampleJavaSource(
-            "TicTacToe.SessionGateway",
-            "Server/Play/src/main/java",
-            "systems/zlink/samples/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorLeftHandler.java");
         String rootBuildSource = sampleFile(
             "java",
             "TicTacToe.SessionGateway",
@@ -447,17 +437,11 @@ final class SampleReleaseGateContractTest {
                 && playServerSource.contains("addHandlersFromPackageOf")
                 && playServerSource.contains("addHandlerGroup(\"play\")"),
             "SessionGateway Api/Play roles must use annotation-discovered handler groups");
-        assertTrue(entryActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
-                && entryActorJoinedHandlerSource.contains("TicTacToeEntrySpot entrySpot")
-                && entryActorJoinedHandlerSource.contains("PlayerActor actor")
-                && entryActorJoinedHandlerSource.contains("ZLinkSpotActorChangeResult")
-                && entryActorJoinedHandlerSource.contains("CancellationToken cancellationToken")
-                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
-                && entryActorLeftHandlerSource.contains("TicTacToeEntrySpot entrySpot")
-                && entryActorLeftHandlerSource.contains("PlayerActor actor")
-                && entryActorLeftHandlerSource.contains("ZLinkSpotActorChangeResult")
-                && entryActorLeftHandlerSource.contains("CancellationToken cancellationToken"),
-            "SessionGateway EntrySpot lifecycle handlers must use .NET-shaped spot, actor, change, cancellation annotations");
+        assertTrue(entrySpotSource.contains("implements ZLinkEntrySpot")
+                && !entrySpotSource.contains("onActorJoinAsync")
+                && !playServerSource.contains("TicTacToeEntrySpotActor" + "JoinedHandler")
+                && !playServerSource.contains("TicTacToeEntrySpotActor" + "LeftHandler"),
+            "SessionGateway EntrySpot lifecycle must not use separate actor lifecycle handler registration");
         assertTrue(clientSource.contains("validateFinalState")
                 && clientSource.contains("XXXOO....")
                 && clientSource.contains("validateNotifications"),
@@ -586,9 +570,7 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/TicTacToeGameModels.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/gamespots/GameNotificationPublisher.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/JoinMatchHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorJoinedHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorLeftHandler.kt"));
+            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/JoinMatchHandler.kt"));
         assertSampleFilesExist("kotlin", "TicTacToe.SessionGateway", "Server/Registry/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/registry/Program.kt",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/registry/RegistryApplication.kt"));
@@ -689,14 +671,6 @@ final class SampleReleaseGateContractTest {
             "TicTacToe.SessionGateway",
             "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/TicTacToeEntrySpot.kt");
-        String entryActorJoinedHandlerSource = sampleKotlinSource(
-            "TicTacToe.SessionGateway",
-            "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorJoinedHandler.kt");
-        String entryActorLeftHandlerSource = sampleKotlinSource(
-            "TicTacToe.SessionGateway",
-            "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/sessiongateway/server/play/entryspot/handlers/TicTacToeEntrySpotActorLeftHandler.kt");
         String apiProgramSource = sampleKotlinSource(
             "TicTacToe.SessionGateway",
             "Server/Api/src/main/kotlin",
@@ -784,17 +758,11 @@ final class SampleReleaseGateContractTest {
                 && playServerSource.contains("addHandlersFromPackageOf")
                 && playServerSource.contains("addHandlerGroup(\"play\")"),
             "Kotlin SessionGateway Api/Play roles must use annotation-discovered handler groups");
-        assertTrue(entryActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
-                && entryActorJoinedHandlerSource.contains("entrySpot: TicTacToeEntrySpot")
-                && entryActorJoinedHandlerSource.contains("actor: PlayerActor")
-                && entryActorJoinedHandlerSource.contains("ZLinkSpotActorChangeResult")
-                && entryActorJoinedHandlerSource.contains("cancellationToken: CancellationToken")
-                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
-                && entryActorLeftHandlerSource.contains("entrySpot: TicTacToeEntrySpot")
-                && entryActorLeftHandlerSource.contains("actor: PlayerActor")
-                && entryActorLeftHandlerSource.contains("ZLinkSpotActorChangeResult")
-                && entryActorLeftHandlerSource.contains("cancellationToken: CancellationToken"),
-            "Kotlin SessionGateway EntrySpot lifecycle handlers must use .NET-shaped spot, actor, change, cancellation annotations");
+        assertTrue(entrySpotSource.contains(": ZLinkEntrySpot")
+                && !entrySpotSource.contains("onActorJoinAsync")
+                && !playServerSource.contains("TicTacToeEntrySpotActor" + "JoinedHandler")
+                && !playServerSource.contains("TicTacToeEntrySpotActor" + "LeftHandler"),
+            "Kotlin SessionGateway EntrySpot lifecycle must not use separate actor lifecycle handler registration");
         assertTrue(clientSource.contains("validateFinalState")
                 && clientSource.contains("XXXOO....")
                 && clientSource.contains("validateNotifications"),
@@ -922,7 +890,6 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/server/play/entryspot/PlayEntrySpot.java",
             "systems/zlink/samples/tictactoe/server/play/gamespots/TicTacToeGame.java",
             "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/PlayActorPlaceMarkHandler.java",
-            "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameJoinHandler.java",
             "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameTimerHandler.java",
             "systems/zlink/samples/tictactoe/server/play/handlers/CreateGameHandler.java",
             "systems/zlink/samples/tictactoe/server/play/sessions/PlaySession.java"));
@@ -1150,10 +1117,6 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Shared/src/main/java",
             "systems/zlink/samples/tictactoe/shared/contracts/TicTacToeGameJoinRes.java");
-        String playJoinHandlerSource = sampleJavaSource(
-            "TicTacToe",
-            "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameJoinHandler.java");
         String playActorJoinHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
@@ -1166,26 +1129,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameCreatedHandler.java");
-        String gameActorJoinedHandlerSource = sampleJavaSource(
-            "TicTacToe",
-            "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameActorJoinedHandler.java");
-        String gameActorLeftHandlerSource = sampleJavaSource(
-            "TicTacToe",
-            "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameActorLeftHandler.java");
         String gameTimerHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameTimerHandler.java");
-        String entryActorJoinedHandlerSource = sampleJavaSource(
-            "TicTacToe",
-            "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/entryspot/handlers/PlayEntrySpotActorJoinedHandler.java");
-        String entryActorLeftHandlerSource = sampleJavaSource(
-            "TicTacToe",
-            "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/entryspot/handlers/PlayEntrySpotActorLeftHandler.java");
         assertTrue(playSessionSource.contains("ZLinkStreamJson.decode")
                 && playSessionSource.contains("new AuthenticatePlayerReq(request.accessToken())")
                 && playSessionSource.contains("actorId = authenticated.actorId()")
@@ -1199,11 +1146,11 @@ final class SampleReleaseGateContractTest {
                 && gameJoinReqSource.contains("String actorId")
                 && gameJoinResSource.contains("GameState state"),
             "TicTacToe direct sample must split client JoinGame contracts from Spot join contracts");
-        assertTrue(playJoinHandlerSource.contains("CompletionStage<TicTacToeGameJoinRes>")
-                && playJoinHandlerSource.contains("TicTacToeGameJoinReq request")
-                && playJoinHandlerSource.contains("TicTacToeGame spot")
-                && playJoinHandlerSource.contains("CancellationToken cancellationToken")
-                && playJoinHandlerSource.contains("TicTacToeGameJoinRes")
+        assertTrue(gameSpotSource.contains("onActorJoinAsync(")
+                && gameSpotSource.contains("Message request")
+                && gameSpotSource.contains("ZLinkSpotActorJoinResponse.accept")
+                && gameSpotSource.contains("TicTacToeGameJoinReq.class")
+                && gameSpotSource.contains("TicTacToeGameJoinRes")
                 && playActorJoinHandlerSource.contains("new TicTacToeGameJoinReq")
                 && playActorJoinHandlerSource.contains("PlayEntrySpot entrySpot")
                 && playActorJoinHandlerSource.contains("ZLinkSpotActorRequestContext context")
@@ -1213,7 +1160,7 @@ final class SampleReleaseGateContractTest {
                 && playPlaceMarkHandlerSource.contains("ZLinkSpotActorRequestContext context")
                 && playPlaceMarkHandlerSource.contains("PlaceMarkReq request")
                 && playPlaceMarkHandlerSource.contains("CancellationToken cancellationToken"),
-            "TicTacToe Play actor handlers must receive .NET-shaped typed actor contracts");
+            "TicTacToe Play actor join admission must be a Message-based Spot member callback while game packets stay typed");
         assertTrue(gameSpotSource.contains("actor.joinGame")
                 && gameSpotSource.contains("boundSession()")
                 && gameSpotSource.contains(".send(new GameStateNotify")
@@ -1227,29 +1174,21 @@ final class SampleReleaseGateContractTest {
                 && gameSpotSource.contains("TurnTimedOut")
                 && gameSpotSource.contains("resetTurnDeadline()")
                 && gameSpotSource.contains("tickAsync()")
-                && gameSpotSource.contains("markCreated(List<Message> createParts)")
+                && gameSpotSource.contains("onCreateAsync(Message request)")
+                && gameSpotSource.contains("markCreated(Message request)")
                 && gameSpotSource.contains("ensureCreated()")
                 && gameCreatedHandlerSource.contains("handleAsync(")
-                && gameCreatedHandlerSource.contains("List<Message>")
-                && gameCreatedHandlerSource.contains("game.markCreated(createParts)")
+                && gameCreatedHandlerSource.contains("Message request")
+                && gameCreatedHandlerSource.contains("ZLinkSpotCreateResponse.accept()")
+                && gameCreatedHandlerSource.contains("game.markCreated(request)")
                 && gameTimerHandlerSource.contains("implements ZLinkSpotTimerHandler<TicTacToeGame>")
                 && gameTimerHandlerSource.contains("spot.tickAsync()"),
             "TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
-        assertTrue(gameActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
-                && gameActorJoinedHandlerSource.contains("TicTacToeGame spot")
-                && gameActorJoinedHandlerSource.contains("ZLinkSpotActorChangeResult")
-                && gameActorJoinedHandlerSource.contains("CancellationToken cancellationToken")
-                && gameActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
-                && gameActorLeftHandlerSource.contains("TicTacToeGame spot")
-                && gameActorLeftHandlerSource.contains("ZLinkSpotActorChangeResult")
-                && gameActorLeftHandlerSource.contains("CancellationToken cancellationToken")
-                && entryActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
-                && entryActorJoinedHandlerSource.contains("PlayEntrySpot entrySpot")
-                && entryActorJoinedHandlerSource.contains("CancellationToken cancellationToken")
-                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
-                && entryActorLeftHandlerSource.contains("PlayEntrySpot entrySpot")
-                && entryActorLeftHandlerSource.contains("CancellationToken cancellationToken"),
-            "TicTacToe EntrySpot and GameSpot lifecycle handlers must use .NET-shaped spot, actor, change, cancellation annotations");
+        assertTrue(gameSpotSource.contains("onPostActorJoinedAsync(")
+                && gameSpotSource.contains("onActorLeftAsync(")
+                && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result")
+                && !entrySpotSource.contains("onActorJoinAsync"),
+            "TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks without change-result arguments");
         assertTrue(playActorJoinHandlerSource.contains("request.gameId()"),
             "TicTacToe join handler must store the requested game id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),
@@ -1310,7 +1249,6 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/server/play/entryspot/PlayEntrySpot.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/TicTacToeGame.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/PlayActorPlaceMarkHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameJoinHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameTimerHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/handlers/CreateGameHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/sessions/PlaySession.kt"));
@@ -1516,10 +1454,6 @@ final class SampleReleaseGateContractTest {
         assertTrue(clientSource.contains("JoinGameReq(game.gameId)")
                 && !clientSource.contains("TicTacToeGameJoinReq"),
             "Kotlin TicTacToe client must use client-facing JoinGame contracts only");
-        String playJoinHandlerSource = sampleKotlinSource(
-            "TicTacToe",
-            "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameJoinHandler.kt");
         String playActorJoinHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
@@ -1532,26 +1466,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameCreatedHandler.kt");
-        String gameActorJoinedHandlerSource = sampleKotlinSource(
-            "TicTacToe",
-            "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameActorJoinedHandler.kt");
-        String gameActorLeftHandlerSource = sampleKotlinSource(
-            "TicTacToe",
-            "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameActorLeftHandler.kt");
         String gameTimerHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/gamespots/handlers/TicTacToeGameTimerHandler.kt");
-        String entryActorJoinedHandlerSource = sampleKotlinSource(
-            "TicTacToe",
-            "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/entryspot/handlers/PlayEntrySpotActorJoinedHandler.kt");
-        String entryActorLeftHandlerSource = sampleKotlinSource(
-            "TicTacToe",
-            "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/entryspot/handlers/PlayEntrySpotActorLeftHandler.kt");
         assertTrue(playSessionSource.contains("ZLinkStreamJson.decode")
                 && playSessionSource.contains("AuthenticatePlayerReq(request.accessToken)")
                 && playSessionSource.contains("actorId = authenticatedActorId")
@@ -1561,12 +1479,11 @@ final class SampleReleaseGateContractTest {
                 && !playSessionSource.contains("joinSpot(RoutingId.fromHex")
                 && !playSessionSource.contains("split(\"|\")"),
             "Kotlin TicTacToe Play stream session must authenticate through the Api role and relay actor packets");
-        assertTrue(playJoinHandlerSource.contains("suspend fun join(")
-                && playJoinHandlerSource.contains("): TicTacToeGameJoinRes")
-                && playJoinHandlerSource.contains("request: TicTacToeGameJoinReq")
-                && playJoinHandlerSource.contains("spot: TicTacToeGame")
-                && playJoinHandlerSource.contains("cancellationToken: CancellationToken")
-                && playJoinHandlerSource.contains("TicTacToeGameJoinRes")
+        assertTrue(gameSpotSource.contains("override suspend fun onActorJoin(")
+                && gameSpotSource.contains("request: Message")
+                && gameSpotSource.contains("ZLinkSpotActorJoinResponse.accept")
+                && gameSpotSource.contains("TicTacToeGameJoinReq::class.java")
+                && gameSpotSource.contains("TicTacToeGameJoinRes")
                 && playActorJoinHandlerSource.contains("TicTacToeGameJoinReq")
                 && playActorJoinHandlerSource.contains("entrySpot: PlayEntrySpot")
                 && playActorJoinHandlerSource.contains("context: ZLinkSpotActorRequestContext")
@@ -1576,7 +1493,7 @@ final class SampleReleaseGateContractTest {
                 && playPlaceMarkHandlerSource.contains("context: ZLinkSpotActorRequestContext")
                 && playPlaceMarkHandlerSource.contains("request: PlaceMarkReq")
                 && playPlaceMarkHandlerSource.contains("cancellationToken: CancellationToken"),
-            "Kotlin TicTacToe Play actor handlers must receive .NET-shaped typed actor contracts");
+            "Kotlin TicTacToe Play actor join admission must be a Message-based Spot member callback while game packets stay typed");
         assertTrue(gameSpotSource.contains("actor.joinGame")
                 && gameSpotSource.contains("boundSession()")
                 && gameSpotSource.contains(".send(GameStateNotify")
@@ -1590,29 +1507,20 @@ final class SampleReleaseGateContractTest {
                 && gameSpotSource.contains("TurnTimedOut")
                 && gameSpotSource.contains("resetTurnDeadline()")
                 && gameSpotSource.contains("suspend fun tick()")
-                && gameSpotSource.contains("fun markCreated(createParts: List<Message>)")
+                && gameSpotSource.contains("override suspend fun onCreate(request: Message)")
+                && gameSpotSource.contains("fun markCreated(request: Message)")
                 && gameSpotSource.contains("ensureCreated()")
                 && gameCreatedHandlerSource.contains("fun handle(")
-                && gameCreatedHandlerSource.contains("List<Message>")
-                && gameCreatedHandlerSource.contains("game.markCreated(createParts)")
+                && gameCreatedHandlerSource.contains("request: Message")
+                && gameCreatedHandlerSource.contains("game.markCreated(request)")
                 && gameTimerHandlerSource.contains("ZLinkCoroutineSpotTimerHandler<TicTacToeGame>")
                 && gameTimerHandlerSource.contains("spot.tick()"),
             "Kotlin TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
-        assertTrue(gameActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
-                && gameActorJoinedHandlerSource.contains("spot: TicTacToeGame")
-                && gameActorJoinedHandlerSource.contains("ZLinkSpotActorChangeResult")
-                && gameActorJoinedHandlerSource.contains("cancellationToken: CancellationToken")
-                && gameActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
-                && gameActorLeftHandlerSource.contains("spot: TicTacToeGame")
-                && gameActorLeftHandlerSource.contains("ZLinkSpotActorChangeResult")
-                && gameActorLeftHandlerSource.contains("cancellationToken: CancellationToken")
-                && entryActorJoinedHandlerSource.contains("@ZLinkSpotPostActorJoined")
-                && entryActorJoinedHandlerSource.contains("entrySpot: PlayEntrySpot")
-                && entryActorJoinedHandlerSource.contains("cancellationToken: CancellationToken")
-                && entryActorLeftHandlerSource.contains("@ZLinkSpotActorLeft")
-                && entryActorLeftHandlerSource.contains("entrySpot: PlayEntrySpot")
-                && entryActorLeftHandlerSource.contains("cancellationToken: CancellationToken"),
-            "Kotlin TicTacToe EntrySpot and GameSpot lifecycle handlers must use .NET-shaped spot, actor, change, cancellation annotations");
+        assertTrue(gameSpotSource.contains("override suspend fun onPostActorJoined(")
+                && gameSpotSource.contains("override suspend fun onActorLeft(")
+                && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result")
+                && !entrySpotSource.contains("onActorJoinAsync"),
+            "Kotlin TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks without change-result arguments");
         assertTrue(playActorJoinHandlerSource.contains("request.gameId"),
             "Kotlin TicTacToe join handler must store the requested game id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),
@@ -1664,16 +1572,11 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoNotificationPublisher.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoRoomModels.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoRoomSpot.java",
-            "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/BingoRoomJoinHandler.java",
-            "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/BingoRoomActorJoinedHandler.java",
-            "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/BingoRoomActorLeftHandler.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/BingoRoomSpotCreatedHandler.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/BingoRoomTimerHandler.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/StartBingoGameHandler.java",
             "systems/zlink/samples/bingo/server/play/entryspot/BingoEntrySpot.java",
             "systems/zlink/samples/bingo/server/play/entryspot/handlers/MatchBingoActorHandler.java",
-            "systems/zlink/samples/bingo/server/play/entryspot/handlers/BingoEntrySpotActorJoinedHandler.java",
-            "systems/zlink/samples/bingo/server/play/entryspot/handlers/BingoEntrySpotActorLeftHandler.java",
             "systems/zlink/samples/bingo/server/play/handlers/AllocateBingoRoomHandler.java",
             "systems/zlink/samples/bingo/server/play/handlers/BingoRoomDirectory.java",
             "systems/zlink/samples/bingo/server/play/handlers/EnsurePlayerActorHandler.java"));
@@ -1844,16 +1747,11 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoNotificationPublisher.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoRoomModels.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/BingoRoomSpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/handlers/BingoRoomJoinHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/handlers/BingoRoomActorJoinedHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/handlers/BingoRoomActorLeftHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/handlers/BingoRoomSpotCreatedHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/handlers/BingoRoomTimerHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/bingoroomspots/handlers/StartBingoGameHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/entryspot/BingoEntrySpot.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/entryspot/handlers/MatchBingoActorHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/entryspot/handlers/BingoEntrySpotActorJoinedHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/entryspot/handlers/BingoEntrySpotActorLeftHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/handlers/AllocateBingoRoomHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/handlers/BingoRoomDirectory.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/handlers/EnsurePlayerActorHandler.kt"));

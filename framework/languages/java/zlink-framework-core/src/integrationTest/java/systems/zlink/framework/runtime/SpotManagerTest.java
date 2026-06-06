@@ -16,18 +16,23 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.framework.spots.ZLinkSpotCreateResult;
+import systems.zlink.framework.spots.ZLinkSpotCreateState;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 import systems.zlink.framework.spots.ZLinkTimerTick;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 
 final class SpotManagerTest {
     @Test
-    void spotManager_createListRemoveAndPublish_workThroughFrameworkRuntime() {
+    void spotManager_createListCloseAndPublish_workThroughFrameworkRuntime() {
         Zlink.version();
         String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
@@ -43,11 +48,11 @@ final class SpotManagerTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
-            assertTrue(runtime.spotManager()
+            assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
                 .createAsync(GameSpot.class, spotRid)
                 .toCompletableFuture()
                 .join()
-                .created());
+                .state());
             assertEquals(spotRid, runtime.spotManager()
                 .findAsync(spotRid)
                 .toCompletableFuture()
@@ -60,7 +65,7 @@ final class SpotManagerTest {
                 .join()
                 .size());
             assertTrue(runtime.spotManager()
-                .removeAsync(spotRid)
+                .closeAsync(spotRid)
                 .toCompletableFuture()
                 .join());
         }
@@ -83,21 +88,59 @@ final class SpotManagerTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
-            assertTrue(runtime.spotManager()
+            assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
                 .getOrCreateAsync(GameSpot.class, spotRid)
                 .toCompletableFuture()
                 .join()
-                .created());
-            assertFalse(runtime.spotManager()
+                .state());
+            assertEquals(ZLinkSpotCreateState.EXISTING, runtime.spotManager()
                 .getOrCreateAsync(GameSpot.class, spotRid)
                 .toCompletableFuture()
                 .join()
-                .created());
+                .state());
         }
     }
 
     @Test
-    void spot_publishTimerAndRemove_stopCallbacksWork() throws InterruptedException {
+    void spotManager_getOrCreate_concurrentCallReturnsExistingAndUsesFirstRequest() throws Exception {
+        Zlink.version();
+        SlowCreateSpot.reset();
+        String suffix = Long.toUnsignedString(System.nanoTime(), 36);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> {
+                node.enableRouter(router -> {
+                    router.setRoutingId(RoutingId.from("spot-concurrent-node-" + suffix));
+                    router.bindRouter("inproc://spot-concurrent-router-" + suffix);
+                });
+                node.addSpotFactory(SlowCreateSpot.class);
+            }));
+        RoutingId spotRid = RoutingId.from("game-concurrent-" + suffix);
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+            CompletionStage<ZLinkSpotCreateResult> first = runtime.spotManager()
+                .getOrCreateAsync(SlowCreateSpot.class, spotRid, Message.from("first"));
+            assertTrue(SlowCreateSpot.createStarted.await(3, TimeUnit.SECONDS));
+
+            CompletionStage<ZLinkSpotCreateResult> second = runtime.spotManager()
+                .getOrCreateAsync(SlowCreateSpot.class, spotRid, Message.from("second"));
+            SlowCreateSpot.release.complete(null);
+
+            ZLinkSpotCreateState firstState =
+                first.toCompletableFuture().get(3, TimeUnit.SECONDS).state();
+            ZLinkSpotCreateState secondState =
+                second.toCompletableFuture().get(3, TimeUnit.SECONDS).state();
+
+            assertEquals(ZLinkSpotCreateState.CREATED, firstState);
+            assertEquals(ZLinkSpotCreateState.EXISTING, secondState);
+            assertEquals(1, SlowCreateSpot.createCalls.get());
+            assertEquals("first", SlowCreateSpot.createRequest.get());
+        }
+    }
+
+    @Test
+    void spot_publishTimerAndClose_stopCallbacksWork() throws InterruptedException {
         Zlink.version();
         PublishingSpot.reset();
         String suffix = Long.toUnsignedString(System.nanoTime(), 36);
@@ -118,15 +161,15 @@ final class SpotManagerTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
-            assertTrue(runtime.spotManager()
+            assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
                 .createAsync(PublishingSpot.class, spotRid)
                 .toCompletableFuture()
                 .join()
-                .created());
+                .state());
             assertTrue(PublishingSpot.timerPublished.await(3, TimeUnit.SECONDS));
 
             assertTrue(runtime.spotManager()
-                .removeAsync(spotRid)
+                .closeAsync(spotRid)
                 .toCompletableFuture()
                 .join());
             assertTrue(PublishingSpot.closed.await(1, TimeUnit.SECONDS));
@@ -135,6 +178,37 @@ final class SpotManagerTest {
             PublishingSpot.removed.set(true);
             assertFalse(PublishingSpot.afterRemoveTick.await(100, TimeUnit.MILLISECONDS));
             assertEquals(ticksAtRemove, PublishingSpot.ticks.get());
+        }
+    }
+
+    @Test
+    void spotManager_createAsync_returnsRejectedAndDoesNotRegisterSpotWhenOnCreateRejects() {
+        Zlink.version();
+        String suffix = Long.toUnsignedString(System.nanoTime(), 36);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> {
+                node.enableRouter(router -> {
+                    router.setRoutingId(RoutingId.from("spot-reject-node-" + suffix));
+                    router.bindRouter("inproc://spot-reject-router-" + suffix);
+                });
+                node.addSpotFactory(RejectingSpot.class);
+            }));
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+             Message request = Message.from("closed")) {
+            var rejected = runtime.spotManager()
+                .createAsync(RejectingSpot.class, request)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(ZLinkSpotCreateState.REJECTED, rejected.state());
+            assertEquals("reject:closed", rejected.reply().toUtf8String());
+            assertTrue(runtime.spotManager()
+                .findAsync(rejected.spotRid())
+                .toCompletableFuture()
+                .join()
+                .isEmpty());
         }
     }
 
@@ -190,6 +264,58 @@ final class SpotManagerTest {
         public CompletionStage<Void> onClosingAsync() {
             closed.countDown();
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class RejectingSpot implements ZLinkSpot {
+        private final ZLinkSpotContext context;
+
+        public RejectingSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
+            return CompletableFuture.completedFuture(
+                ZLinkSpotCreateResponse.reject(Message.from("reject:" + request.toUtf8String())));
+        }
+    }
+
+    public static final class SlowCreateSpot implements ZLinkSpot {
+        private static final AtomicInteger createCalls = new AtomicInteger();
+        private static final AtomicReference<String> createRequest = new AtomicReference<>();
+        private static CountDownLatch createStarted;
+        private static CompletableFuture<Void> release;
+
+        private final ZLinkSpotContext context;
+
+        public SlowCreateSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        static void reset() {
+            createCalls.set(0);
+            createRequest.set(null);
+            createStarted = new CountDownLatch(1);
+            release = new CompletableFuture<>();
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
+            createCalls.incrementAndGet();
+            createRequest.set(request.toUtf8String());
+            createStarted.countDown();
+            return release.thenApply(ignored -> ZLinkSpotCreateResponse.accept());
         }
     }
 

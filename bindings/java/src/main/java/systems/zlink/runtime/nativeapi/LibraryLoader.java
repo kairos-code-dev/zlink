@@ -1,15 +1,18 @@
 package systems.zlink.runtime.nativeapi;
 
 import java.lang.foreign.SymbolLookup;
+import java.lang.foreign.Arena;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 final class LibraryLoader {
     private static final Object LOCK = new Object();
+    private static final List<Path> LOADED_LIBRARY_PATHS = new ArrayList<>();
     private static volatile SymbolLookup LOOKUP;
 
     private LibraryLoader() {}
@@ -30,23 +33,24 @@ final class LibraryLoader {
                 if (!p.isAbsolute())
                     p = p.toAbsolutePath();
                 System.load(p.toString());
+                rememberLoaded(p);
                 if (!loadOptionalBridgeFromResources()) {
                     loadOptionalBridgeFromDirectory(
                         normalizeOs(System.getProperty("os.name")),
                         p.getParent());
                 }
-                LOOKUP = SymbolLookup.loaderLookup();
+                LOOKUP = combinedLookup();
                 return LOOKUP;
             }
             Path nativeDir = findBindingNativeDir();
             if (nativeDir != null) {
                 loadFromDirectory(nativeDir);
-                LOOKUP = SymbolLookup.loaderLookup();
+                LOOKUP = combinedLookup();
                 return LOOKUP;
             }
             try {
                 loadFromResources();
-                LOOKUP = SymbolLookup.loaderLookup();
+                LOOKUP = combinedLookup();
                 return LOOKUP;
             } catch (UnsatisfiedLinkError e) {
                 System.loadLibrary("zlink");
@@ -55,7 +59,7 @@ final class LibraryLoader {
                         normalizeOs(System.getProperty("os.name")),
                         Path.of(System.getProperty("user.dir", ".")).toAbsolutePath());
                 }
-                LOOKUP = SymbolLookup.loaderLookup();
+                LOOKUP = combinedLookup();
                 return LOOKUP;
             }
         }
@@ -78,6 +82,7 @@ final class LibraryLoader {
                 preloadWindowsDeps(tmpDir);
             loadOptionalBridgeFromResources(os, arch, tmpDir);
             System.load(tmp.toAbsolutePath().toString());
+            rememberLoaded(tmp);
             loadOptionalBridgeFromDirectory(os, tmpDir);
         } catch (IOException e) {
             throw new UnsatisfiedLinkError("failed to load zlink native resource: " + e.getMessage());
@@ -106,6 +111,7 @@ final class LibraryLoader {
             if (targetDir == null) {
                 dir.toFile().deleteOnExit();
                 System.load(tmp.toAbsolutePath().toString());
+                rememberLoaded(tmp);
             }
             return targetDir == null;
         } catch (IOException e) {
@@ -124,6 +130,7 @@ final class LibraryLoader {
         }
         if (Files.exists(bridge)) {
             System.load(bridge.toAbsolutePath().toString());
+            rememberLoaded(bridge);
         }
     }
 
@@ -137,7 +144,33 @@ final class LibraryLoader {
             preloadWindowsDeps(dir);
         }
         System.load(lib.toAbsolutePath().toString());
+        rememberLoaded(lib);
         loadOptionalBridgeFromDirectory(os, dir);
+    }
+
+    private static void rememberLoaded(Path path) {
+        LOADED_LIBRARY_PATHS.add(path.toAbsolutePath().normalize());
+    }
+
+    private static SymbolLookup combinedLookup() {
+        List<SymbolLookup> lookups = new ArrayList<>();
+        for (Path path : LOADED_LIBRARY_PATHS) {
+            try {
+                lookups.add(SymbolLookup.libraryLookup(path, Arena.global()));
+            } catch (IllegalArgumentException | IllegalStateException
+                     | UnsatisfiedLinkError ignored) {
+            }
+        }
+        lookups.add(SymbolLookup.loaderLookup());
+        return name -> {
+            for (SymbolLookup lookup : lookups) {
+                Optional<java.lang.foreign.MemorySegment> symbol = lookup.find(name);
+                if (symbol.isPresent()) {
+                    return symbol;
+                }
+            }
+            return Optional.empty();
+        };
     }
 
     private static void preloadWindowsDeps(Path localDir) {

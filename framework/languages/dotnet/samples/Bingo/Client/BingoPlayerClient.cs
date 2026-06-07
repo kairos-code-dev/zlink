@@ -13,13 +13,13 @@ internal sealed class BingoPlayerClient(
 {
     public string ActorId => actorId;
 
-    public IReadOnlyList<PlayerJoinedNotify> PlayerJoinedNotifications => notifications.PlayerJoined;
+    public IReadOnlyList<PlayerJoinedNotify> PlayerJoinedNotifications => notifications.Snapshot<PlayerJoinedNotify>();
 
-    public IReadOnlyList<BingoGameStartedNotify> StartedNotifications => notifications.Started;
+    public IReadOnlyList<BingoGameStartedNotify> StartedNotifications => notifications.Snapshot<BingoGameStartedNotify>();
 
-    public IReadOnlyList<BingoNumberDrawnNotify> DrawnNotifications => notifications.Drawn;
+    public IReadOnlyList<BingoNumberDrawnNotify> DrawnNotifications => notifications.Snapshot<BingoNumberDrawnNotify>();
 
-    public IReadOnlyList<BingoGameEndedNotify> EndedNotifications => notifications.Ended;
+    public IReadOnlyList<BingoGameEndedNotify> EndedNotifications => notifications.Snapshot<BingoGameEndedNotify>();
 
     public static async ValueTask<BingoPlayerClient> ConnectAsync(
         string actorId,
@@ -36,7 +36,7 @@ internal sealed class BingoPlayerClient(
         await connector.ConnectAsync(cancellationToken);
 
         var inbox = new BingoNotificationInbox();
-        inbox.Register(connector);
+        RegisterNotificationHandlers(connector, inbox);
         return new BingoPlayerClient(actorId, inbox, connector, cancellationToken);
     }
 
@@ -73,5 +73,27 @@ internal sealed class BingoPlayerClient(
     public ValueTask DisposeAsync()
     {
         return connector.DisposeAsync();
+    }
+
+    private static void RegisterNotificationHandlers(
+        IZlinkStreamConnector connector,
+        BingoNotificationInbox inbox)
+    {
+        RegisterNotificationHandler<PlayerJoinedNotify>(connector, inbox);
+        RegisterNotificationHandler<BingoGameStartedNotify>(connector, inbox);
+        RegisterNotificationHandler<BingoNumberDrawnNotify>(connector, inbox);
+        RegisterNotificationHandler<BingoStateNotify>(connector, inbox);
+        RegisterNotificationHandler<BingoGameEndedNotify>(connector, inbox);
+    }
+
+    private static void RegisterNotificationHandler<TMessage>(
+        IZlinkStreamConnector connector,
+        BingoNotificationInbox inbox)
+    {
+        _ = connector.On<TMessage>((message, _) =>
+        {
+            inbox.Enqueue(message.Payload!);
+            return ValueTask.CompletedTask;
+        });
     }
 }

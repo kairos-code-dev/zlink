@@ -182,7 +182,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | bound session gateway relay | `integration-single-process` | Play 서버에서 Session 서버로 가는 bound session send가 core ActorGateway binding 을 통해 client STREAM에 단일 stream packet으로 도착한다 |
 | bound session disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `IZLinkBoundSession.DisconnectAsync(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
 | bound session disconnect remote actor | `integration-single-process` | remote actor 가 actor id 없이 `IZLinkBoundSession.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다 |
-| session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
+| session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync()`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
 | spot context channel request 경로 | `integration-single-process` | `Spot.Context.Outbound.RequestToChannel(...)`이 현재 Spot 에 attach 된 channel client 경로를 사용한다 |

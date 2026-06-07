@@ -24,22 +24,22 @@ public sealed class BingoClientApp
             var auth = new List<AuthenticateRes>();
             foreach (var client in clients)
             {
-                auth.Add(await client.AuthenticateAsync(cancellationToken));
+                auth.Add(await client.AuthenticateAsync());
             }
 
-            var firstMatch = await clients[0].MatchAsync(cancellationToken);
+            var firstMatch = await clients[0].MatchAsync();
             var earlyHostStartRejected = await IsRejectedAsync(
-                () => clients[0].StartAsync(firstMatch.RoomId, cancellationToken));
+                () => clients[0].StartAsync(firstMatch.RoomId));
 
             var matches = new List<MatchBingoRes> { firstMatch };
             foreach (var client in clients.Skip(1))
             {
-                matches.Add(await client.MatchAsync(cancellationToken));
+                matches.Add(await client.MatchAsync());
             }
 
             var nonHostStartRejected = await IsRejectedAsync(
-                () => clients[1].StartAsync(firstMatch.RoomId, cancellationToken));
-            var started = await clients[0].StartAsync(firstMatch.RoomId, cancellationToken)
+                () => clients[1].StartAsync(firstMatch.RoomId));
+            var started = await clients[0].StartAsync(firstMatch.RoomId)
                 ;
             var ended = await WaitForEndedAsync(clients, cancellationToken);
 

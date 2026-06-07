@@ -97,6 +97,13 @@
 - send 는 기본적으로 async submit 으로 설명한다. backpressure[^backpressure]는
   public no-wait 옵션을 따로 두지 않고, nonblocking send 와 pending queue,
   ready notification 을 활용해서 framework 내부에서 처리한다.
+- `CancellationToken` 은 실제로 기다릴 수 있고 그 대기를 취소할 수 있는 public
+  async 경계에만 둔다. request / actor join / channel submit / SPOT submit /
+  stream connector write 처럼 queue, retry, transport write, reply 대기가 있는
+  API 는 token 을 받는다. 반대로 session reply frame 작성, session close, timer
+  cancel 처럼 현재 구현이 즉시 완료되거나 자체 종료 토큰으로 정리되는 API 는
+  token 을 받지 않는다. token 을 받는다면 시작 전 검사만 하지 말고 실제 대기
+  지점에 이어 주어야 한다.
 - `SPOT` 을 다루는 문서는 Spot 타입 기준 factory 등록, `RoutingId` 기준 생성과 조회,
   lifecycle timer, 외부 spot publish 표면을 공통
   정책과 맞춰 설명해야 한다.

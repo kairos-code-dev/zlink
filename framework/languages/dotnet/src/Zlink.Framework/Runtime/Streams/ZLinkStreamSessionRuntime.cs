@@ -70,10 +70,9 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         Enqueue(() => MarkDisconnectedAsync(error));
     }
 
-    public async ValueTask CloseAsync(CancellationToken cancellationToken)
+    public async ValueTask CloseAsync()
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        await Stream.CloseAsync(cancellationToken);
+        await Stream.CloseAsync();
 
         if (Interlocked.Exchange(ref _disconnected, 1) != 0)
         {
@@ -91,7 +90,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             return;
         }
 
-        await Stream.CloseAsync(cancellationToken);
+        await Stream.CloseAsync();
         Enqueue(MarkProxyClosedAsync);
     }
 

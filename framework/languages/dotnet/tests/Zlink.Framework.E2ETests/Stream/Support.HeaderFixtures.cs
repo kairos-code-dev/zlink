@@ -148,11 +148,11 @@ public abstract partial class StreamTestSupport
             _recorder.ReceivedPayloads.Add(Encoding.UTF8.GetString(payload.AsReadOnlySpan()).Trim('"'));
             if (_recorder.ReceivedPayloads.Contains("close"))
             {
-                return _context.CloseAsync(cancellationToken);
+                return _context.CloseAsync();
             }
 
             return _context.Client.Reply("pong")
-                .Submit(cancellationToken);
+                .Submit();
         }
     }
 

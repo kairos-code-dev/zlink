@@ -283,7 +283,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
             ct);
         await context.Actors.BindAsync(
             actor, ct);
-        await context.Client.Reply(new AuthRep(ok: true)).Submit(ct);
+        await context.Client.Reply(new AuthRep(ok: true)).Submit();
     }
 }
 ```

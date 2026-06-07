@@ -93,7 +93,7 @@ public sealed class ClientHeaderSession(
 
             case "Ping":
                 var ping = payload.Decode<Ping>();
-                await context.Client.Reply(new Pong(ping.Sequence)).Submit(ct);
+                await context.Client.Reply(new Pong(ping.Sequence)).Submit();
                 break;
         }
     }
@@ -104,9 +104,9 @@ public sealed class ClientHeaderSession(
 
 | 표면 | 용도 |
 |------|------|
-| `Send(msg).Submit(ct)` / `Reply(msg).Submit(ct)` | client 로 push / 요청에 응답 |
+| `Send(msg).Submit()` / `Reply(msg).Submit()` | client 로 push / 요청에 응답 |
 | `Actors.Bound` / `BindAsync(...)` / `Actors.Find(...)` / `IZLinkSessionActor.RelayAsync(...)` | actor 로 relay([06-actor-session](./06-actor-session.ko.md)) |
-| `CloseAsync(...)` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
+| `CloseAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
 다른 서비스로 channel send/request 를 보내야 할 때는 session 생성자에서
 `IZLinkChannelClient` 를 함께 주입받아 `SendToChannel(channelName, ...)` 또는

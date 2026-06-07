@@ -323,6 +323,6 @@ internal sealed class TestHostRawStreamSession(
         _ = header;
         recorder.RecordPayload(Encoding.UTF8.GetString(payload.AsReadOnlySpan()));
         return Context.Client.Reply("pong")
-            .Submit(cancellationToken);
+            .Submit();
     }
 }

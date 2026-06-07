@@ -73,6 +73,8 @@ public interface IZLinkStream
     bool Write(
         Message payload,
         SendFlags flags = SendFlags.None);
+
+    ValueTask CloseAsync();
 }
 
 public enum ZLinkStreamSessionError
@@ -178,14 +180,14 @@ public interface IZLinkSessionSendCall
     IZLinkSessionSendCall Metadata(string key, string value);
     IZLinkSessionSendCall PacketName(string messageName);
     IZLinkSessionSendCall Compress();
-    ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask Submit();
 }
 
 public interface IZLinkSessionReplyCall
 {
     IZLinkSessionReplyCall Metadata(string key, string value);
     IZLinkSessionReplyCall Compress();
-    ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask Submit();
 }
 
 public interface IZLinkSessionContext
@@ -202,8 +204,7 @@ public interface IZLinkSessionContext
 
     IZLinkSessionActors Actors { get; }
 
-    ValueTask CloseAsync(
-        CancellationToken cancellationToken = default);
+    ValueTask CloseAsync();
 }
 ```
 
@@ -251,7 +252,7 @@ context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
   해당 channel 의 client socket 을 사용하기 때문이다.
 - session disconnect 를 actor 에 알려야 할 때는 application 이 대상 actor 를 고른
   뒤 `IZLinkSessionActor.NotifyDisconnectedAsync(...)` 를 호출한다.
-- `CloseAsync(...)` 는 현재 stream client 의 연결을 서버 쪽에서 끊는다.
+- `CloseAsync()` 는 현재 stream client 의 연결을 서버 쪽에서 끊는다.
 - header session 은 C API 가 잘라 준 stream frame 을 framework 가 header 와
   payload 로 나누어 받은 뒤 처리한다.
 - application 은 packet name 을 보고 각 packet 타입으로 decode 한다.

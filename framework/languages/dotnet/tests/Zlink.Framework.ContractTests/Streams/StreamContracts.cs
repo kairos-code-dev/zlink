@@ -252,7 +252,7 @@ public sealed class StreamContracts
             return _actors.GetValueOrDefault(actorId);
         }
 
-        public ValueTask CloseAsync(CancellationToken cancellationToken = default)
+        public ValueTask CloseAsync()
         {
             IsClosed = true;
             return ValueTask.CompletedTask;
@@ -260,10 +260,10 @@ public sealed class StreamContracts
 
         bool IZLinkStream.Write(Message payload, SendFlags flags) => true;
 
-        async ValueTask IZLinkStream.CloseAsync(CancellationToken cancellationToken)
+        async ValueTask IZLinkStream.CloseAsync()
         {
             StreamClosed = true;
-            await CloseAsync(cancellationToken);
+            await CloseAsync();
         }
     }
 
@@ -321,7 +321,7 @@ public sealed class StreamContracts
 
         public IZLinkSessionSendCall Compress() => this;
 
-        public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask Submit() => ValueTask.CompletedTask;
     }
 
     private sealed class SessionReplyCall : IZLinkSessionReplyCall
@@ -330,7 +330,7 @@ public sealed class StreamContracts
 
         public IZLinkSessionReplyCall Compress() => this;
 
-        public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask Submit() => ValueTask.CompletedTask;
     }
 
     private sealed class BoundSessionSendCall : IZLinkBoundSessionSendCall

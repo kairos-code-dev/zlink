@@ -43,6 +43,8 @@ public interface IZLinkStream
     bool Write(
         Message payload,
         SendFlags flags = SendFlags.None);
+
+    ValueTask CloseAsync();
 }
 
 public enum ZLinkStreamSessionError
@@ -145,7 +147,7 @@ session context 는 callback 인자가 아니라 session 인스턴스 생성 시
 주입되는 계약이다. framework 는 생성된 session 의 `Context` 가 주입한
 context 와 같은 인스턴스인지 확인한다.
 
-`CloseAsync(...)` 는 현재 session 의 client stream 연결을 서버 쪽에서 끊을 때
+`CloseAsync()` 는 현재 session 의 client stream 연결을 서버 쪽에서 끊을 때
 사용한다. 예를 들어 인증에 실패했거나 protocol 위반이 확인되어 응답을 돌려준 뒤,
 더 이상 packet[^packet] 을 받지 않으려는 상황을 생각할 수 있다. 그럴 때 session
 handler[^handler] 가 이 함수를 호출하면 된다.
@@ -254,7 +256,7 @@ public sealed class ClientHeaderSession(
                     {
                         Sequence = ping.Sequence
                     })
-                    .Submit(cancellationToken);
+                    .Submit();
                 break;
             }
         }
@@ -380,7 +382,7 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
     {
         return context
             .Reply(new Pong())
-            .Submit(cancellationToken);
+            .Submit();
     }
 }
 ```

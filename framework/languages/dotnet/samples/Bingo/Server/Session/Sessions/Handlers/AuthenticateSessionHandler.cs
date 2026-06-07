@@ -45,7 +45,7 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
                 cancellationToken);
 
         await context.Client.Reply(new AuthenticateRes(ensured.ActorId, authenticated.DisplayName))
-            .Submit(cancellationToken);
+            .Submit();
     }
 
     private static ActorRef ToActorRef(ActorRefSnapshot snapshot)

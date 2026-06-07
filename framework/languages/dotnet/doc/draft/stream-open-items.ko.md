@@ -73,9 +73,9 @@ serializer 계층은 다음 네 가지 방향으로 잡혀 있다.
 
 요지는 다음과 같다.
 
-- `IZLinkStream` 은 `bool Write(Message payload, SendFlags flags = None)` 만
-  노출한다. header 는 framework 가 packet 을 만들 때 내부에서 작성하므로
-  application 이 임의로 넘기는 overload 를 두지 않는다.
+- `IZLinkStream` 은 `bool Write(Message payload, SendFlags flags = None)` 와
+  `CloseAsync()` 만 노출한다. header 는 framework 가 packet 을 만들 때 내부에서
+  작성하므로 application 이 임의로 넘기는 overload 를 두지 않는다.
 - application 이 packet 을 보내야 할 때는 session context 의 `Send(...)`,
   `Reply(...)` 또는 actor context 의 `BoundSession` 을 쓴다.
 - 일시적인 backpressure[^backpressure] 는 `Write(...)` 의 `false` 반환으로만

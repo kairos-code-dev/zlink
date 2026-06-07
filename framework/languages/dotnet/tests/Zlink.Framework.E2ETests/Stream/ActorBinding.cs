@@ -186,7 +186,7 @@ public sealed class ActorBindingTests : StreamTestSupport
             var context = new ZLinkSessionContext(
                 host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
                 new SpotTestSupport.TestStream("missing-actor-session"),
-                static _ => ValueTask.CompletedTask,
+                static () => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
 
             var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
@@ -243,7 +243,7 @@ public sealed class ActorBindingTests : StreamTestSupport
             var context = new ZLinkSessionContext(
                 host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
                 new RoutedTestStream("actor-lookup-session", RoutingId.From("session-lookup")),
-                static _ => ValueTask.CompletedTask,
+                static () => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
 
             var first = await context.Actors.BindAsync(actor1);
@@ -302,7 +302,7 @@ public sealed class ActorBindingTests : StreamTestSupport
             var context = new ZLinkSessionContext(
                 host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
                 new SpotTestSupport.TestStream("local-only-session"),
-                static _ => ValueTask.CompletedTask,
+                static () => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
 
             var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
@@ -337,9 +337,8 @@ public sealed class ActorBindingTests : StreamTestSupport
             return true;
         }
 
-        public ValueTask CloseAsync(CancellationToken cancellationToken = default)
+        public ValueTask CloseAsync()
         {
-            _ = cancellationToken;
             return ValueTask.CompletedTask;
         }
     }

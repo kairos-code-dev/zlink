@@ -5,7 +5,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
 {
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly IZLinkStream _stream;
-    private readonly Func<CancellationToken, ValueTask> _closeAsync;
+    private readonly Func<ValueTask> _closeAsync;
     private readonly Func<CancellationToken, ValueTask> _closeByProxyAsync;
     private ZlinkStreamHeader? _currentDispatchHeader;
     private readonly ZLinkSessionRequestTracker _requests = new();
@@ -17,7 +17,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     public ZLinkSessionContext(
         ZLinkFrameworkRuntime runtime,
         IZLinkStream stream,
-        Func<CancellationToken, ValueTask> closeAsync,
+        Func<ValueTask> closeAsync,
         Func<CancellationToken, ValueTask> closeByProxyAsync)
     {
         _runtime = runtime;
@@ -46,9 +46,9 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     internal IReadOnlyCollection<IZLinkSessionActor> BoundActors => _actors.BoundActors;
     internal ZLinkSessionActorCoordinator ActorCoordinator => _actors;
 
-    public ValueTask CloseAsync(CancellationToken cancellationToken = default)
+    public ValueTask CloseAsync()
     {
-        return _closeAsync(cancellationToken);
+        return _closeAsync();
     }
 
     internal ValueTask CloseByProxyAsync(CancellationToken cancellationToken = default)

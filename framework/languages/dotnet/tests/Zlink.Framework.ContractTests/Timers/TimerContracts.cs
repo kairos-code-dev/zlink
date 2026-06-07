@@ -19,7 +19,7 @@ public sealed class TimerContracts
     {
         public bool IsDisposed { get; private set; }
 
-        public ValueTask CancelAsync(CancellationToken cancellationToken = default)
+        public ValueTask CancelAsync()
         {
             IsDisposed = true;
             return ValueTask.CompletedTask;

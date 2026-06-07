@@ -18,25 +18,25 @@ public sealed class SessionActorDispatchClient
             options.ReconnectStreamEndpoint,
             cancellationToken);
 
-        var xAuth = await xClient.AuthenticateAsync(cancellationToken);
-        var oAuth = await oClient.AuthenticateAsync(cancellationToken);
-        var created = await xClient.CreateMatchAsync(cancellationToken);
+        var xAuth = await xClient.AuthenticateAsync();
+        var oAuth = await oClient.AuthenticateAsync();
+        var created = await xClient.CreateMatchAsync();
 
         await xClient.DisposeAsync();
         await using var reconnectedXClient = await SessionActorDispatchPlayerClient.ConnectAsync(
             options.XActorId,
             options.ReconnectStreamEndpoint,
             cancellationToken);
-        var xReconnectAuth = await reconnectedXClient.AuthenticateAsync(cancellationToken);
-        var xJoin = await reconnectedXClient.JoinAsync(created.MatchId, cancellationToken);
-        var oJoin = await oClient.JoinAsync(created.MatchId, cancellationToken);
+        var xReconnectAuth = await reconnectedXClient.AuthenticateAsync();
+        var xJoin = await reconnectedXClient.JoinAsync(created.MatchId);
+        var oJoin = await oClient.JoinAsync(created.MatchId);
         var moves = new[]
         {
-            await reconnectedXClient.PlaceMarkAsync(created.MatchId, 0, cancellationToken),
-            await oClient.PlaceMarkAsync(created.MatchId, 3, cancellationToken),
-            await reconnectedXClient.PlaceMarkAsync(created.MatchId, 1, cancellationToken),
-            await oClient.PlaceMarkAsync(created.MatchId, 4, cancellationToken),
-            await reconnectedXClient.PlaceMarkAsync(created.MatchId, 2, cancellationToken),
+            await reconnectedXClient.PlaceMarkAsync(created.MatchId, 0),
+            await oClient.PlaceMarkAsync(created.MatchId, 3),
+            await reconnectedXClient.PlaceMarkAsync(created.MatchId, 1),
+            await oClient.PlaceMarkAsync(created.MatchId, 4),
+            await reconnectedXClient.PlaceMarkAsync(created.MatchId, 2),
         };
 
         ValidateReconnect(options, xAuth, xReconnectAuth, xJoin.State);

@@ -118,7 +118,7 @@ sealed class PlaySession(
             playerActor,
             cancellationToken);
         await Context.Client.Reply(new AuthenticateRes(reply.ActorId))
-            .Submit(cancellationToken);
+            .Submit();
 
         logger.LogInformation(
             "api -> play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}, actor={ActorId}",

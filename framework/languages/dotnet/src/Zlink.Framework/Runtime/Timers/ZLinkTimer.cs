@@ -26,10 +26,8 @@ internal sealed class ZLinkTimer : IZLinkTimer
 
     public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
-    public async ValueTask CancelAsync(CancellationToken cancellationToken = default)
+    public async ValueTask CancelAsync()
     {
-        _ = cancellationToken;
-
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;

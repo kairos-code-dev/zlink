@@ -44,7 +44,7 @@ internal sealed class AuthenticateSessionPacketHandler(
                 cancellationToken);
 
         await context.Client.Reply(new AuthenticateRes(ensured.ActorId))
-            .Submit(cancellationToken);
+            .Submit();
     }
 
     private static ActorRef ToActorRef(ActorRefSnapshot snapshot)

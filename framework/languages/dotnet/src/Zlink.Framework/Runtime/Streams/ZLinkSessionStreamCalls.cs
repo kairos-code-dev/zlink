@@ -24,10 +24,8 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
         return this;
     }
 
-    protected ValueTask ExecuteAsync(CancellationToken cancellationToken = default)
+    protected ValueTask Execute()
     {
-        _ = cancellationToken;
-
         _builder.Write(
             (codec, flags, messageName, metadata) => CreateHeader(
                 codec,
@@ -63,9 +61,9 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
     IZLinkSessionSendCall IZLinkSessionSendCall.Compress()
         => (IZLinkSessionSendCall)Compress();
 
-    public ValueTask Submit(CancellationToken cancellationToken = default)
+    public ValueTask Submit()
     {
-        return ExecuteAsync(cancellationToken);
+        return Execute();
     }
 
     protected override ZlinkStreamHeader CreateHeader(
@@ -97,9 +95,9 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
     IZLinkSessionReplyCall IZLinkSessionReplyCall.Compress()
         => (IZLinkSessionReplyCall)Compress();
 
-    public ValueTask Submit(CancellationToken cancellationToken = default)
+    public ValueTask Submit()
     {
-        return ExecuteAsync(cancellationToken);
+        return Execute();
     }
 
     protected override ZlinkStreamHeader CreateHeader(

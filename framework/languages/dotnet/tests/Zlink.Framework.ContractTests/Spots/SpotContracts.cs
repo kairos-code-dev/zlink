@@ -597,7 +597,7 @@ public sealed class SpotContracts
     {
         public bool IsDisposed { get; private set; }
 
-        public ValueTask CancelAsync(CancellationToken cancellationToken = default)
+        public ValueTask CancelAsync()
         {
             IsDisposed = true;
             return ValueTask.CompletedTask;

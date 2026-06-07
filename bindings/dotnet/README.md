@@ -12,4 +12,15 @@ message back over the original receive context. Request messages also keep
 Create caller-owned receive buffers with `Received.Create()` and reuse the
 same instance across `Recv(...)` calls when draining hot paths.
 
+## CancellationToken policy
+
+`CancellationToken` is part of an API only when the operation can actually
+wait and the binding can observe cancellation while it waits. Awaitable request
+and actor operations keep optional tokens because they wait for native
+completion, replies, timeouts, or queue progress.
+
+Synchronous builders, immediate configuration calls, and callback-style submit
+methods do not take a token. A token must not be added only to call
+`ThrowIfCancellationRequested()` before a non-cancelable operation.
+
 Project repository: https://github.com/kairos-code-dev/zlink

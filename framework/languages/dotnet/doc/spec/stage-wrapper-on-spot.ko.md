@@ -250,7 +250,7 @@ handler 가 같은 `Spot` state 를 동시에 만지고 있는가" 를 매번 �
 public interface IZLinkTimer : IAsyncDisposable
 {
     bool IsDisposed { get; }
-    ValueTask CancelAsync(CancellationToken cancellationToken = default);
+    ValueTask CancelAsync();
 }
 
 public interface IZLinkSpot

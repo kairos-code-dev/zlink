@@ -1372,7 +1372,7 @@ public sealed class SampleSession
                     AccountId = auth.AccountId,
                     CurrentRoomId = (actor.Spot as SampleSpot)?.RoomId ?? string.Empty
                 })
-                .Submit(cancellationToken);
+                .Submit();
             return;
         }
 
@@ -1396,7 +1396,7 @@ public sealed class SampleSession
 
             await Context
                 .Reply(joinReply)
-                .Submit(cancellationToken);
+                .Submit();
             return;
         }
 

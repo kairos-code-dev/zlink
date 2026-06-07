@@ -115,7 +115,7 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         if (_heartbeat is not null)
         {
-            await _heartbeat.CancelAsync(cancellationToken);
+            await _heartbeat.CancelAsync();
         }
     }
 }
@@ -156,7 +156,7 @@ timer 는 spot 안에서 주기적으로 상태를 갱신하거나, 오래된 �
 1. `Configure()` 에서는 packet, subscribe, actor handler 처럼 동기 등록만 한다.
 2. `OnInitializeAsync(...)` 에서 `Context.AddTimer<THandler>(...)` 를 호출한다.
 3. 반환된 `IZLinkTimer` 를 spot 필드에 보관한다.
-4. `OnClosingAsync(...)` 에서 `CancelAsync(...)` 로 멈춘다.
+4. `OnClosingAsync(...)` 에서 `CancelAsync()` 로 멈춘다.
 5. 실제 주기 작업은 `IZLinkSpotTimerHandler<TSpot>` 구현체에 둔다.
 
 `AddTimer<THandler>(name, period, options, cancellationToken)` 의 인자는 다음 의미다.
@@ -308,7 +308,7 @@ _timer = await Context.AddTimer<StageHeartbeatHandler>(
 `StopOnUnhandledException` 이 `true` 이면 첫 unhandled exception 뒤 timer 를
 중단하고 `TimerStoppedAfterUnhandledException` 이벤트를 기록한다.
 
-timer 를 더 이상 쓰지 않으면 `CancelAsync(...)` 를 호출한다. 예를 들어 room 이
+timer 를 더 이상 쓰지 않으면 `CancelAsync()` 를 호출한다. 예를 들어 room 이
 닫히거나 spot 이 closing 될 때 멈춘다.
 
 ```csharp
@@ -316,7 +316,7 @@ public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
 {
     if (_heartbeat is not null)
     {
-        await _heartbeat.CancelAsync(cancellationToken);
+        await _heartbeat.CancelAsync();
     }
 }
 ```

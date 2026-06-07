@@ -30,9 +30,8 @@ public abstract partial class SpotTestSupport
             return true;
         }
 
-        public ValueTask CloseAsync(CancellationToken cancellationToken = default)
+        public ValueTask CloseAsync()
         {
-            _ = cancellationToken;
             return ValueTask.CompletedTask;
         }
     }

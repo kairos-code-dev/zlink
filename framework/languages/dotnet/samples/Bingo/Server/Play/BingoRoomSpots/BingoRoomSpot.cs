@@ -118,7 +118,7 @@ internal sealed class BingoRoomSpot(
     {
         if (_timer is not null)
         {
-            await _timer.CancelAsync(cancellationToken);
+            await _timer.CancelAsync();
         }
     }
 

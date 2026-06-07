@@ -580,10 +580,10 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
         }
 
         await context.Client.Send(new PlayerJoined("player-1"))      // IZLinkSessionSendCall
-            .PacketName("player.joined").Metadata("trace-id", "abc").Compress().Submit(ct);
+            .PacketName("player.joined").Metadata("trace-id", "abc").Compress().Submit();
         await context.Client.Reply(new AuthenticateReply("player-1")) // IZLinkSessionReplyCall
-            .Metadata("trace-id", "abc").Compress().Submit(ct);
-        await context.CloseAsync(ct);                          // Lifecycle
+            .Metadata("trace-id", "abc").Compress().Submit();
+        await context.CloseAsync();                             // Lifecycle
     }
 
     public ValueTask OnConnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;

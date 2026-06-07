@@ -181,7 +181,7 @@ public sealed class GameChatSession(IZLinkSessionContext context, IZLinkActorMan
             var req = payload.Decode<AuthPlayerReq>();
             IZLinkActor actor = await actors.GetOrCreateAsync(req.PlayerId, "player", ct);
             _player = await context.Actors.BindAsync(actor, ct);
-            await context.Client.Reply(new AuthPlayerOk()).Submit(ct);
+            await context.Client.Reply(new AuthPlayerOk()).Submit();
             return;
         }
 

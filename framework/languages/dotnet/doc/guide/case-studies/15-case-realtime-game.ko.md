@@ -100,7 +100,7 @@ public sealed class GameSession(IZLinkSessionContext context, IZLinkActorManager
             var req = payload.Decode<AuthReq>();
             IZLinkActor actor = await actors.GetOrCreateAsync(req.PlayerId, "player", ct);
             _actor = await context.Actors.BindAsync(actor, ct); // 재접속 멱등
-            await context.Client.Reply(new AuthOk()).Submit(ct);
+            await context.Client.Reply(new AuthOk()).Submit();
             return;
         }
         await _actor!.RelayAsync(header, payload, ct);

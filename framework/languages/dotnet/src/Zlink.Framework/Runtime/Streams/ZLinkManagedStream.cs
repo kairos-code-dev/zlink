@@ -33,9 +33,8 @@ internal sealed class ZLinkManagedStream : IZLinkStream
         return _socket.Send(_routingId, payload, flags);
     }
 
-    public ValueTask CloseAsync(CancellationToken cancellationToken = default)
+    public ValueTask CloseAsync()
     {
-        cancellationToken.ThrowIfCancellationRequested();
         _socket.DisconnectPeer(_routingId);
         return ValueTask.CompletedTask;
     }

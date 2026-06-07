@@ -1357,7 +1357,7 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
             authenticatedActors.Remember(request.ActorId, actor);
 
             await context.Client.Reply(new AuthRep(ok: true))
-                .Submit(cancellationToken);
+                .Submit();
             return;
         }
 

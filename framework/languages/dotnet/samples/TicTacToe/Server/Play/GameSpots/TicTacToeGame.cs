@@ -97,7 +97,7 @@ sealed class TicTacToeGame(
     {
         if (_gameTick is not null)
         {
-            await _gameTick.CancelAsync(cancellationToken);
+            await _gameTick.CancelAsync();
         }
     }
 

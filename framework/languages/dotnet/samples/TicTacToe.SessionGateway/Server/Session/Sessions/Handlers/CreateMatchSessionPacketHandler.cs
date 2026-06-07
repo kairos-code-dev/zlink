@@ -29,7 +29,7 @@ namespace TicTacToe.SessionGateway.Session.Sessions.Handlers
                     .SubmitAsync<CreateMatchRes>(cancellationToken) ;
 
             await context.Client.Reply(reply)
-                .Submit(cancellationToken);
+                .Submit();
         }
 
         private static IZLinkSessionActor RequireSingleBoundActor(

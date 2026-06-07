@@ -72,8 +72,7 @@ public interface IZLinkSessionContext
 
     IZLinkSessionActors Actors { get; }
 
-    ValueTask CloseAsync(
-        CancellationToken cancellationToken = default);
+    ValueTask CloseAsync();
 }
 
 public interface IZLinkSessionSendCall
@@ -84,7 +83,7 @@ public interface IZLinkSessionSendCall
 
     IZLinkSessionSendCall Compress();
 
-    ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask Submit();
 }
 
 public interface IZLinkSessionReplyCall
@@ -93,5 +92,5 @@ public interface IZLinkSessionReplyCall
 
     IZLinkSessionReplyCall Compress();
 
-    ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask Submit();
 }

@@ -9,7 +9,8 @@ namespace TicTacToe.SessionGateway.Client;
 internal sealed class SessionActorDispatchPlayerClient(
     string actorId,
     SessionActorNotificationInbox notifications,
-    IZlinkStreamConnector connector) : IAsyncDisposable
+    IZlinkStreamConnector connector,
+    CancellationToken cancellationToken) : IAsyncDisposable
 {
     public string ActorId => actorId;
 
@@ -33,7 +34,7 @@ internal sealed class SessionActorDispatchPlayerClient(
 
         var inbox = new SessionActorNotificationInbox();
         inbox.Register(connector);
-        var client = new SessionActorDispatchPlayerClient(actorId, inbox, connector);
+        var client = new SessionActorDispatchPlayerClient(actorId, inbox, connector, cancellationToken);
         return client;
     }
 
@@ -43,7 +44,7 @@ internal sealed class SessionActorDispatchPlayerClient(
 
     public IReadOnlyList<GameEndedNotify> GameEndedNotifications => notifications.GameEnded;
 
-    public ValueTask<AuthenticateRes> AuthenticateAsync(CancellationToken cancellationToken)
+    public ValueTask<AuthenticateRes> AuthenticateAsync()
     {
         return connector
             .Request(new AuthenticateReq(actorId))
@@ -52,8 +53,7 @@ internal sealed class SessionActorDispatchPlayerClient(
     }
 
     public ValueTask<JoinMatchRes> JoinAsync(
-        string matchId,
-        CancellationToken cancellationToken)
+        string matchId)
     {
         return connector
             .Request(new JoinMatchReq(matchId))
@@ -61,7 +61,7 @@ internal sealed class SessionActorDispatchPlayerClient(
             .SubmitAsync<JoinMatchRes>(cancellationToken);
     }
 
-    public ValueTask<CreateMatchRes> CreateMatchAsync(CancellationToken cancellationToken)
+    public ValueTask<CreateMatchRes> CreateMatchAsync()
     {
         return connector
             .Request(new CreateMatchReq())
@@ -71,8 +71,7 @@ internal sealed class SessionActorDispatchPlayerClient(
 
     public ValueTask<PlaceMarkRes> PlaceMarkAsync(
         string matchId,
-        int cell,
-        CancellationToken cancellationToken)
+        int cell)
     {
         return connector
             .Request(new PlaceMarkReq(matchId, cell))

@@ -8,7 +8,8 @@ namespace Bingo.Client;
 internal sealed class BingoPlayerClient(
     string actorId,
     BingoNotificationInbox notifications,
-    IZlinkStreamConnector connector) : IAsyncDisposable
+    IZlinkStreamConnector connector,
+    CancellationToken cancellationToken) : IAsyncDisposable
 {
     public string ActorId => actorId;
 
@@ -36,10 +37,10 @@ internal sealed class BingoPlayerClient(
 
         var inbox = new BingoNotificationInbox();
         inbox.Register(connector);
-        return new BingoPlayerClient(actorId, inbox, connector);
+        return new BingoPlayerClient(actorId, inbox, connector, cancellationToken);
     }
 
-    public ValueTask<AuthenticateRes> AuthenticateAsync(CancellationToken cancellationToken)
+    public ValueTask<AuthenticateRes> AuthenticateAsync()
     {
         return connector
             .Request(new AuthenticateReq(ActorId))
@@ -47,7 +48,7 @@ internal sealed class BingoPlayerClient(
             .SubmitAsync<AuthenticateRes>(cancellationToken);
     }
 
-    public ValueTask<MatchBingoRes> MatchAsync(CancellationToken cancellationToken)
+    public ValueTask<MatchBingoRes> MatchAsync()
     {
         return connector
             .Request(new MatchBingoReq("four-player"))
@@ -56,8 +57,7 @@ internal sealed class BingoPlayerClient(
     }
 
     public ValueTask<StartBingoGameRes> StartAsync(
-        string roomId,
-        CancellationToken cancellationToken)
+        string roomId)
     {
         return connector
             .Request(new StartBingoGameReq(roomId))

@@ -1118,8 +1118,7 @@ public interface IZLinkStream
         Message payload,
         SendFlags flags = SendFlags.None);
 
-    ValueTask CloseAsync(
-        CancellationToken cancellationToken = default);
+    ValueTask CloseAsync();
 }
 
 public enum ZLinkStreamSessionError
@@ -1210,8 +1209,7 @@ public interface IZLinkSessionContext
 
     IZLinkSessionActors Actors { get; }
 
-    ValueTask CloseAsync(
-        CancellationToken cancellationToken = default);
+    ValueTask CloseAsync();
 }
 
 public interface IZLinkSessionSendCall
@@ -1222,7 +1220,7 @@ public interface IZLinkSessionSendCall
 
     IZLinkSessionSendCall Compress();
 
-    ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask Submit();
 }
 
 public interface IZLinkSessionReplyCall
@@ -1231,7 +1229,7 @@ public interface IZLinkSessionReplyCall
 
     IZLinkSessionReplyCall Compress();
 
-    ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask Submit();
 }
 
 ```
@@ -1240,7 +1238,7 @@ session 구현체는 framework 가 생성자에 넘긴 `IZLinkSessionContext` �
 `Context` property 로 그대로 노출해야 한다. 이 규칙은 문서 가이드가 아니라
 runtime 이 검증하는 계약이다.
 
-`CloseAsync(...)` 는 현재 session 의 stream peer 연결을 서버 쪽에서 끊는
+`CloseAsync()` 는 현재 session 의 stream peer 연결을 서버 쪽에서 끊는
 동작이다.
 
 호출 시점은 다음과 같은 상황이다. 인증 실패, protocol 위반, idle timeout
@@ -3161,8 +3159,7 @@ public interface IZLinkTimer : IAsyncDisposable
 {
     bool IsDisposed { get; }
 
-    ValueTask CancelAsync(
-        CancellationToken cancellationToken = default);
+    ValueTask CancelAsync();
 }
 
 public sealed record ZLinkTimerOptions

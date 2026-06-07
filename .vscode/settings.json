@@ -64,6 +64,12 @@
     ],
     "java.configuration.updateBuildConfiguration": "interactive",
 
+    "kotlin.languageServer.enabled": true,
+    "kotlin.compiler.jvm.target": "22",
+    "kotlin.java.home": "/usr/lib/jvm/temurin-22-jdk-amd64",
+    "kotlin.externalSources.useKlsScheme": true,
+    "kotlin.externalSources.autoConvertToKotlin": false,
+
     "files.associations": {
         "*.ipp": "cpp",
         "*.tpp": "cpp"
@@ -98,5 +104,6 @@
         "**/bindings/python/src/zlink.egg-info": true,
         "**/bindings/rust/target": true,
         "**/bindings/go/tmp": true
-    }
+    },
+    "java.compile.nullAnalysis.mode": "automatic"
 }

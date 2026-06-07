@@ -112,8 +112,7 @@ namespace 역할만 맡긴다. host 조립, option registration, spot runtime, s
 - framework는 Java binding의 public API만 호출한다.
 - `.NET`과 같은 channel, Spot, actor/session, stream, registry, monitoring 의미를
   제공한다.
-- `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`,
-  `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient`, `Async` sample이 실제
+- `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`, `Bingo` sample이 실제
   framework/connector public API만 사용해 실행된다.
 - [regression-test-matrix](./internals/regression-test-matrix.ko.md)의 release gate가
   통과한다.
@@ -677,7 +676,6 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 | callback request API | `IZlinkStreamConnectorInternal.RequestEncoded(... callback ...)` | Java public API는 `CompletionStage` 기본 표면만 제공한다. callback request helper는 Java/Kotlin async 정책상 별도 public helper로 추가하지 않고 `CompletionStage.whenComplete(...)`와 Kotlin `await()`를 표준 사용성으로 둔다 | `timeout 300s gradle check`, `timeout 300s ./samples/run_samples.sh` | 완료 |
 | codec module separation | `.Codecs`, `.Json`, `.MessagePack`, `.Protobuf` | connector core와 JSON/MessagePack/Protobuf helper 모듈이 분리되어 있고, JSON typed helper는 실제 TCP connector `send/request/on` 표면 위에서 검증됨 | `timeout 120s gradle :zlink-framework-testkit:contractTest --tests systems.zlink.framework.testkit.ConnectorCodecContractTest --rerun-tasks`, `timeout 300s gradle check` | 완료 |
 | POSD connector responsibility split | `Runtime/Transport/*`, pending request, callback dispatch, codec 책임 분리 | TCP/TLS/WebSocket transport는 `ZLinkStreamTransportConnection` 구현으로 분리하고, request timeout/correlation은 `ZLinkStreamPendingRequests`, manual dispatch queue는 `ZLinkStreamDispatchQueue`가 맡는다. connector public API는 transport 종류나 pending map을 노출하지 않음 | `timeout 180s gradle :zlink-stream-connector:test --rerun-tasks`, 완료 금지 패턴 검색 | 완료 |
-| connector sample self-check | `StreamingClient` sample의 connector send/request/on/manual dispatch/lifecycle/reconnect smoke | Java/Kotlin `StreamingClient`와 Bingo connector client가 loopback TCP endpoint를 통해 실제 STREAM frame을 주고받음 | `timeout 300s ./samples/run_samples.sh` | 완료 |
 
 ## 13. Phase 9 -- Kotlin wrapper
 
@@ -756,31 +754,22 @@ Kotlin coroutine runtime 단위 테스트만으로는 Spring annotation handler 
 ### 산출물
 
 - `framework/languages/java/samples/java/TicTacToe`
-- `framework/languages/java/samples/java/TicTacToe.SessionGateway`
 - `framework/languages/java/samples/java/Bingo`
-- `framework/languages/java/samples/java/StreamingClient`
-- `framework/languages/java/samples/java/Async`
 - `framework/languages/java/samples/kotlin/TicTacToe`
-- `framework/languages/java/samples/kotlin/TicTacToe.SessionGateway`
 - `framework/languages/java/samples/kotlin/Bingo`
-- `framework/languages/java/samples/kotlin/StreamingClient`
-- `framework/languages/java/samples/kotlin/Async`
 - `framework/languages/java/samples/run_samples.sh`
 
 ### 작업
 
-1. `StreamingClient`로 connector 단독 사용성을 먼저 검증한다.
-2. `TicTacToe` direct sample을 구현한다.
-3. `TicTacToe.SessionGateway`로 ActorGateway relay와 reconnect를 검증한다.
-4. `Bingo`로 matching room, timer, bound push를 검증한다.
-5. Java `CompletionStage`와 Kotlin `suspend` 표면을 검증하는 `Async` sample을 구현한다.
-6. 같은 sample set을 `samples/java/*`, `samples/kotlin/*` 양쪽에 배치한다.
-7. `.NET`의 `Client`, `Server/Api`, `Server/Play`, `Server/Registry`,
+1. `TicTacToe` direct sample을 구현한다.
+2. `Bingo`로 matching room, timer, bound push를 검증한다.
+3. `TicTacToe`와 `Bingo`를 `samples/java/*`, `samples/kotlin/*` 양쪽에 배치한다.
+4. `.NET`의 `Client`, `Server/Api`, `Server/Play`, `Server/Registry`,
    `Server/Session`, `Shared/*` 역할을 Java/Kotlin package와 파일로 나누어 둔다.
    독립 실행이 필요한 sample은 같은 역할을 Gradle 하위 프로젝트로도 나누어 둔다.
-   `TicTacToe.SessionGateway`와 `Bingo`는 actor joined/left, Spot created, room model,
-   player client 역할 파일을 생략하지 않는다.
-8. sample regression self-check를 만든다.
+   `Bingo`는 actor joined/left, Spot created, room model, player client 역할 파일을
+   생략하지 않는다.
+5. sample regression self-check를 만든다.
 
 ### Gate
 
@@ -791,13 +780,11 @@ Kotlin coroutine runtime 단위 테스트만으로는 Spring annotation handler 
 sample gate는 아래를 자동 확인해야 한다.
 
 - sample이 framework/connector public API만 사용한다.
-- `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`가 Java/Kotlin 양쪽에서 `.NET`
+- `TicTacToe`, `Bingo`가 Java/Kotlin 양쪽에서 `.NET`
   sample의 역할 package와 주요 handler/model/player-client 파일을 가진다.
 - session sample에 route/metadata store가 없다.
-- Session server가 ActorGateway attach를 사용한다.
 - connector client가 manual dispatch mode에서 request/reply와 notification을 처리한다.
 - Bingo deterministic scenario가 같은 sequence winner를 만든다.
-- TicTacToe SessionGateway reconnect가 같은 actor id로 새 binding을 만든다.
 - **연결 회귀**: [regression-test-matrix](./internals/regression-test-matrix.ko.md) §6
   (Sample release gate)의 모든 sample 행 미러
 - Phase 10 POSD 리팩토링 체크 통과
@@ -810,12 +797,9 @@ sample gate는 아래를 자동 확인해야 한다.
 
 | 항목 | `.NET` 기준 | Java/Kotlin 구현 | 검증 | 판정 |
 |------|-------------|------------------|------|------|
-| sample set | `samples/TicTacToe`, `samples/TicTacToe.SessionGateway`, `samples/Bingo` | `samples/java/*`와 `samples/kotlin/*`에 `TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient`, `Async` 배치 | `SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints` | 완료 |
+| sample set | `samples/TicTacToe`, `samples/Bingo` | `samples/java/*`와 `samples/kotlin/*`에 `TicTacToe`, `Bingo` 배치 | `SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints` | 완료 |
 | direct TicTacToe 역할 구조 | `Client`, `Server/Api`, `Server/Play`, `Shared/Contracts` | Java/Kotlin `Client`, `Server`, `Shared` Gradle 하위 프로젝트와 `client`, `server/api`, `server/play`, `shared/contracts` package로 분리 | `ticTacToeDirectSampleUsesFrameworkRuntimePublicFacade`, `ticTacToeKotlinSampleMirrorsJavaRoleLayout` | 완료 |
-| SessionGateway 역할 구조 | `Client`, `Server/Api`, `Server/Play`, `Server/Registry`, `Server/Session`, `Shared/Actors`, `Shared/Contracts` | Java/Kotlin SessionGateway sample이 같은 역할 package와 actor/session handler 파일을 가짐 | `ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator`, `ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout` | 완료 |
 | Bingo 역할 구조 | `Client`, `Server/Api`, `Server/Play`, `Server/Registry`, `Server/Session`, `Shared/*` | Java/Kotlin Bingo sample이 matching, room, actor, session, notification 역할 파일을 가짐 | `bingoMirrorsFourClientMatchingTimerAndBoundPushGate`, `bingoKotlinSampleMirrorsJavaRoleLayout` | 완료 |
-| connector sample | `.NET` connector client는 manual dispatch, request/reply, lifecycle, reconnect를 검증 | Java/Kotlin `StreamingClient`가 loopback TCP endpoint와 public connector API로 같은 smoke를 실행 | `streamingClientMirrorsConnectorSmokeGate`, `streamingClientKotlinMirrorsConnectorSmokeGate`, `./samples/run_samples.sh` | 완료 |
-| async sample | `.NET` `Task` continuation 의미 | Java `CompletionStage`, Kotlin `suspend` wrapper로 같은 continuation smoke 실행 | `./samples/run_samples.sh` | 완료 |
 | release gate forbidden pattern | sample이 public framework/connector API만 사용 | aggregate runner와 contract test가 internal import, route/metadata store, recording/fake, direct `Catalog`, direct `new Spot`, readiness sleep을 금지 | `sampleSourcesUseOnlyPublicFrameworkAndConnectorApi`, `./samples/run_samples.sh` forbidden search | 완료 |
 
 ## 15. Phase 11 -- Documentation promotion
@@ -974,7 +958,7 @@ Goal start prompt:
 2. 이름만 비슷하거나 compile만 되는 scaffold는 완료가 아니다.
 3. public API 흐름, runtime 배선, lifecycle, 오류 의미, 테스트, sample 동작이 .NET과 다르면 완료가 아니다.
 4. Java는 .NET의 Contracts, Runtime, samples, tests 역할을 추적 가능하게 나누고, 같은 카테고리의 여러 파일은 같은 package/folder로 묶는다.
-5. Java sample과 Kotlin sample은 각각 samples/java와 samples/kotlin 아래에 Bingo, TicTacToe, TicTacToe.SessionGateway, StreamingClient, Async를 같은 구조와 같은 기능 수준으로 제공해야 한다.
+5. Java sample과 Kotlin sample은 각각 samples/java와 samples/kotlin 아래에 Bingo와 TicTacToe를 같은 구조와 같은 기능 수준으로 제공해야 한다.
 6. sample이 framework/connector public API를 우회하거나 Java/Kotlin 중 한쪽만 동작하면 완료가 아니다.
 7. framework core, Spring Boot starter, connector, connector codec 모듈, Kotlin wrapper, testkit, Java/Kotlin sample, 문서, release gate가 모두 evidence table로 추적되어야 한다.
 8. Kotlin `suspend fun` annotation handler가 Spring DI 안에서 자동 발견되고 Java

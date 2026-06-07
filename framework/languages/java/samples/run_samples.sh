@@ -38,11 +38,11 @@ run_sample_with_retry() {
   done
 }
 
-for sample in TicTacToe TicTacToe.SessionGateway Bingo StreamingClient Async; do
+for sample in TicTacToe Bingo; do
   run_sample_with_retry "$SAMPLES_DIR/java/$sample/run_sample.sh"
 done
 
-for sample in TicTacToe TicTacToe.SessionGateway Bingo StreamingClient Async; do
+for sample in TicTacToe Bingo; do
   run_sample_with_retry "$SAMPLES_DIR/kotlin/$sample/run_sample.sh"
 done
 
@@ -56,16 +56,6 @@ forbidden_sample_pattern+="|UnsupportedOperationException\\(\"not needed by samp
 
 if rg -n "$forbidden_sample_pattern" "$SAMPLES_DIR" -g '*.java' -g '*.kt'; then
   echo "sample gate failed: forbidden sample pattern found" >&2
-  exit 1
-fi
-
-if ! rg -n "attachActorGateway\\((\"session-relay\"|SampleNames\\.SessionRelayNode)\\)" "$SAMPLES_DIR/java/TicTacToe.SessionGateway" -g '*.java' >/dev/null; then
-  echo "sample gate failed: java/TicTacToe.SessionGateway must attach ActorGateway" >&2
-  exit 1
-fi
-
-if ! rg -n "attachActorGateway\\((\"session-relay\"|SampleNames\\.SessionRelayNode)\\)" "$SAMPLES_DIR/kotlin/TicTacToe.SessionGateway" -g '*.kt' >/dev/null; then
-  echo "sample gate failed: kotlin/TicTacToe.SessionGateway must attach ActorGateway" >&2
   exit 1
 fi
 

@@ -71,27 +71,10 @@ sleep 기반 readiness 우회를 추가하지 않는다. 그런 우회는 sample
 | Sample | Java 위치 | Kotlin 위치 | 역할 | 필수 여부 | `.NET` 대응 |
 |--------|-----------|-------------|------|-----------|-------------|
 | `TicTacToe` | `samples/java/TicTacToe` | `samples/kotlin/TicTacToe` | direct STREAM + SPOT + channel 기본 흐름 | 필수 | `samples/TicTacToe` |
-| `TicTacToe.SessionGateway` | `samples/java/TicTacToe.SessionGateway` | `samples/kotlin/TicTacToe.SessionGateway` | session actor dispatch, ActorGateway relay, reconnect | 필수 | `samples/TicTacToe.SessionGateway` |
 | `Bingo` | `samples/java/Bingo` | `samples/kotlin/Bingo` | matching room, 4 client connector, Entry Spot admission, timer, bound push | 필수 | `samples/Bingo` |
-| `StreamingClient` | `samples/java/StreamingClient` | `samples/kotlin/StreamingClient` | connector 단독 사용, send/request/on/dispatch mode | 필수 | **없음 (Java/Kotlin 추가 sample)** |
-| `Async` | `samples/java/Async` | `samples/kotlin/Async` | Java `CompletionStage` continuation과 Kotlin `suspend` wrapper 표면 | 필수 | **없음 (Java/Kotlin 추가 sample)** |
 
 provenance 주석:
 
-- **`StreamingClient`는 `.NET`에 대응 sample이 없는 Java/Kotlin 추가 sample**이다. connector
-  단독 사용성을 보이기 위해 Java/Kotlin 쪽에서 새로 만든다. `.NET` 동등성 비교에서 이
-  sample은 "추가"로 표시하고, 4축 동등성 판정의 기준 sample에는 넣지 않는다(필수
-  실행 대상에는 포함).
-- **`Async`는 비동기 표면 정책을 확인하는 추가 sample**이다. Java sample은 blocking
-  helper 없이 `CompletionStage` continuation으로 요청 흐름을 연결한다. Kotlin sample은
-  같은 Java `CompletionStage` 표면을 `suspend` 함수로 감싸고, `suspend` handler를
-  framework-owned coroutine runtime으로 Java handler에 연결한다. 또한 Spring bean
-  scanner가 Kotlin `suspend fun` annotation handler를 자동 발견하고 실제 dispatch
-  경로에서 실행하는 smoke를 포함한다. 이 sample은 `.NET` 동등성 비교의 기준 sample은
-  아니지만, Java/Kotlin release gate에서는 필수로 실행한다.
-- `.NET`에는 `samples/Bingo(session-gateway)`가 존재한다(WIP). 이 Java 계획에서는
-  필수 4개만 우선 구현하고, `Bingo(session-gateway)` 대응 Java sample은 **선택
-  항목**으로 둔다(필수 release gate 밖).
 - `.NET` sample에서 `Bingo`는 interface 기반 handler 발견과 dispatch를 보여 주고,
   `TicTacToe`는 attribute 기반 handler 발견과 dispatch를 보여 준다. Java/Kotlin
   sample도 같은 구분을 유지한다. Java/Kotlin의 `Bingo` handler는 channel, Entry Spot
@@ -123,30 +106,12 @@ framework/languages/java/samples/
         build.gradle.kts
         src/main/java/systems/zlink/samples/tictactoe/shared/contracts/
       src/main/java/systems/zlink/samples/tictactoe/
-    TicTacToe.SessionGateway/
-      build.gradle.kts
-      settings.gradle.kts
-      README.md
-      run_sample.sh
-      src/main/java/systems/zlink/samples/tictactoe/sessiongateway/
     Bingo/
       build.gradle.kts
       settings.gradle.kts
       README.md
       run_sample.sh
       src/main/java/systems/zlink/samples/bingo/
-    StreamingClient/
-      build.gradle.kts
-      settings.gradle.kts
-      README.md
-      run_sample.sh
-      src/main/java/systems/zlink/samples/streamingclient/
-    Async/
-      build.gradle.kts
-      settings.gradle.kts
-      README.md
-      run_sample.sh
-      src/main/java/systems/zlink/samples/asyncjava/
   kotlin/
     TicTacToe/
       build.gradle.kts
@@ -164,30 +129,12 @@ framework/languages/java/samples/
         build.gradle.kts
         src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/shared/contracts/
       src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/
-    TicTacToe.SessionGateway/
-      build.gradle.kts
-      settings.gradle.kts
-      README.md
-      run_sample.sh
-      src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/sessiongateway/
     Bingo/
       build.gradle.kts
       settings.gradle.kts
       README.md
       run_sample.sh
       src/main/kotlin/systems/zlink/samples/kotlin/bingo/
-    StreamingClient/
-      build.gradle.kts
-      settings.gradle.kts
-      README.md
-      run_sample.sh
-      src/main/kotlin/systems/zlink/samples/kotlin/streamingclient/
-    Async/
-      build.gradle.kts
-      settings.gradle.kts
-      README.md
-      run_sample.sh
-      src/main/kotlin/systems/zlink/samples/asynckotlin/
 ```
 
 각 sample은 aggregate build entry point와 `run_sample.sh`를 가진다. `run_samples.sh`는
@@ -209,7 +156,6 @@ sample process에서 시작한다. API role은 client의 HTTP `/games` 요청을
 | Sample | 필수 역할 package |
 |--------|-------------------|
 | `TicTacToe` | `Client/src/.../client`, `Server/src/.../server/api/handlers`, `Server/src/.../server/configuration`, `Server/src/.../server/play/actors`, `Server/src/.../server/play/entryspot/handlers`, `Server/src/.../server/play/gamespots/handlers`, `Server/src/.../server/play/sessions`, `Shared/src/.../shared/contracts` |
-| `TicTacToe.SessionGateway` | `client`, `server/api/handlers`, `server/play/entryspot/handlers`, `server/play/gamespots/handlers`, `server/play/handlers`, `server/registry`, `server/session/sessions/handlers`, `shared/actors`, `shared/configuration`, `shared/contracts` |
 | `Bingo` | `client`, `server/api/handlers`, `server/play/actors`, `server/play/bingoroomspots/handlers`, `server/play/entryspot/handlers`, `server/play/handlers`, `server/registry`, `server/session/sessions/handlers`, `shared/configuration`, `shared/contracts` |
 
 SessionGateway 계열 sample은 `.NET`의 `SessionActorDispatchPlayerClient`,
@@ -285,22 +231,7 @@ Bingo sample은 `.NET` Bingo와 같은 matching room sample이다.
 12. 같은 draw sequence의 복수 winner를 확인한다.
 13. 모든 bound client session에 push notification이 도착한다.
 
-## 7. StreamingClient
-
-StreamingClient sample은 connector 자체의 사용성을 보여 준다.
-
-- TCP와 WebSocket 중 하나 이상으로 server에 연결
-- `MANUAL` dispatch mode에서 game loop처럼 `dispatchAsync()` 호출
-- `send(...)`, `request(...)`, `on(...)` 사용
-- `onConnectionStateChanged(...)`, `onDisconnected(...)` 로 lifecycle event 관찰
-- packet name override와 metadata 사용
-- request timeout과 error event 처리는 connector runtime의 pending request/error model이
-  닫힌 뒤 sample self-check에 포함한다. 이 항목은 sample runner가 통과하더라도 전체
-  release 판정에서는 regression-test-matrix의 connector timeout/error 행이 닫혀야
-  완료로 본다.
-- Kotlin coroutine client 예시
-
-## 8. 검증 기준
+## 7. 검증 기준
 
 Sample 구현 후 아래 command가 통과해야 한다.
 

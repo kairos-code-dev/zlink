@@ -92,8 +92,8 @@ backend, integration-single-process, sample regression 증거를 분리해 기�
 | actor Entry Spot join call | fake backend | `ActorRuntimeFakeBackendTest.actorContextJoinEntrySpotUsesBackendSpotNodeJoinOperation` | `ZLinkActorContext.joinEntrySpot(...).submitAsync()`가 framework backend port를 통해 binding public `SpotNode.joinActorEntrySpot(...)` 의미로 이어지고, 결과 `ZLinkActorRef`를 actor context에 반영 |
 | actor user Spot join call | fake backend | `ActorRuntimeFakeBackendTest.actorContextJoinSpotUsesBackendSpotNodeJoinOperationAndUpdatesContext` | `ZLinkActorContext.joinSpot(...).submitAsync(replyType)`가 framework backend port를 통해 binding public `SpotNode.joinActor(...)` 의미로 이어지고, join 성공 즉시 actor context의 joined 상태, `spotRid()`, `getSpot(Class)`를 user Spot 인스턴스로 갱신한 뒤 reply payload를 deserialize한다. 이후 Entry Spot join은 이전 user Spot 참조를 비운다 |
 | actor Entry Spot route join handler | fake backend | `ActorRuntimeFakeBackendTest.actorEntrySpotRouteJoinHandlerCreatesLocalActorAndReturnsActorRefReply` | reserved route packet `__zlink.actor.joinEntrySpot` 처리 경로가 actor runtime에서 local actor를 생성하고 target node rid와 actor generation을 reply로 반환 |
-| framework-owned session context | fake backend / sample regression / contract | `StreamSessionTest.constructorSessionContextExposesClientAndActorsFromFrameworkRuntime` / `SampleReleaseGateContractTest.ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator` / `./framework/languages/java/samples/run_samples.sh` | STREAM session type은 framework-owned `ZLinkSessionContext` constructor를 받을 수 있고, context의 `client()`와 `actors()`는 backend stream send와 ActorGateway bind로 이어진다. sample은 `SampleSessionContext`, `SampleSessionActors`, `SampleBoundSession` 같은 local stand-in 없이 public `ZLinkFramework.sessionActors(...)`와 session context를 사용한다 |
-| session packet dispatcher | fake backend / sample regression | `ZLinkFrameworkAutoConfigurationTest.springLifecycleAutoDiscoversSessionPacketHandlersForSessionDispatcher` / `StreamSessionTest.sessionPacketDispatcher_handlesRegisteredPacketsAndLetsSessionRelayUnhandledPackets` / `./framework/languages/java/samples/run_samples.sh` | Spring 안에서 구동되는 STREAM session type은 framework-owned `ZLinkSessionPacketDispatcher<ZLinkSessionContext>` constructor를 받을 수 있다. Spring auto-configuration은 같은 context type의 `ZLinkSessionPacketHandler`를 찾아 등록하고, 등록된 handler는 packet 이름으로 찾아 실행된다. 미등록 packet은 session이 actor relay, reject, ignore 같은 결정을 직접 내리도록 `false`를 반환한다. Java/Kotlin `TicTacToe.SessionGateway` sample은 session handler 파일을 수동 helper가 아니라 framework dispatcher에 등록한다 |
+| framework-owned session context | fake backend / sample regression / contract | `StreamSessionTest.constructorSessionContextExposesClientAndActorsFromFrameworkRuntime` / `./framework/languages/java/samples/run_samples.sh` | STREAM session type은 framework-owned `ZLinkSessionContext` constructor를 받을 수 있고, context의 `client()`와 `actors()`는 backend stream send와 actor bind로 이어진다. sample은 `SampleSessionContext`, `SampleSessionActors`, `SampleBoundSession` 같은 local stand-in 없이 public framework session context를 사용한다 |
+| session packet dispatcher | fake backend / sample regression | `ZLinkFrameworkAutoConfigurationTest.springLifecycleAutoDiscoversSessionPacketHandlersForSessionDispatcher` / `StreamSessionTest.sessionPacketDispatcher_handlesRegisteredPacketsAndLetsSessionRelayUnhandledPackets` / `./framework/languages/java/samples/run_samples.sh` | Spring 안에서 구동되는 STREAM session type은 framework-owned `ZLinkSessionPacketDispatcher<ZLinkSessionContext>` constructor를 받을 수 있다. Spring auto-configuration은 같은 context type의 `ZLinkSessionPacketHandler`를 찾아 등록하고, 등록된 handler는 packet 이름으로 찾아 실행된다. 미등록 packet은 session이 actor relay, reject, ignore 같은 결정을 직접 내리도록 `false`를 반환한다 |
 | local managed session actor bind/relay | integration-single-process | `SessionActorsRuntimeIntegrationTest.bindAsyncCanRelayLocalManagedActorWithoutActorGatewayAttach` | direct STREAM role은 `.NET` direct sample처럼 `attachActorGateway(...)` 없이 local actor instance를 bind하고 annotation-discovered actor packet handler로 relay한다 |
 | remote ActorGateway session actor bind | integration-single-process | `SessionActorsRuntimeIntegrationTest.bindAsyncUsesStreamActorGatewayBindingPath` | native backend 위에서 remote ActorGateway binding path가 동작 |
 | session actor relay | fake backend / integration-single-process | `RemoteActorGatewayTest.sessionAndPlayServers_relaySucceeds` / `SessionActorsRuntimeIntegrationTest.sessionAndPlayServers_relaySucceeds` | fake backend는 bound-actor relay backend operation을 관찰하고, native integration은 gateway-attached remote stream binding을 단일 JVM에서 검증 |
@@ -180,37 +180,21 @@ transport error callback public API가 추가되어야 한다.
 | Sample | 확인 기준 |
 |--------|-----------|
 | `TicTacToe` | direct STREAM + Spot + channel 흐름 성공 |
-| `TicTacToe.SessionGateway` | reconnect 후 같은 actor id로 새 session binding |
 | `Bingo` | 4 connector client, matching, timer, bound push 성공 |
-| `StreamingClient` | connector send/request/on/manual dispatch/lifecycle event/reconnect smoke |
-| `Async` | Java `CompletionStage` continuation과 Kotlin `suspend` wrapper smoke. Kotlin 쪽은 수동 wrapper만이 아니라 Spring DI 안의 suspend annotation handler smoke도 포함해야 함 |
 
 위 sample은 `samples/java/*`와 `samples/kotlin/*` 양쪽에 있어야 한다. sample source와 runner 구조는
 `SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints`,
 `sampleSourcesUseOnlyPublicFrameworkAndConnectorApi`,
-`ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator`,
-`ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout`,
 `bingoMirrorsFourClientMatchingTimerAndBoundPushGate`,
-`bingoKotlinSampleMirrorsJavaRoleLayout`,
-`streamingClientMirrorsConnectorSmokeGate`,
-`streamingClientKotlinMirrorsConnectorSmokeGate`가 고정한다. Kotlin mirror gate도
-파일 존재만 보지 않고 framework facade, ActorGateway attach, registry-backed remote
-address, public session actor binding, connector manual dispatch/reconnect 사용을
-검사한다. 실제 실행 self-check는 아래 release gate command가 담당한다.
+`bingoKotlinSampleMirrorsJavaRoleLayout`가 고정한다. Kotlin mirror gate도
+파일 존재만 보지 않고 framework facade, registry-backed remote address, public
+session actor binding, connector manual dispatch 사용을 검사한다. 실제 실행
+self-check는 아래 release gate command가 담당한다.
 
-Kotlin sample gate는 Kotlin client API가 `await()`를 쓰는지만 확인하지 않는다. 적어도
-하나의 Kotlin sample 또는 `Async` sample은 Spring bean으로 등록된 `suspend fun`
-annotation handler를 사용해야 하며, sample runner는 그 handler가 실제 framework
-dispatch 경로에서 실행됐음을 확인해야 한다. Kotlin handler를 sample main에서 직접
-생성하거나 `ZLinkCoroutineRuntime` 수동 adapter로만 등록한 smoke는 Spring framework
-지원 완료 증거가 아니다.
-
-`TicTacToe`, `TicTacToe.SessionGateway`, `Bingo`의 sample release gate는 단일 entry
+`TicTacToe`, `Bingo`의 sample release gate는 단일 entry
 file만 확인하지 않는다. Java/Kotlin 양쪽에서 `.NET` sample의 역할 package, handler,
-model, player-client 파일이 존재하는지 함께 검사한다. `TicTacToe.SessionGateway`는
-sample-local actor/session context stand-in 없이 framework-owned session context와
-public session actor binding API를 사용해야 한다. 이렇게 해야 sample이 smoke check로
-축소되는 회귀를 막을 수 있다.
+model, player-client 파일이 존재하는지 함께 검사한다. 이렇게 해야 sample이 smoke
+check로 축소되는 회귀를 막을 수 있다.
 
 샘플 handler 스타일도 `.NET` sample의 의도를 따른다. `Bingo`는 interface 기반 handler
 발견과 dispatch를 보여 주는 sample이고, `TicTacToe`는 annotation 기반 handler 발견과

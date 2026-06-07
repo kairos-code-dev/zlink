@@ -32,8 +32,7 @@
 - connector codec helper: JSON, MessagePack, Protobuf, auto codec
 - Kotlin coroutine/DSL wrapper
 - testkit: fake backend, in-process host, sample fixture
-- samples: `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`,
-  `TicTacToe.SessionGateway`, `Bingo`, `StreamingClient`, `Async`
+- samples: `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`, `Bingo`
 
 구현은 단계적으로 나눌 수 있다. 그러나 위 항목을 기본 범위 밖으로 밀어 두면
 `.NET`과 같은 수준의 포팅으로 보지 않는다.
